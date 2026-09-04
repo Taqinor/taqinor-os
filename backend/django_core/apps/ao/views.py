@@ -28,6 +28,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -270,8 +271,19 @@ class AnalyserDxfView(APIView):
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
 
 class AppelOffreViewSet(AoBaseViewSet):
-    """Objets appels d'offres public/privé (FG222)."""
-    queryset = AppelOffre.objects.all()
+    """Objets appels d'offres public/privé (FG222).
+
+    AUD615 — ``prefetch_related('batiments__toitures')`` n'est pas une
+    optimisation de confort. ``AppelOffreSerializer`` publie deux agrégats
+    CALCULÉS (``surface_toitures_m2``, ``engagement_modules_batiments``) qui
+    itèrent ``batiments`` puis, par bâtiment, ``toitures`` : sans préchargement,
+    la liste des AO coûtait une requête par bâtiment PLUS une par bâtiment pour
+    ses toitures, sur CHAQUE ligne. Le préchargement rend ce coût constant sans
+    retirer les deux champs de la liste (le patron « détail seulement » de
+    ``synthese_calepinage`` aurait, lui, changé le contrat côté écran).
+    """
+    queryset = AppelOffre.objects.prefetch_related(
+        'batiments__toitures').all()
     serializer_class = AppelOffreSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'reference_acheteur', 'objet', 'acheteur',
@@ -1136,6 +1148,14 @@ class BordereauPrixViewSet(AoBaseViewSet):
         )
 
         bordereau = self.get_object()  # borné société par get_queryset
+        # AUD605 — l'action ne vérifiait AUCUN statut d'AO : un devis pouvait
+        # naître du bordereau d'un appel d'offres PERDU ou ABANDONNÉ, en
+        # consommant une référence DEV réelle et en réapparaissant dans le
+        # pipeline commercial. La règle vit dans `services`, jamais ici.
+        refus = services.refus_de_creation_de_devis(bordereau.appel_offre)
+        if refus:
+            return Response({'appel_offre': [refus]},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             devis, rapport = creer_devis_depuis_bordereau(
                 bordereau, user=request.user, company=bordereau.company)
@@ -1274,6 +1294,19 @@ class DeriverCautionDefinitiveSerializer(serializers.Serializer):
         required=False, allow_null=True, label="Date d'échéance")
 
 
+class ChangerStatutCautionSerializer(serializers.Serializer):
+    """AUD610 — entrée de ``cautions-soumission/<id>/changer-statut``.
+
+    Deux champs seulement : la cible et le motif. Le statut de DÉPART n'est pas
+    un champ — il est lu sur la ligne, sinon un client pourrait décrire un état
+    de départ qui n'est pas le sien et franchir une transition qui n'existe pas.
+    """
+    statut = serializers.ChoiceField(
+        choices=CautionSoumission.Statut.choices, label='Nouveau statut')
+    motif = serializers.CharField(
+        required=False, allow_blank=True, max_length=500, label='Motif')
+
+
 class CautionSoumissionViewSet(AoBaseViewSet):
     """Cautions de soumission (provisoires/définitives) d'AO (FG224).
 
@@ -1281,11 +1314,48 @@ class CautionSoumissionViewSet(AoBaseViewSet):
     définitif : il le dérive du taux du CPS au lieu de le laisser saisir à la
     main, et la règle de cohérence ``AO_CAUTION_EXPIREE`` surveille en aval
     les échéances qui tomberaient avant l'ouverture des plis.
+
+    AUD610 — ``changer-statut`` est de même le SEUL chemin d'écriture du
+    statut : il valide la transition contre ``CautionSoumission.TRANSITIONS``
+    et la journalise au chatter.
     """
     queryset = CautionSoumission.objects.all()
     serializer_class = CautionSoumissionSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'date_echeance', 'statut']
+
+    def perform_destroy(self, instance):
+        """AUD609 — une caution APPELÉE ne s'efface pas.
+
+        « Appelée » signifie que la banque a DÉJÀ débité le montant : la
+        supprimer effacerait la trace d'un mouvement d'argent réel, et le
+        rapprochement bancaire n'aurait plus rien à quoi rattacher la sortie.
+        """
+        if instance.statut == CautionSoumission.Statut.APPELEE:
+            raise DrfValidationError({api_settings.NON_FIELD_ERRORS_KEY: [
+                'Suppression refusée : cette caution est APPELÉE — la banque a '
+                'débité le montant. Sa trace ne se supprime pas.']})
+        super().perform_destroy(instance)
+
+    @extend_schema(request=ChangerStatutCautionSerializer,
+                   responses=CautionSoumissionSerializer)
+    @action(detail=True, methods=['post'], url_path='changer-statut',
+            permission_classes=[ScopedPermission])
+    def changer_statut(self, request, pk=None):
+        """AUD610 — fait avancer la caution dans sa machine d'états."""
+        entree = ChangerStatutCautionSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        caution = self.get_object()  # borné société par get_queryset
+        try:
+            caution = services.changer_statut_caution(
+                caution, entree.validated_data['statut'],
+                user=request.user,
+                motif=entree.validated_data.get('motif', ''))
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'statut': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(caution).data)
 
     @extend_schema(request=DeriverCautionDefinitiveSerializer,
                    responses=CautionSoumissionSerializer)
@@ -1364,11 +1434,38 @@ class EcheanceAOViewSet(AoBaseViewSet):
 
 class ResultatAOViewSet(AoBaseViewSet):
     """Résultats d'AO pour l'analyse gagné/perdu (FG227). L'action ``stats``
-    renvoie le taux de réussite consolidé."""
+    renvoie le taux de réussite consolidé.
+
+    AUD605 — LECTURE SEULE au CRUD. Le résultat d'un appel d'offres n'est pas
+    une ligne comme une autre : écrire ``issue`` fait suivre le STATUT de l'AO,
+    journalise au chatter et émet ``ao_gagne`` (auquel le CRM s'abonne pour
+    avancer le lead à SIGNED). Un ``POST /resultats-ao/`` standard court-
+    circuitait tout cela : le résultat existait, l'AO restait « déposé », le
+    lead ne bougeait pas, et rien ne le disait. Toute écriture passe donc par
+    l'action ``enregistrer`` — miroir exact de ``services.enregistrer_resultat_ao``.
+    """
     queryset = ResultatAO.objects.all()
     serializer_class = ResultatAOSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'date_resultat']
+
+    #: Message unique des quatre refus — il NOMME le chemin à prendre.
+    ECRITURE_REFUSEE = (
+        "Le résultat d'un appel d'offres ne s'écrit pas directement : il fait "
+        "suivre le statut de l'AO, le chatter et l'événement « AO gagné ». "
+        "Utiliser POST /resultats-ao/enregistrer/.")
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed('POST', detail=self.ECRITURE_REFUSEE)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed('PUT', detail=self.ECRITURE_REFUSEE)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed('PATCH', detail=self.ECRITURE_REFUSEE)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed('DELETE', detail=self.ECRITURE_REFUSEE)
 
     @action(detail=False, methods=['get'])
     def stats(self, request):

@@ -30,6 +30,7 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
@@ -91,6 +92,30 @@ class DossierAOViewSet(AoBaseViewSet):
     serializer_class = DossierAOSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'statut']
+
+    #: AUD609 — statuts depuis lesquels un dossier ne se supprime PLUS.
+    #: ``DEPOSE`` = le pli est chez l'acheteur, ``CLOS`` = l'affaire est
+    #: archivée : dans les deux cas le dossier est une pièce d'un dossier
+    #: administratif remis, pas un brouillon.
+    STATUTS_NON_SUPPRIMABLES = (
+        DossierAO.Statut.DEPOSE, DossierAO.Statut.CLOS)
+
+    def perform_destroy(self, instance):
+        """AUD609 — un dossier DÉPOSÉ ou CLOS ne se supprime pas.
+
+        La permission ``ao_gerer`` couvre explicitement « suppression », mais
+        aucune garde de STATUT n'existait : un simple DELETE HTTP effaçait un
+        dossier dont le pli est déjà chez l'acheteur — avec ses pièces, ses
+        artefacts et sa piste de contrôle. « L'histoire d'un pli remis ne se
+        réécrit pas » (c'est déjà la règle de sa machine d'états, où ``DEPOSE``
+        ne mène qu'à ``CLOS``) : le DELETE le respecte enfin.
+        """
+        if instance.statut in self.STATUTS_NON_SUPPRIMABLES:
+            raise DrfValidationError({api_settings.NON_FIELD_ERRORS_KEY: [
+                "Suppression refusée : ce dossier est « %s ». L'histoire d'un "
+                'pli remis ne se réécrit pas — clôturez-le plutôt.'
+                % instance.get_statut_display()]})
+        super().perform_destroy(instance)
 
     def get_queryset(self):
         qs = super().get_queryset()

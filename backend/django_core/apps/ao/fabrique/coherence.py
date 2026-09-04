@@ -19,6 +19,7 @@ from decimal import Decimal
 from .. import controles
 
 __all__ = [
+    'bordereau_de_reference',
     'contexte_controle',
     'controles_bloquants',
     'empreinte_dossier',
@@ -28,15 +29,38 @@ __all__ = [
 ]
 
 
+def _empreinte_de_texte(*morceaux):
+    """SHA-256 court d'un contenu textuel — pour ne pas gonfler le canonique."""
+    charge = '\x1f'.join(str(m or '') for m in morceaux)
+    return hashlib.sha256(charge.encode('utf-8')).hexdigest()[:16]
+
+
 def empreinte_dossier(dossier):
     """SHA-256 du contexte du dossier — ce que le pack REFLÈTE aujourd'hui.
 
     Entrent : les totaux des bordereaux, les empreintes d'entrée des variantes
-    retenues, les désignations et quantités des équipements actifs, et les
-    indices des planches actives. N'entrent pas : les identifiants techniques,
-    les horodatages, les libellés d'affichage (un simple renommage ne périme
-    pas un pack — sinon le bandeau « périmé » se dévalue).
+    retenues, les désignations et quantités des équipements actifs, les indices
+    des planches actives, **le CONTENU des textes normalisés du mémoire et
+    l'état de la checklist** (AUD604). N'entrent pas : les identifiants
+    techniques, les horodatages, les libellés d'affichage (un simple renommage
+    ne périme pas un pack — sinon le bandeau « périmé » se dévalue).
+
+    AUD604 — pourquoi le mémoire et la checklist ENTRENT. Le mémoire technique
+    est assemblé en LIVE depuis ``SectionMemoire`` (``sections_a_inclure`` /
+    ``assembler_memoire``) et la checklist partenaire est produite depuis
+    ``LigneChecklistPartenaire`` : leur contenu ne laissait AUCUNE trace dans
+    l'empreinte. Corriger une phrase du mémoire laissait donc l'empreinte
+    identique, la branche REPRISE de ``producteurs_de_pack`` reprenait la pièce
+    ARCHIVÉE, et c'est l'ancien texte qui partait à l'acheteur.
+
+    Le hachage est VOLONTAIREMENT plus large que le rendu : il couvre toutes
+    les sections actives de la société, pas seulement celles que les conditions
+    d'inclusion retiendront. Sur-périmer coûte une régénération ; sous-périmer
+    dépose une pièce fausse. Conséquence assumée : les artefacts produits AVANT
+    ce correctif sont vus une fois comme périmés et se refabriquent.
     """
+    from ..models import SectionMemoire
+
     ao = dossier.appel_offre
     canonique = {
         'bordereaux': sorted(
@@ -51,14 +75,37 @@ def empreinte_dossier(dossier):
         'planches': sorted(
             f'{p.code_document}{p.indice}'
             for p in ao.planches.filter(statut='active')),
+        'memoire': sorted(
+            '{}:{}'.format(
+                s.code,
+                _empreinte_de_texte(
+                    s.titre, s.corps, s.ordre,
+                    # JSONField : `str(dict)` dépend de l'ordre des clés rendu
+                    # par PostgreSQL — l'empreinte bougerait sans que rien ne
+                    # change. `sort_keys` la rend stable.
+                    json.dumps(s.conditions_inclusion, sort_keys=True,
+                               ensure_ascii=False)))
+            for s in SectionMemoire.objects.filter(
+                company_id=dossier.company_id, actif=True)),
+        'checklist': sorted(
+            '{}:{}:{}'.format(
+                ligne.code, int(bool(ligne.faite)),
+                _empreinte_de_texte(ligne.commentaire))
+            for ligne in dossier.lignes_checklist.all()),
     }
     charge = json.dumps(canonique, sort_keys=True, ensure_ascii=False,
                         separators=(',', ':'))
     return hashlib.sha256(charge.encode('utf-8')).hexdigest()
 
 
-def _bordereau_de_reference(bordereaux):
-    """Le bordereau qui fait foi : le plus haut indice de révision."""
+def bordereau_de_reference(bordereaux):
+    """Le bordereau qui fait foi : le plus haut indice de révision.
+
+    PUBLIC depuis AUD603 : le producteur du bordereau des prix et celui de
+    l'acte d'engagement doivent choisir EXACTEMENT le même bordereau que la
+    passe de contrôle, sinon le pli déposé pourrait porter un montant que les
+    contrôles n'ont jamais vu.
+    """
     if not bordereaux:
         return None
     return sorted(bordereaux, key=lambda b: (b.indice_revision, b.pk))[-1]
@@ -81,7 +128,7 @@ def contexte_controle(dossier):
         'dossier': dossier,
         'appel_offre': ao,
         'bordereaux': bordereaux,
-        'bordereau': _bordereau_de_reference(bordereaux),
+        'bordereau': bordereau_de_reference(bordereaux),
         'variantes': variantes,
         'modules_engages': modules_engages,
         'puissance_kwc': puissance,

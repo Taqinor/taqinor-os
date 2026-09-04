@@ -1018,6 +1018,23 @@ def retenir_avis(avis, user=None, motif=''):
 
     Rend ``(avis, appel_offre_id, cree)``.
     """
+    # AUD608 — l'idempotence se LIT SOUS VERROU. ``avis.appel_offre_id`` et
+    # ``avis.statut`` étaient lus sur l'instance en mémoire, hors transaction :
+    # deux clics simultanés sur « Retenir » lisaient tous les deux « pas encore
+    # converti » et faisaient créer DEUX affaires pour un seul avis. La ligne
+    # d'avis existe toujours : c'est elle qu'on verrouille, et on la RELIT
+    # depuis la base — l'instance de l'appelant peut être périmée.
+    with transaction.atomic():
+        frais = (type(avis).objects.select_for_update()
+                 .filter(pk=avis.pk).first())
+        if frais is not None:
+            avis.appel_offre_id = frais.appel_offre_id
+            avis.statut = frais.statut
+        return _retenir_avis_sous_verrou(avis, user=user, motif=motif)
+
+
+def _retenir_avis_sous_verrou(avis, user=None, motif=''):
+    """Le corps de :func:`retenir_avis`, exécuté la ligne d'avis VERROUILLÉE."""
     if avis.appel_offre_id:
         return avis, avis.appel_offre_id, False
 

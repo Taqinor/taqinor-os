@@ -515,6 +515,53 @@ def deriver_caution_definitive(appel_offre, *, montant_marche=None,
     return caution
 
 
+def changer_statut_caution(caution, nouveau_statut, *, user=None, motif=''):
+    """AUD610 — SEUL point de mutation du statut d'une caution de soumission.
+
+    Une caution de soumission porte de l'argent RÉELLEMENT engagé : ``appelee``
+    signifie que la banque a déjà débité le montant. Tant que ``statut`` était
+    librement PATCHable, la machine d'états n'était qu'un affichage : un retour
+    ``appelee → constituee`` effaçait la trace d'un débit réel, sans
+    transition, sans journal, sans que rien ne le dise.
+
+    Valide contre ``CautionSoumission.TRANSITIONS``, écrit, puis journalise au
+    chatter générique ``records`` (jamais une classe ``*Activity`` maison).
+
+    Raises:
+        ValidationError: statut inconnu, ou saut hors graphe (message FR).
+    """
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    from .models import CautionSoumission
+
+    ancien = caution.statut
+    if nouveau_statut == ancien:
+        return caution
+    libelles = dict(CautionSoumission.Statut.choices)
+    if nouveau_statut not in libelles:
+        raise ValidationError(
+            {'statut': f"Statut inconnu : « {nouveau_statut} »."})
+    autorises = CautionSoumission.TRANSITIONS.get(ancien, ())
+    if nouveau_statut not in autorises:
+        atteignables = ', '.join(f'« {libelles[s]} »' for s in autorises) \
+            or 'aucun (état terminal)'
+        raise ValidationError({'statut': (
+            f"Transition interdite : « {libelles[ancien]} » → "
+            f"« {libelles[nouveau_statut]} ». Statuts atteignables : "
+            f"{atteignables}."
+        )})
+
+    caution.statut = nouveau_statut
+    caution.save(update_fields=['statut', 'updated_at'])
+    log_activity(
+        caution, Activity.Kind.MODIFICATION, user=user,
+        field='statut', field_label='Statut',
+        old_value=libelles[ancien], new_value=libelles[nouveau_statut],
+        body=motif or '', company=caution.company)
+    return caution
+
+
 def cautions_expirant_avant_ouverture(appel_offre):
     """Cautions dont l'échéance tombe AVANT l'ouverture des plis (AOF16)."""
     return [
@@ -537,6 +584,37 @@ _ISSUE_VERS_STATUT = {
     ResultatAO.Issue.GAGNE: AppelOffre.Statut.GAGNE,
     ResultatAO.Issue.PERDU: AppelOffre.Statut.PERDU,
 }
+
+#: AUD605 — statuts d'AO depuis lesquels un devis ne peut PLUS naître.
+#:
+#: Ce sont les états TERMINAUX NÉGATIFS : l'affaire est close et perdue. En
+#: créer un devis consommerait une référence DEV réelle (numérotation
+#: `core.numbering`, jamais réattribuée) pour une affaire qui n'existe plus, et
+#: ferait apparaître un devis dans le pipeline commercial.
+#:
+#: Les états AMONT (`identifie` → `pret_a_deposer`) ne sont PAS refusés : le
+#: chiffrage précède le dépôt par construction — c'est très exactement le
+#: moment où `creer-devis` sert. Les refuser aurait interdit le chemin normal.
+STATUTS_SANS_DEVIS = frozenset({
+    AppelOffre.Statut.PERDU,
+    AppelOffre.Statut.ABANDONNE,
+})
+
+
+def refus_de_creation_de_devis(appel_offre):
+    """Le motif FRANÇAIS qui interdit de créer un devis, ou ``None``.
+
+    Une fonction plutôt qu'un ``if`` dans la vue : la règle est une DONNÉE que
+    l'écran, les tests et un futur appelant lisent au même endroit.
+    """
+    if appel_offre is None:
+        return None
+    if appel_offre.statut in STATUTS_SANS_DEVIS:
+        return (
+            "Cet appel d'offres est « %s » : un devis ne peut plus en naître "
+            "(il consommerait une référence de devis réelle pour une affaire "
+            "close)." % appel_offre.get_statut_display())
+    return None
 
 
 def enregistrer_resultat_ao(appel_offre, *, issue, user=None, **donnees):
@@ -2335,9 +2413,7 @@ def creer_appel_offre_depuis_avis(company, avis, *, user=None):
     valeurs = {champ: avis[champ] for champ in CHAMPS_AVIS
                if champ in avis and avis[champ] is not None}
 
-    existant = AppelOffre.objects.filter(
-        company=company, reference_acheteur=reference_acheteur).first()
-    if existant is not None:
+    def _reporter(existant):
         modifies = []
         for champ, valeur in valeurs.items():
             # Un avis rectifié qui ne redit PAS une valeur ne doit pas
@@ -2357,7 +2433,28 @@ def creer_appel_offre_depuis_avis(company, avis, *, user=None):
             reference_acheteur=reference_acheteur,
             statut=AppelOffre.Statut.IDENTIFIE, **valeurs)
 
-    return (creer_appel_offre_avec_reference(company, _creer), True)
+    existant = AppelOffre.objects.filter(
+        company=company, reference_acheteur=reference_acheteur).first()
+    if existant is not None:
+        return _reporter(existant)
+
+    # AUD608 — « rien trouvé » ne suffit pas : deux imports du MÊME avis lancés
+    # ensemble lisent tous les deux « aucune affaire » et en créent DEUX, avec
+    # deux références AO consommées pour un seul marché. Aucune ligne d'affaire
+    # n'existe encore à verrouiller : on sérialise donc sur la ligne SOCIÉTÉ —
+    # uniquement sur le chemin de création (jamais sur le ré-import, qui est le
+    # cas courant) — puis on RELIT sous verrou avant de créer.
+    from django.db import transaction
+
+    from authentication.models import Company
+
+    with transaction.atomic():
+        Company.objects.select_for_update().filter(pk=company.pk).first()
+        existant = AppelOffre.objects.filter(
+            company=company, reference_acheteur=reference_acheteur).first()
+        if existant is not None:
+            return _reporter(existant)
+        return (creer_appel_offre_avec_reference(company, _creer), True)
 
 
 # ── PACT25 — LE MONTEUR : ce qui fournit enfin ses pièces à la fabrique ──────

@@ -222,6 +222,53 @@ class _LazyTargets:
 
 TARGETS = _LazyTargets()
 
+
+def module_proprietaire_de_cible(target):
+    """AUD606 — le module qui DÉCLARE une cible d'import, ou ``''``.
+
+    Lu au registre plateforme (``apps/<x>/platform.py``), jamais d'un ``if`` en
+    dur : c'est ce qui permet de NOMMER l'app à qui parler quand la cible n'est
+    pas servie par l'import générique.
+    """
+    try:
+        from core import platform
+
+        for cle, manifeste in platform.collect_platform_manifests().items():
+            if target in (manifeste.get('import_specs') or ()):
+                return cle
+    except Exception:  # pragma: no cover - registre indisponible
+        pass
+    return ''
+
+
+def verifier_cible_importable(target):
+    """AUD606 — refuse une cible inconnue, PUIS une cible à lecteur propre.
+
+    Quatre cibles (``obstacles``, ``chaines``, ``avis``, ``avis_veille``) sont
+    déclarées importables par le registre plateforme mais N'ONT PAS d'entrée
+    dans ``FIELD_MAPS`` : leur lecture est écrite dans leur app propriétaire
+    (``apps/ao/imports.py``, ``apps/veille_ao/imports.py``), pas ici. Elles
+    passaient donc le contrôle « cible connue » puis explosaient en ``KeyError``
+    sur ``FIELD_MAPS[target]`` — une exception non prévue, attrapée par le
+    ``except Exception`` générique de la vue, qui répondait au client
+    « Lecture du fichier impossible (format invalide ?) » sur un fichier
+    PARFAITEMENT valide. Le diagnostic était FAUX, et il envoyait l'utilisateur
+    corriger un fichier qui n'avait rien.
+
+    Lève ``ValueError`` — que la vue rend telle quelle en 400 lisible.
+    """
+    if target not in TARGETS:
+        raise ValueError("Cible d'import inconnue.")
+    if target not in FIELD_MAPS:
+        module = module_proprietaire_de_cible(target)
+        precision = (f' Elle est servie par le module « {module} ».'
+                     if module else '')
+        raise ValueError(
+            f"La cible « {target} » a son PROPRE écran d'import : elle n'est "
+            f"pas lue par l'import générique.{precision} Le fichier n'est pas "
+            'en cause.')
+
+
 # ERR53 — Plafond de lignes : au-delà, on refuse proprement (ValueError → 400
 # clair côté vue) plutôt que de charger un fichier géant en mémoire et risquer
 # un OOM. Doit rester aligné avec `views.MAX_ROWS`.
@@ -283,8 +330,7 @@ def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
     Sans ``company`` le rapprochement est impossible (multi-tenant) : l'aperçu
     se limite alors au mapping, comme avant.
     """
-    if target not in TARGETS:
-        raise ValueError("Cible d'import inconnue.")
+    verifier_cible_importable(target)
     _check_mode(target, mode)
     headers, rows = parse_rows(file_bytes, filename)
     if len(rows) > MAX_ROWS:
@@ -815,8 +861,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
     dans ``refuses``. ``ecraser=True`` = l'appelant assume les remplacements,
     qui sont alors tous journalisés (``ImportJobRow`` + ``AuditLog``).
     """
-    if target not in TARGETS:
-        raise ValueError("Cible d'import inconnue.")
+    verifier_cible_importable(target)
     # XPLT1 — le rapprochement maj/upsert n'est câblé que pour les cibles où un
     # contact (email/téléphone) permet un rapprochement fiable (leads, clients).
     # Les autres cibles gardent le comportement historique (création seule) et

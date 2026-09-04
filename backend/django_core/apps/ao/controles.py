@@ -14,7 +14,7 @@ jamais été vérifiée est plus dangereux qu'un dossier orange.
 """
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 __all__ = [
     'AVERTISSEMENT',
@@ -142,8 +142,15 @@ def _total_lignes(ctx):
     bordereau = ctx['bordereau']
     if bordereau is None:
         return []
+    # AUD602 — MÊME chaîne d'arrondi que ``BordereauPrix.sous_total_ht``
+    # (HALF_UP explicite). Sans ``rounding``, cette somme repassait par
+    # l'arrondi BANCAIRE du contexte décimal par défaut : sur un sous-total
+    # tombant exactement sur ``,xx5`` la règle déclarait BLOQUANT un bordereau
+    # parfaitement cohérent — un refus de dépôt à tort, sur un dossier dont
+    # l'heure limite ne se rattrape pas.
     somme = sum((ligne.montant_ht for ligne in bordereau.lignes.all()),
-                Decimal('0.00')).quantize(Decimal('0.01'))
+                Decimal('0.00')).quantize(Decimal('0.01'),
+                                          rounding=ROUND_HALF_UP)
     if somme == bordereau.sous_total_ht:
         return []
     return [_anomalie(

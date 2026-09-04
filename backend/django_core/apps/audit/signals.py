@@ -78,6 +78,14 @@ TRACKED_MODELS = [
     ('btp_chantier', 'ReserveChantier'),
     ('btp_chantier', 'VisaDocument'),
     ('btp_chantier', 'AvenantChantier'),
+    # AUD609 — PrixContractuel : accord tarifaire NÉGOCIÉ client×produit, qui
+    # prime sur toute liste de prix. Sa suppression ne laissait AUCUNE trace :
+    # ni la vue (aucun destroy() gardé) ni ce mécanisme générique ne la
+    # journalisaient, alors que sa CRÉATION porte déjà un verrou d'auteur
+    # (NTCPQ37). Effacer un prix négocié fait silencieusement remonter le
+    # client au tarif catalogue — la trace de « qui l'a retiré, et quand » est
+    # exactement ce qui manquait.
+    ('cpq', 'PrixContractuel'),
 ]
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).

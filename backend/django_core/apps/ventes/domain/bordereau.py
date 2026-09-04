@@ -548,6 +548,7 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
     ``{'cree': bool, 'lignes': int, 'avertissements': [str, …]}``.
     """
     from django.core.exceptions import ValidationError
+    from django.db import transaction
 
     from apps.ventes.models import Devis, LigneDevis
     from apps.ventes.utils.references import create_with_reference
@@ -704,18 +705,6 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
     mode = mode_installation_declare(
         lead, defaut=Devis.ModeInstallation.INDUSTRIEL)
 
-    # ── Idempotence : le MÊME bordereau ne produit qu'UN brouillon ──
-    # Placée APRÈS la construction des lignes : c'est elle qui permet de
-    # COMPARER l'existant au bordereau d'aujourd'hui plutôt que de le renvoyer
-    # les yeux fermés.
-    existant = Devis.objects.filter(
-        company=company, statut=Devis.Statut.BROUILLON,
-        etude_params__origine__bordereau=bordereau.pk).order_by('pk').first()
-    if existant is not None:
-        return _reouvrir_devis_depuis_bordereau(
-            existant, bordereau=bordereau, a_ecrire=a_ecrire, origine=origine,
-            avertissements=avertissements, mode=mode)
-
     def _creer(reference):
         devis = Devis.objects.create(
             company=company,
@@ -733,7 +722,30 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
             creer_ligne(devis, **spec)
         return devis
 
-    devis = create_with_reference(Devis, 'DEV', company, _creer)
+    # ── Idempotence : le MÊME bordereau ne produit qu'UN brouillon ──
+    # Placée APRÈS la construction des lignes : c'est elle qui permet de
+    # COMPARER l'existant au bordereau d'aujourd'hui plutôt que de le renvoyer
+    # les yeux fermés.
+    #
+    # AUD608 — le « check-then-create » se fait SOUS VERROU. La lecture de
+    # l'existant et la création vivaient hors transaction : deux clics
+    # simultanés sur « Créer le devis » lisaient tous les deux « aucun
+    # brouillon », et le bordereau produisait DEUX devis, deux références DEV
+    # consommées, deux documents à envoyer. Le bordereau est la clé
+    # d'idempotence : c'est donc SA ligne qu'on verrouille (elle existe
+    # toujours, contrairement au devis qu'on s'apprête à créer).
+    with transaction.atomic():
+        type(bordereau).objects.select_for_update().filter(
+            pk=bordereau.pk).first()
+        existant = Devis.objects.filter(
+            company=company, statut=Devis.Statut.BROUILLON,
+            etude_params__origine__bordereau=bordereau.pk
+        ).order_by('pk').first()
+        if existant is not None:
+            return _reouvrir_devis_depuis_bordereau(
+                existant, bordereau=bordereau, a_ecrire=a_ecrire,
+                origine=origine, avertissements=avertissements, mode=mode)
+        devis = create_with_reference(Devis, 'DEV', company, _creer)
     # QX23be — fige la marge interne dès la création, comme tout autre chemin
     # de création de devis (best-effort, jamais bloquant, manager-only).
     refresh_marge_snapshot(devis)

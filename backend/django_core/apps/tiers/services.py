@@ -14,6 +14,10 @@ one-way (pont réversible ; la bascule write-path est la DÉCISION ARC21,
 flag-gatée OFF par défaut). Les helpers ci-dessous dédupent par email/ICE
 company-scopés et posent les drapeaux de rôle.
 """
+from django.db import transaction
+
+from authentication.models import Company
+
 from .models import Tiers
 
 # Champs d'identité miroités depuis un modèle historique vers son Tiers. Chaque
@@ -105,9 +109,23 @@ def attacher_ou_creer_tiers(*, company, nom, roles=None,
     }
 
     if tiers is None:
-        tiers = Tiers.objects.create(
-            company=company, nom=nom or '', **a_poser)
-        cree = True
+        # AUD608 — « aucun tiers trouvé » ne suffit pas. Deux ponts déclenchés
+        # ensemble sur le même enregistrement (deux `save()` concurrents d'un
+        # client, ou un import parallèle) lisaient tous les deux « pas de
+        # tiers » et en créaient DEUX pour le même e-mail/ICE : le miroir se
+        # dédouble, et les pièces comptables qui le référencent en string-FK se
+        # répartissent entre les deux. Aucune ligne de tiers n'existe encore à
+        # verrouiller : on sérialise sur la ligne SOCIÉTÉ — uniquement sur ce
+        # chemin de CRÉATION, jamais sur le cas courant (tiers déjà trouvé) —
+        # puis on RELIT la dédup sous verrou avant de créer.
+        with transaction.atomic():
+            Company.objects.select_for_update().filter(pk=company.id).first()
+            tiers = find_tiers_by_dedup(company=company, email=email, ice=ice)
+            if tiers is None:
+                tiers = Tiers.objects.create(
+                    company=company, nom=nom or '', **a_poser)
+                cree = True
+    if cree:
         dirty = []
     else:
         dirty = []

@@ -59,8 +59,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:371` | get_or_create | BordereauPrix.objects | appel_offre, company, indice_revision, intitule |
 | `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:378` | update_or_create | LigneBordereau.objects | bordereau, company, numero |
 | `backend/django_core/apps/ao/management/commands/seed_pack_ao.py:146` | get_or_create | ModelePack.objects | code, company |
-| `backend/django_core/apps/ao/services.py:566` | update_or_create | ResultatAO.objects | appel_offre, company |
-| `backend/django_core/apps/ao/services.py:661` | get_or_create | PresetCalepinage.objects | company, nom |
+| `backend/django_core/apps/ao/services.py:644` | update_or_create | ResultatAO.objects | appel_offre, company |
+| `backend/django_core/apps/ao/services.py:739` | get_or_create | PresetCalepinage.objects | company, nom |
 | `backend/django_core/apps/assurances/services.py:340` | update_or_create | IndemnisationSinistre.objects | declaration |
 | `backend/django_core/apps/automation/views.py:466` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
@@ -131,8 +131,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
-| `backend/django_core/apps/dataimport/services.py:325` | update_or_create | ImportMapping.objects | company, entity, nom |
-| `backend/django_core/apps/dataimport/services.py:371` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/dataimport/services.py:371` | update_or_create | ImportMapping.objects | company, entity, nom |
+| `backend/django_core/apps/dataimport/services.py:417` | get_or_create | ExternalRef.objects | company, external_id, external_system |
 | `backend/django_core/apps/douane/models.py:180` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/models.py:772` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/services.py:547` | get_or_create | Famille.objects | company, nom |

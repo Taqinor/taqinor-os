@@ -7,7 +7,9 @@ n'importe AUCUNE app de domaine.
 """
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 
 from authentication.permissions import IsAdminRole
 from core.mixins import TenantMixin
@@ -41,6 +43,31 @@ class TiersViewSet(
     # + scopé société suffit (le repli légacy reste géré par ScopedPermission).
     read_permission = None
     write_permission = None
+
+    def perform_destroy(self, instance):
+        """AUD609 — un tiers RÉFÉRENCÉ par une pièce comptable ne s'efface pas.
+
+        Le répertoire est une couche de FONDATION : les apps aval le
+        référencent par ``tiers_id`` — un entier NU, sans contrainte de clé
+        étrangère (``compta`` ne peut pas importer ``tiers``, et le pont est
+        volontairement additif). La base ne pouvait donc RIEN refuser : un
+        DELETE laissait des ``tiers_id`` orphelins dans des écritures, des
+        cautions bancaires, des retenues de garantie… c'est-à-dire des pièces
+        comptables pointant un tiers qui n'existe plus.
+
+        La détection est GÉNÉRIQUE (elle interroge le registre des modèles
+        installés, jamais un import d'app de domaine) : `tiers` continue de ne
+        connaître aucun de ses consommateurs.
+        """
+        references = selectors.references_pseudo_fk(instance)
+        if references:
+            raise ValidationError({api_settings.NON_FIELD_ERRORS_KEY: [
+                'Suppression refusée : ce tiers est référencé par %s. '
+                'Supprimer la fiche laisserait ces pièces pointer un tiers '
+                'inexistant — désactivez-la ou reprenez les pièces d\'abord.'
+                % ', '.join('%s (%d)' % (libelle, nombre)
+                            for libelle, nombre in references)]})
+        super().perform_destroy(instance)
 
     @action(detail=False, methods=['get'],
             permission_classes=[IsAdminRole])

@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from django.db import transaction
 
+from core.mixins import SameCompanyFKSerializerMixin
 from core.rules import validate_condition_group
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
@@ -16,14 +17,19 @@ from .models import (
 )
 
 
-class OptionProduitSerializer(serializers.ModelSerializer):
+class OptionProduitSerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
+    same_company_fields = ('produit',)
+
     class Meta:
         model = OptionProduit
         fields = ['id', 'produit', 'groupe_option', 'obligatoire']
 
 
-class ContrainteCompatibiliteSerializer(serializers.ModelSerializer):
+class ContrainteCompatibiliteSerializer(SameCompanyFKSerializerMixin,
+                                        serializers.ModelSerializer):
     bloquante = serializers.BooleanField(read_only=True)
+    same_company_fields = ('produit_a', 'produit_b')
 
     class Meta:
         model = ContrainteCompatibilite
@@ -53,7 +59,12 @@ class RegleProduitCPQSerializer(serializers.ModelSerializer):
         return value
 
 
-class LigneOffreGroupeeSerializer(serializers.ModelSerializer):
+class LigneOffreGroupeeSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
+    #: La ligne d'un bundle atteint le DEVIS puis son PDF client via
+    #: ``services.appliquer_offre_groupee`` — un produit voisin y serait imprimé.
+    same_company_fields = ('produit',)
+
     class Meta:
         model = LigneOffreGroupee
         fields = ['id', 'produit', 'quantite', 'mode_prix', 'valeur']
@@ -89,8 +100,10 @@ class OffreGroupeeSerializer(serializers.ModelSerializer):
         return instance
 
 
-class PrixContractuelSerializer(serializers.ModelSerializer):
+class PrixContractuelSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     est_actif = serializers.BooleanField(read_only=True)
+    same_company_fields = ('client', 'produit')
 
     class Meta:
         model = PrixContractuel
