@@ -83,6 +83,18 @@ class SavedReport(models.Model):
     # FG91 — épingle le rapport comme carte sur le tableau de bord. ADDITIF,
     # default False = aucun changement de comportement pour les rapports existants.
     pinned = models.BooleanField(default=False)
+    # AUD803 — RÉVOCATION du lien public tokenisé. L'en-tête de
+    # ``diffusion_views`` fonde tout le dispositif sur « un .xlsx qui circule ne
+    # se révoque pas »… alors que le LIEN ne se révoquait pas davantage :
+    # ``resolve_report_token`` ne faisait qu'un ``filter(pk=…).first()``, sans
+    # aucun état révocable — seule l'expiration à 7 jours bornait l'exposition
+    # d'un lien transféré (catalogue + stocks + funnel leads, en AllowAny).
+    # ADDITIF, NULL = jamais révoqué : aucun lien existant ne change.
+    partage_revoque_le = models.DateTimeField(
+        'Partage révoqué le', null=True, blank=True,
+        help_text='Renseigné, tout lien public de ce rapport cesse '
+                  'immédiatement de servir (404), sans attendre son '
+                  'expiration.')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -113,6 +125,51 @@ class SavedReport(models.Model):
     def whatsapp_list(self):
         """NTDATA39 — numéros WhatsApp destinataires. Liste vide si aucun."""
         return self._split_destinataires(self.destinataires_whatsapp)
+
+    @property
+    def partage_actif(self):
+        """AUD803 — vrai tant que le lien public de ce rapport n'est pas
+        révoqué. Consulté par ``diffusion_views.resolve_report_token``."""
+        return self.partage_revoque_le is None
+
+
+class AccesRapportPartage(TenantModel):
+    """AUD803 — trace d'accès au LIEN PUBLIC d'un rapport partagé.
+
+    Une ligne par résolution RÉUSSIE d'un jeton de partage
+    (``/api/django/reporting/rapports-partages/<token>/``, ``AllowAny``). Sans
+    elle, un lien transféré dans un groupe WhatsApp exposait catalogue, stocks
+    et funnel leads pendant sept jours SANS AUCUNE trace côté serveur au-delà
+    du throttle par IP : impossible de savoir qu'il fallait révoquer, ni depuis
+    quand.
+
+    Journal en LECTURE SEULE (aucun endpoint d'écriture) ; ``company`` est
+    posée côté serveur depuis le rapport, jamais d'un corps de requête.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
+        null=True, blank=True, related_name='acces_rapports_partages',
+        verbose_name='Société')
+    saved_report = models.ForeignKey(
+        SavedReport, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='acces_partages', verbose_name='Rapport')
+    ip = models.GenericIPAddressField('Adresse IP', null=True, blank=True)
+    consulte_le = models.DateTimeField('Horodatage', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Accès à un rapport partagé'
+        verbose_name_plural = 'Accès aux rapports partagés'
+        ordering = ['-consulte_le', '-id']
+        indexes = [
+            models.Index(fields=['company', 'saved_report'],
+                         name='reporting_acces_co_rap_idx'),
+            models.Index(fields=['saved_report', '-consulte_le'],
+                         name='reporting_acces_rap_dt_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.saved_report_id} · {self.ip or "?"} · {self.consulte_le}'
 
 
 class EnvoiRapport(TenantModel):
