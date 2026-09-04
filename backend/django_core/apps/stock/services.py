@@ -1420,6 +1420,36 @@ def sortir_lot_entrepot(
 # RECALCULÉ après chaque paiement (à payer / partiellement payée / payée). Les
 # montants d'achat sont INTERNES (jamais client-facing).
 
+def verrouiller_facture_fournisseur_et_verifier_solde(facture, montant):
+    """AUD208 (ZACC9) — verrouille la FactureFournisseur (``select_for_update``)
+    et RE-VÉRIFIE le solde dû sur la ligne FRAÎCHE, verrouillée, avant tout
+    enregistrement de paiement.
+
+    Le défaut d'origine : ``PaiementFournisseurSerializer.validate()`` compare
+    ``montant`` à ``facture.solde_du`` HORS verrou, AVANT que la vue n'ouvre
+    même sa transaction. Deux paiements concurrents, chacun INFÉRIEUR au
+    solde dû pris ISOLÉMENT mais dont la SOMME le dépasse, passent tous les
+    deux cette garde (chacun lit le même solde dû de départ). Ici, le premier
+    appelant à acquérir le verrou bloque le second jusqu'à son COMMIT ; le
+    second relit alors un ``solde_du`` qui reflète DÉJÀ le premier paiement et
+    est correctement refusé.
+
+    DOIT être appelée à l'intérieur d'un ``transaction.atomic()`` déjà ouvert
+    par l'appelant (``select_for_update()`` hors transaction lève une
+    ``TransactionManagementError``). Lève ``ValueError`` (jamais un 500 nu ;
+    l'appelant le traduit en 400) si le paiement dépasserait le solde dû
+    fraîchement lu. Renvoie la facture VERROUILLÉE, à réutiliser par
+    l'appelant plutôt que de relire la version non verrouillée."""
+    from .models import FactureFournisseur
+    facture_verrouillee = FactureFournisseur.objects.select_for_update().get(
+        pk=facture.pk)
+    if montant > facture_verrouillee.solde_du:
+        raise ValueError(
+            'Le montant dépasse le solde dû '
+            f'({facture_verrouillee.solde_du}).')
+    return facture_verrouillee
+
+
 def recompute_facture_fournisseur_statut(facture):
     """Recalcule le statut de règlement d'une facture fournisseur depuis ses
     paiements et le persiste. À payer si rien réglé, payée si le solde ≤ 0,

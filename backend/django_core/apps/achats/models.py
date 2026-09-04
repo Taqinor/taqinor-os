@@ -698,6 +698,18 @@ class PaiementFournisseur(models.Model):
         verbose_name_plural = 'Paiements fournisseur'
         db_table = 'stock_paiementfournisseur'
         ordering = ['-date_paiement', '-date_creation']
+        constraints = [
+            # AUD208 — dernier rempart en base (best-effort, en complément
+            # du verrou de solde_du posé côté vue) : aucun chemin (vue,
+            # service, admin, shell, import) ne peut poser un montant <= 0.
+            # Une invariant CROISÉE (Σ paiements <= montant_ttc de la
+            # facture) reste hors de portée d'un CHECK PostgreSQL — c'est le
+            # verrou `select_for_update` qui la garantit.
+            models.CheckConstraint(
+                check=models.Q(montant__gt=0),
+                name='achats_paiementfournisseur_montant_positif',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.facture_id} — {self.montant}'

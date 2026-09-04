@@ -350,12 +350,25 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         with transaction.atomic():
             from ..services import (
                 recompute_facture_fournisseur_statut, compute_ras_tva,
+                verrouiller_facture_fournisseur_et_verifier_solde,
             )
             montant = serializer.validated_data['montant']
+            # AUD208 (ZACC9) — verrouille la facture ET re-vérifie le solde
+            # dû SOUS verrou : la garde de `validate()` (côté serializer,
+            # `serializer.is_valid()` plus haut) tourne HORS transaction/
+            # verrou — elle ne protège pas contre deux paiements concurrents
+            # dont la SOMME dépasse le solde dû (chacun la passe isolément).
+            try:
+                facture = verrouiller_facture_fournisseur_et_verifier_solde(
+                    facture, montant)
+            except ValueError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             taux, montant_ras = compute_ras_tva(
                 request.user.company, facture, montant)
             paiement = serializer.save(
-                company=request.user.company, created_by=request.user,
+                company=request.user.company, facture=facture,
+                created_by=request.user,
                 taux_ras=taux, montant_ras_tva=montant_ras)
             facture.refresh_from_db()
             recompute_facture_fournisseur_statut(facture)
