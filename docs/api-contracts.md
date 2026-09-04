@@ -375,7 +375,7 @@
 - frontend/src/api/gedApi.js :: leverLegalHold -> /api/django/ged/legal-holds/<>/lever
     detail:texte, leves:inconnu
 - frontend/src/api/gedApi.js :: ocrPiece -> /api/django/ged/documents/<>/ocr-piece
-    detail:inconnu, document:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
+    detail:inconnu, document:inconnu, en_validation:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
 - frontend/src/api/gedApi.js :: officeOuvrir -> /api/django/ged/documents/<>/office-ouvrir
     detail:texte, document_id:inconnu, editor_url:inconnu
 - frontend/src/api/gedApi.js :: purgerDocument -> /api/django/ged/documents/<>/purger
@@ -1937,8 +1937,6 @@
     champs: actif, astuce, auto_remplir, code, created_at, created_by, hauteur_defaut, id, largeur_defaut, lecture_seule, libelle, mode_saisie, options, placeholder, updated_at
 - frontend/src/api/gedApi.js :: getValidationsOcr -> /api/django/ged/validations-ocr  [ValidationOcrDocumentSerializer]
     champs: champs_extraits, created_at, document, document_nom, id, score_confiance, updated_at, valide, valide_le, valide_par, valide_par_nom
-- frontend/src/api/gedApi.js :: getVersions -> /api/django/ged/versions  [DocumentVersionSerializer]
-    champs: checksum, created_at, document, file_key, filename, id, mime, restored_from, restored_from_version, size, uploaded_by, uploaded_by_nom, version
 - frontend/src/api/gedApi.js :: getVues -> /api/django/ged/vues  [VueGedEnregistreeSerializer]
     champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: renameDossier -> /api/django/ged/dossiers/<>  [FolderSerializer]

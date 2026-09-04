@@ -490,6 +490,37 @@ class DocumentVersionTests(GedBase):
         # Une société différente ne voit pas l'empreinte de A.
         self.assertIsNone(services.find_duplicate(self.co_b, cs))
 
+    def test_upload_dedup_reuse_existing_version(self):
+        """DRAFT165-65 (AUDV12) — le docstring du viewset affirmait déjà
+        « checksum permet la dédup » mais `perform_create` n'appelait jamais
+        `find_duplicate` : un même fichier ré-uploadé créait une seconde ligne
+        identique au lieu de réutiliser la première."""
+        existing = services.add_version(
+            self.doc_a, file_key='attachments/orig.pdf', company=self.co_a,
+            checksum='dup-checksum', uploaded_by=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/versions/', {
+            'document': self.doc_a.id, 'file_key': 'attachments/reupload.pdf',
+            'checksum': 'dup-checksum',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['id'], existing.id)
+        self.assertEqual(resp.data['file_key'], 'attachments/orig.pdf')
+        self.assertEqual(
+            DocumentVersion.objects.filter(document=self.doc_a).count(), 1)
+
+    def test_upload_sans_checksum_ne_deduplique_pas(self):
+        api = auth(self.admin_a)
+        api.post('/api/django/ged/versions/', {
+            'document': self.doc_a.id, 'file_key': 'attachments/a.pdf',
+        }, format='json')
+        resp = api.post('/api/django/ged/versions/', {
+            'document': self.doc_a.id, 'file_key': 'attachments/b.pdf',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            DocumentVersion.objects.filter(document=self.doc_a).count(), 2)
+
     def test_version_tenant_isolation(self):
         services.add_version(
             self.doc_a, file_key='attachments/a.pdf', company=self.co_a,

@@ -6,15 +6,19 @@ Couvre :
   * sans lib `pyzbar`, le lot s'importe entier comme aujourd'hui (dégradation
     propre, pas d'erreur).
 """
+import io
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 from PIL import Image
 
 from authentication.models import Company
 from apps.ged import services
-from apps.ged.models import Cabinet, Folder
+from apps.ged.models import Cabinet, Document, Folder
 
 User = get_user_model()
 
@@ -27,6 +31,19 @@ def make_company(slug, nom):
 def make_user(company, username, role='admin'):
     return User.objects.create_user(
         username=username, password='x', company=company, role_legacy=role)
+
+
+def auth(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
+
+def _png_upload(name, size=(200, 200), color=(255, 255, 255)):
+    buf = io.BytesIO()
+    Image.new('RGB', size, color=color).save(buf, format='PNG')
+    buf.seek(0)
+    return SimpleUploadedFile(name, buf.read(), content_type='image/png')
 
 
 def _blank_page(size=(200, 200)):
@@ -136,3 +153,54 @@ class DeposerLotSepareTests(XGed11Base):
             self.assertTrue(created)
             self.assertEqual(
                 created[0].custom_data.get('barcode'), 'REF-123')
+
+
+class DeposerLotScansSepareEndpointTests(XGed11Base):
+    """AUDV12 (DRAFT165-67/68) — endpoint REST manquant : la capacité complète
+    (séparation + dépôt) était testée côté service ci-dessus sans AUCUNE route
+    dans views.py."""
+    BASE = '/api/django/ged/documents/deposer-lot-scans-separe/'
+
+    def setUp(self):
+        super().setUp()
+        self.api = auth(self.admin_a)
+
+    def test_depose_un_document_par_sous_lot(self):
+        with mock.patch.object(
+                services, '_store_bytes', return_value=_FAKE_STORE_RESULT):
+            files = [
+                _png_upload('p1.png', color=(0, 0, 0)),
+                _png_upload('blank.png', color=(255, 255, 255)),
+                _png_upload('p2.png', color=(0, 0, 0)),
+            ]
+            resp = self.api.post(self.BASE, {
+                'folder': self.folder_a.id, 'files': files,
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(len(resp.data['documents']), 2)
+        self.assertIn('barcode_lib_disponible', resp.data)
+        for doc in resp.data['documents']:
+            self.assertEqual(
+                Document.objects.get(id=doc['id']).folder_id, self.folder_a.pk)
+
+    def test_dossier_requis(self):
+        resp = self.api.post(self.BASE, {
+            'files': [_png_upload('p1.png', color=(0, 0, 0))],
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_dossier_hors_societe_404(self):
+        autre = make_company('xged11-endpoint-x', 'Autre')
+        cab_autre = Cabinet.objects.create(company=autre, nom='Scan')
+        folder_autre = Folder.objects.create(
+            company=autre, cabinet=cab_autre, nom='Lots')
+        resp = self.api.post(self.BASE, {
+            'folder': folder_autre.id,
+            'files': [_png_upload('p1.png', color=(0, 0, 0))],
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_aucun_fichier_400(self):
+        resp = self.api.post(
+            self.BASE, {'folder': self.folder_a.id}, format='multipart')
+        self.assertEqual(resp.status_code, 400)

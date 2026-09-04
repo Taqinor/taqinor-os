@@ -225,6 +225,18 @@ app.conf.beat_schedule = {
         'task': 'ged.notifier_emetteurs_expiration_signature',
         'schedule': crontab(hour=8, minute=0),
     },
+    # XGED8 (AUDV12) — relance en masse les DemandeDocument en attente
+    # (documentée « à planifier », jamais câblée jusqu'ici).
+    'ged-relancer-demandes-document-dues': {
+        'task': 'ged.relancer_demandes_document_dues',
+        'schedule': crontab(hour=8, minute=15),
+    },
+    # XGED15 (AUDV12) — notifie les assignés des planifications de document
+    # échues (documentée « à planifier », jamais câblée jusqu'ici).
+    'ged-notifier-planifications-echues': {
+        'task': 'ged.notifier_planifications_echues',
+        'schedule': crontab(hour=8, minute=30),
+    },
     'crm-recycler-leads-non-travailles': {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour

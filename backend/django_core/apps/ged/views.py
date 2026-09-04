@@ -714,6 +714,63 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'], url_path='deposer-lot-scans-separe',
+            parser_classes=[MultiPartParser, FormParser])
+    def deposer_lot_scans_separe_action(self, request):
+        """XGED11 (AUDV12/DRAFT165-67/68) — dépôt d'un lot de scans séparés
+        par page blanche ET/OU code-barres/QR séparateur.
+
+        `POST …/documents/deposer-lot-scans-separe/` (multipart) — corps :
+        `{folder: <id>, files: <binaire>[, files: <binaire> …], nom_base?}`.
+        Chaque sous-lot détecté (`services.separer_lot_scans_images`) devient
+        un `Document` PDF multi-pages distinct (`services.
+        deposer_lot_scans_separe` — capacité complète, jamais exposée
+        jusqu'ici). Sans `pyzbar` installé (``barcode_lib_disponible()``), la
+        séparation reste opérante sur les pages blanches seules (dégradation
+        propre). Le dossier cible est borné à la société courante (404
+        sinon). Société et créateur posés CÔTÉ SERVEUR. Écriture :
+        responsable/admin. Renvoie `{documents: [...],
+        barcode_lib_disponible: <bool>}`."""
+        from PIL import Image
+
+        company = request.user.company
+        folder_id = request.data.get('folder')
+        if not folder_id:
+            return Response({'folder': 'Le dossier cible est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        folder = (Folder.objects.filter(company=company)
+                  .filter(pk=folder_id).first())
+        if folder is None:
+            return Response({'folder': 'Dossier inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        files = request.FILES.getlist('files') or request.FILES.getlist('file')
+        if not files:
+            return Response({'files': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        total_octets = sum(getattr(f, 'size', 0) or 0 for f in files)
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=total_octets)
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        try:
+            images = [Image.open(f) for f in files]
+        except Exception:
+            return Response(
+                {'files': 'Un des fichiers fournis n\'est pas une image valide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        documents = services.deposer_lot_scans_separe(
+            company=company, folder=folder, images=images,
+            created_by=request.user,
+            nom_base=(request.data.get('nom_base') or 'Scan').strip())
+        ser = DocumentSerializer(
+            documents, many=True, context={'request': request})
+        return Response({
+            'documents': ser.data,
+            'barcode_lib_disponible': services.barcode_lib_disponible(),
+        }, status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=['post'], url_path='import-masse',
             parser_classes=[MultiPartParser, FormParser])
     def import_masse(self, request):
@@ -909,15 +966,22 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='ocr-piece')
     def ocr_piece(self, request, pk=None):
-        """GED33 — OCR ce document (pièce : CIN/facture/BL) → métadonnées typées.
+        """GED33/XGED13 — OCR ce document (pièce : CIN/facture/BL) → métadonnées
+        typées, sous seuil de confiance de validation manuelle.
 
         `POST …/documents/<id>/ocr-piece/` — corps optionnel
         `{type_piece?: 'cin'|'facture'|'bl'}` (sinon deviné). Récupère le binaire
         de la version courante, lance l'OCR (no-op sans clé) puis extrait des
         métadonnées par parsing LOCAL déterministe (aucune clé requise pour le
-        parsing) et les fusionne ADDITIVEMENT dans `custom_data` (jamais
-        d'écrasement). Le document est company-scopé via `get_object()`.
-        Écriture : responsable/admin. Renvoie le document + `{metadonnees: {...},
+        parsing). Route par `ocr_extraction_avec_validation` (XGED13, remplace
+        `ocr_piece_vers_metadonnees` — l'ancienne fonction ne mettait jamais rien
+        en file malgré `ValidationOcrDocumentViewSet` déjà exposé sur
+        `/validations-ocr/`) : sous le seuil de confiance, le document entre en
+        file de validation manuelle (métadonnées PAS fusionnées) ; au-dessus, les
+        métadonnées sont fusionnées ADDITIVEMENT dans `custom_data` (jamais
+        d'écrasement), comportement GED33 inchangé. Le document est
+        company-scopé via `get_object()`. Écriture : responsable/admin. Renvoie
+        le document + `{metadonnees: {...}, en_validation: <bool>,
         ocr_enabled: <bool>}`."""
         document = self.get_object()
         # GED23 — write-once : pas de mutation de custom_data si archivé (403).
@@ -934,7 +998,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if version and version.file_key:
             file_bytes, _err = fetch_attachment(version.file_key)
             mime = version.mime or ''
-        meta = services.ocr_piece_vers_metadonnees(
+        meta, en_validation = services.ocr_extraction_avec_validation(
             document, file_bytes=file_bytes, mime=mime, type_piece=type_piece)
         document.refresh_from_db()
         services.update_search_vector(document)
@@ -942,6 +1006,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'document': DocumentSerializer(
                 document, context={'request': request}).data,
             'metadonnees': meta,
+            'en_validation': en_validation,
             'ocr_enabled': services.ocr_enabled(),
         })
 
@@ -1745,6 +1810,26 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         if document:
             qs = qs.filter(document_id=document)
         return qs
+
+    def create(self, request, *args, **kwargs):
+        # DRAFT165-65 (AUDV12) — dédup à l'upload : le docstring de ce viewset
+        # affirme déjà « checksum permet la dédup » mais rien n'appelait
+        # `find_duplicate` avant ce lot. Une version déjà présente pour ce
+        # checksum (société entière, cf. `find_duplicate`) est RÉUTILISÉE
+        # (200) au lieu de dupliquer les octets (201).
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        checksum = serializer.validated_data.get('checksum', '')
+        if checksum:
+            existing = services.find_duplicate(request.user.company, checksum)
+            if existing is not None:
+                return Response(
+                    self.get_serializer(existing).data,
+                    status=status.HTTP_200_OK)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.
@@ -3593,6 +3678,17 @@ class LotEnvoiViewSet(TenantMixin,
         return Response(
             LotEnvoiSerializer(lot, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='rafraichir-compteurs')
+    def rafraichir_compteurs(self, request, pk=None):
+        """XGED27 (AUDV12/DRAFT165-70) — recalcule ``nb_vus``/``nb_signes``/
+        ``nb_refuses`` depuis l'état RÉEL des demandes de signature du lot
+        (``rafraichir_compteurs_lot_envoi`` — aucune action ne l'appelait,
+        les compteurs restaient figés à leur valeur de création)."""
+        lot = self.get_object()
+        services.rafraichir_compteurs_lot_envoi(lot)
+        return Response(
+            LotEnvoiSerializer(lot, context={'request': request}).data)
 
 
 class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
