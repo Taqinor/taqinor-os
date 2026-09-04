@@ -73,9 +73,10 @@ def _marche(contexte):
 
 
 def blancs(lignes, contexte, *, taux_tva=Decimal('20'), devise='DH',
-           reference_dce=''):
+           reference_dce='', remise_globale=None):
     """Les blancs de l'acte, dans l'ordre où un acte marocain les demande."""
-    calcules = totaux(lignes, taux_defaut=taux_tva)
+    calcules = totaux(lignes, taux_defaut=taux_tva,
+                      remise_globale=remise_globale)
     identite = _identite(contexte)
     marche = _marche(contexte)
     validite = marche.get('validite_offre_jours') or VALIDITE_DEFAUT_JOURS
@@ -131,16 +132,21 @@ def blancs(lignes, contexte, *, taux_tva=Decimal('20'), devise='DH',
 
 
 def contexte_gabarit(lignes, contexte, *, modele_acheteur=None,
-                     taux_tva=Decimal('20'), devise='DH'):
+                     taux_tva=Decimal('20'), devise='DH',
+                     remise_globale=None):
     """Contexte du gabarit, dans le mode imposé par le DCE.
 
     :param modele_acheteur: mapping `{'reference': …, 'libelle': …}` de la
         `PieceConsultation` portant l'acte fourni par l'acheteur. Sa seule
         présence bascule en mode report.
+    :param remise_globale: remise globale du bordereau, en MONTANT (AUD603) —
+        l'acte engage un montant, il doit engager CELUI du bordereau. Défaut
+        `None` : comportement byte-identique pour les appelants existants.
     """
     mode = MODE_REPORT if modele_acheteur else MODE_AUTONOME
     reference_dce = str((modele_acheteur or {}).get('reference') or '')
-    calcules = totaux(lignes, taux_defaut=taux_tva)
+    calcules = totaux(lignes, taux_defaut=taux_tva,
+                      remise_globale=remise_globale)
 
     donnees = {
         'piece_titre': TITRE_REPORT if mode == MODE_REPORT else TITRE_AUTONOME,
@@ -150,7 +156,8 @@ def contexte_gabarit(lignes, contexte, *, modele_acheteur=None,
         'modele_acheteur': modele_acheteur or None,
         'reference_dce': reference_dce,
         'blancs': blancs(lignes, contexte, taux_tva=taux_tva, devise=devise,
-                         reference_dce=reference_dce),
+                         reference_dce=reference_dce,
+                         remise_globale=remise_globale),
         'totaux': calcules,
         'total_ttc_lettres': en_lettres(calcules.total_ttc),
         'taux_tva': taux_tva,

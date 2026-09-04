@@ -19,6 +19,7 @@ from decimal import Decimal
 from .. import controles
 
 __all__ = [
+    'bordereau_de_reference',
     'contexte_controle',
     'controles_bloquants',
     'empreinte_dossier',
@@ -57,8 +58,14 @@ def empreinte_dossier(dossier):
     return hashlib.sha256(charge.encode('utf-8')).hexdigest()
 
 
-def _bordereau_de_reference(bordereaux):
-    """Le bordereau qui fait foi : le plus haut indice de révision."""
+def bordereau_de_reference(bordereaux):
+    """Le bordereau qui fait foi : le plus haut indice de révision.
+
+    PUBLIC depuis AUD603 : le producteur du bordereau des prix et celui de
+    l'acte d'engagement doivent choisir EXACTEMENT le même bordereau que la
+    passe de contrôle, sinon le pli déposé pourrait porter un montant que les
+    contrôles n'ont jamais vu.
+    """
     if not bordereaux:
         return None
     return sorted(bordereaux, key=lambda b: (b.indice_revision, b.pk))[-1]
@@ -81,7 +88,7 @@ def contexte_controle(dossier):
         'dossier': dossier,
         'appel_offre': ao,
         'bordereaux': bordereaux,
-        'bordereau': _bordereau_de_reference(bordereaux),
+        'bordereau': bordereau_de_reference(bordereaux),
         'variantes': variantes,
         'modules_engages': modules_engages,
         'puissance_kwc': puissance,
