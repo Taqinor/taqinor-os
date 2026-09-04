@@ -94,8 +94,13 @@ GED_GERER = 'ged_gerer'
 GED_GOUVERNANCE = 'ged_gouvernance'
 
 # Actions de GOUVERNANCE portées par ``DocumentViewSet``.
+# AUD811 — ``purger`` (effacement définitif IRRÉVERSIBLE depuis la corbeille)
+# tombait par défaut sur ``ged_gerer`` (écriture opérationnelle courante),
+# plus bas que ``ged_gouvernance`` qui protège pourtant ce même document :
+# l'action la moins gardée causait le dommage le plus irréversible. On ne
+# remonte PAS ``mettre_en_corbeille`` (réversible, GED26) au même palier.
 GOUVERNANCE_ACTIONS = (
-    'placer_legal_hold', 'lever_legal_hold', 'caviarder',
+    'placer_legal_hold', 'lever_legal_hold', 'caviarder', 'purger',
 )
 
 # GED20 — Formats affichables inline (PDF, images, texte). Tout le reste →
@@ -1802,6 +1807,13 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # que les actions de lecture custom des viewsets frères.
         if self.action in READ_ACTIONS or self.action == 'apercu':
             return [IsAnyRole()]
+        # AUD810 — effacer une VERSION est un effacement RÉEL (pas de
+        # corbeille pour les versions) qui peut détruire une preuve sous
+        # legal hold (GED24) : même palier de gouvernance (WIR174) que
+        # placer/lever un hold ou caviarder, pas l'écriture courante
+        # `ged_gerer`.
+        if self.action == 'destroy':
+            return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -1811,6 +1823,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(document_id=document)
         return qs
 
+<<<<<<< HEAD
     def create(self, request, *args, **kwargs):
         # DRAFT165-65 (AUDV12) — dédup à l'upload : le docstring de ce viewset
         # affirme déjà « checksum permet la dédup » mais rien n'appelait
@@ -1830,6 +1843,18 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+=======
+    def perform_destroy(self, instance):
+        # AUD810 — même mapping d'erreurs que `DocumentViewSet.perform_destroy`
+        # : les deux gels (GED23 write-once, GED24 legal hold) restent 403,
+        # jamais 500, même si ici `instance.delete()` est un effacement RÉEL
+        # de la version (pas de corbeille pour les versions).
+        from rest_framework.exceptions import PermissionDenied
+        try:
+            instance.delete()
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            raise PermissionDenied(str(exc))
+>>>>>>> worktree-agent-a531b672ff88e5fd7
 
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.

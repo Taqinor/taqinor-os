@@ -1291,6 +1291,46 @@ class XKB32RetentionExportTests(TestCase):
         old.refresh_from_db()
         self.assertIsNone(old.deleted_at)
 
+    def test_purge_erases_body_and_deletes_attachment_blob(self):
+        """AUD812 — AVANT le fix, `sweep_retention` ne posait QUE `deleted_at`
+        (`qs.update(deleted_at=now)`) : une lecture DB directe rendait encore
+        le corps et la pièce jointe originaux après purge — pas une rétention
+        au sens loi 09-08/CNDP. APRÈS fix : corps vidé, pièce jointe détachée
+        (ligne supprimée) et blob MinIO réellement supprimé."""
+        old = self._old_message(days_ago=400)
+        att = MessageAttachment.objects.create(
+            message=old, file_key='chat/old-file.pdf',
+            filename='old-file.pdf', kind=MessageAttachment.Kind.FILE)
+        services.set_retention_policy(self.company, 'channel', 6, self.admin)
+        with patch('apps.records.storage.delete_attachment') as del_mock:
+            purged = services.sweep_retention(self.company)
+        self.assertEqual(purged, 1)
+        del_mock.assert_called_once_with('chat/old-file.pdf')
+        old.refresh_from_db()
+        self.assertEqual(old.body, '')
+        self.assertIsNotNone(old.deleted_at)
+        self.assertFalse(
+            MessageAttachment.objects.filter(pk=att.pk).exists())
+
+    def test_purge_leaves_recent_message_content_intact(self):
+        """Un message encore DANS la fenêtre de rétention garde son corps et
+        ses pièces jointes intacts (pas de sur-effacement)."""
+        old = self._old_message(days_ago=400)
+        recent = self._old_message(days_ago=10)
+        att = MessageAttachment.objects.create(
+            message=recent, file_key='chat/recent-file.pdf',
+            filename='recent-file.pdf', kind=MessageAttachment.Kind.FILE)
+        services.set_retention_policy(self.company, 'channel', 6, self.admin)
+        with patch('apps.records.storage.delete_attachment') as del_mock:
+            services.sweep_retention(self.company)
+        del_mock.assert_not_called()
+        old.refresh_from_db()
+        self.assertIsNotNone(old.deleted_at)
+        recent.refresh_from_db()
+        self.assertEqual(recent.body, 'ancien message')
+        self.assertIsNone(recent.deleted_at)
+        self.assertTrue(MessageAttachment.objects.filter(pk=att.pk).exists())
+
     def test_export_returns_scoped_messages(self):
         Message.objects.create(
             company=self.company, conversation=self.conv, sender=self.alice,

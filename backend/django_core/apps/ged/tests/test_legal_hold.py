@@ -273,3 +273,89 @@ class LegalHoldApiTests(LegalHoldBase):
         self.doc_a.refresh_from_db()
         self.assertIsNone(
             selectors.legal_hold_actif_for_document(self.doc_a))
+
+
+class DocumentVersionLegalHoldTests(LegalHoldBase):
+    """AUD810 — `DocumentVersion.delete()` ignorait le legal hold (GED24) du
+    document parent : une version d'un document sous hold actif restait
+    purgeable (destruction de preuve possible), alors que `Document.delete()`
+    teste bien les deux gels. `DocumentVersionViewSet` gagne aussi la garde
+    de gouvernance (WIR174) : effacer une version est un effacement RÉEL
+    (pas de corbeille pour les versions), pas une écriture opérationnelle
+    courante."""
+
+    def setUp(self):
+        super().setUp()
+        self.version_a = services.add_version(
+            self.doc_a, file_key='k/v1.pdf', company=self.co_a,
+            filename='v1.pdf', uploaded_by=self.admin_a)
+
+    def test_hold_blocks_version_model_delete(self):
+        """DocumentVersion.delete() est refusé tant qu'un hold actif couvre
+        le document parent — AVANT le fix, ce test aurait rendu 204/succès."""
+        services.placer_legal_hold(self.doc_a, user=self.admin_a)
+        from apps.ged.models import DocumentVersion, LegalHoldError
+        with self.assertRaises(LegalHoldError):
+            self.version_a.delete()
+        self.assertTrue(
+            DocumentVersion.objects.filter(pk=self.version_a.pk).exists())
+
+    def test_lever_reallows_version_delete(self):
+        """Après levée, la version redevient supprimable."""
+        from apps.ged.models import DocumentVersion
+        services.placer_legal_hold(self.doc_a, user=self.admin_a)
+        services.lever_legal_hold(self.doc_a, user=self.admin_a)
+        self.doc_a.refresh_from_db()
+        self.version_a.delete()
+        self.assertFalse(
+            DocumentVersion.objects.filter(pk=self.version_a.pk).exists())
+
+    def test_no_hold_version_delete_still_works(self):
+        """Sans hold ni archivage, la suppression d'une version reste libre
+        (pas de régression sur le comportement courant)."""
+        from apps.ged.models import DocumentVersion
+        self.version_a.delete()
+        self.assertFalse(
+            DocumentVersion.objects.filter(pk=self.version_a.pk).exists())
+
+    def test_held_version_api_delete_returns_403_not_500(self):
+        """DELETE /ged/versions/<id>/ d'une version d'un document gelé rend
+        403 (jamais 500), version préservée — un porteur `ged_gouvernance`
+        (admin ici) est le palier attendu pour cette action."""
+        from apps.ged.models import DocumentVersion
+        services.placer_legal_hold(self.doc_a, user=self.admin_a)
+        resp = auth(self.admin_a).delete(
+            f'/api/django/ged/versions/{self.version_a.id}/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertTrue(
+            DocumentVersion.objects.filter(pk=self.version_a.pk).exists())
+
+    def test_ged_gerer_sans_gouvernance_403_on_version_destroy(self):
+        """AUD810 — `destroy` sur une version exige `ged_gouvernance`, pas
+        seulement `ged_gerer` (écriture documentaire courante)."""
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.co_a, nom='aud810-gerer',
+            permissions=['ged_voir', 'ged_gerer'])
+        gerer_user = User.objects.create_user(
+            username='aud810-gerer', password='x',
+            company=self.co_a, role=role)
+        resp = auth(gerer_user).delete(
+            f'/api/django/ged/versions/{self.version_a.id}/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_ged_gouvernance_can_delete_version(self):
+        """Un titulaire `ged_gouvernance` reste autorisé (aucune régression)."""
+        from apps.ged.models import DocumentVersion
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.co_a, nom='aud810-gouvernance',
+            permissions=['ged_voir', 'ged_gerer', 'ged_gouvernance'])
+        gouv_user = User.objects.create_user(
+            username='aud810-gouvernance', password='x',
+            company=self.co_a, role=role)
+        resp = auth(gouv_user).delete(
+            f'/api/django/ged/versions/{self.version_a.id}/')
+        self.assertEqual(resp.status_code, 204, resp.data)
+        self.assertFalse(
+            DocumentVersion.objects.filter(pk=self.version_a.pk).exists())
