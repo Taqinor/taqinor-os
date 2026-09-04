@@ -254,9 +254,13 @@ export const emettreFacture = createAsyncThunk('ventes/emettreFacture', async (i
   }
 })
 
-export const marquerPayeeFacture = createAsyncThunk('ventes/marquerPayeeFacture', async (id, { rejectWithValue }) => {
+// AUD124 — accepte `{ id, motif }` (le motif est exigé par le serveur) ; la
+// forme historique `id` seul reste acceptée pour ne casser aucun appelant,
+// le serveur répondant alors 400 avec son message explicite.
+export const marquerPayeeFacture = createAsyncThunk('ventes/marquerPayeeFacture', async (arg, { rejectWithValue }) => {
+  const { id, motif } = (typeof arg === 'object' && arg !== null) ? arg : { id: arg, motif: '' }
   try {
-    const res = await ventesApi.marquerPayeeFacture(id)
+    const res = await ventesApi.marquerPayeeFacture(id, motif)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

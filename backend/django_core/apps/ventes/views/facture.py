@@ -172,7 +172,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'emettre', 'marquer_payee', 'enregistrer_paiement',
+            'emettre', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'dgi_transmettre',
@@ -182,7 +182,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
-        elif self.action in ['destroy', 'annuler']:
+        # AUD124 — `marquer_payee` rejoint ce palier : faire disparaître une
+        # créance de la balance âgée sans encaissement est un geste comptable,
+        # pas de l'édition courante. Permission DÉDIÉE, distincte du
+        # responsable qui édite les factures au quotidien.
+        elif self.action in ['destroy', 'annuler', 'marquer_payee']:
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
@@ -407,8 +411,31 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='marquer-payee',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def marquer_payee(self, request, pk=None):
+        """Bascule MANUELLE en « payée » — resserrée par AUD124.
+
+        Le geste reste légitime (constater un règlement enregistré hors ERP,
+        solder un résiduel sous la tolérance société), mais il faisait
+        DISPARAÎTRE une créance sans aucune contrepartie : le recouvrement
+        filtre sur le STATUT (`ventes/recouvrement.py`
+        ``.exclude(statut__in=['payee', …])``) et ``jours_retard`` retombe à 0
+        dès que le statut vaut ``payee``, pendant que ``montant_du`` — dérivé
+        des paiements — continue d'afficher la totalité. Une créance de
+        40 000 MAD sortait de la balance âgée d'un clic, sans qu'aucun écran
+        ne dise qui, quand ni pourquoi.
+
+        Trois resserrages (le dépôt possédait déjà le geste correct :
+        ``abandonner-solde``, qui exige un motif, passe l'écriture d'abandon
+        et journalise) :
+          * MOTIF obligatoire ;
+          * un résiduel au-dessus de la tolérance société est REFUSÉ et
+            redirigé vers ``abandonner-solde`` — c'est lui qui sait passer
+            l'écriture d'abandon de créance ;
+          * trace ``FactureActivity`` systématique nommant l'auteur et le
+            motif, et permission dédiée (admin) distincte de l'édition
+            courante (responsable), comme ``annuler``.
+        """
         facture = self.get_object()
         if facture.statut not in [
             Facture.Statut.EMISE, Facture.Statut.EN_RETARD
@@ -420,8 +447,41 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        motif = ((request.data or {}).get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': (
+                    'Motif obligatoire : marquer une facture payée sans '
+                    'encaissement doit être justifié et tracé.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Résiduel réel vs tolérance société (XFAC13, défaut 0 = aucun
+        # résiduel toléré). Au-dessus, ce n'est pas un « marquer payée » :
+        # c'est un abandon de créance, qui a son propre geste et son écriture.
+        from decimal import Decimal
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=facture.company)
+        tolerance = getattr(
+            profile, 'tolerance_ecart_reglement', None) or Decimal('0')
+        reste = facture.montant_du
+        if reste > tolerance:
+            return Response(
+                {'detail': (
+                    f'Cette facture a un reste dû de {reste:.2f} MAD, '
+                    f'au-dessus de la tolérance société '
+                    f'({tolerance:.2f} MAD). Utilisez « abandonner-solde » '
+                    f'pour l\'abandonner avec son écriture, ou enregistrez '
+                    f'l\'encaissement.'
+                ),
+                 'action_attendue': 'abandonner-solde'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         facture.statut = Facture.Statut.PAYEE
         facture.save()
+        # AUD124 — trace systématique : qui, quand, pourquoi.
+        from .. import activity
+        activity.log_facture_marquee_payee(facture, request.user, motif)
         # YDOCF4 — facture_paid, exactement une fois. Un passage manuel
         # « marquer payée » ne porte pas de montant de paiement propre : on
         # transmet le résiduel qui vient d'être annulé (montant_du AVANT ce

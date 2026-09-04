@@ -357,7 +357,11 @@ const ventesApi = {
   // N31 — audit admin de la numérotation séquentielle (trous/doublons).
   auditNumerotation: () => api.get('/ventes/numerotation-audit/'),
   emettreFacture: (id) => api.post(`/ventes/factures/${id}/emettre/`),
-  marquerPayeeFacture: (id) => api.post(`/ventes/factures/${id}/marquer-payee/`),
+  // AUD124 — motif OBLIGATOIRE : marquer une facture payée sans encaissement
+  // la sort de la balance âgée et des relances ; le serveur refuse (400) sans
+  // justification, et trace l'auteur + le motif dans le chatter.
+  marquerPayeeFacture: (id, motif) => api.post(
+    `/ventes/factures/${id}/marquer-payee/`, { motif }),
   annulerFacture: (id) => api.post(`/ventes/factures/${id}/annuler/`),
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
