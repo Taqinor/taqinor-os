@@ -446,6 +446,77 @@ def _monter_acte_engagement(dossier, piece, contexte=None):
                       company=_company_de(dossier))
 
 
+def _pieces_administratives_a_fusionner(dossier):
+    """Les pièces administratives ACTIVES et non périmées à la date de remise.
+
+    La péremption N'EST PAS re-contrôlée ici : elle a déjà sa porte (AOF137 /
+    ``AO_PIECE_ADMIN_EXPIREE``, BLOQUANTE), et le ZIP de dépôt refuse tant
+    qu'un contrôle est rouge. Ce producteur se borne donc à ne PAS coller dans
+    le dossier administratif une attestation que la commission rejetterait.
+    """
+    reference = dossier.date_reference_controle
+    pieces = list(dossier.pieces_administratives.filter(actif=True)
+                  .select_related('attachment')
+                  .order_by('type_piece', 'id'))
+    if reference is None:
+        return pieces
+    return [piece for piece in pieces if not piece.est_expiree_a(reference)]
+
+
+def _monter_administratif(dossier, piece, contexte=None):
+    """08 — Dossier administratif : FUSION des scans des pièces valides.
+
+    3e pièce bloquante d'un pli marocain. La fusion se fait en octets, sans
+    créer de document GED : un pack de dépôt ne doit rien laisser derrière lui
+    dans la gestion documentaire.
+    """
+    from apps.records.storage import fetch_attachment
+
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:  # pragma: no cover — dépendance déclarée
+        raise ProducteurIndisponible(
+            'PyMuPDF est absent : le dossier administratif ne peut pas être '
+            'fusionné. Une pièce vide ne part jamais à sa place.') from exc
+
+    pieces = _pieces_administratives_a_fusionner(dossier)
+    if not pieces:
+        raise ProducteurIndisponible(
+            'Aucune pièce administrative valide n\'est rattachée à ce '
+            'dossier à la date de remise des plis : un pli sans dossier '
+            'administratif est écarté. Rattacher les attestations avant de '
+            'produire le pack.')
+    sans_scan = [p.libelle for p in pieces if p.attachment_id is None]
+    if sans_scan:
+        raise ProducteurIndisponible(
+            'Pièces administratives SANS scan joint : %s. Le dossier '
+            'administratif serait amputé de ces pièces sans que rien ne le '
+            'dise.' % ', '.join(sans_scan))
+
+    sortie = fitz.open()
+    try:
+        for administrative in pieces:
+            octets, erreur = fetch_attachment(administrative.attachment.file_key)
+            if erreur or not octets:
+                raise ProducteurIndisponible(
+                    'Scan illisible pour la pièce administrative '
+                    '« %s » : %s.' % (administrative.libelle,
+                                      erreur or 'contenu vide'))
+            try:
+                source = fitz.open(stream=octets, filetype='pdf')
+            except Exception as exc:
+                raise ProducteurIndisponible(
+                    'Le scan de « %s » n\'est pas un PDF exploitable : %s.'
+                    % (administrative.libelle, exc)) from exc
+            try:
+                sortie.insert_pdf(source)
+            finally:
+                source.close()
+        return sortie.tobytes()
+    finally:
+        sortie.close()
+
+
 # ── Producteurs DÉCLARÉS mais pas encore montés ──────────────────────────────
 #
 # Ils sont nommés ICI, avec la fabrique qui les rendra et l'entrée qui leur
@@ -575,14 +646,13 @@ REGISTRE = {
     'administratif': Producteur(
         generateur='administratif',
         libelle='Dossier administratif',
-        fabriques=(
-            'apps.ao.fabrique.pack_pdf:fusionner_pack',
-            'apps.ao.fabrique.identite:identite_soumissionnaire',
-        ),
-        motif_indisponible=(
-            'Le dossier administratif fusionne les PieceAdministrative valides '
-            'à la date de remise : aucun monteur ne les assemble encore. Pièce '
-            'déclarée, pas produite.'),
+        # AUD604 — ce producteur n'appelle AUCUNE fonction de fabrique : il
+        # assemble les SCANS déjà rattachés au dossier (records/MinIO), il ne
+        # rend rien. Citer ici `pack_pdf:fusionner_pack` (comme le faisait
+        # l'entrée non montée) aurait été faux : cette fonction crée un
+        # document GED, or un pack de dépôt ne doit rien laisser derrière lui.
+        fabriques=(),
+        monteur=_monter_administratif,
     ),
     'acte_engagement': Producteur(
         generateur='acte_engagement',
