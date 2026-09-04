@@ -271,8 +271,19 @@ class AnalyserDxfView(APIView):
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
 
 class AppelOffreViewSet(AoBaseViewSet):
-    """Objets appels d'offres public/privé (FG222)."""
-    queryset = AppelOffre.objects.all()
+    """Objets appels d'offres public/privé (FG222).
+
+    AUD615 — ``prefetch_related('batiments__toitures')`` n'est pas une
+    optimisation de confort. ``AppelOffreSerializer`` publie deux agrégats
+    CALCULÉS (``surface_toitures_m2``, ``engagement_modules_batiments``) qui
+    itèrent ``batiments`` puis, par bâtiment, ``toitures`` : sans préchargement,
+    la liste des AO coûtait une requête par bâtiment PLUS une par bâtiment pour
+    ses toitures, sur CHAQUE ligne. Le préchargement rend ce coût constant sans
+    retirer les deux champs de la liste (le patron « détail seulement » de
+    ``synthese_calepinage`` aurait, lui, changé le contrat côté écran).
+    """
+    queryset = AppelOffre.objects.prefetch_related(
+        'batiments__toitures').all()
     serializer_class = AppelOffreSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'reference_acheteur', 'objet', 'acheteur',
