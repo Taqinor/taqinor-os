@@ -103,7 +103,8 @@ from .selectors import (
     export_esg,
     hold_points_status,
     heures_travaillees_chantiers,
-    iso9001_readiness, pareto_defauts, permis_travail_expirant,
+    iso9001_readiness, notation_fin_chantier_latest,
+    pareto_defauts, permis_travail_expirant,
     photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
@@ -139,6 +140,7 @@ from .services import (
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
     rejeter_etape_cloture_ncr,
+    relancer_audits_planifies_en_retard,
     relancer_capa_en_retard, relancer_conformites, relancer_demandes_changement,
     relancer_derogations,
     relancer_etapes_at_en_retard,
@@ -913,6 +915,30 @@ class NotationFinChantierViewSet(_QhseBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         peut = chantier_peut_cloturer(chantier_id, request.user.company)
         return Response({'chantier_id': chantier_id, 'peut_cloturer': peut})
+
+    @action(detail=False, methods=['get'])
+    def derniere(self, request):
+        """Notation fin de chantier la plus RÉCENTE d'un chantier (score/verdict
+        complets — ``notation_fin_chantier_latest``, DRAFT165-78, même patron
+        que ``procedures-qualite/courante/``). Paramètre obligatoire
+        ``?chantier_id=``. 404 si aucune notation n'existe encore."""
+        chantier_id = request.query_params.get('chantier_id')
+        if chantier_id in (None, ''):
+            return Response(
+                {'detail': 'chantier_id est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            chantier_id = int(chantier_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'chantier_id doit être un entier.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        notation = notation_fin_chantier_latest(chantier_id, request.user.company)
+        if notation is None:
+            return Response(
+                {'detail': 'Aucune notation pour ce chantier.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(self.get_serializer(notation).data)
 
 
 class ItemNotationViewSet(_QhseBaseViewSet):
@@ -3484,6 +3510,16 @@ class AuditPlanifieViewSet(_QhseBaseViewSet):
         audit_planifie = self.get_object()
         instancier_audit_planifie(audit_planifie)
         return Response(self.get_serializer(audit_planifie).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les audits planifiés en retard (``relancer_audits_planifies_en_retard``
+        — DRAFT165-102, même pattern que ``capa/relancer-retards``). Fait
+        avancer le statut à ``en_retard`` (idempotent : notifié une seule
+        fois, à son premier passage en retard) et renvoie les audits
+        relancés."""
+        relances = relancer_audits_planifies_en_retard(request.user.company)
+        return Response(self.get_serializer(relances, many=True).data)
 
 
 # ── WIR275 (XQHS11) — référentiel de clauses ISO multi-norme ───────────────

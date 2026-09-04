@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Plus, Wrench, PlayCircle, Bell, CheckCircle2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Plus, Wrench, PlayCircle, Bell, CheckCircle2, RefreshCw } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Dialog, DialogContent,
@@ -270,6 +270,67 @@ function CreerProgrammeAuditDialog({ onClose, onCreated }) {
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// AUDV13 (XQHS11) — heatmap des constats d'audit par clause ISO + readiness
+// multi-référentiel, jusqu'ici sans aucun cockpit (`constats_par_clause` /
+// `readiness_multi_referentiel` n'avaient aucun appelant).
+function HeatmapReadinessPanel() {
+  const [heatmap, setHeatmap] = useState([])
+  const [readiness, setReadiness] = useState({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      qhseApi.clausesNorme.heatmapConstats(),
+      qhseApi.clausesNorme.readinessMultiReferentiel(),
+    ]).then(([h, r]) => {
+      if (!active) return
+      setHeatmap(h.data ?? [])
+      setReadiness(r.data ?? {})
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>
+
+  return (
+    <div className="flex flex-col gap-4 rounded-md border border-border p-3">
+      <div>
+        <h4 className="mb-2 text-sm font-semibold">Readiness multi-référentiel</h4>
+        {Object.keys(readiness).length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucune clause seedée.</p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(readiness).map(([ref, r]) => (
+              <div key={ref} className="rounded-md border border-border px-3 py-2 text-sm">
+                <div className="font-medium uppercase">{ref}</div>
+                <div className="text-muted-foreground">
+                  {r.pct == null ? '—' : `${r.pct} %`} ({r.couvertes}/{r.total_clauses})
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <h4 className="mb-2 text-sm font-semibold">Heatmap des constats par clause</h4>
+        {heatmap.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucun constat non conforme rattaché à une clause.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {heatmap.map((h) => (
+              <li key={`${h.referentiel}-${h.clause}`} className="flex items-center justify-between text-sm">
+                <span>{h.referentiel} — clause {h.clause}</span>
+                <span className="font-semibold">{h.nb_non_conformes}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -557,6 +618,27 @@ export default function IsoQhse() {
     }
   }
 
+  // AUDV13 — instancier/relancer un audit planifié.
+  async function instancierAudit(row) {
+    try {
+      await qhseApi.auditsPlanifies.instancier(row.id)
+      toast.success('Audit instancié.')
+      bump()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Instanciation impossible.')
+    }
+  }
+
+  async function relancerAudits() {
+    try {
+      const res = await qhseApi.auditsPlanifies.relancerAuditsEnRetard()
+      toast.success(`${res?.data?.length ?? 0} audit(s) planifié(s) relancé(s).`)
+      bump()
+    } catch {
+      toast.error('Relance impossible.')
+    }
+  }
+
   async function ouvrirCreationDecision() {
     try {
       const res = await qhseApi.reunionsQhse.list()
@@ -622,6 +704,20 @@ export default function IsoQhse() {
     {
       id: 'nb_audits', header: 'Audits planifiés', width: 150, align: 'right',
       accessor: (r) => r.nb_audits_planifies ?? 0,
+    },
+  ], [])
+
+  // AUDV13 — audits planifiés (instancier/relancer les retards).
+  const auditsPlanifiesCols = useMemo(() => [
+    { id: 'processus', header: 'Processus / domaine', accessor: (r) => r.processus_domaine || '—' },
+    {
+      id: 'date_cible', header: 'Date cible', width: 120, align: 'right',
+      accessor: (r) => r.date_cible, cell: (v) => formatDate(v),
+    },
+    { id: 'statut', header: 'Statut', width: 130, accessor: (r) => r.statut_display || r.statut },
+    {
+      id: 'audit', header: 'Audit', width: 100, align: 'center',
+      accessor: (r) => r.audit, cell: (v) => (v ? `#${v}` : '—'),
     },
   ], [])
 
@@ -727,7 +823,7 @@ export default function IsoQhse() {
           />
         </TabsContent>
 
-        <TabsContent value="programme-audit" className="mt-4">
+        <TabsContent value="programme-audit" className="mt-4 flex flex-col gap-6">
           <QhseResourceList
             title="Programme d’audit interne"
             subtitle="Programme annuel (XQHS10)"
@@ -741,6 +837,24 @@ export default function IsoQhse() {
               </Button>
             }
           />
+          <QhseResourceList
+            title="Audits planifiés"
+            subtitle="Instanciation + relance des audits en retard (XQHS10)"
+            fetcher={() => qhseApi.auditsPlanifies.list()}
+            columns={auditsPlanifiesCols}
+            exportName="qhse-audits-planifies"
+            deps={[reloadNonce]}
+            actions={
+              <Button variant="outline" onClick={relancerAudits}>
+                <RefreshCw size={16} /> Relancer les retards
+              </Button>
+            }
+            rowActions={(r) => (r.audit
+              ? []
+              : [{ id: 'instancier', label: 'Instancier', icon: PlayCircle, onClick: () => instancierAudit(r) }])}
+          />
+          {/* AUDV13 (XQHS11) — heatmap constats/clause + readiness multi-référentiel. */}
+          <HeatmapReadinessPanel />
         </TabsContent>
 
         <TabsContent value="revues-direction" className="mt-4 flex flex-col gap-6">

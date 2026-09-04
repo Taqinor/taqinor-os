@@ -47,6 +47,9 @@ const {
   campagneNotifier: vi.fn(() => Promise.resolve({ data: { notifies: 2 } })),
   campagneCloturer: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   elementPlanifier: vi.fn(() => Promise.resolve({ data: { ticket_id: 7 } })),
+  // AUDV13 — audits planifiés (instancier/relancer) + heatmap/readiness ISO.
+  auditInstancier: vi.fn(() => Promise.resolve({ data: { id: 5, audit: 9 } })),
+  auditsRelancer: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 
 const DECISION_ROW = {
@@ -69,6 +72,11 @@ const ELEMENT_ROW = {
   id: 200, campagne: 1, numero_serie: 'SN-0042', statut: 'a_notifier',
   statut_display: 'À notifier', ticket_sav_id: null,
 }
+// AUDV13 — audit planifié non encore instancié.
+const AUDIT_PLANIFIE_ROW = {
+  id: 5, processus_domaine: 'Qualité soudure', date_cible: '2026-09-10',
+  statut: 'planifie', statut_display: 'Planifié', audit: null,
+}
 
 vi.mock('../../api/qhseApi', () => ({
   default: {
@@ -85,6 +93,19 @@ vi.mock('../../api/qhseApi', () => ({
     },
     certifications: { list: empty, create: (...a) => certificationCreate(...a) },
     programmesAudit: { list: empty, create: (...a) => programmeCreate(...a) },
+    auditsPlanifies: {
+      list: () => Promise.resolve({ data: [AUDIT_PLANIFIE_ROW] }),
+      instancier: (...a) => auditInstancier(...a),
+      relancerAuditsEnRetard: (...a) => auditsRelancer(...a),
+    },
+    clausesNorme: {
+      heatmapConstats: () => Promise.resolve({
+        data: [{ clause: '8.5.1', referentiel: 'iso_9001', nb_non_conformes: 2 }],
+      }),
+      readinessMultiReferentiel: () => Promise.resolve({
+        data: { iso_9001: { total_clauses: 10, couvertes: 6, pct: 60 } },
+      }),
+    },
     reunionsQhse: {
       list: () => Promise.resolve({ data: [REUNION_ROW] }),
       create: (...a) => reunionCreate(...a),
@@ -203,6 +224,33 @@ describe('IsoQhse — Programme d\'audit (WIR276)', () => {
     await waitFor(() => expect(programmeCreate).toHaveBeenCalledWith(
       expect.objectContaining({ annee: new Date().getFullYear() }),
     ))
+  })
+})
+
+describe('IsoQhse — Audits planifiés + heatmap ISO (AUDV13)', () => {
+  async function ouvrirOnglet() {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(screen.getByRole('tab', { name: 'Programme d’audit' }))
+    return user
+  }
+
+  it('instancie un audit planifié non encore réalisé', async () => {
+    const user = await ouvrirOnglet()
+    await user.click(await screen.findByRole('button', { name: 'Instancier' }))
+    await waitFor(() => expect(auditInstancier).toHaveBeenCalledWith(5))
+  })
+
+  it('relance les audits planifiés en retard', async () => {
+    const user = await ouvrirOnglet()
+    await user.click(await screen.findByRole('button', { name: /Relancer les retards/ }))
+    await waitFor(() => expect(auditsRelancer).toHaveBeenCalled())
+  })
+
+  it('affiche la heatmap des constats et le readiness multi-référentiel', async () => {
+    await ouvrirOnglet()
+    expect(await screen.findByText(/8\.5\.1/)).toBeInTheDocument()
+    expect(await screen.findByText(/60 %/)).toBeInTheDocument()
   })
 })
 

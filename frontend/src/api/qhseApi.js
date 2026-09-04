@@ -83,6 +83,10 @@ const qhseApi = {
     // Gate advisory : le chantier peut-il clôturer ? (`?chantier_id=`)
     peutCloturer: (params) =>
       api.get('/qhse/notations-fin-chantier/peut-cloturer/', { params }),
+    // AUDV13 (DRAFT165-78) — notation la plus récente d'un chantier (score/
+    // verdict complets), en un appel (`?chantier_id=`).
+    derniere: (params) =>
+      api.get('/qhse/notations-fin-chantier/derniere/', { params }),
   },
   itemsNotation: crud('items-notation'),
   proceduresQualite: {
@@ -415,6 +419,11 @@ qhseApi.programmesAudit = crud('programmes-audit')
 qhseApi.auditsPlanifies = {
   ...crud('audits-planifies'),
   instancier: (id) => api.post(`/qhse/audits-planifies/${id}/instancier/`),
+  // AUDV13 (DRAFT165-102) — relance des audits planifiés en retard. Nommée
+  // spécifiquement (jamais `relancer` nu, même raison que
+  // `derogations.relancerDerogations` : ambiguïté par nom pour
+  // check_api_shapes.py).
+  relancerAuditsEnRetard: () => api.post('/qhse/audits-planifies/relancer/'),
 }
 
 // ── WIR275 (XQHS11) — référentiel de clauses ISO multi-norme ─────────────────
