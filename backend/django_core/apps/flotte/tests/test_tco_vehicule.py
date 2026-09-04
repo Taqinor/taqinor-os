@@ -10,6 +10,10 @@ Couvre :
     JAMAIS comptée deux fois (une fois via ``OrdreReparation.cout_pieces``,
     une fois via ``pneus_pieces``) — seules les pièces LIBRES (sans OR)
     s'ajoutent à ``reparations``.
+  - AUD727 : assurances (franchise), vignette (TSAV) et coûts divers
+    (``CoutVehicule`` — péage/contrat/…) entrent désormais dans
+    ``cout_total`` — réconciliation avec ``selectors.ledger_vehicule``/
+    ``analyse_couts_report`` (voir ``test_rapport_couts.py``).
 - Endpoint ``/vehicules/<id>/tco/`` (GET, tout rôle).
 """
 import datetime
@@ -25,6 +29,9 @@ from authentication.models import Company
 
 from apps.flotte.models import (
     ActifFlotte,
+    AssuranceVehicule,
+    BaremeVignette,
+    CoutVehicule,
     Infraction,
     OrdreReparation,
     PieceFlotte,
@@ -136,6 +143,32 @@ class TcoVehiculeTests(TestCase):
         data = tco_vehicule(self.co, self.veh.id)
         self.assertEqual(data["pneus_pieces"], 400.0)
         self.assertEqual(data["cout_total"], 400.0)
+
+    def test_aud727_assurances_vignette_couts_divers_dans_le_total(self):
+        """AUD727 — avant fix, ``cout_total`` EXCLUAIT assurance (franchise),
+        TSAV et ``CoutVehicule`` (le docstring promettait même une clé
+        ``assurances`` jamais peuplée) — ces trois postes comptent
+        désormais, réconciliant ce TCO avec ``ledger_vehicule``/
+        ``analyse_couts_report`` (XFLT7, voir test_rapport_couts.py)."""
+        self.veh.puissance_fiscale = 7
+        self.veh.save(update_fields=["puissance_fiscale"])
+        BaremeVignette.objects.create(
+            company=self.co, energie="diesel", cv_min=0, cv_max=9999,
+            montant=Decimal("700"))
+        AssuranceVehicule.objects.create(
+            company=self.co, actif_flotte=self.actif, assureur="Wafa",
+            numero_police="RC1", date_debut=datetime.date(2026, 1, 1),
+            date_echeance=datetime.date(2026, 12, 31),
+            franchise=Decimal("1500"))
+        CoutVehicule.objects.create(
+            company=self.co, actif_flotte=self.actif, categorie="peage",
+            date=D, montant=Decimal("300"))
+
+        data = tco_vehicule(self.co, self.veh.id)
+        self.assertEqual(data["assurances"], 1500.0)
+        self.assertEqual(data["vignette"], 700.0)
+        self.assertEqual(data["couts_divers"], 300.0)
+        self.assertEqual(data["cout_total"], 2500.0)
 
 
 class TcoApiTests(TestCase):
