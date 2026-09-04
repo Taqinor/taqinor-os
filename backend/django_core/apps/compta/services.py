@@ -10207,6 +10207,35 @@ def appliquer_mouvement_fidelite(compte, *, points, motif=''):
     return mouvement
 
 
+def recalculer_solde_fidelite(compte):
+    """AUD619 (doctrine D9) — re-dérive le solde CACHÉ d'un compte de fidélité
+    depuis le LEDGER, seule source de vérité.
+
+    ``MouvementFidelite`` est un registre : on ne supprime pas une ligne, on
+    en écrit une de sens inverse (le DELETE API est refusé, voir
+    ``MouvementFideliteViewSet.perform_destroy``). ``CompteFidelite.points``
+    n'est qu'un cache incrémental — cette fonction le RECALCULE, ce qui répare
+    tout compte dont le cache aurait divergé (mouvements supprimés en base
+    avant ce correctif, import, correction manuelle).
+
+    Le plancher à 0 est le MÊME que celui d'``appliquer_mouvement_fidelite``
+    (le solde d'un compte ne descend jamais sous zéro) : le résultat reste
+    donc entièrement dérivable du ledger, jamais path-dépendant. Renvoie le
+    solde recalculé.
+    """
+    from django.db.models import Sum
+
+    from .models import MouvementFidelite
+    with transaction.atomic():
+        total = MouvementFidelite.objects.filter(
+            company=compte.company, compte=compte,
+        ).aggregate(total=Sum('points'))['total'] or 0
+        compte.points = max(0, int(total))
+        compte.palier = palier_pour_points(compte.points)
+        compte.save(update_fields=['points', 'palier'])
+    return compte.points
+
+
 # ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
 
 def suggestions_upsell(company, contexte):

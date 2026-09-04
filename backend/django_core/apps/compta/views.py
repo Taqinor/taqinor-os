@@ -8091,10 +8091,27 @@ class CompteFideliteViewSet(_ComptaBaseViewSet):
         compte.refresh_from_db()
         return Response(self.get_serializer(compte).data)
 
+    @action(detail=True, methods=['post'], url_path='recalculer-solde')
+    def recalculer_solde(self, request, pk=None):
+        """AUD619 (doctrine D9) — re-dérive le solde depuis le LEDGER.
+
+        Le solde est un cache : cette action le recalcule = Σ des mouvements
+        du compte (plancher 0, comme à l'écriture). Répare tout compte dont le
+        cache a divergé, notamment ceux dont un mouvement a été supprimé en
+        base avant que le DELETE ne soit refusé."""
+        compte = self.get_object()
+        services.recalculer_solde_fidelite(compte)
+        compte.refresh_from_db()
+        return Response(self.get_serializer(compte).data)
+
 
 class MouvementFideliteViewSet(_ComptaBaseViewSet):
     """Mouvements de points de fidélité (FG240). La création recalcule le solde
-    et le palier du compte côté serveur (jamais depuis le corps)."""
+    et le palier du compte côté serveur (jamais depuis le corps).
+
+    AUD619 — doctrine D9 (fondateur) : c'est un LEDGER. La suppression est
+    REFUSÉE ; une correction s'écrit en mouvement de sens INVERSE, et
+    ``comptes-fidelite/<id>/recalculer-solde/`` re-dérive le cache."""
     queryset = MouvementFidelite.objects.all()
     serializer_class = MouvementFideliteSerializer
     filter_backends = [filters.OrderingFilter]
@@ -8108,6 +8125,27 @@ class MouvementFideliteViewSet(_ComptaBaseViewSet):
             data['compte'], points=data['points'],
             motif=data.get('motif', ''))
         serializer.instance = mouvement
+
+    def perform_destroy(self, instance):
+        """AUD619 — DELETE interdit sur un ledger.
+
+        Le routeur standard exposait un DELETE qui ne repassait JAMAIS par
+        ``appliquer_mouvement_fidelite`` à rebours : la ligne disparaissait et
+        ``CompteFidelite.points`` restait figé sur une valeur qui ne
+        correspondait plus à aucun historique — un solde faux, indétectable et
+        irréparable. La correction passe par un mouvement inverse.
+
+        ``perform_destroy`` (et non ``destroy``) : le scoping société de
+        ``get_object`` s'applique AVANT, donc un mouvement d'une autre société
+        continue de répondre 404, jamais 405."""
+        raise MethodNotAllowed(
+            'DELETE',
+            detail=(
+                'Un mouvement de fidélité est un enregistrement de registre : '
+                "il ne se supprime pas. Enregistrez un mouvement de sens "
+                'inverse (mêmes points, signe opposé), puis au besoin '
+                'recalculez le solde du compte via '
+                '« comptes-fidelite/<id>/recalculer-solde/ ».'))
 
 
 class RegleUpsellViewSet(_ComptaBaseViewSet):
