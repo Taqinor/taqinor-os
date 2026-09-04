@@ -46,6 +46,11 @@ const comptaApi = {
     ...resource('ecritures'),
     valider: (id) => api.post(`/compta/ecritures/${id}/valider/`),
     extourner: (id) => api.post(`/compta/ecritures/${id}/extourner/`),
+    // AUDV03 / COMPTA4 — numéro de pièce qui SERA attribué à une écriture
+    // créée SANS référence sur ce journal. Pur aperçu : il ne réserve rien
+    // (c'est `create_with_reference` qui tranche au moment de l'écriture).
+    prochainNumero: (params) =>
+      api.get('/compta/ecritures/prochain-numero/', { params }),
   },
 
   // ── UX5 — États comptables CGNC (blob quand export fichier) ──
@@ -257,8 +262,14 @@ const comptaApi = {
     poster: (id) => api.post(`/compta/cessions/${id}/poster/`),
   },
   // ── PACT163 / XACC15 — Charges constatées d'avance (étalement) ──
+  // AUDV03 / XACC15 — `posterDotation` passe UNE dotation mensuelle au grand
+  // livre (débit du compte de charge / crédit 3491). Sans elle, l'échéancier
+  // était généré puis jamais étalé : la charge restait immobilisée en 3491.
+  // Un re-post est REFUSÉ côté serveur (400), jamais avalé en silence.
   chargesAvance: {
     ...resource('charges-avance'),
+    posterDotation: (id, dotation) =>
+      api.post(`/compta/charges-avance/${id}/poster-dotation/`, { dotation }),
   },
 
   // ── PACT29 / NTFIN40-43 — Immobilisations avancées (composants,

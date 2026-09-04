@@ -54,9 +54,12 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     # PACT161/XMKT1 — inscrit un lead entrant dans une étape sur toute
     # séquence de relance active déclenchée par cette étape.
     inscrire_leads_pour_stage,
-    # XACC1 — transfert TVA attente→définitif (régime encaissement). Même
-    # point d'ancrage : appel de service explicite depuis ``ventes`` tant
-    # qu'aucun événement dédié « paiement enregistré » n'existe sur le bus.
+    # XACC1 — transfert TVA attente→définitif (régime encaissement). AUDV03 :
+    # cet import n'était qu'un « point d'ancrage » DÉCLARATIF — aucun receveur
+    # n'appelait la fonction, donc la TVA d'une société au régime encaissement
+    # restait bloquée en compte d'attente. Elle est désormais appelée par
+    # ``_ecriture_pour_paiement_enregistre`` ci-dessous, sur l'événement
+    # ``paiement_enregistre`` (le bus porte bien cet événement).
     transferer_tva_encaissement,
     # XACC6 — écriture de stock automatique (inventaire permanent, toggle OFF
     # par défaut). WIR85 l'a enfin BRANCHÉE : ``core.events`` porte désormais
@@ -112,6 +115,23 @@ def _ecriture_pour_paiement_enregistre(sender, instance, company, **kwargs):
     if facture is not None and getattr(facture, 'montant_du', None) is not None \
             and facture.montant_du <= 0:
         auto_lettrer_facture_soldee(facture)
+    # AUDV03 / XACC1 (DRAFT165-17) — TVA SUR ENCAISSEMENT : la TVA d'une
+    # facture n'est due qu'au moment où le client paie. `transferer_tva_
+    # encaissement` était importé ci-dessus « en point d'intégration » mais
+    # n'était JAMAIS appelé : la TVA restait indéfiniment en compte d'attente
+    # (44551) et la déclaration sortait fausse pour toute société au régime
+    # encaissement. La fonction est entièrement auto-gardée — no-op sur le
+    # régime `debit` (comportement historique strictement inchangé), no-op
+    # sans TVA sur la facture, et idempotente par `source_type='tva_
+    # encaissement'` — donc l'appeler ici ne peut rien casser pour personne.
+    #
+    # Gardé EN PLUS par ``auto_ecritures_actif`` : hors auto-écritures, la
+    # société passe ses écritures à la main, et 44551 n'a jamais été crédité
+    # automatiquement — transférer une TVA depuis un compte d'attente resté
+    # vide fabriquerait un solde négatif de toutes pièces. Même toggle que le
+    # reste de la génération automatique sur cet événement.
+    if facture is not None and auto_ecritures_actif(company):
+        transferer_tva_encaissement(instance)
 
 
 @receiver(avoir_cree, dispatch_uid="compta_ecriture_pour_avoir")

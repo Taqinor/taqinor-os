@@ -150,12 +150,16 @@
     comptes:inconnu, projection:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: positionsContratRevenu -> /api/django/compta/etats/positions-contrat-revenu
     lignes:inconnu, total_actif_sur_contrat:inconnu, total_produit_differe:inconnu
+- frontend/src/api/comptaApi.js :: posterDotation -> /api/django/compta/charges-avance/<>/poster-dotation
+    date_ecriture:inconnu, detail:inconnu, dotation:inconnu, ecriture_id:inconnu, montant:texte, numero:inconnu, posted:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: posterMouvement -> /api/django/compta/caisses/<>/poster-mouvement
     detail:inconnu, ecriture_id:inconnu, mouvement:inconnu
 - frontend/src/api/comptaApi.js :: pretACloturer -> /api/django/compta/etats/pret-a-cloturer
     detail:texte, instance_id:inconnu, pret:booleen, taches_manquantes:inconnu
 - frontend/src/api/comptaApi.js :: previsionnelTresorerie -> /api/django/compta/etats/previsionnel-tresorerie
     date_debut:inconnu, date_rupture_estimee:inconnu, nb_semaines:inconnu, semaines:inconnu, solde_initial:inconnu
+- frontend/src/api/comptaApi.js :: prochainNumero -> /api/django/compta/ecritures/prochain-numero
+    detail:texte, journal:inconnu, journal_code:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: projectionDotations -> /api/django/compta/etats/projection-dotations
     annees:inconnu, par_actif:inconnu, referentiel:inconnu, totaux_par_annee:inconnu
 - frontend/src/api/comptaApi.js :: rapprochementsEnRetard -> /api/django/compta/etats/rapprochements-en-retard

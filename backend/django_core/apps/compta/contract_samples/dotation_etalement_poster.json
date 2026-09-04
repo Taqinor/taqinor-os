@@ -1,0 +1,13 @@
+{
+  "endpoint": "POST /api/django/compta/charges-avance/{id}/poster-dotation/",
+  "pourquoi": "AUDV03 / XACC15 (DRAFT165-35) — `services.poster_dotation_etalement` n'avait aucun appelant : l'écran générait bien l'échéancier de dotations mensuelles… et aucune ne pouvait jamais être passée au grand livre. La charge prépayée restait donc éternellement immobilisée au débit de 3491 au lieu d'être étalée sur son compte de charge — l'inverse exact de ce que sert XACC15. Corps : `{\"dotation\": <id>}`, la dotation devant appartenir à CETTE charge (400 sinon). L'écriture est équilibrée en journal OD : débit du compte de charge (classe 6) / crédit 3491. Le service est idempotent mais la VUE refuse explicitement un re-post (400, message FR) : une dotation ne s'écrit qu'UNE fois et un double clic doit le DIRE plutôt que de rendre un 200 laissant croire à une nouvelle écriture. Le verrou de période (FG115) est respecté : une dotation tombant dans une période clôturée est refusée en 400. `montant` est du TEXTE (Decimal), jamais un flottant.",
+  "exemple": {
+    "dotation": 512,
+    "numero": 4,
+    "posted": true,
+    "ecriture_id": 8841,
+    "reference": "CCA-37-4",
+    "date_ecriture": "2026-09-01",
+    "montant": "1000.00"
+  }
+}

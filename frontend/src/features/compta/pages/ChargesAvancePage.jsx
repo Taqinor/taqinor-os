@@ -36,8 +36,34 @@ const FIELDS = [
   { name: 'compte_charge', label: 'Compte de charge (classe 6)', async: compteAsync },
 ]
 
-function DotationsDialog({ charge, onClose }) {
-  const dotations = charge.dotations || []
+function DotationsDialog({ charge, onClose, onPostee }) {
+  const [dotations, setDotations] = useState(charge.dotations || [])
+  const [busy, setBusy] = useState(null)
+
+  /* AUDV03 / XACC15 (DRAFT165-35) — poster UNE dotation au grand livre.
+     `services.poster_dotation_etalement` n'avait aucun appelant : l'écran
+     générait l'échéancier… et aucune dotation ne pouvait jamais être passée,
+     donc la charge restait éternellement immobilisée au débit de 3491 au lieu
+     d'être étalée sur le compte de charge. Le serveur REFUSE un re-post (400)
+     et respecte le verrou de période — rien n'est décidé ici. */
+  const poster = async (dotation) => {
+    setBusy(dotation.id)
+    try {
+      const res = await comptaApi.chargesAvance.posterDotation(
+        charge.id, dotation.id)
+      setDotations((prev) => prev.map((d) => (d.id === dotation.id
+        ? { ...d, posted: true, ecriture: res.data?.ecriture_id }
+        : d)))
+      toast.success(`Dotation ${dotation.numero} postée au grand livre.`)
+      onPostee?.()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Postage impossible.'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-w-2xl">
@@ -63,6 +89,16 @@ function DotationsDialog({ charge, onClose }) {
               { key: 'montant', label: 'Dotation', align: 'right', numeric: true,
                 sortValue: (d) => Number(d.montant) || 0, cell: (d) => formatMAD(d.montant) },
               { key: 'posted', label: 'Postée', cell: (d) => (d.posted ? 'Oui' : 'Non') },
+              { key: 'action', label: '', align: 'right',
+                cell: (d) => (d.posted ? null : (
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={busy === d.id}
+                    onClick={() => poster(d)}
+                  >
+                    {busy === d.id ? 'Postage…' : 'Poster'}
+                  </Button>
+                )) },
             ]}
           />
         )}
@@ -136,7 +172,11 @@ export default function ChargesAvancePage() {
       )}
 
       {detail && (
-        <DotationsDialog charge={detail} onClose={() => setDetail(null)} />
+        <DotationsDialog
+          charge={detail}
+          onClose={() => setDetail(null)}
+          onPostee={list.reload}
+        />
       )}
     </div>
   )

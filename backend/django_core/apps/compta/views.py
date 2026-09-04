@@ -344,8 +344,67 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
+        """AUDV03 / COMPTA4 (DRAFT165-30) — une OD manuelle SANS référence
+        reçoit un numéro de pièce SÉQUENTIEL.
+
+        Avant : `serializer.save()` posait la référence telle que le client
+        l'envoyait — donc VIDE quand l'écran n'en fournissait pas. Un journal
+        d'OD sans numérotation continue n'est pas auditable (et la continuité
+        des séquences est justement contrôlée ailleurs dans ce module).
+        `services.creer_ecriture_numerotee` existait pour ça, sans appelant.
+
+        Une référence FOURNIE est respectée à l'identique (comportement
+        historique strictement inchangé) : la numérotation ne s'applique qu'à
+        l'absence de référence. Le numéro vient de `create_with_reference`
+        (plus-haut-utilisé + 1, savepoint + retry sur course) — JAMAIS un
+        `count()+1`, qui a déjà collisionné en production.
+        """
+        company = self.request.user.company
+        donnees = serializer.validated_data
+        if (donnees.get('reference') or '').strip():
+            serializer.save(company=company, created_by=self.request.user)
+            return
+        try:
+            serializer.instance = services.creer_ecriture_numerotee(
+                company,
+                donnees['journal'],
+                donnees['date_ecriture'],
+                donnees.get('libelle', '') or '',
+                [dict(ligne) for ligne in donnees.get('lignes') or []],
+                created_by=self.request.user,
+                statut=donnees.get('statut'),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(
+                {'detail': exc.messages[0] if exc.messages else str(exc)})
+
+    @action(detail=False, methods=['get'], url_path='prochain-numero')
+    def prochain_numero(self, request):
+        """AUDV03 / COMPTA4 (DRAFT165-31) — aperçu du numéro qui SERA attribué.
+
+        `services.sequence_piece_journal` calcule la prochaine référence libre
+        d'un journal sans rien créer ; elle n'avait aucun appelant, donc
+        l'écran de saisie ne pouvait pas annoncer le numéro à l'avance. Pur
+        APERÇU : il ne réserve rien (deux saisies simultanées voient le même
+        numéro — c'est `create_with_reference` qui tranche à l'écriture).
+        """
+        journal_id = request.query_params.get('journal')
+        if not journal_id:
+            return Response(
+                {'detail': 'Paramètre `journal` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        journal = Journal.objects.filter(
+            company=request.user.company, id=journal_id).first()
+        if journal is None:
+            return Response(
+                {'detail': 'Journal inconnu pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'journal': journal.id,
+            'journal_code': journal.code,
+            'reference': services.sequence_piece_journal(
+                request.user.company, journal),
+        })
 
     @action(detail=True, methods=['post'])
     def extourner(self, request, pk=None):
@@ -2437,6 +2496,52 @@ class ChargeConstateeAvanceViewSet(_ComptaBaseViewSet):
         return Response(
             self.get_serializer(charge).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='poster-dotation')
+    def poster_dotation(self, request, pk=None):
+        """AUDV03 / XACC15 (DRAFT165-35) — poste UNE dotation mensuelle au GL.
+
+        `services.poster_dotation_etalement` n'avait aucun appelant : l'écran
+        générait bien l'échéancier de dotations… et aucune ne pouvait jamais
+        être passée. La charge restait donc éternellement au débit de 3491,
+        jamais étalée sur le compte de charge — l'inverse exact de ce que
+        XACC15 sert à faire.
+
+        Corps : ``{'dotation': <id>}``. Le service est idempotent (une
+        dotation déjà postée renvoie son écriture) mais la vue REFUSE
+        explicitement le re-post : un second clic doit le DIRE, pas rendre un
+        200 laissant croire à une nouvelle écriture (même règle que
+        ``EcheanceEmpruntViewSet.poster``). Le verrou de période (FG115) est
+        respecté par le service : une dotation en période close est refusée.
+        """
+        charge = self.get_object()  # scopée société par TenantMixin.
+        dotation = charge.dotations.filter(
+            id=request.data.get('dotation')).first()
+        if dotation is None:
+            return Response(
+                {'detail': "Dotation inconnue pour cette charge."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if dotation.posted:
+            return Response(
+                {'detail': (
+                    f"La dotation {dotation.numero} est déjà postée au grand "
+                    "livre : elle ne peut pas l'être une seconde fois.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.poster_dotation_etalement(
+                dotation, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        dotation.refresh_from_db()
+        return Response({
+            'dotation': dotation.id,
+            'numero': dotation.numero,
+            'posted': dotation.posted,
+            'ecriture_id': ecriture.id,
+            'reference': ecriture.reference,
+            'date_ecriture': ecriture.date_ecriture,
+            'montant': str(dotation.montant),
+        }, status=status.HTTP_201_CREATED)
+
 
 # ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
 
@@ -4287,6 +4392,32 @@ class IndemniteChantierViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(indem).data, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        """AUDV03 / FG136 (DRAFT165-19) — éditer le GPS ou les jours RECALCULE
+        la distance et les montants.
+
+        Avant : le sérialiseur laisse `depart_lat/lng`, `site_lat/lng` et
+        `nombre_jours` MODIFIABLES mais fige les montants en lecture seule, et
+        `update()` était le CRUD par défaut. Un PATCH sur le GPS enregistrait
+        donc de nouvelles coordonnées EN GARDANT les anciens montants —
+        `services.recalculer_indemnite_chantier` existait pour exactement ça
+        et n'avait aucun appelant. Une indemnité déjà validée/remboursée est
+        refusée par le service (400 français) : ses montants sont postés au
+        grand livre, on ne les réécrit pas.
+        """
+        from django.db import transaction
+        # ATOMIQUE : sans cette transaction, un refus du service laisserait le
+        # nouveau GPS/nombre de jours ENREGISTRÉ avec les anciens montants —
+        # exactement l'incohérence que cette tâche supprime.
+        with transaction.atomic():
+            indem = serializer.save()
+            try:
+                services.recalculer_indemnite_chantier(indem)
+            except DjangoValidationError as exc:
+                raise ValidationError(
+                    {'detail': exc.messages[0] if exc.messages else str(exc)})
+        indem.refresh_from_db()
 
     @action(detail=True, methods=['post'])
     def soumettre(self, request, pk=None):
@@ -7674,7 +7805,6 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
     ordering_fields = ['date_creation']
 
     def perform_create(self, serializer):
-        import secrets
         # DC32 — le client est lié PAR FK ; on vérifie qu'il est bien dans la
         # société de l'utilisateur (jamais un client d'un autre tenant).
         client = serializer.validated_data.get('client')
@@ -7683,9 +7813,20 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
                 client, 'company_id', None) != getattr(company, 'id', None):
             raise ValidationError(
                 {'client': 'Client inconnu pour cette société.'})
-        serializer.save(
-            company=company,
-            token_acces=secrets.token_urlsafe(32))
+        if client is None:
+            raise ValidationError(
+                {'client': 'Le client est requis pour ouvrir un accès portail.'})
+        # AUDV03 / FG228 (DRAFT165-29) — le provisionnement passe par le
+        # SERVICE, pas par un `serializer.save()` nu.
+        #
+        # Avant : chaque POST créait un compte de plus (ou heurtait la
+        # contrainte d'unicité) et un compte DÉSACTIVÉ ne se réactivait
+        # jamais — il fallait le rouvrir à la main en base.
+        # `services.provisionner_compte_portail` est idempotent par
+        # (société, client) : il réactive et renvoie le compte existant. Le
+        # token reste généré côté serveur, à l'intérieur du service.
+        serializer.instance = services.provisionner_compte_portail(
+            company, client_id=client.id)
 
 
 class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
