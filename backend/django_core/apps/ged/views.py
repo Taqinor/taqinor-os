@@ -1823,7 +1823,6 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(document_id=document)
         return qs
 
-<<<<<<< HEAD
     def create(self, request, *args, **kwargs):
         # DRAFT165-65 (AUDV12) — dédup à l'upload : le docstring de ce viewset
         # affirme déjà « checksum permet la dédup » mais rien n'appelait
@@ -1843,7 +1842,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-=======
+
     def perform_destroy(self, instance):
         # AUD810 — même mapping d'erreurs que `DocumentViewSet.perform_destroy`
         # : les deux gels (GED23 write-once, GED24 legal hold) restent 403,
@@ -1854,7 +1853,6 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             instance.delete()
         except (ArchivageLegalError, LegalHoldError) as exc:
             raise PermissionDenied(str(exc))
->>>>>>> worktree-agent-a531b672ff88e5fd7
 
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.
