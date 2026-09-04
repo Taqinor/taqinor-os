@@ -110,10 +110,15 @@ class StopEntrantTests(TestCase):
         self.assertTrue(services.est_supprime(self.co, '212612345678'))
 
     def test_webhook_stop_endpoint(self):
-        api = APIClient()
-        resp = api.post('/api/django/compta/webhooks/sms-stop/', {
-            'company_id': self.co.id, 'numero': '0612345678',
-        }, format='json')
+        # AUD616 — la société vient de la clé d'URL signée, plus jamais d'un
+        # ``company_id`` du corps ; le corps brut est signé en HMAC.
+        from apps.marketing.tests.test_aud616_webhooks_signes import (
+            configurer_secret, poster_webhook,
+        )
+        configurer_secret(self.co)
+        resp = poster_webhook(
+            '/api/django/compta/webhooks/sms-stop/', self.co,
+            {'numero': '0612345678'})
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertTrue(services.est_supprime(self.co, '212612345678'))
 

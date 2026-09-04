@@ -7,7 +7,6 @@ webhook simulés.
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework.test import APIClient
 
 from authentication.models import Company
 
@@ -87,12 +86,17 @@ class RebondsTests(TestCase):
         camp = Campagne.objects.create(
             company=self.co, nom='C', canal=Campagne.Canal.EMAIL)
         services.envoyer_campagne(camp, destinataires=['hard@x.ma'])
-        api = APIClient()
-        resp = api.post('/api/django/compta/webhooks/brevo/', {
-            'campagne_id': camp.id, 'destinataire': 'hard@x.ma',
-            'event': 'bounce', 'bounce_type': 'hard',
-            'reason': '550 permanent failure',
-        }, format='json')
+        # AUD616 — webhook public mais SIGNÉ (clé d'URL + HMAC du corps brut).
+        from apps.marketing.tests.test_aud616_webhooks_signes import (
+            configurer_secret, poster_webhook,
+        )
+        configurer_secret(self.co)
+        resp = poster_webhook(
+            '/api/django/compta/webhooks/brevo/', self.co, {
+                'campagne_id': camp.id, 'destinataire': 'hard@x.ma',
+                'event': 'bounce', 'bounce_type': 'hard',
+                'reason': '550 permanent failure',
+            })
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertTrue(services.est_supprime(self.co, 'hard@x.ma'))
 

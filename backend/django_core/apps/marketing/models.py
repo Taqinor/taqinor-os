@@ -2318,6 +2318,20 @@ class ParametresMarketing(TenantModel):
         default=ModeleAttribution.DERNIER_TOUCHE,
         verbose_name="Modèle d'attribution multi-touch")
 
+    # ── AUD616 — secret HMAC PROPRE à cette société pour les webhooks
+    # marketing entrants (Brevo, agrégateur SMS). Même patron qu'AUD212
+    # (``ecommerce_connect.ConnexionEcommerce.webhook_secret``) : jamais un
+    # secret global `.env` partagé par toutes les sociétés. VIDE par défaut,
+    # ce qui est FAIL-CLOSED : tant que la société n'a pas configuré son
+    # secret, AUCUN webhook n'est accepté (jamais l'inverse). Ce champ n'est
+    # PAS exposé par ``ParametresMarketingSerializer``.
+    webhook_secret = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='Secret HMAC des webhooks marketing entrants (AUD616)',
+        help_text=(
+            'Secret HMAC-SHA256 partagé avec Brevo / l\'agrégateur SMS. '
+            'Vide = aucun webhook accepté pour cette société.'))
+
     class Meta:
         verbose_name = 'Paramètres marketing'
         verbose_name_plural = 'Paramètres marketing'

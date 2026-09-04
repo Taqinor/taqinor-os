@@ -6864,30 +6864,61 @@ class InscriptionSequenceViewSet(_ComptaBaseViewSet):
         return Response(InscriptionSequenceSerializer(inscription).data)
 
 
-# ── XMKT2 — Webhook Brevo (gated, public, aucune auth) ──────────────────────
+# ── XMKT2 — Webhook Brevo (gated, public, signé AUD616) ────────────────────
+
+def _payload_webhook_marketing(raw_body):
+    """Corps JSON d'un webhook marketing, décodé depuis les octets BRUTS —
+    les MÊMES que ceux couverts par la signature HMAC (AUD616).
+
+    Passer par ``request.data`` rouvrirait un écart entre ce qui est signé et
+    ce qui est interprété. ``None`` sur JSON invalide (400 côté vue), jamais
+    une 500."""
+    import json
+
+    try:
+        data = json.loads(raw_body or b'{}')
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([_MarketingPublicThrottle])
-def webhook_brevo_campagne(request):
+def webhook_brevo_campagne(request, cle=None):
     """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
-    opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
-    ``Campagne`` référencée (aucune session utilisateur côté webhook
-    externe). Payload minimal attendu : ``campagne_id``, ``destinataire``,
-    ``event``, et optionnellement ``reason`` (raison SMTP) + ``bounce_type``
-    (``hard``/``soft``, XMKT12).
+    opened/click/bounce/unsubscribed/complaint. Payload minimal attendu :
+    ``campagne_id``, ``destinataire``, ``event``, et optionnellement
+    ``reason`` (raison SMTP) + ``bounce_type`` (``hard``/``soft``, XMKT12).
+
+    AUD616 — la société ne vient PLUS d'un champ du corps. Elle est désignée
+    par la clé signée de l'URL, et le corps brut doit porter une signature
+    HMAC valide pour le secret PROPRE de cette société. Sans les deux, 403
+    (fail-closed). ``campagne_id`` est ensuite résolu SCOPÉ à cette société :
+    l'identifiant d'une campagne d'un autre tenant n'est plus atteignable.
     """
-    data = request.data or {}
+    from apps.marketing import services as marketing_services
+
+    raw_body = request.body
+    company = marketing_services.societe_webhook_authentifiee(
+        cle, raw_body, request.META.get(
+            marketing_services.WEBHOOK_SIGNATURE_HEADER))
+    if company is None:
+        return Response({'detail': 'signature invalide'}, status=403)
+    data = _payload_webhook_marketing(raw_body)
+    if data is None:
+        return Response({'detail': 'payload JSON invalide'}, status=400)
     campagne_id = data.get('campagne_id')
     destinataire = (data.get('destinataire') or '').strip()
     evenement = data.get('event') or ''
     if not campagne_id or not destinataire or not evenement:
         return Response({'detail': 'payload incomplet'}, status=400)
-    campagne = Campagne.objects.filter(id=campagne_id).first()
+    campagne = Campagne.objects.filter(
+        id=campagne_id, company=company).first()
     if not campagne:
         return Response({'detail': 'campagne introuvable'}, status=404)
     envoi = services.webhook_brevo_evenement(
-        campagne.company, campagne_id=campagne.id,
+        company, campagne_id=campagne.id,
         destinataire=destinataire, evenement=evenement,
         raison_smtp=data.get('reason', ''),
         bounce_type=data.get('bounce_type', ''))
@@ -6901,21 +6932,30 @@ def webhook_brevo_campagne(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([_MarketingPublicThrottle])
-def webhook_sms_stop(request):
+def webhook_sms_stop(request, cle=None):
     """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
-    d'agrégateur active). Payload minimal attendu : ``company_id``,
-    ``numero``. Désinscrit immédiatement le numéro (XMKT3).
-    """
-    from authentication.models import Company
+    d'agrégateur active). Payload minimal attendu : ``numero``. Désinscrit
+    immédiatement le numéro (XMKT3).
 
-    data = request.data or {}
-    company_id = data.get('company_id')
+    AUD616 — le ``company_id`` du CORPS a été SUPPRIMÉ : il laissait un tiers
+    non authentifié désinscrire les contacts de n'importe quelle société. La
+    société vient désormais de la clé signée de l'URL, et le corps brut doit
+    porter une signature HMAC valide pour le secret PROPRE de cette société.
+    """
+    from apps.marketing import services as marketing_services
+
+    raw_body = request.body
+    company = marketing_services.societe_webhook_authentifiee(
+        cle, raw_body, request.META.get(
+            marketing_services.WEBHOOK_SIGNATURE_HEADER))
+    if company is None:
+        return Response({'detail': 'signature invalide'}, status=403)
+    data = _payload_webhook_marketing(raw_body)
+    if data is None:
+        return Response({'detail': 'payload JSON invalide'}, status=400)
     numero = (data.get('numero') or '').strip()
-    if not company_id or not numero:
+    if not numero:
         return Response({'detail': 'payload incomplet'}, status=400)
-    company = Company.objects.filter(id=company_id).first()
-    if not company:
-        return Response({'detail': 'société introuvable'}, status=404)
     supprime = services.traiter_stop_entrant(company, numero)
     if not supprime:
         return Response({'detail': 'numéro invalide'}, status=400)

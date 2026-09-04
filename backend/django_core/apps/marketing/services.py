@@ -127,6 +127,84 @@ def lire_token_preferences(token, *, max_age=TOKEN_PREFERENCES_MAX_AGE_SECONDS):
     return company, destinataire
 
 
+# ── AUD616 — webhooks marketing entrants : identité du tenant + signature ──
+# Avant ce correctif, ``webhook_brevo_campagne``/``webhook_sms_stop`` étaient
+# deux routes STATIQUES ``AllowAny`` sans aucun secret : n'importe quel tiers
+# pouvait POSTer et écrire dans la société de son choix, celle-ci étant
+# déduite d'un champ du CORPS qu'il envoyait lui-même (``campagne_id`` /
+# ``company_id``). Deux gardes indépendantes, toutes deux fail-closed :
+#   1. l'URL porte une CLÉ signée (SECRET_KEY) désignant la société — jamais
+#      un champ du corps ;
+#   2. le corps BRUT est signé en HMAC-SHA256 avec le secret PROPRE de cette
+#      société (``ParametresMarketing.webhook_secret``, AUD212).
+# Secret non configuré = refus, jamais acceptation par défaut.
+
+_WEBHOOK_SALT = 'marketing.aud616.webhook'
+
+#: En-tête portant le HMAC-SHA256 hexadécimal du corps brut.
+WEBHOOK_SIGNATURE_HEADER = 'HTTP_X_TAQINOR_SIGNATURE'
+
+
+def generer_cle_webhook(company_id):
+    """Clé d'URL signée désignant la société d'un webhook entrant (AUD616).
+
+    À coller dans l'URL configurée chez Brevo / l'agrégateur SMS. Opaque et
+    infalsifiable (signature ``SECRET_KEY``) : un tiers ne peut pas fabriquer
+    la clé d'une autre société."""
+    from django.core import signing
+    return signing.dumps({'company_id': company_id}, salt=_WEBHOOK_SALT)
+
+
+def societe_par_cle_webhook(cle):
+    """Résout une clé d'URL de webhook en ``Company``, ou ``None``.
+
+    Clé absente/forgée/corrompue ou société supprimée → ``None`` : l'appelant
+    refuse (fail-closed), jamais une 500."""
+    if not cle:
+        return None
+    from django.core import signing
+    try:
+        payload = signing.loads(cle, salt=_WEBHOOK_SALT)
+    except signing.BadSignature:
+        return None
+    from authentication.models import Company
+    return Company.objects.filter(id=payload.get('company_id')).first()
+
+
+def verifier_signature_webhook(company, raw_body, signature_header):
+    """HMAC-SHA256 hexadécimal du corps BRUT, avec le secret PROPRE de la
+    société (AUD616, patron AUD212).
+
+    FAIL-CLOSED : ``False`` sans secret configuré, sans en-tête, ou sur
+    signature invalide — jamais d'acceptation par défaut. La comparaison est
+    en temps constant et se fait EN BYTES (QJR413 : ``compare_digest`` sur
+    deux ``str`` lève ``TypeError`` dès qu'un octet non-ASCII apparaît dans
+    l'en-tête hostile, ce qui rendrait un 500 non authentifié)."""
+    import hashlib
+    import hmac
+
+    if company is None or not signature_header:
+        return False
+    secret = (parametres_marketing_pour(company).webhook_secret or '').strip()
+    if not secret:
+        return False
+    attendu = hmac.new(
+        secret.encode('utf-8'), raw_body or b'', hashlib.sha256).hexdigest()
+    return hmac.compare_digest(
+        attendu.encode('utf-8'), str(signature_header).encode('utf-8'))
+
+
+def societe_webhook_authentifiee(cle, raw_body, signature_header):
+    """Point d'entrée UNIQUE des webhooks marketing publics : renvoie la
+    ``Company`` seulement si la clé d'URL la désigne ET que la signature du
+    corps brut est valide pour SON secret. ``None`` sinon (401/403 côté vue).
+    """
+    company = societe_par_cle_webhook(cle)
+    if not verifier_signature_webhook(company, raw_body, signature_header):
+        return None
+    return company
+
+
 def preferences_actuelles(company, destinataire):
     """État courant des préférences d'un contact (NTMKT22).
 
