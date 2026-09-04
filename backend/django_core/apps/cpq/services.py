@@ -229,10 +229,59 @@ def resoudre_regle_remise(*, company, remise):
     return candidates[0]
 
 
+def profondeur_remise_effective(devis, *, remise_globale=None):
+    """AUD611 — la profondeur de remise RÉELLE du devis, en %.
+
+    Le palier d'approbation (NTCPQ7) ne regardait que ``remise_globale``. Or un
+    devis peut porter 0 % de remise globale et des remises de LIGNE cumulées
+    bien au-delà du seuil : il partait alors au client sans passer par la
+    moindre étape d'approbation. La remise de ligne et la remise globale sont
+    le MÊME geste commercial vu de deux endroits ; le palier doit voir leur
+    effet combiné.
+
+    Formule : ``1 − net / brut`` où ``brut`` est la somme des lignes AVANT
+    toute remise et ``net`` la somme APRÈS remise de ligne PUIS remise globale.
+    Elle se réduit exactement à ``remise_globale`` quand aucune ligne ne porte
+    de remise — le comportement d'hier est donc préservé au centième.
+
+    :param remise_globale: pourcentage global à considérer À LA PLACE de celui
+        porté par l'instance (le garde d'envoi juge la valeur ENTRANTE, pas
+        celle encore en base).
+
+    Le résultat n'est JAMAIS inférieur à la remise globale : une donnée de
+    ligne aberrante (remise négative, ligne à prix nul) ne peut pas AFFAIBLIR
+    un palier qui se déclenchait hier.
+    """
+    globale = Decimal(str(
+        (remise_globale if remise_globale is not None
+         else getattr(devis, 'remise_globale', 0)) or 0))
+    lignes_liees = getattr(devis, 'lignes', None)
+    if lignes_liees is None:
+        return globale
+
+    brut = Decimal('0')
+    net_lignes = Decimal('0')
+    for ligne in lignes_liees.all():
+        if not ligne.compte_dans_totaux:
+            continue
+        if ligne.quantite is None or ligne.prix_unitaire is None:
+            continue
+        brut += Decimal(str(ligne.quantite)) * Decimal(str(ligne.prix_unitaire))
+        # ``LigneDevis.total_ht`` PORTE déjà la remise de ligne : on ne
+        # réimplémente pas la formule d'argent de `ventes`, on la consomme.
+        net_lignes += Decimal(str(ligne.total_ht))
+    if brut <= 0:
+        return globale
+
+    net = net_lignes * (Decimal('1') - globale / Decimal('100'))
+    effective = ((Decimal('1') - net / brut) * Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return max(effective, globale)
+
+
 def _profondeur_remise(devis):
-    """Profondeur de remise réelle du devis (en %). Utilise ``remise_globale``
-    (déjà un pourcentage). Repli 0."""
-    return Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
+    """Alias historique — voir :func:`profondeur_remise_effective`."""
+    return profondeur_remise_effective(devis)
 
 
 def _echapper(texte):
