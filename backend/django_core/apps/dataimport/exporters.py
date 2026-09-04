@@ -51,12 +51,22 @@ def _json_value(value):
     return str(value)
 
 
-def export_csv(spec, company):
+def export_csv(spec, company, neutralize=True):
+    """CSV de l'objet. AUD802 — neutralisé par défaut (un .csv s'ouvre dans
+    Excel exactement comme un .xlsx : ``=HYPERLINK(...)`` s'y exécute pareil).
+    ``neutralize=False`` est l'opt-out NOMMÉ du round-trip de sauvegarde."""
+    from apps.records.xlsx import neutralize_cell
+
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(spec.header())
     for row in spec.rows(company):
-        writer.writerow([_cell(v) for v in row])
+        # La neutralisation s'applique à la valeur BRUTE, avant ``_cell`` :
+        # ``neutralize_cell`` ne touche QUE les chaînes, donc un Decimal
+        # négatif (« -10 » une fois sérialisé) n'est jamais préfixé — même
+        # sémantique exacte que le chemin xlsx.
+        valeurs = [neutralize_cell(v) for v in row] if neutralize else row
+        writer.writerow([_cell(v) for v in valeurs])
     # BOM UTF-8 : Excel ouvre alors correctement les accents FR.
     return ('﻿' + buf.getvalue()).encode('utf-8')
 
@@ -78,23 +88,34 @@ def export_json(spec, company):
     return json.dumps(payload, ensure_ascii=False, indent=2).encode('utf-8')
 
 
-def export_xlsx(spec, company):
+def export_xlsx(spec, company, neutralize=True):
     """L879 — passe par le builder .xlsx PARTAGÉ (apps.records.xlsx) pour que
     l'export configurable/ZIP ait exactement le même format (en-têtes en gras,
-    largeurs, coercition fr-MA) que les exports de listes."""
+    largeurs, coercition fr-MA) que les exports de listes.
+
+    AUD802 — neutralisé par défaut ; ``neutralize=False`` est l'opt-out NOMMÉ
+    du round-trip de sauvegarde (cf. ``build_backup_zip``)."""
     from apps.records.xlsx import workbook_bytes
 
     return workbook_bytes(
-        spec.header(), spec.rows(company), sheet_title=spec.key)
+        spec.header(), spec.rows(company), sheet_title=spec.key,
+        neutralize=neutralize)
 
 
-def export_bytes(spec, company, fmt):
-    """Sérialise un objet dans le format demandé -> bytes."""
+def export_bytes(spec, company, fmt, neutralize=True):
+    """Sérialise un objet dans le format demandé -> bytes.
+
+    AUD802 — ``neutralize`` traverse jusqu'au sérialiseur : le TÉLÉCHARGEMENT
+    (``export_views.exporter``, la commande ``export_company_data --object``)
+    part neutralisé, la SAUVEGARDE ZIP passe ``False``.
+    """
     if fmt == 'csv':
-        return export_csv(spec, company)
+        return export_csv(spec, company, neutralize=neutralize)
     if fmt == 'xlsx':
-        return export_xlsx(spec, company)
+        return export_xlsx(spec, company, neutralize=neutralize)
     if fmt == 'json':
+        # JSON n'est pas ouvert par un tableur : neutraliser y corromprait les
+        # valeurs sans rien protéger.
         return export_json(spec, company)
     raise ValueError(f'Format non supporté : {fmt}')
 
@@ -117,6 +138,12 @@ def build_backup_zip(specs, company, fmt, stamp=None):
 
     ``specs`` est une liste d'``ExportSpec``. Rien n'est persisté : le ZIP est
     construit en mémoire et renvoyé en ``bytes`` pour streaming.
+
+    AUD802 — SEUL opt-out de la neutralisation anti-formule
+    (``neutralize=False``) : ce bundle est fait pour être RE-IMPORTÉ. Le
+    neutraliser préfixerait une apostrophe à chaque « +212… » et corromprait la
+    restauration. Tous les autres chemins (téléchargement unitaire, pièce
+    jointe e-mail, lien public) restent neutralisés.
     """
     import zipfile
 
@@ -132,7 +159,7 @@ def build_backup_zip(specs, company, fmt, stamp=None):
             'Objets inclus :',
         ]
         for spec in specs:
-            data = export_bytes(spec, company, fmt)
+            data = export_bytes(spec, company, fmt, neutralize=False)
             zf.writestr(filename_for(spec, fmt, stamp), data)
             manifest_lines.append(f'  - {spec.label} ({spec.key})')
         zf.writestr('MANIFEST.txt', '\n'.join(manifest_lines) + '\n')
