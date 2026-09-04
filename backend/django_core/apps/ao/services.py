@@ -515,6 +515,53 @@ def deriver_caution_definitive(appel_offre, *, montant_marche=None,
     return caution
 
 
+def changer_statut_caution(caution, nouveau_statut, *, user=None, motif=''):
+    """AUD610 — SEUL point de mutation du statut d'une caution de soumission.
+
+    Une caution de soumission porte de l'argent RÉELLEMENT engagé : ``appelee``
+    signifie que la banque a déjà débité le montant. Tant que ``statut`` était
+    librement PATCHable, la machine d'états n'était qu'un affichage : un retour
+    ``appelee → constituee`` effaçait la trace d'un débit réel, sans
+    transition, sans journal, sans que rien ne le dise.
+
+    Valide contre ``CautionSoumission.TRANSITIONS``, écrit, puis journalise au
+    chatter générique ``records`` (jamais une classe ``*Activity`` maison).
+
+    Raises:
+        ValidationError: statut inconnu, ou saut hors graphe (message FR).
+    """
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    from .models import CautionSoumission
+
+    ancien = caution.statut
+    if nouveau_statut == ancien:
+        return caution
+    libelles = dict(CautionSoumission.Statut.choices)
+    if nouveau_statut not in libelles:
+        raise ValidationError(
+            {'statut': f"Statut inconnu : « {nouveau_statut} »."})
+    autorises = CautionSoumission.TRANSITIONS.get(ancien, ())
+    if nouveau_statut not in autorises:
+        atteignables = ', '.join(f'« {libelles[s]} »' for s in autorises) \
+            or 'aucun (état terminal)'
+        raise ValidationError({'statut': (
+            f"Transition interdite : « {libelles[ancien]} » → "
+            f"« {libelles[nouveau_statut]} ». Statuts atteignables : "
+            f"{atteignables}."
+        )})
+
+    caution.statut = nouveau_statut
+    caution.save(update_fields=['statut', 'updated_at'])
+    log_activity(
+        caution, Activity.Kind.MODIFICATION, user=user,
+        field='statut', field_label='Statut',
+        old_value=libelles[ancien], new_value=libelles[nouveau_statut],
+        body=motif or '', company=caution.company)
+    return caution
+
+
 def cautions_expirant_avant_ouverture(appel_offre):
     """Cautions dont l'échéance tombe AVANT l'ouverture des plis (AOF16)."""
     return [

@@ -2433,6 +2433,18 @@ class CautionSoumission(TenantModel):
         RESTITUEE = 'restituee', 'Restituée'
         APPELEE = 'appelee', 'Appelée'
 
+    #: AUD610 — le graphe DÉCLARATIF des transitions. Une caution porte de
+    #: l'argent réellement engagé : ``appelee`` signifie que la banque a DÉJÀ
+    #: débité le montant, ``restituee`` que la garantie est rendue. Les deux
+    #: sont TERMINAUX — revenir en arrière effacerait la trace d'un débit réel.
+    #: Aucune migration : c'est un attribut de classe, pas un champ.
+    TRANSITIONS = {
+        Statut.CONSTITUEE: (Statut.RESTITUEE, Statut.APPELEE),
+        Statut.RESTITUEE: (),
+        Statut.APPELEE: (),
+    }
+    STATUT_INITIAL = Statut.CONSTITUEE
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO

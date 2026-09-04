@@ -639,7 +639,15 @@ class CautionSoumissionSerializer(SameCompanyFKSerializerMixin,
             'expire_avant_ouverture', 'statut', 'statut_display',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        #: AUD610 — `statut` en LECTURE SEULE. Une caution de soumission porte
+        #: de l'argent réellement engagé : « appelée » signifie que la banque a
+        #: DÉJÀ débité le montant. Tant que ce champ était PATCHable, la
+        #: machine d'états n'était qu'un affichage — un retour « appelée →
+        #: constituée » effaçait la trace d'un débit réel. Toute transition
+        #: passe par `POST /cautions-soumission/<id>/changer-statut/`, qui
+        #: valide le graphe et journalise au chatter. La caution naît donc
+        #: toujours CONSTITUÉE (son état initial par définition).
+        read_only_fields = ['date_creation', 'statut']
 
 
 # ── FG225 — Dossiers et pièces de soumission ───────────────────────────────

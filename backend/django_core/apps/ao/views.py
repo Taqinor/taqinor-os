@@ -1283,6 +1283,19 @@ class DeriverCautionDefinitiveSerializer(serializers.Serializer):
         required=False, allow_null=True, label="Date d'échéance")
 
 
+class ChangerStatutCautionSerializer(serializers.Serializer):
+    """AUD610 — entrée de ``cautions-soumission/<id>/changer-statut``.
+
+    Deux champs seulement : la cible et le motif. Le statut de DÉPART n'est pas
+    un champ — il est lu sur la ligne, sinon un client pourrait décrire un état
+    de départ qui n'est pas le sien et franchir une transition qui n'existe pas.
+    """
+    statut = serializers.ChoiceField(
+        choices=CautionSoumission.Statut.choices, label='Nouveau statut')
+    motif = serializers.CharField(
+        required=False, allow_blank=True, max_length=500, label='Motif')
+
+
 class CautionSoumissionViewSet(AoBaseViewSet):
     """Cautions de soumission (provisoires/définitives) d'AO (FG224).
 
@@ -1290,11 +1303,35 @@ class CautionSoumissionViewSet(AoBaseViewSet):
     définitif : il le dérive du taux du CPS au lieu de le laisser saisir à la
     main, et la règle de cohérence ``AO_CAUTION_EXPIREE`` surveille en aval
     les échéances qui tomberaient avant l'ouverture des plis.
+
+    AUD610 — ``changer-statut`` est de même le SEUL chemin d'écriture du
+    statut : il valide la transition contre ``CautionSoumission.TRANSITIONS``
+    et la journalise au chatter.
     """
     queryset = CautionSoumission.objects.all()
     serializer_class = CautionSoumissionSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'date_echeance', 'statut']
+
+    @extend_schema(request=ChangerStatutCautionSerializer,
+                   responses=CautionSoumissionSerializer)
+    @action(detail=True, methods=['post'], url_path='changer-statut',
+            permission_classes=[ScopedPermission])
+    def changer_statut(self, request, pk=None):
+        """AUD610 — fait avancer la caution dans sa machine d'états."""
+        entree = ChangerStatutCautionSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        caution = self.get_object()  # borné société par get_queryset
+        try:
+            caution = services.changer_statut_caution(
+                caution, entree.validated_data['statut'],
+                user=request.user,
+                motif=entree.validated_data.get('motif', ''))
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'statut': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(caution).data)
 
     @extend_schema(request=DeriverCautionDefinitiveSerializer,
                    responses=CautionSoumissionSerializer)
