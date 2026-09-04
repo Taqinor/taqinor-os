@@ -141,8 +141,12 @@ def lire_token_preferences(token, *, max_age=TOKEN_PREFERENCES_MAX_AGE_SECONDS):
 
 _WEBHOOK_SALT = 'marketing.aud616.webhook'
 
-#: En-tête portant le HMAC-SHA256 hexadécimal du corps brut.
-WEBHOOK_SIGNATURE_HEADER = 'HTTP_X_TAQINOR_SIGNATURE'
+#: En-tête portant le HMAC-SHA256 hexadécimal du corps brut
+#: (``X-Webhook-Signature``). Nom NEUTRE : l'ERP est white-label, le branding
+#: vient de ``TenantTheme``/``CompanyProfile`` et n'a rien à faire en dur dans
+#: un en-tête que chaque société configure chez son propre fournisseur
+#: (SCA29, garde ``scripts/check_platform.py``).
+WEBHOOK_SIGNATURE_HEADER = 'HTTP_X_WEBHOOK_SIGNATURE'
 
 
 def generer_cle_webhook(company_id):

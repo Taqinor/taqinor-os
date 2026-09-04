@@ -60,7 +60,7 @@ def poster_webhook(chemin, company, payload, *, secret=None, cle=None,
         cle = mkt_services.generer_cle_webhook(company.id)
     entetes = {}
     if signature != '':
-        entetes['HTTP_X_TAQINOR_SIGNATURE'] = (
+        entetes['HTTP_X_WEBHOOK_SIGNATURE'] = (
             calculee if signature is None else signature)
     return (api or APIClient()).post(
         f'{chemin}{cle}/', corps, content_type='application/json', **entetes)
@@ -107,7 +107,7 @@ class WebhookBrevoSignatureTests(TestCase):
             dict(self.payload, event='bounce')).encode('utf-8')
         resp = APIClient().post(
             f'{self.CHEMIN}{cle}/', autre, content_type='application/json',
-            HTTP_X_TAQINOR_SIGNATURE=signature)
+            HTTP_X_WEBHOOK_SIGNATURE=signature)
         self.assertEqual(resp.status_code, 403, resp.content)
 
     def test_cle_url_forgee_refusee(self):

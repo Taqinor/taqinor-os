@@ -202,7 +202,7 @@ urlpatterns = [
     # AUD616 — le segment <cle> est une cle SIGNEE designant la societe : les
     # anciennes routes statiques laissaient un tiers non authentifie ecrire
     # dans la societe de son choix (deduite d'un champ du CORPS). La cle est
-    # doublee d'une signature HMAC du corps brut (en-tete X-Taqinor-Signature).
+    # doublee d'une signature HMAC du corps brut (en-tete X-Webhook-Signature).
     path('webhooks/brevo/<str:cle>/', webhook_brevo_campagne,
          name='mkt-webhook-brevo-campagne'),
     # headless: rappel STOP entrant de l'operateur SMS, aucun ecran en face
