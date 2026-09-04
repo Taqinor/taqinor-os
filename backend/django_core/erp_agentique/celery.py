@@ -767,6 +767,15 @@ app.conf.beat_schedule = {
         'task': 'flotte.generer_echeances_entretien_quotidien',
         'schedule': crontab(hour=6, minute=45),
     },
+    # AUD725 — matérialise le coût récurrent DU MOIS des contrats véhicule
+    # (leasing/LLD/location) dans le grand livre unifié : avant cette
+    # entrée, ni beat ni bouton, seule la commande manage fonctionnait ET
+    # écrivait dans un modèle jamais exposé (ni Cockpit Flotte, ni
+    # ledger/TCO). Mensuel, 1er du mois, heure creuse.
+    'flotte-generer-couts-contrat-mensuel': {
+        'task': 'flotte.generer_couts_contrat_mensuel',
+        'schedule': crontab(hour=6, minute=47, day_of_month=1),
+    },
     # NTLOG38 — rappel J-3 sur les étapes de transport en retard
     # (`date_prevue` dépassée, jamais clôturées) : quotidien, heure creuse,
     # idempotent (une seule notification par étape par jour).

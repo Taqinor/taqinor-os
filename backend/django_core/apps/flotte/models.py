@@ -3273,16 +3273,17 @@ class EcheanceContrat(models.Model):
     """Ligne de coût datée matérialisant l'échéance d'un ``ContratVehicule``
     (XFLT2).
 
-    Générée par ``services.generer_couts_contrat`` : une ligne PAR contrat ET
-    PAR période (``unique_together`` — garantit l'IDEMPOTENCE de la
-    génération, deux exécutions sur la même période ne créent qu'une seule
-    ligne). ``period`` est une chaîne ``'YYYY-MM'`` (mensuel — la seule
+    AUD725 — MODÈLE LEGACY : ``services.generer_couts_contrat`` n'écrit plus
+    ICI depuis AUD725 (il écrit désormais dans ``CoutVehicule``, XFLT3,
+    catégorie ``contrat`` — ce modèle de repli n'avait NI ViewSet, NI
+    serializer, NI route, et n'était lu ni par le Cockpit Flotte ni par le
+    grand livre/TCO). Les lignes déjà générées avant ce correctif restent en
+    base, en LECTURE SEULE, pour ne rien perdre historiquement.
+
+    ``unique_together`` (contrat, period) reste en place pour ces lignes
+    historiques. ``period`` est une chaîne ``'YYYY-MM'`` (mensuel — la seule
     granularité de génération, indépendamment de la ``periodicite`` du
     contrat qui reste informative sur le montant facturé).
-
-    Modèle transitoire : si ``CoutVehicule`` (XFLT3) existe sur cette
-    branche, la génération y écrit à la place (voir docstring du service) —
-    ce modèle reste le repli tant que XFLT3 n'est pas construit.
 
     Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
     requête). Le contrat lié doit appartenir à la MÊME société.
