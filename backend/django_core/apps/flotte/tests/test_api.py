@@ -101,6 +101,38 @@ class FlotteVehiculeTests(TestCase):
         self.assertEqual(row['energie_display'], 'Hybride')
         self.assertEqual(row['statut_display'], 'Actif')
 
+    def test_aud728_delete_vehicule_en_vie_bloque(self):
+        """AUD728 — un véhicule encore EN VIE (statut ``actif``) ne peut pas
+        être supprimé via l'API : avant ce correctif, ce DELETE effaçait en
+        cascade (via ``ActifFlotte``) tout l'historique métier/légal du
+        véhicule sans confirmation renforcée ni trace."""
+        veh = Vehicule.objects.create(
+            company=self.co_a, immatriculation='V-VIVANT', statut='actif')
+        resp = auth(self.admin_a).delete(
+            f'/api/django/flotte/vehicules/{veh.id}/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertTrue(Vehicule.objects.filter(pk=veh.pk).exists())
+
+    def test_aud728_delete_vehicule_reforme_autorise(self):
+        """Un véhicule sorti du parc (réformé) reste supprimable."""
+        veh = Vehicule.objects.create(
+            company=self.co_a, immatriculation='V-REFORME',
+            statut=Vehicule.Statut.REFORME)
+        resp = auth(self.admin_a).delete(
+            f'/api/django/flotte/vehicules/{veh.id}/')
+        self.assertEqual(resp.status_code, 204, resp.data)
+        self.assertFalse(Vehicule.objects.filter(pk=veh.pk).exists())
+
+    def test_aud728_delete_vehicule_vendu_autorise(self):
+        """Un véhicule cédé (vendu) reste supprimable."""
+        veh = Vehicule.objects.create(
+            company=self.co_a, immatriculation='V-VENDU',
+            statut=Vehicule.Statut.VENDU)
+        resp = auth(self.admin_a).delete(
+            f'/api/django/flotte/vehicules/{veh.id}/')
+        self.assertEqual(resp.status_code, 204, resp.data)
+        self.assertFalse(Vehicule.objects.filter(pk=veh.pk).exists())
+
 
 class FlotteEnginRoulantTests(TestCase):
     def setUp(self):

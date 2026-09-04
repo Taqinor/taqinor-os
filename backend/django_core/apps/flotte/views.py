@@ -9,6 +9,7 @@ import datetime
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
@@ -194,6 +195,22 @@ class VehiculeViewSet(ChatterViewSetMixin, _FlotteBaseViewSet):
             'modele_ref_id': serializer.instance.modele_ref_id,
         }
         journaliser_diff_vehicule(avant, apres, user=self.request.user)
+
+    def perform_destroy(self, instance):
+        # AUD728 — un véhicule encore EN VIE dans le parc (actif/maintenance/
+        # commandé/à vendre) porte un historique métier/légal VIVANT
+        # (entretien, réparations, assurance, sinistres, visites techniques
+        # NARSA…) rattaché via ``ActifFlotte`` en CASCADE : le DELETE
+        # effaçait tout cet historique en un clic, sans confirmation
+        # renforcée ni trace. Seul un véhicule déjà SORTI du parc (réformé
+        # ou cédé — voir ``cycle_de_vie_terminal``) peut être supprimé.
+        if not instance.cycle_de_vie_terminal():
+            raise PermissionDenied(
+                "Ce véhicule n'est pas réformé ni cédé : le supprimer "
+                "effacerait en cascade tout son historique métier/légal "
+                "(entretien, réparations, assurance, sinistres…). Passez-le "
+                "au statut « réformé » ou « vendu » avant suppression.")
+        super().perform_destroy(instance)
 
     @action(detail=True, methods=['get'])
     def tsav(self, request, pk=None):
@@ -586,6 +603,19 @@ class ActifFlotteViewSet(_FlotteBaseViewSet):
         actif = self.get_object()
         from .selectors import detenteurs_courants
         return Response(detenteurs_courants(request.user.company, actif.id))
+
+    def perform_destroy(self, instance):
+        # AUD728 — même garde que ``VehiculeViewSet`` : ``ActifFlotte`` est le
+        # point de CASCADE vers 16+ modèles (PleinCarburant, OrdreReparation,
+        # AssuranceVehicule, VisiteTechnique, CoutVehicule…) — le supprimer
+        # tant que l'actif cible est en vie efface tout cet historique.
+        if not instance.cycle_de_vie_terminal():
+            raise PermissionDenied(
+                "Cet actif n'est pas réformé ni cédé : le supprimer "
+                "effacerait en cascade tout son historique métier/légal. "
+                "Passez le véhicule/engin au statut terminal avant "
+                "suppression.")
+        super().perform_destroy(instance)
 
 
 class AffectationConducteurViewSet(_FlotteBaseViewSet):
@@ -1444,6 +1474,18 @@ class OrdreReparationViewSet(_FlotteBaseViewSet):
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(ordre).data)
 
+    def perform_destroy(self, instance):
+        # AUD728 — un OR CLÔTURÉ est une dépense DÉJÀ facturée/comptée dans
+        # le TCO/ledger (cout_total) : le supprimer ferait disparaître cette
+        # dépense sans trace. Un OR encore ouvert (devis/en cours) reste
+        # supprimable (aucun coût final n'est encore engagé).
+        if instance.statut == OrdreReparation.Statut.CLOTURE:
+            raise PermissionDenied(
+                "Un ordre de réparation CLÔTURÉ ne se supprime pas (coût "
+                "déjà compté dans le TCO/ledger) : corrigez ses montants si "
+                "besoin plutôt que de le supprimer.")
+        super().perform_destroy(instance)
+
 
 class PneumatiqueViewSet(_FlotteBaseViewSet):
     """Pneumatiques montés sur les véhicules du parc (FLOTTE18).
@@ -1749,6 +1791,14 @@ class AssuranceVehiculeViewSet(_FlotteBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    def perform_destroy(self, instance):
+        # AUD728 — une police d'assurance est un document à valeur LÉGALE
+        # (couverture, franchise, sinistres liés) : aucune garde n'existait
+        # sur son DELETE. Se corrige, ne se supprime pas.
+        raise PermissionDenied(
+            "Une police d'assurance ne se supprime pas (document à valeur "
+            "légale) : corrigez-la, ou clôturez sa période de couverture.")
+
 
 class VisiteTechniqueViewSet(_FlotteBaseViewSet):
     """Visites techniques des actifs de flotte (FLOTTE22).
@@ -1815,6 +1865,13 @@ class VisiteTechniqueViewSet(_FlotteBaseViewSet):
         qs = visites_techniques_expirantes(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    def perform_destroy(self, instance):
+        # AUD728 — une visite technique NARSA est un document RÉGLEMENTAIRE
+        # (contrôle officiel) : aucune garde n'existait sur son DELETE.
+        raise PermissionDenied(
+            "Une visite technique ne se supprime pas (document "
+            "réglementaire NARSA) : corrigez-la si besoin.")
 
 
 class CarteGriseVehiculeViewSet(_FlotteBaseViewSet):
@@ -1884,6 +1941,14 @@ class CarteGriseVehiculeViewSet(_FlotteBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    def perform_destroy(self, instance):
+        # AUD728 — une carte grise / autorisation de circulation est un
+        # document RÉGLEMENTAIRE d'immatriculation : aucune garde n'existait
+        # sur son DELETE.
+        raise PermissionDenied(
+            "Une carte grise ne se supprime pas (document réglementaire "
+            "d'immatriculation) : corrigez-la si besoin.")
+
 
 class SinistreViewSet(_FlotteBaseViewSet):
     """Sinistres des actifs de flotte (FLOTTE25).
@@ -1928,6 +1993,15 @@ class SinistreViewSet(_FlotteBaseViewSet):
                 pass
 
         return qs
+
+    def perform_destroy(self, instance):
+        # AUD728 — un sinistre est un dossier à valeur LÉGALE/FINANCIÈRE
+        # (déclaration d'assurance, franchise à charge) : aucune garde
+        # n'existait sur son DELETE.
+        raise PermissionDenied(
+            "Un sinistre ne se supprime pas (dossier à valeur légale/"
+            "financière) : corrigez-le, ou faites-le évoluer vers « clos »/"
+            "« indemnisé ».")
 
 
 class ReleveTelematiqueViewSet(_FlotteBaseViewSet):
@@ -2136,6 +2210,15 @@ class InfractionViewSet(_FlotteBaseViewSet):
 
     def perform_update(self, serializer):
         self._imputer_conducteur_auto(serializer)
+
+    def perform_destroy(self, instance):
+        # AUD728 — un PV/infraction est un document à valeur LÉGALE/FINANCIÈRE
+        # (amende, éventuelle refacturation au conducteur) : aucune garde
+        # n'existait sur son DELETE.
+        raise PermissionDenied(
+            "Une infraction/PV ne se supprime pas (document à valeur légale/"
+            "financière) : corrigez-la, ou faites-la évoluer vers « payée »/"
+            "« contestée »/« classée ».")
 
 
 # ── FLOTTE28 — Suivi de position & trajets télématiques ────────────────────────

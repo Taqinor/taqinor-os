@@ -295,7 +295,24 @@ class ActifFlotteApiTests(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 403)
 
-    def test_delete_actif(self):
+    def test_delete_actif_vehicule_en_vie_bloque(self):
+        """AUD728 — un véhicule encore EN VIE dans le parc (statut par
+        défaut ``actif``) ne peut pas être supprimé via son ``ActifFlotte`` :
+        avant ce correctif, ce DELETE effaçait en cascade tout l'historique
+        métier/légal (entretien, réparations, assurance…) sans confirmation
+        renforcée ni trace."""
+        actif = ActifFlotte.objects.create(
+            company=self.co_a, vehicule=self.veh_a)
+        resp = auth(self.admin_a).delete(
+            f'/api/django/flotte/actifs/{actif.id}/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertTrue(ActifFlotte.objects.filter(pk=actif.pk).exists())
+        self.assertTrue(Vehicule.objects.filter(pk=self.veh_a.pk).exists())
+
+    def test_delete_actif_vehicule_reforme_autorise(self):
+        """Un véhicule sorti du parc (réformé) reste supprimable."""
+        self.veh_a.statut = Vehicule.Statut.REFORME
+        self.veh_a.save(update_fields=['statut'])
         actif = ActifFlotte.objects.create(
             company=self.co_a, vehicule=self.veh_a)
         resp = auth(self.admin_a).delete(

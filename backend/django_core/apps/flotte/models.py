@@ -213,6 +213,22 @@ class Vehicule(models.Model):
         return all(checklist.get(item) for item in
                    self.CHECKLIST_MISE_EN_SERVICE)
 
+    # États terminaux du cycle de vie (AUD728) — un véhicule ne peut être
+    # supprimé de l'API qu'après être sorti du parc (réformé/cédé) : « cédé »
+    # se lit ``VENDU`` sur ce statut (le seul état de sortie par cession, à
+    # distinguer d'``A_VENDRE``/``COMMANDE`` qui restent en cours de vie).
+    CYCLE_DE_VIE_TERMINAL = (Statut.REFORME, Statut.VENDU)
+
+    def cycle_de_vie_terminal(self):
+        """AUD728 — Vrai si le véhicule est sorti du parc (réformé ou cédé).
+
+        Un ``Vehicule`` encore ``actif``/``maintenance``/``commande``/
+        ``a_vendre`` porte un historique d'exploitation VIVANT (entretien,
+        réparations, assurance, sinistres…) : le supprimer effacerait cet
+        historique en cascade (``ActifFlotte`` → 16+ modèles dépendants) sans
+        qu'aucune décision métier de sortie de parc n'ait été prise."""
+        return self.statut in self.CYCLE_DE_VIE_TERMINAL
+
 
 # ── XFLT4 — Journal des changements de statut véhicule ─────────────────────────
 
@@ -476,6 +492,17 @@ class ActifFlotte(models.Model):
         if self.engin_id is not None:
             return str(self.engin)
         return ''
+
+    def cycle_de_vie_terminal(self):
+        """AUD728 — Vrai si l'actif cible (véhicule OU engin) est sorti du
+        parc (réformé/cédé pour un véhicule ; réformé pour un engin, qui n'a
+        pas d'état de cession). Délègue à ``Vehicule.cycle_de_vie_terminal``/
+        ``EnginRoulant.statut`` — jamais de logique dupliquée."""
+        if self.vehicule_id is not None:
+            return self.vehicule.cycle_de_vie_terminal()
+        if self.engin_id is not None:
+            return self.engin.statut == EnginRoulant.Statut.REFORME
+        return False
 
     def __str__(self):
         return f'ActifFlotte({self.type_actif}) — {self.label}'
