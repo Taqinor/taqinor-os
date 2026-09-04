@@ -153,3 +153,22 @@ class U9StockReservationTests(TestCase):
         self.assertEqual(self._sorties(self.panneau).count(), 0)
         self.assertEqual(self._sorties(self.onduleur).count(), 0)
         self.assertEqual(devis.factures.count(), 0)
+
+    def test_aud228_stock_insuffisant_autorise_si_reglage_societe_actif(self):
+        """AUD228 — `AchatsParametres.stock_negatif_autorise` était ignoré
+        par `reserver_stock_devis_facture` (blocage en dur via
+        `StockInsuffisantError`, quel que soit le réglage société). Routé
+        par `check_negative_stock_guard` : refus INCHANGÉ par défaut (test
+        ci-dessus), passage en négatif autorisé quand le réglage l'active."""
+        from apps.stock.models import AchatsParametres
+        parametres = AchatsParametres.for_company(self.company)
+        parametres.stock_negatif_autorise = True
+        parametres.save()
+
+        devis = self._devis(f'DEV-{MONTH}-9105', panneaux=2, onduleurs=5)
+        r = self._gen(devis)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.onduleur.refresh_from_db()
+        self.assertEqual(self.onduleur.quantite_stock, -2)
+        self.assertEqual(self._sorties(self.onduleur).count(), 1)
+        self.assertEqual(devis.factures.count(), 1)

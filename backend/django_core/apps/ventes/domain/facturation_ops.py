@@ -61,7 +61,7 @@ def reserver_stock_devis_facture(*, devis, user, company):
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
         mouvement_type_sortie, record_stock_movement,
-        sortie_exists_for_reference,
+        sortie_exists_for_reference, check_negative_stock_guard,
     )
     from apps.ventes.models import BonCommande
 
@@ -94,7 +94,14 @@ def reserver_stock_devis_facture(*, devis, user, company):
             continue
         qte_avant = produit.quantite_stock
         qte_apres = qte_avant - qte
-        if qte_apres < 0:
+        # AUD228 — route par la garde paramétrable (société) plutôt qu'un
+        # blocage en dur : `stock_negatif_autorise` (AchatsParametres) est
+        # désormais respecté ici aussi, comme sur le chemin bon-commande
+        # (`ventes/views/bon_commande.py`). Message INCHANGÉ quand le
+        # réglage refuse (défaut).
+        try:
+            check_negative_stock_guard(company, qte_avant, qte_apres)
+        except ValueError:
             raise StockInsuffisantError(
                 f'Stock insuffisant pour « {produit.nom} » '
                 f'(disponible : {qte_avant}, requis : {qte}).')
