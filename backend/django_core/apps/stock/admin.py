@@ -4,6 +4,8 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import Produit, Categorie, Fournisseur, MouvementStock
 
 
@@ -87,13 +89,13 @@ SUPPRESSION_FOURNISSEUR_INTERDITE = (
 # test_garde_cible_une_categorie_reste_supprimable` (une catégorie reste
 # supprimable après l'ajout du garde Produit).
 @admin.register(Categorie)
-class CategorieAdmin(admin.ModelAdmin):
+class CategorieAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     list_display = ('nom', 'description')
     search_fields = ('nom',)
 
 
 @admin.register(Fournisseur)
-class FournisseurAdmin(admin.ModelAdmin):
+class FournisseurAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     list_display = ('nom', 'email', 'telephone', 'is_archived')
     list_filter = ('is_archived',)
     search_fields = ('nom', 'email')
@@ -201,7 +203,7 @@ class ProduitAdminForm(forms.ModelForm):
 
 
 @admin.register(Produit)
-class ProduitAdmin(admin.ModelAdmin):
+class ProduitAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     form = ProduitAdminForm
     list_display = ('nom', 'sku', 'prix_vente', 'quantite_stock', 'categorie', 'fournisseur')
     list_filter = ('categorie', 'fournisseur')
@@ -255,9 +257,77 @@ class ProduitAdmin(admin.ModelAdmin):
         raise PermissionDenied(SUPPRESSION_PRODUIT_INTERDITE)
 
 
+# AUD215 — message UNIQUE (français) opposé à toute écriture sur le registre
+# des mouvements de stock depuis l'administration Django.
+#
+# Pourquoi ce garde existe : `MouvementStock` n'est pas une table de saisie,
+# c'est le REGISTRE sur lequel se reconstruit l'inventaire.
+# `services._quantite_produit_a_date` remonte au dernier `quantite_apres`
+# antérieur à une date, `valorisation_a_date` (XSTK13) s'appuie dessus, et
+# `figer_inventaire_annuel` en tire un inventaire déclaré « immuable » (CGNC).
+# L'admin ne déclarait que trois `readonly_fields` : `produit`,
+# `type_mouvement`, `quantite` restaient librement éditables, et l'ajout comme
+# la suppression étaient ouverts. Modifier ou supprimer UNE ligne réécrit donc
+# rétroactivement la quantité reconstruite à TOUTE date postérieure — en
+# silence, et sans qu'aucun mouvement ne trace la correction.
+#
+# Le registre passe donc en LECTURE SEULE STRICTE : une correction se fait par
+# un mouvement d'AJUSTEMENT métier (qui, lui, est daté, tracé et rejoue la
+# valorisation), jamais par une réécriture de l'historique. Verrous redondants
+# calqués sur `ProduitAdmin`/`FournisseurAdmin` ci-dessus : la protection ne
+# doit dépendre d'aucun détail d'implémentation de Django.
+MOUVEMENT_STOCK_LECTURE_SEULE = (
+    "Le registre des mouvements de stock est en LECTURE SEULE dans "
+    "l'administration Django : ajouter, modifier ou supprimer une ligne "
+    "réécrirait rétroactivement la quantité reconstruite à toute date "
+    "postérieure (valorisation à date, inventaire annuel figé). Une correction "
+    "passe par un mouvement d'AJUSTEMENT depuis l'écran Stock, qui est daté et "
+    "tracé, jamais par une réécriture de l'historique."
+)
+
+
 @admin.register(MouvementStock)
-class MouvementStockAdmin(admin.ModelAdmin):
+class MouvementStockAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     list_display = ('produit', 'type_mouvement', 'quantite', 'quantite_avant', 'quantite_apres', 'date')
     list_filter = ('type_mouvement',)
     search_fields = ('produit__nom', 'reference')
     readonly_fields = ('quantite_avant', 'quantite_apres', 'date')
+
+    # ── AUD215 — registre en lecture seule (voir MOUVEMENT_STOCK_LECTURE_SEULE)
+
+    def has_add_permission(self, request):
+        """Verrou 1a — aucun ajout : un mouvement naît d'un service métier
+        (`record_stock_movement`), jamais d'un formulaire d'administration qui
+        ne recalculerait ni `quantite_avant`/`quantite_apres` ni le stock."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Verrou 1b — aucune modification : le registre est un journal."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Verrou 1c — aucune suppression, pour personne (superuser compris)."""
+        return False
+
+    def get_actions(self, request):
+        """Verrou 2 — retire explicitement l'action groupée `delete_selected`.
+
+        Django 5.1 la filtre déjà via `allowed_permissions = ('delete',)`, mais
+        on ne dépend pas de ce détail de version : c'est le chemin groupé, le
+        plus dangereux, qui corromprait le plus de lignes d'un coup.
+        """
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
+    def save_model(self, request, obj, form, change):
+        """Verrou 3 — refus dur si une action maison tentait d'écrire."""
+        raise PermissionDenied(MOUVEMENT_STOCK_LECTURE_SEULE)
+
+    def delete_model(self, request, obj):
+        """Verrou 4a — refus dur, même appelé depuis une action maison."""
+        raise PermissionDenied(MOUVEMENT_STOCK_LECTURE_SEULE)
+
+    def delete_queryset(self, request, queryset):
+        """Verrou 4b — idem pour la suppression en masse."""
+        raise PermissionDenied(MOUVEMENT_STOCK_LECTURE_SEULE)

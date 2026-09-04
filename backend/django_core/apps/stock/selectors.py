@@ -54,6 +54,25 @@ def get_emplacement_scoped(company, pk):
     return EmplacementStock.objects.filter(id=pk, company=company).first()
 
 
+def get_emplacements_scoped(company, ids):
+    """EmplacementStock scopés société, PAR LOT d'ids (dict {id: instance}).
+
+    Variante BATCH de ``get_emplacement_scoped`` — un appelant qui doit
+    résoudre plusieurs emplacements (ex. une liste paginée d'objets liés)
+    fait UN SEUL aller-retour DB au lieu d'un par id (évite le N+1 réel :
+    voir AUD729, `apps.flotte.selectors.emplacements_stock_labels`).
+    Lecture seule ; ``ids`` vide → ``{}`` sans requête.
+    """
+    from .models import EmplacementStock
+    if not ids:
+        return {}
+    return {
+        e.id: e
+        for e in EmplacementStock.objects.filter(
+            id__in=list(ids), company=company)
+    }
+
+
 def valid_produit_ids(company, ids):
     """Sous-ensemble des `ids` qui existent comme Produit de la société (set).
     Lecture seule."""

@@ -14,6 +14,31 @@ from jwt.exceptions import InvalidTokenError
 _DJANGO_SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 _ALGORITHM = "HS256"
 
+# AUD409 — GARDE DE DEMARRAGE, miroir du garde Django
+# (erp_agentique/settings/base.py:19-22) qui manquait totalement ici.
+#
+# MESURE sur la version EPINGLEE (PyJWT==2.13.0, requirements.txt) avant
+# d'ecrire ce garde, pour ne rien affirmer d'invente : `jwt.decode(token, "")`
+# n'accepte PAS un jeton force — PyJWT refuse une cle HMAC vide et leve
+# `InvalidKeyError`. Le scenario « jeton signe avec une chaine vide accepte »
+# n'est donc pas reproductible tel quel. Mais `InvalidKeyError` n'herite PAS
+# d'`InvalidTokenError` : le `except` de `verify_token` ne l'attrape pas, et
+# une omission d'environnement (unit systemd, nouveau deploiement, .env sans la
+# cle) rendait le service 500 sur CHAQUE requete authentifiee — panne totale et
+# opaque de l'agent SQL et de l'OCR, decouverte en production.
+#
+# Le garde reste donc necessaire pour deux raisons : rendre cette panne
+# explicite et immediate au demarrage plutot que diffuse a l'execution, et ne
+# pas faire dependre l'authentification d'un detail d'implementation de la
+# librairie (une future version tolerant la cle vide rouvrirait, elle, un vrai
+# contournement d'authentification). On echoue FERME au CHARGEMENT du module.
+if not _DJANGO_SECRET_KEY:
+    raise RuntimeError(
+        "La variable d'environnement DJANGO_SECRET_KEY est obligatoire : le "
+        "service IA verifie avec elle les JWT emis par Django. Une cle vide "
+        "validerait n'importe quel jeton force."
+    )
+
 # ERR18 — Liaison optionnelle audience / emetteur : si le projet definit ces
 # claims (JWT_AUDIENCE / JWT_ISSUER), ils sont verifies ; sinon non-cassant.
 _JWT_AUDIENCE = os.environ.get("JWT_AUDIENCE", "") or None

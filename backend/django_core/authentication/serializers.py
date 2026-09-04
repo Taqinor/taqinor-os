@@ -131,6 +131,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # lit ce claim à chaque requête et borne ``request.user.company``.
         from authentication.active_company import ACTIVE_COMPANY_CLAIM
         token[ACTIVE_COMPANY_CLAIM] = user.company_id
+        # AUD408 — claim de SESSION recopié sur le jeton d'accès dérivé (le
+        # ``jti`` du refresh, lui, ne l'est jamais : simplejwt le liste dans
+        # ``no_copy_claims``). C'est l'identifiant de la ligne ``UserSession``
+        # tracée par ``_record_session`` — il rend le jeton d'ACCÈS révocable
+        # immédiatement (logout / révocation d'appareil / éviction concurrente /
+        # changement de mot de passe), au lieu de survivre jusqu'à 30 min.
+        from authentication.session_policy import SESSION_CLAIM
+        token[SESSION_CLAIM] = token.get('jti')
         return token
 
 
@@ -155,6 +163,28 @@ class RegisterSerializer(serializers.ModelSerializer):
             'username', 'password', 'email',
             'first_name', 'last_name', 'role', 'must_change_password',
         )
+
+    def validate_password(self, value):
+        """AUD402 — force du mot de passe à la création admin→collaborateur.
+
+        Jusqu'ici ``create()`` posait le mot de passe tel quel : un
+        administrateur pressé créait un compte avec « azerty » même quand sa
+        société avait durci sa politique FG22. Même entrée unique que le signup
+        public et le changement de mot de passe.
+        """
+        from .password_policy import validate_new_password
+        data = getattr(self, 'initial_data', None) or {}
+        candidate = CustomUser(
+            username=(data.get('username') or '').strip(),
+            email=(data.get('email') or '').strip(),
+            first_name=data.get('first_name') or '',
+            last_name=data.get('last_name') or '',
+        )
+        errors = validate_new_password(
+            value, self.context.get('company'), user=candidate)
+        if errors:
+            raise serializers.ValidationError(errors)
+        return value
 
     def create(self, validated_data):
         from apps.roles.models import Role

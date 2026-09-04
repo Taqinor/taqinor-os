@@ -749,6 +749,14 @@ def suggestions_portail(company, texte, *, limit=5):
     (``statut=PUBLIE``). Recherche simple ``icontains`` titre/corps (même
     mécanique que ``KbArticleViewSet.search_fields``, KB3).
 
+    AUD526 — DÉFENSE EN PROFONDEUR : le filtre exige AUSSI
+    ``visibilite=WORKSPACE``. ``visible_portail`` seul ne suffisait pas — un
+    article publié sur le portail puis repassé en ``prive`` (notes
+    personnelles, XKB9) restait servi (titre + 500 caractères) à tout
+    appelant. Le sérialiseur remet désormais ``visible_portail`` à False dans
+    ce cas (validation croisée) ; ce filtre est la seconde barrière, pour les
+    lignes déjà en base au moment du correctif.
+
     Renvoie une liste de dicts légers ``[{'id', 'titre', 'extrait'}, …]`` —
     jamais l'objet ORM. Vide si le texte est vide (dégradation propre, pas
     d'exception)."""
@@ -757,7 +765,8 @@ def suggestions_portail(company, texte, *, limit=5):
         return []
     qs = (KbArticle.objects
           .filter(company=company, statut=KbArticle.Statut.PUBLIE,
-                  visible_portail=True)
+                  visible_portail=True,
+                  visibilite=KbArticle.Visibilite.WORKSPACE)
           .filter(Q(titre__icontains=texte) | Q(corps__icontains=texte))
           .order_by('-consultations_portail_ticket', '-vues', 'id'))
     return [

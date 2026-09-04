@@ -154,14 +154,14 @@ export default function PortailClientFactures() {
               <p className="text-sm">
                 <span className="text-muted-foreground">Total TTC : </span>
                 <span className="font-medium">{formatMAD(f.montant_ttc)}</span>
-                {!f.payee && (
+                {f.payable && (
                   <>
                     <span className="text-muted-foreground"> — reste dû : </span>
                     <span className="font-medium">{formatMAD(f.montant_du)}</span>
                   </>
                 )}
               </p>
-              {!f.payee && (
+              {f.payable && (
                 <div>
                   <Button size="sm" loading={envoi === f.id}
                           onClick={() => payer(f)}>

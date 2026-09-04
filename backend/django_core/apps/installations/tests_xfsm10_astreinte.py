@@ -76,12 +76,19 @@ class TestAstreinteCrud(TestCase):
         Astreinte.objects.create(
             company=self.company, technicien=self.tech,
             date_debut=self.now, date_fin=self.now + timezone.timedelta(days=7))
+        count_before = Astreinte.objects.count()
         r = self.api.post(f'{BASE}/astreintes/', {
             'technicien': self.tech.id,
             'date_debut': (self.now + timezone.timedelta(days=3)).isoformat(),
             'date_fin': (self.now + timezone.timedelta(days=10)).isoformat(),
         }, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+        # AUD318 — `full_clean()` détecte le chevauchement APRÈS
+        # `serializer.save()` (autocommit sans ATOMIC_REQUESTS) : sans la
+        # transaction englobante, la ligne invalide restait committée
+        # malgré le 400. La ligne chevauchante ne doit JAMAIS survivre au
+        # rollback.
+        self.assertEqual(Astreinte.objects.count(), count_before)
 
     def test_other_company_technicien_rejected(self):
         other_co = make_company()

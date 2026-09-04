@@ -294,3 +294,92 @@ class ImpersonationAuditTests(TestCase):
 
         ligne = AuditLog.objects.filter(company=self.tenant).latest('id')
         self.assertNotIn(MARQUEUR_IMPERSONATION, ligne.detail)
+
+
+class Aud404JetonImpersonationRevocableTests(TestCase):
+    """AUD404 — « Terminer » coupe RÉELLEMENT le jeton déjà émis.
+
+    `terminer()` n'écrivait que `terminee_le` en base ; le jeton d'accès émis
+    pour le support, autoporteur et borné par son seul `exp` (jusqu'à 30 min),
+    continuait d'authentifier avec un accès complet à toute la société — le
+    bandeau passait à « inactif » mais le coupe-circuit du tenant était
+    cosmétique. `session_depuis_requete()` faisait déjà ce lookup, mais
+    seulement pour l'audit et l'affichage, jamais comme garde
+    d'authentification. Ces tests sont ROUGES avant le correctif (200) et VERTS
+    après (401).
+    """
+
+    ME = '/api/django/auth/me/'
+
+    def setUp(self):
+        self.tenant = _company('Client Aud404', 'client-aud404')
+        self.admin = CustomUser.objects.create_user(
+            username='admin_aud404', password='pw41827',
+            company=self.tenant, role_legacy='admin')
+        self.cible = CustomUser.objects.create_user(
+            username='vendeur_aud404', password='pw41827',
+            company=self.tenant, role_legacy='normal')
+        self.support = CustomUser.objects.create_user(
+            username='support_aud404', password='pw41827',
+            is_taqinor_support=True)
+
+    def _session_active(self):
+        demande = impersonation_service.demander_impersonation(
+            utilisateur_cible=self.cible, initiee_par=self.support,
+            motif='Diagnostic incident #404')
+        impersonation_service.donner_consentement(demande, par=self.admin)
+        return demande
+
+    @staticmethod
+    def _client(jeton):
+        """Client portant RÉELLEMENT le jeton : `force_authenticate`
+        court-circuiterait l'authenticator, donc la garde testée ici."""
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {jeton}')
+        return client
+
+    def test_terminer_coupe_le_jeton_deja_emis(self):
+        demande = self._session_active()
+        jeton = impersonation_service.emettre_jeton_impersonation(demande)
+        client = self._client(jeton)
+        # La session est active : le support travaille normalement.
+        self.assertEqual(client.get(self.ME).status_code, 200)
+
+        impersonation_service.terminer(demande)
+
+        # AUD404 : la requête SUIVANTE est refusée (avant : 200 jusqu'à 30 min).
+        self.assertEqual(client.get(self.ME).status_code, 401)
+
+    def test_refus_apres_peremption_de_la_session(self):
+        demande = self._session_active()
+        jeton = impersonation_service.emettre_jeton_impersonation(demande)
+        client = self._client(jeton)
+        self.assertEqual(client.get(self.ME).status_code, 200)
+        # Péremption serveur (NTADM37) : même effet immédiat.
+        demande.expiree = True
+        demande.save(update_fields=['expiree'])
+        self.assertEqual(client.get(self.ME).status_code, 401)
+
+    def test_claim_sans_session_est_refuse_fail_closed(self):
+        """Un jeton portant `imp` sans ligne de session ne passe jamais."""
+        from rest_framework_simplejwt.tokens import AccessToken
+        token = AccessToken.for_user(self.cible)
+        token[impersonation_service.CLAIM_SESSION] = 99999999
+        self.assertEqual(
+            self._client(str(token)).get(self.ME).status_code, 401)
+
+    def test_jeton_ordinaire_inchange(self):
+        """Aucun jeton normal ne porte le claim : chemin utilisateur intact."""
+        from rest_framework_simplejwt.tokens import AccessToken
+        token = str(AccessToken.for_user(self.cible))
+        self.assertEqual(self._client(token).get(self.ME).status_code, 200)
+
+    def test_le_nom_du_claim_ne_peut_pas_diverger(self):
+        """`authentication` (app de FONDATION) ne peut pas importer
+        `impersonation_service` — la chaîne adminops → notifications →
+        ventes/sav/stock/crm casse le contrat import-linter « core imports
+        downward only » (mesuré : 5 contrats rouges). Le nom du claim y est donc
+        redéclaré ; ce test interdit qu'ils divergent."""
+        from authentication import cookie_auth
+        self.assertEqual(cookie_auth._IMPERSONATION_CLAIM,
+                         impersonation_service.CLAIM_SESSION)

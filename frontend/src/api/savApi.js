@@ -91,6 +91,10 @@ const savApi = {
   // XCTR4 — facture le ticket selon le routage de couverture calculé
   // (garantie / contrat O&M / facturable).
   facturerTicket: (id) => api.post(`/sav/tickets/${id}/facturer/`),
+  // AUD529 — escalade le ticket en réclamation formelle (apps.litiges).
+  // Idempotent côté serveur : un ticket déjà escaladé renvoie son dossier.
+  escaladerTicketEnReclamation: (id, body) =>
+    api.post(`/sav/tickets/${id}/escalader-reclamation/`, body ?? {}),
   // N46 — pièces consommées sur un ticket (le stock peut être décrémenté).
   getTicketPieces: (id) => api.get(`/sav/tickets/${id}/pieces/`),
   addTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces/`, body),

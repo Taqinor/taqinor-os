@@ -40,6 +40,9 @@ from apps.roles.permissions import (  # noqa: F401
     IsInternalWriterOrPortalClientOwner, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+# AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
+# ne jette pas en silence la garde qu'une ``@action`` déclare elle-même.
+from core.permissions import declared_action_permissions
 # PV84 — builder UNIQUE du chemin proposition (nom-client inclus dans l'URL) ;
 # jamais de f'/proposition/{token}' en dur ailleurs dans ce fichier.
 from ..utils.client_links import chemin_proposition  # noqa: F401
@@ -203,7 +206,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             if (getattr(user, 'portee', None) != 'portail_client'
                     or scope is None):
                 return qs.none()
-            return qs.filter(client_id=scope)
+            # AUD143 — même exclusion que le sélecteur portail
+            # (ventes.selectors.devis_du_client_portail) : un devis BROUILLON
+            # n'a jamais été montré au client (fuite de travail en cours). Le
+            # chemin PDF canonique `/proposal` (règle #4) passe par
+            # ``self.get_object()`` -> ``get_queryset()`` et ne contrôlait
+            # jusqu'ici AUCUN statut ; un brouillon devient donc INTROUVABLE
+            # (404) pour TOUTE action portail, jamais 403 (qui confirmerait
+            # son existence).
+            return qs.filter(client_id=scope).exclude(
+                statut=Devis.Statut.BROUILLON)
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
         # devis qu'il a créés / son équipe. 'all' → inchangé.
         qs = scope_queryset(qs, self.request.user, ['created_by'])
@@ -220,6 +232,28 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return DevisSerializer
 
     def get_permissions(self):
+        # AUD403 — la garde DÉCLARÉE par l'@action PRIME. Sans cette première
+        # ligne, ce branchement sur ``self.action`` jetait EN SILENCE le
+        # ``permission_classes=`` du décorateur : ``approuver-etape`` et
+        # ``rejeter-etape`` (NTCPQ8) déclaraient
+        # ``HasPermissionOrLegacy('cpq_approbation_approuver')`` mais étaient
+        # groupées dans WRITE_ACTIONS, dont la branche rend inconditionnellement
+        # ``IsResponsableOrAdmin()`` — un Commercial ordinaire (permissions
+        # d'écriture, mais PAS ``cpq_approbation_approuver``) satisfaisait déjà
+        # ``is_responsable`` et auto-validait sa propre remise. Le second regard
+        # exigé par NTCPQ7/8 était auto-franchissable. Patron d'or du dépôt
+        # (``ventes/paiement.py``, ``core/permissions.declared_action_permissions``).
+        #
+        # Écart mesuré avant la bascule (55 @action portant un
+        # ``permission_classes=`` comparées une à une à leur branche) : SEULES
+        # trois divergeaient — les deux ci-dessus, plus ``composition`` (dry-run
+        # de ``auto``) qui déclarait ``IsResponsableOrAdmin`` mais tombait sur le
+        # repli ``IsAdminRole`` faute d'être listée : honorer sa déclaration la
+        # réaligne sur son jumeau ``auto``, qui CRÉE là où elle ne crée rien.
+        # Les 52 autres déclarent la MÊME classe que leur branche : no-op.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         if self.action in READ_ACTIONS + [
             'historique', 'variante_config', 'superior_contact_status',
             # WIR96/WIR99 — deux LECTURES pures ouvertes à tout rôle (le

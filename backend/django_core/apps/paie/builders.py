@@ -20,6 +20,7 @@ PyMuPDF) est HORS PÉRIMÈTRE : elle n'importe pas WeasyPrint directement, elle
 réutilise ``render_bulletin_pdf`` (déjà migré) puis fusionne les pages via
 ``fitz``.
 """
+import hashlib
 from datetime import date
 from decimal import Decimal
 from html import escape
@@ -68,35 +69,140 @@ def _libelle_periode(periode):
 
 # ── PAIE34 — Bulletin de paie PDF ──────────────────────────────────────────
 
-_LIGNE_TPL = (
-    '<tr><td>{code}</td><td>{libelle}</td>'
-    '<td style="text-align:right">{montant}</td></tr>'
+# AUD701 — le corps du bulletin porte désormais le TYPE et le SIGNE de chaque
+# ligne : sans eux, une retenue (stockée en positif) s'imprimait exactement
+# comme un gain. (L'ancien ``_LIGNE_TPL`` à trois colonnes, sans type ni
+# signe, n'a plus d'appelant depuis que le reçu STC passe lui aussi par les
+# trois blocs — AUD702.)
+_LIGNE_TPL_DETAIL = (
+    '<tr><td>{code}</td><td>{libelle}</td><td>{type_libelle}</td>'
+    '<td style="text-align:right">{montant_signe}</td></tr>'
 )
+
+# AUD701 — les lignes 100 % PATRONALES. Elles ne diminuent JAMAIS le net du
+# salarié : elles sortent du corps du bulletin et vont dans un encadré
+# « information — non déduit ». La distinction salarial/patronal ne se lit PAS
+# sur ``type`` (ces lignes sont `cotisation`, comme les cotisations salariales
+# CNSS/AMO/CIMR) : elle se lit sur le CODE — c'est le contrat partagé
+# ``apps/paie/contract_samples/bulletin_lignes.json`` qui le dit, et
+# ``services._CODES_PATRONALES_ITEMISEES`` porte la même liste côté moteur.
+CODES_PATRONAUX_INFORMATIFS = ('MUTUELLE_PAT', 'ALLOC_FAM', 'FORMATION_PRO')
+
+_TYPE_LIBELLES = {
+    'gain': 'Gain',
+    'retenue': 'Retenue',
+    'cotisation': 'Cotisation',
+}
+
+
+def _ligne_context(ligne):
+    """Une ``LigneBulletin`` → dict d'affichage (échappé, signé, typé)."""
+    type_ligne = ligne.type or 'gain'
+    montant = Decimal(ligne.montant or 0)
+    # Un gain s'imprime tel quel ; une retenue/cotisation s'imprime avec
+    # l'effet de son sens (négatif). Un bulletin d'ANNULATION porte des
+    # montants déjà négatifs : la même règle rend alors la retenue en positif,
+    # ce qui EST l'extourne correcte.
+    signe = montant if type_ligne == 'gain' else -montant
+    return {
+        'code': escape(ligne.code or ''),
+        'libelle': escape(ligne.libelle or ''),
+        'type': type_ligne,
+        'type_libelle': escape(_TYPE_LIBELLES.get(type_ligne, type_ligne)),
+        'montant': _fmt(montant),
+        'montant_signe': _fmt(signe),
+        'montant_brut': montant,
+    }
+
+
+def _date_fr(valeur):
+    """Une date → « 5 juillet 2026 », ou '' si elle n'est pas renseignée."""
+    if not valeur:
+        return ''
+    return f'{valeur.day} {MOIS_FR[valeur.month]} {valeur.year}'
+
+
+def employeur_context(company):
+    """AUD704 — identité de l'employeur, mentions obligatoires du bulletin.
+
+    Ne renvoie QUE les mentions réellement renseignées : une société qui n'a
+    pas encore saisi son ICE n'imprime pas « ICE : » suivi du vide, et rien
+    n'est jamais inventé. ``mentions`` est une liste de couples (libellé,
+    valeur) déjà échappés.
+    """
+    if company is None:
+        return {'nom': '', 'adresse': '', 'mentions': []}
+    champs = (
+        ('RC', 'registre_commerce'),
+        ('IF', 'identifiant_fiscal'),
+        ('ICE', 'ice'),
+        ("N° CNSS employeur", 'numero_cnss_employeur'),
+    )
+    mentions = [
+        (libelle, escape(str(getattr(company, attribut, '') or '')))
+        for libelle, attribut in champs
+        if getattr(company, attribut, '')
+    ]
+    return {
+        'nom': escape(getattr(company, 'nom', '') or ''),
+        'adresse': escape(getattr(company, 'adresse', '') or ''),
+        'mentions': mentions,
+    }
 
 
 def bulletin_context(bulletin):
     """Contexte de rendu d'un bulletin (dict de chaînes prêtes à afficher).
 
     Lecture seule : ne lit que des champs publics du bulletin et de son profil.
+
+    AUD701 — les lignes sont désormais RÉPARTIES en trois blocs (contrat
+    ``apps/paie/contract_samples/bulletin_lignes.json``) : ``gains``,
+    ``retenues`` (salariales — cotisations CNSS/AMO/CIMR, IR, avances,
+    saisies, mutuelle) et ``patronal`` (informatif, jamais déduit du net).
+    ``lignes`` reste la liste complète, inchangée pour ses autres appelants.
     """
     profil = bulletin.profil
     periode = bulletin.periode
-    lignes = [
-        {
-            'code': escape(ligne.code or ''),
-            'libelle': escape(ligne.libelle or ''),
-            'montant': _fmt(ligne.montant),
-        }
-        for ligne in bulletin.lignes.all()
-    ]
+    lignes = [_ligne_context(ligne) for ligne in bulletin.lignes.all()]
+    gains, retenues, patronal = [], [], []
+    for ligne in lignes:
+        if ligne['code'] in CODES_PATRONAUX_INFORMATIFS:
+            patronal.append(ligne)
+        elif ligne['type'] == 'gain':
+            gains.append(ligne)
+        else:
+            retenues.append(ligne)
+    # Sous-total DÉRIVÉ des lignes réellement imprimées — jamais un montant
+    # reconstruit à côté (règle « zéro chiffre inventé »).
+    total_retenues = sum(
+        (ligne['montant_brut'] for ligne in retenues), Decimal('0'))
+    total_patronal = sum(
+        (ligne['montant_brut'] for ligne in patronal), Decimal('0'))
     return {
         'employe': escape(_nom_employe(profil)),
         'matricule': escape(
             getattr(getattr(profil, 'employe', None), 'matricule', '') or ''),
         'numero_cnss': escape(profil.numero_cnss or ''),
         'periode': escape(_libelle_periode(periode)),
+        # AUD704 — mentions obligatoires absentes jusqu'ici : identité de
+        # l'employeur, date de paiement et jours/heures payés. Les deux
+        # dernières EXISTAIENT déjà en base et n'étaient simplement jamais
+        # imprimées.
+        'employeur': employeur_context(getattr(bulletin, 'company', None)),
+        'date_paiement': escape(
+            _date_fr(getattr(periode, 'date_paiement', None))),
+        'jours_travail': getattr(profil, 'jours_travail_mensuel', '') or '',
+        'heures_travail': getattr(profil, 'heures_travail_mensuel', '') or '',
         'lignes': lignes,
+        'gains': gains,
+        'retenues': retenues,
+        'patronal': patronal,
+        'total_retenues': _fmt(total_retenues),
+        'total_patronal': _fmt(total_patronal),
         'brut': _fmt(bulletin.brut),
+        'brut_imposable': _fmt(bulletin.brut_imposable),
+        'frais_professionnels': _fmt(bulletin.frais_professionnels),
+        'net_imposable': _fmt(bulletin.net_imposable),
         'cnss': _fmt(bulletin.cnss_salariale),
         'amo': _fmt(bulletin.amo_salariale),
         'cimr': _fmt(bulletin.cimr_salariale),
@@ -105,35 +211,230 @@ def bulletin_context(bulletin):
     }
 
 
+_BULLETIN_STYLE = """
+  body { font-family: sans-serif; font-size: 11px; color: #222; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 13px; margin: 14px 0 2px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  th, td { border: 1px solid #ccc; padding: 4px 6px; }
+  .total { font-weight: bold; font-size: 13px; }
+  .sous-total td { font-weight: bold; background: #f4f4f4; }
+  .chaine td { padding: 3px 6px; }
+  .chaine .net { font-weight: bold; font-size: 13px; }
+  .patronal { margin-top: 14px; border: 1px dashed #999; padding: 6px 8px; }
+  .patronal p { margin: 0 0 4px; font-style: italic; }
+  .employeur { border: 1px solid #ccc; padding: 6px 8px; margin-bottom: 8px; }
+"""
+
+
+def _mention_html(libelle, valeur):
+    """« &nbsp; <strong>Libellé :</strong> valeur » — vide si non renseigné."""
+    if valeur in (None, ''):
+        return ''
+    return (f'&nbsp; <strong>{escape(libelle)} :</strong> '
+            f'{escape(str(valeur))}')
+
+
+def _entete_employeur_html(employeur):
+    """En-tête employeur du bulletin (AUD704) — n'imprime que le renseigné."""
+    if not employeur or not (employeur['nom'] or employeur['adresse']
+                             or employeur['mentions']):
+        return ''
+    lignes = []
+    if employeur['nom']:
+        lignes.append(f"<strong>{employeur['nom']}</strong>")
+    if employeur['adresse']:
+        lignes.append(employeur['adresse'].replace('\n', '<br>'))
+    if employeur['mentions']:
+        lignes.append(' &nbsp; '.join(
+            f'<strong>{libelle} :</strong> {valeur}'
+            for libelle, valeur in employeur['mentions']))
+    return f"<div class=\"employeur\">{'<br>'.join(lignes)}</div>"
+
+
+def _bloc_lignes_html(titre, lignes, *, sous_total=None,
+                      libelle_sous_total=None):
+    """Un bloc « titre + tableau typé/signé (+ sous-total) » du bulletin."""
+    if not lignes:
+        return ''
+    corps = ''.join(_LIGNE_TPL_DETAIL.format(**ligne) for ligne in lignes)
+    if sous_total is not None:
+        corps += (
+            f'<tr class="sous-total"><td></td>'
+            f'<td>{escape(libelle_sous_total or "Sous-total")}</td><td></td>'
+            f'<td style="text-align:right">{sous_total}</td></tr>')
+    return (
+        f'<h2>{escape(titre)}</h2>'
+        '<table><thead><tr><th>Code</th><th>Libellé</th><th>Type</th>'
+        '<th>Montant (MAD)</th></tr></thead>'
+        f'<tbody>{corps}</tbody></table>')
+
+
 def render_bulletin_html(bulletin):
-    """Construit le HTML du bulletin de paie (PAIE34)."""
+    """Construit le HTML du bulletin de paie (PAIE34, refondu AUD701).
+
+    Trois blocs — Gains / Retenues salariales (détail + sous-total) /
+    information patronale non déduite — puis la chaîne explicite
+    Brut → Total des retenues → Net imposable → IR → Net à payer.
+    """
     ctx = bulletin_context(bulletin)
-    lignes_html = ''.join(
-        _LIGNE_TPL.format(**ligne) for ligne in ctx['lignes'])
+    gains_html = _bloc_lignes_html('Gains', ctx['gains'])
+    retenues_html = _bloc_lignes_html(
+        'Retenues salariales', ctx['retenues'],
+        sous_total=f"-{ctx['total_retenues']}",
+        libelle_sous_total='Total des retenues salariales')
+    patronal_html = ''
+    if ctx['patronal']:
+        corps = ''.join(
+            f"<tr><td>{ligne['code']}</td><td>{ligne['libelle']}</td>"
+            f"<td style=\"text-align:right\">{ligne['montant']}</td></tr>"
+            for ligne in ctx['patronal'])
+        patronal_html = (
+            '<div class="patronal">'
+            '<p>Charges patronales — information, NON déduites de votre net '
+            'à payer.</p>'
+            '<table><thead><tr><th>Code</th><th>Libellé</th>'
+            '<th>Montant (MAD)</th></tr></thead>'
+            f'<tbody>{corps}</tbody></table>'
+            f"<p>Total charges patronales : {ctx['total_patronal']} MAD</p>"
+            '</div>')
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
-<style>
-  body {{ font-family: sans-serif; font-size: 11px; color: #222; }}
-  h1 {{ font-size: 18px; }}
-  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
-  th, td {{ border: 1px solid #ccc; padding: 4px 6px; }}
-  .total {{ font-weight: bold; font-size: 13px; }}
-</style></head><body>
+<style>{_BULLETIN_STYLE}</style></head><body>
   <h1>Bulletin de paie</h1>
+  {_entete_employeur_html(ctx['employeur'])}
   <p><strong>Salarié :</strong> {ctx['employe']}
      &nbsp; <strong>Matricule :</strong> {ctx['matricule']}
      &nbsp; <strong>N° CNSS :</strong> {ctx['numero_cnss']}</p>
-  <p><strong>Période :</strong> {ctx['periode']}</p>
-  <table>
-    <thead><tr><th>Code</th><th>Libellé</th><th>Montant (MAD)</th></tr></thead>
-    <tbody>{lignes_html}</tbody>
+  <p><strong>Période :</strong> {ctx['periode']}
+     {_mention_html('Date de paiement', ctx['date_paiement'])}
+     {_mention_html('Jours payés', ctx['jours_travail'])}
+     {_mention_html('Heures payées', ctx['heures_travail'])}</p>
+  {gains_html}
+  {retenues_html}
+  <h2>Récapitulatif</h2>
+  <table class="chaine">
+    <tr><td>Brut</td>
+        <td style="text-align:right">{ctx['brut']}</td></tr>
+    <tr><td>Brut imposable</td>
+        <td style="text-align:right">{ctx['brut_imposable']}</td></tr>
+    <tr><td>Total des retenues salariales</td>
+        <td style="text-align:right">-{ctx['total_retenues']}</td></tr>
+    <tr><td>Frais professionnels</td>
+        <td style="text-align:right">{ctx['frais_professionnels']}</td></tr>
+    <tr><td>Net imposable</td>
+        <td style="text-align:right">{ctx['net_imposable']}</td></tr>
+    <tr><td>Impôt sur le revenu (IR)</td>
+        <td style="text-align:right">-{ctx['ir']}</td></tr>
+    <tr class="net"><td>Net à payer</td>
+        <td style="text-align:right">{ctx['net_a_payer']} MAD</td></tr>
   </table>
   <p class="total">Net à payer : {ctx['net_a_payer']} MAD</p>
+  {patronal_html}
 </body></html>"""
 
 
 def render_bulletin_pdf(bulletin):
     """Bulletin de paie → octets PDF (PAIE34)."""
     return _html_to_pdf(render_bulletin_html(bulletin))
+
+
+# ── AUD703 — Archive immuable du bulletin validé (doctrine D9) ─────────────
+
+class ArchiveBulletinIndisponible(RuntimeError):
+    """L'archive d'un bulletin VALIDÉ existe mais ne peut pas être servie.
+
+    On préfère un échec explicite à un re-rendu : re-rendre servirait un
+    document POTENTIELLEMENT DIFFÉRENT de celui qui a été remis au salarié —
+    exactement le défaut que l'archive ferme.
+    """
+
+
+def cle_archive_bulletin(bulletin):
+    """Clé de l'objet archivé, préfixée par la SOCIÉTÉ (multi-tenant)."""
+    periode = bulletin.periode
+    return (f'paie/{bulletin.company_id}/bulletins/'
+            f'{periode.annee}/{periode.mois:02d}/{bulletin.id}.pdf')
+
+
+def _archive_put(cle, pdf_bytes):
+    """Téléverse l'archive dans MinIO. Isolé pour être remplaçable en test."""
+    from django.conf import settings
+
+    from core.pdf import _upload_pdf
+
+    return _upload_pdf(pdf_bytes, cle,
+                       getattr(settings, 'MINIO_BUCKET_PDF', 'erp-pdf'))
+
+
+def _archive_get(cle):
+    """Relit l'archive depuis MinIO. Isolé pour être remplaçable en test."""
+    from django.conf import settings
+
+    from core.pdf import _minio_client
+
+    bucket = getattr(settings, 'MINIO_BUCKET_PDF', 'erp-pdf')
+    return _minio_client().get_object(Bucket=bucket, Key=cle)['Body'].read()
+
+
+def archiver_bulletin_pdf(bulletin, *, pdf_bytes=None):
+    """Rend (si besoin), archive et EMPREINTE le PDF d'un bulletin (AUD703).
+
+    Écrit ``pdf_archive_cle`` / ``pdf_sha256`` / ``pdf_archive_le`` sur le
+    bulletin — champs autorisés après validation (cf.
+    ``BulletinPaie._CHAMPS_AUTORISES_APRES_VALIDATION``). L'empreinte est
+    posée MÊME si le téléversement échoue (l'entrepôt peut être indisponible) :
+    on garde alors la preuve de ce qui a été rendu, sans prétendre à une
+    archive. Renvoie les octets du PDF. N'archive jamais deux fois : un
+    bulletin qui porte déjà une clé est rendu tel quel depuis son archive.
+    """
+    from django.utils import timezone
+
+    if pdf_bytes is None:
+        pdf_bytes = render_bulletin_pdf(bulletin)
+    empreinte = hashlib.sha256(pdf_bytes).hexdigest()
+    cle = cle_archive_bulletin(bulletin)
+    champs = ['pdf_sha256', 'pdf_archive_le']
+    try:
+        _archive_put(cle, pdf_bytes)
+    except Exception:
+        # Entrepôt indisponible : on n'invente pas une archive qui n'existe
+        # pas. La clé reste vide → le prochain appel réessaiera d'archiver.
+        cle = ''
+    else:
+        bulletin.pdf_archive_cle = cle
+        champs.append('pdf_archive_cle')
+    bulletin.pdf_sha256 = empreinte
+    bulletin.pdf_archive_le = timezone.now()
+    if bulletin.pk:
+        bulletin.save(update_fields=champs)
+    return pdf_bytes
+
+
+def bulletin_pdf_a_servir(bulletin):
+    """Les octets à SERVIR pour ce bulletin (AUD703) — jamais un re-rendu.
+
+    * bulletin en BROUILLON → rendu à la volée (rien n'a encore été remis) ;
+    * bulletin VALIDÉ déjà archivé → l'objet archivé, à l'octet près ;
+    * bulletin VALIDÉ pas encore archivé (validé avant AUD703, ou entrepôt
+      indisponible ce jour-là) → rendu MAINTENANT puis archivé, et ce sont ces
+      octets-là qui font foi ensuite.
+
+    Lève ``ArchiveBulletinIndisponible`` si une archive EXISTE mais est
+    illisible : mieux vaut un échec explicite qu'un document divergent.
+    """
+    from .models import BulletinPaie
+
+    if getattr(bulletin, 'statut', None) != BulletinPaie.STATUT_VALIDE:
+        return render_bulletin_pdf(bulletin)
+    if bulletin.pdf_archive_cle:
+        try:
+            return _archive_get(bulletin.pdf_archive_cle)
+        except Exception as exc:
+            raise ArchiveBulletinIndisponible(
+                "Archive du bulletin indisponible : le document remis au "
+                "salarié ne peut pas être resservi pour l'instant."
+            ) from exc
+    return archiver_bulletin_pdf(bulletin)
 
 
 # ── PAIE34 — Attestations (salaire / travail / domiciliation) ──────────────
@@ -252,57 +553,133 @@ def render_attestation_pdf(attestation_type, profil, *, bulletin=None,
 
 # ── XPAI1 — Reçu pour solde de tout compte (STC) ────────────────────────────
 
-def render_stc_html(bulletin, *, today=None):
+def stc_est_definitif(bulletin):
+    """AUD702 — un reçu STC n'est DÉFINITIF que sur un bulletin VALIDÉ.
+
+    Tant que le bulletin est en brouillon, ``generer_bulletin_stc`` supprime et
+    recrée toutes ses lignes à chaque appel : le montant d'un reçu signé
+    aujourd'hui peut ne plus correspondre à rien en base demain. Un reçu servi
+    depuis un brouillon est donc un PROJET — sans clause de quittance ni bloc
+    de signature.
+    """
+    from .models import BulletinPaie
+
+    return getattr(bulletin, 'statut', None) == BulletinPaie.STATUT_VALIDE
+
+
+# AUD702 — mentions protectrices du reçu pour solde de tout compte. Le délai
+# de forclusion de SOIXANTE JOURS, la remise en DEUX EXEMPLAIRES et le
+# récapitulatif détaillé des sommes sont les trois mentions dont l'ABSENCE
+# était prouvée par lecture du gabarit. La FORMULATION exacte reste à
+# contre-valider par le conseil juridique — aucun article de loi n'est cité
+# ici, et aucun délai autre que celui posé par la tâche n'est inventé.
+_STC_MENTIONS_LEGALES = (
+    '<div class="mentions">'
+    '<p><strong>Mentions</strong></p>'
+    '<ul>'
+    '<li>Le présent reçu peut être dénoncé par le salarié dans un délai de '
+    '<strong>soixante (60) jours</strong> à compter de sa signature.</li>'
+    '<li>Il est établi en <strong>deux exemplaires</strong>, dont un remis au '
+    'salarié.</li>'
+    '<li>Le détail des sommes composant le total ci-dessus figure dans les '
+    'tableaux Gains et Retenues salariales de ce document.</li>'
+    '</ul></div>'
+)
+
+
+def render_stc_html(bulletin, *, today=None, definitif=None):
     """Construit le HTML du reçu pour solde de tout compte (XPAI1).
 
     Reprend le contexte du bulletin (``bulletin_context``) et affiche en plus
     les lignes d'indemnités de fin de contrat déjà matérialisées sur le
     bulletin STC (préfixe ``STC_`` des codes de ligne).
+
+    AUD702 — le détail est rendu en TROIS BLOCS (Gains / Retenues salariales
+    avec sous-total / charges patronales informatives), comme le bulletin
+    (AUD701) : le reçu n'affichait auparavant aucune cotisation salariale.
+    ``definitif`` (déduit du statut du bulletin par défaut) commande la clause
+    de quittance et les signatures : un bulletin NON validé produit un PROJET
+    filigrané, sans quittance ni bloc de signature.
     """
     if today is None:
         today = date.today()
+    if definitif is None:
+        definitif = stc_est_definitif(bulletin)
     ctx = bulletin_context(bulletin)
-    lignes_html = ''.join(
-        _LIGNE_TPL.format(**ligne) for ligne in ctx['lignes'])
+    gains_html = _bloc_lignes_html('Gains', ctx['gains'])
+    retenues_html = _bloc_lignes_html(
+        'Retenues salariales', ctx['retenues'],
+        sous_total=f"-{ctx['total_retenues']}",
+        libelle_sous_total='Total des retenues salariales')
+    patronal_html = _bloc_lignes_html(
+        'Charges patronales — information, NON déduites du net',
+        ctx['patronal'])
     date_txt = f'{today.day} {MOIS_FR[today.month]} {today.year}'
     motif = escape(getattr(bulletin, 'motif', '') or '')
+    if definitif:
+        filigrane = ''
+        cloture = f"""
+  <p>Je soussigné(e) {ctx['employe']}, reconnais avoir reçu de mon employeur la
+  somme ci-dessus au titre du solde de tout compte, et lui donne quittance,
+  sans réserve ni restriction, pour raison de salaire, indemnités et
+  accessoires de toute nature.</p>
+  {_STC_MENTIONS_LEGALES}
+  <div class="signature">
+    <span>Signature de l'employeur</span>
+    <span>Signature du salarié (précédée de la mention « pour solde de tout
+    compte »)</span>
+  </div>"""
+    else:
+        filigrane = (
+            '<div class="filigrane">PROJET</div>'
+            '<p class="bandeau">PROJET — sans valeur juridique. Ce document '
+            'est établi depuis un bulletin non validé : ses montants peuvent '
+            'encore changer. Il ne donne aucune quittance et ne doit pas être '
+            'signé.</p>')
+        cloture = (
+            '<p class="bandeau">Le reçu DÉFINITIF, portant la clause de '
+            'quittance, les mentions protectrices et les signatures, ne sera '
+            'délivré qu\'après validation du bulletin de solde de tout '
+            'compte.</p>')
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <style>
   body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
   h1 {{ font-size: 18px; text-align: center; }}
-  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+  h2 {{ font-size: 13px; margin: 14px 0 2px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 4px; }}
   th, td {{ border: 1px solid #ccc; padding: 4px 6px; }}
+  .sous-total td {{ font-weight: bold; background: #f4f4f4; }}
   .total {{ font-weight: bold; font-size: 13px; margin-top: 10px; }}
   .date {{ text-align: right; margin-top: 40px; }}
   .signature {{ margin-top: 60px; display: flex; justify-content: space-between; }}
+  .mentions {{ margin-top: 14px; border: 1px solid #999; padding: 6px 8px; }}
+  .mentions ul {{ margin: 4px 0 0 16px; padding: 0; }}
+  .bandeau {{ border: 2px solid #b00; color: #b00; font-weight: bold;
+             padding: 6px 8px; text-align: center; }}
+  .filigrane {{ position: fixed; top: 40%; left: 0; width: 100%;
+               text-align: center; font-size: 72px; font-weight: bold;
+               color: #b00; opacity: 0.12; transform: rotate(-25deg); }}
 </style></head><body>
-  <h1>Reçu pour solde de tout compte</h1>
+  {filigrane}
+  <h1>Reçu pour solde de tout compte{'' if definitif else ' — PROJET'}</h1>
   <p><strong>Salarié :</strong> {ctx['employe']}
      &nbsp; <strong>Matricule :</strong> {ctx['matricule']}
      &nbsp; <strong>N° CNSS :</strong> {ctx['numero_cnss']}</p>
   <p><strong>Période de sortie :</strong> {ctx['periode']}</p>
   {f'<p><strong>Motif :</strong> {motif}</p>' if motif else ''}
-  <table>
-    <thead><tr><th>Code</th><th>Libellé</th><th>Montant (MAD)</th></tr></thead>
-    <tbody>{lignes_html}</tbody>
-  </table>
+  {gains_html}
+  {retenues_html}
+  {patronal_html}
   <p class="total">Net à payer (solde de tout compte) : {ctx['net_a_payer']} MAD</p>
-  <p>Je soussigné(e) {ctx['employe']}, reconnais avoir reçu de mon employeur la
-  somme ci-dessus au titre du solde de tout compte, et lui donne quittance,
-  sans réserve ni restriction, pour raison de salaire, indemnités et
-  accessoires de toute nature.</p>
-  <div class="signature">
-    <span>Signature de l'employeur</span>
-    <span>Signature du salarié (précédée de la mention « pour solde de tout
-    compte »)</span>
-  </div>
+  {cloture}
   <p class="date">Fait le {escape(date_txt)}.</p>
 </body></html>"""
 
 
-def render_stc_pdf(bulletin, *, today=None):
+def render_stc_pdf(bulletin, *, today=None, definitif=None):
     """Reçu pour solde de tout compte → octets PDF (XPAI1)."""
-    return _html_to_pdf(render_stc_html(bulletin, today=today))
+    return _html_to_pdf(
+        render_stc_html(bulletin, today=today, definitif=definitif))
 
 
 # ── XPAI26 — Registres d'inspection du travail ─────────────────────────────

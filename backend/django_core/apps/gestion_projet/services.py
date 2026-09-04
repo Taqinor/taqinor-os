@@ -241,8 +241,17 @@ def facturer_temps_projet(projet, *, debut, fin, user):
     la même transaction) — un RE-RUN sur la même période ne re-sélectionne donc
     RIEN (idempotent, 0 ligne re-facturée). Renvoie un dict
     ``{facture, montant_ht, nb_lignes, groupes}``.
+
+    AUD179 — un projet ANNULÉ n'est plus facturable : la fonction lisait
+    company/projet/statut de timesheet/dates mais JAMAIS ``projet.statut``, si
+    bien qu'un chantier abandonné consommait une référence FAC réelle et
+    marquait ses timesheets ``facture_id`` de façon irréversible.
     """
     from .models import Timesheet
+
+    if projet.statut == Projet.Statut.ANNULE:
+        raise FacturationRegieError(
+            "Projet annulé — facturation impossible.")
 
     qs = Timesheet.objects.filter(
         company=projet.company, projet=projet,
@@ -843,6 +852,13 @@ def ajouter_ligne_situation(situation, *, libelle, montant_marche_ht,
     ou n°1) ; ``montant_periode`` = cumulé − antérieur. Une ``SituationTravaux``
     déjà VALIDÉE/FACTURÉE ne peut plus recevoir de nouvelle ligne (lève
     ``SituationTravauxError``).
+
+    AUD178 — le « remplace » de cette docstring est désormais RÉEL : un second
+    appel sur le MÊME libellé MET À JOUR la ligne existante (``update_or_create``)
+    au lieu d'en créer une seconde que ``valider_situation`` facturerait deux
+    fois ; l'invariant est verrouillé en base par
+    ``UniqueConstraint(situation, libelle)`` (migration 0044), donc infranchissable
+    même via ``LigneSituationViewSet``.
     """
     from .models import LigneSituation, SituationTravaux
 
@@ -859,16 +875,19 @@ def ajouter_ligne_situation(situation, *, libelle, montant_marche_ht,
         situation, libelle)
     montant_periode = montant_cumule - montant_cumule_anterieur
 
-    return LigneSituation.objects.create(
-        company=situation.company,
+    ligne, _cree = LigneSituation.objects.update_or_create(
         situation=situation,
         libelle=libelle,
-        montant_marche_ht=montant_marche_ht,
-        avancement_cumule_pct=avancement_cumule_pct,
-        montant_cumule_anterieur=montant_cumule_anterieur,
-        montant_periode=montant_periode,
-        montant_cumule=montant_cumule,
+        defaults={
+            'company': situation.company,
+            'montant_marche_ht': montant_marche_ht,
+            'avancement_cumule_pct': avancement_cumule_pct,
+            'montant_cumule_anterieur': montant_cumule_anterieur,
+            'montant_periode': montant_periode,
+            'montant_cumule': montant_cumule,
+        },
     )
+    return ligne
 
 
 @transaction.atomic
@@ -884,10 +903,19 @@ def valider_situation(situation, *, user):
     cross-app, import fonction-local). L'écriture de la ``Facture`` passe
     EXCLUSIVEMENT par ``ventes.services.creer_facture_acompte_situation``.
     Renvoie la ``SituationTravaux`` mise à jour.
+
+    AUD179 — un projet ANNULÉ n'est plus facturable : la fonction ne vérifiait
+    que ``situation.statut``, jamais ``situation.projet.statut``, si bien qu'un
+    chantier abandonné consommait une référence FAC réelle et basculait la
+    situation en FACTUREE.
     """
     from django.utils import timezone
 
     from .models import SituationTravaux
+
+    if situation.projet.statut == Projet.Statut.ANNULE:
+        raise SituationTravauxError(
+            "Projet annulé — facturation impossible.")
 
     if situation.statut != SituationTravaux.Statut.BROUILLON:
         raise SituationTravauxError(

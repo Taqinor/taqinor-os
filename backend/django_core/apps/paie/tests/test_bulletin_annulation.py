@@ -93,6 +93,31 @@ class BulletinAnnulationServiceTests(TestCase):
             self.origine.brut = Decimal('1')
             self.origine.save(update_fields=['brut'])
 
+    def test_personnes_a_charge_reportees_sans_negation(self):
+        """AUD707 — un salarié avec charge de famille peut être extourné.
+
+        ``personnes_a_charge`` est un ``PositiveSmallIntegerField`` (CHECK
+        >= 0) : le néguer avec les autres ``SNAPSHOT_FIELDS`` levait une
+        ``IntegrityError`` et bloquait le SEUL mécanisme de correction d'un
+        bulletin validé pour tout salarié ayant des personnes à charge.
+        """
+        dossier = DossierEmploye.objects.create(
+            company=self.co, matricule='AN-PAC', nom='Test', prenom='Charge')
+        profil = ProfilPaie.objects.create(
+            company=self.co, employe=dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=Decimal('10000'), affilie_cnss=True, affilie_amo=True)
+        origine = generer_bulletin(profil, self.periode, personnes_a_charge=2)
+        valider_bulletin(origine)
+        self.assertEqual(origine.personnes_a_charge, 2)
+
+        annulation = creer_bulletin_annulation(origine, self.periode_suivante)
+        # Reporté à l'identique (jamais -2), et les montants restent opposés.
+        self.assertEqual(annulation.personnes_a_charge, 2)
+        self.assertEqual(annulation.net_a_payer, -origine.net_a_payer)
+        annulation.refresh_from_db()
+        self.assertEqual(annulation.personnes_a_charge, 2)
+
 
 def make_user(company, username, role='responsable'):
     return User.objects.create_user(

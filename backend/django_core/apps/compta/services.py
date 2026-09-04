@@ -1598,14 +1598,19 @@ def generer_ecritures_recurrentes(company, *, jusqua=None, user=None):
 @transaction.atomic
 def creer_ecriture_od(company, date_ecriture, libelle, lignes, *,
                       journal=None, reference='', created_by=None,
-                      statut=None):
-    """Écriture de régularisation manuelle (OD) sans document source.
+                      statut=None, source_type='', source_id=None):
+    """Écriture de régularisation manuelle (OD), avec source optionnelle.
 
-    Pour provisions, amortissements, corrections… : pas de ``source_type``/
-    ``source_id`` (écriture purement manuelle). Passe par le journal OD par
+    Pour provisions, amortissements, corrections… Passe par le journal OD par
     défaut, exige l'équilibre Σ débit = Σ crédit (via ``creer_ecriture``) et est
     refusée si la période de ``date_ecriture`` est verrouillée (garde-fou du
     modèle, FG115). Sème le journal OD au besoin. Renvoie l'écriture.
+
+    AUD708 — ``source_type``/``source_id`` sont facultatifs (défaut : écriture
+    purement manuelle, comportement historique inchangé). Quand un appelant
+    les fournit, la contrainte DB ``uniq_ecriture_par_source`` s'applique et
+    ferme l'idempotence du postage (un même run de paie / règlement ne peut
+    plus produire deux écritures).
     """
     if journal is None:
         journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
@@ -1619,6 +1624,7 @@ def creer_ecriture_od(company, date_ecriture, libelle, lignes, *,
     return creer_ecriture(
         company, journal, date_ecriture, libelle, lignes,
         reference=reference, created_by=created_by,
+        source_type=source_type, source_id=source_id,
         statut=statut or EcritureComptable.Statut.VALIDEE,
     )
 
@@ -9914,9 +9920,18 @@ def rapprocher_paiement_facture(paiement, *, reference=None):
     """Marque un paiement de facture portail comme payé (FG230), idempotent.
 
     Sert le rapprochement auto (webhook CMI) ET le rapprochement manuel d'un
-    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché. Le
-    report vers un ``Paiement`` comptable reste à la charge de la chaîne ventes
-    via son service (cross-app) ; on ne touche jamais ses modèles ici.
+    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché.
+
+    AUD102 / B14 (03/09/2026) — CE REPORT N'ARRIVAIT JAMAIS. La docstring
+    disait qu'il « reste à la charge de la chaîne ventes » : le grep n'a
+    trouvé AUCUN appelant qui le fasse. L'argent réellement encaissé au
+    portail (``portail.views_client``) n'entrait donc dans le
+    ``montant_paye`` d'AUCUNE facture, et l'ERP relançait un client déjà
+    réglé. Le report est désormais fait ICI, par le service ventes
+    ``enregistrer_paiement_portail`` (cross-app par ``apps.ventes.services``,
+    jamais un import de ses modèles) : il est idempotent sur la référence de
+    transaction, borne le montant au reste dû et solde la facture par le
+    service unique AUD102.
     """
     if paiement.statut != PaiementFacturePortail.Statut.INITIE:
         return paiement
@@ -9925,6 +9940,21 @@ def rapprocher_paiement_facture(paiement, *, reference=None):
     paiement.statut = PaiementFacturePortail.Statut.PAYE
     paiement.paye_le = timezone.now()
     paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+
+    if paiement.facture_id:
+        from apps.ventes.services import (
+            enregistrer_paiement_portail, get_facture_or_none,
+        )
+        facture = get_facture_or_none(
+            company=paiement.company, facture_id=paiement.facture_id)
+        if facture is not None:
+            enregistrer_paiement_portail(
+                facture=facture, montant=paiement.montant,
+                reference=paiement.reference,
+                mode=('carte'
+                      if paiement.methode == PaiementFacturePortail.Methode.CARTE
+                      else 'virement'),
+                company=paiement.company)
     return paiement
 
 

@@ -107,13 +107,38 @@ def changer_statut(contrat, statut_cible, *, persister=True, user=None):  # noqa
     comportement inchangé) puis émet le déclencheur automation générique sur un
     changement RÉELLEMENT persisté. Tous les appelants du service (vue
     ``changer-statut``, ``activer_si_eligible``, ``signer_contrat``) émettent
-    donc sans modification. ``user`` (optionnel) est journalisé sur les runs."""
+    donc sans modification. ``user`` (optionnel) est journalisé sur les runs.
+
+    AUD182 — la sortie SUSPENDU→ACTIF DÉGÈLE les échéanciers que la suspension
+    pour impayé avait gelés (marque ``gele_par_suspension``), et EUX SEULS : un
+    échéancier que l'utilisateur avait lui-même désactivé avant la suspension
+    n'est jamais rallumé à son insu."""
     ancien = contrat.statut
     _changer_statut_machine(contrat, statut_cible, persister=persister)
     if persister and contrat.statut != ancien:
+        _degeler_echeanciers_si_reactivation(contrat, ancien_statut=ancien)
         emettre_changement_statut_automation(
             contrat, ancien_statut=ancien, user=user)
     return contrat
+
+
+def _degeler_echeanciers_si_reactivation(contrat, *, ancien_statut):
+    """AUD182 — réactivation SYMÉTRIQUE des échéanciers gelés par suspension.
+
+    N'agit QUE sur la transition ``suspendu → actif`` (permise par
+    ``machine_etats``) et ne rallume que les échéanciers portant la marque
+    ``gele_par_suspension`` posée par ``_appliquer_suspension_impaye``.
+    """
+    from .models import Contrat, EcheancierContrat
+
+    if ancien_statut != Contrat.Statut.SUSPENDU:
+        return
+    if contrat.statut != Contrat.Statut.ACTIF:
+        return
+    EcheancierContrat.objects.filter(
+        company=contrat.company, contrat=contrat,
+        gele_par_suspension=True,
+    ).update(facturation_active=True, gele_par_suspension=False)
 
 
 # ---------------------------------------------------------------------------
@@ -2331,8 +2356,26 @@ class FacturationError(Exception):
     """
 
 
+def taux_tva_effectif(company, *porteurs):
+    """AUD181 — LE point unique de résolution du taux de TVA de cette app.
+
+    Renvoie le premier ``taux_tva`` non nul trouvé sur les ``porteurs``
+    (``EcheancierContrat``, ``Contrat``, ``OrdreLocation``… dans cet ordre de
+    priorité), et à défaut le KNOB SOCIÉTÉ ``CompanyProfile.tva_standard``
+    (défaut 20 %) lu via ``ventes.utils.company_settings`` — le MÊME knob que
+    lisent déjà les factures SAV. Plus aucun ``Decimal('20')`` ni
+    ``/ Decimal('1.2')`` littéral ne doit subsister chez les producteurs.
+    """
+    for porteur in porteurs:
+        valeur = getattr(porteur, 'taux_tva', None) if porteur else None
+        if valeur is not None:
+            return Decimal(str(valeur))
+    from apps.ventes.utils.company_settings import tva_standard
+    return tva_standard(company)
+
+
 @transaction.atomic
-def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
+def facturer_ligne_echeance(ligne, *, user=None, taux_tva=None):
     """Émet une Facture récurrente pour une échéance — CONTRAT31.
 
     Crée une ``ventes.Facture`` (statut émise) à partir d'une ``LigneEcheance``
@@ -2348,6 +2391,11 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
     importer une ``view`` d'une autre app. Le ``montant`` de la ligne est traité
     comme TTC (cohérent avec l'ERP 100 % TTC) et ventilé HT/TVA au ``taux_tva``.
 
+    AUD181 — ``taux_tva=None`` (et non plus ``Decimal('20')`` figé) résout le
+    taux via ``taux_tva_effectif`` : échéancier, puis contrat, puis knob société
+    ``CompanyProfile.tva_standard``. Un taux explicite passé par l'appelant
+    reste prioritaire.
+
     GARDES (toutes lèvent ``FacturationError`` sans rien écrire — atomicité) :
 
     - l'échéancier doit avoir ``facturation_active=True`` ;
@@ -2359,10 +2407,25 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
     Le ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts —
     CONTRAT12) ; aucun funnel ``STAGES.py`` (rule #2). La société est celle de la
     ligne (posée côté serveur). Renvoie la Facture créée.
+
+    AUD183 — CLÉ D'IDEMPOTENCE : la ligne est RECHARGÉE sous
+    ``select_for_update()`` à l'intérieur du ``@transaction.atomic`` AVANT la
+    garde « déjà facturée ». Sans ce verrou, la garde portait sur l'objet
+    DÉJÀ CHARGÉ EN MÉMOIRE par le beat (queryset itéré sans verrou), donc deux
+    appels concurrents (double worker Celery, retry après timeout apparent, ou
+    ``rejouer_cycle`` lancé pendant un passage du beat) franchissaient tous
+    deux la garde avant que le premier n'ait posé ``facture_id`` — deux
+    Factures distinctes pour la même échéance. Le second garde-fou
+    (``enregistrer_cycle``) ne détecte le doublon qu'APRÈS création de la
+    Facture, trop tard.
     """
     from decimal import ROUND_HALF_UP
 
     from .models import LigneEcheance
+
+    # Verrou de ligne : la garde d'idempotence teste désormais l'état PERSISTÉ,
+    # pas un instantané mémoire.
+    ligne = LigneEcheance.objects.select_for_update().get(pk=ligne.pk)
 
     echeancier = ligne.echeancier
     if not echeancier.facturation_active:
@@ -2402,7 +2465,8 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
     if montant_addons:
         montant_ttc += montant_addons
 
-    tva_pct = Decimal(str(taux_tva))
+    tva_pct = (Decimal(str(taux_tva)) if taux_tva is not None
+               else taux_tva_effectif(echeancier.company, echeancier, contrat))
     montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     montant_tva = (montant_ttc - montant_ht).quantize(
@@ -2455,6 +2519,18 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
         )
 
     facture = create_with_reference(Facture, 'FAC', echeancier.company, _create)
+
+    # AUD184 — la facture porte UNE ligne (libellé de l'échéance) : sans elle,
+    # elle était header-only et donc INVISIBLE de tout consommateur qui itère
+    # `facture.lignes`, au premier rang `ventes.exports.export_journal_ventes`
+    # qui l'OMETTAIT et sous-déclarait le CA. `quantite=1` × `montant_ht` =>
+    # total TTC STRICTEMENT identique, aucune double-comptabilisation.
+    # Frontière cross-app : fonction FINE sanctionnée de `ventes.services`,
+    # jamais un import de `ventes.models`/`stock.models` ici.
+    from apps.ventes.services import ajouter_ligne_echeance_contrat
+    ajouter_ligne_echeance_contrat(
+        facture, designation=libelle, montant_ht=montant_ht,
+        taux_tva=tva_pct)
 
     # Lien LÂCHE retour (id seul) + garde d'idempotence.
     ligne.facture_id = facture.id
@@ -2741,7 +2817,7 @@ def attacher_facture_au_cycle(cycle, *, facture_id, motif=None):
 
 
 def facturer_ligne_echeance_journalisee(ligne, *, user=None,
-                                        taux_tva=Decimal('20'),
+                                        taux_tva=None,
                                         periode=None):
     """Facture une échéance (CONTRAT31) ET journalise le résultat — XCTR5.
 
@@ -2753,6 +2829,10 @@ def facturer_ligne_echeance_journalisee(ligne, *, user=None,
     ``periode`` par défaut = ``date_echeance`` ISO de la ligne (une échéance
     datée EST sa propre période). Renvoie la ``Facture`` créée (comme
     ``facturer_ligne_echeance``).
+
+    AUD181 — ``taux_tva=None`` est transmis tel quel : c'est
+    ``facturer_ligne_echeance`` qui résout (échéancier → contrat → knob
+    société), jamais un 20 % figé.
     """
     from .models import CycleFacturationLog
 
@@ -2778,7 +2858,7 @@ def facturer_ligne_echeance_journalisee(ligne, *, user=None,
 
 
 @transaction.atomic
-def rejouer_cycle(log, *, user=None, taux_tva=Decimal('20')):
+def rejouer_cycle(log, *, user=None, taux_tva=None):
     """Rejoue UN échec du journal de facturation — XCTR5.
 
     Ne re-tente qu'une entrée ``echec`` (``RejeuError`` sinon). Pour une source
@@ -3447,6 +3527,10 @@ def creer_ordre_location(company, *, client_id, produit, numero_serie='',
         tarif_jour=tarif,
         montant_estime=montant_estime,
         frais_retard_jour=frais_retard,
+        # AUD181 — SNAPSHOT du taux société à la création (comme montant_estime
+        # fige le tarif) : la facturation de l'ordre ne dépend plus d'un 20 %
+        # codé en dur, et une édition ultérieure du knob ne réécrit pas le passé.
+        taux_tva=taux_tva_effectif(company),
         note=note or '',
         created_by=created_by,
     )
@@ -3567,7 +3651,7 @@ def restituer_caution(ordre, *, auteur=None):
 
 @transaction.atomic
 def retenir_caution_partielle(ordre, *, montant_retenu, motif, user=None,
-                              auteur=None, taux_tva=Decimal('20')):
+                              auteur=None, taux_tva=None):
     """Retenue PARTIELLE sur la caution — XCTR18.
 
     GARDE : impossible avant le retour effectif (même garde que
@@ -3608,6 +3692,9 @@ def retenir_caution_partielle(ordre, *, montant_retenu, motif, user=None,
 
     from apps.ventes.services import creer_facture_regie
 
+    # AUD181 — taux réel de l'ordre, à défaut le knob société (jamais 20 figé).
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else taux_tva_effectif(ordre.company, ordre))
     montant_ht = (montant_retenu / (1 + taux_tva / 100)).quantize(
         Decimal('0.01'))
     facture = creer_facture_regie(
@@ -3719,13 +3806,17 @@ def cloturer_ordre_location(ordre, *, user=None, today=None):
 
             from apps.ventes.services import creer_facture_regie
 
-            montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+            # AUD181 — le `/ Decimal('1.2')` littéral figeait 20 % sans aucun
+            # paramètre exposé ; le taux vient de l'ordre, puis du knob société.
+            taux_tva = taux_tva_effectif(ordre.company, ordre)
+            montant_ht = (montant / (1 + taux_tva / 100)).quantize(
+                Decimal('0.01'))
             facture = creer_facture_regie(
                 company=ordre.company, client=client, user=user,
                 libelle=(
                     f'Frais de retard — ordre de location #{ordre.id} '
                     f'({jours_retard} jour(s))'),
-                montant_ht=montant_ht)
+                montant_ht=montant_ht, taux_tva=taux_tva)
 
             ordre.frais_retard_montant = montant
             ordre.frais_retard_facture_id = facture.id
@@ -3776,13 +3867,16 @@ def inspecter_retour(ordre, *, checklist=None, releve_compteur='',
         client = _resoudre_client_ordre(ordre)
         from apps.ventes.services import creer_facture_regie
 
-        montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+        # AUD181 — même littéral `/ Decimal('1.2')` supprimé ici.
+        taux_tva = taux_tva_effectif(ordre.company, ordre)
+        montant_ht = (montant / (1 + taux_tva / 100)).quantize(
+            Decimal('0.01'))
         facture = creer_facture_regie(
             company=ordre.company, client=client, user=user,
             libelle=(
                 f'Dommages constatés au retour — ordre de location #{ordre.id}'
                 + (f' — {motif_dommages.strip()}' if motif_dommages else '')),
-            montant_ht=montant_ht)
+            montant_ht=montant_ht, taux_tva=taux_tva)
         ordre.inspection_facture_id = facture.id
 
         try:
@@ -3850,7 +3944,12 @@ def facturer_ordre_location_recurrent(ordre, *, user=None, periode=None):
     client = _resoudre_client_ordre(ordre)
     from apps.ventes.services import creer_facture_regie
 
-    montant_ht = (montant_ttc / Decimal('1.2')).quantize(Decimal('0.01'))
+    # AUD181 — le `/ Decimal('1.2')` littéral + l'appel SANS `taux_tva`
+    # figeaient 20 % de bout en bout ; le taux vient de l'ordre, puis du knob
+    # société, et traverse jusqu'à la facture.
+    taux_tva = taux_tva_effectif(ordre.company, ordre)
+    montant_ht = (montant_ttc / (1 + taux_tva / 100)).quantize(
+        Decimal('0.01'))
 
     try:
         facture = creer_facture_regie(
@@ -3858,7 +3957,7 @@ def facturer_ordre_location_recurrent(ordre, *, user=None, periode=None):
             libelle=(
                 f'Location longue durée — ordre #{ordre.id} '
                 f'({ordre.get_facturation_moment_display()}, {periode})'),
-            montant_ht=montant_ht)
+            montant_ht=montant_ht, taux_tva=taux_tva)
     except Exception as exc:  # pragma: no cover - défensif
         enregistrer_cycle(
             ordre.company,
@@ -4083,15 +4182,30 @@ def _appliquer_suspension_impaye(contrat, *, message, body, auteur=None):
     l'appellent, jamais un second chemin dupliqué. Renvoie le ``Contrat`` si
     suspendu, ``None`` si la transition n'est pas permise (préservation des
     statuts).
+
+    AUD182 — la suspension GÈLE aussi l'échéancier. Sans cela, le beat
+    quotidien (``scheduled.generer_factures_recurrentes_dues``), qui ne filtre
+    QUE sur ``echeancier__facturation_active``/``statut`` et jamais sur
+    ``contrat.statut``, émettait dès le lendemain une NOUVELLE facture pour un
+    contrat suspendu pour impayé — facture jamais payée, qui aggravait
+    ``jours_impaye`` au passage suivant. Le gel réutilise exactement le
+    garde-fou de ``demarrer_essai_contrat`` et MARQUE les échéanciers gelés
+    (``gele_par_suspension``) pour que la réactivation SUSPENDU→ACTIF soit
+    strictement symétrique (voir ``changer_statut``).
     """
     from .machine_etats import transition_permise
-    from .models import Contrat
+    from .models import Contrat, EcheancierContrat
 
     if not transition_permise(contrat.statut, Contrat.Statut.SUSPENDU):
         return None  # pragma: no cover - défensif (garde machine d'états)
 
     ancien = contrat.statut
     changer_statut(contrat, Contrat.Statut.SUSPENDU)
+
+    EcheancierContrat.objects.filter(
+        company=contrat.company, contrat=contrat,
+        facturation_active=True,
+    ).update(facturation_active=False, gele_par_suspension=True)
 
     journaliser_transition(
         contrat, field='statut', old_value=ancien,
@@ -4259,6 +4373,73 @@ def _parse_date_import(valeur):
     return None
 
 
+class StatutImportRefuse(Exception):
+    """AUD516 — le statut demandé par une ligne d'import n'est pas atteignable
+    légalement (transition interdite, garde métier non satisfaite, ou preuve
+    juridique qui ne s'importe pas). La ligne devient une ERREUR du rapport
+    d'import — jamais un statut posé en force."""
+
+
+def _appliquer_statut_import(contrat, statut_cible, *, user=None):
+    """AUD516 — amène un contrat IMPORTÉ (créé en brouillon) vers son statut
+    cible par les SERVICES GARDÉS, jamais par une écriture directe.
+
+    ``creer_contrat_import`` posait ``statut=<valeur brute du fichier>`` dans
+    le ``Contrat.objects.create`` : zéro passage par la machine d'états, zéro
+    garde « ≥ 2 parties », aucune ``SignatureContrat``, aucune
+    ``Resiliation``, et AUCUN des trois événements ``core.events``
+    (``contrat_signe``/``contrat_actif``/``contrat_resilie``). Un CSV pouvait
+    donc fabriquer un contrat ACTIF sans partie ni signature.
+
+    Chaque cible passe désormais par son service métier :
+      * ``resilie``  → ``resilier_contrat`` (crée la ``Resiliation`` + émet
+        ``contrat_resilie``) ;
+      * ``actif``    → ``activer_si_eligible`` (n'active QU'UN contrat signé
+        et éligible — sinon la ligne est en erreur) ;
+      * ``signe``    → REFUSÉ : une signature est une preuve juridique
+        (``SignatureContrat``, nom dactylographié, IP, horodatage) qu'un
+        fichier d'import ne porte pas et qu'on ne fabriquera pas ; le contrat
+        s'importe en brouillon puis se fait signer par le chemin réel ;
+      * tout le reste (``en_approbation``…) → ``changer_statut``, la machine
+        d'états gardée, pour les seules transitions administratives.
+    """
+    from django.core.exceptions import ValidationError as DjangoValidationError
+
+    from .machine_etats import TransitionInterdite
+    from .models import Contrat
+
+    if statut_cible == Contrat.Statut.SIGNE:
+        raise StatutImportRefuse(
+            "Statut « signé » non importable : une signature (nom, horodatage, "
+            "preuve) ne s'importe pas. Importez le contrat en brouillon, puis "
+            'faites-le signer.')
+
+    if statut_cible == Contrat.Statut.RESILIE:
+        try:
+            resilier_contrat(
+                contrat, motif='Contrat résilié — repris par import.',
+                auteur=user)
+        except Exception as exc:
+            raise StatutImportRefuse(
+                f'Résiliation refusée : {exc}') from exc
+        return
+
+    if statut_cible == Contrat.Statut.ACTIF:
+        if not activer_si_eligible(contrat, auteur=user):
+            raise StatutImportRefuse(
+                "Statut « actif » non atteignable : un contrat n'est activé "
+                "qu'une fois SIGNÉ et éligible. Importez-le en brouillon.")
+        return
+
+    try:
+        changer_statut(contrat, statut_cible, user=user)
+    except (TransitionInterdite, DjangoValidationError) as exc:
+        message = getattr(exc, 'messages', None)
+        raise StatutImportRefuse(
+            f'Statut « {statut_cible} » refusé : '
+            f'{message[0] if message else exc}') from exc
+
+
 def creer_contrat_import(company, ligne, *, user=None):
     """ARC13 — Crée (ou saute si doublon) UN contrat depuis une ligne d'import
     CSV/XLSX (dict de colonnes déjà nettoyées), via ``apps.contrats.services``
@@ -4272,8 +4453,16 @@ def creer_contrat_import(company, ligne, *, user=None):
     (retourne ``'doublon'``), jamais mise à jour ni dupliquée — une ligne SANS
     référence est toujours créée (pas de clé d'idempotence disponible).
     Retourne ``('cree'|'doublon'|'erreur', message|None)``.
+
+    AUD516 — le contrat naît TOUJOURS en ``brouillon`` ; un statut cible
+    fourni par le fichier est ensuite atteint par les services gardés
+    (``_appliquer_statut_import``). Une cible inatteignable met la LIGNE en
+    erreur et la transaction de la ligne est annulée : on ne laisse jamais
+    derrière soi un contrat à moitié importé (ni un statut posé en force).
     """
     from decimal import Decimal, InvalidOperation
+
+    from django.db import transaction
 
     from .models import Contrat
 
@@ -4293,7 +4482,7 @@ def creer_contrat_import(company, ligne, *, user=None):
 
     statut_brut = str(ligne.get('statut', '') or '').strip().lower()
     statuts_valides = {c for c, _ in Contrat.Statut.choices}
-    statut = statut_brut if statut_brut in statuts_valides \
+    statut_cible = statut_brut if statut_brut in statuts_valides \
         else Contrat.Statut.BROUILLON
 
     montant_brut = ligne.get('montant')
@@ -4306,18 +4495,24 @@ def creer_contrat_import(company, ligne, *, user=None):
             montant = Decimal('0')
 
     try:
-        Contrat.objects.create(
-            company=company,
-            reference=reference,
-            objet=objet,
-            type_contrat=type_contrat,
-            statut=statut,
-            date_debut=_parse_date_import(ligne.get('date_debut')),
-            date_fin=_parse_date_import(ligne.get('date_fin')),
-            montant=montant,
-            devise=str(ligne.get('devise', '') or '').strip() or 'MAD',
-            created_by=user if getattr(user, 'pk', None) else None,
-        )
+        with transaction.atomic():
+            contrat = Contrat.objects.create(
+                company=company,
+                reference=reference,
+                objet=objet,
+                type_contrat=type_contrat,
+                # AUD516 — jamais la valeur brute du fichier.
+                statut=Contrat.Statut.BROUILLON,
+                date_debut=_parse_date_import(ligne.get('date_debut')),
+                date_fin=_parse_date_import(ligne.get('date_fin')),
+                montant=montant,
+                devise=str(ligne.get('devise', '') or '').strip() or 'MAD',
+                created_by=user if getattr(user, 'pk', None) else None,
+            )
+            if statut_cible != Contrat.Statut.BROUILLON:
+                _appliquer_statut_import(contrat, statut_cible, user=user)
+    except StatutImportRefuse as exc:
+        return 'erreur', str(exc)
     except Exception as exc:  # pragma: no cover - défensif, erreur inattendue
         return 'erreur', str(exc)
 

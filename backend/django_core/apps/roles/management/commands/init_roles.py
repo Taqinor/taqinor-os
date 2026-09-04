@@ -13,6 +13,8 @@ nobody loses access:
 Run after applying migrations:
   docker compose exec django_core python manage.py init_roles
 """
+import json
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -20,6 +22,37 @@ from django.db import transaction
 class Command(BaseCommand):
     help = ('Seed the canonical system roles per company and map existing '
             'users (Feature D) — idempotent and additive.')
+
+    def _tracer_realignement(self, company, nom, champ, label, old, new):
+        """AUD407 — laisse une TRACE de toute réécriture d'un rôle système.
+
+        Cette commande écrase volontairement un rôle système divergent pour
+        propager une politique CHANGÉE dans le code (comportement testé). Mais
+        `deploy-prod.ps1` et `auto-deploy.sh` la relancent à CHAQUE déploiement
+        — c'est-à-dire très souvent : une permission retirée à la main par un
+        Administrateur via Paramètres → Rôles (le chemin supporté, qui écrit
+        lui, sa ligne d'audit) était donc restaurée SILENCIEUSEMENT, pour toutes
+        les sociétés, sans que personne ne puisse le voir après coup.
+
+        On n'enlève pas la convergence (elle a une raison d'être) : on la rend
+        VISIBLE — une ligne `SettingsAuditLog` (même section « roles » que
+        `RoleViewSet`, `user=None` car l'acteur est un déploiement) plus un
+        avertissement dans la sortie du déploiement. Best-effort : une trace
+        impossible à écrire ne fait jamais échouer la commande.
+        """
+        self.stdout.write(self.style.WARNING(
+            f'  ⚠ Rôle système « {nom} » réaligné sur la politique du code '
+            f'({champ}) : {old} → {new}'))
+        try:
+            from apps.parametres.models import SettingsAuditLog
+            SettingsAuditLog.log_change(
+                company=company, user=None, section='roles',
+                field=f'role:{nom}', field_label=label,
+                old=old, new=new,
+            )
+        except Exception:  # noqa: BLE001 — traçabilité best-effort
+            self.stdout.write(self.style.WARNING(
+                '    (journal des paramètres indisponible — trace non écrite)'))
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -67,6 +100,19 @@ class Command(BaseCommand):
                     role.save(update_fields=['est_systeme'])
                 if not created and role.est_systeme and \
                         role.permissions != list(perms):
+                    # AUD407 — la convergence reste, mais elle laisse une trace.
+                    anciennes = set(role.permissions or [])
+                    nouvelles = set(perms)
+                    self._tracer_realignement(
+                        company, nom, 'permissions',
+                        'Rôle système réaligné par init_roles (déploiement)',
+                        json.dumps({'total': len(anciennes)}),
+                        json.dumps({
+                            'ajoutees': sorted(nouvelles - anciennes),
+                            'retirees': sorted(anciennes - nouvelles),
+                            'total': len(nouvelles),
+                        }),
+                    )
                     role.permissions = list(perms)
                     role.save(update_fields=['permissions'])
                 # NTADM21 — le périmètre de délégation d'un rôle système est
@@ -75,6 +121,16 @@ class Command(BaseCommand):
                 # globale, comportement historique) — donc aucune écriture.
                 perimetre_attendu = SYSTEM_ROLE_PERIMETRES.get(nom)
                 if role.perimetre != perimetre_attendu:
+                    # AUD407 — même traçabilité que pour les permissions, mais
+                    # SEULEMENT sur un rôle préexistant : le poser à la création
+                    # n'écrase rien et n'a rien à tracer.
+                    if not created:
+                        self._tracer_realignement(
+                            company, nom, 'périmètre',
+                            'Périmètre de rôle système réaligné par init_roles '
+                            '(déploiement)',
+                            role.perimetre, perimetre_attendu,
+                        )
                     role.perimetre = perimetre_attendu
                     role.save(update_fields=['perimetre'])
                 roles[nom] = role

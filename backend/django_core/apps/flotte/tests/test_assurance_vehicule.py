@@ -265,6 +265,17 @@ class AssuranceVehiculeApiTests(TestCase):
         admin_b = make_user(self.co_b, "as-admin-b", "admin")
         self.assertEqual(rows(auth(admin_b).get(URL)), [])
 
+    def test_aud728_delete_bloque(self):
+        """AUD728 — une police d'assurance ne se supprime jamais (document à
+        valeur légale) : avant ce correctif, aucune garde n'existait sur son
+        DELETE."""
+        pol = AssuranceVehicule.objects.create(
+            company=self.co_a, actif_flotte=self.actif, assureur="A",
+            numero_police="P", date_echeance=datetime.date(2026, 12, 1))
+        resp = auth(self.admin_a).delete(f"{URL}{pol.id}/")
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(AssuranceVehicule.objects.count(), 1)
+
     def test_filtre_par_statut(self):
         AssuranceVehicule.objects.create(
             company=self.co_a, actif_flotte=self.actif, assureur="A",

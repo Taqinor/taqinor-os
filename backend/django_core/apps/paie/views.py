@@ -15,6 +15,7 @@ from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -72,6 +73,7 @@ from .services import (
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
     brut_pour_net_cible,
+    avertissements_parametre_paie,
     avertissements_periode,
     calculer_bulletin,
     changer_statut,
@@ -258,8 +260,16 @@ class TypeEntreePonctuelleViewSet(_PaieBaseViewSet):
 class ProfilPaieViewSet(_PaieBaseViewSet):
     """Profils de paie des employés (PAIE8) — société scopée, palier paie.
 
-    ``OneToOne`` vers ``rh.DossierEmploye`` ; le salaire de base est SENSIBLE
-    (jamais exposé côté client). ``company`` posée côté serveur.
+    ``OneToOne`` vers ``rh.DossierEmploye`` ; ``company`` posée côté serveur.
+
+    AUD716 — le salaire de base est SENSIBLE : cette docstring l'affirmait déjà
+    (« jamais exposé côté client ») alors que ``ProfilPaieSerializer`` le
+    servait EN CLAIR et l'acceptait en écriture sous la seule permission
+    ``paie_voir``/``paie_gerer``. Il est désormais gaté ``salaires_voir`` dans
+    les deux sens PAR LE SERIALIZER (masqué en lecture, refusé en écriture) —
+    et non par ``permission_classes``, pour que le reste du profil (affiliation
+    CNSS/AMO, RIB, normes de travail, régime d'exonération) reste accessible au
+    gestionnaire de paie, comme aujourd'hui.
     """
     queryset = ProfilPaie.objects.select_related('employe').all()
     serializer_class = ProfilPaieSerializer
@@ -396,8 +406,13 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
     def stc_pdf(self, request, pk=None):
         """Reçu pour solde de tout compte au format PDF (XPAI1).
 
-        Sert le dernier bulletin STC du profil (peu importe son statut —
-        brouillon consultable avant validation, comme un aperçu).
+        Sert le dernier bulletin STC du profil. AUD702 — le reçu DÉFINITIF
+        (clause de quittance signable + mentions protectrices + signatures)
+        n'est rendu QUE depuis un bulletin VALIDÉ ; un bulletin en brouillon
+        produit un PROJET filigrané, sans quittance ni bloc de signature.
+        Tant que le bulletin est en brouillon, ``generer_bulletin_stc``
+        supprime et recrée ses lignes à chaque appel : un reçu signé sur cette
+        base pourrait ne plus correspondre à rien en base le lendemain.
         """
         profil = self.get_object()
         bulletin = (
@@ -411,13 +426,16 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             return Response(
                 {'detail': 'Aucun bulletin STC pour ce profil.'},
                 status=status.HTTP_404_NOT_FOUND)
+        definitif = builders.stc_est_definitif(bulletin)
         try:
-            pdf = builders.render_stc_pdf(bulletin)
+            pdf = builders.render_stc_pdf(bulletin, definitif=definitif)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return _pdf_response(pdf, f'stc_{profil.id}.pdf')
+        nom = f'stc_{profil.id}.pdf' if definitif \
+            else f'stc_projet_{profil.id}.pdf'
+        return _pdf_response(pdf, nom)
 
     @action(detail=True, methods=['get'], url_path='simulation')
     def simulation(self, request, pk=None):
@@ -910,9 +928,21 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
 
     @action(detail=True, methods=['post'], url_path='journal-ventile')
     def journal_ventile(self, request, pk=None):
-        """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17)."""
+        """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17).
+
+        AUD708 — traduit en 400 la ``ValidationError`` levée par le service
+        (période comptable verrouillée, ou journal de paie déjà comptabilisé
+        pour cette période) au lieu de laisser remonter un 500, exactement
+        comme l'action ``journal-de-paie``.
+        """
         periode = self.get_object()
-        ecriture = journal_de_paie_ventile(periode, created_by=request.user)
+        try:
+            ecriture = journal_de_paie_ventile(periode, created_by=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages if hasattr(exc, 'messages')
+                 else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         if ecriture is None:
             return Response(
                 {'detail': 'Aucun bulletin validé pour cette période.'},
@@ -1150,6 +1180,19 @@ class ElementVariableViewSet(_PaieBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['periode', 'profil', 'id']
 
+    def perform_destroy(self, instance):
+        """AUD715 — la suppression suit la même garde de statut que l'écriture.
+
+        Sans elle, un DELETE sur une période déjà CALCULÉE/VALIDÉE/CLÔTURÉE
+        renvoyait 204 en retirant un élément qui n'influencerait plus jamais le
+        bulletin déjà émis. La garde vit sur le modèle (admin, scripts inclus) ;
+        ici on la traduit en 400 lisible plutôt qu'en 500.
+        """
+        try:
+            instance.delete()
+        except ElementVariable.PeriodeVerrouillee as exc:
+            raise DRFValidationError({'periode': str(exc)})
+
 
 class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
                           viewsets.ReadOnlyModelViewSet):
@@ -1203,9 +1246,18 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
 
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
-        """Valide le bulletin → fige le snapshot (immuable, PAIE17)."""
+        """Valide le bulletin → fige le snapshot (immuable, PAIE17).
+
+        AUD705 — un refus métier (n° CNSS connu côté RH mais absent du profil
+        de paie) est une erreur de saisie, pas une panne : il repart en 400
+        avec son motif, jamais en 500.
+        """
         bulletin = self.get_object()
-        valider_bulletin(bulletin)
+        try:
+            valider_bulletin(bulletin)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
 
@@ -1352,10 +1404,16 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
-        """Bulletin de paie au format PDF conforme (PAIE34)."""
+        """Bulletin de paie au format PDF conforme (PAIE34).
+
+        AUD703 — un bulletin VALIDÉ sert son ARCHIVE, jamais un re-rendu :
+        l'identité imprimée (n° CNSS, RIB, date de paiement) reste modifiable
+        après validation, un re-rendu pourrait donc différer du document
+        réellement remis au salarié.
+        """
         bulletin = self.get_object()
         try:
-            pdf = builders.render_bulletin_pdf(bulletin)
+            pdf = builders.bulletin_pdf_a_servir(bulletin)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)},
@@ -1424,7 +1482,9 @@ class CoffreFortBulletinViewSet(viewsets.ReadOnlyModelViewSet):
         bulletin = self.get_object()  # déjà scopé à l'utilisateur
         marquer_bulletin_lu(bulletin)
         try:
-            pdf = builders.render_bulletin_pdf(bulletin)
+            # AUD703 — le salarié retélécharge TOUJOURS l'archive de ce qui lui
+            # a été remis, jamais un re-rendu (qui pourrait avoir changé).
+            pdf = builders.bulletin_pdf_a_servir(bulletin)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)},
@@ -1479,8 +1539,15 @@ class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(
-            self.get_serializer(ordre).data, status=status.HTTP_200_OK)
+        data = self.get_serializer(ordre).data
+        # AUD710 — remonte l'avertissement « paramètres sociaux non validés »
+        # au client : l'ordre engage de l'argent réel.
+        avertissements = avertissements_parametre_paie(
+            periode.company, date(periode.annee, periode.mois, 1),
+            contexte='Ordre de virement')
+        if avertissements:
+            data = {**data, 'avertissements': avertissements}
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):

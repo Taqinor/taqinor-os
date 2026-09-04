@@ -10,6 +10,38 @@ from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 
 
+# AUD404 — nom du claim de session d'impersonation, MIROIR de
+# `apps.adminops.impersonation_service.CLAIM_SESSION`. Il est redéclaré ici — et
+# pas importé — parce que `authentication` est une app de FONDATION : importer
+# `impersonation_service` fait remonter, par
+# `adminops → notifications.services → {ventes, sav, stock, crm, reporting}`, une
+# chaîne qui casse le contrat import-linter « the core foundation app imports
+# downward only » (mesuré : 5 contrats rouges). Le registre d'applications Django
+# donne le modèle sans créer la moindre arête d'import. La divergence des deux
+# constantes est interdite par un test dédié dans `apps/adminops/tests/`.
+_IMPERSONATION_CLAIM = 'imp'
+
+
+def _impersonation_revoquee(validated_token):
+    """True si le jeton porte un claim de session d'impersonation qui n'est
+    PLUS active (terminée, refusée, expirée, consentement retiré).
+
+    FAIL-CLOSED : un claim présent dont la ligne de session est introuvable est
+    traité comme révoqué — un jeton d'impersonation sans session vivante ne doit
+    jamais authentifier. Aucune requête pour un jeton ordinaire (sans claim).
+    """
+    session_id = validated_token.get(_IMPERSONATION_CLAIM) \
+        if validated_token else None
+    if not session_id:
+        return False
+    from django.apps import apps as django_apps
+    session_model = django_apps.get_model('adminops', 'SessionImpersonation')
+    demande = session_model.objects.filter(pk=session_id).first()
+    if demande is None:
+        return True
+    return not demande.est_active()
+
+
 class CookieJWTAuthentication(BaseAuthentication):
     """
     Lit le JWT depuis le cookie httpOnly 'access_token'.
@@ -45,6 +77,31 @@ class CookieJWTAuthentication(BaseAuthentication):
 
         if not user.is_active:
             raise AuthenticationFailed('Compte desactive.')
+
+        # AUD408 — révocation EFFECTIVE du jeton d'accès. Jusqu'ici logout,
+        # révocation d'une session distante, éviction concurrente et changement
+        # de mot de passe ne blacklistaient que le REFRESH : le jeton d'accès
+        # déjà émis continuait d'authentifier jusqu'à 30 min après une
+        # révocation pourtant affichée comme effective — y compris pour un
+        # appareil distant qui ne reçoit littéralement aucune réponse. On
+        # consulte l'état de la session portée par le claim ``sid``.
+        from .session_policy import access_session_revoked
+        if access_session_revoked(validated):
+            raise AuthenticationFailed(
+                'Session révoquée. Reconnectez-vous.')
+
+        # AUD404 — coupe-circuit RÉEL des sessions d'impersonation (NTADM22).
+        # `terminer()` ne posait que `terminee_le` en base : le jeton d'accès
+        # déjà émis pour le support restait valable jusqu'à 30 min, avec accès
+        # complet à toute la société, alors que le bandeau affichait « session
+        # terminée ». Le lookup existait depuis toujours dans
+        # `impersonation_service.session_depuis_requete()`, mais SEULEMENT pour
+        # l'audit et l'affichage — jamais comme garde d'authentification.
+        # Ne coûte une requête que pour un jeton PORTANT le claim (jamais sur le
+        # chemin d'un utilisateur ordinaire).
+        if _impersonation_revoquee(validated):
+            raise AuthenticationFailed(
+                "Session d'assistance terminée ou expirée.")
 
         # XPLT19 — société ACTIVE : si le jeton porte un claim
         # ``active_company_id`` et que l'utilisateur est bien membre de cette

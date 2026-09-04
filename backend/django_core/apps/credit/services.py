@@ -68,6 +68,14 @@ def ecart_encours_moteurs(client):
 
     ``divergent=True`` signifie qu'un des deux moteurs a changé d'assiette sans
     l'autre — c'est exactement ce que le test de non-divergence interdit.
+
+    AUD153 — ``encours_client`` (moteur A) reste un calcul LIVE nu ici,
+    jamais le lecteur-à-travers-le-cache ajouté pour les badges NTCRD23
+    (``selectors.disponible_credit``) : ce diagnostic compare deux calculs
+    LIVE, et comparer un calcul caché à un calcul live produirait un faux
+    positif de divergence si un paiement/une facture arrive entre le dernier
+    calcul caché et cet appel — un artefact de fraîcheur, jamais un vrai
+    écart d'assiette.
     """
     from apps.crm.selectors import client_credit_warning
     from apps.ventes.selectors import reste_du_factures_brouillon

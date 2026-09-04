@@ -24,10 +24,11 @@ déduction pour charges de famille — ≈ 30 MAD/mois et par personne, plafond 
 Ils servent de DÉFAUTS éditables — ``valide_par_fondateur=False`` matérialise
 qu'ils restent à confirmer.
 """
+import logging
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -42,6 +43,8 @@ from .models import (
     TypeEntreePonctuelle,
 )
 
+logger = logging.getLogger(__name__)
+
 # ── Date d'effet des valeurs légales par défaut ────────────────────────────
 DATE_EFFET_2026 = date(2026, 1, 1)
 
@@ -54,6 +57,17 @@ PARAMETRES_DEFAUT_2026 = {
     'taux_cnss_salarial': Decimal('4.48'),
     'taux_cnss_patronal': Decimal('8.98'),
     'taux_amo_salarial': Decimal('2.26'),
+    # AUD710 — QUESTION FONDATEUR/COMPTABLE OUVERTE, jamais tranchée dans le
+    # code : le taux AMO PATRONAL provisionné ici (2,26 %) est identique au
+    # taux SALARIAL, alors que la référence usuelle du cadre marocain cite
+    # 4,11 % — l'écart (1,85 pt) vaut exactement 4,11 − 2,26. Aucune valeur
+    # n'est changée ici : le taux est désormais VISIBLE et ÉDITABLE dans
+    # l'écran « Paramètres de paie », et le drapeau ``valide_par_fondateur``
+    # avertit tant que le fondateur/comptable n'a pas confirmé.
+    # PROPRIÉTAIRES DU TAUX (il n'en reste que deux, verrouillés égaux par
+    # ``test_aud710_parametres_valides``) : cette table de semis et le DÉFAUT
+    # DU CHAMP ``ParametrePaie.taux_amo_patronal`` — seul repli lu par
+    # ``selectors.taux_charges_patronales``, qui ne recopie plus de littéral.
     'taux_amo_patronal': Decimal('2.26'),
     # PAIE23 — Allocations familiales (charge patronale, non plafonnée, ~6,4 %).
     'taux_allocations_familiales': Decimal('6.4'),
@@ -173,6 +187,12 @@ def ir_bareme(bareme, base):
     Formule par tranche du barème marocain : ``base × taux% −
     somme_a_deduire`` de la tranche couvrante. Jamais négatif. Sans tranche
     couvrante (base sous la 1ʳᵉ borne), l'IR est nul.
+
+    AUD711 — arrondi ROUND_HALF_UP EXPLICITE (crossref AUD189, politique
+    fondateur du 18/08/2026), comme ``_q()`` qui gouverne tout le reste du
+    bulletin. Sans ``rounding=``, Python appliquait son défaut
+    ROUND_HALF_EVEN : un centime d'écart sur le poste le plus scruté du
+    bulletin, mesuré sur ~5 % des bases aux tranches 10 % et 30 %.
     """
     base = Decimal(base)
     tranche = _tranche_couvrante(bareme, base)
@@ -181,7 +201,7 @@ def ir_bareme(bareme, base):
     impot = base * (tranche.taux / Decimal('100')) - tranche.somme_a_deduire
     if impot < 0:
         return Decimal('0.00')
-    return impot.quantize(Decimal('0.01'))
+    return impot.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def deduction_charges_famille(parametre, personnes_a_charge):
@@ -195,7 +215,9 @@ def deduction_charges_famille(parametre, personnes_a_charge):
     plafond = int(parametre.plafond_personnes_a_charge or 0)
     retenu = min(nombre, plafond)
     montant = parametre.deduction_par_personne_a_charge * Decimal(retenu)
-    return montant.quantize(Decimal('0.01'))
+    # AUD711 — hygiène : même politique d'arrondi explicite que le reste du
+    # bulletin (ici un no-op, la valeur est déjà à 2 décimales exactes).
+    return montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def compute_ir(base, bareme, parametre, personnes_a_charge=0):
@@ -211,7 +233,9 @@ def compute_ir(base, bareme, parametre, personnes_a_charge=0):
     net = brut - deduction
     if net < 0:
         return Decimal('0.00')
-    return net.quantize(Decimal('0.01'))
+    # AUD711 — hygiène : arrondi explicite (no-op ici, les deux opérandes sont
+    # déjà au centime — l'ancre effective est ``ir_bareme``).
+    return net.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 # ── PAIE6 — Rubriques de paie standard (catalogue par défaut) ───────────────
@@ -711,6 +735,76 @@ def _arrondir_jours_absence(jours, rubrique):
 
 # ── PAIE13 — Calcul du salaire de base proraté selon le type de rémunération ─
 
+def _jours_absence_non_remunerees(elements):
+    """Jours d'absence NON rémunérée d'une liste d'``ElementVariable``.
+
+    PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne réduit jamais les jours
+    payés : le salarié est payé comme présent. ZPAI8 — la quantité est
+    arrondie selon la rubrique catalogue de l'élément (si rattachée).
+    """
+    total = Decimal('0')
+    for el in elements:
+        if el.type != ElementVariable.TYPE_ABSENCE:
+            continue
+        if getattr(el, 'remunere', False):
+            continue
+        total += _arrondir_jours_absence(
+            el.quantite, getattr(el, 'rubrique', None))
+    return total
+
+
+def jours_hors_contrat_periode(profil, periode):
+    """Jours calendaires de la période NON couverts par le contrat (AUD706).
+
+    Un salarié embauché le 20/06 n'est sous contrat que du 20 au 30 : les 19
+    premiers jours du mois ne lui sont pas dus. Symétriquement, les jours qui
+    suivent une ``date_sortie`` tombant dans la période ne le sont pas non
+    plus. Ces jours sont décomptés de la norme mensuelle du profil EXACTEMENT
+    comme une absence non rémunérée (même formule de proration).
+
+    Les dates RH sont lues via ``apps.rh.selectors`` (jamais ``rh.models``
+    directement). Un dossier sans date d'embauche/sortie renseignée ne borne
+    rien → 0 (comportement historique strictement inchangé).
+
+    Renvoie un ``Decimal`` >= 0.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    debut, fin = _bornes_periode(periode)
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    date_sortie, _motif = rh_selectors.sortie_employe(
+        profil.company, profil.employe_id)
+
+    jours = 0
+    if date_embauche and date_embauche > debut:
+        # Jours du mois AVANT l'embauche (bornés au mois).
+        jours += (min(date_embauche, fin + timedelta(days=1)) - debut).days
+    if date_sortie and date_sortie < fin:
+        # Jours du mois APRÈS la sortie (le jour de sortie reste travaillé).
+        jours += (fin - max(date_sortie, debut - timedelta(days=1))).days
+    return Decimal(max(0, jours))
+
+
+def jours_payes_periode(profil, periode, elements=None):
+    """Jours réellement dus au salarié sur la période (AUD706).
+
+    ``jours_travail_mensuel`` du profil (norme) − absences non rémunérées −
+    jours hors contrat (embauche/sortie en cours de mois), borné à zéro.
+    C'est la MÊME grandeur que celle qui prorate le salaire mensuel : la
+    déclaration CNSS et le bulletin ne peuvent donc plus diverger.
+    """
+    if elements is None:
+        elements = list(
+            ElementVariable.objects.filter(periode=periode, profil=profil)
+        )
+    jours_normes = Decimal(max(1, profil.jours_travail_mensuel or 26))
+    jours = (jours_normes
+             - _jours_absence_non_remunerees(elements)
+             - jours_hors_contrat_periode(profil, periode))
+    return jours if jours > 0 else Decimal('0')
+
+
 def calculer_salaire_base_periode(profil, periode, elements=None):
     """Salaire de base proraté pour ``profil`` sur ``periode`` (PAIE13).
 
@@ -719,8 +813,10 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
     * **mensuel** — Le salaire mensuel contractuel est proraté quand l'employé
       n'a pas travaillé le mois complet : on déduit les jours d'absence
       (``ElementVariable.TYPE_ABSENCE``, exprimée en quantité = nombre de jours)
-      et le résultat est borné à zéro.
-      Formula : ``salaire_base × (jours_normes − jours_absence) / jours_normes``.
+      ET les jours hors contrat (AUD706 — embauche/sortie en cours de mois,
+      ``jours_hors_contrat_periode``) ; le résultat est borné à zéro.
+      Formula : ``salaire_base × (jours_normes − jours_absence −
+      jours_hors_contrat) / jours_normes``.
 
     * **journalier** — Le ``salaire_base`` est le taux JOURNALIER. Le brut est
       ``taux_journalier × jours_travailles``, où les jours travaillés proviennent
@@ -759,22 +855,11 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
         )
 
     # Comptabiliser les absences et les heures travaillées déclarées.
-    jours_absence = Decimal('0')
+    jours_absence = _jours_absence_non_remunerees(elements)
     heures_travaillees_declares = None
 
     for el in elements:
-        if el.type == ElementVariable.TYPE_ABSENCE:
-            # PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne réduit pas le
-            # salaire proraté : le salarié est payé comme présent. Seules les
-            # absences NON rémunérées sont décomptées des jours travaillés.
-            if getattr(el, 'remunere', False):
-                continue
-            # Les absences sont en jours par convention dans ElementVariable.
-            # ZPAI8 — arrondi selon la rubrique catalogue de l'élément (si
-            # rattachée), sinon quantité brute (comportement historique).
-            jours_absence += _arrondir_jours_absence(
-                el.quantite, getattr(el, 'rubrique', None))
-        elif el.type == ElementVariable.TYPE_HEURES:
+        if el.type == ElementVariable.TYPE_HEURES:
             # Des heures travaillées déclarées explicitement.
             heures_travaillees_declares = (
                 (heures_travaillees_declares or Decimal('0'))
@@ -783,10 +868,17 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
 
     jours_normes = Decimal(max(1, profil.jours_travail_mensuel or 26))
     heures_normes = Decimal(max(1, profil.heures_travail_mensuel or 191))
+    # AUD706 — jours du mois hors contrat (embauche/sortie en cours de mois).
+    # Décomptés comme une absence non rémunérée : un salarié embauché le 20 ne
+    # perçoit que la fraction du mois réellement couverte par son contrat. Ne
+    # s'applique JAMAIS quand des heures travaillées ont été déclarées
+    # explicitement (elles décrivent déjà le travail réel de la période).
+    jours_hors_contrat = jours_hors_contrat_periode(profil, periode)
 
     if type_rem == ProfilPaie.TYPE_MENSUEL:
-        # Proration : déduit les jours d'absence du plein mois.
-        jours_effectifs = max(Decimal('0'), jours_normes - jours_absence)
+        # Proration : déduit absences ET jours hors contrat du plein mois.
+        jours_effectifs = max(
+            Decimal('0'), jours_normes - jours_absence - jours_hors_contrat)
         brut = salaire_base * jours_effectifs / jours_normes
         return _q(brut)
 
@@ -800,7 +892,9 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
             )
             jours_effectifs = max(Decimal('0'), jours_de_heures - jours_absence)
         else:
-            jours_effectifs = max(Decimal('0'), jours_normes - jours_absence)
+            jours_effectifs = max(
+                Decimal('0'),
+                jours_normes - jours_absence - jours_hors_contrat)
         brut = salaire_base * jours_effectifs
         return _q(brut)
 
@@ -809,9 +903,10 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
         if heures_travaillees_declares is not None:
             heures_effectifs = heures_travaillees_declares
         else:
-            # Déduit les absences (en jours) converties en heures.
+            # Déduit les absences ET les jours hors contrat (en jours)
+            # converties en heures.
             ratio = heures_normes / jours_normes if jours_normes else Decimal('1')
-            heures_absence_h = jours_absence * ratio
+            heures_absence_h = (jours_absence + jours_hors_contrat) * ratio
             heures_effectifs = max(Decimal('0'), heures_normes - heures_absence_h)
         brut = salaire_base * heures_effectifs
         return _q(brut)
@@ -1676,6 +1771,52 @@ def parametre_en_vigueur(company, le_jour):
     )
 
 
+_PARAMETRE_NON_FOURNI = object()
+
+
+def avertissements_parametre_paie(company, le_jour, *, contexte='',
+                                  parametre=_PARAMETRE_NON_FOURNI):
+    """Avertissements FORTS sur les paramètres sociaux en vigueur (AUD710).
+
+    ``valide_par_fondateur`` n'était lu QUE par le seed/l'admin/le serializer :
+    un ``ParametrePaie`` jamais confirmé calculait des bulletins RÉELS sans le
+    moindre signal (seul un badge cosmétique existait à l'écran). Cette
+    fonction matérialise le signal manquant, à trois endroits qui produisent
+    de l'argent ou du déclaratif : ``calculer_bulletin``, ``declaration_cnss``
+    et ``generer_ordre_virement``.
+
+    AVERTISSEMENT et non REFUS : les valeurs légales sont provisionnées avec
+    ``valide_par_fondateur=False`` par ``ensure_defaults`` — refuser le calcul
+    bloquerait toute paie dès le premier jour d'une société. Le message est
+    renvoyé aux appelants (payload API) ET journalisé en WARNING.
+
+    ``parametre`` évite une relecture quand l'appelant a DÉJÀ chargé le
+    ``ParametrePaie`` en vigueur (``calculer_bulletin``) ; omis, il est lu ici.
+
+    Renvoie une liste de chaînes (vide quand tout est confirmé).
+    """
+    if parametre is _PARAMETRE_NON_FOURNI:
+        parametre = parametre_en_vigueur(company, le_jour)
+    if parametre is None:
+        message = (
+            "Aucun paramètre social en vigueur : les cotisations et l'IR ne "
+            'peuvent pas être calculés sur des valeurs confirmées. '
+            'Provisionnez puis validez les paramètres de paie.')
+    elif not parametre.valide_par_fondateur:
+        message = (
+            f'Paramètres sociaux du {parametre.date_effet} NON VALIDÉS par le '
+            'fondateur : taux et plafonds restent des valeurs par défaut à '
+            "confirmer (dont le taux AMO patronal). Validez-les dans l'écran "
+            '« Paramètres de paie » avant tout usage légal ou déclaratif.')
+    else:
+        return []
+    if contexte:
+        message = f'{contexte} — {message}'
+    logger.warning('paie/parametres non validés (company=%s) : %s',
+                   getattr(company, 'id', company), message)
+    return [message]
+
+
 def bareme_en_vigueur(company, le_jour):
     """``BaremeIR`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
     return (
@@ -2219,6 +2360,27 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         ir = compute_ir(base_ir, bareme, parametre, personnes_a_charge)
     ir = _q(ir)
 
+    # AUD701 — MATÉRIALISATION des retenues salariales, contrat partagé
+    # ``apps/paie/contract_samples/bulletin_lignes.json``. Jusqu'ici CNSS/AMO/
+    # CIMR/IR n'étaient QUE soustraites arithmétiquement du net (cf. calcul du
+    # net à payer plus bas) : le seul document remis au salarié passait donc du
+    # salaire de base au net à payer SANS UNE SEULE LIGNE d'explication.
+    #
+    # ATTENTION — ces quatre lignes sont un AFFICHAGE, pas un calcul : elles ne
+    # rejoignent AUCUN accumulateur (``retenues_variables`` / ``net_a_payer``
+    # déduisent déjà ces montants). Les y ajouter les compterait DEUX FOIS.
+    for _code, _libelle, _type_ligne, _montant in (
+        ('CNSS_SAL', 'CNSS (part salariale)', Rubrique.TYPE_COTISATION, cnss),
+        ('AMO_SAL', 'AMO (part salariale)', Rubrique.TYPE_COTISATION, amo),
+        ('CIMR_SAL', 'CIMR (part salariale)', Rubrique.TYPE_COTISATION, cimr),
+        ('IR', 'Impôt sur le revenu', Rubrique.TYPE_RETENUE, ir),
+    ):
+        if _montant > 0:
+            lignes.append({
+                'code': _code, 'libelle': _libelle,
+                'type': _type_ligne, 'montant': _q(_montant),
+            })
+
     # PAIE28 — Échéances d'avances/prêts salariés du mois : retenues nettes
     # (après IR, comme toute retenue de net). Calcul PUR ici — l'imputation
     # effective de ``montant_rembourse`` se fait à la validation du bulletin
@@ -2346,6 +2508,12 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'mutuelle_salariale': mutuelle_sal,
         'mutuelle_patronale': mutuelle_pat,
         'lignes': lignes,
+        # AUD710 — avertissement FORT quand les paramètres sociaux ne sont pas
+        # validés par le fondateur (liste vide sinon). Non persisté : c'est un
+        # signal de calcul, remonté tel quel par l'API du bulletin.
+        'avertissements': avertissements_parametre_paie(
+            profil.company, le_jour, contexte='Bulletin de paie',
+            parametre=parametre),
         # Interne (PAIE29) : net avant saisie, base de la quotité saisissable.
         # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
         'net_avant_saisie': net_avant_saisie,
@@ -2678,6 +2846,14 @@ def creer_bulletin_annulation(bulletin_origine, periode_cible):
             personnes_a_charge=bulletin_origine.personnes_a_charge,
         )
         for champ in BulletinPaie.SNAPSHOT_FIELDS:
+            # AUD707 — ``personnes_a_charge`` est un compteur NON SIGNÉ
+            # (PositiveSmallIntegerField, CHECK >= 0) : le néguer faisait
+            # crasher l'extourne en IntegrityError dès que le salarié avait
+            # une charge de famille. Il est REPORTÉ tel quel (posé à la
+            # création ci-dessus), comme le font déjà ``generer_bulletin`` et
+            # le générateur de gratification.
+            if champ == 'personnes_a_charge':
+                continue
             valeur = getattr(bulletin_origine, champ) or Decimal('0')
             setattr(annulation, champ, _q(-Decimal(valeur)))
         annulation.save()
@@ -2756,6 +2932,48 @@ def rattacher_bulletins(periode_cible, bulletin_ids):
     return bulletins
 
 
+def _resynchroniser_snapshot_avant_validation(bulletin):
+    """Re-snapshot d'un bulletin NORMAL avant de le figer (AUD714).
+
+    ``valider_bulletin`` figeait le statut sans jamais rappeler
+    ``generer_bulletin`` (le seul point d'écriture du snapshot), tout en
+    recalculant juste après un bulletin LIVE pour en extraire
+    ``net_avant_saisie`` — la base d'imputation des saisies-arrêt. Un
+    ``ElementVariable`` ajouté entre ``generer`` et ``valider`` était donc
+    ABSENT du document figé remis au salarié mais PRÉSENT dans l'imputation
+    réelle : deux vérités pour le même bulletin.
+
+    Le re-snapshot ne concerne QUE les bulletins de type NORMAL : les
+    annulations (montants négatifs recopiés), STC, gratifications et rappels
+    sont produits par leurs propres générateurs — leur rejouer le moteur
+    standard écraserait leur contenu.
+
+    Une régularisation IR déjà appliquée (ligne ``IR-REGUL``) est REJOUÉE
+    après le re-snapshot : elle est recalculée sur le bulletin à jour au lieu
+    d'être silencieusement effacée.
+    """
+    from .models import BulletinPaie
+
+    if bulletin.type_bulletin != BulletinPaie.TYPE_NORMAL:
+        return bulletin
+    # ``generer_bulletin`` cible le bulletin par (période, profil) : si la
+    # période porte AUSSI une annulation/un rappel pour ce profil, la cible
+    # serait ambiguë — on ne rejoue alors jamais le moteur (ne jamais écraser
+    # un autre bulletin en croyant resynchroniser celui-ci).
+    if (BulletinPaie.objects
+            .filter(periode=bulletin.periode, profil=bulletin.profil)
+            .exclude(pk=bulletin.pk).exists()):
+        return bulletin
+    avait_regularisation = bulletin.lignes.filter(code='IR-REGUL').exists()
+    generer_bulletin(bulletin.profil, bulletin.periode,
+                     personnes_a_charge=bulletin.personnes_a_charge)
+    bulletin.refresh_from_db()
+    if avait_regularisation:
+        appliquer_regularisation_ir(bulletin)
+        bulletin.refresh_from_db()
+    return bulletin
+
+
 def valider_bulletin(bulletin):
     """Valide un ``BulletinPaie`` → fige le snapshot (PAIE17).
 
@@ -2763,11 +2981,21 @@ def valider_bulletin(bulletin):
     ``date_validation``. Une fois validé, le bulletin et ses lignes sont
     immuables (gardes ``save``/``delete`` côté modèle). Re-valider un bulletin
     déjà validé est un no-op. Renvoie le bulletin.
+
+    AUD714 — le snapshot est RESYNCHRONISÉ juste avant d'être figé (cf.
+    ``_resynchroniser_snapshot_avant_validation``) : le document figé et
+    l'imputation des avances/saisies parlent enfin des mêmes éléments
+    variables.
     """
     from .models import BulletinPaie
 
     if bulletin.statut == BulletinPaie.STATUT_VALIDE:
         return bulletin
+    _resynchroniser_snapshot_avant_validation(bulletin)
+    # AUD705 — un salarié affilié CNSS dont la fiche RH porte un numéro ne
+    # part pas en bulletin avec un n° CNSS vide (voir le périmètre exact,
+    # blocage vs signalement, dans ``verifier_numero_cnss_bulletin``).
+    verifier_numero_cnss_bulletin(bulletin)
     bulletin.statut = BulletinPaie.STATUT_VALIDE
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
@@ -2801,6 +3029,14 @@ def valider_bulletin(bulletin):
             extourner_provisions_gratification(bulletin.profil)
         except Exception:  # pragma: no cover - défensif, best-effort
             pass
+    # AUD703 — l'ARCHIVE IMMUABLE du PDF (doctrine D9) n'est PAS posée ici :
+    # elle l'est à la PREMIÈRE ÉMISSION du document validé
+    # (``builders.bulletin_pdf_a_servir``). Rendre un PDF WeasyPrint et
+    # téléverser dans l'entrepôt à l'intérieur de CHAQUE validation de paie
+    # coûterait une génération complète par bulletin et ferait dépendre la
+    # validation d'un service externe — alors qu'un bulletin jamais émis n'a
+    # rien à archiver. À partir de la première émission, la réémission sert
+    # TOUJOURS cette archive, jamais un re-rendu.
     # XPAI21 — Notifie l'employé lié (rh.DossierEmploye.user) que son
     # bulletin validé est disponible dans son coffre-fort (PAIE35).
     # Best-effort : jamais bloquant pour la validation.
@@ -3097,6 +3333,57 @@ def controler_coherence_rib(periode):
     return divergences
 
 
+class NumeroCnssManquant(ValueError):
+    """AUD705 — validation refusée : n° CNSS connu côté RH, absent en paie."""
+
+
+def verifier_numero_cnss_bulletin(bulletin):
+    """AUD705 — refuse de valider un bulletin au n° CNSS silencieusement vide.
+
+    Le numéro existe en DEUX exemplaires indépendants (``ProfilPaie.
+    numero_cnss`` et ``rh.DossierEmploye.cnss``), tous deux ``blank=True``, et
+    ``bulletin_context`` imprimait ``profil.numero_cnss or ''`` — un bulletin
+    d'un salarié affilié CNSS pouvait donc partir avec un n° CNSS VIDE alors
+    que la fiche RH le connaissait, sans la moindre alerte.
+
+    PÉRIMÈTRE DÉLIBÉRÉ — on BLOQUE l'OMISSION, on SIGNALE la DIVERGENCE :
+
+    * numéro connu côté RH et ABSENT côté paie → refus de validation. Le fait
+      est certain (l'information existe, elle n'a pas été reprise), la
+      correction est mécanique.
+    * deux numéros NON VIDES qui diffèrent → jamais un blocage : c'est la
+      doctrine posée par WIR89 (« CONTRÔLE croisé, jamais une fusion —
+      signaler pour qu'un humain tranche »). L'écart remonte désormais AUSSI
+      dans ``avertissements_periode``, le panneau lu AVANT de payer, au lieu
+      d'une seule notification au moment de la déclaration.
+    * aucun numéro nulle part → pas de blocage ici : c'est déjà un
+      avertissement ``cnss_manquant`` de gravité « bloquant » sur ce même
+      panneau, et refuser rétroactivement toute paie d'une société qui n'a pas
+      encore saisi ses numéros ferait plus de dégâts que le défaut.
+
+    Lecture RH via ``apps.rh.selectors`` uniquement (jamais ``rh.models``).
+    """
+    profil = getattr(bulletin, 'profil', None)
+    if profil is None or not getattr(profil, 'affilie_cnss', False):
+        return
+    if (profil.numero_cnss or '').strip():
+        return
+    if not getattr(profil, 'employe_id', None):
+        return
+    from apps.rh import selectors as rh_selectors
+
+    reference = (
+        rh_selectors.cnss_par_employe(profil.company, [profil.employe_id])
+        .get(profil.employe_id) or '')
+    if not reference.strip():
+        return
+    raise NumeroCnssManquant(
+        "Numéro CNSS absent du profil de paie alors que la fiche RH le "
+        "renseigne : reprenez-le sur le profil avant de valider ce bulletin "
+        "(le bulletin et le bordereau CNSS partiraient sans numéro)."
+    )
+
+
 def controler_coherence_cnss(periode):
     """Contrôle croisé n° CNSS paie ↔ RH d'une période (WIR89, lecture seule).
 
@@ -3166,6 +3453,13 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
     from .models import (
         BulletinPaie, LigneVirement, OrdreVirement, ProfilPaie,
     )
+
+    # AUD710 — signal FORT (journalisé) si les paramètres sociaux ne sont pas
+    # validés : l'ordre de virement engage de l'argent réel sur des nets
+    # calculés avec des taux à confirmer.
+    avertissements_parametre_paie(
+        periode.company, date(periode.annee, periode.mois, 1),
+        contexte='Ordre de virement')
 
     compte = _resoudre_compte_emetteur(periode.company, compte_emetteur)
 
@@ -3578,12 +3872,32 @@ def reemettre_ligne_virement(ligne_rejetee, *, nouveau_rib):
 
 # ── PAIE31 — Déclaration CNSS (BDS / format DAMANCOM) ──────────────────────
 
+def jours_declares_cnss(profil, periode):
+    """Nombre de jours déclarés à la CNSS pour un profil/période (AUD706).
+
+    DÉRIVÉ des jours réellement payés (``jours_payes_periode`` : norme
+    mensuelle du profil − absences non rémunérées − jours hors contrat),
+    arrondi à l'entier le plus proche (``ROUND_HALF_UP``, la politique
+    d'arrondi maison) et borné à zéro. Un salarié embauché ou sorti en cours
+    de mois n'est donc plus déclaré comme présent tout le mois.
+
+    Le plafond réglementaire du BDS reste la norme du profil
+    (``jours_travail_mensuel``, 26 j/mois par défaut) : ``jours_payes_periode``
+    ne peut jamais la dépasser.
+    """
+    jours = jours_payes_periode(profil, periode)
+    entier = int(jours.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    return max(0, entier)
+
+
 def declaration_cnss(periode):
     """Bordereau de déclaration des salaires CNSS (BDS) d'une période (PAIE31).
 
     Agrège, pour les bulletins VALIDÉS de la ``periode``, les éléments du BDS
     par salarié affilié CNSS : numéro d'immatriculation CNSS, nom, nombre de
-    jours déclarés (plafonné réglementairement à 26 j/mois), salaire brut réel
+    jours déclarés (AUD706 — DÉRIVÉ des jours réellement payés par
+    ``jours_declares_cnss``, plafonné par la norme mensuelle du profil,
+    26 j/mois par défaut ; jamais un littéral), salaire brut réel
     et salaire PLAFONNÉ (base de cotisation, ``min(brut, plafond_cnss)``).
     Calcule aussi les totaux et les cotisations (salariale + patronale CNSS, AMO,
     allocations familiales, taxe de formation professionnelle).
@@ -3637,7 +3951,7 @@ def declaration_cnss(periode):
             'numero_cnss': profil.numero_cnss or '',
             'matricule': getattr(employe, 'matricule', '') if employe else '',
             'nom': nom,
-            'jours_declares': 26,  # mois plein déclaré par défaut (réglementaire)
+            'jours_declares': jours_declares_cnss(profil, periode),
             'brut': _q(brut),
             'plafonne': _q(plafonne),
             'cnss_salariale': _q(bulletin.cnss_salariale),
@@ -3665,6 +3979,11 @@ def declaration_cnss(periode):
         'plafond_cnss': _q(plafond),
         'lignes': lignes,
         'nombre_salaries': len(lignes),
+        # AUD710 — un BDS déposé sur des taux non confirmés est un risque
+        # déclaratif : le signal accompagne la déclaration.
+        'avertissements': avertissements_parametre_paie(
+            periode.company, le_jour, contexte='Déclaration CNSS',
+            parametre=parametre),
     }
     for cle, valeur in totaux.items():
         resultat[cle] = _q(valeur)
@@ -3944,20 +4263,40 @@ def deposer_bds_principal(periode):
     enregistré s'il existe. Couvre TOUS les salariés affiliés CNSS de la
     déclaration (``declaration_cnss``). Renvoie le ``DepotBDS`` (créé ou
     existant).
+
+    AUD713 — la promesse « un seul dépôt principal » n'était garantie par RIEN :
+    ni verrou (``filter().first()`` puis ``create()``), ni contrainte DB. Deux
+    appels concurrents créaient deux dépôts principaux pour la même période.
+    Elle est maintenant tenue à DEUX niveaux : le verrou de période sérialise
+    les appels concurrents (il n'y a aucune ligne de dépôt à verrouiller tant
+    qu'aucun dépôt n'existe), et la contrainte
+    ``uniq_depot_bds_principal_par_periode`` ferme la course au niveau DB
+    quoi que fasse le code applicatif. Une course perdue relit le dépôt du
+    gagnant au lieu de lever : la fonction reste idempotente.
     """
     from .models import DepotBDS
 
-    existant = DepotBDS.objects.filter(
-        company=periode.company, periode=periode,
-        type_depot=DepotBDS.TYPE_PRINCIPAL).first()
-    if existant is not None:
-        return existant
+    filtre = dict(company=periode.company, periode=periode,
+                  type_depot=DepotBDS.TYPE_PRINCIPAL)
+    with transaction.atomic():
+        PeriodePaie.objects.select_for_update().filter(pk=periode.pk).first()
+        existant = DepotBDS.objects.filter(**filtre).first()
+        if existant is not None:
+            return existant
 
-    decl = declaration_cnss(periode)
-    profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
-    return DepotBDS.objects.create(
-        company=periode.company, periode=periode,
-        type_depot=DepotBDS.TYPE_PRINCIPAL, profils_couverts=profils)
+        decl = declaration_cnss(periode)
+        profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
+        try:
+            # Bloc imbriqué : une IntegrityError casse la transaction
+            # courante, il faut un point de sauvegarde pour pouvoir relire.
+            with transaction.atomic():
+                return DepotBDS.objects.create(
+                    profils_couverts=profils, **filtre)
+        except IntegrityError:
+            gagnant = DepotBDS.objects.filter(**filtre).first()
+            if gagnant is None:  # pragma: no cover - défensif
+                raise
+            return gagnant
 
 
 def deposer_bds_complementaire(periode, profils_delta, *, depot_principal=None):
@@ -4586,6 +4925,18 @@ def avertissements_periode(periode):
 
     avertissements = []
 
+    # AUD710 — prérequis de SOCIÉTÉ (pas d'employé) : des paramètres sociaux
+    # non confirmés par le fondateur produisent des bulletins réels sur des
+    # taux à valider. Le panneau pré-run est le seul endroit où l'ERP dit
+    # « à corriger avant de payer » — le signal y est donc bloquant.
+    for message in avertissements_parametre_paie(
+            company, date(periode.annee, periode.mois, 1)):
+        avertissements.append({
+            'type': 'parametres_non_valides', 'employe_id': None,
+            'matricule': '', 'nom': '',
+            'gravite': 'bloquant', 'message': message,
+        })
+
     for item in completude['actifs_sans_profil']:
         avertissements.append({
             'type': 'sans_profil_paie', 'employe_id': item['dossier_id'],
@@ -4621,9 +4972,11 @@ def avertissements_periode(periode):
     profils = (
         ProfilPaie.objects.filter(company=company, actif=True)
         .select_related('employe'))
+    libelles = {}
     for profil in profils:
         dossier = profil.employe
         nom = f'{dossier.matricule} — {dossier.nom} {dossier.prenom}'.strip()
+        libelles[profil.id] = (dossier, nom)
         if (profil.mode_paiement == ProfilPaie.MODE_PAIEMENT_VIREMENT
                 and not profil.rib):
             avertissements.append({
@@ -4642,6 +4995,31 @@ def avertissements_periode(periode):
                 'message': f'{nom} — salaire de base à 0 : le bulletin '
                            'sera nul.',
             })
+
+    # AUD705 — DIVERGENCE n° CNSS paie ↔ RH. Elle n'existait que sous forme de
+    # notification interne émise par ``controler_coherence_cnss`` AU MOMENT de
+    # la déclaration — donc APRÈS que les bulletins soient partis. Elle remonte
+    # désormais sur le panneau lu AVANT de payer. Ni blocage (WIR89 :
+    # « CONTRÔLE croisé, jamais une fusion — un humain tranche »), ni numéro
+    # dans le message (donnée sensible, comme la notification WIR89).
+    from . import selectors as paie_selectors
+
+    try:
+        divergences = paie_selectors.divergences_cnss_periode(periode)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        divergences = []
+    for divergence in divergences:
+        dossier, nom = libelles.get(divergence['profil_id'], (None, ''))
+        avertissements.append({
+            'type': 'cnss_divergent',
+            'employe_id': dossier.id if dossier else divergence['employe_id'],
+            'matricule': dossier.matricule if dossier else '',
+            'nom': nom,
+            'gravite': 'avertissement',
+            'message': f'{nom} — le n° CNSS du profil de paie diffère de '
+                       'celui de la fiche RH : à trancher avant la '
+                       'déclaration (aucune correction automatique).',
+        })
 
     return avertissements
 
@@ -4732,6 +5110,58 @@ def livre_de_paie(periode):
     }
 
 
+# AUD708 — clé d'idempotence du postage paie→compta. Le journal SIMPLE et le
+# journal VENTILÉ sont deux représentations du MÊME run de paie : ils partagent
+# volontairement la même source, sans quoi poster les deux doublerait la masse
+# salariale au grand livre.
+_SOURCE_JOURNAL_PAIE = 'paie_journal'
+
+# Libellé du crédit organismes sociaux (4441) — inclut désormais les deux
+# charges 100 % patronales recouvrées par la CNSS (AUD708).
+_LIBELLE_CREDIT_CNSS = (
+    'CNSS / AMO / allocations familiales / formation pro à payer')
+
+
+def _credit_organismes_cnss(totaux):
+    """Total crédité au compte des organismes sociaux (4441) — AUD708.
+
+    CNSS + AMO (parts salariale ET patronale) + allocations familiales + taxe
+    de formation professionnelle. Ces deux dernières sont 100 % patronales et
+    étaient jusqu'ici débitées en 6174 sans crédit organisme : elles
+    grossissaient le solde équilibrant du compte 4432 (dette envers le
+    PERSONNEL), que rien ne réglait jamais.
+    """
+    return (
+        totaux['cnss_salariale'] + totaux['cnss_patronale']
+        + totaux['amo_salariale'] + totaux['amo_patronale']
+        + totaux['allocations_familiales']
+        + totaux['formation_professionnelle']
+    )
+
+
+def _refuser_journal_deja_poste(periode):
+    """Refuse un second postage du journal de paie d'une période (AUD708).
+
+    Garde APPLICATIVE, doublée par la contrainte DB
+    ``uniq_ecriture_par_source`` (réactivée par le couple
+    ``source_type``/``source_id`` posé sur l'écriture) : la lecture compta
+    passe EXCLUSIVEMENT par ``compta.selectors`` (cross-app READ, jamais
+    ``compta.models``). Lève ``ValidationError`` — les vues la traduisent en
+    400, jamais en 500.
+    """
+    from django.core.exceptions import ValidationError
+
+    from apps.compta import selectors as compta_selectors  # cross-app READ
+
+    existante = compta_selectors.ecriture_pour_source(
+        periode.company, _SOURCE_JOURNAL_PAIE, periode.id)
+    if existante is not None:
+        raise ValidationError(
+            f'Journal de paie {periode.mois:02d}/{periode.annee} déjà '
+            f'comptabilisé (écriture #{existante.id}) : un second postage '
+            'doublerait le grand livre.')
+
+
 def journal_de_paie(periode, *, created_by=None):
     """Passe l'écriture comptable du journal de paie d'une période (PAIE33).
 
@@ -4745,14 +5175,31 @@ def journal_de_paie(periode, *, created_by=None):
 
     * Débit 6171 Rémunérations du personnel = total BRUT ;
     * Débit 6174 Charges sociales = total des charges PATRONALES ;
-    * Crédit 4441 Caisses de sécurité sociale = CNSS+AMO (salariales+patronales) ;
+    * Crédit 4441 Caisses de sécurité sociale = CNSS+AMO (salariales+patronales)
+      + allocations familiales + taxe de formation professionnelle (AUD708) ;
     * Crédit 4452 État, impôts & taxes = IR retenu ;
     * Crédit 4443 Caisses de retraite = CIMR salariale ;
     * Crédit 4432 Rémunérations dues au personnel = net à payer + retenues.
 
+    AUD708 — les allocations familiales (6,4 %) et la taxe de formation
+    professionnelle (1,6 %), 100 % PATRONALES, étaient débitées en 6174 mais
+    n'avaient AUCUN crédit organisme : elles tombaient dans le solde
+    équilibrant du compte 4432 « Rémunérations dues au personnel », un passif
+    fantôme envers le SALARIÉ que ni ``payer_ordre_virement`` (net seul) ni
+    ``payer_organismes`` ne soldait jamais. Elles sont désormais créditées au
+    compte des organismes sociaux (``_COMPTE_CNSS``, 4441 — la CNSS recouvre
+    les deux au Maroc). MAPPING À CONTRE-VALIDER PAR LE COMPTABLE : actuel
+    (avant ce correctif) = 4432 personnel ; cible = 4441 organismes sociaux.
+
     L'écriture s'équilibre par construction (Σ débit = Σ crédit). Sème le plan
     comptable au besoin. Renvoie l'écriture créée, ou ``None`` s'il n'y a aucun
     bulletin validé (rien à passer).
+
+    AUD708 — IDEMPOTENCE : l'écriture porte ``source_type``/``source_id``
+    stables (``_SOURCE_JOURNAL_PAIE`` + id de la période), donc la contrainte
+    DB ``uniq_ecriture_par_source`` s'applique ; un second postage de la même
+    période (journal simple OU ventilé — même source) est refusé par une
+    ``ValidationError`` explicite au lieu de doubler le grand livre.
     """
     from apps.compta import services as compta_services  # cross-app via services
 
@@ -4760,6 +5207,7 @@ def journal_de_paie(periode, *, created_by=None):
     if registre['nombre_salaries'] == 0:
         return None
     totaux = registre['totaux']
+    _refuser_journal_deja_poste(periode)
 
     company = periode.company
     # Sème le plan comptable si un compte requis manque (idempotent).
@@ -4775,10 +5223,7 @@ def journal_de_paie(periode, *, created_by=None):
 
     brut = totaux['brut']
     charges_pat = totaux['charges_patronales']
-    cnss_amo = (
-        totaux['cnss_salariale'] + totaux['cnss_patronale']
-        + totaux['amo_salariale'] + totaux['amo_patronale']
-    )
+    cnss_amo = _credit_organismes_cnss(totaux)
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
@@ -4794,7 +5239,7 @@ def journal_de_paie(periode, *, created_by=None):
     if cnss_amo > 0:
         lignes.append({
             'compte': compte(_COMPTE_CNSS),
-            'libelle': 'CNSS / AMO à payer', 'debit': 0, 'credit': cnss_amo})
+            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
     if ir > 0:
         lignes.append({
             'compte': compte(_COMPTE_IR),
@@ -4825,7 +5270,8 @@ def journal_de_paie(periode, *, created_by=None):
     reference = f'PAIE-{periode.annee}-{periode.mois:02d}'
     ecriture = compta_services.creer_ecriture_od(
         company, date_ecriture, libelle, lignes,
-        reference=reference, created_by=created_by)
+        reference=reference, created_by=created_by,
+        source_type=_SOURCE_JOURNAL_PAIE, source_id=periode.id)
     return ecriture
 
 
@@ -4850,19 +5296,30 @@ def etat_des_charges(periode):
     total à payer. Renvoie un dict ``{'annee', 'mois', 'organismes': [...]
     (chacun {'code', 'libelle', 'salarial', 'patronal', 'total',
     'echeance'}), 'total_general'}``. Lecture seule.
+
+    AUD708 — la part patronale de l'organisme ``cnss_amo`` inclut désormais
+    les allocations familiales et la taxe de formation professionnelle, comme
+    le crédit 4441 posté par ``journal_de_paie`` : sans quoi le rapprochement
+    paie↔GL signalerait un faux écart et ``payer_organismes`` laisserait un
+    reliquat impayé sur le compte de dette.
     """
     registre = livre_de_paie(periode)
     totaux = registre['totaux']
 
     cnss_amo_sal = totaux['cnss_salariale'] + totaux['amo_salariale']
-    cnss_amo_pat = totaux['cnss_patronale'] + totaux['amo_patronale']
+    cnss_amo_pat = (
+        totaux['cnss_patronale'] + totaux['amo_patronale']
+        + totaux['allocations_familiales']
+        + totaux['formation_professionnelle']
+    )
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
     # Échéances réglementaires usuelles (jour du mois suivant) — informatif.
     organismes = [
         {
-            'code': 'cnss_amo', 'libelle': 'CNSS / AMO',
+            'code': 'cnss_amo',
+            'libelle': 'CNSS / AMO / allocations familiales / formation pro',
             'salarial': _q(cnss_amo_sal), 'patronal': _q(cnss_amo_pat),
             'total': _q(cnss_amo_sal + cnss_amo_pat),
             'echeance_jour': 10,
@@ -4960,6 +5417,16 @@ _ECHEANCE_TYPES_PAR_ORGANISME = {
     'cimr': (EcheanceDeclarative.TYPE_CIMR,),
 }
 
+# AUD712 — sources stables des écritures de RÈGLEMENT : elles réarment la
+# contrainte DB ``uniq_ecriture_par_source``, qui ferme la course même si la
+# garde applicative venait à être contournée. ``source_type`` ≤ 30 caractères.
+_SOURCE_REGLEMENT_OV = 'paie_ov_reglement'
+
+
+def _source_reglement_organisme(organisme):
+    """``source_type`` du règlement d'un organisme (un par code)."""
+    return f'paie_org_{organisme}'
+
 
 def payer_ordre_virement(ordre, compte_tresorerie, *,
                          date_reglement=None, created_by=None):
@@ -4973,43 +5440,71 @@ def payer_ordre_virement(ordre, compte_tresorerie, *,
     verrouillée (FG115). Le ``compte_tresorerie`` DOIT appartenir à la même
     société que l'ordre.
 
+    AUD712 — COURSE FERMÉE : le contrôle « déjà réglé » se faisait sur
+    l'instance en mémoire de l'appelant, hors transaction et sans verrou —
+    deux POST concurrents (ou une instance périmée) postaient DEUX écritures
+    de règlement. La lecture d'état se fait désormais sous
+    ``select_for_update()`` dans un ``transaction.atomic()``, et l'écriture
+    porte ``source_type``/``source_id`` : la contrainte DB
+    ``uniq_ecriture_par_source`` ferme la course même si la garde applicative
+    est un jour contournée.
+
     Renvoie l'écriture comptable postée.
     """
     from apps.compta import services as compta_services
     from apps.compta.models import EcritureComptable
 
+    from .models import OrdreVirement
+
     company = ordre.company
-    if ordre.ecriture_reglement_id:
-        return EcritureComptable.objects.filter(
-            pk=ordre.ecriture_reglement_id).first()
-    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
-    if compte_tresorerie is None:
-        raise ValueError(
-            "Le compte de trésorerie doit appartenir à la société de "
-            "l'ordre de virement.")
-    if not ordre.total or ordre.total <= 0:
-        raise ValueError("L'ordre de virement n'a aucun montant à régler.")
+    with transaction.atomic():
+        verrouille = (
+            OrdreVirement.objects
+            .select_for_update()
+            .filter(pk=ordre.pk)
+            .first()
+        )
+        if verrouille is None:
+            raise ValueError("Ordre de virement introuvable.")
+        if verrouille.ecriture_reglement_id:
+            # Recopie l'état réel sur l'instance de l'appelant (qui peut être
+            # périmée) — jamais une seconde écriture.
+            ordre.ecriture_reglement_id = verrouille.ecriture_reglement_id
+            ordre.date_reglement = verrouille.date_reglement
+            return EcritureComptable.objects.filter(
+                pk=verrouille.ecriture_reglement_id).first()
+        compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+        if compte_tresorerie is None:
+            raise ValueError(
+                "Le compte de trésorerie doit appartenir à la société de "
+                "l'ordre de virement.")
+        if not verrouille.total or verrouille.total <= 0:
+            raise ValueError("L'ordre de virement n'a aucun montant à régler.")
 
-    date_reg = date_reglement or timezone.localdate()
-    compte_net = compta_services.get_compte(company, _COMPTE_NET)
-    if compte_net is None:
-        compta_services.seed_plan_comptable(company)
+        date_reg = date_reglement or timezone.localdate()
         compte_net = compta_services.get_compte(company, _COMPTE_NET)
+        if compte_net is None:
+            compta_services.seed_plan_comptable(company)
+            compte_net = compta_services.get_compte(company, _COMPTE_NET)
 
-    montant = _q(ordre.total)
-    libelle = f'Règlement salaires {ordre.reference or ordre.id}'
-    lignes = [
-        {'compte': compte_net, 'libelle': libelle,
-         'debit': montant, 'credit': Decimal('0')},
-        {'compte': compte_tresorerie.compte_comptable, 'libelle': libelle,
-         'debit': Decimal('0'), 'credit': montant},
-    ]
-    ecriture = compta_services.creer_ecriture_od(
-        company, date_reg, libelle, lignes,
-        reference=f'OV-REGLEMENT-{ordre.id}', created_by=created_by)
-    ordre.ecriture_reglement_id = ecriture.id
-    ordre.date_reglement = timezone.now()
-    ordre.save(update_fields=['ecriture_reglement_id', 'date_reglement'])
+        montant = _q(verrouille.total)
+        libelle = f'Règlement salaires {verrouille.reference or verrouille.id}'
+        lignes = [
+            {'compte': compte_net, 'libelle': libelle,
+             'debit': montant, 'credit': Decimal('0')},
+            {'compte': compte_tresorerie.compte_comptable, 'libelle': libelle,
+             'debit': Decimal('0'), 'credit': montant},
+        ]
+        ecriture = compta_services.creer_ecriture_od(
+            company, date_reg, libelle, lignes,
+            reference=f'OV-REGLEMENT-{verrouille.id}', created_by=created_by,
+            source_type=_SOURCE_REGLEMENT_OV, source_id=verrouille.id)
+        verrouille.ecriture_reglement_id = ecriture.id
+        verrouille.date_reglement = timezone.now()
+        verrouille.save(
+            update_fields=['ecriture_reglement_id', 'date_reglement'])
+    ordre.ecriture_reglement_id = verrouille.ecriture_reglement_id
+    ordre.date_reglement = verrouille.date_reglement
     return ecriture
 
 
@@ -5025,6 +5520,13 @@ def payer_organismes(periode, organisme, compte_tresorerie, *,
     organisme (idempotent par écheance — une échéance déjà payée n'est jamais
     re-postée). Refusé si la période comptable de règlement est verrouillée.
 
+    AUD712 — COURSE FERMÉE (même classe que ``payer_ordre_virement``) : le
+    « check-then-create » sur les échéances non payées se faisait hors
+    transaction et sans verrou. Les échéances sont désormais lues sous
+    ``select_for_update()`` dans un ``transaction.atomic()``, et l'écriture
+    porte ``source_type``/``source_id`` (un couple par organisme et période)
+    pour que la contrainte DB ``uniq_ecriture_par_source`` ferme la course.
+
     Renvoie l'écriture postée, ou ``None`` si le montant dû est nul (rien à
     régler) ou si toutes les échéances de l'organisme sont déjà payées.
     """
@@ -5038,49 +5540,57 @@ def payer_organismes(periode, organisme, compte_tresorerie, *,
 
     company = periode.company
     types_echeance = _ECHEANCE_TYPES_PAR_ORGANISME.get(organisme, ())
-    echeances = list(EcheanceDeclarative.objects.filter(
-        company=company, periode=periode, type_echeance__in=types_echeance,
-    ).exclude(statut=EcheanceDeclarative.STATUT_PAYEE))
-    if not echeances:
-        # Toutes déjà payées (ou aucune échéance de ce type) — no-op.
-        return None
+    with transaction.atomic():
+        echeances = list(
+            EcheanceDeclarative.objects
+            .select_for_update()
+            .filter(company=company, periode=periode,
+                    type_echeance__in=types_echeance)
+            .exclude(statut=EcheanceDeclarative.STATUT_PAYEE)
+        )
+        if not echeances:
+            # Toutes déjà payées (ou aucune échéance de ce type) — no-op.
+            return None
 
-    etat = etat_des_charges(periode)
-    total_par_code = {o['code']: o['total'] for o in etat['organismes']}
-    montant = total_par_code.get(organisme, Decimal('0.00'))
-    if montant <= 0:
-        return None
+        etat = etat_des_charges(periode)
+        total_par_code = {o['code']: o['total'] for o in etat['organismes']}
+        montant = total_par_code.get(organisme, Decimal('0.00'))
+        if montant <= 0:
+            return None
 
-    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
-    if compte_tresorerie is None:
-        raise ValueError(
-            "Le compte de trésorerie doit appartenir à la société de la "
-            "période.")
+        compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+        if compte_tresorerie is None:
+            raise ValueError(
+                "Le compte de trésorerie doit appartenir à la société de la "
+                "période.")
 
-    date_reg = date_reglement or timezone.localdate()
-    compte_dette = compta_services.get_compte(company, numero_compte)
-    if compte_dette is None:
-        compta_services.seed_plan_comptable(company)
+        date_reg = date_reglement or timezone.localdate()
         compte_dette = compta_services.get_compte(company, numero_compte)
+        if compte_dette is None:
+            compta_services.seed_plan_comptable(company)
+            compte_dette = compta_services.get_compte(company, numero_compte)
 
-    montant = _q(montant)
-    libelle_ecriture = (
-        f'Règlement {libelle_organisme} — {periode.mois:02d}/{periode.annee}')
-    lignes = [
-        {'compte': compte_dette, 'libelle': libelle_ecriture,
-         'debit': montant, 'credit': Decimal('0')},
-        {'compte': compte_tresorerie.compte_comptable,
-         'libelle': libelle_ecriture,
-         'debit': Decimal('0'), 'credit': montant},
-    ]
-    ecriture = compta_services.creer_ecriture_od(
-        company, date_reg, libelle_ecriture, lignes,
-        reference=f'ORG-{organisme.upper()}-{periode.id}',
-        created_by=created_by)
-    for echeance in echeances:
-        echeance.statut = EcheanceDeclarative.STATUT_PAYEE
-        echeance.ecriture_reglement_id = ecriture.id
-        echeance.save(update_fields=['statut', 'ecriture_reglement_id'])
+        montant = _q(montant)
+        libelle_ecriture = (
+            f'Règlement {libelle_organisme} — '
+            f'{periode.mois:02d}/{periode.annee}')
+        lignes = [
+            {'compte': compte_dette, 'libelle': libelle_ecriture,
+             'debit': montant, 'credit': Decimal('0')},
+            {'compte': compte_tresorerie.compte_comptable,
+             'libelle': libelle_ecriture,
+             'debit': Decimal('0'), 'credit': montant},
+        ]
+        ecriture = compta_services.creer_ecriture_od(
+            company, date_reg, libelle_ecriture, lignes,
+            reference=f'ORG-{organisme.upper()}-{periode.id}',
+            created_by=created_by,
+            source_type=_source_reglement_organisme(organisme),
+            source_id=periode.id)
+        for echeance in echeances:
+            echeance.statut = EcheanceDeclarative.STATUT_PAYEE
+            echeance.ecriture_reglement_id = ecriture.id
+            echeance.save(update_fields=['statut', 'ecriture_reglement_id'])
     return ecriture
 
 
@@ -5247,15 +5757,18 @@ def calculer_gratification(profil, periode, *, annee_reference=None,
             'libelle': '13e mois / prime de bilan (prorata présence)',
             'type': Rubrique.TYPE_GAIN, 'montant': montant_brut,
         })
+    # AUD701 — même vocabulaire que ``calculer_bulletin`` (contrat partagé
+    # ``contract_samples/bulletin_lignes.json``) : le bulletin de gratification
+    # se rend avec le MÊME gabarit, il doit parler les mêmes codes/types.
     if cnss_sal > 0:
         lignes.append({
-            'code': 'CNSS_SAL', 'libelle': 'CNSS salariale',
-            'type': Rubrique.TYPE_RETENUE, 'montant': cnss_sal,
+            'code': 'CNSS_SAL', 'libelle': 'CNSS (part salariale)',
+            'type': Rubrique.TYPE_COTISATION, 'montant': cnss_sal,
         })
     if amo_sal > 0:
         lignes.append({
-            'code': 'AMO_SAL', 'libelle': 'AMO salariale',
-            'type': Rubrique.TYPE_RETENUE, 'montant': amo_sal,
+            'code': 'AMO_SAL', 'libelle': 'AMO (part salariale)',
+            'type': Rubrique.TYPE_COTISATION, 'montant': amo_sal,
         })
     if ir > 0:
         lignes.append({
@@ -5688,9 +6201,18 @@ def calculer_regularisation_ir(bulletin):
         nombre += 1
         ir_retenu_annuel += Decimal(b.ir or 0)
         if bareme and parametre:
+            # AUD709 — MIROIR EXACT de ``calculer_bulletin`` (XPAI18) : la
+            # base IR d'un mois est le net imposable MOINS la fraction
+            # exonérée par le régime (stagiaire/ANAPEC/TAHFIZ), figée sur le
+            # bulletin. Recalculer l'IR théorique sur le net imposable BRUT
+            # survalorisait l'IR dû de ces profils protégés et générait un
+            # rappel IR-REGUL indu.
+            base_ir_mois = (Decimal(b.net_imposable or 0)
+                            - Decimal(b.montant_exonere_regime or 0))
+            if base_ir_mois < 0:
+                base_ir_mois = Decimal('0')
             ir_du_mois = compute_ir(
-                Decimal(b.net_imposable or 0), bareme, parametre,
-                b.personnes_a_charge)
+                base_ir_mois, bareme, parametre, b.personnes_a_charge)
         else:
             ir_du_mois = Decimal(b.ir or 0)
         ir_du_annuel += _q(ir_du_mois)
@@ -6119,6 +6641,13 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     ``ventilation_analytique_bulletin``) au lieu d'une ligne agrégée unique.
     Le reste de l'écriture (CNSS/IR/CIMR/net à payer) est inchangé. Renvoie
     l'écriture créée, ou ``None`` s'il n'y a aucun bulletin validé.
+
+    AUD708 — même correction de ventilation que ``journal_de_paie``
+    (allocations familiales + taxe de formation créditées aux organismes 4441,
+    plus au 4432 du personnel) et MÊME clé d'idempotence
+    (``_SOURCE_JOURNAL_PAIE`` + id de période) : poster le journal simple PUIS
+    le ventilé — ou deux fois le même — est refusé, les deux décrivant le même
+    run de paie.
     """
     from apps.compta import services as compta_services  # cross-app via services
 
@@ -6131,6 +6660,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
         .select_related('profil'))
     if not bulletins:
         return None
+    _refuser_journal_deja_poste(periode)
 
     company = periode.company
     requis = [
@@ -6154,10 +6684,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
 
     registre = livre_de_paie(periode)
     totaux = registre['totaux']
-    cnss_amo = (
-        totaux['cnss_salariale'] + totaux['cnss_patronale']
-        + totaux['amo_salariale'] + totaux['amo_patronale']
-    )
+    cnss_amo = _credit_organismes_cnss(totaux)
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
@@ -6178,7 +6705,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     if cnss_amo > 0:
         lignes.append({
             'compte': compte(_COMPTE_CNSS),
-            'libelle': 'CNSS / AMO à payer', 'debit': 0, 'credit': cnss_amo})
+            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
     if ir > 0:
         lignes.append({
             'compte': compte(_COMPTE_IR),
@@ -6202,7 +6729,8 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     reference = f'PAIE-VENTILE-{periode.annee}-{periode.mois:02d}'
     return compta_services.creer_ecriture_od(
         company, date_ecriture, libelle, lignes,
-        reference=reference, created_by=created_by)
+        reference=reference, created_by=created_by,
+        source_type=_SOURCE_JOURNAL_PAIE, source_id=periode.id)
 
 
 # ── XPAI20 — Provisions gratifications (13e mois) & IFC ────────────────────

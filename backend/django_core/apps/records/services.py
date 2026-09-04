@@ -131,6 +131,36 @@ def auto_follow(*, company, content_type, object_id, user, sous_type=''):
                   object_id=object_id, user=user, sous_type=sous_type)
 
 
+#: AUD416 — sentinelle « ce modèle n'a pas de société » : on ne filtre alors
+#: rien du tout (comportement historique), au lieu de confondre ce cas avec une
+#: société NULLE, qui elle doit ne notifier personne.
+_SANS_CHAMP_SOCIETE = object()
+
+
+def _company_de_la_cible(content_type, object_id):
+    """AUD416 — id de société de la cible d'un abonnement.
+
+    Trois réponses distinctes : l'id de la société ; ``None`` quand la cible
+    porte une société NULLE ou n'existe plus (la diffusion ne trouvera alors
+    aucun follower — voulu : un enregistrement sans propriétaire ne doit
+    notifier personne plutôt que tout le monde) ; ``_SANS_CHAMP_SOCIETE`` quand
+    le modèle n'a pas de champ ``company`` du tout (aucun filtre appliqué).
+
+    Lit UNIQUEMENT la colonne ``company_id``, jamais l'objet entier, et passe
+    par ``_base_manager`` : un modèle à suppression douce dont le gestionnaire
+    par défaut masque la ligne ne doit pas faire taire ses notifications.
+    """
+    try:
+        model = content_type.model_class()
+        if model is None:
+            return _SANS_CHAMP_SOCIETE
+        model._meta.get_field('company')
+    except Exception:  # noqa: BLE001 — modèle sans société : rien à filtrer
+        return _SANS_CHAMP_SOCIETE
+    return model._base_manager.filter(pk=object_id).values_list(
+        'company_id', flat=True).first()
+
+
 def notify_followers(*, content_type, object_id, title, body='',
                      exclude_user=None, sous_type=None, link=None):
     """Notifie tous les followers d'une cible (note de chatter, XKB34).
@@ -147,6 +177,18 @@ def notify_followers(*, content_type, object_id, title, body='',
     qs = Follower.objects.filter(
         content_type=content_type, object_id=object_id
     ).select_related('user', 'company')
+    # AUD416 — filtrer AUSSI par la société de la CIBLE. Jusqu'ici la diffusion
+    # ne s'appuyait que sur ``content_type`` + ``object_id`` : sur toute cible
+    # partagée entre deux tenants (donc nécessairement à ``company IS NULL``,
+    # schéma-permis sur 13 des 39 cibles autorisées), le corps de la note
+    # partait aux followers de l'AUTRE société. La lecture des notes restait
+    # bien scopée (``_scoped()``) — ce n'était pas une fuite de lecture directe,
+    # mais bien une fuite de DIFFUSION. On la ferme ici, sans toucher aux
+    # appelants : la société est dérivée de la cible elle-même (une seule
+    # lecture d'un id, jamais l'objet entier).
+    cible_company = _company_de_la_cible(content_type, object_id)
+    if cible_company is not _SANS_CHAMP_SOCIETE:
+        qs = qs.filter(company_id=cible_company)
     if sous_type is not None:
         qs = qs.filter(sous_type__in=('', sous_type))
     if exclude_user is not None:

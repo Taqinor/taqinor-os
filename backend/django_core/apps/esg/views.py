@@ -38,7 +38,14 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
 
         Refuse (400) si la période est déjà figée/publiée — le figeage
         n'est jamais ré-exécutable (les chiffres gelés ne sont jamais
-        recalculés)."""
+        recalculés).
+
+        AUD527 — l'``IntegrityError`` de la contrainte unique du snapshot est
+        traduite en 400 « déjà figée », plus remontée en 500 brut : c'est la
+        seconde barrière derrière le ``select_for_update`` du service (une
+        course perdue est un refus propre, jamais une erreur serveur)."""
+        from django.db import IntegrityError
+
         from . import services
 
         periode = self.get_object()
@@ -47,6 +54,11 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
         except DjangoValidationError as exc:
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError:
+            return Response(
+                {'detail': 'Cette période vient d’être figée par une autre '
+                           'opération — le figeage est refusé.'},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(periode).data)
 

@@ -648,3 +648,45 @@ def marquer_diffusion_lue(diffusion, *, cle_destinataire):
     diffusion.accuse_reception = accuse
     diffusion.save(update_fields=['accuse_reception'])
     return diffusion
+
+
+def alerter_rfi_en_retard():
+    """NTCON4 (AUD231) — balaie les ``RFI`` OUVERTS dont
+    ``date_limite_reponse`` est dépassée et notifie leur ``destinataire_user``
+    ET leur créateur (``pose_par``).
+
+    Le corps de ce balayage vivait ENTIÈREMENT dans la commande de gestion
+    ``alertes_rfi_retard`` — dont la docstring annonçait « Sweep quotidien …
+    (Celery beat) » alors qu'aucune entrée de ``beat_schedule`` ni aucune tâche
+    Celery n'existait : aucun RFI en retard n'a jamais été alerté. Le corps est
+    donc remonté ICI, unique implémentation partagée par la commande (à la
+    demande) et par ``btp_chantier.tasks`` (planifiée).
+
+    Idempotente : UNE SEULE alerte par jour et par RFI, via
+    ``RFI.derniere_alerte_retard`` comparée à la date du jour. Renvoie
+    ``{'examines': n, 'alertes_envoyees': n}``.
+    """
+    from .selectors import rfi_en_retard
+
+    today = timezone.localdate()
+    examines = 0
+    envoyees = 0
+    for rfi in rfi_en_retard().select_related(
+            'chantier', 'pose_par', 'destinataire_user'):
+        examines += 1
+        if rfi.derniere_alerte_retard == today:
+            continue  # déjà alerté aujourd'hui — idempotent
+        titre = f'RFI #{rfi.numero} en retard de réponse'
+        corps = (
+            f'RFI #{rfi.numero} ({rfi.chantier}) — échéance '
+            f'{rfi.date_limite_reponse} dépassée sans réponse.')
+        link = f'/btp/rfi/{rfi.id}'
+        for user in {rfi.destinataire_user, rfi.pose_par} - {None}:
+            _notifier_btp(
+                user, 'APPROVAL_REMINDER', titre, corps,
+                company=rfi.company, link=link)
+        with transaction.atomic():
+            rfi.derniere_alerte_retard = today
+            rfi.save(update_fields=['derniere_alerte_retard'])
+        envoyees += 1
+    return {'examines': examines, 'alertes_envoyees': envoyees}

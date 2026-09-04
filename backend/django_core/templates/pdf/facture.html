@@ -202,20 +202,27 @@
   {% endif %}
 
   <!-- Totaux -->
+  {# AUD105 — la chaîne HT brut → remise → HT net → TVA → TTC vient d'UNE
+     source, ``Facture.totaux_affichage``. Ce bloc imprimait « Sous-total HT »
+     = ``facture.total_ht`` (qui est le HT NET dès qu'une remise globale est
+     active, QX1) puis lui ré-appliquait le pourcentage : double décompte, et
+     un « Sous-total − Remise » qui ne retombait sur aucun total de la page.
+     UN GABARIT NE RECALCULE JAMAIS UN POURCENTAGE. #}
+  {% set totaux = facture.totaux_affichage %}
   <div class="totaux">
     <div class="totaux-row">
       <span>{{ _L('sous_total_ht') }}</span>
-      <span>{{ "%.2f"|format(facture.total_ht) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ht_brut) }} MAD</span>
     </div>
-    {% if facture.remise_globale > 0 %}
+    {% if totaux.remise > 0 %}
     <div class="totaux-row remise">
       <span>{{ _L('remise_globale') }} ({{ facture.remise_globale }}%)</span>
-      <span>−{{ "%.2f"|format(facture.total_ht * facture.remise_globale / 100) }} MAD</span>
+      <span>−{{ "%.2f"|format(totaux.remise) }} MAD</span>
     </div>
     {% endif %}
     {# TVA ventilée par taux (10 %/20 %). Mono-taux (factures historiques) →
        une seule ligne, identique à avant. #}
-    {% for b in facture.tva_par_taux %}
+    {% for b in totaux.tva_par_taux %}
     <div class="totaux-row">
       <span>{{ _L('tva') }} ({{ b.taux }}%)</span>
       <span>{{ "%.2f"|format(b.montant) }} MAD</span>
@@ -223,7 +230,7 @@
     {% endfor %}
     <div class="totaux-row total-ttc">
       <span>{{ _L('total_ttc') }}</span>
-      <span>{{ "%.2f"|format(facture.total_ttc) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ttc) }} MAD</span>
     </div>
     {# ZFAC11 — mention « Arrondi espèces » quand un écart d'arrondi de caisse a
        été appliqué (règlement espèces arrondi au pas société). Conditionnel :

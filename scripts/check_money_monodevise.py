@@ -28,10 +28,21 @@ currency-audit sweep is. When YDATA6/7 land, EXTEND this same module (its
 model-scanning helpers are written to be reused) rather than creating a
 second file.
 
+AUD190 — the committed ``docs/currency-audit.md`` had rotted: its header still
+credited ``check_money_fields.py --write`` (a DIFFERENT script, which writes
+``docs/money-fields-audit.md`` and has no ``--write`` flag at all), and its
+``ventes | Facture | apps/ventes/models.py:631`` row pointed at a line that
+now falls inside ``LigneDevis`` — the class moved to ``apps/facturation`` with
+the ODX17 split. Two consequences, both addressed here: the preamble now says
+in-band what "Has exchange rate?" does and does NOT mean (see
+``_PREAMBULE_LECTURE``), and ``--check`` re-derives the table and fails when
+the committed document has drifted, so the anchors cannot rot silently again.
+
 Run
 ---
     python scripts/check_money_monodevise.py            # prints the audit; advisory only, exit 0
     python scripts/check_money_monodevise.py --write     # also regenerates docs/currency-audit.md
+    python scripts/check_money_monodevise.py --check     # fails (exit 1) if the document has drifted
 """
 from __future__ import annotations
 
@@ -146,6 +157,31 @@ def scan_money_models() -> list:
     return results
 
 
+#: AUD190 — lecture note carried INSIDE the generated document (a note kept
+#: only in this script would never reach the reader of the table, and a note
+#: hand-added to the document would be wiped by the next ``--write``).
+_PREAMBULE_LECTURE = [
+    "**How to read « Has exchange rate? »** — it says the model DECLARES a",
+    "rate column, never that a rate is APPLIED. Established once, per AUD190,",
+    "on the document that matters most: `facturation.Facture` (the single",
+    "`Facture` class in the repository since the ODX17 split — the former",
+    "`ventes.Facture` anchor in this table was dead) carries BOTH `devise` and",
+    "`taux_change`, and they do not have the same status:",
+    "",
+    "- `devise` is **used**, as a LABEL: `apps/ventes/utils/ubl.py` reads it to",
+    "  fill the UBL `DocumentCurrencyCode` of the exported invoice.",
+    "- `taux_change` is **decorative**: it is stored, and copied from the Devis",
+    "  at creation (`apps/ventes/domain/creation.py`, `.../cycle_vie.py`,",
+    "  `.../gammes.py`, `apps/cpq/services.py`), but no conversion ever reads",
+    "  it — every amount is persisted and rendered in MAD (founder decision Q8",
+    "  of 20/08/2026, recorded in",
+    "  `apps/ventes/quote_engine/generate_devis_premium.py`).",
+    "",
+    "Same reading for `compta.CompteTresorerie` (AUD175): a `devise` column",
+    "with no rate column at all — mono-MAD in practice.",
+]
+
+
 def render_audit_markdown(models: list) -> str:
     without_devise = [m for m in models if not m.has_devise]
     with_devise = [m for m in models if m.has_devise]
@@ -158,6 +194,8 @@ def render_audit_markdown(models: list) -> str:
         "`docs/money-convention.md`: every model below persists money with no explicit",
         "currency code EXCEPT the ones already carrying `devise`/`devise_defaut`",
         "(multi-currency purchasing/quoting/FX-revaluation models).",
+        "",
+        *_PREAMBULE_LECTURE,
         "",
         f"- Money-bearing models scanned: **{len(models)}**",
         f"- Already carry an explicit devise/currency field: **{len(with_devise)}**",
@@ -200,6 +238,23 @@ def main() -> int:
     if "--write" in sys.argv[1:]:
         AUDIT_DOC.write_text(render_audit_markdown(models), encoding="utf-8")
         print(f"  -> {AUDIT_DOC.relative_to(ROOT).as_posix()} regenere.")
+    if "--check" in sys.argv[1:]:
+        # AUD190 — le document est GÉNÉRÉ : il ne doit jamais dériver de la
+        # source (ses ancres file:line pourrissent en silence sinon, comme
+        # `ventes.Facture:631` après le split ODX17). Mode explicite, non
+        # câblé en CI : la balayage YDATA22 reste advisory par défaut.
+        attendu = render_audit_markdown(models)
+        actuel = (AUDIT_DOC.read_text(encoding="utf-8")
+                  if AUDIT_DOC.exists() else "")
+        if actuel != attendu:
+            print(
+                f"check_money_monodevise --check: "
+                f"{AUDIT_DOC.relative_to(ROOT).as_posix()} a derive de la "
+                f"source — rejouer `python scripts/check_money_monodevise.py "
+                f"--write`."
+            )
+            return 1
+        print("check_money_monodevise --check: document a jour.")
     # v1 = advisory only (YDATA22 spec: "pas de blocage") — never fails CI.
     return 0
 
