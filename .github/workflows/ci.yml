@@ -533,6 +533,17 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # AUD421 — a local get_permissions() must never SILENTLY OVERRIDE an
+      # @action(permission_classes=...): DRF calls get_permissions() for every
+      # request, so a raw branch that returns a default list makes the inline
+      # declaration decorative (the AUD403 defect on ventes/views/devis.py).
+      # Freezes the AUD403 sweep's verified-benign baseline; fails on a NEW
+      # class (or a NEW uncovered action) not in
+      # scripts/action_permission_override_allow.txt.
+      - name: Check @action permissions are never silently overridden (AUD421)
+        run: python scripts/check_action_permission_override.py
+      - name: Test the action-permission checker itself (AUD421)
+        run: python -m unittest scripts.tests.test_check_action_permission_override -v
       # Incident du 03/08/2026 (production) : les lanes frontend/ao et
       # backend/ao ont ete construites en parallele avec des contrats
       # DIFFERENTS — l'ecran Bibliotheque appelait /ao/bibliotheque/, route

@@ -1,0 +1,86 @@
+# AUD421 — LIGNE DE BASE du sweep RBAC AUD403, gelée telle quelle.
+#
+# CE QUE CETTE LISTE EST. Le sweep bis d'AUD403 a rejoué ACTION PAR ACTION la
+# trentaine de classes combinant un `get_permissions()` local à branchement sur
+# `self.action` et une `@action(permission_classes=...)` inline. Verdict :
+# AUCUN cas où le repli était PLUS FAIBLE que la permission inline voulue —
+# seul `ventes/views/devis.py` l'était, et il est corrigé. Ces classes sont
+# donc VÉRIFIÉES BÉNIGNES : leur repli est égal ou PLUS STRICT que la
+# déclaration de l'action. La consigne du plan est explicite : « ne pas
+# re-auditer, seulement geler le résultat par une garde CI ».
+#
+# CE QUE CETTE LISTE N'EST PAS. Un blanc-seing. La garde reste un CLIQUET :
+# toute classe NOUVELLE — ou toute nouvelle `@action(permission_classes=...)`
+# ajoutée à une classe listée dont le nom n'est pas nommé par le branchement —
+# échoue tant qu'elle n'a pas, elle, été vérifiée action par action. Ajouter
+# une ligne ici est un choix explicite, revu comme du code.
+#
+# À SAVOIR (relevé en construisant la garde, hors périmètre de correction) :
+# `devis.py::DevisViewSet.composition` déclare `IsResponsableOrAdmin` alors que
+# le repli atteint vaut `IsAdminRole` — donc PLUS STRICT, pas plus faible (ce
+# n'est pas le défaut AUD403), mais la déclaration inline ment dans l'autre
+# sens : un rôle « responsable » est refusé là où l'@action dit l'autoriser.
+# À trancher par une tâche dédiée, jamais par un élargissement de garde.
+#
+# Format : une ligne `chemin/relatif.py::NomDeClasse`, précédée du commentaire
+# listant les actions que le branchement ne nomme pas (c'est CE point précis
+# qui est gelé).
+
+# actions non nommees par le branchement : simuler, toggle
+backend/django_core/apps/automation/views.py::AutomationRuleViewSet
+# actions non nommees par le branchement : export_simpl_is
+backend/django_core/apps/compta/views.py::EtatsComptablesViewSet
+# actions non nommees par le branchement : appliquer
+backend/django_core/apps/cpq/views.py::OffreGroupeeViewSet
+# actions non nommees par le branchement : anonymize, consolidation, data_export, segments
+backend/django_core/apps/crm/views.py::ClientViewSet
+# actions non nommees par le branchement : confirmer_whatsapp
+backend/django_core/apps/crm/views.py::AppointmentViewSet
+# actions non nommees par le branchement : ajouter_item, analytics, retirer_item
+backend/django_core/apps/crm/views.py::SalleVenteViewSet
+# actions non nommees par le branchement : approuver, rejeter
+backend/django_core/apps/crm/views.py::DealEnregistreViewSet
+# actions non nommees par le branchement : export_xlsx
+backend/django_core/apps/crm/views.py::DefiViewSet
+# actions non nommees par le branchement : ingredient_delete
+backend/django_core/apps/hospitality/views.py::RecetteViewSet
+# actions non nommees par le branchement : generer_devis
+backend/django_core/apps/hospitality/views.py::EvenementBanquetViewSet
+# actions non nommees par le branchement : ajouter_iv
+backend/django_core/apps/installations/views/commissioning.py::CommissioningRecordViewSet
+# actions non nommees par le branchement : ping
+backend/django_core/apps/installations/views/gps_tracking.py::PositionTechnicienViewSet
+# actions non nommees par le branchement : a_facturer, cout
+backend/django_core/apps/installations/views/installation.py::InstallationViewSet
+# actions non nommees par le branchement : analyse, atelier, bon_pdf, cout_soustraitance, historique, noter, rapport_soustraitants
+backend/django_core/apps/installations/views/kitting.py::OrdreAssemblageViewSet
+# actions non nommees par le branchement : bon_livraison, generer_retour, portail
+backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet
+# actions non nommees par le branchement : pnl
+backend/django_core/apps/installations/views/program.py::ProjetViewSet
+# actions non nommees par le branchement : client_portal, co2, co2_fleet, email_om_report, fleet, history, om_metrics, om_report, soiling, sync_now
+backend/django_core/apps/monitoring/views.py::MonitoringConfigViewSet
+# actions non nommees par le branchement : accuser_lecture
+backend/django_core/apps/notifications/views.py::AnnonceViewSet
+# actions non nommees par le branchement : dashboard, dashboard_export, dashboard_retail, dashboard_retail_export, emettre_carte_cadeau, encaisser_facture, factures_recherche
+backend/django_core/apps/pos/views.py::VenteComptoirViewSet
+# actions non nommees par le branchement : marquer_fait, snooze, snooze_approbation
+backend/django_core/apps/records/views.py::ActivityViewSet
+# actions non nommees par le branchement : facturer, generer_dus, planifier_tournee, rapport_pdf, rentabilite, rentabilite_liste
+backend/django_core/apps/sav/maintenance.py::ContratMaintenanceViewSet
+# actions non nommees par le branchement : cloturer_downtime, downtime, releves_compteur
+backend/django_core/apps/sav/views.py::EquipementViewSet
+# actions non nommees par le branchement : acquitter, escalader
+backend/django_core/apps/sav/views.py::AlarmeOnduleurViewSet
+# actions non nommees par le branchement : suggestions_reappro
+backend/django_core/apps/stock/views/emplacement.py::EmplacementStockViewSet
+# actions non nommees par le branchement : pdf
+backend/django_core/apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet
+# actions non nommees par le branchement : export_ras_tva
+backend/django_core/apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet
+# actions non nommees par le branchement : a_reapprovisionner, comparer_fournisseurs, emplacements, etiquettes, expirant_bientot, generer_bcf_reappro, inventaire, previsions_reappro, prix_fournisseurs, rotation, valorisation, valorisation_date, valorisation_xlsx
+backend/django_core/apps/stock/views/produit.py::ProduitViewSet
+# actions non nommees par le branchement : approuver_remise, composition
+backend/django_core/apps/ventes/views/devis.py::DevisViewSet
+# actions non nommees par le branchement : historique
+backend/django_core/apps/ventes/views/facture.py::FactureViewSet
