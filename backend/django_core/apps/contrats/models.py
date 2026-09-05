@@ -23,11 +23,22 @@ from django.utils import timezone
 # multi-tenant (core.models.TenantModel, ARC1/SCA4) plutôt que de re-hand-roller
 # la FK ``company`` à la main (les modèles PRÉ-EXISTANTS de ce fichier restent
 # tels quels — baseline gelée, cf. apps/records/platform_baselines).
-from core.models import TenantModel
+from core.models import SoftDeleteModel, TenantModel
 
 
-class Contrat(models.Model):
+class Contrat(SoftDeleteModel):
     """Un contrat de la société (cycle de vie contractuel).
+
+    AUD818 — PREMIER objet À VALEUR LÉGALE branché sur la corbeille transverse
+    30 jours : ``Contrat`` hérite du mixin de fondation ``core.SoftDeleteModel``
+    (``is_deleted`` / ``deleted_at`` / ``deleted_by`` + manager ``objects`` qui
+    masque les supprimés, ``all_objects`` pour la corbeille). Supprimer un
+    contrat depuis l'API n'efface donc plus définitivement une pièce
+    contractuelle : ``ContratViewSet.perform_destroy`` appelle ``soft_delete()``,
+    qui émet ``core.events.record_soft_deleted`` — l'entrée devient restaurable
+    30 jours depuis l'écran de corbeille. Le champ ``company`` reste déclaré ici
+    (modèle pré-existant, baseline gelée) : le mixin n'apporte QUE le
+    soft-delete.
 
     Le ``type_contrat`` qualifie la nature du contrat et le ``statut`` son
     avancement (brouillon → en approbation → signé → actif → suspendu/résilié/
