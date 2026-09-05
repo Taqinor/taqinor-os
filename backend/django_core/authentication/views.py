@@ -688,18 +688,25 @@ class LogoutView(generics.GenericAPIView):
             or request.data.get('refresh')
         )
         if refresh_raw:
+            # AUD408 — le ``jti`` est lu AVANT la mise en liste noire, et c'est
+            # L'ORDRE QUI COMPTE : une fois le jeton blacklisté,
+            # ``RefreshToken(refresh_raw)`` REFUSE de se reconstruire
+            # (``BlacklistMixin.verify`` appelle ``check_blacklist`` et lève
+            # ``TokenError``), donc ``_refresh_jti`` rendait None, la ligne de
+            # session n'était JAMAIS marquée révoquée, et le jeton d'ACCÈS déjà
+            # émis continuait d'authentifier jusqu'à 30 min après une
+            # déconnexion pourtant affichée comme effective.
+            jti = _refresh_jti(refresh_raw)
             try:
                 token = RefreshToken(refresh_raw)
                 token.blacklist()
             except TokenError:
                 pass
-            # AUD408 — la déconnexion marque AUSSI la ligne de session comme
-            # révoquée : c'est ce drapeau qui coupe le jeton d'ACCÈS déjà émis
-            # (claim ``sid``, cf. session_policy). Sans lui, le logout ne
-            # fermait que le refresh et l'appareil restait authentifié jusqu'à
-            # 30 min. Best-effort : ne fait jamais échouer la déconnexion.
+            # La déconnexion marque AUSSI la ligne de session comme révoquée :
+            # c'est ce drapeau que ``CookieJWTAuthentication`` oppose au claim
+            # ``sid`` du jeton d'accès (cf. session_policy). Best-effort : ne
+            # fait jamais échouer la déconnexion.
             try:
-                jti = _refresh_jti(refresh_raw)
                 if jti:
                     UserSession.objects.filter(
                         user=request.user, jti=jti, revoked=False,
