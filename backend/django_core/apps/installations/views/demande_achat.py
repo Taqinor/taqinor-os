@@ -27,6 +27,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.documents import TransitionRefusee
 from core.numbering import create_with_reference
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -160,8 +161,14 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         except services.BudgetAchatError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        da.statut = DemandeAchat.Statut.SOUMISE
-        da.save(update_fields=['statut', 'date_modification'])
+        # AUD819 — la transition passe par la table TRANSITIONS du kit
+        # (``core.documents.changer_statut``) : garde + événement bus.
+        try:
+            services.appliquer_statut_document(
+                da, DemandeAchat.Statut.SOUMISE, user=request.user)
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         services.lancer_workflow_approbation_achat(da, regle=regle)
         return Response(self.get_serializer(da).data)
 
@@ -239,12 +246,16 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 {'detail': "Un plan d'approbation est en cours : validez les "
                            "étapes via « approuver-etape »."},
                 status=status.HTTP_400_BAD_REQUEST)
-        da.statut = DemandeAchat.Statut.APPROUVEE
-        da.approuvee_par = request.user
-        da.date_decision = timezone.now()
-        da.motif_refus = None
-        da.save(update_fields=['statut', 'approuvee_par', 'date_decision',
-                               'motif_refus', 'date_modification'])
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+        try:
+            services.appliquer_statut_document(
+                da, DemandeAchat.Statut.APPROUVEE, user=request.user,
+                champs={'approuvee_par': request.user,
+                        'date_decision': timezone.now(),
+                        'motif_refus': None})
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         _notifier_demandeur_decision(da, approuvee=True)
         return Response(self.get_serializer(da).data)
 
@@ -258,12 +269,17 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': "Seule une demande soumise peut être refusée."},
                 status=status.HTTP_400_BAD_REQUEST)
-        da.statut = DemandeAchat.Statut.REFUSEE
-        da.approuvee_par = request.user
-        da.date_decision = timezone.now()
-        da.motif_refus = (request.data.get('motif_refus') or '').strip() or None
-        da.save(update_fields=['statut', 'approuvee_par', 'date_decision',
-                               'motif_refus', 'date_modification'])
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+        motif = (request.data.get('motif_refus') or '').strip() or None
+        try:
+            services.appliquer_statut_document(
+                da, DemandeAchat.Statut.REFUSEE, user=request.user,
+                champs={'approuvee_par': request.user,
+                        'date_decision': timezone.now(),
+                        'motif_refus': motif})
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         # NTP2P2 — un refus direct annule les étapes encore en attente (pas
         # de plan d'approbation orphelin sur une demande refusée).
         da.etapes_approbation.filter(
@@ -279,14 +295,21 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     def marquer_commandee(self, request, pk=None):
         """FG310 — marque la demande comme commandée (approuvée → commandée),
         une fois le BCF émis. Garde : seule une demande APPROUVÉE peut l'être."""
+        from .. import services
+
         da = self.get_object()
         if da.statut != DemandeAchat.Statut.APPROUVEE:
             return Response(
                 {'detail': "Seule une demande approuvée peut être marquée "
                            "commandée."},
                 status=status.HTTP_400_BAD_REQUEST)
-        da.statut = DemandeAchat.Statut.COMMANDEE
-        da.save(update_fields=['statut', 'date_modification'])
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+        try:
+            services.appliquer_statut_document(
+                da, DemandeAchat.Statut.COMMANDEE, user=request.user)
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'], url_path='generer-bcf')
@@ -339,11 +362,17 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             company=request.user.company, user=request.user,
             fournisseur=fournisseur, lignes=lignes,
             note=f'Généré depuis {da.reference}')
-        da.bon_commande = bon
-        da.statut = DemandeAchat.Statut.COMMANDEE
-        da.save(update_fields=['bon_commande', 'statut', 'date_modification'])
-        # NTP2P4 — l'engagement devient RÉALISÉ (le BCF est passé).
         from .. import services
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus
+        # (le lien BCF est posé dans la MÊME écriture atomique).
+        try:
+            services.appliquer_statut_document(
+                da, DemandeAchat.Statut.COMMANDEE, user=request.user,
+                champs={'bon_commande': bon})
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # NTP2P4 — l'engagement devient RÉALISÉ (le BCF est passé).
         services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)
 

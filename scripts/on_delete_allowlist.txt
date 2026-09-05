@@ -936,8 +936,8 @@ backend/django_core/apps/installations/models_comptage.py:80
 backend/django_core/apps/installations/models_consignation.py:54
 backend/django_core/apps/installations/models_contrat_prix.py:30
 backend/django_core/apps/installations/models_contrat_prix.py:87
-backend/django_core/apps/installations/models_demande_achat.py:168
-backend/django_core/apps/installations/models_demande_achat.py:94
+backend/django_core/apps/installations/models_demande_achat.py:101
+backend/django_core/apps/installations/models_demande_achat.py:175
 backend/django_core/apps/installations/models_demande_transfert.py:32
 backend/django_core/apps/installations/models_demande_transfert.py:37
 backend/django_core/apps/installations/models_document.py:38
@@ -1069,7 +1069,7 @@ backend/django_core/apps/installations/models_livraison.py:107
 backend/django_core/apps/installations/models_livraison.py:35
 backend/django_core/apps/installations/models_livraison.py:40
 backend/django_core/apps/installations/models_lot_prelevement.py:27
-backend/django_core/apps/installations/models_ordre_soustraitance.py:105
+backend/django_core/apps/installations/models_ordre_soustraitance.py:115
 backend/django_core/apps/installations/models_picklist.py:27
 backend/django_core/apps/installations/models_picklist.py:32
 backend/django_core/apps/installations/models_picklist.py:68

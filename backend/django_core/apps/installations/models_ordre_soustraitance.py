@@ -85,16 +85,26 @@ class OrdreSousTraitance(DocumentMetier):
         RECEPTIONNE = 'receptionne', 'Réceptionné'
         CLOS = 'clos', 'Clos'
 
-    # SCA34 — table déclarative du graphe d'états (kit ``DocumentMetier``),
-    # miroir des gardes historiques des actions de vue
-    # (emettre/receptionner/cloturer) HORS ré-application idempotente du même
-    # statut (permise par les vues, non déclarée ici — un document ne
-    # « transite » pas vers lui-même, cf. ``changer_statut``). Documentaire
-    # pour l'instant : les actions de vue restent le point d'écriture (pas de
-    # bascule vers ``changer_statut()`` — périmètre SCA34 = socle+chatter+PDF).
+    # SCA34/AUD819 — table déclarative du graphe d'états (kit
+    # ``DocumentMetier``). Elle n'est PLUS documentaire : depuis AUD819 les
+    # actions de vue (emettre/receptionner/cloturer) écrivent le statut via
+    # ``services.appliquer_statut_document`` → ``core.documents.changer_statut``,
+    # qui CONSULTE cette table et émet ``core.events.document_statut_change``.
+    # Elle est donc l'unique propriétaire du graphe : une cible ajoutée ici est
+    # réellement ouverte, une cible retirée est réellement refusée (400).
+    # HORS table : la ré-application idempotente du même statut (permise par les
+    # vues) — un document ne « transite » pas vers lui-même, cf. ``changer_statut``.
+    #
+    # AUD819 — ``EN_COURS`` RÉCONCILIÉ : aucune action n'écrit ce statut (il
+    # n'existe pas d'action « démarrer »), donc il n'est plus déclaré comme cible
+    # de ``EMIS`` — la table ne promet plus une transition que rien ne peut
+    # emprunter. La ligne source ``EN_COURS → RECEPTIONNE`` est CONSERVÉE
+    # (défensive : une donnée héritée déjà en ``en_cours`` reste réceptionnable,
+    # ce que la garde de ``receptionner`` accepte toujours). Ouvrir réellement
+    # ``en_cours`` = ajouter l'action ET la cible dans le même changement.
     TRANSITIONS = {
         Statut.BROUILLON: {Statut.EMIS},
-        Statut.EMIS: {Statut.EN_COURS, Statut.RECEPTIONNE},
+        Statut.EMIS: {Statut.RECEPTIONNE},
         Statut.EN_COURS: {Statut.RECEPTIONNE},
         Statut.RECEPTIONNE: {Statut.CLOS},
         Statut.CLOS: set(),

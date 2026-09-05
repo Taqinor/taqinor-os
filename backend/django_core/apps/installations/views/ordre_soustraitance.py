@@ -28,7 +28,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from core.documents import render_document_pdf
+from core.documents import TransitionRefusee, render_document_pdf
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.records.views import ChatterViewSetMixin
@@ -127,11 +127,20 @@ class OrdreSousTraitanceViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': "Seul un ordre brouillon peut être émis."},
                 status=status.HTTP_400_BAD_REQUEST)
-        ordre.statut = OrdreSousTraitance.Statut.EMIS
+        # AUD819 — la transition passe par la table TRANSITIONS du kit
+        # (``core.documents.changer_statut``) : garde + événement bus.
+        from .. import services
+
+        champs = {}
         if ordre.date_emission is None:
-            ordre.date_emission = timezone.now().date()
-        ordre.save(update_fields=['statut', 'date_emission',
-                                  'date_modification'])
+            champs['date_emission'] = timezone.now().date()
+        try:
+            services.appliquer_statut_document(
+                ordre, OrdreSousTraitance.Statut.EMIS, user=request.user,
+                champs=champs)
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ordre).data)
 
     @action(detail=True, methods=['post'])
@@ -148,7 +157,7 @@ class OrdreSousTraitanceViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 {'detail': "L'ordre doit être émis ou en cours pour être "
                            "réceptionné."},
                 status=status.HTTP_400_BAD_REQUEST)
-        update_fields = ['statut', 'date_modification']
+        champs = {}
         montant_realise = request.data.get('montant_realise')
         if montant_realise is not None and montant_realise != '':
             try:
@@ -162,10 +171,17 @@ class OrdreSousTraitanceViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                     {'montant_realise':
                         'Le montant réalisé ne peut pas être négatif.'},
                     status=status.HTTP_400_BAD_REQUEST)
-            ordre.montant_realise = montant_realise
-            update_fields.append('montant_realise')
-        ordre.statut = OrdreSousTraitance.Statut.RECEPTIONNE
-        ordre.save(update_fields=update_fields)
+            champs['montant_realise'] = montant_realise
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+        from .. import services
+
+        try:
+            services.appliquer_statut_document(
+                ordre, OrdreSousTraitance.Statut.RECEPTIONNE,
+                user=request.user, champs=champs)
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ordre).data)
 
     @action(detail=True, methods=['post'])
@@ -178,8 +194,15 @@ class OrdreSousTraitanceViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': "Seul un ordre réceptionné peut être clôturé."},
                 status=status.HTTP_400_BAD_REQUEST)
-        ordre.statut = OrdreSousTraitance.Statut.CLOS
-        ordre.save(update_fields=['statut', 'date_modification'])
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+        from .. import services
+
+        try:
+            services.appliquer_statut_document(
+                ordre, OrdreSousTraitance.Statut.CLOS, user=request.user)
+        except TransitionRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ordre).data)
 
     @action(detail=True, methods=['get'])
