@@ -91,33 +91,36 @@ class ResyncSnapshotValidationTests(TestCase):
         self.assertEqual(
             annulation.type_bulletin, BulletinPaie.TYPE_ANNULATION)
 
-    def test_periode_avec_deux_bulletins_du_meme_profil_nest_pas_rejouee(self):
-        """Cible ambiguë (deux bulletins du profil dans la période) → no-op.
+    def test_periode_portant_deja_un_bulletin_du_profil_refuse_lextourne(self):
+        """Deux bulletins d'un même profil dans une période : IMPOSSIBLE.
 
-        ``generer_bulletin`` vise par (période, profil) : rejouer le moteur
-        écraserait l'AUTRE bulletin au lieu de resynchroniser celui-ci. La
-        garde préfère alors ne rien rejouer — limitation assumée et couverte.
+        ``BulletinPaie`` porte ``unique_together = ('periode', 'profil')``
+        depuis PAIE17 (migration 0010) : la « cible ambiguë » que la garde de
+        ``_resynchroniser_snapshot_avant_validation`` évite est inatteignable
+        par la base — cette garde reste en défense en profondeur, mais le
+        scénario ne peut PAS être construit. Ce qui se teste réellement ici,
+        c'est que l'extourne le dise explicitement (``ValueError`` → 400) au
+        lieu de lever une ``IntegrityError`` brute (500, et bloc
+        ``transaction.atomic`` appelant cassé).
         """
         origine = generer_bulletin(self.profil, self.periode)
         valider_bulletin(origine)
-        # La période suivante porte DEUX bulletins du même profil : un normal
-        # en brouillon + l'extourne du bulletin de juin.
+        # La période suivante porte déjà le bulletin normal du même profil.
         normal = generer_bulletin(self.profil, self.periode_suivante)
-        annulation = creer_bulletin_annulation(origine, self.periode_suivante)
-        net_annulation = Decimal(annulation.net_a_payer)
-        brut_normal = Decimal(normal.brut)
 
+        with self.assertRaises(ValueError):
+            creer_bulletin_annulation(origine, self.periode_suivante)
+
+        # L'extourne refusée n'a rien laissé derrière elle et le bulletin
+        # normal de la période se valide normalement.
+        self.assertEqual(
+            BulletinPaie.objects.filter(
+                periode=self.periode_suivante, profil=self.profil).count(), 1)
         ElementVariable.objects.create(
             company=self.co, periode=self.periode_suivante, profil=self.profil,
             type=ElementVariable.TYPE_PRIME, libelle='Prime tardive',
             quantite=Decimal('1'), montant=Decimal('1000'),
             source=ElementVariable.SOURCE_MANUEL)
-
         valider_bulletin(normal)
         normal.refresh_from_db()
-        annulation.refresh_from_db()
-
-        # Aucun rejeu : l'extourne est intacte et le normal garde son snapshot.
-        self.assertEqual(Decimal(annulation.net_a_payer), net_annulation)
-        self.assertEqual(Decimal(normal.brut), brut_normal)
         self.assertEqual(normal.statut, BulletinPaie.STATUT_VALIDE)
