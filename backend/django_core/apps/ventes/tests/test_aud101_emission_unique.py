@@ -139,7 +139,11 @@ class TestCinqCheminsMuetsEmettentLEvenement(_BaseEmission):
                 '/api/django/ventes/factures/bulk/',
                 {'action': 'emettre', 'ids': [facture.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertTrue(resp.data[str(facture.id)]['ok'], resp.data)
+        # Le bulk indexe son rapport par id ENTIER (``results[fid_int]``,
+        # contrat epinglé de longue date par ``test_bulk_factures``) ; c'est
+        # la sérialisation JSON qui le rend en chaîne côté client, jamais
+        # ``resp.data`` qui est le dict brut d'avant rendu.
+        self.assertTrue(resp.data[facture.id]['ok'], resp.data)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.EMISE)
         self.assertEqual(len(compteur.pour(facture)), 1)
@@ -313,7 +317,7 @@ class TestBlocageCreditALEmission(_BaseEmission):
             '/api/django/ventes/factures/bulk/',
             {'action': 'emettre', 'ids': [facture.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertFalse(resp.data[str(facture.id)]['ok'], resp.data)
+        self.assertFalse(resp.data[facture.id]['ok'], resp.data)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
 
