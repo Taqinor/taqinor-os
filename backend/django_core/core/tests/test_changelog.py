@@ -4,7 +4,8 @@ Couvre :
   * la liste ne renvoie que les notes publiées aux non-admins, avec drapeau lu ;
   * non_lues compte par utilisateur ;
   * marquer_lu / marquer_tout_lu mettent à jour le suivi ;
-  * publication (création) réservée au palier admin.
+  * publication (création) réservée à l'ÉDITEUR — superutilisateur Django, et
+    non l'admin d'un tenant (AUD813 : table globale republiée en AllowAny).
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -28,6 +29,12 @@ class ChangelogTests(TestCase):
         cls.user = User.objects.create_user(
             username='cl_user', password='x', role_legacy='normal',
             company=cls.company)
+        # AUD813 — l'écriture du changelog est réservée à l'ÉDITEUR
+        # (superutilisateur Django), pas à l'admin d'un tenant.
+        cls.editeur = User.objects.create_superuser(
+            username='cl_editeur', password='x', email='cl@example.com')
+        cls.editeur.company = cls.company
+        cls.editeur.save(update_fields=['company'])
         cls.factory = APIRequestFactory()
         cls.pub = ChangelogEntry.objects.create(
             titre='Nouveauté A', publie=True)
@@ -79,9 +86,18 @@ class ChangelogTests(TestCase):
         resp = ChangelogViewSet.as_view({'post': 'create'})(req)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_can_publish(self):
+    def test_admin_de_tenant_ne_publie_plus(self):
+        """AUD813 — le changelog est GLOBAL et republié sans authentification :
+        l'admin d'un tenant n'a plus le droit d'écrire (403)."""
         req = self.factory.post(
             '/changelog/', {'titre': 'Note', 'publie': True}, format='json')
         force_authenticate(req, user=self.admin)
+        resp = ChangelogViewSet.as_view({'post': 'create'})(req)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_editeur_superuser_can_publish(self):
+        req = self.factory.post(
+            '/changelog/', {'titre': 'Note', 'publie': True}, format='json')
+        force_authenticate(req, user=self.editeur)
         resp = ChangelogViewSet.as_view({'post': 'create'})(req)
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)

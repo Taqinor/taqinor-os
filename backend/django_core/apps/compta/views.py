@@ -4052,6 +4052,28 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
+    def perform_destroy(self, instance):
+        """AUD805 — une note de frais ENGAGÉE ne se supprime plus.
+
+        ``NoteFraisViewSet`` n'avait aucun ``perform_destroy`` : un DELETE
+        réussissait même sur une note ``remboursee``, alors que
+        ``ecriture_charge`` et ``ecriture_remboursement`` sont en
+        ``on_delete=SET_NULL`` (``apps/frais/models.py``) — les DEUX écritures
+        postées au grand livre survivaient ORPHELINES, sans preuve ni
+        traçabilité de l'employé remboursé. La suppression reste ouverte tant
+        que rien n'est posté (brouillon/soumise sans écriture liée) ; ensuite,
+        le cycle passe par ``rejeter``, jamais par un DELETE.
+        """
+        engagee = instance.statut not in (
+            NoteFrais.Statut.BROUILLON, NoteFrais.Statut.SOUMISE)
+        if engagee or instance.ecriture_charge_id or (
+                instance.ecriture_remboursement_id):
+            raise ValidationError(
+                "Note de frais engagée comptablement : elle ne peut plus être "
+                "supprimée (des écritures resteraient orphelines au grand "
+                "livre). Utilisez « rejeter » ou une extourne.")
+        instance.delete()
+
     @action(detail=False, methods=['get'], url_path='refacturables')
     def refacturables(self, request):
         """XACC28 — Notes refacturables VALIDÉES pas encore refacturées."""
@@ -9047,7 +9069,16 @@ class CompteAuxiliaireViewSet(_ComptaBaseViewSet):
 
 class PieceJustificativeViewSet(_ComptaBaseViewSet):
     """Pièces justificatives attachées aux écritures (COMPTA10). Filtrable par
-    écriture. ``ajoute_par`` est posé côté serveur."""
+    écriture. ``ajoute_par`` est posé côté serveur.
+
+    AUD805 — le jeu de pièces d'une écriture VALIDÉE est figé. Ce ViewSet
+    héritait de ``_ComptaBaseViewSet`` sans aucun ``perform_create`` /
+    ``perform_destroy`` vérifiant l'état de l'écriture : n'importe quel
+    Responsable pouvait SUPPRIMER la facture scannée d'une écriture validée
+    (204), ou en ATTACHER une nouvelle après coup — la preuve documentaire du
+    grand livre changeait sous une validation posée. Symétrique d'AUD804, qui
+    fige l'écriture elle-même.
+    """
     queryset = PieceJustificative.objects.select_related('ecriture').all()
     serializer_class = PieceJustificativeSerializer
     filter_backends = [filters.OrderingFilter]
@@ -9060,10 +9091,24 @@ class PieceJustificativeViewSet(_ComptaBaseViewSet):
             qs = qs.filter(ecriture_id=ecriture)
         return qs
 
+    @staticmethod
+    def _refuser_si_ecriture_validee(ecriture):
+        if ecriture is not None and (
+                ecriture.statut == EcritureComptable.Statut.VALIDEE):
+            raise ValidationError(
+                "Écriture validée : ses pièces justificatives sont figées. "
+                "Passez une écriture d'extourne pour corriger.")
+
     def perform_create(self, serializer):
+        self._refuser_si_ecriture_validee(
+            serializer.validated_data.get('ecriture'))
         serializer.save(
             company=self.request.user.company,
             ajoute_par=self.request.user)
+
+    def perform_destroy(self, instance):
+        self._refuser_si_ecriture_validee(instance.ecriture)
+        instance.delete()
 
 
 class PisteAuditComptableViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

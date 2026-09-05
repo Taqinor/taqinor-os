@@ -240,7 +240,15 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
 
 #: NTEXT11 — fragments de nom de colonne qui ne sortent JAMAIS dans un export
 #: (prix d'achat / marge : donnée interne, jamais client-facing).
-COLONNES_INTERDITES = ('prix_achat', 'prixachat', 'marge', 'cout_achat')
+#:
+#: AUD801 — le vocabulaire de cette liste ratait ``cout`` tout court, qui est
+#: précisément le nom du coût interne d'un ticket dans le dataset
+#: ``sav_tickets`` : la garde d'export existait mais ne mordait pas dessus.
+#: Le vrai verrou est désormais dans le MOTEUR (``core.data_explorer``
+#: ``gated_fields``, appliqué aux huit consommateurs) ; ce filtre reste une
+#: défense en profondeur sur le seul rendu d'export.
+COLONNES_INTERDITES = ('prix_achat', 'prixachat', 'marge', 'cout_achat',
+                       'cout')
 
 
 def _sans_colonnes_interdites(entetes, lignes):

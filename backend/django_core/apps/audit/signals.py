@@ -86,6 +86,19 @@ TRACKED_MODELS = [
     # client au tarif catalogue — la trace de « qui l'a retiré, et quand » est
     # exactement ce qui manquait.
     ('cpq', 'PrixContractuel'),
+    # AUD813 — le changelog produit est GLOBAL (aucune FK société) et republié
+    # sans authentification par ``apps.publicapi`` : son écriture (désormais
+    # réservée au superutilisateur) doit laisser une trace au Journal.
+    ('core', 'ChangelogEntry'),
+    # AUD809 — les trois REGISTRES LÉGAUX CNDP / loi 09-08 (consentement,
+    # demandes de personnes concernées, registre des traitements) n'étaient
+    # dans AUCUN mécanisme de traçabilité : une preuve de consentement pouvait
+    # être fabriquée ou effacée sans laisser une ligne. Ils sont désormais
+    # append-only côté API ET suivis ici — la création reste la seule écriture
+    # possible, et elle est datée/attribuée.
+    ('core', 'ConsentRecord'),
+    ('core', 'DataSubjectRequest'),
+    ('core', 'RegistreTraitement'),
 ]
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).

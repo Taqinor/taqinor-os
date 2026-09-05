@@ -88,8 +88,11 @@ class PaymentTransactionViewSetTests(TestCase):
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='ACME')
         cls.other_co = Company.objects.create(nom='Autre')
+        # AUD806 — l'ÉCRITURE (création/capture) exige désormais le palier
+        # responsable/admin ; la lecture reste ouverte à tout authentifié.
         cls.user = User.objects.create_user(
-            username='u1', password='x', company=cls.company)
+            username='u1', password='x', company=cls.company,
+            role_legacy='responsable')
         cls.factory = APIRequestFactory()
 
     def test_create_sets_company_and_initiates(self):

