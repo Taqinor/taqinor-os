@@ -338,5 +338,8 @@ class TestLettrageComptaBranche(TestCase):
 
     def test_le_receveur_compta_est_abonne(self):
         import apps.compta.receivers  # noqa: F401 — enregistre les abonnés
-        uids = {lookup[0] for lookup, _recepteur in facture_payee.receivers}
+        # Même précaution qu'AUD101 : l'arité des entrées de
+        # ``Signal.receivers`` est interne à Django et a changé en 5.0
+        # (ajout de ``is_async``) — on lit la clé, on ne dépaquette pas.
+        uids = {entree[0][0] for entree in facture_payee.receivers}
         self.assertIn('compta_lettrage_facture_payee', uids)
