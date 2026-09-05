@@ -29,7 +29,6 @@ THROTTLE_EXEMPT = {
     # ratchet ne fait que décroître, une exemption résorbée se retire.)
     "gestion_projet/public_views.py::portail_avancement",
     "gestion_projet/public_views.py::evaluation_projet",
-    "installations/public_views.py::RFQConsultationPublicView",
     "pos/views.py::PublicTicketPDFView",
     "reporting/calendar.py::calendar_ics",
 }
