@@ -701,6 +701,15 @@ _LABEL_LEADING_GATE_RE = re.compile(
     r"^\*{0,2}\[(?:BLOCKED|GATED)\b(?:[^\[\]]|\[[^\[\]]*\])*\]"
 )
 
+# … and a marker that CLOSES the first physical line (``… (@after: ODY31,
+# ODY32) [GATED: validation fondateur du mode Apps en prod]`` — the real shape
+# of ODY33, emitted buildable on 2026-09-06 and dispatched for nothing) is the
+# task's state too. Trailing position ONLY, for the same VX198 reason: a
+# marker QUOTED mid-text must stay buildable.
+_LABEL_TRAILING_GATE_RE = re.compile(
+    r"\[(?:BLOCKED|GATED)\b(?:[^\[\]]|\[[^\[\]]*\])*\]\*{0,2}\s*$"
+)
+
 
 def _classify_gate(label: str) -> tuple[str, list[str]]:
     """Return ('buildable', [category labels]).
@@ -732,6 +741,10 @@ def _classify_gate(label: str) -> tuple[str, list[str]]:
     # Leading ``[BLOCKED: …]``/``[GATED: …]`` right after the em dash — same
     # semantics as the checkbox/inline status, same bucket as ``@blocked``.
     if _LABEL_LEADING_GATE_RE.match(label):
+        return ("gated", labels + ["BLOCKED"])
+    # Trailing ``[BLOCKED: …]``/``[GATED: …]`` closing the first physical line
+    # (ODY33's shape) — same semantics, same bucket.
+    if _LABEL_TRAILING_GATE_RE.search(label):
         return ("gated", labels + ["BLOCKED"])
     # GATED_KEYWORDS is intentionally empty -> never gated. Kept as a guard so a
     # future re-introduction of a gate keyword would still flow through here.
