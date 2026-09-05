@@ -97,6 +97,15 @@ class AvertissementsPeriodeTests(TestCase):
         self.assertIn('sans_profil_paie', types)
 
     def test_isolation_tenant(self):
+        """Aucun avertissement d'UNE société n'apparaît chez UNE AUTRE.
+
+        AUD710 a ajouté un avertissement de niveau SOCIÉTÉ
+        (``parametres_non_valides``) que toute société fraîchement semée
+        porte : ``ensure_defaults`` provisionne ses paramètres avec
+        ``valide_par_fondateur=False``. La liste d'une société vierge n'est
+        donc plus vide — mais elle ne doit contenir QUE ce signal, issu de SES
+        propres paramètres, et jamais une ligne du tenant voisin.
+        """
         dossier = self._dossier('T1')
         ProfilPaie.objects.create(
             company=self.co, employe=dossier,
@@ -107,4 +116,9 @@ class AvertissementsPeriodeTests(TestCase):
         periode_autre = PeriodePaie.objects.create(
             company=autre, annee=2026, mois=6)
         r = avertissements_periode(periode_autre)
-        self.assertEqual(r, [])
+
+        # `autre` n'a aucun employé : tout avertissement nominatif serait une
+        # fuite de tenant (`self.co` en porte deux — salaire nul + CNSS).
+        self.assertEqual([a for a in r if a['employe_id'] is not None], [])
+        self.assertEqual({a['type'] for a in r}, {'parametres_non_valides'})
+        self.assertNotIn('T1', ' '.join(a['message'] for a in r))
