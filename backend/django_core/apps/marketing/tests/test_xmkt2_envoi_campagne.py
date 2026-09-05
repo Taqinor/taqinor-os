@@ -95,11 +95,17 @@ class EnvoiCampagneTests(TestCase):
         camp = Campagne.objects.create(
             company=self.co, nom='C', canal=Campagne.Canal.EMAIL)
         services.envoyer_campagne(camp, destinataires=['c@x.ma'])
-        api = APIClient()  # aucune auth : webhook public
-        resp = api.post('/api/django/compta/webhooks/brevo/', {
-            'campagne_id': camp.id, 'destinataire': 'c@x.ma',
-            'event': 'click',
-        }, format='json')
+        # AUD616 — webhook public mais SIGNÉ : clé d'URL désignant la société
+        # + HMAC du corps brut (aucune session utilisateur).
+        from apps.marketing.tests.test_aud616_webhooks_signes import (
+            configurer_secret, poster_webhook,
+        )
+        configurer_secret(self.co)
+        resp = poster_webhook(
+            '/api/django/compta/webhooks/brevo/', self.co, {
+                'campagne_id': camp.id, 'destinataire': 'c@x.ma',
+                'event': 'click',
+            })
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['statut'], EnvoiCampagne.Statut.CLIQUE)
 

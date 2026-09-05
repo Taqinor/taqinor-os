@@ -127,6 +127,88 @@ def lire_token_preferences(token, *, max_age=TOKEN_PREFERENCES_MAX_AGE_SECONDS):
     return company, destinataire
 
 
+# ── AUD616 — webhooks marketing entrants : identité du tenant + signature ──
+# Avant ce correctif, ``webhook_brevo_campagne``/``webhook_sms_stop`` étaient
+# deux routes STATIQUES ``AllowAny`` sans aucun secret : n'importe quel tiers
+# pouvait POSTer et écrire dans la société de son choix, celle-ci étant
+# déduite d'un champ du CORPS qu'il envoyait lui-même (``campagne_id`` /
+# ``company_id``). Deux gardes indépendantes, toutes deux fail-closed :
+#   1. l'URL porte une CLÉ signée (SECRET_KEY) désignant la société — jamais
+#      un champ du corps ;
+#   2. le corps BRUT est signé en HMAC-SHA256 avec le secret PROPRE de cette
+#      société (``ParametresMarketing.webhook_secret``, AUD212).
+# Secret non configuré = refus, jamais acceptation par défaut.
+
+_WEBHOOK_SALT = 'marketing.aud616.webhook'
+
+#: En-tête portant le HMAC-SHA256 hexadécimal du corps brut
+#: (``X-Webhook-Signature``). Nom NEUTRE : l'ERP est white-label, le branding
+#: vient de ``TenantTheme``/``CompanyProfile`` et n'a rien à faire en dur dans
+#: un en-tête que chaque société configure chez son propre fournisseur
+#: (SCA29, garde ``scripts/check_platform.py``).
+WEBHOOK_SIGNATURE_HEADER = 'HTTP_X_WEBHOOK_SIGNATURE'
+
+
+def generer_cle_webhook(company_id):
+    """Clé d'URL signée désignant la société d'un webhook entrant (AUD616).
+
+    À coller dans l'URL configurée chez Brevo / l'agrégateur SMS. Opaque et
+    infalsifiable (signature ``SECRET_KEY``) : un tiers ne peut pas fabriquer
+    la clé d'une autre société."""
+    from django.core import signing
+    return signing.dumps({'company_id': company_id}, salt=_WEBHOOK_SALT)
+
+
+def societe_par_cle_webhook(cle):
+    """Résout une clé d'URL de webhook en ``Company``, ou ``None``.
+
+    Clé absente/forgée/corrompue ou société supprimée → ``None`` : l'appelant
+    refuse (fail-closed), jamais une 500."""
+    if not cle:
+        return None
+    from django.core import signing
+    try:
+        payload = signing.loads(cle, salt=_WEBHOOK_SALT)
+    except signing.BadSignature:
+        return None
+    from authentication.models import Company
+    return Company.objects.filter(id=payload.get('company_id')).first()
+
+
+def verifier_signature_webhook(company, raw_body, signature_header):
+    """HMAC-SHA256 hexadécimal du corps BRUT, avec le secret PROPRE de la
+    société (AUD616, patron AUD212).
+
+    FAIL-CLOSED : ``False`` sans secret configuré, sans en-tête, ou sur
+    signature invalide — jamais d'acceptation par défaut. La comparaison est
+    en temps constant et se fait EN BYTES (QJR413 : ``compare_digest`` sur
+    deux ``str`` lève ``TypeError`` dès qu'un octet non-ASCII apparaît dans
+    l'en-tête hostile, ce qui rendrait un 500 non authentifié)."""
+    import hashlib
+    import hmac
+
+    if company is None or not signature_header:
+        return False
+    secret = (parametres_marketing_pour(company).webhook_secret or '').strip()
+    if not secret:
+        return False
+    attendu = hmac.new(
+        secret.encode('utf-8'), raw_body or b'', hashlib.sha256).hexdigest()
+    return hmac.compare_digest(
+        attendu.encode('utf-8'), str(signature_header).encode('utf-8'))
+
+
+def societe_webhook_authentifiee(cle, raw_body, signature_header):
+    """Point d'entrée UNIQUE des webhooks marketing publics : renvoie la
+    ``Company`` seulement si la clé d'URL la désigne ET que la signature du
+    corps brut est valide pour SON secret. ``None`` sinon (401/403 côté vue).
+    """
+    company = societe_par_cle_webhook(cle)
+    if not verifier_signature_webhook(company, raw_body, signature_header):
+        return None
+    return company
+
+
 def preferences_actuelles(company, destinataire):
     """État courant des préférences d'un contact (NTMKT22).
 
@@ -317,19 +399,90 @@ def _champ_code(entree):
     return entree
 
 
-def champs_publics_a_afficher(formulaire, identifiant):
-    """NTMKT17 — filtre ``formulaire.champs`` pour un visiteur RECONNU.
+#: AUD607 — sel et durée de vie du jeton de PROFILAGE (progressive profiling).
+#: Même modèle de confiance que le jeton de préférences NTMKT33 ci-dessus :
+#: la société ET l'identifiant sont portés par la signature ``SECRET_KEY``,
+#: jamais par l'URL en clair, et le jeton expire.
+_PROFILAGE_SALT = 'marketing.aud607.profilage'
+TOKEN_PROFILAGE_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 
-    ``identifiant`` (email OU téléphone) vient du navigateur du visiteur
-    (cookie/stockage déjà géré côté client, aucune nouvelle dépendance
-    backend). Un visiteur INCONNU (``identifiant`` vide, ou aucun lead
-    correspondant — dédup QJ8) voit le formulaire COMPLET, comportement
-    actuel inchangé. Un visiteur RECONNU ne revoit QUE les champs non encore
-    renseignés sur son lead le plus récent — HubSpot-style."""
-    champs = formulaire.champs or []
-    identifiant = (identifiant or '').strip()
+
+def generer_token_profilage(company_id, identifiant):
+    """AUD607 — jeton signé prouvant la PROPRIÉTÉ d'un identifiant.
+
+    Émis uniquement par un chemin qui connaît déjà le contact (lien
+    personnalisé d'une campagne, e-mail nominatif) ; c'est la seule preuve
+    qui autorise ``champs_publics_a_afficher`` à consulter le CRM. Un
+    visiteur anonyme ne peut pas en fabriquer un, donc ne peut pas sonder
+    l'existence d'un lead."""
+    from django.core import signing
+    return signing.dumps(
+        {'company_id': company_id,
+         'identifiant': (identifiant or '').strip()},
+        salt=_PROFILAGE_SALT)
+
+
+def lire_token_profilage(token, *, max_age=TOKEN_PROFILAGE_MAX_AGE_SECONDS):
+    """Résout un jeton de profilage en ``(company_id, identifiant)``.
+
+    Jeton absent/invalide/corrompu/expiré → ``(None, None)`` : l'appelant
+    retombe silencieusement sur la réponse anonyme, jamais une 500 ni une
+    différence de réponse observable."""
+    if not token:
+        return None, None
+    from django.core import signing
+    try:
+        payload = signing.loads(token, salt=_PROFILAGE_SALT, max_age=max_age)
+    except signing.BadSignature:
+        return None, None
+    identifiant = (payload.get('identifiant') or '').strip()
     if not identifiant:
-        return champs
+        return None, None
+    return payload.get('company_id'), identifiant
+
+
+def champs_publics_a_afficher(formulaire, identifiant=None, *, jeton=None):
+    """NTMKT17 + AUD607 — définition PUBLIQUE des champs, uniforme par
+    construction.
+
+    AUD607 (loi 09-08/CNDP) : la version NTMKT17 d'origine RETIRAIT de la
+    liste les champs déjà connus d'un lead correspondant à ``identifiant``,
+    un paramètre de requête librement choisi par un appelant anonyme
+    (``AllowAny``, seul rempart un débit 30/min/IP). La longueur et le
+    contenu de la réponse trahissaient donc l'EXISTENCE d'un lead : un tiers
+    pouvait énumérer des e-mails/téléphones et savoir lesquels sont clients.
+
+    Le contrat est désormais uniforme : la liste COMPLÈTE des champs est
+    toujours renvoyée, chaque entrée normalisée en dictionnaire portant un
+    drapeau séparé ``deja_rempli``. Aucune entrée n'est jamais retirée.
+
+    Le drapeau ne vaut ``True`` que si l'appelant PROUVE qu'il est le
+    propriétaire de l'identifiant, via ``jeton`` signé
+    (``generer_token_profilage``) — même modèle de confiance que les
+    endpoints voisins ``desinscription/<token>`` / ``preferences/<token>``.
+    Sans jeton valide, AUCUNE lecture CRM n'a lieu et la réponse est
+    strictement indépendante de ``identifiant`` : deux appels, l'un avec un
+    e-mail connu, l'autre inconnu, sont indistinguables.
+    """
+    champs = [
+        (dict(c) if isinstance(c, dict) else {'code': c})
+        for c in (formulaire.champs or [])
+    ]
+    connus = _codes_connus_si_propriete_prouvee(formulaire, jeton)
+    for champ in champs:
+        champ['deja_rempli'] = _champ_code(champ) in connus
+    return champs
+
+
+def _codes_connus_si_propriete_prouvee(formulaire, jeton):
+    """Codes de champs déjà renseignés, UNIQUEMENT sur preuve de propriété.
+
+    Renvoie un ``set`` vide dès que le jeton manque, est invalide, ou a été
+    émis pour une AUTRE société que celle du formulaire (multi-tenance) —
+    aucun accès CRM n'est alors tenté."""
+    company_id, identifiant = lire_token_profilage(jeton)
+    if company_id is None or company_id != formulaire.company_id:
+        return set()
 
     from apps.crm.selectors import lead_known_field_codes
 
@@ -337,9 +490,7 @@ def champs_publics_a_afficher(formulaire, identifiant):
         connus = lead_known_field_codes(formulaire.company, email=identifiant)
     else:
         connus = lead_known_field_codes(formulaire.company, phone=identifiant)
-    if not connus:
-        return champs
-    return [c for c in champs if _champ_code(c) not in connus]
+    return connus or set()
 
 
 # ── NTMKT12 — Parcours en GRAPHE d'une séquence de relance ──────────────────
@@ -525,6 +676,39 @@ def _positionner(inscription, noeud, *, maintenant):
     inscription.save(update_fields=['noeud_courant', 'noeud_depuis'])
 
 
+def _executer_noeud_action(inscription, noeud):
+    """AUD622 — exécute un nœud ACTION du graphe, action CRM COMPRISE.
+
+    Le type est libellé « Action (message / CRM) » et sa config documente
+    ``action_crm``, mais la branche ne lisait que ``config['canal']`` pour
+    tracer : AUCUNE action CRM ne se produisait jamais, silencieusement —
+    alors que le moteur LINÉAIRE (XMKT19) interprète ce même JSON depuis
+    toujours. On appelle donc la MÊME logique, extraite en
+    ``compta.services.executer_action_crm_config`` : une seule implémentation
+    pour les deux moteurs.
+
+    Un nœud sans ``action_crm`` garde exactement le comportement d'avant
+    (trace ``planifie`` portant le canal).
+    """
+    config = noeud.config or {}
+    canal = str(config.get('canal') or '')
+    action_crm = config.get('action_crm')
+    if not action_crm:
+        return _tracer_noeud(inscription, noeud, canal=canal)
+
+    from apps.compta.services import executer_action_crm_config
+
+    action = (action_crm or {}).get('action')
+    resultat = executer_action_crm_config(
+        inscription.company, inscription.lead_id, action_crm,
+        note_chatter=(
+            f'Journey « {inscription.sequence.nom} » — action CRM '
+            f'« {action} » exécutée (nœud {noeud.libelle or noeud.id})'))
+    return _tracer_noeud(
+        inscription, noeud, canal=canal, resultat=resultat,
+        erreur='' if resultat != 'erreur' else 'action CRM échouée')
+
+
 def avancer_journey(inscription, *, maintenant=None):
     """Fait avancer UNE inscription dans le graphe de sa séquence (NTMKT12).
 
@@ -559,9 +743,7 @@ def avancer_journey(inscription, *, maintenant=None):
             if maintenant < echeance_noeud(inscription, noeud):
                 break
         elif noeud.type_noeud == NoeudJourney.Type.ACTION:
-            config = noeud.config or {}
-            traces.append(_tracer_noeud(
-                inscription, noeud, canal=str(config.get('canal') or '')))
+            traces.append(_executer_noeud_action(inscription, noeud))
         arc = arc_suivant(inscription, noeud)
         _positionner(inscription, arc.cible if arc else None,
                      maintenant=maintenant)
@@ -623,6 +805,7 @@ def executer_journeys_dus(company, *, maintenant=None):
     Pendant graphe de ``compta.services.executer_etapes_dues`` (linéaire), qui
     reste la seule voie pour les séquences sans nœud.
     """
+    from django.db import transaction
     from django.utils import timezone
     from .models import InscriptionSequence, NoeudJourney
     maintenant = maintenant or timezone.now()
@@ -632,13 +815,24 @@ def executer_journeys_dus(company, *, maintenant=None):
     if not sequences_graphe:
         return []
     traces = []
-    inscriptions = InscriptionSequence.objects.filter(
-        company=company,
-        statut=InscriptionSequence.Statut.ACTIF,
-        sequence_id__in=sequences_graphe,
-    ).select_related('sequence', 'noeud_courant')
-    for inscription in inscriptions:
-        traces.extend(avancer_journey(inscription, maintenant=maintenant))
+    # AUD622 — VERROU DE TICK. Sans lui, deux ticks beat qui se chevauchent
+    # lisaient les mêmes inscriptions ACTIVES et les avançaient TOUTES LES
+    # DEUX : deux ``ExecutionEtapeSequence`` pour le même nœud, et une action
+    # CRM exécutée deux fois. ``skip_locked`` fait que le second tick IGNORE
+    # les inscriptions déjà prises au lieu d'attendre (un tick beat ne doit
+    # jamais bloquer sur le précédent). ``of=('self',)`` ne verrouille que la
+    # ligne d'inscription : Postgres refuse un FOR UPDATE portant sur le côté
+    # nullable d'une jointure externe (``noeud_courant``).
+    with transaction.atomic():
+        inscriptions = list(
+            InscriptionSequence.objects.filter(
+                company=company,
+                statut=InscriptionSequence.Statut.ACTIF,
+                sequence_id__in=sequences_graphe,
+            ).select_related('sequence', 'noeud_courant')
+            .select_for_update(skip_locked=True, of=('self',)))
+        for inscription in inscriptions:
+            traces.extend(avancer_journey(inscription, maintenant=maintenant))
     return traces
 
 

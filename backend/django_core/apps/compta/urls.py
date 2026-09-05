@@ -264,10 +264,15 @@ urlpatterns = [
     path('calendrier-marketing/reschedule/',
          CalendrierMarketingRescheduleView.as_view(),
          name='calendrier-marketing-reschedule'),
-    # headless: rappel d'etat entrant de Brevo, appele par leur serveur
-    path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
+    # headless: rappel d'etat entrant de Brevo, appele par leur serveur.
+    # AUD616 — miroir de la route marketing : le segment <cle> designe la
+    # societe par signature, jamais un champ du corps. L'ancienne route
+    # statique acceptait un POST non signe de n'importe quel tiers.
+    path('webhooks/brevo/<str:cle>/', webhook_brevo_campagne,
+         name='webhook-brevo-campagne'),
     # headless: rappel STOP entrant de l'operateur SMS, aucun ecran en face
-    path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
+    path('webhooks/sms-stop/<str:cle>/', webhook_sms_stop,
+         name='webhook-sms-stop'),
     # headless: lien de desinscription clique depuis un courriel, hors ERP
     path('desinscription/<str:token>/', desinscription_publique,
          name='desinscription-publique'),

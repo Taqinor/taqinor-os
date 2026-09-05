@@ -1177,6 +1177,23 @@ class EnqueteNPS(models.Model):
         verbose_name = 'Enquête NPS'
         verbose_name_plural = 'Enquêtes NPS'
         ordering = ['-envoyee_le']
+        constraints = [
+            # AUD618 — une SEULE enquête par chantier et par société.
+            # ``_creer_enquete_nps_a_reception`` reposait sur le seul
+            # ``get_or_create``, sans garantie DB : deux réceptions
+            # concurrentes du même chantier pouvaient créer deux enquêtes et
+            # solliciter le client DEUX fois. Avec cette contrainte, le
+            # ``get_or_create`` de Django absorbe l'IntegrityError et
+            # re-lit la ligne gagnante — un seul enregistrement.
+            # ``condition`` explicite : un ``chantier_id`` NULL (enquête hors
+            # chantier) n'est pas contraint, ce que la sémantique NULL de
+            # Postgres ferait de toute façon — on l'écrit pour que l'intention
+            # ne dépende pas du backend.
+            models.UniqueConstraint(
+                fields=['company', 'chantier_id'],
+                condition=models.Q(chantier_id__isnull=False),
+                name='uniq_enquete_nps_par_chantier_et_societe'),
+        ]
 
     def __str__(self):
         return f'NPS client #{self.client_id} ({self.statut})'
@@ -1494,6 +1511,14 @@ class ReponseEnquete(models.Model):
         default=dict, blank=True, verbose_name='Réponses (JSON)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Soumise le')
+    # AUD621 — jeton d'invitation (ZMKT11) ayant servi à CETTE soumission.
+    # C'est la trace « jeton consommé » : en mode invités-seulement, le
+    # nombre de tentatives se compte sur le JETON (infalsifiable, émis par
+    # l'ERP) et non sur ``contact_ref``, champ libre du POST qu'un répondant
+    # pouvait changer ou omettre pour contourner ``tentatives_max``.
+    jeton_invite = models.CharField(
+        max_length=64, blank=True, default='', db_index=True,
+        verbose_name="Jeton d'invitation consommé (ZMKT11/AUD621)")
 
     # ── ZMKT10 — score calculé + certificat ─────────────────────────────────
     score_pct = models.DecimalField(
@@ -2317,6 +2342,20 @@ class ParametresMarketing(TenantModel):
         max_length=20, choices=ModeleAttribution.choices,
         default=ModeleAttribution.DERNIER_TOUCHE,
         verbose_name="Modèle d'attribution multi-touch")
+
+    # ── AUD616 — secret HMAC PROPRE à cette société pour les webhooks
+    # marketing entrants (Brevo, agrégateur SMS). Même patron qu'AUD212
+    # (``ecommerce_connect.ConnexionEcommerce.webhook_secret``) : jamais un
+    # secret global `.env` partagé par toutes les sociétés. VIDE par défaut,
+    # ce qui est FAIL-CLOSED : tant que la société n'a pas configuré son
+    # secret, AUCUN webhook n'est accepté (jamais l'inverse). Ce champ n'est
+    # PAS exposé par ``ParametresMarketingSerializer``.
+    webhook_secret = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='Secret HMAC des webhooks marketing entrants (AUD616)',
+        help_text=(
+            'Secret HMAC-SHA256 partagé avec Brevo / l\'agrégateur SMS. '
+            'Vide = aucun webhook accepté pour cette société.'))
 
     class Meta:
         verbose_name = 'Paramètres marketing'

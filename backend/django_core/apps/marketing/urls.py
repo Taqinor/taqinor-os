@@ -198,11 +198,16 @@ urlpatterns = [
          name='mkt-attribution-comparaison'),
     # Vues publiques (token, sans login) — préfixées de noms `mkt-…` pour ne
     # pas entrer en collision avec les mêmes vues servies sous /compta/….
-    # headless: rappel d'etat entrant de Brevo, appele par leur serveur
-    path('webhooks/brevo/', webhook_brevo_campagne,
+    # headless: rappel d'etat entrant de Brevo, appele par leur serveur.
+    # AUD616 — le segment <cle> est une cle SIGNEE designant la societe : les
+    # anciennes routes statiques laissaient un tiers non authentifie ecrire
+    # dans la societe de son choix (deduite d'un champ du CORPS). La cle est
+    # doublee d'une signature HMAC du corps brut (en-tete X-Webhook-Signature).
+    path('webhooks/brevo/<str:cle>/', webhook_brevo_campagne,
          name='mkt-webhook-brevo-campagne'),
     # headless: rappel STOP entrant de l'operateur SMS, aucun ecran en face
-    path('webhooks/sms-stop/', webhook_sms_stop, name='mkt-webhook-sms-stop'),
+    path('webhooks/sms-stop/<str:cle>/', webhook_sms_stop,
+         name='mkt-webhook-sms-stop'),
     # headless: lien de desinscription clique depuis un courriel, hors ERP
     path('desinscription/<str:token>/', desinscription_publique,
          name='mkt-desinscription-publique'),

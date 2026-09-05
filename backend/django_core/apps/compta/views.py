@@ -7427,30 +7427,61 @@ class InscriptionSequenceViewSet(_ComptaBaseViewSet):
         return Response(InscriptionSequenceSerializer(inscription).data)
 
 
-# ── XMKT2 — Webhook Brevo (gated, public, aucune auth) ──────────────────────
+# ── XMKT2 — Webhook Brevo (gated, public, signé AUD616) ────────────────────
+
+def _payload_webhook_marketing(raw_body):
+    """Corps JSON d'un webhook marketing, décodé depuis les octets BRUTS —
+    les MÊMES que ceux couverts par la signature HMAC (AUD616).
+
+    Passer par ``request.data`` rouvrirait un écart entre ce qui est signé et
+    ce qui est interprété. ``None`` sur JSON invalide (400 côté vue), jamais
+    une 500."""
+    import json
+
+    try:
+        data = json.loads(raw_body or b'{}')
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([_MarketingPublicThrottle])
-def webhook_brevo_campagne(request):
+def webhook_brevo_campagne(request, cle=None):
     """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
-    opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
-    ``Campagne`` référencée (aucune session utilisateur côté webhook
-    externe). Payload minimal attendu : ``campagne_id``, ``destinataire``,
-    ``event``, et optionnellement ``reason`` (raison SMTP) + ``bounce_type``
-    (``hard``/``soft``, XMKT12).
+    opened/click/bounce/unsubscribed/complaint. Payload minimal attendu :
+    ``campagne_id``, ``destinataire``, ``event``, et optionnellement
+    ``reason`` (raison SMTP) + ``bounce_type`` (``hard``/``soft``, XMKT12).
+
+    AUD616 — la société ne vient PLUS d'un champ du corps. Elle est désignée
+    par la clé signée de l'URL, et le corps brut doit porter une signature
+    HMAC valide pour le secret PROPRE de cette société. Sans les deux, 403
+    (fail-closed). ``campagne_id`` est ensuite résolu SCOPÉ à cette société :
+    l'identifiant d'une campagne d'un autre tenant n'est plus atteignable.
     """
-    data = request.data or {}
+    from apps.marketing import services as marketing_services
+
+    raw_body = request.body
+    company = marketing_services.societe_webhook_authentifiee(
+        cle, raw_body, request.META.get(
+            marketing_services.WEBHOOK_SIGNATURE_HEADER))
+    if company is None:
+        return Response({'detail': 'signature invalide'}, status=403)
+    data = _payload_webhook_marketing(raw_body)
+    if data is None:
+        return Response({'detail': 'payload JSON invalide'}, status=400)
     campagne_id = data.get('campagne_id')
     destinataire = (data.get('destinataire') or '').strip()
     evenement = data.get('event') or ''
     if not campagne_id or not destinataire or not evenement:
         return Response({'detail': 'payload incomplet'}, status=400)
-    campagne = Campagne.objects.filter(id=campagne_id).first()
+    campagne = Campagne.objects.filter(
+        id=campagne_id, company=company).first()
     if not campagne:
         return Response({'detail': 'campagne introuvable'}, status=404)
     envoi = services.webhook_brevo_evenement(
-        campagne.company, campagne_id=campagne.id,
+        company, campagne_id=campagne.id,
         destinataire=destinataire, evenement=evenement,
         raison_smtp=data.get('reason', ''),
         bounce_type=data.get('bounce_type', ''))
@@ -7464,21 +7495,30 @@ def webhook_brevo_campagne(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([_MarketingPublicThrottle])
-def webhook_sms_stop(request):
+def webhook_sms_stop(request, cle=None):
     """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
-    d'agrégateur active). Payload minimal attendu : ``company_id``,
-    ``numero``. Désinscrit immédiatement le numéro (XMKT3).
-    """
-    from authentication.models import Company
+    d'agrégateur active). Payload minimal attendu : ``numero``. Désinscrit
+    immédiatement le numéro (XMKT3).
 
-    data = request.data or {}
-    company_id = data.get('company_id')
+    AUD616 — le ``company_id`` du CORPS a été SUPPRIMÉ : il laissait un tiers
+    non authentifié désinscrire les contacts de n'importe quelle société. La
+    société vient désormais de la clé signée de l'URL, et le corps brut doit
+    porter une signature HMAC valide pour le secret PROPRE de cette société.
+    """
+    from apps.marketing import services as marketing_services
+
+    raw_body = request.body
+    company = marketing_services.societe_webhook_authentifiee(
+        cle, raw_body, request.META.get(
+            marketing_services.WEBHOOK_SIGNATURE_HEADER))
+    if company is None:
+        return Response({'detail': 'signature invalide'}, status=403)
+    data = _payload_webhook_marketing(raw_body)
+    if data is None:
+        return Response({'detail': 'payload JSON invalide'}, status=400)
     numero = (data.get('numero') or '').strip()
-    if not company_id or not numero:
+    if not numero:
         return Response({'detail': 'payload incomplet'}, status=400)
-    company = Company.objects.filter(id=company_id).first()
-    if not company:
-        return Response({'detail': 'société introuvable'}, status=404)
     supprime = services.traiter_stop_entrant(company, numero)
     if not supprime:
         return Response({'detail': 'numéro invalide'}, status=400)
@@ -7582,6 +7622,13 @@ def enquete_soumettre(request, token):
     enquete = Enquete.objects.filter(token=token, actif=True).first()
     if not enquete:
         return Response({'detail': 'Enquête introuvable.'}, status=404)
+    # AUD621 — la soumission ne vérifiait AUCUN accès (seule la lecture des
+    # questions le faisait) : en mode invités-seulement, on pouvait répondre
+    # sans jeton du tout. Même réponse 404 que la lecture, aucune fuite
+    # d'existence, et un jeton épuisé n'ouvre plus rien.
+    jeton_invite = request.GET.get('invite') or request.data.get('invite')
+    if not services.acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
     debute_le_brut = request.data.get('debute_le')
     if debute_le_brut:
         debute_le = parse_datetime(debute_le_brut)
@@ -7592,7 +7639,8 @@ def enquete_soumettre(request, token):
     try:
         reponse = services.soumettre_reponse_enquete(
             enquete, reponses=reponses, contact_ref=contact_ref,
-            nom_repondant=request.data.get('nom_repondant', ''))
+            nom_repondant=request.data.get('nom_repondant', ''),
+            jeton_invite=jeton_invite)
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
     return Response({
@@ -8640,10 +8688,27 @@ class CompteFideliteViewSet(_ComptaBaseViewSet):
         compte.refresh_from_db()
         return Response(self.get_serializer(compte).data)
 
+    @action(detail=True, methods=['post'], url_path='recalculer-solde')
+    def recalculer_solde(self, request, pk=None):
+        """AUD619 (doctrine D9) — re-dérive le solde depuis le LEDGER.
+
+        Le solde est un cache : cette action le recalcule = Σ des mouvements
+        du compte (plancher 0, comme à l'écriture). Répare tout compte dont le
+        cache a divergé, notamment ceux dont un mouvement a été supprimé en
+        base avant que le DELETE ne soit refusé."""
+        compte = self.get_object()
+        services.recalculer_solde_fidelite(compte)
+        compte.refresh_from_db()
+        return Response(self.get_serializer(compte).data)
+
 
 class MouvementFideliteViewSet(_ComptaBaseViewSet):
     """Mouvements de points de fidélité (FG240). La création recalcule le solde
-    et le palier du compte côté serveur (jamais depuis le corps)."""
+    et le palier du compte côté serveur (jamais depuis le corps).
+
+    AUD619 — doctrine D9 (fondateur) : c'est un LEDGER. La suppression est
+    REFUSÉE ; une correction s'écrit en mouvement de sens INVERSE, et
+    ``comptes-fidelite/<id>/recalculer-solde/`` re-dérive le cache."""
     queryset = MouvementFidelite.objects.all()
     serializer_class = MouvementFideliteSerializer
     filter_backends = [filters.OrderingFilter]
@@ -8657,6 +8722,27 @@ class MouvementFideliteViewSet(_ComptaBaseViewSet):
             data['compte'], points=data['points'],
             motif=data.get('motif', ''))
         serializer.instance = mouvement
+
+    def perform_destroy(self, instance):
+        """AUD619 — DELETE interdit sur un ledger.
+
+        Le routeur standard exposait un DELETE qui ne repassait JAMAIS par
+        ``appliquer_mouvement_fidelite`` à rebours : la ligne disparaissait et
+        ``CompteFidelite.points`` restait figé sur une valeur qui ne
+        correspondait plus à aucun historique — un solde faux, indétectable et
+        irréparable. La correction passe par un mouvement inverse.
+
+        ``perform_destroy`` (et non ``destroy``) : le scoping société de
+        ``get_object`` s'applique AVANT, donc un mouvement d'une autre société
+        continue de répondre 404, jamais 405."""
+        raise MethodNotAllowed(
+            'DELETE',
+            detail=(
+                'Un mouvement de fidélité est un enregistrement de registre : '
+                "il ne se supprime pas. Enregistrez un mouvement de sens "
+                'inverse (mêmes points, signe opposé), puis au besoin '
+                'recalculez le solde du compte via '
+                '« comptes-fidelite/<id>/recalculer-solde/ ».'))
 
 
 class RegleUpsellViewSet(_ComptaBaseViewSet):

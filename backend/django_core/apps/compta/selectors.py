@@ -3797,7 +3797,20 @@ def evaluer_etat_personnalise(etat, *, colonnes_override=None):
             for colonne in colonnes:
                 if colonne.type_colonne == 'budget':
                     if colonne.budget_id:
+                        # AUD418 — re-vérification société À LA LECTURE. La
+                        # seule garantie que ``colonne.budget_id`` désigne un
+                        # budget de CETTE société était
+                        # ``ColonneEtatPersonnaliseSerializer.validate_budget``
+                        # — un contrôle posé uniquement à l'ÉCRITURE, par ce
+                        # sérialiseur précis. Tout autre chemin (admin non
+                        # scopé, script de migration de données, futur endpoint
+                        # bulk) y aurait posé l'id d'un budget concurrent, et
+                        # l'agrégat aurait affiché ses montants dans l'état
+                        # financier de la victime. Les ~11 autres agrégats de
+                        # ce fichier posent ``company`` systématiquement :
+                        # celui-ci l'oubliait.
                         total = BudgetLigne.objects.filter(
+                            company=company,
                             budget_id=colonne.budget_id).aggregate(
                             **{f'm{i:02d}': Sum(f'm{i:02d}') for i in range(1, 13)})
                         valeurs[colonne.id] = sum(
