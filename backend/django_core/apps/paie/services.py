@@ -5081,9 +5081,14 @@ def livre_de_paie(periode):
                 statut=BulletinPaie.STATUT_VALIDE)
         .select_related('profil', 'profil__employe')
     )
+    # AUD708 — `allocations_familiales` et `formation_professionnelle` sont
+    # AGRÉGÉES ICI parce que le journal de paie (`_credit_organismes_cnss`) et
+    # l'état des charges (`etat_des_charges`) les créditent au compte 4441 :
+    # sans elles dans ce registre, les deux consommateurs lèvent un KeyError.
     champs = [
         'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
-        'amo_salariale', 'amo_patronale', 'cimr_salariale', 'ir',
+        'amo_salariale', 'amo_patronale', 'allocations_familiales',
+        'formation_professionnelle', 'cimr_salariale', 'ir',
         'frais_professionnels', 'net_imposable', 'retenues', 'net_a_payer',
         'charges_patronales',
     ]
