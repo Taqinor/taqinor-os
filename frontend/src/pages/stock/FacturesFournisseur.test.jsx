@@ -47,6 +47,9 @@ vi.mock('../../api/stockApi', () => ({
     })),
     getFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
     getBonsCommandeFournisseur: vi.fn(() => Promise.resolve({ data: [] })),
+    // AUDV04 — acomptes fournisseur ouverts (chargés au montage, panneau
+    // optionnel affiché uniquement si des lignes existent).
+    acomptesFournisseurOuverts: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 

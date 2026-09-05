@@ -1,0 +1,23 @@
+{
+  "endpoint": "GET/POST /api/django/stock/profils-saisonniers/",
+  "pourquoi": "AUDV04 (DRAFT165-114, XSTK17) — `creer_profil_saisonnier`/`profil_saisonnier_actif` existaient déjà côté service (consommés par les sélecteurs de réappro FG54/FG65/FG326) mais aucun ViewSet/serializer/URL n'exposait la création à un Acheteur — capacité inaccessible hors tests. PACT10 : la création POST route PAR le service (jamais une écriture directe du serializer) pour hériter du garde anti-chevauchement calendaire déjà posé — un chevauchement avec un profil ACTIF de la même cible (produit ou catégorie) renvoie 400. Lecture tout rôle, écriture responsable/admin.",
+  "exemple": {
+    "id": 3,
+    "produit": 12,
+    "produit_nom": "Motopompe OSP 30-4",
+    "categorie": null,
+    "categorie_nom": null,
+    "nom": "Saison pompage",
+    "mois_debut": 5,
+    "mois_fin": 8,
+    "seuil_min": 10,
+    "seuil_max": null,
+    "quantite_cible": 40,
+    "actif": true,
+    "date_creation": "2026-09-01T08:00:00Z",
+    "date_modification": "2026-09-01T08:00:00Z"
+  },
+  "exemple_erreur_chevauchement": {
+    "detail": "Ce profil chevauche le profil existant « Saison pompage » sur le mois 6."
+  }
+}

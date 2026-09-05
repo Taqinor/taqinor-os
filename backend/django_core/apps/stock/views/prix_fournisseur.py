@@ -69,7 +69,7 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['prix_achat']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx']:
+        if self.action in READ_ACTIONS + ['export_xlsx', 'effectif']:
             # AUD213 — la ressource EST le prix d'achat : même gate que le
             # champ `prix_achat` ailleurs. `HasPermissionOrLegacy` conserve le
             # comportement historique des comptes hérités sans rôle fin.
@@ -103,6 +103,38 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         self._check_company(serializer)
         serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='effectif')
+    def effectif(self, request):
+        """XPUR14 (AUDV04/DRAFT165-117) — prix d'achat EFFECTIF pour un
+        (produit, fournisseur, quantité) donné : le palier applicable si des
+        paliers existent, sinon le prix de base, ``None`` si tarif expiré/
+        introuvable. Pré-remplit une ligne de BCF au bon prix — jamais un
+        endpoint client-facing (INTERNE, même gate que la ressource)."""
+        produit_id = request.query_params.get('produit')
+        fournisseur_id = request.query_params.get('fournisseur')
+        if not produit_id or not fournisseur_id:
+            return Response(
+                {'detail': 'Les paramètres produit et fournisseur sont '
+                           'requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = request.user.company
+        produit = Produit.objects.filter(
+            pk=produit_id, company=company).first()
+        fournisseur = Fournisseur.objects.filter(
+            pk=fournisseur_id, company=company).first()
+        if produit is None or fournisseur is None:
+            return Response(
+                {'detail': 'Produit ou fournisseur introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            quantite = int(request.query_params.get('quantite') or 1)
+        except (TypeError, ValueError):
+            quantite = 1
+        from ..services import prix_effectif_fournisseur
+        prix = prix_effectif_fournisseur(
+            produit, fournisseur, quantite=quantite)
+        return Response({'prix_effectif': prix})
 
     @action(detail=False, methods=['get'], url_path='export-xlsx')
     def export_xlsx(self, request):
