@@ -56,6 +56,18 @@ class SharingRule(models.Model):
             models.Index(fields=['principal_type', 'principal_id'],
                          name='core_sharin_principal_idx'),
         ]
+        # AUD820 — l'idempotence de `share_object` n'était portée que par
+        # l'``update_or_create`` applicatif : deux requêtes de partage
+        # CONCURRENTES sur le même (objet, principal) passaient toutes deux le
+        # SELECT et créaient DEUX lignes. Révoquer « le » partage en laissait
+        # alors une active — un accès fantôme qu'aucun écran ne montre. La
+        # contrainte DB est la seule garde qui tient sous concurrence.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id',
+                        'principal_type', 'principal_id'],
+                name='core_sharingrule_unique_principal'),
+        ]
 
     def __str__(self):
         return (f'Share({self.content_type_id}:{self.object_id} → '
@@ -66,12 +78,44 @@ class SharingRule(models.Model):
         return self.expire_le is not None and self.expire_le <= timezone.now()
 
 
+def team_principal_ids(user):
+    """Ids des « équipes » auxquelles ``user`` appartient (AUD820).
+
+    La SEULE structure d'équipe du socle est la hiérarchie ``supervisor`` de
+    ``core.scoping`` (celle qui porte déjà ``peer_user_ids`` : « mêmes pairs =
+    même superviseur direct »). Une équipe est donc identifiée par l'id du
+    SUPERVISEUR qui l'encadre :
+
+      * un collaborateur appartient à l'équipe de son supérieur direct ;
+      * un supérieur appartient à l'équipe qu'il encadre lui-même (partager à
+        « l'équipe de Karim » inclut Karim).
+
+    Aucune requête : la résolution se fait sur les seuls ids déjà chargés sur
+    l'utilisateur — ``visible_ids`` est appelé sur chaque liste.
+    """
+    ids = {str(user.pk)}
+    supervisor_id = getattr(user, 'supervisor_id', None)
+    if supervisor_id:
+        ids.add(str(supervisor_id))
+    return ids
+
+
 def _principals_for(user):
-    """Paires (principal_type, principal_id) auxquelles ``user`` appartient."""
+    """Paires (principal_type, principal_id) auxquelles ``user`` appartient.
+
+    AUD820 — ``PrincipalType`` déclarait USER/ROLE/TEAM mais cette fonction ne
+    construisait que ``('user', …)`` et ``('role', …)`` : un partage
+    ``principal_type='team'`` était créé, affiché… et ne matchait JAMAIS dans
+    ``_rules_qs``. Le partage d'équipe « ne marchait pas », sans message
+    d'erreur, sans trace. Les paires ``('team', …)`` sont désormais résolues
+    (voir ``team_principal_ids``).
+    """
     pairs = [('user', str(user.pk))]
     role_id = getattr(user, 'role_id', None)
     if role_id:
         pairs.append(('role', str(role_id)))
+    for team_id in sorted(team_principal_ids(user)):
+        pairs.append(('team', team_id))
     return pairs
 
 
@@ -131,13 +175,35 @@ def share_object(instance, *, principal_type, principal_id, niveau='lecture',
     (company, content_type, object_id, principal)."""
     from django.contrib.contenttypes.models import ContentType
 
+    from django.db import IntegrityError, transaction
+
     company_id = getattr(instance, 'company_id', None)
     ct = ContentType.objects.get_for_model(instance.__class__)
-    rule, _ = SharingRule.objects.update_or_create(
-        company_id=company_id,
-        content_type=ct, object_id=str(instance.pk),
-        principal_type=principal_type, principal_id=str(principal_id),
-        defaults={'niveau': niveau, 'expire_le': expire_le,
-                  'accorde_par': accorde_par},
-    )
-    return rule
+    cle = {
+        'company_id': company_id,
+        'content_type': ct,
+        'object_id': str(instance.pk),
+        'principal_type': principal_type,
+        'principal_id': str(principal_id),
+    }
+    defaults = {'niveau': niveau, 'expire_le': expire_le,
+                'accorde_par': accorde_par}
+    # AUD820 — la contrainte DB (Meta.constraints) est ce qui empêche RÉELLEMENT
+    # le doublon sous concurrence ; l'``update_or_create`` seul ne le faisait
+    # pas. Le perdant de la course reçoit une IntegrityError : on la rattrape
+    # DANS un savepoint (sinon la transaction reste cassée) et on rejoue en
+    # mise à jour — même patron que `apps/ventes/utils/references.py`. La
+    # fonction reste donc idempotente pour l'appelant.
+    try:
+        with transaction.atomic():
+            rule, _ = SharingRule.objects.update_or_create(
+                defaults=defaults, **cle)
+        return rule
+    except IntegrityError:
+        rule = SharingRule.objects.filter(**cle).first()
+        if rule is None:  # pragma: no cover - course perdue puis suppression
+            raise
+        for champ, valeur in defaults.items():
+            setattr(rule, champ, valeur)
+        rule.save(update_fields=list(defaults))
+        return rule

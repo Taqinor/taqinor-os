@@ -89,8 +89,37 @@ def _model_declared_names():
     def _modules_modeles(dossier):
         return sorted(dossier.glob("models*.py")) if dossier.is_dir() else []
 
+    # AUD820 — MÊME faux positif, un cran plus loin : `core` (et
+    # `authentication`) déclarent aussi des modèles dans des modules NOMMÉS PAR
+    # LEUR SUJET, pas `models*.py` — `core/sharing.py` (SharingRule),
+    # `core/documents.py`, `core/idempotency.py`, `core/field_permissions.py`,
+    # `core/http_cache.py`. Un index/contrainte parfaitement mirroité dans leur
+    # `Meta` était vu « non déclaré », donc signalé comme dérive modèle↔migration
+    # alors que rien n'avait dérivé. On reconnaît un module de modèles à sa
+    # déclaration de classe (base Django ou socle multi-tenant du dépôt) — même
+    # correction que l'élargissement NTWMS ci-dessus, jamais un allowlistage.
+    _BASES_MODELE = ("models.Model)", "TenantModel)", "TimestampedModel)",
+                     "SoftDeleteModel)")
+
+    def _modules_modeles_par_sujet(dossier):
+        if not dossier.is_dir():
+            return []
+        trouves = []
+        for f in sorted(dossier.glob("*.py")):
+            if f.name.startswith("models") or not f.is_file():
+                continue
+            try:
+                texte = f.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if any(base in texte for base in _BASES_MODELE):
+                trouves.append(f)
+        return trouves
+
     files = (_modules_modeles(DJANGO_CORE / "core")
-             + _modules_modeles(DJANGO_CORE / "authentication"))
+             + _modules_modeles_par_sujet(DJANGO_CORE / "core")
+             + _modules_modeles(DJANGO_CORE / "authentication")
+             + _modules_modeles_par_sujet(DJANGO_CORE / "authentication"))
     if APPS_DIR.is_dir():
         for app_dir in sorted(APPS_DIR.iterdir()):
             files.extend(_modules_modeles(app_dir))
