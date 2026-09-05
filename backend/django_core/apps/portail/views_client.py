@@ -447,6 +447,7 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
 
+
 class MesDemandesSavPortailViewSet(viewsets.ViewSet):
     """AUD525 — « Mes demandes SAV » : la surface CLIENT de FG233.
 
