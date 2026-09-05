@@ -1138,34 +1138,58 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """FG53 — crée (ou réutilise) un lien « Payer en ligne » pour la facture.
 
         Le fournisseur par défaut est NoOp (page de paiement interne, aucun coût
-        ni dépendance ; passerelle live gatée). Renvoie le jeton, l'URL de la
-        page de paiement, le montant figé (reste à payer) et l'échéance. Société
-        forcée depuis la facture ; n'envoie rien au client (pas d'email/SMS)."""
+        ni dépendance ; passerelle live gatée). Société forcée depuis la
+        facture ; n'envoie rien au client (pas d'email/SMS).
+
+        AUD136 — les gardes de CRÉATION (facture annulée / payée / soldée) sont
+        descendues dans `create_payment_link` : elles ne protégeaient que CE
+        chemin, alors que tout autre appelant du service pouvait créer un lien
+        sur une facture close. La réponse porte désormais `montant_a_payer`
+        (reste dû à l'instant T, ce que le client paiera réellement) à côté de
+        `montant` (la trace figée à la création)."""
         facture = self.get_object()
-        if facture.statut == Facture.Statut.ANNULEE:
-            return Response(
-                {'detail': 'Facture annulée : aucun lien de paiement.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        from decimal import Decimal
-        if facture.montant_du <= Decimal('0'):
-            return Response(
-                {'detail': 'Cette facture est déjà soldée.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        from ..services import create_payment_link
+        from ..services import LinkError, create_payment_link
         from ..payments.providers import get_provider
         provider_key = request.data.get('provider') or 'noop'
-        link = create_payment_link(facture=facture, provider=provider_key)
+        try:
+            link = create_payment_link(facture=facture, provider=provider_key)
+        except LinkError as exc:
+            return Response({'detail': exc.message},
+                            status=status.HTTP_400_BAD_REQUEST)
         session = get_provider(link.provider).create_session(link)
         return Response({
             'token': link.token,
             'statut': link.statut,
             'montant': str(link.montant),
+            'montant_a_payer': str(link.montant_a_payer),
             'provider': link.provider,
             'pay_url': session.get('pay_url'),
             'expires_at': link.expires_at.isoformat(),
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='revoquer-lien-paiement',
+            permission_classes=[IsResponsableOrAdmin])
+    def revoquer_lien_paiement(self, request, pk=None):
+        """AUD136 — révoque le lien « Payer en ligne » actif de la facture.
+
+        Le cycle de vie du lien n'avait aucune SORTIE : un lien créé avec un
+        montant erroné ne pouvait être ni corrigé ni fermé, et restait payable
+        jusqu'à son expiration. Idempotent : sans lien actif, 200 et rien à
+        faire — jamais une erreur pour un état déjà atteint."""
+        from ..services import revoquer_lien_paiement
+        facture = self.get_object()
+        lien = revoquer_lien_paiement(facture=facture, user=request.user)
+        if lien is None:
+            return Response({
+                'detail': 'Aucun lien de paiement actif sur cette facture.',
+                'revoque': False,
+            })
+        return Response({
+            'detail': 'Lien de paiement révoqué.',
+            'revoque': True,
+            'token': lien.token,
+            'statut': lien.statut,
+        })
 
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])
@@ -1679,36 +1703,67 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='relancer',
             permission_classes=[IsResponsableOrAdmin])
     def relancer(self, request, pk=None):
-        """Consigne une relance et, par défaut, l'envoie par email (N87).
+        """Consigne une relance — l'envoi d'email est un OPT-IN explicite.
 
-        Journalise une RelanceLog + fixe la prochaine date de relance. L'email
-        de relance part via l'intégration configurable : NO-OP réseau sans clé
-        (backend console), envoi réel via Brevo/SMTP quand configuré. Passer
-        ``envoyer_email=false`` pour seulement consigner sans envoyer (ancien
-        comportement). Ouvert à la Commerciale."""
+        AUD129 (PAY-4) : l'envoi était le DÉFAUT (``envoyer_email`` non fourni
+        ⇒ email parti) alors que la modale annonce « Cette action journalise la
+        relance (aucun envoi) » et que le lot poste ``{niveau}`` seul — une
+        consignation en lot expédiait donc de vraies mises en demeure. Le
+        défaut est désormais FALSE : il faut poster ``envoyer_email=true``
+        (case « Envoyer l'email au client ») pour qu'un email parte.
+
+        AUD129 (PAY-19) : le corps de l'email reprend la note saisie quand elle
+        est renseignée (``note or lvl.message``) — elle n'était jusqu'ici
+        écrite que dans le journal interne et perdue pour le destinataire.
+
+        AUD131 (PAY-18) : l'action ne vérifiait NI ``statut`` NI ``montant_du``,
+        alors que le cron exclut payee/annulee/brouillon — une facture déjà
+        payée pouvait recevoir une mise en demeure. Elle partage désormais LE
+        prédicat ``recouvrement.facture_relancable`` avec la liste des impayés
+        et le beat, et son corps est validé par un serializer (un ``niveau``
+        inexistant ou une ``prochaine_relance`` non-date ⇒ 400, plus jamais une
+        relance consignée à vide ni une erreur base).
+
+        Journalise une RelanceLog + fixe la prochaine date de relance. L'envoi
+        passe par l'intégration configurable : NO-OP réseau sans clé (backend
+        console), envoi réel via Brevo/SMTP quand configuré."""
+        from ..recouvrement import facture_relancable
+        from ..serializers import RelancerFactureSerializer
+
         facture = self.get_object()
-        niveau = request.data.get('niveau')
-        note = (request.data.get('note') or '').strip()
-        niveau_nom = ''
-        lvl = None
-        if niveau:
-            lvl = FollowupLevel.objects.filter(
-                company=facture.company, ordre=niveau).first()
-            niveau_nom = lvl.nom if lvl else ''
+        # AUD131 — garde d'état AVANT toute écriture.
+        ok, motif = facture_relancable(facture)
+        if not ok:
+            return Response({'detail': motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        payload = RelancerFactureSerializer(
+            data=request.data, context={'company': facture.company})
+        payload.is_valid(raise_exception=True)
+        donnees = payload.validated_data
+
+        niveau = donnees.get('niveau')
+        note = (donnees.get('note') or '').strip()
+        lvl = payload.context.get('followup_level')
+        niveau_nom = lvl.nom if lvl is not None else ''
         RelanceLog.objects.create(
             company=facture.company, facture=facture,
             niveau=niveau or None, niveau_nom=niveau_nom, note=note,
             created_by=request.user)
-        # Envoi email de relance (par défaut) — NO-OP sans clé configurée.
+        # AUD129 — envoi d'email en OPT-IN explicite (défaut : ne rien envoyer).
+        # NO-OP réseau sans clé configurée.
         email_log_id = None
-        if request.data.get('envoyer_email', True):
+        if donnees.get('envoyer_email'):
             from ..email_service import send_relance_email
+            # AUD129 (PAY-19) — la note saisie prime sur le message générique
+            # du niveau : sinon la personnalisation n'atteint jamais le client.
             email_log = send_relance_email(
                 facture, niveau_nom=niveau_nom,
-                message=(lvl.message if lvl else ''), user=request.user)
+                message=(note or (lvl.message if lvl is not None else '')),
+                user=request.user)
             email_log_id = email_log.id
         # Prochaine relance proposée si fournie, sinon laissée telle quelle.
-        prochaine = request.data.get('prochaine_relance')
+        prochaine = donnees.get('prochaine_relance')
         if prochaine:
             facture.prochaine_relance = prochaine
             facture.save(update_fields=['prochaine_relance'])

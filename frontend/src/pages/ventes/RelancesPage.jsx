@@ -57,6 +57,10 @@ export default function RelancesPage() {
   const [payTarget, setPayTarget] = useState(null)
   const [note, setNote] = useState('')
   const [prochaine, setProchaine] = useState('')  // date de prochaine relance
+  // AUD129 — l'envoi de l'email de relance est un OPT-IN explicite. Le serveur
+  // n'envoie plus rien sans `envoyer_email: true` ; la case n'est jamais
+  // pré-cochée (« Consigner » reste par défaut une écriture au journal).
+  const [envoyerEmail, setEnvoyerEmail] = useState(false)
   const [busy, setBusy] = useState(false)
   const [niveauFilter, setNiveauFilter] = useState('')  // '' = tous
   // VX112 — pré-filtre client depuis le drill-down de la balance âgée
@@ -221,6 +225,9 @@ export default function RelancesPage() {
   const openRelancer = (r) => {
     setTarget(r)
     setNote(r.niveau?.message || '')
+    // AUD129 — la case repart TOUJOURS décochée à l'ouverture : une consignation
+    // ne doit jamais hériter d'un envoi coché lors d'une relance précédente.
+    setEnvoyerEmail(false)
     const delaiSuivant = r.niveau_suivant?.delai_jours
     setProchaine(delaiSuivant != null ? todayPlus(delaiSuivant) : todayPlus(7))
   }
@@ -231,26 +238,34 @@ export default function RelancesPage() {
       await ventesApi.relancerFacture(target.id, {
         niveau: target.niveau?.ordre, note,
         prochaine_relance: prochaine || undefined,
+        // AUD129 — envoi explicite seulement. Le corps de l'email reprend la
+        // note saisie (le serveur applique `note or message du niveau`).
+        envoyer_email: envoyerEmail,
       })
-      setTarget(null); setNote(''); setProchaine(''); load()
+      setTarget(null); setNote(''); setProchaine('')
+      setEnvoyerEmail(false); load()
     } catch { /* */ } finally { setBusy(false) }
   }
 
   // Relance en lot : consigne une relance pour chaque facture cochée, au niveau
-  // courant de chacune (sans note ni envoi forcé — comportement par défaut).
+  // courant de chacune. AUD129 — `envoyer_email: false` est posé EXPLICITEMENT :
+  // le lot n'envoie jamais d'email, conformément à ce que la confirmation dit.
   const doConsigner = async (ids) => {
     for (const id of ids) {
       const r = rows.find(x => String(x.id) === String(id))
-      await ventesApi.relancerFacture(id, { niveau: r?.niveau?.ordre })
+      await ventesApi.relancerFacture(
+        id, { niveau: r?.niveau?.ordre, envoyer_email: false })
     }
   }
-  // « Consigner uniquement » — comportement historique, byte-identique.
+  // « Consigner uniquement » — écriture au journal SEULE. AUD129 : ce lot
+  // envoyait en réalité un email par facture (le serveur envoyait par défaut).
   const relancerSelection = async () => {
     const ids = Object.keys(selected).filter(id => selected[id])
     if (ids.length === 0) return
     // APX17 - confirmation maison (AlertDialog), jamais la popup du systeme.
     const ok = await confirm({
       title: `Consigner une relance pour ${ids.length} facture(s) ?`,
+      description: 'Journalisation seule — aucun email ne sera envoyé aux clients.',
       confirmLabel: 'Consigner',
       destructive: false,
     })
@@ -304,7 +319,7 @@ export default function RelancesPage() {
     if (ids.length === 0) return
     const ok = await confirm({
       title: `Consigner une relance pour ${ids.length} facture(s) ?`,
-      description: 'Un message WhatsApp sera ensuite prévisualisé pour chacune (aucun envoi automatique).',
+      description: 'Aucun email ne sera envoyé. Un message WhatsApp sera ensuite prévisualisé pour chacune (aucun envoi automatique).',
       confirmLabel: 'Consigner puis prévisualiser',
       destructive: false,
     })
@@ -864,7 +879,8 @@ export default function RelancesPage() {
             <DialogTitle>Consigner une relance — {target?.reference}</DialogTitle>
             <DialogDescription>
               {target?.niveau ? `Niveau courant : ${target.niveau.nom}. ` : ''}
-              Cette action journalise la relance (aucun envoi).
+              Cette action journalise la relance. Aucun email n'est envoyé au
+              client sauf si vous cochez la case ci-dessous.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -872,6 +888,22 @@ export default function RelancesPage() {
               <Label htmlFor="relance-note">Note (appel, courrier remis…)</Label>
               <Textarea id="relance-note" rows={3} value={note}
                         onChange={e => setNote(e.target.value)} />
+            </div>
+            {/* AUD129 — l'envoi était le DÉFAUT côté serveur alors que la modale
+                promettait « aucun envoi » : il est désormais un opt-in explicite,
+                et le corps de l'email reprend la note ci-dessus. */}
+            <div className="flex items-start gap-2">
+              <Checkbox id="relance-envoyer-email" checked={envoyerEmail}
+                        onCheckedChange={v => setEnvoyerEmail(!!v)} />
+              <div className="grid gap-0.5">
+                <Label htmlFor="relance-envoyer-email">
+                  Envoyer l'email au client
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Le corps reprend la note ci-dessus
+                  {target?.niveau ? ', sinon le message du niveau' : ''}.
+                </p>
+              </div>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="relance-prochaine">Prochaine relance</Label>

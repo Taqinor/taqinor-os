@@ -4222,7 +4222,14 @@ def pay_page(request, token):
 
     Lecture seule, authentifiée par le jeton. Renvoie la référence facture, le
     montant à payer et le statut du lien — jamais de prix d'achat ni de marge.
-    Un lien payé renvoie statut='paye' (page de confirmation côté front)."""
+    Un lien payé renvoie statut='paye' (page de confirmation côté front).
+
+    AUD136 — `montant` était le chiffre FIGÉ à la création du lien : après un
+    règlement partiel, la page réclamait au client une somme qu'il ne devait
+    plus. Elle affiche désormais `link.montant_a_payer` — le reste dû à
+    l'instant T, exactement la valeur à laquelle le webhook borne déjà
+    l'encaissement (`record_payment_from_link`). `montant_initial` reste
+    exposé comme trace."""
     link = _resolve_payment_link(token, require_valid=False)
     if link is None:
         return _not_found()
@@ -4230,7 +4237,8 @@ def pay_page(request, token):
     return _noindex(Response({
         'reference': facture.reference,
         'client_name': str(facture.client) if facture.client_id else '',
-        'montant': str(link.montant),
+        'montant': str(link.montant_a_payer),
+        'montant_initial': str(link.montant),
         'devise': 'MAD',
         'statut': link.statut,
         'paye': link.statut == PaymentLink.Statut.PAYE,

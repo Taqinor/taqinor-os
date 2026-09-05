@@ -549,11 +549,19 @@ def generate_releve_pdf(client, releve_data):
 
 
 def generate_lettre_relance_pdf(facture, niveau, message):
-    """Lettre de relance pour une facture en retard (style maison)."""
+    """Lettre de relance pour une facture en retard (style maison).
+
+    AUD130 — le gabarit rendait `{{ message }}` tel quel, donc le `{reference}`
+    des niveaux semés s'imprimait littéralement sur un document de recouvrement
+    remis au client. Le rendu passe désormais par l'unique fonction partagée
+    avec `send_relance_email` : c'est le SEUL endroit où `{…}` est substitué.
+    """
+    from apps.ventes.recouvrement import rendre_message_relance
+
     context = _company_context(company=facture.company)
     context['facture'] = facture
     context['niveau'] = niveau
-    context['message'] = message
+    context['message'] = rendre_message_relance(message, facture)
     html = _render_html('lettre_relance.html', context)
     return _html_to_pdf(html)
 

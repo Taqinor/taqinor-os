@@ -29,6 +29,20 @@ from apps.stock.services import qr_svg_for
 TOLERANCE_CENTIME = Decimal('0.01')
 
 
+class LinkError(Exception):
+    """AUD136 — refus de CRÉATION d'un lien de paiement, avec son motif.
+
+    La garde vivait dans la vue (`views/facture.lien_paiement`) : tout autre
+    appelant de `create_payment_link` — script, futur webhook, tâche — pouvait
+    donc créer un lien sur une facture annulée ou soldée. Elle est descendue
+    dans le service, qui la porte pour tous.
+    """
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
 def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
                            reste=None, force=False):
     """AUD102 — LE SERVICE UNIQUE DE BASCULE « PAYÉE » d'une ``Facture``.
@@ -330,17 +344,81 @@ def _creer_paiement_groupe(facture, montant, mode, date_paiement, user,
 
 # ── FG53 — Liens de paiement « Payer en ligne » ──────────────────────────────
 
-def create_payment_link(*, facture, provider=None):
-    """FG53 — crée (ou réutilise) un lien de paiement pour une facture.
+# AUD136 — l'expiration n'est JAMAIS facultative : sans elle, un lien reste
+# payable des mois après la facture. Elle est portée par le modèle
+# (`PaymentLink.expires_at`, non nul, défaut `PAYMENT_LINK_TTL_DAYS` = 30 j) —
+# une seule source de vérité, jamais dupliquée ici.
 
-    Réutilise un lien encore valide (en attente, non expiré) pour la même
-    facture plutôt que d'en empiler. Le montant est figé au reste à payer à
-    l'instant T. Le fournisseur par défaut est NoOp (page interne, aucun coût).
+
+def expirer_liens_paiement_perimes(facture):
+    """AUD136 — bascule en EXPIRÉ les liens EN ATTENTE dont la date est passée.
+
+    Un lien périmé restait EN ATTENTE en base : `is_valid` le refusait bien au
+    paiement, mais il occupait la place du « lien actif » de la facture. On le
+    ferme explicitement, ce qui rend la contrainte partielle « un seul lien
+    actif par facture » applicable sans jamais bloquer une ré-émission
+    légitime. Renvoie le nombre de liens fermés.
+    """
+    from django.utils import timezone
+    from ..models import PaymentLink
+
+    return PaymentLink.objects.filter(
+        facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
+        expires_at__lte=timezone.now(),
+    ).update(statut=PaymentLink.Statut.EXPIRE)
+
+
+def revoquer_lien_paiement(*, facture, user=None):
+    """AUD136 — révoque le lien de paiement actif d'une facture (ANNULÉ).
+
+    Le cycle de vie n'avait aucune sortie manuelle : un lien créé avec un
+    montant erroné ne pouvait être ni corrigé ni fermé. Idempotent — renvoie le
+    lien révoqué, ou ``None`` si la facture n'en portait aucun d'actif.
+    """
+    from ..models import PaymentLink
+
+    lien = (PaymentLink.objects
+            .filter(facture=facture, statut=PaymentLink.Statut.EN_ATTENTE)
+            .order_by('-created_at').first())
+    if lien is None:
+        return None
+    lien.statut = PaymentLink.Statut.ANNULE
+    lien.save(update_fields=['statut'])
+    return lien
+
+
+def create_payment_link(*, facture, provider=None):
+    """FG53 — crée (ou réutilise) LE lien de paiement d'une facture.
+
+    Réutilise le lien encore valide (en attente, non expiré) de la facture
+    plutôt que d'en empiler : c'est le get_or_create du couple, doublé depuis
+    AUD136 d'une contrainte partielle en base (un seul lien EN ATTENTE par
+    facture). Le fournisseur par défaut est NoOp (page interne, aucun coût).
     Société forcée depuis la facture, jamais lue d'un corps de requête.
+
+    AUD136 — cycle de vie BORNÉ, là où il ne l'était pas :
+    - `montant` n'est qu'une TRACE de ce qui était dû à la création ; ce que le
+      client paie est dérivé de `facture.montant_du` à l'instant du paiement
+      (`record_payment_from_link`, déjà correct) et affiché via
+      `PaymentLink.montant_a_payer` ;
+    - les liens périmés sont fermés (EXPIRÉ) avant toute ré-émission ;
+    - une facture ANNULÉE ou PAYÉE n'obtient plus de lien (`LinkError`) ;
+    - `revoquer_lien_paiement` ferme un lien à la demande.
     """
     from decimal import Decimal
     from django.utils import timezone
-    from ..models import PaymentLink
+    from ..models import Facture, PaymentLink
+
+    if facture.statut == Facture.Statut.ANNULEE:
+        raise LinkError('Facture annulée : aucun lien de paiement.')
+    if facture.statut == Facture.Statut.PAYEE:
+        raise LinkError('Facture déjà payée : aucun lien de paiement.')
+    if (facture.montant_du or Decimal('0')) <= Decimal('0'):
+        raise LinkError('Cette facture est déjà soldée.')
+
+    # Ferme d'abord ce qui est périmé : sinon un lien mort tiendrait la place
+    # du lien actif et la contrainte partielle bloquerait la ré-émission.
+    expirer_liens_paiement_perimes(facture)
 
     existing = (PaymentLink.objects
                 .filter(facture=facture,
@@ -350,14 +428,11 @@ def create_payment_link(*, facture, provider=None):
     if existing is not None:
         return existing
 
-    montant = facture.montant_du
-    if montant is None or montant <= Decimal('0'):
-        montant = facture.total_ttc
     return PaymentLink.objects.create(
         company=facture.company,
         facture=facture,
         provider=(provider or 'noop'),
-        montant=montant,
+        montant=facture.montant_du,
     )
 
 

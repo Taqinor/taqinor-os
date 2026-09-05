@@ -56,6 +56,22 @@ def _company_qs(qs, user):
         return qs
     return qs.none()
 
+
+def _refus_si_rejete(paiement):
+    """AUD132 (PAY-12) — 409 si ``paiement`` est REJETÉ, sinon ``None``.
+
+    Un règlement rejeté (chèque impayé, virement retourné) n'a plus d'existence
+    monétaire : aucune quittance ne doit l'attester, ni en PDF ni par email.
+    """
+    if paiement.statut == Paiement.Statut.REJETE:
+        motif = (paiement.motif_rejet or '').strip()
+        detail = 'Règlement rejeté : aucune quittance ne peut être émise.'
+        if motif:
+            detail = f'{detail[:-1]} ({motif}).'
+        return Response({'detail': detail}, status=status.HTTP_409_CONFLICT)
+    return None
+
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -147,14 +163,22 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], url_path='enregistrer-avance')
     def enregistrer_avance(self, request):
         """XFAC1 — enregistre un règlement reçu SANS facture (avance/acompte à
-        la commande/trop-perçu), rattaché directement au client."""
+        la commande/trop-perçu), rattaché directement au client.
+
+        AUD134 — c'est le SEUL chemin où `client` reste choisi par l'appelant
+        (`PaiementSerializer.client` est désormais en lecture seule). Il est
+        résolu à travers `crm.selectors.client_base_qs(company)`, donc borné à
+        la société de l'utilisateur : un id d'une autre société renvoie 400,
+        jamais un paiement rattaché hors tenant."""
         from apps.crm.selectors import client_base_qs
         from ..services import enregistrer_avance as _enregistrer_avance
 
         company = request.user.company
         client_id = request.data.get('client')
-        client = _company_qs(client_base_qs(), request.user).filter(
-            pk=client_id).first()
+        # Scoping EXPLICITE par la société (superuser sans société : `_company_qs`
+        # garde son comportement historique de portée globale).
+        client = _company_qs(
+            client_base_qs(company), request.user).filter(pk=client_id).first()
         if client is None:
             return Response({'detail': 'Client introuvable.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -274,8 +298,17 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'], url_path='recu-pdf',
             permission_classes=[IsAnyRole])
     def recu_pdf(self, request, pk=None):
-        """XFAC9 — quittance (reçu de paiement) PDF pour CE paiement."""
+        """XFAC9 — quittance (reçu de paiement) PDF pour CE paiement.
+
+        AUD132 (PAY-12) — la quittance ne contrôlait PAS ``paiement.statut`` :
+        elle affirmait donc un règlement de 30 000 pour un chèque sans
+        provision, tout en imprimant en bas de page un ``solde_restant``
+        recalculé depuis ``facture.montant_du`` qui, lui, avait remonté après
+        le rejet. Un paiement rejeté n'a plus de quittance (409)."""
         paiement = self.get_object()
+        conflit = _refus_si_rejete(paiement)
+        if conflit is not None:
+            return conflit
         from ..utils.pdf import generate_recu_pdf
         try:
             pdf_bytes = generate_recu_pdf(paiement)
@@ -290,9 +323,16 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'], url_path='envoyer-recu',
             permission_classes=[IsResponsableOrAdmin])
     def envoyer_recu(self, request, pk=None):
-        """XFAC9 — envoi optionnel de la quittance au client par email."""
+        """XFAC9 — envoi optionnel de la quittance au client par email.
+
+        AUD132 (PAY-12) — même garde que ``recu_pdf`` : envoyer la quittance
+        d'un règlement rejeté enverrait au client la preuve écrite d'un
+        paiement qu'il n'a pas fait. 409, et RIEN ne part."""
         from ..email_service import send_recu_email
         paiement = self.get_object()
+        conflit = _refus_si_rejete(paiement)
+        if conflit is not None:
+            return conflit
         log = send_recu_email(
             paiement, user=request.user,
             to_email=request.data.get('to_email'))

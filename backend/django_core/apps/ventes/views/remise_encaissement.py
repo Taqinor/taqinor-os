@@ -52,6 +52,50 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(technicien_id=technicien_id)
         return qs
 
+    #: AUD135 — une remise terrain ne collecte QUE de l'espèce et du chèque
+    #: (le docstring du modèle l'annonçait, `perform_create` ne l'exigeait pas).
+    MODES_ELIGIBLES = (Paiement.Mode.ESPECES, Paiement.Mode.CHEQUE)
+
+    def _resoudre_paiements(self, lignes, company):
+        """Paiements éligibles du corps, ou ``ValidationError`` qui NOMME la cause.
+
+        AUD135 — trois refus, tous silencieux jusqu'ici :
+        - un paiement DÉJÀ porté par une autre remise (l'unicité était par
+          REMISE, jamais par paiement : le même chèque pouvait être déclaré
+          dans N bordereaux et compté N fois dans `montant_lignes`) ;
+        - un mode autre qu'espèces/chèque (un virement n'est pas une collecte
+          terrain — il n'y a rien à remettre en banque) ;
+        - un paiement REJETÉ (chèque impayé) : il n'a plus d'existence
+          monétaire, le remettre fausserait le rapprochement de caisse.
+        """
+        resolus = []
+        for ligne in lignes:
+            paiement_id = (ligne or {}).get('paiement')
+            if not paiement_id:
+                continue
+            paiement = Paiement.objects.filter(
+                id=paiement_id, company=company).first()
+            if paiement is None:
+                # Comportement historique : un id inconnu est ignoré.
+                continue
+            if paiement.mode not in self.MODES_ELIGIBLES:
+                raise ValidationError({'lignes': (
+                    f'Encaissement #{paiement.id} en '
+                    f'{paiement.get_mode_display().lower()} : une remise '
+                    f'terrain ne porte que des espèces ou des chèques.')})
+            if paiement.statut == Paiement.Statut.REJETE:
+                raise ValidationError({'lignes': (
+                    f'Encaissement #{paiement.id} rejeté : il ne peut pas '
+                    f'être remis en banque.')})
+            deja = LigneRemiseEncaissement.objects.select_related(
+                'remise').filter(paiement=paiement).first()
+            if deja is not None:
+                raise ValidationError({'lignes': (
+                    f'Encaissement #{paiement.id} déjà déclaré dans la remise '
+                    f'{deja.remise.reference or deja.remise_id}.')})
+            resolus.append(paiement)
+        return resolus
+
     def perform_create(self, serializer):
         company = self.request.user.company
         lignes = self.request.data.get('lignes') or []
@@ -59,6 +103,11 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             'technicien') or self.request.user
 
         from ..utils.references import create_with_reference
+
+        # AUD135 — les lignes sont VALIDÉES AVANT de numéroter la remise : un
+        # refus ne doit pas laisser derrière lui une remise vide et une
+        # référence REM consommée.
+        paiements = self._resoudre_paiements(lignes, company)
 
         def _save(ref):
             return serializer.save(
@@ -69,17 +118,24 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             RemiseEncaissement, 'REM', company, _save,
             padding=4, period='monthly')
 
-        for ligne in lignes:
-            paiement_id = (ligne or {}).get('paiement')
-            if not paiement_id:
-                continue
-            try:
-                paiement = Paiement.objects.get(
-                    id=paiement_id, company=company)
-            except Paiement.DoesNotExist:
-                continue
+        for paiement in paiements:
             LigneRemiseEncaissement.objects.get_or_create(
                 remise=instance, paiement=paiement)
+
+    def perform_update(self, serializer):
+        """AUD135 — le verrou post-clôture, côté API.
+
+        Le docstring du modèle affirmait « Une fois la remise clôturée, ses
+        lignes sont VERROUILLÉES (…) appliqué côté service » : aucun service ne
+        l'appliquait — `cloturer` ne changeait que le statut. Une remise
+        clôturée ou validée est désormais IMMUABLE (le modèle refuse aussi
+        toute écriture de ligne, y compris hors API)."""
+        remise = self.get_object()
+        if remise.statut != RemiseEncaissement.Statut.OUVERTE:
+            raise ValidationError({'detail': (
+                f'Remise {remise.get_statut_display().lower()} : ses lignes '
+                f'et sa déclaration sont verrouillées.')})
+        serializer.save()
 
     @action(detail=True, methods=['post'], url_path='cloturer')
     def cloturer(self, request, pk=None):

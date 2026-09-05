@@ -2,6 +2,7 @@
 âgée, relevé de compte client. VUE / CONSIGNE / IMPRESSION uniquement — aucun
 envoi (email/SMS/courrier). L'envoi reste pour une session future.
 """
+import re
 from decimal import Decimal
 
 from django.http import HttpResponse
@@ -14,7 +15,10 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
-from .models import Facture, FollowupLevel, ParametrageRelanceClient, PromessePaiement
+from .models import (
+    Facture, FollowupLevel, Paiement, ParametrageRelanceClient,
+    PromessePaiement,
+)
 from .serializers import (
     FollowupLevelSerializer, ParametrageRelanceClientSerializer,
     PromessePaiementSerializer,
@@ -24,6 +28,112 @@ from .serializers import (
 def _s(x):
     """Decimal → chaîne au centime (2 décimales)."""
     return str(Decimal(x).quantize(Decimal('0.01')))
+
+
+# ── AUD130 — UN SEUL rendu de message de relance ───────────────────────────
+# `seed_defaults` (plus bas) sème trois messages contenant `{reference}` et
+# AUCUN code ne les formatait : l'email faisait `message.strip()` et la lettre
+# PDF rendait `{{ message }}` tel quel, si bien que le client recevait
+# littéralement « Mise en demeure : la facture {reference} est en retard ».
+# Arbitrage retenu (la tâche impose de trancher) : les placeholders RESTENT
+# dans les messages configurables et sont rendus ici — jamais ailleurs.
+
+#: Jeu de variables DÉCLARÉ, la seule chose qu'un message de relance peut citer.
+VARIABLES_RELANCE = ('reference', 'client', 'montant_du', 'jours_retard')
+
+#: Une accolade ouvrante suivie de n'importe quoi jusqu'à la fermante. Volontai-
+#: rement large : un `{ }` ou un `{variable_inexistante}` doit disparaître, pas
+#: faire échouer le rendu (un KeyError de `str.format` renverrait un 500 sur la
+#: lettre de relance — le contraire du but).
+_PLACEHOLDER_RE = re.compile(r'\{[^{}]*\}')
+
+
+def variables_relance(facture):
+    """Valeurs des variables déclarées pour ``facture``, prêtes à insérer."""
+    from core.money import quantize_mad
+
+    client = getattr(facture, 'client', None)
+    nom_client = ''
+    if client is not None:
+        nom_client = (
+            f"{getattr(client, 'nom', '') or ''} "
+            f"{getattr(client, 'prenom', '') or ''}").strip()
+    try:
+        montant = quantize_mad(getattr(facture, 'montant_du', 0) or 0)
+    except Exception:  # pragma: no cover — facture sans montant exploitable
+        montant = Decimal('0.00')
+    jours = getattr(facture, 'jours_retard', 0) or 0
+    return {
+        'reference': getattr(facture, 'reference', '') or '',
+        'client': nom_client,
+        'montant_du': f'{montant:.2f}',
+        'jours_retard': str(jours),
+    }
+
+
+def rendre_message_relance(niveau, facture):
+    """Message de relance RENDU : le seul endroit où `{…}` est substitué.
+
+    ``niveau`` accepte les trois formes qui circulent dans le code : un
+    ``FollowupLevel``, le dict `{ordre, nom, delai_jours}` que le beat fabrique,
+    ou directement la chaîne du message. Retourne toujours une chaîne SANS
+    accolade : une variable hors du jeu déclaré (``VARIABLES_RELANCE``) est
+    retirée silencieusement plutôt que de faire échouer l'envoi ou la lettre.
+    """
+    if niveau is None:
+        message = ''
+    elif isinstance(niveau, str):
+        message = niveau
+    elif isinstance(niveau, dict):
+        message = niveau.get('message') or ''
+    else:
+        message = getattr(niveau, 'message', '') or ''
+    message = (message or '').strip()
+    if not message:
+        return ''
+    valeurs = variables_relance(facture)
+
+    def _remplacer(match):
+        cle = match.group(0)[1:-1].strip()
+        return valeurs.get(cle, '') if cle in VARIABLES_RELANCE else ''
+
+    rendu = _PLACEHOLDER_RE.sub(_remplacer, message)
+    # Accolades orphelines (message mal formé saisi à la main) : elles ne
+    # doivent jamais atteindre un document client.
+    rendu = rendu.replace('{', '').replace('}', '')
+    # Une variable retirée laisse un double espace — on recolle proprement.
+    return re.sub(r'[ \t]{2,}', ' ', rendu).strip()
+
+
+# ── AUD131 — UN SEUL prédicat « cette facture est-elle relançable ? » ──────
+# La vue `relancer` ne vérifiait NI le statut NI le reste dû, alors que le cron
+# excluait payee/annulee/brouillon et court-circuitait `montant_du <= 0` : une
+# facture déjà payée pouvait donc recevoir une mise en demeure. Les trois
+# surfaces (vue, `_facture_due_rows`, `relance_reminders`) partagent désormais
+# cette définition — la changer les change toutes les trois.
+
+#: Statuts qui sortent une facture de toute file de relance.
+STATUTS_NON_RELANCABLES = ('payee', 'annulee', 'brouillon')
+
+
+def facture_relancable(facture):
+    """``(True, '')`` si ``facture`` peut être relancée, sinon ``(False, motif)``.
+
+    Le motif est un message destiné à l'utilisateur (renvoyé tel quel en 400).
+    """
+    statut = getattr(facture, 'statut', '')
+    if statut in STATUTS_NON_RELANCABLES:
+        libelle = statut
+        try:
+            libelle = facture.get_statut_display()
+        except Exception:  # pragma: no cover — objet non-modèle
+            pass
+        return False, (
+            f'Statut {libelle} : la relance ne concerne qu\'une facture '
+            f'ouverte et due.')
+    if (getattr(facture, 'montant_du', 0) or 0) <= 0:
+        return False, 'Facture soldée : plus rien à relancer.'
+    return True, ''
 
 
 def _scope(qs, user):
@@ -151,12 +261,13 @@ def _facture_due_rows(user):
         Facture.objects.select_related('client').prefetch_related(
             'lignes', 'paiements', 'avoirs'),
         user
-    ).exclude(statut__in=['payee', 'annulee', 'brouillon']).filter(
+    ).exclude(statut__in=STATUTS_NON_RELANCABLES).filter(
         exclu_relances=False)
     # Portée de visibilité (Feature F) : relances/balance restreintes aux
     # factures créées par soi / l'équipe pour un rôle restreint. 'all' → inchangé.
     qs = scope_queryset(qs, user, ['created_by'])
-    return [f for f in qs if f.montant_du > 0]
+    # AUD131 — même prédicat que la vue `relancer` et que le beat.
+    return [f for f in qs if facture_relancable(f)[0]]
 
 
 @api_view(['GET'])
@@ -303,14 +414,53 @@ def _releve_data(client, user=None):
             'total_ttc': _s(f.total_ttc),
             'paye': _s(paye), 'avoirs': _s(avo), 'du': _s(du),
         })
-        # Détail des encaissements (date / mode / montant) par facture.
+        # ── AUD132 (PAY-11) — UN SEUL propriétaire du détail ──────────────
+        # Le détail était construit par `for p in f.paiements.all()` SANS aucun
+        # filtre : un chèque rejeté restait imprimé au client comme un
+        # règlement, tandis que les escomptes et les avances ventilées — qui
+        # COMPTENT tous deux dans `montant_paye` — n'étaient jamais listés.
+        # Les lignes reprennent maintenant EXACTEMENT les trois termes de
+        # `Facture.montant_paye` : paiements non rejetés + escomptes + avances
+        # ventilées dont le paiement source n'est pas rejeté. La somme des
+        # lignes égale donc `totaux.paye`, sur l'écran interne, le PDF et le
+        # portail client (tous trois alimentés par ce même dict).
         for p in f.paiements.all():
+            if p.statut == Paiement.Statut.REJETE:
+                continue
+            date_p = (p.date_paiement.isoformat()
+                      if p.date_paiement else None)
             paiements.append({
                 'facture': f.reference,
-                'date': (p.date_paiement.isoformat()
-                         if p.date_paiement else None),
+                'date': date_p,
                 'mode': p.get_mode_display(),
                 'montant': _s(p.montant),
+                'type': 'paiement',
+                'libelle': p.get_mode_display(),
+            })
+            escompte = p.escompte_montant or Decimal('0')
+            if escompte:
+                paiements.append({
+                    'facture': f.reference,
+                    'date': date_p,
+                    'mode': 'Escompte',
+                    'montant': _s(escompte),
+                    'type': 'escompte',
+                    'libelle': 'Escompte de règlement',
+                })
+        # Avances ventilées SUR cette facture (le paiement source vit ailleurs).
+        for a in f.affectations_paiement.select_related('paiement'):
+            source = a.paiement
+            if source.statut == Paiement.Statut.REJETE:
+                continue
+            paiements.append({
+                'facture': f.reference,
+                'date': (source.date_paiement.isoformat()
+                         if source.date_paiement else None),
+                'mode': source.get_mode_display(),
+                'montant': _s(a.montant),
+                'type': 'avance',
+                'libelle': f'Avance ventilée (encaissement #{source.id})',
+                'reference_source': str(source.id),
             })
         # Détail des avoirs actifs (date / référence / montant) par facture.
         for a in f.avoirs.all():
@@ -463,9 +613,25 @@ def lettre_relance_pdf(request, facture_id):
 
 # ── XFAC5 — Promesse de paiement (promise-to-pay) ──────────────────────────
 
+#: AUD133 — horizon MAXIMAL d'une promesse de paiement, en jours. Au-delà, la
+#: « promesse » n'est plus un engagement client mais un gel de la relance : le
+#: serveur écrit `date_promise` dans `facture.exclu_relances_jusquau`, et
+#: `relance_reminders` exclut `exclu_relances_jusquau__gte=today` — une date au
+#: 31/12/2030 sortait donc la facture du recouvrement pour toujours, sans trace
+#: de décision ni validation hiérarchique. Plafond société par défaut : 90 jours.
+PROMESSE_HORIZON_JOURS_MAX = 90
+
+
 class PromessePaiementViewSet(viewsets.ModelViewSet):
     """Promesses de paiement client — suspendent la relance auto jusqu'à
-    ``date_promise``. Écriture réservée aux rôles responsable/admin."""
+    ``date_promise``. Écriture réservée aux rôles responsable/admin.
+
+    AUD133 — ce docstring était FAUX : ``get_permissions`` renvoyait
+    ``[IsAnyRole()]`` dans les DEUX branches, donc `create` — la seule action
+    d'écriture exposée (``http_method_names``) — était ouverte à tout compte
+    authentifié. La branche d'écriture applique désormais réellement
+    ``IsResponsableOrAdmin`` ; la LECTURE reste ouverte à tout rôle.
+    """
     serializer_class = PromessePaiementSerializer
     http_method_names = ['get', 'post', 'head', 'options']
 
@@ -478,7 +644,7 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
-        return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -493,9 +659,12 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
             statut=PromessePaiement.Statut.EN_COURS,
         )
         # Une promesse active SUSPEND les relances automatiques jusqu'à sa
-        # date : on pousse ``prochaine_relance`` après la promesse (repris par
-        # le scheduler à expiration) et on pose l'exclusion EXPIRANTE (XFAC5),
-        # jamais l'exclusion éternelle (comportement historique inchangé).
+        # date : on pose l'exclusion EXPIRANTE (XFAC5), jamais l'exclusion
+        # éternelle. AUD131 — ce commentaire annonçait aussi qu'on « pousse
+        # ``prochaine_relance`` après la promesse » : c'était FAUX, seul
+        # ``exclu_relances_jusquau`` est écrit (et il suffit : le beat exclut
+        # `exclu_relances_jusquau__gte=today`, la cadence reprend d'elle-même
+        # à expiration sans que la date de relance soit déplacée).
         facture = promesse.facture
         facture.exclu_relances_jusquau = promesse.date_promise
         facture.save(update_fields=['exclu_relances_jusquau'])

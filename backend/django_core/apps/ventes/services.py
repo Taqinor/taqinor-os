@@ -137,6 +137,11 @@ facture_montant_du = _encaissements.facture_montant_du
 affecter_encaissement_groupe = _encaissements.affecter_encaissement_groupe
 _creer_paiement_groupe = _encaissements._creer_paiement_groupe
 create_payment_link = _encaissements.create_payment_link
+# AUD136 — cycle de vie du lien de paiement (création bornée, expiration,
+# révocation) : réexportés sur la façade `services` comme leurs voisins.
+LinkError = _encaissements.LinkError
+expirer_liens_paiement_perimes = _encaissements.expirer_liens_paiement_perimes
+revoquer_lien_paiement = _encaissements.revoquer_lien_paiement
 _public_url = _encaissements._public_url
 qr_svg_for_facture_pdf = _encaissements.qr_svg_for_facture_pdf
 record_payment_from_link = _encaissements.record_payment_from_link
@@ -542,6 +547,7 @@ __all__ = [
     'LIBELLES_CHAMPS_PRODUIT',
     'LIBELLES_ROLES',
     'LigneKit',
+    'LinkError',
     'MOTIF_CATALOGUE',
     'MOTIF_FACTURE_ABSENTE',
     'MOTIF_LOCALISATION',
@@ -626,6 +632,7 @@ __all__ = [
     'enregistrer_paiement_avec_retenue',
     'entrees_dimensionnement_du_devis',
     'expire_stale_devis',
+    'expirer_liens_paiement_perimes',
     'extract_roof_config',
     'facturables_pour_devis',
     'facture_montant_du',
@@ -684,6 +691,7 @@ __all__ = [
     'reset_relance_escalation',
     'resume_devis_depuis_bordereau',
     'resynchroniser_devis_pour_produit',
+    'revoquer_lien_paiement',
     'save_devis_as_preset',
     'scenario_effectif',
     'send_devis_followup_nudges',

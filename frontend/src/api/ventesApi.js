@@ -412,6 +412,14 @@ const ventesApi = {
   // Encaissements : liste lecture seule de TOUS les paiements de la société
   // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
   getPaiements: (params) => api.get('/ventes/paiements/', { params }),
+  // AUD132 (PAY-10) — « Chèque impayé ». L'action serveur `rejeter` (YLEDG5)
+  // existait depuis sa livraison SANS aucun appelant côté écran : un chèque
+  // revenu impayé était donc INGÉRABLE depuis le produit. `motif` est
+  // OBLIGATOIRE (400 sinon) ; `frais` et `date_rejet` sont optionnels. Le
+  // paiement n'est jamais supprimé (piste d'audit) : il passe REJETÉ, la
+  // facture rouvre et les relances se ré-arment. Rôle responsable/admin.
+  rejeterPaiement: (id, payload) =>
+    api.post(`/ventes/paiements/${id}/rejeter/`, payload),
 
   // ── WIR265/FG42 — Import d'un relevé bancaire (dry-run puis commit) ──────
   // Le couple d'endpoints multipart existait et testé depuis FG42, SANS aucun

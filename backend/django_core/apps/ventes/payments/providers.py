@@ -123,7 +123,30 @@ class HostedGatewayProvider(PaymentProvider):
     confirmation), donc aucun coût ni dépendance par défaut. Branchement futur :
     `httpx` (déjà présent) pour créer la session hébergée + vérifier la signature
     du webhook. Tant que ce n'est pas câblé, il se comporte comme NoOp en
-    lecture seule SANS confirmer un paiement non vérifié."""
+    lecture seule SANS confirmer un paiement non vérifié.
+
+    ── AUD136 — CONTRAT ATTENDU, à respecter AVANT de brancher un vrai PSP ──
+    Ce squelette est l'endroit où l'argent réel entrera : le contrat est écrit
+    ici pendant qu'il ne coûte rien, pas après le premier encaissement.
+
+    1. `create_session(link)` NE FIGE PAS de montant. Le montant facturé au
+       client est `link.montant_a_payer` (dérivé de `facture.montant_du` à
+       l'instant T) — jamais `link.montant`, qui n'est que la trace de ce qui
+       était dû à la création. Une session doit être créée AU MOMENT du
+       paiement, pas réutilisée des jours plus tard.
+    2. `verify_webhook(link, payload)` DOIT vérifier la signature du PSP avant
+       tout. Il renvoie `{'paid': bool, 'provider_ref': str, 'montant': …}` ;
+       `paid=True` sans vérification cryptographique est un encaissement
+       fabriqué. En cas de doute : `paid=False` (le défaut de ce squelette).
+    3. Le `montant` renvoyé est une DÉCLARATION du PSP, jamais une autorité :
+       `record_payment_from_link` le BORNE au reste dû sous verrou
+       (`select_for_update`) — ne défaites pas cette borne.
+    4. `provider_ref` porte l'idempotence : le même appel rejoué ne doit jamais
+       créer un second `Paiement` (le service s'en charge via le statut du lien
+       + `paiement_id`, sous transaction).
+    5. Un lien EXPIRÉ, ANNULÉ ou déjà PAYÉ n'atteint pas le PSP : `is_valid`
+       est contrôlé en amont. Ne rouvrez pas un lien fermé côté connecteur.
+    """
 
     key = 'hosted'
     label = 'Passerelle hébergée (gatée)'
