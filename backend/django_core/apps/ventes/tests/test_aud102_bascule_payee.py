@@ -109,9 +109,14 @@ class TestDeuxDefautsDecouverts(_BaseSolde):
         )
 
         facture = self._facture(Decimal('1200'))
+        # Le fournisseur ``noop`` (défaut) est FAIL-CLOSED par conception
+        # (QX3) : son ``charge()`` renvoie toujours ``ok: False`` — aucun
+        # débit n'est jamais simulé, donc aucun Paiement. Le débit de mandat
+        # se prouve avec ``mock_tokenized``, le fournisseur de TEST prévu
+        # pour ça (cf. ``test_xctr22_mandat_paiement``), sans réseau.
         MandatPaiement.objects.create(
             company=self.company, client=self.client_obj,
-            provider='noop', token='TOK-AUD102',
+            provider='mock_tokenized', token='TOK-AUD102',
             statut=MandatPaiement.Statut.ACTIF)
         with _CompteurPayee() as compteur:
             paiement = debiter_mandat_pour_facture(
