@@ -179,12 +179,18 @@ class LigneFactureEcheanceTests(TestCase):
 
     def test_facture_apparait_dans_export_journal_ventes(self):
         from datetime import timedelta as _td
+        from io import BytesIO
+        from openpyxl import load_workbook
         from apps.ventes.exports import export_journal_ventes
         _, _, ligne = make_setup(self.co, montant="1200")
         facture = services.facturer_ligne_echeance(ligne, user=self.user)
         debut = facture.date_emission
         fin = debut + _td(days=1)
-        wb = export_journal_ventes(self.co, debut, fin)
+        # AUD109-111 — export_journal_ventes renvoie désormais un HttpResponse
+        # (le classeur .xlsx écrit dans resp via wb.save(resp)), plus le
+        # Workbook brut — on le relit depuis son contenu binaire.
+        response = export_journal_ventes(self.co, debut, fin)
+        wb = load_workbook(BytesIO(response.content))
         ws = wb['Journal des ventes']
         references = [row[0] for row in ws.iter_rows(min_row=2, values_only=True)
                       if row and row[0]]
