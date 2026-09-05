@@ -2,7 +2,7 @@
 même RBAC simple que le reste du CRM (``authentication.permissions``), pas de
 nouveau code de permission fine (pas de rôle 'territoire_*' à enregistrer)."""
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers as drf_serializers
+from rest_framework import serializers as drf_serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -68,14 +68,27 @@ class TerritoireRegleViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        return super().get_queryset().filter(
-            territoire__company=self.request.user.company)
+        # AUD814 — TerritoireRegle n'a PAS de champ `company` (scopée via son
+        # territoire parent) : appeler super() invoquerait TenantMixin.
+        # get_queryset (`qs.filter(company=…)`), qui lève un FieldError (500)
+        # puisque ce champ n'existe pas sur ce modèle. On NE PASSE DONC PAS
+        # par super() — on part du queryset ModelViewSet brut et on scope via
+        # `territoire__company`, même patron que
+        # `apps/ventes/views/ligne_devis.py`.
+        qs = viewsets.ModelViewSet.get_queryset(self)
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(territoire__company=user.company)
+        if user.is_superuser:
+            return qs
+        return qs.none()
 
     def perform_create(self, serializer):
         # TerritoireRegle n'a pas de FK company directe (elle vit sur son
         # territoire parent) — TenantMixin.perform_create ne s'applique donc
         # pas ici ; la scoping est garantie par get_queryset ci-dessus +
-        # le territoire choisi par le client (déjà scopé côté liste).
+        # `validate_territoire` côté serializer (refuse un territoire d'une
+        # autre société — AUD814).
         serializer.save()
 
 
@@ -89,10 +102,19 @@ class TerritoireMembreViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        return super().get_queryset().filter(
-            territoire__company=self.request.user.company)
+        # AUD814 — même trou que TerritoireRegleViewSet : TerritoireMembre n'a
+        # pas de champ `company` ; NE PAS passer par super() (FieldError).
+        qs = viewsets.ModelViewSet.get_queryset(self)
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(territoire__company=user.company)
+        if user.is_superuser:
+            return qs
+        return qs.none()
 
     def perform_create(self, serializer):
+        # Scoping garanti par get_queryset ci-dessus + `validate_territoire`/
+        # `validate_utilisateur` côté serializer (AUD814).
         serializer.save()
 
 

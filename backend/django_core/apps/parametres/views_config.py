@@ -21,7 +21,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 
-from .models import CompanyProfile, MessageTemplate
+from .models import CompanyProfile, MessageTemplate, SettingsAuditLog
 from .models_statuses import StatutConfig
 from .models_documents import DocumentTemplates
 
@@ -141,7 +141,20 @@ def config_export(request):
     return Response(bundle)
 
 
-def _import_profile(company, data, overwrite):
+def _log_config_import_change(company, user, field, field_label, old, new):
+    """AUD808 — une ligne SettingsAuditLog par valeur réellement modifiée par
+    ``config_import`` (section dédiée pour la distinguer des PATCH manuels du
+    profil, qui restent en section 'profil'). Ignore les non-changements,
+    comme ``_audit_profile_changes``."""
+    if old == new:
+        return
+    SettingsAuditLog.log_change(
+        company=company, user=user, section='config_import',
+        field=field, field_label=field_label, old=old, new=new)
+
+
+def _import_profile(company, data, overwrite, user=None):
+    from .views_profile import _PROFILE_AUDIT_FIELDS
     profile = CompanyProfile.get(company)
     changed = []
     for f in PROFILE_CONFIG_FIELDS:
@@ -153,28 +166,37 @@ def _import_profile(company, data, overwrite):
         # on n'applique le profil qu'en mode overwrite.
         if not overwrite:
             continue
-        setattr(profile, f, data[f])
+        old = getattr(profile, f, None)
+        new = data[f]
+        _log_config_import_change(
+            company, user, f, _PROFILE_AUDIT_FIELDS.get(f, f), old, new)
+        setattr(profile, f, new)
         changed.append(f)
     if changed:
         profile.save()
     return len(changed)
 
 
-def _import_document_templates(company, data, overwrite):
+def _import_document_templates(company, data, overwrite, user=None):
     if not data or not overwrite:
         return 0
     row, _ = DocumentTemplates.objects.get_or_create(company=company)
     changed = []
     for f in DOCUMENT_TEMPLATE_FIELDS:
         if f in data:
-            setattr(row, f, data[f])
+            old = getattr(row, f, None)
+            new = data[f]
+            _log_config_import_change(
+                company, user, f'document_template.{f}',
+                f'Modèle de document — {f}', old, new)
+            setattr(row, f, new)
             changed.append(f)
     if changed:
         row.save()
     return len(changed)
 
 
-def _import_roles(company, rows, overwrite):
+def _import_roles(company, rows, overwrite, user=None):
     from apps.roles.models import Role
     created = updated = 0
     for r in rows or []:
@@ -193,13 +215,18 @@ def _import_roles(company, rows, overwrite):
                 est_systeme=False)
             created += 1
         elif overwrite and not existing.est_systeme:
-            existing.permissions = list(r.get('permissions') or [])
+            new_permissions = list(r.get('permissions') or [])
+            _log_config_import_change(
+                company, user, f'role.{nom}.permissions',
+                f'Rôle « {nom} » — permissions',
+                list(existing.permissions or []), new_permissions)
+            existing.permissions = new_permissions
             existing.save(update_fields=['permissions'])
             updated += 1
     return created, updated
 
 
-def _import_message_templates(company, rows, overwrite):
+def _import_message_templates(company, rows, overwrite, user=None):
     valid = {c.value for c in MessageTemplate.Cle}
     created = updated = 0
     for r in rows or []:
@@ -215,14 +242,24 @@ def _import_message_templates(company, rows, overwrite):
                 corps_darija=r.get('corps_darija', '') or '')
             created += 1
         elif overwrite:
-            existing.corps_fr = r.get('corps_fr', '') or ''
-            existing.corps_darija = r.get('corps_darija', '') or ''
+            new_fr = r.get('corps_fr', '') or ''
+            new_darija = r.get('corps_darija', '') or ''
+            _log_config_import_change(
+                company, user, f'message_template.{cle}.corps_fr',
+                f'Modèle de message « {cle} » — corps FR',
+                existing.corps_fr, new_fr)
+            _log_config_import_change(
+                company, user, f'message_template.{cle}.corps_darija',
+                f'Modèle de message « {cle} » — corps Darija',
+                existing.corps_darija, new_darija)
+            existing.corps_fr = new_fr
+            existing.corps_darija = new_darija
             existing.save(update_fields=['corps_fr', 'corps_darija'])
             updated += 1
     return created, updated
 
 
-def _import_automation_rules(company, rows, overwrite):
+def _import_automation_rules(company, rows, overwrite, user=None):
     from apps.automation.models import AutomationRule, ActionType, TriggerType
     valid_trig = {c.value for c in TriggerType}
     valid_act = {c.value for c in ActionType}
@@ -250,13 +287,16 @@ def _import_automation_rules(company, rows, overwrite):
             created += 1
         elif overwrite:
             for k, v in payload.items():
+                _log_config_import_change(
+                    company, user, f'automation_rule.{nom}.{k}',
+                    f'Règle « {nom} » — {k}', getattr(existing, k, None), v)
                 setattr(existing, k, v)
             existing.save()
             updated += 1
     return created, updated
 
 
-def _import_statuts(company, rows, overwrite):
+def _import_statuts(company, rows, overwrite, user=None):
     from .statuses_defaults import VALID_DOMAINES, default_keys
     created = updated = 0
     for r in rows or []:
@@ -273,9 +313,17 @@ def _import_statuts(company, rows, overwrite):
                 ordre=r.get('ordre') or 0, actif=bool(r.get('actif', True)))
             created += 1
         elif overwrite:
-            existing.libelle = r.get('libelle', '') or ''
-            existing.ordre = r.get('ordre') or 0
-            existing.actif = bool(r.get('actif', True))
+            new_vals = {
+                'libelle': r.get('libelle', '') or '',
+                'ordre': r.get('ordre') or 0,
+                'actif': bool(r.get('actif', True)),
+            }
+            for k, v in new_vals.items():
+                _log_config_import_change(
+                    company, user, f'statut.{domaine}.{cle}.{k}',
+                    f'Statut « {domaine}/{cle} » — {k}',
+                    getattr(existing, k, None), v)
+                setattr(existing, k, v)
             existing.save(update_fields=['libelle', 'ordre', 'actif'])
             updated += 1
     return created, updated
@@ -294,16 +342,19 @@ def config_import(request):
     data = request.data if isinstance(request.data, dict) else {}
     overwrite = request.query_params.get('mode') == 'overwrite'
 
-    roles_c, roles_u = _import_roles(company, data.get('roles'), overwrite)
+    user = request.user
+    roles_c, roles_u = _import_roles(
+        company, data.get('roles'), overwrite, user=user)
     msg_c, msg_u = _import_message_templates(
-        company, data.get('message_templates'), overwrite)
+        company, data.get('message_templates'), overwrite, user=user)
     rule_c, rule_u = _import_automation_rules(
-        company, data.get('automation_rules'), overwrite)
-    stat_c, stat_u = _import_statuts(company, data.get('statuts'), overwrite)
+        company, data.get('automation_rules'), overwrite, user=user)
+    stat_c, stat_u = _import_statuts(
+        company, data.get('statuts'), overwrite, user=user)
     profile_changed = _import_profile(
-        company, data.get('profile') or {}, overwrite)
+        company, data.get('profile') or {}, overwrite, user=user)
     doc_changed = _import_document_templates(
-        company, data.get('document_templates') or {}, overwrite)
+        company, data.get('document_templates') or {}, overwrite, user=user)
 
     return Response({
         'mode': 'overwrite' if overwrite else 'merge',
