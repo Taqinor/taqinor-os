@@ -177,7 +177,13 @@ describe('PaieParametres — ParametresTab (AUD710, AMO patronal + validation)',
 
   it('affiche le taux AMO patronal et le valide en un clic', async () => {
     wrap(<PaieParametres />)
-    expect(await screen.findByText('AMO pat.')).toBeInTheDocument()
+    // Le libellé de colonne apparaît deux fois par construction (DataTable
+    // rend aussi une étiquette pour la vue carte mobile, `.shrink-0 text-xs
+    // text-muted-foreground`, en plus de l'en-tête `<th>` desktop) : on cible
+    // l'en-tête, même patron que le ciblage de `<tr>` plus bas dans ce test.
+    const header = (await screen.findAllByText('AMO pat.'))
+      .map((el) => el.closest('th')).find(Boolean)
+    expect(header).toBeInTheDocument()
 
     const row = (await screen.findAllByText('2026-01-01'))
       .map((el) => el.closest('tr')).find(Boolean)
