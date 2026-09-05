@@ -448,6 +448,33 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         return resp
 
 
+#: ``MesDemandesSavPortailViewSet`` est un ``ViewSet`` nu (aucun queryset),
+#: même remarque que ``_ID_LIVRAISON`` ci-dessus : sans type explicite,
+#: drf-spectacular dégrade le paramètre de détail en "string".
+_ID_DEMANDE_SAV = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant de la demande SAV du client connecté.",
+)
+
+
+class MesDemandesSavPortailLigneSerializer(serializers.Serializer):
+    """Une demande SAV telle que le portail la montre au client.
+
+    Reflet EXACT de ``MesDemandesSavPortailViewSet._ligne`` — payload
+    volontairement pauvre, aucune donnée interne. Même remarque que
+    ``MesLivraisonsPortailLigneSerializer`` sur le nom du composant : déclarée
+    en classe (pas via ``inline_serializer``) pour rester ``MesDemandesSavPortailLigne``.
+    """
+    id = serializers.IntegerField()
+    sujet = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    chantier_id = serializers.IntegerField(allow_null=True)
+    ticket_id = serializers.IntegerField(allow_null=True)
+    date_creation = serializers.DateTimeField(allow_null=True)
+
+
 class MesDemandesSavPortailViewSet(viewsets.ViewSet):
     """AUD525 — « Mes demandes SAV » : la surface CLIENT de FG233.
 
@@ -465,6 +492,11 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
     demandes (liste, ``prendre_en_charge``) restent inchangés."""
 
     permission_classes = [IsPortalClientUser]
+    #: ``viewsets.ViewSet`` n'est pas une ``GenericAPIView`` : sans cet
+    #: attribut, drf-spectacular ne peut PAS deviner le sérialiseur de la vue
+    #: et lève « unable to guess serializer » (même garde YAPIC6 que
+    #: ``MesLivraisonsPortailViewSet`` ci-dessus).
+    serializer_class = MesDemandesSavPortailLigneSerializer
 
     @staticmethod
     def _ligne(demande):
@@ -487,10 +519,21 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
         return DemandeTicketPortail.objects.filter(
             company=company, client_id=client_id)
 
+    @extend_schema(
+        operation_id='portail_mes_demandes_sav_list',
+        responses=inline_serializer(
+            name='MesDemandesSavPortail',
+            fields={
+                'results': serializers.ListField(
+                    child=MesDemandesSavPortailLigneSerializer()),
+            }))
     def list(self, request):
         return Response({
             'results': [self._ligne(d) for d in self._mes_demandes(request)]})
 
+    @extend_schema(
+        operation_id='portail_mes_demandes_sav_retrieve',
+        parameters=[_ID_DEMANDE_SAV])
     def retrieve(self, request, pk=None):
         demande = self._mes_demandes(request).filter(pk=pk).first()
         if demande is None:
@@ -498,6 +541,7 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_404_NOT_FOUND)
         return Response(self._ligne(demande))
 
+    @extend_schema(operation_id='portail_mes_demandes_sav_create')
     def create(self, request):
         """Ouvre une demande SAV (statut SOUMISE) pour le client connecté.
 
