@@ -59,7 +59,12 @@ class Xpur14Base(TestCase):
         self.company = _company('xpur14-co')
         self.user = _user(
             self.company, 'xpur14-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            # AUD213 — la lecture ET l'export xlsx du prix d'achat fournisseur
+            # exigent désormais `prix_achat_voir` (PrixFournisseurViewSet.
+            # get_permissions), gate intentionnel — voir
+            # test_aud213_prix_fournisseur_gate.py. Ce fichier teste le prix
+            # d'achat lui-même, donc la permission est légitimement accordée.
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur Tarif')
