@@ -41,6 +41,10 @@ EVENT_SEVERITY = {
     EventType.INCIDENT_CRITICAL: CRITIQUE,
     EventType.HOT_LEAD_UNREAD: CRITIQUE,
     EventType.LEAD_CALLBACK_SLA_BREACH: CRITIQUE,
+    # MRY17 — l'objectif « rappelé en moins de 5 minutes » est dépassé :
+    # même rang que HOT_LEAD_UNREAD, et donc AUDIBLE pendant les heures
+    # calmes (un lead qui refroidit ne peut pas attendre 08:00).
+    EventType.PREMIER_CONTACT_DEPASSE: CRITIQUE,
     EventType.SAV_TICKET_BREACHING: CRITIQUE,
     EventType.DA_SOUMISE_STALE: CRITIQUE,
     EventType.APPROVAL_ESCALATED: CRITIQUE,

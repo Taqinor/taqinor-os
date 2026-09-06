@@ -1032,6 +1032,9 @@ CELERY_TASK_ROUTES = {
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
     'crm.sync_odoo_leads': {'queue': 'scheduled'},
+    # MRY17 — digest 08:30 des touches dues + escalade premier contact.
+    'crm.notifier_relances_dues': {'queue': 'scheduled'},
+    'crm.escalader_premier_contact': {'queue': 'scheduled'},
     'notifications.daily_digest': {'queue': 'scheduled'},
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},

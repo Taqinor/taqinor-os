@@ -71,6 +71,14 @@ class EventType(models.TextChoices):
     # Zéro alerte quand le webhook fonctionne (le pull ne crée alors rien).
     LEAD_RATTRAPE = (
         'lead_rattrape', 'Lead Meta rattrapé par le pull (webhook muet)')
+    # MRY17 — le digest de 08:30 des touches de cadence dues, et l'alerte
+    # quand l'objectif de PREMIER CONTACT est dépassé sur un lead neuf.
+    # Deux clés distinctes : couper le digest quotidien ne doit jamais
+    # couper au passage l'alerte de speed-to-lead, qui est critique.
+    RELANCE_DUE = 'relance_due', 'Relances du jour à faire'
+    PREMIER_CONTACT_DEPASSE = (
+        'premier_contact_depasse',
+        'Nouveau lead non touché (objectif dépassé)')
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'

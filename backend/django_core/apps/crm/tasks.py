@@ -119,3 +119,31 @@ def sync_odoo_leads_task():
     rapport = sortie.getvalue()
     logger.info('crm.sync_odoo_leads: %s', rapport.replace('\n', ' | '))
     return {'rapport': rapport}
+
+
+@shared_task(name='crm.notifier_relances_dues')
+def notifier_relances_dues_task():
+    """MRY17 — Enveloppe Celery Beat du digest 08:30 des touches dues.
+
+    Planifiée dans ``erp_agentique/celery.py`` (``beat_schedule``). Délègue
+    entièrement à la commande de gestion (même logique, testable hors Celery
+    via ``manage.py notifier_relances_dues``). Idempotente par jour ET par
+    destinataire — indispensable avec ``acks_late``, qui peut relancer une
+    tâche après un crash worker."""
+    from apps.crm.management.commands.notifier_relances_dues import (
+        notifier_relances_dues,
+    )
+    envoyes, destinataires = notifier_relances_dues()
+    return {'digests': envoyes, 'destinataires': destinataires}
+
+
+@shared_task(name='crm.escalader_premier_contact')
+def escalader_premier_contact_task():
+    """MRY17 — Enveloppe Celery Beat de l'escalade « premier contact ».
+
+    Toutes les 5 minutes. Idempotente PAR LEAD (marqueur en note chatter) :
+    sans elle, la même alerte repartirait à chaque passage jusqu'au rappel."""
+    from apps.crm.management.commands.escalader_premier_contact import (
+        escalader_premier_contact,
+    )
+    return {'escalades': escalader_premier_contact()}
