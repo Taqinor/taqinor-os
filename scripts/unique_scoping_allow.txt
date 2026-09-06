@@ -24,3 +24,16 @@ backend/django_core/apps/extensions/models.py::ExtensionPackage.code
 # same rationale as extensions.ExtensionPackage.code above.
 backend/django_core/apps/onboarding/models.py::OnboardingChecklistItem.key
 backend/django_core/apps/adminops/models.py::PlanLicence.code
+#
+# AUD828 (M-08) — core/authentication were entirely UNSCANNED before this
+# fix (bare models.py in apps/* only); widening the surface to its full
+# declared shape (+ models_*.py + core/authentication) surfaces these 2,
+# both reviewed legitimately global — 0 new proven leak, a coverage gap only:
+# core.IdempotencyKey.cle: DB fallback for the idempotent_task decorator —
+# the key ITSELF encodes its own scope (company id + task name + window, per
+# its docstring), by design with no company FK. Reviewed safe 2026-09-06.
+backend/django_core/core/models.py::IdempotencyKey.cle
+# authentication.Company.slug: Company IS the tenant boundary — its own
+# identifying slug is necessarily globally unique (scoping it to "company"
+# would be scoping the tenant table to itself). Reviewed safe 2026-09-06.
+backend/django_core/authentication/models.py::Company.slug
