@@ -618,7 +618,11 @@ def _hors_plage_horaire(releve, zone):
     horaire) — comportement permissif par défaut."""
     if zone.heure_debut_autorisee is None or zone.heure_fin_autorisee is None:
         return False
-    heure = releve.horodatage.time()
+    # CRX26/AUD836 — la plage horaire est une heure DE TERRAIN (Casablanca) :
+    # `.time()` direct sur le datetime chargé (UTC brut) décale l'heure
+    # comparée et peut ranger un relevé pourtant dans les clous hors plage.
+    from core.dates import maintenant_local
+    heure = maintenant_local(releve.horodatage).time()
     return not (zone.heure_debut_autorisee <= heure <= zone.heure_fin_autorisee)
 
 
