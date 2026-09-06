@@ -713,7 +713,80 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
+    # MRY11 — la cadence vient-elle de s'ÉPUISER ? Uniquement ici : une
+    # cadence ARRÊTÉE (MRY9) n'est pas une cadence terminée, et clôturer un
+    # lead qu'on vient de joindre serait exactement l'inverse du bon geste.
+    if not lead.relance_etapes.filter(
+            cadence=etape.cadence,
+            statut=RelanceEtape.Statut.A_FAIRE).exists():
+        cloturer_cadence(lead, user, etape.cadence)
     return etape
+
+
+#: MRY11 — ce que devient un lead dont la cadence s'est épuisée sans réponse.
+#: Le tag NOMME la raison : « injoignable » et « devis sans suite » ne se
+#: traitent pas de la même façon au réveil.
+_CLOTURE_TAGS = {
+    'contact': 'Injoignable 7 tentatives',
+    'apres_devis': 'Devis sans suite',
+}
+
+#: MRY11 — étape la plus AVANCÉE qu'une cadence puisse encore parquer.
+#: `_bulk_stage_allowed` autorise « vers COLD » depuis N'IMPORTE OÙ (c'est
+#: voulu pour une mise au parking manuelle) : sans ce plafond, épuiser une
+#: cadence `contact` sur un lead qui a depuis SIGNÉ le ferait retomber au
+#: froid — un devis signé effacé par un rappel resté ouvert.
+_CLOTURE_PLAFOND = {
+    'contact': stages.CONTACTED,
+    'apres_devis': stages.FOLLOW_UP,
+}
+
+
+def cloturer_cadence(lead, user, cadence):
+    """MRY11 — Fin de cadence : dormance COLD, étiquette, réveils J30/J60.
+
+    Un lead dont les touches sont toutes traitées sans réponse ne doit pas
+    rester au milieu du pipeline à encombrer la vue de Meryem : il part au
+    PARKING (COLD) avec une étiquette qui dit POURQUOI, et deux réveils
+    J30/J60 qui le rendront un jour. C'est ce qui distingue « mis de côté »
+    de « oublié ».
+
+    Trois garanties :
+      * COLD est un parking, PAS une perte — aucun motif de perte n'est posé
+        ici ; `Lead.perdu` n'est jamais touché (décision humaine, MRY22) ;
+      * `avancer_stage_lead_vers` respecte le rang du funnel : un lead déjà
+        plus avancé (devis envoyé, signé) ne RECULE jamais vers COLD ;
+      * la cadence `reveil` ne se clôture pas elle-même — sinon un lead
+        réveillé sans réponse rentrerait dans une boucle de réveils infinie.
+
+    Best-effort : ne lève jamais."""
+    if cadence == 'reveil':
+        return
+    try:
+        plafond = _CLOTURE_PLAFOND.get(cadence)
+        if plafond is None:
+            return
+        # L'instance peut être PÉRIMÉE (le lead a bougé pendant la cadence,
+        # exactement le cas que le plafond ci-dessous doit attraper) : on relit
+        # l'étape courante avant d'en juger — même précaution que
+        # `avancer_stage_new_vers_contacted`.
+        if lead.pk:
+            lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived'])
+        if lead.stage != stages.COLD and (
+                _rang_funnel(lead.stage) > _rang_funnel(plafond)):
+            # Le lead a PROGRESSÉ pendant la cadence (devis envoyé, signé) :
+            # la touche restée ouverte ne doit pas le faire retomber.
+            return
+        avancer_stage_lead_vers(lead, user, stages.COLD)
+        tag = _CLOTURE_TAGS.get(cadence)
+        if tag:
+            poser_tag_lead(lead, user, tag)
+        initialiser_plan_relance(
+            lead, user, cadence='reveil', depart=timezone.now())
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'MRY11: clôture de cadence échouée (lead #%s, cadence %s)',
+            getattr(lead, 'pk', '?'), cadence, exc_info=True)
 
 
 def demarrer_cadence_contact(lead, *, user=None, origine=''):
