@@ -42,8 +42,11 @@ from .api_version import GRAPH_BASE_URL
 
 logger = logging.getLogger(__name__)
 
-#: URL de callback attendue côté app Meta (la seule que ce dépôt sert).
-CALLBACK_URL = 'https://api.taqinor.ma/api/django/crm/webhooks/meta-lead-ads/'
+#: CHEMIN de callback attendu côté app Meta — la seule route que ce dépôt
+#: sert pour les leads Meta. On compare le CHEMIN et non l'URL complète :
+#: l'hôte change légitimement (staging, domaine propre d'un autre installeur)
+#: alors que le chemin, lui, est le contrat. Aucune marque en dur (SCA29).
+CALLBACK_PATH = '/api/django/crm/webhooks/meta-lead-ads/'
 
 #: Champ webhook attendu.
 CHAMP_LEADGEN = 'leadgen'
@@ -183,7 +186,8 @@ def etat_webhook_leadgen(company):
                     continue
                 if not row.get('active', True):
                     continue
-                if str(row.get('callback_url') or '') == CALLBACK_URL:
+                if str(row.get('callback_url') or '').rstrip('/').endswith(
+                        CALLBACK_PATH.rstrip('/')):
                     etat['app_subscribed'] = True
                     break
         except Exception as exc:  # noqa: BLE001
@@ -252,7 +256,7 @@ def _detail_fr(etat):
     if not etat['app_subscribed']:
         return (
             "L'app Meta n'écoute pas le champ « leadgen » sur l'objet Page "
-            f'(callback attendu : {CALLBACK_URL}).')
+            f'(chemin de callback attendu : {CALLBACK_PATH}).')
     if etat['page_subscribed'] is None:
         raison = etat['page_subscribed_raison'] or 'état illisible'
         return (

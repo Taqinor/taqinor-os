@@ -72,7 +72,10 @@ class FauxGraph:
                 return {'data': []}
             return {'data': [{
                 'object': 'page', 'active': True,
-                'callback_url': webhook_leadgen.CALLBACK_URL,
+                # SCA29 — le chemin est le contrat ; l'hôte varie
+                # légitimement (staging, domaine d'un autre installeur).
+                'callback_url': ('https://exemple.test'
+                                 + webhook_leadgen.CALLBACK_PATH),
                 'fields': [{'name': 'leadgen'}]}]}
         if path.endswith('/subscribed_apps'):
             if self.page_error is not None:

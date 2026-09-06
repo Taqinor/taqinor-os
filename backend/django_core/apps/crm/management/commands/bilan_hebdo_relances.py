@@ -63,7 +63,9 @@ def bilan_hebdo_relances(*, jours=7, dry_run=False):
     """Cœur de la commande — appelable directement (tests, tâche Celery).
 
     Renvoie le nombre de sociétés pour lesquelles un bilan est parti."""
-    from authentication.models import Company
+    # SCA19 — jamais `Company.objects.all()` : un tenant suspendu ne
+    # reçoit plus de bilan.
+    from authentication.selectors import active_companies
 
     from apps.crm.selectors import kpi_cadences
     from apps.crm.visites import utilisateurs_direction
@@ -71,7 +73,7 @@ def bilan_hebdo_relances(*, jours=7, dry_run=False):
     from apps.notifications.services import notify_many
 
     envoyes = 0
-    for company in Company.objects.all():
+    for company in active_companies():
         destinataires = utilisateurs_direction(company)
         if not destinataires:
             continue  # aucune direction résolvable — on ne fabrique personne

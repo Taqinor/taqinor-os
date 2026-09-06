@@ -47,7 +47,10 @@ def notifier_relances_dues(dry_run=False, today=None):
     from django.contrib.auth import get_user_model
     from django.utils import timezone
 
-    from authentication.models import Company
+    # SCA19 — un tenant SUSPENDU ou en fermeture ne doit plus être
+    # balayé ni notifié : on itère la source unique des sociétés
+    # opérationnelles, jamais `Company.objects.all()`.
+    from authentication.selectors import active_companies
 
     from apps.crm.selectors import relance_etapes_dues
     from apps.notifications.models import EventType, Notification
@@ -58,7 +61,7 @@ def notifier_relances_dues(dry_run=False, today=None):
     nb_digests = 0
     nb_destinataires = 0
 
-    for company in Company.objects.all():
+    for company in active_companies():
         # Les destinataires sont les OWNERS de leads, pas « tous les
         # utilisateurs » : un comptable n'a aucune relance à faire.
         proprietaires = User.objects.filter(

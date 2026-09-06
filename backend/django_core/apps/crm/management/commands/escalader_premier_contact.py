@@ -64,7 +64,9 @@ def escalader_premier_contact(dry_run=False, now=None):
     Renvoie le nombre de leads escaladés sur CE passage."""
     from django.utils import timezone
 
-    from authentication.models import Company
+    # SCA19 — jamais `Company.objects.all()` : un tenant suspendu ne
+    # doit plus déclencher d'escalade chez personne.
+    from authentication.selectors import active_companies
 
     # CLAUDE.md #2 — la clé d'étape vient de la SOURCE UNIQUE (STAGES.py à la
     # racine, chargée par `apps.crm.stages`), jamais d'une chaîne littérale.
@@ -78,7 +80,7 @@ def escalader_premier_contact(dry_run=False, now=None):
     maintenant = now or timezone.now()
     nb = 0
 
-    for company in Company.objects.all():
+    for company in active_companies():
         objectif = _objectif_minutes(company)
         if not objectif:
             continue  # surveillance désactivée pour cette société
