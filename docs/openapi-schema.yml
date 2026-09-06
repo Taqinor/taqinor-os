@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9786, operations: 17473, components: 5125}
+counts: {paths: 9786, operations: 17473, components: 5129}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -17570,6 +17570,7 @@ components:
 - AffectationVehicule
 - AffectationVehiculeRequest
 - AffectationVehiculeStatutEnum
+- AgentActionConfirmee
 - AjustementGaap
 - AjustementGaapRequest
 - AlarmeOnduleur
@@ -17853,6 +17854,7 @@ components:
 - BudgetProjet
 - BudgetProjetRequest
 - BudgetRequest
+- BudgetScenarioEnum
 - BudgetStatutEnum
 - BulkJob
 - BulkJobStatutEnum
@@ -18716,6 +18718,7 @@ components:
 - FactureSanteStatutEnum
 - FactureWrite
 - FactureWriteRequest
+- FacturesKpis
 - Famille
 - FamilleEnum
 - FamilleRequest
@@ -19007,6 +19010,7 @@ components:
 - LeadRequest
 - LeadTag
 - LeadTagRequest
+- LeadgenAbonnement
 - LegalHold
 - LegalHoldRequest
 - LiasseRemontee
@@ -22049,9 +22053,9 @@ components:
 - SavedReportRequest
 - SavedView
 - SavedViewRequest
+- Scenario36fEnum
 - ScenarioBudgetaire
 - ScenarioBudgetaireRequest
-- ScenarioEnum
 - ScenarioPrevisionnelDefautEnum
 - ScheduleEnum
 - ScheduledExport
