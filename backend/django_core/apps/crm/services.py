@@ -88,6 +88,9 @@ _CONTACT_KINDS = frozenset([
     LeadActivity.Kind.NOTE,
     LeadActivity.Kind.APPEL,
     LeadActivity.Kind.EMAIL,
+    # MRY10 — un WhatsApp envoyé fait AVANCER NEW → CONTACTED, exactement
+    # comme un e-mail : c'est le canal principal de Meryem.
+    LeadActivity.Kind.WHATSAPP,
 ])
 
 # Clé canonique de l'étape « Contacté » (STAGES.py — jamais hardcodée ailleurs).
@@ -658,7 +661,21 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     return resultats
 
 
-def marquer_etape_relance(etape, user, statut, note=''):
+#: MRY10 — canal de la touche → type d'activité du chatter. Une touche traitée
+#: doit laisser UNE ligne typée (appel/WhatsApp/e-mail), pas une note libre :
+#: c'est elle que compte le compteur de tentatives (MRY20) et que lisent les
+#: règles d'arrêt sur l'issue (MRY9). « visite » n'a pas de type dédié — elle
+#: reste une NOTE, faute de mieux, plutôt qu'un type inventé.
+_CANAL_VERS_KIND = {
+    RelanceEtape.Canal.APPEL: LeadActivity.Kind.APPEL,
+    RelanceEtape.Canal.WHATSAPP: LeadActivity.Kind.WHATSAPP,
+    RelanceEtape.Canal.EMAIL: LeadActivity.Kind.EMAIL,
+    RelanceEtape.Canal.VISITE: LeadActivity.Kind.NOTE,
+}
+
+
+def marquer_etape_relance(etape, user, statut, note='', outcome='',
+                          body=''):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
     silencieux en arrière) : trace l'acteur/l'horodatage, journalise dans le
     chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
@@ -679,13 +696,21 @@ def marquer_etape_relance(etape, user, statut, note=''):
     # est un RANG dans la cadence et non plus un délai en jours (la touche 2
     # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
     libelle = (etape.libelle or '').strip() or etape.get_canal_display()
-    body = (f'Touche « {libelle} » ({etape.get_canal_display()}, cadence '
-            f'{etape.cadence}) marquée {verbe}.')
+    corps = (f'Touche « {libelle} » ({etape.get_canal_display()}, cadence '
+             f'{etape.cadence}) marquée {verbe}.')
+    if body:
+        corps += f' {body}'
     if note:
-        body += f" Note : {note}"
+        corps += f" Note : {note}"
+    # MRY10 — UNE SEULE ligne de chatter par touche, TYPÉE selon le canal
+    # (jamais une note libre en plus d'une activité) : c'est elle que compte
+    # le compteur de tentatives et que lisent les règles d'arrêt (MRY9).
+    kind = (_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE)
+            if statut == RelanceEtape.Statut.FAIT
+            else LeadActivity.Kind.NOTE)
     LeadActivity.objects.create(
         company=etape.company, lead=etape.lead, user=user,
-        kind=LeadActivity.Kind.NOTE, body=body)
+        kind=kind, body=corps, outcome=(outcome or ''))
 
     lead = etape.lead
     prochaine = _prochaine_touche_a_faire(lead)
@@ -693,6 +718,64 @@ def marquer_etape_relance(etape, user, statut, note=''):
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
     return etape
+
+
+def reporter_prochaine_touche(lead, user, quand, *, etape=None):
+    """MRY10 — « Rappelez-moi jeudi » : décale une touche ET sa suite.
+
+    Décaler la SEULE touche du jour serait faux : les suivantes se
+    téléscoperaient avec elle (« rappelez-moi dans 10 jours » ferait tomber
+    trois touches la même semaine). Toutes les touches SUIVANTES de la même
+    cadence glissent donc du MÊME delta — jamais réordonnées, jamais
+    recalculées depuis zéro.
+
+    ``quand`` est un datetime (ou une date) ; il est recalé sur la fenêtre
+    d'appel de la société. ``etape`` cible une touche précise ; sinon c'est la
+    prochaine À FAIRE. Renvoie la touche déplacée, ou ``None`` s'il n'y en a
+    aucune.
+    """
+    from . import horaires
+
+    cible = etape or _prochaine_touche_a_faire(lead)
+    if cible is None:
+        return None
+    if not isinstance(quand, datetime.datetime):
+        quand = datetime.datetime.combine(
+            quand, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+    elif timezone.is_naive(quand):
+        quand = timezone.make_aware(quand, datetime.timezone.utc)
+    nouveau = horaires.prochain_creneau_appel(quand, lead.company)
+
+    ancien = cible.due_at
+    delta = (nouveau - ancien) if ancien else None
+    cible.due_at = nouveau
+    cible.due_date = nouveau.astimezone(horaires.CASABLANCA).date()
+    cible.save(update_fields=['due_at', 'due_date'])
+
+    if delta:
+        suivantes = lead.relance_etapes.filter(
+            cadence=cible.cadence, statut=RelanceEtape.Statut.A_FAIRE,
+            ordre__gt=cible.ordre, due_at__isnull=False)
+        for suivante in suivantes:
+            decalee = suivante.due_at + delta
+            suivante.due_at = decalee
+            suivante.due_date = decalee.astimezone(
+                horaires.CASABLANCA).date()
+            suivante.save(update_fields=['due_at', 'due_date'])
+
+    quand_local = nouveau.astimezone(horaires.CASABLANCA)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=('Rappel demandé le '
+              f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
+              f'{(cible.libelle or cible.get_canal_display())} » reportée.'))
+
+    prochaine = _prochaine_touche_a_faire(lead)
+    lead.relance_date = prochaine.due_date if prochaine else None
+    lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+    return cible
 
 
 def arreter_cadence(lead, *, user, motif, cadences=None):

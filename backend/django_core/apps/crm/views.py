@@ -65,6 +65,29 @@ from apps.compta.views import (  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_rappel(date_str, heure_str=''):
+    """MRY10 — « AAAA-MM-JJ » (+ « HH:MM » optionnel) → datetime AWARE local.
+
+    Renvoie ``None`` si la saisie est invalide : l'appelant répond alors 400
+    plutôt que de reporter la touche à une date fantaisiste."""
+    import datetime as _dt
+
+    from apps.crm import horaires as _horaires
+    try:
+        jour = _dt.date.fromisoformat(str(date_str).strip())
+    except (TypeError, ValueError):
+        return None
+    heure = _dt.time(9, 0)
+    texte = (heure_str or '').strip()
+    if texte:
+        try:
+            heure = _dt.time.fromisoformat(texte)
+        except (TypeError, ValueError):
+            return None
+    return _dt.datetime.combine(jour, heure, tzinfo=_horaires.CASABLANCA)
+
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -890,6 +913,23 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         recompute_lead_score(new_lead)
         # NTCRM12 — édition manuelle de l'étape depuis l'écran lead.
         _emit_stage_changed(new_lead, old.stage, new_lead.stage, self.request.user)
+        # MRY10 — UN SEUL système de rappel. Le rival historique
+        # (`CallLogPopover`, qui PATCHe `relance_date` seul) reste
+        # fonctionnel : sur un lead à cadence active, ce PATCH est traité
+        # comme un report de la prochaine touche, sinon les deux dates
+        # divergeraient dès le premier appel — exactement ce que
+        # l'invariant de `sync_relance_activity` interdit.
+        from .services import reporter_prochaine_touche
+        if ('relance_date' in serializer.validated_data
+                and new_lead.relance_date
+                and new_lead.relance_date != old.relance_date):
+            try:
+                reporter_prochaine_touche(
+                    new_lead, self.request.user, new_lead.relance_date)
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.warning(
+                    'MRY10: report de touche échoué sur le lead #%s',
+                    new_lead.pk, exc_info=True)
         # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
         # d'étape est déjà couvert par le receiver `lead_stage_changed`.
         from .services import arreter_cadence
@@ -1780,7 +1820,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .models import LeadActivity
         lead = self.get_object()
         kind = (request.data.get('kind') or '').strip()
-        valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL}
+        # MRY10 — le WhatsApp est le canal PRINCIPAL de Meryem : il devait
+        # être journalisable comme un appel, pas noyé dans une note libre.
+        valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL,
+                       LeadActivity.Kind.WHATSAPP}
         if kind not in valid_kinds:
             return Response(
                 {'kind': f"Valeur invalide. Choisir parmi : {', '.join(valid_kinds)}."},
@@ -1794,6 +1837,19 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'outcome': f"Valeur invalide. Choisir parmi : {', '.join(valid_outcomes)}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # MRY10 — « rappelez-moi jeudi » : le rappel demandé au téléphone
+        # DÉPLACE la touche de cadence au lieu d'ouvrir un second système de
+        # rappel à côté d'elle.
+        rappel_le = (request.data.get('rappel_le') or '').strip()
+        rappel_heure = (request.data.get('rappel_heure') or '').strip()
+        quand = None
+        if outcome == 'rappel' and rappel_le:
+            quand = _parse_rappel(rappel_le, rappel_heure)
+            if quand is None:
+                return Response(
+                    {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
+                                  'heure HH:MM optionnelle).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         act = LeadActivity.objects.create(
             lead=lead,
             company=lead.company,
@@ -1802,11 +1858,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             outcome=outcome,
             user=request.user,
         )
-        # FG28 — tout contact direct = première prise de contact
-        if lead.stage == 'NEW' and lead.first_contacted_at is None:
+        # FG28 — tout contact direct = première prise de contact. La clé
+        # d'étape vient de `apps.crm.stages` (CLAUDE.md #2), jamais de la
+        # chaîne littérale 'NEW' qui était écrite ici. MRY19 centralisera
+        # cette pose dans `services.marquer_premier_contact`.
+        from . import stages as _stages
+        if lead.stage == _stages.NEW and lead.first_contacted_at is None:
             from django.utils import timezone
             lead.first_contacted_at = timezone.now()
             lead.save(update_fields=['first_contacted_at'])
+        if quand is not None:
+            from .services import reporter_prochaine_touche
+            reporter_prochaine_touche(lead, request.user, quand)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -2253,6 +2316,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
     serializer_class = RelanceEtapeSerializer
 
     def get_permissions(self):
+        # MRY10 — `reporter` est ajoutée EXPLICITEMENT dans la branche
+        # écriture : get_permissions() PRIME sur le `permission_classes` de
+        # l'@action (bug CI #25), une action non listée ici retomberait
+        # silencieusement sur la mauvaise garde.
         if self.action == 'list':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
@@ -2299,19 +2366,76 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
     def _marquer(self, request, statut):
         etape = self.get_object()
         note = (request.data.get('note') or '').strip()
-        from .services import marquer_etape_relance
-        etape = marquer_etape_relance(etape, request.user, statut, note=note)
+        outcome = (request.data.get('outcome') or '').strip()
+        body = (request.data.get('body') or '').strip()
+        from .models import LeadActivity as _LeadActivity
+        if outcome and outcome not in {
+                k for k, _ in _LeadActivity.OUTCOMES}:
+            return Response(
+                {'outcome': 'Issue inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # MRY10 — « rappelez-moi jeudi » saisi DEPUIS la touche : elle est
+        # reportée, plutôt que marquée faite et oubliée.
+        rappel_le = (request.data.get('rappel_le') or '').strip()
+        quand = None
+        if rappel_le:
+            quand = _parse_rappel(
+                rappel_le, (request.data.get('rappel_heure') or '').strip())
+            if quand is None:
+                return Response(
+                    {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
+                                  'heure HH:MM optionnelle).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        from .services import marquer_etape_relance, reporter_prochaine_touche
+        etape = marquer_etape_relance(
+            etape, request.user, statut, note=note, outcome=outcome,
+            body=body)
+        if quand is not None:
+            reporter_prochaine_touche(etape.lead, request.user, quand)
         return Response(self.get_serializer(etape).data)
 
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
-        """Marque cette étape de relance FAITE (note optionnelle)."""
+        """Marque cette étape FAITE.
+
+        Corps : ``{note?, outcome?, body?, rappel_le?, rappel_heure?}``.
+        L'``outcome`` déclenche les règles d'arrêt de MRY9 (« joint » arrête
+        la prise de contact) ; ``rappel_le`` reporte la touche suivante."""
         return self._marquer(request, RelanceEtape.Statut.FAIT)
 
     @action(detail=True, methods=['post'])
     def sauter(self, request, pk=None):
         """Marque cette étape de relance SAUTÉE (note optionnelle)."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
+
+    @action(detail=True, methods=['post'])
+    def reporter(self, request, pk=None):
+        """MRY10 — Reporte CETTE touche (et décale les suivantes du même
+        delta). Corps : ``{due_at}`` (ISO) ou ``{rappel_le, rappel_heure?}``.
+
+        Décaler la seule touche du jour serait faux : les suivantes se
+        téléscoperaient avec elle."""
+        etape = self.get_object()
+        brut = (request.data.get('due_at') or '').strip()
+        quand = None
+        if brut:
+            from django.utils.dateparse import parse_datetime
+            try:
+                quand = parse_datetime(brut)
+            except ValueError:
+                quand = None
+        elif request.data.get('rappel_le'):
+            quand = _parse_rappel(
+                (request.data.get('rappel_le') or '').strip(),
+                (request.data.get('rappel_heure') or '').strip())
+        if quand is None:
+            return Response(
+                {'due_at': 'Échéance invalide (datetime ISO attendu).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .services import reporter_prochaine_touche
+        etape = reporter_prochaine_touche(
+            etape.lead, request.user, quand, etape=etape)
+        return Response(self.get_serializer(etape).data)
 
 
 class EquipeCommercialeViewSet(CompanyScopedModelViewSet):

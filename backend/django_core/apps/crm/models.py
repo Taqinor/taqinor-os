@@ -1182,6 +1182,10 @@ class LeadActivity(models.Model):
         # FG30 — Interactions de communication typées
         APPEL = 'appel', 'Appel'
         EMAIL = 'email', 'E-mail'
+        # MRY10 — un WhatsApp ENVOYÉ est une prise de contact au même titre
+        # qu'un e-mail : sans son propre type il se noyait dans les notes,
+        # invisible au compteur de tentatives comme au chatter.
+        WHATSAPP = 'whatsapp', 'WhatsApp'
 
     # FG30 — Résultat optionnel d'un appel ou e-mail (affiché dans le chatter).
     OUTCOMES = [
