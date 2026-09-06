@@ -33,6 +33,27 @@ def _download(bucket, key):
         return None
 
 
+def cle_document_pdf(prefixe, company_id, reference) -> str:
+    """AUD156 — LA construction de clé MinIO d'un document client, SCOPÉE
+    SOCIÉTÉ. Un seul propriétaire, pour les cinq documents.
+
+    ``Facture.Meta`` déclare ``unique_together = [('company','reference')]`` et
+    la numérotation est PAR SOCIÉTÉ + période : deux sociétés produisent
+    légitimement la même référence ``FAC-YYYYMM-NNNN``. Or la clé de stockage
+    ne contenait que la référence pour la facture, l'avoir et la note de débit
+    — deux sociétés émettant ``FAC-202609-0001`` le même mois, la seconde
+    écrasait le PDF de la première et le client de A téléchargeait la facture
+    du client de B. Le devis (ERR75) et le bordereau de remise avaient reçu ce
+    correctif ; les trois documents de facturation jamais.
+
+    REPLI DE LECTURE : le ``fichier_pdf`` déjà stocké sous l'ANCIENNE clé n'est
+    pas touché — il reste lisible tel quel et migre vers la clé scopée à la
+    première régénération (``cle_facture_pdf_a_jour`` re-rend dès que
+    l'empreinte diverge).
+    """
+    return f'{prefixe}/{company_id}/{reference}.pdf'
+
+
 def _upload_pdf(pdf_bytes, key):
     client = get_minio_client()
     client.put_object(
@@ -237,7 +258,8 @@ def generate_devis_pdf(devis_id):
     # ERR75 — company-scope the legacy fallback key so two tenants sharing a
     # reference (per-company/month numbering) can never collide on the same
     # MinIO object. Mirrors the premium path (builder._pdf_key).
-    key = f'devis/{devis.company_id}/{devis.reference}.pdf'
+    # AUD156 — même construction que les quatre autres documents.
+    key = cle_document_pdf('devis', devis.company_id, devis.reference)
     _upload_pdf(pdf_bytes, key)
 
     devis.fichier_pdf = key
@@ -279,7 +301,8 @@ def generate_facture_pdf(facture_id):
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)
 
-    key = f'factures/{facture.reference}.pdf'
+    # AUD156 — clé SCOPÉE SOCIÉTÉ (collision/fuite inter-tenant).
+    key = cle_document_pdf('factures', facture.company_id, facture.reference)
     _upload_pdf(pdf_bytes, key)
 
     # PVFRESH (fondateur, 19/08/2026) — on persiste EN MÊME TEMPS l'empreinte
@@ -456,7 +479,8 @@ def generate_avoir_pdf(avoir_id):
     html = _render_html('avoir.html', context)
     pdf_bytes = _html_to_pdf(html)
 
-    key = f'avoirs/{avoir.reference}.pdf'
+    # AUD156 — clé SCOPÉE SOCIÉTÉ (collision/fuite inter-tenant).
+    key = cle_document_pdf('avoirs', avoir.company_id, avoir.reference)
     _upload_pdf(pdf_bytes, key)
 
     avoir.fichier_pdf = key
@@ -484,7 +508,9 @@ def generate_note_debit_pdf(note_debit_id):
     html = _render_html('note_debit.html', context)
     pdf_bytes = _html_to_pdf(html)
 
-    key = f'notes-debit/{note_debit.reference}.pdf'
+    # AUD156 — clé SCOPÉE SOCIÉTÉ (collision/fuite inter-tenant).
+    key = cle_document_pdf(
+        'notes-debit', note_debit.company_id, note_debit.reference)
     _upload_pdf(pdf_bytes, key)
 
     note_debit.fichier_pdf = key

@@ -406,14 +406,21 @@ def tva_buckets(lignes, *, fallback_taux, frozen=None):
     for ligne in lignes:
         rate = Decimal(str(ligne.taux_tva_effectif))
         buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
-    if len(buckets) <= 1:
-        rate = next(iter(buckets), Decimal(str(fallback_taux)))
-        base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
-        return [{'taux': rate, 'base_ht': base,
-                 'montant': base * rate / Decimal('100')}]
 
     def q(x):
         return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    if len(buckets) <= 1:
+        rate = next(iter(buckets), Decimal(str(fallback_taux)))
+        base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
+        # AUD189 — LA MÊME POLITIQUE QUE LA CHAÎNE CANONIQUE. Cette branche
+        # rendait `base × taux` NON quantifié, en déléguant l'arrondi à
+        # l'affichage : DEUX chaînes d'arrondi coexistaient donc sur la MÊME
+        # facture (celle-ci et `_canonical_totaux`, qui quantifie en
+        # ROUND_HALF_UP). La branche multi-taux ci-dessous quantifiait déjà ;
+        # seul le mono-taux ne le faisait pas. Une seule politique, partout.
+        return [{'taux': rate, 'base_ht': q(base),
+                 'montant': q(base * rate / Decimal('100'))}]
     return [
         {'taux': rate, 'base_ht': q(buckets[rate]),
          'montant': q(buckets[rate] * rate / Decimal('100'))}
@@ -718,7 +725,13 @@ def encours_clients_par_tiers(company):
     qs = (Facture.objects
           .filter(company=company)
           .exclude(statut=Facture.Statut.ANNULEE)
-          .select_related('client'))
+          .select_related('client')
+          # AUD158 — EXACTEMENT les relations que `montant_du` lit. Sans
+          # elles, ce point d'entrée cross-app (compta ET credit) posait
+          # SIX requêtes par facture ouverte du portefeuille.
+          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
+                            'retenues_subies',
+                            'affectations_paiement__paiement'))
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -754,7 +767,13 @@ def encours_ouvert_par_tiers(company):
     qs = (Facture.objects
           .filter(company=company)
           .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE])
-          .select_related('client'))
+          .select_related('client')
+          # AUD158 — EXACTEMENT les relations que `montant_du` lit (voir
+          # `encours_clients_par_tiers`). AUD153 va solliciter davantage
+          # encore ce sélecteur en branchant le credit-hold.
+          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
+                            'retenues_subies',
+                            'affectations_paiement__paiement'))
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -1137,8 +1156,18 @@ def devis_milestones(token):
     installation_faite = chantier is not None
 
     # 5) Facturé — au moins une facture liée.
+    # AUD114 — `bc.factures` N'EXISTE PAS : l'accesseur inverse de
+    # `Facture.bon_commande` est `facture` au SINGULIER (OneToOneField), donc
+    # cette ligne levait AttributeError et le client qui cliquait le lien de
+    # suivi que l'ERP lui avait envoyé recevait une page 500. Le court-circuit
+    # du `or` ne sauvait rien : la branche gauche est justement fausse pour une
+    # facture de la chaîne BC (cf. AUD112). Requête explicite (pas `hasattr`,
+    # qui avale l'erreur) et parenthésage du ternaire, qui se lisait en réalité
+    # `A or (B if bc else False)`.
+    from .models import Facture as _Facture
     facture_emise = devis.factures.exists() or (
-        bc is not None and bc.factures.exists() if bc else False)
+        bc is not None
+        and _Facture.objects.filter(bon_commande=bc).exists())
 
     milestones = [
         {'key': 'accepte', 'label': 'Proposition acceptée',
@@ -1594,6 +1623,17 @@ def factures_du_client_portail(company, client_id, *, limit=200):
     qs = (Facture.objects
           .filter(company=company, client_id=client_id)
           .exclude(statut=Facture.Statut.BROUILLON)
+          # AUD159 — EXACTEMENT les relations lues par les deux propriétés
+          # sérialisées ci-dessous : `total_ttc` itère `lignes` (via
+          # `tva_par_taux`) et `montant_du` touche `paiements`,
+          # `affectations_paiement`, `avoirs`, `notes_debit` et
+          # `retenues_subies`. Le queryset n'avait AUCUN prefetch : jusqu'à
+          # ~7 requêtes par facture, sur 200 factures par page — d'une surface
+          # PUBLIQUE, donc exposée à la charge externe. La SOURCE des chiffres
+          # ne change pas : les propriétés modèles restent propriétaires.
+          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
+                            'retenues_subies',
+                            'affectations_paiement__paiement')
           .order_by('-date_emission', '-id')[:limit])
     return [{
         'id': f.id,
@@ -2598,3 +2638,89 @@ def devis_deja_facture(devis):
     if devis is None:
         return False
     return factures_du_devis(devis).exists()
+
+
+def kpis_factures(qs):
+    """AUD157 (FAC-13) — LE PROPRIÉTAIRE UNIQUE des chiffres monétaires de
+    l'écran Factures.
+
+    Le KPI « Encaissé ce mois » (et son jumeau mois précédent) vivait dans
+    ``FactureList.jsx``, qui sommait ``p.montant`` de tous les paiements des
+    factures chargées SANS filtrer ``p.statut`` : l'écran affichait « Encaissé
+    ce mois : 480 000 » en comptant des chèques revenus impayés. Un chiffre
+    d'argent calculé côté écran, sans propriétaire backend, avec une définition
+    DIFFÉRENTE de ``Facture.montant_paye`` — laquelle exclut bien les paiements
+    rejetés (YLEDG5) et compte l'escompte accordé (XFAC12).
+
+    ``qs`` est le queryset DÉJÀ scopé société/portée par l'appelant : ce
+    sélecteur ne décide jamais de la visibilité, il ne fait qu'agréger.
+
+    Renvoie des chaînes décimales (jamais des flottants) et les deux mois
+    couverts, pour que l'écran n'ait aucun calcul de période à refaire.
+    Contrat PACT10 : ``apps/ventes/contract_samples/factures_kpis.json``.
+    """
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.db.models import Sum
+    from django.utils import timezone
+
+    from .models import Facture, Paiement
+
+    aujourdhui = timezone.localdate()
+    premier_du_mois = aujourdhui.replace(day=1)
+    fin_mois_precedent = premier_du_mois - timedelta(days=1)
+    premier_mois_precedent = fin_mois_precedent.replace(day=1)
+    dans_7_jours = aujourdhui + timedelta(days=7)
+
+    def _encaisse(debut, fin):
+        """Encaissé d'une période : MÊME définition que ``montant_paye`` —
+        les paiements REJETÉS sont exclus, l'escompte accordé compte."""
+        agg = (Paiement.objects
+               .filter(facture__in=qs.values('pk'),
+                       date_paiement__gte=debut, date_paiement__lte=fin)
+               .exclude(statut=Paiement.Statut.REJETE)
+               .aggregate(montant=Sum('montant'),
+                          escompte=Sum('escompte_montant')))
+        return ((agg['montant'] or Decimal('0'))
+                + (agg['escompte'] or Decimal('0')))
+
+    # L'encours se lit sur les propriétés modèles (source unique) : elles sont
+    # le seul endroit qui sait ce que « reste dû » veut dire (avoirs, notes de
+    # débit, retenues subies, abandon de créance). Le queryset est borné aux
+    # factures VIVANTES et porte le préfetch complet (AUD158/AUD159).
+    ouvertes = (qs.exclude(statut__in=[Facture.Statut.ANNULEE,
+                                       Facture.Statut.BROUILLON])
+                  .prefetch_related('lignes', 'paiements', 'avoirs',
+                                    'notes_debit', 'retenues_subies',
+                                    'affectations_paiement__paiement'))
+    total_du = Decimal('0')
+    total_en_retard = Decimal('0')
+    total_a_echoir_7j = Decimal('0')
+    nb_impayees = 0
+    nb_en_retard = 0
+    for facture in ouvertes:
+        du = facture.montant_du
+        if du <= 0:
+            continue
+        nb_impayees += 1
+        total_du += du
+        if facture.jours_retard > 0:
+            nb_en_retard += 1
+            total_en_retard += du
+        elif (facture.date_echeance
+                and aujourdhui <= facture.date_echeance <= dans_7_jours):
+            total_a_echoir_7j += du
+
+    return {
+        'mois': aujourdhui.strftime('%Y-%m'),
+        'mois_precedent': fin_mois_precedent.strftime('%Y-%m'),
+        'encaisse_mois': str(_encaisse(premier_du_mois, aujourdhui)),
+        'encaisse_mois_precedent': str(
+            _encaisse(premier_mois_precedent, fin_mois_precedent)),
+        'total_du': str(total_du),
+        'nb_impayees': nb_impayees,
+        'total_en_retard': str(total_en_retard),
+        'nb_en_retard': nb_en_retard,
+        'total_a_echoir_7j': str(total_a_echoir_7j),
+    }

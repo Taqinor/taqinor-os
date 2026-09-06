@@ -35,6 +35,7 @@ from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 # ARC8 — chatter générique (records.Activity). records est une app de
 # FONDATION : l'import direct de son mixin de vue est autorisé (frontière
 # cross-app exemptée pour records/core/authentication).
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
@@ -172,7 +173,17 @@ class _ContratsBaseViewSet(
     write_permission = 'contrat_gerer'
 
 
-class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
+#: AUD503 — les champs qui ENGAGENT financièrement les parties. Ils se figent
+#: dès que le contrat quitte BROUILLON/EN_APPROBATION : un contrat signé ne
+#: doit pas pouvoir changer de montant ou de période APRÈS coup, puisque le PDF
+#: est REGÉNÉRÉ à la volée depuis l'objet et dirait alors autre chose que ce
+#: que la partie a signé. Un avenant est la voie prévue pour les modifier.
+CHAMPS_FINANCIERS_GELES = ('montant', 'devise', 'taux_tva',
+                           'date_debut', 'date_fin')
+
+
+class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
+                     _ContratsBaseViewSet):
     """Contrats de la société (CLM). Recherche par référence/objet.
 
     Visibilité par confidentialité : les contrats ``CONFIDENTIEL`` ne sont
@@ -192,7 +203,11 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
     métier) pour un gain nul — la Meta note « Done = cycle de vie contrat
     inchangé fonctionnellement » (``docs/PLAN.md``) exclut ce remplacement.
     """
-    queryset = Contrat.objects.all()
+    # AUD528 — SEUL ViewSet du fichier sans `select_related`, alors que son
+    # serialiseur lit `responsable` (FK) sur CHAQUE ligne : une requete par
+    # contrat rien que pour afficher un nom d'utilisateur.
+    queryset = Contrat.objects.select_related(
+        'responsable', 'created_by', 'modele').all()
     serializer_class = ContratSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'objet']
@@ -251,12 +266,69 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         Ici on journalise uniquement un changement effectif de
         ``confidentialite`` (CONTRAT6), avec auteur et société posés côté serveur.
         """
-        ancien = serializer.instance.confidentialite
+        instance = serializer.instance
+        # ── AUD503 — LES CHAMPS FINANCIERS SE FIGENT À LA SIGNATURE ─────────
+        # `rendre_contrat_pdf` REGÉNÈRE le PDF à la volée depuis un Contrat
+        # resté mutable : montant, date_debut et date_fin pouvaient donc
+        # changer APRÈS coup sur un contrat déjà SIGNÉ, et le « même » document
+        # ne disait plus la même chose que ce que la partie avait signé. Dès
+        # que le contrat quitte BROUILLON/EN_APPROBATION, ces champs sont
+        # verrouillés — cohérent avec AUD501 qui rend `statut` read_only.
+        # Un avenant (`creer-avenant`) reste LA voie pour modifier un montant.
+        etats_modifiables = {
+            instance.__class__.Statut.BROUILLON,
+            instance.__class__.Statut.EN_APPROBATION,
+        }
+        if instance.statut not in etats_modifiables:
+            geles = []
+            for champ in CHAMPS_FINANCIERS_GELES:
+                if champ not in serializer.validated_data:
+                    continue
+                if serializer.validated_data[champ] != getattr(
+                        instance, champ):
+                    geles.append(champ)
+            if geles:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({
+                    champ: (
+                        'Ce contrat n\'est plus en brouillon : ses conditions '
+                        'financières sont figées. Passez par un avenant '
+                        '(« creer-avenant ») pour les modifier.'
+                    ) for champ in geles})
+        ancien = instance.confidentialite
         contrat = serializer.save()
         if contrat.confidentialite != ancien:
             services.journaliser_transition(
                 contrat, field='confidentialite', old_value=ancien,
                 new_value=contrat.confidentialite, auteur=self.request.user)
+
+    def destroy_guard_message(self, obj):
+        """AUD509 — un contrat ENGAGÉ ne se supprime pas d'un DELETE d'API.
+
+        Le viewset n'avait AUCUNE garde de statut : il était gouverné par la
+        seule permission de rôle ``contrat_gerer``. Un contrat SIGNÉ, ACTIF ou
+        RÉSILIÉ — donc porteur de preuves de signature (loi 53-05), de
+        garanties financières, d'un échéancier, d'avenants et d'une
+        résiliation — partait sur un simple DELETE. AUD818 a rendu ce geste
+        DOUX (le contrat est masqué, plus effacé), ce qui borne le dégât en
+        base ; il n'en reste pas moins qu'une pièce à valeur légale ne doit pas
+        pouvoir DISPARAÎTRE de l'API sur un clic. Seuls les états
+        pré-contractuels restent supprimables.
+
+        Renvoie un message FR (→ 409) ou ``None`` pour laisser passer.
+        """
+        etats_supprimables = {
+            obj.__class__.Statut.BROUILLON,
+            obj.__class__.Statut.EN_APPROBATION,
+        }
+        if obj.statut in etats_supprimables:
+            return None
+        return (
+            f'Un contrat au statut « {obj.get_statut_display()} » ne peut pas '
+            'être supprimé : il porte des preuves de signature, des garanties '
+            'financières et son historique d\'avenants. Seul un contrat en '
+            'brouillon ou en approbation est supprimable.'
+        )
 
     def perform_destroy(self, instance):
         """AUD818 — suppression DOUCE + alimentation de la corbeille 30 jours.
@@ -711,8 +783,66 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         body.is_valid(raise_exception=True)
         cible = body.validated_data['statut']
         ancien = contrat.statut
+        # ── AUD501 — CETTE PORTE NE FABRIQUE PLUS DE FAUX ÉTATS ─────────────
+        # Elle ne faisait que traverser `machine_etats` : elle posait donc
+        # « signe » SANS jamais appeler `signer_contrat` (seul créateur d'une
+        # `SignatureContrat`, de l'événement `contrat_signe` et de la
+        # `VersionContrat` figée), et « resilie » SANS jamais appeler
+        # `resilier_contrat` (seul créateur d'une `Resiliation` et de
+        # l'événement `contrat_resilie` qui désactive la maintenance SAV).
+        # Un contrat pouvait donc être « signé » sans signature et « résilié »
+        # sans résiliation. Ces deux cibles ont chacune leur porte DÉDIÉE et
+        # GARDÉE : on y renvoie explicitement au lieu de fabriquer l'état.
+        _Statut = contrat.__class__.Statut
+        portes_dediees = {
+            _Statut.SIGNE: (
+                'signer',
+                "une signature électronique (loi 53-05) doit être enregistrée "
+                "— elle crée la SignatureContrat et fige la version du "
+                "contrat"),
+            _Statut.RESILIE: (
+                'resilier',
+                'une résiliation doit être enregistrée (motif, date d\'effet, '
+                'préavis, solde) — elle désactive aussi la maintenance SAV '
+                'associée'),
+        }
+        if cible in portes_dediees and cible != ancien:
+            action_dediee, pourquoi = portes_dediees[cible]
+            return Response(
+                {'detail': (
+                    f'Le statut « {cible} » ne se pose pas par cette action : '
+                    f'{pourquoi}. Utilisez l\'action « {action_dediee} ».'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+        # AUD511 — ressusciter un contrat RÉSILIÉ n'est pas un geste
+        # administratif : l'arête `RESILIE → ACTIF` existe pour la SEULE action
+        # `annuler-resiliation` (fenêtre de préavis + passage de la Resiliation
+        # à ANNULEE). Sans ce refus, la porte générique la rendrait accessible
+        # à un simple POST — et le contrat redeviendrait actif en laissant sa
+        # résiliation vivante.
+        if cible == _Statut.ACTIF and ancien == _Statut.RESILIE:
+            return Response(
+                {'detail': (
+                    'Un contrat résilié ne se réactive pas par cette action : '
+                    'annulez d\'abord la résiliation (action '
+                    '« annuler-resiliation »), dans la fenêtre de préavis.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
-            services.changer_statut(contrat, cible)
+            if (cible == _Statut.ACTIF and ancien == _Statut.SIGNE):
+                # L'activation d'un contrat SIGNÉ a son propre service : il
+                # porte la garde de date ET la création des échéanciers, que
+                # la seule transition d'états ne fait pas.
+                services.activer_si_eligible(contrat, auteur=request.user)
+                if contrat.statut != _Statut.ACTIF:
+                    return Response(
+                        {'detail': (
+                            'Ce contrat signé n\'est pas encore éligible à '
+                            'l\'activation (date de début non atteinte).'
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST)
+            else:
+                services.changer_statut(contrat, cible)
         except services.TransitionInterdite as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -989,14 +1119,20 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         body = CreerAvenantSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
-        avenant = services.creer_avenant(
-            contrat,
-            objet=data['objet'],
-            description=data.get('description', ''),
-            date_effet=data.get('date_effet'),
-            montant_delta=data.get('montant_delta'),
-            auteur=request.user,
-        )
+        # AUD507 — un contrat RÉSILIÉ/EXPIRÉ (états terminaux) ne s'amende
+        # plus : le refus est un 400 FRANÇAIS, jamais un 500 ni un silence.
+        try:
+            avenant = services.creer_avenant(
+                contrat,
+                objet=data['objet'],
+                description=data.get('description', ''),
+                date_effet=data.get('date_effet'),
+                montant_delta=data.get('montant_delta'),
+                auteur=request.user,
+            )
+        except services.AvenantError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             AvenantSerializer(
                 avenant, context={'request': request}).data,
@@ -1088,6 +1224,38 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
                 resiliation, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['post'], url_path='annuler-resiliation',
+            permission_classes=[HasPermissionOrLegacy('contrat_gerer')])
+    def annuler_resiliation(self, request, pk=None):
+        """AUD511 — ANNULE une résiliation faite par erreur, dans le préavis.
+
+        ``Resiliation`` déclarait TROIS statuts mais ``annulee`` et
+        ``effective`` étaient des ÉTATS MORTS : aucune route (API, admin,
+        commande) ne permettait d'annuler une résiliation, et ``RESILIE`` était
+        un état TERMINAL — une résiliation faite par erreur de saisie était
+        donc IRRATTRAPABLE. Décision fondateur : câbler une vraie annulation,
+        pas retirer les états.
+
+        Corps optionnel : ``motif`` (journalisé au chatter). L'annulation
+        n'est possible qu'AVANT la date d'effet : au-delà, la résiliation a
+        produit ses conséquences et la « défaire » serait une réécriture
+        d'histoire. Le contrat revient à ``ACTIF`` par la machine d'états
+        gardée (arête ``RESILIE → ACTIF`` réservée à CETTE action — la porte
+        générique ``changer-statut`` la refuse). L'auteur et la société sont
+        posés CÔTÉ SERVEUR ; la société est garantie par ``get_object``.
+        """
+        contrat = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        try:
+            resiliation = services.annuler_resiliation(
+                contrat, motif=motif, auteur=request.user)
+        except services.AnnulationResiliationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ResiliationSerializer(
+                resiliation, context={'request': request}).data)
 
     @action(detail=True, methods=['post'],
             url_path='generer-devis-renouvellement')
@@ -2034,7 +2202,9 @@ class IndexationPrixViewSet(_ContratsBaseViewSet):
                 valeur_actuelle=body.validated_data['valeur_actuelle'],
                 auteur=request.user,
             )
-        except ValueError as exc:
+        # AUD507 — `appliquer_indexation` hérite de la garde de `creer_avenant`
+        # (un contrat mort ne s'indexe plus) : on la traduit en 400 ici aussi.
+        except (ValueError, services.AvenantError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         avenant = resultat['avenant']

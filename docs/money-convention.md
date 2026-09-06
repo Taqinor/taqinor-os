@@ -87,7 +87,7 @@ réglage.
   `quantize_mad()` avant d'être figée — jamais un `round(x, 2)` brut.
 - Les valeurs TECHNIQUES (kWc, surface, watt, débit, HMT…) restent hors
   périmètre : `round()` reste approprié, ce ne sont pas des montants.
-- `scripts/check_money_rounding.py` est un garde ADVISORY (v1) : il signale
+- `scripts/check_money_rounding.py` est un garde ADVISORY : il signale
   tout `round()` appliqué à une valeur d'apparence monétaire dans les
   modules de pricing/tax (`apps/ventes/services.py`,
   `apps/ventes/quote_engine/builder.py`, `apps/compta/services.py`) et
@@ -95,6 +95,34 @@ réglage.
   du code existant sont matière `ERROR_PLAN`, pas de ce garde. Un `round()`
   argent PRÉ-EXISTANT est baseline-allowlisté (`scripts/check_money_rounding.py`
   génère la liste à l'initialisation) ; seul un NOUVEAU site échoue la CI.
+
+### AUD189 — le garde voit enfin la politique qu'il est censé protéger
+
+Le garde ne détectait QUE les appels à `round()`. La classe la plus fréquente
+lui était donc invisible : **un `.quantize(...)` SANS mot-clé `rounding=`**,
+c'est-à-dire l'arrondi bancaire `ROUND_HALF_EVEN` — le défaut de `Decimal`,
+précisément la politique que cette page déclare inadaptée. Conséquence : `12.505`
+devenait `12.50` au lieu de `12.51` et `0.125` devenait `0.12` au lieu de `0.13`
+sur une dotation d'amortissement comme sur une ligne de régie, **pendant que la
+CI restait verte** et laissait croire la convention tenue partout.
+
+Depuis AUD189 :
+
+- le garde porte **deux détecteurs** — `round(x)` monétaire, ET tout
+  `x.quantize(...)` sans `rounding=` ; c'est une garde **sémantique** (la forme
+  de l'appel), jamais un nombre de sites épinglé (leçon OR3) ;
+- son périmètre couvre en plus le **rendu** (`apps/ventes/utils/pdf.py`) et les
+  apps du périmètre R1 : `facturation`, `portail`, `credit`, `frais`,
+  `einvoice`, plus `compta/selectors.py` et `gestion_projet/services.py` ;
+- `compta.services._arrondi` et les quantifications de `gestion_projet`
+  délèguent désormais à `core.money.quantize_mad` ;
+- la branche **mono-taux** de `ventes.selectors.tva_buckets` quantifie comme la
+  chaîne canonique `_canonical_totaux` : il n'y a plus deux chaînes d'arrondi
+  sur la même facture ;
+- l'existant capturé le jour de la bascule porte la raison
+  « AUD189 reprise » dans `scripts/money_rounding_allow.txt` : la garde protège
+  contre une **réintroduction** dès aujourd'hui, la reprise fichier par fichier
+  se fait ensuite.
 
 ### Exemple
 

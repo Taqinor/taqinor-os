@@ -790,17 +790,53 @@ class CompanyProfile(models.Model):
     def __str__(self):
         return self.nom
 
+    @staticmethod
+    def _cle_memo_id(company_id):
+        """AUD157 — la clé du mémo par requête. Porte TOUJOURS l'identité
+        société : aucune fuite multi-tenant possible."""
+        return ('parametres.company_profile.get', company_id)
+
+    @classmethod
+    def _cle_memo(cls, company):
+        return cls._cle_memo_id(getattr(company, 'id', None))
+
     @classmethod
     def get(cls, company=None):
         """
         Retourne (ou crée) le profil pour une company donnée.
         Sans company, retourne/crée l'instance pk=1 (rétro-compat).
+
+        AUD157 — MÉMOÏSÉ PAR REQUÊTE. `Facture.mentions_manquantes` appelle cet
+        accesseur pour CHAQUE facture sérialisée : sur une liste de 50 factures
+        c'était 50 lectures identiques de la même ligne. Le mécanisme est celui
+        déjà employé par `ventes/utils/company_settings._profile`
+        (`core.request_cache`) ; hors requête (Celery, PDF, shell) le cache est
+        inactif et le comportement est STRICTEMENT celui d'avant. `save()`
+        invalide le mémo, pour qu'une écriture suivie d'une lecture dans la même
+        requête ne serve jamais un état périmé.
         """
-        if company is not None:
-            obj, _ = cls.objects.get_or_create(
-                company=company,
-                defaults={'nom': company.nom},
-            )
+        from core import request_cache
+
+        def _load():
+            if company is not None:
+                obj, _ = cls.objects.get_or_create(
+                    company=company,
+                    defaults={'nom': company.nom},
+                )
+                return obj
+            obj, _ = cls.objects.get_or_create(pk=1)
             return obj
-        obj, _ = cls.objects.get_or_create(pk=1)
-        return obj
+
+        return request_cache.memoize(cls._cle_memo(company), _load)
+
+    def save(self, *args, **kwargs):
+        # AUD157 — toute écriture périme le mémo de CETTE requête (le profil
+        # peut être relu juste après par un accesseur de config). On oublie les
+        # DEUX clés qui le portent : celle de cet accesseur et celle de
+        # `ventes/utils/company_settings._profile`, qui mémoïse le même objet.
+        from core import request_cache
+        for company_id in {self.company_id, None}:
+            request_cache.forget(self._cle_memo_id(company_id))
+            request_cache.forget(
+                ('parametres.company_profile', company_id))
+        return super().save(*args, **kwargs)

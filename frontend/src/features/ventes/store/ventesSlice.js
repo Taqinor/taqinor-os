@@ -150,9 +150,17 @@ export const confirmerBC = createAsyncThunk('ventes/confirmerBC', async (id, { r
   }
 })
 
-export const marquerLivreBC = createAsyncThunk('ventes/marquerLivreBC', async (id, { rejectWithValue }) => {
+// AUD119 (FG51) — LA MOITIE MANQUANTE DE LA PREUVE DE LIVRAISON. Ce thunk
+// n'acceptait qu'un id : le backend savait lire `signataire`, `note_pv` et le
+// fichier `pv` depuis le premier jour, mais aucun appelant ne les envoyait
+// jamais. `pv_livraison` restait donc toujours vide, `has_proof_of_delivery`
+// toujours faux, et l'avertissement « vous facturez sans BL signe » etait
+// permanent — donc sans valeur, un bruit que tout le monde ignorait.
+// Retro-compatible : `dispatch(marquerLivreBC(id))` reste valide (sans preuve).
+export const marquerLivreBC = createAsyncThunk('ventes/marquerLivreBC', async (arg, { rejectWithValue }) => {
+  const { id, preuve } = (arg && typeof arg === 'object') ? arg : { id: arg, preuve: null }
   try {
-    const res = await ventesApi.marquerLivreBC(id)
+    const res = await ventesApi.marquerLivreBC(id, preuve)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
@@ -198,6 +206,23 @@ export const fetchFactures = createCancellableThunk('ventes/fetchFactures', (_, 
     fetchAllPages((page) => ventesApi.getFactures({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
       .then((results) => ({ results })),
   ),
+)
+
+// AUD157 (FAC-13) — LES KPI D'ARGENT VIENNENT DU SERVEUR. Ils étaient sommés
+// dans `FactureList.jsx` à partir des factures chargées, sans filtrer le statut
+// des paiements : un chèque revenu impayé comptait comme encaissé. Un seul
+// propriétaire (`ventes.selectors.kpis_factures`), un seul appel réseau — et
+// l'écran ne fait plus AUCUN calcul monétaire.
+export const fetchFacturesKpis = createAsyncThunk(
+  'ventes/fetchFacturesKpis',
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await ventesApi.getFacturesKpis()
+      return res.data
+    } catch (err) {
+      return rejectWithValue(err.response?.data ?? err.message)
+    }
+  },
 )
 
 export const createFacture = createAsyncThunk('ventes/createFacture', async (data, { rejectWithValue }) => {
@@ -310,6 +335,9 @@ const ventesSlice = createSlice({
     devis: [],
     bonsCommande: [],
     factures: [],
+    // AUD157 (FAC-13) — KPI monetaires agreges PAR LE SERVEUR (jamais sommes
+    // dans l'ecran). `null` tant que l'agregat n'est pas revenu.
+    facturesKpis: null,
     loading: false,
     // VX165 — compteur de sondages EN VOL partagés par `fetchDevis`/
     // `fetchBonsCommande`/`fetchFactures` : `loading` reste dérivé de ce
@@ -426,6 +454,9 @@ const ventesSlice = createSlice({
         state.factures = action.payload.results ?? action.payload
       })
       .addCase(fetchFactures.rejected, rejected)
+      .addCase(fetchFacturesKpis.fulfilled, (state, action) => {
+        state.facturesKpis = action.payload
+      })
       .addCase(createFacture.fulfilled, (state, action) => { state.factures.push(action.payload) })
       .addCase(updateFacture.pending, (state, action) => {
         state.factureUpdateSeq[action.meta.arg.id] = action.meta.requestId

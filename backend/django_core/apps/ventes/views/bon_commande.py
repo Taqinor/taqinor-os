@@ -1,4 +1,5 @@
 from django.db import transaction  # noqa: F401
+from django.db.models import Exists, OuterRef  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
@@ -31,6 +32,7 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from ..domain.facturation_ops import StockInsuffisantError  # noqa: F401
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -73,7 +75,27 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/get_permissions
     # SURCHARGENT la base : le scoping société et la matrice 401/403/404 restent
     # IDENTIQUES (règle #4 : aucun statut/sérialisation Devis/Facture touché).
-    queryset = BonCommande.objects.select_related('client', 'devis').all()
+    # AUD115 (constat FAC-9) — le N+1 EN SÉRIE de la liste BC. Le queryset ne
+    # faisait que `select_related('client','devis')` : `get_has_facture` posait
+    # un `.exists()` PAR LIGNE et les trois totaux traversaient TROIS fois la
+    # chaîne canonique du devis (chacune rechargeant ses lignes). Le prefetch
+    # des lignes + l'annotation d'existence rendent la liste bornée, et le
+    # sérialiseur ne calcule plus les totaux qu'UNE fois par BC.
+    queryset = (
+        BonCommande.objects
+        .select_related('client', 'devis')
+        .prefetch_related('devis__lignes__produit', 'livraisons__lignes')
+        .annotate(
+            has_facture_annote=Exists(
+                Facture.objects.filter(bon_commande=OuterRef('pk'))),
+            # AUD118 — facture VIVANTE (non annulée) : le prédicat qui décide
+            # si le bon de commande peut encore être annulé.
+            facture_active_annote=Exists(
+                Facture.objects
+                .filter(bon_commande=OuterRef('pk'))
+                .exclude(statut=Facture.Statut.ANNULEE)))
+        .all()
+    )
     serializer_class = BonCommandeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'client__nom', 'client__email']
@@ -100,15 +122,29 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         company = self.request.user.company
+        client = serializer.validated_data.get('client')
+        devis = serializer.validated_data.get('devis')
+        # AUD117 — LA GARDE ERR13 N'EST PLUS CONDITIONNELLE. Elle vivait dans
+        # un `if company is not None:` : elle était donc INACTIVE pour le seul
+        # profil qui peut voir les objets de tous les tenants (superutilisateur
+        # sans société), c'est-à-dire exactement celui contre lequel elle
+        # protège. Quand l'utilisateur n'a pas de société, on la DÉRIVE des
+        # objets validés (devis d'abord, puis client) au lieu de désactiver le
+        # contrôle — et on exige alors que les deux concordent.
+        if company is None:
+            derivee = (getattr(devis, 'company', None)
+                       or getattr(client, 'company', None))
+            if derivee is None:
+                raise ValidationError({
+                    'detail': ('Aucune société ne peut être déterminée pour '
+                               'ce bon de commande.')})
+            company = derivee
         # ERR13 — client/devis du corps doivent appartenir à la société (refuse
         # de lier un BC au client/devis d'un autre tenant).
-        if company is not None:
-            client = serializer.validated_data.get('client')
-            devis = serializer.validated_data.get('devis')
-            if client is not None and client.company_id != company.id:
-                raise ValidationError({'client': 'Client inconnu.'})
-            if devis is not None and devis.company_id != company.id:
-                raise ValidationError({'devis': 'Devis inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+        if devis is not None and devis.company_id != company.id:
+            raise ValidationError({'devis': 'Devis inconnu.'})
         create_numbered(
             BonCommande, company, 'bon_commande',
             lambda ref: serializer.save(reference=ref, company=company),
@@ -160,7 +196,11 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             pv['note'] = note_pv[:1000]
         if upload is not None:
             from apps.records.storage import store_attachment
-            meta, err = store_attachment(upload)
+            # AUD311 (SCA42) — cle scopee societe : sans `company=`,
+            # `store_attachment` retombe en silence sur la cle PLATE
+            # `attachments/{uuid}.ext`. La societe vient du BON DE
+            # COMMANDE (AUD117), jamais de l'utilisateur.
+            meta, err = store_attachment(upload, company=bc.company)
             if err is not None:
                 return Response(
                     {'detail': err},
@@ -170,64 +210,41 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             pv['filename'] = meta['filename']
         if pv:
             pv['signed_at'] = _tz.now().isoformat()
-        from decimal import Decimal, ROUND_HALF_UP
         # YDOCF7 — toggle ON : la réservation créée à `confirmer` est SOLDÉE
         # (consommée) ici au lieu d'un second décrément direct — jamais les
         # deux (double décompte). Toggle OFF : chemin historique inchangé.
         toggle_bc_stock = _reserver_stock_bc_actif(bc.company)
-        with transaction.atomic():
-            if bc.devis and not toggle_bc_stock:
-                for ligne in bc.devis.lignes.select_related('produit'):
-                    # AUD216 — VERROU de ligne produit AVANT la lecture de
-                    # `quantite_stock` : `refresh_from_db()` relisait sans
-                    # verrouiller, donc la garde « stock insuffisant » plus bas
-                    # décidait sur une valeur qu'une livraison concurrente
-                    # pouvait déjà avoir consommée (survente). Verrou pris par
-                    # le thin service stock — jamais d'import des models stock.
-                    produit = verrouiller_produit(ligne.produit_id)
-                    # ERR15 — ne PAS tronquer la quantité décimale (int() perdait
-                    # la partie fractionnaire : 3,5 → 3, dérive silencieuse du
-                    # stock sur les lignes au mètre/câble). Le ledger de stock
-                    # est en entiers (IntegerField) : on arrondit au plus proche
-                    # (HALF_UP) au lieu de tronquer, donc 3,5 → 4.
-                    qte = int(Decimal(ligne.quantite).quantize(
-                        Decimal('1'), rounding=ROUND_HALF_UP))
-                    qte_avant = produit.quantite_stock
-                    qte_apres = qte_avant - qte
-                    # AUD228 — route par la garde paramétrable (société)
-                    # plutôt qu'un blocage en dur : `stock_negatif_autorise`
-                    # (AchatsParametres) est désormais respecté ici aussi.
-                    # Message INCHANGÉ quand le réglage refuse (défaut).
-                    try:
-                        check_negative_stock_guard(
-                            bc.company, qte_avant, qte_apres)
-                    except ValueError:
-                        return Response(
-                            {'detail': (
-                                f'Stock insuffisant pour '
-                                f'« {produit.nom} » '
-                                f'(disponible : {qte_avant}, '
-                                f'requis : {qte}).'
-                            )},
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-                    record_stock_movement(
+        try:
+            with transaction.atomic():
+                if bc.devis and not toggle_bc_stock:
+                    # AUD116 — LE MÊME PANIER ET LE MÊME DÉCOMPTEUR que la
+                    # facture du BC et que la nomenclature du chantier. Cette
+                    # boucle lisait `bc.devis.lignes` NU : elle plantait sur
+                    # une ligne sans produit (nullable depuis XSAL14) et, sur
+                    # un devis à deux options accepté « sans batterie », elle
+                    # consommait les DEUX kits — le stock physique divergeait
+                    # du stock ERP du montant d'une batterie.
+                    from ..utils.options import option_lines
+                    from ..domain.facturation_ops import decompter_stock_lignes
+                    decompter_stock_lignes(
+                        lignes=option_lines(bc.devis),
                         company=bc.company,
-                        produit=produit,
-                        type_mouvement=mouvement_type_sortie(),
-                        quantite=qte,
-                        quantite_avant=qte_avant,
-                        quantite_apres=qte_apres,
+                        user=request.user,
                         reference=bc.reference,
                         note=f'Livraison BC {bc.reference}',
-                        created_by=request.user,
                     )
-            bc.statut = BonCommande.Statut.LIVRE
-            from django.utils import timezone as _tz2
-            bc.date_livraison_reelle = _tz2.now().date()
-            if pv:
-                bc.pv_livraison = pv
-            bc.save()
+                bc.statut = BonCommande.Statut.LIVRE
+                from django.utils import timezone as _tz2
+                bc.date_livraison_reelle = _tz2.now().date()
+                if pv:
+                    bc.pv_livraison = pv
+                bc.save()
+        except StockInsuffisantError as exc:
+            # Message FR INCHANGÉ : il vit désormais dans le décompteur unique.
+            return Response(
+                {'detail': exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if toggle_bc_stock:
             from apps.installations.services import consommer_reservation_bc
             consommer_reservation_bc(bc, request.user)
@@ -372,6 +389,27 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Un BC livré ne peut pas être annulé.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # AUD118 — UN BC DÉJÀ FACTURÉ NE S'ANNULE PAS EN SILENCE. Le bouton
+        # « Facture » est proposé dès `confirme` et le bouton Annuler restait
+        # visible tant que le statut n'était ni `livre` ni `annule` : un BC
+        # annulé « par erreur de saisie » laissait en vie une facture ÉMISE que
+        # plus aucun écran ne rattachait à son origine (le stepper rendait même
+        # un état contradictoire). On dirige vers la voie correcte : annuler
+        # d'abord la FACTURE (action `annuler`, qui émet `facture_annulee` et
+        # déclenche l'extourne), puis le bon de commande.
+        facture = (Facture.objects
+                   .filter(bon_commande=bc)
+                   .exclude(statut=Facture.Statut.ANNULEE)
+                   .first())
+        if facture is not None:
+            return Response(
+                {'detail': (
+                    f'La facture {facture.reference} est encore vivante sur '
+                    'ce bon de commande : annulez-la d\'abord, puis annulez '
+                    'le bon de commande.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         bc.statut = BonCommande.Statut.ANNULE
         bc.save()
         # YDOCF7 — toggle ON : libère la réservation posée à `confirmer`
@@ -412,9 +450,35 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        company = request.user.company
+        # AUD117 — LA SOCIÉTÉ VIENT DU BON DE COMMANDE, PAS DE L'UTILISATEUR.
+        # La règle maison est « company forcée côté serveur, jamais issue de la
+        # requête » : elle venait bien du serveur, mais du MAUVAIS objet
+        # serveur. Un superutilisateur sans société (`_company_qs` laisse
+        # passer TOUS les BC dans ce cas) facturait le BC de la société A et la
+        # facture naissait dans SA société — ou sans société : invisible pour
+        # son propriétaire légitime, et comptée dans le CA d'un autre tenant.
+        # Le BC est déjà scopé par `get_object` : c'est LA source de vérité.
+        if bc.company_id is None:
+            return Response(
+                {'detail': (
+                    'Ce bon de commande n\'appartient à aucune société : '
+                    'impossible d\'émettre une facture.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        company = bc.company
 
         def _create_facture(ref):
+            # AUD113 — le taux de TÊTE est le REPLI des lignes sans taux, et
+            # les deux chaînes de repli pointent vers des objets DIFFÉRENTS :
+            # `LigneDevis.taux_tva_effectif` retombe sur `devis.taux_tva`,
+            # `LigneFacture.taux_tva_effectif` sur `facture.taux_tva`. Sans
+            # ce transport, un devis à 10 % dont les lignes portent un taux
+            # NULL était facturé au défaut 20 % — le client surfacturé de dix
+            # points de TVA. Même geste que `remise_globale` (QX1) ci-dessous.
+            entete = {}
+            if bc.devis_id and bc.devis.taux_tva is not None:
+                entete['taux_tva'] = bc.devis.taux_tva
             facture = Facture.objects.create(
                 reference=ref,
                 bon_commande=bc,
@@ -427,6 +491,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 statut=Facture.Statut.BROUILLON,
                 created_by=request.user,
                 company=company,
+                **entete,
             )
             if bc.devis:
                 # ERR16 — n'inclure QUE les lignes de l'option retenue à

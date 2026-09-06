@@ -1938,7 +1938,17 @@ def coefficient_degressif_maroc(duree_annees):
 
 
 def _arrondi(montant):
-    return Decimal(montant).quantize(Decimal('0.01'))
+    """AUD189 — UNE seule politique d'arrondi, un seul helper.
+
+    Ce helper — l'unique point d'arrondi du module amortissement — appelait
+    ``quantize(Decimal('0.01'))`` SANS ``rounding``, donc en arrondi bancaire
+    (``ROUND_HALF_EVEN``, le défaut Python) : ``0.125`` devenait ``0.12`` au
+    lieu de ``0.13`` sur une dotation, exactement ce que
+    ``docs/money-convention.md`` déclare ne PAS être « la politique
+    moitié-vers-le-haut attendue en comptabilité marocaine ». On délègue au
+    helper unique ``core.money.quantize_mad`` (ROUND_HALF_UP)."""
+    from core.money import quantize_mad
+    return quantize_mad(montant)
 
 
 def _calcul_annuites(base, duree, mode, coefficient, *, mois_premiere_annee=12):

@@ -160,9 +160,20 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # get_permissions SURCHARGENT la base : scoping société et matrice 401/403/404
     # IDENTIQUES (règle #4 : aucun statut/sérialisation Facture touché ; la facture
     # garde son PDF légacy séparé, hors périmètre du moteur devis).
+    # AUD157 (FAC-14) — LE PRÉFETCH DIT CE QUE LE SÉRIALISEUR LIT. Il ne
+    # portait que `lignes`, alors que `FactureSerializer` sérialise pour CHAQUE
+    # facture les paiements imbriqués, les avoirs, `montant_paye` (→ paiements
+    # + affectations_paiement), `montant_du` (→ + notes_debit + retenues_subies)
+    # et `mentions_manquantes` — soit ≈6 requêtes par facture. Le viewset Devis
+    # avait reçu le correctif équivalent (YOPSB13) ; la liste des factures
+    # jamais.
     queryset = Facture.objects.select_related(
-        'client', 'created_by', 'bon_commande'
-    ).prefetch_related('lignes').all()
+        'client', 'created_by', 'bon_commande', 'devis', 'updated_by',
+        'company',
+    ).prefetch_related(
+        'lignes', 'paiements', 'avoirs', 'notes_debit', 'retenues_subies',
+        'affectations_paiement__paiement',
+    ).all()
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'reference', 'client__nom', 'client__prenom', 'client__email'
@@ -184,7 +195,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
-            'paiements', 'relances', 'emails', 'arrondi_caisse',
+            'paiements', 'relances', 'emails', 'arrondi_caisse', 'kpis',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -1849,6 +1860,24 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             FactureSerializer(facture_penalite).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=['get'], url_path='kpis',
+            permission_classes=[IsAnyRole])
+    def kpis(self, request):
+        """AUD157 (FAC-13) — LES KPI MONÉTAIRES DE L'ÉCRAN FACTURES, calculés
+        par le serveur.
+
+        « Encaissé ce mois » était sommé côté écran sur `p.montant` SANS
+        filtrer `p.statut` : l'écran comptait des chèques revenus impayés, avec
+        une définition différente de `Facture.montant_paye`. Un seul
+        propriétaire désormais : `selectors.kpis_factures`, sur le queryset
+        DÉJÀ scopé société + portée de visibilité de ce viewset.
+
+        Contrat PACT10 : `apps/ventes/contract_samples/factures_kpis.json`.
+        """
+        from ..selectors import kpis_factures
+        return Response(kpis_factures(self.filter_queryset(
+            self.get_queryset())))
 
     @action(detail=True, methods=['get'], url_path='relances',
             permission_classes=[IsAnyRole])

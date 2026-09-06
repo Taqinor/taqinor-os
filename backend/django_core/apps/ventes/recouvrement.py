@@ -255,11 +255,33 @@ class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
 
 
 def _facture_due_rows(user):
-    """Factures ouvertes (dues) de la société, non exclues."""
+    """Factures ouvertes (dues) de la société, non exclues.
+
+    AUD158 — LE PRÉFETCH DIT EXACTEMENT CE QUE ``montant_du`` LIT. La propriété
+    touche ``lignes``, ``paiements``, ``affectations_paiement``, ``avoirs``,
+    ``notes_debit`` et ``retenues_subies`` ; il n'y en avait que trois ici, donc
+    les TROIS relations manquantes déclenchaient une requête par facture — et
+    ``montant_du`` est réévalué plusieurs fois par ligne. Les deux relations que
+    les vues interrogeaient PAR LIGNE (``relances.count()`` et un
+    ``promesses_paiement.filter(...)``) sont préchargées ici : un portefeuille
+    de 600 factures ouvertes déclenchait plusieurs milliers de requêtes.
+    """
     from authentication.scoping import scope_queryset
+    from django.db.models import Prefetch
     qs = _scope(
         Facture.objects.select_related('client').prefetch_related(
-            'lignes', 'paiements', 'avoirs'),
+            'lignes', 'paiements', 'avoirs',
+            'notes_debit', 'retenues_subies',
+            'affectations_paiement__paiement',
+            'relances',
+            Prefetch(
+                'promesses_paiement',
+                queryset=PromessePaiement.objects.filter(
+                    statut__in=[PromessePaiement.Statut.EN_COURS,
+                                PromessePaiement.Statut.ROMPUE],
+                ).order_by('-id'),
+                to_attr='promesses_actives'),
+        ),
         user
     ).exclude(statut__in=STATUTS_NON_RELANCABLES).filter(
         exclu_relances=False)
@@ -295,11 +317,17 @@ def relances_list(request):
         if mes_relances and (
                 param is None or param.responsable_id != request.user.id):
             continue
+        # AUD158 — `montant_du` est LU UNE FOIS par ligne (il l'était quatre
+        # fois : le filtre `facture_relancable`, `jours_retard`, la colonne
+        # montant et le calcul de pénalité — chacune ré-agrégeant les six
+        # relations).
+        du = f.montant_du
         jr = f.jours_retard
-        # XFAC5 — promesse de paiement active/rompue (priorité haute).
-        promesse = f.promesses_paiement.filter(
-            statut__in=[PromessePaiement.Statut.EN_COURS,
-                        PromessePaiement.Statut.ROMPUE]).order_by('-id').first()
+        # XFAC5 — promesse de paiement active/rompue (priorité haute), servie
+        # par le `Prefetch` filtré de `_facture_due_rows` (AUD158) : plus de
+        # requête par ligne.
+        promesses = getattr(f, 'promesses_actives', None)
+        promesse = promesses[0] if promesses else None
         # XFAC15 — score comportemental agrégé du client (mis en cache par
         # client sur la durée de la requête : plusieurs factures partagent le
         # même client).
@@ -314,13 +342,15 @@ def relances_list(request):
             # côté front (aucun envoi ici ; affichage/validation seulement).
             'client_telephone': f.client.telephone if f.client_id else None,
             'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
-            'montant_du': _s(f.montant_du),
+            'montant_du': _s(du),
             'jours_retard': jr,
-            'niveau': _current_level(jr, levels, montant_du=f.montant_du),
+            'niveau': _current_level(jr, levels, montant_du=du),
             'niveau_suivant': _next_level(jr, levels),
             'prochaine_relance': (f.prochaine_relance.isoformat()
                                   if f.prochaine_relance else None),
-            'nb_relances': f.relances.count(),
+            # AUD158 — `relances` est préchargé : `len()` lit le cache, là où
+            # `.count()` repartait en base pour CHAQUE facture.
+            'nb_relances': len(f.relances.all()),
             'promesse': ({
                 'id': promesse.id, 'statut': promesse.statut,
                 'montant_promis': _s(promesse.montant_promis),
@@ -356,8 +386,9 @@ def balance_agee(request):
             # clients à risque dans la balance).
             'score_comportement': comportement_paiement(f.client)['lettre'],
         })
-        jr = f.jours_retard
+        # AUD158 — une seule lecture de `montant_du` par facture.
         due = f.montant_du
+        jr = f.jours_retard
         if jr <= 30:
             entry['b0_30'] += due
         elif jr <= 60:

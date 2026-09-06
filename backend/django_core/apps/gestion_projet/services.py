@@ -8,6 +8,8 @@ from datetime import timedelta
 from decimal import ROUND_HALF_UP as _ROUND_HALF_UP
 from decimal import Decimal
 
+from core.money import quantize_mad
+
 from django.db import models, transaction
 
 from .models import (
@@ -35,7 +37,8 @@ def cout_timesheet(ressource, heures):
     if ressource is None or heures is None:
         return Decimal('0.00')
     cout_horaire = ressource.cout_horaire or Decimal('0')
-    return (Decimal(heures) * cout_horaire).quantize(Decimal('0.01'))
+    # AUD189 — politique d'arrondi UNIQUE (ROUND_HALF_UP).
+    return quantize_mad(Decimal(heures) * cout_horaire)
 
 
 def copier_semaine_precedente_timesheets(ressource, *, semaine_source,
@@ -281,7 +284,11 @@ def facturer_temps_projet(projet, *, debut, fin, user):
         cle = (ts.tache_id, ts.type_activite)
         heures = ts.heures or Decimal('0')
         taux = ts.taux_facturation or Decimal('0')
-        montant_ligne = (heures * taux).quantize(Decimal('0.01'))
+        # AUD189 — politique d'arrondi UNIQUE (ROUND_HALF_UP) : ce
+        # `quantize` sans `rounding` faisait de l'arrondi bancaire alors
+        # que `_ROUND_HALF_UP` était importé en tête et jamais utilisé —
+        # 0,125 devenait 0,12 au lieu de 0,13 sur une ligne de régie.
+        montant_ligne = quantize_mad(heures * taux)
         montant_ht += montant_ligne
         g = groupes.setdefault(cle, {
             'tache_id': ts.tache_id,
@@ -374,7 +381,8 @@ def declencher_facturation_jalon(jalon):
             "Le jalon ne porte aucun pourcentage de facturation.")
 
     base = jalon.projet.budget_total or Decimal('0')
-    montant = (base * pct / Decimal('100')).quantize(Decimal('0.01'))
+    # AUD189 — politique d'arrondi UNIQUE (ROUND_HALF_UP).
+    montant = quantize_mad(base * pct / Decimal('100'))
 
     # Route vers ventes.services si une entrée dédiée existe ; sinon dégrade.
     facture_creee = False
@@ -868,9 +876,9 @@ def ajouter_ligne_situation(situation, *, libelle, montant_marche_ht,
 
     montant_marche_ht = Decimal(montant_marche_ht)
     avancement_cumule_pct = Decimal(avancement_cumule_pct)
-    montant_cumule = (
-        montant_marche_ht * avancement_cumule_pct / Decimal('100')
-    ).quantize(Decimal('0.01'))
+    # AUD189 — même politique unique que la régie ci-dessus.
+    montant_cumule = quantize_mad(
+        montant_marche_ht * avancement_cumule_pct / Decimal('100'))
     montant_cumule_anterieur = _situation_precedente_montant_cumule(
         situation, libelle)
     montant_periode = montant_cumule - montant_cumule_anterieur

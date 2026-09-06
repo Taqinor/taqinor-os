@@ -1243,6 +1243,13 @@ def confirm_reception_fournisseur(reception, user):
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
+    # AUD233 — le rapprochement 3 voies du BCF est CRÉÉ/RAFRAÎCHI dès que la
+    # marchandise est réellement entrée : c'est le moment où « reçu » cesse
+    # d'être une hypothèse. Réglage société, ON par défaut, best-effort (une
+    # réception confirmée n'échoue jamais pour cette raison).
+    if bc is not None:
+        rafraichir_rapprochement_3voies_auto(
+            reception.company, bc.id, user=user)
     # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
     # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
     try:
@@ -2119,7 +2126,14 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     Une ligne sans produit catalogue (désignation libre) ou pas encore
     comptée (``quantite_comptee`` None) est ignorée. Renvoie le nombre de
     mouvements postés. Scopé société ; verrouille le produit (select_for_update)
-    pour éviter une course avec un mouvement concurrent."""
+    pour éviter une course avec un mouvement concurrent.
+
+    AUD320 — CE SERVICE NE PORTE PAS L'IDEMPOTENCE. Il verrouille chaque
+    ``Produit`` mais jamais la ``SessionComptage``, et ne revérifie pas son
+    état : deux appels concurrents pour la MÊME session posteraient deux
+    ajustements. C'est l'APPELANT qui doit prendre le verrou de session
+    (``installations.views.comptage.terminer`` le fait, sous
+    ``select_for_update()`` + ``transaction.atomic()``)."""
     from django.db import transaction
     from .models import MouvementStock, Produit
 
@@ -4816,6 +4830,53 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
 
 # ── XPUR10 — tolérances 3 voies & file d'exceptions ─────────────────────────
 
+def rafraichir_rapprochement_3voies_auto(company, bon_commande_id, *,
+                                         user=None):
+    """AUD233 — auto-crée/rafraîchit le rapprochement 3 voies d'un BCF.
+
+    [DÉCISION FONDATEUR 03/09/2026] Le rapprochement commandé/reçu/facturé
+    était OPT-IN PAR BON DE COMMANDE et n'avait qu'UN seul créateur : une
+    action manuelle explicite. Conséquence en chaîne :
+    ``compta.selectors.rapprochement_ecart_pct`` renvoyait ``None`` faute de
+    ``Rapprochement``, donc ``evaluate_facture_exception`` était un NO-OP
+    STRUCTUREL — par défaut, une facture fournisseur pouvait être payée pour
+    plus que ce qui avait été reçu sans qu'aucune alerte ne se déclenche.
+
+    Réglage société ``AchatsParametres.rapprochement_3voies_auto``, ON par
+    défaut. **JAMAIS RÉTROACTIF** : cette fonction n'est appelée que par des
+    ÉVÉNEMENTS (confirmation d'une réception, évaluation d'une facture liée à
+    un BCF) — aucun rattrapage de l'historique n'a lieu, un BCF déjà reçu et
+    facturé avant la bascule reste exactement dans l'état où il était.
+
+    Écrit dans ``apps.compta`` par son SERVICE (jamais un import de ses
+    modèles). Best-effort et silencieuse : une réception ne doit jamais échouer
+    parce que la compta est indisponible.
+    """
+    from .models import AchatsParametres
+    if not bon_commande_id or company is None:
+        return None
+    try:
+        if not AchatsParametres.for_company(company).rapprochement_3voies_auto:
+            return None
+    except Exception:  # pragma: no cover - défensif (réglage illisible)
+        return None
+    try:
+        from apps.compta.services import creer_rapprochement_3voies
+    except Exception:  # pragma: no cover - défensif (compta indisponible)
+        return None
+    try:
+        parametres = AchatsParametres.for_company(company)
+        return creer_rapprochement_3voies(
+            company, bon_commande_id=bon_commande_id,
+            tolerance=parametres.tolerance_prix_absolu_mad or Decimal('0'),
+            note='AUD233 — rapprochement automatique.', user=user)
+    except Exception:  # pragma: no cover - best-effort, jamais bloquant
+        logger.exception(
+            'AUD233 rapprochement 3 voies automatique impossible pour le '
+            'BCF %s', bon_commande_id)
+        return None
+
+
 def evaluate_facture_exception(company, facture):
     """XPUR10 — compare l'écart du rapprochement 3 voies (FG131, lu via
     ``apps.compta.selectors`` — jamais d'import de modèles compta) du BCF
@@ -4833,6 +4894,12 @@ def evaluate_facture_exception(company, facture):
         from apps.compta.selectors import rapprochement_ecart_pct
     except Exception:  # pragma: no cover - défensif (compta indisponible)
         return False, None
+    # AUD233 — LE RAPPROCHEMENT EXISTE ENFIN QUAND ON LE LIT. Sans cette
+    # ligne, `rapprochement_ecart_pct` renvoyait `None` pour tout BCF dont
+    # personne n'avait cliqué le bouton manuel, et cette fonction ne pouvait
+    # STRUCTURELLEMENT jamais détecter le moindre écart. Idempotent
+    # (get_or_create + ré-évaluation) et gouverné par le réglage société.
+    rafraichir_rapprochement_3voies_auto(company, facture.bon_commande_id)
     ecart_pct = rapprochement_ecart_pct(company, facture.bon_commande_id)
     if ecart_pct is None:
         return False, None

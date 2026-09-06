@@ -349,6 +349,15 @@ app.conf.beat_schedule = {
         'task': 'contrats.executer_dunning_daily',
         'schedule': crontab(hour=8, minute=0),
     },
+    # AUD524 (ZCTR2) — suspension des contrats impayes. Le service existait,
+    # la management command aussi, et `contrats/scheduled.py` renvoyait deja au
+    # « beat cloturer_contrats_impayes separe » — qui n'existait pas. Un
+    # contrat sans sequence de dunning n'etait donc JAMAIS suspendu
+    # automatiquement. Heure creuse, juste apres le dunning.
+    'contrats-cloturer-impayes-daily': {
+        'task': 'contrats.cloturer_contrats_impayes_daily',
+        'schedule': crontab(hour=8, minute=20),
+    },
     # XKB27 — envoie les messages chat programmés dus + notifie les rappels
     # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
     # qu'un message programmé parte proche de l'heure choisie, sans surcharger
@@ -614,6 +623,20 @@ app.conf.beat_schedule = {
     'qhse-relancer-csh-du-jour': {
         'task': 'qhse.relancer_csh_du_jour',
         'schedule': crontab(hour=7, minute=48),
+    },
+    # AUD524 (XQHS2) — relance des derogations a echeance. Le service etait
+    # teste et correct, mais n'avait AUCUN appelant hors tests : une derogation
+    # arrivant a echeance n'etait jamais relancee. Quotidien, heure creuse.
+    'qhse-relancer-derogations': {
+        'task': 'qhse.relancer_derogations',
+        'schedule': crontab(hour=7, minute=52),
+    },
+    # AUD524 (XQHS10) — audits planifies dont la date cible est depassee. Meme
+    # constat : service teste, zero appelant, aucun passage automatique en
+    # « en_retard ». Quotidien, heure creuse.
+    'qhse-relancer-audits-planifies-en-retard': {
+        'task': 'qhse.relancer_audits_planifies_en_retard',
+        'schedule': crontab(hour=7, minute=56),
     },
     # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
     # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.

@@ -17,65 +17,14 @@
 # ete relu ; un site NOUVEAU fait echouer backend-lint, le temps qu'un humain
 # ecrive sa raison ici (ou corrige le calcul).
 #
+# AUD189 -- DEUX DETECTEURS alimentent cette base : `round(x)` sur une valeur
+# d'apparence monetaire, et `x.quantize(...)` SANS `rounding=` (arrondi
+# bancaire par defaut, contraire a la convention marocaine). Les entrees
+# « AUD189 reprise » sont l'existant capture le jour ou le second detecteur est
+# ne : la garde protege contre une REINTRODUCTION des aujourd'hui, la reprise
+# se fait fichier par fichier ensuite.
+#
 # Regenerer apres une revue : python scripts/check_money_rounding.py --regenerate
-#
-# 29/08/2026 (QJR4) : population des trois modules d'origine PROUVEE identique
-# a l'ancienne base file:line (25 sites, memes fichiers, memes lignes, memes
-# expressions). Les 13 sites supplementaires viennent de l'ELARGISSEMENT du
-# scan aux modules ventes qui publient aussi de l'argent au client
-# (public_views.py, offres_tailles.py, taille_detail.py, utils/options.py,
-# selectors.py -- les trois derniers ne portent aujourd'hui aucun round()
-# monetaire). Ils sont captures ADVISORY : les inscrire ne dit pas qu'ils sont
-# justes, cela dit qu'ils existaient avant la garde ; la chaine monetaire
-# canonique est le chantier M2 du groupe QJR.
-#
-# 29/08/2026 (QJR53) : QUATRE entrees de plus, RETIREES -- pas recalees. Elles
-# decrivaient `builder._canonical_totaux`, la SECONDE implementation en float
-# de la chaine canonique (HT brut / HT net / TVA / TTC exact), SUPPRIMEE au
-# profit du noyau `selectors._canonical_totaux` via `domain.argent`. Les sites
-# n'existent plus : preuve = `git show HEAD~1 -- .../builder.py`, et
-# `check_money_rounding` les signalait ORPHELINES avant ce nettoyage. Aucune
-# autre ligne n'a bouge (les cles sont des empreintes de CONTENU : les deux
-# `round()` restants de ce bloc -- le prix BARRE `ttc_avant` -- gardent la
-# meme expression, donc la meme cle).
-#
-# 30/08/2026 (QJR143) : SIX modules PDF ajoutes a TARGET_FILES -- l'audit du
-# 29/08 avait montre que la liste ne couvrait AUCUN module qui IMPRIME
-# l'argent au client (generate_devis_premium.py, quote_engine/pricing.py,
-# bareme.py, agricole/economics.py, industriel/finance.py, commercial/
-# equip.py). Les 27 sites captures ici sont ceux dont l'expression porte un
-# nom d'apparence monetaire (le meme filtre heuristique que le reste de la
-# base) ; industriel/finance.py n'introduit aucun site sous ce filtre (ses
-# round() portent des noms courts -- net_annual, invest, injection, om --
-# qui n'accrochent pas MONEY_NAME_RE), ce n'est pas une lacune de portee.
-
-# --- backend/django_core/apps/ventes/domain/geometrie.py
-#
-# 29/08/2026 (QJR72) : ces DEUX cles ont ete RE-CLEES, pas re-capturees. La
-# vague M3 deplace `extract_roof_config` de `services.py` vers
-# `domain/geometrie.py` sans toucher une ligne de son corps : le qualname et
-# le sha1 de contenu sont donc RIGOUREUSEMENT identiques a l'avant
-# (4ccf19c2f770 / 7f663ec40580) et seul le segment <chemin> change. C'est la
-# preuve, dans la cle elle-meme, qu'aucune expression n'a bouge -- et la
-# raison humaine ecrite en QJR4 reste donc valable telle quelle.
-backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
-backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::7f663ec40580 | round(total_kwc, 2) -- une PUISSANCE en kWc, pas un montant.
-#
-# QJR74 : meme re-cle, meme preuve -- `composition_residentielle` a change
-# de fichier, pas d'expression (qualname et sha1 cd82504b8a45 inchanges).
-backend/django_core/apps/ventes/domain/composition.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
-
-# --- backend/django_core/apps/ventes/domain/resynchronisation.py
-#
-# QJR76 : meme re-cle, meme preuve -- la fonction a change de
-# fichier, pas d'expression (qualname et sha1 9f86a510d34c inchanges).
-# QJR97 : meme re-cle une seconde fois -- le geste est devenu l'etape `reconcilier`
-# du pipeline, DANS LE MEME FICHIER. Seul le qualname bouge ; le sha1 de
-# l'expression (9f86a510d34c) est identique, et c'est la preuve.
-# `services.py` est desormais une pure facade : elle ne porte plus aucun
-# `round()`, et c'est pourquoi QJR72 a elargi le scan a tout `domain/`.
-backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
-backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
 
 # --- backend/django_core/apps/ventes/quote_engine/builder.py
 backend/django_core/apps/ventes/quote_engine/builder.py::_cout_onduleur::5a537e209151 | Q1 (20/08/2026) : somme TTC des lignes onduleur d'une option, qui devient la provision de remplacement a l'annee 12 (elle remplace un forfait '8 % du CAPEX'). Valeur JAMAIS persistee : trace + ligne d'hypothese.
@@ -88,11 +37,6 @@ backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::c1b18
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::3df65d0bc891 | Total TTC d'AFFICHAGE d'une ligne d'option (PU TTC x quantite).
 
 # --- backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py
-# QJR143 (30/08/2026) : premiere capture, module jamais scanne avant l'audit
-# du 29/08. Les 16 sites ci-dessous couvrent les cartes d'option de la page 1
-# (QJR53, meme arrondi que fmt()), l'echeancier de paiement de la page
-# "Devis Final" (page 3), le resume du one-page et le repli de calcul des
-# totaux canoniques pour un appelant qui n'a pas fourni totaux_sans/avec.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::fdd393eb39d1 | Carte option "Sans batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() pour ne plus diverger du bloc totaux page 2 sur un TTC au centime -- affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::4aa80d83238a | Carte option "Avec batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() -- affichage seul, jumeau du site ci-dessus.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::ede41a9a2000 | Prix barre (avant remise) de la carte "Sans batterie" -- QJR53 : doit suivre le meme arrondi que le total qu'il barre, affichage seul.
@@ -105,46 +49,27 @@ backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::b
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::a379dbcff3dd | "Prix par kWc" affiche en case-resume du one-page (total/KWC) -- indicateur d'affichage, non persiste.
 
 # --- backend/django_core/apps/ventes/quote_engine/pricing.py
-# QJR143 : premiere capture. Les 4 sites couvrent l'estimation kWh<-facture
-# sans table tarifaire, la provision de remplacement onduleur affichee dans
-# les hypotheses cashflow, et les deux economies annuelles (sans/avec
-# batterie) qui alimentent le PDF et la page proposition.
 backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::46412da316ea | Repli plat kWh<-facture quand aucune table tarifaire n'est resolue -- resultat marque "approximatif"/"estimation" (ESTIMATION_LABEL), jamais un chiffre precis non etiquete.
+backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::8751e504b4a4 | pas un montant : kWh entiers derives d'une facture MAD (QJR157/QJR141 ont recompose l'expression) — arrondi de grandeur physique, l'argent est en amont
 backend/django_core/apps/ventes/quote_engine/pricing.py::cashflow_assumptions::cbb83e600cac | Montant REEL provisionne (MAD TTC) pour le remplacement onduleur, lu par la legende de la courbe cashflow 25 ans (None si aucun onduleur chiffre, jamais un montant fabrique).
 backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::ff5bcfe4895b | Economie annuelle "sans batterie" (production x autoconso x prix kWh) -- coeur du calcul d'economie affiche au client, loi 82-21 (autoconsommation seule valorisee).
 backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::f21f8e619aea | Economie annuelle "avec batterie" -- jumeau du site ci-dessus, meme formule sur le taux d'autoconso avec stockage.
 
 # --- backend/django_core/apps/ventes/quote_engine/bareme.py
-# QJR143 : premiere capture -- un seul site accroche le filtre nom-monetaire.
 backend/django_core/apps/ventes/quote_engine/bareme.py::_tranche::28414c7ffdff | Prix MAD/kWh de la tranche tarifaire ONEE dans le descripteur JSON-serialisable _tranche -- constante de bareme reproduite au client, arrondie a 6 decimales (precision du tarif officiel).
 
-# --- backend/django_core/apps/ventes/quote_engine/agricole/economics.py
-# QJR236 (decision fondateur DV1) : les DEUX entrees de ce module ont ete
-# retirees avec le fichier lui-meme -- le renderer agricole premium
-# multi-pages, injoignable depuis QJR32, a ete supprime. La garde les
-# signalait comme ORPHELINES (advisory) ; c'est nettoye ici, sans regenerer
-# le reste de la base (aucune autre empreinte ne bouge).
-
-# --- backend/django_core/apps/ventes/quote_engine/industriel/finance.py
-# QJR143 : module SCANNE (ajoute a TARGET_FILES) mais AUCUN site capture --
-# ses 7 round() (cumul cashflow, net_annual, invest, injection, om) portent
-# des noms qui n'accrochent pas MONEY_NAME_RE. Ligne intentionnellement vide :
-# la garde couvre desormais le fichier, elle n'y trouve rien a inscrire.
-
 # --- backend/django_core/apps/ventes/quote_engine/commercial/equip.py
-# QJR143 : premiere capture -- chaine Sous-total HT -> Remise -> Total HT ->
-# TVA -> Total TTC (regle #4) du tableau "Equipements & investissement".
 backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::b3af1360cab3 | Total TTC d'une ligne d'equipement (PU TTC x quantite) dans le tableau "Equipements & investissement" du PDF commercial.
 backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::b800525fcef3 | P.U. TTC affiche par ligne dans le meme tableau -- meme montant que le total ci-dessus, affichage seul.
 backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::1a0be99387dc | Ligne "Remise" de la chaine Sous-total HT -> Remise -> Total HT -> TVA -> Total TTC exigee par la regle #4, rendue seulement si remise > 0.
 backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::8de073d61e02 | Ligne "TVA" de la meme chaine de totaux -- maillon entre Total HT et Total TTC.
 
 # --- backend/django_core/apps/ventes/public_views.py
+backend/django_core/apps/ventes/public_views.py::_monthly_consumption._kwh::016f23b2fff9 | pas un montant : kWh mensuels ENTIERS derives d'une facture MAD (QJR405 a bascule l'inversion sur facture_totale=True) — grandeur physique d'AFFICHAGE de la courbe de consommation, jamais persistee ; l'argent est en amont dans kwh_from_bill (deja allowliste).
 backend/django_core/apps/ventes/public_views.py::_variant_summaries::d9ea0585d95f | affichage relu : TTC du frere arrondi au MAD pour la carte des autres tailles (QJR11 - la valeur vient desormais de option_totaux, arrondi d'affichage inchange)
 backend/django_core/apps/ventes/public_views.py::_gammes_public::843ba953c327 | ELARGISSEMENT QJR4 : arrondi d'affichage du total rendu par display_totals() pour la gamme soeur.
 backend/django_core/apps/ventes/public_views.py::_gammes_public::52b70f6bdf9c | ELARGISSEMENT QJR4 : meme arrondi d'affichage pour le total de la gamme courante.
 backend/django_core/apps/ventes/public_views.py::_gammes_public::363a93bf620d | ELARGISSEMENT QJR4 : ecart d'AFFICHAGE entre les deux gammes (difference des deux totaux deja arrondis ci-dessus).
-backend/django_core/apps/ventes/public_views.py::_monthly_consumption._kwh::016f23b2fff9 | pas un montant : kWh mensuels ENTIERS derives d'une facture MAD (QJR405 a bascule l'inversion sur facture_totale=True) — grandeur physique d'AFFICHAGE de la courbe de consommation, jamais persistee ; l'argent est en amont dans kwh_from_bill (deja allowliste).
 
 # --- backend/django_core/apps/ventes/offres_tailles.py
 backend/django_core/apps/ventes/offres_tailles.py::_payback::aa407a28ffac | ELARGISSEMENT QJR4 : payback en ANNEES (cout / economie), un ratio, pas un montant.
@@ -157,14 +82,94 @@ backend/django_core/apps/ventes/offres_tailles.py::_substituer::3d1d890448d1 | E
 backend/django_core/apps/ventes/offres_tailles.py::_substituer::65a20b36c25d | ELARGISSEMENT QJR4 : cout TTC d'AFFICHAGE de la meme vue substituee.
 backend/django_core/apps/ventes/offres_tailles.py::_carte_du_devis::9352ee4da552 | ELARGISSEMENT QJR4 : prix TTC d'AFFICHAGE de la carte de taille (vue devis) ; meme expression que _carte_moteur, cle distincte par le qualname.
 
+# --- backend/django_core/apps/ventes/selectors.py
+backend/django_core/apps/ventes/selectors.py::decomposition_remise_volume::f1a9e5fbcb36 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/ventes/selectors.py::decomposition_remise_volume::413bb24e793f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
 # --- backend/django_core/apps/compta/services.py
+backend/django_core/apps/compta/services.py::ecriture_pour_facture_fournisseur::bad552556a54 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::controler_solde_releve_ocr::dcb479e6315a | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::controler_solde_releve_ocr::fb74268d1599 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::appliquer_modele_rapprochement::b1bcef313881 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::fichier_virement::4e2ce1d78ddf | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::refacturer_frais_client::187c63ed2d8f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::_pourcentage_avancement::b74fd7a928ff | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::constater_avancement::07acdcf26544 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::constater_avancement::6f5b21624eb0 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 backend/django_core/apps/compta/services.py::roi_campagne::f5573d337c53 | ROI en POURCENTAGE d'une campagne, pas un montant.
 backend/django_core/apps/compta/services.py::roi_campagne::db0a0a3deffb | Cout par lead d'AFFICHAGE (cout / nombre de leads) dans le reporting ; jamais persiste.
 backend/django_core/apps/compta/services.py::reporting_campagnes::07de69138218 | POURCENTAGE de clics dans le reporting campagnes.
 backend/django_core/apps/compta/services.py::reporting_campagnes::9bcb61d08cad | POURCENTAGE de delivrabilite dans le reporting campagnes.
+backend/django_core/apps/compta/services.py::evaluer_session_guided_selling::6adc6877400f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 backend/django_core/apps/compta/services.py::score_nps::3f0f929a3010 | Score NPS (promoteurs - detracteurs sur total), un score, pas un montant.
+backend/django_core/apps/compta/services.py::constater_ecart_change::0bb400ba1363 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::reevaluer_cloture::ec99e62be48b | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::calculer_score_enquete::fb0eb5e6b226 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 backend/django_core/apps/compta/services.py::taux_completion_enquete::5f05f07ebb51 | POURCENTAGE de completion d'une enquete.
 backend/django_core/apps/compta/services.py::kpi_campagne_mere::80cea040fbbb | ROI en POURCENTAGE de la campagne mere.
+backend/django_core/apps/compta/services.py::convertir_entite::17772f9561eb | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::convertir_entite::09614fdd62ef | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::eliminer_marge_interne::1a9b19c8f550 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::calculer_interets_minoritaires::110918c58ce6 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::calculer_interets_minoritaires::55cb124f72a4 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::executer_allocation::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::executer_allocation::8332d66ee023 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::engager::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::liquider::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::verifier_disponible_engagement::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::reprendre_depreciation_immobilisation::fff5094adab9 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::allouer_prix_transaction::ba1a556de2b7 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::generer_echeancier_reconnaissance::50eba9e4a8af | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/services.py::simuler_consolidation::5ba99f26853c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/compta/selectors.py
+backend/django_core/apps/compta/selectors.py::_ecart_pct::ec244917b4cb | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::_taux_tva::712ce5a813ff | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::budget_vs_realise::9761138c079c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::pilotage_financier::261dc6da7c4f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::pilotage_financier::fa032537d517 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::pilotage_financier::9b29dac24c2c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::disponible_budgetaire::c6a964d09797 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::analyse_variation::04b7f094f08e | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::cockpit_cloture::d53fca1c0a4a | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::_vnc_lineaire::6c49e59827dd | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::_vnc_lineaire::21c3ab12dfd9 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::projection_dotations::c7ef350084d5 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::projection_dotations::66b6ead4d3b9 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::variation_capitaux_consolides::1868b52b8ce0 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/compta/selectors.py::comparatif_entites::b4123f7a42c6 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/gestion_projet/services.py
+backend/django_core/apps/gestion_projet/services.py::_arrondir_duree_heures::a815c66c85f3 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/gestion_projet/services.py::arrondir_duree::6d31a49446c0 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/facturation/models.py
+backend/django_core/apps/facturation/models.py::Facture.escompte_mention::836de5ba1034 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+backend/django_core/apps/facturation/models.py::Facture.calcul_escompte::a9ec1744e68a | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/credit/services.py
+backend/django_core/apps/credit/services.py::_lire_lignes_limites_csv::1ee174e79532 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/ventes/domain/composition.py
+backend/django_core/apps/ventes/domain/composition.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
+
+# --- backend/django_core/apps/ventes/domain/dimensionnement_devis.py
 backend/django_core/apps/ventes/domain/dimensionnement_devis.py::capacite_batterie_des_lignes::5a537e209151 | pas un montant : capacite batterie totale en kWh lue des lignes (le scan matche 'total') — arrondi d'affichage pre-existant, deplace tel quel par QJR77
 backend/django_core/apps/ventes/domain/dimensionnement_devis.py::_echelle_paliers_batterie.rendu::ad498c1a580d | affichage relu : cout TTC par palier de l'echelle batterie (page publique), arrondi au MAD pre-existant deplace tel quel par QJR77 — la vraie conversion quantize est en aval, cf. note QJR79/QJR104
-backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::8751e504b4a4 | pas un montant : kWh entiers derives d'une facture MAD (QJR157/QJR141 ont recompose l'expression) — arrondi de grandeur physique, l'argent est en amont
+
+# --- backend/django_core/apps/ventes/domain/encaissements.py
+backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement_avec_retenue::2665cc7c1e64 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/ventes/domain/etudes.py
+backend/django_core/apps/ventes/domain/etudes.py::compute_marge_snapshot::aa0f80f53128 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/ventes/domain/geometrie.py
+backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
+backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::7f663ec40580 | round(total_kwc, 2) -- une PUISSANCE en kWc, pas un montant.
+
+# --- backend/django_core/apps/ventes/domain/recouvrement.py
+backend/django_core/apps/ventes/domain/recouvrement.py::_s2::aae10985181f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
+
+# --- backend/django_core/apps/ventes/domain/resynchronisation.py
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).

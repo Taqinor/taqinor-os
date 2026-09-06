@@ -805,6 +805,12 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
+    # AUD118 — DISTINCT de `has_facture` : une facture ANNULÉE ne bloque plus
+    # rien. `has_facture` reste le prédicat « une facture a déjà été émise »
+    # (il gouverne le bouton « Facture », dont la garde serveur ne filtre pas
+    # le statut) ; `facture_active` est le prédicat « une facture VIVANTE est
+    # attachée », qui gouverne le bouton « Annuler ».
+    facture_active = serializers.SerializerMethodField()
     # FG51 — preuve de livraison (lecture seule : capturée par l'action
     # « marquer-livre », jamais par un PUT du corps).
     has_proof_of_delivery = serializers.BooleanField(read_only=True)
@@ -835,16 +841,53 @@ class BonCommandeSerializer(serializers.ModelSerializer):
                             'statut']
 
     def get_has_facture(self, obj):
+        # AUD115 — lit l'annotation `Exists` posée par le viewset quand elle
+        # est là (un seul aller-retour pour toute la page) ; repli sur la
+        # requête historique pour les appelants qui sérialisent une instance
+        # nue (détail, tests, autres vues).
+        annote = getattr(obj, 'has_facture_annote', None)
+        if annote is not None:
+            return bool(annote)
         return Facture.objects.filter(bon_commande=obj).exists()
 
+    def get_facture_active(self, obj):
+        # AUD118 — même annotation servie par le viewset, filtrée sur les
+        # factures NON annulées : c'est elle qui décide si l'annulation du BC
+        # est encore possible.
+        annote = getattr(obj, 'facture_active_annote', None)
+        if annote is not None:
+            return bool(annote)
+        return (Facture.objects
+                .filter(bon_commande=obj)
+                .exclude(statut=Facture.Statut.ANNULEE)
+                .exists())
+
+    def _totaux(self, obj):
+        """AUD115 — LES TROIS TOTAUX EN UN SEUL PASSAGE. Chacun des trois
+        `get_total_*` traversait la chaîne canonique du devis de bout en bout
+        (`_totaux_argent()`), soit trois parcours complets des lignes par bon
+        de commande. On mémoïse la chaîne sur l'instance : la SOURCE des
+        chiffres ne change pas d'un centime, seul le nombre de parcours."""
+        if not obj.devis_id:
+            return None
+        totaux = getattr(obj, '_aud115_totaux', None)
+        if totaux is None:
+            from .domain.argent import Vue, totaux as _chaine
+            totaux = _chaine(obj.devis, vue=Vue.NET)
+            obj._aud115_totaux = totaux
+        return totaux
+
     def get_total_ht(self, obj):
-        return str(obj.devis.total_ht) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.ht_net) if totaux is not None else None
 
     def get_total_tva(self, obj):
-        return str(obj.devis.total_tva) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.tva) if totaux is not None else None
 
     def get_total_ttc(self, obj):
-        return str(obj.devis.total_ttc) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.ttc) if totaux is not None else None
 
 
 class LigneFactureSerializer(serializers.ModelSerializer):

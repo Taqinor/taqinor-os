@@ -46,8 +46,21 @@ def _transitions():
         S.SIGNE: {S.ACTIF, S.RESILIE},
         S.ACTIF: {S.SUSPENDU, S.RESILIE, S.EXPIRE},
         S.SUSPENDU: {S.ACTIF, S.RESILIE, S.EXPIRE},
-        # États terminaux : aucune transition sortante.
-        S.RESILIE: set(),
+        # AUD511 — LA MARCHE ARRIÈRE DANS LA FENÊTRE DE PRÉAVIS. `Resiliation`
+        # déclarait trois statuts, mais `annulee` et `effective` étaient des
+        # ÉTATS MORTS : seul `resilier_contrat` créait une Resiliation (toujours
+        # en `demande`), aucun service n'écrivait les deux autres, et `RESILIE`
+        # était terminal — donc même une résiliation annulée n'aurait jamais
+        # rendu son contrat ACTIF. Une résiliation faite par erreur était
+        # IRRATTRAPABLE. Décision fondateur : câbler une vraie annulation
+        # (besoin métier réel), pas retirer les états.
+        #
+        # Cette arête est RÉSERVÉE à l'action `annuler-resiliation` (fenêtre de
+        # préavis + passage de la Resiliation à ANNULEE). La porte générique
+        # `changer-statut` la refuse explicitement (même patron qu'AUD501) :
+        # ressusciter un contrat n'est pas un geste administratif.
+        S.RESILIE: {S.ACTIF},
+        # État terminal : aucune transition sortante.
         S.EXPIRE: set(),
     }
 

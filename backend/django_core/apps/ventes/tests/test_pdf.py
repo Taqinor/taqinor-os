@@ -244,7 +244,9 @@ class TestGeneratePdfMocked(TestCase):
 
         key = generate_facture_pdf(facture.id)
 
-        self.assertEqual(key, f'factures/{facture.reference}.pdf')
+        self.assertEqual(
+            key,
+            f'factures/{facture.company_id}/{facture.reference}.pdf')
         mock_upload.assert_called_once()
         facture.refresh_from_db()
         self.assertEqual(facture.fichier_pdf, key)

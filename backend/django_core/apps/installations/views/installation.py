@@ -893,7 +893,14 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'phase': 'Valeur invalide (releve ou drone).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        meta, err = store_attachment(file)
+        # AUD311 (SCA42) — CLE SCOPEE SOCIETE. `store_attachment`
+        # accepte `company=` depuis SCA42 ; l'omettre retombe en
+        # silence sur la cle PLATE `attachments/{uuid}.ext` au lieu du
+        # prefixe `attachments/{company_id}/{uuid}.ext`. Defense en
+        # profondeur : toute lecture applicative est deja scopee par
+        # `Attachment.company` et aucun endpoint n'accepte un
+        # `file_key` arbitraire.
+        meta, err = store_attachment(file, company=inst.company)
         if err:
             return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
         ct = ContentType.objects.get_for_model(Installation)

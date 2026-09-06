@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils.functional import cached_property
 
 from core.models import TenantModel
 
@@ -1083,24 +1084,61 @@ class BonCommande(models.Model):
     def __str__(self):
         return self.reference
 
-    @property
+    def refresh_from_db(self, *args, **kwargs):
+        # AUD115 — `reliquat_par_ligne` est mémoïsé (cached_property) pour que
+        # `est_partiellement_livre` ne rejoue pas la propriété une seconde fois
+        # sur chaque ligne de la liste. `livrer_partiel` relit le reliquat
+        # APRÈS avoir écrit ses lignes de livraison : la relecture doit voir la
+        # base, jamais le cache. On l'invalide donc ici, à la source, plutôt
+        # que de compter sur chaque appelant pour y penser.
+        self.__dict__.pop('reliquat_par_ligne', None)
+        return super().refresh_from_db(*args, **kwargs)
+
+    @cached_property
     def reliquat_par_ligne(self):
         """XSAL12 — quantité restant à livrer par ligne de devis source.
 
         Un BC sans devis (ou sans livraison partielle) renvoie une liste
         vide — comportement historique inchangé (le statut reste piloté par
-        `marquer_livre` seul dans ce cas)."""
+        `marquer_livre` seul dans ce cas).
+
+        AUD115 — SEULES LES LIGNES LIVRABLES SONT PARCOURUES. La boucle
+        itérait TOUTES les lignes du devis et calculait `ligne.quantite -
+        livre` ; or XSAL14 a rendu `LigneDevis.quantite` nullable et le
+        sérialiseur neutralise quantité/prix/produit sur une ligne de
+        section/note. `None - 0` levait TypeError, et la propriété étant
+        exposée SANS garde sur chaque ligne de la liste, un simple intertitre
+        « Kit batterie » dans un devis rendait l'écran Bons de commande de
+        toute la société inaccessible. On réutilise `compte_dans_totaux`, LE
+        prédicat maison déjà employé par `option_lines` et
+        `reserver_stock_devis_facture` — jamais un troisième filtre."""
         if self.devis_id is None:
             return []
-        from django.db.models import Sum
-        livre_par_ligne = dict(
-            LigneLivraisonBC.objects
-            .filter(livraison__bon_commande=self)
-            .values_list('ligne_devis_id')
-            .annotate(total=Sum('quantite_livree'))
-        )
+        cache = getattr(self, '_prefetched_objects_cache', None) or {}
+        if 'livraisons' in cache:
+            # AUD115 — la liste préfetche `livraisons__lignes` : on somme en
+            # mémoire au lieu d'une requête d'agrégat PAR bon de commande.
+            # Mêmes chiffres, à l'unité près — seul le nombre d'allers-retours
+            # change.
+            livre_par_ligne = {}
+            for livraison in self.livraisons.all():
+                for ligne_livree in livraison.lignes.all():
+                    cle = ligne_livree.ligne_devis_id
+                    livre_par_ligne[cle] = (
+                        (livre_par_ligne.get(cle) or 0)
+                        + ligne_livree.quantite_livree)
+        else:
+            from django.db.models import Sum
+            livre_par_ligne = dict(
+                LigneLivraisonBC.objects
+                .filter(livraison__bon_commande=self)
+                .values_list('ligne_devis_id')
+                .annotate(total=Sum('quantite_livree'))
+            )
         out = []
         for ligne in self.devis.lignes.all():
+            if not ligne.compte_dans_totaux or ligne.quantite is None:
+                continue
             livre = livre_par_ligne.get(ligne.id) or 0
             out.append({
                 'ligne_devis_id': ligne.id,
