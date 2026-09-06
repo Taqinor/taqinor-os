@@ -1,9 +1,14 @@
 """RELANCE FOUNDATION — plan de relance structuré (multi-touches).
 
 Covers:
-  - ``initialiser_plan_relance`` matérialise la cadence par défaut de la
-    société (J+2/J+5/J+10/J+20/J+35), pose ``Lead.relance_date`` sur la
-    première échéance, journalise dans le chatter.
+  - ``initialiser_plan_relance`` matérialise UNE cadence du gabarit de la
+    société. MRY5 : la cadence est désormais NOMMÉE — les 5 barreaux neutres
+    historiques (J+2/J+5/J+10/J+20/J+35) vivent sous ``generique``, que ces
+    tests demandent EXPLICITEMENT (bug CI #77 : on édite un test épinglé, on
+    ne le laisse pas dériver). Les échéances sont en plus recalées sur la
+    fenêtre d'appel de la société (MRY8), d'où un départ FIXE ci-dessous
+    plutôt qu'un ``today`` qui rendrait les dates attendues dépendantes du
+    jour où tourne la CI.
   - Idempotence : un second appel sur un lead déjà initialisé ne duplique
     rien et renvoie le plan existant.
   - ``marquer_etape_relance`` (fait/sautée) journalise dans le chatter et
@@ -24,9 +29,15 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.services import initialiser_plan_relance, marquer_etape_relance
+from apps.crm import horaires
 from apps.parametres.models_relance import CadenceRelanceEtape
 
 User = get_user_model()
+
+#: Lundi 7 septembre 2026, minuit heure de Casablanca — départ FIXE : les
+#: échéances attendues plus bas sont alors calculables à la main (les touches
+#: qui tombent un week-end sont recalées au lundi suivant, MRY8).
+DEPART_FIXE = datetime.datetime(2026, 9, 7, tzinfo=horaires.CASABLANCA)
 
 
 def make_company(slug='relance-co'):
@@ -64,7 +75,9 @@ class TestCadenceRelanceEtapeSeed(TestCase):
         company = make_company('relance-param-co3')
         self.assertEqual(CadenceRelanceEtape.objects.filter(
             company=company).count(), 0)
-        cadence = CadenceRelanceEtape.cadence_pour(company)
+        # MRY4 — `cadence_pour` prend desormais la cadence visee ; les 5
+        # barreaux neutres historiques vivent sous `generique`.
+        cadence = CadenceRelanceEtape.cadence_pour(company, 'generique')
         self.assertEqual(len(cadence), 5)
         self.assertEqual(
             CadenceRelanceEtape.objects.filter(company=company).count(), 5)
@@ -82,35 +95,42 @@ class TestInitialiserPlanRelance(TestCase):
             company=self.company, nom='Prospect', owner=self.owner)
 
     def test_cree_les_cinq_etapes_aux_bonnes_echeances(self):
-        today = datetime.date.today()
-        etapes = initialiser_plan_relance(self.lead, self.acteur, depart=today)
+        etapes = initialiser_plan_relance(
+            self.lead, self.acteur, depart=DEPART_FIXE, cadence='generique')
         self.assertEqual(len(etapes), 5)
-        due_dates = [e.due_date for e in etapes]
-        self.assertEqual(due_dates, [
-            today + datetime.timedelta(days=2),
-            today + datetime.timedelta(days=5),
-            today + datetime.timedelta(days=10),
-            today + datetime.timedelta(days=20),
-            today + datetime.timedelta(days=35),
+        # Départ lundi 07/09/2026. J+2 = mercredi 09 ; J+5 = SAMEDI 12, recalé
+        # au lundi 14 ; J+10 = jeudi 17 ; J+20 = DIMANCHE 27, recalé au lundi
+        # 28 ; J+35 = lundi 12/10. Les délais du gabarit sont inchangés — seul
+        # le recalage sur les jours ouvrés (MRY8) déplace deux échéances.
+        self.assertEqual([e.due_date for e in etapes], [
+            datetime.date(2026, 9, 9),
+            datetime.date(2026, 9, 14),
+            datetime.date(2026, 9, 17),
+            datetime.date(2026, 9, 28),
+            datetime.date(2026, 10, 12),
         ])
         self.assertTrue(all(e.statut == RelanceEtape.Statut.A_FAIRE for e in etapes))
+        # MRY5 — chaque touche porte désormais une heure, pas seulement un jour.
+        self.assertTrue(all(e.due_at is not None for e in etapes))
+        self.assertTrue(all(e.cadence == 'generique' for e in etapes))
 
     def test_pose_relance_date_sur_la_premiere_echeance(self):
-        today = datetime.date.today()
-        initialiser_plan_relance(self.lead, self.acteur, depart=today)
+        initialiser_plan_relance(
+            self.lead, self.acteur, depart=DEPART_FIXE, cadence='generique')
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.relance_date, today + datetime.timedelta(days=2))
+        self.assertEqual(self.lead.relance_date, datetime.date(2026, 9, 9))
 
     def test_journalise_dans_le_chatter(self):
-        initialiser_plan_relance(self.lead, self.acteur)
+        initialiser_plan_relance(self.lead, self.acteur, cadence='generique')
         notes = LeadActivity.objects.filter(
             lead=self.lead, kind=LeadActivity.Kind.NOTE)
         self.assertTrue(
             any('Plan de relance initialisé' in (n.body or '') for n in notes))
 
     def test_idempotent_second_appel_ne_duplique_pas(self):
-        initialiser_plan_relance(self.lead, self.acteur)
-        second = initialiser_plan_relance(self.lead, self.acteur)
+        initialiser_plan_relance(self.lead, self.acteur, cadence='generique')
+        second = initialiser_plan_relance(
+            self.lead, self.acteur, cadence='generique')
         self.assertEqual(len(second), 5)
         self.assertEqual(
             RelanceEtape.objects.filter(lead=self.lead).count(), 5)
@@ -119,7 +139,7 @@ class TestInitialiserPlanRelance(TestCase):
         # Garde négative : le service n'importe/n'appelle aucun client
         # WhatsApp/e-mail — seules des lignes RelanceEtape + une note chatter
         # sont créées, jamais un message sortant.
-        initialiser_plan_relance(self.lead, self.acteur)
+        initialiser_plan_relance(self.lead, self.acteur, cadence='generique')
         for note in LeadActivity.objects.filter(lead=self.lead):
             self.assertNotIn('whatsapp', (note.body or '').lower())
             self.assertNotIn('envoyé', (note.body or '').lower())
@@ -135,7 +155,8 @@ class TestMarquerEtapeRelance(TestCase):
             role_legacy='responsable', company=self.company)
         self.lead = Lead.objects.create(
             company=self.company, nom='Prospect', owner=self.owner)
-        self.etapes = initialiser_plan_relance(self.lead, self.acteur)
+        self.etapes = initialiser_plan_relance(
+            self.lead, self.acteur, depart=DEPART_FIXE, cadence='generique')
 
     def test_marquer_fait_journalise_et_avance_relance_date(self):
         premiere = self.etapes[0]
@@ -239,7 +260,8 @@ class TestRelanceEtapeAPI(TestCase):
             username='relapinormal', password='x', company=self.company)
         self.lead = Lead.objects.create(
             company=self.company, nom='Prospect', owner=self.owner)
-        self.etapes = initialiser_plan_relance(self.lead, self.responsable)
+        self.etapes = initialiser_plan_relance(
+            self.lead, self.responsable, cadence='generique')
 
         self.api_resp = APIClient()
         self.api_resp.credentials(
@@ -250,12 +272,17 @@ class TestRelanceEtapeAPI(TestCase):
 
     def test_initialiser_endpoint_idempotent(self):
         lead2 = Lead.objects.create(company=self.company, nom='Lead2', owner=self.owner)
+        # MRY5 — l'endpoint prend une cadence (défaut `contact`) ; ce test
+        # vérifie l'IDEMPOTENCE, pas le nombre de touches du protocole : il
+        # demande donc explicitement l'échelle neutre historique.
         resp = self.api_resp.post(
-            f'/api/django/crm/leads/{lead2.id}/relance/initialiser/')
+            f'/api/django/crm/leads/{lead2.id}/relance/initialiser/',
+            {'cadence': 'generique'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(len(resp.data), 5)
         resp2 = self.api_resp.post(
-            f'/api/django/crm/leads/{lead2.id}/relance/initialiser/')
+            f'/api/django/crm/leads/{lead2.id}/relance/initialiser/',
+            {'cadence': 'generique'}, format='json')
         self.assertEqual(len(resp2.data), 5)
         self.assertEqual(RelanceEtape.objects.filter(lead=lead2).count(), 5)
 

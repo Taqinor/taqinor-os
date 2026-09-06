@@ -42,6 +42,14 @@ class Command(BaseCommand):
             '--dry-run', action='store_true',
             help="N'écrit rien : compte créations, mises à jour et "
                  "déplacements d'étape.")
+        # MRY0 (lot C) — l'interrupteur du jour où Meryem travaille dans
+        # l'ERP : on continue de RAPATRIER les leads Odoo, mais le pipeline
+        # ERP n'est plus aligné sur celui d'Odoo (c'est alors
+        # ``push_odoo_stages --apply`` qui fait l'inverse).
+        parser.add_argument(
+            '--no-align', action='store_true', dest='no_align',
+            help="Rapatrie et importe, mais N'ALIGNE PAS les étapes ERP sur "
+                 "le pipeline Odoo.")
 
     def _resolve_company(self, raw):
         from authentication.models import Company
@@ -77,6 +85,11 @@ class Command(BaseCommand):
             f"({len(tag_names)} tag(s)).")
 
         rows = build_rows(odoo_leads, tag_names)
+        ignores_test = getattr(rows, 'ignores_test', 0)
+        if ignores_test:
+            self.stdout.write(self.style.WARNING(
+                f'{ignores_test} lead(s) de test Meta ignoré(s) — supprimés '
+                "de l'ERP, ils ne reviennent plus à chaque passe."))
 
         # Fichier temporaire PII : jamais committé, supprimé quoi qu'il arrive.
         fd, path = tempfile.mkstemp(suffix='.json')
@@ -92,9 +105,14 @@ class Command(BaseCommand):
             except OSError:
                 pass
 
+        prefix = '[dry-run] ' if dry_run else ''
+        if options.get('no_align'):
+            self.stdout.write(self.style.SUCCESS(
+                f'{prefix}--no-align : import terminé, étapes ERP laissées '
+                'telles quelles (aucun alignement sur le pipeline Odoo).'))
+            return
         rapport = align_stages_from_rows(
             company, rows, apply_changes=not dry_run)
-        prefix = '[dry-run] ' if dry_run else ''
         for (src, dst), n in sorted(rapport.moves.items()):
             self.stdout.write(f'{prefix}étape {src} → {dst} : {n}')
         if rapport.corbeille:

@@ -1030,6 +1030,13 @@ CELERY_TASK_ROUTES = {
     'flotte.generer_couts_contrat_mensuel': {'queue': 'scheduled'},
     # NTCRM6 — snapshot forecast hebdomadaire (beat, tâche planifiée).
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
+    # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
+    'crm.sync_odoo_leads': {'queue': 'scheduled'},
+    # MRY17 — digest 08:30 des touches dues + escalade premier contact.
+    'crm.notifier_relances_dues': {'queue': 'scheduled'},
+    'crm.escalader_premier_contact': {'queue': 'scheduled'},
+    # MRY21 — bilan hebdomadaire des relances (lundi 07:00).
+    'crm.bilan_hebdo_relances': {'queue': 'scheduled'},
     'notifications.daily_digest': {'queue': 'scheduled'},
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},
@@ -1156,6 +1163,8 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # MRY0 (lot B) — filet de rattrapage 15 min des leads Meta.
+    'adsengine.pull_meta_leads_recent': {'queue': 'scheduled'},
     # PUB89 — score quotidien de qualité de la chaîne d'attribution.
     'adsengine.check_attribution_quality': {'queue': 'scheduled'},
     # PUB94 — snapshot hebdo d'observabilité de L'Arbre (branches mortes).

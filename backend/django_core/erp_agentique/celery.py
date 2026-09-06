@@ -273,6 +273,34 @@ app.conf.beat_schedule = {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
     },
+    # MRY0 (lot C) — miroir Odoo → ERP. Il n'était planifié NULLE PART : le
+    # cockpit de Meryem décrochait silencieusement (dernière passe 01/09/2026).
+    # No-op propre sans config Odoo ni ODOO_SYNC_COMPANY_SLUG ; verrou interne
+    # contre deux passes simultanées. Odoo reste en LECTURE SEULE.
+    'crm-sync-odoo-leads': {
+        'task': 'crm.sync_odoo_leads',
+        'schedule': crontab(minute='*/30'),
+    },
+    # MRY17 — digest du matin : « N relance(s) à faire aujourd'hui », UNE
+    # fois par jour et par commercial (idempotent par jour). Le panneau
+    # « Relances du jour » ne sert à rien si personne ne l'ouvre.
+    'crm-notifier-relances-dues': {
+        'task': 'crm.notifier_relances_dues',
+        'schedule': crontab(hour=8, minute=30),
+    },
+    # MRY17 — surveillance de la promesse « rappelé en moins de cinq minutes
+    # OUVRÉES ». Toutes les 5 min ; hors fenêtre d'appel, zéro minute ouvrée
+    # s'écoule, donc aucune escalade la nuit.
+    'crm-escalader-premier-contact': {
+        'task': 'crm.escalader_premier_contact',
+        'schedule': crontab(minute='*/5'),
+    },
+    # MRY21 — bilan hebdomadaire du moteur de relances, lundi 07:00, à la
+    # direction. Sept chiffres : la seule vue de HAUT du moteur.
+    'crm-bilan-hebdo-relances': {
+        'task': 'crm.bilan_hebdo_relances',
+        'schedule': crontab(hour=7, minute=0, day_of_week=1),
+    },
     # QW4 — SLA rappel plus serré que le SLA générique premier-contact :
     # tourne plus souvent (toutes les 30 min) pour rattraper une escalade
     # rapidement sur un SLA rappel typiquement court (2 à quelques heures).
@@ -653,6 +681,14 @@ app.conf.beat_schedule = {
     'adsengine-pull-meta-leads': {
         'task': 'adsengine.pull_meta_leads',
         'schedule': crontab(hour=7, minute=25),
+    },
+    # MRY0 (lot B) — FILET de rattrapage toutes les 15 min (fenêtre 48 h). Le
+    # webhook temps réel reste le chemin nominal ; ce filet borne le retard
+    # maximal à 15 min quand il tombe en panne (incident AZIZ : 22 h de retard
+    # parce que seul le pull de 07:25 pouvait faire entrer le lead).
+    'adsengine-pull-meta-leads-recent': {
+        'task': 'adsengine.pull_meta_leads_recent',
+        'schedule': crontab(minute='*/15'),
     },
     # ADSDEEP27 — boucle de retour CAPI « signatures » (CRM Dataset Meta) : push
     # QUOTIDIEN de l'événement signed_contract par deal signé Odoo, idempotent

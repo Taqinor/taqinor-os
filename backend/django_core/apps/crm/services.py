@@ -19,6 +19,7 @@ The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
 import contextlib
+import datetime
 import hashlib as _hashlib
 import logging
 import re as _re
@@ -87,6 +88,9 @@ _CONTACT_KINDS = frozenset([
     LeadActivity.Kind.NOTE,
     LeadActivity.Kind.APPEL,
     LeadActivity.Kind.EMAIL,
+    # MRY10 — un WhatsApp envoyé fait AVANCER NEW → CONTACTED, exactement
+    # comme un e-mail : c'est le canal principal de Meryem.
+    LeadActivity.Kind.WHATSAPP,
 ])
 
 # Clé canonique de l'étape « Contacté » (STAGES.py — jamais hardcodée ailleurs).
@@ -295,14 +299,9 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     if lead.stage != stages.NEW:
         return False
     lead.stage = _STAGE_CONTACTED
-    update_fields = ['stage']
-    # FG28 — le premier contact fait quitter NEW via CE signal (hors du
-    # perform_update du lead qui posait first_contacted_at avant) : on le pose ici.
-    if getattr(lead, 'first_contacted_at', None) is None:
-        from django.utils import timezone
-        lead.first_contacted_at = timezone.now()
-        update_fields.append('first_contacted_at')
-    lead.save(update_fields=update_fields)
+    lead.save(update_fields=['stage'])
+    # FG28/MRY19 — le premier contact passe par LA source unique
+    # (``marquer_premier_contact``) : plus de pose artisanale ici.
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
@@ -311,6 +310,7 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
         new_value=stages.STAGE_LABELS[_STAGE_CONTACTED],
         body='auto — premier contact',
     )
+    marquer_premier_contact(lead)
     _emit_stage_changed(lead, stages.NEW, _STAGE_CONTACTED, user)
     return True
 
@@ -535,52 +535,121 @@ def sync_relance_activity(lead, user):
 # envoi automatique (WhatsApp/e-mail) n'est jamais déclenché ici — ce sont des
 # rappels VISUELS pour le commercial (panneau « Relances du jour »), jamais un
 # message sortant.
-def initialiser_plan_relance(lead, user, *, depart=None):
-    """Matérialise le plan de relance de ``lead`` à partir de la cadence par
-    défaut de sa société (``parametres.CadenceRelanceEtape.cadence_pour``).
+def _refus_cadence(lead, user, raison):
+    """Note chatter expliquant pourquoi AUCUNE cadence n'a été posée.
 
-    IDEMPOTENT : si ``lead`` porte déjà des étapes de relance, elles sont
-    renvoyées telles quelles (jamais de doublon — un second appel « à la
-    demande » sur le même lead ne réinitialise rien). ``depart`` (date) est le
-    point de départ du plan, par défaut aujourd'hui.
-
-    Pose aussi ``Lead.relance_date`` sur l'échéance de la toute première
-    étape (via ``sync_relance_activity``) : le Calendrier / « Ma file »
-    reflètent immédiatement la prochaine touche de la cadence, sans second
-    système de rappel concurrent.
-
-    Retourne la liste des ``RelanceEtape`` (créées ou déjà existantes, dans
-    l'ordre des étapes)."""
-    existantes = list(
-        lead.relance_etapes.order_by('ordre', 'due_date'))
-    if existantes:
-        return existantes
-
-    from datetime import timedelta
-
-    from apps.parametres.models_relance import CadenceRelanceEtape
-    cadence = CadenceRelanceEtape.cadence_pour(lead.company)
-    if not cadence:
-        return []
-
-    depart = depart or aujourd_hui_local()
-    etapes = []
-    for gabarit in cadence:
-        etapes.append(RelanceEtape(
-            company=lead.company, lead=lead, ordre=gabarit.ordre,
-            due_date=depart + timedelta(days=gabarit.delai_jours),
-            canal=gabarit.canal, libelle=gabarit.libelle,
-        ))
-    RelanceEtape.objects.bulk_create(etapes)
-    resultats = list(lead.relance_etapes.order_by('ordre', 'due_date'))
-
+    Un refus silencieux est le pire des deux mondes : Meryem croit le lead
+    relancé alors qu'il ne l'est pas. Le refus est donc toujours écrit."""
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE,
-        body=f"Plan de relance initialisé ({len(resultats)} étape(s), "
-             f"prochaine le {resultats[0].due_date}).")
+        body=f'Cadence de relance non initialisée : {raison}.')
+    return []
+
+
+def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
+                             devis=None):
+    """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
+    société (``parametres.CadenceRelanceEtape.cadence_pour``).
+
+    IDEMPOTENT **PAR CADENCE** (MRY5) : un lead peut porter simultanément sa
+    prise de contact et le suivi d'un devis ; l'ancienne idempotence globale
+    « ce lead a déjà des étapes » les aurait confondus et un devis envoyé
+    n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
+    plus portée PAR DEVIS.
+
+    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
+    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
+    ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
+    l'instant est recalé sur la fenêtre d'appel de la société
+    (``horaires.prochain_creneau_appel``, MRY8). Une touche marquée
+    ``dimanche_ok`` connaît la fenêtre dominicale 16 h-19 h du Protocole v3.
+    ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
+    leur grain jour.
+
+    REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
+    ou archivé — les trois cas où relancer serait une faute.
+
+    Pose aussi ``Lead.relance_date`` sur l'échéance de la première touche (via
+    ``sync_relance_activity``) : le Calendrier / « Ma file » reflètent la
+    prochaine touche sans second système de rappel concurrent.
+
+    Retourne la liste des ``RelanceEtape`` de CETTE cadence (créées ou déjà
+    existantes)."""
+    from datetime import timedelta
+
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    if getattr(lead, 'ne_plus_contacter', False):
+        return _refus_cadence(lead, user, 'lead marqué « ne plus contacter »')
+    if getattr(lead, 'perdu', False):
+        return _refus_cadence(lead, user, 'lead perdu')
+    if getattr(lead, 'is_archived', False):
+        return _refus_cadence(lead, user, 'lead archivé')
+
+    deja = lead.relance_etapes.filter(cadence=cadence)
+    if cadence == 'apres_devis' and devis is not None:
+        deja = deja.filter(devis=devis)
+    existantes = list(deja.order_by('ordre', 'due_date'))
+    if existantes:
+        return existantes
+
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if not gabarits:
+        return []
+
+    if depart is None:
+        depart = timezone.now()
+    elif not isinstance(depart, datetime.datetime):
+        # Rétro-compat : un appelant historique passe une DATE. On la place à
+        # l'ouverture de la fenêtre plutôt qu'à minuit (qui serait aussitôt
+        # repoussé au lendemain par le recalage).
+        depart = datetime.datetime.combine(
+            depart, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+    elif timezone.is_naive(depart):
+        depart = timezone.make_aware(depart, datetime.timezone.utc)
+
+    etapes = []
+    for gabarit in gabarits:
+        echeance = depart + timedelta(
+            days=gabarit.delai_jours,
+            minutes=getattr(gabarit, 'delai_minutes', 0) or 0)
+        heure_cible = getattr(gabarit, 'heure_cible', None)
+        if heure_cible is not None:
+            locale = echeance.astimezone(horaires.CASABLANCA)
+            echeance = locale.replace(
+                hour=heure_cible.hour, minute=heure_cible.minute,
+                second=0, microsecond=0)
+        echeance = horaires.prochain_creneau_appel(
+            echeance, lead.company,
+            dimanche=bool(getattr(gabarit, 'dimanche_ok', False)))
+        etapes.append(RelanceEtape(
+            company=lead.company, lead=lead, cadence=cadence,
+            ordre=gabarit.ordre, due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            devis=devis,
+        ))
+    RelanceEtape.objects.bulk_create(etapes)
+    resultats = list(
+        lead.relance_etapes.filter(cadence=cadence)
+        .order_by('ordre', 'due_date'))
+    if devis is not None:
+        resultats = [e for e in resultats if e.devis_id == devis.pk]
 
     premiere = resultats[0]
+    quand = (premiere.due_at.astimezone(horaires.CASABLANCA)
+             .strftime('%d/%m/%Y à %H:%M') if premiere.due_at
+             else str(premiere.due_date))
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f'Plan de relance initialisé — cadence « {cadence} » '
+             f'({len(resultats)} touche(s), première le {quand}).')
+
     if not lead.relance_date or lead.relance_date > premiere.due_date:
         lead.relance_date = premiere.due_date
         lead.save(update_fields=['relance_date'])
@@ -588,7 +657,21 @@ def initialiser_plan_relance(lead, user, *, depart=None):
     return resultats
 
 
-def marquer_etape_relance(etape, user, statut, note=''):
+#: MRY10 — canal de la touche → type d'activité du chatter. Une touche traitée
+#: doit laisser UNE ligne typée (appel/WhatsApp/e-mail), pas une note libre :
+#: c'est elle que compte le compteur de tentatives (MRY20) et que lisent les
+#: règles d'arrêt sur l'issue (MRY9). « visite » n'a pas de type dédié — elle
+#: reste une NOTE, faute de mieux, plutôt qu'un type inventé.
+_CANAL_VERS_KIND = {
+    RelanceEtape.Canal.APPEL: LeadActivity.Kind.APPEL,
+    RelanceEtape.Canal.WHATSAPP: LeadActivity.Kind.WHATSAPP,
+    RelanceEtape.Canal.EMAIL: LeadActivity.Kind.EMAIL,
+    RelanceEtape.Canal.VISITE: LeadActivity.Kind.NOTE,
+}
+
+
+def marquer_etape_relance(etape, user, statut, note='', outcome='',
+                          body=''):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
     silencieux en arrière) : trace l'acteur/l'horodatage, journalise dans le
     chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
@@ -605,21 +688,415 @@ def marquer_etape_relance(etape, user, statut, note=''):
     etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
 
     verbe = 'faite' if statut == RelanceEtape.Statut.FAIT else 'sautée'
-    body = f"Relance J+{etape.ordre} ({etape.get_canal_display()}) marquée {verbe}."
+    # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`
+    # est un RANG dans la cadence et non plus un délai en jours (la touche 2
+    # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    corps = (f'Touche « {libelle} » ({etape.get_canal_display()}, cadence '
+             f'{etape.cadence}) marquée {verbe}.')
+    if body:
+        corps += f' {body}'
     if note:
-        body += f" Note : {note}"
+        corps += f" Note : {note}"
+    # MRY10 — UNE SEULE ligne de chatter par touche, TYPÉE selon le canal
+    # (jamais une note libre en plus d'une activité) : c'est elle que compte
+    # le compteur de tentatives et que lisent les règles d'arrêt (MRY9).
+    kind = (_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE)
+            if statut == RelanceEtape.Statut.FAIT
+            else LeadActivity.Kind.NOTE)
     LeadActivity.objects.create(
         company=etape.company, lead=etape.lead, user=user,
-        kind=LeadActivity.Kind.NOTE, body=body)
+        kind=kind, body=corps, outcome=(outcome or ''))
 
     lead = etape.lead
-    prochaine = (lead.relance_etapes
-                 .filter(statut=RelanceEtape.Statut.A_FAIRE)
-                 .order_by('ordre', 'due_date').first())
+    prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
+    # MRY11 — la cadence vient-elle de s'ÉPUISER ? Uniquement ici : une
+    # cadence ARRÊTÉE (MRY9) n'est pas une cadence terminée, et clôturer un
+    # lead qu'on vient de joindre serait exactement l'inverse du bon geste.
+    if not lead.relance_etapes.filter(
+            cadence=etape.cadence,
+            statut=RelanceEtape.Statut.A_FAIRE).exists():
+        cloturer_cadence(lead, user, etape.cadence)
     return etape
+
+
+#: MRY11 — ce que devient un lead dont la cadence s'est épuisée sans réponse.
+#: Le tag NOMME la raison : « injoignable » et « devis sans suite » ne se
+#: traitent pas de la même façon au réveil.
+_CLOTURE_TAGS = {
+    'contact': 'Injoignable 7 tentatives',
+    'apres_devis': 'Devis sans suite',
+}
+
+#: MRY11 — étape la plus AVANCÉE qu'une cadence puisse encore parquer.
+#: `_bulk_stage_allowed` autorise « vers COLD » depuis N'IMPORTE OÙ (c'est
+#: voulu pour une mise au parking manuelle) : sans ce plafond, épuiser une
+#: cadence `contact` sur un lead qui a depuis SIGNÉ le ferait retomber au
+#: froid — un devis signé effacé par un rappel resté ouvert.
+_CLOTURE_PLAFOND = {
+    'contact': stages.CONTACTED,
+    'apres_devis': stages.FOLLOW_UP,
+}
+
+
+def cloturer_cadence(lead, user, cadence):
+    """MRY11 — Fin de cadence : dormance COLD, étiquette, réveils J30/J60.
+
+    Un lead dont les touches sont toutes traitées sans réponse ne doit pas
+    rester au milieu du pipeline à encombrer la vue de Meryem : il part au
+    PARKING (COLD) avec une étiquette qui dit POURQUOI, et deux réveils
+    J30/J60 qui le rendront un jour. C'est ce qui distingue « mis de côté »
+    de « oublié ».
+
+    Trois garanties :
+      * COLD est un parking, PAS une perte — aucun motif de perte n'est posé
+        ici ; `Lead.perdu` n'est jamais touché (décision humaine, MRY22) ;
+      * `avancer_stage_lead_vers` respecte le rang du funnel : un lead déjà
+        plus avancé (devis envoyé, signé) ne RECULE jamais vers COLD ;
+      * la cadence `reveil` ne se clôture pas elle-même — sinon un lead
+        réveillé sans réponse rentrerait dans une boucle de réveils infinie.
+
+    Best-effort : ne lève jamais."""
+    if cadence == 'reveil':
+        return
+    try:
+        plafond = _CLOTURE_PLAFOND.get(cadence)
+        if plafond is None:
+            return
+        # L'instance peut être PÉRIMÉE (le lead a bougé pendant la cadence,
+        # exactement le cas que le plafond ci-dessous doit attraper) : on relit
+        # l'étape courante avant d'en juger — même précaution que
+        # `avancer_stage_new_vers_contacted`.
+        if lead.pk:
+            lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived'])
+        if lead.stage != stages.COLD and (
+                _rang_funnel(lead.stage) > _rang_funnel(plafond)):
+            # Le lead a PROGRESSÉ pendant la cadence (devis envoyé, signé) :
+            # la touche restée ouverte ne doit pas le faire retomber.
+            return
+        avancer_stage_lead_vers(lead, user, stages.COLD)
+        tag = _CLOTURE_TAGS.get(cadence)
+        if tag:
+            poser_tag_lead(lead, user, tag)
+        initialiser_plan_relance(
+            lead, user, cadence='reveil', depart=timezone.now())
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'MRY11: clôture de cadence échouée (lead #%s, cadence %s)',
+            getattr(lead, 'pk', '?'), cadence, exc_info=True)
+
+
+#: MRY13 — la touche dont le texte est un SCRIPT à dire, pas un message à
+#: coller : son lien wa.me ne doit donc porter aucun `?text=`.
+_TEMPLATES_VOCAUX = frozenset({'vocal_j3'})
+
+#: Placeholders que le rendu sait remplir. Un placeholder de cette liste resté
+#: SANS valeur fait OMETTRE sa phrase — jamais un blanc, jamais un défaut.
+_PLACEHOLDERS_RENDUS = (
+    'civilite', 'nom', 'prenom', 'ville', 'reference', 'lien',
+    'lien_rdv', 'date_validite', 'conseiller')
+
+
+def _omettre_phrases_incompletes(texte, manquants):
+    """MRY13 — retire les phrases qui portent un placeholder sans valeur.
+
+    Laisser un blanc à la place d'une date de validité ou d'une référence
+    produirait un message client trompeur (« valable jusqu'au  »). On préfère
+    perdre la phrase que mentir : découpe par ligne puis par « . », et on
+    ne garde que les fragments dont tous les placeholders sont résolus."""
+    if not manquants:
+        return texte
+    trous = ['{' + cle + '}' for cle in manquants]
+    lignes_gardees = []
+    for ligne in (texte or '').split('\n'):
+        if not any(trou in ligne for trou in trous):
+            lignes_gardees.append(ligne)
+            continue
+        morceaux = ligne.split('. ')
+        gardes = [m for m in morceaux
+                  if not any(trou in m for trou in trous)]
+        if gardes:
+            recolle = '. '.join(gardes)
+            if ligne.rstrip().endswith('.') and not recolle.endswith('.'):
+                recolle += '.'
+            lignes_gardees.append(recolle)
+    return '\n'.join(lignes_gardees).strip()
+
+
+def message_pour_etape(etape, *, request=None, user=None):
+    """MRY13 — Le message d'UNE touche, rendu côté serveur.
+
+    Forme `relance_etape_message` (contrat MRY25) :
+    ``{message, wa_url, langue, phone, placeholders_manquants}``.
+
+    Le serveur RÉEND, il n'ENVOIE pas (décision D5) : l'écran montre une
+    modale d'aperçu, et c'est le clic humain qui ouvre WhatsApp. Aucun BSP,
+    aucun appel réseau sortant.
+
+    Règle absolue du lot : AUCUN chiffre inventé. Une phrase dont le
+    placeholder n'a pas de valeur réelle est OMISE (jamais un blanc, jamais un
+    défaut), et `placeholders_manquants` le dit à l'appelant. Les prix, kWc et
+    économies ne sont pas des placeholders du tout : ils restent dans le devis
+    et la proposition."""
+    from apps.parametres.models_messages import MessageTemplate
+    from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
+
+    lead = etape.lead
+    langue = lead.langue_preferee or 'fr'
+    corps = MessageTemplate.get_corps(
+        lead.company, etape.template_cle, langue) if etape.template_cle else ''
+
+    contexte = {
+        'civilite': (getattr(lead, 'civilite', '') or ''),
+        'nom': (lead.nom or '').strip(),
+        'prenom': (lead.prenom or '').strip(),
+        'ville': (lead.ville or '').strip(),
+        'conseiller': (getattr(user, 'first_name', '')
+                       or getattr(user, 'username', '') or ''),
+        'reference': '',
+        'lien': '',
+        'date_validite': '',
+    }
+    if etape.devis_id:
+        try:
+            from apps.ventes.selectors import get_devis_by_pk
+            from apps.ventes.utils.client_links import url_proposition
+            devis = get_devis_by_pk(etape.devis_id)
+            if devis is not None:
+                contexte['reference'] = getattr(devis, 'reference', '') or ''
+                validite = getattr(devis, 'date_validite', None)
+                if validite:
+                    contexte['date_validite'] = validite.strftime('%d/%m/%Y')
+                contexte['lien'] = url_proposition(devis) or ''
+        except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé
+            logger.warning(
+                'MRY13: contexte devis illisible (étape #%s)',
+                getattr(etape, 'pk', '?'), exc_info=True)
+
+    # `{lien_rdv}` n'est résolu QUE s'il est présent (aucun jeton créé sinon).
+    corps = resoudre_lien_rdv(corps, lead, request=request)
+
+    manquants = [cle for cle in _PLACEHOLDERS_RENDUS
+                 if '{' + cle + '}' in (corps or '')
+                 and not str(contexte.get(cle, '')).strip()]
+    corps = _omettre_phrases_incompletes(corps, manquants)
+    message = render_message_template(corps, contexte)
+
+    phone = lead.whatsapp or lead.telephone or ''
+    if etape.template_cle in _TEMPLATES_VOCAUX:
+        # Le texte est le SCRIPT du vocal : on ouvre la conversation, on ne
+        # pré-remplit rien — coller un script à dire serait absurde.
+        wa_url = build_wa_url(phone, '')
+        if wa_url:
+            wa_url = wa_url.split('?text=')[0]
+    else:
+        wa_url = build_wa_url(phone, message)
+    return {
+        'message': message,
+        'wa_url': wa_url,
+        'langue': langue,
+        'phone': phone,
+        'placeholders_manquants': manquants,
+    }
+
+
+def demarrer_cadence_contact(lead, *, user=None, origine=''):
+    """MRY6 — Démarre la cadence « contact » à l'arrivée d'un lead VIVANT.
+
+    Déclenchement EXPLICITE, appelé par chaque créateur de lead — JAMAIS un
+    ``post_save(Lead)`` global : un signal se déclencherait aussi sur
+    l'``dataimport``, sur l'import Odoo (930 leads miroir) et sur les tests,
+    et inonderait la file de Meryem de milliers de touches qui ne
+    correspondent à aucune demande réelle.
+
+    Six gardes, dans cet ordre, CHACUNE journalisée en chatter quand elle
+    refuse — un refus muet ferait croire que le lead est suivi :
+
+      1. le lead vient bien d'une demande réelle (``source == OS_NATIVE``) ;
+      2. il est neuf (étape NEW) et jamais contacté ;
+      3. ni perdu, ni archivé, ni « ne plus contacter » ;
+      4. il porte un numéro exploitable — sans lui, aucune des touches
+         (appel comme WhatsApp) n'est réalisable ;
+      5. il n'est pas un DOUBLON d'un lead vivant : deux cadences sur la même
+         personne, c'est deux commerciaux qui l'appellent le même jour ;
+      6. aucune cadence `contact` n'existe déjà.
+
+    Best-effort intégral : toute exception est journalisée, jamais propagée —
+    une cadence en échec ne doit JAMAIS faire échouer la création du lead.
+    Renvoie la liste des touches créées (vide si refus)."""
+    try:
+        if lead is None:
+            return []
+        if lead.source != Lead.Source.OS_NATIVE:
+            return []          # import/miroir : silencieux, pas un refus
+        if lead.stage != stages.NEW or lead.first_contacted_at is not None:
+            return []
+        if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
+            return []          # `initialiser_plan_relance` tracerait deux fois
+        from apps.ventes.utils.whatsapp import build_wa_url
+        if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
+            return _refus_cadence(
+                lead, user,
+                'aucun numéro exploitable — cadence à lancer à la main')
+        doublons = [
+            autre for autre in find_duplicates_by_contact(
+                lead.company, phone=lead.telephone, email=lead.email,
+                exclude_pk=lead.pk)
+            if not autre.is_archived and not autre.perdu]
+        if doublons:
+            refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
+            return _refus_cadence(
+                lead, user,
+                f'doublon possible de {refs} — fusionner ou lancer la '
+                'cadence à la main')
+        if lead.relance_etapes.filter(cadence='contact').exists():
+            return []
+        return initialiser_plan_relance(
+            lead, user, cadence='contact', depart=timezone.now())
+    except Exception:  # noqa: BLE001 — jamais vers l'appelant
+        logger.warning(
+            'demarrer_cadence_contact: échec sur le lead #%s (%s)',
+            getattr(lead, 'pk', '?'), origine, exc_info=True)
+        return []
+
+
+def reporter_prochaine_touche(lead, user, quand, *, etape=None):
+    """MRY10 — « Rappelez-moi jeudi » : décale une touche ET sa suite.
+
+    Décaler la SEULE touche du jour serait faux : les suivantes se
+    téléscoperaient avec elle (« rappelez-moi dans 10 jours » ferait tomber
+    trois touches la même semaine). Toutes les touches SUIVANTES de la même
+    cadence glissent donc du MÊME delta — jamais réordonnées, jamais
+    recalculées depuis zéro.
+
+    ``quand`` est un datetime (ou une date) ; il est recalé sur la fenêtre
+    d'appel de la société. ``etape`` cible une touche précise ; sinon c'est la
+    prochaine À FAIRE. Renvoie la touche déplacée, ou ``None`` s'il n'y en a
+    aucune.
+    """
+    from . import horaires
+
+    cible = etape or _prochaine_touche_a_faire(lead)
+    if cible is None:
+        return None
+    if not isinstance(quand, datetime.datetime):
+        quand = datetime.datetime.combine(
+            quand, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+    elif timezone.is_naive(quand):
+        quand = timezone.make_aware(quand, datetime.timezone.utc)
+    nouveau = horaires.prochain_creneau_appel(quand, lead.company)
+
+    ancien = cible.due_at
+    delta = (nouveau - ancien) if ancien else None
+    cible.due_at = nouveau
+    cible.due_date = nouveau.astimezone(horaires.CASABLANCA).date()
+    cible.save(update_fields=['due_at', 'due_date'])
+
+    if delta:
+        suivantes = lead.relance_etapes.filter(
+            cadence=cible.cadence, statut=RelanceEtape.Statut.A_FAIRE,
+            ordre__gt=cible.ordre, due_at__isnull=False)
+        for suivante in suivantes:
+            decalee = suivante.due_at + delta
+            suivante.due_at = decalee
+            suivante.due_date = decalee.astimezone(
+                horaires.CASABLANCA).date()
+            suivante.save(update_fields=['due_at', 'due_date'])
+
+    quand_local = nouveau.astimezone(horaires.CASABLANCA)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=('Rappel demandé le '
+              f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
+              f'{(cible.libelle or cible.get_canal_display())} » reportée.'))
+
+    prochaine = _prochaine_touche_a_faire(lead)
+    lead.relance_date = prochaine.due_date if prochaine else None
+    lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+    return cible
+
+
+def arreter_cadence(lead, *, user, motif, cadences=None):
+    """MRY9 — LA fonction d'arrêt d'une (ou de toutes les) cadence(s).
+
+    UNE seule implémentation pour SIX déclencheurs (devis accepté, passage
+    SIGNED/COLD, lead perdu, « ne plus contacter », issue d'appel « joint » /
+    « intéressé » / « refus », devis refusé) : deux implémentations auraient
+    dérivé, et un lead aurait continué d'être relancé après avoir signé — la
+    faute la plus visible qu'un CRM puisse commettre.
+
+    Toutes les touches ``A_FAIRE`` (restreintes à ``cadences`` si fourni)
+    passent à ``SAUTEE`` en UNE requête, avec le motif, l'acteur et l'horodatage.
+    UNE note chatter. ``Lead.relance_date`` est recalculée sur la prochaine
+    touche restante (ou vidée) et ``sync_relance_activity`` remise en phase.
+
+    IDEMPOTENTE : zéro touche ouverte ⇒ rien, pas même une note (sinon chaque
+    passage d'étape empilerait des lignes vides dans l'historique).
+
+    Renvoie le nombre de touches arrêtées."""
+    ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+    if cadences:
+        ouvertes = ouvertes.filter(cadence__in=list(cadences))
+    pks = list(ouvertes.values_list('pk', flat=True))
+    if not pks:
+        return 0
+    RelanceEtape.objects.filter(pk__in=pks).update(
+        statut=RelanceEtape.Statut.SAUTEE,
+        note=(motif or '')[:500],
+        traite_par=user,
+        traite_le=timezone.now())
+    quelles = ', '.join(cadences) if cadences else 'toutes cadences'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f'Cadence {quelles} arrêtée ({len(pks)} touche(s)) : {motif}.')
+    prochaine = _prochaine_touche_a_faire(lead)
+    lead.relance_date = prochaine.due_date if prochaine else None
+    lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+    return len(pks)
+
+
+def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
+                               cadences=None):
+    """Variante par ID, best-effort — pour les receivers qui ne tiennent qu'un
+    ``devis.lead_id``. Ne lève JAMAIS : un arrêt de cadence en échec ne doit
+    pas faire retomber l'acceptation d'un devis déjà actée."""
+    if not lead_id:
+        return 0
+    try:
+        qs = Lead.objects.filter(pk=lead_id)
+        if company is not None:
+            qs = qs.filter(company=company)
+        lead = qs.first()
+        if lead is None:
+            return 0
+        return arreter_cadence(lead, user=user, motif=motif,
+                               cadences=cadences)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
+        return 0
+
+
+def _prochaine_touche_a_faire(lead):
+    """La prochaine touche À FAIRE du lead, toutes cadences confondues.
+
+    Trie sur ``due_at`` d'abord (granularité minute, MRY5) avec les lignes
+    d'avant MRY5 — qui n'ont pas d'heure — placées EN DERNIER plutôt qu'en
+    tête : sans ``nulls_last``, Postgres les remonterait et ``relance_date``
+    reculerait vers une vieille étape."""
+    from django.db.models import F
+
+    return (lead.relance_etapes
+            .filter(statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+            .first())
 
 
 def _leads_ouverts_count(commercial):
@@ -737,19 +1214,36 @@ def pick_round_robin_owner(company):
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
 
-def maybe_set_first_contacted_at(old_lead, new_lead):
-    """Pose ``first_contacted_at`` sur le lead dès que son stage quitte NEW
-    pour la première fois (et que le champ n'est pas déjà renseigné).
+def marquer_premier_contact(lead, *, when=None) -> bool:
+    """MRY19 — LA pose de ``first_contacted_at``. Une seule, partout.
 
-    Best-effort : n'échoue jamais et ne modifie rien si la condition n'est
-    pas remplie.
-    """
+    Quatre endroits l'écrivaient à la main, avec quatre conditions
+    LÉGÈREMENT différentes (dont deux qui exigeaient l'étape NEW) : un lead
+    saisi à la main, déjà CONTACTED, ne recevait donc JAMAIS d'horodatage —
+    et sortait silencieusement du KPI de premier contact. Ici la règle est
+    unique et sans condition d'étape : si le champ est vide, on le pose.
+
+    Idempotente — jamais un écrasement. Renvoie True si la pose a eu lieu.
+    Best-effort : ne lève jamais."""
     try:
-        if new_lead.first_contacted_at is not None:
-            return  # déjà posé — ne rien écraser
+        if lead is None or getattr(lead, 'first_contacted_at', None):
+            return False
+        lead.first_contacted_at = when or timezone.now()
+        lead.save(update_fields=['first_contacted_at'])
+        return True
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return False
+
+
+def maybe_set_first_contacted_at(old_lead, new_lead):
+    """Pose ``first_contacted_at`` quand le stage quitte NEW.
+
+    Signature INCHANGÉE (appelée par ``LeadViewSet.perform_update``) ; MRY19
+    délègue simplement à ``marquer_premier_contact`` — plus aucune seconde
+    règle qui pourrait diverger."""
+    try:
         if old_lead.stage == stages.NEW and new_lead.stage != stages.NEW:
-            new_lead.first_contacted_at = timezone.now()
-            new_lead.save(update_fields=['first_contacted_at'])
+            marquer_premier_contact(new_lead)
     except Exception:
         pass
 
@@ -1943,9 +2437,67 @@ def _ensure_meta_form_note(lead, extras, form_id=''):
         kind=LeadActivity.Kind.NOTE, body='\n'.join(lines))
 
 
+#: MRY0 (lot B) — bornes d'acceptation d'une ``created_time`` Meta : on ne
+#: repose JAMAIS une date de création hors de cette fenêtre (une valeur
+#: aberrante fausserait SLA et KPI aussi sûrement que l'heure du pull).
+_META_CREATED_TIME_MAX_ANCIENNETE_JOURS = 90
+_META_CREATED_TIME_MARGE_FUTUR_MINUTES = 5
+
+
+def _parse_meta_created_time(brut):
+    """``created_time`` Meta → datetime aware, ou ``None``.
+
+    Deux formes réelles : ISO ``2026-09-03T11:04:04+0000`` (pull) et epoch
+    secondes (webhook). Hors de la fenêtre ``[now - 90 j, now + 5 min]`` →
+    ``None`` (refusée, jamais posée)."""
+    import datetime as _dt
+
+    from django.utils.dateparse import parse_datetime as _parse_dt
+
+    if brut in (None, ''):
+        return None
+    moment = None
+    if isinstance(brut, bool):
+        return None
+    if isinstance(brut, _dt.datetime):
+        moment = brut
+    elif isinstance(brut, (int, float)):
+        try:
+            moment = _dt.datetime.fromtimestamp(
+                int(brut), tz=_dt.timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    else:
+        texte = str(brut).strip()
+        if texte.isdigit():
+            try:
+                moment = _dt.datetime.fromtimestamp(
+                    int(texte), tz=_dt.timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                return None
+        else:
+            try:
+                moment = _parse_dt(texte)
+            except ValueError:
+                return None
+    if moment is None:
+        return None
+    if timezone.is_naive(moment):
+        moment = timezone.make_aware(moment, _dt.timezone.utc)
+    maintenant = timezone.now()
+    if moment > maintenant + _dt.timedelta(
+            minutes=_META_CREATED_TIME_MARGE_FUTUR_MINUTES):
+        return None
+    if moment < maintenant - _dt.timedelta(
+            days=_META_CREATED_TIME_MAX_ANCIENNETE_JOURS):
+        return None
+    return moment
+
+
 def create_lead_from_meta_lead_ads(
         *, company, leadgen_id, field_data,
-        ad_id='', adgroup_id='', form_id='', access_token='') -> Lead:
+        ad_id='', adgroup_id='', form_id='', access_token='',
+        created_time=None, origine='') -> Lead:
     """XMKT32 — Crée (ou dédupe sur) un lead depuis un formulaire Meta Lead Ads.
 
     Point d'entrée cross-app sanctionné (services.py), appelé par
@@ -1991,6 +2543,15 @@ def create_lead_from_meta_lead_ads(
     Best-effort côté séquence de bienvenue : XMKT1 (moteur d'exécution des
     séquences) n'est pas encore construit — aucune inscription automatique
     tant qu'il n'existe pas ; ce service reste le point d'accroche futur.
+
+    MRY0 (lot B) — ``created_time`` : l'heure Meta RÉELLE de la soumission.
+    Appliquée UNIQUEMENT à la création (jamais sur un lead déjà capturé) et
+    seulement si elle tombe dans ``[now - 90 j, now + 5 min]``. ``date_creation``
+    étant ``auto_now_add``, elle n'est pas posable au ``create()`` : on la
+    repose par un ``update()`` ciblé. Sans elle, un lead rattrapé par le pull
+    portait l'heure du beat (07:25) et faussait SLA, KPI premier contact et
+    notifications. ``origine`` (texte libre, ex. « Meta Lead Ads (webhook) »)
+    nomme le chemin d'entrée dans la ligne « création » du chatter.
     """
     fields = {}
     for entry in (field_data or []):
@@ -2107,7 +2668,13 @@ def create_lead_from_meta_lead_ads(
     changed = _apply_meta_form_extras(lead, extras)
     if changed:
         lead.save(update_fields=changed)
-    activity.log_creation(lead, None)
+    # MRY0 (lot B) — vraie date d'arrivée : ``date_creation`` est
+    # ``auto_now_add`` (models.py), donc jamais posable au ``create()``.
+    moment_meta = _parse_meta_created_time(created_time)
+    if moment_meta is not None:
+        Lead.objects.filter(pk=lead.pk).update(date_creation=moment_meta)
+        lead.refresh_from_db(fields=['date_creation'])
+    activity.log_creation(lead, None, origine=origine)
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
@@ -2130,6 +2697,9 @@ def create_lead_from_meta_lead_ads(
     except Exception:  # noqa: BLE001 — best-effort
         pass
 
+    # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
+    # une cadence en échec ne fait JAMAIS échouer la création du lead.
+    demarrer_cadence_contact(lead, origine='meta_lead_ads')
     recompute_lead_score(lead)
     return lead
 
@@ -2229,6 +2799,9 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
         notify_new_lead(lead)
     except Exception:  # noqa: BLE001 — best-effort
         pass
+    # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
+    # une cadence en échec ne fait JAMAIS échouer la création du lead.
+    demarrer_cadence_contact(lead, origine='ctwa')
     recompute_lead_score(lead)
     return lead
 
@@ -2383,6 +2956,8 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
             notify_new_lead(lead)
         except Exception:  # noqa: BLE001 — best-effort
             pass
+        # MRY6 — même démarrage explicite que les autres créateurs vivants.
+        demarrer_cadence_contact(lead, origine='livechat')
     else:
         changed = False
         if telephone and not lead.telephone:
@@ -3292,6 +3867,12 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
 
             elif op == 'set_perdu':
                 motif = (params.get('motif') or '').strip() or None
+                if not motif:
+                    # MRY22 — même exigence qu'à l'unité : perdre 40 leads
+                    # d'un coup SANS raison est pire, pas plus acceptable.
+                    raise ValueError(
+                        'Motif de perte obligatoire pour une mise en perte '
+                        'en masse.')
                 if lead.perdu and lead.motif_perte == motif:
                     unchanged += 1
                     continue
@@ -3301,6 +3882,11 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 lead.save(update_fields=['perdu', 'motif_perte'])
                 if not old_perdu:
                     activity.log_bulk_change(lead, user, 'perdu', old_perdu, True)
+                    # MRY9 (c) — un lead perdu EN MASSE arrête ses relances
+                    # exactement comme un lead perdu à l'unité : sans cela,
+                    # une purge de 40 leads laissait 40 cadences vivantes.
+                    arreter_cadence(lead, user=user,
+                                    motif=motif or 'lead perdu')
                 if old_motif != motif:
                     activity.log_bulk_change(lead, user, 'motif_perte', old_motif, motif)
                 updated += 1
@@ -3452,18 +4038,25 @@ RAMADAN_TZ = 'Africa/Casablanca'
 def _ramadan_pacing_enabled(company) -> bool:
     """True si le drapeau « pacing Ramadan » est actif pour la société.
 
-    Lit ``CompanyProfile.ramadan_pacing`` (BooleanField nullable, défaut False).
-    Renvoie False si le profil n'existe pas ou que le champ est absent.
-    Ajout futur : le champ ``ramadan_pacing`` est posé au besoin sur
-    CompanyProfile via une migration dédiée ; en attendant, ce helper renvoie
-    toujours False (comportement non-ramadan inchangé).
+    MRY8 — ce helper lisait ``CompanyProfile.ramadan_pacing``, un champ qui
+    N'A JAMAIS EXISTÉ : il renvoyait donc toujours False et le pacing Ramadan
+    (report des rappels de RDV pendant l'iftar) était mort depuis sa création.
+    Il s'appuie désormais sur la PÉRIODE réellement saisie par la société
+    (``ramadan_debut``/``ramadan_fin``, MRY8) : vrai pendant cette période,
+    faux partout ailleurs — et faux tant que la société n'a rien saisi (la
+    période n'est jamais devinée). ``ramadan_pacing`` reste honoré s'il est
+    un jour ajouté, pour ne pas retirer un interrupteur explicite.
     """
     if company is None:
         return False
     try:
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.objects.filter(company=company).first()
-        return bool(getattr(profile, 'ramadan_pacing', False))
+        if bool(getattr(profile, 'ramadan_pacing', False)):
+            return True
+        from apps.crm import horaires
+        return horaires.est_en_ramadan(
+            aujourd_hui_local(), company, profil=profile)
     except Exception:
         return False
 
@@ -4150,6 +4743,8 @@ def create_lead_from_evenement_marketing(
             **extra,
         )
         activity.log_creation(lead, None)
+        # MRY6 — un inscrit d'événement marketing est une demande réelle.
+        demarrer_cadence_contact(lead, origine='evenement_marketing')
     else:
         changed = False
         if telephone and not lead.telephone:
@@ -4204,6 +4799,9 @@ def create_lead_from_public_api(*, company, fields):
         **clean,
     )
     activity.log_creation(lead, None)
+    # MRY6 — l'API publique crée de VRAIES demandes (formulaire partenaire,
+    # intégration) : elles entrent dans la cadence comme les autres.
+    demarrer_cadence_contact(lead, origine='api_publique')
     return lead
 
 

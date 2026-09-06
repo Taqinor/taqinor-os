@@ -1,0 +1,27 @@
+{
+  "endpoint": "GET /api/django/crm/leads/kpi-premier-contact/?jours=30",
+  "pourquoi": "MRY25 (PACT10) — le panneau KPI du Cockpit CRM mesure la promesse « rappelé en moins de 5 minutes ». Deux pièges que ce contrat ferme d'avance. (1) Les minutes sont OUVRÉES (`crm.horaires.minutes_ouvrees_entre`, fenêtres d'appel de la société + jours ouvrés + fériés) : un lead arrivé vendredi 21:00 et contacté lundi 08:32 vaut 2 minutes, pas 60 heures — mesurer en minutes calendaires rendrait le KPI ininterprétable et faux à charge. (2) `null` PARTOUT quand `nb_leads == 0` : jamais un 0 %, jamais une médiane fabriquée sur zéro ligne (règle « aucun chiffre inventé »). L'écran affiche « — » sur `null`, jamais « 0 ». Périmètre : leads `source=OS_NATIVE` uniquement (les 930 leads miroir Odoo ne sont pas des leads que Meryem doit rappeler). `nb_nuit` = leads créés HORS fenêtre d'appel ; `nb_nuit_rappeles_avant_930` = ceux d'entre eux dont `first_contacted_at` local est ≤ 09:30 du jour ouvré suivant. `objectif_minutes` vient de `CompanyProfile.premier_contact_objectif_min` (défaut 5) — jamais une constante d'écran.",
+  "exemple": {
+    "objectif_minutes": 5,
+    "nb_leads": 42,
+    "nb_sous_objectif": 27,
+    "pct_sous_objectif": 64.3,
+    "mediane_minutes_ouvrees": 4,
+    "nb_nuit_rappeles_avant_930": 6,
+    "nb_nuit": 9
+  },
+  "exemple_vide": {
+    "objectif_minutes": 5,
+    "nb_leads": 0,
+    "nb_sous_objectif": null,
+    "pct_sous_objectif": null,
+    "mediane_minutes_ouvrees": null,
+    "nb_nuit_rappeles_avant_930": null,
+    "nb_nuit": 0
+  },
+  "notes": {
+    "jours": "Paramètre `?jours=` (défaut 30) — fenêtre glissante sur `Lead.date_creation`.",
+    "date_creation": "MRY0 pose la VRAIE heure d'arrivée Meta sur `date_creation` : sans elle, ce KPI mesurait depuis l'heure du beat de 07:25.",
+    "permission": "Branche `IsAnyRole` de `LeadViewSet.get_permissions` — même niveau que `sla_breach`, dont le contrat n'est PAS modifié."
+  }
+}

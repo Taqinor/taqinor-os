@@ -147,6 +147,8 @@ export default function ConnectionScreen() {
   const [guard, setGuard] = useState({})
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
+  // MRY0 — abonnement de la Page au webhook `leadgen` (un clic, une fois).
+  const [subscribing, setSubscribing] = useState(false)
 
   // PACT112 — Policy créative RÉELLE (CreativePolicy, policy-creative/).
   const [policy, setPolicy] = useState(EMPTY_POLICY)
@@ -169,6 +171,22 @@ export default function ConnectionScreen() {
       .then(r => setGuard(r.data || {}))
       .catch(() => setGuard({}))
   }, [])
+
+  // MRY0 — répare la cause n° 2 du webhook muet (Page non abonnée à l'app).
+  // L'erreur Meta est affichée TELLE QUELLE : c'est elle qui dit quoi faire.
+  const subscribeLeadgen = useCallback(() => {
+    setSubscribing(true)
+    setMsg('')
+    setErr('')
+    adsengineApi.connection.subscribeWebhookLeadgen()
+      .then(r => {
+        setMsg(r?.data?.detail || 'Page abonnée au champ leadgen.')
+        load()
+      })
+      .catch(e => setErr(
+        e?.response?.data?.detail || "L'abonnement de la Page a échoué."))
+      .finally(() => setSubscribing(false))
+  }, [load])
 
   // PACT112 — Charge la VRAIE policy de la société (au plus une ligne, le
   // modèle est OneToOne société↔policy). Repli sur des listes VIDES (pas
@@ -404,6 +422,19 @@ export default function ConnectionScreen() {
                     </span>
                     <span>{s.label}</span>
                     {s.detail && <span style={{ color: '#64748b', fontSize: '0.85rem' }}>— {s.detail}</span>}
+                    {/* MRY0 — la Page n'est pas abonnée au champ `leadgen` ET
+                        le jeton porte `pages_manage_metadata` : la réparation
+                        tient en un clic, sinon le `detail` dit quoi faire. */}
+                    {s.key === 'webhook_leadgen'
+                      && s.page_subscribed === false
+                      && s.has_pages_manage_metadata && (
+                      <button type="button" className="btn btn-sm"
+                        data-testid="ae-conn-subscribe-leadgen"
+                        disabled={subscribing}
+                        onClick={subscribeLeadgen}>
+                        {subscribing ? 'Abonnement…' : 'Abonner la Page'}
+                      </button>
+                    )}
                   </div>
                   {remediation && (
                     <p data-testid={`ae-conn-remediation-${s.key}`}

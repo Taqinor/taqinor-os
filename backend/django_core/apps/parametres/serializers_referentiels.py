@@ -82,10 +82,23 @@ class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CadenceRelanceEtape
-        fields = ['id', 'ordre', 'delai_jours', 'canal', 'libelle', 'actif']
+        # MRY4 — forme `cadence_relance_v2` (contrat MRY25).
+        fields = ['id', 'cadence', 'ordre', 'delai_jours', 'delai_minutes',
+                  'heure_cible', 'canal', 'libelle', 'template_cle',
+                  'dimanche_ok', 'actif']
 
     def validate_libelle(self, value):
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError('Le libellé est requis.')
+        return value
+
+    def validate_delai_minutes(self, value):
+        # MRY4 — au-delà de 1439, l'appelant voulait dire « un jour de plus » :
+        # on refuse plutôt que d'absorber silencieusement un décalage d'un
+        # jour dans un champ nommé « minutes ».
+        if value is not None and value >= 1440:
+            raise serializers.ValidationError(
+                'Le délai en minutes doit rester sous 1440 (24 h) — '
+                'au-delà, utiliser le délai en jours.')
         return value

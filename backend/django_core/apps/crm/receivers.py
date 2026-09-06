@@ -24,10 +24,13 @@ from . import stages
 from .models import Appointment, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    arreter_cadence,
+    arreter_cadence_du_lead_id,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
     avancer_stage_pour_devis,
     generer_playbook_progress,
+    initialiser_plan_relance,
     signaler_mismatch_signe_sur_refus,
 )
 
@@ -44,6 +47,21 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
     perdus), désormais déclenchée par l'événement ``devis_accepted``.
     """
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
+
+
+@receiver(devis_accepted,
+          dispatch_uid="crm_stop_relance_on_devis_accepted")
+def _arreter_cadence_on_devis_accepted(sender, devis, user, ancien_statut,
+                                       **kwargs):
+    """MRY9 (a) — un devis accepté ARRÊTE toutes les cadences du lead.
+
+    Sans cela, le client qui vient de signer continue de recevoir les
+    messages « votre proposition est valable jusqu'au … » : la faute la plus
+    visible qu'un CRM puisse commettre. Best-effort — jamais d'exception vers
+    l'acceptation, qui est déjà actée."""
+    arreter_cadence_du_lead_id(
+        getattr(devis, 'lead_id', None), company=getattr(devis, 'company', None),
+        user=user, motif='devis accepté')
 
 
 @receiver(devis_accepted, dispatch_uid="crm_deal_commission_on_devis_accepted")
@@ -95,6 +113,85 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     deal_commission_due.send(
         sender='crm.receivers', company=devis.company, deal_id=deal.pk,
         apporteur_id=deal.apporteur_id, montant=montant)
+
+
+@receiver(devis_sent, dispatch_uid="crm_plan_apres_devis_on_devis_sent")
+def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
+                                         **kwargs):
+    """MRY7 — L'ENVOI d'un devis bascule le lead sur la cadence « après devis ».
+
+    Deux gestes, dans cet ordre : la prise de contact s'ARRÊTE (son but est
+    atteint — le prospect a son chiffrage), puis le suivi de proposition
+    DÉMARRE, daté depuis la date d'envoi réelle et non depuis maintenant.
+
+    UNE SEULE cadence après-devis par LEAD à la fois : quand plusieurs devis
+    d'un même lead partent ensemble (``whatsapp_devis`` boucle sur la
+    sélection), le deuxième ne crée rien — sinon le client recevrait deux
+    séries de messages parallèles pour un seul dossier. Le fait est journalisé
+    plutôt que silencieux.
+
+    Best-effort : ne fait jamais retomber un envoi déjà acté."""
+    lead_id = getattr(devis, 'lead_id', None)
+    if not lead_id:
+        return
+    try:
+        from .models import Lead
+        lead = Lead.objects.filter(
+            pk=lead_id, company=getattr(devis, 'company', None)).first()
+        if lead is None:
+            return
+        arreter_cadence(lead, user=user, motif='devis envoyé',
+                        cadences=['contact'])
+        deja = lead.relance_etapes.filter(
+            cadence='apres_devis', statut='a_faire').exclude(
+                devis_id=devis.pk).first()
+        if deja is not None:
+            reference = getattr(deja.devis, 'reference', '') or '?'
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=user,
+                kind=LeadActivity.Kind.NOTE,
+                body=('Cadence après devis déjà en cours pour '
+                      f'{reference} — aucune seconde série lancée.'))
+            return
+        initialiser_plan_relance(
+            lead, user, cadence='apres_devis',
+            depart=getattr(devis, 'date_envoi', None), devis=devis)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "MRY7: cadence après devis non planifiée (devis #%s)",
+            getattr(devis, 'pk', '?'), exc_info=True)
+
+
+@receiver(devis_refused, dispatch_uid="crm_stop_apres_devis_on_devis_refused")
+def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
+                                          **kwargs):
+    """MRY7 — Un devis REFUSÉ arrête sa cadence de suivi, même quand le lead
+    n'est PAS marqué perdu.
+
+    C'est le cas par défaut (`marquer_lead_perdu` non coché) : le lead reste
+    vivant — on lui refera peut-être une offre — mais continuer à lui demander
+    « alors, ce PDF ? » sur une proposition qu'il vient de refuser serait
+    absurde. Distinct du receveur « perdu », qui ne se déclenche pas ici."""
+    lead_id = getattr(devis, 'lead_id', None)
+    if not lead_id:
+        return
+    try:
+        from .models import Lead, RelanceEtape
+        lead = Lead.objects.filter(
+            pk=lead_id, company=getattr(devis, 'company', None)).first()
+        if lead is None:
+            return
+        if not RelanceEtape.objects.filter(
+                devis_id=devis.pk,
+                statut=RelanceEtape.Statut.A_FAIRE).exists():
+            return
+        arreter_cadence(lead, user=user,
+                        motif=(motif_refus or 'devis refusé'),
+                        cadences=['apres_devis'])
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "MRY7: arrêt de la cadence après devis échoué (devis #%s)",
+            getattr(devis, 'pk', '?'), exc_info=True)
 
 
 @receiver(devis_sent, dispatch_uid="crm_advance_stage_on_devis_sent")
@@ -176,12 +273,20 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
     old_perdu = lead.perdu
     old_motif = lead.motif_perte
     lead.perdu = True
-    lead.motif_perte = (motif_refus or '')[:255] or None
+    # MRY22 — le TROISIÈME chemin vers « perdu ». Le refus d'un devis peut
+    # arriver sans motif saisi : on retombe alors sur « Devis refusé » plutôt
+    # que d'écrire NULL, sinon ce chemin serait le seul à produire des pertes
+    # sans raison — exactement ce que les deux autres refusent désormais.
+    lead.motif_perte = (motif_refus or '')[:255] or 'Devis refusé'
     lead.save(update_fields=['perdu', 'motif_perte'])
     crm_activity.log_bulk_change(lead, user, 'perdu', old_perdu, True)
-    if motif_refus:
+    if lead.motif_perte != old_motif:
         crm_activity.log_bulk_change(lead, user, 'motif_perte',
-                                     old_motif, motif_refus)
+                                     old_motif, lead.motif_perte)
+    # MRY9 (c) — troisième chemin vers « perdu » : il arrête les relances
+    # comme les deux autres. Une seule fonction, jamais une variante locale.
+    arreter_cadence(lead, user=user,
+                    motif=(motif_refus or 'devis refusé'))
 
 
 @receiver(devis_accepted, dispatch_uid="crm_flip_parrainage_converti_on_devis_accepted")
@@ -377,6 +482,60 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
         return  # uniquement un contact MANUEL d'un utilisateur (pas auto/système)
     lead = instance.lead
     avancer_stage_new_vers_contacted(lead, instance.user)
+
+
+@receiver(post_save, sender=LeadActivity,
+          dispatch_uid="crm_stop_contact_cadence_on_outcome")
+def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
+    """MRY9 (e) — l'ISSUE d'un appel arrête la bonne cadence, et elle seule.
+
+    * `joint` / `interesse` → arrête `contact` : le but de la prise de contact
+      est atteint. La cadence APRÈS DEVIS, elle, continue — un client joint
+      reste à relancer sur sa proposition.
+    * `refus` → arrête `contact` ET `apres_devis`, SANS marquer le lead perdu :
+      « perdu » est une décision humaine qui exige un motif (MRY22), pas un
+      effet de bord d'un appel.
+
+    Seule une activité créée par un HUMAIN compte (``user`` non nul) — une
+    ligne système ne décide pas d'un arrêt."""
+    if not created or instance.user is None:
+        return
+    issue = (instance.outcome or '').strip()
+    if issue in ('joint', 'interesse'):
+        motif, cadences = 'joint', ['contact']
+    elif issue == 'refuse':
+        motif, cadences = 'refus au téléphone', ['contact', 'apres_devis']
+    else:
+        return
+    try:
+        arreter_cadence(instance.lead, user=instance.user, motif=motif,
+                        cadences=cadences)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "MRY9: arrêt de cadence échoué sur l'issue « %s » (lead #%s)",
+            issue, getattr(instance, 'lead_id', '?'), exc_info=True)
+
+
+@receiver(lead_stage_changed,
+          dispatch_uid="crm_stop_relance_on_stage_signed_or_cold")
+def _arreter_cadence_on_stage_change(sender, lead, old_stage, new_stage, user,
+                                     **kwargs):
+    """MRY9 (b) — SIGNED arrête TOUT ; COLD arrête `contact` et `apres_devis`.
+
+    COLD est un PARKING, pas une perte : les réveils J30/J60 y sont posés par
+    MRY11 — on ne les arrête donc pas ici, sinon un lead mis au froid ne
+    serait plus jamais réveillé. Best-effort : ne bloque jamais la transition
+    d'étape déjà actée par l'émetteur."""
+    try:
+        if new_stage == stages.SIGNED:
+            arreter_cadence(lead, user=user, motif='lead signé')
+        elif new_stage == stages.COLD:
+            arreter_cadence(lead, user=user, motif='lead passé en froid',
+                            cadences=['contact', 'apres_devis'])
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "MRY9: arrêt de cadence échoué au changement d'étape du lead #%s",
+            getattr(lead, 'pk', '?'), exc_info=True)
 
 
 @receiver(lead_stage_changed, dispatch_uid="crm_generate_playbook_progress_on_stage_change")

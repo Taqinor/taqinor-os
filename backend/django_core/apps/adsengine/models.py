@@ -1775,6 +1775,11 @@ class MetaLeadMirror(TenantModel):
     webhook et pull-sync (ADSDEEP18) convergent sans jamais dupliquer.
     """
 
+    class Origine(models.TextChoices):
+        """MRY0 — chemin d'arrivée du lead Meta (webhook temps réel vs pull)."""
+        WEBHOOK = 'webhook', 'Webhook temps réel'
+        PULL = 'pull', 'Pull de rattrapage'
+
     leadgen_id = models.CharField(max_length=64, verbose_name='ID lead Meta')
     ad_id = models.CharField(
         max_length=64, blank=True, default='', verbose_name='ID ad')
@@ -1794,6 +1799,14 @@ class MetaLeadMirror(TenantModel):
     # Référence STRING au lead CRM (jamais une FK cross-app dure — frontière M3).
     crm_lead_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID lead CRM')
+    # MRY0 — QUI a posé ce miroir : le webhook temps réel ou le pull de
+    # rattrapage. Sans cette colonne, « le webhook est muet » était indétectable
+    # (les deux chemins convergent sur la MÊME ligne) — c'est exactement ce que
+    # l'incident AZIZ du 03/09/2026 a mis 46 h à révéler. Posé par
+    # ``receivers.on_meta_lead_captured`` d'après le ``sender`` de l'événement.
+    origine = models.CharField(
+        max_length=16, blank=True, default='', choices=Origine.choices,
+        verbose_name='Origine du miroir')
 
     class Meta:
         verbose_name = 'Miroir de lead Meta'

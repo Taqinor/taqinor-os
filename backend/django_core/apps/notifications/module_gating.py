@@ -27,6 +27,13 @@ EVENT_MODULE = {
     EventType.HOT_LEAD_UNREAD: 'crm',
     EventType.LEAD_CALLBACK_REQUESTED: 'crm',
     EventType.LEAD_CALLBACK_SLA_BREACH: 'crm',
+    # MRY0 — alerte « webhook muet » : elle porte sur l'arrivée des leads.
+    EventType.LEAD_RATTRAPE: 'crm',
+    # MRY17 — le moteur de relances vit dans le CRM : module OFF,
+    # plus aucune de ses notifications.
+    EventType.RELANCE_DUE: 'crm',
+    EventType.PREMIER_CONTACT_DEPASSE: 'crm',
+    EventType.CRM_BILAN_HEBDO: 'crm',
     # ventes (Devis + Facture + BonCommande vivent dans apps.ventes)
     EventType.DEVIS_ACCEPTED: 'ventes',
     EventType.DEVIS_OPENED: 'ventes',

@@ -15,6 +15,10 @@ ce dossier s'écarte du cas nominal.
 | `questionnaire_lien_mint.json` | la frappe du lien de questionnaire |
 | `visite_externe.json` | la trace de visite anonyme envoyée par le site |
 | `tunnel_webhook_keys.json` | **le registre du tunnel ↔ la lecture du webhook** (QJR229) |
+| `relance_etape_v2.json` | la file « Relances du jour » + la frise de cadence (MRY25) |
+| `relance_etape_message.json` | le message rendu d'une touche et son lien wa.me (MRY25) |
+| `kpi_premier_contact.json` | le KPI « rappelé en moins de 5 minutes ouvrées » (MRY25) |
+| `kpi_cadences.json` | les sept chiffres du bilan de cadence (MRY25) |
 
 ## Écart 1 — un échantillon peut ne PAS décrire une réponse
 

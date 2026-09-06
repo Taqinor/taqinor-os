@@ -40,6 +40,14 @@ PROFILE_CONFIG_FIELDS = [
     'remise_max_pct', 'discount_approval_threshold',
     'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
     'devise_defaut', 'lead_sla_hours', 'overage_seuil_pct',
+    # MRY8 — fenêtres d'appel de la société (forme `fenetres_appel` du
+    # contrat MRY25) : elles decident QUAND une touche de cadence tombe
+    # et servent de base au KPI premier contact en minutes OUVRÉES.
+    'appel_heure_debut', 'appel_heure_fin',
+    'vendredi_pause_debut', 'vendredi_pause_fin',
+    'ramadan_debut', 'ramadan_fin',
+    'ramadan_appel_debut', 'ramadan_appel_fin',
+    'premier_contact_objectif_min',
     # FG22 — politique de sécurité (réglages, pas de secret).
     'password_min_length', 'password_require_complexity',
     'lockout_max_attempts', 'lockout_duration_minutes', 'password_expiry_days',
@@ -70,9 +78,16 @@ def _serialize_document_templates(company):
 
 
 def _jsonable(value):
+    import datetime
     from decimal import Decimal
     if isinstance(value, Decimal):
         return str(value)
+    # MRY8 — les fenêtres d'appel introduisent des TimeField/DateField dans le
+    # paquet de configuration : on les sérialise en ISO (« 08:30:00 »), forme
+    # que Django re-coerce telle quelle à la ré-import. Sans cela, la valeur
+    # dépendrait du rendu JSON de l'appelant.
+    if isinstance(value, (datetime.time, datetime.date, datetime.datetime)):
+        return value.isoformat()
     return value
 
 

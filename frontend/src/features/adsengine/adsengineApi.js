@@ -55,6 +55,10 @@ const adsengineApi = {
     save: (payload) => api.post('/adsengine/connection/', payload),
     // ENG12 — santé du câblage (jeton, compte pub, pixel/CAPI, PAUSED).
     health: () => api.get('/adsengine/connection/health/'),
+    // MRY0 — abonne la Page au champ `leadgen` (arrivée des leads en temps
+    // réel). Écriture de câblage seulement — jamais une dépense.
+    subscribeWebhookLeadgen: () =>
+      api.post('/adsengine/connection/webhook-leadgen/subscribe/'),
   },
 
   // ── ENG9 — Garde-fous (plafond quotidien/mensuel, band d'auto-approbation) ──

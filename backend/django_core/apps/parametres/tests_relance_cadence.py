@@ -54,7 +54,7 @@ class CadenceRelanceEtapeModelTest(TestCase):
     def test_cadence_pour_seed_a_la_volee(self):
         company = _company('cad-relance-lazy')
         self.assertFalse(CadenceRelanceEtape.objects.filter(company=company).exists())
-        cadence = CadenceRelanceEtape.cadence_pour(company)
+        cadence = CadenceRelanceEtape.cadence_pour(company, 'generique')
         self.assertEqual(len(cadence), 5)
         self.assertTrue(CadenceRelanceEtape.objects.filter(company=company).exists())
 
@@ -62,7 +62,7 @@ class CadenceRelanceEtapeModelTest(TestCase):
         company = _company('cad-relance-inactif')
         CadenceRelanceEtape.seed_defaults(company)
         CadenceRelanceEtape.objects.filter(company=company, ordre=1).update(actif=False)
-        cadence = CadenceRelanceEtape.cadence_pour(company)
+        cadence = CadenceRelanceEtape.cadence_pour(company, 'generique')
         self.assertEqual(len(cadence), 4)
 
 

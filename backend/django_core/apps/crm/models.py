@@ -578,6 +578,12 @@ class Lead(SoftDeleteModel):
     perdu = models.BooleanField(default=False)
     motif_perte = models.CharField(max_length=255, blank=True, null=True)
     relance_date = models.DateField(null=True, blank=True)
+    # MRY5 — « ne plus contacter » : la personne a demandé qu'on la laisse
+    # tranquille. DISTINCT de `whatsapp_opt_in` (consentement MARKETING) et de
+    # `perdu` (décision commerciale, qui exige un motif). Il n'implique NI
+    # l'un NI l'autre : il interdit seulement toute future cadence.
+    ne_plus_contacter = models.BooleanField(
+        default=False, verbose_name='Ne plus contacter')
     type_installation = models.CharField(
         max_length=20, choices=TypeInstallation.choices, blank=True, null=True)
 
@@ -1176,6 +1182,10 @@ class LeadActivity(models.Model):
         # FG30 — Interactions de communication typées
         APPEL = 'appel', 'Appel'
         EMAIL = 'email', 'E-mail'
+        # MRY10 — un WhatsApp ENVOYÉ est une prise de contact au même titre
+        # qu'un e-mail : sans son propre type il se noyait dans les notes,
+        # invisible au compteur de tentatives comme au chatter.
+        WHATSAPP = 'whatsapp', 'WhatsApp'
 
     # FG30 — Résultat optionnel d'un appel ou e-mail (affiché dans le chatter).
     OUTCOMES = [
@@ -1275,10 +1285,35 @@ class RelanceEtape(TenantModel):
     lead = models.ForeignKey(
         Lead, on_delete=models.CASCADE,  # on_delete: étape sans objet si le lead est supprimé
         related_name='relance_etapes')
+    # MRY5 — à quelle CADENCE cette touche appartient (`contact`,
+    # `apres_devis`, `reveil`, `generique`). Un lead peut porter deux plans
+    # simultanément (sa prise de contact et le suivi d'un devis) : sans ce
+    # champ, l'idempotence de l'initialisation les confondait en un seul.
+    cadence = models.CharField(
+        max_length=20, default='contact', verbose_name='Cadence')
     ordre = models.PositiveIntegerField(default=0)
     due_date = models.DateField()
+    # MRY5 — échéance à la MINUTE. `due_date` reste NOT NULL et vaut la date
+    # LOCALE de `due_at` : les filtres `scope=today|overdue|all` gardent leur
+    # grain JOUR (aucun changement de contrat), `due_at` sert au tri et à
+    # l'affichage « à HH:MM ». Les lignes créées avant MRY5 gardent NULL —
+    # c'est la vérité, elles n'ont jamais porté d'heure.
+    due_at = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name='Échéance (heure)')
     canal = models.CharField(max_length=20, choices=Canal.choices)
     libelle = models.CharField(max_length=150, blank=True, default='')
+    # Clé du gabarit de message à rendre pour cette touche (MRY12). Texte
+    # libre, comme côté gabarit : aucune dépendance d'import vers parametres.
+    template_cle = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Clé du gabarit de message')
+    # Devis suivi par cette touche (cadence `apres_devis`). FK EN CHAÎNE :
+    # crm ne connaît jamais les modèles de ventes (frontière M3).
+    devis = models.ForeignKey(
+        'ventes.Devis',
+        on_delete=models.SET_NULL,  # on_delete: étape orpheline si le devis disparaît
+        null=True, blank=True, related_name='relance_etapes',
+        verbose_name='Devis suivi')
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
     note = models.TextField(blank=True, default='')
@@ -1295,10 +1330,15 @@ class RelanceEtape(TenantModel):
         indexes = [
             models.Index(fields=['company', 'statut', 'due_date'],
                          name='crm_relanceetape_due_idx'),
+            # MRY5 — la frise de la fiche lead et l'idempotence par cadence
+            # interrogent toutes deux (société, lead, cadence, statut).
+            models.Index(fields=['company', 'lead', 'cadence', 'statut'],
+                         name='crm_relance_lead_cad_idx'),
         ]
 
     def __str__(self):
-        return f'{self.lead_id} — J+{self.ordre} ({self.get_statut_display()})'
+        return (f'{self.lead_id} — {self.cadence} #{self.ordre} '
+                f'({self.get_statut_display()})')
 
 
 class LeadTag(models.Model):

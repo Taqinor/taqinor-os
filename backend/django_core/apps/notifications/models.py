@@ -66,6 +66,24 @@ class EventType(models.TextChoices):
     # du SLA générique premier contact) : escalade dédiée.
     LEAD_CALLBACK_SLA_BREACH = (
         'lead_callback_sla_breach', 'Rappel demandé non actionné (SLA)')
+    # MRY0 — le filet de rattrapage 15 min a créé un lead Meta que le webhook
+    # temps réel n'avait pas livré : le câblage du webhook est à vérifier.
+    # Zéro alerte quand le webhook fonctionne (le pull ne crée alors rien).
+    LEAD_RATTRAPE = (
+        'lead_rattrape', 'Lead Meta rattrapé par le pull (webhook muet)')
+    # MRY17 — le digest de 08:30 des touches de cadence dues, et l'alerte
+    # quand l'objectif de PREMIER CONTACT est dépassé sur un lead neuf.
+    # Deux clés distinctes : couper le digest quotidien ne doit jamais
+    # couper au passage l'alerte de speed-to-lead, qui est critique.
+    RELANCE_DUE = 'relance_due', 'Relances du jour à faire'
+    PREMIER_CONTACT_DEPASSE = (
+        'premier_contact_depasse',
+        'Nouveau lead non touché (objectif dépassé)')
+    # MRY21 — bilan HEBDOMADAIRE du moteur de relances, envoyé à la
+    # direction le lundi matin. Clé distincte de `digest` : couper le
+    # récapitulatif générique ne doit pas couper le pilotage commercial.
+    CRM_BILAN_HEBDO = (
+        'crm_bilan_hebdo', 'Bilan hebdomadaire des relances')
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
