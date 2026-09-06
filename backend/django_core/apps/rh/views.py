@@ -5227,7 +5227,10 @@ class BulletinPaieViewSet(_RhBaseViewSet):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
-        meta, err = store_attachment(file)
+        # AUD717 — company=company préfixe la clé MinIO (SCA42) au lieu du
+        # repli plat legacy `attachments/{uuid}.ext` (le bulletin de salaire
+        # est exactement le type de document que SCA42 visait à protéger).
+        meta, err = store_attachment(file, company=company)
         if err:
             return Response({'file': err},
                             status=status.HTTP_400_BAD_REQUEST)
