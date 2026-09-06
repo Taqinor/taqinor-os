@@ -5814,6 +5814,12 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     Renvoie ``True`` si une touche reste À FAIRE, ``False`` si la cadence est
     intégralement passée (l'appelant bascule alors sur la dormance)."""
     lead = entree['lead']
+    # Photo d'AVANT : de quoi défaire proprement si la cadence s'avère
+    # intégralement passée (voir plus bas). Un rappel posé à la main par un
+    # commercial ne doit pas disparaître dans l'opération.
+    relance_avant = lead.relance_date
+    activites_avant = set(lead.activites.values_list('pk', flat=True))
+
     etapes = initialiser_plan_relance(
         lead, user, cadence=entree['cadence'], depart=entree['depart'],
         devis=entree['devis'])
@@ -5832,16 +5838,25 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
                  note=PLACEMENT_NOTE_PASSEE, traite_le=maintenant)
     if len(passees) >= len(etapes):
         # Rien ne reste à faire : cette cadence ne relancerait personne. On
-        # défait ce qu'on vient de créer et l'appelant passe en dormance.
+        # défait TOUT ce qu'on vient de créer — touches, note « Plan de
+        # relance initialisé » (elle annoncerait un plan qui n'existe plus) et
+        # `relance_date` — puis l'appelant passe en dormance. Sans cette
+        # remise en état, le lead gardait une échéance de relance pointant sur
+        # une touche supprimée : un rappel fantôme, en retard pour toujours.
         RelanceEtape.objects.filter(pk__in=[e.pk for e in etapes]).delete()
+        lead.activites.exclude(pk__in=activites_avant).delete()
+        lead.relance_date = relance_avant
+        lead.save(update_fields=['relance_date'])
+        sync_relance_activity(lead, user)
         return False
 
     # `initialiser_plan_relance` a pointé `relance_date` sur la PREMIÈRE
     # touche — celle qu'on vient peut-être de sauter. On la recale sur la
     # prochaine réellement à faire, exactement comme `marquer_etape_relance`.
     prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
+    lead.relance_date = prochaine.due_date if prochaine else relance_avant
     lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
     return True
 
 
@@ -5890,8 +5905,18 @@ def _placer_un(entree, *, user, maintenant):
     entree['prochaine_le'] = (
         reference.due_at.astimezone(horaires.CASABLANCA).isoformat()
         if reference.due_at else None)
+    # FG28/MRY19 — note SYSTÈME (``user=None``), JAMAIS l'utilisateur qui a
+    # lancé le placement. Le récepteur QJ7 (`_avancer_stage_on_contact_
+    # activity`) fait avancer NEW → CONTACTED et stampe `first_contacted_at`
+    # sur toute note portant un `user` : posée avec l'acteur, cette ligne
+    # aurait déclaré « contactés » les leads NEW qu'on vient justement
+    # d'inscrire dans la cadence de PREMIER contact — 270 dossiers marqués
+    # joints sans qu'un humain ait décroché, et le KPI de premier contact
+    # faussé du même coup. Même choix, trois lignes plus haut, que la note de
+    # `initialiser_plan_relance`. QUI a lancé le placement reste tracé : par
+    # les lignes de modification (étape, étiquette), qui portent l'acteur.
     LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=user,
+        company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Placé dans la cadence {entree["cadence"]} à la touche '
              f'« {entree["prochaine_touche"]} » ({PLACEMENT_MARQUEUR}).')

@@ -2541,12 +2541,18 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 {'statut': 'Statut inconnu. Choisir parmi : '
                            + ', '.join(STATUTS_SUIVI) + '.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        owner = (request.query_params.get('owner') or '').strip()
+        if owner and not owner.isdigit():
+            # Un identifiant non numérique atteindrait le `filter()` et y
+            # lèverait une ValueError — un 500 pour une faute de frappe.
+            return Response(
+                {'owner': 'Identifiant de responsable invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         etapes, resume = relance_etapes_periode(
             request.user.company, request.user,
             date_debut=date_debut, date_fin=date_fin,
-            owner=(request.query_params.get('owner') or '').strip() or None,
-            statut=statut or None)
+            owner=owner or None, statut=statut or None)
         lignes = self.get_serializer(etapes, many=True).data
         return Response({
             'count': len(lignes),
