@@ -20,6 +20,7 @@ Export `?export=xlsx` (tableau récapitulatif par technicien).
 """
 from apps.crm.exports import build_xlsx_response
 from authentication.permissions import IsResponsableOrAdmin
+from core.dates import maintenant_local
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -148,7 +149,10 @@ def field_service_report(request):
     mttr_jours = []
     for t in resolus:
         if t.date_creation:
-            delta = (t.date_resolution - t.date_creation.date()).days
+            # CRX26/AUD836 — date MÉTIER : `.date()` sur le datetime chargé
+            # (UTC brut) décale d'un jour autour de minuit heure marocaine.
+            delta = (t.date_resolution
+                     - maintenant_local(t.date_creation).date()).days
             mttr_jours.append(max(delta, 0))
 
     recidive_total = sum(1 for t in tickets if t.est_recidive)
@@ -172,7 +176,8 @@ def field_service_report(request):
             if t.interventions.count() == 1:
                 entry['ftf_ok'] += 1
             if t.date_creation:
-                delta = (t.date_resolution - t.date_creation.date()).days
+                delta = (t.date_resolution
+                         - maintenant_local(t.date_creation).date()).days
                 entry['mttr_jours'].append(max(delta, 0))
 
     par_technicien_out = []

@@ -39,7 +39,12 @@ class SavSlaBase(TestCase):
 
 class TestSavSlaCompliance(SavSlaBase):
     def test_pct_first_response_and_resolution_by_priority(self):
-        today = date.today()
+        # CRX26/AUD836 — date MÉTIER (Casablanca) : le rapport convertit
+        # `date_premiere_reponse`/`date_creation` via ce même fuseau
+        # (apps/reporting/sav_sla.py), donc le test doit partir de la même
+        # référence pour rester déterministe autour de minuit.
+        from core.dates import aujourd_hui_local
+        today = aujourd_hui_local()
         # Répondu ET résolu dans les temps.
         t1 = self._make_ticket(
             priorite=Ticket.Priorite.URGENTE,
