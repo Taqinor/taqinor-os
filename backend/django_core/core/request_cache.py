@@ -79,6 +79,19 @@ def memoize(key: Hashable, producer: Callable[[], Any]) -> Any:
     return value
 
 
+def forget(key: Hashable) -> None:
+    """Oublie ``key`` dans le mémo de la requête courante (no-op hors requête).
+
+    AUD157 — un accesseur qui mémoïse doit pouvoir invalider quand la donnée
+    mémoïsée est ÉCRITE dans la même requête (un PATCH du profil société, puis
+    une lecture juste après). Sans ce point d'invalidation, mémoïser une
+    lecture qui a un chemin d'écriture reviendrait à servir un état périmé.
+    """
+    cache = _CACHE.get()
+    if cache is not None:
+        cache.pop(key, None)
+
+
 class _Missing:
     __slots__ = ()
 

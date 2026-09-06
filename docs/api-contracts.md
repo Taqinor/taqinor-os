@@ -630,6 +630,8 @@
     detail:texte
 - frontend/src/api/messagesApi.js :: follow -> /api/django/chat/messages/<>/thread-follow
     status:texte
+- frontend/src/api/messagesApi.js :: getConversationRetention -> /api/django/chat/conversations/<>/retention
+    applicable:booleen, conversation_kind:inconnu, retention_months:inconnu
 - frontend/src/api/messagesApi.js :: remove -> /api/django/chat/canned-responses/<>
     detail:texte
 - frontend/src/api/messagesApi.js :: removeMember -> /api/django/chat/conversations/<>/members/<>
@@ -1044,6 +1046,8 @@
     ajustes:nombre, detail:texte, inchanges:nombre, mouvements:liste
 - frontend/src/api/stockApi.js :: performanceFournisseur -> /api/django/stock/fournisseurs/<>/performance
     avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, scar_ouvertes:inconnu, scar_total:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
+- frontend/src/api/stockApi.js :: prixEffectifFournisseur -> /api/django/stock/prix-fournisseurs/effectif
+    detail:texte, prix_effectif:inconnu
 - frontend/src/api/stockApi.js :: produitPrevisionnel -> /api/django/stock/produits/<>/previsionnel
     disponible:inconnu, entrees_attendues:inconnu, produit_id:inconnu, solde_projete:inconnu, sorties_attendues:inconnu, timeline:inconnu
 - frontend/src/api/stockApi.js :: rebuterProduit -> /api/django/stock/produits/<>/rebuter
@@ -1111,7 +1115,7 @@
 - frontend/src/api/ventesApi.js :: getVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: lienPaiementFacture -> /api/django/ventes/factures/<>/lien-paiement
-    detail:texte, expires_at:texte, montant:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
+    detail:inconnu, expires_at:texte, montant:texte, montant_a_payer:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
 - frontend/src/api/ventesApi.js :: patchEtudeParams -> /api/django/ventes/devis/<>/etude-params
     detail:texte, etude_params:inconnu
 - frontend/src/api/ventesApi.js :: postEtudeHorairePreview -> /api/django/ventes/etude-horaire/preview

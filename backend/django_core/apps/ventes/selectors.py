@@ -2638,3 +2638,89 @@ def devis_deja_facture(devis):
     if devis is None:
         return False
     return factures_du_devis(devis).exists()
+
+
+def kpis_factures(qs):
+    """AUD157 (FAC-13) — LE PROPRIÉTAIRE UNIQUE des chiffres monétaires de
+    l'écran Factures.
+
+    Le KPI « Encaissé ce mois » (et son jumeau mois précédent) vivait dans
+    ``FactureList.jsx``, qui sommait ``p.montant`` de tous les paiements des
+    factures chargées SANS filtrer ``p.statut`` : l'écran affichait « Encaissé
+    ce mois : 480 000 » en comptant des chèques revenus impayés. Un chiffre
+    d'argent calculé côté écran, sans propriétaire backend, avec une définition
+    DIFFÉRENTE de ``Facture.montant_paye`` — laquelle exclut bien les paiements
+    rejetés (YLEDG5) et compte l'escompte accordé (XFAC12).
+
+    ``qs`` est le queryset DÉJÀ scopé société/portée par l'appelant : ce
+    sélecteur ne décide jamais de la visibilité, il ne fait qu'agréger.
+
+    Renvoie des chaînes décimales (jamais des flottants) et les deux mois
+    couverts, pour que l'écran n'ait aucun calcul de période à refaire.
+    Contrat PACT10 : ``apps/ventes/contract_samples/factures_kpis.json``.
+    """
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.db.models import Sum
+    from django.utils import timezone
+
+    from .models import Facture, Paiement
+
+    aujourdhui = timezone.localdate()
+    premier_du_mois = aujourdhui.replace(day=1)
+    fin_mois_precedent = premier_du_mois - timedelta(days=1)
+    premier_mois_precedent = fin_mois_precedent.replace(day=1)
+    dans_7_jours = aujourdhui + timedelta(days=7)
+
+    def _encaisse(debut, fin):
+        """Encaissé d'une période : MÊME définition que ``montant_paye`` —
+        les paiements REJETÉS sont exclus, l'escompte accordé compte."""
+        agg = (Paiement.objects
+               .filter(facture__in=qs.values('pk'),
+                       date_paiement__gte=debut, date_paiement__lte=fin)
+               .exclude(statut=Paiement.Statut.REJETE)
+               .aggregate(montant=Sum('montant'),
+                          escompte=Sum('escompte_montant')))
+        return ((agg['montant'] or Decimal('0'))
+                + (agg['escompte'] or Decimal('0')))
+
+    # L'encours se lit sur les propriétés modèles (source unique) : elles sont
+    # le seul endroit qui sait ce que « reste dû » veut dire (avoirs, notes de
+    # débit, retenues subies, abandon de créance). Le queryset est borné aux
+    # factures VIVANTES et porte le préfetch complet (AUD158/AUD159).
+    ouvertes = (qs.exclude(statut__in=[Facture.Statut.ANNULEE,
+                                       Facture.Statut.BROUILLON])
+                  .prefetch_related('lignes', 'paiements', 'avoirs',
+                                    'notes_debit', 'retenues_subies',
+                                    'affectations_paiement__paiement'))
+    total_du = Decimal('0')
+    total_en_retard = Decimal('0')
+    total_a_echoir_7j = Decimal('0')
+    nb_impayees = 0
+    nb_en_retard = 0
+    for facture in ouvertes:
+        du = facture.montant_du
+        if du <= 0:
+            continue
+        nb_impayees += 1
+        total_du += du
+        if facture.jours_retard > 0:
+            nb_en_retard += 1
+            total_en_retard += du
+        elif (facture.date_echeance
+                and aujourdhui <= facture.date_echeance <= dans_7_jours):
+            total_a_echoir_7j += du
+
+    return {
+        'mois': aujourdhui.strftime('%Y-%m'),
+        'mois_precedent': fin_mois_precedent.strftime('%Y-%m'),
+        'encaisse_mois': str(_encaisse(premier_du_mois, aujourdhui)),
+        'encaisse_mois_precedent': str(
+            _encaisse(premier_mois_precedent, fin_mois_precedent)),
+        'total_du': str(total_du),
+        'nb_impayees': nb_impayees,
+        'total_en_retard': str(total_en_retard),
+        'nb_en_retard': nb_en_retard,
+        'total_a_echoir_7j': str(total_a_echoir_7j),
+    }

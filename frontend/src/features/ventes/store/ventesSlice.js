@@ -200,6 +200,23 @@ export const fetchFactures = createCancellableThunk('ventes/fetchFactures', (_, 
   ),
 )
 
+// AUD157 (FAC-13) — LES KPI D'ARGENT VIENNENT DU SERVEUR. Ils étaient sommés
+// dans `FactureList.jsx` à partir des factures chargées, sans filtrer le statut
+// des paiements : un chèque revenu impayé comptait comme encaissé. Un seul
+// propriétaire (`ventes.selectors.kpis_factures`), un seul appel réseau — et
+// l'écran ne fait plus AUCUN calcul monétaire.
+export const fetchFacturesKpis = createAsyncThunk(
+  'ventes/fetchFacturesKpis',
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await ventesApi.getFacturesKpis()
+      return res.data
+    } catch (err) {
+      return rejectWithValue(err.response?.data ?? err.message)
+    }
+  },
+)
+
 export const createFacture = createAsyncThunk('ventes/createFacture', async (data, { rejectWithValue }) => {
   try {
     const res = await ventesApi.createFacture(data)
@@ -310,6 +327,9 @@ const ventesSlice = createSlice({
     devis: [],
     bonsCommande: [],
     factures: [],
+    // AUD157 (FAC-13) — KPI monetaires agreges PAR LE SERVEUR (jamais sommes
+    // dans l'ecran). `null` tant que l'agregat n'est pas revenu.
+    facturesKpis: null,
     loading: false,
     // VX165 — compteur de sondages EN VOL partagés par `fetchDevis`/
     // `fetchBonsCommande`/`fetchFactures` : `loading` reste dérivé de ce
@@ -426,6 +446,9 @@ const ventesSlice = createSlice({
         state.factures = action.payload.results ?? action.payload
       })
       .addCase(fetchFactures.rejected, rejected)
+      .addCase(fetchFacturesKpis.fulfilled, (state, action) => {
+        state.facturesKpis = action.payload
+      })
       .addCase(createFacture.fulfilled, (state, action) => { state.factures.push(action.payload) })
       .addCase(updateFacture.pending, (state, action) => {
         state.factureUpdateSeq[action.meta.arg.id] = action.meta.requestId

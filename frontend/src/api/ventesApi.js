@@ -343,6 +343,12 @@ const ventesApi = {
   // Factures
   // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
   getFactures: (params, config) => api.get('/ventes/factures/', { params, ...config }),
+  // AUD157 (FAC-13) — KPI monétaires AGRÉGÉS PAR LE SERVEUR. « Encaissé ce
+  // mois » était sommé ici même, dans l'écran, sur `p.montant` sans filtrer
+  // `p.statut` : des chèques revenus impayés étaient comptés comme encaissés.
+  // Un seul propriétaire désormais (`selectors.kpis_factures`). Contrat PACT10 :
+  // backend/django_core/apps/ventes/contract_samples/factures_kpis.json
+  getFacturesKpis: (config) => api.get('/ventes/factures/kpis/', { ...config }),
   getFacture: (id) => api.get(`/ventes/factures/${id}/`),
   createFacture: (data) => api.post('/ventes/factures/', data),
   updateFacture: (id, data) => api.put(`/ventes/factures/${id}/`, data),

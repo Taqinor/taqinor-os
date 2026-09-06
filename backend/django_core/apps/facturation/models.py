@@ -442,9 +442,20 @@ class Facture(TotauxDocumentMixin, models.Model):
         escomptes = sum(
             (p.escompte_montant or Decimal('0') for p in actifs),
             Decimal('0'))
+        # AUD157 — `.select_related('paiement')` CHAÎNE un nouveau queryset :
+        # il repart donc en base même quand l'appelant a préfetché
+        # `affectations_paiement__paiement`, une requête PAR FACTURE sur toute
+        # la liste. `.all()` nu est la seule forme que le gestionnaire de
+        # relation sert depuis `_prefetched_objects_cache` (et le `paiement` de
+        # chaque affectation y est déjà chargé). Sans préfetch, on garde le
+        # `select_related` d'origine — mêmes lignes, mêmes montants.
+        cache = getattr(self, '_prefetched_objects_cache', None) or {}
+        if 'affectations_paiement' in cache:
+            affectations = self.affectations_paiement.all()
+        else:
+            affectations = self.affectations_paiement.select_related('paiement')
         via_affectation = sum(
-            (a.montant
-             for a in self.affectations_paiement.select_related('paiement')
+            (a.montant for a in affectations
              if a.paiement.statut != Paiement.Statut.REJETE),
             Decimal('0'))
         return direct + escomptes + via_affectation

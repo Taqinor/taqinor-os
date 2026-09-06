@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/ventes/factures/kpis/",
+  "pourquoi": "AUD157 (FAC-13) — les KPI monétaires de l'écran Factures ont enfin UN propriétaire, côté serveur. « Encaissé ce mois » était sommé dans FactureList.jsx sur `p.montant` SANS filtrer `p.statut` : l'écran affichait un encaissé qui comptait des chèques revenus impayés, avec une définition DIFFÉRENTE de `Facture.montant_paye` (laquelle exclut les paiements rejetés — YLEDG5 — et compte l'escompte accordé — XFAC12). L'agrégat est calculé sur le queryset déjà scopé société ET portée de visibilité du viewset. Les montants sont des CHAÎNES décimales, jamais des flottants : l'écran les formate, il ne les recalcule pas. `total_du`, `total_en_retard` et `total_a_echoir_7j` sortent des propriétés modèles (source unique du « reste dû » : avoirs, notes de débit, retenues subies, abandon de créance) sur les factures vivantes (ni annulées ni brouillons) dont le reste dû est strictement positif. `total_a_echoir_7j` ne compte QUE les factures pas encore en retard dont l'échéance tombe dans les 7 prochains jours.",
+  "exemple": {
+    "mois": "2026-09",
+    "mois_precedent": "2026-08",
+    "encaisse_mois": "480000.00",
+    "encaisse_mois_precedent": "312500.00",
+    "total_du": "1250000.00",
+    "nb_impayees": 34,
+    "total_en_retard": "430000.00",
+    "nb_en_retard": 12,
+    "total_a_echoir_7j": "88000.00"
+  },
+  "exemple_vide": {
+    "mois": "2026-09",
+    "mois_precedent": "2026-08",
+    "encaisse_mois": "0",
+    "encaisse_mois_precedent": "0",
+    "total_du": "0",
+    "nb_impayees": 0,
+    "total_en_retard": "0",
+    "nb_en_retard": 0,
+    "total_a_echoir_7j": "0"
+  }
+}
