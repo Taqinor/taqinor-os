@@ -70,53 +70,23 @@ if not meryem.role_id and meryem.role_legacy:
 
 ## Résultat de la vérification
 
-Date de vérification: _À remplir_
+Date de vérification : **2026-09-06** (exécutée EN PRODUCTION, lecture seule,
+via `docker compose exec django_core python manage.py shell` sur le serveur —
+consignée par le run de drain AUD/MRY).
 
 ### État du compte Meryem
 
-**Email** : _À remplir_ (ex: meryem@taqinor.ma)
+**Compte** : pk 4, username `Meryem`, email `meryem.hida@taqinor.ma`, company 1, **actif**.
 
-**Configuration actuelle** :
-- [ ] Superuser: _À remplir_ (Oui/Non)
-- [ ] Rôle fin posé: _À remplir_ (Oui/Non)
-  - Si Oui, nom du rôle: _À remplir_
-  - Permissions: _À remplir_
-- [ ] Rôle legacy posé: _À remplir_ (Oui/Non)
-  - Si Oui, valeur: _À remplir_
+**Configuration mesurée** :
+- [x] Rôle fin posé : **Oui** — « TAQINOR Démo — Responsable »
+- [x] Rôle legacy posé : **Oui** — `role_legacy=responsable`
+- [x] `is_responsable` : **True**
 
-**Résultat is_responsable** : _À remplir_ (True/False)
-
-### Action prise si nécessaire
-
-Si `is_responsable` est `False` :
-
-1. **Via admin Django** :
-   - Aller sur `https://api.taqinor.ma/admin/roles/role/`
-   - Créer ou sélectionner un rôle "Commerciale" avec les permissions d'écriture appropriées
-   - Aller sur `https://api.taqinor.ma/admin/authentication/customuser/`
-   - Éditer le compte Meryem
-   - Sélectionner le rôle dans le champ `role`
-   - Sauvegarder
-
-2. **Mode hérité (legacy)** (si pas de rôle fin dans le système) :
-   - Aller sur `https://api.taqinor.ma/admin/authentication/customuser/`
-   - Éditer le compte Meryem
-   - Définir `role_legacy = 'responsable'`
-   - Sauvegarder
-
-**JAMAIS via SQL** — toujours passer par l'admin Django.
-
-## Validation finale
-
-Après action (si nécessaire), relancer la vérification :
-
-```python
-# Dans Django shell
-meryem = CustomUser.objects.get(email='meryem@...')
-print(f"is_responsable après correction: {meryem.is_responsable}")
-```
-
-Résultat final : _À remplir_ (doit être True)
+**Verdict : rôle SUFFISANT pour agir.** Toutes les actions gardées
+`IsResponsableOrAdmin` (noter, log_interaction, whatsapp_devis, devis_auto,
+questionnaire_lien, initialiser_relance, RelanceEtapeViewSet hors list) lui
+sont ouvertes. Aucune correction nécessaire.
 
 ## Notes
 
