@@ -42,6 +42,7 @@ PREFIXES_DOMAINE = {
     'cautions-soumission', 'dossiers-soumission',
     'pieces-soumission', 'echeances-ao', 'resultats-ao', 'dossiers-ao',
     'pieces-dossier-ao', 'checklist-partenaire', 'pieces-administratives',
+    'planches',
 }
 
 #: AOF157 — ressources de l'ÉCONOMIE DIRECTEUR. Elles sont DÉLIBÉRÉMENT hors du
