@@ -1616,6 +1616,17 @@ def factures_du_client_portail(company, client_id, *, limit=200):
     qs = (Facture.objects
           .filter(company=company, client_id=client_id)
           .exclude(statut=Facture.Statut.BROUILLON)
+          # AUD159 — EXACTEMENT les relations lues par les deux propriétés
+          # sérialisées ci-dessous : `total_ttc` itère `lignes` (via
+          # `tva_par_taux`) et `montant_du` touche `paiements`,
+          # `affectations_paiement`, `avoirs`, `notes_debit` et
+          # `retenues_subies`. Le queryset n'avait AUCUN prefetch : jusqu'à
+          # ~7 requêtes par facture, sur 200 factures par page — d'une surface
+          # PUBLIQUE, donc exposée à la charge externe. La SOURCE des chiffres
+          # ne change pas : les propriétés modèles restent propriétaires.
+          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
+                            'retenues_subies',
+                            'affectations_paiement__paiement')
           .order_by('-date_emission', '-id')[:limit])
     return [{
         'id': f.id,
