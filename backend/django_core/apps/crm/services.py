@@ -697,6 +697,20 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
 
+    # MRY11 × MRY9 — combien de touches de CETTE cadence restaient ouvertes
+    # AVANT toute écriture, celle-ci exclue. Se le demander APRÈS était le
+    # bug : marquer une touche de milieu de cadence « joint » déclenche le
+    # récepteur `_arreter_cadence_on_outcome` (MRY9), qui passe TOUTES les
+    # touches restantes à SAUTEE de façon SYNCHRONE sur le post_save de
+    # l'activité — la question « reste-t-il une touche à faire ? » posée
+    # ensuite répondait donc toujours « non », et le lead qu'on venait
+    # justement de JOINDRE partait au froid, étiqueté injoignable, avec des
+    # réveils J30/J60. La photo est prise avant, jamais après.
+    restantes_avant = etape.lead.relance_etapes.filter(
+        cadence=etape.cadence,
+        statut=RelanceEtape.Statut.A_FAIRE,
+    ).exclude(pk=etape.pk).count()
+
     etape.statut = statut
     etape.note = note or ''
     etape.traite_par = user
@@ -732,11 +746,20 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # MRY11 — la cadence vient-elle de s'ÉPUISER ? Uniquement ici : une
     # cadence ARRÊTÉE (MRY9) n'est pas une cadence terminée, et clôturer un
     # lead qu'on vient de joindre serait exactement l'inverse du bon geste.
-    if not lead.relance_etapes.filter(
-            cadence=etape.cadence,
-            statut=RelanceEtape.Statut.A_FAIRE).exists():
+    # DEUX conditions, et aucune ne se lit après coup :
+    #   * cette touche était bien la DERNIÈRE encore ouverte (photo prise
+    #     avant l'écriture, cf. `restantes_avant`) ;
+    #   * son issue n'est pas une issue de SUCCÈS — joindre, intéresser ou
+    #     convenir d'un rappel ne clôt jamais un dossier au froid.
+    if restantes_avant == 0 and (outcome or '') not in _OUTCOMES_SANS_CLOTURE:
         cloturer_cadence(lead, user, etape.cadence)
     return etape
+
+
+#: MRY11 × MRY9 — les issues qui INTERDISENT la clôture, même sur la dernière
+#: touche : on a joint la personne (ou on est convenu d'un rappel). La mettre
+#: au froid et l'étiqueter « injoignable » serait l'inverse du bon geste.
+_OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel'})
 
 
 #: MRY11 — ce que devient un lead dont la cadence s'est épuisée sans réponse.
