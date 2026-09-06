@@ -1,5 +1,5 @@
 {
-  "endpoint": "GET /api/django/crm/relance-etapes/<id>/message/ (et POST /api/django/crm/relance-etapes/<id>/whatsapp/)",
+  "endpoint": "GET /api/django/crm/relance-etapes/<id>/message/",
   "pourquoi": "MRY25 (PACT10) — le message d'une touche est RENDU côté serveur (gabarit `parametres.MessageTemplate`, langue du lead, contexte lead+devis) puis OUVERT par un clic humain : décision D5, aucun BSP, aucun envoi réseau. Le serveur rend `{message, wa_url}` — patron déjà établi par `crm/views.py::whatsapp_devis` — et l'écran affiche une modale d'aperçu AVANT le clic. Le POST `whatsapp/` renvoie EXACTEMENT le même corps plus `etape` (forme `relance_etape_v2`) : il MARQUE la touche faite côté serveur, il n'envoie rien. `placeholders_manquants` est la liste des placeholders sans valeur réelle : la phrase qui les contient est OMISE du `message` (règle « aucun chiffre inventé, jamais un défaut ») — l'écran ne doit donc JAMAIS ré-injecter une valeur à la place. Pour `template_cle == 'vocal_j3'`, `wa_url` n'a pas de `?text=` : le texte est le SCRIPT du vocal à dire, pas un message à coller. `wa_url` est `null` quand le numéro est inexploitable (le POST répond alors 400).",
   "exemple": {
     "message": "Bonjour Aziz, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
@@ -13,7 +13,9 @@
     "wa_url": "https://wa.me/212661112233?text=Je%20ne%20veux%20pas%20insister",
     "langue": "darija",
     "phone": "+212661112233",
-    "placeholders_manquants": ["date_validite"]
+    "placeholders_manquants": [
+      "date_validite"
+    ]
   },
   "exemple_numero_invalide": {
     "message": "Bonjour Salma, Meryem de TAQINOR.",

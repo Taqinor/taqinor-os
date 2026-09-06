@@ -1,5 +1,5 @@
 {
-  "endpoint": "GET/PATCH /api/django/parametres/profile/",
+  "endpoint": "GET /api/django/parametres/profile/",
   "pourquoi": "MRY25 (PACT10) — les fenêtres d'appel de la société décident QUAND une touche de cadence tombe (`crm.horaires.prochain_creneau_appel`) et servent de base au KPI « premier contact » en minutes OUVRÉES. Neuf champs ADDITIFS sur `CompanyProfile`, à côté de `lead_sla_hours` : sans contrat publié, le sous-bloc « Fenêtres d'appel » de `LeadsSection.jsx` (MRY28) et le modèle (MRY8) auraient inventé deux jeux de noms. Aucun modèle `FenetreAppel` n'est créé : les jours ouvrés et les fériés restent portés par `notifications.WorkingHoursConfig` / `Holiday` (source unique déjà en place) — ces neuf champs ne portent que les HEURES. Les défauts sont les règles du Guide de Meryem, pas des valeurs neutres : 08:30–20:00, pause du vendredi 11:30–15:00 (prière), fenêtre de Ramadan 10:00–14:00 active seulement entre `ramadan_debut` et `ramadan_fin` (deux dates `null` par défaut — jamais une période devinée).",
   "exemple": {
     "appel_heure_debut": "08:30",

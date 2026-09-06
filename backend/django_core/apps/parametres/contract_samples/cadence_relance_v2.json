@@ -1,7 +1,19 @@
 {
-  "endpoint": "GET/POST/PATCH /api/django/parametres/cadence-relance/?cadence=contact",
+  "endpoint": "GET /api/django/parametres/cadence-relance/",
   "pourquoi": "MRY25 (PACT10) — l'éditeur « Cadences de relance » de Paramètres → CRM (MRY28) et le gabarit serveur `parametres.CadenceRelanceEtape` (MRY4) sont deux moitiés sans fichier commun. Ce qui CHANGE et doit donc être publié d'avance : le gabarit passe de UNE cadence anonyme à TROIS cadences nommées (`contact`, `apres_devis`, `reveil`, plus `generique` = les 5 barreaux historiques, migrés jamais supprimés), et la granularité passe au MINUTE (`delai_minutes`) avec une `heure_cible` optionnelle — la touche 2 de la cadence contact tombe à J0 + 3 minutes, ce qu'un modèle en JOURS ne pouvait pas exprimer. `template_cle` est un TEXTE LIBRE côté gabarit (valeur = une `MessageTemplate.Cle` de MRY12) : volontairement pas une FK, pour ne pas créer de dépendance d'import entre les deux modules. `unique_together` = (company, cadence, ordre). `?cadence=` filtre la liste ; sans lui, toutes cadences confondues. Validation serveur : `delai_minutes < 1440`, `heure_cible` optionnelle (`null` = pas de recalage horaire).",
-  "exemple": [
+  "exemple": {
+    "id": 51,
+    "cadence": "contact",
+    "ordre": 1,
+    "delai_jours": 0,
+    "delai_minutes": 0,
+    "heure_cible": null,
+    "canal": "whatsapp",
+    "libelle": "Message d'identité",
+    "template_cle": "identite",
+    "actif": true
+  },
+  "exemple_liste": [
     {
       "id": 51,
       "cadence": "contact",
