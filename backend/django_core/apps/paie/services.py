@@ -535,6 +535,85 @@ def importer_elements_rh(periode):
         return importes
 
 
+# ── AUDV21/XFLT29 — Import des avantages en nature véhicule (flotte) ───────
+
+def importer_avantages_nature_flotte(periode):
+    """Importe les avantages en nature véhicule du mois en ``ElementVariable``
+    (AUDV21/XFLT29, rubrique catalogue ``AV_VOITURE``).
+
+    Point d'entrée CROSS-APP EN LECTURE : lit ``apps.flotte.selectors
+    .avantages_en_nature`` (jamais ``apps.flotte.models`` directement) — la
+    flotte n'écrit JAMAIS dans la paie (voir CLAUDE.md). Pour chaque
+    affectation ``usage_prive=True`` du mois dont le conducteur a un compte
+    ERP lié, résout le ``ProfilPaie`` actif correspondant
+    (``employe__user_id``) et matérialise sa valeur mensuelle en
+    ``ElementVariable`` (``type=TYPE_PRIME``, ``rubrique=AV_VOITURE`` si le
+    catalogue de la société la porte déjà, ``source=SOURCE_FLOTTE``).
+
+    Un conducteur sans ``ProfilPaie`` actif dans la société (compte ERP sans
+    dossier paie), ou une valeur nulle/zéro, n'est jamais importé — jamais une
+    erreur, comme ``importer_elements_rh``. Si le catalogue de la société ne
+    porte pas encore la rubrique ``AV_VOITURE`` (``ensure_rubriques_standard``
+    non lancé), l'élément est quand même créé, ``rubrique=None`` (imposable
+    par défaut via ``repartir_avantage`` sans rubrique — comportement
+    historique inchangé, jamais bloquant).
+
+    Idempotent par re-jouabilité (même principe que ``importer_elements_rh``) :
+    les éléments ``source='flotte'`` de la période sont d'abord purgés puis
+    recréés à partir de la flotte, de sorte qu'un ré-import reflète l'état
+    flotte courant sans dupliquer. La saisie manuelle (``source='manuel'``) et
+    l'import RH (``source='rh'``) ne sont jamais touchés. La période doit être
+    au statut ``brouillon`` (sinon ``TransitionPeriodeInterdite``). Renvoie le
+    nombre d'éléments importés.
+    """
+    from apps.flotte import selectors as flotte_selectors  # cross-app READ (paresseux)
+
+    if periode.statut != PeriodePaie.STATUT_BROUILLON:
+        raise TransitionPeriodeInterdite(
+            "L'import des avantages en nature n'est possible qu'en statut "
+            "brouillon.")
+
+    from .models import ProfilPaie
+
+    mois = f'{periode.annee:04d}-{periode.mois:02d}'
+    avantages = flotte_selectors.avantages_en_nature(periode.company, mois)
+    rubrique_av_voiture = Rubrique.objects.filter(
+        company=periode.company, code='AV_VOITURE').first()
+
+    with transaction.atomic():
+        ElementVariable.objects.filter(
+            periode=periode, source=ElementVariable.SOURCE_FLOTTE).delete()
+
+        importes = 0
+        for avantage in avantages:
+            valeur = avantage.get('valeur_avantage_mensuelle') or Decimal('0')
+            if valeur <= 0:
+                continue
+            profil = ProfilPaie.objects.filter(
+                company=periode.company,
+                employe__user_id=avantage['user_id'],
+                actif=True,
+            ).first()
+            if profil is None:
+                continue
+            vehicule_label = avantage.get('vehicule_label') or ''
+            libelle = 'Avantage en nature véhicule'
+            if vehicule_label:
+                libelle += f' — {vehicule_label}'
+            ElementVariable.objects.create(
+                company=periode.company,
+                periode=periode,
+                profil=profil,
+                type=ElementVariable.TYPE_PRIME,
+                rubrique=rubrique_av_voiture,
+                libelle=libelle,
+                montant=valeur,
+                source=ElementVariable.SOURCE_FLOTTE,
+            )
+            importes += 1
+        return importes
+
+
 # ── ZPAI11 — Duplication des rubriques récurrentes vers une nouvelle période ─
 
 def _mois_precedent(annee, mois):

@@ -131,7 +131,17 @@ const flotteApi = {
   // ── Conformité réglementaire ──
   echeancesReglementaires: crud('echeances-reglementaires'),
   assurances: crud('assurances'),
-  visitesTechniques: crud('visites-techniques'),
+  visitesTechniques: {
+    ...crud('visites-techniques'),
+    // AUDV21/XFLT10 — propose la prochaine date de visite technique NARSA
+    // pour un actif VÉHICULE (périodicité légale par type fiscal), à
+    // pré-remplir sur le formulaire de création (jamais un écrasement d'une
+    // saisie manuelle).
+    proposerDateNarsa: (actifFlotteId) =>
+      api.get('/flotte/visites-techniques/proposer-date-narsa/', {
+        params: { actif_flotte: actifFlotteId },
+      }),
+  },
   cartesGrises: crud('cartes-grises'),
   baremesVignette: crud('baremes-vignette'),
   // FLOTTE24 — moteur unifié d'alertes réglementaires (echu / j7 / j15 / j30).

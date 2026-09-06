@@ -14,7 +14,10 @@ Couvre :
   - lecture tout rôle, écriture responsable/admin (role gate) ;
   - date_prochaine calculée côté serveur ;
   - filtres ``?statut=`` / ``?actif_flotte=`` ;
-  - action ``expirantes/?within=N`` (lecture).
+  - action ``expirantes/?within=N`` (lecture) ;
+  - action ``proposer-date-narsa/?actif_flotte=<id>`` (AUDV21, lecture) —
+    propose la prochaine date NARSA selon la périodicité légale par type
+    fiscal, ``None`` (jamais une erreur) hors véhicule/carte grise/société.
 """
 import datetime
 
@@ -26,7 +29,13 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.flotte.models import ActifFlotte, Vehicule, VisiteTechnique
+from apps.flotte.models import (
+    ActifFlotte,
+    CarteGriseVehicule,
+    EnginRoulant,
+    Vehicule,
+    VisiteTechnique,
+)
 from apps.flotte.selectors import (
     visites_techniques_de_la_societe,
     visites_techniques_expirantes,
@@ -36,6 +45,7 @@ User = get_user_model()
 
 URL = "/api/django/flotte/visites-techniques/"
 URL_EXPIRANTES = "/api/django/flotte/visites-techniques/expirantes/"
+URL_PROPOSER_NARSA = "/api/django/flotte/visites-techniques/proposer-date-narsa/"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -348,3 +358,69 @@ class VisiteTechniqueApiTests(TestCase):
         resp = auth(self.admin_a).get(f"{URL_EXPIRANTES}?within=abc")
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(rows(resp)), 1)
+
+
+# ── API : action proposer-date-narsa (AUDV21/XFLT10) ───────────────────────────
+
+class VisiteTechniqueProposerDateNarsaApiTests(TestCase):
+    def setUp(self):
+        self.co_a = make_company("vt-narsa-a", "VT Narsa A")
+        self.co_b = make_company("vt-narsa-b", "VT Narsa B")
+        self.user_a = make_user(self.co_a, "vt-narsa-user-a", "normal")
+
+    def _actif_vehicule(self, company, immat, type_fiscal='',
+                        mise_en_circulation=None):
+        veh = Vehicule.objects.create(
+            company=company, immatriculation=immat, energie="diesel",
+            type_fiscal=type_fiscal)
+        actif = ActifFlotte.objects.create(company=company, vehicule=veh)
+        if mise_en_circulation is not None:
+            CarteGriseVehicule.objects.create(
+                company=company, actif_flotte=actif,
+                numero_carte_grise=f"CG-{immat}",
+                date_mise_circulation=mise_en_circulation)
+        return actif
+
+    def test_propose_date_narsa_read_any_role(self):
+        mec = datetime.date.today() - datetime.timedelta(days=365 * 2)
+        actif = self._actif_vehicule(
+            self.co_a, "NARSA-1", type_fiscal="utilitaire",
+            mise_en_circulation=mec)
+        resp = auth(self.user_a).get(
+            f"{URL_PROPOSER_NARSA}?actif_flotte={actif.id}")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNotNone(resp.data["date_proposee"])
+
+    def test_sans_carte_grise_retourne_none(self):
+        actif = self._actif_vehicule(self.co_a, "NARSA-2")
+        resp = auth(self.user_a).get(
+            f"{URL_PROPOSER_NARSA}?actif_flotte={actif.id}")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data["date_proposee"])
+
+    def test_actif_engin_retourne_none(self):
+        engin = EnginRoulant.objects.create(company=self.co_a, nom="Nacelle 1")
+        actif = ActifFlotte.objects.create(company=self.co_a, engin=engin)
+        resp = auth(self.user_a).get(
+            f"{URL_PROPOSER_NARSA}?actif_flotte={actif.id}")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data["date_proposee"])
+
+    def test_actif_manquant_ou_invalide_retourne_none(self):
+        resp = auth(self.user_a).get(f"{URL_PROPOSER_NARSA}?actif_flotte=999999")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data["date_proposee"])
+
+    def test_actif_flotte_manquant_400(self):
+        resp = auth(self.user_a).get(URL_PROPOSER_NARSA)
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_scope_societe_actif_autre_societe_retourne_none(self):
+        mec = datetime.date.today() - datetime.timedelta(days=365 * 2)
+        actif_b = self._actif_vehicule(
+            self.co_b, "NARSA-B", type_fiscal="utilitaire",
+            mise_en_circulation=mec)
+        resp = auth(self.user_a).get(
+            f"{URL_PROPOSER_NARSA}?actif_flotte={actif_b.id}")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data["date_proposee"])

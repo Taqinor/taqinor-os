@@ -114,7 +114,10 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'synthese_tva', 'detenteurs_courants', 'taux_completion',
                 'activites', 'ocr', 'divergences_permis',
                 # ARC8 — lecture du chatter générique (records.Activity).
-                'chatter_historique']
+                'chatter_historique',
+                # AUDV21/XFLT10 — proposition de date NARSA, lecture seule
+                # (aucune écriture, aucune donnée monétaire).
+                'proposer_date_narsa']
 
 
 def _parse_date_param(value):
@@ -1852,6 +1855,12 @@ class VisiteTechniqueViewSet(_FlotteBaseViewSet):
     Action ``GET /visites-techniques/expirantes/?within=N`` (lecture tout rôle)
     — visites déjà expirées ou dues dans les ``N`` prochains jours (défaut 30),
     de la plus urgente à la moins urgente.
+
+    Action ``GET /visites-techniques/proposer-date-narsa/?actif_flotte=<id>``
+    (lecture tout rôle, AUDV21) — propose la prochaine date NARSA d'un
+    véhicule selon la périodicité légale par type fiscal, à pré-remplir sur le
+    formulaire de création (ne remplace jamais ``validite_mois``/
+    ``date_prochaine`` saisis manuellement).
     """
     queryset = VisiteTechnique.objects.select_related(
         'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
@@ -1900,6 +1909,44 @@ class VisiteTechniqueViewSet(_FlotteBaseViewSet):
         qs = visites_techniques_expirantes(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='proposer-date-narsa')
+    def proposer_date_narsa(self, request):
+        """AUDV21/XFLT10 — Propose la prochaine date de visite technique
+        NARSA pour un actif VÉHICULE, selon la périodicité légale par type
+        fiscal (``services.prochaine_visite_narsa``).
+
+        Lecture (tout rôle), scopée société. ``?actif_flotte=<id>``
+        obligatoire — appelée par le formulaire de création AVANT
+        l'enregistrement pour PRÉ-REMPLIR ``date_prochaine`` : ne fait
+        qu'une PROPOSITION (n'écrit jamais en base, n'écrase jamais une
+        saisie manuelle déjà posée côté client). Renvoie
+        ``{'date_proposee': None}`` (jamais une erreur 404/500) si l'actif
+        est un engin (pas de type fiscal véhicule), n'appartient pas à la
+        société, ou si la date de mise en circulation (carte grise) est
+        inconnue.
+        """
+        company = request.user.company
+        actif_flotte_id = request.query_params.get('actif_flotte')
+        if not actif_flotte_id:
+            return Response(
+                {'detail': "Le paramètre 'actif_flotte' est requis."},
+                status=400)
+        try:
+            actif = ActifFlotte.objects.select_related('vehicule').get(
+                id=int(actif_flotte_id), company=company)
+        except (ActifFlotte.DoesNotExist, ValueError, TypeError):
+            return Response({'date_proposee': None})
+
+        vehicule = actif.vehicule
+        if vehicule is None:
+            return Response({'date_proposee': None})
+
+        from .services import prochaine_visite_narsa
+        proposition = prochaine_visite_narsa(vehicule)
+        return Response({
+            'date_proposee': proposition.isoformat() if proposition else None,
+        })
 
     def perform_destroy(self, instance):
         # AUD728 — une visite technique NARSA est un document RÉGLEMENTAIRE
