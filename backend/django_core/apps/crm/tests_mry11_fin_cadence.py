@@ -237,3 +237,44 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
         self.assertEqual(self.lead.stage, stages.COLD)
         self.assertIn('Injoignable 6 appels', self.lead.tags or '')
         self.assertEqual(self._reveils().count(), 2)
+
+
+class GabaritsReveilTests(_Base):
+    """MRY11 × MRY12 — le réveil parle du BON dossier : un lead jamais chiffré
+    ne doit jamais lire « vous aviez reçu un devis chez nous » (A1), réservé
+    aux dormants AVEC devis ; à J60, tous reçoivent la dernière chance (A3)."""
+    slug = 'mry11-reveil'
+
+    def _cles_reveil(self):
+        return list(self._reveils().order_by('ordre')
+                    .values_list('template_cle', flat=True))
+
+    def _devis(self, statut):
+        from decimal import Decimal
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        client = Client.objects.create(
+            company=self.company, nom='Client',
+            email=f'{self.slug}-{statut}@example.com')
+        return Devis.objects.create(
+            company=self.company, reference=f'DV-{self.slug}-{statut}',
+            client=client, lead=self.lead, statut=statut,
+            taux_tva=Decimal('20.00'),
+            date_envoi=LUNDI if statut != 'brouillon' else None)
+
+    def test_un_lead_jamais_chiffre_recoit_M6_puis_la_derniere_chance(self):
+        self._epuiser('contact')
+        self.assertEqual(self._reveils().count(), 2)
+        self.assertEqual(self._cles_reveil(), ['reveil_a2', 'reveil_a3'])
+
+    def test_un_dormant_avec_devis_recoit_A1_puis_la_derniere_chance(self):
+        self._devis('envoye')
+        initialiser_plan_relance(
+            self.lead, self.acteur, depart=LUNDI, cadence='reveil')
+        self.assertEqual(self._cles_reveil(), ['reveil_a1', 'reveil_a3'])
+
+    def test_un_brouillon_jamais_envoye_ne_compte_pas(self):
+        self._devis('brouillon')
+        initialiser_plan_relance(
+            self.lead, self.acteur, depart=LUNDI, cadence='reveil')
+        self.assertEqual(self._cles_reveil(), ['reveil_a2', 'reveil_a3'])

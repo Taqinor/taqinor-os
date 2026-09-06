@@ -573,6 +573,38 @@ def _lead_porte_tag(lead, tag) -> bool:
                for morceau in (getattr(lead, 'tags', '') or '').split(','))
 
 
+#: MRY11 × MRY12 — les gabarits de la cadence « réveil » dépendent du DOSSIER.
+#: Le gabarit seedé dit « reveil_a1 » (A1 du Guide : « vous aviez reçu un
+#: devis chez nous ») à J30 pour tout le monde — faux, donc interdit, pour un
+#: lead jamais chiffré (clôture de la cadence de contact). Un lead sans devis
+#: reçoit M6 (« reveil_a2 ») à J30 ; à J60, tous reçoivent la dernière chance
+#: (« reveil_a3 »). Seuls les barreaux encore au gabarit d'origine sont
+#: adaptés : une clé personnalisée par le fondateur est respectée.
+_REVEIL_GABARITS = {
+    True: ('reveil_a1', 'reveil_a3'),    # dormant AVEC devis
+    False: ('reveil_a2', 'reveil_a3'),   # jamais chiffré
+}
+_REVEIL_CLES_SEEDEES = frozenset({'reveil_a1', 'reveil_a2'})
+
+
+def _adapter_gabarits_reveil(lead, etapes):
+    """Réassigne, EN PLACE, les ``template_cle`` des touches « réveil » selon
+    que le lead a déjà reçu une proposition ou non (lecture cross-app par le
+    sélecteur ``ventes.lead_a_un_devis``). Best-effort : en cas d'erreur de
+    lecture, le gabarit seedé reste tel quel."""
+    from apps.ventes.selectors import lead_a_un_devis
+    try:
+        avec_devis = bool(lead_a_un_devis(lead))
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning('MRY11: lecture des devis du lead #%s impossible',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return
+    cles = iter(_REVEIL_GABARITS[avec_devis])
+    for etape in sorted(etapes, key=lambda e: e.ordre):
+        if etape.template_cle in _REVEIL_CLES_SEEDEES:
+            etape.template_cle = next(cles, etape.template_cle)
+
+
 #: MRY4 — le gabarit « dimanche famille » du suivi après devis n'est PAS pour
 #: tout le monde : le Guide v2.1 le réserve aux dossiers où la décision se
 #: prend en famille, le dimanche. Posé sur tous, il envoyait un message
@@ -722,6 +754,8 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         # Tous les barreaux de la cadence ont été écartés (cas limite : une
         # société dont la cadence ne contient QUE la touche réservée).
         return []
+    if cadence == 'reveil':
+        _adapter_gabarits_reveil(lead, etapes)
     RelanceEtape.objects.bulk_create(etapes)
     resultats = list(
         lead.relance_etapes.filter(cadence=cadence)

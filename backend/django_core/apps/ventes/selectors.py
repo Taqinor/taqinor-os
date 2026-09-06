@@ -2039,6 +2039,21 @@ def devis_envoyes_en_attente(company, since=None):
     return qs.order_by('date_envoi', 'id')
 
 
+def lead_a_un_devis(lead):
+    """MRY11 — Ce lead a-t-il déjà REÇU une proposition (devis sorti du
+    brouillon : envoyé, accepté, refusé ou expiré) ?
+
+    Lecture cross-app pour ``apps.crm`` (choix du gabarit de réveil : un lead
+    jamais chiffré ne doit pas lire « vous aviez reçu un devis chez nous »).
+    Un brouillon jamais envoyé ne compte pas."""
+    from .models import Devis
+    if lead is None or not getattr(lead, 'pk', None):
+        return False
+    return Devis.objects.filter(
+        company_id=lead.company_id, lead=lead,
+    ).exclude(statut=Devis.Statut.BROUILLON).exists()
+
+
 def devis_en_cours(company):
     """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
 
