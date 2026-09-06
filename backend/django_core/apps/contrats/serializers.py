@@ -175,6 +175,15 @@ class ContratSerializer(serializers.ModelSerializer):
         # requête DB PAR LIGNE — sans aucun cache ; sur une page de 20
         # contrats c'était 20 requêtes de plus, et autant de doublons dès que
         # plusieurs contrats partagent le même client.
+        #
+        # RÉSIDUEL ASSUMÉ : le cache supprime les lectures RÉPÉTÉES, pas la
+        # première de chaque client DISTINCT. La frontière M3 n'offre qu'une
+        # porte unitaire (`crm.selectors.client_label`, un client à la fois) ;
+        # rendre le budget totalement plat demanderait un `client_labels(
+        # company, ids)` EN VRAC côté `apps/crm/selectors.py` — une addition
+        # dans crm, pas ici. Tant qu'elle n'existe pas, le coût marginal d'un
+        # contrat est d'UNE lecture (plus zéro depuis qu'AUD528 précharge
+        # `company` sur le queryset), jamais deux.
         self._client_label_cache = {}
 
     def get_responsable_nom(self, obj):
