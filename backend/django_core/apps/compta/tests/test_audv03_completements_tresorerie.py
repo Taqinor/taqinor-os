@@ -10,8 +10,8 @@ sans le moindre appelant de production :
 * `recalculer_indemnite_chantier` (FG136) — un PATCH sur le GPS enregistrait
   de nouvelles coordonnées EN GARDANT les anciens montants ;
 * `provisionner_compte_portail` (FG228) — le `perform_create` du ViewSet
-  créait un compte de plus à chaque POST et ne réactivait jamais un compte
-  désactivé ;
+  créait un compte de plus à chaque POST (un compte révoqué reste révoqué :
+  AUD148(c)) ;
 * `creer_ecriture_numerotee` + `sequence_piece_journal` (COMPTA4) — une OD
   manuelle sortait sans numéro de pièce, et aucun écran ne pouvait annoncer
   celui qui serait attribué ;
@@ -71,6 +71,27 @@ class _FakeDoc(SimpleNamespace):
     """Stub duck-typé d'un document ventes (lu par valeur, jamais importé)."""
 
 
+class _RelationVide:
+    """Stand-in d'un manager inverse vide (``facture.paiements`` / ``avoirs``).
+
+    Une facture soldée (``montant_du <= 0``) fait passer le receveur
+    d'encaissement par l'auto-lettrage YLEDG6, qui parcourt ``paiements`` et
+    ``avoirs`` : le stub doit porter ces deux relations comme le modèle réel,
+    sinon le double de test diverge de la production et lève un
+    ``AttributeError`` là où le vrai ``ventes.Facture`` répond une liste.
+    """
+
+    def all(self):
+        return []
+
+
+def _fake_facture(**champs):
+    """Facture stub COMPLÈTE : champs par valeur + relations inverses vides."""
+    champs.setdefault('paiements', _RelationVide())
+    champs.setdefault('avoirs', _RelationVide())
+    return _FakeDoc(**champs)
+
+
 @override_settings(COMPTA_AUTO_ECRITURES=True)
 class TvaEncaissementSurEvenementTests(TestCase):
     """DRAFT165-17 — la TVA quitte le compte d'attente AU PAIEMENT."""
@@ -81,7 +102,7 @@ class TvaEncaissementSurEvenementTests(TestCase):
         services.seed_journaux(self.co)
 
     def _paiement(self, montant):
-        facture = _FakeDoc(
+        facture = _fake_facture(
             id=1, company=self.co, reference='FAC-AUDV03', client_id=42,
             total_ht=Decimal('1000'), total_tva=Decimal('200'),
             total_ttc=Decimal('1200'), montant_du=Decimal('0'))
@@ -131,7 +152,7 @@ class TvaEncaissementHorsAutoEcrituresTests(TestCase):
         services.seed_journaux(co)
         plan.regime_tva = PlanComptable.RegimeTVA.ENCAISSEMENT
         plan.save(update_fields=['regime_tva'])
-        facture = _FakeDoc(
+        facture = _fake_facture(
             id=2, company=co, reference='FAC-OFF', client_id=1,
             total_ht=Decimal('1000'), total_tva=Decimal('200'),
             total_ttc=Decimal('1200'), montant_du=Decimal('0'))
@@ -201,7 +222,7 @@ class IndemniteRecalculeeAEditionTests(TestCase):
 
 
 class ProvisionnementComptePortailTests(TestCase):
-    """DRAFT165-29 — provisionnement IDEMPOTENT + réactivation."""
+    """DRAFT165-29 — provisionnement IDEMPOTENT, sans réactivation (AUD148c)."""
 
     def setUp(self):
         self.co = make_company('audv03-portail', 'AUDV03 Portail')
@@ -225,7 +246,16 @@ class ProvisionnementComptePortailTests(TestCase):
             ComptePortailClient.objects.filter(
                 company=self.co, client=self.client_crm).count(), 1)
 
-    def test_un_compte_desactive_est_REACTIVE_et_garde_son_token(self):
+    def test_un_compte_revoque_nest_PAS_reactive_et_garde_son_token(self):
+        """AUD148(c) — re-provisionner ne ressuscite JAMAIS un accès révoqué.
+
+        AUDV03 avait été écrit quand le provisionnement compta réactivait le
+        compte ; AUD148(c) a tranché l'inverse (politique portail AUD138 :
+        « re-provisionner NE RÉACTIVE JAMAIS un compte désactivé (révoqué) »).
+        Le POST reste idempotent — un seul compte, le même token, le lien déjà
+        envoyé n'est pas cassé — mais la réouverture d'un accès reste une
+        action admin explicite (``portail.services.reactiver_acces_client``).
+        """
         creation = self.api.post(
             self.URL, {'client': self.client_crm.id}, format='json')
         compte = ComptePortailClient.objects.get(id=creation.data['id'])
@@ -236,10 +266,14 @@ class ProvisionnementComptePortailTests(TestCase):
         rappel = self.api.post(
             self.URL, {'client': self.client_crm.id}, format='json')
         self.assertEqual(rappel.status_code, 201, rappel.content)
+        self.assertEqual(rappel.data['id'], compte.id)
         compte.refresh_from_db()
-        self.assertTrue(compte.actif)
-        # Le lien déjà envoyé au client reste valable : on ne le casse pas.
+        self.assertFalse(compte.actif)
+        # Le lien déjà envoyé au client n'est ni cassé ni régénéré.
         self.assertEqual(compte.token_acces, token)
+        self.assertEqual(
+            ComptePortailClient.objects.filter(
+                company=self.co, client=self.client_crm).count(), 1)
 
 
 class NumerotationEcritureODTests(TestCase):

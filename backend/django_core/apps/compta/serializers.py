@@ -1638,11 +1638,23 @@ class BudgetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Budget
+        # AUDV09/XACC22 — `version`, `figee`, `scenario` et `budget_parent`
+        # sont TOUT l'objet de la révision budgétaire (l'action `reviser/`
+        # renvoie la V+1) : sans eux au contrat, l'écran ne peut ni annoncer la
+        # version créée, ni distinguer une version figée d'une version
+        # éditable, ni relier une révision à celle dont elle descend. Tous
+        # dérivés côté serveur (`services.reviser_budget` /
+        # `services.scenario_what_if`), donc en LECTURE SEULE : jamais acceptés
+        # du corps de requête.
         fields = [
             'id', 'annee', 'libelle', 'statut', 'statut_display', 'lignes',
+            'version', 'figee', 'scenario', 'budget_parent',
             'created_by', 'date_creation',
         ]
-        read_only_fields = ['statut', 'created_by', 'date_creation']
+        read_only_fields = [
+            'statut', 'version', 'figee', 'scenario', 'budget_parent',
+            'created_by', 'date_creation',
+        ]
 
 
 # ── FG150 — Comptabilité analytique / centres de coût ──────────────────────

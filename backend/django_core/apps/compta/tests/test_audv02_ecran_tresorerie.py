@@ -106,7 +106,10 @@ class FicheTiersEncoursTests(TestCase):
               'credit': Decimal('14400'), 'libelle': 'Solde'}])
         ids = [ligne.id
                for ligne in selectors.lignes_non_lettrees(self.co, self.clients)]
-        selectors.lettrer(self.co, ids, 'A')
+        # AUD167 a déplacé `lettrer`/`delettrer` des selectors vers les
+        # services (une ÉCRITURE — elle pose le verrou de période) : la lecture
+        # `lignes_non_lettrees` reste côté selectors, le lettrage non.
+        services.lettrer(self.co, ids, 'A')
 
         resp = self.api.get(self._url())
         self.assertEqual(Decimal(resp.data['encours']), Decimal('0'))

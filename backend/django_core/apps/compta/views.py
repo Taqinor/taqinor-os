@@ -8313,11 +8313,15 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
         # SERVICE, pas par un `serializer.save()` nu.
         #
         # Avant : chaque POST créait un compte de plus (ou heurtait la
-        # contrainte d'unicité) et un compte DÉSACTIVÉ ne se réactivait
-        # jamais — il fallait le rouvrir à la main en base.
-        # `services.provisionner_compte_portail` est idempotent par
-        # (société, client) : il réactive et renvoie le compte existant. Le
+        # contrainte d'unicité). `services.provisionner_compte_portail` est
+        # idempotent par (société, client) : il renvoie le compte existant. Le
         # token reste généré côté serveur, à l'intérieur du service.
+        #
+        # AUD148(c) — re-provisionner NE RÉACTIVE JAMAIS un compte révoqué
+        # (`actif=False`) : le service le renvoie TEL QUEL. Rouvrir un accès
+        # révoqué reste une action admin explicite
+        # (`apps.portail.services.reactiver_acces_client`), jamais un effet de
+        # bord d'un POST de provisionnement.
         serializer.instance = services.provisionner_compte_portail(
             company, client_id=client.id)
 

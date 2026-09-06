@@ -206,8 +206,13 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
     # AUD528 — SEUL ViewSet du fichier sans `select_related`, alors que son
     # serialiseur lit `responsable` (FK) sur CHAQUE ligne : une requete par
     # contrat rien que pour afficher un nom d'utilisateur.
+    #
+    # `company` en fait partie : `ContratSerializer.get_client_nom` passe
+    # `obj.company` (l'OBJET, pas l'id) à `crm.selectors.client_label` — sans
+    # préchargement c'était une SECONDE requête par ligne, invisible parce
+    # qu'elle ne vient pas d'un champ affiché.
     queryset = Contrat.objects.select_related(
-        'responsable', 'created_by', 'modele').all()
+        'company', 'responsable', 'created_by', 'modele').all()
     serializer_class = ContratSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'objet']

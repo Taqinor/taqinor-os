@@ -37,35 +37,65 @@ class TestBudgetRequetesListeContrats(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
-    def _contrat(self):
+    def _client(self):
+        n = next(_seq)
+        return Client.objects.create(
+            company=self.company, nom=f'Client {n}', prenom='AUD528',
+            telephone=f'+21260000{n:04d}')
+
+    def _contrat(self, client=None):
         n = next(_seq)
         responsable = User.objects.create_user(
             username=f'aud528-resp-{n}', password='x', company=self.company)
-        client = Client.objects.create(
-            company=self.company, nom=f'Client {n}', prenom='AUD528',
-            telephone=f'+21260000{n:04d}')
+        if client is None:
+            client = self._client()
         return Contrat.objects.create(
             company=self.company, created_by=self.user,
             reference=f'CTR-AUD528-{n}', objet='Maintenance',
             statut=Contrat.Statut.ACTIF, montant=Decimal('12000'),
             responsable=responsable, client_id=client.id)
 
-    def _cout(self, n_nouveaux):
+    def _cout(self, n_nouveaux, client=None):
         for _ in range(n_nouveaux):
-            self._contrat()
+            self._contrat(client=client)
         with CaptureQueriesContext(connection) as ctx:
             resp = self.api.get(f'{BASE}/')
             self.assertEqual(resp.status_code, 200, resp.content)
         return len(ctx.captured_queries), resp
 
     def test_budget_independant_du_nombre_de_contrats(self):
-        """ROUGE avant le correctif : ~2 requêtes de plus PAR contrat."""
-        cout_1, _ = self._cout(1)
-        cout_5, _ = self._cout(4)
+        """ROUGE avant le correctif : ~2 requêtes de plus PAR contrat.
+
+        Le budget est mesuré à ENSEMBLE DE CLIENTS CONSTANT, ce qui est très
+        exactement ce que le patron prescrit par AUD528 garantit (cache par
+        page, YOPSB13) : plus AUCUNE lecture répétée du même client, et
+        `responsable`/`company` préchargés par `select_related`. Le coût d'un
+        client DISTINCT de plus est mesuré par le test suivant — la frontière
+        M3 n'offrant qu'une porte unitaire (`crm.selectors.client_label`), il
+        ne peut pas être nul sans un `client_labels(company, ids)` en vrac
+        ajouté à `apps/crm/selectors.py`.
+        """
+        client = self._client()
+        cout_1, _ = self._cout(1, client=client)
+        cout_5, _ = self._cout(4, client=client)
         self.assertEqual(
             cout_1, cout_5,
             f'N+1 liste contrats : {cout_1} requêtes pour 1 contrat, '
             f'{cout_5} pour 5.')
+
+    def test_un_client_distinct_de_plus_coute_UNE_lecture_pas_deux(self):
+        """Cliquet du résiduel assumé.
+
+        Avant le préchargement de `company`, chaque ligne payait DEUX
+        requêtes : `obj.company` (FK non préchargée, invisible car elle ne
+        correspond à aucun champ affiché) PUIS le libellé client. Seule la
+        seconde est structurelle."""
+        cout_1, _ = self._cout(1)
+        cout_5, _ = self._cout(4)
+        self.assertLessEqual(
+            cout_5 - cout_1, 4,
+            f'{cout_1} requêtes pour 1 contrat, {cout_5} pour 5 : plus d\'une '
+            'lecture par client distinct — une FK a cessé d\'être préchargée.')
 
     def test_les_libelles_rendus_sont_inchanges(self):
         """Le cache ne change AUCUN libellé : la source reste le sélecteur

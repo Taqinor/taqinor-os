@@ -55,12 +55,16 @@ def auth(user):
     return api
 
 
-def make_cycle(company):
+def make_cycle(company, libelle='Consol 2026'):
+    """Cycle de consolidation. ``libelle`` est un paramètre parce que la
+    contrainte `uniq_cycle_consol_par_exercice` interdit — à raison — deux
+    cycles homonymes sur le même (société, exercice) : un test qui a besoin
+    d'un SECOND cycle doit le nommer autrement, pas contourner la règle."""
     exercice, _ = ExerciceComptable.objects.get_or_create(
         company=company, date_debut=date(2026, 1, 1),
         date_fin=date(2026, 12, 31), defaults={'libelle': '2026'})
     return CycleConsolidation.objects.create(
-        company=company, libelle='Consol 2026', exercice=exercice,
+        company=company, libelle=libelle, exercice=exercice,
         date_debut=date(2026, 1, 1), date_fin=date(2026, 12, 31),
         devise_presentation='MAD')
 
@@ -127,7 +131,7 @@ class ConversionEntiteApiTests(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_liasse_hors_cycle_refusee(self):
-        autre_cycle = make_cycle(self.co)
+        autre_cycle = make_cycle(self.co, libelle='Consol 2026 (autre)')
         autre_liasse = LiasseRemontee.objects.create(
             company=self.co, cycle=autre_cycle, entite=self.co,
             statut=LiasseRemontee.Statut.COLLECTE, snapshot_balance=[])

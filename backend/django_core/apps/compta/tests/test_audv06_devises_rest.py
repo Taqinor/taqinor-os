@@ -247,7 +247,8 @@ class ReevaluationClotureRestTests(TestCase):
         self.assertIsNotNone(resp.data['ecriture'])
         self.assertIsNotNone(resp.data['ecriture_extourne'])
         # L'extourne est datée du LENDEMAIN : l'exercice suivant repart du réel.
-        self.assertEqual(resp.data['date_extourne'], date(2027, 1, 1))
+        # (Réponse JSON : DRF rend une date en ISO-8601, jamais un `date`.)
+        self.assertEqual(resp.data['date_extourne'], '2027-01-01')
         self.assertEqual(len(resp.data['lignes']), 1)
 
     def test_relancer_la_meme_date_ne_double_pas_l_ecriture(self):

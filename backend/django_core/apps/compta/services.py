@@ -4013,8 +4013,22 @@ def _amounts_3voies(company, bc_id):
 
 
 def _statut_depuis_ecart(ecart, tolerance):
-    """Concordant si |écart| ≤ tolérance, sinon écart détecté (bloquant)."""
-    if abs(Decimal(ecart or 0)) <= Decimal(tolerance or 0):
+    """Concordant tant que la SUR-facturation ne dépasse pas la tolérance.
+
+    Le test portait sur ``|écart|``, ce qui rangeait dans « écart détecté
+    (bloquant) » une marchandise REÇUE PAS ENCORE FACTURÉE (écart négatif) au
+    même titre qu'une facture supérieure au reçu. Ce contrôle est un contrôle
+    de PRÉ-PAIEMENT — « on ne paie pas plus que reçu » (docstring de
+    ``Rapprochement``) : sous-facturer n'expose à rien.
+
+    Sans effet tant que ``creer_rapprochement_3voies`` n'avait qu'un appelant
+    manuel ; AUD233 crée désormais le rapprochement à chaque réception
+    confirmée, si bien que tout BCF reçu et pas encore facturé atterrissait en
+    ``ecart`` et remplissait l'alerte « à corriger avant paiement »
+    (``selectors.rapprochements_en_ecart``) de faux positifs. Miroir exact de
+    la borne posée dans ``selectors.rapprochement_ecart_pct``.
+    """
+    if Decimal(ecart or 0) <= Decimal(tolerance or 0):
         return Rapprochement.Statut.CONCORDANT
     return Rapprochement.Statut.ECART
 

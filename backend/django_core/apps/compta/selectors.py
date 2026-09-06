@@ -2041,14 +2041,26 @@ def rapprochement_ecart_pct(company, bon_commande_id):
     BCF, pour que ``apps.stock`` puisse comparer aux tolérances société sans
     jamais importer ``apps.compta.models``. Renvoie ``None`` si aucun
     rapprochement n'existe encore pour ce BCF (pas encore évalué — no-op,
-    comportement historique). Lecture seule, scopée société."""
+    comportement historique). Lecture seule, scopée société.
+
+    L'écart mesuré est la SUR-facturation seule (``facturé − reçu`` borné à 0),
+    parce que c'est exactement ce que ce contrôle protège : « on ne paie pas
+    plus que reçu » (docstring de ``Rapprochement``). La formule prenait la
+    valeur ABSOLUE, ce qui donnait le même verdict à une facture de 900 sur 720
+    reçus (le risque : payer 180 de trop) et à une marchandise reçue pas encore
+    facturée (aucun risque — l'état normal d'un GR/IR entre la réception et
+    l'arrivée de la facture). Tant que ``creer_rapprochement_3voies`` n'avait
+    qu'un appelant manuel, personne n'atteignait ce second cas ; AUD233, qui
+    crée le rapprochement à CHAQUE réception confirmée, en a fait le cas
+    courant — une marchandise reçue affichait « 100 % d'écart »."""
     rapp = Rapprochement.objects.filter(
         company=company, bon_commande_id=bon_commande_id).first()
     if rapp is None:
         return None
     if not rapp.montant_recu:
         return None
-    return abs(rapp.ecart) / rapp.montant_recu * Decimal('100')
+    sur_facturation = max(rapp.ecart, Decimal('0'))
+    return sur_facturation / rapp.montant_recu * Decimal('100')
 
 
 # ── FG132 — Échéancier & relevé fournisseur (balance âgée AP + relevé) ──────
