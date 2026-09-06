@@ -272,13 +272,28 @@ class AucunEnvoiReseauTests(_Base):
     slug = 'mry13-d5'
 
     def test_le_module_nimporte_aucun_client_denvoi(self):
+        import ast
         import inspect
 
         from apps.crm import services
         source = inspect.getsource(services.message_pour_etape)
+        # La docstring de la fonction EXPLIQUE volontairement l'absence de
+        # BSP (« Aucun BSP, aucun appel réseau sortant ») : un grep littéral
+        # sur la source complète se prend lui-même au mot. On retire la
+        # docstring via l'AST (jamais en l'effaçant du code — elle reste,
+        # seul le TEXTE analysé change) avant de chercher du CODE interdit.
+        arbre = ast.parse(source)
+        fonction = arbre.body[0]
+        corps = fonction.body
+        if (corps and isinstance(corps[0], ast.Expr)
+                and isinstance(corps[0].value, ast.Constant)
+                and isinstance(corps[0].value.value, str)):
+            corps = corps[1:]
+        code_sans_docstring = '\n'.join(
+            ast.get_source_segment(source, noeud) or '' for noeud in corps)
         for interdit in ('requests.', 'urlopen', 'send_mail', 'bsp',
                          'graph.facebook'):
-            self.assertNotIn(interdit, source.lower())
+            self.assertNotIn(interdit, code_sans_docstring.lower())
 
     def test_le_defaut_du_gabarit_reste_celui_de_MRY12(self):
         """Le rendu part des textes VALIDÉS, jamais d'un texte fabriqué."""
