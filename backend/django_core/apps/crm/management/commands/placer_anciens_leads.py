@@ -16,11 +16,10 @@ annulée, donc ce qu'il affiche est exactement ce que ``--apply`` fera.
 
     python manage.py placer_anciens_leads [--company <slug|id>] [--apply]
 
-``--company`` est FACULTATIF quand l'installation ne compte qu'UNE société
-(le cas de TAQINOR) : l'exiger là où il n'y a aucun choix à faire n'ajoute
-qu'une occasion de se tromper. Dès qu'il y en a deux, il redevient
-obligatoire — placer des centaines de leads dans la mauvaise société ne se
-défait pas d'un clic.
+``--company`` est FACULTATIF quand l'installation ne compte qu'UNE société :
+l'exiger là où il n'y a aucun choix à faire n'ajoute qu'une occasion de se
+tromper. Dès qu'il y en a deux, il redevient obligatoire — placer des
+centaines de leads dans la mauvaise société ne se défait pas d'un clic.
 """
 from django.core.management.base import BaseCommand, CommandError
 
