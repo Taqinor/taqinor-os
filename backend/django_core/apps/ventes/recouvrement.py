@@ -374,8 +374,16 @@ def balance_agee(request):
     """Balance âgée : encours par client, bucketé 0–30/31–60/61–90/90+ jours."""
     from .selectors import comportement_paiement
     by_client = {}
+    # AUD158 — le score comportemental est mis en cache PAR CLIENT, comme dans
+    # `relances_list`. Passé en argument de `setdefault`, il était évalué pour
+    # CHAQUE facture (Python calcule l'argument avant l'appel, même quand
+    # l'entrée existe déjà) : sur un portefeuille d'un même client, le coût
+    # devenait quadratique.
+    scores_cache = {}
     for f in _facture_due_rows(request.user):
         cid = f.client_id
+        if cid not in scores_cache:
+            scores_cache[cid] = comportement_paiement(f.client)['lettre']
         entry = by_client.setdefault(cid, {
             'client_id': cid,
             'client_nom': f"{f.client.nom} {f.client.prenom or ''}".strip(),
@@ -384,7 +392,7 @@ def balance_agee(request):
             'total': Decimal('0'),
             # XFAC15 — score comportemental agrégé du client (priorise les
             # clients à risque dans la balance).
-            'score_comportement': comportement_paiement(f.client)['lettre'],
+            'score_comportement': scores_cache[cid],
         })
         # AUD158 — une seule lecture de `montant_du` par facture.
         due = f.montant_du

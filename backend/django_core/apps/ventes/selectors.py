@@ -616,9 +616,20 @@ def comportement_paiement(client):
     from core.payment_delay import payment_delay_risk
     from .models import Facture
 
-    factures = Facture.objects.filter(
-        client=client).exclude(statut=Facture.Statut.ANNULEE).prefetch_related(
-        'paiements', 'avoirs')
+    # AUD158 — LE PRÉFETCH DIT EXACTEMENT CE QUE CE SÉLECTEUR LIT. Il ne
+    # préchargeait que `paiements`/`avoirs` alors que `montant_du` touche AUSSI
+    # `lignes`, `notes_debit`, `retenues_subies` et `affectations_paiement`, et
+    # que la boucle de score lisait `relances.count()` : chaque facture du
+    # client coûtait donc ~18 requêtes, et `balance_agee` appelait ce sélecteur
+    # une fois PAR FACTURE — un coût quadratique en portefeuille.
+    factures = list(
+        Facture.objects.filter(client=client)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .prefetch_related(
+            'lignes', 'paiements', 'relances',
+            'avoirs', 'avoirs__lignes',
+            'notes_debit', 'notes_debit__lignes',
+            'retenues_subies', 'affectations_paiement__paiement'))
 
     retards_reels = []
     for f in factures:
@@ -630,7 +641,10 @@ def comportement_paiement(client):
     retard_moyen = (
         sum(retards_reels) / len(retards_reels) if retards_reels else None)
 
-    ouvertes = [f for f in factures if f.montant_du > 0]
+    # AUD158 — `montant_du` ré-agrège six relations : une SEULE lecture par
+    # facture (le filtre, `jours_retard` et la feature en faisaient trois).
+    dus = {f.pk: f.montant_du for f in factures}
+    ouvertes = [f for f in factures if dus[f.pk] > 0]
     prior_late = sum(1 for r in retards_reels if r > 0)
 
     if not ouvertes:
@@ -646,8 +660,10 @@ def comportement_paiement(client):
         for f in ouvertes:
             feats = {
                 'days_overdue': f.jours_retard,
-                'montant_du': float(f.montant_du),
-                'relance_count': f.relances.count(),
+                'montant_du': float(dus[f.pk]),
+                # AUD158 — `relances` est préchargé : `len()` lit le cache, là
+                # où `.count()` repartait en base pour CHAQUE facture.
+                'relance_count': len(f.relances.all()),
             }
             if retard_moyen is not None:
                 feats['client_avg_delay_days'] = retard_moyen
