@@ -1071,14 +1071,20 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         body = CreerAvenantSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
-        avenant = services.creer_avenant(
-            contrat,
-            objet=data['objet'],
-            description=data.get('description', ''),
-            date_effet=data.get('date_effet'),
-            montant_delta=data.get('montant_delta'),
-            auteur=request.user,
-        )
+        # AUD507 — un contrat RÉSILIÉ/EXPIRÉ (états terminaux) ne s'amende
+        # plus : le refus est un 400 FRANÇAIS, jamais un 500 ni un silence.
+        try:
+            avenant = services.creer_avenant(
+                contrat,
+                objet=data['objet'],
+                description=data.get('description', ''),
+                date_effet=data.get('date_effet'),
+                montant_delta=data.get('montant_delta'),
+                auteur=request.user,
+            )
+        except services.AvenantError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             AvenantSerializer(
                 avenant, context={'request': request}).data,
@@ -2116,7 +2122,9 @@ class IndexationPrixViewSet(_ContratsBaseViewSet):
                 valeur_actuelle=body.validated_data['valeur_actuelle'],
                 auteur=request.user,
             )
-        except ValueError as exc:
+        # AUD507 — `appliquer_indexation` hérite de la garde de `creer_avenant`
+        # (un contrat mort ne s'indexe plus) : on la traduit en 400 ici aussi.
+        except (ValueError, services.AvenantError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         avenant = resultat['avenant']

@@ -1512,6 +1512,13 @@ def _prochain_numero_avenant(contrat):
     return (plus_haut or 0) + 1
 
 
+class AvenantError(Exception):
+    """AUD507 — levée quand un avenant ne peut pas être créé (état terminal).
+
+    Même patron que ``RenouvellementError`` : la vue la traduit en 400 français,
+    jamais en 500 ni en silence."""
+
+
 @transaction.atomic
 def creer_avenant(contrat, *, objet, description='', date_effet=None,
                   montant_delta=None, auteur=None):
@@ -1546,6 +1553,16 @@ def creer_avenant(contrat, *, objet, description='', date_effet=None,
     renseigné).
     """
     from .models import Avenant, Contrat
+
+    # AUD507 — UN ÉTAT TERMINAL NE S'AMENDE PAS. `creer_avenant` n'avait AUCUN
+    # test de statut, contrairement à `renouveler_contrat` qui refuse
+    # explicitement RESILIE/EXPIRE via `_statuts_non_renouvelables()` : un
+    # avenant FINANCIER (`montant_delta`) était donc créable sur un contrat
+    # MORT, et il changeait bel et bien `Contrat.montant`. `appliquer_indexation`
+    # héritait du même trou puisqu'il appelle ce service sans contrôle.
+    if contrat.statut in _statuts_non_renouvelables():
+        raise AvenantError(
+            "Un contrat résilié ou expiré ne peut pas recevoir d'avenant.")
 
     nom = (objet or '').strip()
     if not nom:
