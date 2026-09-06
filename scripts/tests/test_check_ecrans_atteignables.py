@@ -10,14 +10,19 @@ sous-composant (ligne de tableau, badge, tiroir) est atteint PAR SON PARENT, un
 devant une fonctionnalite qui n'existe pas encore est LEGITIME. Les tests
 ci-dessous verrouillent ces trois silences autant que les detections.
 """
+import contextlib
+import io
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_api_contract as contract  # noqa: E402
 import check_ecrans_atteignables as cea  # noqa: E402
 
 
@@ -756,6 +761,59 @@ class DepotReelTests(unittest.TestCase):
         nouveaux = [cea.signature(c) for c in constats
                     if cea.signature(c) not in base]
         self.assertEqual(nouveaux, [])
+
+
+class PlancherInventaireTests(unittest.TestCase):
+    """AUD832 — « OK : 0 ecran(s) » ne doit plus valoir un vert."""
+
+    STATS_VIDES = {"ecrans": 0, "atteignables": 0, "orphelins": 0,
+                   "ecrans_features": 0, "ecrans_pages": 0, "configs": 0,
+                   "opaques": 0, "noeuds": 0, "sans_nav": 0}
+
+    def _inventaire(self, tmp: Path) -> Path:
+        path = tmp / "contract_inventory.json"
+        path.write_text(json.dumps({
+            "check_ecrans_atteignables": {
+                "ecrans": {"valeur": 902,
+                           "chemin": "frontend/src/{features,pages}"},
+                "configs": {"valeur": 52,
+                            "chemin": "frontend/src/features/*/module.config.jsx"},
+            }
+        }), encoding="utf-8")
+        return path
+
+    def test_zero_ecran_vu_fait_echouer_main_en_nommant_le_chemin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inventaire = self._inventaire(Path(tmp))
+            sortie = io.StringIO()
+            with mock.patch.object(contract, "INVENTORY_PATH", inventaire):
+                with mock.patch.object(cea, "analyse",
+                                       return_value=([], self.STATS_VIDES)):
+                    with contextlib.redirect_stdout(sortie):
+                        code = cea.main([])
+        self.assertEqual(code, 1)
+        texte = sortie.getvalue()
+        self.assertIn("frontend/src", texte)          # le chemin en cause
+        self.assertIn("check_ecrans_atteignables.ecrans", texte)
+
+    def test_edition_reduite_dit_a_voix_haute_qu_elle_ne_mesure_pas(self):
+        # Un vertical parque fait legitimement chuter l'inventaire : le
+        # plancher ne s'applique pas — mais il le DIT, il ne se tait pas.
+        with tempfile.TemporaryDirectory() as tmp:
+            inventaire = self._inventaire(Path(tmp))
+            sortie = io.StringIO()
+            with mock.patch.object(contract, "INVENTORY_PATH", inventaire):
+                with mock.patch.object(cea, "analyse",
+                                       return_value=([], self.STATS_VIDES)):
+                    with contextlib.redirect_stdout(sortie):
+                        code = cea.main(["--edition", "solar"])
+        self.assertEqual(code, 0)
+        self.assertIn("Plancher d'inventaire NON applique", sortie.getvalue())
+
+    def test_l_inventaire_committe_porte_un_plancher_positif(self):
+        entree = contract.load_inventory()["check_ecrans_atteignables"]
+        self.assertGreater(entree["ecrans"]["valeur"], 0)
+        self.assertGreater(entree["configs"]["valeur"], 0)
 
 
 if __name__ == "__main__":

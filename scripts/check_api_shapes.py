@@ -1875,6 +1875,15 @@ def signature(finding) -> str:
     return f"{name}|{field}"
 
 
+# AUD832 — surfaces analysees, nommees par le message d'echec du plancher.
+INVENTORY_SURFACES = {
+    "endpoints": "backend/django_core/**/views*.py (formes de reponse "
+                 "certaines statiquement)",
+    "serialiseurs": "backend/django_core/**/serializers*.py (ressources sous "
+                    "contrat de serialiseur, PACT177)",
+}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Garde de forme : un mock de test ne peut pas contredire le serveur.")
@@ -1884,10 +1893,23 @@ def main(argv=None) -> int:
     parser.add_argument("--autoriser-croissance", action="store_true",
                         help="FONDATEUR UNIQUEMENT : autorise l'ajout de dettes")
     parser.add_argument("--stats", action="store_true")
+    parser.add_argument("--write-inventory", action="store_true",
+                        help="enterine l'inventaire courant comme nouveau "
+                             "plancher (scripts/contract_inventory.json)")
     args = parser.parse_args(argv)
 
     findings, shapes, serialiseurs = analyse()
     rendered = render_contract(shapes, serialiseurs)
+    mesures = {"endpoints": len(shapes), "serialiseurs": len(serialiseurs)}
+
+    if args.write_inventory:
+        contract.write_inventory("check_api_shapes", mesures, INVENTORY_SURFACES)
+        return 0
+
+    # AUD832 — la garde a-t-elle seulement trouve des formes a comparer ?
+    # « OK : 0 endpoint(s) » ne doit plus jamais valoir un vert.
+    if contract.rapport_plancher("check_api_shapes", mesures):
+        return 1
 
     if args.write:
         CONTRACT_PATH.parent.mkdir(parents=True, exist_ok=True)

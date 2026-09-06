@@ -154,7 +154,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from check_api_contract import scan_js
+from check_api_contract import rapport_plancher, scan_js, write_inventory
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONT_SRC = ROOT / "frontend" / "src"
@@ -911,6 +911,13 @@ def ecrire_base(signatures: set, path: Path | None = None):
                     encoding="utf-8", newline="\n")
 
 
+# AUD832 — surfaces analysees, nommees par le message d'echec du plancher.
+INVENTORY_SURFACES = {
+    "ecrans": "frontend/src/{features,pages}/**/*.{jsx,tsx} (ecrans livres)",
+    "configs": "frontend/src/features/*/module.config.jsx (routes declarees)",
+}
+
+
 def _par_app(constats) -> dict:
     compte: dict[str, int] = {}
     for classe, _, app, _ in constats:
@@ -937,6 +944,9 @@ def main(argv=None) -> int:
                              "exclut EN BLOC les trois arbres (features/, "
                              "pages/, components/) de chaque vertical parque. "
                              "Defaut `full` = comportement historique.")
+    parser.add_argument("--write-inventory", action="store_true",
+                        help="enterine l'inventaire courant comme nouveau "
+                             "plancher (scripts/contract_inventory.json)")
     args = parser.parse_args(argv)
 
     global _VERTICAUX_PARQUES
@@ -948,6 +958,26 @@ def main(argv=None) -> int:
               f"{'/'.join(ARBRES_EDITION)}).")
 
     constats, stats = analyse()
+    mesures = {"ecrans": stats["ecrans"], "configs": stats["configs"]}
+
+    if args.write_inventory:
+        if args.edition != "full":
+            print("REFUS : l'inventaire s'enterine sur l'edition `full` "
+                  "(perimetre complet), jamais sur un perimetre reduit.")
+            return 1
+        write_inventory("check_ecrans_atteignables", mesures, INVENTORY_SURFACES)
+        return 0
+
+    # AUD832 — la garde a-t-elle seulement VU des ecrans ? « OK : 0 ecran(s) »
+    # ne doit plus jamais valoir un vert. Le plancher se mesure sur le
+    # perimetre complet ; une edition reduite parque des verticaux entiers,
+    # donc son inventaire n'est pas comparable (dit a voix haute ci-dessous).
+    if args.edition == "full":
+        if rapport_plancher("check_ecrans_atteignables", mesures):
+            return 1
+    else:
+        print(f"Plancher d'inventaire NON applique : edition "
+              f"'{args.edition}' (perimetre reduit, cf. AUD832).")
 
     if args.stats:
         print(f"Ecrans .jsx/.tsx sous frontend/src/{{features,pages}} : "

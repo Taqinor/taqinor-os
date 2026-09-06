@@ -8,10 +8,14 @@ depot : la garde ne vaut que si elle attrape les vrais 404 SANS crier au loup,
 et chacun des cas ci-dessous a produit, en cours de route, soit un faux
 negatif, soit une avalanche de faux positifs.
 """
+import contextlib
+import io
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -409,6 +413,110 @@ class DepotReelTests(unittest.TestCase):
         entete = Path(cac.__file__).read_text(encoding="utf-8")[:4000]
         self.assertIn("03/08/2026", entete)
         self.assertIn("bibliotheque", entete.lower())
+
+
+class PlancherInventaireTests(unittest.TestCase):
+    """AUD832 — une garde qui n'analyse plus RIEN ne doit plus rendre 0.
+
+    Avant ce plancher, `stats['appels'] == 0` imprimait « OK : 0 appel(s)
+    frontend verifies » et rendait 0 : la garde nee de l'incident du 03/08/2026
+    avait cesse de garder sans un seul signal rouge.
+    """
+
+    STATS_VIDES = {"routes": 0, "opaques": 0, "inconnues": 0, "appels": 0,
+                   "ignores": 0, "registres": 0, "vues": 0}
+
+    def _inventaire(self, tmp: Path, valeur: int = 3980) -> Path:
+        path = tmp / "contract_inventory.json"
+        path.write_text(json.dumps({
+            "check_api_contract": {
+                "routes": {"valeur": 9885, "chemin": "backend/django_core"},
+                "appels": {"valeur": valeur, "chemin": "frontend/src"},
+            }
+        }), encoding="utf-8")
+        return path
+
+    def test_zero_appel_analyse_est_desormais_un_echec(self):
+        # Verdict PRE-AUD832 : « aucun constat -> 0 ». Zero appel analyse ne
+        # PEUT produire aucun constat, donc le vert etait garanti. Le plancher
+        # est le seul predicat qui distingue « rien a signaler » de « rien
+        # analyse ».
+        with tempfile.TemporaryDirectory() as tmp:
+            echecs = cac.verifier_plancher(
+                "check_api_contract", {"routes": 0, "appels": 0},
+                path=self._inventaire(Path(tmp)))
+        self.assertEqual(len(echecs), 2)  # la garde d'aujourd'hui, elle, rougit
+
+    def test_zero_appel_fait_echouer_main_en_nommant_le_chemin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inventaire = self._inventaire(Path(tmp))
+            sortie = io.StringIO()
+            with mock.patch.object(cac, "INVENTORY_PATH", inventaire), \
+                    mock.patch.object(cac, "analyse",
+                                      return_value=([], self.STATS_VIDES)), \
+                    contextlib.redirect_stdout(sortie):
+                code = cac.main([])
+        self.assertEqual(code, 1)
+        texte = sortie.getvalue()
+        self.assertIn("frontend/src", texte)          # le chemin en cause
+        self.assertIn("check_api_contract.appels", texte)
+        self.assertIn("plancher", texte.lower())
+
+    def test_chute_sous_trente_pourcent_toleree(self):
+        # Un vrai nettoyage (-25 %) passe : le plancher n'est pas un cliquet.
+        with tempfile.TemporaryDirectory() as tmp:
+            inventaire = self._inventaire(Path(tmp), valeur=1000)
+            echecs = cac.verifier_plancher(
+                "check_api_contract", {"appels": 750}, path=inventaire)
+            self.assertEqual(echecs, [])
+            echecs = cac.verifier_plancher(
+                "check_api_contract", {"appels": 600}, path=inventaire)
+        self.assertEqual(len(echecs), 1)
+
+    def test_inventaire_absent_est_une_erreur_jamais_un_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manquant = Path(tmp) / "absent.json"
+            with self.assertRaises(SystemExit) as ctx:
+                cac.load_inventory(manquant)
+        self.assertIn("introuvable", str(ctx.exception))
+
+    def test_compteur_absent_de_l_inventaire_est_une_erreur(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contract_inventory.json"
+            path.write_text(json.dumps({"check_api_contract": {}}),
+                            encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx:
+                cac.verifier_plancher("check_api_contract", {"appels": 10},
+                                      path=path)
+        self.assertIn("appels", str(ctx.exception))
+
+    def test_write_inventory_preserve_les_autres_gardes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "contract_inventory.json"
+            path.write_text(json.dumps({
+                "check_api_shapes": {"endpoints": {"valeur": 561,
+                                                   "chemin": "backend"}}
+            }), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                cac.write_inventory("check_api_contract", {"appels": 42},
+                                    {"appels": "frontend/src"}, path=path)
+            data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(data["check_api_shapes"]["endpoints"]["valeur"], 561)
+        self.assertEqual(data["check_api_contract"]["appels"]["valeur"], 42)
+        self.assertIn("_lisez_moi", data)
+
+    def test_l_inventaire_committe_couvre_les_trois_gardes(self):
+        data = cac.load_inventory()
+        for garde, compteurs in (
+            ("check_api_contract", ("routes", "appels")),
+            ("check_api_shapes", ("endpoints", "serialiseurs")),
+            ("check_ecrans_atteignables", ("ecrans", "configs")),
+        ):
+            with self.subTest(garde=garde):
+                for cle in compteurs:
+                    entree = data[garde][cle]
+                    self.assertGreater(entree["valeur"], 0)
+                    self.assertTrue(entree["chemin"].strip())
 
 
 if __name__ == "__main__":
