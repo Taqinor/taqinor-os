@@ -1,0 +1,29 @@
+{
+  "endpoint": "GET /api/django/crm/leads/kpi-cadences/?jours=30",
+  "pourquoi": "MRY25 (PACT10) — les sept chiffres du bilan de cadence, lus à la fois par le panneau du Cockpit (MRY29) et par le bilan hebdomadaire envoyé à Reda le lundi 07:00 (MRY21). Publier la forme AVANT évite exactement l'incident du 03/08/2026 : un écran qui lit `taux_joint` là où le serveur sert `joints_sous_5j_pct`. Trois règles portées par ce contrat. (1) `null` dès que le DÉNOMINATEUR est 0 — jamais 0 % sur une période sans lead. (2) Les devis sont comptés via `apps.ventes.selectors`, JAMAIS `ventes.models` (frontière M3, contrat import-linter). (3) `tentatives_moy_avant_abandon` ne compte que les tentatives HUMAINES (activités appel/WhatsApp/e-mail avec un `user`), jamais les lignes système : sinon chaque note automatique gonflerait la moyenne.",
+  "exemple": {
+    "joints_sous_5j_pct": 58.0,
+    "cadences_completes": 12,
+    "cadences_arretees_joint": 31,
+    "perdus_avec_motif_pct": 92.0,
+    "signatures": 4,
+    "devis_envoyes": 19,
+    "tentatives_moy_avant_abandon": 5.4
+  },
+  "exemple_vide": {
+    "joints_sous_5j_pct": null,
+    "cadences_completes": 0,
+    "cadences_arretees_joint": 0,
+    "perdus_avec_motif_pct": null,
+    "signatures": 0,
+    "devis_envoyes": 0,
+    "tentatives_moy_avant_abandon": null
+  },
+  "notes": {
+    "joints_sous_5j_pct": "leads dont une activité porte `outcome` ∈ {joint, interesse} dans les 5 jours OUVRÉS suivant la création / leads créés sur la période.",
+    "cadences_completes": "cadences `contact` dont la dernière étape est traitée (statut ≠ à faire).",
+    "cadences_arretees_joint": "étapes passées en « sautée » avec le motif « joint » (arrêt MRY9).",
+    "signatures": "passages d'étape vers SIGNED sur la période, lus dans `LeadActivity` (field='stage') — jamais une liste d'étapes littérale (STAGES.py fait foi).",
+    "tentatives_moy_avant_abandon": "moyenne de `nb_tentatives` (MRY20) des leads passés COLD par la clôture de cadence (MRY11)."
+  }
+}

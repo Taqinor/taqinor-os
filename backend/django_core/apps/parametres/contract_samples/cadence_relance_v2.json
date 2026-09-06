@@ -1,0 +1,49 @@
+{
+  "endpoint": "GET/POST/PATCH /api/django/parametres/cadence-relance/?cadence=contact",
+  "pourquoi": "MRY25 (PACT10) — l'éditeur « Cadences de relance » de Paramètres → CRM (MRY28) et le gabarit serveur `parametres.CadenceRelanceEtape` (MRY4) sont deux moitiés sans fichier commun. Ce qui CHANGE et doit donc être publié d'avance : le gabarit passe de UNE cadence anonyme à TROIS cadences nommées (`contact`, `apres_devis`, `reveil`, plus `generique` = les 5 barreaux historiques, migrés jamais supprimés), et la granularité passe au MINUTE (`delai_minutes`) avec une `heure_cible` optionnelle — la touche 2 de la cadence contact tombe à J0 + 3 minutes, ce qu'un modèle en JOURS ne pouvait pas exprimer. `template_cle` est un TEXTE LIBRE côté gabarit (valeur = une `MessageTemplate.Cle` de MRY12) : volontairement pas une FK, pour ne pas créer de dépendance d'import entre les deux modules. `unique_together` = (company, cadence, ordre). `?cadence=` filtre la liste ; sans lui, toutes cadences confondues. Validation serveur : `delai_minutes < 1440`, `heure_cible` optionnelle (`null` = pas de recalage horaire).",
+  "exemple": [
+    {
+      "id": 51,
+      "cadence": "contact",
+      "ordre": 1,
+      "delai_jours": 0,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "whatsapp",
+      "libelle": "Message d'identité",
+      "template_cle": "identite",
+      "actif": true
+    },
+    {
+      "id": 52,
+      "cadence": "contact",
+      "ordre": 2,
+      "delai_jours": 0,
+      "delai_minutes": 3,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Appel d'ouverture",
+      "template_cle": "appel_ouverture",
+      "actif": true
+    },
+    {
+      "id": 54,
+      "cadence": "contact",
+      "ordre": 4,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": "10:30",
+      "canal": "appel",
+      "libelle": "Appel J1",
+      "template_cle": "repondeur",
+      "actif": true
+    }
+  ],
+  "exemple_vide": [],
+  "notes": {
+    "cadence": "contact | apres_devis | reveil | generique.",
+    "canal": "appel | whatsapp | email | visite — l'enum du GABARIT, jamais `crm.Canal` (source du lead).",
+    "heure_cible": "chaîne « HH:MM » ou null ; appliquée en heure locale Africa/Casablanca puis recalée sur la fenêtre d'appel (MRY8).",
+    "compat": "`seed_defaults` continue de poser les 5 barreaux J+2/5/10/20/35 en cadence `generique` — inchangés, ni supprimés ni réécrits."
+  }
+}
