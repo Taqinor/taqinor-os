@@ -356,11 +356,30 @@ def render_pdf_bytes(data: dict) -> bytes:
     base = str(Path(residential_render.__file__).resolve().parent)
     html = residential_render.build_html(d)
     doc1 = HTML(string=html, base_url=f"file://{base}/").render()
+
+    # ERR114 — GARDE DE PAGINATION. Les gabarits posent un ``<div class="page">``
+    # par page LOGIQUE ; si WeasyPrint en imprime davantage, une page a débordé
+    # sur la feuille suivante (la page 3 débordait de ~25 mm avec les polices de
+    # l'image PROD alors qu'elle tenait avec celles de la CI : le client recevait
+    # un devis de 4 pages dont la dernière ne portait que le CTA de signature et
+    # la bande légale). On re-rend alors UNE fois avec le rythme vertical
+    # resserré de la page 3 — aucun bloc retiré — et on ne retient ce rendu que
+    # s'il rétablit vraiment le compte de pages. Sinon on sert le passe-1 :
+    # jamais de régression par rapport au comportement historique.
+    compact_p3 = False
+    pages_logiques = html.count('<div class="page">')
+    if pages_logiques and len(doc1.pages) > pages_logiques:
+        html_c = residential_render.build_html(d, compact_p3=True)
+        doc_c = HTML(string=html_c, base_url=f"file://{base}/").render()
+        if len(doc_c.pages) <= pages_logiques:
+            html, doc1, compact_p3 = html_c, doc_c, True
+
     pdf_bytes = doc1.write_pdf()
 
     slack = _measure_page_slack(pdf_bytes)
     if slack:
-        html2 = residential_render.build_html(d, elastic=slack)
+        html2 = residential_render.build_html(
+            d, elastic=slack, compact_p3=compact_p3)
         doc2 = HTML(string=html2, base_url=f"file://{base}/").render()
         if len(doc2.pages) == len(doc1.pages):
             pdf_bytes = doc2.write_pdf()

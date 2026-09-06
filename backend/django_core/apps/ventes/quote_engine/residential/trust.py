@@ -60,6 +60,48 @@ def _qr_data_uri(url: str, dark: str) -> str:
                              box_size=16, border=2)
 
 
+def _compact_css() -> str:
+    """ERR114 — surcharge COMPACTE de la page 3, servie UNIQUEMENT quand le
+    renderer a mesuré un débordement réel (``ctx['compact_p3']``).
+
+    POURQUOI. La page 3 tenait sur une feuille avec les polices de l'image CI
+    et débordait d'environ 25 mm avec celles de l'image PROD : le client
+    recevait un PDF de 4 pages dont la dernière ne portait que le bloc « Prêt à
+    passer au solaire ? » et la bande légale (contrat : 3 pages exactement,
+    gardé par ``test_quote_engine`` et le golden YTEST10). Le défaut est donc
+    né d'une hypothèse de HAUTEUR DE POLICE, pas d'un contenu de trop — d'où un
+    correctif qui resserre le RYTHME VERTICAL et ne retire AUCUN contenu : tous
+    les blocs (garanties, preuve en ligne, conditions, prochaines étapes,
+    méthode, bon pour accord, CTA + QR, bande légale) restent imprimés.
+
+    Le bloc n'est émis que sur demande : par défaut la page 3 est rendue au bit
+    près comme avant (les joints élastiques QRES62 continuent de distribuer le
+    vide résiduel dans le cas normal).
+    """
+    return """
+<style>
+/* ERR114 — rythme vertical resserré (page 3 seulement, sur débordement) */
+.p3-wrap { padding-top:8mm; }
+.p3-gar { margin:6px 0 7px; padding:6px 12px; }
+.p3-gar-n { margin-top:3px; }
+.p3-block { margin-bottom:7px; }
+.p3-trust { padding:7px 16px; }
+.p3-tdcard { padding:9px 12px; }
+.p3-cond-row { padding:3.2px 0; }
+.p3-step { padding:6.5px 0; }
+.p3-method { margin-bottom:6px; }
+.p3-accord { margin-bottom:7px; }
+.p3-accord-hd { padding:7px 16px; }
+.p3-accord-pick { padding:5px 16px; }
+.p3-sig { padding:8px 18px 8px; }
+.p3-sig-zone { height:10mm; margin-top:4px; }
+.p3-cta { padding:7px 20px; }
+.p3-cta-qr img { width:15mm; height:15mm; }
+.p3-legal { margin-top:6px; margin-bottom:2mm; padding-top:5px; }
+</style>
+"""
+
+
 def build(ctx) -> str:
     from . import theme
 
@@ -330,6 +372,10 @@ def build(ctx) -> str:
             ' &middot; taqinor.ma'
         )
 
+    # ERR114 — la surcharge compacte est concaténée APRÈS le style de page :
+    # même spécificité, la dernière règle l'emporte. Vide par défaut.
+    compact_css = _compact_css() if ctx.get("compact_p3") else ""
+
     return f"""
 <style>
 /* Page-3 vertical rhythm — the wrap reserves a generous bottom band so the
@@ -493,7 +539,7 @@ def build(ctx) -> str:
   text-align:center; line-height:1.55; letter-spacing:.015em; }}
 .p3-legal b {{ color:{C['navy']}; font-weight:700; }}
 </style>
-
+{compact_css}
 <div class="p3-wrap">
   <div class="p3-kicker">Confiance &amp; Engagement</div>
   <div class="p3-title">Pourquoi {brand}</div>
