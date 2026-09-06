@@ -170,7 +170,13 @@ class TestMarquerEtapeRelance(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.relance_date, self.etapes[1].due_date)
 
-        notes = LeadActivity.objects.filter(lead=self.lead, kind=LeadActivity.Kind.NOTE)
+        # MRY10 — la ligne de chatter d'une touche FAIT est désormais TYPÉE
+        # selon le canal de l'étape (ici APPEL pour l'étape 1, « Premier
+        # rappel »), jamais une note libre EN PLUS d'une activité typée :
+        # cette suite pinnait le comportement PRÉ-MRY10 (kind=NOTE toujours).
+        # Voir tests_mry10_journal_rappel.ToucheTypeeTests, qui verrouille
+        # explicitement ce nouveau typage.
+        notes = LeadActivity.objects.filter(lead=self.lead)
         self.assertTrue(any('faite' in (n.body or '') for n in notes))
         self.assertTrue(any('injoignable' in (n.body or '') for n in notes))
 
