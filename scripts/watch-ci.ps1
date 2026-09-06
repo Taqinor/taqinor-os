@@ -38,16 +38,19 @@ try {
             Write-Host "This is NOT a CI outage. Integrate the base branch, resolve, push - then re-watch." -ForegroundColor Red
             exit 1
         }
-        gh pr checks $Pr --required --watch
-        $rc = $LASTEXITCODE
-        if ($rc -ne 0) {
-            Write-Host "A REQUIRED check failed (non-required checks like CodeQL are excluded from this verdict)." -ForegroundColor Red
-        }
-        exit $rc
+        # 2026-09-06 : `gh pr checks --watch` sort a 0 des que le SOUS-ENSEMBLE de
+        # checks deja enregistres est termine - lance trop tot (avant que les jobs
+        # lourds s'enregistrent), il rendait des faux verts ET des faux rouges
+        # partiels (6 sorties prematurees mesurees sur les rondes de #620). On
+        # resout donc le SHA de tete de la PR et on suit le RUN lui-meme via le
+        # chemin ci-dessous, qui attend l'etat TERMINAL du workflow entier.
+        $prInfo = gh pr view $Pr --json headRefOid,headRefName | ConvertFrom-Json
+        $Sha = $prInfo.headRefOid
+        $branch = $prInfo.headRefName
     }
 
     if (-not $Sha) { $Sha = (git rev-parse HEAD).Trim() }
-    $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if (-not $branch) { $branch = (git rev-parse --abbrev-ref HEAD).Trim() }
 
     # The Actions run for a just-pushed SHA may not be registered instantly - retry.
     $runId = $null
