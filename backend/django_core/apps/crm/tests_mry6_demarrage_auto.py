@@ -91,6 +91,52 @@ class GardesTests(_Base):
         self.assertEqual(demarrer_cadence_contact(lead), [])
         self.assertTrue(self._refus_trace(lead, 'aucun numéro exploitable'))
 
+    def test_la_note_de_refus_sans_numero_est_UNE_note_systeme(self):
+        """Le refus est écrit — Meryem doit savoir que ce lead n'est PAS
+        suivi — mais au nom de PERSONNE (`user=None`) : posée au nom de
+        l'utilisateur, le récepteur QJ7 la prendrait pour un premier contact
+        manuel et avancerait NEW → CONTACTED en stampant le SLA dès la simple
+        création d'un lead sans numéro (FG28/MRY19)."""
+        lead = self._lead(telephone=None, whatsapp=None)
+        demarrer_cadence_contact(lead, user=self.acteur)
+        note = LeadActivity.objects.get(lead=lead)
+        self.assertEqual(note.kind, LeadActivity.Kind.NOTE)
+        self.assertIsNone(note.user_id)
+        self.assertIn('aucun numéro exploitable', note.body)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.NEW)
+        self.assertIsNone(lead.first_contacted_at)
+
+    def test_les_gardes_MUETTES_le_restent(self):
+        """Garde négative : journaliser chaque lead déjà contacté, déjà
+        avancé ou « ne plus contacter » inonderait l'historique — seuls les
+        deux refus rattrapables à la main (numéro, doublon) sont écrits."""
+        from django.utils import timezone
+        muets = [
+            self._lead(nom='Déjà contacté',
+                       first_contacted_at=timezone.now()),
+            self._lead(nom='Plus avancé', stage=stages.CONTACTED),
+            self._lead(nom='Stop', ne_plus_contacter=True),
+        ]
+        for lead in muets:
+            demarrer_cadence_contact(lead, user=self.acteur)
+            self.assertFalse(
+                LeadActivity.objects.filter(lead=lead).exists(), lead.nom)
+
+    def test_la_garde_PURE_necrit_rien(self):
+        """`_garde_cadence_contact` est la fonction que le DRY-RUN de la
+        reprise MRY23 appelle pour compter : elle doit rendre exactement le
+        même verdict SANS écrire une ligne."""
+        sans_numero = self._lead(nom='Sans numéro', telephone=None,
+                                 whatsapp=None)
+        code, motif = services._garde_cadence_contact(sans_numero)
+        self.assertEqual(code, 'sans_numero')
+        self.assertIn('aucun numéro exploitable', motif)
+        self.assertFalse(
+            LeadActivity.objects.filter(lead=sans_numero).exists())
+        self.assertIsNone(
+            services._garde_cadence_contact(self._lead(nom='Joignable')))
+
     def test_un_doublon_vivant_est_refuse_et_trace(self):
         """Deux cadences sur la même personne = deux commerciaux qui
         l'appellent le même jour."""

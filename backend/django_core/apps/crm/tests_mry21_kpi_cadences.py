@@ -22,7 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import stages
+from apps.crm import horaires, stages
 from apps.crm.management.commands.bilan_hebdo_relances import (
     LIGNES, bilan_hebdo_relances, formater_bilan)
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
@@ -35,6 +35,7 @@ from apps.ventes.models import Devis
 User = get_user_model()
 
 KPI_URL = '/api/django/crm/leads/kpi-cadences/'
+CASA = horaires.CASABLANCA
 
 
 def _company(slug):
@@ -158,6 +159,63 @@ class KpiChiffresTests(TestCase):
         voisine = _company('mry21-voisine')
         self._lead(perdu=True, motif_perte='Prix')
         self.assertIsNone(kpi_cadences(voisine)['perdus_avec_motif_pct'])
+
+
+class SeuilCinqJoursOuvresTests(TestCase):
+    """MRY21 — « joints sous 5 jours ouvrés » compare deux fois la MÊME unité.
+
+    Le délai était mesuré en minutes OUVRÉES puis comparé à `5 * 24 * 60`,
+    c'est-à-dire 7 200 minutes de CALENDRIER : ~10 jours ouvrés de 11 h 30,
+    soit le double de la promesse. Le KPI s'accordait deux fois plus de temps
+    qu'il n'en annonçait — et un lead joint au bout de 6 jours ouvrés comptait
+    comme un succès.
+
+    Dates fixes (bug CI #29) : la fenêtre est ouverte à `jours=3650`, jamais
+    relative au jour où tourne la suite.
+    """
+
+    #: Lundi 7 septembre 2026, 09:00 — en pleine fenêtre d'appel.
+    CREATION = datetime.datetime(2026, 9, 7, 9, 0, tzinfo=CASA)
+
+    def setUp(self):
+        self.company = _company('mry21-seuil')
+        self.acteur = User.objects.create_user(
+            username='mry21-seuil-u', password='x',
+            role_legacy='responsable', company=self.company)
+
+    def _lead_joint(self, nom, quand):
+        lead = Lead.objects.create(
+            company=self.company, nom=nom, owner=self.acteur)
+        Lead.objects.filter(pk=lead.pk).update(date_creation=self.CREATION)
+        activite = LeadActivity.objects.create(
+            company=self.company, lead=lead, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, outcome='joint')
+        LeadActivity.objects.filter(pk=activite.pk).update(created_at=quand)
+        return lead
+
+    def test_joint_apres_trois_jours_ouvres_compte(self):
+        # Jeudi 10 septembre : 3 jours ouvrés après le lundi.
+        self._lead_joint(
+            'Rapide', datetime.datetime(2026, 9, 10, 9, 0, tzinfo=CASA))
+        self.assertEqual(
+            kpi_cadences(self.company, jours=3650)['joints_sous_5j_pct'],
+            100.0)
+
+    def test_joint_apres_six_jours_ouvres_ne_compte_pas(self):
+        # Mardi 15 septembre : 6 jours ouvrés après le lundi (le seuil s'arrête
+        # à la fermeture du lundi 14). L'ancien seuil calendaire le comptait.
+        self._lead_joint(
+            'Lent', datetime.datetime(2026, 9, 15, 9, 0, tzinfo=CASA))
+        self.assertEqual(
+            kpi_cadences(self.company, jours=3650)['joints_sous_5j_pct'], 0.0)
+
+    def test_les_deux_ensemble_donnent_cinquante_pourcent(self):
+        self._lead_joint(
+            'Rapide', datetime.datetime(2026, 9, 10, 9, 0, tzinfo=CASA))
+        self._lead_joint(
+            'Lent', datetime.datetime(2026, 9, 15, 9, 0, tzinfo=CASA))
+        self.assertEqual(
+            kpi_cadences(self.company, jours=3650)['joints_sous_5j_pct'], 50.0)
 
 
 class KpiApiTests(TestCase):

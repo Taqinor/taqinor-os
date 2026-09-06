@@ -2098,7 +2098,7 @@ _DEFAULT_TAGS = [
     'En construction',
     'Déjà équipé',
     'Attente facture',
-    'Injoignable 7 tentatives',
+    'Injoignable 6 appels',
     'Devis sans suite',
 ]
 

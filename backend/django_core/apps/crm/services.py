@@ -557,6 +557,30 @@ def _refus_cadence(lead, user, raison):
     return []
 
 
+def _lead_porte_tag(lead, tag) -> bool:
+    """``lead`` porte-t-il l'étiquette ``tag`` ?
+
+    ``Lead.tags`` est un champ LIBRE (texte séparé par des virgules), saisi à
+    la main : la comparaison ignore la casse ET les accents — « Decision a
+    plusieurs » vaut « Décision à plusieurs »."""
+    def _cle(valeur):
+        return _strip_accents((valeur or '').strip()).casefold()
+
+    cible = _cle(tag)
+    if not cible:
+        return False
+    return any(_cle(morceau) == cible
+               for morceau in (getattr(lead, 'tags', '') or '').split(','))
+
+
+#: MRY4 — le gabarit « dimanche famille » du suivi après devis n'est PAS pour
+#: tout le monde : le Guide v2.1 le réserve aux dossiers où la décision se
+#: prend en famille, le dimanche. Posé sur tous, il envoyait un message
+#: dominical inapproprié à des prospects qui décident seuls.
+_TEMPLATE_DIMANCHE_FAMILLE = 'dimanche_famille'
+_TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
+
+
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None):
     """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
@@ -572,10 +596,21 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
     ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
     l'instant est recalé sur la fenêtre d'appel de la société
-    (``horaires.prochain_creneau_appel``, MRY8). Une touche marquée
-    ``dimanche_ok`` connaît la fenêtre dominicale 16 h-19 h du Protocole v3.
+    (``horaires.prochain_creneau_appel``, MRY8). EXCEPTION pour les touches du
+    JOUR MÊME (``delai_jours == 0`` sans ``heure_cible``) : elles s'enchaînent
+    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart)``) et non
+    depuis l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait
+    ses trois premières touches écrasées sur la même minute d'ouverture. Une
+    touche marquée
+    ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
+    dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
+    dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
     ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
     leur grain jour.
+
+    ÉCARTE (MRY4) le barreau ``dimanche_famille`` du suivi après devis quand
+    le lead ne porte PAS l'étiquette « Décision à plusieurs » : le Guide v2.1
+    le réserve aux dossiers décidés en famille.
 
     REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
     ou archivé — les trois cas où relancer serait une faute.
@@ -621,17 +656,57 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     elif timezone.is_naive(depart):
         depart = timezone.make_aware(depart, datetime.timezone.utc)
 
+    # MRY5/MRY8 — l'ORIGINE des touches du jour même : le premier instant
+    # réellement appelable à partir du départ. Sans elle, chaque touche J0
+    # était recalée INDÉPENDAMMENT, et un lead arrivé la nuit ou le week-end
+    # voyait ses trois premières touches (J0+0, J0+3 min, J0+2 h 30) écrasées
+    # sur la MÊME minute d'ouverture — 08:30, 08:30, 08:30 : trois rappels
+    # simultanés au lieu d'une séquence, et un « rappelé dans les cinq
+    # minutes » qui ne voulait plus rien dire.
+    origine = horaires.prochain_creneau_appel(depart, lead.company)
+
     etapes = []
     for gabarit in gabarits:
-        echeance = depart + timedelta(
-            days=gabarit.delai_jours,
-            minutes=getattr(gabarit, 'delai_minutes', 0) or 0)
+        if ((getattr(gabarit, 'template_cle', '') or '')
+                == _TEMPLATE_DIMANCHE_FAMILLE
+                and not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS)):
+            # MRY4 — touche RÉSERVÉE aux dossiers étiquetés « Décision à
+            # plusieurs ». Posée sur tous, elle envoyait un message dominical
+            # « parlez-en en famille » à des prospects qui décident seuls.
+            # La numérotation `ordre` garde son trou : elle vient du gabarit
+            # de la société, pas d'un compteur local.
+            continue
+        delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
         heure_cible = getattr(gabarit, 'heure_cible', None)
-        if heure_cible is not None:
-            locale = echeance.astimezone(horaires.CASABLANCA)
-            echeance = locale.replace(
-                hour=heure_cible.hour, minute=heure_cible.minute,
-                second=0, microsecond=0)
+        if getattr(gabarit, 'dimanche_ok', False):
+            # MRY4/MRY8 — une touche dominicale se PLACE sur un dimanche, elle
+            # ne s'y recale pas. `prochain_creneau_appel` ne sait que borner un
+            # instant dans la fenêtre de SON jour : l'« appel du dimanche »
+            # calculé en J+5 depuis un mercredi tombait un lundi, et le seul
+            # rendez-vous dominical du protocole n'avait jamais lieu un
+            # dimanche. On prend donc le PREMIER dimanche dont la date atteint
+            # `depart + delai_jours`, à 16 h 30 (milieu de la fenêtre 16 h-19 h)
+            # — l'`heure_cible` du gabarit ne s'applique pas ici : elle vise un
+            # jour ouvré, et 10 h 30 un dimanche n'existe pas.
+            echeance = horaires.prochain_dimanche(
+                depart + timedelta(days=gabarit.delai_jours))
+            if echeance < depart:  # garde-fou : jamais dans le passé
+                echeance = horaires.prochain_dimanche(
+                    echeance + timedelta(days=1))
+        elif gabarit.delai_jours == 0 and heure_cible is None:
+            # Les touches DU JOUR MÊME s'enchaînent depuis l'origine ouvrable,
+            # pas depuis l'heure brute d'arrivée du lead : les écarts du
+            # protocole (3 min, 2 h 30) sont ainsi PRÉSERVÉS quelle que soit
+            # l'heure d'arrivée.
+            echeance = origine + timedelta(minutes=delai_minutes)
+        else:
+            echeance = depart + timedelta(
+                days=gabarit.delai_jours, minutes=delai_minutes)
+            if heure_cible is not None:
+                locale = echeance.astimezone(horaires.CASABLANCA)
+                echeance = locale.replace(
+                    hour=heure_cible.hour, minute=heure_cible.minute,
+                    second=0, microsecond=0)
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)))
@@ -643,6 +718,10 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis=devis,
         ))
+    if not etapes:
+        # Tous les barreaux de la cadence ont été écartés (cas limite : une
+        # société dont la cadence ne contient QUE la touche réservée).
+        return []
     RelanceEtape.objects.bulk_create(etapes)
     resultats = list(
         lead.relance_etapes.filter(cadence=cadence)
@@ -697,6 +776,20 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
 
+    # MRY11 × MRY9 — combien de touches de CETTE cadence restaient ouvertes
+    # AVANT toute écriture, celle-ci exclue. Se le demander APRÈS était le
+    # bug : marquer une touche de milieu de cadence « joint » déclenche le
+    # récepteur `_arreter_cadence_on_outcome` (MRY9), qui passe TOUTES les
+    # touches restantes à SAUTEE de façon SYNCHRONE sur le post_save de
+    # l'activité — la question « reste-t-il une touche à faire ? » posée
+    # ensuite répondait donc toujours « non », et le lead qu'on venait
+    # justement de JOINDRE partait au froid, étiqueté injoignable, avec des
+    # réveils J30/J60. La photo est prise avant, jamais après.
+    restantes_avant = etape.lead.relance_etapes.filter(
+        cadence=etape.cadence,
+        statut=RelanceEtape.Statut.A_FAIRE,
+    ).exclude(pk=etape.pk).count()
+
     etape.statut = statut
     etape.note = note or ''
     etape.traite_par = user
@@ -732,18 +825,31 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # MRY11 — la cadence vient-elle de s'ÉPUISER ? Uniquement ici : une
     # cadence ARRÊTÉE (MRY9) n'est pas une cadence terminée, et clôturer un
     # lead qu'on vient de joindre serait exactement l'inverse du bon geste.
-    if not lead.relance_etapes.filter(
-            cadence=etape.cadence,
-            statut=RelanceEtape.Statut.A_FAIRE).exists():
+    # DEUX conditions, et aucune ne se lit après coup :
+    #   * cette touche était bien la DERNIÈRE encore ouverte (photo prise
+    #     avant l'écriture, cf. `restantes_avant`) ;
+    #   * son issue n'est pas une issue de SUCCÈS — joindre, intéresser ou
+    #     convenir d'un rappel ne clôt jamais un dossier au froid.
+    if restantes_avant == 0 and (outcome or '') not in _OUTCOMES_SANS_CLOTURE:
         cloturer_cadence(lead, user, etape.cadence)
     return etape
+
+
+#: MRY11 × MRY9 — les issues qui INTERDISENT la clôture, même sur la dernière
+#: touche : on a joint la personne (ou on est convenu d'un rappel). La mettre
+#: au froid et l'étiqueter « injoignable » serait l'inverse du bon geste.
+_OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel'})
 
 
 #: MRY11 — ce que devient un lead dont la cadence s'est épuisée sans réponse.
 #: Le tag NOMME la raison : « injoignable » et « devis sans suite » ne se
 #: traitent pas de la même façon au réveil.
+#: « 6 appels » et non « 7 tentatives » : le Protocole v3 compte SIX appels
+#: (plus cinq WhatsApp) — l'étiquette affichée à Meryem doit dire ce que la
+#: cadence a réellement fait. Migration 0093 pour l'existant.
+_CLOTURE_TAG_INJOIGNABLE = 'Injoignable 6 appels'
 _CLOTURE_TAGS = {
-    'contact': 'Injoignable 7 tentatives',
+    'contact': _CLOTURE_TAG_INJOIGNABLE,
     'apres_devis': 'Devis sans suite',
 }
 
@@ -892,8 +998,16 @@ def message_pour_etape(etape, *, request=None, user=None):
                 'MRY13: contexte devis illisible (étape #%s)',
                 getattr(etape, 'pk', '?'), exc_info=True)
 
-    # `{lien_rdv}` n'est résolu QUE s'il est présent (aucun jeton créé sinon).
-    corps = resoudre_lien_rdv(corps, lead, request=request)
+    # `{lien_rdv}` n'est résolu QUE s'il est présent (aucun jeton créé sinon),
+    # et sa valeur rejoint le CONTEXTE au lieu d'être substituée tout de suite
+    # dans le corps. C'était le trou : `resoudre_lien_rdv` remplaçait le
+    # placeholder par '' quand la génération du jeton échouait, AVANT le calcul
+    # des placeholders manquants — la phrase « réservez ici : {lien_rdv} »
+    # n'était donc jamais omise et partait au client avec un blanc, exactement
+    # ce que la règle « aucun chiffre/lien inventé » interdit.
+    if '{lien_rdv}' in (corps or ''):
+        contexte['lien_rdv'] = (
+            resoudre_lien_rdv('{lien_rdv}', lead, request=request) or '')
 
     manquants = [cle for cle in _PLACEHOLDERS_RENDUS
                  if '{' + cle + '}' in (corps or '')
@@ -919,6 +1033,50 @@ def message_pour_etape(etape, *, request=None, user=None):
     }
 
 
+#: MRY6 — codes de garde dont le refus est TRACÉ en chatter. Les autres
+#: (miroir Odoo, lead déjà contacté, cadence déjà en place…) restent muets :
+#: les journaliser inonderait l'historique de chaque import.
+_GARDES_CADENCE_TRACEES = frozenset({'sans_numero', 'doublon'})
+
+
+def _garde_cadence_contact(lead):
+    """MRY6/MRY23 — Les six gardes de la cadence « contact », SANS AUCUNE
+    écriture.
+
+    Renvoie ``None`` si la cadence peut partir, sinon ``(code, motif)``. La
+    partie PURE est isolée parce que deux appelants en ont besoin :
+    ``demarrer_cadence_contact`` (qui écrit) et le DRY-RUN de la reprise
+    MRY23, qui annonçait jusqu'ici un nombre de leads que ``--apply``
+    n'atteignait jamais — il ne comptait que « pas de cadence existante »,
+    ignorant numéro et doublon. Une simulation qui ne simule pas la vraie
+    décision ne vaut rien."""
+    if lead is None:
+        return ('absent', 'lead absent')
+    if lead.source == Lead.Source.ODOO_IMPORT_TEST:
+        return ('miroir', 'lead du miroir Odoo')
+    if lead.stage != stages.NEW or lead.first_contacted_at is not None:
+        return ('deja_contacte', 'lead déjà contacté ou hors étape NEW')
+    if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
+        return ('inactif', 'lead perdu, archivé ou « ne plus contacter »')
+    from apps.ventes.utils.whatsapp import build_wa_url
+    if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
+        return ('sans_numero',
+                'aucun numéro exploitable — cadence à lancer à la main')
+    doublons = [
+        autre for autre in find_duplicates_by_contact(
+            lead.company, phone=lead.telephone, email=lead.email,
+            exclude_pk=lead.pk)
+        if not autre.is_archived and not autre.perdu]
+    if doublons:
+        refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
+        return ('doublon',
+                f'doublon possible de {refs} — fusionner ou lancer la '
+                'cadence à la main')
+    if lead.relance_etapes.filter(cadence='contact').exists():
+        return ('deja_en_place', 'cadence de contact déjà en place')
+    return None
+
+
 def demarrer_cadence_contact(lead, *, user=None, origine=''):
     """MRY6 — Démarre la cadence « contact » à l'arrivée d'un lead VIVANT.
 
@@ -928,8 +1086,9 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
     et inonderait la file de Meryem de milliers de touches qui ne
     correspondent à aucune demande réelle.
 
-    Six gardes, dans cet ordre, CHACUNE journalisée en chatter quand elle
-    refuse — un refus muet ferait croire que le lead est suivi :
+    Six gardes, dans cet ordre (``_garde_cadence_contact``, fonction PURE — la
+    reprise MRY23 s'en sert pour que son DRY-RUN annonce exactement ce que
+    ``--apply`` fera) :
 
       1. le lead vient bien d'une demande réelle (``source != ODOO_IMPORT_TEST``
          — le miroir Odoo n'en est pas une ; OS_NATIVE/SITE_WEB/META_LEAD_ADS
@@ -943,36 +1102,23 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
          personne, c'est deux commerciaux qui l'appellent le même jour ;
       6. aucune cadence `contact` n'existe déjà.
 
+    Les deux refus RATTRAPABLES À LA MAIN (4 et 5) sont journalisés en chatter
+    — un refus muet ferait croire que le lead est suivi. Les autres restent
+    volontairement muets : les écrire inonderait l'historique de chaque import.
+
     Best-effort intégral : toute exception est journalisée, jamais propagée —
     une cadence en échec ne doit JAMAIS faire échouer la création du lead.
     Renvoie la liste des touches créées (vide si refus)."""
     try:
-        if lead is None:
-            return []
-        if lead.source == Lead.Source.ODOO_IMPORT_TEST:
-            return []          # import/miroir : silencieux, pas un refus
-        if lead.stage != stages.NEW or lead.first_contacted_at is not None:
-            return []
-        if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
-            return []          # `initialiser_plan_relance` tracerait deux fois
-        from apps.ventes.utils.whatsapp import build_wa_url
-        if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
-            return _refus_cadence(
-                lead, user,
-                'aucun numéro exploitable — cadence à lancer à la main')
-        doublons = [
-            autre for autre in find_duplicates_by_contact(
-                lead.company, phone=lead.telephone, email=lead.email,
-                exclude_pk=lead.pk)
-            if not autre.is_archived and not autre.perdu]
-        if doublons:
-            refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
-            return _refus_cadence(
-                lead, user,
-                f'doublon possible de {refs} — fusionner ou lancer la '
-                'cadence à la main')
-        if lead.relance_etapes.filter(cadence='contact').exists():
-            return []
+        garde = _garde_cadence_contact(lead)
+        if garde is not None:
+            code, motif = garde
+            if code in _GARDES_CADENCE_TRACEES:
+                # MRY6/MRY10 — les deux refus « rattrapables à la main » sont
+                # ÉCRITS : sans numéro exploitable ou sur un doublon vivant,
+                # Meryem doit savoir que le lead n'est PAS suivi.
+                return _refus_cadence(lead, user, motif)
+            return []          # gardes muettes (import, déjà contacté…)
         return initialiser_plan_relance(
             lead, user, cadence='contact', depart=timezone.now())
     except Exception:  # noqa: BLE001 — jamais vers l'appelant

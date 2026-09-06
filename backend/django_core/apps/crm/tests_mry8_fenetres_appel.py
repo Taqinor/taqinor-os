@@ -120,6 +120,65 @@ class ProchainCreneauTests(TestCase):
         self.assertEqual(resultat, _dt(2026, 9, 7, 8, 30))
 
 
+class ProchainDimancheTests(TestCase):
+    """MRY4/MRY8 — une touche dominicale se PLACE sur un dimanche.
+
+    `prochain_creneau_appel` ne sait que borner un instant dans la fenêtre de
+    SON jour : il ne déplace jamais une touche vers un autre jour de la
+    semaine. L'« appel du dimanche » du Protocole v3, calculé en J+5 depuis un
+    mercredi, tombait donc un lundi — le seul rendez-vous dominical du
+    protocole n'avait jamais lieu un dimanche.
+    """
+
+    def test_un_mercredi_renvoie_le_dimanche_suivant_a_1630(self):
+        # Mercredi 2 septembre 2026 → dimanche 6 septembre.
+        self.assertEqual(
+            horaires.prochain_dimanche(_dt(2026, 9, 2, 10, 0)),
+            _dt(2026, 9, 6, 16, 30))
+
+    def test_un_samedi_soir_renvoie_le_lendemain(self):
+        self.assertEqual(
+            horaires.prochain_dimanche(_dt(2026, 9, 5, 20, 0)),
+            _dt(2026, 9, 6, 16, 30))
+
+    def test_un_dimanche_avant_1630_reste_ce_dimanche(self):
+        self.assertEqual(
+            horaires.prochain_dimanche(_dt(2026, 9, 6, 12, 0)),
+            _dt(2026, 9, 6, 16, 30))
+
+    def test_un_dimanche_dans_la_fenetre_ne_recule_jamais(self):
+        """On ne replanifie pas une touche dans le passé de son départ."""
+        self.assertEqual(
+            horaires.prochain_dimanche(_dt(2026, 9, 6, 17, 15)),
+            _dt(2026, 9, 6, 17, 15))
+
+    def test_un_dimanche_apres_la_fermeture_passe_au_suivant(self):
+        self.assertEqual(
+            horaires.prochain_dimanche(_dt(2026, 9, 6, 19, 0)),
+            _dt(2026, 9, 13, 16, 30))
+
+    def test_lheure_est_parametrable(self):
+        self.assertEqual(
+            horaires.prochain_dimanche(
+                _dt(2026, 9, 2, 10, 0), heure=datetime.time(17, 0)),
+            _dt(2026, 9, 6, 17, 0))
+
+    def test_la_sortie_reste_dans_le_fuseau_dentree(self):
+        entree = _dt(2026, 9, 2, 10, 0).astimezone(datetime.timezone.utc)
+        resultat = horaires.prochain_dimanche(entree)
+        self.assertEqual(resultat.tzinfo, datetime.timezone.utc)
+        self.assertEqual(resultat, _dt(2026, 9, 6, 16, 30))
+
+    def test_le_resultat_est_toujours_dans_la_fenetre_dominicale(self):
+        company = _company('mry8-dimanche')
+        for depart in (_dt(2026, 9, 2, 10, 0), _dt(2026, 9, 5, 20, 0),
+                       _dt(2026, 9, 6, 12, 0)):
+            resultat = horaires.prochain_dimanche(depart)
+            self.assertEqual(resultat.astimezone(CASA).weekday(), 6)
+            self.assertTrue(
+                horaires.est_dans_fenetre(resultat, company, dimanche=True))
+
+
 class MinutesOuvreesTests(TestCase):
     def setUp(self):
         self.company = _company('mry8-minutes')
