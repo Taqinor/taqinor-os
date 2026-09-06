@@ -557,6 +557,30 @@ def _refus_cadence(lead, user, raison):
     return []
 
 
+def _lead_porte_tag(lead, tag) -> bool:
+    """``lead`` porte-t-il l'étiquette ``tag`` ?
+
+    ``Lead.tags`` est un champ LIBRE (texte séparé par des virgules), saisi à
+    la main : la comparaison ignore la casse ET les accents — « Decision a
+    plusieurs » vaut « Décision à plusieurs »."""
+    def _cle(valeur):
+        return _strip_accents((valeur or '').strip()).casefold()
+
+    cible = _cle(tag)
+    if not cible:
+        return False
+    return any(_cle(morceau) == cible
+               for morceau in (getattr(lead, 'tags', '') or '').split(','))
+
+
+#: MRY4 — le gabarit « dimanche famille » du suivi après devis n'est PAS pour
+#: tout le monde : le Guide v2.1 le réserve aux dossiers où la décision se
+#: prend en famille, le dimanche. Posé sur tous, il envoyait un message
+#: dominical inapproprié à des prospects qui décident seuls.
+_TEMPLATE_DIMANCHE_FAMILLE = 'dimanche_famille'
+_TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
+
+
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None):
     """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
@@ -583,6 +607,10 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
     ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
     leur grain jour.
+
+    ÉCARTE (MRY4) le barreau ``dimanche_famille`` du suivi après devis quand
+    le lead ne porte PAS l'étiquette « Décision à plusieurs » : le Guide v2.1
+    le réserve aux dossiers décidés en famille.
 
     REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
     ou archivé — les trois cas où relancer serait une faute.
@@ -639,6 +667,15 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
 
     etapes = []
     for gabarit in gabarits:
+        if ((getattr(gabarit, 'template_cle', '') or '')
+                == _TEMPLATE_DIMANCHE_FAMILLE
+                and not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS)):
+            # MRY4 — touche RÉSERVÉE aux dossiers étiquetés « Décision à
+            # plusieurs ». Posée sur tous, elle envoyait un message dominical
+            # « parlez-en en famille » à des prospects qui décident seuls.
+            # La numérotation `ordre` garde son trou : elle vient du gabarit
+            # de la société, pas d'un compteur local.
+            continue
         delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
         heure_cible = getattr(gabarit, 'heure_cible', None)
         if getattr(gabarit, 'dimanche_ok', False):
@@ -681,6 +718,10 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis=devis,
         ))
+    if not etapes:
+        # Tous les barreaux de la cadence ont été écartés (cas limite : une
+        # société dont la cadence ne contient QUE la touche réservée).
+        return []
     RelanceEtape.objects.bulk_create(etapes)
     resultats = list(
         lead.relance_etapes.filter(cadence=cadence)
