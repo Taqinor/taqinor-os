@@ -16,6 +16,10 @@ Garanties testées :
   9. WA draft canal : sans backend email configuré, le canal est wa_draft.
  10. La tâche Celery ``devis_followup_nudges`` appelle le service correctement
      (smoke test via appel direct sans worker Celery).
+ 11. MRY7 — un devis SUIVI PAR UNE CADENCE MRY ouverte ne déclenche AUCUN
+     nudge : les deux moteurs enverraient sinon deux messages au même client,
+     le même jour. Sans cadence, le comportement QJ4 est strictement inchangé
+     (les dix garanties ci-dessus le prouvent, ce onzième point le borne).
 
 Run :
     python manage.py test apps.ventes.tests.test_qj4_followup -v 2
@@ -218,6 +222,61 @@ class QJ4CadenceTests(TestCase):
 
 
 @override_settings(EMAIL_BACKEND=LOCMEM, DEVIS_NUDGE_DAYS=[2, 5, 10])
+class QJ4CadenceMryTests(TestCase):
+    """MRY7 — Coexistence avec le moteur de relances de Meryem.
+
+    QJ4 (j+2/j+5/j+10, `DevisNudgeLog`) et la cadence MRY « après devis »
+    (10 touches datées depuis l'envoi) portent sur le MÊME devis. Les laisser
+    tourner ensemble enverrait deux messages au même client, le même jour,
+    depuis deux systèmes qui s'ignorent. QJ4 est donc supprimé — mais SEULEMENT
+    pour les devis effectivement suivis : une société sans cadence MRY garde
+    QJ4 tel quel."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        make_produit(self.company)
+        self.client_obj = Client.objects.get_or_create(
+            company=self.company, nom='Client MRY7',
+            defaults=dict(email='mry7@qj4.ma'))[0]
+
+    def _devis_envoye_il_y_a(self, jours, reference):
+        return Devis.objects.create(
+            company=self.company, reference=reference,
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20.00'),
+            date_envoi=timezone.now() - timedelta(days=jours),
+            created_by=self.user)
+
+    def _cadence_mry(self, devis, statut='a_faire'):
+        from apps.crm.models import Lead, RelanceEtape
+        lead = Lead.objects.create(company=self.company, nom='Prospect MRY7')
+        devis.lead = lead
+        devis.save(update_fields=['lead'])
+        RelanceEtape.objects.create(
+            company=self.company, lead=lead, devis=devis,
+            cadence='apres_devis', ordre=1, canal='whatsapp',
+            due_date=timezone.localdate(), statut=statut)
+        return lead
+
+    def test_un_devis_a_cadence_mry_ne_declenche_aucun_nudge(self):
+        devis = self._devis_envoye_il_y_a(2, 'DEV-QJ4-MRY-ACTIVE')
+        self._cadence_mry(devis)
+        send_devis_followup_nudges()
+        self.assertFalse(DevisNudgeLog.objects.filter(devis=devis).exists())
+
+    def test_sans_cadence_mry_le_nudge_part_comme_avant(self):
+        devis = self._devis_envoye_il_y_a(2, 'DEV-QJ4-MRY-ABSENTE')
+        send_devis_followup_nudges()
+        self.assertTrue(DevisNudgeLog.objects.filter(devis=devis).exists())
+
+    def test_une_cadence_entierement_traitee_rend_la_main_a_QJ4(self):
+        devis = self._devis_envoye_il_y_a(2, 'DEV-QJ4-MRY-TERMINEE')
+        self._cadence_mry(devis, statut='fait')
+        send_devis_followup_nudges()
+        self.assertTrue(DevisNudgeLog.objects.filter(devis=devis).exists())
+
+
 class QJ4EmailCanalTests(TestCase):
     """Tests avec backend email configuré (locmem) → canal doit être email."""
 

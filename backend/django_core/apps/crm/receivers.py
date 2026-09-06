@@ -30,6 +30,7 @@ from .services import (
     avancer_stage_new_vers_contacted,
     avancer_stage_pour_devis,
     generer_playbook_progress,
+    initialiser_plan_relance,
     signaler_mismatch_signe_sur_refus,
 )
 
@@ -112,6 +113,85 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     deal_commission_due.send(
         sender='crm.receivers', company=devis.company, deal_id=deal.pk,
         apporteur_id=deal.apporteur_id, montant=montant)
+
+
+@receiver(devis_sent, dispatch_uid="crm_plan_apres_devis_on_devis_sent")
+def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
+                                         **kwargs):
+    """MRY7 — L'ENVOI d'un devis bascule le lead sur la cadence « après devis ».
+
+    Deux gestes, dans cet ordre : la prise de contact s'ARRÊTE (son but est
+    atteint — le prospect a son chiffrage), puis le suivi de proposition
+    DÉMARRE, daté depuis la date d'envoi réelle et non depuis maintenant.
+
+    UNE SEULE cadence après-devis par LEAD à la fois : quand plusieurs devis
+    d'un même lead partent ensemble (``whatsapp_devis`` boucle sur la
+    sélection), le deuxième ne crée rien — sinon le client recevrait deux
+    séries de messages parallèles pour un seul dossier. Le fait est journalisé
+    plutôt que silencieux.
+
+    Best-effort : ne fait jamais retomber un envoi déjà acté."""
+    lead_id = getattr(devis, 'lead_id', None)
+    if not lead_id:
+        return
+    try:
+        from .models import Lead
+        lead = Lead.objects.filter(
+            pk=lead_id, company=getattr(devis, 'company', None)).first()
+        if lead is None:
+            return
+        arreter_cadence(lead, user=user, motif='devis envoyé',
+                        cadences=['contact'])
+        deja = lead.relance_etapes.filter(
+            cadence='apres_devis', statut='a_faire').exclude(
+                devis_id=devis.pk).first()
+        if deja is not None:
+            reference = getattr(deja.devis, 'reference', '') or '?'
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=user,
+                kind=LeadActivity.Kind.NOTE,
+                body=('Cadence après devis déjà en cours pour '
+                      f'{reference} — aucune seconde série lancée.'))
+            return
+        initialiser_plan_relance(
+            lead, user, cadence='apres_devis',
+            depart=getattr(devis, 'date_envoi', None), devis=devis)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "MRY7: cadence après devis non planifiée (devis #%s)",
+            getattr(devis, 'pk', '?'), exc_info=True)
+
+
+@receiver(devis_refused, dispatch_uid="crm_stop_apres_devis_on_devis_refused")
+def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
+                                          **kwargs):
+    """MRY7 — Un devis REFUSÉ arrête sa cadence de suivi, même quand le lead
+    n'est PAS marqué perdu.
+
+    C'est le cas par défaut (`marquer_lead_perdu` non coché) : le lead reste
+    vivant — on lui refera peut-être une offre — mais continuer à lui demander
+    « alors, ce PDF ? » sur une proposition qu'il vient de refuser serait
+    absurde. Distinct du receveur « perdu », qui ne se déclenche pas ici."""
+    lead_id = getattr(devis, 'lead_id', None)
+    if not lead_id:
+        return
+    try:
+        from .models import Lead, RelanceEtape
+        lead = Lead.objects.filter(
+            pk=lead_id, company=getattr(devis, 'company', None)).first()
+        if lead is None:
+            return
+        if not RelanceEtape.objects.filter(
+                devis_id=devis.pk,
+                statut=RelanceEtape.Statut.A_FAIRE).exists():
+            return
+        arreter_cadence(lead, user=user,
+                        motif=(motif_refus or 'devis refusé'),
+                        cadences=['apres_devis'])
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "MRY7: arrêt de la cadence après devis échoué (devis #%s)",
+            getattr(devis, 'pk', '?'), exc_info=True)
 
 
 @receiver(devis_sent, dispatch_uid="crm_advance_stage_on_devis_sent")
