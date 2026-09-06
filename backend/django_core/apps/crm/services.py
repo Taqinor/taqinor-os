@@ -26,9 +26,10 @@ import re as _re
 from django.apps import apps as django_apps
 from django.utils import timezone
 
-# CRX26 — LA date MÉTIER (Africa/Casablanca). ``timezone.localdate()`` rendrait
-# la date UTC (``settings.TIME_ZONE = 'UTC'``) : une heure par nuit, elle est
-# en retard d'un jour entier sur le terrain marocain.
+# CRX26 — LA date MÉTIER (Africa/Casablanca), lue EXPLICITEMENT : elle ne dépend
+# d'aucun réglage global. Avant AUD836, ``settings.TIME_ZONE`` valait ``'UTC'``
+# et ``timezone.localdate()`` était en retard d'un jour entier une heure par
+# nuit ; le réglage dit désormais la même chose, ce helper reste la garantie.
 from core.dates import aujourd_hui_local
 
 from . import activity, stages

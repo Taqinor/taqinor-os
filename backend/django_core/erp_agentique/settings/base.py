@@ -579,7 +579,25 @@ AUTH_USER_MODEL = 'authentication.CustomUser'
 
 # Internationalization
 LANGUAGE_CODE = 'fr-fr'
-TIME_ZONE = 'UTC'
+# AUD836 — le fuseau ACTIF est celui du métier, pas celui du serveur.
+#
+# Django vivait en UTC pendant que le métier ET le scheduler vivaient à
+# Casablanca (`erp_agentique/celery.py` : « toute la logique de temps des jobs
+# raisonne en Africa/Casablanca ; on planifie donc aussi le scheduler dans ce
+# fuseau »). `timezone.localdate()` rendait donc la date UTC PARTOUT, et le
+# Maroc étant à UTC+1 la majeure partie de l'année, la bascule de jour avait
+# lieu à 01 h 00 locale : un paiement carte capturé à 00 h 30 heure du Maroc
+# était daté DE LA VEILLE (`apps/ventes/receivers.py`, `date_paiement=
+# timezone.localdate()`), et le balayage des factures en retard
+# (`apps/automation/beat_tasks.py`, `date_echeance__lt=timezone.localdate()`)
+# changeait de jour une heure trop tard. Tout marqueur d'idempotence ou rapport
+# « du jour » clé-daté partageait le décalage.
+#
+# `USE_TZ = True` reste vrai : la base continue de STOCKER en UTC — seule
+# l'interprétation locale change. `core.dates.aujourd_hui_local` (CRX26) reste
+# le point de passage explicite du « aujourd'hui » métier ; les deux disent
+# désormais la même chose au lieu de se contredire une heure par nuit.
+TIME_ZONE = 'Africa/Casablanca'
 USE_I18N = True
 USE_TZ = True
 

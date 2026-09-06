@@ -2,11 +2,17 @@
 
 POURQUOI CE MODULE EXISTE
 -------------------------
-``settings.TIME_ZONE`` vaut ``'UTC'`` (et ``USE_TZ = True``). Or
+``settings.TIME_ZONE`` valait ``'UTC'`` (avec ``USE_TZ = True``). Or
 ``django.utils.timezone.localdate()`` rend la date dans le fuseau ACTIF, donc
 **la date UTC** — pas la date marocaine. Africa/Casablanca est à UTC+1 la
 majeure partie de l'année : entre 23 h 00 et minuit UTC, il est DÉJÀ demain à
 Casablanca.
+
+AUD836 a depuis basculé ``settings.TIME_ZONE`` sur ``'Africa/Casablanca'``, si
+bien que le fuseau ACTIF et le fuseau MÉTIER coïncident. Ce module reste le
+point de passage explicite : il convertit vers ``Africa/Casablanca`` quel que
+soit le réglage, donc une décision de date métier ne peut plus être déplacée
+d'un jour par un changement d'environnement.
 
 Toute la journée d'un commercial marocain se joue sur cette date : une relance
 « due aujourd'hui », un rappel « en retard », un signal d'intérêt « déjà noté
