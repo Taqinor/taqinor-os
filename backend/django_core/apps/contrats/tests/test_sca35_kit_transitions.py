@@ -114,10 +114,23 @@ class TransitionsPermisesMatriceTests(TestCase):
                         ),
                     )
 
-    def test_etats_terminaux_aucune_transition_permise(self):
-        for statut_terminal in (S.RESILIE, S.EXPIRE):
-            contrat = make_contrat(self.co, statut=statut_terminal, parties=2)
-            self.assertEqual(contrat.transitions_permises(), set())
+    def test_etat_terminal_aucune_transition_permise(self):
+        """``expire`` est le seul état sans aucune sortie dans le graphe."""
+        contrat = make_contrat(self.co, statut=S.EXPIRE, parties=2)
+        self.assertEqual(contrat.transitions_permises(), set())
+
+    def test_resilie_expose_la_seule_arete_reservee(self):
+        """AUD511 — ``resilie`` n'est plus terminal : le graphe porte l'arête
+        RÉSERVÉE ``resilie → actif`` (annulation d'une résiliation dans le
+        préavis). Le kit doit la LIRE telle quelle — c'est tout l'objet de
+        SCA35 : la propriété du kit reflète le graphe, elle ne le réécrit pas.
+        La réservation elle-même est appliquée par la vue (la porte générique
+        ``changer-statut`` refuse cette arête en 400), pas par le graphe."""
+        contrat = make_contrat(self.co, statut=S.RESILIE, parties=2)
+        self.assertEqual(contrat.transitions_permises(), {S.ACTIF})
+        self.assertEqual(
+            contrat.transitions_permises(),
+            set(machine_etats.statuts_suivants(contrat)))
 
 
 class CycleVieInchangeTests(TestCase):

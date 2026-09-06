@@ -3,7 +3,9 @@
 Couvre :
 - Transitions autorisées vs interdites (``changer_statut`` / graphe).
 - Gardes : passage en approbation / signature exige ≥2 parties.
-- États terminaux (resilie/expire) sans sortie.
+- État terminal ``expire`` sans sortie ; ``resilie`` n'a que l'arête RÉSERVÉE
+  ``resilie → actif`` posée par AUD511 (annulation d'une résiliation dans le
+  préavis, refusée par la porte générique ``changer-statut``).
 - ``statuts_suivants``.
 - Endpoint POST /contrats/<id>/changer-statut/ : transition OK, transition
   interdite → 400, garde parties → 400, accès réservé, isolation.
@@ -90,10 +92,25 @@ class MachineEtatsUnitTests(TestCase):
         self.assertEqual(contrat.statut, S.ACTIF)
 
     def test_etat_terminal_sans_sortie(self):
-        contrat = make_contrat(self.co, statut=S.RESILIE, parties=2)
+        """``expire`` est le SEUL état sans aucune sortie."""
+        contrat = make_contrat(self.co, statut=S.EXPIRE, parties=2)
         self.assertEqual(services.statuts_suivants(contrat), [])
         with self.assertRaises(TransitionInterdite):
             services.changer_statut(contrat, S.ACTIF)
+
+    def test_resilie_na_que_l_arete_reservee_vers_actif(self):
+        """AUD511 — ``resilie`` n'est plus terminal, mais sa SEULE sortie est
+        l'arête réservée ``resilie → actif`` (annulation d'une résiliation
+        faite par erreur, dans la fenêtre de préavis). La porte générique
+        ``changer-statut`` la refuse en 400 : cf.
+        ``test_aud511_annuler_resiliation``."""
+        contrat = make_contrat(self.co, statut=S.RESILIE, parties=2)
+        self.assertEqual(services.statuts_suivants(contrat), [S.ACTIF])
+        for cible in (S.BROUILLON, S.EN_APPROBATION, S.SIGNE, S.SUSPENDU,
+                      S.EXPIRE):
+            with self.subTest(cible=cible):
+                with self.assertRaises(TransitionInterdite):
+                    services.changer_statut(contrat, cible)
 
     def test_chemin_complet_brouillon_vers_actif(self):
         contrat = make_contrat(self.co, statut=S.BROUILLON, parties=2)

@@ -17,8 +17,12 @@ Règles (gardes) :
   ``en_approbation → signe`` exigent qu'un contrat ait **au moins deux parties**
   (``Contrat.valider_parties``) — on ne soumet/signe pas un contrat à une seule
   partie.
-- Les états ``resilie`` et ``expire`` sont **terminaux** : aucune transition
-  sortante.
+- ``expire`` est le seul état **terminal** : aucune transition sortante.
+- ``resilie`` porte UNE arête sortante, ``resilie → actif``, **réservée** à
+  l'action ``annuler-resiliation`` (AUD511 : annuler une résiliation saisie par
+  erreur, dans la fenêtre de préavis). La porte générique ``changer-statut``
+  la refuse explicitement en 400 — ressusciter un contrat n'est pas un geste
+  administratif.
 
 Ce module ne dépend que des modèles de l'app `contrats` (foundation interne) et
 n'effectue qu'une seule écriture (``Contrat.save`` du seul champ ``statut``).
