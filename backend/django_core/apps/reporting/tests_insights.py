@@ -767,8 +767,13 @@ class TestCohorts(InsightsBase):
 
     def _make_lead(self, nom, stage, months_ago=0, canal=None):
         """Crée un lead dont la date_creation est décalée de months_ago mois."""
-        from datetime import date as d, timedelta
-        today = d.today()
+        from datetime import timedelta
+
+        from core.dates import aujourd_hui_local
+        # CRX26/AUD836 — date MÉTIER (Casablanca), pas `date.today()` (fuseau
+        # système du serveur CI, qui peut diverger d'un jour autour de
+        # minuit et faire retomber le lead dans le mauvais mois de cohorte).
+        today = aujourd_hui_local()
         # Décaler au premier du mois cible.
         target_month = today.replace(day=1)
         for _ in range(months_ago):
@@ -794,8 +799,8 @@ class TestCohorts(InsightsBase):
         self._make_lead('B', 'SIGNED', months_ago=0)
         resp = self.api.get('/api/django/reporting/insights/cohorts/')
         self.assertEqual(resp.status_code, 200)
-        from datetime import date as d
-        month_key = d.today().strftime('%Y-%m')
+        from core.dates import aujourd_hui_local
+        month_key = aujourd_hui_local().strftime('%Y-%m')
         entry = next(
             (c for c in resp.data['cohorts'] if c['cohorte'] == month_key), None)
         self.assertIsNotNone(entry, f'Cohorte {month_key} absente')

@@ -898,8 +898,11 @@ def cohorts(request):
     start = _qdate(request.query_params.get('from'))
     end = _qdate(request.query_params.get('to'))
 
-    # Fenêtre par défaut : 12 mois glissants.
-    today = date.today()
+    # Fenêtre par défaut : 12 mois glissants. CRX26/AUD836 — date MÉTIER
+    # (Casablanca), jamais `date.today()` (fuseau système du serveur, qui
+    # peut diverger d'un jour autour de minuit).
+    from core.dates import aujourd_hui_local, maintenant_local
+    today = aujourd_hui_local()
     if not start:
         start = (today.replace(day=1) - timedelta(days=365)).replace(day=1)
     if not end:
@@ -921,7 +924,12 @@ def cohorts(request):
 
     for lead in qs.only('id', 'stage', 'date_creation', 'canal',
                         'date_modification').iterator():
-        month_key = lead.date_creation.strftime('%Y-%m') if lead.date_creation else 'inconnu'
+        # CRX26/AUD836 — le mois de cohorte se lit dans le fuseau MÉTIER : un
+        # `.strftime()` direct sur le datetime chargé (UTC, tel que renvoyé
+        # par le driver DB) peut le ranger dans le mois PRÉCÉDENT autour de
+        # minuit heure marocaine.
+        month_key = (maintenant_local(lead.date_creation).strftime('%Y-%m')
+                     if lead.date_creation else 'inconnu')
         dim_key = month_key
         if group_by in valid_group_by:
             canal = getattr(lead, 'canal', '') or ''
