@@ -520,7 +520,7 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             company=company, client_id=client_id)
 
     @extend_schema(
-        operation_id='portail_mes_demandes_sav_list',
+        operation_id='django_portail_mes_demandes_sav_list',
         responses=inline_serializer(
             name='MesDemandesSavPortail',
             fields={
@@ -532,7 +532,7 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             'results': [self._ligne(d) for d in self._mes_demandes(request)]})
 
     @extend_schema(
-        operation_id='portail_mes_demandes_sav_retrieve',
+        operation_id='django_portail_mes_demandes_sav_retrieve',
         parameters=[_ID_DEMANDE_SAV])
     def retrieve(self, request, pk=None):
         demande = self._mes_demandes(request).filter(pk=pk).first()
@@ -541,7 +541,7 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_404_NOT_FOUND)
         return Response(self._ligne(demande))
 
-    @extend_schema(operation_id='portail_mes_demandes_sav_create')
+    @extend_schema(operation_id='django_portail_mes_demandes_sav_create')
     def create(self, request):
         """Ouvre une demande SAV (statut SOUMISE) pour le client connecté.
 
