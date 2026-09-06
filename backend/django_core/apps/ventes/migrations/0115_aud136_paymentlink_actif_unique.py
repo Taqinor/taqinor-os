@@ -16,16 +16,31 @@ passent EXPIRÉ, la piste d'audit reste entière.
 from django.db import migrations, models
 from django.utils import timezone
 
+#: Taille de lot des écritures de remise en ordre (verrou court).
+_LOT = 500
+
+
+def _degrader(PaymentLink, pks, expire):
+    for i in range(0, len(pks), _LOT):
+        lot = pks[i:i + _LOT]
+        PaymentLink.objects.filter(pk__in=lot).update(statut=expire)
+
 
 def _fermer_liens_actifs_en_double(apps, schema_editor):
+    # Lecture EN FLUX et écriture par LOTS : un `update()` global sur une
+    # grande table garde son verrou pendant toute sa durée — et cette
+    # migration tourne pendant un déploiement.
     PaymentLink = apps.get_model('ventes', 'PaymentLink')
     en_attente = 'en_attente'
     expire = 'expire'
 
     # 1) Tout lien en attente dont la date est passée est fermé.
-    PaymentLink.objects.filter(
-        statut=en_attente, expires_at__lte=timezone.now(),
-    ).update(statut=expire)
+    perimes = list(
+        PaymentLink.objects.filter(
+            statut=en_attente, expires_at__lte=timezone.now(),
+        ).order_by('pk').values_list('pk', flat=True).iterator(chunk_size=_LOT)
+    )
+    _degrader(PaymentLink, perimes, expire)
 
     # 2) S'il reste plusieurs liens actifs sur une facture, on garde le plus
     #    récent (celui que le client a effectivement reçu) et on ferme le reste.
@@ -34,13 +49,12 @@ def _fermer_liens_actifs_en_double(apps, schema_editor):
     for lien_id, facture_id in PaymentLink.objects.filter(
             statut=en_attente).order_by(
             'facture_id', '-created_at', '-id').values_list(
-            'id', 'facture_id'):
+            'id', 'facture_id').iterator(chunk_size=_LOT):
         if facture_id in vus:
             a_fermer.append(lien_id)
         else:
             vus.add(facture_id)
-    if a_fermer:
-        PaymentLink.objects.filter(id__in=a_fermer).update(statut=expire)
+    _degrader(PaymentLink, a_fermer, expire)
 
 
 def _noop(apps, schema_editor):
