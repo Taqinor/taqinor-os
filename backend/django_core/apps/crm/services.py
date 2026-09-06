@@ -994,8 +994,16 @@ def message_pour_etape(etape, *, request=None, user=None):
                 'MRY13: contexte devis illisible (étape #%s)',
                 getattr(etape, 'pk', '?'), exc_info=True)
 
-    # `{lien_rdv}` n'est résolu QUE s'il est présent (aucun jeton créé sinon).
-    corps = resoudre_lien_rdv(corps, lead, request=request)
+    # `{lien_rdv}` n'est résolu QUE s'il est présent (aucun jeton créé sinon),
+    # et sa valeur rejoint le CONTEXTE au lieu d'être substituée tout de suite
+    # dans le corps. C'était le trou : `resoudre_lien_rdv` remplaçait le
+    # placeholder par '' quand la génération du jeton échouait, AVANT le calcul
+    # des placeholders manquants — la phrase « réservez ici : {lien_rdv} »
+    # n'était donc jamais omise et partait au client avec un blanc, exactement
+    # ce que la règle « aucun chiffre/lien inventé » interdit.
+    if '{lien_rdv}' in (corps or ''):
+        contexte['lien_rdv'] = (
+            resoudre_lien_rdv('{lien_rdv}', lead, request=request) or '')
 
     manquants = [cle for cle in _PLACEHOLDERS_RENDUS
                  if '{' + cle + '}' in (corps or '')
