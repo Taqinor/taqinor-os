@@ -8,10 +8,14 @@ au loup : elle a produit, en cours de calibrage, deux classes de faux positifs
 (mock apparie par NOM a un autre module, et forme d'un GET opposee au mock
 d'un POST) qui l'auraient rendue inutilisable.
 """
+import contextlib
+import io
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -1278,6 +1282,41 @@ class EchantillonsWebJumeauxTests(unittest.TestCase):
         noms = {f.name for f in shapes.fichiers_echantillons(shapes.WEB_ROOT)}
         self.assertIn("proposal_data.json", noms)
         self.assertIn("taille_detail.json", noms)
+
+
+class PlancherInventaireTests(unittest.TestCase):
+    """AUD832 — « OK : 0 endpoint(s) agrege(s) » ne doit plus valoir un vert."""
+
+    def _inventaire(self, tmp: Path) -> Path:
+        path = tmp / "contract_inventory.json"
+        path.write_text(json.dumps({
+            "check_api_shapes": {
+                "endpoints": {"valeur": 561,
+                              "chemin": "backend/django_core/**/views*.py"},
+                "serialiseurs": {"valeur": 995,
+                                 "chemin": "backend/django_core/**/serializers*.py"},
+            }
+        }), encoding="utf-8")
+        return path
+
+    def test_zero_forme_analysee_fait_echouer_main_en_nommant_le_chemin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inventaire = self._inventaire(Path(tmp))
+            sortie = io.StringIO()
+            with mock.patch.object(contract, "INVENTORY_PATH", inventaire):
+                with mock.patch.object(shapes, "analyse",
+                                       return_value=([], {}, {})):
+                    with contextlib.redirect_stdout(sortie):
+                        code = shapes.main([])
+        self.assertEqual(code, 1)
+        texte = sortie.getvalue()
+        self.assertIn("views", texte)                 # le chemin en cause
+        self.assertIn("check_api_shapes.endpoints", texte)
+
+    def test_l_inventaire_committe_porte_un_plancher_positif(self):
+        entree = contract.load_inventory()["check_api_shapes"]
+        self.assertGreater(entree["endpoints"]["valeur"], 0)
+        self.assertGreater(entree["serialiseurs"]["valeur"], 0)
 
 
 if __name__ == "__main__":

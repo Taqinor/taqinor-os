@@ -156,18 +156,30 @@ class CharteVehiculeApiTests(TestCase):
         self.user = make_user(self.co, "charte-crud-user")
 
     def test_version_auto_incrementee_serveur(self):
+        # AUD835 - la charte part dans MinIO (`records.storage`) : on mocke le
+        # depot pour que ce test reste une assertion sur le NUMERO DE VERSION
+        # pose serveur, pas sur la disponibilite du stockage objet.
+        from unittest import mock
+
+        meta = ({"file_key": f"attachments/{self.co.id}/charte.pdf",
+                 "filename": "charte.pdf", "size": 8,
+                 "mime": "application/pdf"}, None)
         fichier1 = SimpleUploadedFile(
-            "v1.pdf", b"v1", content_type="application/pdf")
-        resp = auth(self.user).post(
-            URL_CHARTES, {"document": fichier1}, format="multipart")
+            "v1.pdf", b"%PDF-v1", content_type="application/pdf")
+        with mock.patch("apps.records.storage.store_attachment",
+                        return_value=meta):
+            resp = auth(self.user).post(
+                URL_CHARTES, {"document": fichier1}, format="multipart")
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data["version"], 1)
 
         fichier2 = SimpleUploadedFile(
-            "v2.pdf", b"v2", content_type="application/pdf")
-        resp = auth(self.user).post(
-            URL_CHARTES, {"document": fichier2, "version": 99},
-            format="multipart")
+            "v2.pdf", b"%PDF-v2", content_type="application/pdf")
+        with mock.patch("apps.records.storage.store_attachment",
+                        return_value=meta):
+            resp = auth(self.user).post(
+                URL_CHARTES, {"document": fichier2, "version": 99},
+                format="multipart")
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data["version"], 2)
 

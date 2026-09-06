@@ -9,6 +9,7 @@ un champ exposé : elle est posée côté serveur par le socle
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.records.storage import AttachmentSerializerMixin, attachment_url
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
@@ -696,13 +697,34 @@ class CautionSoumissionSerializer(SameCompanyFKSerializerMixin,
 
 # ── FG225 — Dossiers et pièces de soumission ───────────────────────────────
 
-class PieceSoumissionSerializer(serializers.ModelSerializer):
+class PieceSoumissionSerializer(AttachmentSerializerMixin,
+                                serializers.ModelSerializer):
+    """AUD835 — le document part dans MinIO (``records.storage``), plus jamais
+    dans un ``FileField`` dont l'URL était structurellement morte.
+
+    ``fichier`` reste l'entrée d'upload (multipart, écriture seule) ;
+    ``fichier_url`` est l'URL présignée dérivée de la clé, ``None`` tant qu'une
+    ligne n'a pas de clé (dépôt antérieur à la bascule) — jamais une URL qui ne
+    résout pas.
+    """
+    attachment_fields = ('fichier',)
+
+    fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PieceSoumission
         fields = [
             'id', 'dossier', 'libelle', 'obligatoire', 'fournie', 'fichier',
+            'fichier_url', 'fichier_filename', 'fichier_size', 'fichier_mime',
             'date_depot',
         ]
+        read_only_fields = ['fichier_filename', 'fichier_size', 'fichier_mime']
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_fichier_url(self, obj):
+        return attachment_url(obj, 'fichier')
 
 
 class DossierSoumissionSerializer(serializers.ModelSerializer):

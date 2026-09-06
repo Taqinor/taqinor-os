@@ -71,6 +71,30 @@ def capturer_upload_pour_ged(sender, instance, raw=False, **kwargs):
         setattr(instance, _CONTENU_ATTR, (contenu, mime))
 
 
+def _capture_depuis_minio(instance):
+    """AUD835 — relit les octets depuis MinIO quand l'upload y est parti.
+
+    Depuis AUD835 le fichier ne transite plus par le ``FileField`` : le
+    sérialiseur le téléverse dans MinIO et pose ``fichier_key``. La capture
+    ``pre_save`` (octets encore en mémoire) ne peut donc plus rien voir, et le
+    dépôt GED canonique (WIR94) serait perdu en silence. On relit alors le
+    contenu par sa clé — best-effort, exactement comme le reste du dépôt.
+    Rend ``(contenu, mime)`` ou ``None``.
+    """
+    cle = getattr(instance, 'fichier_key', '') or ''
+    if not cle or instance.document_ged_id:
+        return None
+    try:
+        from apps.records.storage import fetch_attachment
+
+        contenu, erreur = fetch_attachment(cle)
+    except Exception:  # pragma: no cover - défensif (dépôt best-effort)
+        return None
+    if not contenu or erreur:
+        return None
+    return contenu, (getattr(instance, 'fichier_mime', '') or '')
+
+
 @receiver(post_save, sender='portail.DocumentClientPortail',
           dispatch_uid='portail_document_depot_ged')
 def deposer_upload_dans_ged(sender, instance, raw=False, **kwargs):
@@ -86,6 +110,8 @@ def deposer_upload_dans_ged(sender, instance, raw=False, **kwargs):
     # Consommé une seule fois : un save() ultérieur sans nouveau fichier ne
     # redépose rien.
     setattr(instance, _CONTENU_ATTR, None)
+    if not capture:
+        capture = _capture_depuis_minio(instance)
     if not capture:
         return
     contenu, mime = capture

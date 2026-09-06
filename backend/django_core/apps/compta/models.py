@@ -5001,9 +5001,16 @@ class PieceJustificative(models.Model):
     """Document justificatif attaché à une écriture comptable (scan, PDF…).
 
     Une écriture peut porter plusieurs pièces (facture scannée, reçu, contrat).
-    Le fichier est stocké via le storage projet (MinIO/S3). Multi-société :
-    la pièce porte sa propre ``company`` (posée côté serveur) et pointe une
-    écriture de la MÊME société (validé au niveau serializer).
+    Multi-société : la pièce porte sa propre ``company`` (posée côté serveur) et
+    pointe une écriture de la MÊME société (validé au niveau serializer).
+
+    AUD835 — le fichier vit dans MinIO (``records.storage``), désigné par
+    ``fichier_key``. Le docstring affirmait « stocké via le storage projet
+    (MinIO/S3) » alors que le ``FileField`` ci-dessous écrivait en réalité sur
+    le disque du conteneur, sans qu'aucune URL ne puisse le resservir (ni
+    ``MEDIA_URL``/``MEDIA_ROOT``, ni route ``/media/``, ni ``location /media/``
+    nginx) : une pièce comptable — obligation légale de conservation — n'était
+    récupérable par PERSONNE en production.
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -5019,9 +5026,20 @@ class PieceJustificative(models.Model):
     )
     libelle = models.CharField(
         max_length=200, blank=True, default='', verbose_name='Libellé')
+    # AUD835 — LEGACY, jamais réécrit (voir le docstring de la classe) ; devient
+    # optionnel pour que les lignes historiques restent lisibles et qu'une
+    # nouvelle pièce n'ait plus rien à y écrire.
     fichier = models.FileField(
-        upload_to='compta/pieces/%Y/%m/',
-        verbose_name='Fichier justificatif')
+        upload_to='compta/pieces/%Y/%m/', blank=True, null=True,
+        verbose_name='Fichier justificatif (legacy, hors MinIO)')
+    fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     ajoute_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

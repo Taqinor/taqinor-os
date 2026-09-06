@@ -270,20 +270,34 @@ class CarteGriseVehiculeApiTests(TestCase):
         self.assertEqual(resp.status_code, 400, resp.data)
 
     def test_upload_fichiers(self):
+        # AUD835 — les deux scans partent dans MinIO (`records.storage`) : la
+        # preuve du dépôt est la CLÉ, le `FileField` legacy reste vide (son URL
+        # ne résolvait nulle part : ni MEDIA_URL, ni route /media/, ni nginx).
+        from unittest import mock
+
         cg_file = SimpleUploadedFile(
             "cg.pdf", b"%PDF-cg", content_type="application/pdf")
         aut_file = SimpleUploadedFile(
             "aut.pdf", b"%PDF-aut", content_type="application/pdf")
-        resp = auth(self.admin_a).post(URL, {
-            "actif_flotte": self.actif.id,
-            "numero_carte_grise": "P",
-            "carte_grise_fichier": cg_file,
-            "autorisation_fichier": aut_file,
-        }, format="multipart")
+        meta = ({"file_key": f"attachments/{self.co_a.id}/scan.pdf",
+                 "filename": "scan.pdf", "size": 7,
+                 "mime": "application/pdf"}, None)
+        with mock.patch("apps.records.storage.store_attachment",
+                        return_value=meta):
+            resp = auth(self.admin_a).post(URL, {
+                "actif_flotte": self.actif.id,
+                "numero_carte_grise": "P",
+                "carte_grise_fichier": cg_file,
+                "autorisation_fichier": aut_file,
+            }, format="multipart")
         self.assertEqual(resp.status_code, 201, resp.data)
         cg = CarteGriseVehicule.objects.get()
-        self.assertTrue(cg.carte_grise_fichier.name)
-        self.assertTrue(cg.autorisation_fichier.name)
+        self.assertEqual(cg.carte_grise_fichier_key,
+                         f"attachments/{self.co_a.id}/scan.pdf")
+        self.assertEqual(cg.autorisation_fichier_key,
+                         f"attachments/{self.co_a.id}/scan.pdf")
+        self.assertFalse(cg.carte_grise_fichier)
+        self.assertFalse(cg.autorisation_fichier)
 
     def test_list_scoped_and_read_any_role(self):
         CarteGriseVehicule.objects.create(
