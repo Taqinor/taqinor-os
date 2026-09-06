@@ -258,6 +258,32 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
                 contrat, field='confidentialite', old_value=ancien,
                 new_value=contrat.confidentialite, auteur=self.request.user)
 
+    def perform_destroy(self, instance):
+        """AUD818 — suppression DOUCE + alimentation de la corbeille 30 jours.
+
+        Un contrat est une pièce à valeur légale : le supprimer ne l'efface plus
+        définitivement de la base. ``soft_delete()`` (mixin de fondation
+        ``core.SoftDeleteModel``) le masque du manager ``objects`` — donc de
+        l'API, exactement comme une suppression dure du point de vue du client —
+        et émet ``core.events.record_soft_deleted``, l'unique canal qui alimente
+        la corbeille transverse (``apps.trash``). Le viewset n'importe RIEN de
+        ``apps.trash`` : il ignore jusqu'à son existence.
+
+        La restauration passe par le repli générique de la corbeille (bascule de
+        ``is_deleted`` via ``restore()``, résolu par ``contenttypes``).
+        """
+        instance.soft_delete(
+            user=self.request.user,
+            type_libelle='Contrat',
+            libelle=(instance.reference or str(instance)),
+            donnees={
+                'reference': instance.reference,
+                'objet': instance.objet,
+                'type_contrat': instance.type_contrat,
+                'statut': instance.statut,
+            },
+        )
+
     @action(detail=False, methods=['get'])
     def preavis(self, request):
         """Contrats dont l'échéance de préavis approche (CONTRAT20).

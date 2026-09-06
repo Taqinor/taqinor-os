@@ -77,6 +77,17 @@ def _decrire_set_field(source, instance, company, context):
     valeur = cfg.get('value')
     if not champ:
         return _effet(source.action_type, 'Aucun champ configuré.')
+    # AUD821 — la simulation ne promet JAMAIS une écriture que l'exécution
+    # refusera : une règle héritée visant un champ hors registre (machine à
+    # états / champ financier) est décrite comme refusée, pas comme appliquée.
+    from .actions import _model_key, set_field_autorise
+    cle_modele = _model_key(instance)
+    if not set_field_autorise(cle_modele, champ):
+        return _effet(
+            source.action_type,
+            f'Le champ « {cle_modele}.{champ} » n\'est pas assignable par une '
+            f'automatisation : l\'action serait REFUSÉE.',
+            champ=champ, valeur=valeur)
     ancienne = getattr(instance, champ, None)
     return _effet(
         source.action_type,

@@ -1,18 +1,44 @@
 """Branchement du moteur d'automatisations sur les événements PROPRES de l'app.
 
-On écoute ``post_save`` (et ``pre_save`` pour capter l'ancienne valeur) sur les
-modèles existants — Lead, Devis, Facture, Installation, Equipement, Produit — et
-on appelle ``engine.evaluate`` pour le bon ``TriggerType`` quand l'événement
-correspondant se produit. Aucun courtier de messages : tout tourne en processus.
+Deux qualités de branchement, et il faut savoir laquelle on lit :
 
-Best-effort ABSOLU : chaque handler enveloppe son travail dans try/except et ne
-laisse JAMAIS une exception casser l'enregistrement d'origine. Aucune règle →
-aucun effet.
+1. **Le bus d'événements métier (`core.events`, règle M6) — la SEULE source qui
+   garantit qu'un contrôle métier a eu lieu.** Un événement du bus est publié
+   par le SERVICE propriétaire, au bout de son chemin gardé. AUD823 y a migré
+   ``DEVIS_ACCEPTED`` : il s'abonne à ``core.events.devis_accepted``, émis
+   exclusivement par ``apps.ventes.domain.cycle_vie`` au terme d'une
+   acceptation VALIDÉE (option choisie, sœurs effondrées, aval en transaction).
+
+2. **Les `post_save` bruts sur les modèles** — Lead, Facture, Installation,
+   Equipement, Produit. Ils réagissent à un CHANGEMENT D'ÉTAT OBSERVÉ, pas à
+   une décision métier : ils tirent pour N'IMPORTE QUEL chemin d'écriture, y
+   compris un PATCH non gardé, un import, une commande de shell ou une
+   correction manuelle.
+
+   ⚠️ AUD823 — CE N'EST PAS UNE GARANTIE DE LÉGITIMITÉ MÉTIER. Ces cinq
+   déclencheurs restent branchés sur ``post_save`` parce qu'aucun événement
+   ``core.events`` PROPRIÉTAIRE ne leur correspond aujourd'hui. Toute règle
+   bâtie dessus doit être considérée comme « le champ vaut X maintenant », pas
+   comme « la transition métier a été validée ». Dès qu'un domaine publie
+   l'événement équivalent sur le bus, MIGRER le déclencheur ici plutôt que
+   d'ajouter une garde locale — c'est ce qu'a fait ``DEVIS_ACCEPTED``.
+
+   Le défaut concret que cette distinction ferme : ``_devis_saved`` s'exécutait
+   pour TOUT ``.save()`` laissant ``statut='accepte'``. Une règle « Lien
+   WhatsApp à l'acceptation d'un devis » envoyait donc une confirmation au
+   client alors qu'AUCUN contrôle métier n'avait eu lieu — et le défaut se
+   rouvrait à chaque future écriture non gardée.
+
+Aucun courtier de messages : tout tourne en processus. Best-effort ABSOLU :
+chaque handler enveloppe son travail dans try/except et ne laisse JAMAIS une
+exception casser l'enregistrement d'origine. Aucune règle → aucun effet.
 """
 import logging
 
 from django.db.models.signals import post_save, pre_save
 from django.utils import timezone
+
+from core.events import devis_accepted
 
 from .engine import evaluate
 from .models import TriggerType
@@ -62,18 +88,30 @@ def _lead_saved(sender, instance, created, **kwargs):
 _lead_saved = _safe(_lead_saved)
 
 
-def _devis_saved(sender, instance, created, **kwargs):
-    old = getattr(instance, _OLD, None)
-    new = getattr(instance, 'statut', None)
-    # Déclenche quand le devis DEVIENT « accepté » (transition ou création).
-    if new != 'accepte':
+# ── AUD823 — DEVIS_ACCEPTED : abonné au BUS, plus au post_save brut ────────
+
+def _on_devis_accepted(sender, devis, user=None, ancien_statut=None, **kwargs):
+    """Évalue ``DEVIS_ACCEPTED`` sur l'ÉVÉNEMENT MÉTIER, jamais sur un save.
+
+    Avant AUD823, ``_devis_saved`` écoutait ``post_save`` et tirait pour TOUT
+    ``.save()`` laissant ``statut='accepte'`` — donc aussi pour un PATCH brut,
+    un import ou une correction en base, sans qu'aucun contrôle métier n'ait eu
+    lieu. Désormais seul ``core.events.devis_accepted`` déclenche : il est émis
+    par l'UNIQUE chemin gardé d'acceptation
+    (``apps.ventes.domain.cycle_vie``), au terme de la validation complète.
+
+    ``ancien_statut`` est passé en contexte pour que les conditions de règle
+    puissent le lire (aucune règle existante n'en dépend : ajout pur).
+    """
+    company = getattr(devis, 'company', None)
+    if company is None:
         return
-    if not created and old == 'accepte':
-        return
-    evaluate(TriggerType.DEVIS_ACCEPTED, instance, instance.company)
+    evaluate(TriggerType.DEVIS_ACCEPTED, devis, company, user=user,
+             context={'ancien_statut': ancien_statut,
+                      'nouveau_statut': getattr(devis, 'statut', None)})
 
 
-_devis_saved = _safe(_devis_saved)
+_on_devis_accepted = _safe(_on_devis_accepted)
 
 
 def _installation_saved(sender, instance, created, **kwargs):
@@ -152,12 +190,12 @@ def connect():
         post_save.connect(_lead_saved, sender=Lead,
                           dispatch_uid='automation_post_lead')
 
-    Devis = model('ventes', 'Devis')
-    if Devis is not None:
-        pre_save.connect(_cache_old('statut'), sender=Devis,
-                         dispatch_uid='automation_pre_devis')
-        post_save.connect(_devis_saved, sender=Devis,
-                          dispatch_uid='automation_post_devis')
+    # AUD823 — le Devis n'est PLUS écouté par post_save : `DEVIS_ACCEPTED`
+    # s'abonne au bus M6, seule source qui prouve qu'une acceptation VALIDÉE a
+    # eu lieu (l'ancien pre_save/post_save tirait pour n'importe quel chemin
+    # d'écriture, y compris un PATCH brut).
+    devis_accepted.connect(
+        _on_devis_accepted, dispatch_uid='automation_on_devis_accepted')
 
     Installation = model('installations', 'Installation')
     if Installation is not None:
