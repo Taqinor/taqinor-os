@@ -169,11 +169,27 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # et `mentions_manquantes` — soit ≈6 requêtes par facture. Le viewset Devis
     # avait reçu le correctif équivalent (YOPSB13) ; la liste des factures
     # jamais.
+    #
+    # AUD157 (résidu) — LE SÉRIALISEUR IMBRIQUÉ COMPTE AUSSI. Le préfetch
+    # s'arrêtait à la facture, mais `PaiementSerializer` — imbriqué dans
+    # `FactureSerializer` — expose `montant_disponible`, qui interroge
+    # `Paiement.affectations` (`.exists()`, puis `montant_affecte`). Une
+    # requête PAR PAIEMENT sérialisé : le budget de la liste restait indexé
+    # sur le portefeuille (+1 par ligne), le N+1 s'était juste déplacé d'un
+    # cran. Le gestionnaire de relation sert `.all()` ET `.exists()` depuis
+    # `_prefetched_objects_cache` — préfetcher la relation suffit, aucune
+    # propriété modèle n'a à être réécrite.
+    #
+    # Même raison pour `avoirs__lignes` / `notes_debit__lignes` : `get_avoirs`
+    # et `notes_debit_total` lisent le `total_ttc` de chaque document, qui
+    # retombe sur SES lignes dès que ses montants ne sont pas figés.
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande', 'devis', 'updated_by',
         'company',
     ).prefetch_related(
-        'lignes', 'paiements', 'avoirs', 'notes_debit', 'retenues_subies',
+        'lignes', 'paiements', 'paiements__affectations',
+        'avoirs', 'avoirs__lignes',
+        'notes_debit', 'notes_debit__lignes', 'retenues_subies',
         'affectations_paiement__paiement',
     ).all()
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

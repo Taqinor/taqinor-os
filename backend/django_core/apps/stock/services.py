@@ -2153,11 +2153,23 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
                 continue
             avant = produit.quantite_stock
             apres = ligne.quantite_comptee
+            # AUD320 — LA RÉFÉRENCE DU MOUVEMENT EST CELLE DU DOCUMENT SOURCE,
+            # TELLE QUELLE. `f'CYC-{reference}'` re-préfixait une référence de
+            # session qui porte DÉJÀ son préfixe (`create_with_reference(...,
+            # 'CYC', ...)` → `CYC-YYYYMM-NNNN`) : le registre stockait
+            # `CYC-CYC-202609-0001`, si bien qu'aucune recherche par la
+            # référence de la session — celle qu'affiche l'écran et que porte
+            # la `note` juste en dessous — ne retrouvait son ajustement. La
+            # fonction sœur `valider_inventaire_session` pose déjà
+            # `reference=session.reference` sans rien y ajouter ; c'est la
+            # convention de la maison. Les lignes historiques doublement
+            # préfixées restent lisibles (aucune migration : le champ est un
+            # libellé de traçabilité, jamais une clé).
             record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
                 quantite=abs(ecart), quantite_avant=avant,
-                quantite_apres=apres, reference=f'CYC-{reference}',
+                quantite_apres=apres, reference=reference,
                 note=f'Comptage cyclique {reference} — écart {ecart}',
                 created_by=user)
             count += 1
