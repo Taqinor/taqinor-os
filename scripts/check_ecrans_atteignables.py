@@ -968,17 +968,6 @@ def main(argv=None) -> int:
         write_inventory("check_ecrans_atteignables", mesures, INVENTORY_SURFACES)
         return 0
 
-    # AUD832 — la garde a-t-elle seulement VU des ecrans ? « OK : 0 ecran(s) »
-    # ne doit plus jamais valoir un vert. Le plancher se mesure sur le
-    # perimetre complet ; une edition reduite parque des verticaux entiers,
-    # donc son inventaire n'est pas comparable (dit a voix haute ci-dessous).
-    if args.edition == "full":
-        if rapport_plancher("check_ecrans_atteignables", mesures):
-            return 1
-    else:
-        print(f"Plancher d'inventaire NON applique : edition "
-              f"'{args.edition}' (perimetre reduit, cf. AUD832).")
-
     if args.stats:
         print(f"Ecrans .jsx/.tsx sous frontend/src/{{features,pages}} : "
               f"{stats['ecrans']} ({stats['atteignables']} atteignables, "
@@ -1017,6 +1006,19 @@ def main(argv=None) -> int:
         print(f"Base de reference reecrite : {BASELINE_PATH.relative_to(ROOT)} "
               f"({len(signatures)} entree(s), {len(base - signatures)} retiree(s)).")
         return 0
+
+    # AUD832 — la garde a-t-elle seulement VU des ecrans ? « OK : 0 ecran(s) »
+    # ne doit plus jamais valoir un vert. Verifie dans le SEUL chemin de
+    # verdict (jamais sur `--write-baseline`/`--write-inventory`, commandes de
+    # maintenance explicites dont le diff est la revue). Le plancher se mesure
+    # sur le perimetre complet ; une edition reduite parque des verticaux
+    # entiers, donc son inventaire n'est pas comparable — et elle le DIT.
+    if args.edition == "full":
+        if rapport_plancher("check_ecrans_atteignables", mesures):
+            return 1
+    else:
+        print(f"Plancher d'inventaire NON applique : edition "
+              f"'{args.edition}' (perimetre reduit, cf. AUD832).")
 
     nouveaux = [c for c in constats if signature(c) not in base]
     corriges = base - signatures

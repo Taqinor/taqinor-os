@@ -1403,11 +1403,6 @@ def main(argv=None) -> int:
         write_inventory("check_api_contract", mesures, INVENTORY_SURFACES)
         return 0
 
-    # AUD832 — avant tout verdict : la garde a-t-elle seulement analyse quelque
-    # chose ? « OK : 0 appel(s) » ne doit plus jamais valoir un vert.
-    if rapport_plancher("check_api_contract", mesures):
-        return 1
-
     if args.stats:
         print(f"Routes backend resolues : {stats['routes']} "
               f"({stats['registres']} ressources de routeur, {stats['vues']} vues) ; "
@@ -1433,6 +1428,13 @@ def main(argv=None) -> int:
         print(f"Base de reference reecrite : {BASELINE_PATH.relative_to(ROOT)} "
               f"({len(signatures)} entree(s), {len(baseline - signatures)} retiree(s)).")
         return 0
+
+    # AUD832 — avant le verdict : la garde a-t-elle seulement analyse quelque
+    # chose ? « OK : 0 appel(s) » ne doit plus jamais valoir un vert. Verifie
+    # dans le SEUL chemin de verdict (jamais sur `--write-baseline` /
+    # `--write-inventory`, commandes de maintenance explicites).
+    if rapport_plancher("check_api_contract", mesures):
+        return 1
 
     new = [f for f in findings if f[3] not in baseline]
     fixed = baseline - signatures
