@@ -1,7 +1,7 @@
 {
-  "endpoint": "POST /api/django/ao/planches/upload/ (multipart: appel_offre, code_document, fichier, toiture?, variante?, motif?)",
-  "pourquoi": "AUDV24 (DRAFT165-5, AOF140) — PlancheAO n'avait AUCUN ViewSet/serializer/URL : `services.generer_indice_planche` (indice AUTOMATIQUE, jamais saisi, incrémenté sur changement d'empreinte, ancienne version ARCHIVÉE) existait déjà, testé, mais aucune route ne l'appelait. PACT10 : le fichier part dans records.Attachment (MinIO, jamais un FileField — garde ARC26) ; l'empreinte SHA-256 du CONTENU (pas du calepinage) pilote le versionnement — un ré-upload identique renvoie 200 sans rien créer (`id`/`indice` inchangés), un contenu différent renvoie 201 avec l'indice suivant et archive l'ancienne planche du même code_document.",
-  "exemple_nouvelle_version": {
+  "endpoint": "POST /api/django/ao/planches/upload/",
+  "pourquoi": "AUDV24 (DRAFT165-5, AOF140) — PlancheAO n'avait AUCUN ViewSet/serializer/URL : `services.generer_indice_planche` (indice AUTOMATIQUE, jamais saisi, incrémenté sur changement d'empreinte, ancienne version ARCHIVÉE) existait déjà, testé, mais aucune route ne l'appelait. PACT10 : le fichier part dans records.Attachment (MinIO, jamais un FileField — garde ARC26) ; l'empreinte SHA-256 du CONTENU (pas du calepinage) pilote le versionnement — un ré-upload identique renvoie 200 sans rien créer (`id`/`indice` inchangés), un contenu différent renvoie 201 avec l'indice suivant et archive l'ancienne planche du même code_document. Corps MULTIPART (non JSON) : appel_offre, code_document, fichier, toiture/variante/motif optionnels.",
+  "exemple": {
     "id": 42,
     "appel_offre": 7,
     "toiture": 3,

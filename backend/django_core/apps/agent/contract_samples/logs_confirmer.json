@@ -8,7 +8,7 @@
     "proposal_hash": "3a7bd3e2...",
     "object_id": 42
   },
-  "exemple_reponse": {
+  "exemple": {
     "id": 501,
     "action_key": "crm.client.create",
     "risk_level": "outward",

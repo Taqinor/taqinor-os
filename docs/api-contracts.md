@@ -348,6 +348,8 @@
     detail:texte, echecs:inconnu, reussies:inconnu
 - frontend/src/api/flotteApi.js :: ocr -> /api/django/flotte/pleins/ocr
     champs:objet, detail:texte, photo:texte
+- frontend/src/api/flotteApi.js :: proposerDateNarsa -> /api/django/flotte/visites-techniques/proposer-date-narsa
+    date_proposee:inconnu, detail:texte
 - frontend/src/api/flotteApi.js :: rapportBudget -> /api/django/flotte/rapports/budget
     annee:inconnu, categories:inconnu, total_budgete:nombre, total_realise:nombre
 - frontend/src/api/flotteApi.js :: rapportRemplacement -> /api/django/flotte/rapports/remplacement
@@ -918,10 +920,14 @@
     detail:texte, id:inconnu, theme:inconnu
 - frontend/src/api/rhApi.js :: definirCodePointage -> /api/django/rh/employes/<>/definir-code-pointage
     code:texte, detail:texte
+- frontend/src/api/rhApi.js :: deleteDocument -> /api/django/rh/documents/<>
+    confirmer:texte, motif:texte
 - frontend/src/api/rhApi.js :: emargerDotationEpi -> /api/django/rh/dotations-epi/<>/emarger
     accuse_remise:inconnu, date_accuse:inconnu, deja_accusee:inconnu, detail:texte, emargement:inconnu
 - frontend/src/api/rhApi.js :: getCockpit -> /api/django/rh/cockpit
     alertes:inconnu, effectif_total:inconnu, masse_salariale_mensuelle:inconnu, par_contrat:inconnu, par_departement:inconnu, par_statut:inconnu, pyramide_anciennete:inconnu, turnover:objet
+- frontend/src/api/rhApi.js :: getEffectifChantier -> /api/django/rh/presences-chantier/effectif
+    date:texte, effectif:inconnu, installation_id:inconnu, presents:inconnu
 - frontend/src/api/rhApi.js :: getIntegration -> /api/django/rh/employes/<>/integration
     faits:inconnu, lignes:inconnu, progression_pct:inconnu, total:inconnu
 - frontend/src/api/rhApi.js :: getRapportConges -> /api/django/rh/demandes-conge/rapport
@@ -3216,7 +3222,7 @@
     champs: date_creation, date_debut, date_fin, date_modification, employe, employe_nom, id, note, permis_verifie, statut, statut_display, vehicule_id
     statut ∈ {active, terminee}
 - frontend/src/api/rhApi.js :: createCandidature -> /api/django/rh/candidatures  [CandidatureSerializer]
-    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    champs: cv_fichier, cv_nom, cv_url, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
     etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
 - frontend/src/api/rhApi.js :: createCauserieSecurite -> /api/django/rh/causeries-securite  [CauserieSecuriteSerializer]
     champs: animateur, animateur_nom, chantier_id, date_causerie, date_creation, date_modification, id, lieu, notes, participants, theme
@@ -3229,7 +3235,7 @@
 - frontend/src/api/rhApi.js :: createCompetenceEmploye -> /api/django/rh/competences-employe  [CompetenceEmployeSerializer]
     champs: competence, competence_code, competence_libelle, date_creation, date_modification, employe, employe_nom, evalue_le, evalue_par, id, niveau, niveau_display, note
 - frontend/src/api/rhApi.js :: createDemandeConge -> /api/django/rh/demandes-conge  [DemandeCongeSerializer]
-    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
+    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, justificatif_nom, justificatif_url, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
     statut ∈ {annulee, refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: createDeviceEmployeMap -> /api/django/rh/devices-employe-map  [EmployeDeviceMapSerializer]
     champs: date_creation, device_user_id, employe, employe_nom, id
@@ -3343,7 +3349,7 @@
 - frontend/src/api/rhApi.js :: getCampagnesPulse -> /api/django/rh/campagnes-pulse  [CampagnePulseSerializer]
     champs: date_creation, date_debut, date_fin, id, question_enps, question_libre
 - frontend/src/api/rhApi.js :: getCandidatures -> /api/django/rh/candidatures  [CandidatureSerializer]
-    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    champs: cv_fichier, cv_nom, cv_url, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
     etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
 - frontend/src/api/rhApi.js :: getCauseriesSecurite -> /api/django/rh/causeries-securite  [CauserieSecuriteSerializer]
     champs: animateur, animateur_nom, chantier_id, date_causerie, date_creation, date_modification, id, lieu, notes, participants, theme
@@ -3361,7 +3367,7 @@
     champs: date_creation, date_decision, decide_par, employe, employe_nom, id, jours, motif, statut, statut_display, type_absence, type_absence_code
     statut ∈ {refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: getDemandesConge -> /api/django/rh/demandes-conge  [DemandeCongeSerializer]
-    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
+    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, justificatif_nom, justificatif_url, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
     statut ∈ {annulee, refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: getDemandesRh -> /api/django/rh/demandes-rh  [DemandeRHSerializer]
     champs: attachment_id, date_creation, date_modification, employe, employe_nom, id, message, motif_refus, statut, statut_display, traite_le, traite_par, type, type_display
@@ -3472,7 +3478,7 @@
     statut ∈ {annulee, planifiee, realisee}
     type ∈ {externe, interne}
 - frontend/src/api/rhApi.js :: getSoldesConge -> /api/django/rh/soldes-conge  [SoldeCongeSerializer]
-    champs: acquis, annee, date_creation, date_modification, disponible, employe, id, pris, report
+    champs: acquis, annee, date_creation, date_modification, disponible, droit_annuel, employe, id, pris, report
 - frontend/src/api/rhApi.js :: getTentativesQuiz -> /api/django/rh/tentatives-quiz  [TentativeQuizSerializer]
     champs: date_creation, employe, employe_nom, id, quiz, quiz_intitule, reussi, score, session
 - frontend/src/api/rhApi.js :: getTypesAbsence -> /api/django/rh/types-absence  [TypeAbsenceSerializer]
@@ -3486,7 +3492,7 @@
     champs: a_jour, actif, aptitude, aptitude_display, date_creation, date_modification, date_visite, employe, employe_nom, id, medecin, note, organisme, prochaine_visite, restrictions
     aptitude ∈ {apte, apte_avec_restrictions, inapte}
 - frontend/src/api/rhApi.js :: updateCandidature -> /api/django/rh/candidatures/<>  [CandidatureSerializer]
-    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    champs: cv_fichier, cv_nom, cv_url, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
     etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
 - frontend/src/api/rhApi.js :: updateElementIntegration -> /api/django/rh/elements-integration/<>  [ElementIntegrationSerializer]
     champs: date_creation, id, libelle, modele, ordre
