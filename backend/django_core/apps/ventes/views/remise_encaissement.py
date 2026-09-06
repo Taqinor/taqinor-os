@@ -119,6 +119,11 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             padding=4, period='monthly')
 
         for paiement in paiements:
+            # YDATA15 — course-safe : `uniq_ligne_remise_par_paiement` (AUD135,
+            # apps/ventes/models.py) porte sur `paiement` SEUL, un
+            # sur-ensemble plus strict du couple (paiement, remise) lu ici —
+            # deux créations concurrentes du même paiement lèvent
+            # l'IntegrityError plutôt que de dupliquer la ligne.
             LigneRemiseEncaissement.objects.get_or_create(
                 remise=instance, paiement=paiement)
 
