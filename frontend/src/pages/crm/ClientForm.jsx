@@ -19,6 +19,7 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
+import tiersApi from '../../api/tiersApi'
 import {
   searchCompanies, hitsToOptions, verifierIceUrl, verifierOmpicUrl,
 } from '../../features/crm/companyLookup'
@@ -152,11 +153,26 @@ export default function ClientForm({ client = null, onClose }) {
   // par la primitive commune (remplace le snapshot + useDirtyGuard maison).
   const { guardedClose } = useFormSafety(initial, fields, onClose)
 
+  // QC1 — autocomplete entreprise (données propres). Avertissement de doublon
+  // non bloquant quand on choisit un CLIENT existant (au lieu de recréer).
+  const [dupWarning, setDupWarning] = useState(null)
+  // AUDV22 (DRAFT165-123/124, ARC20) — un premier submit qui trouve un
+  // doublon EXACT (ICE/email) affiche l'avertissement et REFUSE de créer ;
+  // le second submit (même identifiants, l'utilisateur a vu l'avertissement)
+  // passe. Jamais bloquant côté serveur — c'est un choix de l'utilisateur.
+  const [iceEmailDupChecked, setIceEmailDupChecked] = useState(false)
+
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige :
   // nettoyé AVANT le prochain submit, dès la frappe (hors du setState de
   // `fields`, jamais d'effet de bord dans un updater React).
+  // AUDV22 (DRAFT165-123/124, ARC20) — un ICE/email déjà changé invalide le
+  // contrôle exact précédent : un nouveau submit devra revérifier.
   const setField = (k, v) => {
     clearField(k)
+    if (k === 'ice' || k === 'email') {
+      setIceEmailDupChecked(false)
+      setDupWarning(null)
+    }
     setFields((f) => {
       const next = { ...f, [k]: v }
       // À la CRÉATION uniquement : la première fois qu'un identifiant entreprise
@@ -180,10 +196,6 @@ export default function ClientForm({ client = null, onClose }) {
   // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
   // stockage (espaces/points/tirets tolérés) au lieu de tomber brut.
   const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => setField('telephone', clean))
-
-  // QC1 — autocomplete entreprise (données propres). Avertissement de doublon
-  // non bloquant quand on choisit un CLIENT existant (au lieu de recréer).
-  const [dupWarning, setDupWarning] = useState(null)
 
   const onSearchCompany = (query) =>
     searchCompanies(query, { searcher: crmApi.searchClients }).then(hitsToOptions)
@@ -225,9 +237,43 @@ export default function ClientForm({ client = null, onClose }) {
     return Object.keys(e).length === 0
   }
 
+  // AUDV22 (DRAFT165-123/124, ARC20) — recherche EXACTE anti-doublon par ICE/
+  // email (registre unifié `tiers.Tiers`, EN COMPLÉMENT de la recherche floue
+  // QC1 ci-dessus) : à la CRÉATION uniquement (un tiers en édition matche
+  // forcément SA PROPRE fiche). Jamais bloquant : un premier submit qui
+  // trouve un doublon affiche l'avertissement au lieu de créer ; le second
+  // submit passe (l'utilisateur l'a vu et confirme).
+  const checkDoublonExact = async () => {
+    const ice = isEntreprise ? fields.ice.trim() : ''
+    const email = fields.email.trim()
+    if (!ice && !email) return true
+    try {
+      const { data } = await tiersApi.verifierDoublon({
+        ice: ice || undefined, email: email || undefined,
+      })
+      const iceMatches = data?.ice_matches ?? []
+      const emailMatches = data?.email_matches ?? []
+      if (iceMatches.length === 0 && emailMatches.length === 0) return true
+      const noms = [...iceMatches, ...emailMatches].map((m) => m.nom).join(', ')
+      const cle = iceMatches.length ? 'ICE' : 'email'
+      setDupWarning(
+        `Doublon possible : ${noms} porte déjà ce ${cle}. Cliquez de nouveau `
+        + 'sur « Créer » pour continuer malgré tout.')
+      setIceEmailDupChecked(true)
+      return false
+    } catch {
+      // Best-effort : un contrôle en échec ne bloque jamais la création.
+      return true
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    if (!isEdit && !iceEmailDupChecked) {
+      const ok = await checkDoublonExact()
+      if (!ok) return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -266,6 +312,7 @@ export default function ClientForm({ client = null, onClose }) {
           setFields(initial)
           setErrors({})
           setDupWarning(null)
+          setIceEmailDupChecked(false)
           nomRef.current?.focus()
         } else {
           onClose()

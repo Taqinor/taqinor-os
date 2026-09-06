@@ -219,6 +219,9 @@ def agreger_indicateurs_periode(company, date_debut, date_fin):
                 'social_hse': {'disponible': False, 'raison': raison},
                 'effectifs': {'disponible': False, 'raison': raison},
             },
+            # AUDV26 (NTESG9) — même dégradation que les autres sources :
+            # aucune société, aucun ratio, jamais une exception.
+            'intensite_carbone': _intensite_carbone(None, None, None),
         }
     return {
         'periode': periode,
@@ -232,6 +235,12 @@ def agreger_indicateurs_periode(company, date_debut, date_fin):
                 _source_social_hse, company, date_debut, date_fin),
             'effectifs': _safe(_source_effectifs, company),
         },
+        # AUDV26 (NTESG9) — 3 ratios carbone (par CA/kWc/ETP), dégradés
+        # proprement (jamais 0 forfaitaire) si une donnée manque. Câblé ici
+        # (au lieu d'être laissé sans appelant) : `PeriodeReportingESGViewSet.
+        # indicateurs` ne faisait jamais tourner ce calcul.
+        'intensite_carbone': _intensite_carbone(
+            company, date_debut, date_fin),
     }
 
 
@@ -607,23 +616,11 @@ def _source_kwc_installes(company, date_debut, date_fin):
     }
 
 
-def intensite_carbone(periode_esg):
-    """NTESG9 — Intensité carbone normalisée (tCO2e / MAD de CA, / kWc
-    installé, / ETP) d'une période.
-
-    Numérateur : ``BilanCarbone.total_tco2e`` lu via ``_source_bilan_carbone``
-    (toujours ``disponible=False`` tant qu'aucun sélecteur qhse ne l'expose —
-    voir sa docstring). Dénominateurs lus en lecture seule via
-    ``ventes.selectors`` (CA), ``installations.selectors`` (kWc, dégradé),
-    ``rh.selectors`` (effectif, réutilise ``_source_effectifs``).
-
-    Chaque ratio se calcule INDÉPENDAMMENT des deux autres : l'absence du
-    numérateur OU d'un seul dénominateur omet CE ratio (``disponible=False``
-    + ``raison``) sans empêcher le calcul des ratios dont les données sont
-    présentes — jamais une division par zéro affichée comme 0."""
-    company = periode_esg.company
-    date_debut = periode_esg.date_debut
-    date_fin = periode_esg.date_fin
+def _intensite_carbone(company, date_debut, date_fin):
+    """Corps de ``intensite_carbone`` (NTESG9), factorisé pour être appelable
+    depuis ``agreger_indicateurs_periode`` (AUDV26) SANS instance
+    ``PeriodeReportingESG`` — seule ``company``/``date_debut``/``date_fin``
+    sont nécessaires, exactement ce que l'agrégateur a déjà sous la main."""
     annee = date_fin.year if date_fin else (
         date_debut.year if date_debut else None)
 
@@ -688,3 +685,21 @@ def intensite_carbone(periode_esg):
                 etp_source, 'tCO2e/ETP', 'effectif_actif'),
         },
     }
+
+
+def intensite_carbone(periode_esg):
+    """NTESG9 — Intensité carbone normalisée (tCO2e / MAD de CA, / kWc
+    installé, / ETP) d'une période.
+
+    Numérateur : ``BilanCarbone.total_tco2e`` lu via ``_source_bilan_carbone``
+    (toujours ``disponible=False`` tant qu'aucun sélecteur qhse ne l'expose —
+    voir sa docstring). Dénominateurs lus en lecture seule via
+    ``ventes.selectors`` (CA), ``installations.selectors`` (kWc, dégradé),
+    ``rh.selectors`` (effectif, réutilise ``_source_effectifs``).
+
+    Chaque ratio se calcule INDÉPENDAMMENT des deux autres : l'absence du
+    numérateur OU d'un seul dénominateur omet CE ratio (``disponible=False``
+    + ``raison``) sans empêcher le calcul des ratios dont les données sont
+    présentes — jamais une division par zéro affichée comme 0."""
+    return _intensite_carbone(
+        periode_esg.company, periode_esg.date_debut, periode_esg.date_fin)

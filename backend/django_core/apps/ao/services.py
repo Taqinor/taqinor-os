@@ -1772,6 +1772,52 @@ def generer_indice_planche(appel_offre, code_document, *, empreinte,
     return planche, True
 
 
+def televerser_planche(appel_offre, code_document, fichier, *, motif='',
+                       variante=None, toiture=None, user=None):
+    """AUDV24 (DRAFT165-5) — verse un fichier de planche : l'empreinte SHA-256
+    du CONTENU pilote ``generer_indice_planche`` (chemin d'UPLOAD MANUEL d'une
+    planche déjà rendue — distinct du moteur de rendu qui, lui, calcule son
+    empreinte depuis calepinage + paramètres). Empreinte inchangée → la
+    planche ACTIVE est réutilisée telle quelle, AUCUN nouveau téléversement ;
+    empreinte différente → nouvel indice + fichier réellement stocké
+    (``records.Attachment``, jamais un ``FileField`` — garde ARC26), l'ancienne
+    planche est archivée. Renvoie ``(planche, creee)``.
+
+    Raises:
+        ValidationError: format refusé ou fichier trop volumineux (message du
+        stockage partagé, en français) — uniquement si une NOUVELLE version
+        doit réellement être téléversée.
+    """
+    from django.contrib.contenttypes.models import ContentType
+    from django.core.exceptions import ValidationError
+
+    from apps.records.models import Attachment
+    from apps.records.storage import store_attachment
+
+    from .models import PlancheAO
+
+    contenu = fichier.read()
+    fichier.seek(0)
+    empreinte = empreinte_fichier(contenu)
+
+    planche, creee = generer_indice_planche(
+        appel_offre, code_document, empreinte=empreinte, motif=motif,
+        variante=variante, toiture=toiture, user=user)
+
+    if creee:
+        infos, erreur = store_attachment(fichier, company=appel_offre.company)
+        if erreur:
+            raise ValidationError({'fichier': erreur})
+        attachement = Attachment.objects.create(
+            company=appel_offre.company,
+            content_type=ContentType.objects.get_for_model(PlancheAO),
+            object_id=planche.pk,
+            uploaded_by=user, **infos)
+        planche.attachment = attachement
+        planche.save(update_fields=['attachment', 'updated_at'])
+    return planche, creee
+
+
 def donnees_cartouche(appel_offre, code_document, indice):
     """Le cartouche comme DONNÉES — jamais écrit à la main sur le dessin.
 

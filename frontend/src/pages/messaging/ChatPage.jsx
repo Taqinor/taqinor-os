@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Settings2, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Settings2, MessageSquare, ShieldCheck } from 'lucide-react'
+import messagesApi from '../../api/messagesApi'
 import useChatPolling from '../../features/messaging/useChatPolling'
 import ConversationList from '../../features/messaging/ConversationList'
 import MessageThread from '../../features/messaging/MessageThread'
@@ -62,6 +63,21 @@ export default function ChatPage() {
   }, [dispatch, activeId])
 
   const { stalled: pollingStalled, resume: resumePolling } = useChatPolling(activeId)
+
+  // AUDV28 (DRAFT165-8, XKB32) — durée de conservation APPLICABLE de la
+  // conversation active. `null` (aucune politique posée = aucune purge,
+  // comportement historique) : jamais affichée — pas de défaut inventé.
+  const [retention, setRetention] = useState(null)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset au changement de conversation
+    setRetention(null)
+    if (activeId == null) return
+    let active = true
+    messagesApi.getConversationRetention(activeId)
+      .then((r) => { if (active) setRetention(r.data) })
+      .catch(() => { if (active) setRetention(null) })
+    return () => { active = false }
+  }, [activeId])
 
   const members = useMemo(() => {
     const list = activeConv?.members ?? []
@@ -127,6 +143,18 @@ export default function ChatPage() {
               <span className="chat-thread-title flex-1 truncate font-semibold">
                 {conversationTitle(activeConv, currentUserId)}
               </span>
+              {/* AUDV28 (DRAFT165-8) — durée de conservation APPLICABLE
+                  seulement (aucune politique posée = rien affiché, jamais un
+                  défaut inventé). */}
+              {retention?.applicable && (
+                <span
+                  className="chat-thread-retention flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+                  title="Durée de conservation des messages de cette conversation"
+                >
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  Conservation : {retention.retention_months} mois
+                </span>
+              )}
               {isChannel && (
                 <button type="button" className="chat-thread-manage text-muted-foreground hover:text-foreground"
                         onClick={() => setMembersOpen(true)}

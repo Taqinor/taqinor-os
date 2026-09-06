@@ -19,6 +19,8 @@ vi.mock('../../api/messagesApi', () => ({
       reply: vi.fn(() => Promise.resolve({ data: { id: 42, body: 'réponse', conversation: 1 } })),
     },
     remindMe: vi.fn(() => Promise.resolve({ data: {} })),
+    // AUDV28 (DRAFT165-7) — annulation d'un rappel programmé.
+    cancelReminder: vi.fn(() => Promise.resolve({ data: { status: 'cancelled' } })),
     toggleBookmark: vi.fn(() => Promise.resolve({ data: { status: 'added' } })),
     poll: {
       results: vi.fn(() => Promise.resolve({
@@ -187,6 +189,26 @@ describe('MessageBubble (S15/S17/S18)', () => {
     await userEvent.click(screen.getByLabelText('Actions du message'))
     await userEvent.click(await screen.findByText('Ajouter aux favoris'))
     expect(messagesApi.toggleBookmark).toHaveBeenCalledWith(1)
+  })
+
+  /* AUDV28 (DRAFT165-7) — après avoir programmé un rappel, le menu propose
+     de l'annuler (creator-only côté serveur) au lieu de reproposer les deux
+     raccourcis horaires. */
+  it('propose « Annuler le rappel » après en avoir programmé un, et l’annule', async () => {
+    messagesApi.remindMe.mockResolvedValueOnce({ data: { id: 77 } })
+    renderBubble({ message: { id: 1, body: 'x', created_at: 'x', sender: { id: 2 } } })
+
+    await userEvent.click(screen.getByLabelText('Actions du message'))
+    await userEvent.click(await screen.findByText('Me rappeler dans 1 h'))
+    expect(messagesApi.remindMe).toHaveBeenCalledWith(1, expect.any(String))
+
+    await userEvent.click(screen.getByLabelText('Actions du message'))
+    expect(screen.queryByText('Me rappeler dans 1 h')).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByText('Annuler le rappel'))
+    expect(messagesApi.cancelReminder).toHaveBeenCalledWith(77)
+
+    await userEvent.click(screen.getByLabelText('Actions du message'))
+    expect(await screen.findByText('Me rappeler dans 1 h')).toBeInTheDocument()
   })
 
   // ── WIR259 — vraie carte d'enregistrement (SPA + icône par type) ─────────

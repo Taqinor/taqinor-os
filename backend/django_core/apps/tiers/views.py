@@ -5,7 +5,7 @@ et FORCE la société côté serveur à la création (``perform_create``) — ja
 lue du corps de requête. ``tiers`` étant une couche fondation, ce module
 n'importe AUCUNE app de domaine.
 """
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -79,3 +79,38 @@ class TiersViewSet(
         (jamais les tiers d'une autre société). Renvoie ``{count, clusters}``."""
         clusters = selectors.find_duplicates(request.user.company)
         return Response({'count': len(clusters), 'clusters': clusters})
+
+    @action(detail=False, methods=['get'], url_path='verifier-doublon')
+    def verifier_doublon(self, request):
+        """AUDV22 (DRAFT165-123/124, ARC20) — recherche EXACTE anti-doublon
+        par ICE et/ou email, en COMPLÉMENT de la recherche floue existante
+        (autocomplete). Appelée AVANT la création d'un Client/Fournisseur
+        depuis le formulaire réel — jamais bloquant, un simple avertissement
+        laissé à l'appelant. Company-scopé. Query params ``ice``/``email``
+        (au moins un requis)."""
+        ice = (request.query_params.get('ice') or '').strip()
+        email = (request.query_params.get('email') or '').strip()
+        if not ice and not email:
+            return Response(
+                {'detail': 'Le paramètre ice ou email est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _serialize(qs):
+            return [
+                {
+                    'id': t.id,
+                    'nom': t.nom_complet,
+                    'roles': {
+                        'client': t.is_client,
+                        'fournisseur': t.is_fournisseur,
+                        'partenaire': t.is_partenaire,
+                        'soustraitant': t.is_soustraitant,
+                    },
+                }
+                for t in qs
+            ]
+        company = request.user.company
+        return Response({
+            'ice_matches': _serialize(selectors.find_by_ice(company, ice)),
+            'email_matches': _serialize(selectors.find_by_email(company, email)),
+        })

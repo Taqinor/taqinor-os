@@ -489,6 +489,31 @@ const stockApi = {
     api.patch(`/stock/acomptes-fournisseur/${id}/`, data),
   deleteAcompteFournisseur: (id) =>
     api.delete(`/stock/acomptes-fournisseur/${id}/`),
+  // AUDV04 (DRAFT165-113) — acomptes fournisseur PARTIELLEMENT/NON
+  // consommés de la société (écran Achats).
+  acomptesFournisseurOuverts: () =>
+    api.get('/stock/acomptes-fournisseur/ouverts/'),
+
+  // AUDV04 (DRAFT165-117, XPUR14) — prix d'achat EFFECTIF (palier de
+  // quantité, tarif non expiré) pour un (produit, fournisseur, quantité).
+  // `prix_effectif: null` = tarif introuvable/expiré (repli catalogue côté
+  // écran). INTERNE (prix_achat_voir).
+  prixEffectifFournisseur: ({ produit, fournisseur, quantite }) =>
+    api.get('/stock/prix-fournisseurs/effectif/', {
+      params: { produit, fournisseur, quantite },
+    }),
+
+  // AUDV04 (DRAFT165-114, XSTK17) — profils saisonniers de seuils
+  // (produit XOR catégorie). Création routée serveur par le service
+  // (garde anti-chevauchement).
+  getProfilsSaisonniers: (params) =>
+    api.get('/stock/profils-saisonniers/', { params }),
+  createProfilSaisonnier: (data) =>
+    api.post('/stock/profils-saisonniers/', data),
+  updateProfilSaisonnier: (id, data) =>
+    api.patch(`/stock/profils-saisonniers/${id}/`, data),
+  deleteProfilSaisonnier: (id) =>
+    api.delete(`/stock/profils-saisonniers/${id}/`),
 
   // XPUR9 — avoirs fournisseur (notes de crédit AP), filtrés serveur par
   // ?fournisseur=. `imputer` réduit le solde dû d'une facture du même

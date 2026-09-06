@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutG
   RotateCcw, UserCheck, Check, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import tiersApi from '../../api/tiersApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
 import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
@@ -197,7 +198,15 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
   })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
-  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+  // AUDV22 (DRAFT165-123/124, ARC20) — avertissement de doublon EXACT par
+  // email (registre unifié tiers.Tiers, en complément du contrôle de format
+  // déjà fait par `validate`), et flag évitant de revérifier au 2e submit.
+  const [dupWarning, setDupWarning] = useState(null)
+  const [emailDupChecked, setEmailDupChecked] = useState(false)
+  const setField = (k, v) => {
+    if (k === 'email') { setDupWarning(null); setEmailDupChecked(false) }
+    setFields((f) => ({ ...f, [k]: v }))
+  }
 
   const validate = () => {
     const e = {}
@@ -208,9 +217,34 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
     return Object.keys(e).length === 0
   }
 
+  // AUDV22 (DRAFT165-123/124) — recherche EXACTE anti-doublon par email
+  // AVANT la création (le formulaire ne porte pas d'ICE). Jamais bloquant :
+  // un premier submit avec un doublon affiche l'avertissement au lieu de
+  // créer, le second submit passe.
+  const checkDoublonExact = async () => {
+    const email = fields.email.trim()
+    if (!email) return true
+    try {
+      const { data } = await tiersApi.verifierDoublon({ email })
+      const matches = data?.email_matches ?? []
+      if (matches.length === 0) return true
+      setDupWarning(
+        `Doublon possible : ${matches.map((m) => m.nom).join(', ')} porte `
+        + 'déjà cet email. Cliquez de nouveau pour continuer malgré tout.')
+      setEmailDupChecked(true)
+      return false
+    } catch {
+      return true
+    }
+  }
+
   const submit = async (ev) => {
     ev.preventDefault()
     if (!validate()) return
+    if (isNew && !emailDupChecked) {
+      const ok = await checkDoublonExact()
+      if (!ok) return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -269,6 +303,11 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
           <FormField label="Email" htmlFor="fou-email" error={errors.email}>
             <Input id="fou-email" type="email" value={fields.email} invalid={!!errors.email}
                    onChange={(e) => setField('email', e.target.value)} />
+            {dupWarning && (
+              <p className="mt-1 text-xs text-warning" data-testid="fou-dup-warning">
+                {dupWarning}
+              </p>
+            )}
           </FormField>
           <FormField label="Téléphone" htmlFor="fou-tel">
             <Input id="fou-tel" value={fields.telephone}

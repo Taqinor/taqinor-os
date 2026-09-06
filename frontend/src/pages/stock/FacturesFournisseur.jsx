@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ReceiptText, Plus, FileText, Building2, AlertTriangle, ShieldCheck,
+  Wallet, CalendarClock,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import comptaApi from '../../api/comptaApi'
@@ -386,6 +387,39 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
           </div>
         </div>
 
+        {/* AUDV04 (DRAFT165-112, XPUR6) — échéancier de la facture (tranches
+            30 %/70 %…) : jusqu'ici invisible côté écran malgré le champ
+            `echeances` déjà servi par le serializer. */}
+        {facture.echeances?.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="flex items-center gap-1.5 text-sm font-semibold">
+              <CalendarClock className="size-4 text-muted-foreground" aria-hidden="true" /> Échéancier
+            </span>
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[24rem] text-sm">
+                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Échéance</th>
+                    <th className="px-3 py-2 text-right font-semibold">%</th>
+                    <th className="px-3 py-2 text-right font-semibold">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {facture.echeances.map((e) => (
+                    <tr key={e.id} className="border-t border-border">
+                      <td className="px-3 py-2">{fmtDateFR(e.date_echeance)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {e.pourcentage != null ? `${e.pourcentage}%` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtMad(e.montant)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Saisie d'un nouveau paiement (si solde restant) */}
         {solde > 0 && (
           <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -462,6 +496,11 @@ export default function FacturesFournisseur() {
   // tolérance, non résolue). Exclusif avec « Comptes à payer » (même rail de
   // filtres, un seul filtre serveur actif à la fois).
   const [enExceptionSeul, setEnExceptionSeul] = useState(false)
+  // AUDV04 (DRAFT165-113, XPUR8) — acomptes fournisseur PARTIELLEMENT/NON
+  // consommés (écran Achats/trésorerie) : le sélecteur existait déjà, aucun
+  // écran ne l'appelait.
+  const [acomptesOuverts, setAcomptesOuverts] = useState([])
+  const [showAcomptes, setShowAcomptes] = useState(false)
 
   const reload = () => {
     setLoading(true)
@@ -491,6 +530,8 @@ export default function FacturesFournisseur() {
       .then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getBonsCommandeFournisseur({ page_size: 1000 })
       .then((r) => setBons(r.data?.results ?? r.data ?? [])).catch(() => {})
+    stockApi.acomptesFournisseurOuverts()
+      .then((r) => setAcomptesOuverts(r.data ?? [])).catch(() => {})
   }, [])
 
   const openFacture = async (f) => {
@@ -569,7 +610,44 @@ export default function FacturesFournisseur() {
             Toutes les factures
           </Button>
         )}
+        {/* AUDV04 (DRAFT165-113) — acomptes fournisseur ouverts (société). */}
+        {acomptesOuverts.length > 0 && (
+          <Button variant={showAcomptes ? 'secondary' : 'outline'} size="sm"
+                  onClick={() => setShowAcomptes((v) => !v)}
+                  title="Acomptes fournisseur partiellement/non consommés">
+            <Wallet className="size-3.5" /> Acomptes ouverts ({acomptesOuverts.length})
+          </Button>
+        )}
       </div>
+
+      {showAcomptes && acomptesOuverts.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[32rem] text-sm">
+            <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold">BCF</th>
+                <th className="px-3 py-2 text-left font-semibold">Fournisseur</th>
+                <th className="px-3 py-2 text-left font-semibold">Versé le</th>
+                <th className="px-3 py-2 text-right font-semibold">Montant</th>
+                <th className="px-3 py-2 text-right font-semibold">Non consommé</th>
+              </tr>
+            </thead>
+            <tbody>
+              {acomptesOuverts.map((a) => (
+                <tr key={a.id} className="border-t border-border">
+                  <td className="px-3 py-2">{a.bon_commande_reference ?? '—'}</td>
+                  <td className="px-3 py-2">{a.fournisseur_nom ?? '—'}</td>
+                  <td className="px-3 py-2">{fmtDateFR(a.date_versement)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMad(a.montant)}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-warning">
+                    {fmtMad(a.montant_non_consomme)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

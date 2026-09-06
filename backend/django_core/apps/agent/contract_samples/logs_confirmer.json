@@ -1,0 +1,25 @@
+{
+  "endpoint": "POST /api/django/agent/logs/confirmer/",
+  "pourquoi": "AUDV27 (YHARD2) — `log_confirmed_action` existait déjà (testée) mais AUCUN appelant ne l'invoquait après une exécution réelle : le journal des actions IA confirmées restait vide en production. Appelé par le relais FastAPI (`confirm_proposal`) juste après un `_execute_catalogue_action` réussi — jamais à la simple proposition (éphémère côté agent/Redis). Self-service : tout utilisateur authentifié journalise SA PROPRE confirmation (`company`/`user` posés côté serveur) ; la LECTURE (`GET /agent/logs/`) et l'ANNULATION (`POST /agent/logs/<id>/annuler/`) restent admin/Directeur, non touchées ici. `object_id` n'est résolu en `content_type`/`object_id` QUE pour les actions PILOTES connues (table `_RESULTED_OBJECT_MODELS`, aujourd'hui `crm.client.create` uniquement) — une action absente de cette table est quand même journalisée, sans cible résolue.",
+  "exemple_corps": {
+    "action_key": "crm.client.create",
+    "risk_level": "outward",
+    "inputs": {"nom": "Client Confirmé"},
+    "proposal_hash": "3a7bd3e2...",
+    "object_id": 42
+  },
+  "exemple_reponse": {
+    "id": 501,
+    "action_key": "crm.client.create",
+    "risk_level": "outward",
+    "user": "reda",
+    "confirmed_at": "2026-09-06T10:00:00Z",
+    "executed_at": "2026-09-06T10:00:00Z",
+    "object_repr": "Client Confirmé",
+    "undone_at": null,
+    "is_undoable": true
+  },
+  "exemple_erreur_champs_manquants": {
+    "detail": "action_key et risk_level (valide) sont requis."
+  }
+}

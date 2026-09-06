@@ -1096,6 +1096,10 @@ CELERY_TASK_ROUTES = {
     # NTWMS42 — alerte de sur-stockage par zone (quotidienne, heure creuse).
     'stock.alerter_surcapacite_zones': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
+    # AUDV04 — les 2 alertes achats jusque-là sans cron (documents de
+    # conformité fournisseur expirants + BCF en retard côté acheteur).
+    'stock.notifier_documents_conformite_expirants': {'queue': 'scheduled'},
+    'stock.notifier_bcf_en_retard_buyer': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
     'ventes.pre_echeance_reminders': {'queue': 'scheduled'},

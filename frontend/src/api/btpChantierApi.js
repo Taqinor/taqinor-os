@@ -18,6 +18,13 @@ const btpChantierApi = {
     // `params` : { lot, statut, gravite, chantier } — tous optionnels.
     list: (params) => api.get('/btp-chantier/reserves-chantier/', { params }),
     get: (id) => api.get(`/btp-chantier/reserves-chantier/${id}/`),
+    // AUDV25 (DRAFT165-6) — gravité BLOQUANTE + statut OUVERTE/EN_COURS
+    // combinés en un seul appel (un `?statut=` à valeur unique ne peut pas
+    // l'exprimer). `chantierId` optionnel — toute la société sinon.
+    bloquantes: (chantierId) =>
+      api.get('/btp-chantier/reserves-chantier/bloquantes/', {
+        params: { chantier: chantierId || undefined },
+      }),
     // `data` : { chantier, lot?, localisation_plan:{document_ged_id,x,y},
     // description, gravite, responsable_leve?, date_limite? }.
     create: (data) => api.post('/btp-chantier/reserves-chantier/', data),

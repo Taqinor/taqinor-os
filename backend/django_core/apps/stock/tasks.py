@@ -180,6 +180,82 @@ def relancer_bcf_en_retard_task():
     return result
 
 
+def _deja_notifie_aujourdhui_societe(event_type, company):
+    """Vrai si une notification de CE type a déjà été créée AUJOURD'HUI pour
+    CETTE société — utilisé quand la fonction notifiée (best-effort,
+    existante, testée ailleurs) ne pose pas de ``link`` par notification
+    (contrairement à `_deja_notifie_aujourdhui`, clé par lien stable)."""
+    from apps.notifications.models import Notification
+    today = timezone.localdate()
+    try:
+        return Notification.objects.filter(
+            event_type=event_type, company=company,
+            created_at__date=today).exists()
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+@shared_task(name='stock.notifier_documents_conformite_expirants')
+def notifier_documents_conformite_expirants_task():
+    """XPUR1 (AUDV04/DRAFT165-115) — pour CHAQUE société active, notifie les
+    responsables/admins des documents de conformité fournisseur expirant
+    sous 30 jours (réutilise `services.notify_expiring_conformite_documents`
+    — jamais de logique dupliquée). ``notify_expiring_conformite_documents``
+    existait déjà, testée, mais SANS AUCUN cron : cette tâche était le trou
+    (le paramètre société `bloquer_paiement_conformite_expiree` bloque un
+    paiement, mais rien n'alertait EN AMONT de l'échéance). Idempotent : au
+    plus une notification-lot par jour par société. Renvoie
+    {company_id: nb_documents_notifies}."""
+    from authentication.selectors import active_companies
+    from apps.notifications.models import EventType
+    from .services import notify_expiring_conformite_documents
+
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        if _deja_notifie_aujourdhui_societe(
+                EventType.SUPPLIER_DOC_EXPIRING, company):
+            result[company.id] = 0
+            continue
+        try:
+            result[company.id] = notify_expiring_conformite_documents(
+                company, jours=30)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+            logger.warning(
+                'stock.notifier_documents_conformite_expirants: échec '
+                'société %s', company.id, exc_info=True)
+            result[company.id] = 0
+    return result
+
+
+@shared_task(name='stock.notifier_bcf_en_retard_buyer')
+def notifier_bcf_en_retard_buyer_task():
+    """XPUR7 (AUDV04/DRAFT165-116) — pour CHAQUE société active, notifie les
+    responsables/admins (l'ACHETEUR, pas le fournisseur — distinct de
+    `stock.relancer_bcf_en_retard` qui propose une relance AU fournisseur)
+    des BCF ENVOYE en retard (réutilise `services.notify_bcf_en_retard` —
+    jamais de logique dupliquée). Cette fonction existait déjà, testée, mais
+    n'avait AUCUN appelant ni cron : le buyer alert XPUR7 (`BCF_LATE`) ne
+    partait donc jamais en pratique. Idempotent : au plus une notification-
+    lot par jour par société. Renvoie {company_id: nb_bcf_notifies}."""
+    from authentication.selectors import active_companies
+    from apps.notifications.models import EventType
+    from .services import notify_bcf_en_retard
+
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        if _deja_notifie_aujourdhui_societe(EventType.BCF_LATE, company):
+            result[company.id] = 0
+            continue
+        try:
+            result[company.id] = notify_bcf_en_retard(company)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+            logger.warning(
+                'stock.notifier_bcf_en_retard_buyer: échec société %s',
+                company.id, exc_info=True)
+            result[company.id] = 0
+    return result
+
+
 @shared_task(name='stock.alerter_surcapacite_zones')
 def alerter_surcapacite_zones_task(seuil_pct=None):
     """NTWMS42 — alerte PASSIVE de sur-stockage par zone.

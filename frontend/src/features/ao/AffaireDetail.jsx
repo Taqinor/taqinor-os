@@ -113,6 +113,12 @@ const SuiviAdministratifAO = lazy(() => import('./SuiviAdministratifAO'))
    référence une pièce (« la page du CPS ») qui n'existait jamais. */
 const PiecesConsultation = lazy(() => import('./PiecesConsultation'))
 
+/* ── 14ᵉ onglet, APRÈS les 13 ci-dessus (AUDV24) ─────────────────────────
+   `PlanchesPanel` : `PlancheAO`/`services.generer_indice_planche` (AOF140,
+   indice AUTOMATIQUE sur changement d'empreinte) existaient déjà mais aucun
+   écran ne pouvait verser une révision — capacité inaccessible hors tests. */
+const PlanchesPanel = lazy(() => import('./dossier/PlanchesPanel'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
@@ -804,6 +810,16 @@ export default function AffaireDetail() {
           content: (
             <PanneauDiffere>
               <PiecesConsultation affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        /* ── 14ᵉ onglet, APRÈS les 13 ci-dessus (AUDV24) ─────────────────── */
+        {
+          value: 'planches',
+          label: 'Planches',
+          content: (
+            <PanneauDiffere>
+              <PlanchesPanel affaireId={id} />
             </PanneauDiffere>
           ),
         },

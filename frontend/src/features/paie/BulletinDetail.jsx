@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Download, FileBadge, RefreshCw, CheckCircle2, Wallet, FilePlus2, Calculator,
+  Percent,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
 import {
@@ -90,6 +91,28 @@ export default function BulletinDetail() {
     } finally { setBusy('') }
   }
 
+  // AUDV19 (DRAFT165-77, XPAI2) — régularisation IR annuelle sur un bulletin
+  // BROUILLON : ajoute/remplace la ligne IR-REGUL (rappel ou trop-perçu).
+  // AUD709 (prérequis) : le calcul respecte déjà l'exonération de régime
+  // (stagiaire/ANAPEC/TAHFIZ) — aucun rappel indu sur un profil protégé.
+  const regulariserIr = async () => {
+    setBusy('regulariser-ir')
+    try {
+      const { data } = await paieApi.regulariserIrBulletin(id)
+      setBulletin(data)
+      const delta = Number(data?.regularisation_ir_delta ?? 0)
+      if (delta === 0) {
+        toast.success('Régularisation IR appliquée : aucun écart.')
+      } else if (delta > 0) {
+        toast.success(`Régularisation IR appliquée : rappel de ${formatMAD(delta)}.`)
+      } else {
+        toast.success(`Régularisation IR appliquée : trop-perçu de ${formatMAD(Math.abs(delta))}.`)
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Régularisation IR impossible.')
+    } finally { setBusy('') }
+  }
+
   // WIR39 — marque le bulletin payé (décompte espèces/chèque, XPAI9).
   // Idempotent côté serveur (date d'origine conservée si déjà payé).
   const marquerPaye = async () => {
@@ -129,6 +152,12 @@ export default function BulletinDetail() {
             {!fige && (
               <Button variant="outline" onClick={importerRh} loading={busy === 'rh'}>
                 <RefreshCw size={16} aria-hidden="true" /> Importer RH
+              </Button>
+            )}
+            {!fige && (
+              <Button variant="outline" onClick={regulariserIr} loading={busy === 'regulariser-ir'}
+                      title="Applique la régularisation IR annuelle (rappel ou trop-perçu, XPAI2)">
+                <Percent size={16} aria-hidden="true" /> Régulariser IR
               </Button>
             )}
             {!fige && (

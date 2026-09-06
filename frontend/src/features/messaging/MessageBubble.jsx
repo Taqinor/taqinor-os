@@ -311,13 +311,29 @@ export default function MessageBubble({
   // WIR155 / XKB27 — « Me rappeler ce message » (2 raccourcis horaires,
   // suffisants pour le cas d'usage courant — pas de sélecteur de date libre
   // ici, gardé simple et sans nouvelle dépendance de date-picker).
+  // AUDV28 (DRAFT165-7) — `reminderId` local (même patron que `bookmarked` :
+  // pas de champ serveur sur le serializer de liste des messages) permet
+  // d'offrir « Annuler le rappel » juste après l'avoir programmé, sans
+  // recharger la conversation.
+  const [reminderId, setReminderId] = useState(null)
   const remindMe = async (hours) => {
     try {
       const remindAt = new Date(Date.now() + hours * 3600 * 1000).toISOString()
-      await messagesApi.remindMe(m.id, remindAt)
+      const { data } = await messagesApi.remindMe(m.id, remindAt)
+      setReminderId(data?.id ?? null)
       toastSuccess('Rappel programmé.')
     } catch (err) {
       toastError(err.response?.data?.detail || 'Rappel impossible')
+    }
+  }
+
+  const annulerRappel = async () => {
+    try {
+      await messagesApi.cancelReminder(reminderId)
+      setReminderId(null)
+      toastSuccess('Rappel annulé.')
+    } catch (err) {
+      toastError(err.response?.data?.detail || "Annulation impossible.")
     }
   }
 
@@ -423,12 +439,20 @@ export default function MessageBubble({
                   <Trash2 size={14} aria-hidden="true" /> Supprimer
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onSelect={() => remindMe(1)}>
-                <Clock size={14} aria-hidden="true" /> Me rappeler dans 1 h
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => remindMe(24)}>
-                <Clock size={14} aria-hidden="true" /> Me rappeler demain
-              </DropdownMenuItem>
+              {reminderId ? (
+                <DropdownMenuItem onSelect={annulerRappel}>
+                  <Clock size={14} aria-hidden="true" /> Annuler le rappel
+                </DropdownMenuItem>
+              ) : (
+                <>
+                  <DropdownMenuItem onSelect={() => remindMe(1)}>
+                    <Clock size={14} aria-hidden="true" /> Me rappeler dans 1 h
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => remindMe(24)}>
+                    <Clock size={14} aria-hidden="true" /> Me rappeler demain
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuItem onSelect={toggleBookmark}>
                 {bookmarked ? <BookmarkCheck size={14} aria-hidden="true" /> : <Bookmark size={14} aria-hidden="true" />}
                 {bookmarked ? 'Retirer des favoris' : 'Ajouter aux favoris'}

@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ConversationViewSet, MessageViewSet, UserChatStatusViewSet,
     ScheduledMessageViewSet, CannedResponseViewSet, RetentionPolicyViewSet,
-    inbound_email_webhook,
+    MessageReminderViewSet, inbound_email_webhook,
 )
 
 router = DefaultRouter()
@@ -18,6 +18,10 @@ router.register(r'canned-responses', CannedResponseViewSet,
                 basename='chat-canned-response')
 router.register(r'retention-policies', RetentionPolicyViewSet,
                 basename='chat-retention-policy')
+# AUDV28 — lecture + annulation d'un rappel, creator-only (la création reste
+# messages/<id>/remind-me/).
+router.register(r'reminders', MessageReminderViewSet,
+                basename='chat-message-reminder')
 
 from .views_transcription import transcrire  # noqa: E402  (NTMOB30)
 

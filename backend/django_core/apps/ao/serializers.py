@@ -32,6 +32,7 @@ from .models import (
     PieceConsultation,
     PieceSoumission,
     PlanSource,
+    PlancheAO,
     PresetCalepinage,
     ReleveAO,
     QuestionAO,
@@ -391,6 +392,49 @@ class TeleversementPlanSourceSerializer(serializers.Serializer):
     saisissables ici.
     """
     fichier = serializers.FileField(label='Fichier du plan (PDF ou image)')
+
+
+class PlancheAOSerializer(serializers.ModelSerializer):
+    """AUDV24 (DRAFT165-5, AOF140) — l'indice n'est JAMAIS saisi (posé côté
+    serveur par ``services.generer_indice_planche``/``televerser_planche``) :
+    lecture seule, comme ``empreinte``/``statut``/``cartouche``/
+    ``bandeau_engagement``."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    reference_complete = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = PlancheAO
+        fields = [
+            'id', 'appel_offre', 'toiture', 'variante', 'code_document',
+            'indice', 'reference_complete', 'empreinte', 'motif_revision',
+            'statut', 'statut_display', 'cartouche', 'bandeau_engagement',
+            'attachment',
+        ]
+        read_only_fields = [
+            'indice', 'empreinte', 'statut', 'cartouche',
+            'bandeau_engagement', 'attachment',
+        ]
+
+
+class TeleversementPlancheSerializer(serializers.Serializer):
+    """AUDV24 (DRAFT165-5) — entrée MULTIPART de ``planches/upload``.
+
+    ``appel_offre``/``code_document``/``fichier`` obligatoires ;
+    ``toiture``/``variante``/``motif`` optionnels. Même garde ARC26 que
+    ``TeleversementPlanSourceSerializer`` : le binaire ne devient jamais une
+    colonne, seul un ``records.Attachment`` est référencé."""
+    appel_offre = serializers.PrimaryKeyRelatedField(
+        queryset=AppelOffre.objects.all())
+    code_document = serializers.CharField(max_length=20)
+    fichier = serializers.FileField(label='Fichier de la planche (PDF ou image)')
+    toiture = serializers.PrimaryKeyRelatedField(
+        queryset=ToitureAO.objects.all(), required=False, allow_null=True)
+    variante = serializers.PrimaryKeyRelatedField(
+        queryset=VarianteCalepinage.objects.all(), required=False,
+        allow_null=True)
+    motif = serializers.CharField(
+        required=False, allow_blank=True, default='')
 
 
 class BatimentAOSerializer(serializers.ModelSerializer):

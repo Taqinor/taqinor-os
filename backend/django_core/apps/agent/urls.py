@@ -1,6 +1,7 @@
 from django.urls import path
 
-from .views import (AgentActionLogView, AgentActionsView, AgentActionUndoView,
+from .views import (AgentActionConfirmerView, AgentActionLogView,
+                    AgentActionsView, AgentActionUndoView,
                     AutomationDraftView)
 
 urlpatterns = [
@@ -10,6 +11,10 @@ urlpatterns = [
          name='agent-automation-draft'),
     # YHARD2 — journal des actions IA confirmées + annulation (admin-only).
     path('logs/', AgentActionLogView.as_view(), name='agent-action-logs'),
+    # AUDV27 — journalisation self-service APRÈS exécution réelle (appelée
+    # par le relais FastAPI, jamais par le frontend directement).
+    path('logs/confirmer/', AgentActionConfirmerView.as_view(),
+         name='agent-action-confirmer'),
     path('logs/<int:pk>/annuler/', AgentActionUndoView.as_view(),
          name='agent-action-undo'),
 ]

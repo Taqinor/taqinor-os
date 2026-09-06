@@ -56,6 +56,7 @@ from .models import (
     PieceConsultation,
     PieceSoumission,
     PlanSource,
+    PlancheAO,
     PresetCalepinage,
     ReleveAO,
     QuestionAO,
@@ -84,6 +85,8 @@ from .serializers import (
     PieceConsultationSerializer,
     PieceSoumissionSerializer,
     PlanSourceSerializer,
+    PlancheAOSerializer,
+    TeleversementPlancheSerializer,
     PresetCalepinageSerializer,
     ReleveAOSerializer,
     QuestionAOSerializer,
@@ -907,6 +910,58 @@ class PlanSourceViewSet(AoBaseViewSet):
                 api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
             return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(plan_source).data)
+
+
+class PlancheAOViewSet(AoBaseViewSet):
+    """AUDV24 (DRAFT165-5, AOF140) — versionnement des planches d'implantation.
+
+    ``PlancheAO`` n'avait AUCUN ViewSet/serializer/URL — capacité inaccessible
+    hors tests, malgré ``services.generer_indice_planche`` déjà écrit et
+    testé. Lecture/écriture standard (l'indice reste lecture seule, posé côté
+    serveur) + l'action `upload` qui verse un fichier de planche : son
+    empreinte SHA-256 pilote le versionnement (indice inchangé si le contenu
+    est identique, incrémenté + ancienne version archivée sinon)."""
+    queryset = PlancheAO.objects.select_related(
+        'appel_offre', 'toiture', 'variante', 'attachment').all()
+    serializer_class = PlancheAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'code_document', 'indice']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'code_document', 'statut'))
+
+    @extend_schema(request=TeleversementPlancheSerializer,
+                   responses=PlancheAOSerializer)
+    @action(detail=False, methods=['post'], url_path='upload',
+            parser_classes=[MultiPartParser, FormParser],
+            permission_classes=[ScopedPermission])
+    def upload(self, request):
+        """Verse une nouvelle révision de planche (multipart : appel_offre,
+        code_document, fichier, toiture/variante/motif optionnels). Un
+        upload à l'IDENTIQUE du contenu déjà actif ne crée rien (204-like
+        200, `id`/`indice` inchangés) — jamais un indice fabriqué pour rien."""
+        entree = TeleversementPlancheSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        data = entree.validated_data
+        appel_offre = data['appel_offre']
+        if appel_offre.company_id != request.user.company_id:
+            return Response(
+                {'detail': "Appel d'offres introuvable."},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            planche, creee = services.televerser_planche(
+                appel_offre, data['code_document'], data['fichier'],
+                motif=data.get('motif', ''), variante=data.get('variante'),
+                toiture=data.get('toiture'), user=request.user)
+        except DjangoValidationError as exc:
+            erreurs = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(planche).data,
+            status=status.HTTP_201_CREATED if creee else status.HTTP_200_OK)
 
 
 # ── AOF21 — Pièces du dossier de consultation reçues ───────────────────────

@@ -418,9 +418,14 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         tranche sans ``montant`` explicite est dérivée du TTC × pourcentage."""
         facture = self.get_object()
         if request.method.lower() == 'get':
-            qs = facture.echeances.all()
-            return Response(
-                EcheanceFactureFournisseurSerializer(qs, many=True).data)
+            # AUDV04 (DRAFT165-112) — route par le sélecteur dédié plutôt que
+            # par une lecture manuelle de `facture.echeances.all()` : c'était
+            # la SEULE forme lisible côté écran Achats (payment run FG132/
+            # FG133), le sélecteur restait mort (jamais appelé hors tests).
+            from ..selectors import echeances_facture_fournisseur
+            rows = echeances_facture_fournisseur(
+                request.user.company, facture.pk)
+            return Response(rows)
         tranches = request.data.get('tranches') or []
         if not isinstance(tranches, list) or not tranches:
             return Response(

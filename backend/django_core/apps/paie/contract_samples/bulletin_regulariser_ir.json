@@ -1,0 +1,24 @@
+{
+  "endpoint": "POST /api/django/paie/bulletins/<int:pk>/regulariser-ir/",
+  "pourquoi": "AUDV19 (DRAFT165-77, XPAI2) — `appliquer_regularisation_ir` existait déjà côté service (testé en profondeur, incl. AUD709 — exonération de régime stagiaire/ANAPEC/TAHFIZ) mais aucune vue `apps/paie/views.py` ne l'exposait : un gestionnaire paie ne pouvait déclencher la régularisation IR annuelle QUE via le shell Django. PACT10 : action POST sur `BulletinPaieViewSet` (même gate `paie_gerer` que `valider`/`marquer-paye`), n'agit que sur un bulletin BROUILLON (`BulletinPaie.BulletinVerrouille` → 400 sur un bulletin déjà validé). Ajoute/remplace une ligne `IR-REGUL` (rappel si positif, trop-perçu si négatif) et renvoie le bulletin sérialisé À JOUR + `regularisation_ir_delta`.",
+  "exemple": {
+    "id": 4821,
+    "periode": 12,
+    "profil": 305,
+    "statut": "brouillon",
+    "ir": "1850.00",
+    "net_a_payer": "6650.00",
+    "lignes": [
+      {
+        "code": "IR-REGUL",
+        "libelle": "Régularisation IR annuelle (rappel)",
+        "type": "retenue",
+        "montant": "150.00"
+      }
+    ],
+    "regularisation_ir_delta": "150.00"
+  },
+  "exemple_erreur_bulletin_valide": {
+    "detail": "Bulletin validé : régularisation IR impossible (figé)."
+  }
+}

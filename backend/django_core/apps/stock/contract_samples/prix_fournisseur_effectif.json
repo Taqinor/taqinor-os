@@ -1,0 +1,10 @@
+{
+  "endpoint": "GET /api/django/stock/prix-fournisseurs/effectif/?produit=<id>&fournisseur=<id>&quantite=<n>",
+  "pourquoi": "AUDV04 (DRAFT165-117, XPUR14) — `prix_effectif_fournisseur` existait déjà (paliers de quantité, tarif non expiré) mais rien ne l'appelait : une ligne de BCF se pré-remplissait TOUJOURS depuis `Produit.prix_achat` (le prix catalogue), jamais le tarif NÉGOCIÉ avec CE fournisseur ni son palier de quantité. PACT10 : action LECTURE SEULE sur `PrixFournisseurViewSet`, même gate `prix_achat_voir` que le reste de la ressource — jamais un endpoint client-facing (règle #4, prix_achat interne uniquement). `null` = tarif introuvable/expiré, l'écran retombe alors sur le prix catalogue (comportement historique inchangé).",
+  "exemple": {
+    "prix_effectif": "900.00"
+  },
+  "exemple_sans_tarif": {
+    "prix_effectif": null
+  }
+}

@@ -69,6 +69,7 @@ from .serializers import (
 from .services import (
     TransitionPeriodeInterdite,
     annuler_saisie_arret,
+    appliquer_regularisation_ir,
     appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
@@ -1260,6 +1261,25 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='regulariser-ir')
+    def regulariser_ir(self, request, pk=None):
+        """AUDV19 (DRAFT165-77, XPAI2) — applique la régularisation IR
+        annuelle sur un bulletin BROUILLON. Ajoute (ou remplace) une ligne
+        `IR-REGUL` (rappel si delta > 0, trop-perçu si delta < 0), met à
+        jour `ir`/`net_a_payer`. AUD709 (prérequis de cette tâche) : le
+        calcul respecte déjà l'exonération de régime (stagiaire/ANAPEC/
+        TAHFIZ) — aucun rappel indu sur un profil protégé."""
+        bulletin = self.get_object()
+        try:
+            delta = appliquer_regularisation_ir(bulletin)
+        except BulletinPaie.BulletinVerrouille as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        bulletin.refresh_from_db()
+        data = self.get_serializer(bulletin).data
+        data['regularisation_ir_delta'] = str(delta)
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='marquer-paye')
     def marquer_paye(self, request, pk=None):

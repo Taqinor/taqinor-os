@@ -410,6 +410,19 @@ app.conf.beat_schedule = {
         'task': 'stock.alerter_surcapacite_zones',
         'schedule': crontab(hour=6, minute=25),
     },
+    # XPUR1 (AUDV04) — documents de conformité fournisseur expirant sous 30
+    # jours : `notify_expiring_conformite_documents` existait déjà, testée,
+    # mais sans aucun cron pour la déclencher.
+    'stock-notifier-documents-conformite-expirants': {
+        'task': 'stock.notifier_documents_conformite_expirants',
+        'schedule': crontab(hour=6, minute=35),
+    },
+    # XPUR7 (AUDV04) — alerte ACHETEUR (BCF_LATE) des BCF ENVOYE en retard,
+    # distincte de la relance fournisseur ZPUR7 ci-dessus.
+    'stock-notifier-bcf-en-retard-buyer': {
+        'task': 'stock.notifier_bcf_en_retard_buyer',
+        'schedule': crontab(hour=6, minute=40),
+    },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
         'task': 'core.dump_database',

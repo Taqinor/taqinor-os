@@ -1,0 +1,16 @@
+{
+  "endpoint": "GET /api/django/stock/acomptes-fournisseur/ouverts/",
+  "pourquoi": "AUDV04 (DRAFT165-113) — le sélecteur `acomptes_fournisseur_ouverts` existait déjà (consommé par la trésorerie compta) mais aucune action ne l'exposait côté écran Achats : un Acheteur n'avait aucun moyen de voir les acomptes fournisseur PARTIELLEMENT/NON consommés. PACT10 : ce fichier part avant le code frontend — l'action est en LECTURE SEULE sur `AcompteFournisseurViewSet` (stock), même gate `IsAnyRole` que la liste des acomptes elle-même. Montants internes (achat) — jamais un montant inventé, toujours dérivé de `AcompteFournisseur.montant - montant_consomme`.",
+  "exemple": [
+    {
+      "id": 12,
+      "bon_commande_id": 47,
+      "bon_commande_reference": "BCF-2026-0047",
+      "fournisseur_nom": "Import Solar SARL",
+      "montant": "1000.00",
+      "montant_non_consomme": "600.00",
+      "date_versement": "2026-08-01"
+    }
+  ],
+  "exemple_vide": []
+}

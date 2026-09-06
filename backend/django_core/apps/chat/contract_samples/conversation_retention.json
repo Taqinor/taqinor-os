@@ -1,0 +1,14 @@
+{
+  "endpoint": "GET /api/django/chat/conversations/<int:pk>/retention/",
+  "pourquoi": "AUDV28 (DRAFT165-8, XKB32) — `get_retention_policy` existait déjà (pilote la purge, testée) mais rien n'affichait la durée de conservation applicable dans l'écran de conversation. Company/appartenance scopée par `ConversationViewSet.get_queryset` (une conversation d'une autre société ou dont l'appelant n'est pas membre est INTROUVABLE, 404 — jamais une fuite d'existence). `applicable=false` + `retention_months=null` = comportement historique (aucune politique posée, aucune purge).",
+  "exemple_sans_politique": {
+    "conversation_kind": "channel",
+    "retention_months": null,
+    "applicable": false
+  },
+  "exemple_avec_politique": {
+    "conversation_kind": "channel",
+    "retention_months": 6,
+    "applicable": true
+  }
+}

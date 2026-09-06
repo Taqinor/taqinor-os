@@ -77,10 +77,18 @@ class AgentActionLog(models.Model):
 
     @property
     def is_undoable(self):
-        """Seules les actions à effet réversible sont candidates à
-        l'annulation — une action irréversible ne l'est jamais, même si un
-        handler existait."""
+        """Une action est candidate à l'annulation si son effet est
+        réversible (jamais une action IRREVERSIBLE), qu'elle n'est pas déjà
+        annulée, ET qu'un handler de rollback est RÉELLEMENT enregistré pour
+        sa ``action_key`` (AUDV27 — cette propriété ignorait ce 3e critère :
+        elle disait « annulable » pour une action réversible SANS handler,
+        le bouton « annuler » du journal apparaissait alors pour une
+        annulation qui échouait systématiquement en ``ActionNotUndoableError``
+        côté serveur)."""
+        from .services import has_undo_handler
+
         return (
             self.risk_level != self.RiskLevel.IRREVERSIBLE
             and self.undone_at is None
+            and has_undo_handler(self.action_key)
         )
