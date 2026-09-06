@@ -211,6 +211,48 @@ def _client_ip(request):
     return ip[:45]
 
 
+def televerser_piece_jointe(file, *, company):
+    """AUD718 — valide + téléverse ``file`` dans MinIO. ``(meta, None)`` ou
+    ``(None, message)``.
+
+    Remplace les ``FileField`` bruts de ``DemandeConge.justificatif`` et
+    ``Candidature.cv_fichier`` : sans ``STORAGES``/``DEFAULT_FILE_STORAGE`` dans
+    les settings, sans route ``/media/`` (ni Django ni nginx), le fichier
+    s'écrivait sur le disque du conteneur et l'URL renvoyée par l'API ne menait
+    NULLE PART. Même pipeline que ``rh.BulletinPaie`` : clé préfixée par la
+    société (SCA42), servi par
+    ``/api/django/records/attachments/<id>/download/``.
+
+    APPELÉ AVANT toute création de ligne : un format/poids refusé rend 400 sans
+    jamais laisser derrière lui une demande ou une candidature orpheline (les
+    requêtes ne sont PAS atomiques — pas d'``ATOMIC_REQUESTS``).
+    """
+    return store_attachment(file, company=company)
+
+
+def attacher_piece_jointe(meta, *, company, cible, user=None):
+    """AUD718 — crée la ``records.Attachment`` d'un fichier déjà téléversé."""
+    return Attachment.objects.create(
+        company=company,
+        content_type=ContentType.objects.get_for_model(cible.__class__),
+        object_id=cible.pk,
+        uploaded_by=user if (user is not None
+                             and getattr(user, 'is_authenticated', False))
+        else None,
+        **meta)
+
+
+def remplacer_piece_jointe(ancienne):
+    """AUD718 — supprime l'objet MinIO + la ligne d'une pièce jointe remplacée.
+
+    Un remplacement ne doit pas laisser un orphelin payant dans le bucket.
+    """
+    if ancienne is None:
+        return
+    delete_attachment(ancienne.file_key)
+    ancienne.delete()
+
+
 class _RhBaseViewSet(WriteScopedPermissionMixin, TenantMixin,
                      viewsets.ModelViewSet):
     """Base : société scopée + permissions RH FINES (WIR172, patron YRBAC3).
@@ -1157,7 +1199,42 @@ class DemandeCongeViewSet(_RhBaseViewSet):
             demi_journee_fin=serializer.validated_data.get(
                 'demi_journee_fin', False),
             jours_exclus=exclus)
-        serializer.save(company=self.request.user.company, jours=jours)
+        # AUD718 — le fichier est téléversé AVANT la création de la ligne :
+        # un format refusé rend 400 sans laisser de demande orpheline.
+        meta = self._televerser_justificatif()
+        demande = serializer.save(
+            company=self.request.user.company, jours=jours)
+        self._poser_justificatif(demande, meta)
+
+    def perform_update(self, serializer):
+        meta = self._televerser_justificatif()
+        demande = serializer.save()
+        self._poser_justificatif(demande, meta)
+
+    def _televerser_justificatif(self):
+        """AUD718 — le justificatif multipart part dans MinIO, pas sur disque.
+
+        La clé multipart reste ``justificatif`` (aucun changement côté client).
+        """
+        file = self.request.FILES.get('justificatif')
+        if not file:
+            return None
+        meta, err = televerser_piece_jointe(
+            file, company=self.request.user.company)
+        if err:
+            raise serializers.ValidationError({'justificatif': err})
+        return meta
+
+    def _poser_justificatif(self, demande, meta):
+        if meta is None:
+            return
+        attachment = attacher_piece_jointe(
+            meta, company=self.request.user.company, cible=demande,
+            user=self.request.user)
+        ancienne = demande.justificatif_attachment
+        demande.justificatif_attachment = attachment
+        demande.save(update_fields=['justificatif_attachment'])
+        remplacer_piece_jointe(ancienne)
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
@@ -3816,12 +3893,47 @@ class CandidatureViewSet(_RhBaseViewSet):
             qs = qs.filter(etape=etape)
         return qs
 
+    def perform_create(self, serializer):
+        # AUD718 — téléversement AVANT la création (aucune candidature
+        # orpheline si le format est refusé).
+        meta = self._televerser_cv()
+        candidature = serializer.save(company=self.request.user.company)
+        self._poser_cv(candidature, meta)
+
+    def _televerser_cv(self):
+        """AUD718 — le CV multipart part dans MinIO, pas sur le disque.
+
+        La clé multipart reste ``cv_fichier`` (l'écran Recrutement l'envoie
+        déjà sous ce nom) ; le fichier devient récupérable via ``cv_url``.
+        """
+        file = self.request.FILES.get('cv_fichier')
+        if not file:
+            return None
+        meta, err = televerser_piece_jointe(
+            file, company=self.request.user.company)
+        if err:
+            raise serializers.ValidationError({'cv_fichier': err})
+        return meta
+
+    def _poser_cv(self, candidature, meta):
+        if meta is None:
+            return
+        attachment = attacher_piece_jointe(
+            meta, company=self.request.user.company, cible=candidature,
+            user=self.request.user)
+        ancienne = candidature.cv_attachment
+        candidature.cv_attachment = attachment
+        candidature.save(update_fields=['cv_attachment', 'date_modification'])
+        remplacer_piece_jointe(ancienne)
+
     def perform_update(self, serializer):
         """XRH18 — journalise automatiquement une transition d'étape.
         XRH19 — envoie l'email automatique du gabarit actif de la nouvelle
         étape (best-effort, jamais bloquant)."""
         old_etape = serializer.instance.etape
+        meta = self._televerser_cv()
         candidature = serializer.save()
+        self._poser_cv(candidature, meta)
         if old_etape != candidature.etape:
             CandidatureActivity.objects.create(
                 company=candidature.company, candidature=candidature,
@@ -5276,6 +5388,10 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
     * ``GET portail/mes-bulletins/`` — ses bulletins de paie.
     """
     permission_classes = [IsAnyRole]
+    # AUD718 — le collaborateur peut joindre un justificatif de congé
+    # (multipart) depuis son portail : sans ce parseur, ``request.FILES``
+    # resterait vide et le fichier serait silencieusement perdu.
+    parser_classes = [MultiPartParser, JSONParser]
 
     def _dossier(self, request):
         return DossierEmploye.objects.filter(
@@ -5394,8 +5510,25 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             demi_journee_fin=ser.validated_data.get(
                 'demi_journee_fin', False),
             jours_exclus=exclus)
-        ser.save(company=request.user.company, jours=jours)
-        return Response(ser.data, status=status.HTTP_201_CREATED)
+        # AUD718 — même rangement MinIO que le viewset RH : un justificatif
+        # déposé depuis le portail est réellement récupérable. Téléversé AVANT
+        # la création : un format refusé ne laisse pas de demande orpheline.
+        file = request.FILES.get('justificatif')
+        meta = None
+        if file:
+            meta, err = televerser_piece_jointe(
+                file, company=request.user.company)
+            if err:
+                return Response({'justificatif': err},
+                                status=status.HTTP_400_BAD_REQUEST)
+        demande = ser.save(company=request.user.company, jours=jours)
+        if meta is not None:
+            demande.justificatif_attachment = attacher_piece_jointe(
+                meta, company=request.user.company, cible=demande,
+                user=request.user)
+            demande.save(update_fields=['justificatif_attachment'])
+        return Response(DemandeCongeSerializer(demande).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='mes-frais')
     def mes_frais(self, request):

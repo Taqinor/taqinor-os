@@ -1251,9 +1251,26 @@ class DemandeConge(models.Model):
     # XRH3 — justificatif (certificat médical…) exigé au-delà de
     # ``type_absence.jours_max_sans_justificatif`` (VALIDATION uniquement,
     # cf. ``services.valider_demande``).
+    # AUD718 — LEGACY, plus jamais ÉCRIT : ce ``FileField`` écrivait sur le
+    # disque du conteneur (aucun ``STORAGES``/``DEFAULT_FILE_STORAGE`` dans les
+    # settings, aucune route ``/media/`` côté Django ni nginx), donc l'URL
+    # renvoyée par l'API ne menait NULLE PART. Conservé nullable pour ne rien
+    # perdre des lignes historiques ; le nouveau dépôt passe par
+    # ``justificatif_attachment`` (MinIO via ``records.storage``).
     justificatif = models.FileField(
         upload_to='rh/demandes_conge/justificatifs/', null=True, blank=True,
-        verbose_name='Justificatif')
+        verbose_name='Justificatif (legacy, hors MinIO)')
+    # AUD718 — le justificatif vit dans MinIO via ``records.Attachment``, comme
+    # ``rh.BulletinPaie`` : servi par
+    # ``/api/django/records/attachments/<id>/download/`` (même origine, scopé
+    # société), donc réellement récupérable.
+    justificatif_attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_justificatifs_conge',
+        verbose_name='Justificatif (pièce jointe)',
+    )
     motif = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Motif')
     statut = models.CharField(
@@ -1287,6 +1304,16 @@ class DemandeConge(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — {self.type_absence.code} '
                 f'{self.date_debut}→{self.date_fin} ({self.get_statut_display()})')
+
+    @property
+    def a_justificatif(self):
+        """AUD718 — un justificatif est attaché (MinIO OU legacy disque).
+
+        Le contrôle XRH3 à la validation doit rester satisfait par une
+        demande historique dont le fichier vit encore sur le disque : on
+        accepte les DEUX portages, jamais seulement le nouveau.
+        """
+        return bool(self.justificatif_attachment_id or self.justificatif)
 
 
 class AffectationRoster(models.Model):
@@ -3312,9 +3339,20 @@ class Candidature(models.Model):
     email = models.EmailField(blank=True, default='', verbose_name='E-mail')
     telephone = models.CharField(
         max_length=30, blank=True, default='', verbose_name='Téléphone')
+    # AUD718 — LEGACY, plus jamais ÉCRIT (même défaut que
+    # ``DemandeConge.justificatif`` : disque du conteneur, aucune route qui le
+    # ressert). Conservé pour les lignes historiques.
     cv_fichier = models.FileField(
         upload_to='rh/candidatures/cv/', null=True, blank=True,
-        verbose_name='CV')
+        verbose_name='CV (legacy, hors MinIO)')
+    # AUD718 — le CV vit dans MinIO via ``records.Attachment``.
+    cv_attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_cv_candidatures',
+        verbose_name='CV (pièce jointe)',
+    )
     source = models.CharField(
         max_length=80, blank=True, default='', verbose_name='Source')
     note = models.TextField(blank=True, default='', verbose_name='Note')
@@ -3369,6 +3407,11 @@ class Candidature(models.Model):
 
     def __str__(self):
         return f'{self.nom} — {self.ouverture}'
+
+    @property
+    def a_cv(self):
+        """AUD718 — un CV est attaché (MinIO OU legacy disque)."""
+        return bool(self.cv_attachment_id or self.cv_fichier)
 
 
 class ModeleEvaluation(models.Model):

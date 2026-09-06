@@ -454,8 +454,10 @@ def valider_demande(demande, decide_par=None):
         raise ValueError(
             "Seule une demande soumise peut être validée.")
     plafond = demande.type_absence.jours_max_sans_justificatif
+    # AUD718 — ``a_justificatif`` accepte la pièce jointe MinIO comme le
+    # FileField legacy : une demande historique reste validable.
     if (plafond is not None and demande.jours is not None
-            and demande.jours > plafond and not demande.justificatif):
+            and demande.jours > plafond and not demande.a_justificatif):
         raise ValueError(
             "Justificatif obligatoire : cette absence de "
             f"{demande.jours} j dépasse le seuil de {plafond} j sans "
@@ -1491,13 +1493,20 @@ def fusionner_candidatures(cible, source, *, auteur=None):
     if cible.pk == source.pk:
         raise ValueError('Impossible de fusionner une candidature avec elle-même.')
 
-    if not cible.cv_fichier and source.cv_fichier:
-        cible.cv_fichier = source.cv_fichier
+    # AUD718 — le CV vit désormais dans MinIO (``cv_attachment``) : la cible
+    # absorbe la RÉFÉRENCE, jamais une copie du fichier. Le champ legacy reste
+    # repris pour les candidatures antérieures à la bascule.
+    if not cible.a_cv:
+        if source.cv_attachment_id:
+            cible.cv_attachment = source.cv_attachment
+        elif source.cv_fichier:
+            cible.cv_fichier = source.cv_fichier
     if source.note:
         cible.note = (
             f'{cible.note}\n[Fusionné depuis #{source.id}] {source.note}'
             if cible.note else source.note)
-    cible.save(update_fields=['cv_fichier', 'note', 'date_modification'])
+    cible.save(update_fields=[
+        'cv_fichier', 'cv_attachment', 'note', 'date_modification'])
 
     CandidatureActivity.objects.filter(candidature=source).update(
         candidature=cible)
@@ -1635,6 +1644,9 @@ def rattacher_depuis_vivier(candidature_vivier, ouverture):
         email=candidature_vivier.email,
         telephone=candidature_vivier.telephone,
         cv_fichier=candidature_vivier.cv_fichier,
+        # AUD718 — même pièce jointe MinIO (référence partagée, aucun
+        # re-téléversement).
+        cv_attachment=candidature_vivier.cv_attachment,
         source=candidature_vivier.source,
         etape=Candidature.Etape.RECU,
         vivier_origine=candidature_vivier,
@@ -1679,18 +1691,35 @@ def parser_cv(candidature):
     """
     from core.ai.services import extract_document
 
-    if not candidature.cv_fichier:
+    if not candidature.a_cv:
         raise CvParsingUnavailable('Aucun CV attaché à cette candidature.')
 
-    nom_fichier = candidature.cv_fichier.name or ''
-    ext = nom_fichier.rsplit('.', 1)[-1].lower() if '.' in nom_fichier else ''
-    mime_type = _CV_MIME_TYPES.get(ext, 'application/octet-stream')
+    # AUD718 — le CV vit dans MinIO : on lit les octets par
+    # ``records.storage.fetch_attachment``. Le repli sur le ``FileField``
+    # legacy reste en place pour les candidatures antérieures à la bascule
+    # (leur fichier est encore sur le disque du conteneur).
+    if candidature.cv_attachment_id:
+        from apps.records.storage import fetch_attachment
 
-    try:
-        candidature.cv_fichier.open('rb')
-        content = candidature.cv_fichier.read()
-    finally:
-        candidature.cv_fichier.close()
+        attachment = candidature.cv_attachment
+        content, erreur = fetch_attachment(attachment.file_key)
+        if erreur or content is None:
+            raise CvParsingUnavailable(
+                'CV introuvable dans le stockage : ' + (erreur or 'illisible'))
+        nom_fichier = attachment.filename or ''
+        mime_type = attachment.mime or _CV_MIME_TYPES.get(
+            nom_fichier.rsplit('.', 1)[-1].lower() if '.' in nom_fichier
+            else '', 'application/octet-stream')
+    else:
+        nom_fichier = candidature.cv_fichier.name or ''
+        ext = (nom_fichier.rsplit('.', 1)[-1].lower()
+               if '.' in nom_fichier else '')
+        mime_type = _CV_MIME_TYPES.get(ext, 'application/octet-stream')
+        try:
+            candidature.cv_fichier.open('rb')
+            content = candidature.cv_fichier.read()
+        finally:
+            candidature.cv_fichier.close()
 
     result = extract_document(
         content=content, mime_type=mime_type, schema='cv')
@@ -1784,6 +1813,15 @@ def anonymiser_candidature(candidature):
     personnelle librement saisie)."""
     if candidature.cv_fichier:
         candidature.cv_fichier.delete(save=False)
+    # AUD718 — rétention CNDP : l'objet MinIO DOIT partir aussi, sinon le CV
+    # anonymisé resterait téléchargeable par son URL de pièce jointe.
+    if candidature.cv_attachment_id:
+        from apps.records.storage import delete_attachment
+
+        attachment = candidature.cv_attachment
+        candidature.cv_attachment = None
+        delete_attachment(attachment.file_key)
+        attachment.delete()
 
     candidature.nom = _ANONYMISE_NOM
     candidature.email = ''
@@ -1793,7 +1831,7 @@ def anonymiser_candidature(candidature):
     candidature.cv_fichier = None
     candidature.save(update_fields=[
         'nom', 'email', 'telephone', 'note', 'tags_vivier', 'cv_fichier',
-        'date_modification'])
+        'cv_attachment', 'date_modification'])
     return candidature
 
 

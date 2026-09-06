@@ -596,11 +596,22 @@ class JourBloqueCongeSerializer(serializers.ModelSerializer):
 class DemandeCongeSerializer(serializers.ModelSerializer):
     """Demande de congés (FG163). ``employe`` et ``type_absence`` doivent
     appartenir à la société ; ``jours`` et le workflow de décision sont posés
-    côté serveur (jamais lus du corps)."""
+    côté serveur (jamais lus du corps).
+
+    AUD718 — le JUSTIFICATIF se téléverse toujours en multipart sous la même
+    clé ``justificatif``, mais la vue le range désormais dans MinIO
+    (``records.Attachment``) : le champ modèle legacy devient LECTURE SEULE
+    (il n'était de toute façon servi par aucune route) et ``justificatif_url``
+    donne le lien de téléchargement réellement joignable.
+    """
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     type_absence_code = serializers.CharField(
         source='type_absence.code', read_only=True)
+    justificatif_url = serializers.SerializerMethodField()
+    justificatif_nom = serializers.CharField(
+        source='justificatif_attachment.filename', read_only=True,
+        default=None)
 
     class Meta:
         model = DemandeConge
@@ -608,6 +619,7 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             'id', 'employe', 'type_absence', 'type_absence_code',
             'date_debut', 'date_fin', 'jours',
             'demi_journee_debut', 'demi_journee_fin', 'justificatif',
+            'justificatif_url', 'justificatif_nom',
             'motif',
             'statut', 'statut_display',
             'decide_par', 'date_decision', 'motif_refus', 'date_creation',
@@ -616,7 +628,16 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'jours', 'statut', 'decide_par', 'date_decision', 'motif_refus',
             'date_creation',
+            # AUD718 — le fichier ne passe plus par le FileField : la vue le
+            # range dans MinIO et pose ``justificatif_attachment``.
+            'justificatif', 'justificatif_url', 'justificatif_nom',
         ]
+
+    def get_justificatif_url(self, obj):
+        if obj.justificatif_attachment_id:
+            return (f'/api/django/records/attachments/'
+                    f'{obj.justificatif_attachment_id}/download/')
+        return None
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
@@ -1795,12 +1816,19 @@ class CandidatureSerializer(serializers.ModelSerializer):
         source='get_etape_display', read_only=True)
     ouverture_intitule = serializers.SerializerMethodField()
     employe_cree_nom = serializers.SerializerMethodField()
+    # AUD718 — le CV vit dans MinIO : lien de téléchargement réellement
+    # joignable (même origine, scopé société), là où l'URL du FileField
+    # legacy ne résolvait vers aucune route.
+    cv_url = serializers.SerializerMethodField()
+    cv_nom = serializers.CharField(
+        source='cv_attachment.filename', read_only=True, default=None)
 
     class Meta:
         model = Candidature
         fields = [
             'id', 'ouverture', 'ouverture_intitule',
-            'nom', 'email', 'telephone', 'cv_fichier', 'source', 'note',
+            'nom', 'email', 'telephone', 'cv_fichier', 'cv_url', 'cv_nom',
+            'source', 'note',
             'etape', 'etape_display',
             'employe_cree', 'employe_cree_nom',
             # XRH19 (opt-out email auto), XRH21 (vivier / talent pool).
@@ -1809,7 +1837,16 @@ class CandidatureSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'employe_cree', 'vivier_origine',
-            'date_creation', 'date_modification']
+            'date_creation', 'date_modification',
+            # AUD718 — le fichier ne passe plus par le FileField : la vue le
+            # range dans MinIO et pose ``cv_attachment``.
+            'cv_fichier', 'cv_url', 'cv_nom']
+
+    def get_cv_url(self, obj):
+        if obj.cv_attachment_id:
+            return (f'/api/django/records/attachments/'
+                    f'{obj.cv_attachment_id}/download/')
+        return None
 
     def get_ouverture_intitule(self, obj):
         if not obj.ouverture_id:

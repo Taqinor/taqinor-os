@@ -252,6 +252,19 @@ def careers_apply(request, company_slug, ouverture_id):
             {'detail': 'Nom et email sont obligatoires.'},
             status=status.HTTP_400_BAD_REQUEST))
 
+    # AUD718 — le CV part dans MinIO (records.storage), plus sur le disque du
+    # conteneur : le RH doit pouvoir le RELIRE. Le fichier est téléversé AVANT
+    # la création de la candidature — un format/poids refusé rend 400 sans
+    # laisser derrière lui une candidature sans CV que personne ne relancera.
+    cv = request.FILES.get('cv_fichier')
+    meta = None
+    if cv:
+        from .views import televerser_piece_jointe
+        meta, err = televerser_piece_jointe(cv, company=company)
+        if err:
+            return _noindex(Response(
+                {'cv_fichier': err}, status=status.HTTP_400_BAD_REQUEST))
+
     candidature = Candidature.objects.create(
         company=company,
         ouverture=ouverture,
@@ -259,9 +272,13 @@ def careers_apply(request, company_slug, ouverture_id):
         email=email,
         telephone=telephone,
         source='site_web',
-        cv_fichier=request.FILES.get('cv_fichier'),
         etape=Candidature.Etape.RECU,
     )
+    if meta is not None:
+        from .views import attacher_piece_jointe
+        candidature.cv_attachment = attacher_piece_jointe(
+            meta, company=company, cible=candidature, user=None)
+        candidature.save(update_fields=['cv_attachment', 'date_modification'])
     return _noindex(Response(
         {'id': candidature.pk, 'detail': 'Candidature reçue.'},
         status=status.HTTP_201_CREATED))
