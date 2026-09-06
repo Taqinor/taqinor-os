@@ -415,6 +415,24 @@ class AchatsParametres(models.Model):
         max_digits=12, decimal_places=2, default=0)
     tolerance_quantite_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=0)
+    # AUD233 — [DÉCISION FONDATEUR 03/09/2026] le rapprochement 3 voies
+    # (commandé/reçu/facturé) était OPT-IN PAR BON DE COMMANDE et jamais
+    # auto-créé : `creer_rapprochement_3voies` n'avait qu'UN appelant, une
+    # action manuelle explicite. Par défaut, une facture fournisseur pouvait
+    # donc être payée pour PLUS que ce qui avait été reçu sans qu'aucune
+    # alerte ne se déclenche — `rapprochement_ecart_pct` renvoyait `None` et
+    # `evaluate_facture_exception` était un no-op structurel.
+    #
+    # ON par défaut : le Rapprochement est désormais créé/rafraîchi tout seul
+    # à la confirmation d'une réception et à l'évaluation d'une facture liée à
+    # un BCF. JAMAIS RÉTROACTIF : l'auto-création est pilotée par des
+    # ÉVÉNEMENTS, donc un BCF déjà reçu et facturé avant cette bascule n'en
+    # produit aucun et reste exactement dans l'état où le fondateur l'a laissé.
+    rapprochement_3voies_auto = models.BooleanField(
+        default=True,
+        help_text='Crée et rafraîchit automatiquement le rapprochement 3 '
+                  'voies à la réception et à la facturation d\'un BCF. '
+                  'Jamais rétroactif sur l\'historique.')
     # XPUR13 — écart % (par rapport au dernier prix / prix moyen d'achat)
     # au-delà duquel une ligne de BCF lève un warning « prix hors norme ».
     # 0 = comportement historique inchangé (aucun seuil, pas de warning
