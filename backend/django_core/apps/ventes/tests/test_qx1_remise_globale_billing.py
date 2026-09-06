@@ -94,6 +94,33 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
                 taux_tva=ligne.taux_tva)
         return facture
 
+    def _jumeau(self, devis):
+        """Copie à l'identique d'un devis (mêmes lignes, même remise).
+
+        AUD112 — les deux portes de facturation ne sont plus aveugles l'une à
+        l'autre : facturer un devis par son BON DE COMMANDE puis par
+        l'ÉCHÉANCIER est exactement le double-encaissement que la garde ferme
+        (« devis → BC → facture, puis generer-facture → 400 »). La parité
+        arithmétique visée ici — Σ tranches == total BC == TTC remisé — se
+        prouve donc sur DEUX devis identiques, chacun facturé UNE seule fois
+        par sa propre voie, au lieu d'un seul devis facturé deux fois.
+        """
+        jumeau = Devis.objects.create(
+            company=devis.company, reference=f'{devis.reference}-J',
+            client=devis.client, statut=devis.statut,
+            taux_tva=devis.taux_tva, remise_globale=devis.remise_globale,
+            etude_params=devis.etude_params)
+        if devis.option_acceptee:
+            jumeau.option_acceptee = devis.option_acceptee
+            jumeau.save(update_fields=['option_acceptee'])
+        for ligne in devis.lignes.all():
+            LigneDevis.objects.create(
+                devis=jumeau, produit=ligne.produit,
+                designation=ligne.designation, quantite=ligne.quantite,
+                prix_unitaire=ligne.prix_unitaire, remise=ligne.remise,
+                taux_tva=ligne.taux_tva)
+        return jumeau
+
     def _assert_chain(self, devis, num):
         """Le TTC remisé de référence == BC facture == Σ échéancier."""
         ref = option_totaux(devis)
@@ -105,11 +132,16 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
         self.assertEqual(_q(facture.total_ttc), ref_ttc,
                          'BC facture TTC != TTC remisé')
 
-        # 2) Σ des factures d'échéancier (30/60/10 par défaut).
+        # 2) Σ des factures d'échéancier (30/60/10 par défaut), sur le devis
+        #    JUMEAU — le devis d'origine est déjà facturé par son BC et la
+        #    garde AUD112 refuse (à raison) de le facturer une seconde fois.
+        jumeau = self._jumeau(devis)
+        self.assertEqual(_q(option_totaux(jumeau)['ttc']), ref_ttc,
+                         'le jumeau ne reproduit pas le TTC remisé')
         somme = Decimal('0')
-        while next_tranche(devis) is not None:
+        while next_tranche(jumeau) is not None:
             f = creer_facture_tranche(
-                devis, self.user, self.company, create_with_reference)
+                jumeau, self.user, self.company, create_with_reference)
             somme += Decimal(str(f.total_ttc))
         self.assertEqual(_q(somme), ref_ttc,
                          'Σ échéancier != TTC remisé')

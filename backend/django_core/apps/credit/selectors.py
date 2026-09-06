@@ -17,6 +17,17 @@ def encours_client(client):
     import direct de ``ventes.models``). L'exclusion est portée par le STATUT
     du document : une facture soldée ne compte plus dans l'exposition crédit.
 
+    TOUJOURS un calcul LIVE, jamais le cache (``EncoursCache`` — voir
+    ``_encours_client_cache_ou_live``, consommé par ``disponible_credit``,
+    pour la variante « read-through » des badges NTCRD23). Consommé tel
+    quel par les hooks bloquants (``apps.
+    credit.services.verifier_hold_credit``, NTCRD6) et par le diagnostic de
+    non-divergence WIR93 (``services.ecart_encours_moteurs``) : les deux sont
+    verrouillés par test (``test_ntcrd32_encours_cache.
+    test_hold_uses_live_not_cache``, ``test_wir93_encours_non_divergence.py``)
+    sur le fait qu'AUCUN verdict bloquant ne s'appuie jamais sur une donnée
+    périmée — ne PAS faire lire le cache à cette fonction.
+
     LIMITE CONNUE : ne compte QUE les factures ouvertes — les BC ``LIVRE``
     sans facture liée ne sont pas inclus, faute d'un sélecteur ventes les
     exposant. Un sélecteur ventes dédié pourrait fermer cet écart plus tard."""
@@ -29,6 +40,34 @@ def encours_client(client):
     return Decimal('0')
 
 
+def _encours_client_cache_ou_live(client):
+    """AUD153 — « read-through » : ``EncoursCache`` (peuplé quotidiennement
+    par ``credit.tasks.recalculer_encours_quotidien``) était écrit par UN
+    job et lu par AUCUN appelant. Réservé aux lectures NON BLOQUANTES
+    (badges de liste NTCRD23, fiche/score crédit) via ``disponible_credit``
+    ci-dessous — JAMAIS un hook de décision (voir le garde-fou documenté sur
+    ``encours_client``).
+
+    Lit l'entrée si elle est FRAÎCHE (moins de
+    ``ENCOURS_CACHE_FRAICHEUR_MAX``, ``credit/models.py``) ; sinon (absente
+    ou périmée) recalcule via ``encours_client`` (LIVE, calcul de référence
+    inchangé) et MET À JOUR le cache — jamais un affichage figé au-delà de ce
+    seuil court."""
+    from django.utils import timezone
+
+    from .models import ENCOURS_CACHE_FRAICHEUR_MAX, EncoursCache
+
+    entree = EncoursCache.objects.filter(client=client).first()
+    if entree is not None and (
+            timezone.now() - entree.calcule_le) <= ENCOURS_CACHE_FRAICHEUR_MAX:
+        return entree.encours
+
+    valeur = encours_client(client)
+    EncoursCache.objects.update_or_create(
+        client=client, defaults={'company': client.company, 'encours': valeur})
+    return valeur
+
+
 def disponible_credit(client):
     """NTCRD5 — disponible de crédit d'un client.
 
@@ -36,10 +75,15 @@ def disponible_credit(client):
     ``LimiteCredit`` active n'est définie pour ce client — comportement
     historique inchangé (aucun hold possible sans limite). Renvoie
     ``{'limite': Decimal|None, 'encours': Decimal, 'disponible': Decimal|None,
-    'pct_utilise': float|None, 'depasse': bool}``."""
+    'pct_utilise': float|None, 'depasse': bool}``.
+
+    AUD153 — lecture NON BLOQUANTE (affichage : fiche/score/badges NTCRD23,
+    jamais une autorisation) : l'encours vient désormais du cache-à-travers
+    ``_encours_client_cache_ou_live`` — donne enfin à ``EncoursCache`` son
+    lecteur, exactement l'usage annoncé par son propre docstring."""
     from .models import LimiteCredit
 
-    encours = encours_client(client)
+    encours = _encours_client_cache_ou_live(client)
     limite_obj = LimiteCredit.objects.filter(
         client=client, actif=True).first()
     montant_limite = limite_obj.montant_limite if limite_obj else None

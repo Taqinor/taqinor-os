@@ -148,6 +148,50 @@ class RegularisationIRTests(TestCase):
         with self.assertRaises(BulletinPaie.BulletinVerrouille):
             appliquer_regularisation_ir(b_dec)
 
+    def test_profil_sous_regime_exonere_na_pas_de_rappel_indu(self):
+        """AUD709 — la régularisation respecte l'exonération de régime.
+
+        ``calculer_bulletin`` calcule l'IR réel sur ``net_imposable −
+        montant_exonere_regime`` (XPAI18) ; ``calculer_regularisation_ir``
+        lisait le net imposable BRUT — miroir cassé qui survalorisait l'IR
+        théorique d'un stagiaire/ANAPEC/TAHFIZ et produisait un rappel
+        IR-REGUL indu sur un salarié junior protégé.
+        """
+        dossier = DossierEmploye.objects.create(
+            company=self.co, matricule='R-EXO', nom='Nom', prenom='Stagiaire')
+        profil = ProfilPaie.objects.create(
+            company=self.co, employe=dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=Decimal('8000'),
+            affilie_cnss=True, affilie_amo=True,
+            regime_exoneration=ProfilPaie.REGIME_STAGIAIRE,
+            regime_date_debut=date(2026, 1, 1),
+            regime_date_fin=date(2026, 12, 31),
+            # Plafond largement au-dessus du net imposable → base IR = 0.
+            regime_plafond_mensuel=Decimal('20000'))
+
+        bulletins = []
+        for mois in range(1, 13):
+            periode = PeriodePaie.objects.create(
+                company=self.co, annee=2026, mois=mois)
+            b = generer_bulletin(profil, periode)
+            bulletins.append(b)
+            if mois < 12:
+                valider_bulletin(b)
+
+        b_dec = bulletins[-1]
+        # Prémisse du constat : l'exonération est bien figée et couvre tout le
+        # net imposable, donc l'IR RÉEL du mois est nul.
+        self.assertGreater(b_dec.montant_exonere_regime, Decimal('0'))
+        self.assertEqual(b_dec.montant_exonere_regime, b_dec.net_imposable)
+        self.assertEqual(b_dec.ir, Decimal('0.00'))
+
+        resultat = calculer_regularisation_ir(b_dec)
+        self.assertEqual(resultat['nombre_bulletins'], 12)
+        # IR théorique annuel nul (base exonérée) → aucun rappel.
+        self.assertEqual(resultat['ir_du_annuel'], Decimal('0.00'))
+        self.assertEqual(resultat['delta'], Decimal('0.00'))
+
     def test_etat_9421_annuel_coherent_apres_regularisation(self):
         for mois in range(1, 12):
             self._valider_mois(mois, Decimal('8000'))

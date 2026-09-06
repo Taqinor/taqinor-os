@@ -493,15 +493,20 @@ def mrr_contrats(company):
     trimestrielle = ÷3, semestrielle = ÷6, annuelle = ÷12). Les périodicités
     ``unique``/``personnalisée`` n'entrent pas dans le MRR. Lecture seule, scopée
     société. Renvoie un ``Decimal`` (arrondi 2 décimales).
+
+    AUD182 — le filtre porte AUSSI sur ``contrat.statut = actif`` : un contrat
+    suspendu pour impayé continuait à compter comme revenu récurrent SAIN dans
+    le tableau de bord.
     """
     from decimal import Decimal
 
-    from .models import EcheancierContrat
+    from .models import Contrat, EcheancierContrat
 
     qs = EcheancierContrat.objects.filter(
         company=company,
         facturation_active=True,
         statut=EcheancierContrat.Statut.ACTIF,
+        contrat__statut=Contrat.Statut.ACTIF,
     )
     total = Decimal('0')
     for ech in qs.only('montant_total', 'periodicite'):
@@ -783,12 +788,10 @@ def _mrr_equivalent_mensuel(montant, periodicite):
     return montant / Decimal(mois)
 
 
-def mrr_contrat_actif(contrat):
-    """MRR mensuel d'UN contrat (somme de ses échéanciers actifs facturables).
-
-    Réutilise la même conversion que ``mrr_contrats`` (CONTRAT33) mais bornée à
-    UN contrat — sert de brique à ``mouvements_mrr`` (new/expansion/churn).
-    """
+def _mrr_echeanciers_montant(contrat):
+    """Somme MENSUELLE des échéanciers actifs facturables d'UN contrat, SANS
+    regarder ``Contrat.statut`` (brique interne — voir les deux appelants
+    ci-dessous pour QUAND ignorer le statut est correct)."""
     from decimal import Decimal
 
     from .models import EcheancierContrat
@@ -802,6 +805,35 @@ def mrr_contrat_actif(contrat):
         if equiv is not None:
             total += equiv
     return total.quantize(Decimal('0.01'))
+
+
+def mrr_contrat_actif(contrat):
+    """MRR mensuel d'UN contrat (somme de ses échéanciers actifs facturables).
+
+    Réutilise la même conversion que ``mrr_contrats`` (CONTRAT33) mais bornée à
+    UN contrat — sert de brique à ``mouvements_mrr`` (new/expansion).
+
+    AUD182 — un contrat qui n'est pas ACTIF (suspendu pour impayé, résilié,
+    expiré) porte un MRR NUL : il n'est plus du revenu récurrent sain.
+
+    N'est PAS utilisée pour le churn de ``mouvements_mrr`` : au moment où le
+    churn est calculé, le contrat résilié n'est plus ``ACTIF`` par
+    construction (``resilier_contrat`` bascule le statut AVANT que
+    ``mouvements_mrr`` ne recalcule la perte) — passer par cette fonction y
+    renverrait toujours 0 et viderait ``churn``/``churn_par_motif`` (AUD501
+    documente ce piège : « filtrer mrr_contrats/mrr_contrat_actif sur
+    contrat.statut = ACTIF sans casser mouvements_mrr/churn, qui dépend du
+    calcul PRÉ-résiliation »). Le churn appelle donc directement
+    ``_mrr_echeanciers_montant`` (voir plus bas), qui ignore le statut du
+    contrat par construction.
+    """
+    from .models import Contrat
+
+    if contrat.statut != Contrat.Statut.ACTIF:
+        from decimal import Decimal
+        return Decimal('0.00')
+
+    return _mrr_echeanciers_montant(contrat)
 
 
 def mouvements_mrr(company, debut, fin):
@@ -822,9 +854,12 @@ def mouvements_mrr(company, debut, fin):
     - ``churn`` : somme (négative) du MRR PERDU par les contrats RÉSILIÉS dans la
       fenêtre (``Resiliation.statut != annulee``, ``date_effet`` repli
       ``date_demande`` dans la fenêtre) — le MRR perdu est celui du contrat AU
-      MOMENT de la résiliation (``mrr_contrat_actif`` avant résiliation n'étant
-      plus recalculable après coup, on utilise le MRR courant du contrat comme
-      meilleure approximation disponible — cohérent avec CONTRAT33) ;
+      MOMENT de la résiliation, lu directement sur ses échéanciers via
+      ``_mrr_echeanciers_montant`` (jamais ``mrr_contrat_actif``, qui filtre
+      sur ``contrat.statut == ACTIF`` depuis AUD182 et renverrait toujours 0
+      ici puisque le contrat est déjà ``resilie`` — ``resilier_contrat``
+      n'annule que les ``LigneEcheance`` futures, jamais l'échéancier lui-même,
+      donc le montant PRÉ-résiliation reste lisible ; cf. AUD501) ;
     - ``churn_par_motif`` : ventilation de ``churn`` par motif — ZCTR3 : utilise
       ``Resiliation.motif_ref.libelle`` (normalisé) quand présent, sinon replie
       sur le texte libre ``Resiliation.motif`` (motif vide groupé sous ``''``)
@@ -923,7 +958,14 @@ def mouvements_mrr(company, debut, fin):
         date_ref = resiliation.date_effet or resiliation.date_demande
         if date_ref is None or not (debut <= date_ref <= fin):
             continue
-        perte = mrr_contrat_actif(resiliation.contrat)
+        # AUD182 a fait basculer mrr_contrat_actif() sur contrat.statut ==
+        # ACTIF ; or à ce stade le contrat résilié est déjà `resilie` (jamais
+        # ACTIF), donc mrr_contrat_actif() y renverrait toujours 0 et viderait
+        # churn/churn_par_motif. On lit directement les échéanciers (le
+        # de-provisioning de résiliation n'annule que les LigneEcheance
+        # FUTURES, jamais EcheancierContrat.statut/montant_total — voir
+        # resilier_contrat) pour obtenir le MRR PRÉ-résiliation (AUD501).
+        perte = _mrr_echeanciers_montant(resiliation.contrat)
         if perte <= 0:
             continue
         # ZCTR3 — motif normalisé prioritaire (référentiel), repli texte libre.

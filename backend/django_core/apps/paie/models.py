@@ -956,8 +956,57 @@ class ElementVariable(models.Model):
         # normale, jamais concerné par cette contrainte).
         unique_together = [('periode', 'reconduit_depuis')]
 
+    class PeriodeVerrouillee(Exception):
+        """AUD715 — écriture d'élément variable sur une période non brouillon."""
+
     def __str__(self):
         return f'{self.get_type_display()} {self.quantite} → profil #{self.profil_id}'
+
+    # AUD715 — GARDE DE STATUT DE PÉRIODE, symétrique de ``BulletinPaie.save``.
+    # ``importer_elements_rh`` refusait déjà d'écrire hors brouillon
+    # (``TransitionPeriodeInterdite``), mais l'écriture MANUELLE — serializer,
+    # ``ModelViewSet`` complet, Django admin, script — n'avait AUCUNE garde :
+    # créer, modifier ou supprimer un élément variable sur une période déjà
+    # CALCULÉE/VALIDÉE/CLÔTURÉE réussissait silencieusement (200/201/204) sans
+    # jamais influencer le bulletin déjà émis. Le net réellement viré divergeait
+    # alors des éléments variables du mois, sans trace ni erreur.
+    def _periode_figee(self, periode_id=None):
+        statut = (
+            PeriodePaie.objects
+            .filter(pk=periode_id if periode_id is not None else self.periode_id)
+            .values_list('statut', flat=True)
+            .first()
+        )
+        return statut is not None and statut != PeriodePaie.STATUT_BROUILLON
+
+    def save(self, *args, **kwargs):
+        if self._periode_figee():
+            raise ElementVariable.PeriodeVerrouillee(
+                "Période close au calcul : la saisie d'éléments variables "
+                "n'est possible qu'en statut brouillon (le bulletin déjà "
+                "émis ne serait pas recalculé).")
+        if self.pk:
+            # Un élément ne peut pas non plus être DÉPLACÉ hors d'une période
+            # figée : on vérifie aussi la période d'origine.
+            ancienne = (
+                ElementVariable.objects
+                .filter(pk=self.pk)
+                .values_list('periode_id', flat=True)
+                .first()
+            )
+            if ancienne is not None and ancienne != self.periode_id \
+                    and self._periode_figee(ancienne):
+                raise ElementVariable.PeriodeVerrouillee(
+                    "Période d'origine close au calcul : cet élément variable "
+                    "ne peut plus être déplacé.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self._periode_figee():
+            raise ElementVariable.PeriodeVerrouillee(
+                "Période close au calcul : la suppression d'un élément "
+                "variable n'est possible qu'en statut brouillon.")
+        return super().delete(*args, **kwargs)
 
 
 # ── PAIE17 — Bulletin de paie (snapshot immuable une fois validé) ───────────
@@ -1147,6 +1196,22 @@ class BulletinPaie(models.Model):
     # et la garde côté service ``marquer_bulletin_lu``).
     lu_le = models.DateTimeField(
         null=True, blank=True, verbose_name='Lu le (accusé de lecture)')
+    # AUD703 — ARCHIVE IMMUABLE du document remis au salarié (doctrine D9).
+    # ``SNAPSHOT_FIELDS`` ne gèle que les MONTANTS : l'identité imprimée
+    # (n° CNSS, RIB, banque du profil ; date de paiement de la période) reste
+    # modifiable par un PATCH banal, et chaque téléchargement re-rendait le
+    # PDF — un bulletin déjà remis pouvait donc être ré-émis avec un contenu
+    # différent, sans trace ni empreinte à comparer. À la validation, le PDF
+    # est rendu UNE fois, téléversé sous une clé préfixée par la société, et
+    # son empreinte SHA-256 figée ici : la réémission sert TOUJOURS l'archive.
+    pdf_archive_cle = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé de l\'archive PDF')
+    pdf_sha256 = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte SHA-256 du PDF archivé')
+    pdf_archive_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='PDF archivé le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1171,8 +1236,12 @@ class BulletinPaie(models.Model):
     # se posent forcément APRÈS le gel). ``lu_le`` (XPAI21) se pose de la
     # même façon, après coup, à la première consultation employé. Les
     # montants/lignes de paie restent, eux, strictement figés.
+    # AUD703 — l'ARCHIVE du PDF (doctrine D9) se pose forcément APRÈS le gel :
+    # le document archivé est celui du bulletin VALIDÉ. Ces trois champs ne
+    # décrivent pas de la paie, ils décrivent l'artefact remis au salarié.
     _CHAMPS_AUTORISES_APRES_VALIDATION = frozenset(
-        {'statut', 'date_validation', 'paye', 'date_paiement', 'lu_le'})
+        {'statut', 'date_validation', 'paye', 'date_paiement', 'lu_le',
+         'pdf_archive_cle', 'pdf_sha256', 'pdf_archive_le'})
 
     def save(self, *args, **kwargs):
         """Garde d'immuabilité (PAIE17).
@@ -1879,6 +1948,20 @@ class DepotBDS(models.Model):
         verbose_name = 'Dépôt BDS'
         verbose_name_plural = 'Dépôts BDS'
         ordering = ['-date_depot']
+        constraints = [
+            # AUD713 — la docstring ci-dessus affirmait « une période ne peut
+            # avoir qu'UN dépôt principal » sans QUE RIEN ne le garantisse :
+            # ``deposer_bds_principal`` faisait un ``filter().first()`` puis un
+            # ``create()``, sans verrou. Deux appels concurrents créaient donc
+            # deux dépôts principaux pour la même période. La contrainte ferme
+            # la course au niveau DB, indépendamment du code applicatif ; les
+            # dépôts COMPLÉMENTAIRES restent libres d'être multiples.
+            models.UniqueConstraint(
+                fields=['company', 'periode'],
+                condition=models.Q(type_depot='principal'),
+                name='uniq_depot_bds_principal_par_periode',
+            ),
+        ]
 
     def __str__(self):
         return f'Dépôt BDS {self.get_type_depot_display()} — {self.periode}'

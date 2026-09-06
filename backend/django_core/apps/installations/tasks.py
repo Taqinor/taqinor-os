@@ -208,3 +208,29 @@ def _notifier_meteo_risque(interv):
             company=interv.company)
     except Exception:  # pragma: no cover - défensif
         pass
+
+
+# ── AUD231 — ZFSM3 : la prestation périodique SANS contrat de maintenance ───
+# La commande ``generer_interventions_recurrentes`` annonçait « Pensé pour être
+# exécuté à la demande ou par un planificateur (cron / Celery beat) » ; le grep
+# sur ``erp_agentique/`` rendait ZÉRO. Aucune occurrence récurrente n'était donc
+# générée tant que personne ne lançait la commande à la main.
+
+@shared_task(name='installations.generer_interventions_recurrentes')
+def generer_interventions_recurrentes_task():
+    """ZFSM3 (AUD231) — génère la prochaine ``Intervention`` de chaque
+    récurrence active à échéance, pour toutes les sociétés. Idempotente : deux
+    passages le même jour ne créent jamais deux occurrences pour la même
+    échéance. Une exception sur une société n'empêche jamais les suivantes.
+    Renvoie le nombre total d'interventions créées."""
+    from authentication.models import Company
+    from .services import generer_interventions_recurrentes
+    total = 0
+    for company in Company.objects.all():
+        try:
+            total += len(generer_interventions_recurrentes(company))
+        except Exception:  # noqa: BLE001 — société suivante
+            logger.warning(
+                'installations.generer_interventions_recurrentes: échec '
+                'société %s', company.id, exc_info=True)
+    return total

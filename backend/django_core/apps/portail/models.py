@@ -229,6 +229,24 @@ class PaiementFacturePortail(models.Model):
         verbose_name_plural = 'Paiements de facture (portail)'
         db_table = 'compta_paiementfactureportail'
         ordering = ['-date_creation']
+        constraints = [
+            # AUD137 — UNE seule intention `initie` par (société, facture) :
+            # ``views_client.payer`` créait un ``PaiementFacturePortail``
+            # INCONDITIONNEL à chaque appel, montant figé au clic — trois
+            # clics sur « Payer » empilaient trois intentions du même client
+            # pour la même facture, à des montants divergents. Le
+            # ``get_or_create`` de la vue réutilise désormais l'intention
+            # ``initie`` existante ; cette contrainte PARTIELLE (jamais
+            # ``paye``/``echoue``, qui restent multiples dans le temps) le
+            # rend sûr sous course. ``facture`` nullable : les NULL restent
+            # distincts en PostgreSQL, une intention non rattachée ne bloque
+            # donc rien.
+            models.UniqueConstraint(
+                fields=['company', 'facture'],
+                condition=models.Q(statut='initie'),
+                name='uniq_paiement_portail_facture_initie',
+            ),
+        ]
 
     def __str__(self):
         return f'Paiement facture #{self.facture_id} ({self.statut})'

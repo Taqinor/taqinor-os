@@ -57,7 +57,7 @@ def generer_factures_recurrentes_dues():
     from authentication.selectors import active_companies
 
     from . import services
-    from .models import EcheancierContrat, LigneEcheance
+    from .models import Contrat, EcheancierContrat, LigneEcheance
 
     today = timezone.localdate()
     total = {
@@ -78,6 +78,12 @@ def generer_factures_recurrentes_dues():
                 date_echeance__lte=today,
                 echeancier__facturation_active=True,
                 echeancier__statut=EcheancierContrat.Statut.ACTIF,
+                # AUD182 — CEINTURE ET BRETELLES : la suspension pour impayé
+                # gèle déjà `facturation_active`, mais ce filtre garantit
+                # qu'AUCUN contrat non-actif (suspendu, résilié, expiré) ne
+                # produit de facture, même si un échéancier était réactivé à la
+                # main sans repasser le contrat en actif.
+                echeancier__contrat__statut=Contrat.Statut.ACTIF,
             )
             .exclude(statut=LigneEcheance.Statut.ANNULEE)
             .select_related('echeancier', 'echeancier__contrat')

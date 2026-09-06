@@ -166,11 +166,9 @@ def _materialize_paiement_on_payment_captured(sender, transaction, company, **kw
             note='Paiement carte en ligne (transaction capturée).',
         )
         locked.refresh_from_db()
-        if locked.montant_du <= Decimal('0') \
-                and locked.statut != Facture.Statut.ANNULEE:
-            locked.statut = Facture.Statut.PAYEE
-            locked.save(update_fields=['statut'])
-            from core.events import facture_paid
-            facture_paid.send(
-                sender=Facture, facture=locked, montant=montant,
-                company=locked.company)
+        # AUD102 (P9) — ce chemin posait PAYEE et n'émettait que
+        # ``facture_paid`` ; ``facture_payee`` — LE signal auquel compta
+        # branche le lettrage — manquait. Il rejoint le service unique.
+        from .domain.encaissements import marquer_facture_soldee
+        marquer_facture_soldee(
+            locked, montant=montant, source='paiement_carte_capture')

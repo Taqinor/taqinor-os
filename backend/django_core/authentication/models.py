@@ -90,6 +90,25 @@ class Company(models.Model):
         help_text="Désactive l'apparition automatique de toute visite guidée "
                   "(<ProductTour>, NTDMO14/15) pour les nouveaux utilisateurs "
                   "de cette société. Actif par défaut (comportement inchangé).")
+    # ── AUD704 — IDENTITÉ EMPLOYEUR (mentions obligatoires du bulletin) ─────
+    # Le bulletin de paie est le seul document remis au salarié, et il ne
+    # portait AUCUNE identité de l'employeur : le modèle ne connaissait que
+    # ``nom``. Additifs, tous vides par défaut → aucune société existante n'est
+    # affectée, et le gabarit n'imprime que les mentions RENSEIGNÉES (jamais un
+    # libellé vide, jamais une valeur inventée).
+    adresse = models.TextField(
+        'Adresse', blank=True, default='',
+        help_text="Adresse du siège, imprimée en en-tête du bulletin de paie.")
+    registre_commerce = models.CharField(
+        'Registre du commerce (RC)', max_length=50, blank=True, default='')
+    identifiant_fiscal = models.CharField(
+        'Identifiant fiscal (IF)', max_length=50, blank=True, default='')
+    ice = models.CharField(
+        'ICE', max_length=50, blank=True, default='',
+        help_text="Identifiant Commun de l'Entreprise.")
+    numero_cnss_employeur = models.CharField(
+        "N° d'affiliation CNSS employeur", max_length=50, blank=True,
+        default='')
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

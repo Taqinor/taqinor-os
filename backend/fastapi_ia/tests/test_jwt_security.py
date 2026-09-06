@@ -106,5 +106,60 @@ class VerifyTokenTests(unittest.TestCase):
         self.assertIn("exp", _sec._REQUIRED_CLAIMS)
 
 
+@unittest.skipUnless(_SEC_OK and _JWT_OK, "fastapi/security indisponible")
+class Aud409SecretKeyStartupGuardTests(unittest.TestCase):
+    """AUD409 — `security.py` verifiait les JWT avec une cle VIDE si
+    DJANGO_SECRET_KEY manquait : HMAC-SHA256 avec `""` est une cle VALIDE, donc
+    n'importe qui forgeait un access token et obtenait l'agent SQL + l'OCR de la
+    societe visee. Django porte ce garde depuis toujours (settings/base.py) ;
+    FastAPI n'avait AUCUN equivalent. Le module doit desormais echouer FERME au
+    chargement."""
+
+    @staticmethod
+    def _reimport_without_key():
+        """Recharge `app.core.security` sans DJANGO_SECRET_KEY, puis restaure
+        l'etat du processus (module d'origine + variable d'environnement)."""
+        import importlib
+        original = sys.modules.get("app.core.security")
+        saved = os.environ.get("DJANGO_SECRET_KEY")
+        try:
+            os.environ.pop("DJANGO_SECRET_KEY", None)
+            sys.modules.pop("app.core.security", None)
+            return importlib.import_module("app.core.security")
+        finally:
+            if saved is not None:
+                os.environ["DJANGO_SECRET_KEY"] = saved
+            sys.modules.pop("app.core.security", None)
+            if original is not None:
+                sys.modules["app.core.security"] = original
+
+    def test_chargement_sans_cle_leve_runtimeerror(self):
+        with self.assertRaises(RuntimeError):
+            self._reimport_without_key()
+
+    def test_cle_vide_casse_le_service_au_lieu_de_l_ouvrir(self):
+        """Fait MESURE sur la version epinglee (PyJWT 2.13.0), pour ne rien
+        affirmer d'invente : une cle HMAC vide est refusee par la librairie
+        elle-meme (`InvalidKeyError`), donc le scenario « jeton force avec une
+        chaine vide accepte » n'est PAS reproductible tel quel. Mais
+        `InvalidKeyError` n'herite pas d'`InvalidTokenError` : le `except` de
+        `verify_token` ne l'attrape pas et le service repondait 500 a CHAQUE
+        requete authentifiee. Ce test gele les deux faits qui justifient le
+        garde de demarrage — et si une future version de PyJWT tolerait la cle
+        vide (vrai contournement d'authentification), il rougirait ici."""
+        with self.assertRaises(_jwt.exceptions.InvalidKeyError):
+            _jwt.encode({"user_id": 999, "token_type": "access"}, "",
+                        algorithm="HS256")
+        self.assertFalse(
+            issubclass(_jwt.exceptions.InvalidKeyError,
+                       _jwt.exceptions.InvalidTokenError),
+            "InvalidKeyError attrapee par verify_token : le motif d'echec a "
+            "change, relire le garde AUD409.")
+
+    def test_module_charge_normalement_avec_une_cle(self):
+        """Non-regression : avec la cle posee, rien ne change."""
+        self.assertTrue(_sec._DJANGO_SECRET_KEY)
+
+
 if __name__ == "__main__":
     unittest.main()

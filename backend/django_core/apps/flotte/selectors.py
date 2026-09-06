@@ -713,6 +713,31 @@ def emplacement_stock_label(company, emplacement_stock_id):
     return f'#{emplacement_stock_id}'
 
 
+def emplacements_stock_labels(company, emplacement_stock_ids):
+    """FLOTTE3/AUD729 — Libellés de PLUSIEURS emplacements de stock EN UN
+    SEUL appel groupé (dict ``{emplacement_stock_id: libellé}``).
+
+    Variante BATCH d'``emplacement_stock_label`` : la liste des véhicules
+    (``VehiculeViewSet.list``) résolvait un emplacement PAR véhicule (1
+    lookup DB chacun, jamais batché — N+1 réel, AUD729). Même dégradation
+    que la variante unitaire : un id qui n'existe pas / n'appartient pas à
+    la société retombe sur ``"#<id>"``. Lecture seule, ``ids`` vide → ``{}``
+    sans requête.
+    """
+    ids = {i for i in emplacement_stock_ids if i}
+    if not ids:
+        return {}
+    try:
+        from apps.stock import selectors as stock_selectors
+        emplacements = stock_selectors.get_emplacements_scoped(company, ids)
+    except Exception:
+        emplacements = {}
+    return {
+        eid: (str(emplacements[eid]) if eid in emplacements else f'#{eid}')
+        for eid in ids
+    }
+
+
 # ── FLOTTE15 — Plans d'entretien préventif (km / date / heures) ────────────────
 
 def plans_de_la_societe(company, actif_only=False, actif_flotte_id=None):
@@ -1041,9 +1066,19 @@ def synthese_pneus_pieces_vehicule(company, vehicule_id):
 
     Agrège, pour un véhicule d'une société :
     - le nombre de pneus montés (``nb_pneus_montes``) et leur coût total ;
-    - le nombre de lignes de pièces (``nb_pieces``), la quantité totale et le
-      coût total des pièces (quantité × coût unitaire) ;
-    - le coût total combiné (pneus + pièces).
+    - le nombre de lignes de pièces (``nb_pieces``), la quantité totale (les
+      DEUX comptent TOUTES les pièces, informatif) ;
+    - le coût total des pièces (``cout_pieces``) et le coût total combiné
+      (``cout_total`` = pneus + pièces).
+
+    AUD726 — une pièce déjà RATTACHÉE à un ``OrdreReparation``
+    (``ordre_reparation`` non nul) est EXCLUE de ``cout_pieces``/
+    ``cout_total`` : son coût est déjà compté dans
+    ``OrdreReparation.cout_pieces`` (saisie manuelle sur l'OR, sommée dans
+    ``tco_vehicule.reparations``) — la compter ICI en plus double le coût
+    réel de la même dépense (``tco_vehicule`` sommait jusqu'ici
+    ``reparations`` ET ``pneus_pieces`` sans exclusion). Seules les pièces
+    LIBRES (sans OR) entrent dans le montant.
 
     Retourne un dict LECTURE SEULE — tous les montants sont des ``float``
     arrondis. Aucun calcul de moyenne ici, donc pas de division par zéro.
@@ -1060,9 +1095,10 @@ def synthese_pneus_pieces_vehicule(company, vehicule_id):
     quantite_pieces = 0
     nb_pieces = 0
     for piece in pieces:
-        cout_pieces += piece.cout_total
         quantite_pieces += piece.quantite or 0
         nb_pieces += 1
+        if piece.ordre_reparation_id is None:
+            cout_pieces += piece.cout_total
 
     cout_pneus = round(float(agg_pneus['cout'] or 0), 2)
     cout_pieces = round(cout_pieces, 2)
@@ -1536,7 +1572,22 @@ def ledger_vehicule(company, vehicule_id, periode=None):
     * ``infraction``  — chaque ``Infraction`` (FLOTTE26) de l'actif, montant =
       ``montant_amende`` ;
     * ``cout_divers`` — chaque ``CoutVehicule`` (XFLT3) de l'actif (péage,
-      parking, lavage, contrat, autre…).
+      parking, lavage, contrat, autre…) ;
+    * ``pneu``        — AUD727 : chaque ``Pneumatique`` (FLOTTE18) du véhicule,
+      montant = ``cout``, daté au montage ;
+    * ``piece``       — AUD727 : chaque ``PieceFlotte`` (FLOTTE18) LIBRE du
+      véhicule (jamais celles déjà rattachées à un ``OrdreReparation`` — même
+      exclusion qu'AUD726, sinon double-compte avec la ligne ``reparation``
+      ci-dessus), montant = ``cout_total``, datée à la pose ;
+    * ``sinistre``    — AUD727 : chaque ``Sinistre`` (FLOTTE25) de l'actif,
+      montant = ``franchise`` à charge, daté à la survenance.
+
+    AUD727 — ``pneu``/``piece``/``sinistre`` sont NOUVEAUX ici : avant ce
+    correctif, ce grand livre les ignorait alors que ``tco_vehicule`` les
+    comptait déjà (pneus/pièces) ou aurait dû les compter (sinistres déjà
+    inclus côté TCO) — les deux vues du « coût total » divergeaient sans
+    relation d'inclusion. Elles somment désormais EXACTEMENT les mêmes
+    sources (voir ``tco_vehicule``, FLOTTE31).
 
     ``periode`` (optionnel) est un tuple ``(date_debut, date_fin)`` inclusif
     qui borne toutes les sources DATÉES (la TSAV, sans date propre, suit sa
@@ -1639,7 +1690,7 @@ def ledger_vehicule(company, vehicule_id, periode=None):
                 'conducteur_id': inf.conducteur_id, 'objet_id': inf.id,
             })
 
-        # 6) Coûts divers.
+        # 5) Coûts divers.
         for cout in CoutVehicule.objects.filter(
                 company=company, actif_flotte_id=actif_flotte_id):
             if not _dans_periode(cout.date):
@@ -1652,7 +1703,49 @@ def ledger_vehicule(company, vehicule_id, periode=None):
                 'conducteur_id': cout.conducteur_id, 'objet_id': cout.id,
             })
 
-    # 5) TSAV (annuelle, ancrée au 1er janvier de l'année courante).
+        # 6) Sinistres (AUD727 — franchise à charge, datée à la survenance).
+        for sinistre in Sinistre.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            if not _dans_periode(sinistre.date_sinistre):
+                continue
+            lignes.append({
+                'source': 'sinistre', 'categorie': 'sinistre',
+                'date': sinistre.date_sinistre,
+                'montant': float(sinistre.franchise or 0),
+                'libelle': (
+                    f'Sinistre — {sinistre.get_type_sinistre_display()}'),
+                'conducteur_id': None, 'objet_id': sinistre.id,
+            })
+
+    # 7) Pneus (AUD727 — par véhicule, datés au montage).
+    for pneu in Pneumatique.objects.filter(
+            company=company, vehicule_id=vehicule_id):
+        if not _dans_periode(pneu.date_montage):
+            continue
+        lignes.append({
+            'source': 'pneu', 'categorie': 'pneu',
+            'date': pneu.date_montage, 'montant': float(pneu.cout or 0),
+            'libelle': f'Pneu {pneu.get_position_display()} — '
+                       f'{pneu.marque}'.strip(' —'),
+            'conducteur_id': None, 'objet_id': pneu.id,
+        })
+
+    # 8) Pièces LIBRES (AUD727 — jamais celles déjà rattachées à un OR, déjà
+    # comptées via `reparation` ci-dessus, même exclusion qu'AUD726).
+    for piece in PieceFlotte.objects.filter(
+            company=company, vehicule_id=vehicule_id,
+            ordre_reparation_id__isnull=True):
+        if not _dans_periode(piece.date_pose):
+            continue
+        lignes.append({
+            'source': 'piece', 'categorie': 'piece',
+            'date': piece.date_pose,
+            'montant': float(piece.cout_total or 0),
+            'libelle': f'Pièce — {piece.designation}'.strip(' —'),
+            'conducteur_id': None, 'objet_id': piece.id,
+        })
+
+    # 9) TSAV (annuelle, ancrée au 1er janvier de l'année courante).
     tsav_annee = datetime.date.today().year
     tsav_date = datetime.date(tsav_annee, 1, 1)
     if _dans_periode(tsav_date):
@@ -2417,22 +2510,38 @@ def tco_vehicule(company, vehicule_id):
 
     * ``carburant``     — Σ ``PleinCarburant.prix_total`` (FLOTTE12) ;
     * ``reparations``   — Σ coûts des ``OrdreReparation`` de l'actif (FLOTTE17) ;
-    * ``pneus_pieces``  — Σ coûts pneus + pièces du véhicule (FLOTTE18) ;
+    * ``pneus_pieces``  — Σ coûts pneus + pièces LIBRES du véhicule (FLOTTE18 ;
+      AUD726 — les pièces déjà rattachées à un OR sont exclues ici, déjà
+      comptées dans ``reparations`` via le ``cout_pieces`` saisi sur l'OR) ;
+    * ``assurances``    — Σ ``AssuranceVehicule.franchise`` de l'actif (FLOTTE21) ;
+    * ``vignette``      — TSAV annuelle calculée (FLOTTE20) pour l'année
+      courante — ``0`` si aucun montant n'est calculable ;
     * ``infractions``   — Σ ``Infraction.montant_amende`` de l'actif (FLOTTE26) ;
-    * ``sinistres``     — Σ ``Sinistre.franchise`` à charge de l'actif (FLOTTE25).
+    * ``sinistres``     — Σ ``Sinistre.franchise`` à charge de l'actif (FLOTTE25) ;
+    * ``couts_divers``  — Σ ``CoutVehicule.montant`` de l'actif (XFLT3 — péage,
+      parking, lavage, contrat/leasing (AUD725), autre…).
 
-    Le ``cout_total`` somme ces postes. ``amortissement`` (cumul des dotations
-    via FLOTTE30) est rapporté à titre INDICATIF mais N'EST PAS sommé au total
-    (il chevauche la valeur d'acquisition, pas une dépense d'exploitation
-    récurrente). ZCTR11 — ``pct_charges_non_deductibles`` (catalogue/véhicule)
-    signale, à titre INDICATIF, la part de ``cout_total`` non déductible
-    fiscalement (plafond CGI tourisme) — ``None`` si non renseigné. Retourne un
-    dict LECTURE SEULE ::
+    AUD727 — avant ce correctif, ``cout_total`` EXCLUAIT assurances/vignette/
+    ``CoutVehicule`` (la clé ``assurances`` était même documentée mais jamais
+    peuplée) alors que ``selectors.ledger_vehicule``/``analyse_couts_report``
+    (XFLT7) les INCLUAIENT déjà mais EXCLUAIENT pneus/pièces et sinistres — les
+    deux vues du « coût total » divergeaient sans relation d'inclusion, sans
+    disclaimer. Les deux sélecteurs additionnent désormais EXACTEMENT les
+    mêmes sources : ``cout_total`` ici == la somme des lignes de
+    ``ledger_vehicule`` pour le même véhicule (sans borne de période).
+    ``amortissement`` (cumul des dotations via FLOTTE30) reste rapporté à
+    titre INDICATIF mais N'EST PAS sommé au total (il chevauche la valeur
+    d'acquisition, pas une dépense d'exploitation récurrente). ZCTR11 —
+    ``pct_charges_non_deductibles`` (catalogue/véhicule) signale, à titre
+    INDICATIF, la part de ``cout_total`` non déductible fiscalement (plafond
+    CGI tourisme) — ``None`` si non renseigné. Retourne un dict LECTURE
+    SEULE ::
 
         {
           'vehicule_id', 'actif_flotte_id',
           'carburant', 'reparations', 'pneus_pieces', 'assurances',
-          'infractions', 'sinistres', 'cout_total',
+          'vignette', 'infractions', 'sinistres', 'couts_divers',
+          'cout_total',
           'amortissement_cumule',  # indicatif, hors total
           'pct_charges_non_deductibles',  # ZCTR11, None si non renseigné
           'part_charges_non_deductibles',  # ZCTR11, None si pct non renseigné
@@ -2456,15 +2565,22 @@ def tco_vehicule(company, vehicule_id):
         .filter(company=company, vehicule_id=vehicule_id)
         .aggregate(s=models.Sum('prix_total'))['s'] or 0)
 
-    # Réparations (par actif).
+    # Postes par actif (réparations, assurances, infractions, sinistres,
+    # coûts divers XFLT3 — péage/parking/lavage/contrat/autre, AUD727).
     reparations = 0.0
+    assurances = 0.0
     infractions = 0.0
     sinistres = 0.0
+    couts_divers = 0.0
     if actif_flotte_id is not None:
         reparations = float(
             OrdreReparation.objects
             .filter(company=company, actif_flotte_id=actif_flotte_id)
             .aggregate(s=models.Sum('cout_total'))['s'] or 0)
+        assurances = float(
+            AssuranceVehicule.objects
+            .filter(company=company, actif_flotte_id=actif_flotte_id)
+            .aggregate(s=models.Sum('franchise'))['s'] or 0)
         infractions = float(
             Infraction.objects
             .filter(company=company, actif_flotte_id=actif_flotte_id)
@@ -2473,13 +2589,27 @@ def tco_vehicule(company, vehicule_id):
             Sinistre.objects
             .filter(company=company, actif_flotte_id=actif_flotte_id)
             .aggregate(s=models.Sum('franchise'))['s'] or 0)
+        couts_divers = float(
+            CoutVehicule.objects
+            .filter(company=company, actif_flotte_id=actif_flotte_id)
+            .aggregate(s=models.Sum('montant'))['s'] or 0)
 
-    # Pneus + pièces (par véhicule) — réutilise la synthèse FLOTTE18.
+    # Pneus + pièces LIBRES (par véhicule) — réutilise la synthèse FLOTTE18
+    # (AUD726 : exclut déjà les pièces rattachées à un OR, comptées ci-dessus
+    # via `reparations`).
     synth = synthese_pneus_pieces_vehicule(company, vehicule_id)
     pneus_pieces = float(synth.get('cout_total', 0) or 0)
 
-    cout_total = (carburant + reparations + pneus_pieces
-                  + infractions + sinistres)
+    # Vignette / TSAV annuelle (AUD727 — même calcul et même année que
+    # `ledger_vehicule`, ancrée à l'année courante).
+    vignette = 0.0
+    if vehicule is not None:
+        tsav = calcul_tsav(vehicule, annee=datetime.date.today().year)
+        if tsav.get('montant') is not None:
+            vignette = float(tsav['montant'])
+
+    cout_total = (carburant + reparations + pneus_pieces + assurances
+                  + vignette + infractions + sinistres + couts_divers)
 
     # Distance totale (carnet de carburant, math FLOTTE13).
     conso = consommation_vehicule(company, vehicule_id)
@@ -2504,8 +2634,11 @@ def tco_vehicule(company, vehicule_id):
         'carburant': round(carburant, 2),
         'reparations': round(reparations, 2),
         'pneus_pieces': round(pneus_pieces, 2),
+        'assurances': round(assurances, 2),
+        'vignette': round(vignette, 2),
         'infractions': round(infractions, 2),
         'sinistres': round(sinistres, 2),
+        'couts_divers': round(couts_divers, 2),
         'cout_total': round(cout_total, 2),
         'amortissement_cumule': amort.get('cumul_amortissements'),
         'pct_charges_non_deductibles': (

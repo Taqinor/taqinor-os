@@ -30,6 +30,71 @@ def create_equipement_from_serial(*, company, produit, installation,
     return equip
 
 
+def creer_equipement_import(company, champs, *, produit, installation,
+                            user=None):
+    """AUD517 — point d'entrée d'ÉCRITURE de l'import de parc (dataimport).
+
+    Le bloc ``equipements`` de ``apps.dataimport.services`` faisait
+    ``Equipement.objects.create(...)`` en important ``apps.sav.models``
+    directement. Trois conséquences mesurées :
+
+    * ``recompute_garanties()`` n'était jamais appelé → ``date_fin_garantie``
+      restait NULL et TOUT le parc importé était classé hors garantie ;
+    * ``equipement_token`` (QR FG85) n'était jamais posé → le parc importé
+      était invisible au scan QR du SAV ;
+    * la pré-vérification de doublon portait sur
+      ``(company, produit, installation, numero_serie)`` alors que la
+      contrainte DB réelle est ``(company, numero_serie)`` — plus étroite :
+      deux lignes de même série sur des produits/chantiers différents
+      passaient la garde puis levaient un ``IntegrityError`` capable
+      d'annuler TOUT le lot déjà importé.
+
+    Cette fonction fait les trois : garde de doublon ALIGNÉE sur la contrainte
+    DB, création + garanties + jeton QR dans UNE transaction, et
+    ``IntegrityError`` capturé (course entre deux lignes du même lot) rendu
+    comme un ``'doublon'`` de LIGNE — jamais une explosion du lot.
+
+    ``champs`` = colonnes déjà mappées/nettoyées (numero_serie, date_pose…).
+    Retourne ``('cree'|'doublon'|'erreur', message|None)`` — même contrat que
+    ``creer_vehicule_import``/``creer_contrat_import`` (ARC13/XFLT22)."""
+    from django.db import IntegrityError, transaction
+
+    from .models import Equipement
+
+    champs = dict(champs or {})
+    numero_serie = (champs.get('numero_serie') or '').strip() \
+        if isinstance(champs.get('numero_serie'), str) \
+        else champs.get('numero_serie')
+
+    # Garde alignée sur la contrainte DB réelle (company, numero_serie).
+    if numero_serie and Equipement.objects.filter(
+            company=company, numero_serie=numero_serie).exists():
+        return 'doublon', None
+
+    try:
+        with transaction.atomic():
+            equipement = Equipement.objects.create(
+                company=company, produit=produit, installation=installation,
+                created_by=user if getattr(user, 'pk', None) else None,
+                **champs)
+            equipement.recompute_garanties()
+            # FG85 — même valeur que ``Equipement.set_token`` ; posée ici dans
+            # la MÊME écriture que les garanties (une seule sauvegarde).
+            equipement.equipement_token = f'EQUIP:{equipement.pk}'
+            equipement.save(update_fields=[
+                'date_fin_garantie', 'date_fin_garantie_production',
+                'equipement_token'])
+    except IntegrityError:
+        # Course entre deux lignes du MÊME lot (la garde ci-dessus a lu avant
+        # l'insertion de la précédente) : la ligne est un doublon, le lot
+        # continue — le savepoint annule cette ligne seule.
+        return 'doublon', None
+    except Exception as exc:  # pragma: no cover - défensif
+        return 'erreur', str(exc)
+
+    return 'cree', None
+
+
 def ensure_equipement_for_bom_line(*, company, produit, installation,
                                    date_pose, created_by):
     """FG70 — garantit qu'AU MOINS UN Equipement (sans n° de série) existe au
@@ -161,6 +226,74 @@ def assign_technicien_auto(*, company, jour=None):
     return None
 
 
+# ── AUD519 — Échéance SLA posée par TOUS les producteurs de tickets ─────────
+# Avant AUD519, ``TicketViewSet.perform_create`` était le SEUL point qui
+# calculait ``sla_due_at`` : tous les autres producteurs (WhatsApp, alias
+# e-mail, QR public, visites préventives, monitoring, tâche projet, NCR,
+# escalade d'alarme onduleur) créaient un Ticket sans échéance. Or
+# ``recompute_sla_breach`` ne calcule JAMAIS ``sla_due_at`` s'il est None :
+# ces tickets étaient silencieusement exclus des scans quotidiens — SLA
+# purement décoratif sur tous les canaux non manuels.
+# Une seule implémentation vit ici ; la vue s'y branche aussi.
+
+def resolution_days_pour(company, client, priorite):
+    """XSAV7 — délai de résolution (jours), précédence inchangée : override
+    du contrat de maintenance ACTIF du client > ``sla_par_priorite`` >
+    défauts société. Extrait tel quel de ``TicketViewSet``."""
+    from .models import ContratMaintenance, SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    contrat = ContratMaintenance.actif_pour_client(client)
+    if contrat is not None and contrat.sla_resolution_days is not None:
+        return contrat.sla_resolution_days
+    _, resolution_days = sla.days_for(priorite)
+    return resolution_days
+
+
+def compute_sla_due_at(company, client, priorite, date_ouverture):
+    """FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
+    activé ``sla_breach_enabled``. Logique extraite telle quelle de
+    ``TicketViewSet._compute_sla_due_at`` (jours ouvrés si ``sla_jours_ouvres``,
+    calendaires sinon)."""
+    from datetime import timedelta
+
+    from .models import SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    if not sla.sla_breach_enabled:
+        return None
+    resolution_days = resolution_days_pour(company, client, priorite)
+    if sla.sla_jours_ouvres:
+        from core.calendar import add_working_days
+        return add_working_days(date_ouverture, resolution_days)
+    return date_ouverture + timedelta(days=resolution_days)
+
+
+def poser_sla_due_at(ticket, *, persister=True):
+    """AUD519 — pose ``sla_due_at`` sur un ticket FRAÎCHEMENT créé par un
+    producteur automatique, exactement comme le chemin manuel.
+
+    No-op si l'échéance est déjà posée, si la société n'a pas activé le SLA,
+    ou si le ticket n'a pas de société. La ``couverture`` n'est
+    DÉLIBÉRÉMENT pas figée ici : sur le chemin manuel elle reste
+    ``a_determiner`` et se calcule à la lecture
+    (``TicketSerializer.couverture_proposee``) et à la facturation
+    (``couverture_calculee``) — la figer à la création divergerait du chemin
+    manuel et gèlerait une couverture contrat qui peut expirer d'ici là
+    (AUD502). Renvoie le ticket."""
+    if ticket is None or ticket.sla_due_at or ticket.company_id is None:
+        return ticket
+    due = compute_sla_due_at(
+        ticket.company, ticket.client, ticket.priorite,
+        ticket.date_ouverture or timezone.localdate())
+    if due is None:
+        return ticket
+    ticket.sla_due_at = due
+    if persister:
+        ticket.save(update_fields=['sla_due_at'])
+    return ticket
+
+
 def create_corrective_ticket(*, company, client, installation, description,
                              created_by):
     """F16 — crée un ticket SAV correctif (référence sans collision via
@@ -173,7 +306,9 @@ def create_corrective_ticket(*, company, client, installation, description,
             company=company, reference=ref, client=client,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=description, created_by=created_by)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 def creer_ticket_preventif(*, company, client, installation, description,
@@ -198,7 +333,9 @@ def creer_ticket_preventif(*, company, client, installation, description,
             installation=installation, type=Ticket.Type.PREVENTIF,
             statut=Ticket.Statut.NOUVEAU, priorite=priorite,
             description=description, created_by=created_by)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 def create_ticket_from_projet_tache(*, company, client, description):
@@ -217,7 +354,9 @@ def create_ticket_from_projet_tache(*, company, client, description):
         return Ticket.objects.create(
             company=company, reference=ref, client=client,
             type=Ticket.Type.CORRECTIF, description=description)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 # ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
@@ -371,7 +510,9 @@ def _generer_ticket_preventif_compteur(company, equipement, type_releve,
             type=Ticket.Type.PREVENTIF, statut=Ticket.Statut.NOUVEAU,
             date_ouverture=timezone.localdate(), description=description,
             created_by=created_by)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 # ── YSUBS1 — Sélection des contrats de maintenance dus à facturation ────────
@@ -688,7 +829,9 @@ def creer_intervention_depuis_installation(
             company=company, reference=ref, client=installation.client,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=full_description)
-    ticket = create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    ticket = poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
     return ticket, True
 
 
@@ -758,21 +901,35 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
 
     if destination == PieceRetiree.Destination.STOCK_OCCASION:
         if not piece.restockee:
+            from django.db import transaction
             from apps.stock.services import (
                 mouvement_type_entree, record_stock_movement,
+                verrouiller_produit,
             )
-            produit.refresh_from_db()
-            qte_avant = produit.quantite_stock
-            qte_apres = qte_avant + quantite
-            record_stock_movement(
-                company=company, produit=produit,
-                type_mouvement=mouvement_type_entree(),
-                quantite=quantite, quantite_avant=qte_avant,
-                quantite_apres=qte_apres, reference=ticket.reference,
-                note=f'Retrait pièce SAV {ticket.reference} (stock occasion)',
-                created_by=user)
-            piece.restockee = True
-            piece.save(update_fields=['restockee'])
+            # AUD216 — VERROU de ligne produit AVANT la lecture de
+            # `quantite_stock` : `refresh_from_db()` relisait sans verrouiller,
+            # donc deux retraits de pièce concurrents sur le même produit
+            # lisaient la même valeur et la seconde ré-incrémentation écrasait
+            # la première (une pièce remise en stock disparaissait du registre).
+            # Verrou pris par le thin service stock — jamais d'import des
+            # models stock ici. Le bloc atomique est posé ICI parce que
+            # `retirer_piece` est un service PUBLIC : la vue SAV l'enveloppe
+            # déjà (imbrication = simple savepoint, sans effet), mais un appel
+            # hors transaction ferait autrement échouer `select_for_update`.
+            with transaction.atomic():
+                produit = verrouiller_produit(produit.pk)
+                qte_avant = produit.quantite_stock
+                qte_apres = qte_avant + quantite
+                record_stock_movement(
+                    company=company, produit=produit,
+                    type_mouvement=mouvement_type_entree(),
+                    quantite=quantite, quantite_avant=qte_avant,
+                    quantite_apres=qte_apres, reference=ticket.reference,
+                    note=(f'Retrait pièce SAV {ticket.reference} '
+                          '(stock occasion)'),
+                    created_by=user)
+                piece.restockee = True
+                piece.save(update_fields=['restockee'])
     elif destination == PieceRetiree.Destination.RETOUR_FOURNISSEUR:
         if equipement_remplace is not None:
             claim = WarrantyClaim.objects.create(
@@ -913,11 +1070,98 @@ def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
             company=company, reference=ref, client=client,
             type=Ticket.Type.CORRECTIF,
             description=f'[WhatsApp] {texte}'.strip())
-    ticket = create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    ticket = poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
     # XSAV24 — la trace de création (CREATION) est posée automatiquement par
     # le récepteur `post_save` de `receivers.py` (voir
     # `_log_creation_on_ticket_created`), plus besoin de l'appel explicite ici.
     return 'ticket_cree', ticket
+
+
+# ── AUD529 — Escalade d'un ticket SAV en réclamation formelle (litiges) ────
+# `docs/module-map.md` documente `apps.litiges` comme l'équivalent « escalade
+# Helpdesk » de SAV, mais AUCUNE référence n'existait entre les deux apps : un
+# ticket grave ne pouvait devenir une réclamation qu'à la re-saisie manuelle.
+# Ce service est le pont, dans le sens sav → litiges, via la frontière
+# `apps.litiges.services` (jamais un import de ses models).
+
+class TicketNonEscaladableError(Exception):
+    """Le ticket ne peut pas être escaladé en réclamation (ticket annulé)."""
+
+
+def escalader_ticket_en_reclamation(*, ticket, user=None,
+                                    type_reclamation=None, gravite=None,
+                                    objet=None, description=None,
+                                    montant_conteste=None):
+    """AUD529 — ouvre une ``litiges.Reclamation`` liée à CE ticket SAV.
+
+    IDEMPOTENT : un ticket déjà escaladé (``reclamation_id_ext`` posé) renvoie
+    ``(reclamation_existante, False)`` sans rien créer — un double clic
+    n'ouvre jamais deux dossiers.
+
+    Statuts éligibles : tous SAUF un ticket ANNULÉ (il n'y a plus de grief à
+    formaliser). Un ticket résolu/clôturé reste escaladable : une réclamation
+    formelle arrive très souvent APRÈS la clôture de l'intervention.
+
+    Le lien est posé des deux côtés — ``Reclamation.source_type='ticket'`` +
+    ``source_id`` côté litiges, ``Ticket.reclamation_id_ext`` côté SAV — et
+    l'événement est tracé dans LES DEUX chatters. ``bloque_relances=False``
+    par défaut : une réclamation qualité issue du SAV ne doit pas suspendre
+    les relances de facturation (contrairement à un litige financier).
+
+    Renvoie ``(reclamation, cree)``."""
+    from apps.litiges import services as litiges_services
+    from . import activity
+
+    if ticket.annule:
+        raise TicketNonEscaladableError(
+            "Ticket annulé : rien à escalader en réclamation.")
+
+    if ticket.reclamation_id_ext:
+        from apps.litiges.selectors import reclamation_scoped
+        existante = reclamation_scoped(
+            ticket.company, ticket.reclamation_id_ext)
+        if existante is not None:
+            return existante, False
+
+    gravites = {'urgente': 'elevee', 'haute': 'elevee', 'normale': 'moyenne',
+                'basse': 'faible'}
+    objet_final = (objet or '').strip() or (
+        f'Réclamation issue du ticket SAV {ticket.reference}')
+    description_finale = (description or '').strip() or (
+        f'Escalade du ticket SAV {ticket.reference} '
+        f'(statut « {ticket.get_statut_display()} »).\n\n'
+        f'{ticket.description or ""}').strip()
+
+    reclamation = litiges_services.creer_reclamation(
+        company=ticket.company,
+        type_reclamation=type_reclamation or 'qualite',
+        source_type='ticket',
+        source_id=ticket.pk,
+        objet=objet_final[:255],
+        description=description_finale,
+        montant_conteste=montant_conteste,
+        gravite=gravite or gravites.get(ticket.priorite, 'moyenne'),
+        # Une réclamation qualité issue du SAV ne suspend PAS les relances de
+        # facturation (contrairement à un litige financier, LITIGE3).
+        bloque_relances=False,
+        user=user,
+    )
+
+    ticket.reclamation_id_ext = reclamation.pk
+    ticket.save(update_fields=['reclamation_id_ext'])
+
+    activity.log_note(
+        ticket, user,
+        f'Escaladé en réclamation #{reclamation.pk} — '
+        f'« {reclamation.objet} ».')
+    litiges_services.journaliser_note(
+        reclamation,
+        f'Ouverte par escalade du ticket SAV {ticket.reference} '
+        f'(#{ticket.pk}).',
+        user=user)
+    return reclamation, True
 
 
 # ── XSAV27 — Prêt / échange anticipé d'équipement (loaner) ─────────────────
@@ -1347,7 +1591,9 @@ def creer_ticket_depuis_email_alias(message, company):
             equipe=categorie.equipe_responsable,
             date_ouverture=timezone.localdate(),
             description=description[:4000])
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 def register_email_alias_handler():

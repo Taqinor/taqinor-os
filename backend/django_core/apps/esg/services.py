@@ -45,9 +45,28 @@ def figer_periode(periode, *, user=None):
     À la clôture, tente une alerte de dérive trajectoire (NTESG10,
     ``alerter_derive_trajectoire``) — best-effort, JAMAIS bloquant : une
     erreur de notification ne doit jamais empêcher le figeage lui-même.
+
+    AUD527 — la période est VERROUILLÉE (``select_for_update``) avant le test
+    de statut. Sans ce verrou, deux appels quasi simultanés (double clic)
+    passaient TOUS DEUX le test ``statut != BROUILLON`` avant qu'aucun n'ait
+    écrit ``FIGEE`` : le second heurtait la contrainte unique du OneToOne
+    ``SnapshotESG`` et remontait un ``IntegrityError`` non capturé — un 500
+    brut au lieu d'un refus propre.
     """
     from .models import PeriodeReportingESG, SnapshotESG
     from .selectors import agreger_indicateurs_periode
+
+    # Le verrou est pris DANS la transaction atomique déjà ouverte par le
+    # décorateur ; il est relâché au commit. On ne remplace PAS l'instance
+    # reçue (l'appelant la sérialise après l'appel) : on ne recale que son
+    # statut sur la valeur RÉELLE lue sous verrou.
+    statut_verrouille = (PeriodeReportingESG.objects
+                         .select_for_update()
+                         .filter(pk=periode.pk)
+                         .values_list('statut', flat=True)
+                         .first())
+    if statut_verrouille is not None:
+        periode.statut = statut_verrouille
 
     if periode.statut != PeriodeReportingESG.Statut.BROUILLON:
         raise ValidationError(

@@ -130,6 +130,8 @@ _advance_lead_on_expiry = _recouvrement._advance_lead_on_expiry
 # RÉ-EXPORTS — QJR69 (2/3) : encaissements → ``domain/encaissements.py``
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import encaissements as _encaissements  # noqa: E402
+marquer_facture_soldee = _encaissements.marquer_facture_soldee
+enregistrer_paiement_portail = _encaissements.enregistrer_paiement_portail
 enregistrer_paiement = _encaissements.enregistrer_paiement
 facture_montant_du = _encaissements.facture_montant_du
 affecter_encaissement_groupe = _encaissements.affecter_encaissement_groupe
@@ -152,6 +154,8 @@ debiter_mandat_pour_facture = _encaissements.debiter_mandat_pour_facture
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import facturation_ops as _facturation_ops  # noqa: E402
 StockInsuffisantError = _facturation_ops.StockInsuffisantError
+EmissionRefusee = _facturation_ops.EmissionRefusee
+emettre_facture = _facturation_ops.emettre_facture
 reserver_stock_devis_facture = _facturation_ops.reserver_stock_devis_facture
 creer_facture_contrat = _facturation_ops.creer_facture_contrat
 creer_facture_regie = _facturation_ops.creer_facture_regie
@@ -165,6 +169,9 @@ calculer_date_echeance = _facturation_ops.calculer_date_echeance
 get_facture_or_none = _facturation_ops.get_facture_or_none
 facturables_pour_devis = _facturation_ops.facturables_pour_devis
 _main_oeuvre_produit = _facturation_ops._main_oeuvre_produit
+# AUD184 — porte d'entrée de `contrats` pour poser la ligne d'une facture
+# d'échéance (les factures header-only étaient invisibles des exports).
+ajouter_ligne_echeance_contrat = _facturation_ops.ajouter_ligne_echeance_contrat
 generer_facture_ticket_sav = _facturation_ops.generer_facture_ticket_sav
 generer_facture_intervention = _facturation_ops.generer_facture_intervention
 
@@ -565,6 +572,7 @@ __all__ = [
     'activate_optional_line',
     'affecter_encaissement_groupe',
     'aire_contour_m2',
+    'ajouter_ligne_echeance_contrat',
     'ajouter_lignes_boq_electrique',
     'ajouter_lignes_frais_refactures',
     'anomalies_emission_facture',

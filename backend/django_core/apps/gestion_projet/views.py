@@ -9,6 +9,7 @@ from datetime import date as _date
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -95,6 +96,18 @@ from .serializers import (
     RisqueSerializer,
     TacheSerializer,
     TimesheetSerializer,
+)
+
+
+# AUD177 — messages de la garde « situation de travaux gelée ».
+_SITUATION_FIGEE_MSG = (
+    'Une situation de travaux validée ou facturée ne peut plus être modifiée '
+    'ni supprimée : elle justifie une facture d\'acompte déjà émise et sert '
+    'de cumul antérieur à la situation suivante.'
+)
+_LIGNE_SITUATION_FIGEE_MSG = (
+    'Les lignes d\'une situation de travaux validée ou facturée ne peuvent '
+    'plus être modifiées ni supprimées.'
 )
 
 
@@ -2952,6 +2965,13 @@ class SituationTravauxViewSet(_GestionProjetBaseViewSet):
     situation``, incrémental par projet, jamais ``count()+1``). Le ``statut``
     et ``facture_id`` sont pilotés par l'action ``valider``. Filtre optionnel
     ``?projet=<id>``.
+
+    AUD177 — une situation qui n'est plus BROUILLON est GELÉE : ni DELETE ni
+    PATCH/PUT. Sa suppression ferait repartir le cumul antérieur de la
+    situation suivante (``services._situation_precedente_montant_cumule``) à
+    la valeur de l'avant-dernière, et la tranche déjà encaissée serait
+    facturée une seconde fois ; ``facture_id`` étant une référence LÂCHE,
+    aucun ``on_delete`` ne protège la ``ventes.Facture`` d'acompte émise.
     """
     queryset = SituationTravaux.objects.select_related('projet').all()
     serializer_class = SituationTravauxSerializer
@@ -2969,6 +2989,29 @@ class SituationTravauxViewSet(_GestionProjetBaseViewSet):
         if projet:
             qs = qs.filter(projet_id=projet)
         return qs
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.statut != SituationTravaux.Statut.BROUILLON:
+            return Response(
+                {'detail': _SITUATION_FIGEE_MSG},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.statut != SituationTravaux.Statut.BROUILLON:
+            return Response(
+                {'detail': _SITUATION_FIGEE_MSG},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        # Ceinture ET bretelles : même défense pour tout appelant interne qui
+        # court-circuiterait ``destroy`` (action groupée future, script).
+        if instance.statut != SituationTravaux.Statut.BROUILLON:
+            raise DRFValidationError({'detail': _SITUATION_FIGEE_MSG})
+        return super().perform_destroy(instance)
 
     @action(detail=True, methods=['post'], url_path='ajouter-ligne')
     def ajouter_ligne(self, request, pk=None):
@@ -3029,6 +3072,11 @@ class LigneSituationViewSet(_GestionProjetBaseViewSet):
     serveur (``montant_cumule``/``montant_periode`` restent à leur défaut 0) —
     préférer ``situations/<id>/ajouter-ligne/`` qui délègue à
     ``services.ajouter_ligne_situation``. Filtre optionnel ``?situation=<id>``.
+
+    AUD177 — garde SYMÉTRIQUE à celle de ``SituationTravauxViewSet`` : dès que
+    la situation porteuse n'est plus BROUILLON, ses lignes sont gelées (ni
+    DELETE ni PATCH/PUT) — sinon le détail justifiant la facture d'acompte
+    déjà émise pourrait être réécrit ou effacé après coup.
     """
     queryset = LigneSituation.objects.select_related('situation').all()
     serializer_class = LigneSituationSerializer
@@ -3041,6 +3089,22 @@ class LigneSituationViewSet(_GestionProjetBaseViewSet):
         if situation:
             qs = qs.filter(situation_id=situation)
         return qs
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.situation.statut != SituationTravaux.Statut.BROUILLON:
+            return Response(
+                {'detail': _LIGNE_SITUATION_FIGEE_MSG},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.situation.statut != SituationTravaux.Statut.BROUILLON:
+            return Response(
+                {'detail': _LIGNE_SITUATION_FIGEE_MSG},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
 
 
 class RecurrenceTacheViewSet(_GestionProjetBaseViewSet):

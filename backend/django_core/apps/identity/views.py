@@ -44,15 +44,41 @@ class IpAllowRuleViewSet(CompanyScopedModelViewSet):
     serializer_class = IpAllowRuleSerializer
     permission_classes = [IsAdminRole]
 
-    def perform_create(self, serializer):
+    def _company_apres_controle_policy(self, serializer):
+        """AUD406 — la politique référencée doit appartenir à la société de
+        l'appelant (jamais rattacher une règle à la politique d'un autre
+        tenant). Renvoie la société à forcer, ou lève une 400.
+
+        Sur une mise à jour PARTIELLE qui ne touche pas ``policy``, on retombe
+        sur la politique actuelle de la règle : le contrôle reste donc exact
+        sans transformer un PATCH légitime de ``cidr`` en 400.
+        """
         company = self.request.user.company
         policy = serializer.validated_data.get('policy')
-        # La politique référencée doit appartenir à la société de l'appelant
-        # (jamais rattacher une règle à la politique d'un autre tenant).
-        if policy is None or policy.company_id != company.id:
+        if policy is None:
+            policy = getattr(serializer.instance, 'policy', None)
+        if policy is None or company is None \
+                or policy.company_id != company.id:
             raise DRFValidationError(
                 {'policy': 'Politique inconnue pour votre société.'})
-        serializer.save(company=company)
+        return company
+
+    def perform_create(self, serializer):
+        serializer.save(company=self._company_apres_controle_policy(serializer))
+
+    def perform_update(self, serializer):
+        """AUD406 — le MÊME contrôle qu'à la création, qui n'existait qu'là.
+
+        Sans lui, ``TenantMixin.perform_update`` se contentait de
+        ``serializer.save(company=…)`` sans revalider ``policy`` (champ non
+        ``read_only``), et ``IpAllowRule.save()`` exclut explicitement ``policy``
+        de son ``full_clean()`` : un Administrateur de A créait sa règle (POST
+        validé) puis la PATCHait vers la politique de B avec ``0.0.0.0/0`` — la
+        règle lui appartenait toujours, donc rien ne s'y opposait, mais en mode
+        ``enforce`` elle autorisait N'IMPORTE QUELLE IP pour B (contournement
+        total de son allowlist réseau).
+        """
+        serializer.save(company=self._company_apres_controle_policy(serializer))
 
 
 class TrustedDeviceViewSet(TenantMixin,

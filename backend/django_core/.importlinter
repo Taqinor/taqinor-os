@@ -45,7 +45,6 @@ modules =
 # DIRECT cross-domain `X.models -> Y.models` import is a separate edge and stays
 # caught.
 ignore_imports =
-    apps.ventes.models -> apps.ventes.selectors
     apps.sav.models -> apps.sav.selectors
     apps.crm.models -> apps.crm.services
 # ODX17 — `apps.ventes.models` ends with a transitional RE-EXPORT shim
@@ -91,6 +90,18 @@ ignore_imports =
 # toujours détecté. Même motif exact que les exceptions `cpq.selectors`.
     apps.ventes.domain.argent -> apps.ventes.selectors
     apps.ventes.domain.argent -> apps.ventes.utils.options
+# AUD105-107 (2026-09-06) — le mixin partagé `apps.facturation.totaux`
+# (TotauxDocumentMixin, remise globale honnête sur les 3 documents) délègue
+# LAZILY son calcul à `ventes.selectors._canonical_totaux`/`tva_buckets`
+# (imports function-local dans `_canonique`/`tva_par_taux` — vérifié : aucun
+# import de selectors au chargement du module). C'est la MÊME couche
+# selector qui traverse légitimement les domaines ; on élague cette seule
+# arête. L'arête d'entrée `ventes.models -> facturation.totaux` reste
+# visible : un mixin qui importerait un jour un modèle d'un autre domaine
+# serait toujours détecté. Remplace l'ancienne entrée
+# `apps.facturation.models -> apps.ventes.selectors` (l'import a déménagé de
+# models.py vers totaux.py avec le mixin).
+    apps.facturation.totaux -> apps.ventes.selectors
 
 [importlinter:contract:installations-split-models-decoupled]
 name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
@@ -207,15 +218,14 @@ forbidden_modules =
     apps.sav.models
     apps.installations.models
     apps.compta.models
-# ODX17 — Facture/Avoir (déplacées ici depuis ventes) délèguent LAZILY leur
-# calcul TVA au selector partagé `ventes.selectors.tva_buckets/_canonical_totaux`
-# (function-local import dans les properties `total_ht`/`tva_par_taux`/
-# `total_ttc`, exactement le patron déjà toléré pour
-# `apps.ventes.models -> apps.ventes.selectors` ci-dessus). Ignore uniquement
-# cette arête d'entrée ; un import DIRECT `apps.facturation.models ->
-# apps.ventes.models` resterait détecté.
+# ODX17 / AUD105-107 — Facture/Avoir délèguent LAZILY leur calcul TVA au
+# selector partagé `ventes.selectors.tva_buckets/_canonical_totaux`, désormais
+# via le mixin `apps.facturation.totaux` (l'import function-local a déménagé de
+# models.py vers totaux.py avec TotauxDocumentMixin, 2026-09-06). Ignore
+# uniquement cette arête de couche selector ; un import DIRECT
+# `apps.facturation.models -> apps.ventes.models` resterait détecté.
 ignore_imports =
-    apps.facturation.models -> apps.ventes.selectors
+    apps.facturation.totaux -> apps.ventes.selectors
 
 [importlinter:contract:achats-models-decoupled]
 name = Achats models never import a business-core domain's models (string FKs only — ODX19)

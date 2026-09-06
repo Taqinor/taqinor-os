@@ -213,6 +213,17 @@ no table is dropped by this decision; it is reversible by removing one mixin.
    `models_program.py` + its tests. Not before — a table drop is the only irreversible
    step in the sequence, so it stays a separate, explicit task.
 
+   **Fields to migrate/clean before this drop (AUD328, 2026-09-02).** The freeze in phase 1
+   did not stop new FKs onto the frozen `installations.Projet`: besides the original
+   `installations.DemandeAchat.programme` (FG310, pre-freeze), a second one was added
+   *after* the freeze — `installations.RegleApprobationAchat.programme`
+   (`models_approbation_achat.py`, migration 0102, NTP2P2). Neither
+   `RegleApprobationAchatViewSet` nor `DemandeAchatViewSet` is in the deprecated
+   `PROGRAMME_ROUTES` list, so nothing currently signals to a user that either points at a
+   frozen system. Both fields must be migrated (repointed at `gestion_projet`'s loose
+   `projet_id` style, per phase 2) or explicitly nulled out before `installations.Projet`
+   can actually be dropped — do not drop the table while either FK still references it.
+
 **Which fields survive the merge.** `gestion_projet.Projet` lacks a few things
 `installations.Projet` carried (`site_adresse`/`site_ville`, a real `client` FK, and the
 flat `BudgetProjet` envelope `budget_materiel`/`budget_main_oeuvre`/

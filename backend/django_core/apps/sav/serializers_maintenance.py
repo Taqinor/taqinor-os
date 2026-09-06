@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
@@ -9,6 +10,12 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     prochaine_visite = serializers.SerializerMethodField()
     due = serializers.SerializerMethodField()
     renouvellement_du = serializers.SerializerMethodField()
+    # AUD502/D13 — expiration réelle du contrat (date_debut + duree_mois) et
+    # sa fenêtre de grâce de 30 jours, exposées à l'écran de renouvellement.
+    date_expiration = serializers.SerializerMethodField()
+    expire = serializers.SerializerMethodField()
+    en_periode_grace = serializers.SerializerMethodField()
+    a_renouveler = serializers.SerializerMethodField()
     # FG40 — facturation récurrente.
     prochaine_facturation = serializers.SerializerMethodField()
     facturation_due = serializers.SerializerMethodField()
@@ -22,6 +29,9 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
         fields = ['id', 'client', 'client_nom', 'installation', 'periodicite',
                   'date_debut', 'derniere_visite', 'prix', 'actif', 'notes',
                   'duree_mois', 'date_renouvellement', 'renouvellement_du',
+                  # AUD502 — échéance duree_mois + grâce 30 j.
+                  'date_expiration', 'expire', 'en_periode_grace',
+                  'a_renouveler',
                   'prochaine_visite', 'due',
                   # FG40
                   'facturation_active', 'derniere_facturation',
@@ -70,6 +80,28 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
 
     def get_renouvellement_du(self, obj):
         return obj.renouvellement_du()
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_date_expiration(self, obj):
+        """AUD502 — échéance = date_debut + duree_mois (None si sans durée)."""
+        expiration = obj.date_expiration()
+        return expiration.isoformat() if expiration else None
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_expire(self, obj):
+        """AUD502 — échéance dépassée (grâce non comprise)."""
+        return obj.est_expire()
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_en_periode_grace(self, obj):
+        """AUD502 — expiré mais encore couvrant (grâce 30 j) : à renouveler
+        d'urgence, la couverture tombe à la fin de la fenêtre."""
+        return obj.en_periode_grace()
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_a_renouveler(self, obj):
+        """AUD502 — date de renouvellement atteinte OU échéance dépassée."""
+        return obj.a_renouveler()
 
     def get_prochaine_facturation(self, obj):
         """Date du prochain cycle de facturation (FG40)."""

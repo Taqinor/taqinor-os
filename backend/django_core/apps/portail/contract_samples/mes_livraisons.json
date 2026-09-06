@@ -1,0 +1,40 @@
+{
+  "endpoint": "GET /api/django/portail/mes-livraisons/",
+  "pourquoi": "AUD147 — liste « Mes livraisons » du portail client authentifié (WIR216/XSTK22), servie par MesLivraisonsPortailViewSet.list via apps.installations.selectors.livraisons_client_portail. Le client est dérivé du compte CONNECTÉ, jamais d'un paramètre. Contrat client-safe : ni cout_transport ni prix d'achat n'y figurent, et les articles ne portent QUE désignation + quantité. `pod_disponible` décide seul de l'affichage de la preuve de livraison côté écran (frontend/src/features/portail/client/PortailClientLivraisons.jsx) ; `pod_url` pointe la route PORTAIL de la preuve (AUD301) — l'écran ne le rend PLUS en lien brut : ce chemin renvoie un DOCUMENT JSON (voir mes_livraisons_preuve.json), pas un fichier, et l'ancien lien pointait l'endpoint INTERNE /installations/preuves-livraison/<id>/ dont IsAnyRole exclut explicitement portee != 'interne' (403 garanti pour tout compte portail, sur son propre document). Enveloppe NON paginée : un objet {results: [...]}.",
+  "exemple": {
+    "results": [
+      {
+        "id": 42,
+        "reference": "LIV-2026-0042",
+        "chantier_id": 17,
+        "date_prevue": "2026-09-01",
+        "statut": "livree",
+        "statut_display": "Livrée",
+        "numero_suivi": "AMANA-778812",
+        "articles": [
+          {"designation": "Panneau JA Solar 550 Wc", "quantite": 18},
+          {"designation": "Onduleur Deye SUN-8K-SG05LP3", "quantite": 1}
+        ],
+        "pod_disponible": true,
+        "pod_url": "/api/django/portail/mes-livraisons/42/preuve/"
+      },
+      {
+        "id": 43,
+        "reference": "LIV-2026-0043",
+        "chantier_id": 17,
+        "date_prevue": "2026-09-15",
+        "statut": "planifiee",
+        "statut_display": "Planifiée",
+        "numero_suivi": null,
+        "articles": [
+          {"designation": "Coffret AC/DC", "quantite": 1}
+        ],
+        "pod_disponible": false,
+        "pod_url": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "results": []
+  }
+}

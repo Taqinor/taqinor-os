@@ -175,3 +175,63 @@ class FacturerTempsApiTests(TestCase):
             f'{self.BASE}{self.projet.id}/facturer-temps/',
             {'debut': '2026-08-01', 'fin': '2026-08-31'}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+
+class ProjetAnnuleNonFacturableTests(TestCase):
+    """AUD179 — un projet ANNULÉ n'est plus facturable en régie.
+
+    ``facturer_temps_projet`` filtrait company/projet/statut de timesheet/
+    dates mais ne lisait JAMAIS ``projet.statut`` : un chantier abandonné pour
+    litige consommait une référence FAC réelle et marquait ses timesheets
+    ``facture_id`` de façon irréversible.
+    """
+    BASE = '/api/django/gestion-projet/projets/'
+
+    def setUp(self):
+        self.co = make_company('gp-regie-annule', 'X')
+        self.client_crm = Client.objects.create(
+            company=self.co, nom='Client annulé')
+        self.user = make_user(self.co, 'regie-annule')
+        self.projet = Projet.objects.create(
+            company=self.co, code='P-ANN', nom='X',
+            client_id=self.client_crm.id)
+        self.res = RessourceProfil.objects.create(company=self.co, nom='R')
+        self.ts = Timesheet.objects.create(
+            company=self.co, projet=self.projet, ressource=self.res,
+            date=date(2026, 8, 5), heures=Decimal('3'),
+            statut=Timesheet.Statut.APPROUVEE, facturable=True,
+            taux_facturation=Decimal('250'))
+
+    def _annuler(self):
+        self.projet.statut = Projet.Statut.ANNULE
+        self.projet.save(update_fields=['statut'])
+
+    def test_service_refuse_projet_annule(self):
+        self._annuler()
+        with self.assertRaises(services.FacturationRegieError):
+            services.facturer_temps_projet(
+                self.projet, debut=date(2026, 8, 1), fin=date(2026, 8, 31),
+                user=self.user)
+        self.ts.refresh_from_db()
+        self.assertIsNone(self.ts.facture_id)
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 0)
+
+    def test_endpoint_refuse_projet_annule_400(self):
+        self._annuler()
+        api = auth(self.user)
+        resp = api.post(
+            f'{self.BASE}{self.projet.id}/facturer-temps/',
+            {'debut': '2026-08-01', 'fin': '2026-08-31'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.ts.refresh_from_db()
+        self.assertIsNone(self.ts.facture_id)
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 0)
+
+    def test_projet_actif_reste_facturable(self):
+        api = auth(self.user)
+        resp = api.post(
+            f'{self.BASE}{self.projet.id}/facturer-temps/',
+            {'debut': '2026-08-01', 'fin': '2026-08-31'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.ts.refresh_from_db()
+        self.assertIsNotNone(self.ts.facture_id)

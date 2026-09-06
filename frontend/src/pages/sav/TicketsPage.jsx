@@ -898,6 +898,24 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       setActionError(frError(err, 'Impossible de générer la facture.'))
     } finally { setFactureBusy(false) }
   }
+  // AUD529 — escalade en réclamation formelle (apps.litiges). Idempotent
+  // côté serveur : un ticket déjà escaladé renvoie son dossier existant.
+  const [reclamationBusy, setReclamationBusy] = useState(false)
+  const escaladerEnReclamation = async () => {
+    setActionError(null)
+    setReclamationBusy(true)
+    try {
+      const r = await savApi.escaladerTicketEnReclamation(id)
+      toast.success(r.data?.cree
+        ? `Réclamation #${r.data?.reclamation_id} ouverte`
+        : `Réclamation #${r.data?.reclamation_id} déjà ouverte`)
+      setCurrent((c) => ({ ...c, reclamation_id_ext: r.data?.reclamation_id }))
+      loadHistorique()
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, "Impossible d'escalader ce ticket."))
+    } finally { setReclamationBusy(false) }
+  }
   const facturer = async () => {
     setActionError(null)
     setFactureBusy(true)
@@ -1596,6 +1614,21 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <Button type="button" variant="outline" onClick={telechargerRapport}>
             <FileText /> Rapport d'intervention (PDF)
           </Button>
+          {/* AUD529 — escalade SAV → réclamation formelle (litiges). Le
+              chemin documenté n'existait pas : un ticket grave imposait une
+              re-saisie manuelle. Jamais proposé sur un ticket annulé. */}
+          {!current.annule && (
+            current.reclamation_id_ext ? (
+              <Badge tone="warning">
+                Réclamation #{current.reclamation_id_ext}
+              </Badge>
+            ) : (
+              <Button type="button" variant="outline" loading={reclamationBusy}
+                      onClick={escaladerEnReclamation}>
+                <AlertTriangle /> Escalader en réclamation
+              </Button>
+            )
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>
         </FormActions>

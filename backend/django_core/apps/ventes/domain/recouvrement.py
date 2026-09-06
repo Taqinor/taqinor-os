@@ -72,6 +72,26 @@ def reset_relance_escalation(facture):
     return changed
 
 
+def _rouvrir_facture_apres_rejet(facture):
+    """YLEDG5/AUD104 — recalcule le statut d'une facture après un rejet.
+
+    Reste dû > 0 → repasse ÉMISE (ou EN_RETARD si l'échéance est déjà
+    dépassée) ; jamais « payée » ni « annulée » — les états terminaux sont
+    préservés à part la réouverture. Idempotent."""
+    from django.utils import timezone
+    from ..models import Facture
+
+    facture.refresh_from_db()
+    if facture.statut == Facture.Statut.ANNULEE or facture.montant_du <= 0:
+        return
+    today = timezone.now().date()
+    if facture.date_echeance and facture.date_echeance < today:
+        facture.statut = Facture.Statut.EN_RETARD
+    else:
+        facture.statut = Facture.Statut.EMISE
+    facture.save(update_fields=['statut'])
+
+
 class PaiementRejectError(Exception):
     """YLEDG5 — erreur métier au rejet d'un paiement (message + conflict)."""
 
@@ -96,7 +116,7 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
     rejet)."""
     from django.utils import timezone
     from django.db import transaction
-    from ..models import Facture, Paiement
+    from ..models import Paiement
     from core.events import paiement_rejete
 
     motif = (motif or '').strip()
@@ -116,20 +136,24 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
 
         facture = paiement.facture
         if facture is not None:
-            facture.refresh_from_db()
-            # Rouvre la facture : reste dû > 0 → repasse émise (ou en
-            # retard si l'échéance est déjà dépassée), jamais « payée » ni
-            # « annulée » (états terminaux préservés à part la réouverture).
-            if facture.statut not in (
-                    Facture.Statut.ANNULEE,) and facture.montant_du > 0:
-                today = timezone.now().date()
-                if facture.date_echeance and facture.date_echeance < today:
-                    facture.statut = Facture.Statut.EN_RETARD
-                else:
-                    facture.statut = Facture.Statut.EMISE
-                facture.save(update_fields=['statut'])
+            _rouvrir_facture_apres_rejet(facture)
             from .. import activity
             activity.log_facture_paiement_rejete(facture, user, paiement, motif)
+        else:
+            # AUD104 — CAS DE L'AVANCE (``facture`` vide, le cas NORMAL d'un
+            # règlement reçu sans facture : ``ventiler_avance`` refuse de
+            # ventiler un paiement déjà rattaché). Le rejet ne touchait alors
+            # RIEN : les factures que l'avance avait soldées restaient PAYÉES
+            # avec l'argent d'un chèque revenu impayé. On recalcule chaque
+            # facture servie par ses affectations et on ré-arme ses relances.
+            for affectation in paiement.affectations.select_related('facture'):
+                touchee = affectation.facture
+                if touchee is None:
+                    continue
+                _rouvrir_facture_apres_rejet(touchee)
+                from .. import activity
+                activity.log_facture_paiement_rejete(
+                    touchee, user, paiement, motif)
 
         paiement_rejete.send(
             sender=Paiement, paiement=paiement, facture=facture,
@@ -167,15 +191,21 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     facture.abandon_auto = bool(auto)
     facture.abandon_par = user if (
         user and getattr(user, 'is_authenticated', False)) else None
-    facture.statut = Facture.Statut.PAYEE
     facture.save(update_fields=[
         'abandon_motif', 'abandon_montant', 'abandon_date', 'abandon_auto',
-        'abandon_par', 'statut',
+        'abandon_par',
     ])
+    # AUD102 (P7) — la bascule PAYÉE passe par LE service unique. ``force`` :
+    # un abandon de créance SOLDE sans encaisser (le résiduel reste dû au sens
+    # de ``montant_du``), c'est l'un des deux seuls gestes délibérés autorisés
+    # à sauter la garde centime-près. Ce chemin n'émettait que ``facture_paid``
+    # via ses appelants, jamais ``facture_payee`` — donc aucun lettrage compta.
+    from .encaissements import marquer_facture_soldee
+    marquer_facture_soldee(
+        facture, montant=reste, user=user, source='abandon_solde', force=True)
     from .. import activity
     motif_label = dict(Facture.MotifAbandon.choices).get(motif, motif)
     activity.log_facture_abandon(facture, user, reste, motif_label, auto=auto)
-    reset_relance_escalation(facture)
     return reste
 
 

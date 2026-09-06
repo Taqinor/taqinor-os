@@ -37,6 +37,30 @@ const portailApi = {
   // installations.livraisons_client_portail).
   livraisons: {
     liste: () => api.get('/portail/mes-livraisons/'),
+    // AUD147/AUD301 — la preuve de livraison (POD) se LIT par l'API portail
+    // scopée au client connecté. L'écran ne rend plus `pod_url` en lien brut :
+    // ce chemin renvoie un DOCUMENT (signataire, tracé de signature,
+    // horodatage, photo), pas un fichier — un `<a href>` n'affichait que du
+    // JSON. L'ancien lien pointait, lui, l'endpoint INTERNE
+    // `/installations/preuves-livraison/<id>/` (403 garanti hors portée
+    // interne).
+    preuve: (id) => api.get(`/portail/mes-livraisons/${id}/preuve/`),
+  },
+  // AUD525 — « Mes demandes SAV » (FG233) : la surface CLIENT, jusqu'ici
+  // inexistante (le seul ViewSet était gardé `IsResponsableOrAdmin`, refusé à
+  // tout rôle portail — code mort). La société et le client viennent du
+  // compte connecté, jamais du corps. `suggestionsKb`/`consulterArticleKb`
+  // sont la déflection KB (XSAV22) pendant la saisie, désormais servie au
+  // vrai client et à lui seul.
+  demandesSav: {
+    liste: () => api.get('/portail/mes-demandes-sav/'),
+    detail: (id) => api.get(`/portail/mes-demandes-sav/${id}/`),
+    creer: (payload) => api.post('/portail/mes-demandes-sav/', payload),
+    suggestionsKb: (q) =>
+      api.get('/portail/mes-demandes-sav/suggestions-kb/', { params: { q } }),
+    consulterArticleKb: (articleId) =>
+      api.post('/portail/mes-demandes-sav/consulter-article-kb/',
+        { article_id: articleId }),
   },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au

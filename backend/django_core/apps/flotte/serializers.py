@@ -103,6 +103,15 @@ class VehiculeSerializer(serializers.ModelSerializer):
         return obj.checklist_mise_en_service_ok()
 
     def get_emplacement_stock_label(self, obj):
+        # AUD729 — ``VehiculeViewSet.list`` précharge TOUS les libellés de
+        # la page en un seul appel groupé et les pose dans le contexte
+        # (``emplacement_labels``) : on les réutilise ICI plutôt que de
+        # requêter la DB une fois par véhicule (N+1 réel). Absent du
+        # contexte (retrieve/create/update) → dégrade sur le sélecteur
+        # unitaire, comportement inchangé.
+        labels = self.context.get('emplacement_labels')
+        if labels is not None:
+            return labels.get(obj.emplacement_stock_id)
         from .selectors import emplacement_stock_label
         return emplacement_stock_label(
             obj.company, obj.emplacement_stock_id)

@@ -52,6 +52,24 @@ def _transitions():
     }
 
 
+def _transitions_systeme():
+    """AUD514 — transitions RÉSERVÉES aux automatismes serveur, jamais
+    offertes à un humain (``statuts_suivants`` ne les liste pas, l'écran SAV
+    continue donc de refuser le saut).
+
+    Une seule aujourd'hui : NOUVEAU/PLANIFIE → RESOLU, quand une
+    ``Intervention`` liée passe à TERMINEE/VALIDEE (``receivers.
+    _avancer_ticket_on_intervention_completed``). Le terrain fait foi — le
+    travail a été réalisé même si personne n'a pris la peine de passer le
+    ticket en cours — mais le saut est désormais DÉCLARÉ ici et tracé au
+    chatter, au lieu d'être une écriture directe qui contournait le graphe."""
+    S = _statuts()
+    return {
+        S.NOUVEAU: {S.RESOLU},
+        S.PLANIFIE: {S.RESOLU},
+    }
+
+
 class _TransitionsProxy:
     """Proxy dict-like, résolu paresseusement au premier accès (même patron
     que ``apps/contrats/machine_etats.py``)."""
@@ -80,17 +98,26 @@ def statuts_suivants(ticket):
     return sorted(_transitions().get(ticket.statut, set()))
 
 
-def transition_permise(statut_courant, statut_cible):
-    """``True`` si ``statut_courant → statut_cible`` est dans le graphe."""
-    return statut_cible in _transitions().get(statut_courant, set())
+def transition_permise(statut_courant, statut_cible, *, systeme=False):
+    """``True`` si ``statut_courant → statut_cible`` est dans le graphe.
+
+    ``systeme=True`` (AUD514) ajoute les transitions automatiques déclarées
+    dans ``_transitions_systeme`` — réservées aux automatismes serveur."""
+    permis = set(_transitions().get(statut_courant, set()))
+    if systeme:
+        permis |= _transitions_systeme().get(statut_courant, set())
+    return statut_cible in permis
 
 
-def changer_statut(ticket, statut_cible, *, persister=True):
+def changer_statut(ticket, statut_cible, *, persister=True, systeme=False):
     """Applique une transition de statut GARDÉE sur ``ticket``.
 
     - Refuse (``TransitionInterdite``) toute transition hors du graphe.
     - Une transition vers le même statut est un no-op (autorisé, sans écriture).
     - Si ``persister`` (défaut), sauvegarde le seul champ ``statut``.
+    - ``systeme=True`` (AUD514) autorise EN PLUS les transitions automatiques
+      déclarées (``_transitions_systeme``) : réservé aux récepteurs/tâches
+      serveur, jamais à une action utilisateur.
 
     Renvoie le ticket (statut mis à jour). N'écrit PAS le chatter/SLA/
     notifications — laissé à l'appelant (la vue), comme pour ``Contrat``."""
@@ -98,7 +125,7 @@ def changer_statut(ticket, statut_cible, *, persister=True):
     if statut_cible == statut_courant:
         return ticket
 
-    if not transition_permise(statut_courant, statut_cible):
+    if not transition_permise(statut_courant, statut_cible, systeme=systeme):
         raise TransitionInterdite(
             f"Transition de statut interdite : "
             f"« {statut_courant} » → « {statut_cible} ». "

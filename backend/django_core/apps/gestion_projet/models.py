@@ -2451,6 +2451,15 @@ class LigneSituation(models.Model):
         verbose_name = 'Ligne de situation'
         verbose_name_plural = 'Lignes de situation'
         ordering = ['situation', 'id']
+        constraints = [
+            # AUD178 — un lot n'apparaît qu'UNE fois par situation : sans cet
+            # invariant, un rappel de ``ajouter-ligne`` sur le même libellé
+            # (le flux naturel pour CORRIGER un avancement) créait un doublon
+            # que ``valider_situation`` facturait deux fois.
+            models.UniqueConstraint(
+                fields=['situation', 'libelle'],
+                name='gp_lignesit_situation_libelle_uniq'),
+        ]
         indexes = [
             models.Index(
                 fields=['situation'], name='gp_lignesit_situation_idx'),
