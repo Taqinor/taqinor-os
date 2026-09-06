@@ -73,8 +73,19 @@ const crmApi = {
   getRelanceEtapesDues: (params, config) =>
     api.get('/crm/relance-etapes/', { params, ...config }),
   // Initialise (à la demande) le plan de relance d'un lead à partir de la
-  // cadence par défaut de la société — idempotent (ré-appel = pas de doublon).
-  initialiserRelance: (leadId) => api.post(`/crm/leads/${leadId}/relance/initialiser/`),
+  // cadence par défaut de la société — idempotent PAR CADENCE (ré-appel = pas
+  // de doublon). MRY15 — `payload` optionnel `{cadence}` (contact/après
+  // devis/réveil), défaut serveur = 'contact'.
+  initialiserRelance: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/relance/initialiser/`, payload || {}),
+  // MRY15 — frise de la fiche lead : TOUTES les étapes du lead (tous statuts,
+  // toutes cadences), tri serveur cadence puis ordre (`?lead=` de MRY5).
+  getRelanceEtapesLead: (leadId) =>
+    api.get('/crm/relance-etapes/', { params: { lead: leadId, scope: 'lead' } }),
+  // MRY9/MRY15 — arrête la ou les cadences en cours du lead. `motif`
+  // OBLIGATOIRE côté serveur (400 sinon) ; `cadences` optionnel (liste).
+  arreterCadence: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/relance/arreter/`, payload),
   // MRY14 — `payload` accepte soit une simple note (compat historique), soit
   // l'objet complet {note?, outcome?, body?, rappel_le?, rappel_heure?} du
   // mini-formulaire « Fait » (MRY10 : `outcome` déclenche les règles d'arrêt
