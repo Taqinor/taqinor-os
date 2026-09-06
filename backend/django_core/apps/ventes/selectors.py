@@ -406,14 +406,21 @@ def tva_buckets(lignes, *, fallback_taux, frozen=None):
     for ligne in lignes:
         rate = Decimal(str(ligne.taux_tva_effectif))
         buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
-    if len(buckets) <= 1:
-        rate = next(iter(buckets), Decimal(str(fallback_taux)))
-        base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
-        return [{'taux': rate, 'base_ht': base,
-                 'montant': base * rate / Decimal('100')}]
 
     def q(x):
         return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    if len(buckets) <= 1:
+        rate = next(iter(buckets), Decimal(str(fallback_taux)))
+        base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
+        # AUD189 — LA MÊME POLITIQUE QUE LA CHAÎNE CANONIQUE. Cette branche
+        # rendait `base × taux` NON quantifié, en déléguant l'arrondi à
+        # l'affichage : DEUX chaînes d'arrondi coexistaient donc sur la MÊME
+        # facture (celle-ci et `_canonical_totaux`, qui quantifie en
+        # ROUND_HALF_UP). La branche multi-taux ci-dessous quantifiait déjà ;
+        # seul le mono-taux ne le faisait pas. Une seule politique, partout.
+        return [{'taux': rate, 'base_ht': q(base),
+                 'montant': q(base * rate / Decimal('100'))}]
     return [
         {'taux': rate, 'base_ht': q(buckets[rate]),
          'montant': q(buckets[rate] * rate / Decimal('100'))}

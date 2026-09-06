@@ -194,5 +194,77 @@ class TestBaseDeReference(unittest.TestCase):
         self.assertEqual(a_relire, [], "raison placeholder non completee")
 
 
+QUANTIZE_SANS_MODE_SRC = '''\
+from decimal import Decimal
+
+
+def dotation(base, duree):
+    montant = Decimal(base) / Decimal(duree)
+    return montant.quantize(Decimal('0.01'))
+'''
+
+QUANTIZE_AVEC_MODE_SRC = '''\
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def dotation(base, duree):
+    montant = Decimal(base) / Decimal(duree)
+    return montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+'''
+
+QUANTIZE_ET_ROUND_MEME_EXPR_SRC = '''\
+from decimal import Decimal
+
+
+def deux_arrondis(total_ht):
+    a = round(total_ht, 2)
+    b = total_ht.quantize(Decimal('0.01'))
+    return a, b
+'''
+
+
+class TestDetecteurQuantize(unittest.TestCase):
+    """AUD189 -- le second detecteur : `.quantize(...)` sans `rounding=`."""
+
+    def test_quantize_sans_rounding_est_vu(self):
+        sites = cmr.collect_sites(QUANTIZE_SANS_MODE_SRC, MODULE_A)
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0].kind, "quantize")
+        self.assertEqual(sites[0].qualname, "dotation")
+        self.assertEqual(sites[0].expr, "montant")
+
+    def test_quantize_avec_rounding_est_ignore(self):
+        self.assertEqual(
+            cmr.collect_sites(QUANTIZE_AVEC_MODE_SRC, MODULE_A), [])
+
+    def test_round_et_quantize_sur_la_meme_expression_ne_se_confondent_pas(self):
+        sites = cmr.collect_sites(QUANTIZE_ET_ROUND_MEME_EXPR_SRC, MODULE_A)
+        self.assertEqual(len(sites), 2)
+        self.assertEqual({s.kind for s in sites}, {"round", "quantize"})
+        self.assertEqual(len({s.key for s in sites}), 2)
+
+    def test_la_cle_des_sites_round_est_inchangee_par_aud189(self):
+        """La base livree (170 lignes) ne doit PAS se perimer : la graine des
+        sites `round()` reste l'expression NUE, sans sel de type."""
+        site = cmr.collect_sites(BASE_SRC, MODULE_A)[0]
+        attendu = (f"{MODULE_A}::facturer::"
+                   f"{cmr.content_sha('total_ht')}")
+        self.assertEqual(site.key, attendu)
+
+    def test_reintroduction_d_un_quantize_nu_est_rouge(self):
+        sites = cmr.collect_sites(QUANTIZE_SANS_MODE_SRC, MODULE_A)
+        offenders, orphans = cmr.evaluate(sites, set())
+        self.assertEqual(len(offenders), 1)
+        self.assertEqual(orphans, [])
+
+    def test_reprise_livree_porte_sa_raison(self):
+        entrees = cmr.load_allowlist()
+        reprises = [k for k, raison in entrees.items()
+                    if raison == cmr.QUANTIZE_REPRISE_REASON]
+        self.assertTrue(
+            reprises,
+            "la base livree doit porter les sites quantize de reprise AUD189")
+
+
 if __name__ == "__main__":
     unittest.main()
