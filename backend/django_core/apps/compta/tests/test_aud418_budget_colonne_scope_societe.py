@@ -58,8 +58,13 @@ class BudgetColonneScopeSocieteTests(TestCase):
 
         self.etat = services.creer_etat_personnalise(
             self.victime, libelle='État',
+            # Grammaire XACC19 (`selectors._parser_formule`) : un terme = un
+            # signe `+`/`-` SUIVI d'un préfixe de compte. « 6 » tout court est
+            # refusé à la création ; le terme est « +6 ». (La colonne budget
+            # n'évalue de toute façon aucune formule — elle agrège les
+            # `BudgetLigne` — mais l'état doit être créable.)
             lignes=[{'libelle': 'Charges', 'type_ligne': 'total',
-                     'formule': '6'}],
+                     'formule': '+6'}],
             colonnes=[{'libelle': 'Budget', 'type_colonne': 'budget',
                        'budget': self.budget_victime}])
         self.colonne = self.etat.colonnes.get()
