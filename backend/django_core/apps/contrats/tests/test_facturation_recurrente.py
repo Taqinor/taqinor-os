@@ -207,6 +207,71 @@ class LigneFactureEcheanceTests(TestCase):
             Produit.objects.filter(company=self.co, sku='CTR-ECH').count(), 1)
 
 
+class DebitMandatXctr22Tests(TestCase):
+    """AUDV18 — branchement additif XCTR22 : ``facturer_ligne_echeance`` doit
+    tenter le débit du mandat de prélèvement actif du client juste après
+    avoir émis la facture d'échéance.
+
+    ROUGE avant ce correctif : ``debiter_mandat_pour_facture`` existait et
+    était testé isolément (``ventes/tests/test_xctr22_mandat_paiement.py``),
+    mais son propre docstring précisait qu'elle devait être « appelée depuis
+    »``creer_facture_contrat``/``facturer_ligne_echeance`` — et aucun des deux
+    ne l'appelait : un client ayant donné mandat restait facturé sans être
+    JAMAIS prélevé automatiquement.
+    """
+
+    def setUp(self):
+        self.co = make_company("facrec-mandat", "FacRecMandat")
+        self.user = make_user(self.co, "facrec-mandat-admin", role="admin")
+
+    def _mandat(self, client, **extra):
+        from apps.ventes.models import MandatPaiement
+        defaults = dict(
+            company=self.co, client=client, provider='mock_tokenized',
+            token='TOK-CTR22', derniers_chiffres='4242',
+            expiration_mois='12/2028', statut=MandatPaiement.Statut.ACTIF,
+            consentement_horodate=timezone.now())
+        defaults.update(extra)
+        return MandatPaiement.objects.create(**defaults)
+
+    def test_facturation_echeance_debite_le_mandat_actif(self):
+        from apps.ventes.models import Paiement, TentativeDebitMandat
+        contrat, _, ligne = make_setup(self.co, montant="1200")
+        # AUD818/CLAUDE.md — `Contrat.client_id` est une référence LÂCHE (un
+        # simple entier, jamais un FK dur) : le client réel se résout par id,
+        # jamais via un attribut `.client` qui n'existe pas sur ce modèle.
+        client = Client.objects.get(pk=contrat.client_id)
+        self._mandat(client)
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        paiement = Paiement.objects.get(facture=facture)
+        self.assertEqual(paiement.montant, Decimal("1200.00"))
+        self.assertEqual(paiement.mode, Paiement.Mode.CARTE)
+        tentative = TentativeDebitMandat.objects.get(
+            mandat__client=client, periode=ligne.date_echeance.isoformat())
+        self.assertEqual(
+            tentative.statut, TentativeDebitMandat.Statut.REUSSI)
+
+    def test_sans_mandat_actif_comportement_inchange(self):
+        from apps.ventes.models import Paiement
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.EMISE)
+        self.assertFalse(Paiement.objects.filter(facture=facture).exists())
+
+    def test_provider_en_echec_ne_bloque_pas_la_facturation(self):
+        """Un débit qui échoue (token refusé par le mock) ne fait JAMAIS
+        échouer la facturation elle-même — best-effort."""
+        contrat, _, ligne = make_setup(self.co, montant="1200")
+        client = Client.objects.get(pk=contrat.client_id)
+        self._mandat(client, token='FAIL')
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.EMISE)
+
+
 class IdempotenceVerrouLigneTests(TestCase):
     """AUD183 — clé d'idempotence : verrou en base sur la LigneEcheance.
 

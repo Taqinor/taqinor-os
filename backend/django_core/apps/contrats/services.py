@@ -2551,6 +2551,21 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=None):
         new_value=f'Facture {facture.reference} (échéance n°{ligne.numero})',
         message='Facturation récurrente d\'une échéance.', auteur=user)
 
+    # XCTR22 (AUDV18) — branchement ADDITIF : tente le débit du mandat de
+    # prélèvement actif du client sur cette échéance, via la porte publique
+    # de ventes (jamais ses modèles — frontière cross-app CLAUDE.md), comme
+    # `ajouter_ligne_echeance_contrat` ci-dessus. Best-effort : sans mandat
+    # actif (comportement d'aujourd'hui), no-op strict ; un échec provider ne
+    # remet JAMAIS en cause la facture déjà émise ci-dessus.
+    try:
+        from apps.ventes.services import debiter_mandat_pour_facture
+        debiter_mandat_pour_facture(
+            facture=facture, periode=ligne.date_echeance.isoformat())
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'XCTR22 : débit mandat indisponible pour la facture %s',
+            facture.reference, exc_info=True)
+
     return facture
 
 

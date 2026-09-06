@@ -5,10 +5,14 @@ Helpers SAV — arithmétique de garantie (sans dépendance externe).
 (calendar), avec recadrage du jour pour les fins de mois (ex. 31 jan + 1 mois
 → 28/29 fév). Sert au calcul des dates de fin de garantie des équipements.
 """
+import logging
+
 from django.db import transaction
 from django.utils import timezone
 
 from .dateutils import add_months  # noqa: F401  (ré-export rétrocompat)
+
+logger = logging.getLogger(__name__)
 
 
 # ── Point d'entrée cross-app : ajout au parc installé (sav.Equipement) ───────
@@ -642,6 +646,25 @@ def facturer_contrat_maintenance(contrat, *, user=None, company=None,
 
     contrats_services.attacher_facture_au_cycle(
         cycle, facture_id=facture.id, motif=motif_usage)
+
+    # XCTR22 (AUDV18) — branchement ADDITIF : tente le débit du mandat de
+    # prélèvement actif du client, ICI et seulement ICI (jamais dans
+    # `creer_facture_contrat` — voir son docstring) : c'est SEULEMENT à ce
+    # point que le montant de la facture est DÉFINITIF, ligne d'usage XCTR16
+    # comprise (AUD151, `_ajouter_ligne_usage_contrat` recalcule les totaux
+    # depuis les lignes) — débiter plus tôt sous-facturerait tout contrat à
+    # tarif d'usage. Frontière cross-app : porte publique de `ventes`, jamais
+    # ses modèles. Best-effort : sans mandat actif (comportement d'aujourd'hui
+    # pour l'immense majorité des contrats), no-op strict ; un échec provider
+    # ne remet JAMAIS en cause la facture déjà créée et émise ci-dessus.
+    try:
+        from apps.ventes.services import debiter_mandat_pour_facture
+        debiter_mandat_pour_facture(facture=facture, periode=periode)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'XCTR22 : débit mandat indisponible pour la facture %s',
+            facture.reference, exc_info=True)
+
     return facture
 
 
