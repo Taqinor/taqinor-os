@@ -12,6 +12,7 @@ import ScoreBadge from '../../features/crm/ScoreBadge'
 import { PRIORITE_LABELS } from '../../features/crm/stages'
 import { OUTCOME_LABELS } from '../../components/ChatterTimeline'
 import ToucheMessageDialog from './ToucheMessageDialog'
+import { toastError } from '../../lib/toast'
 
 /* ============================================================================
    RELANCE FOUNDATION / MRY14 — panneau « Relances du jour » v2 (plan de
@@ -286,7 +287,10 @@ export default function RelancesDuJourWidget() {
       // (report, clôture de cadence…) : refetch silencieux, jamais bloquant.
       setTimeout(() => { charger() }, 1000)
     } catch {
-      // best-effort UI — l'échec reste silencieux, la ligne redevient cliquable
+      // F2 — l'échec n'est plus MUET : la ligne reste (retirer() jamais
+      // appelé ici) et redevient cliquable (busyId remis à null ci-dessous),
+      // mais l'agent doit être PRÉVENU que son geste n'a rien fait.
+      toastError('Action impossible pour le moment.')
     } finally {
       setBusyId(null)
     }
