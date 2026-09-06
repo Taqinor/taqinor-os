@@ -33,6 +33,7 @@ const {
   empty, campagneCreate, certificationCreate, programmeCreate, reunionCreate,
   decisionCreate, decisionCreerCapa, objectifCreate, revueObjectifCreate,
   campagnePeupler, campagneNotifier, campagneCloturer, elementPlanifier,
+  auditInstancier, auditsRelancer, objectifTrajectoire, objectifsRelancer,
 } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   campagneCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
@@ -161,14 +162,14 @@ describe('IsoQhse — Cycle de rappel produit (AUDV10)', () => {
   it('peuple une campagne depuis le parc réel', async () => {
     const user = userEvent.setup()
     withProviders(<IsoQhse />)
-    await user.click(await screen.findByRole('button', { name: 'Peupler depuis le parc' }))
+    await user.click((await screen.findAllByRole('button', { name: 'Peupler depuis le parc' }))[0])
     await waitFor(() => expect(campagnePeupler).toHaveBeenCalledWith(1))
   })
 
   it('notifie les responsables des éléments à notifier', async () => {
     const user = userEvent.setup()
     withProviders(<IsoQhse />)
-    await user.click(await screen.findByRole('button', { name: 'Notifier les responsables' }))
+    await user.click((await screen.findAllByRole('button', { name: 'Notifier les responsables' }))[0])
     await waitFor(() => expect(campagneNotifier).toHaveBeenCalledWith(1))
   })
 
@@ -192,7 +193,7 @@ describe('IsoQhse — Cycle de rappel produit (AUDV10)', () => {
   it('planifie le remplacement SAV d’un élément concerné', async () => {
     const user = userEvent.setup()
     withProviders(<IsoQhse />)
-    await user.click(await screen.findByRole('button', { name: 'Planifier remplacement' }))
+    await user.click((await screen.findAllByRole('button', { name: 'Planifier remplacement' }))[0])
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByLabelText('Client (id)'), '55')
     await user.click(within(dialog).getByRole('button', { name: 'Planifier' }))
@@ -244,7 +245,7 @@ describe('IsoQhse — Audits planifiés + heatmap ISO (AUDV13)', () => {
 
   it('instancie un audit planifié non encore réalisé', async () => {
     const user = await ouvrirOnglet()
-    await user.click(await screen.findByRole('button', { name: 'Instancier' }))
+    await user.click((await screen.findAllByRole('button', { name: 'Instancier' }))[0])
     await waitFor(() => expect(auditInstancier).toHaveBeenCalledWith(5))
   })
 
@@ -337,7 +338,7 @@ describe('IsoQhse — Objectifs QHSE (WIR276)', () => {
     const user = userEvent.setup()
     withProviders(<IsoQhse />)
     await user.click(screen.getByRole('tab', { name: 'Objectifs QHSE' }))
-    await user.click(await screen.findByRole('button', { name: 'Voir trajectoire' }))
+    await user.click((await screen.findAllByRole('button', { name: 'Voir trajectoire' }))[0])
 
     await waitFor(() => expect(objectifTrajectoire).toHaveBeenCalledWith(60))
     expect(await screen.findByRole('dialog')).toHaveTextContent('Baseline')

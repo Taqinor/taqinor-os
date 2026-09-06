@@ -439,8 +439,8 @@ function EvaluerConformiteDialog({ conformite, onClose, onDone }) {
         <DialogTitle>Évaluer « {conformite.intitule} »</DialogTitle>
         <div className="flex flex-col gap-3">
           <div>
-            <Label>Résultat de l’évaluation</Label>
-            <Textarea rows={3} value={resultat}
+            <Label htmlFor="wir127-resultat-evaluation">Résultat de l’évaluation</Label>
+            <Textarea id="wir127-resultat-evaluation" rows={3} value={resultat}
               onChange={(e) => setResultat(e.target.value)} />
           </div>
           <div className="flex justify-end gap-2 pt-1">

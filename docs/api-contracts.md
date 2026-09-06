@@ -268,6 +268,8 @@
     avertissements:inconnu, bloquantes:inconnu, detail:texte, valide:booleen, violations:inconnu
 - frontend/src/api/creditApi.js :: getLimiteHistorique -> /api/django/credit/limites/<>/historique
     count:nombre, entries:inconnu
+- frontend/src/api/crmApi.js :: arreterCadence -> /api/django/crm/leads/<>/relance/arreter
+    arretees:inconnu, cadences:texte, motif:texte
 - frontend/src/api/crmApi.js :: bulkLeads -> /api/django/crm/leads/bulk
     count:nombre, detail:texte, ok:booleen, op:texte, queue:inconnu, skipped:inconnu, total:nombre, unchanged:inconnu, updated:inconnu
 - frontend/src/api/crmApi.js :: checkDevisAuto -> /api/django/crm/leads/<>/devis-auto
@@ -292,7 +294,11 @@
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
+- frontend/src/api/crmApi.js :: getRelanceEtapeMessage -> /api/django/crm/relance-etapes/<>/message
+    langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesDues -> /api/django/crm/relance-etapes
+    count:nombre, results:inconnu
+- frontend/src/api/crmApi.js :: getRelanceEtapesLead -> /api/django/crm/relance-etapes
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelances -> /api/django/crm/leads/relances
     count:nombre, results:inconnu
@@ -314,6 +320,8 @@
     results:inconnu
 - frontend/src/api/crmApi.js :: whatsappDevis -> /api/django/crm/leads/<>/whatsapp-devis
     detail:texte, links:inconnu, message:inconnu, phone:inconnu, wa_url:inconnu
+- frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
+    detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, wa_url:inconnu
 - frontend/src/api/customFieldsApi.js :: reorder -> /api/django/custom-fields/definitions/reorder
     count:nombre, detail:texte, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo
@@ -3110,12 +3118,20 @@
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: deleteUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
     champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: getCadenceRelance -> /api/django/parametres/cadence-relance  [CadenceRelanceEtapeSerializer]
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, template_cle
+    cadence ∈ {apres_devis, contact, generique, reveil}
+    canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: getConditionsPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: getTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: getUnitesMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
     champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: updateCadenceRelanceEtape -> /api/django/parametres/cadence-relance/<>  [CadenceRelanceEtapeSerializer]
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, template_cle
+    cadence ∈ {apres_devis, contact, generique, reveil}
+    canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: updateConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: updateTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]

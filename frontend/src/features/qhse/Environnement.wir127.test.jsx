@@ -177,14 +177,16 @@ describe('Environnement — évaluation d’exigence légale (AUDV14, XQHS8)', (
   it('affiche la thématique du registre généralisé', async () => {
     withProviders(<Environnement />)
     await userEvent.setup().click(screen.getByRole('tab', { name: 'Conformité' }))
-    expect(await screen.findByText('Travail')).toBeInTheDocument()
+    // DataTable rend chaque libellé deux fois (desktop + carte mobile) —
+    // on affirme la présence, pas l'unicité.
+    expect((await screen.findAllByText('Travail')).length).toBeGreaterThan(0)
   })
 
   it('enregistre une évaluation périodique via l’action Évaluer', async () => {
     const user = userEvent.setup()
     withProviders(<Environnement />)
     await user.click(screen.getByRole('tab', { name: 'Conformité' }))
-    await user.click(await screen.findByRole('button', { name: 'Évaluer' }))
+    await user.click((await screen.findAllByRole('button', { name: 'Évaluer' }))[0])
 
     const dialog = await screen.findByRole('dialog')
     fireEvent.change(within(dialog).getByLabelText('Résultat de l’évaluation'), {
