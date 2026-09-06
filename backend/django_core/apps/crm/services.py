@@ -558,8 +558,12 @@ def initialiser_plan_relance(lead, user, *, depart=None):
 
     from datetime import timedelta
 
-    from apps.parametres.models_relance import CadenceRelanceEtape
-    cadence = CadenceRelanceEtape.cadence_pour(lead.company)
+    from apps.parametres.models_relance import Cadence, CadenceRelanceEtape
+    # MRY4 — le gabarit porte désormais TROIS cadences nommées en plus de
+    # l'échelle historique. Tant que ce service n'accepte pas de cadence
+    # (MRY5), il reste ÉPINGLÉ sur `generique` : c'est exactement ce qu'il
+    # produisait avant, jamais un changement de comportement en douce.
+    cadence = CadenceRelanceEtape.cadence_pour(lead.company, Cadence.GENERIQUE)
     if not cadence:
         return []
 

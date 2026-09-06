@@ -64,7 +64,9 @@ class TestCadenceRelanceEtapeSeed(TestCase):
         company = make_company('relance-param-co3')
         self.assertEqual(CadenceRelanceEtape.objects.filter(
             company=company).count(), 0)
-        cadence = CadenceRelanceEtape.cadence_pour(company)
+        # MRY4 — `cadence_pour` prend desormais la cadence visee ; les 5
+        # barreaux neutres historiques vivent sous `generique`.
+        cadence = CadenceRelanceEtape.cadence_pour(company, 'generique')
         self.assertEqual(len(cadence), 5)
         self.assertEqual(
             CadenceRelanceEtape.objects.filter(company=company).count(), 5)

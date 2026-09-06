@@ -102,7 +102,12 @@ class UniteMesureViewSet(_ReferentielViewSet):
 class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
     """RELANCE FOUNDATION — gabarit de cadence de relance par défaut
     (délai/canal/libellé), consommé par
-    ``apps.crm.services.initialiser_plan_relance``. ``?actif=true``."""
+    ``apps.crm.services.initialiser_plan_relance``. ``?actif=true``.
+
+    MRY4 — ``?cadence=contact|apres_devis|reveil|generique`` filtre sur UNE
+    cadence : c'est l'onglet de l'éditeur de Paramètres → CRM. Sans le
+    paramètre, la liste reste celle de toutes les cadences (comportement
+    d'avant, jamais une restriction implicite)."""
 
     queryset = CadenceRelanceEtape.objects.all()
     serializer_class = CadenceRelanceEtapeSerializer
@@ -112,4 +117,7 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
         actif = self.request.query_params.get('actif')
         if actif in ('true', '1'):
             qs = qs.filter(actif=True)
+        cadence = (self.request.query_params.get('cadence') or '').strip()
+        if cadence:
+            qs = qs.filter(cadence=cadence)
         return qs
