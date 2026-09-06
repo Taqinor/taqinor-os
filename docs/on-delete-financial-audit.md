@@ -246,8 +246,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/cpq/models.py:544` | ProduitEquivalent.produit_substitut | stock.Produit | CASCADE |
 | `backend/django_core/apps/cpq/models.py:593` | ParametresCPQ.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/cpq/models.py:665` | ClauseCGV.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/credit/models.py:67` | ReglageCredit.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/credit/models.py:210` | DerogationCredit.devis | ventes.Devis | SET_NULL |
+| `backend/django_core/apps/credit/models.py:69` | ReglageCredit.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/credit/models.py:237` | DerogationCredit.devis | ventes.Devis | SET_NULL |
 | `backend/django_core/apps/crm/models.py:14` | Client.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models.py:497` | Lead.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models.py:1136` | WebsiteLeadPayload.company | authentication.Company | CASCADE |
@@ -743,9 +743,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/portail/models.py:123` | AcceptationDevisPortail.devis | ventes.Devis | PROTECT |
 | `backend/django_core/apps/portail/models.py:193` | PaiementFacturePortail.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/portail/models.py:201` | PaiementFacturePortail.facture | facturation.Facture | PROTECT |
-| `backend/django_core/apps/portail/models.py:259` | DocumentClientPortail.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/portail/models.py:330` | JalonChantierPortail.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/portail/models.py:383` | DemandeTicketPortail.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/portail/models.py:277` | DocumentClientPortail.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/portail/models.py:348` | JalonChantierPortail.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/portail/models.py:401` | DemandeTicketPortail.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/pos/models.py:58` | VenteComptoir.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/pos/models.py:96` | VenteComptoir.facture | facturation.Facture | SET_NULL |
 | `backend/django_core/apps/pos/models.py:174` | LigneVenteComptoir.produit | stock.Produit | PROTECT |
