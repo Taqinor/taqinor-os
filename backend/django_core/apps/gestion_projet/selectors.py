@@ -2798,12 +2798,98 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
     projet + des totaux portefeuille (nb projets, retards/risques cumulés, marge
     réelle cumulée, charge totale). Donnée 100 % INTERNE de pilotage — jamais
     exposée au client. Tout est scopé société. Lecture seule (aucune écriture).
+
+    AUDV16/GP-4 — VECTORISÉ (même stratégie qu'AUD325 `plan_de_charge`) :
+    la version d'origine appelait ``rollup_avancement``/``retards_projet``/
+    ``pnl_projet``/un aggregate charge/un lookup « dernier point » PAR PROJET
+    (~10-14 requêtes/projet, un portefeuille de 50 projets déclenchait 500-700
+    requêtes SQL). Ici, Tache/Jalon/PointAvancement/Timesheet/
+    AffectationRessource de TOUS les projets filtrés sont chargés en UNE
+    requête par table puis regroupés en mémoire par ``projet_id`` — le nombre
+    de requêtes est désormais FIXE, indépendant de N (voir
+    ``tests/test_audv16_portefeuille_n1.py``).
     """
-    projets = Projet.objects.filter(company=company).select_related(
+    if seuil_jours is None:
+        seuil_jours = _SEUIL_RISQUE_DEFAUT
+    aujourd_hui = _date.today()
+
+    projets_qs = Projet.objects.filter(company=company).select_related(
         'evaluation')
     if statut:
-        projets = projets.filter(statut=statut)
-    projets = projets.order_by('-id')
+        projets_qs = projets_qs.filter(statut=statut)
+    projets = list(projets_qs.order_by('-id'))
+    projet_ids = [p.id for p in projets]
+
+    # ── Tâches et jalons de TOUS les projets, une fois, groupés en mémoire ──
+    taches_par_projet = {}
+    for tache in Tache.objects.filter(
+            company=company, projet_id__in=projet_ids).order_by('ordre', 'id'):
+        taches_par_projet.setdefault(tache.projet_id, []).append(tache)
+
+    jalons_par_projet = {}
+    for jalon in Jalon.objects.filter(
+            company=company,
+            projet_id__in=projet_ids).order_by('date_prevue', 'id'):
+        jalons_par_projet.setdefault(jalon.projet_id, []).append(jalon)
+
+    charge_par_projet = {
+        row['projet_id']: row['s'] or Decimal('0')
+        for row in Tache.objects.filter(
+            company=company, projet_id__in=projet_ids,
+            charge_estimee__isnull=False,
+        ).values('projet_id').annotate(s=Sum('charge_estimee'))
+    }
+
+    # Dernière santé RAG (XPRJ15) — le point le plus récent par projet, sans
+    # un lookup ORDER BY/LIMIT 1 par projet.
+    dernier_point_par_projet = {}
+    for point in PointAvancement.objects.filter(
+            company=company,
+            projet_id__in=projet_ids).order_by('projet_id', '-date_point', '-id'):
+        dernier_point_par_projet.setdefault(point.projet_id, point)
+
+    # ── Marge réelle (P&L PROJ26, AUD329) : même formule que `pnl_projet`,
+    # calculée pour TOUS les projets à partir de 3 requêtes groupées au lieu
+    # de N appels à `couts_engages_vs_reels`/`synthese_temps_projet`/
+    # `_mo_affectations_deja_pointee`. IMPORTANT — le revenu est ici toujours
+    # 0 (comme le fait `_revenu_projet_cross_app`, qui DÉGRADE
+    # inconditionnellement tant qu'aucune app cible n'expose de sélecteur de
+    # montant par projet) : si cette dégradation change un jour pour exposer
+    # un vrai revenu cross-app, CE court-circuit doit être mis à jour en
+    # même temps, sous peine de faire diverger silencieusement la marge du
+    # portefeuille de l'action `pnl` par-projet.
+    cout_timesheets_par_projet = {
+        row['projet_id']: row['s'] or Decimal('0')
+        for row in Timesheet.objects.filter(
+            company=company, projet_id__in=projet_ids,
+        ).values('projet_id').annotate(s=Sum('cout'))
+    }
+    ressources_pointees_par_projet = {}
+    for row in Timesheet.objects.filter(
+            company=company, projet_id__in=projet_ids, ressource__isnull=False,
+    ).values('projet_id', 'ressource_id').distinct():
+        ressources_pointees_par_projet.setdefault(
+            row['projet_id'], set()).add(row['ressource_id'])
+
+    heures_jour = Decimal(_HEURES_PAR_JOUR_DEFAUT)
+    cout_affectations_par_projet = {}
+    mo_deja_pointee_par_projet = {}
+    affectations_rows = AffectationRessource.objects.filter(
+        company=company, tache__projet_id__in=projet_ids,
+        ressource__isnull=False, charge_jours__isnull=False,
+    ).values(
+        'tache__projet_id', 'ressource_id', 'charge_jours',
+        'ressource__cout_horaire')
+    for row in affectations_rows:
+        pid = row['tache__projet_id']
+        charge = row['charge_jours'] or Decimal('0')
+        cout_horaire = row['ressource__cout_horaire'] or Decimal('0')
+        montant = charge * heures_jour * cout_horaire
+        cout_affectations_par_projet[pid] = (
+            cout_affectations_par_projet.get(pid, Decimal('0')) + montant)
+        if row['ressource_id'] in ressources_pointees_par_projet.get(pid, ()):
+            mo_deja_pointee_par_projet[pid] = (
+                mo_deja_pointee_par_projet.get(pid, Decimal('0')) + montant)
 
     lignes = []
     total_marge_reelle = Decimal('0')
@@ -2812,30 +2898,57 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
     total_risques = 0
     notes_satisfaction = []
     for projet in projets:
-        avancement = rollup_avancement(projet)
-        retards = retards_projet(projet, seuil_jours=seuil_jours)
-        pnl = pnl_projet(company, projet)
-        charge = Tache.objects.filter(
-            projet=projet, company=company,
-            charge_estimee__isnull=False).aggregate(
-                s=Sum('charge_estimee'))['s'] or Decimal('0')
+        taches = taches_par_projet.get(projet.id, [])
+        jalons = jalons_par_projet.get(projet.id, [])
 
-        nb_retards = (
-            retards['nb_taches_en_retard']
-            + retards['nb_jalons_en_retard'])
-        nb_risques = (
-            retards['nb_taches_a_risque']
-            + retards['nb_jalons_a_risque'])
+        # Avancement pondéré — même algorithme que `rollup_avancement`
+        # (`_rollup_node`, pur/sans IO), sur les tâches déjà en mémoire.
+        enfants_par_parent = {}
+        for tache in taches:
+            enfants_par_parent.setdefault(tache.parent_id, []).append(tache)
+        racines = enfants_par_parent.get(None, [])
+        arbre = [_rollup_node(r, enfants_par_parent) for r in racines]
+        charge_arbre = sum(n['charge'] for n in arbre)
+        if charge_arbre > 0:
+            avancement_pct = int(round(sum(
+                n['avancement_pct'] * n['charge']
+                for n in arbre) / charge_arbre))
+        elif arbre:
+            avancement_pct = int(round(
+                sum(n['avancement_pct'] for n in arbre) / len(arbre)))
+        else:
+            avancement_pct = 0
 
-        total_marge_reelle += pnl['marge_reelle']
-        total_charge += charge
-        total_retards += nb_retards
-        total_risques += nb_risques
+        # Retards/risques — même algorithme que `retards_projet`
+        # (`_risque_tache`/`_risque_jalon`, purs/sans IO).
+        nb_taches_en_retard = nb_taches_a_risque = 0
+        for tache in taches:
+            niveau = _risque_tache(tache, aujourd_hui, seuil_jours)
+            if niveau == 'en_retard':
+                nb_taches_en_retard += 1
+            elif niveau == 'a_risque':
+                nb_taches_a_risque += 1
+        nb_jalons_en_retard = nb_jalons_a_risque = 0
+        for jalon in jalons:
+            niveau = _risque_jalon(jalon, aujourd_hui, seuil_jours)
+            if niveau == 'en_retard':
+                nb_jalons_en_retard += 1
+            elif niveau == 'a_risque':
+                nb_jalons_a_risque += 1
+        nb_retards = nb_taches_en_retard + nb_jalons_en_retard
+        nb_risques = nb_taches_a_risque + nb_jalons_a_risque
 
-        # Dernière santé RAG du projet (XPRJ15) — None si aucun point saisi.
-        dernier_point = PointAvancement.objects.filter(
-            company=company, projet=projet).order_by(
-                '-date_point', '-id').first()
+        cout_affectations = cout_affectations_par_projet.get(
+            projet.id, Decimal('0')).quantize(Decimal('0.01'))
+        mo_deja_pointee = mo_deja_pointee_par_projet.get(
+            projet.id, Decimal('0')).quantize(Decimal('0.01'))
+        cout_timesheets = cout_timesheets_par_projet.get(
+            projet.id, Decimal('0'))
+        cout_reel = cout_affectations - mo_deja_pointee + cout_timesheets
+        marge_reelle = Decimal('0') - cout_reel
+
+        charge = charge_par_projet.get(projet.id, Decimal('0'))
+        dernier_point = dernier_point_par_projet.get(projet.id)
 
         # Note CSAT client (ZPRJ7) — None tant qu'aucune évaluation n'a été
         # soumise (le lien peut exister sans dépôt).
@@ -2847,15 +2960,20 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         if note_satisfaction is not None:
             notes_satisfaction.append(note_satisfaction)
 
+        total_marge_reelle += marge_reelle
+        total_charge += charge
+        total_retards += nb_retards
+        total_risques += nb_risques
+
         lignes.append({
             'projet_id': projet.id,
             'code': projet.code,
             'nom': projet.nom,
             'statut': projet.statut,
-            'avancement_pct': avancement['avancement_pct'],
+            'avancement_pct': avancement_pct,
             'nb_retards': nb_retards,
             'nb_risques': nb_risques,
-            'marge_reelle': pnl['marge_reelle'],
+            'marge_reelle': marge_reelle,
             'charge_totale': charge,
             'derniere_sante': (
                 dernier_point.sante if dernier_point else None),
