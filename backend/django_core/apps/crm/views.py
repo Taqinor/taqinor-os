@@ -951,6 +951,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           'check_duplicates', 'doublons',
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
+                                          # MRY19 — lecture ouverte à tout
+                                          # rôle, comme `sla_breach`.
+                                          'kpi_premier_contact',
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
@@ -1730,6 +1733,22 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             })
         return Response(result)
 
+    # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
+    @action(detail=False, methods=['get'], url_path='kpi-premier-contact',
+            permission_classes=[IsAnyRole])
+    def kpi_premier_contact(self, request):
+        """Forme `kpi_premier_contact` (contrat MRY25). ``?jours=`` (30).
+
+        Minutes OUVRÉES, leads OS_NATIVE seulement, `null` partout sur zéro
+        lead — jamais un 0 % fabriqué. Ne touche PAS à `sla-breach`, dont le
+        contrat est consommé tel quel par `CrmInsightsPanel`."""
+        try:
+            jours = max(1, min(365, int(request.query_params.get('jours', 30))))
+        except (TypeError, ValueError):
+            jours = 30
+        from .selectors import kpi_premier_contact as _kpi
+        return Response(_kpi(request.user.company, jours=jours))
+
     # ── FG28 — Filtre SLA non contactés ──────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='sla-breach',
             permission_classes=[IsAnyRole])
@@ -1796,11 +1815,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if attachment:
             act.attachment = attachment
             act.save(update_fields=['attachment'])
-        # FG28 — première note = premier contact (même sans changer d'étape)
-        if lead.stage == 'NEW' and lead.first_contacted_at is None:
-            from django.utils import timezone
-            lead.first_contacted_at = timezone.now()
-            lead.save(update_fields=['first_contacted_at'])
+        # FG28/MRY19 — première note = premier contact. La condition
+        # « lead encore en NEW » a DISPARU : un lead saisi à la main, déjà
+        # CONTACTED, ne recevait jamais d'horodatage et sortait du KPI.
+        from .services import marquer_premier_contact
+        marquer_premier_contact(lead)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1858,15 +1877,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             outcome=outcome,
             user=request.user,
         )
-        # FG28 — tout contact direct = première prise de contact. La clé
-        # d'étape vient de `apps.crm.stages` (CLAUDE.md #2), jamais de la
-        # chaîne littérale 'NEW' qui était écrite ici. MRY19 centralisera
-        # cette pose dans `services.marquer_premier_contact`.
-        from . import stages as _stages
-        if lead.stage == _stages.NEW and lead.first_contacted_at is None:
-            from django.utils import timezone
-            lead.first_contacted_at = timezone.now()
-            lead.save(update_fields=['first_contacted_at'])
+        # FG28/MRY19 — tout contact direct = première prise de contact,
+        # posée par LA source unique. Aucune chaîne d'étape ne subsiste ici.
+        from .services import marquer_premier_contact
+        marquer_premier_contact(lead)
         if quand is not None:
             from .services import reporter_prochaine_touche
             reporter_prochaine_touche(lead, request.user, quand)

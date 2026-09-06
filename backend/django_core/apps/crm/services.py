@@ -299,14 +299,9 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     if lead.stage != stages.NEW:
         return False
     lead.stage = _STAGE_CONTACTED
-    update_fields = ['stage']
-    # FG28 — le premier contact fait quitter NEW via CE signal (hors du
-    # perform_update du lead qui posait first_contacted_at avant) : on le pose ici.
-    if getattr(lead, 'first_contacted_at', None) is None:
-        from django.utils import timezone
-        lead.first_contacted_at = timezone.now()
-        update_fields.append('first_contacted_at')
-    lead.save(update_fields=update_fields)
+    lead.save(update_fields=['stage'])
+    # FG28/MRY19 — le premier contact passe par LA source unique
+    # (``marquer_premier_contact``) : plus de pose artisanale ici.
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
@@ -315,6 +310,7 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
         new_value=stages.STAGE_LABELS[_STAGE_CONTACTED],
         body='auto — premier contact',
     )
+    marquer_premier_contact(lead)
     _emit_stage_changed(lead, stages.NEW, _STAGE_CONTACTED, user)
     return True
 
@@ -971,19 +967,36 @@ def pick_round_robin_owner(company):
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
 
-def maybe_set_first_contacted_at(old_lead, new_lead):
-    """Pose ``first_contacted_at`` sur le lead dès que son stage quitte NEW
-    pour la première fois (et que le champ n'est pas déjà renseigné).
+def marquer_premier_contact(lead, *, when=None) -> bool:
+    """MRY19 — LA pose de ``first_contacted_at``. Une seule, partout.
 
-    Best-effort : n'échoue jamais et ne modifie rien si la condition n'est
-    pas remplie.
-    """
+    Quatre endroits l'écrivaient à la main, avec quatre conditions
+    LÉGÈREMENT différentes (dont deux qui exigeaient l'étape NEW) : un lead
+    saisi à la main, déjà CONTACTED, ne recevait donc JAMAIS d'horodatage —
+    et sortait silencieusement du KPI de premier contact. Ici la règle est
+    unique et sans condition d'étape : si le champ est vide, on le pose.
+
+    Idempotente — jamais un écrasement. Renvoie True si la pose a eu lieu.
+    Best-effort : ne lève jamais."""
     try:
-        if new_lead.first_contacted_at is not None:
-            return  # déjà posé — ne rien écraser
+        if lead is None or getattr(lead, 'first_contacted_at', None):
+            return False
+        lead.first_contacted_at = when or timezone.now()
+        lead.save(update_fields=['first_contacted_at'])
+        return True
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return False
+
+
+def maybe_set_first_contacted_at(old_lead, new_lead):
+    """Pose ``first_contacted_at`` quand le stage quitte NEW.
+
+    Signature INCHANGÉE (appelée par ``LeadViewSet.perform_update``) ; MRY19
+    délègue simplement à ``marquer_premier_contact`` — plus aucune seconde
+    règle qui pourrait diverger."""
+    try:
         if old_lead.stage == stages.NEW and new_lead.stage != stages.NEW:
-            new_lead.first_contacted_at = timezone.now()
-            new_lead.save(update_fields=['first_contacted_at'])
+            marquer_premier_contact(new_lead)
     except Exception:
         pass
 

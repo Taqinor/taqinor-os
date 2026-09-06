@@ -5,6 +5,7 @@ fonctions plutôt qu'en important `apps.crm.models` directement (voir CLAUDE.md,
 règle de modularité). Comportement strictement identique aux requêtes inline
 d'origine.
 """
+import datetime
 
 
 def client_base_qs(company=None):
@@ -1371,6 +1372,101 @@ def leads_response_time_rows(company):
             'response_minutes': delta_minutes,
         })
     return rows
+
+
+def kpi_premier_contact(company, *, jours=30, objectif_min=None):
+    """MRY19 — « rappelé en moins de N minutes OUVRÉES » — forme
+    `kpi_premier_contact` (contrat MRY25).
+
+    Trois décisions qui font que ce chiffre veut dire quelque chose :
+
+    * les minutes sont OUVRÉES (``horaires.minutes_ouvrees_entre``) — un lead
+      arrivé vendredi 21 h et rappelé lundi 08:32 vaut 2 minutes, pas 60
+      heures. Un KPI en minutes calendaires serait faux à charge et
+      ininterprétable ;
+    * seuls les leads ``OS_NATIVE`` comptent : les 930 leads du miroir Odoo ne
+      sont pas des demandes que Meryem doit rappeler ;
+    * ``null`` PARTOUT dès que ``nb_leads == 0`` — jamais un 0 %, jamais une
+      médiane fabriquée sur zéro ligne.
+
+    « Leads de nuit » = arrivés HORS fenêtre d'appel ; « rappelés avant 9 h 30 »
+    = ceux d'entre eux dont le premier contact tombe avant 09:30 locales.
+    """
+    from django.utils import timezone
+
+    from . import horaires
+    from .models import Lead
+
+    if objectif_min is None:
+        objectif_min = _objectif_premier_contact(company)
+    depuis = timezone.now() - datetime.timedelta(days=int(jours))
+    leads = (Lead.objects
+             .filter(company=company, is_archived=False,
+                     source=Lead.Source.OS_NATIVE,
+                     date_creation__gte=depuis)
+             .only('id', 'date_creation', 'first_contacted_at'))
+
+    minutes = []
+    nb_leads = 0
+    nb_nuit = 0
+    nb_nuit_rappeles = 0
+    for lead in leads:
+        nb_leads += 1
+        de_nuit = not horaires.est_dans_fenetre(lead.date_creation, company)
+        if de_nuit:
+            nb_nuit += 1
+        if lead.first_contacted_at is None:
+            continue
+        minutes.append(horaires.minutes_ouvrees_entre(
+            lead.date_creation, lead.first_contacted_at, company))
+        if de_nuit:
+            contact_local = lead.first_contacted_at.astimezone(
+                horaires.CASABLANCA)
+            if contact_local.time() <= datetime.time(9, 30):
+                nb_nuit_rappeles += 1
+
+    if not nb_leads:
+        return {
+            'objectif_minutes': objectif_min,
+            'nb_leads': 0,
+            'nb_sous_objectif': None,
+            'pct_sous_objectif': None,
+            'mediane_minutes_ouvrees': None,
+            'nb_nuit_rappeles_avant_930': None,
+            'nb_nuit': 0,
+        }
+    sous = sum(1 for m in minutes if m <= objectif_min)
+    return {
+        'objectif_minutes': objectif_min,
+        'nb_leads': nb_leads,
+        'nb_sous_objectif': sous,
+        'pct_sous_objectif': round(100.0 * sous / nb_leads, 1),
+        'mediane_minutes_ouvrees': _mediane(minutes),
+        'nb_nuit_rappeles_avant_930': nb_nuit_rappeles,
+        'nb_nuit': nb_nuit,
+    }
+
+
+def _objectif_premier_contact(company):
+    """Objectif de la société (défaut 5 minutes ouvrées, MRY8)."""
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        valeur = getattr(profil, 'premier_contact_objectif_min', None)
+        return int(valeur) if valeur is not None else 5
+    except Exception:  # noqa: BLE001 — défaut assumé
+        return 5
+
+
+def _mediane(valeurs):
+    """Médiane entière, ou ``None`` sur une liste vide (jamais un 0 inventé)."""
+    if not valeurs:
+        return None
+    ordonnees = sorted(valeurs)
+    milieu = len(ordonnees) // 2
+    if len(ordonnees) % 2:
+        return int(ordonnees[milieu])
+    return int((ordonnees[milieu - 1] + ordonnees[milieu]) / 2)
 
 
 def site_location_for_devis(devis):
