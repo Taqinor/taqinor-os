@@ -88,6 +88,9 @@ const paieApi = {
   getBulletin: (id) => api.get(`/paie/bulletins/${id}/`),
   genererBulletin: (data) => api.post('/paie/bulletins/generer/', data),
   validerBulletin: (id) => api.post(`/paie/bulletins/${id}/valider/`),
+  // AUDV19 (DRAFT165-77, XPAI2) — régularisation IR annuelle (bulletin
+  // BROUILLON uniquement).
+  regulariserIrBulletin: (id) => api.post(`/paie/bulletins/${id}/regulariser-ir/`),
   marquerPayeBulletin: (id) => api.post(`/paie/bulletins/${id}/marquer-paye/`),
   rectifierBulletin: (id, data) =>
     api.post(`/paie/bulletins/${id}/rectifier/`, data),
