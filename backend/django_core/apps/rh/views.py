@@ -216,7 +216,8 @@ def _client_ip(request):
 # bancaires) : leur suppression exige un motif ET une confirmation explicite.
 def _jours_demande_sans_double_decompte(
         company, employe, type_absence, date_debut, date_fin, *,
-        demi_journee_debut=False, demi_journee_fin=False):
+        demi_journee_debut=False, demi_journee_fin=False,
+        exclure_demande_pk=None):
     """AUDV20 + AUD722 — jours décomptés d'une NOUVELLE demande de congé.
 
     Retire du décompte les jours déjà retirés du solde par ailleurs :
@@ -232,7 +233,8 @@ def _jours_demande_sans_double_decompte(
     exclus = set(selectors.jours_fermeture_exclus(
         company, employe, date_debut, date_fin))
     exclus |= services.jours_conges_deja_valides(
-        company, employe, date_debut, date_fin)
+        company, employe, date_debut, date_fin,
+        exclure_pk=exclure_demande_pk)
     feries = services.feries_periode(company, date_debut, date_fin)
     brut = services.calculer_jours_demande(
         type_absence, date_debut, date_fin, extra_holidays=feries,
@@ -1346,8 +1348,41 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         self._poser_justificatif(demande, meta)
 
     def perform_update(self, serializer):
+        """AUD724 — les dates restent modifiables, ``jours`` SUIT.
+
+        ``date_debut``/``date_fin`` étaient écrivables alors que ``jours`` est
+        en lecture seule et n'était recalculé QU'À la création : étendre une
+        demande de 5 à 10 jours laissait ``jours`` figé à 5, et
+        ``valider_demande`` retirait ensuite 5 jours du solde pour une absence
+        de 10. Symétriquement, une demande DÉCIDÉE (validée / refusée /
+        annulée) n'a plus à bouger du tout : son solde est déjà passé.
+        """
+        instance = serializer.instance
+        if instance.statut != DemandeConge.Statut.SOUMISE:
+            raise serializers.ValidationError(
+                {'detail': (
+                    'Demande déjà '
+                    f'{instance.get_statut_display().lower()} : elle n\'est '
+                    'plus modifiable (annulez-la et créez-en une nouvelle).')})
+        date_debut = serializer.validated_data.get(
+            'date_debut', instance.date_debut)
+        date_fin = serializer.validated_data.get(
+            'date_fin', instance.date_fin)
+        type_absence = serializer.validated_data.get(
+            'type_absence', instance.type_absence)
+        employe = serializer.validated_data.get('employe', instance.employe)
         meta = self._televerser_justificatif()
-        demande = serializer.save()
+        jours, erreur = _jours_demande_sans_double_decompte(
+            self.request.user.company, employe, type_absence,
+            date_debut, date_fin,
+            demi_journee_debut=serializer.validated_data.get(
+                'demi_journee_debut', instance.demi_journee_debut),
+            demi_journee_fin=serializer.validated_data.get(
+                'demi_journee_fin', instance.demi_journee_fin),
+            exclure_demande_pk=instance.pk)
+        if erreur:
+            raise serializers.ValidationError({'detail': erreur})
+        demande = serializer.save(jours=jours)
         self._poser_justificatif(demande, meta)
 
     def _televerser_justificatif(self):
