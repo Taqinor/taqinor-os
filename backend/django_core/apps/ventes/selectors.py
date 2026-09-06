@@ -718,7 +718,13 @@ def encours_clients_par_tiers(company):
     qs = (Facture.objects
           .filter(company=company)
           .exclude(statut=Facture.Statut.ANNULEE)
-          .select_related('client'))
+          .select_related('client')
+          # AUD158 — EXACTEMENT les relations que `montant_du` lit. Sans
+          # elles, ce point d'entrée cross-app (compta ET credit) posait
+          # SIX requêtes par facture ouverte du portefeuille.
+          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
+                            'retenues_subies',
+                            'affectations_paiement__paiement'))
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -754,7 +760,13 @@ def encours_ouvert_par_tiers(company):
     qs = (Facture.objects
           .filter(company=company)
           .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE])
-          .select_related('client'))
+          .select_related('client')
+          # AUD158 — EXACTEMENT les relations que `montant_du` lit (voir
+          # `encours_clients_par_tiers`). AUD153 va solliciter davantage
+          # encore ce sélecteur en branchant le credit-hold.
+          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
+                            'retenues_subies',
+                            'affectations_paiement__paiement'))
     for facture in qs:
         du = facture.montant_du
         if not du:
