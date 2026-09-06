@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/esg/periodes-esg/<int:pk>/indicateurs/",
   "pourquoi": "AUDV26 (NTESG9) — `selectors.intensite_carbone` (3 ratios : tCO2e/MAD de CA, /kWc installé, /ETP, chacun dégradé indépendamment — jamais un 0 forfaitaire) existait déjà, testé, mais `PeriodeReportingESGViewSet.indicateurs` ne l'appelait jamais. PACT10 : câblé DANS `selectors.agreger_indicateurs_periode` (nouvelle clé `intensite_carbone`) — donc hérité automatiquement par l'aperçu LIVE d'une période brouillon ET par le snapshot gelé d'une période figée (`figer_periode` stocke tel quel ce que renvoie l'agrégateur). Aujourd'hui, `_source_bilan_carbone` (numérateur) est TOUJOURS indisponible tant qu'aucun sélecteur qhse ne l'expose — les 3 ratios dégradent donc systématiquement, avec un motif explicite, jamais une valeur inventée.",
-  "exemple_degrade": {
+  "exemple": {
     "periode": {"date_debut": "2026-01-01", "date_fin": "2026-03-31", "annee": 2026},
     "sources": {"indicateurs_esg": {"disponible": true}},
     "intensite_carbone": {

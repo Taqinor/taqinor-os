@@ -102,14 +102,14 @@ def generer_echeanciers():
     ne crée rien sur un dossier inchangé, et DÉCALE l'échéance existante après
     une prorogation.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .models import AppelOffre
     from .services import generer_echeancier_ao
 
     resume = {'creees': 0, 'mises_a_jour': 0, 'inchangees': 0, 'dossiers': 0}
     vivants = _statuts_vivants_pour_echeancier()
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         affaires = AppelOffre.objects.filter(
             company=company, statut__in=vivants)
         for affaire in affaires:
@@ -151,13 +151,13 @@ def relancer_pieces_administratives():
     """
     from django.utils import timezone
 
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .services import pieces_administratives_a_renouveler
 
     aujourdhui = timezone.localdate()
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             pieces = pieces_administratives_a_renouveler(company)
         except Exception:  # noqa: BLE001 — une société ne bloque pas les autres

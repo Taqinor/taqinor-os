@@ -223,10 +223,10 @@ def generer_interventions_recurrentes_task():
     passages le même jour ne créent jamais deux occurrences pour la même
     échéance. Une exception sur une société n'empêche jamais les suivantes.
     Renvoie le nombre total d'interventions créées."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from .services import generer_interventions_recurrentes
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += len(generer_interventions_recurrentes(company))
         except Exception:  # noqa: BLE001 — société suivante

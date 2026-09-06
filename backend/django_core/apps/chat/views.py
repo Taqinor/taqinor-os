@@ -816,8 +816,16 @@ class MessageReminderViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # Scopé société (`message__company`, MessageReminder n'a pas de FK
+        # `company` propre) EN PLUS du créateur — la garde
+        # check_tenant_isolation exige la société explicitement, même quand
+        # le filtre par utilisateur la rend déjà impossible à traverser.
+        company = _company(self.request)
+        if company is None:
+            return MessageReminder.objects.none()
         return MessageReminder.objects.filter(
-            user=self.request.user).order_by('remind_at')
+            user=self.request.user, message__company=company,
+        ).order_by('remind_at')
 
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
