@@ -402,7 +402,7 @@ forbidden_modules =
     apps.veille_ao
     apps.ventes
     apps.voip
-# ARC18/19/21 — les modules de TEST des ponts Tiers importent volontairement les
+# ARC18/19/21 + AUDV23 — les modules de TEST des ponts Tiers importent volontairement les
 # vrais modèles historiques (crm.Client/Lead, stock.Fournisseur, compta.Partenaire,
 # rh.DossierEmploye) et le service crm pour PROUVER que le miroir one-way et la
 # bascule flag-gatée fonctionnent de bout en bout. Ce sont des tests d'intégration
@@ -417,6 +417,9 @@ ignore_imports =
     apps.tiers.tests.test_arc19_bridge -> apps.rh.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.services
+    apps.tiers.tests.test_audv23_hooks_identite -> apps.crm.models
+    apps.tiers.tests.test_audv23_hooks_identite -> apps.stock.models
+    apps.tiers.tests.test_audv23_hooks_identite -> apps.stock.services
 
 # ARC6 — `core.numbering` (fabrique de références anti-collision, ex
 # `apps.ventes.utils.references`) est une primitive de FONDATION relogée ici :

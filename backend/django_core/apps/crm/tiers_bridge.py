@@ -53,6 +53,20 @@ def mirror_client_to_tiers(sender, instance, **kwargs):
         # Écrit le lien retour SANS re-déclencher ce signal (update direct).
         if client.tiers_id != tiers.id:
             sender.objects.filter(pk=client.pk).update(tiers=tiers)
+            client.tiers = tiers
+        # AUDV23 (ARC21) — LE HOOK D'ÉCRITURE, CÂBLÉ MAINTENANT. Le service
+        # `crm.services.ecrire_identite_client` existait depuis ARC21 mais
+        # n'avait AUCUN appelant hors tests : l'activation future du flag
+        # `TIERS_SOURCE_ECRITURE` aurait donc été un nouveau chantier, pas un
+        # simple flip. On le branche ici, sur le MÊME point que le miroir —
+        # donc TOUTE sauvegarde de Client (API, admin, service, import) le
+        # traverse, pas seulement `perform_create`/`perform_update`.
+        #
+        # FLAG OFF (le défaut, et l'état de la prod) : le service renvoie
+        # False sans écrire ni requêter — comportement byte-identique à
+        # aujourd'hui. Best-effort : il n'échoue jamais.
+        from apps.crm.services import ecrire_identite_client
+        ecrire_identite_client(client)
     except Exception:
         # Le pont ne doit jamais casser une écriture Client existante — mais
         # CRX40 : il ne doit pas non plus échouer EN SILENCE. Le `pass` nu
