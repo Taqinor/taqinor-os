@@ -23,6 +23,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.ventes.models import Facture, Paiement, PaymentLink
+from testkit.time import frozen
 
 User = get_user_model()
 
@@ -119,14 +120,19 @@ class TestAud136CreationDuLien(_Base):
         self.assertEqual(neuf.statut, PaymentLink.Statut.EN_ATTENTE)
 
     def test_le_lien_porte_toujours_une_expiration(self):
+        # Horloge FIGÉE (YTEST15) : la création ET la borne `maintenant`
+        # lisent le MÊME instant — jamais un `timezone.now()` vif comparé à
+        # une valeur calculée un peu plus tôt/tard.
         from apps.ventes.models import PAYMENT_LINK_TTL_DAYS
         from apps.ventes.services import create_payment_link
-        lien = create_payment_link(facture=self.facture)
+        with frozen('2026-01-01 10:00:00'):
+            lien = create_payment_link(facture=self.facture)
+            maintenant = timezone.now()
         self.assertIsNotNone(lien.expires_at)
-        self.assertGreater(lien.expires_at, timezone.now())
+        self.assertGreater(lien.expires_at, maintenant)
         self.assertLessEqual(
             lien.expires_at,
-            timezone.now() + timedelta(days=PAYMENT_LINK_TTL_DAYS + 1))
+            maintenant + timedelta(days=PAYMENT_LINK_TTL_DAYS + 1))
 
 
 class TestAud136Revocation(_Base):
