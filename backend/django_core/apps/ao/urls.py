@@ -39,6 +39,7 @@ from .views import (
     PieceConsultationViewSet,
     PieceSoumissionViewSet,
     PlanSourceViewSet,
+    PlancheAOViewSet,
     PresetCalepinageViewSet,
     ReleveAOViewSet,
     SectionBordereauViewSet,
@@ -71,6 +72,7 @@ router.register(r'batiments', BatimentAOViewSet, basename='ao-batiment')
 router.register(r'toitures', ToitureAOViewSet, basename='ao-toiture')
 router.register(r'plans-source', PlanSourceViewSet,
                 basename='ao-plan-source')
+router.register(r'planches', PlancheAOViewSet, basename='ao-planche')
 router.register(r'obstacles', ObstacleAOViewSet,
                 basename='ao-obstacle')
 # PV54 — zones de toiture (enveloppe / interdite / réservée / préférée).

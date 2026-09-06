@@ -1,0 +1,36 @@
+{
+  "endpoint": "POST /api/django/ao/planches/upload/ (multipart: appel_offre, code_document, fichier, toiture?, variante?, motif?)",
+  "pourquoi": "AUDV24 (DRAFT165-5, AOF140) — PlancheAO n'avait AUCUN ViewSet/serializer/URL : `services.generer_indice_planche` (indice AUTOMATIQUE, jamais saisi, incrémenté sur changement d'empreinte, ancienne version ARCHIVÉE) existait déjà, testé, mais aucune route ne l'appelait. PACT10 : le fichier part dans records.Attachment (MinIO, jamais un FileField — garde ARC26) ; l'empreinte SHA-256 du CONTENU (pas du calepinage) pilote le versionnement — un ré-upload identique renvoie 200 sans rien créer (`id`/`indice` inchangés), un contenu différent renvoie 201 avec l'indice suivant et archive l'ancienne planche du même code_document.",
+  "exemple_nouvelle_version": {
+    "id": 42,
+    "appel_offre": 7,
+    "toiture": 3,
+    "variante": null,
+    "code_document": "05",
+    "indice": "B",
+    "reference_complete": "05B",
+    "empreinte": "3a7bd3e2360a3d...",
+    "motif_revision": "Obstacle écarté",
+    "statut": "active",
+    "statut_display": "Active",
+    "cartouche": {
+      "code_document": "05",
+      "indice": "B",
+      "objet": "Centrale toiture",
+      "maitre_ouvrage": "Fondation X",
+      "soumissionnaire": "PARTENAIRE SA",
+      "reference_marche": "AO-2026-014"
+    },
+    "bandeau_engagement": {},
+    "attachment": 118
+  },
+  "exemple_contenu_inchange_reponse_200": {
+    "id": 41,
+    "indice": "A",
+    "reference_complete": "05A",
+    "statut": "active"
+  },
+  "exemple_erreur_format_refuse": {
+    "fichier": ["Format non supporté (PDF, PNG, JPEG ou WebP uniquement)."]
+  }
+}

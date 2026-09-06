@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
   piecesFourniesList: vi.fn(),
   // PACT74 — l'onglet « Pièces du DCE » (PiecesConsultation).
   piecesConsultationList: vi.fn(),
+  // AUDV24 — l'onglet « Planches » (PlanchesPanel).
+  planchesList: vi.fn(),
   // WIR206 — barre de statut (transitions SERVEUR + changer-statut) et lead lie.
   transitions: vi.fn(),
   changerStatut: vi.fn(),
@@ -93,6 +95,7 @@ vi.mock('../../api/aoApi', () => ({
     cautionsSoumission: { list: mocks.cautionsList, create: vi.fn(), deriverDefinitive: vi.fn() },
     echeancesAo: { list: mocks.echeancesAoList, create: vi.fn(), update: vi.fn() },
     resultatsAo: { list: mocks.resultatsAoList, enregistrer: vi.fn() },
+    planches: { list: mocks.planchesList, upload: vi.fn() },
   },
 }))
 
@@ -215,6 +218,7 @@ beforeEach(() => {
   mocks.checklistList.mockResolvedValue({ data: [] })
   mocks.piecesFourniesList.mockResolvedValue({ data: [] })
   mocks.piecesConsultationList.mockResolvedValue({ data: [] })
+  mocks.planchesList.mockResolvedValue({ data: [] })
   mocks.transitions.mockResolvedValue({ data: TRANSITIONS_DEPOSE })
   mocks.changerStatut.mockResolvedValue({ data: { ...AFFAIRE, statut: 'gagne' } })
   mocks.lead.mockResolvedValue({ data: { lead_id: null, fiche: null } })
@@ -223,13 +227,14 @@ beforeEach(() => {
 
 // Les 13 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
 // ajoutés le 03/08/2026, « Variantes » (PACT171), « Suivi administratif »
-// (PACT70), puis « Pièces du DCE » (PACT74) — l'ordre des 12 premiers ne
-// bouge jamais (un onglet nouveau s'ajoute EN QUEUE, il ne s'intercale pas).
+// (PACT70), « Pièces du DCE » (PACT74), puis « Planches » (AUDV24) —
+// l'ordre des 13 premiers ne bouge jamais (un onglet nouveau s'ajoute EN
+// QUEUE, il ne s'intercale pas).
 const ONGLETS = [
   'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
   'Dossier', 'Questions terrain', 'Historique',
   'Administratif', 'Équipements', 'CPS & exigences',
-  'Variantes', 'Suivi administratif', 'Pièces du DCE',
+  'Variantes', 'Suivi administratif', 'Pièces du DCE', 'Planches',
 ]
 
 describe('AffaireDetail', () => {
@@ -276,15 +281,23 @@ describe('AffaireDetail', () => {
     await screen.findAllByText('AO-2026-001')
     const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(onglets).toEqual(ONGLETS)
-    expect(onglets[onglets.length - 2]).toBe('Suivi administratif')
+    expect(onglets[11]).toBe('Suivi administratif')
   })
 
-  it('ajoute « Pièces du DCE » (PACT74) en 13e et dernier onglet', async () => {
+  it('ajoute « Pièces du DCE » (PACT74) en 13e onglet', async () => {
     renderScreen()
     await screen.findAllByText('AO-2026-001')
     const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(onglets).toEqual(ONGLETS)
-    expect(onglets[onglets.length - 1]).toBe('Pièces du DCE')
+    expect(onglets[onglets.length - 2]).toBe('Pièces du DCE')
+  })
+
+  it('ajoute « Planches » (AUDV24) en 14e et dernier onglet', async () => {
+    renderScreen()
+    await screen.findAllByText('AO-2026-001')
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(ONGLETS)
+    expect(onglets[onglets.length - 1]).toBe('Planches')
   })
 
   it('n’a JAMAIS un onglet ou un mot « rentabilité » dans l’arbre (route séparée AOF161)', async () => {
@@ -683,6 +696,21 @@ describe('AffaireDetail', () => {
     })
   })
 
+  /* ══ 14ᵉ onglet — AUDV24 : PlancheAO n'avait aucun ViewSet/écran ══ */
+  describe('l’onglet « Planches »', () => {
+    it('monte le VRAI PlanchesPanel, filtré sur CETTE affaire', async () => {
+      renderScreen()
+      await screen.findAllByText('AO-2026-001')
+      await userEvent.click(onglet('Planches'))
+
+      await waitFor(
+        () => expect(mocks.planchesList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      expect(await screen.findByRole('heading', { name: "Planches d'implantation" })).toBeInTheDocument()
+    })
+  })
+
   describe('gardes de structure', () => {
     it('plus AUCUN TabPlaceholder ne subsiste dans la fiche', () => {
       expect(codeSeul).not.toMatch(/TabPlaceholder/)
@@ -705,6 +733,7 @@ describe('AffaireDetail', () => {
         './variantes/VariantesCompare',
         './SuiviAdministratifAO',
         './PiecesConsultation',
+        './dossier/PlanchesPanel',
       ]) {
         // lazy(() => import('<chemin>')…
         expect(codeSeul).toMatch(
@@ -725,10 +754,10 @@ describe('AffaireDetail', () => {
       const montages = codeSeul.match(/<PanneauDiffere>/g) || []
       // 5 panneaux de la 1re vague + 3 de la 2de (Administratif, Équipements,
       // CPS & exigences) + le comparateur de variantes + les 2 de la vague §E
-      // (Suivi administratif PACT70, Pièces du DCE PACT74) — l'ÉGALITÉ est la
-      // garde : un panneau déclaré `lazy` et monté hors Suspense ferait
-      // planter la fiche entière.
-      expect(lazyDeclares.length).toBe(11)
+      // (Suivi administratif PACT70, Pièces du DCE PACT74) + Planches
+      // (AUDV24) — l'ÉGALITÉ est la garde : un panneau déclaré `lazy` et
+      // monté hors Suspense ferait planter la fiche entière.
+      expect(lazyDeclares.length).toBe(12)
       expect(montages.length).toBe(lazyDeclares.length)
     })
 
