@@ -71,6 +71,13 @@ const parametresApi = {
   updateUniteMesure: (id, data) =>
     api.patch(`/parametres/unites-mesure/${id}/`, data),
   deleteUniteMesure: (id) => api.delete(`/parametres/unites-mesure/${id}/`),
+  // MRY28 — gabarit des trois cadences de relance (contact/apres_devis/reveil),
+  // forme `cadence_relance_v2` (MRY25/MRY4). `?cadence=` filtre une seule
+  // cadence ; sans lui, toutes les cadences confondues.
+  getCadenceRelance: (cadence) =>
+    api.get('/parametres/cadence-relance/', { params: cadence ? { cadence } : {} }),
+  updateCadenceRelanceEtape: (id, data) =>
+    api.patch(`/parametres/cadence-relance/${id}/`, data),
 }
 
 export default parametresApi
