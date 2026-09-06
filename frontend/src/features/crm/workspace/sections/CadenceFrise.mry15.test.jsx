@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { exempleContrat } from '../../../../test/fixtures/contractSamples'
+import { formatDate } from '../../../../lib/format'
 
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 
@@ -53,5 +54,19 @@ describe('MRY15 CadenceFrise', () => {
     crmApi.getRelanceEtapesLead.mockRejectedValue(new Error('boom'))
     render(<CadenceFrise leadId={1489} />)
     expect(await screen.findByText(/Frise de cadence indisponible/)).toBeInTheDocument()
+  })
+
+  // F3 — la frise ne montrait que la DATE (formatDate(due_date)) ; l'heure
+  // Casablanca de due_at (comme heureDue de RelancesDuJourWidget.jsx, mais
+  // SANS son repli « maintenant » — la frise couvre l'historique, une touche
+  // passée garde son heure) doit apparaître à côté.
+  it('F3 — une étape avec due_at affiche la date PUIS l\'heure Casablanca', async () => {
+    render(<CadenceFrise leadId={1489} />)
+    const premiere = ETAPES[0]
+    const heureAttendue = new Intl.DateTimeFormat('fr-FR', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Casablanca',
+    }).format(new Date(premiere.due_at))
+    const texteAttendu = `${formatDate(premiere.due_date)} ${heureAttendue}`
+    expect(await screen.findByText(texteAttendu)).toBeInTheDocument()
   })
 })
