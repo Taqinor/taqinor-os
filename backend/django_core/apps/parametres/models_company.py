@@ -4,6 +4,7 @@ Domaine « Société & identité / Devis & logique métier ». Extrait de l'anci
 ``models.py`` monolithique sans le moindre changement de champ, de ``Meta`` ou
 de nom de table — l'``app_label`` reste ``parametres`` et la table reste
 ``parametres_companyprofile`` (split sans migration)."""
+import datetime
 from decimal import Decimal
 
 from django.db import models
@@ -282,6 +283,46 @@ class CompanyProfile(models.Model):
         help_text='Délai maximum (en heures) avant première prise de contact '
                   'sur un nouveau lead. 0 = SLA désactivé.'
     )
+    # ── MRY8 — Fenêtres d'appel de la société ────────────────────────────────
+    # Elles décident QUAND une touche de cadence tombe (`crm.horaires`) et
+    # servent de base au KPI « premier contact » en minutes OUVRÉES. Les
+    # défauts sont les règles réelles du Guide de Meryem, jamais des valeurs
+    # neutres. Les JOURS ouvrés et les FÉRIÉS ne sont PAS ici : ils restent
+    # portés par `notifications.WorkingHoursConfig` / `Holiday` (source
+    # unique) — ces champs ne portent que des HEURES.
+    appel_heure_debut = models.TimeField(
+        default=datetime.time(8, 30),
+        verbose_name="Début des appels",
+        help_text="Heure locale à partir de laquelle on peut appeler.")
+    appel_heure_fin = models.TimeField(
+        default=datetime.time(20, 0),
+        verbose_name="Fin des appels",
+        help_text="Heure locale après laquelle on n'appelle plus.")
+    # Pause de la prière du vendredi — on ne l'appelle pas, on la SAUTE.
+    vendredi_pause_debut = models.TimeField(
+        default=datetime.time(11, 30),
+        verbose_name='Vendredi — début de pause')
+    vendredi_pause_fin = models.TimeField(
+        default=datetime.time(15, 0),
+        verbose_name='Vendredi — fin de pause')
+    # Ramadan : période NON devinée (deux dates nulles par défaut). Tant
+    # qu'elles ne sont pas saisies, rien ne change.
+    ramadan_debut = models.DateField(
+        null=True, blank=True, verbose_name='Ramadan — début')
+    ramadan_fin = models.DateField(
+        null=True, blank=True, verbose_name='Ramadan — fin')
+    ramadan_appel_debut = models.TimeField(
+        default=datetime.time(10, 0),
+        verbose_name='Ramadan — début des appels')
+    ramadan_appel_fin = models.TimeField(
+        default=datetime.time(14, 0),
+        verbose_name='Ramadan — fin des appels')
+    # Objectif de première prise de contact, en minutes OUVRÉES (KPI MRY19).
+    premier_contact_objectif_min = models.PositiveIntegerField(
+        default=5,
+        verbose_name='Objectif premier contact (minutes ouvrées)',
+        help_text='Minutes ouvrées maximum entre l\'arrivée d\'un lead et la '
+                  'première prise de contact.')
     # AUTO-PIPELINE (ordre fondateur 26/08/2026) — « une fois que le lead
     # arrive dans notre ERP ça crée automatiquement le devis automatique ».
     # ACTIF par défaut : c'est le flux demandé. Le réglage existe pour qu'une

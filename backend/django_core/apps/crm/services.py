@@ -3529,18 +3529,25 @@ RAMADAN_TZ = 'Africa/Casablanca'
 def _ramadan_pacing_enabled(company) -> bool:
     """True si le drapeau « pacing Ramadan » est actif pour la société.
 
-    Lit ``CompanyProfile.ramadan_pacing`` (BooleanField nullable, défaut False).
-    Renvoie False si le profil n'existe pas ou que le champ est absent.
-    Ajout futur : le champ ``ramadan_pacing`` est posé au besoin sur
-    CompanyProfile via une migration dédiée ; en attendant, ce helper renvoie
-    toujours False (comportement non-ramadan inchangé).
+    MRY8 — ce helper lisait ``CompanyProfile.ramadan_pacing``, un champ qui
+    N'A JAMAIS EXISTÉ : il renvoyait donc toujours False et le pacing Ramadan
+    (report des rappels de RDV pendant l'iftar) était mort depuis sa création.
+    Il s'appuie désormais sur la PÉRIODE réellement saisie par la société
+    (``ramadan_debut``/``ramadan_fin``, MRY8) : vrai pendant cette période,
+    faux partout ailleurs — et faux tant que la société n'a rien saisi (la
+    période n'est jamais devinée). ``ramadan_pacing`` reste honoré s'il est
+    un jour ajouté, pour ne pas retirer un interrupteur explicite.
     """
     if company is None:
         return False
     try:
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.objects.filter(company=company).first()
-        return bool(getattr(profile, 'ramadan_pacing', False))
+        if bool(getattr(profile, 'ramadan_pacing', False)):
+            return True
+        from apps.crm import horaires
+        return horaires.est_en_ramadan(
+            aujourd_hui_local(), company, profil=profile)
     except Exception:
         return False
 

@@ -59,6 +59,17 @@ _PROFILE_FIELD_LABELS = {
     'referral_reward': 'Parrainage — récompense par défaut',
     # WR12 — flags exposés en Paramètres (FG28 SLA + N105 export DGI).
     'lead_sla_hours': 'SLA premier contact (heures)',
+    # MRY8 — fenêtres d'appel (libellés FR de l'écran Paramètres).
+    'appel_heure_debut': 'Début des appels',
+    'appel_heure_fin': 'Fin des appels',
+    'vendredi_pause_debut': 'Vendredi — début de pause',
+    'vendredi_pause_fin': 'Vendredi — fin de pause',
+    'ramadan_debut': 'Ramadan — début',
+    'ramadan_fin': 'Ramadan — fin',
+    'ramadan_appel_debut': 'Ramadan — début des appels',
+    'ramadan_appel_fin': 'Ramadan — fin des appels',
+    'premier_contact_objectif_min':
+        'Objectif premier contact (minutes ouvrées)',
     'dgi_export_actif': 'Export DGI activé',
     # QG9 — pourcentage configurable des variantes de devis.
     'variante_pct': 'Pourcentage des variantes de devis',
