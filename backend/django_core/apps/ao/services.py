@@ -1790,6 +1790,7 @@ def televerser_planche(appel_offre, code_document, fichier, *, motif='',
     """
     from django.contrib.contenttypes.models import ContentType
     from django.core.exceptions import ValidationError
+    from django.db import transaction
 
     from apps.records.models import Attachment
     from apps.records.storage import store_attachment
@@ -1800,21 +1801,26 @@ def televerser_planche(appel_offre, code_document, fichier, *, motif='',
     fichier.seek(0)
     empreinte = empreinte_fichier(contenu)
 
-    planche, creee = generer_indice_planche(
-        appel_offre, code_document, empreinte=empreinte, motif=motif,
-        variante=variante, toiture=toiture, user=user)
+    # AUDV24 fix — tout dans UN SEUL atomic : un stockage refusé (format,
+    # taille) doit annuler la planche que `generer_indice_planche` vient de
+    # créer, jamais la laisser survivre orpheline (sans attachment).
+    with transaction.atomic():
+        planche, creee = generer_indice_planche(
+            appel_offre, code_document, empreinte=empreinte, motif=motif,
+            variante=variante, toiture=toiture, user=user)
 
-    if creee:
-        infos, erreur = store_attachment(fichier, company=appel_offre.company)
-        if erreur:
-            raise ValidationError({'fichier': erreur})
-        attachement = Attachment.objects.create(
-            company=appel_offre.company,
-            content_type=ContentType.objects.get_for_model(PlancheAO),
-            object_id=planche.pk,
-            uploaded_by=user, **infos)
-        planche.attachment = attachement
-        planche.save(update_fields=['attachment', 'updated_at'])
+        if creee:
+            infos, erreur = store_attachment(
+                fichier, company=appel_offre.company)
+            if erreur:
+                raise ValidationError({'fichier': erreur})
+            attachement = Attachment.objects.create(
+                company=appel_offre.company,
+                content_type=ContentType.objects.get_for_model(PlancheAO),
+                object_id=planche.pk,
+                uploaded_by=user, **infos)
+            planche.attachment = attachement
+            planche.save(update_fields=['attachment', 'updated_at'])
     return planche, creee
 
 
