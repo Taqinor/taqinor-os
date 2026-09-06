@@ -125,7 +125,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/credit/views.py:399` | get_or_create | ReglageCredit.objects | company |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:198` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:5146` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:5180` | get_or_create | MessageTemplate.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2116` | get_or_create | LeadTag.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2130` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2142` | get_or_create | MotifPerte.objects | company, nom |
@@ -251,8 +251,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/models_units.py:83` | get_or_create | cls.objects | code, company |
 | `backend/django_core/apps/parametres/views_config.py:198` | get_or_create | DocumentTemplates.objects | company |
 | `backend/django_core/apps/parametres/views_email.py:124` | get_or_create | EmailTemplate.objects | cle, company |
-| `backend/django_core/apps/parametres/views_messages.py:113` | get_or_create | MessageTemplate.objects | cle, company |
-| `backend/django_core/apps/parametres/views_messages.py:143` | get_or_create | MessageTemplate.objects | cle, company |
+| `backend/django_core/apps/parametres/views_messages.py:118` | get_or_create | MessageTemplate.objects | cle, company |
+| `backend/django_core/apps/parametres/views_messages.py:148` | get_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/parametres/views_statuses.py:138` | get_or_create | StatutConfig.objects | cle, company, domaine |
 | `backend/django_core/apps/parametres/views_translations.py:130` | get_or_create | TranslationOverride.objects | company, key, locale |
 | `backend/django_core/apps/portail/services.py:150` | get_or_create | ComptePortailClient.objects | client, company |
