@@ -222,6 +222,12 @@ export default function LeadWorkspace({
   // LANE Q-C — dialogue « Envoyer un questionnaire » (bouton du rail identité).
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false)
   const [archiveBusy, setArchiveBusy] = useState(false)
+  // F4 — bumpé par les raccourcis « ⋯ » du rail identité (onAction
+  // 'relance-cadence'/'relance-arreter' ci-dessous) : transmis à
+  // SectionPipeline via refData, combiné à son compteur local `friseReload`
+  // (ses propres boutons Relancer/Arrêter), pour que CadenceFrise recharge
+  // AUSSI après un geste pris hors de SectionPipeline.
+  const [relanceVersion, setRelanceVersion] = useState(0)
   // PV22 — « Concevoir la toiture (3D) » : la liste des brouillons à départager
   // (plusieurs candidats) et le message SERVEUR quand le dimensionnement
   // automatique est refusé. `null` = aucun dialogue ouvert.
@@ -363,11 +369,15 @@ export default function LeadWorkspace({
       // toujours par onAction). Cadence par défaut 'contact' — le choix
       // complet (contact/après devis/réveil) vit dans la section Suivi
       // commercial (SectionPipeline), plus visible pour un geste réfléchi.
+      // F4 — bump `relanceVersion` EN PLUS de refreshServer() : ce raccourci
+      // vit hors SectionPipeline, son compteur local `friseReload` ne peut
+      // donc pas le voir — sans ce bump la frise de la fiche (CadenceFrise)
+      // restait figée après un geste pris ICI.
       case 'relance-cadence': {
         if (!leadId) return undefined
         return toastPromise(
           crmApi.initialiserRelance(leadId, { cadence: 'contact' })
-            .then(() => draft.refreshServer()),
+            .then(() => { draft.refreshServer(); setRelanceVersion((n) => n + 1) }),
           {
             loading: 'Relance de la cadence…',
             success: 'Cadence relancée.',
@@ -381,7 +391,7 @@ export default function LeadWorkspace({
         if (!motif || !motif.trim()) return undefined
         return toastPromise(
           crmApi.arreterCadence(leadId, { motif: motif.trim() })
-            .then(() => draft.refreshServer()),
+            .then(() => { draft.refreshServer(); setRelanceVersion((n) => n + 1) }),
           {
             loading: 'Arrêt de la cadence…',
             success: 'Cadence arrêtée.',
@@ -728,6 +738,8 @@ export default function LeadWorkspace({
               refData={{
                 users, tagOptions, motifOptions,
                 leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+                // F4 — voir la déclaration de relanceVersion plus haut.
+                relanceVersion,
               }}
             />
             {/* LW34 — 768-1023 : le rail contexte quitte la grille 2 colonnes,

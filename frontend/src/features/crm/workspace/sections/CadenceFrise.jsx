@@ -29,6 +29,22 @@ const STATUT_ICON = {
   a_faire: Clock3,
 }
 
+/** F3/MRY15 — `due_at` (ISO) → « HH:MM » heure Casablanca, fuseau EXPLICITE
+ *  (même calcul que `heureDue` dans `pages/crm/RelancesDuJourWidget.jsx`),
+ *  copié plutôt qu'importé (page → section, sens d'import inverse) : SANS le
+ *  repli « maintenant » de ce dernier, propre à la file DU JOUR — ici la
+ *  frise couvre tout l'historique, une touche passée garde son horaire réel,
+ *  jamais un mot qui écraserait la date. `null` (absente/invalide) laisse
+ *  l'appelant n'afficher que la date. */
+function heureDueAt(dueAt) {
+  if (!dueAt) return null
+  const t = new Date(dueAt).getTime()
+  if (Number.isNaN(t)) return null
+  return new Intl.DateTimeFormat('fr-FR', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Casablanca',
+  }).format(t)
+}
+
 /**
  * @param {number|string|null} leadId
  * @param {number} [reloadToken]  Incrémenté par le parent (Relancer/Arrêter
@@ -68,6 +84,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0 }) {
       {etapes.map((etape) => {
         const Icon = STATUT_ICON[etape.statut] ?? Clock3
         const estProchaine = etape.id === prochaineId
+        const heureAt = heureDueAt(etape.due_at)
         return (
           <li
             key={etape.id}
@@ -86,7 +103,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0 }) {
             <span aria-hidden="true">·</span>
             <span>{etape.libelle}</span>
             <span aria-hidden="true">·</span>
-            <span>{formatDate(etape.due_date)}</span>
+            <span>{formatDate(etape.due_date)}{heureAt ? ` ${heureAt}` : ''}</span>
             {etape.note && <span className="text-muted-foreground">— {etape.note}</span>}
           </li>
         )

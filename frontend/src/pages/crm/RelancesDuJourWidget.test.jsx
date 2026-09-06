@@ -29,8 +29,13 @@ vi.mock('../../api/crmApi', () => ({
     whatsappRelanceEtape: vi.fn(),
   },
 }))
+// F2 — le helper toast (lib/toast) est mocké pour PROUVER qu'un échec réseau
+// prévient l'agent (jamais le catch muet d'avant), sans dépendre du rendu
+// visuel réel de sonner.
+vi.mock('../../lib/toast', () => ({ toastError: vi.fn() }))
 
 import crmApi from '../../api/crmApi'
+import { toastError } from '../../lib/toast'
 import RelancesDuJourWidget from './RelancesDuJourWidget'
 
 // Les tests d'ACTION n'affichent qu'UNE ligne (sinon `getByRole('button')`
@@ -100,7 +105,7 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
   })
 
-  it('Reporter envoie une échéance ISO', async () => {
+  it('F1 — Reporter envoie {rappel_le, rappel_heure} (forme sûre ancrée Casablanca, jamais un due_at fuseau-navigateur)', async () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
@@ -108,8 +113,18 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '11:00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
-      PREMIERE.id, { due_at: new Date('2026-09-10T11:00:00').toISOString() }))
+      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '11:00' }))
     await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
+  })
+
+  it('F1 — Reporter sans heure saisie retombe sur 09:00 (jamais un due_at calculé côté écran)', async () => {
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
+      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '09:00' }))
   })
 
   it('Sauter ouvre une note optionnelle puis confirme', async () => {
@@ -131,6 +146,20 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
     expect(crmApi.marquerRelanceEtapeSautee).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /Sauter/ })).toBeInTheDocument()
+  })
+
+  it('F2 — un échec réseau affiche un toast d\'erreur et laisse la ligne cliquable (jamais un catch muet)', async () => {
+    crmApi.marquerRelanceEtapeSautee.mockRejectedValueOnce(new Error('boom'))
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Sauter/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee).toHaveBeenCalled())
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Action impossible pour le moment.'))
+    // La ligne n'a PAS été retirée (retirer() jamais appelé sur l'échec) et
+    // redevient cliquable (busyId remis à null) — jamais un état bloqué.
+    expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmer' })).not.toBeDisabled())
   })
 
   it('affiche un état vide qui nomme le démarrage automatique des cadences', async () => {

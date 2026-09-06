@@ -122,7 +122,12 @@ const enumOptions = (labels) => [
 // LW16, rail identité). Port 1:1 des autres champs pipeline + verrous perdu/motif.
 export default function SectionPipeline({ state, setField, errors = {}, refData = {} }) {
   const v = (k) => getField(state, k) ?? ''
-  const { users = [], tagOptions = [], motifOptions = [] } = refData
+  // F4 — `relanceVersion` (LeadWorkspace, bumpé par les raccourcis « ⋯ » du
+  // rail identité — hors de cette section) est COMBINÉ au compteur local
+  // `friseReload` ci-dessous (propres boutons Relancer/Arrêter de CETTE
+  // section) : les deux sources de rechargement de la frise coexistent sans
+  // jamais s'écraser l'une l'autre.
+  const { users = [], tagOptions = [], motifOptions = [], relanceVersion = 0 } = refData
   const { labels: canalLabels } = useCanaux()
   const perdu = !!getField(state, 'perdu')
   const neplusContacter = !!getField(state, 'ne_plus_contacter')
@@ -169,7 +174,7 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
                 onChanged={() => setFriseReload((n) => n + 1)}
               />
               <div className="mt-1.5">
-                <CadenceFrise leadId={state.leadId} reloadToken={friseReload} />
+                <CadenceFrise leadId={state.leadId} reloadToken={friseReload + relanceVersion} />
               </div>
             </>
           )}

@@ -95,6 +95,17 @@ describe('MRY29 KpiRelancesPanel', () => {
       .toBeInTheDocument()
   })
 
+  it('F6 — sans objectif_minutes dans la réponse, le titre affiche « — » (jamais un 5 en dur)', async () => {
+    const { objectif_minutes: _omis, ...contactSansObjectif } = CONTACT
+    crmApi.getKpiPremierContact.mockResolvedValue({ data: contactSansObjectif })
+    render(<KpiRelancesPanel />)
+    await waitFor(() => expect(crmApi.getKpiPremierContact).toHaveBeenCalled())
+    expect(await screen.findByText(/Objectif « rappelé en moins de — min ouvrées »/))
+      .toBeInTheDocument()
+    expect(screen.queryByText(/rappelé en moins de 5 min/)).not.toBeInTheDocument()
+    expect(await screen.findByText('% touchés < — min')).toBeInTheDocument()
+  })
+
   it('indisponible : ne casse pas l\'écran sur un échec réseau', async () => {
     crmApi.getKpiPremierContact.mockRejectedValue(new Error('boom'))
     render(<KpiRelancesPanel />)

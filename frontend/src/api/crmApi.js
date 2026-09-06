@@ -105,8 +105,13 @@ const crmApi = {
   // (jamais d'envoi réseau — décision D5).
   whatsappRelanceEtape: (id) => api.post(`/crm/relance-etapes/${id}/whatsapp/`),
   // MRY10 — reporte cette touche (et décale les suivantes du même delta).
-  reporterRelanceEtape: (id, { due_at }) =>
-    api.post(`/crm/relance-etapes/${id}/reporter/`, { due_at }),
+  // F1 (2026-09) — forme SÛRE `{rappel_le, rappel_heure}` ancrée Casablanca
+  // CÔTÉ SERVEUR (`RelanceEtapeViewSet.reporter` → `_parse_rappel`, comme
+  // `marquerRelanceEtapeFait` ci-dessus) : jamais un `due_at` calculé côté
+  // écran depuis le fuseau du NAVIGATEUR (incident — l'heure demandée par
+  // l'agent dérivait de son fuseau local, pas de Casablanca).
+  reporterRelanceEtape: (id, { rappel_le, rappel_heure }) =>
+    api.post(`/crm/relance-etapes/${id}/reporter/`, { rappel_le, rappel_heure }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
