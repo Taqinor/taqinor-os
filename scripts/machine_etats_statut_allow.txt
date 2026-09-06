@@ -17,7 +17,6 @@
 # Un serialiseur ABSENT de cette base et qui laisse « statut » writable fait
 # echouer backend-lint.
 
-contrats.Contrat.ContratSerializer | AUD501 -- corrige dans la meme lane, l'entree part avec.
 ao.AppelOffre.AppelOffreSerializer | A RELIRE -- meme classe systemique, tache dediee (hors lane AUD515).
 flotte.Vehicule.VehiculeSerializer | A RELIRE -- meme classe systemique, tache dediee (hors lane AUD515).
 installations.Intervention.InterventionSerializer | A RELIRE -- AUD317 pose le point de transition dedie ; la porte d'ecriture reste a fermer.

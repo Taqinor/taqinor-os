@@ -132,6 +132,17 @@ class ContratSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'created_by', 'date_creation',
             'date_dernier_renouvellement', 'nb_renouvellements',
+            # AUD501 — LE DOCSTRING DE `perform_update` DISAIT DÉJÀ VRAI, LE
+            # CODE NON. `statut` était absent de cette liste : un PATCH brut du
+            # corps posait « signe » sur un contrat en approbation sans qu'AUCUNE
+            # `SignatureContrat` n'existe, sans événement `contrat_signe`, sans
+            # `VersionContrat` figée — et « resilie » sans la moindre
+            # `Resiliation`, donc sans désactivation de la maintenance SAV. La
+            # machine d'états n'était qu'un décor tant que cette porte restait
+            # grande ouverte. Les transitions passent par `changer-statut`
+            # (administratives) ou par leur action dédiée (`signer`,
+            # `resilier`).
+            'statut',
         ]
 
     responsable_nom = serializers.SerializerMethodField()

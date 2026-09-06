@@ -711,8 +711,52 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         body.is_valid(raise_exception=True)
         cible = body.validated_data['statut']
         ancien = contrat.statut
+        # ── AUD501 — CETTE PORTE NE FABRIQUE PLUS DE FAUX ÉTATS ─────────────
+        # Elle ne faisait que traverser `machine_etats` : elle posait donc
+        # « signe » SANS jamais appeler `signer_contrat` (seul créateur d'une
+        # `SignatureContrat`, de l'événement `contrat_signe` et de la
+        # `VersionContrat` figée), et « resilie » SANS jamais appeler
+        # `resilier_contrat` (seul créateur d'une `Resiliation` et de
+        # l'événement `contrat_resilie` qui désactive la maintenance SAV).
+        # Un contrat pouvait donc être « signé » sans signature et « résilié »
+        # sans résiliation. Ces deux cibles ont chacune leur porte DÉDIÉE et
+        # GARDÉE : on y renvoie explicitement au lieu de fabriquer l'état.
+        _Statut = contrat.__class__.Statut
+        portes_dediees = {
+            _Statut.SIGNE: (
+                'signer',
+                "une signature électronique (loi 53-05) doit être enregistrée "
+                "— elle crée la SignatureContrat et fige la version du "
+                "contrat"),
+            _Statut.RESILIE: (
+                'resilier',
+                'une résiliation doit être enregistrée (motif, date d\'effet, '
+                'préavis, solde) — elle désactive aussi la maintenance SAV '
+                'associée'),
+        }
+        if cible in portes_dediees and cible != ancien:
+            action_dediee, pourquoi = portes_dediees[cible]
+            return Response(
+                {'detail': (
+                    f'Le statut « {cible} » ne se pose pas par cette action : '
+                    f'{pourquoi}. Utilisez l\'action « {action_dediee} ».'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
-            services.changer_statut(contrat, cible)
+            if (cible == _Statut.ACTIF and ancien == _Statut.SIGNE):
+                # L'activation d'un contrat SIGNÉ a son propre service : il
+                # porte la garde de date ET la création des échéanciers, que
+                # la seule transition d'états ne fait pas.
+                services.activer_si_eligible(contrat, auteur=request.user)
+                if contrat.statut != _Statut.ACTIF:
+                    return Response(
+                        {'detail': (
+                            'Ce contrat signé n\'est pas encore éligible à '
+                            'l\'activation (date de début non atteinte).'
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST)
+            else:
+                services.changer_statut(contrat, cible)
         except services.TransitionInterdite as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

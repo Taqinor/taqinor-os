@@ -6,7 +6,7 @@ Lancer :
 
 Ce que ces tests verrouillent :
   * le detecteur VOIT (un garde vert sans cette preuve ne dit rien) -- il
-    liste bien les cinq divergences reelles du depot en mode `--tout` ;
+    liste bien les divergences reelles du depot en mode `--tout` ;
   * les quatre formes de « porte fermee » sont acceptees, et elles seules ;
   * la decouverte est SEMANTIQUE : elle vient d'un `machine_etats.py` ou d'une
     fonction `changer_statut*`, jamais d'une liste ecrite a la main ;
@@ -109,12 +109,18 @@ class LeDetecteurVoit(unittest.TestCase):
     """Preuve ROUGE : sans elle, un garde vert ne dit rien (lecon OR3)."""
 
     def test_les_divergences_reelles_sont_listees_en_mode_tout(self):
+        """Le mode `--tout` doit voir l'existant que la base de reprise gele.
+
+        On n'EPINGLE aucun modele : la liste DECROIT au fil des taches (AUD501
+        en a retire `contrats.Contrat` le jour meme). Ce qui doit rester vrai,
+        c'est que chaque entree GELEE est effectivement OBSERVEE -- sinon le
+        garde ne verrait rien et sa base pre-autoriserait dans le vide."""
         brutes = garde.divergences(inclure_reprise=True)
         self.assertTrue(
             brutes,
             'le garde ne voit AUCUNE divergence : il ne protege rien')
-        joint = ' | '.join(brutes)
-        self.assertIn('contrats.Contrat', joint)
+        observees = {ligne.split()[1] for ligne in brutes}
+        self.assertTrue(set(garde.base_de_reprise()) <= observees)
 
     def test_la_base_de_reprise_tait_l_existant(self):
         """En mode CI, les entrees figees ne rougissent pas."""
