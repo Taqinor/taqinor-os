@@ -10,8 +10,11 @@ completeness may not, so it is asserted here rather than promised in a comment.
 """
 import json
 import os
+import re
 import sys
 import unittest
+
+import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -219,6 +222,102 @@ class BalanceTests(unittest.TestCase):
                       if any(u.startswith("apps.ventes.") for u in lane))
         self.assertGreaterEqual(holders, 4,
                                 "apps.ventes est concentre sur trop peu de lanes")
+
+
+DYNAMIC_TOTAL_EXPR = "${{ strategy.job-total }}"
+
+
+# A GitHub Actions ``${{ ... }}`` expression can contain internal spaces
+# (e.g. ``${{ strategy.job-total }}``) — match it as ONE atomic token, else
+# a naive ``\S+`` split would cut it apart at the first space inside.
+_SHELL_ARG_RE = r"\$\{\{[^}]*\}\}|\S+"
+
+
+def _shard_total_arg(run_script):
+    """Extract the SECOND positional argument passed to ``ci_shard.py`` in a
+    workflow step's shell script (the first is ``${{ matrix.shard }}``).
+
+    A bare literal is often glued to a closing `` $(...) `` paren with no
+    space (``... 6)``) — strip it; a real ``${{ ... }}`` expression already
+    stops at its own ``}}`` so this never eats part of one.
+    """
+    m = re.search(
+        rf"ci_shard\.py\s+(?:{_SHELL_ARG_RE})\s+({_SHELL_ARG_RE})",
+        run_script)
+    if not m:
+        return None
+    return m.group(1).rstrip(")")
+
+
+def _shard_total_is_consistent(total_arg, matrix_len):
+    """True iff ``total_arg`` can NEVER drift out of sync with the matrix's
+    real length: either it is the dynamic ``strategy.job-total`` GitHub
+    Actions context (always correct by construction, whatever the matrix
+    becomes later) or it is a literal that HAPPENS to currently match.
+
+    AUD830 — a hardcoded literal ('6') sitting next to a matrix definition
+    is exactly the trap: it matches today and silently stops matching the
+    day someone trims a lane from the matrix without touching this second,
+    unrelated number.
+    """
+    if total_arg == DYNAMIC_TOTAL_EXPR:
+        return True
+    try:
+        return int(total_arg) == matrix_len
+    except (TypeError, ValueError):
+        return False
+
+
+class WorkflowShardTotalConsistencyTests(unittest.TestCase):
+    """AUD830 — the shard TOTAL passed to ``ci_shard.py`` must always track
+    ``strategy.matrix.shard``'s actual length, read straight from ci.yml (the
+    same file GitHub reads) — never a hand-maintained copy that can drift.
+    """
+
+    WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "ci.yml")
+    JOB_NAME = "backend-tests-shard"
+    STEP_NAME_PREFIX = "Run Django test suite"
+
+    def _load_job(self):
+        with open(self.WORKFLOW, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        return doc["jobs"][self.JOB_NAME]
+
+    def test_backend_shard_total_tracks_matrix_length(self):
+        job = self._load_job()
+        matrix = job["strategy"]["matrix"]["shard"]
+        step = next(
+            s for s in job["steps"]
+            if str(s.get("name", "")).startswith(self.STEP_NAME_PREFIX))
+        total_arg = _shard_total_arg(step["run"])
+        self.assertIsNotNone(
+            total_arg, "invocation de scripts/ci_shard.py introuvable dans "
+            f"le step '{self.STEP_NAME_PREFIX}' de {self.JOB_NAME}")
+        self.assertTrue(
+            _shard_total_is_consistent(total_arg, len(matrix)),
+            f"ci_shard.py recoit un total ({total_arg!r}) independant de la "
+            f"longueur reelle de la matrice ({len(matrix)}) : une lane "
+            "retiree de la matrice sans toucher ce total laisserait un "
+            "sixieme des modules jamais demande a Django, sans un seul "
+            "signal rouge (AUD830).")
+        self.assertEqual(
+            set(matrix), set(range(len(matrix))),
+            "la matrice doit etre exactement 0..N-1, sans trou ni doublon")
+
+    def test_rouge_dabord_a_stale_hardcoded_literal_is_caught(self):
+        """AUD830 Done= — simule EXACTEMENT le scenario du defaut mesure :
+        une matrice retombee a 5 entrees avec le litteral '6' inchange a
+        cote. La fonction de coherence doit le detecter (ROUGE)."""
+        self.assertFalse(_shard_total_is_consistent("6", 5))
+        self.assertFalse(_shard_total_is_consistent("6", 4))
+        # La valeur dynamique, elle, reste correcte quelle que soit la
+        # taille de la matrice — c'est justement pourquoi elle ne peut plus
+        # driver une fois en place (VERT, apres le fix).
+        self.assertTrue(_shard_total_is_consistent(DYNAMIC_TOTAL_EXPR, 5))
+        self.assertTrue(_shard_total_is_consistent(DYNAMIC_TOTAL_EXPR, 12))
+        # Un litteral qui matche encore aujourd'hui n'est pas une preuve
+        # d'absence de bug (c'est l'etat AVANT que la matrice ne bouge) :
+        self.assertTrue(_shard_total_is_consistent("6", 6))
 
 
 class TimingParserTests(unittest.TestCase):

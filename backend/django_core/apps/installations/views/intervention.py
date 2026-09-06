@@ -7,6 +7,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet
+from django.db.models import F  # noqa: F401
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -1843,14 +1844,23 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         fields = ['rdv_confirme', 'rdv_confirme_le']
         interv.rdv_confirme = confirme
         interv.rdv_confirme_le = timezone.now() if confirme else None
-        if new_date and new_date != str(interv.date_prevue or ''):
+        is_reschedule = bool(
+            new_date and new_date != str(interv.date_prevue or ''))
+        if is_reschedule:
             interv.date_prevue = new_date
-            interv.rdv_reschedule_count = (interv.rdv_reschedule_count or 0) + 1
-            fields += ['date_prevue', 'rdv_reschedule_count']
+            fields += ['date_prevue']
         interv.save(update_fields=fields)
+        if is_reschedule:
+            # AUD829 — F() atomic increment: a bare
+            # `interv.rdv_reschedule_count = (... or 0) + 1` then save()
+            # loses a concurrent reschedule under two racing requests on
+            # the same intervention.
+            type(interv).objects.filter(pk=interv.pk).update(
+                rdv_reschedule_count=F('rdv_reschedule_count') + 1)
+            interv.refresh_from_db(fields=['rdv_reschedule_count'])
         msg = ("RDV confirmé." if confirme
                else "Confirmation RDV annulée.")
-        if 'date_prevue' in fields:
+        if is_reschedule:
             msg += f" Reporté au {new_date} (reschedule #{interv.rdv_reschedule_count})."
         intervention_activity.log_note(interv, request.user, msg)
         return Response(InterventionSerializer(

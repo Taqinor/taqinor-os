@@ -14,6 +14,67 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_tenant_isolation as cti  # noqa: E402
 
 
+class TestSurfaceEnumeration(unittest.TestCase):
+    """AUD828 (M-07) -- ROUGE d'abord: before the fix, a views_*.py PREFIX
+    file, a serializers_*.py PREFIX file, and anything under core/
+    authentication were NEVER OPENED by the guard at all (not "scanned and
+    found clean" -- never even read). This pins the surface itself, not the
+    per-class detection logic already covered above."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory(dir=ROOT / "scripts" / "tests")
+        self.addCleanup(self._tmp.cleanup)
+        self.apps_dir = Path(self._tmp.name) / "apps"
+        self.core_dir = Path(self._tmp.name) / "core"
+        self.auth_dir = Path(self._tmp.name) / "authentication"
+        for d in (self.apps_dir, self.core_dir, self.auth_dir):
+            d.mkdir(parents=True)
+        self.app_dir = self.apps_dir / "demo"
+        self.app_dir.mkdir()
+
+        self._orig = (cti.APPS_DIR, cti.CORE_DIR, cti.AUTH_DIR)
+        cti.APPS_DIR = self.apps_dir
+        cti.CORE_DIR = self.core_dir
+        cti.AUTH_DIR = self.auth_dir
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        cti.APPS_DIR, cti.CORE_DIR, cti.AUTH_DIR = self._orig
+
+    def test_views_prefix_file_opened(self):
+        f = self.app_dir / "views_qualification.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertIn(f, list(cti._iter_view_files()))
+
+    def test_serializers_prefix_file_opened(self):
+        f = self.app_dir / "serializers_bar.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertIn(f, list(cti._iter_serializer_files()))
+
+    def test_core_views_file_opened(self):
+        f = self.core_dir / "views.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertIn(f, list(cti._iter_view_files()))
+
+    def test_authentication_views_prefix_file_opened(self):
+        f = self.auth_dir / "views_console.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertIn(f, list(cti._iter_view_files()))
+
+    def test_viewsets_module_not_treated_as_views_file(self):
+        """A loose 'views*.py' wildcard would ALSO match viewsets.py (a
+        base-class module, not an endpoint module) -- must not be opened."""
+        f = self.core_dir / "viewsets.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertNotIn(f, list(cti._iter_view_files()))
+
+    def test_no_duplicate_yield_when_patterns_overlap(self):
+        f = self.app_dir / "views.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        files = list(cti._iter_view_files())
+        self.assertEqual(files.count(f), 1)
+
+
 def _view_codes(src):
     with tempfile.NamedTemporaryFile(
             "w", suffix=".py", delete=False, encoding="utf-8") as fh:

@@ -7,7 +7,7 @@ médicale structurée — ``Eleve.allergies`` reste un texte libre déclaratif,
 comparaison SIMPLE substring (jamais de NLP)."""
 from decimal import ROUND_HALF_UP, Decimal
 
-from django.db.models import Q
+from django.db.models import F, Q
 
 JOURS_SEMAINE_PLEIN = 5
 _JOURS_LABELS = [
@@ -100,20 +100,35 @@ def resynchroniser_lignes_futures_cantine(eleve):
     ``InscriptionCantine``. JAMAIS rétroactif : une ligne déjà ``facturee``/
     ``payee``/``en_retard`` garde son montant historique même si
     l'inscription change en cours d'année (retirer un élève de la cantine ne
-    modifie jamais la facture déjà émise, seulement les mois suivants)."""
+    modifie jamais la facture déjà émise, seulement les mois suivants).
+
+    AUD829 — deux resynchronisations concurrentes du MÊME élève (deux
+    inscriptions cantine modifiées coup sur coup) lisaient le même
+    ``ligne.cantine_montant``/``echeancier.montant_total`` et la seconde
+    écrasait le calcul de la première (lost update sur un CHAMP DÉRIVÉ, pas
+    un simple compteur). ``select_for_update()`` sur l'échéancier et ses
+    lignes SÉRIALISE toute resynchronisation concurrente pour cet élève ;
+    l'accumulation de ``montant_total`` passe par ``F()``.
+    """
+    from django.db import transaction
     from .models import EcheancierScolarite, LigneEcheance
 
-    for echeancier in EcheancierScolarite.objects.filter(eleve=eleve):
-        nouveau_cantine = montant_cantine_mensuel(eleve, echeancier.annee_scolaire)
-        lignes = echeancier.lignes.filter(statut=LigneEcheance.Statut.A_VENIR)
-        montant_total_delta = Decimal('0')
-        for ligne in lignes:
-            if ligne.cantine_montant == nouveau_cantine:
-                continue
-            montant_total_delta += nouveau_cantine - ligne.cantine_montant
-            ligne.montant = ligne.montant - ligne.cantine_montant + nouveau_cantine
-            ligne.cantine_montant = nouveau_cantine
-            ligne.save(update_fields=['montant', 'cantine_montant'])
-        if montant_total_delta:
-            echeancier.montant_total = echeancier.montant_total + montant_total_delta
-            echeancier.save(update_fields=['montant_total'])
+    with transaction.atomic():
+        echeanciers = list(
+            EcheancierScolarite.objects.select_for_update().filter(eleve=eleve))
+        for echeancier in echeanciers:
+            nouveau_cantine = montant_cantine_mensuel(eleve, echeancier.annee_scolaire)
+            lignes = list(
+                echeancier.lignes.select_for_update()
+                .filter(statut=LigneEcheance.Statut.A_VENIR))
+            montant_total_delta = Decimal('0')
+            for ligne in lignes:
+                if ligne.cantine_montant == nouveau_cantine:
+                    continue
+                montant_total_delta += nouveau_cantine - ligne.cantine_montant
+                ligne.montant = ligne.montant - ligne.cantine_montant + nouveau_cantine
+                ligne.cantine_montant = nouveau_cantine
+                ligne.save(update_fields=['montant', 'cantine_montant'])
+            if montant_total_delta:
+                echeancier.montant_total = F('montant_total') + montant_total_delta
+                echeancier.save(update_fields=['montant_total'])

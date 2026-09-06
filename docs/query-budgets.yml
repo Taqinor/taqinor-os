@@ -4,10 +4,16 @@
 # associe un endpoint LISTE à fort trafic à un plafond de requêtes SQL (le
 # nombre de requêtes ne doit PAS grandir avec le nombre de lignes — O(1)).
 #
-# `scripts/check_query_budgets.py` (job CI `stage-names` / lint) échoue si une
-# entrée `enforced: true` n'a PAS de test de budget correspondant (un fichier
-# de test qui référence l'URL de l'endpoint ET utilise `assertMaxQueries` /
-# `assertNumQueries`). Complète la sonde de parité YAPIC11.
+# `scripts/check_query_budgets.py` échoue si une entrée `enforced: true` n'a
+# PAS de test de budget correspondant (un fichier de test qui référence l'URL
+# de l'endpoint ET utilise `assertMaxQueries` / `assertNumQueries`). Complète
+# la sonde de parité YAPIC11.
+#
+# AUD831 — réellement branché dans le job CI `stage-names` (jamais gaté par
+# le filtre `changes` — tourne sur CHAQUE push/PR) depuis le 06/09/2026 ;
+# avant cette date, ce commentaire affirmait ce branchement alors que
+# `grep -rn query_budgets .github/` rendait 0 occurrence : un endpoint
+# `enforced: true` sans test de budget ne faisait rougir AUCUN job CI.
 #
 # Ajouter un endpoint :
 #   1. écrire son test de budget (pattern 10 -> 25 objets, cf.

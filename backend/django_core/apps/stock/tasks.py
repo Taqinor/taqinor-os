@@ -23,6 +23,7 @@ AUJOURD'HUI (Africa/Casablanca).
 import logging
 
 from celery import shared_task
+from django.db.models import F
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -163,8 +164,13 @@ def relancer_bcf_en_retard_task():
                     recipients, EventType.BCF_RELANCE_PROPOSEE,
                     title=f'Brouillon de relance proposé ({bc.reference})',
                     body=message, link=link, company=company)
-                bc.nb_relances = (bc.nb_relances or 0) + 1
-                bc.save(update_fields=['nb_relances'])
+                # AUD829 — F() atomic increment: a bare
+                # `bc.nb_relances = (... or 0) + 1` then save() loses a
+                # concurrent relance under two racing runs on the same BCF
+                # (cross-app model — type(bc) avoids importing
+                # apps.achats.models here, per the services.py boundary).
+                type(bc).objects.filter(pk=bc.pk).update(
+                    nb_relances=F('nb_relances') + 1)
                 count += 1
             except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
                 logger.warning(

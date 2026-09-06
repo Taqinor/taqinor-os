@@ -91,6 +91,47 @@ class Lead(SoftDeleteModel):
 '''
 
 
+class TestSurfaceEnumeration(unittest.TestCase):
+    """AUD828 (M-08) -- ROUGE d'abord: before the fix, a models_*.py split
+    file and anything under core/authentication were NEVER OPENED (bare
+    apps/*/models.py only)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory(dir=ROOT / "scripts" / "tests")
+        self.addCleanup(self._tmp.cleanup)
+        self.apps_dir = Path(self._tmp.name) / "apps"
+        self.core_dir = Path(self._tmp.name) / "core"
+        self.auth_dir = Path(self._tmp.name) / "authentication"
+        for d in (self.apps_dir, self.core_dir, self.auth_dir):
+            d.mkdir(parents=True)
+        self.app_dir = self.apps_dir / "demo"
+        self.app_dir.mkdir()
+
+        self._orig = (cus.APPS_DIR, cus.CORE_DIR, cus.AUTH_DIR)
+        cus.APPS_DIR = self.apps_dir
+        cus.CORE_DIR = self.core_dir
+        cus.AUTH_DIR = self.auth_dir
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        cus.APPS_DIR, cus.CORE_DIR, cus.AUTH_DIR = self._orig
+
+    def test_models_split_file_opened(self):
+        f = self.app_dir / "models_intervention.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertIn(f, list(cus._iter_models_files()))
+
+    def test_core_models_file_opened(self):
+        f = self.core_dir / "models.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertIn(f, list(cus._iter_models_files()))
+
+    def test_authentication_models_file_opened(self):
+        f = self.auth_dir / "models.py"
+        f.write_text("class X:\n    pass\n", encoding="utf-8")
+        self.assertIn(f, list(cus._iter_models_files()))
+
+
 class TestUniqueScoping(unittest.TestCase):
     def _codes(self, src):
         _sites, findings = _check(src)

@@ -12,11 +12,21 @@ This ADVISORY, DB-free AST tool scans the money/quantity models
 ``clean()``/``save()`` that have NO matching ``CheckConstraint`` — plus the
 canonical money/quantity invariants that are absent from BOTH layers. It writes
 ``docs/db-invariants-gap.md`` (the gap register, to be closed later by targeted
-additive ``AddConstraint`` migrations — NOT here). It never fails the build.
+additive ``AddConstraint`` migrations — NOT here). The default mode (no flag)
+never fails the build.
+
+AUD831 — ``--check`` (pattern of ``codemap_fingerprint.py --check``) DOES fail
+the build: it regenerates the doc in memory and compares it to the CHECKED-IN
+``docs/db-invariants-gap.md``, so a model edit that changes the gap without a
+matching ``--write`` + commit is caught instead of silently going stale. Not
+wired into any CI job yet by this change — to be câblé preferably alongside
+AUD188 (which already owns this registry's TARGET_MODELS scope).
 
 Usage:
     python scripts/check_db_invariants.py            # print the gap report
     python scripts/check_db_invariants.py --write     # (re)generate the doc
+    python scripts/check_db_invariants.py --check     # fail if the committed
+                                                       # doc is stale (AUD831)
 """
 from __future__ import annotations
 
@@ -229,9 +239,26 @@ def main(argv):
         GAP_DOC.write_text(doc, encoding="utf-8")
         print(f"check_db_invariants: wrote {_rel(GAP_DOC)}")
         return 0
+    if "--check" in argv:
+        # AUD831 — the ONE mode that fails the build (codemap_fingerprint.py
+        # --check pattern): the committed doc must match a fresh regenerate.
+        if not GAP_DOC.exists():
+            print(f"check_db_invariants: {_rel(GAP_DOC)} absent — lancez "
+                  "--write et committez le résultat.", file=sys.stderr)
+            return 1
+        current = GAP_DOC.read_text(encoding="utf-8")
+        if current != doc:
+            print(f"check_db_invariants: {_rel(GAP_DOC)} est PÉRIMÉ (le "
+                  "registre régénéré diffère du fichier committé) — "
+                  "lancez 'python scripts/check_db_invariants.py --write' "
+                  "et committez le résultat.", file=sys.stderr)
+            return 1
+        print(f"check_db_invariants: {_rel(GAP_DOC)} OK (à jour).")
+        return 0
     print(doc)
     print("check_db_invariants: advisory — no build failure. "
-          "Run with --write to refresh docs/db-invariants-gap.md.")
+          "Run with --write to refresh docs/db-invariants-gap.md, or "
+          "--check to fail if it is stale.")
     return 0
 
 

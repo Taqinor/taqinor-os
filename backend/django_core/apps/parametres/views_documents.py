@@ -6,6 +6,7 @@ promu. ``company`` est résolue côté serveur (jamais lue du corps). À chaque
 sauvegarde modifiée, ``version`` est incrémentée (N67) et chaque champ modifié
 est journalisé (SettingsAuditLog).
 """
+from django.db.models import F
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -73,7 +74,11 @@ def update_document_templates(request):
         )
     if changed:
         # N67 — versionnement : nouvelle révision des textes.
-        updated.version = (updated.version or 1) + 1
-        updated.save(update_fields=['version'])
+        # AUD829 — F() atomic increment: a bare read-decide-write here
+        # loses an update under two concurrent PUT/PATCH (lost-update
+        # anomaly on the version counter itself).
+        DocumentTemplates.objects.filter(pk=updated.pk).update(
+            version=F('version') + 1)
+        updated.refresh_from_db(fields=['version'])
 
     return Response(DocumentTemplatesSerializer(updated).data)

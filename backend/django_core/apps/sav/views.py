@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import F, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import filters, status
@@ -885,10 +885,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # XSAV11 — réouverture : résolu/clôturé → statut OUVERT. Compté côté
         # serveur, jamais décrémenté. La transition est déjà tracée par
         # TicketActivity (activity.log_changes ci-dessous).
+        # AUD829 — F() atomic increment: a bare `ticket.reopen_count += 1`
+        # then save() loses a concurrent reopen under two racing requests
+        # on the same ticket (lost-update anomaly).
         if (old.statut in self._CLOTURE_STATUTS
                 and ticket.statut in Ticket.OPEN_STATUTS):
-            ticket.reopen_count += 1
-            save_fields.append('reopen_count')
+            Ticket.objects.filter(pk=ticket.pk).update(
+                reopen_count=F('reopen_count') + 1)
+            ticket.refresh_from_db(fields=['reopen_count'])
         ticket.save(update_fields=save_fields)
         activity.log_changes(old, ticket, self.request.user)
         # XSAV4 — notification client best-effort sur transition de statut

@@ -1018,12 +1018,18 @@ jobs:
       # shards == exactement l'ensemble des modules `test*.py` de `apps`,
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
       # `coverage` reste hors du gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
+      # AUD830 — le total passait en litteral (6) A COTE de la matrice
+      # (`shard: [0, 1, 2, 3, 4, 5]`) : une PR qui retire une entree de la
+      # liste sans toucher ce litteral rendait chaque shard vert alors qu'un
+      # sixieme des modules backend n'etait plus jamais demande a Django,
+      # sans un seul signal rouge. `${{ strategy.job-total }}` (contexte
+      # GitHub Actions natif) lit TOUJOURS la longueur reelle de la matrice.
+      - name: Run Django test suite — shard ${{ matrix.shard }}/${{ strategy.job-total }} (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
           set -euo pipefail
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
-          echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} ${{ strategy.job-total }})
+          echo "Shard ${{ matrix.shard }}/${{ strategy.job-total }} -> $(echo "$LABELS" | wc -w) modules"
 
           # WOW-CI RONDE 5 — GARDE ANTI-`max_locks`, DEVENUE UNE CEINTURE.
           #
@@ -1251,11 +1257,14 @@ jobs:
       # sous-chaine, donc un chemin prefixe d'un autre embarquerait des fichiers
       # en trop. Completude de l'union prouvee par
       # scripts/tests/test_ci_frontend_shard.py (job stage-names).
-      - name: Frontend component + a11y tests — lane ${{ matrix.shard }}/4 (Vitest + Testing Library + axe)
+      # AUD830 — même défaut que backend-tests-shard : le total passait en
+      # litteral (4) a cote de la matrice (`shard: [1, 2, 3, 4]`).
+      # `${{ strategy.job-total }}` lit TOUJOURS la longueur reelle.
+      - name: Frontend component + a11y tests — lane ${{ matrix.shard }}/${{ strategy.job-total }} (Vitest + Testing Library + axe)
         working-directory: frontend
         run: |
           set -euo pipefail
-          VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) 4)"
+          VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) ${{ strategy.job-total }})"
           export VITEST_INCLUDE
           echo "Lane ${{ matrix.shard }}/4 -> $(echo "$VITEST_INCLUDE" | tr ',' '\n' | wc -l) fichiers"
           npm run test:coverage
@@ -1561,6 +1570,21 @@ jobs:
       # gate, peut garder le filtre. Stdlib pure, ~0,1 s.
       - name: Test the ci.yml changes filter itself (AUD826 — scripts/ est une surface backend)
         run: python -m unittest scripts.tests.test_ci_changes_filter -v
+      # AUD831 — docs/query-budgets.yml (le CONTRAT de perf par endpoint,
+      # NTPLT21) affirmait depuis l'origine « job CI stage-names / lint »
+      # alors que `grep -rn query_budgets .github/` rendait 0 occurrence :
+      # un endpoint `enforced: true` sans test de budget ne faisait rougir
+      # AUCUN job CI, le contrat de perf n'etait qu'une declaration
+      # d'intention. check_query_budgets.py est un VRAI gate (peut rendre
+      # 1), pas un advisory comme check_db_invariants.py — ICI, dans le
+      # seul job non gate, comme les autres check_*.py (DB-free ; seule
+      # dependance non-stdlib de ce job, d'ou l'install dediee).
+      - name: Install PyYAML (query-budgets manifest)
+        run: pip install PyYAML
+      - name: Check query-budget test coverage (endpoints "enforced" doivent avoir un test de budget)
+        run: python scripts/check_query_budgets.py
+      - name: Test the query-budgets checker itself (AUD831)
+        run: python -m unittest scripts.tests.test_check_query_budgets -v
 
   web-build-test:
     needs: changes
