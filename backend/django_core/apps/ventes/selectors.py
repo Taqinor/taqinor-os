@@ -1137,8 +1137,18 @@ def devis_milestones(token):
     installation_faite = chantier is not None
 
     # 5) Facturé — au moins une facture liée.
+    # AUD114 — `bc.factures` N'EXISTE PAS : l'accesseur inverse de
+    # `Facture.bon_commande` est `facture` au SINGULIER (OneToOneField), donc
+    # cette ligne levait AttributeError et le client qui cliquait le lien de
+    # suivi que l'ERP lui avait envoyé recevait une page 500. Le court-circuit
+    # du `or` ne sauvait rien : la branche gauche est justement fausse pour une
+    # facture de la chaîne BC (cf. AUD112). Requête explicite (pas `hasattr`,
+    # qui avale l'erreur) et parenthésage du ternaire, qui se lisait en réalité
+    # `A or (B if bc else False)`.
+    from .models import Facture as _Facture
     facture_emise = devis.factures.exists() or (
-        bc is not None and bc.factures.exists() if bc else False)
+        bc is not None
+        and _Facture.objects.filter(bon_commande=bc).exists())
 
     milestones = [
         {'key': 'accepte', 'label': 'Proposition acceptée',
