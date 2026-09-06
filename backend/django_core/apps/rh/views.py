@@ -1141,6 +1141,13 @@ class DemandeCongeViewSet(_RhBaseViewSet):
                     f'Congés bloqués du {conflit.date_debut} au '
                     f'{conflit.date_fin} : {conflit.libelle}.')})
 
+        # AUDV20/XRH14 — les jours déjà couverts par une fermeture collective
+        # de la société (ou du département de l'employé) ne sont JAMAIS
+        # décomptés une seconde fois : ``jours_fermeture_exclus`` existait
+        # depuis XRH14 avec ce but écrit dans sa docstring, mais n'était
+        # appelée nulle part — c'est ici son point de câblage.
+        exclus = selectors.jours_fermeture_exclus(
+            self.request.user.company, employe, date_debut, date_fin)
         jours = services.calculer_jours_demande(
             type_absence, date_debut, date_fin,
             extra_holidays=services.feries_periode(
@@ -1148,7 +1155,8 @@ class DemandeCongeViewSet(_RhBaseViewSet):
             demi_journee_debut=serializer.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=serializer.validated_data.get(
-                'demi_journee_fin', False))
+                'demi_journee_fin', False),
+            jours_exclus=exclus)
         serializer.save(company=self.request.user.company, jours=jours)
 
     @action(detail=True, methods=['post'])
@@ -2112,6 +2120,40 @@ class PresenceChantierViewSet(_RhBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='effectif')
+    def effectif(self, request):
+        """AUDV20 — effectif RÉELLEMENT présent sur un chantier un jour donné.
+
+        ``?installation_id=`` requis, ``?date=YYYY-MM-DD`` (défaut : aujourd'hui).
+        Brique de facturation main-d'œuvre et de preuve en litige : le compte
+        vient de ``selectors.effectif_present_le`` (ABSENT exclus, scopé
+        société), et ``presents`` liste les lignes retenues pour que l'écran
+        montre QUI est compté — jamais un nombre sans sa justification.
+
+        Lecture gatée ``rh_voir`` par la garde de classe (WIR172) — jamais
+        ``IsAnyRole``.
+        """
+        raw = request.query_params.get('installation_id')
+        try:
+            installation_id = int(raw)
+        except (TypeError, ValueError):
+            return Response(
+                {'installation_id': "Paramètre 'installation_id' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        jour = self._parse_date(request.query_params.get('date')) \
+            or timezone.localdate()
+        effectif = selectors.effectif_present_le(
+            request.user.company, installation_id, jour)
+        presents = selectors.presences_installation(
+            request.user.company, installation_id,
+            date_debut=jour, date_fin=jour, presents_seulement=True)
+        return Response({
+            'installation_id': installation_id,
+            'date': jour.isoformat(),
+            'effectif': effectif,
+            'presents': PresenceChantierSerializer(presents, many=True).data,
+        })
 
 
 class IncidentPresenceViewSet(_RhBaseViewSet):
@@ -5338,6 +5380,11 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
                     f'{conflit.date_fin} : {conflit.libelle}.')},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # AUDV20/XRH14 — même anti double-décompte que le viewset direct : un
+        # jour déjà couvert par une fermeture collective n'est pas repris au
+        # solde du collaborateur.
+        exclus = selectors.jours_fermeture_exclus(
+            request.user.company, dossier, date_debut, date_fin)
         jours = services.calculer_jours_demande(
             ser.validated_data['type_absence'], date_debut, date_fin,
             extra_holidays=services.feries_periode(
@@ -5345,7 +5392,8 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             demi_journee_debut=ser.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=ser.validated_data.get(
-                'demi_journee_fin', False))
+                'demi_journee_fin', False),
+            jours_exclus=exclus)
         ser.save(company=request.user.company, jours=jours)
         return Response(ser.data, status=status.HTTP_201_CREATED)
 

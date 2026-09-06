@@ -204,7 +204,8 @@ def jour_bloque_conflit(employe, date_debut, date_fin):
 
 def calculer_jours_demande(type_absence, date_debut, date_fin,
                            extra_holidays=None,
-                           demi_journee_debut=False, demi_journee_fin=False):
+                           demi_journee_debut=False, demi_journee_fin=False,
+                           jours_exclus=None):
     """Durée décomptée d'une demande de congé (FG163).
 
     Si ``type_absence.decompte_jours_ouvres`` est vrai, ne compte que les jours
@@ -216,11 +217,23 @@ def calculer_jours_demande(type_absence, date_debut, date_fin,
     0,5 j du total (une demande d'1 jour avec les deux drapeaux reste bornée
     à 0 minimum — jamais négative). Un flag sur une plage de 0 jour (date
     invalide) n'a aucun effet.
+
+    AUDV20/XRH14 — ``jours_exclus`` est l'ensemble des dates DÉJÀ couvertes par
+    une fermeture collective (``selectors.jours_fermeture_exclus``) : elles ne
+    sont JAMAIS décomptées une seconde fois du solde. Sur un type en jours
+    ouvrés elles sont traitées exactement comme un férié ; sur un type en jours
+    calendaires elles sont retranchées du total (bornées à la plage demandée).
     """
+    exclus = {d for d in (jours_exclus or ())
+              if date_debut is not None and date_fin is not None
+              and date_debut <= d <= date_fin}
     if type_absence is not None and type_absence.decompte_jours_ouvres:
-        n = holidays.working_days(date_debut, date_fin, extra_holidays)
+        feries = set(extra_holidays or ()) | exclus
+        n = holidays.working_days(date_debut, date_fin, feries or None)
     else:
         n = holidays.calendar_days(date_debut, date_fin)
+        if n > 0 and exclus:
+            n = max(n - len(exclus), 0)
     jours = Decimal(n)
     if n > 0:
         if demi_journee_debut:
