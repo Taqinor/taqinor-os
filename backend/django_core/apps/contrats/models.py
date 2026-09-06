@@ -1149,7 +1149,13 @@ class SignatureContrat(models.Model):
     )
     contrat = models.ForeignKey(
         Contrat,
-        on_delete=models.CASCADE,
+        # AUD509 — PROTECT, jamais CASCADE : cette ligne est une PREUVE
+        # (signature loi 53-05 / garantie financiere). Une suppression
+        # DURE du contrat -- admin Django, shell, script -- l'effacait en
+        # silence avec lui. Le garde de la vue (statut) est la premiere
+        # barriere ; celle-ci est la defense en profondeur, au niveau de
+        # la base, pour tous les chemins qui ne passent pas par l'API.
+        on_delete=models.PROTECT,
         related_name='signatures',
         verbose_name='Contrat',
     )
@@ -2063,7 +2069,13 @@ class RetenueGarantie(models.Model):
     )
     contrat = models.ForeignKey(
         Contrat,
-        on_delete=models.CASCADE,
+        # AUD509 — PROTECT, jamais CASCADE : cette ligne est une PREUVE
+        # (signature loi 53-05 / garantie financiere). Une suppression
+        # DURE du contrat -- admin Django, shell, script -- l'effacait en
+        # silence avec lui. Le garde de la vue (statut) est la premiere
+        # barriere ; celle-ci est la defense en profondeur, au niveau de
+        # la base, pour tous les chemins qui ne passent pas par l'API.
+        on_delete=models.PROTECT,
         related_name='retenues_garantie',
         verbose_name='Contrat',
     )
@@ -2166,7 +2178,13 @@ class Caution(models.Model):
     )
     contrat = models.ForeignKey(
         Contrat,
-        on_delete=models.CASCADE,
+        # AUD509 — PROTECT, jamais CASCADE : cette ligne est une PREUVE
+        # (signature loi 53-05 / garantie financiere). Une suppression
+        # DURE du contrat -- admin Django, shell, script -- l'effacait en
+        # silence avec lui. Le garde de la vue (statut) est la premiere
+        # barriere ; celle-ci est la defense en profondeur, au niveau de
+        # la base, pour tous les chemins qui ne passent pas par l'API.
+        on_delete=models.PROTECT,
         related_name='cautions',
         verbose_name='Contrat',
     )

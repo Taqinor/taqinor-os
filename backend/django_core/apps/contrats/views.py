@@ -35,6 +35,7 @@ from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 # ARC8 — chatter générique (records.Activity). records est une app de
 # FONDATION : l'import direct de son mixin de vue est autorisé (frontière
 # cross-app exemptée pour records/core/authentication).
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
@@ -181,7 +182,8 @@ CHAMPS_FINANCIERS_GELES = ('montant', 'devise', 'taux_tva',
                            'date_debut', 'date_fin')
 
 
-class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
+class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
+                     _ContratsBaseViewSet):
     """Contrats de la société (CLM). Recherche par référence/objet.
 
     Visibilité par confidentialité : les contrats ``CONFIDENTIEL`` ne sont
@@ -295,6 +297,34 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
             services.journaliser_transition(
                 contrat, field='confidentialite', old_value=ancien,
                 new_value=contrat.confidentialite, auteur=self.request.user)
+
+    def destroy_guard_message(self, obj):
+        """AUD509 — un contrat ENGAGÉ ne se supprime pas d'un DELETE d'API.
+
+        Le viewset n'avait AUCUNE garde de statut : il était gouverné par la
+        seule permission de rôle ``contrat_gerer``. Un contrat SIGNÉ, ACTIF ou
+        RÉSILIÉ — donc porteur de preuves de signature (loi 53-05), de
+        garanties financières, d'un échéancier, d'avenants et d'une
+        résiliation — partait sur un simple DELETE. AUD818 a rendu ce geste
+        DOUX (le contrat est masqué, plus effacé), ce qui borne le dégât en
+        base ; il n'en reste pas moins qu'une pièce à valeur légale ne doit pas
+        pouvoir DISPARAÎTRE de l'API sur un clic. Seuls les états
+        pré-contractuels restent supprimables.
+
+        Renvoie un message FR (→ 409) ou ``None`` pour laisser passer.
+        """
+        etats_supprimables = {
+            obj.__class__.Statut.BROUILLON,
+            obj.__class__.Statut.EN_APPROBATION,
+        }
+        if obj.statut in etats_supprimables:
+            return None
+        return (
+            f'Un contrat au statut « {obj.get_statut_display()} » ne peut pas '
+            'être supprimé : il porte des preuves de signature, des garanties '
+            'financières et son historique d\'avenants. Seul un contrat en '
+            'brouillon ou en approbation est supprimable.'
+        )
 
     def perform_destroy(self, instance):
         """AUD818 — suppression DOUCE + alimentation de la corbeille 30 jours.
