@@ -44,9 +44,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/sync.py:242` | update_or_create | PagePostMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/sync.py:326` | update_or_create | InsightSnapshot.objects | company, content_type, date, object_id |
 | `backend/django_core/apps/adsengine/tasks.py:2103` | update_or_create | InsightMonthlyRollup.objects | company_id, content_type_id, month, object_id, year |
-| `backend/django_core/apps/adsengine/views.py:2142` | get_or_create | MetaConnection.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2350` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2357` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2143` | get_or_create | MetaConnection.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2352` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2359` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:221` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/ai_governance/drift.py:118` | update_or_create | DriftSnapshot.objects | company, date, modele |
 | `backend/django_core/apps/ao/calepinage_service.py:781` | update_or_create | VarianteCalepinage.objects | company, nom, parent, role, toiture |
@@ -288,8 +288,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/rh/services.py:2636` | update_or_create | CompetenceEmploye.objects | company, competence_id, employe |
 | `backend/django_core/apps/rh/services.py:2667` | get_or_create | CampagneEvaluation.objects | annee, company, intitule |
 | `backend/django_core/apps/rh/services.py:2778` | get_or_create | EvaluationEmploye.objects | campagne, company, employe |
-| `backend/django_core/apps/rh/views.py:2111` | get_or_create | ReglageRH.objects | company |
-| `backend/django_core/apps/rh/views.py:4347` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
+| `backend/django_core/apps/rh/views.py:2113` | get_or_create | ReglageRH.objects | company |
+| `backend/django_core/apps/rh/views.py:4349` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
 | `backend/django_core/apps/roles/management/commands/init_roles.py:87` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/sante/models.py:728` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
