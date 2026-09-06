@@ -1021,6 +1021,50 @@ def message_pour_etape(etape, *, request=None, user=None):
     }
 
 
+#: MRY6 — codes de garde dont le refus est TRACÉ en chatter. Les autres
+#: (miroir Odoo, lead déjà contacté, cadence déjà en place…) restent muets :
+#: les journaliser inonderait l'historique de chaque import.
+_GARDES_CADENCE_TRACEES = frozenset({'sans_numero', 'doublon'})
+
+
+def _garde_cadence_contact(lead):
+    """MRY6/MRY23 — Les six gardes de la cadence « contact », SANS AUCUNE
+    écriture.
+
+    Renvoie ``None`` si la cadence peut partir, sinon ``(code, motif)``. La
+    partie PURE est isolée parce que deux appelants en ont besoin :
+    ``demarrer_cadence_contact`` (qui écrit) et le DRY-RUN de la reprise
+    MRY23, qui annonçait jusqu'ici un nombre de leads que ``--apply``
+    n'atteignait jamais — il ne comptait que « pas de cadence existante »,
+    ignorant numéro et doublon. Une simulation qui ne simule pas la vraie
+    décision ne vaut rien."""
+    if lead is None:
+        return ('absent', 'lead absent')
+    if lead.source == Lead.Source.ODOO_IMPORT_TEST:
+        return ('miroir', 'lead du miroir Odoo')
+    if lead.stage != stages.NEW or lead.first_contacted_at is not None:
+        return ('deja_contacte', 'lead déjà contacté ou hors étape NEW')
+    if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
+        return ('inactif', 'lead perdu, archivé ou « ne plus contacter »')
+    from apps.ventes.utils.whatsapp import build_wa_url
+    if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
+        return ('sans_numero',
+                'aucun numéro exploitable — cadence à lancer à la main')
+    doublons = [
+        autre for autre in find_duplicates_by_contact(
+            lead.company, phone=lead.telephone, email=lead.email,
+            exclude_pk=lead.pk)
+        if not autre.is_archived and not autre.perdu]
+    if doublons:
+        refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
+        return ('doublon',
+                f'doublon possible de {refs} — fusionner ou lancer la '
+                'cadence à la main')
+    if lead.relance_etapes.filter(cadence='contact').exists():
+        return ('deja_en_place', 'cadence de contact déjà en place')
+    return None
+
+
 def demarrer_cadence_contact(lead, *, user=None, origine=''):
     """MRY6 — Démarre la cadence « contact » à l'arrivée d'un lead VIVANT.
 
@@ -1030,8 +1074,9 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
     et inonderait la file de Meryem de milliers de touches qui ne
     correspondent à aucune demande réelle.
 
-    Six gardes, dans cet ordre, CHACUNE journalisée en chatter quand elle
-    refuse — un refus muet ferait croire que le lead est suivi :
+    Six gardes, dans cet ordre (``_garde_cadence_contact``, fonction PURE — la
+    reprise MRY23 s'en sert pour que son DRY-RUN annonce exactement ce que
+    ``--apply`` fera) :
 
       1. le lead vient bien d'une demande réelle (``source != ODOO_IMPORT_TEST``
          — le miroir Odoo n'en est pas une ; OS_NATIVE/SITE_WEB/META_LEAD_ADS
@@ -1045,36 +1090,23 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
          personne, c'est deux commerciaux qui l'appellent le même jour ;
       6. aucune cadence `contact` n'existe déjà.
 
+    Les deux refus RATTRAPABLES À LA MAIN (4 et 5) sont journalisés en chatter
+    — un refus muet ferait croire que le lead est suivi. Les autres restent
+    volontairement muets : les écrire inonderait l'historique de chaque import.
+
     Best-effort intégral : toute exception est journalisée, jamais propagée —
     une cadence en échec ne doit JAMAIS faire échouer la création du lead.
     Renvoie la liste des touches créées (vide si refus)."""
     try:
-        if lead is None:
-            return []
-        if lead.source == Lead.Source.ODOO_IMPORT_TEST:
-            return []          # import/miroir : silencieux, pas un refus
-        if lead.stage != stages.NEW or lead.first_contacted_at is not None:
-            return []
-        if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
-            return []          # `initialiser_plan_relance` tracerait deux fois
-        from apps.ventes.utils.whatsapp import build_wa_url
-        if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
-            return _refus_cadence(
-                lead, user,
-                'aucun numéro exploitable — cadence à lancer à la main')
-        doublons = [
-            autre for autre in find_duplicates_by_contact(
-                lead.company, phone=lead.telephone, email=lead.email,
-                exclude_pk=lead.pk)
-            if not autre.is_archived and not autre.perdu]
-        if doublons:
-            refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
-            return _refus_cadence(
-                lead, user,
-                f'doublon possible de {refs} — fusionner ou lancer la '
-                'cadence à la main')
-        if lead.relance_etapes.filter(cadence='contact').exists():
-            return []
+        garde = _garde_cadence_contact(lead)
+        if garde is not None:
+            code, motif = garde
+            if code in _GARDES_CADENCE_TRACEES:
+                # MRY6/MRY10 — les deux refus « rattrapables à la main » sont
+                # ÉCRITS : sans numéro exploitable ou sur un doublon vivant,
+                # Meryem doit savoir que le lead n'est PAS suivi.
+                return _refus_cadence(lead, user, motif)
+            return []          # gardes muettes (import, déjà contacté…)
         return initialiser_plan_relance(
             lead, user, cadence='contact', depart=timezone.now())
     except Exception:  # noqa: BLE001 — jamais vers l'appelant
