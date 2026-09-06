@@ -174,7 +174,6 @@ def share_object(instance, *, principal_type, principal_id, niveau='lecture',
     Company dérivée de l'instance (jamais du corps de requête). Idempotent sur
     (company, content_type, object_id, principal)."""
     from django.contrib.contenttypes.models import ContentType
-
     from django.db import IntegrityError, transaction
 
     company_id = getattr(instance, 'company_id', None)
