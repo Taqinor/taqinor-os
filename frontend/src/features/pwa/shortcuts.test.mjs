@@ -1,7 +1,7 @@
-// NTMOB20 — raccourcis d'accès quotidien du manifeste PWA.
+// NTMOB20/MRY18 — raccourcis d'accès quotidien du manifeste PWA.
 // On lit le manifeste GÉNÉRÉ par le build s'il existe (dist/manifest.webmanifest),
 // sinon la déclaration source dans vite.config.js : dans les deux cas on vérifie
-// les 4 raccourcis attendus et que chaque URL est une route réelle de l'app.
+// les 5 raccourcis attendus et que chaque URL est une route réelle de l'app.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
@@ -16,6 +16,10 @@ const ATTENDUS = [
   ['Scanner un code-barres', '/stock?scan=1'],
   ['Ma journée', '/ma-journee'],
   ['Approbations', '/approbations'],
+  // MRY18 — les notifications RELANCE_DUE (MRY17) pointent déjà vers ce
+  // même lien de cockpit ; le service worker navigue vers `data.link` sans
+  // changement (sw.js).
+  ['Relances du jour', '/crm/cockpit'],
 ]
 
 function source() {
@@ -29,7 +33,7 @@ function source() {
   return ATTENDUS.filter(([nom, url]) => config.includes(`'${nom}'`) && config.includes(`'${url}'`))
 }
 
-test('NTMOB20: le manifeste déclare les 4 raccourcis attendus', () => {
+test('NTMOB20/MRY18: le manifeste déclare les 5 raccourcis attendus', () => {
   assert.deepEqual(source(), ATTENDUS)
 })
 

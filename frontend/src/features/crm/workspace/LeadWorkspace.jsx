@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
+import { toastPromise } from '../../../ui/confirm'
 import {
   createLead, archiveLead, restoreLead,
 } from '../store/crmSlice'
@@ -357,10 +358,41 @@ export default function LeadWorkspace({
       case 'change-stage': return changeStageConfirme(payload)
       // 'apply-card' : volontairement inerte pour l'instant (hors périmètre).
       case 'refresh': return draft.refreshServer()
+      // MRY15 — raccourcis du menu « ⋯ » du rail identité (contrat
+      // PerduPopover : jamais de crmApi direct dans le rail, il passe
+      // toujours par onAction). Cadence par défaut 'contact' — le choix
+      // complet (contact/après devis/réveil) vit dans la section Suivi
+      // commercial (SectionPipeline), plus visible pour un geste réfléchi.
+      case 'relance-cadence': {
+        if (!leadId) return undefined
+        return toastPromise(
+          crmApi.initialiserRelance(leadId, { cadence: 'contact' })
+            .then(() => draft.refreshServer()),
+          {
+            loading: 'Relance de la cadence…',
+            success: 'Cadence relancée.',
+            error: 'Relance de la cadence impossible.',
+          },
+        ).catch(() => {})
+      }
+      case 'relance-arreter': {
+        if (!leadId) return undefined
+        const motif = window.prompt("Motif d'arrêt de la cadence :")
+        if (!motif || !motif.trim()) return undefined
+        return toastPromise(
+          crmApi.arreterCadence(leadId, { motif: motif.trim() })
+            .then(() => draft.refreshServer()),
+          {
+            loading: 'Arrêt de la cadence…',
+            success: 'Cadence arrêtée.',
+            error: 'Arrêt de la cadence impossible.',
+          },
+        ).catch(() => {})
+      }
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, draft, onClose, setField,
+  }, [doArchive, leaveGuard, draft, onClose, setField, leadId,
     changeStageConfirme, ouvrirConceptionToiture])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────

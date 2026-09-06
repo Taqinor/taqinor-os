@@ -10227,6 +10227,25 @@ textarea.form-control {
   line-height: 1.5;
 }
 
+/* MRY16 — badge de la prochaine touche de cadence (heure Casablanca), rouge
+   si en retard. Meme gabarit que le micro-badge de score juste au-dessus. */
+.kb-card-touche-micro {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.24rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.kb-card-touche-micro--retard {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
 /* Pastille de rotting (rampe LB14) — lisible au repos meme sans pill d'age. */
 .kb-rot-dot {
   display: inline-block;

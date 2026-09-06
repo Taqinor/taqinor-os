@@ -6,39 +6,107 @@ import { toastPromise } from '../../../../ui/confirm'
 import useCanaux from '../../useCanaux'
 import { TYPE_INSTALLATION_LABELS, PRIORITE_LABELS } from '../../stages'
 import { getField, isSuggested } from '../draftCore'
+import CadenceFrise from './CadenceFrise'
 
-// Fondation relance (24/08/2026) — le plan de relance structuré
-// (crm.RelanceEtape, cadence société) existe côté serveur et alimente le
-// panneau « Relances du jour » du cockpit, mais RIEN ne l'initialise jamais
-// pour un lead donné : crmApi.initialiserRelance n'avait aucun appelant
-// (revue Fable finale). Bouton minimal, à l'endroit où le commercial règle
-// déjà « Relance le » — appel IDEMPOTENT (apps/crm/views.py
-// initialiser_relance : un second clic sur un lead déjà initialisé renvoie
-// le plan existant sans rien dupliquer), donc jamais destructif à rejouer.
-function InitRelanceButton({ leadId }) {
+// Les trois cadences nommées du gabarit (MRY4) — jamais un libellé inventé.
+const CADENCE_CHOICES = [
+  { value: 'contact', label: 'Contact' },
+  { value: 'apres_devis', label: 'Après devis' },
+  { value: 'reveil', label: 'Réveil' },
+]
+
+// MRY15 — remplace l'ancien « Initialiser le plan de relance » (fondation
+// relance du 24/08/2026, revue Fable finale) : le moteur démarre maintenant
+// SEUL à l'arrivée d'un lead vivant (MRY6) — ce contrôle sert à RELANCER une
+// cadence manuellement (choix contact/après devis/réveil, appel IDEMPOTENT
+// par cadence, `apps/crm/views.py initialiser_relance`) ou à L'ARRÊTER
+// (motif obligatoire, `arreter_relance` — MRY9). `onChanged` fait recharger
+// la frise juste en dessous (CadenceFrise) sans dupliquer sa logique réseau.
+function RelanceCadenceControls({ leadId, onChanged }) {
+  const [cadence, setCadence] = useState('contact')
   const [busy, setBusy] = useState(false)
+  const [arretOpen, setArretOpen] = useState(false)
+  const [motif, setMotif] = useState('')
+
   if (leadId == null) return null
-  const declencher = async () => {
+
+  const relancer = async () => {
     setBusy(true)
     try {
-      await toastPromise(crmApi.initialiserRelance(leadId), {
-        loading: 'Initialisation du plan de relance…',
-        success: 'Plan de relance initialisé.',
-        error: 'Initialisation du plan de relance impossible.',
+      await toastPromise(crmApi.initialiserRelance(leadId, { cadence }), {
+        loading: 'Relance de la cadence…',
+        success: 'Cadence relancée.',
+        error: 'Relance de la cadence impossible.',
       })
+      onChanged?.()
     } catch {
       // toastPromise a déjà affiché l'erreur — rien de plus à faire ici.
     } finally {
       setBusy(false)
     }
   }
+
+  const arreter = async () => {
+    const m = motif.trim()
+    if (!m) return
+    setBusy(true)
+    try {
+      await toastPromise(crmApi.arreterCadence(leadId, { motif: m }), {
+        loading: 'Arrêt de la cadence…',
+        success: 'Cadence arrêtée.',
+        error: 'Arrêt de la cadence impossible.',
+      })
+      setArretOpen(false)
+      setMotif('')
+      onChanged?.()
+    } catch {
+      // toastPromise a déjà affiché l'erreur — rien de plus à faire ici.
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <Button
-      type="button" size="sm" variant="outline" disabled={busy}
-      data-testid="lf-init-relance" onClick={declencher}
-    >
-      Initialiser le plan de relance
-    </Button>
+    <div className="mt-1.5 flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          className="form-select" aria-label="Cadence à relancer" value={cadence}
+          onChange={(e) => setCadence(e.target.value)} disabled={busy}
+        >
+          {CADENCE_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <Button
+          type="button" size="sm" variant="outline" disabled={busy}
+          data-testid="lf-relance-cadence" onClick={relancer}
+        >
+          Relancer la cadence
+        </Button>
+        <Button
+          type="button" size="sm" variant="outline" disabled={busy}
+          data-testid="lf-arreter-cadence" onClick={() => setArretOpen((o) => !o)}
+        >
+          Arrêter la cadence
+        </Button>
+      </div>
+      {arretOpen && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Input
+            placeholder="Motif d'arrêt (obligatoire)" value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            data-testid="lf-arreter-cadence-motif"
+          />
+          <Button
+            type="button" size="sm" variant="outline" disabled={busy}
+            onClick={() => { setArretOpen(false); setMotif('') }}
+          >
+            Annuler
+          </Button>
+          <Button type="button" size="sm" disabled={busy || !motif.trim()} onClick={arreter}>
+            Confirmer
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -57,7 +125,11 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
   const { users = [], tagOptions = [], motifOptions = [] } = refData
   const { labels: canalLabels } = useCanaux()
   const perdu = !!getField(state, 'perdu')
+  const neplusContacter = !!getField(state, 'ne_plus_contacter')
   const ownerSuggested = isSuggested(state, 'owner')
+  // MRY15 — bumped après « Relancer »/« Arrêter la cadence » pour forcer
+  // CadenceFrise à recharger, sans dupliquer sa logique réseau ici.
+  const [friseReload, setFriseReload] = useState(0)
 
   return (
     <>
@@ -91,9 +163,15 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             <Input id="lf-relance-date" type="date" value={v('relance_date')} onChange={(e) => setField('relance_date', e.target.value)} />
           </FormField>
           {state.mode === 'edit' && (
-            <div className="mt-1.5">
-              <InitRelanceButton leadId={state.leadId} />
-            </div>
+            <>
+              <RelanceCadenceControls
+                leadId={state.leadId}
+                onChanged={() => setFriseReload((n) => n + 1)}
+              />
+              <div className="mt-1.5">
+                <CadenceFrise leadId={state.leadId} reloadToken={friseReload} />
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -153,6 +231,18 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
           <label className="pdf-toggle">
             <input type="checkbox" checked={perdu} onChange={(e) => setField('perdu', e.target.checked)} />
             <span>Perdu ?</span>
+          </label>
+        </div>
+        {/* MRY9/MRY15 — distinct de `perdu` : une demande explicite de la
+            personne, jamais une conséquence automatique d'un statut. Bloque
+            tout futur démarrage/relance de cadence (garde MRY6/MRY9). */}
+        <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+          <label className="pdf-toggle">
+            <input
+              type="checkbox" checked={neplusContacter}
+              onChange={(e) => setField('ne_plus_contacter', e.target.checked)}
+            />
+            <span>Ne plus contacter</span>
           </label>
         </div>
         {perdu && (

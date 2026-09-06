@@ -30,6 +30,19 @@ export default function QuickFilterChips({ leads, filters, setFilters, myUsernam
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [leads, filters, myUsername],
   )
+  // MRY16 — moteur de relances (crm.RelanceEtape) : distinct des chips
+  // « Dû aujourd'hui »/« En retard » ci-dessus (qui lisent `relance_date`,
+  // le rappel manuel unique) — ceux-ci lisent la cadence structurée.
+  const toucheDueCount = useMemo(
+    () => countWith({ touche: 'due' }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [leads, filters, myUsername],
+  )
+  const tentatives7PlusCount = useMemo(
+    () => countWith({ tentatives: '7plus' }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [leads, filters, myUsername],
+  )
 
   const toggleRelance = (val) => setFilters((f) => ({
     ...f, relance: f.relance === val ? '' : val,
@@ -43,6 +56,12 @@ export default function QuickFilterChips({ leads, filters, setFilters, myUsernam
   const toggleRappels = () => setFilters((f) => ({
     ...f, contact_preference: rappelsActifs ? '' : 'phone_ok',
   }))
+  const toggleToucheDue = () => setFilters((f) => ({
+    ...f, touche: f.touche === 'due' ? '' : 'due',
+  }))
+  const toggleTentatives7Plus = () => setFilters((f) => ({
+    ...f, tentatives: f.tentatives === '7plus' ? '' : '7plus',
+  }))
 
   const chips = [
     { key: 'mes-leads', label: 'Mes leads', pressed: mesLeadsActif, onClick: toggleMesLeads, className: 'fb-chip-mes-leads' },
@@ -50,6 +69,8 @@ export default function QuickFilterChips({ leads, filters, setFilters, myUsernam
     { key: 'due-today', label: 'Dû aujourd’hui', pressed: filters.relance === 'aujourdhui', onClick: () => toggleRelance('aujourdhui'), count: dueTodayCount },
     { key: 'retard', label: 'En retard', pressed: filters.relance === 'retard', onClick: () => toggleRelance('retard'), count: retardCount },
     { key: 'chauds', label: 'Chauds', pressed: filters.score === 'chaud', onClick: toggleChauds, count: chaudsCount },
+    { key: 'touche-due', label: 'Touche due', pressed: filters.touche === 'due', onClick: toggleToucheDue, count: toucheDueCount },
+    { key: 'tentatives-7plus', label: '≥ 7 tentatives', pressed: filters.tentatives === '7plus', onClick: toggleTentatives7Plus, count: tentatives7PlusCount },
   ]
 
   return (

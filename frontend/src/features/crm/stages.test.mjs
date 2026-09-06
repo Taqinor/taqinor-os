@@ -338,6 +338,38 @@ test('EMPTY_FILTERS : score (LB24) rejoint le trio existant, défaut vide', () =
   assert.equal(EMPTY_FILTERS.score, '')
 })
 
+test('MRY16 : EMPTY_FILTERS porte touche et tentatives, défauts vides', () => {
+  assert.equal(EMPTY_FILTERS.touche, '')
+  assert.equal(EMPTY_FILTERS.tentatives, '')
+})
+
+test('MRY16 : filterLeads — touche "due" lit prochaine_touche_at (aucun appel réseau)', () => {
+  const leads = [
+    { id: 1, nom: 'A', prochaine_touche_at: '2026-09-06T09:33:00Z' },
+    { id: 2, nom: 'B', prochaine_touche_at: null },
+    { id: 3, nom: 'C' }, // champ absent (lead sans cadence)
+  ]
+  assert.deepEqual(filterLeads(leads, { touche: 'due' }).map((l) => l.id), [1])
+  assert.equal(filterLeads(leads, EMPTY_FILTERS).length, 3)
+})
+
+test('MRY16 : filterLeads — touche "retard" lit le drapeau serveur touche_en_retard', () => {
+  const leads = [
+    { id: 1, nom: 'A', prochaine_touche_at: '2026-09-05T09:00:00Z', touche_en_retard: true },
+    { id: 2, nom: 'B', prochaine_touche_at: '2026-09-10T09:00:00Z', touche_en_retard: false },
+  ]
+  assert.deepEqual(filterLeads(leads, { touche: 'retard' }).map((l) => l.id), [1])
+})
+
+test('MRY16 : filterLeads — tentatives "7plus" (nb_tentatives >= 7)', () => {
+  const leads = [
+    { id: 1, nom: 'A', nb_tentatives: 7 },
+    { id: 2, nom: 'B', nb_tentatives: 6 },
+    { id: 3, nom: 'C' }, // absent → 0, jamais retenu
+  ]
+  assert.deepEqual(filterLeads(leads, { tentatives: '7plus' }).map((l) => l.id), [1])
+})
+
 test('helpers de carte : tags, initiales, total du dernier devis', () => {
   assert.deepEqual(tagList({ tags: ' VIP , 82-21 ,, ' }), ['VIP', '82-21'])
   assert.deepEqual(tagList({}), [])

@@ -57,6 +57,9 @@ vi.mock('../../../api/crmApi', () => ({
     getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
     updateLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    // MRY15 — SectionPipeline (rendu réel ici) monte CadenceFrise en mode
+    // édition, qui se charge elle-même au montage.
+    getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
   },
 }))
 vi.mock('../../../api/axios', () => ({
