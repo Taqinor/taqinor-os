@@ -102,14 +102,18 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
         config = attrs.get(
             'action_config',
             getattr(self.instance, 'action_config', None)) or {}
-        field = (config.get('field') or '').strip()
+        # `action_config` est du JSON LIBRE : un `field` non-textuel (nombre,
+        # liste) ne doit pas faire un 500 mais un 400 comme le reste.
+        if not isinstance(config, dict):
+            config = {}
+        field = str(config.get('field') or '').strip()
         if not field:
             raise serializers.ValidationError({
                 'action_config': (
                     "Une action « Mettre à jour un champ » exige "
                     "action_config['field']."),
             })
-        modele = (config.get('model') or '').strip().lower()
+        modele = str(config.get('model') or '').strip().lower()
         if modele:
             autorise = set_field_autorise(modele, field)
         else:

@@ -131,6 +131,13 @@ class ValidationCreationTests(TestCase):
             URL_RULES, self._payload({'value': 'x'}), format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_action_config_malforme_donne_400_pas_500(self):
+        """`action_config` est du JSON libre : un `field` non-textuel est un 400."""
+        for config in ({'field': 42, 'value': 'x'}, {'field': ['a'], 'value': 1}):
+            resp = self.api.post(
+                URL_RULES, self._payload(config), format='json')
+            self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_couple_modele_champ_explicite_refuse(self):
         """`priorite` est sûr sur crm.lead, pas sur ventes.devis."""
         resp = self.api.post(
