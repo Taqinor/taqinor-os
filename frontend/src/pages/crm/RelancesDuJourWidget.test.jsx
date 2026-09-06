@@ -100,7 +100,7 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
   })
 
-  it('Reporter envoie une échéance ISO', async () => {
+  it('F1 — Reporter envoie {rappel_le, rappel_heure} (forme sûre ancrée Casablanca, jamais un due_at fuseau-navigateur)', async () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
@@ -108,8 +108,18 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '11:00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
-      PREMIERE.id, { due_at: new Date('2026-09-10T11:00:00').toISOString() }))
+      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '11:00' }))
     await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
+  })
+
+  it('F1 — Reporter sans heure saisie retombe sur 09:00 (jamais un due_at calculé côté écran)', async () => {
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
+      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '09:00' }))
   })
 
   it('Sauter ouvre une note optionnelle puis confirme', async () => {

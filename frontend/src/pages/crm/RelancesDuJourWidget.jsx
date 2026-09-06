@@ -96,10 +96,11 @@ function RelanceEtapeRow({ etape, onFait, onSauter, onReporter, onOuvrirMessage,
 
   const confirmerReporter = () => {
     if (!reportDate) return
-    const heure = reportHeure || '09:00'
-    const d = new Date(`${reportDate}T${heure}:00`)
-    if (Number.isNaN(d.getTime())) return
-    onReporter(etape.id, d.toISOString())
+    // F1 — forme SÛRE ancrée Casablanca CÔTÉ SERVEUR (`_parse_rappel`) :
+    // jamais un `new Date(...).toISOString()`, qui interprète
+    // `${date}T${heure}:00` dans le fuseau du NAVIGATEUR et décale l'heure
+    // réellement reportée dès que l'agent n'est pas sur ce fuseau.
+    onReporter(etape.id, { rappel_le: reportDate, rappel_heure: reportHeure || '09:00' })
   }
 
   const heure = heureDue(etape)
@@ -279,7 +280,7 @@ export default function RelancesDuJourWidget() {
     try {
       if (action === 'fait') await crmApi.marquerRelanceEtapeFait(id, payload)
       else if (action === 'sauter') await crmApi.marquerRelanceEtapeSautee(id, payload)
-      else if (action === 'reporter') await crmApi.reporterRelanceEtape(id, { due_at: payload })
+      else if (action === 'reporter') await crmApi.reporterRelanceEtape(id, payload)
       retirer(id)
       // MRY9/MRY11 — une action peut faire naître une NOUVELLE touche due
       // (report, clôture de cadence…) : refetch silencieux, jamais bloquant.
