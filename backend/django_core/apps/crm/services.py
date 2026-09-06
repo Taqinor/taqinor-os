@@ -5773,7 +5773,13 @@ def _etaler_reveils(dormants, company, maintenant):
         return []
     delai = _placement_delai_reveil(company)
     base = horaires.prochain_creneau_appel(maintenant, company)
-    jour_zero = base.astimezone(horaires.CASABLANCA).date()
+    base_locale = base.astimezone(horaires.CASABLANCA)
+    jour_zero = base_locale.date()
+    if base_locale.time() > PLACEMENT_CRENEAUX[0]:
+        # Les créneaux du jour (10 h-12 h 20) sont déjà derrière nous : un
+        # placement lancé l'après-midi commence le PROCHAIN jour ouvré, jamais
+        # avec des touches « en retard » à la seconde où elles naissent.
+        jour_zero = ajouter_jours_ouvres(jour_zero, 1, company)
     ordonnes = sorted(dormants,
                       key=lambda e: (e['ancre'], e['lead'].pk), reverse=True)
     for index, entree in enumerate(ordonnes):

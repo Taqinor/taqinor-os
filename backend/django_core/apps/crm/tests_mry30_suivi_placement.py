@@ -612,6 +612,17 @@ class EtalementTests(_PlacementBase):
         rapport = self._placer()
         self.assertEqual(rapport['reveils_jusqu_au'], JEUDI.isoformat())
 
+    def test_lance_l_apres_midi_l_etalement_commence_le_lendemain(self):
+        """À 15 h, les créneaux 10 h-12 h 20 du jour sont derrière nous : la
+        première touche part le prochain jour ouvré — jamais « en retard »
+        à la seconde où elle naît."""
+        lead = self._lead('Dormant tardif', stage=stages.NEW, jours=60)
+        with frozen(MERCREDI.replace(hour=15, minute=0)):
+            self._placer()
+        quand = self._reveils(lead)[0].due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual((quand.date(), quand.hour, quand.minute),
+                         (JEUDI, 10, 0))
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. La porte HTTP et la porte ligne de commande
