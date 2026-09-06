@@ -138,9 +138,18 @@ const messagesApi = {
   // ── WIR155 / XKB27 — « Me le rappeler » + favoris (signets personnels) ──
   remindMe: (messageId, remindAt) =>
     api.post(`/chat/messages/${messageId}/remind-me/`, { remind_at: remindAt }),
+  // AUDV28 (DRAFT165-7, XKB27) — annulation d'un rappel programmé par
+  // erreur (creator-only côté serveur ; get_queryset filtre déjà par
+  // utilisateur, un rappel d'autrui renvoie 404).
+  cancelReminder: (reminderId) =>
+    api.post(`/chat/reminders/${reminderId}/annuler/`),
   toggleBookmark: (messageId) =>
     api.post(`/chat/messages/${messageId}/bookmark/`),
   listBookmarks: () => api.get('/chat/messages/bookmarks/'),
+  // AUDV28 (DRAFT165-8, XKB32) — politique de rétention applicable à une
+  // conversation (durée de conservation affichée dans son écran).
+  getConversationRetention: (conversationId) =>
+    api.get(`/chat/conversations/${conversationId}/retention/`),
 
   // ── WIR155 / XKB27 — « Envoyer plus tard » (messages programmés) ──
   scheduled: {

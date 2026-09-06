@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -17,14 +17,19 @@ vi.mock('../../api/messagesApi', () => ({
     markRead: vi.fn(() => Promise.resolve({ data: {} })),
     unreadCount: vi.fn(() => Promise.resolve({ data: { unread: 0 } })),
     listCompanyMembers: vi.fn(() => Promise.resolve({ data: [] })),
+    // AUDV28 — durée de conservation affichée dans l'en-tête de conversation.
+    getConversationRetention: vi.fn(() => Promise.resolve({
+      data: { conversation_kind: 'channel', retention_months: null, applicable: false },
+    })),
   },
 }))
 
 const authReducer = (state = { user: { id: 9, username: 'reda' } }) => state
 
 import ChatPage from './ChatPage'
+import messagesApi from '../../api/messagesApi'
 
-function renderPage(conversations = []) {
+function renderPage(conversations = [], route = '/messages') {
   const store = configureStore({
     reducer: { messaging: messagingReducer, auth: authReducer },
   })
@@ -33,7 +38,7 @@ function renderPage(conversations = []) {
   }
   render(
     <Provider store={store}>
-      <MemoryRouter initialEntries={['/messages']}>
+      <MemoryRouter initialEntries={[route]}>
         <ChatPage />
       </MemoryRouter>
     </Provider>,
@@ -54,5 +59,28 @@ describe('ChatPage (S13)', () => {
       { id: 1, kind: 'channel', name: 'Général', unread_count: 0, last_message: null },
     ])
     expect(screen.getByText('Général')).toBeInTheDocument()
+  })
+
+  /* AUDV28 (DRAFT165-8) — durée de conservation affichée dans l'en-tête
+     UNIQUEMENT quand une politique est réellement applicable (jamais un
+     défaut inventé). */
+  it('affiche la durée de conservation quand une politique est applicable', async () => {
+    messagesApi.getConversationRetention.mockResolvedValueOnce({
+      data: { conversation_kind: 'channel', retention_months: 6, applicable: true },
+    })
+    renderPage(
+      [{ id: 1, kind: 'channel', name: 'Général', unread_count: 0, last_message: null }],
+      '/messages?c=1',
+    )
+    expect(await screen.findByText('Conservation : 6 mois')).toBeInTheDocument()
+  })
+
+  it('n’affiche rien quand aucune politique n’est posée', async () => {
+    renderPage(
+      [{ id: 1, kind: 'channel', name: 'Général', unread_count: 0, last_message: null }],
+      '/messages?c=1',
+    )
+    await waitFor(() => expect(messagesApi.getConversationRetention).toHaveBeenCalledWith(1))
+    expect(screen.queryByText(/Conservation :/)).not.toBeInTheDocument()
   })
 })
