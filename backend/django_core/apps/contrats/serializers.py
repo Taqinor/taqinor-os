@@ -165,16 +165,35 @@ class ContratSerializer(serializers.ModelSerializer):
                     'contrat', company, attrs.get('custom_data'))
         return attrs
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # AUD528 — cache {(company_id, client_id): libellé} partagé par TOUTE
+        # la page sérialisée (patron YOPSB13, apps/sav/serializers.py) : avec
+        # ``many=True``, DRF réutilise UNE seule instance enfant pour chaque
+        # ligne, donc un cache d'instance survit d'un contrat à l'autre.
+        # `get_client_nom` traversait `crm_selectors.client_label` — une
+        # requête DB PAR LIGNE — sans aucun cache ; sur une page de 20
+        # contrats c'était 20 requêtes de plus, et autant de doublons dès que
+        # plusieurs contrats partagent le même client.
+        self._client_label_cache = {}
+
     def get_responsable_nom(self, obj):
         return getattr(obj.responsable, 'username', None)
 
     def get_client_nom(self, obj):
         """WIR77 — libellé du client via crm.selectors (lecture cross-app,
-        frontière M3). Dégrade en None sans client / hors société."""
+        frontière M3). Dégrade en None sans client / hors société.
+
+        AUD528 — mémoïsé par page (voir ``__init__``). La SOURCE du libellé ne
+        change pas : c'est toujours le sélecteur cross-app de ``crm``."""
         if not obj.client_id:
             return None
-        from apps.crm import selectors as crm_selectors
-        return crm_selectors.client_label(obj.company, obj.client_id)
+        cle = (obj.company_id, obj.client_id)
+        if cle not in self._client_label_cache:
+            from apps.crm import selectors as crm_selectors
+            self._client_label_cache[cle] = crm_selectors.client_label(
+                obj.company, obj.client_id)
+        return self._client_label_cache[cle]
 
     def get_echeance_preavis(self, obj):
         echeance = obj.echeance_preavis()

@@ -203,7 +203,11 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
     métier) pour un gain nul — la Meta note « Done = cycle de vie contrat
     inchangé fonctionnellement » (``docs/PLAN.md``) exclut ce remplacement.
     """
-    queryset = Contrat.objects.all()
+    # AUD528 — SEUL ViewSet du fichier sans `select_related`, alors que son
+    # serialiseur lit `responsable` (FK) sur CHAQUE ligne : une requete par
+    # contrat rien que pour afficher un nom d'utilisateur.
+    queryset = Contrat.objects.select_related(
+        'responsable', 'created_by', 'modele').all()
     serializer_class = ContratSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'objet']
