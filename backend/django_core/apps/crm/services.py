@@ -916,7 +916,10 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
     Six gardes, dans cet ordre, CHACUNE journalisée en chatter quand elle
     refuse — un refus muet ferait croire que le lead est suivi :
 
-      1. le lead vient bien d'une demande réelle (``source == OS_NATIVE``) ;
+      1. le lead vient bien d'une demande réelle (``source != ODOO_IMPORT_TEST``
+         — le miroir Odoo n'en est pas une ; OS_NATIVE/SITE_WEB/META_LEAD_ADS
+         le sont TOUTES : un lead Meta Ads ou site web mérite sa cadence
+         exactement comme une saisie manuelle, cf. ``test_meta_lead_ads``) ;
       2. il est neuf (étape NEW) et jamais contacté ;
       3. ni perdu, ni archivé, ni « ne plus contacter » ;
       4. il porte un numéro exploitable — sans lui, aucune des touches
@@ -931,7 +934,7 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
     try:
         if lead is None:
             return []
-        if lead.source != Lead.Source.OS_NATIVE:
+        if lead.source == Lead.Source.ODOO_IMPORT_TEST:
             return []          # import/miroir : silencieux, pas un refus
         if lead.stage != stages.NEW or lead.first_contacted_at is not None:
             return []
