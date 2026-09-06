@@ -540,9 +540,18 @@ def _refus_cadence(lead, user, raison):
     """Note chatter expliquant pourquoi AUCUNE cadence n'a été posée.
 
     Un refus silencieux est le pire des deux mondes : Meryem croit le lead
-    relancé alors qu'il ne l'est pas. Le refus est donc toujours écrit."""
+    relancé alors qu'il ne l'est pas. Le refus est donc toujours écrit.
+
+    FG28/MRY19 — note SYSTÈME (``user=None``), jamais l'utilisateur qui a
+    déclenché la création/l'initialisation : même motif que
+    ``create_lead_depuis_ticket`` (ZSAV8). Le récepteur QJ7
+    (``_avancer_stage_on_contact_activity``) ne fait avancer NEW → CONTACTED
+    (et ne stampe ``first_contacted_at``) que sur un contact MANUEL
+    (``instance.user is not None``) — un refus automatique de cadence n'est
+    JAMAIS un premier contact, et posait pourtant CONTACTED + le stamp SLA
+    dès la simple création d'un lead sans numéro exploitable."""
     LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=user,
+        company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Cadence de relance non initialisée : {raison}.')
     return []
@@ -645,8 +654,14 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     quand = (premiere.due_at.astimezone(horaires.CASABLANCA)
              .strftime('%d/%m/%Y à %H:%M') if premiere.due_at
              else str(premiere.due_date))
+    # FG28/MRY19 — note SYSTÈME (``user=None``), pas l'utilisateur qui a
+    # déclenché l'initialisation : DÉMARRER une cadence n'est pas AVOIR
+    # contacté le lead. Avec ``user`` posé ici, le récepteur QJ7 la traitait
+    # comme un premier contact manuel et avançait NEW → CONTACTED (+ stampait
+    # ``first_contacted_at``) dès la création — avant qu'un humain n'ait
+    # réellement appelé/écrit. Même motif que ``_refus_cadence`` ci-dessus.
     LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=user,
+        company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Plan de relance initialisé — cadence « {cadence} » '
              f'({len(resultats)} touche(s), première le {quand}).')
