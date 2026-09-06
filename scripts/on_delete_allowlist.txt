@@ -1379,9 +1379,9 @@ backend/django_core/apps/parametres/models_translations.py:31
 backend/django_core/apps/parametres/models_units.py:38
 backend/django_core/apps/portail/models.py:112
 backend/django_core/apps/portail/models.py:193
-backend/django_core/apps/portail/models.py:259
-backend/django_core/apps/portail/models.py:330
-backend/django_core/apps/portail/models.py:383
+backend/django_core/apps/portail/models.py:277
+backend/django_core/apps/portail/models.py:348
+backend/django_core/apps/portail/models.py:401
 backend/django_core/apps/portail/models.py:57
 backend/django_core/apps/portail/models.py:63
 backend/django_core/apps/pos/models.py:160
