@@ -810,6 +810,20 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                     f'{pourquoi}. Utilisez l\'action « {action_dediee} ».'
                 )},
                 status=status.HTTP_400_BAD_REQUEST)
+        # AUD511 — ressusciter un contrat RÉSILIÉ n'est pas un geste
+        # administratif : l'arête `RESILIE → ACTIF` existe pour la SEULE action
+        # `annuler-resiliation` (fenêtre de préavis + passage de la Resiliation
+        # à ANNULEE). Sans ce refus, la porte générique la rendrait accessible
+        # à un simple POST — et le contrat redeviendrait actif en laissant sa
+        # résiliation vivante.
+        if cible == _Statut.ACTIF and ancien == _Statut.RESILIE:
+            return Response(
+                {'detail': (
+                    'Un contrat résilié ne se réactive pas par cette action : '
+                    'annulez d\'abord la résiliation (action '
+                    '« annuler-resiliation »), dans la fenêtre de préavis.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             if (cible == _Statut.ACTIF and ancien == _Statut.SIGNE):
                 # L'activation d'un contrat SIGNÉ a son propre service : il
@@ -1206,6 +1220,38 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 resiliation, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['post'], url_path='annuler-resiliation',
+            permission_classes=[HasPermissionOrLegacy('contrat_gerer')])
+    def annuler_resiliation(self, request, pk=None):
+        """AUD511 — ANNULE une résiliation faite par erreur, dans le préavis.
+
+        ``Resiliation`` déclarait TROIS statuts mais ``annulee`` et
+        ``effective`` étaient des ÉTATS MORTS : aucune route (API, admin,
+        commande) ne permettait d'annuler une résiliation, et ``RESILIE`` était
+        un état TERMINAL — une résiliation faite par erreur de saisie était
+        donc IRRATTRAPABLE. Décision fondateur : câbler une vraie annulation,
+        pas retirer les états.
+
+        Corps optionnel : ``motif`` (journalisé au chatter). L'annulation
+        n'est possible qu'AVANT la date d'effet : au-delà, la résiliation a
+        produit ses conséquences et la « défaire » serait une réécriture
+        d'histoire. Le contrat revient à ``ACTIF`` par la machine d'états
+        gardée (arête ``RESILIE → ACTIF`` réservée à CETTE action — la porte
+        générique ``changer-statut`` la refuse). L'auteur et la société sont
+        posés CÔTÉ SERVEUR ; la société est garantie par ``get_object``.
+        """
+        contrat = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        try:
+            resiliation = services.annuler_resiliation(
+                contrat, motif=motif, auteur=request.user)
+        except services.AnnulationResiliationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ResiliationSerializer(
+                resiliation, context={'request': request}).data)
 
     @action(detail=True, methods=['post'],
             url_path='generer-devis-renouvellement')

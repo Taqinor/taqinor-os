@@ -2023,6 +2023,74 @@ def resilier_contrat(contrat, *, motif='', motif_ref=None, date_effet=None,
     return resiliation
 
 
+class AnnulationResiliationError(Exception):
+    """AUD511 — levée quand une résiliation ne peut pas être annulée.
+
+    Même patron que ``ResiliationError`` : la vue la traduit en 400 français,
+    jamais en 500 ni en silence."""
+
+
+@transaction.atomic
+def annuler_resiliation(contrat, *, motif='', auteur=None, today=None):
+    """AUD511 — ANNULE une résiliation faite par erreur, dans le préavis.
+
+    CE QUI MANQUAIT. ``Resiliation`` déclare TROIS statuts
+    (``demande``/``effective``/``annulee``) mais seul ``resilier_contrat`` en
+    créait — toujours en ``demande``. Aucun service, aucune vue, aucun admin
+    n'écrivait ``annulee`` ni ``effective`` : c'étaient des ÉTATS MORTS. Pire,
+    ``Contrat.statut = RESILIE`` était TERMINAL dans la machine d'états, donc
+    même une résiliation annulée n'aurait jamais rendu son contrat ACTIF. Une
+    résiliation faite par erreur de saisie était IRRATTRAPABLE.
+
+    Décision fondateur : câbler une VRAIE annulation (besoin métier réel), pas
+    retirer les états.
+
+    LA FENÊTRE. L'annulation n'est possible qu'AVANT la date d'effet : passé
+    cette date la résiliation a produit ses conséquences (échéances annulées,
+    maintenance SAV désactivée par l'événement ``contrat_resilie``), et la
+    « défaire » serait une réécriture d'histoire, pas une correction de saisie.
+
+    Ce que fait le service, dans cet ordre (les REFUS d'abord) :
+
+      1. refuse s'il n'existe aucune résiliation active sur ce contrat ;
+      2. refuse hors fenêtre de préavis (``date_effet`` atteinte ou dépassée) ;
+      3. passe la ``Resiliation`` à ``ANNULEE`` ;
+      4. ramène le ``Contrat`` à ``ACTIF`` par la machine d'états GARDÉE
+         (arête ``RESILIE → ACTIF`` réservée à ce service — la porte générique
+         ``changer-statut`` la refuse) ;
+      5. journalise la transition au chatter (auteur posé côté serveur).
+
+    Renvoie la ``Resiliation`` annulée. Lève ``AnnulationResiliationError``.
+    """
+    from .models import Contrat, Resiliation
+
+    if today is None:
+        today = timezone.localdate()
+
+    resiliation = resiliation_active(contrat)
+    if resiliation is None:
+        raise AnnulationResiliationError(
+            "Ce contrat ne porte aucune résiliation à annuler.")
+    if resiliation.date_effet and resiliation.date_effet <= today:
+        raise AnnulationResiliationError(
+            "La date d'effet de cette résiliation est atteinte : elle a déjà "
+            "produit ses conséquences et ne peut plus être annulée.")
+
+    ancien_statut = contrat.statut
+    resiliation.statut = Resiliation.Statut.ANNULEE
+    resiliation.save(update_fields=['statut'])
+
+    if contrat.statut == Contrat.Statut.RESILIE:
+        changer_statut(contrat, Contrat.Statut.ACTIF, user=auteur)
+        journaliser_transition(
+            contrat, field='statut', old_value=ancien_statut,
+            new_value=contrat.statut,
+            message=(f'Annulation de la résiliation n°{resiliation.pk}'
+                     + (f' — {motif}' if motif else '')),
+            auteur=auteur)
+    return resiliation
+
+
 # ---------------------------------------------------------------------------
 # CONTRAT26 — Obligations (livrables) & jalons
 # ---------------------------------------------------------------------------
