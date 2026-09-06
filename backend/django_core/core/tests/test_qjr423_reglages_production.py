@@ -28,7 +28,7 @@ from unittest import mock
 from django.test import SimpleTestCase, override_settings
 
 from core.checks import (
-    ID_ALLOWED_HOSTS, ID_DEBUG, allowed_hosts_permissif,
+    ID_ALLOWED_HOSTS, ID_DEBUG, ID_MODULE_NON_PROD, allowed_hosts_permissif,
     environnement_de_production, verifier_reglages_production)
 
 MODULE_DEV = 'erp_agentique.settings.dev'
@@ -97,7 +97,17 @@ class UneProductionEnDebugRefuseDeDemarrer(SimpleTestCase):
                        MINIO_SECRET_KEY='b3!x7q-z1v9_t4w#e2r%y6n$c8a0s(d5f)g7h1')
     def test_une_production_bien_reglee_ne_bloque_rien(self):
         with _prod_env():
-            self.assertEqual(verifier_reglages_production(), [])
+            erreurs = verifier_reglages_production()
+        # AUD411 — `_prod_env()` simule SEULEMENT la variable
+        # d'environnement : le module RÉELLEMENT chargé par ce test reste
+        # settings.dev/test (impossible de le remplacer par
+        # erp_agentique.settings.prod dans ce harnais). L'avertissement
+        # NON-BLOQUANT « module non prod » se déclenche donc ici par
+        # construction, jamais un vrai défaut des réglages simulés ci-dessus
+        # — « ne bloque rien » porte sur les erreurs, pas cet avertissement
+        # documenté comme jamais bloquant (core/checks.py).
+        self.assertEqual(
+            [e for e in erreurs if e.id != ID_MODULE_NON_PROD], [])
 
 
 class AllowedHostsExigeDesDomainesExplicites(SimpleTestCase):
