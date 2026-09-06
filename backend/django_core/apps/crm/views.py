@@ -2400,7 +2400,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # la mauvaise garde. `message` est une LECTURE (préparer le texte
         # n'engage rien) ; `whatsapp` ÉCRIT (touche faite, activité, premier
         # contact, AuditLog) et reste donc réservée.
-        if self.action in ('list', 'message'):
+        # MRY30 — `suivi` est une LECTURE pure (la file PAR PÉRIODE, tous
+        # statuts) : même garde que `list`, et listée ICI parce que
+        # get_permissions() PRIME sur le `permission_classes` de l'@action.
+        if self.action in ('list', 'message', 'suivi'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2442,6 +2445,78 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 request.user.company, request.user, scope=scope, owner=owner)
         serializer = self.get_serializer(qs, many=True)
         return Response({'count': qs.count(), 'results': serializer.data})
+
+    @action(detail=False, methods=['get'], url_path='suivi',
+            permission_classes=[IsAnyRole])
+    def suivi(self, request):
+        """MRY30 — « Suivi des relances » : TOUTES les touches d'une PÉRIODE,
+        tous statuts (forme `relance_etapes_suivi`).
+
+        ``?date_debut=&date_fin=`` (AAAA-MM-JJ, OBLIGATOIRES, 62 jours d'écart
+        au plus) ``&owner=<id>&statut=a_faire|fait|sautee|en_retard``.
+
+        Une action DISTINCTE de ``list`` — et non un paramètre de plus — parce
+        que les deux répondent à deux questions opposées : ``list`` sert la
+        FILE (ce qu'il reste à faire aujourd'hui, statut `a_faire` seulement)
+        et ``suivi`` sert le JOURNAL (ce qui a été fait, sauté ou oublié sur
+        une période). Mélanger les deux dans une même route obligeait l'écran
+        à deviner lequel des deux contrats il venait de recevoir.
+
+        ``resume`` est compté CÔTÉ SERVEUR sur la période, jamais recompté à
+        l'écran depuis ``results`` (qui, lui, est filtré par ``statut``)."""
+        from django.utils.dateparse import parse_date
+
+        from .selectors import (
+            SUIVI_JOURS_MAX, STATUTS_SUIVI, relance_etapes_periode)
+
+        bornes = {}
+        for nom in ('date_debut', 'date_fin'):
+            brut = (request.query_params.get(nom) or '').strip()
+            if not brut:
+                return Response(
+                    {nom: 'Borne obligatoire (AAAA-MM-JJ attendu).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            try:
+                valeur = parse_date(brut)
+            except ValueError:
+                valeur = None
+            if valeur is None:
+                return Response(
+                    {nom: 'Date invalide (AAAA-MM-JJ attendu).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            bornes[nom] = valeur
+        date_debut, date_fin = bornes['date_debut'], bornes['date_fin']
+        if date_fin < date_debut:
+            return Response(
+                {'date_fin': 'La borne de fin précède la borne de début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if (date_fin - date_debut).days > SUIVI_JOURS_MAX:
+            # Au-delà, ce n'est plus une période de travail mais un export :
+            # un refus net vaut mieux qu'un écran qui met dix secondes.
+            return Response(
+                {'date_fin': f'Période trop longue ({SUIVI_JOURS_MAX} jours '
+                             'au plus).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        statut = (request.query_params.get('statut') or '').strip()
+        if statut and statut not in STATUTS_SUIVI:
+            return Response(
+                {'statut': 'Statut inconnu. Choisir parmi : '
+                           + ', '.join(STATUTS_SUIVI) + '.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        etapes, resume = relance_etapes_periode(
+            request.user.company, request.user,
+            date_debut=date_debut, date_fin=date_fin,
+            owner=(request.query_params.get('owner') or '').strip() or None,
+            statut=statut or None)
+        lignes = self.get_serializer(etapes, many=True).data
+        return Response({
+            'count': len(lignes),
+            'date_debut': date_debut.isoformat(),
+            'date_fin': date_fin.isoformat(),
+            'resume': resume,
+            'results': lignes,
+        })
 
     def _marquer(self, request, statut):
         etape = self.get_object()

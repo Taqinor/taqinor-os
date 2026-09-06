@@ -2073,7 +2073,16 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     étapes ``a_faire`` sont candidates — jamais une étape déjà traitée. La
     portée de visibilité de l'utilisateur est respectée (``scope_queryset``
     via le lead) ; ``owner`` filtre en plus sur le responsable du lead.
+
+    MRY30 — deux scopes S'AJOUTENT, sans rien changer aux trois précédents :
+    ``tomorrow`` (échéance DEMAIN, ce que la file du jour ne montre jamais —
+    Meryem prépare sa journée la veille) et ``week`` (retard + les 7 prochains
+    jours). ``week`` INCLUT le retard : une touche oubliée lundi doit rester
+    sous les yeux toute la semaine, sinon elle disparaît exactement au moment
+    où elle devient urgente.
     """
+    import datetime as _dt
+
     from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead, RelanceEtape
@@ -2087,6 +2096,10 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
         qs = qs.filter(due_date__lt=today)
     elif scope == 'all':
         qs = qs.filter(due_date__lte=today)
+    elif scope == 'tomorrow':
+        qs = qs.filter(due_date=today + _dt.timedelta(days=1))
+    elif scope == 'week':
+        qs = qs.filter(due_date__lte=today + _dt.timedelta(days=7))
     else:  # today
         qs = qs.filter(due_date=today)
 
@@ -2103,6 +2116,87 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     # de la file de Meryem alors qu'elles n'ont pas d'heure connue.
     from django.db.models import F
     return qs.order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+
+
+#: MRY30 — le statut VIRTUEL du suivi : « en retard » n'existe pas en base
+#: (c'est un ``a_faire`` dont l'échéance est passée), mais c'est l'onglet que
+#: Meryem ouvre en premier. Le nommer ici évite qu'il soit recalculé — donc
+#: défini autrement — dans la vue puis dans l'écran.
+STATUT_EN_RETARD = 'en_retard'
+
+#: Les quatre valeurs acceptées par ``?statut=`` de l'action « suivi ».
+STATUTS_SUIVI = ('a_faire', 'fait', 'sautee', STATUT_EN_RETARD)
+
+#: Écart MAXIMAL entre les deux bornes du suivi. Au-delà, la requête cesse
+#: d'être une « période de travail » et devient un export : 400 plutôt qu'une
+#: page qui met dix secondes à s'afficher.
+SUIVI_JOURS_MAX = 62
+
+
+def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
+                           statut=None, today=None):
+    """MRY30 — TOUTES les touches de relance dont ``due_date`` tombe dans
+    ``[date_debut, date_fin]``, TOUS statuts confondus — l'écran « Suivi des
+    relances ».
+
+    Distinct de ``relance_etapes_dues`` ci-dessus, qui ne sert QUE la file du
+    jour (statut ``a_faire``, échéance relative à aujourd'hui) : ici on
+    regarde EN ARRIÈRE autant qu'en avant — ce qui a été fait, ce qui a été
+    sauté, ce qui reste — jour par jour, sur une période choisie.
+
+    Renvoie ``(etapes, resume)`` — un COUPLE, délibérément :
+
+      * ``resume`` = ``{a_faire, en_retard, fait, sautee}`` compté sur la
+        période et le filtre ``owner`` mais **AVANT** le filtre ``statut``.
+        L'écran affiche les quatre chiffres quel que soit l'onglet ouvert ;
+        les compter après le filtre donnerait « fait : 12, sauté : 0 » sur
+        l'onglet « fait ». Rendre le couple d'un seul appel rend cet ordre
+        STRUCTUREL : l'appelant ne peut plus l'inverser par inadvertance.
+      * ``en_retard`` est un SOUS-ENSEMBLE de ``a_faire`` (échéance
+        strictement avant aujourd'hui, date de Casablanca), jamais une
+        cinquième colonne qui s'ajouterait aux trois autres.
+
+    Portée identique à la file du jour : ``scope_queryset`` via le lead (un
+    lead hors portée n'apparaît jamais, pas même en 403 qui confirmerait son
+    existence), leads archivés exclus, ``owner`` en filtre supplémentaire.
+    """
+    from django.db.models import Count, F, Q
+
+    from core.dates import aujourd_hui_local
+    from authentication.scoping import scope_queryset
+    from .models import Lead, RelanceEtape
+
+    today = today or aujourd_hui_local()
+    qs = RelanceEtape.objects.filter(
+        company=company, lead__is_archived=False,
+        due_date__gte=date_debut, due_date__lte=date_fin,
+    ).select_related('lead', 'lead__owner', 'devis', 'traite_par')
+
+    leads_visibles = scope_queryset(
+        Lead.objects.filter(company=company), user, ['owner'])
+    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+    if owner:
+        qs = qs.filter(lead__owner_id=owner)
+
+    a_faire = Q(statut=RelanceEtape.Statut.A_FAIRE)
+    resume = qs.aggregate(
+        a_faire=Count('pk', filter=a_faire),
+        en_retard=Count('pk', filter=a_faire & Q(due_date__lt=today)),
+        fait=Count('pk', filter=Q(statut=RelanceEtape.Statut.FAIT)),
+        sautee=Count('pk', filter=Q(statut=RelanceEtape.Statut.SAUTEE)),
+    )
+
+    if statut == STATUT_EN_RETARD:
+        qs = qs.filter(a_faire, due_date__lt=today)
+    elif statut:
+        qs = qs.filter(statut=statut)
+
+    # Tri de LECTURE (le jour d'abord), et non le tri d'urgence de la file du
+    # jour : l'écran groupe par journée. `due_at` départage à la minute, les
+    # lignes d'avant MRY5 (sans heure) EN DERNIER de leur journée.
+    etapes = qs.order_by(
+        'due_date', F('due_at').asc(nulls_last=True), 'ordre')
+    return etapes, resume
 
 
 def prochaine_touche_par_lead(company, lead_ids):
