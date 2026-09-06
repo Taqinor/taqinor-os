@@ -456,6 +456,17 @@ jobs:
         run: python scripts/check_money_rounding.py
       - name: Test the money-rounding checker itself (QJR4)
         run: python -m unittest scripts.tests.test_check_money_rounding -v
+      # AUD515 - un modele a MACHINE D'ETATS (machine_etats.py / changer_statut*)
+      # ne laisse jamais son `statut` writable au serialiseur : un point de
+      # transition dedie ne vaut rien si un PATCH brut du corps pose le meme
+      # champ sans traverser aucune garde metier (« signe » sans signature,
+      # « cloture » sans CAPA, « livre » sans stock). Decouverte AST, aucune
+      # liste statique ; l'existant est fige dans
+      # scripts/machine_etats_statut_allow.txt (base qui ne peut que decroitre).
+      - name: Check statut read_only on state-machine models (AUD515)
+        run: python scripts/check_machine_etats_statut_readonly.py
+      - name: Test the state-machine statut checker itself (AUD515)
+        run: python -m unittest scripts.tests.test_check_machine_etats_statut_readonly -v
       # QJR6 — advisory: a path of the override registry (whitelist read from
       # the PACT10 contract apps/ventes/contract_samples/devis_overrides.json,
       # never copied into the script) may only be written in the sanctioned

@@ -1,0 +1,24 @@
+# Base de reprise de scripts/check_machine_etats_statut_readonly.py (AUD515).
+#
+# FORMAT : une cle par ligne, puis une colonne de raison humaine separee par
+# `|` (meme patron que scripts/money_rounding_allow.txt). Les lignes vides et
+# celles commencant par `#` sont ignorees.
+#
+#   <app>.<Modele>.<SerialiseurClass> | raison
+#
+# POURQUOI UNE BASE DE REPRISE. Le garde est ne ROUGE : cinq serialiseurs
+# laissaient « statut » writable sur un modele a point de transition dedie.
+# Corriger les cinq d'un coup depasse le perimetre de la tache qui cree le
+# garde -- chacun a sa propre tache (AUD501 pour contrats, AUD512/AUD514 pour
+# les autres). La base FIGE l'existant pour que le garde protege contre une
+# REGRESSION et contre tout NOUVEAU modele des aujourd'hui.
+#
+# ELLE NE PEUT QUE DECROITRE : une entree se retire quand sa tache atterrit.
+# Un serialiseur ABSENT de cette base et qui laisse « statut » writable fait
+# echouer backend-lint.
+
+contrats.Contrat.ContratSerializer | AUD501 -- corrige dans la meme lane, l'entree part avec.
+ao.AppelOffre.AppelOffreSerializer | A RELIRE -- meme classe systemique, tache dediee (hors lane AUD515).
+flotte.Vehicule.VehiculeSerializer | A RELIRE -- meme classe systemique, tache dediee (hors lane AUD515).
+installations.Intervention.InterventionSerializer | A RELIRE -- AUD317 pose le point de transition dedie ; la porte d'ecriture reste a fermer.
+installations.Installation.InstallationSerializer | A RELIRE -- AUD316 pose le point de transition dedie ; la porte d'ecriture reste a fermer.
