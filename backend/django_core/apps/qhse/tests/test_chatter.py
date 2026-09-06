@@ -101,13 +101,17 @@ class ChatterApiTests(TestCase):
 
     def test_patch_logs_field_change(self):
         ncr = NonConformite.objects.create(company=self.co, titre='NCR')
+        # `statut` ne se PATCH plus directement vers 'cloturee' (garde
+        # d'efficacité CAPA — la clôture passe par l'action dédiée
+        # `cloturer/`) : on exerce le chatter sur `gravite`, un autre champ
+        # suivi (``NonConformiteViewSet.CHATTER_FIELDS``) sans cette garde.
         resp = auth(self.user).patch(
-            f'{self.NCR_BASE}{ncr.id}/', {'statut': 'cloturee'}, format='json')
+            f'{self.NCR_BASE}{ncr.id}/', {'gravite': 'majeure'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         mods = self._entries(ncr.id).filter(
             kind=QhseChatterEntry.Kind.MODIFICATION)
         self.assertEqual(mods.count(), 1)
-        self.assertEqual(mods.first().field, 'statut')
+        self.assertEqual(mods.first().field, 'gravite')
 
     def test_noter_and_historique(self):
         ncr = NonConformite.objects.create(company=self.co, titre='NCR')

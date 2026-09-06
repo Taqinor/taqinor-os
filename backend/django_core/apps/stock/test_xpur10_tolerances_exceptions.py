@@ -105,6 +105,12 @@ class TestNoBcfNoRapprochement(Xpur10Base):
         check_facture_exception_gate(self.company, facture)
 
     def test_bcf_sans_rapprochement_evalue_never_exception(self):
+        # AUD233 auto-crée/rafraîchit le rapprochement 3 voies dès qu'on
+        # évalue une facture liée à un BCF (réglage société ON par défaut) —
+        # ce test cible précisément le cas OÙ le réglage est désactivé :
+        # aucun rapprochement n'existe alors, comportement historique inchangé.
+        AchatsParametres.objects.create(
+            company=self.company, rapprochement_3voies_auto=False)
         bcf = self._bcf_recu()
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0002',
@@ -121,12 +127,16 @@ class TestWithinTolerance(Xpur10Base):
         AchatsParametres.objects.create(
             company=self.company, tolerance_prix_pct=Decimal('1'))
         bcf = self._bcf_recu()
+        # AUD233 — l'évaluation RAFRAÎCHIT le rapprochement depuis les
+        # montants RÉELS (`montant_ht` de la facture, jamais `montant_ttc`) :
+        # le seed manuel ci-dessous est écrasé au premier appel, donc le HT
+        # de la facture doit lui-même porter l'écart de 0,5 % attendu.
         self._rapprochement(
             bcf, montant_recu=Decimal('10000'), montant_facture=Decimal('10050'))
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0003',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12060'))
+            montant_ht=Decimal('10050'), montant_ttc=Decimal('12060'))
         en_exception, ecart_pct = evaluate_facture_exception(
             self.company, facture)
         self.assertFalse(en_exception)

@@ -351,7 +351,10 @@ class ConformiteLectureProcedureApiTests(TestCase):
     def setUp(self):
         self.company = make_company('co-xqhs15-conf-api', 'CoXqhs15ConfApi')
         self.procedure = make_procedure(self.company)
-        self.user = make_user(self.company, 'user-xqhs15-conf-api')
+        # Lecture gardée par `qhse_voir` (rôle réel, jamais IsAnyRole — PACT10) :
+        # un compte légacy sans rôle fin n'y accède qu'au palier Responsable.
+        self.user = make_user(
+            self.company, 'user-xqhs15-conf-api', role='responsable')
         self.api = auth_client(self.user)
 
     def test_calcule_pct(self):
@@ -376,7 +379,11 @@ class RediffuserNouvelleVersionApiTests(TestCase):
         self.v1 = make_procedure(self.company, version=1)
         self.v2 = make_procedure(self.company, version=2)
         self.lecteur = make_user(self.company, 'lecteur-xqhs15-redif-api')
-        self.user = make_user(self.company, 'user-xqhs15-redif-api')
+        # Écriture gardée par `qhse_gerer` (rôle réel, jamais IsAnyRole —
+        # PACT10) : un compte légacy sans rôle fin n'y accède qu'au palier
+        # Responsable, comme `DiffuserActionApiTests` ci-dessus.
+        self.user = make_user(
+            self.company, 'user-xqhs15-redif-api', role='responsable')
         self.api = auth_client(self.user)
         diffuser_procedure(self.v1, [self.lecteur])
 
