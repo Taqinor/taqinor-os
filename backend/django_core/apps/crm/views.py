@@ -789,10 +789,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         arrivent donc par Subquery/Exists dans le queryset, jamais par un
         `SerializerMethodField` qui interrogerait la base par lead.
         """
-        from django.db.models import DateTimeField, Exists, F, OuterRef, Subquery
+        from django.db.models import (
+            Count, DateTimeField, Exists, F, OuterRef, Q, Subquery)
 
         from core.dates import aujourd_hui_local
-        from .models import RelanceEtape
+        from .models import LeadActivity, RelanceEtape
 
         ouvertes = RelanceEtape.objects.filter(
             lead=OuterRef('pk'), statut=RelanceEtape.Statut.A_FAIRE)
@@ -806,6 +807,19 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 prochaines.values('canal')[:1]),
             touche_en_retard_flag=Exists(
                 ouvertes.filter(due_date__lt=aujourd_hui_local())),
+            # MRY20 — combien de fois a-t-on VRAIMENT essayé ? Seules les
+            # tentatives HUMAINES comptent (appel / WhatsApp / e-mail avec un
+            # auteur) : compter les lignes système gonflerait le chiffre
+            # jusqu'à le rendre inutilisable, et c'est lui qui décide quand
+            # un dossier a été assez travaillé pour être classé.
+            nb_tentatives=Count(
+                'activites',
+                filter=Q(activites__kind__in=[
+                    LeadActivity.Kind.APPEL,
+                    LeadActivity.Kind.WHATSAPP,
+                    LeadActivity.Kind.EMAIL,
+                ], activites__user__isnull=False),
+                distinct=True),
         )
 
     def perform_create(self, serializer):

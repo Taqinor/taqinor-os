@@ -446,6 +446,12 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
     prochaine_touche_canal = serializers.CharField(
         read_only=True, required=False, allow_null=True, default=None)
     touche_en_retard = serializers.SerializerMethodField()
+    # MRY20 — nombre de TENTATIVES humaines (appel/WhatsApp/e-mail avec un
+    # auteur), annoté par `LeadViewSet.get_queryset`. C'est ce chiffre qui dit
+    # si un dossier a été assez travaillé pour être classé — et il vaut 0,
+    # jamais `None`, quand l'annotation est absente (un `retrieve` servi par
+    # un autre queryset ne doit pas afficher un trou).
+    nb_tentatives = serializers.SerializerMethodField()
     # LB39 — marqueur d'ANNULATION du dernier changement d'étape. Champ HORS
     # MODÈLE, write-only, jamais persisté (retiré dans validate()) : à lui
     # seul il n'autorise RIEN — il déclenche seulement la vérification
@@ -835,6 +841,10 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         verrouillés-cadenas au lieu de laisser croire à une édition qui
         sera jetée (drop silencieux au PATCH)."""
         return self._pii_masked()
+
+    def get_nb_tentatives(self, obj) -> int:
+        """MRY20 — lit l'annotation ; 0 par défaut, jamais une requête."""
+        return int(getattr(obj, 'nb_tentatives', 0) or 0)
 
     def get_touche_en_retard(self, obj) -> bool:
         """MRY5 — une touche de cadence est-elle ÉCHUE sur ce lead ?
