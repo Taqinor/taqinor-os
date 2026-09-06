@@ -196,7 +196,11 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             pv['note'] = note_pv[:1000]
         if upload is not None:
             from apps.records.storage import store_attachment
-            meta, err = store_attachment(upload)
+            # AUD311 (SCA42) — cle scopee societe : sans `company=`,
+            # `store_attachment` retombe en silence sur la cle PLATE
+            # `attachments/{uuid}.ext`. La societe vient du BON DE
+            # COMMANDE (AUD117), jamais de l'utilisateur.
+            meta, err = store_attachment(upload, company=bc.company)
             if err is not None:
                 return Response(
                     {'detail': err},

@@ -874,7 +874,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 phase = slot.phase
         if phase not in ('avant', 'pendant', 'apres'):
             phase = ''
-        meta, err = store_attachment(file)
+        # AUD311 (SCA42) — CLE SCOPEE SOCIETE. `store_attachment`
+        # accepte `company=` depuis SCA42 ; l'omettre retombe en
+        # silence sur la cle PLATE `attachments/{uuid}.ext` au lieu du
+        # prefixe `attachments/{company_id}/{uuid}.ext`. Defense en
+        # profondeur : toute lecture applicative est deja scopee par
+        # `Attachment.company` et aucun endpoint n'accepte un
+        # `file_key` arbitraire.
+        meta, err = store_attachment(file, company=interv.company)
         if err:
             return Response({'detail': err},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -955,7 +962,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         plaque = None
         file = request.FILES.get('file')
         if file is not None:
-            meta, err = store_attachment(file)
+            # AUD311 (SCA42) — cle scopee societe (voir ajouter_photo).
+            meta, err = store_attachment(file, company=company)
             if err:
                 return Response({'detail': err},
                                 status=status.HTTP_400_BAD_REQUEST)
@@ -1265,7 +1273,9 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if not file:
             return Response({'detail': 'Aucun fichier audio fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        meta, err = store_attachment(file, audio=True)
+        # AUD311 (SCA42) — cle scopee societe (voir ajouter_photo).
+        meta, err = store_attachment(file, audio=True,
+                                     company=interv.company)
         if err:
             return Response({'detail': err},
                             status=status.HTTP_400_BAD_REQUEST)
