@@ -170,6 +170,43 @@ class KpiPremierContactTests(TestCase):
         self.assertEqual(kpi['nb_nuit'], 2)
         self.assertEqual(kpi['nb_nuit_rappeles_avant_930'], 1)
 
+    def test_un_lead_de_nuit_rappele_le_lendemain_matin_compte(self):
+        # Lundi 7 septembre 2026, 23 h → limite mardi 8 à 09:30.
+        self._lead(datetime.datetime(2026, 9, 7, 23, 0, tzinfo=CASA),
+                   datetime.datetime(2026, 9, 8, 8, 40, tzinfo=CASA))
+        kpi = kpi_premier_contact(self.company, jours=3650)
+        self.assertEqual(kpi['nb_nuit'], 1)
+        self.assertEqual(kpi['nb_nuit_rappeles_avant_930'], 1)
+
+    def test_un_lead_de_nuit_rappele_DEUX_JOURS_plus_tard_ne_compte_pas(self):
+        """LE défaut : la garde ne regardait que l'HEURE au cadran. Un lead
+        arrivé lundi 23 h et rappelé jeudi 08:00 passait pour « rappelé avant
+        9 h 30 » alors qu'il avait dormi deux jours — la promesse mesurée est
+        « le lendemain matin », pas « un matin »."""
+        self._lead(datetime.datetime(2026, 9, 7, 23, 0, tzinfo=CASA),
+                   datetime.datetime(2026, 9, 10, 8, 0, tzinfo=CASA))
+        kpi = kpi_premier_contact(self.company, jours=3650)
+        self.assertEqual(kpi['nb_nuit'], 1)
+        self.assertEqual(kpi['nb_nuit_rappeles_avant_930'], 0)
+
+    def test_le_week_end_ne_compte_pas_comme_un_retard(self):
+        """Vendredi 21 h → le prochain jour OUVRÉ est le lundi : un rappel
+        lundi 08:32 tient la promesse."""
+        self._lead(datetime.datetime(2026, 9, 4, 21, 0, tzinfo=CASA),
+                   datetime.datetime(2026, 9, 7, 8, 32, tzinfo=CASA))
+        self.assertEqual(
+            kpi_premier_contact(self.company,
+                                jours=3650)['nb_nuit_rappeles_avant_930'], 1)
+
+    def test_un_lead_arrive_avant_louverture_a_sa_matinee_le_jour_meme(self):
+        """Arrivé mardi 07 h (hors fenêtre mais un jour ouvré) : il n'a pas de
+        nuit à attendre, sa limite est 9 h 30 le JOUR MÊME."""
+        self._lead(datetime.datetime(2026, 9, 8, 7, 0, tzinfo=CASA),
+                   datetime.datetime(2026, 9, 8, 8, 40, tzinfo=CASA))
+        self.assertEqual(
+            kpi_premier_contact(self.company,
+                                jours=3650)['nb_nuit_rappeles_avant_930'], 1)
+
     def test_un_lead_jamais_contacte_compte_au_denominateur(self):
         """Il compte comme lead, pas comme délai : l'oublier gonflerait le
         pourcentage de réussite en cachant les leads jamais rappelés."""
