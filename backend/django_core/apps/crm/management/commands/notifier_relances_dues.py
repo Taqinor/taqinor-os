@@ -45,19 +45,24 @@ def notifier_relances_dues(dry_run=False, today=None):
 
     Renvoie ``(nb_digests, nb_destinataires_eligibles)``."""
     from django.contrib.auth import get_user_model
-    from django.utils import timezone
 
     # SCA19 — un tenant SUSPENDU ou en fermeture ne doit plus être
     # balayé ni notifié : on itère la source unique des sociétés
     # opérationnelles, jamais `Company.objects.all()`.
     from authentication.selectors import active_companies
 
+    # CRX26 — la date « aujourd'hui » d'une décision métier (ici : quelles
+    # touches sont dues) se lit dans le fuseau MÉTIER (Casablanca), jamais
+    # via `timezone.localdate()` nu — CI (tests_crx26_timezone_casablanca)
+    # interdit cette forme dans apps/crm.
+    from core.dates import aujourd_hui_local
+
     from apps.crm.selectors import relance_etapes_dues
     from apps.notifications.models import EventType, Notification
     from apps.notifications.services import notify
 
     User = get_user_model()
-    aujourdhui = today or timezone.localdate()
+    aujourdhui = today or aujourd_hui_local()
     nb_digests = 0
     nb_destinataires = 0
 
