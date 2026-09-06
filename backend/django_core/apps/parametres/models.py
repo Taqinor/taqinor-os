@@ -20,7 +20,13 @@ from django.db import models
 from core.models import TenantModel
 
 from .models_company import CompanyProfile
-from .models_messages import MESSAGE_TEMPLATE_DEFAULTS, MessageTemplate
+from .models_messages import (
+    CLES_RELANCE,
+    MESSAGE_TEMPLATE_DEFAULTS,
+    MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+    PLACEHOLDERS_RELANCE,
+    MessageTemplate,
+)
 from .models_audit import SettingsAuditLog
 from .models_tariff import DEFAULT_RESIDENTIAL_TIERS, TariffSettings
 from .models_translations import TranslationOverride
@@ -35,7 +41,10 @@ from .models_relance import (
 __all__ = [
     'CompanyProfile',
     'MessageTemplate',
+    'CLES_RELANCE',
     'MESSAGE_TEMPLATE_DEFAULTS',
+    'MESSAGE_TEMPLATE_DEFAULTS_DARIJA',
+    'PLACEHOLDERS_RELANCE',
     'SettingsAuditLog',
     'TariffSettings',
     'DEFAULT_RESIDENTIAL_TIERS',

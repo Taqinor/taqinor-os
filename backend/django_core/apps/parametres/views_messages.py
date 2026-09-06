@@ -11,7 +11,9 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from .models import (
+    CLES_RELANCE,
     MESSAGE_TEMPLATE_DEFAULTS,
+    PLACEHOLDERS_RELANCE,
     MessageTemplate,
     SettingsAuditLog,
 )
@@ -28,6 +30,11 @@ _MESSAGE_PLACEHOLDERS = {
     'ticket_recu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'ticket_planifie': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'ticket_resolu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    # MRY12 — les clés du moteur de relances partagent LA MÊME liste
+    # autorisée (`PLACEHOLDERS_RELANCE`) : sans entrée ici, l'écran
+    # Paramètres → Messages refuserait tout placeholder à la sauvegarde
+    # (`_unknown_placeholders` prend un ensemble VIDE pour une clé absente).
+    **{cle: list(PLACEHOLDERS_RELANCE) for cle in CLES_RELANCE},
 }
 
 # Repère tout token de la forme {foo} dans un corps de message.
