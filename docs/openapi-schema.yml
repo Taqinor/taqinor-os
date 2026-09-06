@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9616, operations: 17279, components: 5082}
+counts: {paths: 9622, operations: 17287, components: 5085}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -6002,8 +6002,6 @@ operations:
 - post /api/django/portail/comptes-portail/{id}/regenerer-jeton/ -> django_portail_comptes_portail_regenerer_jeton_create
 - get /api/django/portail/demandes-ticket-portail/ -> django_portail_demandes_ticket_portail_list
 - post /api/django/portail/demandes-ticket-portail/ -> django_portail_demandes_ticket_portail_create
-- post /api/django/portail/demandes-ticket-portail/consulter-article-kb/ -> django_portail_demandes_ticket_portail_consulter_article_kb_create
-- get /api/django/portail/demandes-ticket-portail/suggestions-kb/ -> django_portail_demandes_ticket_portail_suggestions_kb_retrieve
 - delete /api/django/portail/demandes-ticket-portail/{id}/ -> django_portail_demandes_ticket_portail_destroy
 - get /api/django/portail/demandes-ticket-portail/{id}/ -> django_portail_demandes_ticket_portail_retrieve
 - patch /api/django/portail/demandes-ticket-portail/{id}/ -> django_portail_demandes_ticket_portail_partial_update
@@ -6025,6 +6023,11 @@ operations:
 - patch /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_partial_update
 - put /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_update
 - post /api/django/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> django_portail_jalons_chantier_portail_marquer_atteint_create
+- get /api/django/portail/mes-demandes-sav/ -> django_portail_mes_demandes_sav_list
+- post /api/django/portail/mes-demandes-sav/ -> django_portail_mes_demandes_sav_create
+- post /api/django/portail/mes-demandes-sav/consulter-article-kb/ -> django_portail_mes_demandes_sav_consulter_article_kb_create
+- get /api/django/portail/mes-demandes-sav/suggestions-kb/ -> django_portail_mes_demandes_sav_suggestions_kb_retrieve
+- get /api/django/portail/mes-demandes-sav/{id}/ -> django_portail_mes_demandes_sav_retrieve
 - get /api/django/portail/mes-devis/ -> django_portail_mes_devis_retrieve
 - get /api/django/portail/mes-devis/{id}/ -> django_portail_mes_devis_retrieve_2
 - post /api/django/portail/mes-devis/{id}/accepter/ -> django_portail_mes_devis_accepter_create
@@ -7602,6 +7605,7 @@ operations:
 - post /api/django/sav/tickets/{id}/creer-devis/ -> django_sav_tickets_creer_devis_create
 - post /api/django/sav/tickets/{id}/creer-lead/ -> django_sav_tickets_creer_lead_create
 - post /api/django/sav/tickets/{id}/demarrer/ -> django_sav_tickets_demarrer_create
+- post /api/django/sav/tickets/{id}/escalader-reclamation/ -> django_sav_tickets_escalader_reclamation_create
 - post /api/django/sav/tickets/{id}/facturer/ -> django_sav_tickets_facturer_create
 - post /api/django/sav/tickets/{id}/fusionner/ -> django_sav_tickets_fusionner_create
 - post /api/django/sav/tickets/{id}/generer-facture/ -> django_sav_tickets_generer_facture_create
@@ -14679,8 +14683,6 @@ operations:
 - post /api/v1/portail/comptes-portail/{id}/regenerer-jeton/ -> v1_portail_comptes_portail_regenerer_jeton_create
 - get /api/v1/portail/demandes-ticket-portail/ -> v1_portail_demandes_ticket_portail_list
 - post /api/v1/portail/demandes-ticket-portail/ -> v1_portail_demandes_ticket_portail_create
-- post /api/v1/portail/demandes-ticket-portail/consulter-article-kb/ -> v1_portail_demandes_ticket_portail_consulter_article_kb_create
-- get /api/v1/portail/demandes-ticket-portail/suggestions-kb/ -> v1_portail_demandes_ticket_portail_suggestions_kb_retrieve
 - delete /api/v1/portail/demandes-ticket-portail/{id}/ -> v1_portail_demandes_ticket_portail_destroy
 - get /api/v1/portail/demandes-ticket-portail/{id}/ -> v1_portail_demandes_ticket_portail_retrieve
 - patch /api/v1/portail/demandes-ticket-portail/{id}/ -> v1_portail_demandes_ticket_portail_partial_update
@@ -14702,6 +14704,11 @@ operations:
 - patch /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_partial_update
 - put /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_update
 - post /api/v1/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> v1_portail_jalons_chantier_portail_marquer_atteint_create
+- get /api/v1/portail/mes-demandes-sav/ -> v1_portail_mes_demandes_sav_list
+- post /api/v1/portail/mes-demandes-sav/ -> v1_portail_mes_demandes_sav_create
+- post /api/v1/portail/mes-demandes-sav/consulter-article-kb/ -> v1_portail_mes_demandes_sav_consulter_article_kb_create
+- get /api/v1/portail/mes-demandes-sav/suggestions-kb/ -> v1_portail_mes_demandes_sav_suggestions_kb_retrieve
+- get /api/v1/portail/mes-demandes-sav/{id}/ -> v1_portail_mes_demandes_sav_retrieve
 - get /api/v1/portail/mes-devis/ -> v1_portail_mes_devis_retrieve
 - get /api/v1/portail/mes-devis/{id}/ -> v1_portail_mes_devis_retrieve_2
 - post /api/v1/portail/mes-devis/{id}/accepter/ -> v1_portail_mes_devis_accepter_create
@@ -16235,6 +16242,7 @@ operations:
 - post /api/v1/sav/tickets/{id}/creer-devis/ -> v1_sav_tickets_creer_devis_create
 - post /api/v1/sav/tickets/{id}/creer-lead/ -> v1_sav_tickets_creer_lead_create
 - post /api/v1/sav/tickets/{id}/demarrer/ -> v1_sav_tickets_demarrer_create
+- post /api/v1/sav/tickets/{id}/escalader-reclamation/ -> v1_sav_tickets_escalader_reclamation_create
 - post /api/v1/sav/tickets/{id}/facturer/ -> v1_sav_tickets_facturer_create
 - post /api/v1/sav/tickets/{id}/fusionner/ -> v1_sav_tickets_fusionner_create
 - post /api/v1/sav/tickets/{id}/generer-facture/ -> v1_sav_tickets_generer_facture_create
@@ -18979,6 +18987,9 @@ components:
 - MatiereRequest
 - MenuCantine
 - MenuCantineRequest
+- MesDemandesSavPortail
+- MesDemandesSavPortailLigne
+- MesDemandesSavPortailLigneRequest
 - MesLivraisonsPortail
 - MesLivraisonsPortailArticle
 - MesLivraisonsPortailLigne

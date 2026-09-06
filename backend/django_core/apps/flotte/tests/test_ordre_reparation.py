@@ -318,7 +318,10 @@ class ApiTests(TestCase):
         self.assertEqual(resp.status_code, 403, resp.data)
         self.assertEqual(OrdreReparation.objects.count(), 1)
         ordre.refresh_from_db()
-        self.assertEqual(ordre.statut, OrdreReparation.Statut.OUVERT)
+        # Le DELETE bloqué (PermissionDenied levée avant tout write — voir
+        # OrdreReparationViewSet.perform_destroy) ne fait QUE refuser : il ne
+        # défait jamais la clôture posée juste avant. L'OR reste CLOTURE.
+        self.assertEqual(ordre.statut, OrdreReparation.Statut.CLOTURE)
 
     def test_filtre_ouverts(self):
         make_or(self.co_a, self.actif_a)  # ouvert

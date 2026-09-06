@@ -5,8 +5,13 @@ Ce qui est prouvé ici :
 * **aucun rendu client ne nomme le bureau** — test BINAIRE sur les artefacts
   réellement produits (mémoire, simulation, cartouche de planche) ;
 * la bascule marque blanche ON/OFF est testée sur une pièce témoin ;
-* **aucun champ d'identité n'est dupliqué** avec ``authentication.Company``
-  (ni avec ``parametres.CompanyProfile``, lu par selector) ;
+* **aucun champ d'identité DÉDIÉ AU WHITE-LABEL AO n'est dupliqué** avec
+  ``authentication.Company`` (ni avec ``parametres.CompanyProfile``, lu par
+  selector) — ``ice``/``identifiant_fiscal``/``registre_commerce`` existent
+  bien sur ``Company`` depuis AUD704 (identité EMPLOYEUR réelle du bulletin
+  de paie, sans rapport avec l'identité PARTENAIRE d'un AO en marque
+  blanche), donc seuls ``rib``/``signataire_nom``/``raison_sociale`` restent
+  ici la garde anti-duplication propre à AOF144 ;
 * le bureau sans identité déclarée est LU par
   ``parametres.selectors.company_identity``, jamais recopié.
 
@@ -35,9 +40,16 @@ PARTENAIRE = 'ACCORDIA PARTENAIRE SA'
 
 class TestAucuneDuplicationDIdentite(SimpleTestCase):
     def test_company_ne_porte_pas_ces_champs(self):
+        # AUD704 (bulletin de paie — identité EMPLOYEUR réelle, décision
+        # fondateur, déjà en prod) a ajouté ice/identifiant_fiscal/
+        # registre_commerce à authentication.Company : une addition
+        # délibérée, sans rapport avec la marque blanche AO (l'identité d'un
+        # PARTENAIRE d'AO reste exclusivement sur IdentiteAO), donc plus dans
+        # le périmètre de cette garde anti-duplication AOF144. rib/
+        # signataire_nom/raison_sociale, eux, n'existent toujours pas sur
+        # Company — c'est ce qui reste à garder ici.
         champs_company = {f.name for f in Company._meta.get_fields()}
-        for champ in ('ice', 'identifiant_fiscal', 'registre_commerce',
-                      'rib', 'signataire_nom', 'raison_sociale'):
+        for champ in ('rib', 'signataire_nom', 'raison_sociale'):
             self.assertNotIn(champ, champs_company, champ)
 
     def test_les_deux_roles_sont_declares(self):

@@ -74,6 +74,8 @@ def make_crm_client(company, nom='Client portail'):
 def make_chantier(company, reference):
     from apps.installations.models import Installation
     return Installation.objects.create(company=company, reference=reference)
+
+
 def _portal_client_user(company, username, client_id):
     """AUD525 — compte PORTAIL CLIENT réel (portée + client rattaché), le seul
     type de compte que la surface client accepte (``IsPortalClientUser``)."""

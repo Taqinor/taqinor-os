@@ -11,6 +11,7 @@ Ces tests sont ROUGES avant le correctif (201) et VERTS après (400), et
 vérifient qu'un mot de passe correct reste accepté sur les deux chemins.
 """
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -29,6 +30,12 @@ class Aud402RegisterCompanyTest(TestCase):
     """Signup public : le mot de passe d'un caractère doit être refusé."""
 
     def setUp(self):
+        # Le throttle d'inscription (register, 3/h) vit dans le cache,
+        # PARTAGÉ entre les tests d'un même processus : selon la composition
+        # du shard, les POST des classes voisines font monter le compteur et
+        # register-company/ rend 429 au lieu du 400/201 attendu (même patron
+        # que tests_hardening / tests_2fa / tests_sessions_rotation).
+        cache.clear()
         self.api = APIClient()
 
     def _post(self, password, username='boss402', nom='AUD402 SARL'):

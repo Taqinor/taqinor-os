@@ -2834,6 +2834,20 @@ def creer_bulletin_annulation(bulletin_origine, periode_cible):
         raise ValueError("Période cible d'une autre société.")
     if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
         raise ValueError("La période cible est clôturée.")
+    # ``BulletinPaie`` porte ``unique_together = ('periode', 'profil')``
+    # (PAIE17, migration 0010) : un profil n'a qu'UN bulletin par période.
+    # Sans cette garde, extourner vers une période qui porte déjà un bulletin
+    # de ce profil levait une ``IntegrityError`` brute — 500 côté API, et
+    # ``transaction.atomic`` cassé pour tout le bloc appelant. On refuse
+    # explicitement, comme les deux gardes ci-dessus et comme
+    # ``rattacher_bulletins`` : la vue traduit ce ``ValueError`` en 400.
+    if BulletinPaie.objects.filter(
+            periode=periode_cible,
+            profil=bulletin_origine.profil).exists():
+        raise ValueError(
+            f'{bulletin_origine.profil} a déjà un bulletin sur la période '
+            f'{periode_cible} : choisir une période cible sans bulletin pour '
+            'ce salarié.')
 
     with transaction.atomic():
         annulation = BulletinPaie.objects.create(
@@ -5081,9 +5095,14 @@ def livre_de_paie(periode):
                 statut=BulletinPaie.STATUT_VALIDE)
         .select_related('profil', 'profil__employe')
     )
+    # AUD708 — `allocations_familiales` et `formation_professionnelle` sont
+    # AGRÉGÉES ICI parce que le journal de paie (`_credit_organismes_cnss`) et
+    # l'état des charges (`etat_des_charges`) les créditent au compte 4441 :
+    # sans elles dans ce registre, les deux consommateurs lèvent un KeyError.
     champs = [
         'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
-        'amo_salariale', 'amo_patronale', 'cimr_salariale', 'ir',
+        'amo_salariale', 'amo_patronale', 'allocations_familiales',
+        'formation_professionnelle', 'cimr_salariale', 'ir',
         'frais_professionnels', 'net_imposable', 'retenues', 'net_a_payer',
         'charges_patronales',
     ]

@@ -139,7 +139,11 @@ class TestCinqCheminsMuetsEmettentLEvenement(_BaseEmission):
                 '/api/django/ventes/factures/bulk/',
                 {'action': 'emettre', 'ids': [facture.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertTrue(resp.data[str(facture.id)]['ok'], resp.data)
+        # Le bulk indexe son rapport par id ENTIER (``results[fid_int]``,
+        # contrat epinglé de longue date par ``test_bulk_factures``) ; c'est
+        # la sérialisation JSON qui le rend en chaîne côté client, jamais
+        # ``resp.data`` qui est le dict brut d'avant rendu.
+        self.assertTrue(resp.data[facture.id]['ok'], resp.data)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.EMISE)
         self.assertEqual(len(compteur.pour(facture)), 1)
@@ -217,7 +221,11 @@ class TestAbonneComptaBranche(TestCase):
     def test_le_receveur_compta_est_abonne(self):
         import apps.compta.receivers  # noqa: F401 — enregistre les abonnés
         # Django indexe chaque abonné par ``(dispatch_uid|id, id(sender))``.
-        uids = {lookup[0] for lookup, _recepteur in facture_emise.receivers}
+        # L'ARITÉ des entrées de ``Signal.receivers`` est un détail interne qui
+        # BOUGE (Django ≤ 4.2 : ``(clé, récepteur)`` ; Django 5.0+ : une
+        # troisième valeur ``is_async`` s'ajoute pour les récepteurs async) —
+        # on n'indexe donc que le premier élément, jamais par dépaquetage.
+        uids = {entree[0][0] for entree in facture_emise.receivers}
         self.assertIn('compta_ecriture_pour_facture_emise', uids)
 
 
@@ -309,7 +317,7 @@ class TestBlocageCreditALEmission(_BaseEmission):
             '/api/django/ventes/factures/bulk/',
             {'action': 'emettre', 'ids': [facture.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertFalse(resp.data[str(facture.id)]['ok'], resp.data)
+        self.assertFalse(resp.data[facture.id]['ok'], resp.data)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
 

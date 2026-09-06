@@ -32,6 +32,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
+from apps.sav.dateutils import add_months
 from apps.sav.models import ContratMaintenance, PieceConsommee, Ticket
 from apps.stock.models import Produit
 
@@ -63,12 +64,22 @@ class AUD502ExpirationContratMaintenanceTest(TestCase):
 
     def _contrat(self, *, duree_mois, expire_depuis_jours=None, **extra):
         """Contrat dont l'échéance (date_debut + duree_mois) tombe il y a
-        ``expire_depuis_jours`` jours (ou dans le futur si None)."""
+        ``expire_depuis_jours`` jours (ou dans le futur si None).
+
+        ``date_expiration()`` calcule l'échéance via ``add_months`` (mois
+        civils réels — 28 à 31 jours selon le mois, donc ~365 j/an et non
+        360). Une approximation ``30 * duree_mois`` dérive ici de 5-6 jours
+        par an d'écart, ce qui faisait passer un contrat « expiré depuis 31
+        jours » (voulu hors grâce de 30 j) à seulement ~26 jours réels
+        (encore DANS la grâce) — le vrai bug était dans cette aide de test,
+        pas dans ``en_periode_grace()``. On reproduit donc l'échéance visée
+        en inversant ``add_months`` (mois entiers, jour de calendrier fixe —
+        exact tant que le jour du mois ne tombe pas en fin de mois)."""
         if expire_depuis_jours is None:
             date_debut = self.today - timedelta(days=15)
         else:
-            date_debut = (self.today - timedelta(days=expire_depuis_jours)
-                          - timedelta(days=30 * duree_mois))
+            expiration_visee = self.today - timedelta(days=expire_depuis_jours)
+            date_debut = add_months(expiration_visee, -duree_mois)
         return ContratMaintenance.objects.create(
             company=self.company, client=self.client_obj,
             installation=self.inst, date_debut=date_debut, actif=True,

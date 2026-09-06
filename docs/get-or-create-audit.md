@@ -231,11 +231,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:140` | get_or_create | BaremeIR.objects | company, date_effet |
 | `backend/django_core/apps/paie/services.py:324` | get_or_create | Rubrique.objects | code, company |
 | `backend/django_core/apps/paie/services.py:397` | get_or_create | TypeEntreePonctuelle.objects | code, company |
-| `backend/django_core/apps/paie/services.py:3138` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
-| `backend/django_core/apps/paie/services.py:5657` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
-| `backend/django_core/apps/paie/services.py:6356` | get_or_create | StructurePaie.objects | code, company |
-| `backend/django_core/apps/paie/services.py:6366` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
-| `backend/django_core/apps/paie/services.py:6392` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
+| `backend/django_core/apps/paie/services.py:3152` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
+| `backend/django_core/apps/paie/services.py:5676` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
+| `backend/django_core/apps/paie/services.py:6375` | get_or_create | StructurePaie.objects | code, company |
+| `backend/django_core/apps/paie/services.py:6385` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
+| `backend/django_core/apps/paie/services.py:6411` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
 | `backend/django_core/apps/parametres/models_company.py:759` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:764` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
@@ -292,8 +292,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/sante/models.py:728` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/services.py:1445` | get_or_create | TicketFollower.objects | company, ticket, user |
-| `backend/django_core/apps/sav/views.py:1274` | get_or_create | TicketFollower.objects | company, ticket, user |
-| `backend/django_core/apps/sav/views.py:1806` | get_or_create | TicketChecklistItem.objects | cle, ticket |
+| `backend/django_core/apps/sav/views.py:1280` | get_or_create | TicketFollower.objects | company, ticket, user |
+| `backend/django_core/apps/sav/views.py:1812` | get_or_create | TicketChecklistItem.objects | cle, ticket |
 | `backend/django_core/apps/scm/selectors.py:104` | update_or_create | ClassificationABC.objects | company, produit |
 | `backend/django_core/apps/scm/services.py:154` | update_or_create | PrevisionDemande.objects | company, periode, produit, segment |
 | `backend/django_core/apps/scm/services.py:252` | get_or_create | PolitiqueStock.objects | company, produit |

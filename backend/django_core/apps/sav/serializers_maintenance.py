@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
@@ -80,20 +81,24 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     def get_renouvellement_du(self, obj):
         return obj.renouvellement_du()
 
+    @extend_schema_field(serializers.DateField(allow_null=True))
     def get_date_expiration(self, obj):
         """AUD502 — échéance = date_debut + duree_mois (None si sans durée)."""
         expiration = obj.date_expiration()
         return expiration.isoformat() if expiration else None
 
+    @extend_schema_field(serializers.BooleanField())
     def get_expire(self, obj):
         """AUD502 — échéance dépassée (grâce non comprise)."""
         return obj.est_expire()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_en_periode_grace(self, obj):
         """AUD502 — expiré mais encore couvrant (grâce 30 j) : à renouveler
         d'urgence, la couverture tombe à la fin de la fenêtre."""
         return obj.en_periode_grace()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_a_renouveler(self, obj):
         """AUD502 — date de renouvellement atteinte OU échéance dépassée."""
         return obj.a_renouveler()

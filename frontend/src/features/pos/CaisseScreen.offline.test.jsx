@@ -72,7 +72,8 @@ vi.mock('./offlineQueue', () => ({
   }),
 }))
 
-import CaisseScreen, { envoyerVenteComptoir } from './CaisseScreen'
+import CaisseScreen from './CaisseScreen'
+import { envoyerVenteComptoir } from './venteComptoirSync'
 
 function withProviders(ui) {
   return render(

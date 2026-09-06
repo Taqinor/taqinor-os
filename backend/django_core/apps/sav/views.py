@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 
@@ -616,11 +617,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return qs
 
     def get_permissions(self):
-        # NOTE : cette surcharge NE lit PAS self.permission_classes ; le tier de
-        # chaque @action doit donc être listé EXPLICITEMENT ci-dessous pour
-        # correspondre au kwarg permission_classes de son décorateur. Toute
-        # @action absente retombe sur IsAdminRole (plus restrictif que voulu) —
-        # tenu par apps/sav/tests_ticket_action_permissions.py.
+        # Une garde déclarée par l'@action elle-même (permission_classes= sur
+        # le décorateur @action) PRIME sur le tiering ci-dessous — sinon le
+        # kwarg du décorateur devient du code mort et l'action retombe sur
+        # IsAdminRole (bug corrigé : escalader_reclamation). Le reste de cette
+        # surcharge NE lit PAS self.permission_classes ; le tier de chaque
+        # @action SANS garde déclarée doit donc être listé EXPLICITEMENT
+        # ci-dessous — tenu par apps/sav/tests_ticket_action_permissions.py.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         if self.action in READ_ACTIONS + [
                 'historique', 'rapport_pdf', 'lien_client', 'similaires',
                 'triage_ia', 'instructions_suggestions',
