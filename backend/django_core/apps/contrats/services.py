@@ -208,7 +208,52 @@ def contexte_fusion(contrat):
         "parties": "\n".join(lignes_parties),
         # Clauses résolues (CONTRAT9)
         "clauses": "\n\n".join(blocs_clauses),
+        # AUD503 — LE DOCUMENT PORTE SA PREUVE DE SIGNATURE (décision D11).
+        "signatures": bloc_signatures(contrat),
     }
+
+
+#: AUD503 / décision fondateur D11 — ÉTIQUETAGE HONNÊTE DU NIVEAU DE SIGNATURE.
+#: Le dispositif est une signature électronique SIMPLE (nom dactylographié +
+#: preuves de connexion, éventuellement un OTP) au sens de la loi 43-20 : ce
+#: n'est ni une signature avancée ni une signature qualifiée. Le document le
+#: DIT, plutôt que de laisser croire à davantage.
+MENTION_NIVEAU_SIGNATURE = (
+    "Signature électronique simple (loi 43-20) : nom dactylographié et "
+    "preuves de connexion horodatées. Ni signature avancée, ni qualifiée."
+)
+
+
+def bloc_signatures(contrat) -> str:
+    """AUD503 — le bloc de signature IMPRIMABLE d'un contrat.
+
+    ``contexte_fusion`` ne posait NI signataire, NI date, NI méthode, NI
+    référence de preuve : le PDF d'un contrat SIGNÉ ne montrait donc AUCUNE
+    trace de sa signature — un document juridique muet sur ce qui le rend
+    opposable. Les ``SignatureContrat`` existaient pourtant depuis CONTRAT16.
+
+    Le bloc nomme, pour chaque signataire : son nom (celui qui fait foi), son
+    rôle, la date/heure, la méthode et la RÉFÉRENCE DE PREUVE (id de la
+    ``SignatureContrat`` + empreinte d'IP). Il se termine par l'étiquetage
+    honnête du niveau de signature (décision D11). Lecture seule.
+    """
+    signatures = list(contrat.signatures.all().order_by('date_signature', 'id'))
+    if not signatures:
+        return "Non signé à ce jour."
+    lignes = []
+    for signature in signatures:
+        role = signature.get_role_signataire_display()
+        methode = (signature.get_methode_display()
+                   if signature.methode else 'non précisée')
+        lignes.append(
+            f"- {signature.signataire_nom} ({role}) — "
+            f"signé le {_fmt_date(signature.date_signature)}, "
+            f"méthode : {methode}, "
+            f"référence de preuve : SIG-{signature.pk}"
+            + (f" / IP {signature.ip_adresse}" if signature.ip_adresse else ""))
+    lignes.append("")
+    lignes.append(MENTION_NIVEAU_SIGNATURE)
+    return "\n".join(lignes)
 
 
 def fusionner(gabarit, contexte):
@@ -272,6 +317,19 @@ def _contrat_html(contrat):
     corps = _html.escape(rendu).replace("\n", "<br/>")
     titre = _html.escape(contrat.objet or "Contrat")
     reference = _html.escape(contrat.reference or "")
+    # AUD503 — LE BLOC DE SIGNATURE EST SUR LE DOCUMENT, TOUJOURS. Le poser
+    # dans `contexte_fusion` ne suffit pas : un `ModeleContrat` maison n'a
+    # aucune raison de porter le jeton `{{ signatures }}`, et le PDF d'un
+    # contrat SIGNÉ resterait alors muet sur ce qui le rend opposable. On
+    # l'ajoute donc ici quand le rendu ne le contient pas déjà — jamais deux
+    # fois (le gabarit par défaut, lui, le porte).
+    bloc = bloc_signatures(contrat)
+    signatures_html = ""
+    if bloc and bloc not in rendu:
+        signatures_html = (
+            "<div class='signatures'><h2>Signatures</h2>"
+            + _html.escape(bloc).replace("\n", "<br/>")
+            + "</div>")
     return (
         "<html><head><meta charset='utf-8'>"
         "<style>"
@@ -281,10 +339,14 @@ def _contrat_html(contrat):
         "padding-bottom:6px;}"
         ".ref{color:#555;font-size:10pt;margin-bottom:18px;}"
         ".corps{white-space:normal;}"
+        ".signatures{margin-top:24px;border-top:1px solid #ccc;"
+        "padding-top:12px;font-size:10pt;}"
+        ".signatures h2{font-size:12pt;margin:0 0 8px;}"
         "</style></head><body>"
         f"<h1>{titre}</h1>"
         f"<div class='ref'>Référence : {reference}</div>"
         f"<div class='corps'>{corps}</div>"
+        f"{signatures_html}"
         "</body></html>"
     )
 
@@ -324,7 +386,10 @@ def _gabarit_par_defaut(contexte):
         "Montant : {{ montant }}\n"
         "Période : {{ date_debut }} → {{ date_fin }}\n\n"
         "Parties :\n{{ parties }}\n\n"
-        "Clauses :\n{{ clauses }}\n"
+        "Clauses :\n{{ clauses }}\n\n"
+        # AUD503 — le bloc de signature fait partie du DOCUMENT, pas d'un
+        # écran : un contrat signé doit porter sa preuve.
+        "Signatures :\n{{ signatures }}\n"
     )
 
 

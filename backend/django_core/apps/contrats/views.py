@@ -172,6 +172,15 @@ class _ContratsBaseViewSet(
     write_permission = 'contrat_gerer'
 
 
+#: AUD503 — les champs qui ENGAGENT financièrement les parties. Ils se figent
+#: dès que le contrat quitte BROUILLON/EN_APPROBATION : un contrat signé ne
+#: doit pas pouvoir changer de montant ou de période APRÈS coup, puisque le PDF
+#: est REGÉNÉRÉ à la volée depuis l'objet et dirait alors autre chose que ce
+#: que la partie a signé. Un avenant est la voie prévue pour les modifier.
+CHAMPS_FINANCIERS_GELES = ('montant', 'devise', 'taux_tva',
+                           'date_debut', 'date_fin')
+
+
 class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
     """Contrats de la société (CLM). Recherche par référence/objet.
 
@@ -251,7 +260,36 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         Ici on journalise uniquement un changement effectif de
         ``confidentialite`` (CONTRAT6), avec auteur et société posés côté serveur.
         """
-        ancien = serializer.instance.confidentialite
+        instance = serializer.instance
+        # ── AUD503 — LES CHAMPS FINANCIERS SE FIGENT À LA SIGNATURE ─────────
+        # `rendre_contrat_pdf` REGÉNÈRE le PDF à la volée depuis un Contrat
+        # resté mutable : montant, date_debut et date_fin pouvaient donc
+        # changer APRÈS coup sur un contrat déjà SIGNÉ, et le « même » document
+        # ne disait plus la même chose que ce que la partie avait signé. Dès
+        # que le contrat quitte BROUILLON/EN_APPROBATION, ces champs sont
+        # verrouillés — cohérent avec AUD501 qui rend `statut` read_only.
+        # Un avenant (`creer-avenant`) reste LA voie pour modifier un montant.
+        etats_modifiables = {
+            instance.__class__.Statut.BROUILLON,
+            instance.__class__.Statut.EN_APPROBATION,
+        }
+        if instance.statut not in etats_modifiables:
+            geles = []
+            for champ in CHAMPS_FINANCIERS_GELES:
+                if champ not in serializer.validated_data:
+                    continue
+                if serializer.validated_data[champ] != getattr(
+                        instance, champ):
+                    geles.append(champ)
+            if geles:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({
+                    champ: (
+                        'Ce contrat n\'est plus en brouillon : ses conditions '
+                        'financières sont figées. Passez par un avenant '
+                        '(« creer-avenant ») pour les modifier.'
+                    ) for champ in geles})
+        ancien = instance.confidentialite
         contrat = serializer.save()
         if contrat.confidentialite != ancien:
             services.journaliser_transition(
