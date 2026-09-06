@@ -1020,7 +1020,11 @@ class LigneAvoir(models.Model):
 
     @property
     def total_ht(self):
-        return self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+        # Jumeau exact du 500 latent de LigneFacture (remise int par défaut →
+        # Decimal * float lève TypeError sur une ligne fraîchement créée).
+        from decimal import Decimal
+        remise = Decimal(str(self.remise or 0))
+        return self.quantite * self.prix_unitaire * (1 - remise / 100)
 
     @property
     def taux_tva_effectif(self):
