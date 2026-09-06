@@ -415,6 +415,16 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         company = request.user.company
 
         def _create_facture(ref):
+            # AUD113 — le taux de TÊTE est le REPLI des lignes sans taux, et
+            # les deux chaînes de repli pointent vers des objets DIFFÉRENTS :
+            # `LigneDevis.taux_tva_effectif` retombe sur `devis.taux_tva`,
+            # `LigneFacture.taux_tva_effectif` sur `facture.taux_tva`. Sans
+            # ce transport, un devis à 10 % dont les lignes portent un taux
+            # NULL était facturé au défaut 20 % — le client surfacturé de dix
+            # points de TVA. Même geste que `remise_globale` (QX1) ci-dessous.
+            entete = {}
+            if bc.devis_id and bc.devis.taux_tva is not None:
+                entete['taux_tva'] = bc.devis.taux_tva
             facture = Facture.objects.create(
                 reference=ref,
                 bon_commande=bc,
@@ -427,6 +437,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 statut=Facture.Statut.BROUILLON,
                 created_by=request.user,
                 company=company,
+                **entete,
             )
             if bc.devis:
                 # ERR16 — n'inclure QUE les lignes de l'option retenue à
