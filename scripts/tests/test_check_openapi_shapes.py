@@ -9,10 +9,13 @@ Chaque test correspond a un fait MESURE de l'incident du 03/08/2026 :
 ``/flotte/vehicules/tableau-bord/`` documente avec le mauvais serializer, et
 406 vues sur lesquelles le generateur declare forfait.
 """
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -180,6 +183,49 @@ class DepotReelTests(unittest.TestCase):
             _, agreges = cos.analyser(base)
             self.assertEqual(agreges, ["apps.neuf.views:NeufViewSet.tableau_bord"])
             self.assertEqual(sorted(set(agreges) - cos.charger_base()), agreges)
+
+    def test_base_r2_absente_est_une_erreur_jamais_un_zero(self):
+        """AUD833 — le cliquet R2 comptait les lignes d'un fichier ABSENT.
+
+        Avant : `if not path.is_file(): return 0` — un conflit de fusion ou un
+        `git checkout --theirs` supprimait scripts/openapi_schema_allow.txt, le
+        compte tombait a 0 < 406, et la garde imprimait « PROGRES... descendu a
+        0. Abaissez PLAFOND_NON_DEVINABLES a 0 » : suivre cette instruction
+        figeait la garde sur du NEANT et effacait une dette de 406 vues.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            manquant = Path(tmp) / "openapi_schema_allow.txt"
+            with self.assertRaises(SystemExit) as ctx:
+                cos.compter_non_devinables(manquant)
+        message = str(ctx.exception)
+        self.assertIn("introuvable", message)
+        self.assertIn("openapi_schema_allow.txt", message)
+
+    def test_un_compte_nul_n_invite_jamais_a_abaisser_le_plafond(self):
+        """AUD833 — « abaissez le plafond a 0 » ne doit exister que sur un
+        compte STRICTEMENT POSITIF : zero face a un plafond de 406 n'est pas un
+        progres, c'est une mesure qui ne mesure plus."""
+        sortie = io.StringIO()
+        with mock.patch.object(cos, "analyser", return_value=([], [])):
+            with mock.patch.object(cos, "compter_non_devinables",
+                                   return_value=0):
+                with contextlib.redirect_stdout(sortie):
+                    code = cos.main([])
+        texte = sortie.getvalue()
+        self.assertEqual(code, 0)               # R1/R3 restent verts
+        self.assertNotIn("Abaissez PLAFOND_NON_DEVINABLES", texte)
+        self.assertIn("VERIFIEZ", texte)
+        self.assertIn("N'ABAISSEZ PAS", texte)
+
+    def test_un_vrai_progres_invite_toujours_a_abaisser_le_plafond(self):
+        # Non-regression : le message utile reste imprime sur un compte > 0.
+        sortie = io.StringIO()
+        with mock.patch.object(cos, "analyser", return_value=([], [])):
+            with mock.patch.object(cos, "compter_non_devinables",
+                                   return_value=cos.PLAFOND_NON_DEVINABLES - 1):
+                with contextlib.redirect_stdout(sortie):
+                    cos.main([])
+        self.assertIn("Abaissez PLAFOND_NON_DEVINABLES", sortie.getvalue())
 
     def test_l_entete_explique_pourquoi_le_schema_n_aurait_rien_vu(self):
         entete = Path(cos.__file__).read_text(encoding="utf-8")[:4000]
