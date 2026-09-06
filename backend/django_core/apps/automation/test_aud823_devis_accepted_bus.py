@@ -66,11 +66,15 @@ class DevisAcceptedSurLeBusTests(TestCase):
         self.assertEqual(self._runs().count(), 1)
 
     def test_le_declencheur_est_abonne_au_bus_m6(self):
-        cles = [str(cle) for cle, _ in devis_accepted.receivers]
-        self.assertTrue(
-            any('automation_on_devis_accepted' in cle for cle in cles),
+        # `Signal.receivers` : chaque entrée commence par sa lookup_key, dont
+        # le premier élément est le `dispatch_uid` quand il est fourni (même
+        # patron que test_aud127_avoir_annule/test_aud102_bascule_payee —
+        # l'arité de ces entrées est un détail interne qui a changé en 5.1).
+        uids = [entree[0][0] for entree in devis_accepted.receivers]
+        self.assertIn(
+            'automation_on_devis_accepted', uids,
             "L'abonnement AUD823 au bus core.events n'est pas câblé "
-            f'(récepteurs : {cles}).')
+            f'(récepteurs : {uids}).')
 
     def test_un_devis_sans_societe_est_ignore(self):
         """`devis_accepted` est un signal PARTAGÉ : un émetteur d'un autre
