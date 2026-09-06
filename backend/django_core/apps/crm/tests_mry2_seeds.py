@@ -6,7 +6,7 @@ Deux trous réels que cette tâche ferme :
     (« Locataire », « Déjà équipé »… que Meryem entend au téléphone) ;
   * `LeadTag` n'avait AUCUN seeder : chaque société démarrait sur une liste
     vide, y compris pour les deux étiquettes que la clôture de cadence écrit
-    (« Injoignable 7 tentatives », « Devis sans suite »).
+    (« Injoignable 6 appels », « Devis sans suite »).
 
 Garanties vérifiées ici : jamais un doublon, jamais la modification d'une ligne
 existante, jamais une suppression, jamais de fuite entre sociétés.
@@ -94,8 +94,11 @@ class MotifsStandardTests(TestCase):
 
 class EtiquettesStandardTests(TestCase):
     def test_les_deux_etiquettes_de_cloture_sont_seedees(self):
-        self.assertIn('Injoignable 7 tentatives', _DEFAULT_TAGS)
+        self.assertIn('Injoignable 6 appels', _DEFAULT_TAGS)
         self.assertIn('Devis sans suite', _DEFAULT_TAGS)
+        # MRY11 — l'ancien libellé annonçait « 7 tentatives » là où le
+        # Protocole v3 compte SIX appels (migration crm.0093).
+        self.assertNotIn('Injoignable 7 tentatives', _DEFAULT_TAGS)
 
     def test_seed_tags_cree_les_defauts(self):
         company = make_company('mry2-tags')

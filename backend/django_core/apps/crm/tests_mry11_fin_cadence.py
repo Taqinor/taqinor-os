@@ -75,7 +75,10 @@ class ClotureContactTests(_Base):
 
     def test_letiquette_dit_pourquoi(self):
         self._epuiser('contact')
-        self.assertIn('Injoignable 7 tentatives', self.lead.tags or '')
+        self.assertIn('Injoignable 6 appels', self.lead.tags or '')
+        # Le Protocole v3 compte SIX appels : l'ancien « 7 tentatives » ne
+        # correspondait à rien dans la cadence réelle (migration crm.0093).
+        self.assertNotIn('7 tentatives', self.lead.tags or '')
 
     def test_deux_reveils_sont_poses(self):
         self._epuiser('contact')
@@ -232,5 +235,5 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
             derniere, self.acteur, RelanceEtape.Statut.SAUTEE)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.COLD)
-        self.assertIn('Injoignable', self.lead.tags or '')
+        self.assertIn('Injoignable 6 appels', self.lead.tags or '')
         self.assertEqual(self._reveils().count(), 2)

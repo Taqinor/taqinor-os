@@ -844,8 +844,12 @@ _OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel'})
 #: MRY11 — ce que devient un lead dont la cadence s'est épuisée sans réponse.
 #: Le tag NOMME la raison : « injoignable » et « devis sans suite » ne se
 #: traitent pas de la même façon au réveil.
+#: « 6 appels » et non « 7 tentatives » : le Protocole v3 compte SIX appels
+#: (plus cinq WhatsApp) — l'étiquette affichée à Meryem doit dire ce que la
+#: cadence a réellement fait. Migration 0093 pour l'existant.
+_CLOTURE_TAG_INJOIGNABLE = 'Injoignable 6 appels'
 _CLOTURE_TAGS = {
-    'contact': 'Injoignable 7 tentatives',
+    'contact': _CLOTURE_TAG_INJOIGNABLE,
     'apres_devis': 'Devis sans suite',
 }
 
