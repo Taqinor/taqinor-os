@@ -82,10 +82,17 @@ def releve_commit(request):
         return Response(
             {'detail': 'lignes doit être une liste de numéros de ligne.'},
             status=400)
+    from rest_framework.exceptions import APIException
     try:
         result = commit(company, request.user, token, lignes=lignes)
     except (ValueError, TypeError) as exc:
         return Response({'detail': str(exc)}, status=400)
+    except APIException:
+        # AUD122 — le verrou de période comptable lève une `ValidationError`
+        # DRF : c'est un REFUS délibéré (400 porteur du motif), pas une
+        # « erreur inattendue ». Le filet ci-dessous la transformait en 500 et
+        # masquait la garde.
+        raise
     except Exception:
         logger.warning('Relevé commit échoué', exc_info=True)
         return Response(
