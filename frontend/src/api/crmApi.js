@@ -183,6 +183,13 @@ const crmApi = {
   getObjectifsAttainment: (params) =>
     api.get('/crm/objectifs/attainment/', { params }),
   getObjectifAttainment: (id) => api.get(`/crm/objectifs/${id}/attainment/`),
+  // MRY29 — panneau KPI du Cockpit : premier contact (forme
+  // `kpi_premier_contact`) + bilan des cadences (forme `kpi_cadences`).
+  // `?jours=` (défaut 30 côté serveur). `null` partout quand le dénominateur
+  // est 0 — jamais un 0 % inventé.
+  getKpiPremierContact: (params) =>
+    api.get('/crm/leads/kpi-premier-contact/', { params }),
+  getKpiCadences: (params) => api.get('/crm/leads/kpi-cadences/', { params }),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
   getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),
