@@ -45,6 +45,14 @@ function makeStore({ clients = [], leads = [] } = {}) {
   return configureStore({
     reducer: {
       crm: (state = { clients, leads, loading: false, error: null }) => state,
+      // MRY33 — `PlacementAnciensLeadsCard` (rendue pour de vrai ici, comme
+      // `KpiRelancesPanel`/`TerritoryCoverageWidget`) se gate au rôle via
+      // `useIsAdminOrResponsable` (`useHasPermission.js`, lit `state.auth.role`
+      // directement) : sans cette tranche minimale, ce smoke test plantait au
+      // montage (`Cannot read properties of undefined`). `admin` — la carte
+      // reste inerte tant qu'on ne clique pas « Aperçu » (aucun appel réseau
+      // dans ces trois tests).
+      auth: (state = { role: 'admin' }) => state,
     },
   })
 }
