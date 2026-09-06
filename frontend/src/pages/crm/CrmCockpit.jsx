@@ -12,6 +12,7 @@ import PortfolioWidget from './dashboard/PortfolioWidget'
 import RelancesDuJourWidget from './RelancesDuJourWidget'
 import KpiRelancesPanel from './KpiRelancesPanel'
 import TerritoryCoverageWidget from './TerritoryCoverageWidget'
+import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
 
 /* ============================================================================
    ODY15 — Cockpit CRM : porte d'entrée de l'app (ModuleHero VX15 + actions
@@ -97,6 +98,10 @@ export default function CrmCockpit() {
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <RelancesDuJourWidget />
         <KpiRelancesPanel />
+        {/* MRY33 — la carte se gate elle-même aux rôles responsable/admin
+            (`useIsAdminOrResponsable`, `null` sinon) — même esprit que le
+            badge « vient de la pub » de `IdentityRail.jsx`. */}
+        <PlacementAnciensLeadsCard />
         <DormantAccountsWidget />
         <PortfolioWidget />
         <TerritoryCoverageWidget />

@@ -72,6 +72,13 @@ const crmApi = {
   // ?scope=overdue|today|all (défaut today) + ?owner=<id>. {count, results}.
   getRelanceEtapesDues: (params, config) =>
     api.get('/crm/relance-etapes/', { params, ...config }),
+  // MRY30/MRY31 — file « Suivi des relances » : TOUS statuts, `due_date` dans
+  // [date_debut, date_fin] (62 j max), portée via le lead, `resume` compté
+  // serveur AVANT le filtre `statut`. `params` OBLIGATOIRES `date_debut`/
+  // `date_fin` (YYYY-MM-DD, Africa/Casablanca) + `owner`/`statut` optionnels.
+  // Forme : `contract_samples/relance_etapes_suivi.json` (PACT10).
+  getRelanceEtapesSuivi: (params) =>
+    api.get('/crm/relance-etapes/suivi/', { params }),
   // Initialise (à la demande) le plan de relance d'un lead à partir de la
   // cadence par défaut de la société — idempotent PAR CADENCE (ré-appel = pas
   // de doublon). MRY15 — `payload` optionnel `{cadence}` (contact/après
@@ -124,6 +131,12 @@ const crmApi = {
   // Contrôle pré-création/édition des doublons par téléphone/email (société
   // côté serveur). Avertissement NON bloquant dans le formulaire de lead.
   checkDuplicates: (params) => api.get('/crm/leads/check-duplicates/', { params }),
+  // MRY30/MRY33 — placement des anciens leads dans les cadences du moteur de
+  // relances (décision fondateur 06/09/2026). `{apply: false}` = APERÇU,
+  // n'écrit rien ; `{apply: true}` = applique et renvoie le même rapport avec
+  // `applique`. Forme : `contract_samples/placement_anciens_leads.json`
+  // (PACT10) — carte Cockpit `PlacementAnciensLeadsCard.jsx`.
+  placerAnciensLeads: (payload) => api.post('/crm/leads/placement-cadences/', payload),
   // XSAL8 — scan de carte de visite (photo) → pré-remplissage du lead
   // express. Ne crée jamais de lead ; renvoie {nom, prenom, societe,
   // telephone, email, doublons}. 503 si l'OCR n'est pas configuré (clé absente).
