@@ -1084,15 +1084,22 @@ class BulletinPaie(models.Model):
         related_name='paie_bulletins',
         verbose_name='Société',
     )
+    # AUD721 — PROTECT, pas CASCADE. La garde d'immuabilité posée dans
+    # ``save``/``delete`` ne s'applique qu'à un ``instance.delete()`` Python :
+    # supprimer la PÉRIODE ou le PROFIL depuis ``/admin/`` (ou par un
+    # ``queryset.delete()``) cascadait sur TOUS leurs bulletins — VALIDÉS
+    # compris — sans jamais lever ``BulletinVerrouille``. Avec PROTECT, la
+    # base elle-même refuse : on ne peut plus effacer un bulletin de paie par
+    # la bande.
     periode = models.ForeignKey(
         PeriodePaie,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='bulletins',
         verbose_name='Période',
     )
     profil = models.ForeignKey(
         ProfilPaie,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='bulletins',
         verbose_name='Profil de paie',
     )

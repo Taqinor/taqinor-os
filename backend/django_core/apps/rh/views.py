@@ -353,6 +353,47 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         new_dossier = serializer.save()
         activity.log_changes(old, new_dossier, self.request.user)
 
+    def destroy(self, request, *args, **kwargs):
+        """AUD721 — DELETE refusé dès qu'une pièce à valeur légale existe.
+
+        Aucun ``destroy()`` n'était surchargé : le DELETE HTTP standard
+        effaçait EN CASCADE (38 FK ``employe→DossierEmploye`` en ``CASCADE``)
+        les bulletins de paie, les ACCIDENTS DU TRAVAIL (déclaration CNSS
+        obligatoire par la loi), les visites médicales, les sanctions et les
+        documents du coffre — le chemin métier prévu
+        (``services.sortir_employe``, qui PRÉSERVE le dossier) était
+        entièrement contourné.
+
+        Un dossier porteur de l'une de ces pièces n'est donc plus supprimable :
+        la sortie d'un salarié passe par ``POST {id}/sortir/``. Un dossier
+        vraiment vierge (saisi par erreur) reste supprimable, et la
+        suppression laisse alors une note au chatter.
+        """
+        dossier = self.get_object()
+        bloquants = {
+            'bulletins_paie': dossier.bulletins_paie.count(),
+            'accidents_travail': dossier.rh_accidents.count(),
+            'visites_medicales': dossier.visites_medicales.count(),
+            'sanctions': dossier.sanctions.count(),
+            'documents': dossier.documents.count(),
+        }
+        retenus = {cle: n for cle, n in bloquants.items() if n}
+        if retenus:
+            detail = ', '.join(f'{cle} : {n}' for cle, n in retenus.items())
+            return Response(
+                {'detail': (
+                    'Suppression refusée : ce dossier porte des pièces à '
+                    f'valeur légale ({detail}). Utilisez la sortie de '
+                    'l\'employé (POST {id}/sortir/), qui conserve le dossier '
+                    'et son historique.')},
+                status=status.HTTP_400_BAD_REQUEST)
+        activity.log_note(
+            dossier, request.user,
+            f'Dossier employé SUPPRIMÉ ({dossier.matricule} — '
+            f'{dossier.nom} {dossier.prenom}) : aucune pièce légale attachée.')
+        self.perform_destroy(dossier)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
         """Timeline chatter du dossier (auto + notes), récent d'abord (XRH6)."""
