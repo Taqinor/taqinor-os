@@ -695,6 +695,69 @@ def marquer_etape_relance(etape, user, statut, note=''):
     return etape
 
 
+def arreter_cadence(lead, *, user, motif, cadences=None):
+    """MRY9 — LA fonction d'arrêt d'une (ou de toutes les) cadence(s).
+
+    UNE seule implémentation pour SIX déclencheurs (devis accepté, passage
+    SIGNED/COLD, lead perdu, « ne plus contacter », issue d'appel « joint » /
+    « intéressé » / « refus », devis refusé) : deux implémentations auraient
+    dérivé, et un lead aurait continué d'être relancé après avoir signé — la
+    faute la plus visible qu'un CRM puisse commettre.
+
+    Toutes les touches ``A_FAIRE`` (restreintes à ``cadences`` si fourni)
+    passent à ``SAUTEE`` en UNE requête, avec le motif, l'acteur et l'horodatage.
+    UNE note chatter. ``Lead.relance_date`` est recalculée sur la prochaine
+    touche restante (ou vidée) et ``sync_relance_activity`` remise en phase.
+
+    IDEMPOTENTE : zéro touche ouverte ⇒ rien, pas même une note (sinon chaque
+    passage d'étape empilerait des lignes vides dans l'historique).
+
+    Renvoie le nombre de touches arrêtées."""
+    ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+    if cadences:
+        ouvertes = ouvertes.filter(cadence__in=list(cadences))
+    pks = list(ouvertes.values_list('pk', flat=True))
+    if not pks:
+        return 0
+    RelanceEtape.objects.filter(pk__in=pks).update(
+        statut=RelanceEtape.Statut.SAUTEE,
+        note=(motif or '')[:500],
+        traite_par=user,
+        traite_le=timezone.now())
+    quelles = ', '.join(cadences) if cadences else 'toutes cadences'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f'Cadence {quelles} arrêtée ({len(pks)} touche(s)) : {motif}.')
+    prochaine = _prochaine_touche_a_faire(lead)
+    lead.relance_date = prochaine.due_date if prochaine else None
+    lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+    return len(pks)
+
+
+def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
+                               cadences=None):
+    """Variante par ID, best-effort — pour les receivers qui ne tiennent qu'un
+    ``devis.lead_id``. Ne lève JAMAIS : un arrêt de cadence en échec ne doit
+    pas faire retomber l'acceptation d'un devis déjà actée."""
+    if not lead_id:
+        return 0
+    try:
+        qs = Lead.objects.filter(pk=lead_id)
+        if company is not None:
+            qs = qs.filter(company=company)
+        lead = qs.first()
+        if lead is None:
+            return 0
+        return arreter_cadence(lead, user=user, motif=motif,
+                               cadences=cadences)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
+        return 0
+
+
 def _prochaine_touche_a_faire(lead):
     """La prochaine touche À FAIRE du lead, toutes cadences confondues.
 
@@ -3462,6 +3525,11 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 lead.save(update_fields=['perdu', 'motif_perte'])
                 if not old_perdu:
                     activity.log_bulk_change(lead, user, 'perdu', old_perdu, True)
+                    # MRY9 (c) — un lead perdu EN MASSE arrête ses relances
+                    # exactement comme un lead perdu à l'unité : sans cela,
+                    # une purge de 40 leads laissait 40 cadences vivantes.
+                    arreter_cadence(lead, user=user,
+                                    motif=motif or 'lead perdu')
                 if old_motif != motif:
                     activity.log_bulk_change(lead, user, 'motif_perte', old_motif, motif)
                 updated += 1

@@ -1,3 +1,4 @@
+import logging
 from contextlib import contextmanager
 
 from drf_spectacular.utils import extend_schema
@@ -61,6 +62,8 @@ from apps.compta.views import (  # noqa: F401
     SoumissionLeadPartenaireViewSet,
     TerritoireCommercialViewSet,
 )
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -887,6 +890,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         recompute_lead_score(new_lead)
         # NTCRM12 — édition manuelle de l'étape depuis l'écran lead.
         _emit_stage_changed(new_lead, old.stage, new_lead.stage, self.request.user)
+        # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
+        # d'étape est déjà couvert par le receiver `lead_stage_changed`.
+        from .services import arreter_cadence
+        try:
+            if not old.perdu and new_lead.perdu:
+                arreter_cadence(
+                    new_lead, user=self.request.user,
+                    motif=(new_lead.motif_perte or 'lead perdu'))
+            if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
+                arreter_cadence(new_lead, user=self.request.user,
+                                motif='ne plus contacter')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'MRY9: arrêt de cadence échoué sur le lead #%s',
+                new_lead.pk, exc_info=True)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['duplicates',
@@ -917,6 +935,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
             'appliquer_plan', 'initialiser_relance',
+            # MRY9 — arrêt manuel d'une cadence. get_permissions()
+            # PRIME sur le permission_classes de l'@action (bug CI #25) :
+            # sans cette ligne, l'action retomberait sur IsAdminRole et
+            # la Commerciale — qui est justement celle qui arrête —
+            # serait refusée.
+            'arreter_relance',
             # L-QUEST — get_permissions() PRIME sur le permission_classes de
             # l'@action : sans cette ligne, `questionnaire-lien` retomberait
             # sur le `return [IsAdminRole()]` final et la Commerciale — qui
@@ -1381,6 +1405,32 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             RelanceEtapeSerializer(
                 etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='relance/arreter',
+            permission_classes=[IsResponsableOrAdmin])
+    def arreter_relance(self, request, pk=None):
+        """MRY9 — Arrête les cadences en cours du lead. Corps : ``{motif}``
+        OBLIGATOIRE (400 sinon) et ``{cadences: [...]}`` optionnel.
+
+        Le motif n'est pas une politesse : c'est lui qui distingue plus tard
+        « joint » d'un abandon dans le KPI de cadence (MRY21), et il est écrit
+        sur chaque touche arrêtée. Idempotent : zéro touche ouverte renvoie
+        ``{arretees: 0}`` sans rien journaliser."""
+        lead = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': "Le motif d'arrêt est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        cadences = request.data.get('cadences') or None
+        if cadences is not None and not isinstance(cadences, list):
+            return Response(
+                {'cadences': 'Liste de cadences attendue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .services import arreter_cadence
+        arretees = arreter_cadence(
+            lead, user=request.user, motif=motif, cadences=cadences)
+        return Response({'arretees': arretees}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
