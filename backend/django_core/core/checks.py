@@ -55,6 +55,31 @@ ID_ALLOWED_HOSTS = 'core.E_QJR423_ALLOWED_HOSTS'
 #: AUD410 — secrets restés au placeholder publié par ``.env.example``.
 ID_SECRET_KEY = 'core.E_AUD410_SECRET_KEY'
 ID_MINIO = 'core.E_AUD410_MINIO'
+#: AUD411 — la couche de durcissement de ``prod.py``, absente ou désarmée.
+ID_DURCISSEMENT = 'core.E_AUD411_DURCISSEMENT'
+#: AUD411 — l'environnement se DÉCLARE production mais charge un autre module.
+ID_MODULE_NON_PROD = 'core.W_AUD411_MODULE_NON_PROD'
+
+#: AUD411 — CE QUE ``prod.py`` POSE ET QUE ``dev.py`` NE POSE PAS.
+#:
+#: QJR423 ne couvrait que ``DEBUG`` : le re-scope AUD411 est que le périmètre
+#: réel n'est pas « DEBUG résiduel » mais TOUTE la couche ``prod.py``. Si
+#: ``settings.dev`` est chargé en production, ``SESSION/CSRF_COOKIE_SECURE``,
+#: ``SECURE_SSL_REDIRECT``, HSTS, le CORS restrictif ET le garde ``RuntimeError``
+#: sur ``SECRET_KEY`` sont TOUS morts — pas seulement les traces DEBUG. Chaque
+#: entrée : (réglage, valeur attendue, ce qui se passe sans elle).
+REGLAGES_DURCISSEMENT = (
+    ('SESSION_COOKIE_SECURE', True,
+     'le cookie de session voyagerait en clair sur une requête HTTP'),
+    ('CSRF_COOKIE_SECURE', True,
+     'le cookie CSRF voyagerait en clair sur une requête HTTP'),
+    ('SECURE_SSL_REDIRECT', True,
+     "une requête HTTP ne serait jamais redirigée vers HTTPS"),
+    ('SECURE_CONTENT_TYPE_NOSNIFF', True,
+     'le navigateur devinerait le type de contenu servi'),
+    ('CORS_ALLOW_ALL_ORIGINS', False,
+     "n'importe quelle origine pourrait appeler l'API depuis un navigateur"),
+)
 
 #: AUD410 — les secrets d'une production, et le réglage qui les porte. Le
 #: prédicat de placeholder vit dans ``erp_agentique/settings/placeholders.py``
@@ -104,6 +129,23 @@ def environnement_de_production(settings_module=None, environ=None):
     return False
 
 
+def module_de_production(settings_module=None, environ=None):
+    """AUD411 — vrai quand le module de réglages CHARGÉ est celui de prod.
+
+    Distinct de :func:`environnement_de_production`, qui accepte AUSSI une
+    simple variable d'environnement. La différence est tout l'objet d'AUD411 :
+    ``DJANGO_ENV=prod`` déclare une intention, mais c'est le MODULE chargé qui
+    décide si la couche de durcissement (cookies Secure, HSTS, redirection
+    SSL, CORS restrictif, garde SECRET_KEY) existe réellement.
+    """
+    environ = os.environ if environ is None else environ
+    if settings_module is None:
+        settings_module = (
+            getattr(settings, 'SETTINGS_MODULE', None)
+            or environ.get('DJANGO_SETTINGS_MODULE', ''))
+    return (settings_module or '').strip().lower().endswith(MODULES_PRODUCTION)
+
+
 def allowed_hosts_permissif(hotes):
     """Vrai quand ``ALLOWED_HOSTS`` n'a manifestement pas été choisi pour une
     production : liste vide, joker ``*``, ou strictement le défaut local de
@@ -145,6 +187,66 @@ def verifier_reglages_production(app_configs=None, **kwargs):
             id=ID_ALLOWED_HOSTS))
 
     erreurs.extend(verifier_secrets_publies())
+    erreurs.extend(verifier_couche_durcissement())
+    return erreurs
+
+
+def verifier_couche_durcissement():
+    """AUD411 — la couche ``prod.py`` est-elle RÉELLEMENT en place ?
+
+    QJR423 ne regardait que ``DEBUG``. Le re-scope AUD411 : si la production
+    charge ``settings.dev``, ce n'est pas seulement DEBUG qui manque —
+    ``SESSION/CSRF_COOKIE_SECURE``, ``SECURE_SSL_REDIRECT``, HSTS, le CORS
+    restrictif ET le garde ``RuntimeError`` sur ``SECRET_KEY`` sont TOUS morts.
+
+    DEUX NIVEAUX, DÉLIBÉRÉMENT :
+
+    * **Erreur bloquante** quand le module de production EST chargé mais qu'un
+      réglage de durcissement a été désarmé — un ``prod.py`` amputé ne doit
+      jamais démarrer en se faisant passer pour durci.
+    * **Avertissement** (jamais bloquant) quand l'environnement se DÉCLARE
+      production mais charge un autre module de réglages : c'est l'état que
+      AUD411 soupçonne en production aujourd'hui. Le rendre bloquant
+      COUPERAIT le service au premier redémarrage, avant que la bascule
+      ``DJANGO_SETTINGS_MODULE=erp_agentique.settings.prod`` n'ait eu lieu.
+      L'avertissement apparaît dans ``manage.py check`` et dans les journaux
+      de déploiement : il NOMME l'écart au lieu de le laisser invisible.
+    """
+    from django.core.checks import Warning as CheckWarning
+
+    if not module_de_production():
+        module = (getattr(settings, 'SETTINGS_MODULE', None)
+                  or os.environ.get('DJANGO_SETTINGS_MODULE') or '(inconnu)')
+        return [CheckWarning(
+            f'Cet environnement se déclare production mais charge « {module} » '
+            f'— pas un module de production. TOUTE la couche de durcissement '
+            f'de erp_agentique/settings/prod.py est alors inerte : cookies de '
+            f'session/CSRF non Secure, aucune redirection HTTPS, aucun HSTS, '
+            f'CORS ouvert, et le garde RuntimeError sur SECRET_KEY jamais '
+            f'évalué.',
+            hint='Posez DJANGO_SETTINGS_MODULE=erp_agentique.settings.prod '
+                 'dans le .env du serveur, puis vérifiez la santé complète '
+                 '(racine 200 / api 401, cookies Secure+HttpOnly sur une '
+                 'connexion réelle).',
+            id=ID_MODULE_NON_PROD)]
+
+    erreurs = []
+    for reglage, attendu, consequence in REGLAGES_DURCISSEMENT:
+        if getattr(settings, reglage, None) is not attendu:
+            erreurs.append(Error(
+                f'{reglage} n\'est pas {attendu!r} alors que le module de '
+                f'production est chargé : {consequence}.',
+                hint=f'{reglage} vit dans erp_agentique/settings/prod.py — '
+                     f'ne le surchargez pas depuis l\'environnement.',
+                id=ID_DURCISSEMENT))
+    if not (getattr(settings, 'SECURE_HSTS_SECONDS', 0) or 0) > 0:
+        erreurs.append(Error(
+            'SECURE_HSTS_SECONDS est nul alors que le module de production '
+            'est chargé : le navigateur accepterait une première visite en '
+            'HTTP clair.',
+            hint='SECURE_HSTS_SECONDS vit dans '
+                 'erp_agentique/settings/prod.py (31536000).',
+            id=ID_DURCISSEMENT))
     return erreurs
 
 
