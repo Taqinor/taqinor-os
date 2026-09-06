@@ -716,6 +716,66 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     return etape
 
 
+def demarrer_cadence_contact(lead, *, user=None, origine=''):
+    """MRY6 — Démarre la cadence « contact » à l'arrivée d'un lead VIVANT.
+
+    Déclenchement EXPLICITE, appelé par chaque créateur de lead — JAMAIS un
+    ``post_save(Lead)`` global : un signal se déclencherait aussi sur
+    l'``dataimport``, sur l'import Odoo (930 leads miroir) et sur les tests,
+    et inonderait la file de Meryem de milliers de touches qui ne
+    correspondent à aucune demande réelle.
+
+    Six gardes, dans cet ordre, CHACUNE journalisée en chatter quand elle
+    refuse — un refus muet ferait croire que le lead est suivi :
+
+      1. le lead vient bien d'une demande réelle (``source == OS_NATIVE``) ;
+      2. il est neuf (étape NEW) et jamais contacté ;
+      3. ni perdu, ni archivé, ni « ne plus contacter » ;
+      4. il porte un numéro exploitable — sans lui, aucune des touches
+         (appel comme WhatsApp) n'est réalisable ;
+      5. il n'est pas un DOUBLON d'un lead vivant : deux cadences sur la même
+         personne, c'est deux commerciaux qui l'appellent le même jour ;
+      6. aucune cadence `contact` n'existe déjà.
+
+    Best-effort intégral : toute exception est journalisée, jamais propagée —
+    une cadence en échec ne doit JAMAIS faire échouer la création du lead.
+    Renvoie la liste des touches créées (vide si refus)."""
+    try:
+        if lead is None:
+            return []
+        if lead.source != Lead.Source.OS_NATIVE:
+            return []          # import/miroir : silencieux, pas un refus
+        if lead.stage != stages.NEW or lead.first_contacted_at is not None:
+            return []
+        if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
+            return []          # `initialiser_plan_relance` tracerait deux fois
+        from apps.ventes.utils.whatsapp import build_wa_url
+        if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
+            return _refus_cadence(
+                lead, user,
+                'aucun numéro exploitable — cadence à lancer à la main')
+        doublons = [
+            autre for autre in find_duplicates_by_contact(
+                lead.company, phone=lead.telephone, email=lead.email,
+                exclude_pk=lead.pk)
+            if not autre.is_archived and not autre.perdu]
+        if doublons:
+            refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
+            return _refus_cadence(
+                lead, user,
+                f'doublon possible de {refs} — fusionner ou lancer la '
+                'cadence à la main')
+        if lead.relance_etapes.filter(cadence='contact').exists():
+            return []
+        return initialiser_plan_relance(
+            lead, user, cadence='contact', depart=timezone.now())
+    except Exception:  # noqa: BLE001 — jamais vers l'appelant
+        logger.warning(
+            'demarrer_cadence_contact: échec sur le lead #%s (%s)',
+            getattr(lead, 'pk', '?'), origine, exc_info=True)
+        return []
+
+
 def reporter_prochaine_touche(lead, user, quand, *, etape=None):
     """MRY10 — « Rappelez-moi jeudi » : décale une touche ET sa suite.
 
@@ -2450,6 +2510,9 @@ def create_lead_from_meta_lead_ads(
     except Exception:  # noqa: BLE001 — best-effort
         pass
 
+    # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
+    # une cadence en échec ne fait JAMAIS échouer la création du lead.
+    demarrer_cadence_contact(lead, origine='meta_lead_ads')
     recompute_lead_score(lead)
     return lead
 
@@ -2549,6 +2612,9 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
         notify_new_lead(lead)
     except Exception:  # noqa: BLE001 — best-effort
         pass
+    # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
+    # une cadence en échec ne fait JAMAIS échouer la création du lead.
+    demarrer_cadence_contact(lead, origine='ctwa')
     recompute_lead_score(lead)
     return lead
 
@@ -2703,6 +2769,8 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
             notify_new_lead(lead)
         except Exception:  # noqa: BLE001 — best-effort
             pass
+        # MRY6 — même démarrage explicite que les autres créateurs vivants.
+        demarrer_cadence_contact(lead, origine='livechat')
     else:
         changed = False
         if telephone and not lead.telephone:
@@ -4482,6 +4550,8 @@ def create_lead_from_evenement_marketing(
             **extra,
         )
         activity.log_creation(lead, None)
+        # MRY6 — un inscrit d'événement marketing est une demande réelle.
+        demarrer_cadence_contact(lead, origine='evenement_marketing')
     else:
         changed = False
         if telephone and not lead.telephone:
@@ -4536,6 +4606,9 @@ def create_lead_from_public_api(*, company, fields):
         **clean,
     )
     activity.log_creation(lead, None)
+    # MRY6 — l'API publique crée de VRAIES demandes (formulaire partenaire,
+    # intégration) : elles entrent dans la cadence comme les autres.
+    demarrer_cadence_contact(lead, origine='api_publique')
     return lead
 
 

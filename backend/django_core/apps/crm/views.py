@@ -829,9 +829,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import sync_relance_activity, recompute_lead_score
+        from .services import (
+            demarrer_cadence_contact, recompute_lead_score,
+            sync_relance_activity,
+        )
         sync_relance_activity(serializer.instance, user)
         recompute_lead_score(serializer.instance)
+        # MRY6 — un lead saisi à la main est une demande réelle : il entre
+        # dans la cadence comme ceux du site. Best-effort intégral — la
+        # création répond 201 même si la cadence échoue.
+        demarrer_cadence_contact(
+            serializer.instance, user=user, origine='saisie manuelle')
 
     #: CRX25 — colonnes DÉRIVÉES recalculées par ``Lead.save()`` (QW10) : sans
     #: elles dans ``update_fields``, un changement de téléphone/email ne serait

@@ -1767,6 +1767,11 @@ def _map_and_link_lead(raw, data, company):
             logger.warning(
                 'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
                 lead.pk, _exc)
+        # MRY6 — un lead du site est LA demande réelle par excellence : il
+        # entre dans la cadence de contact. Best-effort intégral (le service
+        # capte tout) : jamais un webhook en échec pour une cadence.
+        from .services import demarrer_cadence_contact
+        demarrer_cadence_contact(lead, origine='site web')
         # QX14 — même correctif côté création (voir commentaire ci-dessus,
         # branche mise à jour) : persiste le score dès la première visite.
         try:
