@@ -100,6 +100,23 @@ def _meme_societe(serializer, value, label):
     return value
 
 
+def _poste_meme_societe(serializer, value):
+    """AUDV20/DC17 — un ``rh.Poste`` assigné doit appartenir à la société.
+
+    Passe par ``selectors.poste_appartient_societe`` (le point d'entrée DC17
+    prévu pour ça, jusqu'ici appelé nulle part) au lieu de comparer les
+    ``company_id`` à la main : une seule règle, testée à un seul endroit, pour
+    tous les rattachements de poste.
+    """
+    from . import selectors
+    request = serializer.context.get('request')
+    if value is not None and request is not None:
+        if not selectors.poste_appartient_societe(
+                request.user.company, value.pk):
+            raise serializers.ValidationError('Poste inconnu.')
+    return value
+
+
 class DepartementSerializer(serializers.ModelSerializer):
     """Département (XRH27 — ``parent`` optionnel pour la hiérarchie).
 
@@ -192,7 +209,7 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
         return _meme_societe(self, value, 'Département')
 
     def validate_poste_ref(self, value):
-        return _meme_societe(self, value, 'Poste')
+        return _poste_meme_societe(self, value)
 
 
 class AnnuaireEmployeSerializer(serializers.ModelSerializer):
@@ -470,7 +487,7 @@ class ModeleIntegrationSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
     def validate_poste_ref(self, value):
-        return _meme_societe(self, value, 'Poste')
+        return _poste_meme_societe(self, value)
 
     def validate_departement(self, value):
         return _meme_societe(self, value, 'Département')
@@ -505,17 +522,40 @@ class TypeAbsenceSerializer(serializers.ModelSerializer):
 
 
 class SoldeCongeSerializer(serializers.ModelSerializer):
-    """Solde de congés annuel (FG162). ``disponible`` est calculé (lecture)."""
+    """Solde de congés annuel (FG162). ``disponible`` est calculé (lecture).
+
+    AUDV20 — ``droit_annuel`` expose le DROIT LÉGAL annuel théorique marocain
+    (18 j de base + bonus d'ancienneté, ``services.droit_annuel``) : c'est le
+    repère qui manquait au salarié comme au RH pour lire un solde ``acquis``
+    en cours d'année. Purement calculé, jamais stocké ni écrivable ; ``None``
+    si l'employé n'a pas de ``date_embauche`` (ancienneté non calculable).
+    """
     disponible = serializers.DecimalField(
         max_digits=6, decimal_places=2, read_only=True)
+    droit_annuel = serializers.SerializerMethodField()
 
     class Meta:
         model = SoldeConge
         fields = [
             'id', 'employe', 'annee', 'acquis', 'report', 'pris', 'disponible',
+            'droit_annuel',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+    def get_droit_annuel(self, obj):
+        from datetime import date as _date
+
+        from . import services
+        employe = obj.employe
+        if employe is None or employe.date_embauche is None:
+            return None
+        # Ancienneté au 31/12 de l'ANNÉE DU SOLDE (jamais « aujourd'hui ») :
+        # le droit affiché est celui de l'exercice lu, et le rendu ne dépend
+        # pas du jour où la fiche est ouverte.
+        annees = services.annees_service(
+            employe.date_embauche, reference=_date(obj.annee, 12, 31))
+        return str(services.droit_annuel(annees))
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
@@ -556,11 +596,22 @@ class JourBloqueCongeSerializer(serializers.ModelSerializer):
 class DemandeCongeSerializer(serializers.ModelSerializer):
     """Demande de congés (FG163). ``employe`` et ``type_absence`` doivent
     appartenir à la société ; ``jours`` et le workflow de décision sont posés
-    côté serveur (jamais lus du corps)."""
+    côté serveur (jamais lus du corps).
+
+    AUD718 — le JUSTIFICATIF se téléverse toujours en multipart sous la même
+    clé ``justificatif``, mais la vue le range désormais dans MinIO
+    (``records.Attachment``) : le champ modèle legacy devient LECTURE SEULE
+    (il n'était de toute façon servi par aucune route) et ``justificatif_url``
+    donne le lien de téléchargement réellement joignable.
+    """
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     type_absence_code = serializers.CharField(
         source='type_absence.code', read_only=True)
+    justificatif_url = serializers.SerializerMethodField()
+    justificatif_nom = serializers.CharField(
+        source='justificatif_attachment.filename', read_only=True,
+        default=None)
 
     class Meta:
         model = DemandeConge
@@ -568,6 +619,7 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             'id', 'employe', 'type_absence', 'type_absence_code',
             'date_debut', 'date_fin', 'jours',
             'demi_journee_debut', 'demi_journee_fin', 'justificatif',
+            'justificatif_url', 'justificatif_nom',
             'motif',
             'statut', 'statut_display',
             'decide_par', 'date_decision', 'motif_refus', 'date_creation',
@@ -576,7 +628,16 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'jours', 'statut', 'decide_par', 'date_decision', 'motif_refus',
             'date_creation',
+            # AUD718 — le fichier ne passe plus par le FileField : la vue le
+            # range dans MinIO et pose ``justificatif_attachment``.
+            'justificatif', 'justificatif_url', 'justificatif_nom',
         ]
+
+    def get_justificatif_url(self, obj):
+        if obj.justificatif_attachment_id:
+            return (f'/api/django/records/attachments/'
+                    f'{obj.justificatif_attachment_id}/download/')
+        return None
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
@@ -1755,12 +1816,19 @@ class CandidatureSerializer(serializers.ModelSerializer):
         source='get_etape_display', read_only=True)
     ouverture_intitule = serializers.SerializerMethodField()
     employe_cree_nom = serializers.SerializerMethodField()
+    # AUD718 — le CV vit dans MinIO : lien de téléchargement réellement
+    # joignable (même origine, scopé société), là où l'URL du FileField
+    # legacy ne résolvait vers aucune route.
+    cv_url = serializers.SerializerMethodField()
+    cv_nom = serializers.CharField(
+        source='cv_attachment.filename', read_only=True, default=None)
 
     class Meta:
         model = Candidature
         fields = [
             'id', 'ouverture', 'ouverture_intitule',
-            'nom', 'email', 'telephone', 'cv_fichier', 'source', 'note',
+            'nom', 'email', 'telephone', 'cv_fichier', 'cv_url', 'cv_nom',
+            'source', 'note',
             'etape', 'etape_display',
             'employe_cree', 'employe_cree_nom',
             # XRH19 (opt-out email auto), XRH21 (vivier / talent pool).
@@ -1769,7 +1837,40 @@ class CandidatureSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'employe_cree', 'vivier_origine',
-            'date_creation', 'date_modification']
+            'date_creation', 'date_modification',
+            # AUD718 — le fichier ne passe plus par le FileField : la vue le
+            # range dans MinIO et pose ``cv_attachment``.
+            'cv_fichier', 'cv_url', 'cv_nom']
+
+    def get_cv_url(self, obj):
+        if obj.cv_attachment_id:
+            return (f'/api/django/records/attachments/'
+                    f'{obj.cv_attachment_id}/download/')
+        return None
+
+    def validate_etape(self, value):
+        """AUD723 — la transition VERS « embauche » passe par ``embaucher/``.
+
+        ``etape`` restait writable en PATCH : un
+        ``PATCH {"etape": "embauche"}`` passait la validation, journalisait la
+        transition et déclenchait l'email automatique « vous êtes embauché »…
+        alors que ``employe_cree`` restait NULL et que l'``OuverturePoste`` ne
+        basculait JAMAIS en pourvu. Seule l'action dédiée
+        ``POST {id}/embaucher/`` (→ ``services.embaucher``) crée réellement le
+        ``DossierEmploye``, lie la candidature et pourvoit l'ouverture.
+
+        Les AUTRES transitions du pipeline (présélection, entretien, offre,
+        rejet) restent éditables — c'est ce que fait l'écran Recrutement.
+        """
+        deja_embauche = (
+            self.instance is not None
+            and self.instance.etape == Candidature.Etape.EMBAUCHE)
+        if value == Candidature.Etape.EMBAUCHE and not deja_embauche:
+            raise serializers.ValidationError(
+                "L'embauche ne se pose pas directement : utilisez l'action "
+                "« embaucher » (POST {id}/embaucher/), qui crée le dossier "
+                "employé et bascule l'ouverture en pourvu.")
+        return value
 
     def get_ouverture_intitule(self, obj):
         if not obj.ouverture_id:
@@ -1846,7 +1947,7 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
         return obj.departement.nom
 
     def validate_poste_ref(self, value):
-        return _meme_societe(self, value, 'Poste')
+        return _poste_meme_societe(self, value)
 
     def validate_departement(self, value):
         return _meme_societe(self, value, 'Département')
@@ -2040,7 +2141,7 @@ class ModeleEvaluationSerializer(serializers.ModelSerializer):
         return _meme_societe(self, value, 'Département')
 
     def validate_poste_ref(self, value):
-        return _meme_societe(self, value, 'Poste')
+        return _poste_meme_societe(self, value)
 
 
 class SanctionSerializer(serializers.ModelSerializer):
@@ -2535,6 +2636,13 @@ class GrilleSalarialeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation']
 
+    def validate_poste(self, value):
+        # AUDV20/DC17 — la docstring du modèle promettait « ``poste`` doit
+        # appartenir à la société » sans qu'aucun contrôle ne l'applique : une
+        # FK MÊME-APP échappe à `check_fk_scoping` (qui ne balaie que le
+        # cross-app), donc rien en CI ne le voyait.
+        return _poste_meme_societe(self, value)
+
 
 class CompetenceRequiseSerializer(serializers.ModelSerializer):
     """Profil de compétence requise par poste (XRH15). ``company`` posée côté
@@ -2551,6 +2659,14 @@ class CompetenceRequiseSerializer(serializers.ModelSerializer):
             'niveau_requis', 'niveau_requis_display', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_poste(self, value):
+        # AUDV20/DC17 — même trou que GrilleSalariale : promis en docstring,
+        # jamais appliqué.
+        return _poste_meme_societe(self, value)
+
+    def validate_competence(self, value):
+        return _meme_societe(self, value, 'Compétence')
 
 
 class PeriodeFermetureSerializer(serializers.ModelSerializer):

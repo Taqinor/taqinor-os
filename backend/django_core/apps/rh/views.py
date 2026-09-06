@@ -211,6 +211,96 @@ def _client_ip(request):
     return ip[:45]
 
 
+# AUD719 — pièces du coffre employé dont la destruction est la plus lourde de
+# conséquences (obligation légale de conservation, pièce d'identité, coordonnées
+# bancaires) : leur suppression exige un motif ET une confirmation explicite.
+def _jours_demande_sans_double_decompte(
+        company, employe, type_absence, date_debut, date_fin, *,
+        demi_journee_debut=False, demi_journee_fin=False,
+        exclure_demande_pk=None):
+    """AUDV20 + AUD722 — jours décomptés d'une NOUVELLE demande de congé.
+
+    Retire du décompte les jours déjà retirés du solde par ailleurs :
+    * une FERMETURE collective couvrant la période
+      (``selectors.jours_fermeture_exclus``, XRH14) ;
+    * un congé personnel DÉJÀ VALIDÉ chevauchant la période
+      (``services.jours_conges_deja_valides``, le sens symétrique).
+
+    Renvoie ``(jours, erreur)``. ``erreur`` est non vide quand la période
+    demandée est ENTIÈREMENT couverte : créer une demande à 0 jour n'aurait
+    aucun sens, et la refuser explicitement dit à l'utilisateur POURQUOI.
+    """
+    exclus = set(selectors.jours_fermeture_exclus(
+        company, employe, date_debut, date_fin))
+    exclus |= services.jours_conges_deja_valides(
+        company, employe, date_debut, date_fin,
+        exclure_pk=exclure_demande_pk)
+    feries = services.feries_periode(company, date_debut, date_fin)
+    brut = services.calculer_jours_demande(
+        type_absence, date_debut, date_fin, extra_holidays=feries,
+        demi_journee_debut=demi_journee_debut,
+        demi_journee_fin=demi_journee_fin)
+    jours = services.calculer_jours_demande(
+        type_absence, date_debut, date_fin, extra_holidays=feries,
+        demi_journee_debut=demi_journee_debut,
+        demi_journee_fin=demi_journee_fin,
+        jours_exclus=exclus)
+    if exclus and brut > 0 and jours <= 0:
+        return jours, (
+            'Cette période est déjà entièrement couverte par un congé validé '
+            'ou une fermeture collective : elle serait décomptée deux fois.')
+    return jours, None
+
+
+DOCUMENTS_EMPLOYE_SENSIBLES = frozenset({
+    DocumentEmploye.TypeDocument.CONTRAT,
+    DocumentEmploye.TypeDocument.CIN,
+    DocumentEmploye.TypeDocument.RIB,
+})
+
+
+def televerser_piece_jointe(file, *, company):
+    """AUD718 — valide + téléverse ``file`` dans MinIO. ``(meta, None)`` ou
+    ``(None, message)``.
+
+    Remplace les ``FileField`` bruts de ``DemandeConge.justificatif`` et
+    ``Candidature.cv_fichier`` : sans ``STORAGES``/``DEFAULT_FILE_STORAGE`` dans
+    les settings, sans route ``/media/`` (ni Django ni nginx), le fichier
+    s'écrivait sur le disque du conteneur et l'URL renvoyée par l'API ne menait
+    NULLE PART. Même pipeline que ``rh.BulletinPaie`` : clé préfixée par la
+    société (SCA42), servi par
+    ``/api/django/records/attachments/<id>/download/``.
+
+    APPELÉ AVANT toute création de ligne : un format/poids refusé rend 400 sans
+    jamais laisser derrière lui une demande ou une candidature orpheline (les
+    requêtes ne sont PAS atomiques — pas d'``ATOMIC_REQUESTS``).
+    """
+    return store_attachment(file, company=company)
+
+
+def attacher_piece_jointe(meta, *, company, cible, user=None):
+    """AUD718 — crée la ``records.Attachment`` d'un fichier déjà téléversé."""
+    return Attachment.objects.create(
+        company=company,
+        content_type=ContentType.objects.get_for_model(cible.__class__),
+        object_id=cible.pk,
+        uploaded_by=user if (user is not None
+                             and getattr(user, 'is_authenticated', False))
+        else None,
+        **meta)
+
+
+def remplacer_piece_jointe(ancienne):
+    """AUD718 — supprime l'objet MinIO + la ligne d'une pièce jointe remplacée.
+
+    Un remplacement ne doit pas laisser un orphelin payant dans le bucket.
+    """
+    if ancienne is None:
+        return
+    delete_attachment(ancienne.file_key)
+    ancienne.delete()
+
+
 class _RhBaseViewSet(WriteScopedPermissionMixin, TenantMixin,
                      viewsets.ModelViewSet):
     """Base : société scopée + permissions RH FINES (WIR172, patron YRBAC3).
@@ -300,6 +390,47 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         old = copy.copy(serializer.instance)
         new_dossier = serializer.save()
         activity.log_changes(old, new_dossier, self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        """AUD721 — DELETE refusé dès qu'une pièce à valeur légale existe.
+
+        Aucun ``destroy()`` n'était surchargé : le DELETE HTTP standard
+        effaçait EN CASCADE (38 FK ``employe→DossierEmploye`` en ``CASCADE``)
+        les bulletins de paie, les ACCIDENTS DU TRAVAIL (déclaration CNSS
+        obligatoire par la loi), les visites médicales, les sanctions et les
+        documents du coffre — le chemin métier prévu
+        (``services.sortir_employe``, qui PRÉSERVE le dossier) était
+        entièrement contourné.
+
+        Un dossier porteur de l'une de ces pièces n'est donc plus supprimable :
+        la sortie d'un salarié passe par ``POST {id}/sortir/``. Un dossier
+        vraiment vierge (saisi par erreur) reste supprimable, et la
+        suppression laisse alors une note au chatter.
+        """
+        dossier = self.get_object()
+        bloquants = {
+            'bulletins_paie': dossier.bulletins_paie.count(),
+            'accidents_travail': dossier.rh_accidents.count(),
+            'visites_medicales': dossier.visites_medicales.count(),
+            'sanctions': dossier.sanctions.count(),
+            'documents': dossier.documents.count(),
+        }
+        retenus = {cle: n for cle, n in bloquants.items() if n}
+        if retenus:
+            detail = ', '.join(f'{cle} : {n}' for cle, n in retenus.items())
+            return Response(
+                {'detail': (
+                    'Suppression refusée : ce dossier porte des pièces à '
+                    f'valeur légale ({detail}). Utilisez la sortie de '
+                    'l\'employé (POST {id}/sortir/), qui conserve le dossier '
+                    'et son historique.')},
+                status=status.HTTP_400_BAD_REQUEST)
+        activity.log_note(
+            dossier, request.user,
+            f'Dossier employé SUPPRIMÉ ({dossier.matricule} — '
+            f'{dossier.nom} {dossier.prenom}) : aucune pièce légale attachée.')
+        self.perform_destroy(dossier)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
@@ -806,8 +937,64 @@ class DocumentEmployeViewSet(TenantMixin, viewsets.ModelViewSet):
                 'type_document', DocumentEmploye.TypeDocument.AUTRE),
             date_expiration=ser.validated_data.get('date_expiration'),
             note=ser.validated_data.get('note', ''))
+        # AUD719 — le dépôt laisse une trace WHO/WHAT/WHEN dans le chatter du
+        # dossier : jusqu'ici, déposer le contrat de travail d'un salarié
+        # n'écrivait STRICTEMENT rien nulle part.
+        activity.log_note(
+            employe, request.user,
+            f'Document déposé : {doc.get_type_document_display()} '
+            f'« {attachment.filename} » (document #{doc.pk}).')
         return Response(self.get_serializer(doc).data,
                         status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        """AUD719 — suppression TRACÉE et, sur les pièces sensibles, CONFIRMÉE.
+
+        La suppression est IRRÉVERSIBLE : la ligne part et l'objet MinIO avec.
+        Un porteur ``rh_gerer`` pouvait donc détruire le contrat de travail ou
+        la CIN scannée d'un salarié sans que le chatter du dossier n'en garde
+        la moindre trace — le document n'avait alors jamais existé.
+
+        Désormais : pour un CONTRAT / une CIN / un RIB, le corps doit porter un
+        ``motif`` non vide ET ``confirmer`` égal au type du document (le
+        « tapez le nom pour confirmer » des suppressions dangereuses) ; sinon
+        400, rien n'est effacé. Dans tous les cas, une ligne
+        ``DossierActivity`` (auteur, type, nom de fichier, clé de stockage,
+        motif) est écrite AVANT la destruction — elle vit sur le DOSSIER, donc
+        elle survit au document supprimé.
+        """
+        instance = self.get_object()
+        motif = str(request.data.get('motif')
+                    or request.query_params.get('motif') or '').strip()
+        confirmer = str(request.data.get('confirmer')
+                        or request.query_params.get('confirmer') or '').strip()
+        if instance.type_document in DOCUMENTS_EMPLOYE_SENSIBLES:
+            libelle = instance.get_type_document_display()
+            if not motif:
+                return Response(
+                    {'motif': (
+                        f'Suppression irréversible d\'un document '
+                        f'« {libelle} » : un motif est obligatoire.')},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if confirmer != instance.type_document:
+                return Response(
+                    {'confirmer': (
+                        f'Confirmation requise : renvoyez '
+                        f'confirmer="{instance.type_document}" pour supprimer '
+                        f'définitivement ce document « {libelle} » (fichier '
+                        f'compris).')},
+                    status=status.HTTP_400_BAD_REQUEST)
+        att = instance.attachment
+        activity.log_note(
+            instance.employe, request.user,
+            f'Document SUPPRIMÉ définitivement : '
+            f'{instance.get_type_document_display()} '
+            f'« {att.filename if att else "?"} » '
+            f'(document #{instance.pk}, stockage '
+            f'{att.file_key if att else "?"})'
+            + (f' — motif : {motif}' if motif else ''))
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def perform_destroy(self, instance):
         # Efface le fichier MinIO puis le document (la pièce jointe part en
@@ -1141,15 +1328,87 @@ class DemandeCongeViewSet(_RhBaseViewSet):
                     f'Congés bloqués du {conflit.date_debut} au '
                     f'{conflit.date_fin} : {conflit.libelle}.')})
 
-        jours = services.calculer_jours_demande(
-            type_absence, date_debut, date_fin,
-            extra_holidays=services.feries_periode(
-                self.request.user.company, date_debut, date_fin),
+        # AUDV20/XRH14 + AUD722 — les jours déjà couverts par une fermeture
+        # collective OU par un congé personnel DÉJÀ VALIDÉ ne sont JAMAIS
+        # décomptés une seconde fois.
+        jours, erreur = _jours_demande_sans_double_decompte(
+            self.request.user.company, employe, type_absence,
+            date_debut, date_fin,
             demi_journee_debut=serializer.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=serializer.validated_data.get(
                 'demi_journee_fin', False))
-        serializer.save(company=self.request.user.company, jours=jours)
+        if erreur:
+            raise serializers.ValidationError({'detail': erreur})
+        # AUD718 — le fichier est téléversé AVANT la création de la ligne :
+        # un format refusé rend 400 sans laisser de demande orpheline.
+        meta = self._televerser_justificatif()
+        demande = serializer.save(
+            company=self.request.user.company, jours=jours)
+        self._poser_justificatif(demande, meta)
+
+    def perform_update(self, serializer):
+        """AUD724 — les dates restent modifiables, ``jours`` SUIT.
+
+        ``date_debut``/``date_fin`` étaient écrivables alors que ``jours`` est
+        en lecture seule et n'était recalculé QU'À la création : étendre une
+        demande de 5 à 10 jours laissait ``jours`` figé à 5, et
+        ``valider_demande`` retirait ensuite 5 jours du solde pour une absence
+        de 10. Symétriquement, une demande DÉCIDÉE (validée / refusée /
+        annulée) n'a plus à bouger du tout : son solde est déjà passé.
+        """
+        instance = serializer.instance
+        if instance.statut != DemandeConge.Statut.SOUMISE:
+            raise serializers.ValidationError(
+                {'detail': (
+                    'Demande déjà '
+                    f'{instance.get_statut_display().lower()} : elle n\'est '
+                    'plus modifiable (annulez-la et créez-en une nouvelle).')})
+        date_debut = serializer.validated_data.get(
+            'date_debut', instance.date_debut)
+        date_fin = serializer.validated_data.get(
+            'date_fin', instance.date_fin)
+        type_absence = serializer.validated_data.get(
+            'type_absence', instance.type_absence)
+        employe = serializer.validated_data.get('employe', instance.employe)
+        meta = self._televerser_justificatif()
+        jours, erreur = _jours_demande_sans_double_decompte(
+            self.request.user.company, employe, type_absence,
+            date_debut, date_fin,
+            demi_journee_debut=serializer.validated_data.get(
+                'demi_journee_debut', instance.demi_journee_debut),
+            demi_journee_fin=serializer.validated_data.get(
+                'demi_journee_fin', instance.demi_journee_fin),
+            exclure_demande_pk=instance.pk)
+        if erreur:
+            raise serializers.ValidationError({'detail': erreur})
+        demande = serializer.save(jours=jours)
+        self._poser_justificatif(demande, meta)
+
+    def _televerser_justificatif(self):
+        """AUD718 — le justificatif multipart part dans MinIO, pas sur disque.
+
+        La clé multipart reste ``justificatif`` (aucun changement côté client).
+        """
+        file = self.request.FILES.get('justificatif')
+        if not file:
+            return None
+        meta, err = televerser_piece_jointe(
+            file, company=self.request.user.company)
+        if err:
+            raise serializers.ValidationError({'justificatif': err})
+        return meta
+
+    def _poser_justificatif(self, demande, meta):
+        if meta is None:
+            return
+        attachment = attacher_piece_jointe(
+            meta, company=self.request.user.company, cible=demande,
+            user=self.request.user)
+        ancienne = demande.justificatif_attachment
+        demande.justificatif_attachment = attachment
+        demande.save(update_fields=['justificatif_attachment'])
+        remplacer_piece_jointe(ancienne)
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
@@ -1563,6 +1822,45 @@ class PointageViewSet(_RhBaseViewSet):
                 )
         serializer.save()
         return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        """AUD720 — la SUPPRESSION exige un motif et laisse une trace NON
+        cascadée.
+
+        `update()` impose depuis XRH11 un motif et une ``CorrectionPointage``
+        immuable par champ modifié — mais aucun ``destroy()`` n'était surchargé :
+        le DELETE générique restait ouvert, gardé par le seul rôle
+        ``rh_gerer``, SANS motif. Pire, ``CorrectionPointage.pointage`` est en
+        ``CASCADE`` : supprimer le pointage effaçait aussi les corrections DÉJÀ
+        tracées. ``Pointage`` étant absent de ``TRACKED_MODELS`` et sans
+        soft-delete, il ne restait littéralement AUCUNE trace.
+
+        Désormais : motif obligatoire (400 sinon), et une note
+        ``DossierActivity`` — portée par le DOSSIER employé, donc hors de la
+        cascade du pointage — récapitule qui a supprimé quoi, quand, pourquoi,
+        et combien de corrections tracées disparaissent avec lui. La ligne
+        ``AuditLog`` générique est en plus produite : ``('rh', 'Pointage')``
+        rejoint ``TRACKED_MODELS`` dans le même correctif.
+        """
+        pointage = self.get_object()
+        motif = str(request.data.get('motif')
+                    or request.query_params.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': "Un motif est obligatoire pour supprimer un "
+                          "pointage (suppression irréversible : les "
+                          "corrections déjà tracées partent avec lui)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        nb_corrections = pointage.corrections.count()
+        activity.log_note(
+            pointage.employe, request.user,
+            f'Pointage SUPPRIMÉ définitivement (#{pointage.pk}) : '
+            f'arrivée {pointage.heure_arrivee}, départ '
+            f'{pointage.heure_depart or "—"}, type {pointage.type_pointage}. '
+            f'{nb_corrections} correction(s) XRH11 détruite(s) en cascade. '
+            f'Motif : {motif}')
+        self.perform_destroy(pointage)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'], url_path='corrections')
     def corrections(self, request, pk=None):
@@ -2112,6 +2410,40 @@ class PresenceChantierViewSet(_RhBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='effectif')
+    def effectif(self, request):
+        """AUDV20 — effectif RÉELLEMENT présent sur un chantier un jour donné.
+
+        ``?installation_id=`` requis, ``?date=YYYY-MM-DD`` (défaut : aujourd'hui).
+        Brique de facturation main-d'œuvre et de preuve en litige : le compte
+        vient de ``selectors.effectif_present_le`` (ABSENT exclus, scopé
+        société), et ``presents`` liste les lignes retenues pour que l'écran
+        montre QUI est compté — jamais un nombre sans sa justification.
+
+        Lecture gatée ``rh_voir`` par la garde de classe (WIR172) — jamais
+        ``IsAnyRole``.
+        """
+        raw = request.query_params.get('installation_id')
+        try:
+            installation_id = int(raw)
+        except (TypeError, ValueError):
+            return Response(
+                {'installation_id': "Paramètre 'installation_id' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        jour = self._parse_date(request.query_params.get('date')) \
+            or timezone.localdate()
+        effectif = selectors.effectif_present_le(
+            request.user.company, installation_id, jour)
+        presents = selectors.presences_installation(
+            request.user.company, installation_id,
+            date_debut=jour, date_fin=jour, presents_seulement=True)
+        return Response({
+            'installation_id': installation_id,
+            'date': jour.isoformat(),
+            'effectif': effectif,
+            'presents': PresenceChantierSerializer(presents, many=True).data,
+        })
 
 
 class IncidentPresenceViewSet(_RhBaseViewSet):
@@ -3774,12 +4106,47 @@ class CandidatureViewSet(_RhBaseViewSet):
             qs = qs.filter(etape=etape)
         return qs
 
+    def perform_create(self, serializer):
+        # AUD718 — téléversement AVANT la création (aucune candidature
+        # orpheline si le format est refusé).
+        meta = self._televerser_cv()
+        candidature = serializer.save(company=self.request.user.company)
+        self._poser_cv(candidature, meta)
+
+    def _televerser_cv(self):
+        """AUD718 — le CV multipart part dans MinIO, pas sur le disque.
+
+        La clé multipart reste ``cv_fichier`` (l'écran Recrutement l'envoie
+        déjà sous ce nom) ; le fichier devient récupérable via ``cv_url``.
+        """
+        file = self.request.FILES.get('cv_fichier')
+        if not file:
+            return None
+        meta, err = televerser_piece_jointe(
+            file, company=self.request.user.company)
+        if err:
+            raise serializers.ValidationError({'cv_fichier': err})
+        return meta
+
+    def _poser_cv(self, candidature, meta):
+        if meta is None:
+            return
+        attachment = attacher_piece_jointe(
+            meta, company=self.request.user.company, cible=candidature,
+            user=self.request.user)
+        ancienne = candidature.cv_attachment
+        candidature.cv_attachment = attachment
+        candidature.save(update_fields=['cv_attachment', 'date_modification'])
+        remplacer_piece_jointe(ancienne)
+
     def perform_update(self, serializer):
         """XRH18 — journalise automatiquement une transition d'étape.
         XRH19 — envoie l'email automatique du gabarit actif de la nouvelle
         étape (best-effort, jamais bloquant)."""
         old_etape = serializer.instance.etape
+        meta = self._televerser_cv()
         candidature = serializer.save()
+        self._poser_cv(candidature, meta)
         if old_etape != candidature.etape:
             CandidatureActivity.objects.create(
                 company=candidature.company, candidature=candidature,
@@ -5234,6 +5601,10 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
     * ``GET portail/mes-bulletins/`` — ses bulletins de paie.
     """
     permission_classes = [IsAnyRole]
+    # AUD718 — le collaborateur peut joindre un justificatif de congé
+    # (multipart) depuis son portail : sans ce parseur, ``request.FILES``
+    # resterait vide et le fichier serait silencieusement perdu.
+    parser_classes = [MultiPartParser, JSONParser]
 
     def _dossier(self, request):
         return DossierEmploye.objects.filter(
@@ -5338,16 +5709,38 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
                     f'{conflit.date_fin} : {conflit.libelle}.')},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        jours = services.calculer_jours_demande(
+        # AUDV20/XRH14 + AUD722 — même anti double-décompte que le viewset
+        # direct : un jour déjà couvert par une fermeture collective ou par un
+        # congé validé n'est pas repris au solde du collaborateur.
+        jours, double = _jours_demande_sans_double_decompte(
+            request.user.company, dossier,
             ser.validated_data['type_absence'], date_debut, date_fin,
-            extra_holidays=services.feries_periode(
-                request.user.company, date_debut, date_fin),
             demi_journee_debut=ser.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=ser.validated_data.get(
                 'demi_journee_fin', False))
-        ser.save(company=request.user.company, jours=jours)
-        return Response(ser.data, status=status.HTTP_201_CREATED)
+        if double:
+            return Response({'detail': double},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # AUD718 — même rangement MinIO que le viewset RH : un justificatif
+        # déposé depuis le portail est réellement récupérable. Téléversé AVANT
+        # la création : un format refusé ne laisse pas de demande orpheline.
+        file = request.FILES.get('justificatif')
+        meta = None
+        if file:
+            meta, err = televerser_piece_jointe(
+                file, company=request.user.company)
+            if err:
+                return Response({'justificatif': err},
+                                status=status.HTTP_400_BAD_REQUEST)
+        demande = ser.save(company=request.user.company, jours=jours)
+        if meta is not None:
+            demande.justificatif_attachment = attacher_piece_jointe(
+                meta, company=request.user.company, cible=demande,
+                user=request.user)
+            demande.save(update_fields=['justificatif_attachment'])
+        return Response(DemandeCongeSerializer(demande).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='mes-frais')
     def mes_frais(self, request):

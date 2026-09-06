@@ -1456,6 +1456,23 @@ RETENTION_AUTO_APPLY = os.environ.get('RETENTION_AUTO_APPLY', '0') == '1'
 # souhaite. Ne touche jamais une société non-démo (garde stricte est_demo=True).
 DEMO_AUTO_PURGE_ENABLED = os.environ.get('DEMO_AUTO_PURGE_ENABLED', '0') == '1'
 
+# AUD730 — les deux balayages RH nouvellement PLANIFIÉS dont l'effet n'est pas
+# neutre. Même convention que GED_PURGE_AUTO_APPLY ci-dessus : DRY-RUN PAR
+# DÉFAUT, la tâche compte et journalise sans rien écrire, le fondateur pose la
+# variable le jour où il veut l'exécution réelle.
+#   * `rh.purger_candidatures` (XRH24) anonymise IRRÉVERSIBLEMENT les
+#     candidatures rejetées hors vivier au-delà de la rétention CNDP.
+#   * `rh.planifier_appreciations` (ZRH8) crée les évaluations des jalons
+#     d'ancienneté franchis — la CADENCE d'un cycle d'appréciation est une
+#     décision métier, pas un défaut technique.
+# Les deux autres balayages du même lot (`rh.accruer_conges`,
+# `rh.clore_pointages_ouverts`) sont idempotents et non destructifs : ils
+# s'appliquent directement, sans variable d'opt-in.
+RH_PURGE_CANDIDATURES_AUTO_APPLY = os.environ.get(
+    'RH_PURGE_CANDIDATURES_AUTO_APPLY', '0') == '1'
+RH_APPRECIATIONS_AUTO_APPLY = os.environ.get(
+    'RH_APPRECIATIONS_AUTO_APPLY', '0') == '1'
+
 # GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
 # défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune
 # dépendance nouvelle). Le founder branchera un provider réel (Zhipu/…) en posant

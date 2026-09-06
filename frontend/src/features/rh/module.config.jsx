@@ -8,7 +8,7 @@ import {
   GraduationCap, Briefcase, ShieldAlert, UserCircle,
   Car, FileText, CalendarPlus, ClipboardCheck, ListChecks,
   Calculator, LogOut, Wallet, Clock3, CalendarOff, Milestone,
-  DoorClosed, Gift, SlidersHorizontal,
+  DoorClosed, Gift, SlidersHorizontal, HardHat,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -52,6 +52,9 @@ const ParcoursEmploye = lazy(() => import('./ParcoursEmploye.jsx'))
 const FermeturesCollectives = lazy(() => import('./FermeturesCollectives.jsx'))
 const PrimesIndemnites = lazy(() => import('./PrimesIndemnites.jsx'))
 const ReglagesRh = lazy(() => import('./ReglagesRh.jsx'))
+// AUDV20 — effectif chantier (selectors.effectif_present_le, jusqu'ici sans
+// aucun consommateur) : son propre écran, comme le reste du module.
+const PresentsChantier = lazy(() => import('./PresentsChantier.jsx'))
 
 // Rôles autorisés pour le back-office RH — 'normal' inclus : un rôle fin de
 // palier normal portant `rh_voir` est servi 200 par le serveur, la nav doit
@@ -101,6 +104,8 @@ export default {
       { to: '/rh/fermetures-collectives', label: 'Fermetures collectives', icon: <DoorClosed size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       { to: '/rh/primes-indemnites', label: 'Primes & indemnités', icon: <Gift size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       { to: '/rh/reglages', label: 'Réglages RH', icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      // AUDV20 — présents chantier (effectif du jour, base facturation/litige).
+      { to: '/rh/presents-chantier', label: 'Présents chantier', icon: <HardHat size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // UX28 — portail self-service : tous rôles. La Sidebar filtre via
       // `it.roles.includes(role)` → chaque item DOIT porter `roles` (sinon crash).
       { to: '/rh/portail', label: 'Mon portail', icon: <UserCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },
@@ -127,6 +132,7 @@ export default {
     ['/rh/fermetures-collectives', 'Fermetures collectives'],
     ['/rh/primes-indemnites', 'Primes & indemnités'],
     ['/rh/reglages', 'Réglages RH'],
+    ['/rh/presents-chantier', 'Présents chantier'],
     ['/rh/portail', 'Mon portail RH'],
     ['/rh', 'Cockpit RH'],
   ],
@@ -155,6 +161,8 @@ export default {
     { path: '/rh/fermetures-collectives', component: FermeturesCollectives, ...GATE_RH },
     { path: '/rh/primes-indemnites', component: PrimesIndemnites, ...GATE_RH },
     { path: '/rh/reglages', component: ReglagesRh, ...GATE_RH },
+    // AUDV20 — présents chantier.
+    { path: '/rh/presents-chantier', component: PresentsChantier, ...GATE_RH },
     // UX28 — portail self-service : tous rôles (authLoader simple).
     { path: '/rh/portail', component: Portail },
   ],

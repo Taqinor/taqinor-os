@@ -168,6 +168,11 @@ const rhApi = {
   updateRoster: (id, data) => api.patch(`/rh/roster/${id}/`, data),
   getConflitsRoster: (params) => api.get('/rh/roster/conflits/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
+  // AUDV20 — effectif RÉELLEMENT présent sur un chantier un jour donné
+  // (facturation main-d'œuvre / preuve en litige). `installation_id` requis,
+  // `date` optionnelle (défaut : aujourd'hui côté serveur).
+  getEffectifChantier: (params) =>
+    api.get('/rh/presences-chantier/effectif/', { params }),
   // WIR239 — émargement de présence chantier (colonne Geofence morte faute
   // d'appelant) : accepte optionnellement gps_lat/gps_lng (drapeau hors_zone
   // posé côté serveur, jamais bloquant).

@@ -390,6 +390,34 @@ app.conf.beat_schedule = {
         'task': 'rh.alertes_cdd',
         'schedule': crontab(hour=7, minute=55),
     },
+    # AUD730 — acquisition mensuelle des congés payés (ZRH2, « Accrual Time
+    # Off » Odoo) : le 1er de chaque mois, heure creuse. Idempotent (garde
+    # ``mois_acquis``) — une double exécution ne crédite jamais deux fois.
+    'rh-accruer-conges-mensuel': {
+        'task': 'rh.accruer_conges',
+        'schedule': crontab(hour=1, minute=30, day_of_month=1),
+    },
+    # AUD730 — clôture automatique des pointages restés ouverts (ZRH5,
+    # « Automatic check-out » Odoo), quotidien en fin de nuit. No-op tant
+    # qu'aucune société n'a configuré son seuil.
+    'rh-clore-pointages-ouverts': {
+        'task': 'rh.clore_pointages_ouverts',
+        'schedule': crontab(hour=3, minute=20),
+    },
+    # AUD730 — rétention CNDP des candidatures rejetées (XRH24), quotidien.
+    # DRY-RUN tant que RH_PURGE_CANDIDATURES_AUTO_APPLY n'est pas posé
+    # (anonymisation irréversible) — la tâche SIGNALE alors le volume éligible.
+    'rh-purger-candidatures': {
+        'task': 'rh.purger_candidatures',
+        'schedule': crontab(hour=3, minute=40),
+    },
+    # AUD730 — planification des appréciations dues (ZRH8), hebdomadaire (lundi).
+    # DRY-RUN tant que RH_APPRECIATIONS_AUTO_APPLY n'est pas posé : la cadence
+    # d'un cycle d'appréciation est une décision métier du fondateur.
+    'rh-planifier-appreciations': {
+        'task': 'rh.planifier_appreciations',
+        'schedule': crontab(hour=4, minute=10, day_of_week=1),
+    },
     # YSERV5 — génération automatique des visites préventives dues (opt-in
     # par société via SavSlaSettings.generation_auto_visites), quotidien.
     'sav-generer-visites-dues-quotidien': {
