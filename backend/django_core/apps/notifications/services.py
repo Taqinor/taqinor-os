@@ -46,6 +46,11 @@ DEFAULT_PREFS = {
 EVENT_DEFAULT_OVERRIDES = {
     'lead_callback_requested': {'email': True},
     'lead_callback_sla_breach': {'email': True},
+    # MRY3 — l'arrivée d'un lead est l'événement le plus périssable du CRM
+    # (« rappelé en moins de 5 minutes ») : Meryem doit le recevoir aussi par
+    # e-mail, pas seulement en in-app + push. Reste surchargeable par une
+    # ligne `NotificationPreference` explicite.
+    'lead_new': {'email': True},
 }
 
 # ERR91 — Bornes cohérentes pour la ligne in-app. `title` (255) et `link` (512)
