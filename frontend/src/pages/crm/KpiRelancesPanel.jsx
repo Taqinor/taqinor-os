@@ -54,7 +54,15 @@ export default function KpiRelancesPanel() {
     return () => { active = false }
   }, [jours])
 
-  const objectif = contact?.objectif_minutes ?? 5
+  // F6 — jamais un objectif INVENTÉ côté écran : `null` (pendant le
+  // chargement, sur erreur, ou si une future réponse omettait ce champ)
+  // affiche « — » dans le titre (ci-dessous), JAMAIS un « 5 » par défaut qui
+  // mentirait sur l'objectif réel de la société
+  // (`CompanyProfile.premier_contact_objectif_min`) — le titre était rendu
+  // AVANT la résolution du chargement (hors du if/else loading ci-dessous),
+  // donc affichait « 5 » en dur à chaque ouverture d'écran, même pour une
+  // société qui a configuré un autre objectif.
+  const objectif = contact?.objectif_minutes ?? null
 
   return (
     <Card data-testid="kpi-relances-panel">
@@ -64,7 +72,7 @@ export default function KpiRelancesPanel() {
             <Target className="h-4 w-4" /> Premier contact &amp; cadences
           </CardTitle>
           <CardDescription>
-            Objectif « rappelé en moins de {objectif} min ouvrées » et bilan des cadences.
+            Objectif « rappelé en moins de {objectif ?? '—'} min ouvrées » et bilan des cadences.
           </CardDescription>
         </div>
         <Select value={jours} onValueChange={setJours}>
@@ -81,7 +89,7 @@ export default function KpiRelancesPanel() {
           <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Metric label={`% touchés < ${objectif} min`} value={pct(contact?.pct_sous_objectif)} />
+            <Metric label={`% touchés < ${objectif ?? '—'} min`} value={pct(contact?.pct_sous_objectif)} />
             <Metric label="Médiane (min ouvrées)" value={dash(contact?.mediane_minutes_ouvrees)} />
             <Metric
               label="Nuit rappelés avant 9 h 30"
