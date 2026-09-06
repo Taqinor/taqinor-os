@@ -1715,6 +1715,45 @@ class PointageViewSet(_RhBaseViewSet):
         serializer.save()
         return Response(serializer.data)
 
+    def destroy(self, request, *args, **kwargs):
+        """AUD720 — la SUPPRESSION exige un motif et laisse une trace NON
+        cascadée.
+
+        `update()` impose depuis XRH11 un motif et une ``CorrectionPointage``
+        immuable par champ modifié — mais aucun ``destroy()`` n'était surchargé :
+        le DELETE générique restait ouvert, gardé par le seul rôle
+        ``rh_gerer``, SANS motif. Pire, ``CorrectionPointage.pointage`` est en
+        ``CASCADE`` : supprimer le pointage effaçait aussi les corrections DÉJÀ
+        tracées. ``Pointage`` étant absent de ``TRACKED_MODELS`` et sans
+        soft-delete, il ne restait littéralement AUCUNE trace.
+
+        Désormais : motif obligatoire (400 sinon), et une note
+        ``DossierActivity`` — portée par le DOSSIER employé, donc hors de la
+        cascade du pointage — récapitule qui a supprimé quoi, quand, pourquoi,
+        et combien de corrections tracées disparaissent avec lui. La ligne
+        ``AuditLog`` générique est en plus produite : ``('rh', 'Pointage')``
+        rejoint ``TRACKED_MODELS`` dans le même correctif.
+        """
+        pointage = self.get_object()
+        motif = str(request.data.get('motif')
+                    or request.query_params.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': "Un motif est obligatoire pour supprimer un "
+                          "pointage (suppression irréversible : les "
+                          "corrections déjà tracées partent avec lui)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        nb_corrections = pointage.corrections.count()
+        activity.log_note(
+            pointage.employe, request.user,
+            f'Pointage SUPPRIMÉ définitivement (#{pointage.pk}) : '
+            f'arrivée {pointage.heure_arrivee}, départ '
+            f'{pointage.heure_depart or "—"}, type {pointage.type_pointage}. '
+            f'{nb_corrections} correction(s) XRH11 détruite(s) en cascade. '
+            f'Motif : {motif}')
+        self.perform_destroy(pointage)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=['get'], url_path='corrections')
     def corrections(self, request, pk=None):
         """XRH11 — historique immuable des corrections de ce pointage."""

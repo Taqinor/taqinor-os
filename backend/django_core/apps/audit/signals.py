@@ -99,6 +99,16 @@ TRACKED_MODELS = [
     ('core', 'ConsentRecord'),
     ('core', 'DataSubjectRequest'),
     ('core', 'RegistreTraitement'),
+    # AUD720 — `rh.Pointage` : `update()` écrit depuis XRH11 une
+    # `CorrectionPointage` IMMUABLE par champ corrigé, mais le DELETE générique
+    # n'était gardé par aucun `destroy()` — et `CorrectionPointage.pointage`
+    # étant en CASCADE, supprimer le pointage effaçait AUSSI les corrections
+    # déjà tracées. Sans soft-delete et absent d'ici, il ne restait
+    # littéralement aucune trace d'une heure travaillée effacée (pièce
+    # centrale d'un litige prud'homal). Le `destroy()` exige désormais un motif
+    # et journalise sur le dossier ; cette entrée ajoute la ligne AuditLog
+    # générique, hors de portée de la cascade.
+    ('rh', 'Pointage'),
 ]
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).
