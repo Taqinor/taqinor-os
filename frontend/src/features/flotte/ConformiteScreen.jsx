@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent, Label, Switch } from '../../ui'
+import { Tabs, TabsList, TabsTrigger, TabsContent, Label, Switch, Button, toast } from '../../ui'
 import { EcheanceCenter, ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatDate, formatMAD } from '../../lib/format'
 import { ConformiteStatutPill } from './statusPills'
 import { ECHEANCE_TYPES, alertesToEcheanceItems } from './flotte'
 import useFlotteResource from './useFlotteResource'
+import VisiteTechniqueDialog from './narsa/VisiteTechniqueDialog'
 
 /* ============================================================================
    UX19 — Conformité réglementaire (`/flotte/conformite`).
@@ -83,7 +84,9 @@ function AssurancesTab() {
 }
 
 function VisitesTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.visitesTechniques.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.visitesTechniques.list, {})
+  const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 170, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'centre', header: 'Centre', width: 160, accessor: (r) => r.centre, cell: (v) => v || '—' },
@@ -92,9 +95,24 @@ function VisitesTab() {
     { id: 'resultat', header: 'Résultat', width: 130, accessor: (r) => r.resultat_display || r.resultat, cell: (v) => v || '—' },
     { id: 'statut', header: 'Statut', width: 130, accessor: (r) => r.statut_calcule || r.statut, cell: (v) => <ConformiteStatutPill status={v} /> },
   ], [])
+  // AUDV21 — « Nouvelle visite » propose la prochaine date NARSA selon la
+  // périodicité légale (véhicule) au lieu du seul calcul générique
+  // date_visite + validite_mois.
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouvelle visite</Button>
+  )
   return (
-    <ListShell title="Visites techniques" columns={columns} rows={data} loading={loading} error={error}
-      exportName="visites-techniques" emptyTitle="Aucune visite" emptyDescription="Aucune visite technique enregistrée." />
+    <div className="flex flex-col gap-4">
+      <ListShell title="Visites techniques" actions={actions} columns={columns} rows={data} loading={loading} error={error}
+        exportName="visites-techniques" emptyTitle="Aucune visite" emptyDescription="Aucune visite technique enregistrée." />
+      {showForm && (
+        <VisiteTechniqueDialog
+          actifs={actifs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Visite technique enregistrée.') }}
+        />
+      )}
+    </div>
   )
 }
 

@@ -114,6 +114,7 @@ from .services import (
     generer_ordre_virement,
     generer_run_gratification,
     historique_carriere,
+    importer_avantages_nature_flotte,
     importer_elements_rh,
     journal_de_paie,
     journal_de_paie_ventile,
@@ -696,6 +697,25 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         try:
             importes = importer_elements_rh(periode)
+        except TransitionPeriodeInterdite as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'importes': importes}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'],
+            url_path='importer-avantages-nature-flotte')
+    def importer_avantages_nature_flotte_action(self, request, pk=None):
+        """Importe les avantages en nature véhicule du mois (AUDV21/XFLT29).
+
+        Lit ``apps.flotte.selectors.avantages_en_nature`` (cross-app, jamais
+        ``flotte.models``) et matérialise la valeur mensuelle de chaque
+        conducteur en usage privé en ``ElementVariable`` (rubrique
+        ``AV_VOITURE``, ``source='flotte'``). Gatée ``paie_gerer`` comme toute
+        écriture paie (élément variable = argent, jamais ``IsAnyRole``).
+        """
+        periode = self.get_object()
+        try:
+            importes = importer_avantages_nature_flotte(periode)
         except TransitionPeriodeInterdite as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
