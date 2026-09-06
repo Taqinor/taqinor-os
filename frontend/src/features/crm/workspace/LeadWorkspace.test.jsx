@@ -35,11 +35,14 @@ vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () =
 // hors sujet ici — couverts par ContextRail.test.jsx / TimelineTab.test.jsx.
 vi.mock('./ContextRail', () => ({ default: () => null }))
 // IdentityRail intercepté en harnais onAction (patron onAction.test.jsx) —
-// expose un bouton « signe » pour le câblage SIGNED→SigneDialog du shell.
+// expose un bouton « signe » pour le câblage SIGNED→SigneDialog du shell, et
+// (F4) « relance-cadence » pour le raccourci « ⋯ » qui doit recharger la
+// frise de cadence rendue plus bas dans SectionPipeline.
 vi.mock('./IdentityRail', () => ({
   default: ({ onAction }) => (
     <div data-testid="identity-rail">
       <button type="button" onClick={() => onAction('signe')}>rail-signe</button>
+      <button type="button" onClick={() => onAction('relance-cadence')}>rail-relance-cadence</button>
     </div>
   ),
 }))
@@ -60,6 +63,8 @@ vi.mock('../../../api/crmApi', () => ({
     // MRY15 — SectionPipeline (rendu réel ici) monte CadenceFrise en mode
     // édition, qui se charge elle-même au montage.
     getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
+    // F4 — raccourci « ⋯ » du rail (onAction('relance-cadence')).
+    initialiserRelance: vi.fn(() => Promise.resolve({ data: [{ id: 1 }] })),
   },
 }))
 vi.mock('../../../api/axios', () => ({
@@ -179,6 +184,22 @@ describe('LW37 — adversité du moteur (blueprint D2)', () => {
     fireEvent.click(screen.getByText('rail-signe'))
     expect(screen.getByTestId('signe-dialog')).toBeInTheDocument()
     expect(crmApi.updateLead).not.toHaveBeenCalledWith(1, expect.objectContaining({ stage: 'SIGNED' }))
+  })
+
+  // F4 — le raccourci « Relancer la cadence » du menu « ⋯ » du rail identité
+  // (onAction('relance-cadence'), hors de SectionPipeline) doit recharger la
+  // frise de cadence (CadenceFrise, montée réellement ici par SectionPipeline
+  // en mode édition) — avant le correctif, seul le compteur LOCAL de
+  // SectionPipeline (ses propres boutons Relancer/Arrêter) la rechargeait.
+  it('F4 — le raccourci « ⋯ » du rail recharge la frise de cadence (CadenceFrise)', async () => {
+    renderEdit()
+    await settled()
+    // Chargement initial de la frise, au montage de SectionPipeline.
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByText('rail-relance-cadence'))
+    await waitFor(() => expect(crmApi.initialiserRelance).toHaveBeenCalledWith(1, { cadence: 'contact' }))
+    // La frise doit être rechargée UNE SECONDE fois après résolution.
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(2))
   })
 })
 
