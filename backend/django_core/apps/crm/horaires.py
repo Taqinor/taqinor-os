@@ -164,6 +164,36 @@ def prochain_creneau_appel(dt, company, *, dimanche=False):
     return dt
 
 
+#: Heure par défaut du rendez-vous dominical du Protocole v3 : au milieu de la
+#: fenêtre 16 h-19 h, jamais à son bord.
+DIMANCHE_HEURE_DEFAUT = datetime.time(16, 30)
+
+
+def prochain_dimanche(dt, heure=DIMANCHE_HEURE_DEFAUT):
+    """Le prochain DIMANCHE appelable à partir de `dt` (inclus), à `heure`.
+
+    `prochain_creneau_appel` ne sait que RECALER un instant dans la fenêtre de
+    SON jour : il ne déplace jamais une touche vers un autre jour de la
+    semaine. Une touche « appel du dimanche » calculée en J+5 depuis un
+    mercredi tombait donc un lundi — le seul rendez-vous dominical du
+    protocole n'avait jamais lieu un dimanche. C'est cette fonction, et elle
+    seule, qui PLACE une touche sur un dimanche.
+
+    `dt` déjà dominical et avant la fermeture (19 h) → CE dimanche, à
+    `max(dt, heure)` (on ne remonte jamais dans le passé) ; sinon le dimanche
+    suivant à `heure`. Entrée et sortie AWARE, dans le fuseau de l'entrée."""
+    tz_entree = dt.tzinfo or datetime.timezone.utc
+    local = _local(dt)
+    if local.weekday() == 6 and local.time() < DIMANCHE_FIN:
+        candidat = max(local, _combiner(local.date(), heure))
+        return candidat.astimezone(tz_entree)
+    # `(6 - weekday) % 7` vaut 0 le dimanche : le `or 7` envoie alors au
+    # dimanche SUIVANT (cas « dimanche après 19 h »).
+    delta = (6 - local.weekday()) % 7 or 7
+    cible = local.date() + datetime.timedelta(days=delta)
+    return _combiner(cible, heure).astimezone(tz_entree)
+
+
 def minutes_ouvrees_entre(a, b, company):
     """Minutes d'ouverture écoulées entre `a` et `b` (0 si `b <= a`).
 

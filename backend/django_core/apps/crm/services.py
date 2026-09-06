@@ -573,7 +573,9 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
     l'instant est recalé sur la fenêtre d'appel de la société
     (``horaires.prochain_creneau_appel``, MRY8). Une touche marquée
-    ``dimanche_ok`` connaît la fenêtre dominicale 16 h-19 h du Protocole v3.
+    ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
+    dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
+    dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
     ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
     leur grain jour.
 
@@ -623,15 +625,31 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
 
     etapes = []
     for gabarit in gabarits:
-        echeance = depart + timedelta(
-            days=gabarit.delai_jours,
-            minutes=getattr(gabarit, 'delai_minutes', 0) or 0)
-        heure_cible = getattr(gabarit, 'heure_cible', None)
-        if heure_cible is not None:
-            locale = echeance.astimezone(horaires.CASABLANCA)
-            echeance = locale.replace(
-                hour=heure_cible.hour, minute=heure_cible.minute,
-                second=0, microsecond=0)
+        if getattr(gabarit, 'dimanche_ok', False):
+            # MRY4/MRY8 — une touche dominicale se PLACE sur un dimanche, elle
+            # ne s'y recale pas. `prochain_creneau_appel` ne sait que borner un
+            # instant dans la fenêtre de SON jour : l'« appel du dimanche »
+            # calculé en J+5 depuis un mercredi tombait un lundi, et le seul
+            # rendez-vous dominical du protocole n'avait jamais lieu un
+            # dimanche. On prend donc le PREMIER dimanche dont la date atteint
+            # `depart + delai_jours`, à 16 h 30 (milieu de la fenêtre 16 h-19 h)
+            # — l'`heure_cible` du gabarit ne s'applique pas ici : elle vise un
+            # jour ouvré, et 10 h 30 un dimanche n'existe pas.
+            echeance = horaires.prochain_dimanche(
+                depart + timedelta(days=gabarit.delai_jours))
+            if echeance < depart:  # garde-fou : jamais dans le passé
+                echeance = horaires.prochain_dimanche(
+                    echeance + timedelta(days=1))
+        else:
+            echeance = depart + timedelta(
+                days=gabarit.delai_jours,
+                minutes=getattr(gabarit, 'delai_minutes', 0) or 0)
+            heure_cible = getattr(gabarit, 'heure_cible', None)
+            if heure_cible is not None:
+                locale = echeance.astimezone(horaires.CASABLANCA)
+                echeance = locale.replace(
+                    hour=heure_cible.hour, minute=heure_cible.minute,
+                    second=0, microsecond=0)
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)))
