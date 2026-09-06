@@ -1268,6 +1268,20 @@ CELERY_TASK_ROUTES = {
         'queue': 'scheduled'},                                     # XPRJ22
     'gestion_projet.rappels_timesheets': {'queue': 'scheduled'},   # XPRJ7
     'btp_chantier.alertes_rfi_retard': {'queue': 'scheduled'},     # NTCON4
+    # Batch AUDV/AOF/WIR (2026-09-06) — 10 tâches ajoutées au beat_schedule
+    # sans route explicite (garde core/tests/test_celery_task_routes.py) :
+    # chacune un balayage/relance planifié, aucune n'est déclenchée par un
+    # événement synchrone utilisateur.
+    'ao.generer_echeanciers': {'queue': 'scheduled'},
+    'ao.relancer_pieces_administratives': {'queue': 'scheduled'},
+    'veille_ao.expirer_avis_depasses': {'queue': 'scheduled'},
+    'contrats.cloturer_contrats_impayes_daily': {'queue': 'scheduled'},
+    'rh.accruer_conges': {'queue': 'scheduled'},
+    'rh.clore_pointages_ouverts': {'queue': 'scheduled'},
+    'rh.purger_candidatures': {'queue': 'scheduled'},
+    'rh.planifier_appreciations': {'queue': 'scheduled'},
+    'qhse.relancer_derogations': {'queue': 'scheduled'},
+    'qhse.relancer_audits_planifies_en_retard': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
