@@ -1213,6 +1213,17 @@ export function buildClientRef(rand: () => number = Math.random): string {
 }
 
 /**
+ * WJ130 — générateur [0, 1) adossé à `crypto.getRandomValues` (CSPRNG),
+ * disponible nativement dans les Workers Cloudflare comme sous Node ≥19
+ * (`globalThis.crypto`) — donc aussi sous vitest, sans polyfill. Même
+ * contrat de retour que `Math.random()` pour rester substituable dans
+ * `buildIdempotencyKey` ci-dessous.
+ */
+function secureRandom(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] / 0x100000000;
+}
+
+/**
  * WJ66 — jeton d'idempotence, généré CÔTÉ NAVIGATEUR une seule fois par session
  * de saisie (comme `clientRef`, PAS un identifiant serveur). But : donner au
  * CRM un signal de DÉDOUBLONNAGE quand une même soumission est renvoyée (retry
@@ -1222,9 +1233,15 @@ export function buildClientRef(rand: () => number = Math.random): string {
  * d'entropie pour une clé de dédup best-effort, jamais une garantie
  * d'unicité globale) — borné par le regex de validation côté
  * `validateOptionalFields` (`^[A-Za-z0-9_-]{8,64}$`).
+ *
+ * WJ130 (audit CRM L3 02/09) — seul credential du lookup public `lead-ref`
+ * (qui renvoie `client_ref` avec le nom de famille) : sa source d'aléa doit
+ * être un CSPRNG, pas `Math.random`. Le paramètre `rand` reste injectable
+ * pour les tests ; les 3 appelants de mon-toit (fr/en/ar) n'ont rien à
+ * changer, ils utilisent déjà le défaut.
  */
 const IDEMPOTENCY_KEY_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-export function buildIdempotencyKey(rand: () => number = Math.random): string {
+export function buildIdempotencyKey(rand: () => number = secureRandom): string {
   let key = '';
   for (let i = 0; i < 32; i++) {
     key += IDEMPOTENCY_KEY_ALPHABET[Math.floor(rand() * IDEMPOTENCY_KEY_ALPHABET.length)];
