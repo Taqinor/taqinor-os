@@ -1387,6 +1387,44 @@ def _motif_fermeture(fermeture):
     return f'[Fermeture collective #{fermeture.id}] {fermeture.libelle}'
 
 
+def jours_conges_deja_valides(company, employe, date_debut, date_fin,
+                              exclure_pk=None):
+    """AUD722 — dates de ``[date_debut, date_fin]`` DÉJÀ couvertes par une
+    ``DemandeConge`` VALIDÉE de cet employé (donc déjà décomptées du solde).
+
+    Symétrique de ``selectors.jours_fermeture_exclus`` (qui répond « quels
+    jours sont déjà couverts par une FERMETURE ») : ici on répond « quels jours
+    sont déjà couverts par un congé PERSONNEL validé ». Les deux ensembles
+    alimentent ``calculer_jours_demande(jours_exclus=…)`` — un même jour n'est
+    JAMAIS retiré deux fois du solde, dans un sens comme dans l'autre.
+
+    ``exclure_pk`` ignore une demande précise (utile quand on recalcule une
+    demande existante). Renvoie un ``set`` de ``date`` (vide si rien).
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge
+
+    if company is None or employe is None \
+            or date_debut is None or date_fin is None:
+        return set()
+    qs = DemandeConge.objects.filter(
+        company=company, employe=employe,
+        statut=DemandeConge.Statut.VALIDEE,
+        date_debut__lte=date_fin, date_fin__gte=date_debut)
+    if exclure_pk is not None:
+        qs = qs.exclude(pk=exclure_pk)
+    couverts = set()
+    for demande in qs.only('date_debut', 'date_fin'):
+        debut = max(demande.date_debut, date_debut)
+        fin = min(demande.date_fin, date_fin)
+        jour = debut
+        while jour <= fin:
+            couverts.add(jour)
+            jour += timedelta(days=1)
+    return couverts
+
+
 @transaction.atomic
 def appliquer_fermeture(fermeture):
     """Applique une ``PeriodeFermeture`` : génère une ``DemandeConge`` VALIDÉE
@@ -1396,6 +1434,14 @@ def appliquer_fermeture(fermeture):
     toute la société. Un employé qui a DÉJÀ une demande générée par CETTE
     fermeture (marquée via ``motif``) est sauté. Renvoie la liste des
     ``DemandeConge`` créées (nouvelles seulement).
+
+    AUD722 — ANTI DOUBLE-DÉCOMPTE. La dédup ne portait QUE sur les demandes
+    générées par cette même fermeture : un employé déjà en congé personnel
+    VALIDÉ sur la période se voyait créer une SECONDE demande validée, et
+    ``valider_demande`` incrémentait ``SoldeConge.pris`` une deuxième fois pour
+    des jours déjà comptés. Désormais, les jours déjà couverts par un congé
+    validé sont retirés du décompte (``jours_exclus``) et un employé
+    ENTIÈREMENT couvert est sauté — aucune demande fantôme à 0 jour.
     """
     from .models import DemandeConge, DossierEmploye
 
@@ -1415,8 +1461,18 @@ def appliquer_fermeture(fermeture):
     for employe in employes_qs:
         if employe.id in deja_generes:
             continue
+        # AUD722 — jours déjà retirés du solde par un congé personnel VALIDÉ
+        # chevauchant la fermeture : ils ne sont pas recomptés.
+        deja_couverts = jours_conges_deja_valides(
+            fermeture.company, employe,
+            fermeture.date_debut, fermeture.date_fin)
         jours = calculer_jours_demande(
-            fermeture.type_absence, fermeture.date_debut, fermeture.date_fin)
+            fermeture.type_absence, fermeture.date_debut, fermeture.date_fin,
+            jours_exclus=deja_couverts)
+        if deja_couverts and jours <= 0:
+            # Employé déjà entièrement en congé sur la période : rien à
+            # générer (une demande à 0 jour ne serait qu'un doublon vide).
+            continue
         demande = DemandeConge.objects.create(
             company=fermeture.company,
             employe=employe,

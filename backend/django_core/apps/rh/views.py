@@ -214,6 +214,42 @@ def _client_ip(request):
 # AUD719 — pièces du coffre employé dont la destruction est la plus lourde de
 # conséquences (obligation légale de conservation, pièce d'identité, coordonnées
 # bancaires) : leur suppression exige un motif ET une confirmation explicite.
+def _jours_demande_sans_double_decompte(
+        company, employe, type_absence, date_debut, date_fin, *,
+        demi_journee_debut=False, demi_journee_fin=False):
+    """AUDV20 + AUD722 — jours décomptés d'une NOUVELLE demande de congé.
+
+    Retire du décompte les jours déjà retirés du solde par ailleurs :
+    * une FERMETURE collective couvrant la période
+      (``selectors.jours_fermeture_exclus``, XRH14) ;
+    * un congé personnel DÉJÀ VALIDÉ chevauchant la période
+      (``services.jours_conges_deja_valides``, le sens symétrique).
+
+    Renvoie ``(jours, erreur)``. ``erreur`` est non vide quand la période
+    demandée est ENTIÈREMENT couverte : créer une demande à 0 jour n'aurait
+    aucun sens, et la refuser explicitement dit à l'utilisateur POURQUOI.
+    """
+    exclus = set(selectors.jours_fermeture_exclus(
+        company, employe, date_debut, date_fin))
+    exclus |= services.jours_conges_deja_valides(
+        company, employe, date_debut, date_fin)
+    feries = services.feries_periode(company, date_debut, date_fin)
+    brut = services.calculer_jours_demande(
+        type_absence, date_debut, date_fin, extra_holidays=feries,
+        demi_journee_debut=demi_journee_debut,
+        demi_journee_fin=demi_journee_fin)
+    jours = services.calculer_jours_demande(
+        type_absence, date_debut, date_fin, extra_holidays=feries,
+        demi_journee_debut=demi_journee_debut,
+        demi_journee_fin=demi_journee_fin,
+        jours_exclus=exclus)
+    if exclus and brut > 0 and jours <= 0:
+        return jours, (
+            'Cette période est déjà entièrement couverte par un congé validé '
+            'ou une fermeture collective : elle serait décomptée deux fois.')
+    return jours, None
+
+
 DOCUMENTS_EMPLOYE_SENSIBLES = frozenset({
     DocumentEmploye.TypeDocument.CONTRAT,
     DocumentEmploye.TypeDocument.CIN,
@@ -1290,22 +1326,18 @@ class DemandeCongeViewSet(_RhBaseViewSet):
                     f'Congés bloqués du {conflit.date_debut} au '
                     f'{conflit.date_fin} : {conflit.libelle}.')})
 
-        # AUDV20/XRH14 — les jours déjà couverts par une fermeture collective
-        # de la société (ou du département de l'employé) ne sont JAMAIS
-        # décomptés une seconde fois : ``jours_fermeture_exclus`` existait
-        # depuis XRH14 avec ce but écrit dans sa docstring, mais n'était
-        # appelée nulle part — c'est ici son point de câblage.
-        exclus = selectors.jours_fermeture_exclus(
-            self.request.user.company, employe, date_debut, date_fin)
-        jours = services.calculer_jours_demande(
-            type_absence, date_debut, date_fin,
-            extra_holidays=services.feries_periode(
-                self.request.user.company, date_debut, date_fin),
+        # AUDV20/XRH14 + AUD722 — les jours déjà couverts par une fermeture
+        # collective OU par un congé personnel DÉJÀ VALIDÉ ne sont JAMAIS
+        # décomptés une seconde fois.
+        jours, erreur = _jours_demande_sans_double_decompte(
+            self.request.user.company, employe, type_absence,
+            date_debut, date_fin,
             demi_journee_debut=serializer.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=serializer.validated_data.get(
-                'demi_journee_fin', False),
-            jours_exclus=exclus)
+                'demi_journee_fin', False))
+        if erreur:
+            raise serializers.ValidationError({'detail': erreur})
         # AUD718 — le fichier est téléversé AVANT la création de la ligne :
         # un format refusé rend 400 sans laisser de demande orpheline.
         meta = self._televerser_justificatif()
@@ -5642,20 +5674,19 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
                     f'{conflit.date_fin} : {conflit.libelle}.')},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # AUDV20/XRH14 — même anti double-décompte que le viewset direct : un
-        # jour déjà couvert par une fermeture collective n'est pas repris au
-        # solde du collaborateur.
-        exclus = selectors.jours_fermeture_exclus(
-            request.user.company, dossier, date_debut, date_fin)
-        jours = services.calculer_jours_demande(
+        # AUDV20/XRH14 + AUD722 — même anti double-décompte que le viewset
+        # direct : un jour déjà couvert par une fermeture collective ou par un
+        # congé validé n'est pas repris au solde du collaborateur.
+        jours, double = _jours_demande_sans_double_decompte(
+            request.user.company, dossier,
             ser.validated_data['type_absence'], date_debut, date_fin,
-            extra_holidays=services.feries_periode(
-                request.user.company, date_debut, date_fin),
             demi_journee_debut=ser.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=ser.validated_data.get(
-                'demi_journee_fin', False),
-            jours_exclus=exclus)
+                'demi_journee_fin', False))
+        if double:
+            return Response({'detail': double},
+                            status=status.HTTP_400_BAD_REQUEST)
         # AUD718 — même rangement MinIO que le viewset RH : un justificatif
         # déposé depuis le portail est réellement récupérable. Téléversé AVANT
         # la création : un format refusé ne laisse pas de demande orpheline.
