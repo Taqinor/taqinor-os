@@ -25,6 +25,16 @@ vi.mock('../../api/esgApi', () => ({
         },
       } })),
       dpef: vi.fn(() => Promise.resolve({ data: new Blob(['# DPEF']) })),
+      // AUDV26 (NTESG9) — ratios carbone dépliés depuis la liste des périodes.
+      indicateurs: vi.fn(() => Promise.resolve({ data: {
+        intensite_carbone: {
+          ratios: {
+            par_mad_ca: { disponible: false, valeur: null, unite: 'tCO2e/MAD CA', raison: 'Bilan carbone indisponible.' },
+            par_kwc_installe: { disponible: true, valeur: 0.05, unite: 'tCO2e/kWc installé', raison: null },
+            par_etp: { disponible: false, valeur: null, unite: 'tCO2e/ETP', raison: 'ETP indisponible.' },
+          },
+        },
+      } })),
     },
     documentsPolitique: {
       list: vi.fn(() => Promise.resolve({ data: [] })),
@@ -71,5 +81,35 @@ describe('EsgCockpit (WIR129)', () => {
     fireEvent.click(dpefButtons[0])
     await waitFor(() => expect(esgApi.periodes.dpef).toHaveBeenCalled())
     await waitFor(() => expect(downloadBlob).toHaveBeenCalled())
+  })
+
+  /* AUDV26 (NTESG9) — les 3 ratios carbone, jusqu'ici sans appelant. */
+  describe('ratios carbone (AUDV26)', () => {
+    it('déplie les 3 ratios, dégradés proprement quand une donnée manque', async () => {
+      render(<EsgCockpit />)
+      const boutons = await screen.findAllByRole('button', { name: /Ratios carbone/ })
+      fireEvent.click(boutons[0])
+
+      await waitFor(() => expect(esgApi.periodes.indicateurs).toHaveBeenCalledWith(1))
+      expect(await screen.findByText('0.05')).toBeInTheDocument()
+      expect(screen.getByText('Bilan carbone indisponible.')).toBeInTheDocument()
+      expect(screen.getByText('ETP indisponible.')).toBeInTheDocument()
+    })
+
+    it('replie au second clic sans réappeler le serveur', async () => {
+      render(<EsgCockpit />)
+      const boutons = await screen.findAllByRole('button', { name: /Ratios carbone/ })
+      fireEvent.click(boutons[0])
+      await waitFor(() => expect(esgApi.periodes.indicateurs).toHaveBeenCalledTimes(1))
+      await screen.findByText('0.05')
+
+      fireEvent.click(boutons[0])
+      expect(screen.queryByText('0.05')).not.toBeInTheDocument()
+
+      fireEvent.click(boutons[0])
+      expect(await screen.findByText('0.05')).toBeInTheDocument()
+      // Remise en cache : un second dépliage ne réappelle pas le serveur.
+      expect(esgApi.periodes.indicateurs).toHaveBeenCalledTimes(1)
+    })
   })
 })

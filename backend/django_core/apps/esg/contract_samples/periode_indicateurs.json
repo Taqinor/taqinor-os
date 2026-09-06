@@ -1,0 +1,27 @@
+{
+  "endpoint": "GET /api/django/esg/periodes-esg/<int:pk>/indicateurs/",
+  "pourquoi": "AUDV26 (NTESG9) — `selectors.intensite_carbone` (3 ratios : tCO2e/MAD de CA, /kWc installé, /ETP, chacun dégradé indépendamment — jamais un 0 forfaitaire) existait déjà, testé, mais `PeriodeReportingESGViewSet.indicateurs` ne l'appelait jamais. PACT10 : câblé DANS `selectors.agreger_indicateurs_periode` (nouvelle clé `intensite_carbone`) — donc hérité automatiquement par l'aperçu LIVE d'une période brouillon ET par le snapshot gelé d'une période figée (`figer_periode` stocke tel quel ce que renvoie l'agrégateur). Aujourd'hui, `_source_bilan_carbone` (numérateur) est TOUJOURS indisponible tant qu'aucun sélecteur qhse ne l'expose — les 3 ratios dégradent donc systématiquement, avec un motif explicite, jamais une valeur inventée.",
+  "exemple_degrade": {
+    "periode": {"date_debut": "2026-01-01", "date_fin": "2026-03-31", "annee": 2026},
+    "sources": {"indicateurs_esg": {"disponible": true}},
+    "intensite_carbone": {
+      "methode": "Intensité = total tCO2e (bilan carbone figé) ÷ dénominateur de la période. Un ratio est omis (jamais affiché comme 0) si le numérateur ou le dénominateur est absent ou nul.",
+      "numerateur": {"disponible": false, "total_tco2e": null, "raison": "Bilan carbone indisponible — aucun sélecteur qhse ne l'expose encore."},
+      "ratios": {
+        "par_mad_ca": {"disponible": false, "valeur": null, "unite": "tCO2e/MAD CA", "raison": "Bilan carbone (tCO2e) indisponible pour cette période."},
+        "par_kwc_installe": {"disponible": false, "valeur": null, "unite": "tCO2e/kWc installé", "raison": "Bilan carbone (tCO2e) indisponible pour cette période."},
+        "par_etp": {"disponible": false, "valeur": null, "unite": "tCO2e/ETP", "raison": "Bilan carbone (tCO2e) indisponible pour cette période."}
+      }
+    }
+  },
+  "exemple_disponible_le_jour_ou_le_bilan_carbone_existera": {
+    "intensite_carbone": {
+      "numerateur": {"disponible": true, "total_tco2e": 120.5, "raison": null},
+      "ratios": {
+        "par_mad_ca": {"disponible": true, "valeur": 0.000012, "unite": "tCO2e/MAD CA", "raison": null},
+        "par_kwc_installe": {"disponible": false, "valeur": null, "unite": "tCO2e/kWc installé", "raison": "kWc installé indisponible pour cette période."},
+        "par_etp": {"disponible": true, "valeur": 2.41, "unite": "tCO2e/ETP", "raison": null}
+      }
+    }
+  }
+}

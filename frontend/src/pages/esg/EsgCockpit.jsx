@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import {
   Leaf, Users, Landmark, FileText, FileSpreadsheet, Lock, Award, Plus,
   GitCompare, FileDown,
@@ -58,6 +58,13 @@ export default function EsgCockpit() {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   // WIR129 — comparateur N / N-1.
+  // AUDV26 (NTESG9) — ratios carbone (par CA/kWc/ETP) d'une période, dépliés
+  // à la demande (jamais chargés pour toutes les périodes d'un coup) et mis
+  // en cache par id pour ne pas refaire l'appel à chaque bascule.
+  const [ratiosOuvert, setRatiosOuvert] = useState(null)
+  const [ratiosParPeriode, setRatiosParPeriode] = useState({})
+  const [ratiosLoading, setRatiosLoading] = useState(null)
+
   const [comparePeriode, setComparePeriode] = useState('')
   const [compareReference, setCompareReference] = useState('')
   const [compareResult, setCompareResult] = useState(null)
@@ -124,6 +131,26 @@ export default function EsgCockpit() {
       window.alert("L'export xlsx est indisponible.")
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // AUDV26 (NTESG9) — `intensite_carbone` (calculé côté serveur, 3 ratios
+  // dégradés indépendamment — jamais un 0 forfaitaire) existait déjà mais
+  // l'action `indicateurs` n'avait aucun appelant côté écran.
+  const voirRatiosCarbone = async (periode) => {
+    if (ratiosOuvert === periode.id) { setRatiosOuvert(null); return }
+    setRatiosOuvert(periode.id)
+    if (ratiosParPeriode[periode.id]) return
+    setRatiosLoading(periode.id)
+    try {
+      const res = await esgApi.periodes.indicateurs(periode.id)
+      setRatiosParPeriode((prev) => ({
+        ...prev, [periode.id]: res.data?.intensite_carbone ?? null,
+      }))
+    } catch {
+      setRatiosParPeriode((prev) => ({ ...prev, [periode.id]: null }))
+    } finally {
+      setRatiosLoading(null)
     }
   }
 
@@ -311,49 +338,81 @@ export default function EsgCockpit() {
               </thead>
               <tbody>
                 {periodes.map((p) => (
-                  <tr key={p.id} className="border-b border-border/60">
-                    <td className="px-3 py-2">{p.libelle}</td>
-                    <td className="px-3 py-2">{p.date_debut} → {p.date_fin}</td>
-                    <td className="px-3 py-2">
-                      <Badge tone={STATUT_TONE[p.statut] ?? 'neutral'}>
-                        {STATUT_LABELS[p.statut] ?? p.statut}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex justify-end gap-2">
-                        {p.statut === 'brouillon' && (
+                  <Fragment key={p.id}>
+                    <tr className="border-b border-border/60">
+                      <td className="px-3 py-2">{p.libelle}</td>
+                      <td className="px-3 py-2">{p.date_debut} → {p.date_fin}</td>
+                      <td className="px-3 py-2">
+                        <Badge tone={STATUT_TONE[p.statut] ?? 'neutral'}>
+                          {STATUT_LABELS[p.statut] ?? p.statut}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex justify-end gap-2">
+                          {p.statut === 'brouillon' && (
+                            <Button
+                              variant="outline" size="sm"
+                              disabled={busyId === p.id}
+                              onClick={() => figerPeriode(p.id)}
+                            >
+                              <Lock /> Figer la période
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline" size="sm"
+                            onClick={() => voirRatiosCarbone(p)}
+                          >
+                            <Leaf /> Ratios carbone
+                          </Button>
                           <Button
                             variant="outline" size="sm"
                             disabled={busyId === p.id}
-                            onClick={() => figerPeriode(p.id)}
+                            onClick={() => telechargerPdf(p)}
                           >
-                            <Lock /> Figer la période
+                            <FileText /> PDF
                           </Button>
-                        )}
-                        <Button
-                          variant="outline" size="sm"
-                          disabled={busyId === p.id}
-                          onClick={() => telechargerPdf(p)}
-                        >
-                          <FileText /> PDF
-                        </Button>
-                        <Button
-                          variant="outline" size="sm"
-                          disabled={busyId === p.id}
-                          onClick={() => telechargerXlsx(p)}
-                        >
-                          <FileSpreadsheet /> xlsx
-                        </Button>
-                        <Button
-                          variant="outline" size="sm"
-                          disabled={busyId === p.id}
-                          onClick={() => telechargerDpef(p)}
-                        >
-                          <FileDown /> DPEF
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+                          <Button
+                            variant="outline" size="sm"
+                            disabled={busyId === p.id}
+                            onClick={() => telechargerXlsx(p)}
+                          >
+                            <FileSpreadsheet /> xlsx
+                          </Button>
+                          <Button
+                            variant="outline" size="sm"
+                            disabled={busyId === p.id}
+                            onClick={() => telechargerDpef(p)}
+                          >
+                            <FileDown /> DPEF
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                    {ratiosOuvert === p.id && (
+                      <tr className="border-b border-border/60 bg-muted/30">
+                        <td colSpan={4} className="px-3 py-3">
+                          {ratiosLoading === p.id ? (
+                            <Skeleton className="h-16 w-full" />
+                          ) : ratiosParPeriode[p.id] ? (
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              {Object.entries(ratiosParPeriode[p.id].ratios ?? {}).map(([cle, ratio]) => (
+                                <div key={cle} className="rounded-lg border border-border p-3">
+                                  <div className="text-xs text-muted-foreground">{ratio.unite}</div>
+                                  {ratio.disponible ? (
+                                    <div className="text-lg font-semibold tabular-nums">{ratio.valeur}</div>
+                                  ) : (
+                                    <div className="text-sm text-muted-foreground">{ratio.raison}</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Ratios carbone indisponibles.</p>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
