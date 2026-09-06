@@ -1007,6 +1007,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # la Commerciale — qui est justement celle qui arrête —
             # serait refusée.
             'arreter_relance',
+            # MRY30 — placement des anciens leads dans les cadences. MÊME
+            # motif : sans cette ligne l'action retomberait sur IsAdminRole
+            # et la Commerciale — qui pilote le moteur de relances — serait
+            # refusée alors que l'@action déclare IsResponsableOrAdmin.
+            'placement_cadences',
             # L-QUEST — get_permissions() PRIME sur le permission_classes de
             # l'@action : sans cette ligne, `questionnaire-lien` retomberait
             # sur le `return [IsAdminRole()]` final et la Commerciale — qui
@@ -1497,6 +1502,34 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         arretees = arreter_cadence(
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='placement-cadences',
+            permission_classes=[IsResponsableOrAdmin])
+    def placement_cadences(self, request):
+        """MRY30 — Place les ANCIENS leads dans les cadences du moteur.
+
+        Corps ``{"apply": false}`` (défaut) = APERÇU, n'écrit rien ;
+        ``{"apply": true}`` applique. Réponse = forme
+        `contract_samples/placement_anciens_leads.json` dans les deux cas —
+        c'est le point : l'aperçu et l'application rendent le MÊME rapport,
+        seul ``applique`` change, si bien que l'écran ne peut pas afficher
+        deux choses différentes selon le mode.
+
+        Réservé responsable/admin (l'action déplace des centaines de dossiers
+        au froid et pose des cadences ; ce n'est pas un geste de file
+        quotidienne) — garde répétée dans ``get_permissions``, qui PRIME sur
+        le ``permission_classes`` de l'@action (bug CI #25)."""
+        apply = request.data.get('apply')
+        if apply in (None, ''):
+            apply = False
+        if not isinstance(apply, bool):
+            return Response(
+                {'apply': 'Booléen attendu (true pour appliquer).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .services import placer_anciens_leads
+        rapport = placer_anciens_leads(
+            request.user.company, request.user, apply=apply)
+        return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -2100,6 +2133,11 @@ _DEFAULT_TAGS = [
     'Attente facture',
     'Injoignable 6 appels',
     'Devis sans suite',
+    # MRY30 — l'étiquette du dormant JAMAIS CHIFFRÉ, posée par
+    # `services.placer_anciens_leads` : seedée pour la même raison que les
+    # deux précédentes (arriver sans couleur ni libellé dans Paramètres → CRM
+    # ferait croire à une saisie libre).
+    'Jamais chiffré',
 ]
 
 
