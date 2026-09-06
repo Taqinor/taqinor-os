@@ -223,3 +223,51 @@ class TestAUD123MontantDebite(Xctr22TestBase):
         self.assertEqual(facture.montant_du, Decimal('0'))
         self.assertIsNone(debiter_mandat_pour_facture(
             facture=facture, periode='2026-07'))
+
+
+class TestAudv18CreerFactureContratDebiteLeMandat(Xctr22TestBase):
+    """AUDV18 — branchement additif XCTR22 : le chemin RÉEL de facturation
+    récurrente des contrats de maintenance (``sav.services.
+    facturer_contrat_maintenance_beat`` → ``facturer_contrat_maintenance`` →
+    ``ventes.services.creer_facture_contrat``) doit tenter le débit du
+    mandat actif du client juste après avoir émis la facture. Le branchement
+    vit dans ``facturer_contrat_maintenance`` (APRÈS la ligne d'usage XCTR16
+    éventuelle, AUD151 — jamais dans ``creer_facture_contrat`` lui-même, qui
+    ignore encore l'usage à ce stade), mais ce test couvre le chemin PUBLIC
+    de bout en bout, pas un point d'appel interne précis. ROUGE avant ce
+    correctif : le débit n'était jamais tenté depuis ce chemin, malgré le
+    docstring de ``debiter_mandat_pour_facture`` l'annonçant explicitement."""
+
+    def _contrat_maintenance(self, **extra):
+        from datetime import date
+        from apps.sav.models import ContratMaintenance
+        defaults = dict(
+            company=self.company, client=self.client_obj,
+            periodicite='annuel', date_debut=date(2024, 1, 1),
+            actif=True, prix=Decimal('3000'), facturation_active=True,
+            derniere_facturation=None)
+        defaults.update(extra)
+        return ContratMaintenance.objects.create(**defaults)
+
+    def test_beat_maintenance_debite_le_mandat_actif(self):
+        from apps.sav import services as sav_services
+        self._mandat()
+        contrat = self._contrat_maintenance()
+        facture = sav_services.facturer_contrat_maintenance_beat(contrat)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        paiement = Paiement.objects.get(facture=facture)
+        self.assertEqual(paiement.mode, Paiement.Mode.CARTE)
+        tentative = TentativeDebitMandat.objects.get(
+            mandat__client=self.client_obj,
+            periode=timezone.localdate().strftime('%Y-%m'))
+        self.assertEqual(
+            tentative.statut, TentativeDebitMandat.Statut.REUSSI)
+
+    def test_beat_maintenance_sans_mandat_comportement_inchange(self):
+        from apps.sav import services as sav_services
+        contrat = self._contrat_maintenance()
+        facture = sav_services.facturer_contrat_maintenance_beat(contrat)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.EMISE)
+        self.assertFalse(Paiement.objects.filter(facture=facture).exists())

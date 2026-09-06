@@ -264,6 +264,13 @@ def creer_facture_contrat(*, contrat, user, company):
       - Statut EMISE directement (facture manuelle de redevance).
       - Après création, `derniere_facturation` du contrat est avancée à aujourd'hui.
 
+    XCTR22 (AUDV18) — le débit du mandat de prélèvement actif n'est PAS
+    déclenché ICI volontairement : le SEUL appelant (`sav.services.
+    facturer_contrat_maintenance`) ajoute encore la ligne d'usage XCTR16
+    APRÈS ce retour (AUD151, montant final recalculé depuis les lignes) —
+    débiter ici sous-facturerait tout contrat à tarif d'usage. Le branchement
+    vit donc dans l'appelant, une fois le montant définitif connu.
+
     Lève ValueError si les pré-conditions ne sont pas remplies.
     Renvoie la Facture créée.
     """
