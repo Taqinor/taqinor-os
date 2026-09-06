@@ -8,6 +8,7 @@ Multi-tenant via ``TenantMixin`` : référence/société/created_by posés côt�
 serveur ; les FK liées sont validées tenant. Cross-app : ``stock.Fournisseur``
 en string-FK.
 """
+from django.db.models import F
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -240,10 +241,12 @@ class RFQViewSet(CompanyScopedModelViewSet):
         results = []
         for consultation in qs:
             res = rfq_service.envoyer_consultation(consultation, request)
-            consultation.nb_relances += 1
-            consultation.derniere_relance_le = timezone.now()
-            consultation.save(
-                update_fields=['nb_relances', 'derniere_relance_le'])
+            # AUD829 — F() atomic increment (single UPDATE, no
+            # read-decide-write race on nb_relances across concurrent
+            # relance requests on the same consultation).
+            RFQConsultation.objects.filter(pk=consultation.pk).update(
+                nb_relances=F('nb_relances') + 1,
+                derniere_relance_le=timezone.now())
             results.append(res)
         return Response({'resultats': results})
 

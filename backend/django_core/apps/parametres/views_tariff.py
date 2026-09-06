@@ -11,6 +11,7 @@ Deux endpoints de calcul (lecture seule, tout rôle) exposent le service :
 * ``productible`` : productible PVGIS au point GPS exact (repli manuel
   hors-ligne — fonctionne sans réseau).
 """
+from django.db.models import F
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -81,8 +82,13 @@ def update_tariff_settings(request):
             field=field, field_label=label, old=old, new=new,
         )
     if changed:
-        updated.version = (updated.version or 1) + 1
-        updated.save(update_fields=['version'])
+        # AUD829 — F() atomic increment: a bare read-decide-write
+        # (updated.version = updated.version + 1; save()) loses an update
+        # under two concurrent PUT/PATCH (lost-update anomaly on the
+        # tarification version counter itself).
+        TariffSettings.objects.filter(pk=updated.pk).update(
+            version=F('version') + 1)
+        updated.refresh_from_db(fields=['version'])
 
     return Response(TariffSettingsSerializer(updated).data)
 
