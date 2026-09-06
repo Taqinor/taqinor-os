@@ -107,6 +107,11 @@ class RuleMatchingTests(TestCase):
         self.assertEqual(LeadActivity.objects.count(), 0)
 
     def test_devis_accepted_trigger(self):
+        # AUD823 — le déclencheur écoute l'ÉVÉNEMENT MÉTIER `devis_accepted`
+        # (bus M6), plus le `post_save` brut : on l'émet donc comme le fait le
+        # chemin gardé d'acceptation (apps.ventes.domain.cycle_vie).
+        from core.events import devis_accepted
+
         AutomationRule.objects.create(
             company=self.co, nom='Devis accepté',
             trigger_type=TriggerType.DEVIS_ACCEPTED, trigger_config={},
@@ -117,6 +122,8 @@ class RuleMatchingTests(TestCase):
             client=client)
         devis.statut = 'accepte'
         devis.save()
+        devis_accepted.send(
+            sender=Devis, devis=devis, user=None, ancien_statut='brouillon')
         run = AutomationRun.objects.filter(
             rule__trigger_type=TriggerType.DEVIS_ACCEPTED).first()
         self.assertIsNotNone(run)
