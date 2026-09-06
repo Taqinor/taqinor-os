@@ -115,15 +115,29 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         company = self.request.user.company
+        client = serializer.validated_data.get('client')
+        devis = serializer.validated_data.get('devis')
+        # AUD117 — LA GARDE ERR13 N'EST PLUS CONDITIONNELLE. Elle vivait dans
+        # un `if company is not None:` : elle était donc INACTIVE pour le seul
+        # profil qui peut voir les objets de tous les tenants (superutilisateur
+        # sans société), c'est-à-dire exactement celui contre lequel elle
+        # protège. Quand l'utilisateur n'a pas de société, on la DÉRIVE des
+        # objets validés (devis d'abord, puis client) au lieu de désactiver le
+        # contrôle — et on exige alors que les deux concordent.
+        if company is None:
+            derivee = (getattr(devis, 'company', None)
+                       or getattr(client, 'company', None))
+            if derivee is None:
+                raise ValidationError({
+                    'detail': ('Aucune société ne peut être déterminée pour '
+                               'ce bon de commande.')})
+            company = derivee
         # ERR13 — client/devis du corps doivent appartenir à la société (refuse
         # de lier un BC au client/devis d'un autre tenant).
-        if company is not None:
-            client = serializer.validated_data.get('client')
-            devis = serializer.validated_data.get('devis')
-            if client is not None and client.company_id != company.id:
-                raise ValidationError({'client': 'Client inconnu.'})
-            if devis is not None and devis.company_id != company.id:
-                raise ValidationError({'devis': 'Devis inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+        if devis is not None and devis.company_id != company.id:
+            raise ValidationError({'devis': 'Devis inconnu.'})
         create_numbered(
             BonCommande, company, 'bon_commande',
             lambda ref: serializer.save(reference=ref, company=company),
@@ -404,7 +418,23 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        company = request.user.company
+        # AUD117 — LA SOCIÉTÉ VIENT DU BON DE COMMANDE, PAS DE L'UTILISATEUR.
+        # La règle maison est « company forcée côté serveur, jamais issue de la
+        # requête » : elle venait bien du serveur, mais du MAUVAIS objet
+        # serveur. Un superutilisateur sans société (`_company_qs` laisse
+        # passer TOUS les BC dans ce cas) facturait le BC de la société A et la
+        # facture naissait dans SA société — ou sans société : invisible pour
+        # son propriétaire légitime, et comptée dans le CA d'un autre tenant.
+        # Le BC est déjà scopé par `get_object` : c'est LA source de vérité.
+        if bc.company_id is None:
+            return Response(
+                {'detail': (
+                    'Ce bon de commande n\'appartient à aucune société : '
+                    'impossible d\'émettre une facture.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        company = bc.company
 
         def _create_facture(ref):
             # AUD113 — le taux de TÊTE est le REPLI des lignes sans taux, et
