@@ -15,7 +15,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('paie', '0045_aud713_unicite_depot_bds_principal'),
+        ('paie', '0046_audv21_elementvariable_source_flotte'),
     ]
 
     operations = [
