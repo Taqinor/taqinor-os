@@ -71,7 +71,11 @@ class Aud807SecurityFieldsAuditedTest(TestCase):
                 'lockout_max_attempts': 3,
                 'lockout_duration_minutes': 30,
                 'session_absolute_hours': 8,
-                'allow_device_trust': False,
+                # `allow_device_trust` défaut = False (NTSEC14) : la valeur
+                # doit RÉELLEMENT changer (True) pour que le diff old!=new de
+                # `_audit_profile_changes` écrive une ligne — patcher la
+                # même valeur que le défaut n'est jamais un changement audité.
+                'allow_device_trust': True,
             }, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         fields = set(SettingsAuditLog.objects.filter(
