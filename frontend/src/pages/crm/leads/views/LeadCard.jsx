@@ -70,6 +70,19 @@ function requestFocusSection(leadId, section) {
 const formatDateFr = (iso) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR')
 
+// MRY16 — heure Casablanca de la prochaine touche de cadence (comme
+// `RelancesDuJourWidget.jsx heureDue`, fuseau EXPLICITE — jamais l'heure
+// locale du navigateur). `null` si absente/invalide (aucune touche program-
+// mée pour ce lead, le badge ne rend alors rien).
+const heureToucheFr = (iso) => {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  return new Intl.DateTimeFormat('fr-FR', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Casablanca',
+  }).format(t)
+}
+
 // Date locale du jour au format YYYY-MM-DD (comparaison de chaînes fiable).
 const isEnRetard = (iso) => {
   const t = new Date()
@@ -427,6 +440,25 @@ function LeadCard({
             <span className="kb-card-score-micro">
               <ScoreBadge lead={lead} />
             </span>
+            {/* MRY16 — badge de la prochaine touche de cadence (crm.RelanceEtape,
+                MRY5) : heure Casablanca, rouge si `touche_en_retard`. Distinct
+                de la ligne d'action « Relance en retard » ci-dessous (qui lit
+                `relance_date`, le rappel manuel unique) — condition à sa
+                présence (`prochaine_touche_at`), donc silencieux pour un lead
+                sans cadence active. */}
+            {lead.prochaine_touche_at && (
+              <span
+                className={`kb-card-touche-micro${lead.touche_en_retard ? ' kb-card-touche-micro--retard' : ''}`}
+                title={nbsp(lead.touche_en_retard
+                  ? 'Touche de relance en retard'
+                  : 'Prochaine touche de relance')}
+                aria-label={nbsp(
+                  `${lead.touche_en_retard ? 'Touche en retard' : 'Prochaine touche'} — ${heureToucheFr(lead.prochaine_touche_at)}`,
+                )}
+              >
+                {heureToucheFr(lead.prochaine_touche_at)}
+              </span>
+            )}
             {/* LB14 — pastille de rotting : le liseré `[data-rot='danger']` et
                 la pill d'âge existent déjà ; cette pastille rend le niveau
                 lisible au repos même quand la pill d'âge est absente. */}

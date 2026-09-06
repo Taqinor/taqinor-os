@@ -244,6 +244,14 @@ export const EMPTY_FILTERS = {
   // filterLeads l'ignore ; portée par le même état pour hériter gratuitement
   // de la persistance session + URL. Défaut : dernier lead arrivé en haut.
   tri: 'recent',
+  // MRY16 — moteur de relances (crm.RelanceEtape, MRY5/MRY20) : distinct de
+  // `relance` ci-dessus (qui lit `Lead.relance_date`, le rappel manuel unique)
+  // — ici on lit les champs de la CADENCE structurée, déjà posés sur le lead
+  // par `LeadViewSet.get_queryset` (aucun appel réseau supplémentaire).
+  // 'due' = une prochaine touche est programmée (`prochaine_touche_at` posé) ;
+  // 'retard' = cette touche est en retard (`touche_en_retard`, drapeau serveur).
+  touche: '', // '' | 'due' | 'retard'
+  tentatives: '', // '' | '7plus' (nb_tentatives >= 7)
 }
 
 // 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).
@@ -313,6 +321,13 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
     // LB24 — « Chauds » (tuile KPI) : `score_label` calculé serveur
     // (apps/crm/scoring.py) — 'Chaud' | 'Tiède' | 'Froid'.
     if (f.score === 'chaud' && (l.score_label ?? '') !== 'Chaud') return false
+    // MRY16 — touche de cadence due / en retard (distinct de `relance`
+    // ci-dessus, qui lit `relance_date`).
+    if (f.touche === 'due' && !l.prochaine_touche_at) return false
+    if (f.touche === 'retard' && !l.touche_en_retard) return false
+    // MRY16 — 7 tentatives = la cadence contact au complet sans contact
+    // (Protocole de rappel v3, MRY4 : 6 appels + 5 WhatsApp au maximum).
+    if (f.tentatives === '7plus' && (l.nb_tentatives ?? 0) < 7) return false
     if (!q) return true
     return (
       (l.nom ?? '').toLowerCase().includes(q) ||
