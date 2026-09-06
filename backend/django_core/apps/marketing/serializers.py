@@ -38,6 +38,7 @@ from apps.compta.serializers import (  # noqa: F401
     SupportOfflineSerializer,
     TypeEvenementSerializer,
 )
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -155,6 +156,7 @@ class ParametresMarketingSerializer(serializers.ModelSerializer):
                   'webhook_secret', 'webhook_secret_configure',
                   'webhook_url_brevo', 'webhook_url_sms_stop']
 
+    @extend_schema_field(serializers.BooleanField())
     def get_webhook_secret_configure(self, obj):
         return bool((obj.webhook_secret or '').strip())
 
@@ -162,10 +164,12 @@ class ParametresMarketingSerializer(serializers.ModelSerializer):
         from .services import generer_cle_webhook
         return generer_cle_webhook(obj.company_id)
 
+    @extend_schema_field(serializers.CharField())
     def get_webhook_url_brevo(self, obj):
         """URL à coller chez Brevo (la clé désigne la société — AUD616)."""
         return f'/api/django/marketing/webhooks/brevo/{self._cle(obj)}/'
 
+    @extend_schema_field(serializers.CharField())
     def get_webhook_url_sms_stop(self, obj):
         """URL à coller chez l'agrégateur SMS (AUD616)."""
         return f'/api/django/marketing/webhooks/sms-stop/{self._cle(obj)}/'

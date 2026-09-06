@@ -850,6 +850,7 @@ class BonCommandeSerializer(serializers.ModelSerializer):
             return bool(annote)
         return Facture.objects.filter(bon_commande=obj).exists()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_facture_active(self, obj):
         # AUD118 — même annotation servie par le viewset, filtrée sur les
         # factures NON annulées : c'est elle qui décide si l'annulation du BC

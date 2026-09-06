@@ -10,6 +10,8 @@ d'annulation pour une action réversible.
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole
@@ -115,6 +117,7 @@ class AgentActionConfirmerView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
     def post(self, request):
         data = request.data or {}
         action_key = (data.get('action_key') or '').strip()

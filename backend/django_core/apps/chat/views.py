@@ -814,6 +814,9 @@ class MessageReminderViewSet(viewsets.ReadOnlyModelViewSet):
     programmé PAR ERREUR n'avait aucun moyen d'être annulé."""
     serializer_class = MessageReminderSerializer
     permission_classes = [IsAuthenticated]
+    # drf-spectacular : base d'introspection du paramètre de chemin (le
+    # runtime passe toujours par get_queryset ci-dessous).
+    queryset = MessageReminder.objects.none()
 
     def get_queryset(self):
         # Scopé société (`message__company`, MessageReminder n'a pas de FK

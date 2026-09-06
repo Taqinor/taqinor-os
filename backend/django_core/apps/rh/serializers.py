@@ -5,6 +5,7 @@ le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
 appartenant à la société de l'utilisateur.
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -543,6 +544,7 @@ class SoldeCongeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation', 'date_modification']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_droit_annuel(self, obj):
         from datetime import date as _date
 
@@ -633,6 +635,7 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             'justificatif', 'justificatif_url', 'justificatif_nom',
         ]
 
+    @extend_schema_field(serializers.CharField())
     def get_justificatif_url(self, obj):
         if obj.justificatif_attachment_id:
             return (f'/api/django/records/attachments/'
@@ -1842,6 +1845,7 @@ class CandidatureSerializer(serializers.ModelSerializer):
             # range dans MinIO et pose ``cv_attachment``.
             'cv_fichier', 'cv_url', 'cv_nom']
 
+    @extend_schema_field(serializers.CharField())
     def get_cv_url(self, obj):
         if obj.cv_attachment_id:
             return (f'/api/django/records/attachments/'

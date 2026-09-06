@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
@@ -174,6 +175,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'
 
+    @extend_schema_field(serializers.IntegerField())
     def get_lead_score(self, obj):
         return getattr(obj.lead, 'score', None)
 
