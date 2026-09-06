@@ -572,7 +572,12 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
     ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
     l'instant est recalé sur la fenêtre d'appel de la société
-    (``horaires.prochain_creneau_appel``, MRY8). Une touche marquée
+    (``horaires.prochain_creneau_appel``, MRY8). EXCEPTION pour les touches du
+    JOUR MÊME (``delai_jours == 0`` sans ``heure_cible``) : elles s'enchaînent
+    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart)``) et non
+    depuis l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait
+    ses trois premières touches écrasées sur la même minute d'ouverture. Une
+    touche marquée
     ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
     dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
     dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
@@ -623,8 +628,19 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     elif timezone.is_naive(depart):
         depart = timezone.make_aware(depart, datetime.timezone.utc)
 
+    # MRY5/MRY8 — l'ORIGINE des touches du jour même : le premier instant
+    # réellement appelable à partir du départ. Sans elle, chaque touche J0
+    # était recalée INDÉPENDAMMENT, et un lead arrivé la nuit ou le week-end
+    # voyait ses trois premières touches (J0+0, J0+3 min, J0+2 h 30) écrasées
+    # sur la MÊME minute d'ouverture — 08:30, 08:30, 08:30 : trois rappels
+    # simultanés au lieu d'une séquence, et un « rappelé dans les cinq
+    # minutes » qui ne voulait plus rien dire.
+    origine = horaires.prochain_creneau_appel(depart, lead.company)
+
     etapes = []
     for gabarit in gabarits:
+        delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
+        heure_cible = getattr(gabarit, 'heure_cible', None)
         if getattr(gabarit, 'dimanche_ok', False):
             # MRY4/MRY8 — une touche dominicale se PLACE sur un dimanche, elle
             # ne s'y recale pas. `prochain_creneau_appel` ne sait que borner un
@@ -640,11 +656,15 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             if echeance < depart:  # garde-fou : jamais dans le passé
                 echeance = horaires.prochain_dimanche(
                     echeance + timedelta(days=1))
+        elif gabarit.delai_jours == 0 and heure_cible is None:
+            # Les touches DU JOUR MÊME s'enchaînent depuis l'origine ouvrable,
+            # pas depuis l'heure brute d'arrivée du lead : les écarts du
+            # protocole (3 min, 2 h 30) sont ainsi PRÉSERVÉS quelle que soit
+            # l'heure d'arrivée.
+            echeance = origine + timedelta(minutes=delai_minutes)
         else:
             echeance = depart + timedelta(
-                days=gabarit.delai_jours,
-                minutes=getattr(gabarit, 'delai_minutes', 0) or 0)
-            heure_cible = getattr(gabarit, 'heure_cible', None)
+                days=gabarit.delai_jours, minutes=delai_minutes)
             if heure_cible is not None:
                 locale = echeance.astimezone(horaires.CASABLANCA)
                 echeance = locale.replace(

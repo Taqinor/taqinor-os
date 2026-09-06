@@ -93,6 +93,57 @@ class CadenceContactTests(TestCase):
                 etape.due_at.astimezone(horaires.CASABLANCA).date())
 
 
+class OrigineDesTouchesDuJourTests(TestCase):
+    """MRY5/MRY8 — les trois touches du JOUR MÊME gardent leurs écarts.
+
+    Chaque touche J0 était recalée INDÉPENDAMMENT sur la fenêtre d'appel : un
+    lead arrivé la nuit ou le week-end voyait les touches 1, 2 et 3 (J0+0,
+    J0+3 min, J0+2 h 30) écrasées sur la MÊME minute d'ouverture — 08:30,
+    08:30, 08:30. Trois rappels simultanés au lieu d'une séquence, et un
+    « rappelé dans les cinq minutes » qui ne voulait plus rien dire.
+    """
+
+    def setUp(self):
+        self.company = _company('mry5-origine')
+        self.acteur = User.objects.create_user(
+            username='mry5-origine-u', password='x',
+            role_legacy='responsable', company=self.company)
+
+    def _heures(self, depart):
+        lead = Lead.objects.create(
+            company=self.company, nom='Prospect', owner=self.acteur)
+        etapes = initialiser_plan_relance(
+            lead, self.acteur, depart=depart, cadence='contact')
+        trois = sorted(etapes, key=lambda e: e.ordre)[:3]
+        return [e.due_at.astimezone(horaires.CASABLANCA) for e in trois]
+
+    def test_un_lead_du_dimanche_midi_est_appele_en_sequence_le_lundi(self):
+        # Dimanche 6 septembre 2026, 12:28 → ouverture lundi 7 à 08:30.
+        heures = self._heures(datetime.datetime(
+            2026, 9, 6, 12, 28, tzinfo=horaires.CASABLANCA))
+        self.assertEqual(
+            [(h.date(), h.hour, h.minute) for h in heures],
+            [(datetime.date(2026, 9, 7), 8, 30),
+             (datetime.date(2026, 9, 7), 8, 33),
+             (datetime.date(2026, 9, 7), 11, 0)])
+
+    def test_un_lead_arrive_dans_la_fenetre_est_inchange(self):
+        # Mardi 8 septembre 2026, 11:00 — déjà appelable.
+        heures = self._heures(datetime.datetime(
+            2026, 9, 8, 11, 0, tzinfo=horaires.CASABLANCA))
+        self.assertEqual(
+            [(h.date(), h.hour, h.minute) for h in heures],
+            [(datetime.date(2026, 9, 8), 11, 0),
+             (datetime.date(2026, 9, 8), 11, 3),
+             (datetime.date(2026, 9, 8), 13, 30)])
+
+    def test_les_trois_touches_ne_tombent_jamais_a_la_meme_minute(self):
+        """LE défaut, énoncé comme propriété."""
+        heures = self._heures(datetime.datetime(
+            2026, 9, 6, 12, 28, tzinfo=horaires.CASABLANCA))
+        self.assertEqual(len({h for h in heures}), 3)
+
+
 class ToucheDominicaleTests(TestCase):
     """MRY4/MRY8 — l'« appel du dimanche » tombe un DIMANCHE.
 
