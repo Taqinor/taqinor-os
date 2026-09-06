@@ -147,6 +147,35 @@ class ValidationCreationTests(TestCase):
             format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
+    def test_une_regle_heritee_dangereuse_reste_desactivable(self):
+        """Un PATCH partiel ne revalide pas l'action : on peut couper la règle.
+
+        Refuser ce PATCH empêcherait de DÉSACTIVER une règle héritée au champ
+        interdit — exactement l'inverse du but d'AUD821.
+        """
+        regle = AutomationRule.objects.create(
+            company=self.co, nom='Héritée dangereuse',
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'stage', 'value': 'SIGNED'}, enabled=True)
+        resp = self.api.patch(
+            f'{URL_RULES}{regle.pk}/', {'enabled': False}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        regle.refresh_from_db()
+        self.assertFalse(regle.enabled)
+
+    def test_modifier_laction_dune_regle_heritee_revalide(self):
+        regle = AutomationRule.objects.create(
+            company=self.co, nom='Héritée dangereuse 2',
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'stage', 'value': 'SIGNED'}, enabled=True)
+        resp = self.api.patch(
+            f'{URL_RULES}{regle.pk}/',
+            {'action_config': {'field': 'statut', 'value': 'accepte'}},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_les_autres_actions_restent_inchangees(self):
         payload = self._payload({})
         payload['action_type'] = ActionType.CREATE_ACTIVITY

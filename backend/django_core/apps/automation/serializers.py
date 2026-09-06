@@ -89,6 +89,12 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
         refait le contrôle STRICT sur le couple réel. Un ``action_config`` qui
         précise ``model`` est validé sur le COUPLE tout de suite.
         """
+        # On ne valide QUE ce qui est réellement écrit : sinon un PATCH partiel
+        # ({'enabled': False}) sur une règle HÉRITÉE au champ interdit serait
+        # refusé — on empêcherait de DÉSACTIVER la règle dangereuse, l'inverse
+        # du but. Toucher à l'action (type ou config) revalide, toujours.
+        if 'action_config' not in attrs and 'action_type' not in attrs:
+            return
         action_type = attrs.get(
             'action_type', getattr(self.instance, 'action_type', None))
         if action_type != ActionType.SET_FIELD:
