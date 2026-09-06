@@ -96,19 +96,79 @@ class ContratActivityAdmin(CompanyScopedAdmin):
 
 @admin.register(SignatureContrat)
 class SignatureContratAdmin(CompanyScopedAdmin):
+    """AUD510 — une SIGNATURE est une PREUVE : elle se lit, jamais ne se
+    modifie ni ne se supprime.
+
+    Cet admin etait un ``ModelAdmin`` nu : un simple compte ``is_staff`` avec
+    les permissions modele par defaut pouvait SUPPRIMER une ``SignatureContrat``
+    ou en reecrire le nom du signataire depuis ``/django-admin/``. La promesse
+    d'immuabilite ne tenait que cote API DRF (``ReadOnlyModelViewSet``) ; la
+    porte admin restait grande ouverte sur la piece qui rend un contrat
+    opposable (loi 53-05). Meme patron de verrous que ``ClientAdmin`` /
+    ``WebsiteLeadPayloadAdmin`` deja en place dans le depot.
+    """
+
     list_display = ('id', 'contrat', 'role_signataire', 'signataire_nom',
                     'signataire', 'methode', 'date_signature', 'company')
     list_filter = ('role_signataire', 'methode')
     search_fields = ('signataire_nom',)
 
+    def has_delete_permission(self, request, obj=None):
+        """Verrou 1 — aucune suppression, pour personne (superuser compris)."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Verrou 2 — aucune modification : une preuve reecrite n'en est plus
+        une."""
+        return False
+
+    def has_add_permission(self, request):
+        """Verrou 3 — une signature se cree par l'action ``signer`` (qui pose
+        les preuves IP/user-agent cote serveur), jamais a la main ici."""
+        return False
+
+    def get_actions(self, request):
+        """Verrou 4 — retire l'action groupee ``delete_selected``, le chemin
+        le plus dangereux (aucun repli)."""
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
 
 @admin.register(VersionContrat)
 class VersionContratAdmin(CompanyScopedAdmin):
+    """AUD510 — un INSTANTANE se lit, jamais ne se reecrit.
+
+    Le docstring du modele promet l'immuabilite ; cet admin laissait pourtant
+    ``contenu`` MODIFIABLE (``readonly_fields`` ne couvrait que ``version`` et
+    ``cree_le``) et la suppression ouverte. Un instantane reecrit ne fige plus
+    rien : c'est exactement ce que la version existe pour empecher.
+    """
+
     list_display = ('id', 'contrat', 'version', 'motif', 'fichier_key',
                     'cree_par', 'cree_le', 'company')
     list_filter = ('version',)
     search_fields = ('motif', 'fichier_key')
     readonly_fields = ('version', 'cree_le')
+
+    def has_delete_permission(self, request, obj=None):
+        """Verrou 1 — aucune suppression, pour personne (superuser compris)."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Verrou 2 — aucune modification (``contenu`` compris)."""
+        return False
+
+    def has_add_permission(self, request):
+        """Verrou 3 — une version se cree par ``creer_version`` (signature,
+        avenant, resiliation), jamais a la main ici."""
+        return False
+
+    def get_actions(self, request):
+        """Verrou 4 — retire l'action groupee ``delete_selected``."""
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
 
 
 @admin.register(AlerteContrat)
