@@ -78,14 +78,28 @@ class TestDebitReussi(Xctr22TestBase):
 
     def test_trois_cycles_trois_paiements_zero_doublon(self):
         self._mandat()
-        p1 = debiter_mandat_pour_facture(facture=self.facture, periode='2026-05')
-        p2 = debiter_mandat_pour_facture(facture=self.facture, periode='2026-06')
-        p3 = debiter_mandat_pour_facture(facture=self.facture, periode='2026-07')
+        # AUD123 — le débit est désormais BORNÉ au reste dû. Trois cycles, ce
+        # sont donc trois FACTURES (une par période), comme en facturation
+        # récurrente réelle : rejouer la MÊME facture déjà soldée ne prélève
+        # plus rien, et c'est exactement le double-prélèvement que AUD123 ferme.
+        factures = [self.facture] + [
+            Facture.objects.create(
+                company=self.company, reference=f'FAC-XCTR22-000{n}',
+                client=self.client_obj, statut=Facture.Statut.EMISE,
+                taux_tva=Decimal('20.00'), montant_ttc=Decimal('1200.00'))
+            for n in (2, 3)
+        ]
+        paiements = [
+            debiter_mandat_pour_facture(facture=f, periode=p)
+            for f, p in zip(factures, ('2026-05', '2026-06', '2026-07'))
+        ]
+        self.assertNotIn(None, paiements)
         self.assertEqual(
-            {p1.id, p2.id, p3.id},
+            {p.id for p in paiements},
             set(Paiement.objects.filter(
-                facture=self.facture).values_list('id', flat=True)))
-        self.assertEqual(Paiement.objects.filter(facture=self.facture).count(), 3)
+                facture__in=factures).values_list('id', flat=True)))
+        self.assertEqual(
+            Paiement.objects.filter(facture__in=factures).count(), 3)
 
     def test_jamais_deux_debits_reussis_meme_periode(self):
         self._mandat()
