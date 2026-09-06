@@ -197,13 +197,23 @@ class OrigineMiroirTests(TestCase):
             MetaLeadMirror.objects.get(leadgen_id='42').origine, 'webhook')
 
 
+#: Sentinelle distincte de ``None`` — un ``since_unix=None`` explicite ET un
+#: appel qui n'en passe aucun sont deux choses différentes pour ce double de
+#: test (MRY0 lot B) : le pull quotidien appelle ``get_ad_leads(ad_id)`` SANS
+#: le mot-clé, le filet de rattrapage l'appelle avec une vraie valeur. Un
+#: simple défaut ``None`` masquerait la différence — voir
+#: ``test_pull_quotidien_nutilise_pas_de_fenetre``.
+_AUCUN_APPEL = object()
+
+
 class FauxClient:
     def __init__(self, leads):
         self._leads = leads
         self.since_recu = 'jamais-appele'
 
-    def get_ad_leads(self, ad_id, since_unix=None):
-        self.since_recu = since_unix
+    def get_ad_leads(self, ad_id, since_unix=_AUCUN_APPEL):
+        if since_unix is not _AUCUN_APPEL:
+            self.since_recu = since_unix
         return self._leads
 
     def get_ad_targeting_ids(self, ad_id):

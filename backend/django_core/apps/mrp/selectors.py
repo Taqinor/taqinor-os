@@ -488,7 +488,14 @@ def oee_tendance_hebdomadaire(company, poste_id, debut, fin):
     operations = list(_operations_terminees_poste(poste, debut, fin))
     par_semaine = {}
     for op in operations:
-        annee, semaine, _ = op.terminee_le.isocalendar()
+        # AUD836 — `terminee_le` revient de l'ORM en UTC ; le filtre
+        # `__date` du sélecteur ci-dessus raisonne déjà en TIME_ZONE locale
+        # (Africa/Casablanca). Grouper par semaine ISO sur le brut UTC
+        # désynchronise les deux : une opération de lundi 00h locale (dimanche
+        # 23h UTC, TIME_ZONE = UTC+1) tombait alors dans la semaine ISO
+        # PRÉCÉDENTE. `localtime()` aligne le regroupement sur le même
+        # calendrier métier que le filtre.
+        annee, semaine, _ = dj_timezone.localtime(op.terminee_le).isocalendar()
         par_semaine.setdefault((annee, semaine), []).append(op)
 
     resultats = []

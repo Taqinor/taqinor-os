@@ -28,7 +28,11 @@ class VersionsLandingTests(TestCase):
                       kwargs={'slug': 'pompage'})
         res = self.client.get(url)
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()['champs'], [{'nom': 'nom'}])
+        # AUD607 — le contrat des champs publics est désormais UNIFORME :
+        # chaque entrée porte toujours le drapeau ``deja_rempli`` (False sans
+        # jeton de propriété prouvée), jamais un dict nu.
+        self.assertEqual(res.json()['champs'],
+                         [{'nom': 'nom', 'deja_rempli': False}])
         self.assertIsNone(res.json()['page'])
 
     def test_chaque_edition_cree_une_nouvelle_version_brouillon(self):

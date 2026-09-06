@@ -646,12 +646,18 @@ REGISTRE = {
     'administratif': Producteur(
         generateur='administratif',
         libelle='Dossier administratif',
-        # AUD604 — ce producteur n'appelle AUCUNE fonction de fabrique : il
-        # assemble les SCANS déjà rattachés au dossier (records/MinIO), il ne
-        # rend rien. Citer ici `pack_pdf:fusionner_pack` (comme le faisait
-        # l'entrée non montée) aurait été faux : cette fonction crée un
-        # document GED, or un pack de dépôt ne doit rien laisser derrière lui.
-        fabriques=(),
+        # AUD604/AUD603 — ce producteur assemble des SCANS déjà rattachés au
+        # dossier (records/MinIO), il ne rend rien : citer ici
+        # `pack_pdf:fusionner_pack` (comme le faisait l'entrée non montée)
+        # aurait été faux, cette fonction crée un document GED, or un pack de
+        # dépôt ne doit rien laisser derrière lui. La fabrique RÉELLEMENT
+        # appelée par `_monter_administratif` est le sélecteur ci-dessous
+        # (le stockage MinIO est le socle transverse, hors `apps.ao.fabrique`
+        # — voir PACT180 `HORS_REGISTRE_JUSTIFIE`) : la nommer ici est ce qui
+        # évite que ce producteur reste orphelin.
+        fabriques=(
+            'apps.ao.fabrique.producteurs:_pieces_administratives_a_fusionner',
+        ),
         monteur=_monter_administratif,
     ),
     'acte_engagement': Producteur(

@@ -41,7 +41,7 @@ class BaseDossierComplet(TestCase):
             objet='Fourniture et installation d\'une centrale photovoltaïque',
             acheteur='FRDISI', maitre_ouvrage='FRDISI',
             site_adresse='Route de Nouaceur, Casablanca',
-            mode_passation='Appel d\'offres ouvert',
+            mode_passation=AppelOffre.ModePassation.APPEL_OUVERT,
             delai_execution_jours=120, validite_offre_jours=75)
         IdentiteAO.objects.create(
             company=self.company, appel_offre=self.ao,
