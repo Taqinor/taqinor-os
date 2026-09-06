@@ -2054,6 +2054,47 @@ def lead_a_un_devis(lead):
     ).exclude(statut=Devis.Statut.BROUILLON).exists()
 
 
+def leads_avec_devis_accepte(company, lead_ids):
+    """MRY30 — sous-ensemble de ``lead_ids`` portant AU MOINS un devis
+    ACCEPTÉ. Renvoie un ``set`` d'identifiants de leads.
+
+    Lecture cross-app pour ``apps.crm`` (le placement des anciens leads doit
+    ÉCARTER un dossier déjà accepté : le relancer reviendrait à demander
+    « alors, ce devis ? » à quelqu'un qui a dit oui — il n'attend qu'un
+    passage en Signé, à la main). EN LOT : le placement traite plusieurs
+    centaines de leads, une requête par lead serait un N+1 assumé."""
+    from .models import Devis
+    ids = list(lead_ids or [])
+    if not ids:
+        return set()
+    return set(Devis.objects.filter(
+        company=company, lead_id__in=ids, statut=Devis.Statut.ACCEPTE,
+    ).values_list('lead_id', flat=True))
+
+
+def dernier_devis_envoye_par_lead(company, lead_ids):
+    """MRY30 — ``{lead_id: Devis}`` du devis ENVOYÉ le PLUS RÉCENT de chaque
+    lead demandé (statut ``envoye`` uniquement, ``date_envoi`` renseignée).
+
+    Lecture cross-app pour ``apps.crm`` : le placement des anciens leads date
+    la cadence « après devis » depuis l'envoi RÉEL. Le statut compte autant
+    que la date — un devis accepté, refusé ou expiré n'attend plus de
+    réponse. EN LOT, pour la même raison que ci-dessus."""
+    from .models import Devis
+    ids = list(lead_ids or [])
+    if not ids:
+        return {}
+    par_lead = {}
+    # Tri CROISSANT : la dernière ligne écrite pour un lead est donc la plus
+    # récente. `id` départage deux envois à la même seconde.
+    for devis in Devis.objects.filter(
+            company=company, lead_id__in=ids,
+            statut=Devis.Statut.ENVOYE, date_envoi__isnull=False,
+    ).order_by('lead_id', 'date_envoi', 'id'):
+        par_lead[devis.lead_id] = devis
+    return par_lead
+
+
 def devis_en_cours(company):
     """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
 

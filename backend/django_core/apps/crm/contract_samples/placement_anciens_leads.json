@@ -31,7 +31,8 @@
       }
     ],
     "reveils_jusqu_au": "2026-10-14",
-    "applique": 0
+    "applique": 0,
+    "erreurs": 0
   },
   "exemple_vide": {
     "apply": false,
@@ -44,7 +45,8 @@
     "par_etape": [],
     "apercu": [],
     "reveils_jusqu_au": null,
-    "applique": 0
+    "applique": 0,
+    "erreurs": 0
   },
   "notes": {
     "total_candidats": "leads vivants de la société hors Froid/Signé, non perdus, non archivés, sans « ne plus contacter » (miroir Odoo inclus).",
@@ -53,6 +55,7 @@
     "par_etape": "un objet par code de décision, dans l'ordre ci-dessus ; `cadence` ∈ {contact, apres_devis, reveil}. `nombre` est un entier, jamais null.",
     "apercu": "les 20 premiers leads à placer (ordre : `jours` croissant) ; `stage_libelle` = libellé français de l'étape actuelle (STAGES.py) ; `prochaine_touche` = libellé de la première touche À FAIRE créée ; `prochaine_le` = son `due_at` ISO Africa/Casablanca ; `ancre` = date locale.",
     "reveils_jusqu_au": "date locale de la dernière première-touche de réveil étalée (8 leads par jour ouvré), null sans dormant.",
-    "applique": "nombre de leads réellement placés ; toujours 0 en aperçu."
+    "applique": "nombre de leads réellement placés ; toujours 0 en aperçu.",
+    "erreurs": "nombre de leads dont le placement a échoué (best-effort lead par lead : une erreur n'arrête jamais les autres, elle est journalisée et comptée ici). 0 en fonctionnement normal ; compté aussi en aperçu, où il annonce l'échec que `--apply` rencontrerait."
   }
 }
