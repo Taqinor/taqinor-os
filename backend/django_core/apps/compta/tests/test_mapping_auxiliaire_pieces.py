@@ -253,19 +253,33 @@ class PieceJustificativeTests(TestCase):
             ])
 
     def test_api_ajout_piece_pose_company_et_user(self):
+        # AUD835 — la pièce part dans MinIO : le pipeline n'accepte que les
+        # formats documentaires réels (PDF/PNG/JPEG/WebP), d'où le PDF ici à la
+        # place de l'ancien `text/plain` que le `FileField` avalait sans rien
+        # vérifier.
+        from unittest import mock
+
         from django.core.files.uploadedfile import SimpleUploadedFile
         user = make_user(self.co, 'pj-user')
         api = auth(user)
-        f = SimpleUploadedFile('recu.txt', b'contenu', content_type='text/plain')
-        resp = api.post(
-            '/api/django/compta/pieces-justificatives/',
-            {'ecriture': self.ecriture.id, 'libelle': 'Reçu', 'fichier': f},
-            format='multipart')
+        f = SimpleUploadedFile('recu.pdf', b'%PDF-1.4 recu',
+                               content_type='application/pdf')
+        meta = ({'file_key': f'attachments/{self.co.id}/recu.pdf',
+                 'filename': 'recu.pdf', 'size': 13,
+                 'mime': 'application/pdf'}, None)
+        with mock.patch('apps.records.storage.store_attachment',
+                        return_value=meta):
+            resp = api.post(
+                '/api/django/compta/pieces-justificatives/',
+                {'ecriture': self.ecriture.id, 'libelle': 'Reçu', 'fichier': f},
+                format='multipart')
         self.assertEqual(resp.status_code, 201, resp.data)
         piece = PieceJustificative.objects.get(id=resp.data['id'])
         self.assertEqual(piece.company_id, self.co.id)
         self.assertEqual(piece.ajoute_par_id, user.id)
         self.assertEqual(piece.ecriture_id, self.ecriture.id)
+        self.assertEqual(piece.fichier_key,
+                         f'attachments/{self.co.id}/recu.pdf')
 
     def test_api_liste_filtre_par_ecriture(self):
         PieceJustificative.objects.create(

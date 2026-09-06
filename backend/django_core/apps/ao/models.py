@@ -2577,9 +2577,22 @@ class PieceSoumission(TenantModel):
     obligatoire = models.BooleanField(
         default=True, verbose_name='Obligatoire')
     fournie = models.BooleanField(default=False, verbose_name='Fournie')
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur sans qu'aucune URL ne puisse le resservir (ni ``MEDIA_URL``/
+    # ``MEDIA_ROOT``, ni route ``/media/``, ni ``location /media/`` nginx). Il
+    # reste en base pour les lignes historiques ; le contenu vit désormais dans
+    # MinIO, désigné par ``fichier_key`` (conventions ``records.storage``).
     fichier = models.FileField(
         upload_to='compta/soumissions/', null=True, blank=True,
-        verbose_name='Document')
+        verbose_name='Document (legacy, hors MinIO)')
+    fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     date_depot = models.DateField(
         null=True, blank=True, verbose_name='Date de dépôt')
 

@@ -289,15 +289,26 @@ class SinistreApiTests(TestCase):
         self.assertEqual(len(rows(resp)), 1)
 
     def test_constat_fichier_upload(self):
+        # AUD835 - la piece part dans MinIO (`records.storage`) : la preuve
+        # du depot est la CLE ; le `FileField` legacy reste vide (son URL ne
+        # resolvait nulle part : ni MEDIA_URL, ni route /media/, ni nginx).
+        from unittest import mock
+
         f = SimpleUploadedFile(
             "constat.pdf", b"%PDF-1.4 fake", content_type="application/pdf")
-        resp = auth(self.admin_a).post(URL, {
-            "actif_flotte": self.actif.id,
-            "date_sinistre": "2026-06-01",
-            "description": "Accrochage avec constat.",
-            "constat_fichier": f,
-        }, format="multipart")
+        meta = ({"file_key": f"attachments/{self.co_a.id}/constat.pdf",
+                 "filename": "constat.pdf", "size": 13,
+                 "mime": "application/pdf"}, None)
+        with mock.patch("apps.records.storage.store_attachment",
+                        return_value=meta):
+            resp = auth(self.admin_a).post(URL, {
+                "actif_flotte": self.actif.id,
+                "date_sinistre": "2026-06-01",
+                "description": "Accrochage avec constat.",
+                "constat_fichier": f,
+            }, format="multipart")
         self.assertEqual(resp.status_code, 201, resp.data)
         s = Sinistre.objects.get()
-        self.assertTrue(s.constat_fichier.name)
-        self.assertIn("flotte/sinistres/constats/", s.constat_fichier.name)
+        self.assertEqual(s.constat_fichier_key,
+                         f"attachments/{self.co_a.id}/constat.pdf")
+        self.assertFalse(s.constat_fichier)

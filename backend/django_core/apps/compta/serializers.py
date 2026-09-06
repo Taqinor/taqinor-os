@@ -10,6 +10,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.records.storage import AttachmentSerializerMixin, attachment_url
+
 from .models import (
     AcompteIS, ConventionFiscale,
     AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
@@ -1050,27 +1052,40 @@ class PlanRelanceTresorerieSerializer(serializers.ModelSerializer):
         return value
 
 
-class NoteFraisSerializer(serializers.ModelSerializer):
+class NoteFraisSerializer(AttachmentSerializerMixin,
+                          serializers.ModelSerializer):
     """Note de frais employé (FG135).
 
     La création n'expose que les champs de saisie (employé, dépense,
     justificatif photo) ; ``company``/``reference``/statut et les écritures sont
     posés côté serveur. Le cycle (soumise/validée/rejetée/remboursée) évolue par
     les actions de service, jamais par écriture directe du corps.
+
+    AUD835 — le justificatif part dans MinIO : ``justificatif`` est l'entrée
+    d'upload (écriture seule, routée par ``services.creer_note_frais`` à la
+    création et par le mixin sur une mise à jour), ``justificatif_url`` l'URL
+    présignée de relecture (``None`` pour une note antérieure à la bascule).
     """
+    attachment_fields = ('justificatif',)
+
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     employe_nom = serializers.CharField(
         source='employe.get_full_name', read_only=True, default='')
+    justificatif = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    justificatif_url = serializers.SerializerMethodField()
 
     class Meta:
         model = NoteFrais
         fields = [
             'id', 'reference', 'employe', 'employe_nom', 'date_frais',
             'categorie', 'categorie_display', 'montant', 'motif',
-            'justificatif', 'statut', 'statut_display', 'compte_charge',
+            'justificatif', 'justificatif_url', 'justificatif_filename',
+            'justificatif_size', 'justificatif_mime',
+            'statut', 'statut_display', 'compte_charge',
             'valide_par', 'date_validation', 'ecriture_charge', 'motif_rejet',
             'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
             'rembourse_par', 'ecriture_remboursement', 'date_creation',
@@ -1086,7 +1101,12 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
             'date_creation', 'hors_politique', 'facture_refacturation_id',
             'escalade_direction', 'warning_delai',
+            'justificatif_filename', 'justificatif_size', 'justificatif_mime',
         ]
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_justificatif_url(self, obj):
+        return attachment_url(obj, 'justificatif')
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
@@ -2550,7 +2570,15 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
             self, value, _resoudre_facture, 'Facture')
 
 
-class DocumentClientPortailSerializer(serializers.ModelSerializer):
+class DocumentClientPortailSerializer(AttachmentSerializerMixin,
+                                      serializers.ModelSerializer):
+    # AUD835 — l'upload part dans MinIO (``records.storage``) au lieu du
+    # ``FileField`` irrécupérable ; le dépôt GED canonique (WIR94) relit les
+    # octets par la clé (``apps/portail/receivers.py``). Le champ reste
+    # ÉCRIVABLE et jamais rendu : on n'expose toujours aucune URL brute, la
+    # relecture passe par la GED authentifiée (``lien_ged``).
+    attachment_fields = ('fichier',)
+
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
     client_id = serializers.IntegerField(min_value=0)
     lead_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
@@ -2582,8 +2610,13 @@ class DocumentClientPortailSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.BooleanField())
     def get_fichier_present(self, obj):
-        """Y a-t-il un binaire déposé ? (sans jamais publier son URL brute)"""
-        return bool(getattr(obj, 'fichier', None))
+        """Y a-t-il un binaire déposé ? (sans jamais publier son URL brute)
+
+        AUD835 — une clé MinIO compte autant que l'ancien ``FileField`` : un
+        document déposé après la bascule n'a plus que la clé.
+        """
+        return bool(getattr(obj, 'fichier_key', '')
+                    or getattr(obj, 'fichier', None))
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lien_ged(self, obj):
@@ -2898,14 +2931,36 @@ class CompteAuxiliaireSerializer(serializers.ModelSerializer):
 
 # ── COMPTA10 — Pièces justificatives sur écriture ──────────────────────────
 
-class PieceJustificativeSerializer(serializers.ModelSerializer):
+class PieceJustificativeSerializer(AttachmentSerializerMixin,
+                                   serializers.ModelSerializer):
+    """AUD835 — la pièce part dans MinIO (``records.storage``), plus dans un
+    ``FileField`` dont l'URL ne résolvait nulle part.
+
+    ``fichier`` reste l'entrée d'upload (multipart, écriture seule) ;
+    ``fichier_url`` est l'URL présignée dérivée de la clé — ``None`` pour une
+    pièce déposée avant la bascule, jamais une URL morte.
+    """
+    attachment_fields = ('fichier',)
+
+    fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PieceJustificative
         fields = [
-            'id', 'ecriture', 'libelle', 'fichier', 'ajoute_par',
+            'id', 'ecriture', 'libelle', 'fichier', 'fichier_url',
+            'fichier_filename', 'fichier_size', 'fichier_mime', 'ajoute_par',
             'date_creation',
         ]
-        read_only_fields = ['ajoute_par', 'date_creation']
+        read_only_fields = [
+            'ajoute_par', 'date_creation', 'fichier_filename', 'fichier_size',
+            'fichier_mime',
+        ]
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_fichier_url(self, obj):
+        return attachment_url(obj, 'fichier')
 
     def validate_ecriture(self, value):
         return _meme_societe(self, value, 'Écriture')

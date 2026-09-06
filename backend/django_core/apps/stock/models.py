@@ -2170,9 +2170,23 @@ class FicheTechnique(models.Model):
                   'alors son hypothèse de référence et le dit.')
 
     # ── PDF constructeur d'origine (optionnel) ──
+    #
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/``,
+    # sans ``location /media/`` nginx — le PDF n'était téléchargeable par
+    # personne. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``pdf_key``.
     pdf = models.FileField(
         upload_to='stock/fiches_techniques/%Y/%m/', null=True, blank=True,
-        help_text='Fiche technique PDF du constructeur.')
+        help_text='Fiche technique PDF du constructeur (legacy, hors MinIO).')
+    pdf_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    pdf_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    pdf_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    pdf_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)

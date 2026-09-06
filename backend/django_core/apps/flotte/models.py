@@ -1429,9 +1429,23 @@ class OrdreReparation(models.Model):
     montant_devis = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         verbose_name='Montant du devis (MAD)')
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``devis_fichier_key``.
     devis_fichier = models.FileField(
         upload_to='flotte/ordres_reparation/devis/%Y/%m/',
-        blank=True, null=True, verbose_name='Devis (scan)')
+        blank=True, null=True,
+        verbose_name='Devis (scan, legacy hors MinIO)')
+    devis_fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    devis_fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    devis_fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    devis_fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     approuve_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -2015,9 +2029,23 @@ class AssuranceVehicule(models.Model):
         verbose_name='Franchise (MAD)')
     # Attestation d'assurance scannée — stockée via le storage projet (même
     # convention que ``compta.NoteFrais.justificatif``).
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``attestation_key``.
     attestation = models.FileField(
         upload_to='flotte/assurances/attestations/%Y/%m/',
-        blank=True, null=True, verbose_name="Attestation d'assurance")
+        blank=True, null=True,
+        verbose_name="Attestation d'assurance (legacy, hors MinIO)")
+    attestation_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    attestation_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    attestation_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    attestation_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     # Marge d'alerte (jours) : si l'échéance tombe dans cette fenêtre, la police
     # passe « à renouveler ». 'a_renouveler' (12) est le plus long code de statut.
     alerte_jours = models.PositiveIntegerField(
@@ -2344,13 +2372,40 @@ class CarteGriseVehicule(models.Model):
         verbose_name="Validité de l'autorisation de circulation")
     # Documents scannés — stockés via le storage projet (même convention que
     # ``AssuranceVehicule.attestation``).
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``carte_grise_fichier_key``.
     carte_grise_fichier = models.FileField(
         upload_to='flotte/cartes_grises/%Y/%m/',
-        blank=True, null=True, verbose_name='Carte grise (scan)')
+        blank=True, null=True,
+        verbose_name='Carte grise (scan, legacy hors MinIO)')
+    carte_grise_fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    carte_grise_fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    carte_grise_fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    carte_grise_fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``autorisation_fichier_key``.
     autorisation_fichier = models.FileField(
         upload_to='flotte/autorisations_circulation/%Y/%m/',
         blank=True, null=True,
-        verbose_name="Autorisation de circulation (scan)")
+        verbose_name="Autorisation de circulation (scan, legacy hors MinIO)")
+    autorisation_fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    autorisation_fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    autorisation_fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    autorisation_fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     # Marge d'alerte (jours) : si la validité de l'autorisation tombe dans cette
     # fenêtre, le document passe « à renouveler ». 'a_renouveler' (12) est le
     # plus long code de statut.
@@ -2479,9 +2534,23 @@ class Sinistre(models.Model):
         max_length=255, blank=True, verbose_name='Lieu')
     # Constat amiable scanné — même convention de storage que les autres
     # documents flotte (cf. ``AssuranceVehicule.attestation``).
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``constat_fichier_key``.
     constat_fichier = models.FileField(
         upload_to='flotte/sinistres/constats/%Y/%m/',
-        blank=True, null=True, verbose_name='Constat amiable')
+        blank=True, null=True,
+        verbose_name='Constat amiable (legacy, hors MinIO)')
+    constat_fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    constat_fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    constat_fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    constat_fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     numero_declaration = models.CharField(
         max_length=80, blank=True, verbose_name='Numéro de déclaration')
     montant_estime = models.DecimalField(
@@ -2612,9 +2681,23 @@ class Infraction(models.Model):
         verbose_name="Montant de l'amende (MAD)")
     # PV scanné — même convention de storage que les autres documents flotte
     # (cf. ``Sinistre.constat_fichier``).
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``pv_fichier_key``.
     pv_fichier = models.FileField(
         upload_to='flotte/infractions/pv/%Y/%m/',
-        blank=True, null=True, verbose_name='PV scanné')
+        blank=True, null=True,
+        verbose_name='PV scanné (legacy, hors MinIO)')
+    pv_fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    pv_fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    pv_fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    pv_fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     # 'contestee' (9) est le plus long code de statut.
     statut = models.CharField(
         max_length=9, choices=Statut.choices, default=Statut.A_PAYER,
@@ -3542,9 +3625,23 @@ class SignalementVehicule(models.Model):
         verbose_name='Auteur',
     )
     description = models.TextField(verbose_name='Description')
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``photo_key``.
     photo = models.FileField(
         upload_to='flotte/signalements/photos/%Y/%m/',
-        blank=True, null=True, verbose_name='Photo')
+        blank=True, null=True,
+        verbose_name='Photo (legacy, hors MinIO)')
+    photo_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    photo_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    photo_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    photo_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     gravite = models.CharField(
         max_length=8, choices=Gravite.choices, default=Gravite.MOYENNE,
         verbose_name='Gravité')
@@ -4067,9 +4164,23 @@ class CharteVehicule(models.Model):
         verbose_name='Société',
     )
     version = models.PositiveIntegerField(verbose_name='Version')
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/`` et
+    # sans ``location /media/`` nginx — le document n'était récupérable par
+    # PERSONNE. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``document_key``.
     document = models.FileField(
         upload_to='flotte/chartes_vehicule/%Y/%m/',
-        verbose_name='Document (charte véhicule)')
+        blank=True, null=True,
+        verbose_name='Document (charte véhicule, legacy hors MinIO)')
+    document_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    document_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    document_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    document_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     date_publication = models.DateTimeField(
         auto_now_add=True, verbose_name='Date de publication')
 

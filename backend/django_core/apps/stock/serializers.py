@@ -1,6 +1,9 @@
 from django.db import IntegrityError, models, transaction
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
+
+from apps.records.storage import AttachmentSerializerMixin, attachment_url
+
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -1605,11 +1608,21 @@ class RevisionKitSerializer(serializers.ModelSerializer):
         return (f'{u.first_name} {u.last_name}'.strip() or u.username)
 
 
-class FicheTechniqueSerializer(serializers.ModelSerializer):
+class FicheTechniqueSerializer(AttachmentSerializerMixin,
+                               serializers.ModelSerializer):
     """DC35 — datasheet rattachée à un produit. Expose en LECTURE quelques
     champs du produit (marque/garantie/nom) pour éviter au front de re-saisir
     ou re-stocker l'identité : elle vit sur ``Produit`` et n'est jamais copiée
-    sur la fiche."""
+    sur la fiche.
+
+    AUD835 — le PDF constructeur part dans MinIO (``records.storage``) : ``pdf``
+    est l'entrée d'upload (écriture seule), ``pdf_url`` l'URL présignée de
+    relecture (``None`` pour une fiche antérieure à la bascule)."""
+    attachment_fields = ('pdf',)
+
+    pdf = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    pdf_url = serializers.SerializerMethodField()
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_marque = serializers.CharField(
         source='produit.marque', read_only=True)
@@ -1645,10 +1658,18 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
             # BATHOMO (2026-08-26) — plafond fondateur du nombre de modules
             # identiques par banque (vide = illimité).
             'bat_max_modules_par_banc',
-            'pdf', 'date_creation', 'date_mise_a_jour',
+            'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
+            'date_creation', 'date_mise_a_jour',
         ]
         # company is force-assigned in perform_create — never from the body.
-        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
+        read_only_fields = [
+            'company', 'date_creation', 'date_mise_a_jour',
+            'pdf_filename', 'pdf_size', 'pdf_mime',
+        ]
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_pdf_url(self, obj):
+        return attachment_url(obj, 'pdf')
 
     def validate_produit(self, value):
         """Le produit doit appartenir à la société du demandeur (anti

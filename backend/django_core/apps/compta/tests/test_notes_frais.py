@@ -217,19 +217,32 @@ class NoteFraisApiTests(TestCase):
         }
 
     def test_endpoint_create_avec_justificatif(self):
+        # AUD835 — le justificatif part dans MinIO (`records.storage`), plus
+        # dans un `FileField` dont l'URL ne résolvait nulle part : ce qui prouve
+        # le dépôt est désormais la CLÉ, pas le champ legacy (resté vide).
+        from unittest import mock
+
         api = auth(self.user_a)
         photo = SimpleUploadedFile(
             'ticket.jpg', b'\xff\xd8\xff\xe0fakejpeg',
             content_type='image/jpeg')
         payload = self._create_payload(self.employe_a.id)
         payload['justificatif'] = photo
-        resp = api.post(
-            '/api/django/compta/notes-frais/', payload, format='multipart')
+        meta = ({'file_key': f'attachments/{self.co_a.id}/ticket.jpg',
+                 'filename': 'ticket.jpg', 'size': 12,
+                 'mime': 'image/jpeg'}, None)
+        with mock.patch('apps.records.storage.store_attachment',
+                        return_value=meta):
+            resp = api.post(
+                '/api/django/compta/notes-frais/', payload, format='multipart')
         self.assertEqual(resp.status_code, 201, resp.data)
         note = NoteFrais.objects.get(id=resp.data['id'])
         self.assertEqual(note.company_id, self.co_a.id)
         self.assertTrue(note.reference.startswith('NDF-'))
-        self.assertTrue(bool(note.justificatif))
+        self.assertEqual(note.justificatif_key,
+                         f'attachments/{self.co_a.id}/ticket.jpg')
+        self.assertEqual(note.justificatif_mime, 'image/jpeg')
+        self.assertFalse(note.justificatif)
 
     def test_endpoint_full_cycle(self):
         api = auth(self.user_a)

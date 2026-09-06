@@ -100,12 +100,22 @@ class Aud805PiecesJustificativesTests(Aud805Base):
             PieceJustificative.objects.filter(ecriture=ec).count(), 0)
 
     def test_piece_sur_ecriture_brouillon_reste_gerable(self):
+        # AUD835 — le dépôt passe par MinIO (`records.storage`) : on le mocke
+        # pour que ce test reste une assertion sur la RÈGLE AUD805, pas sur la
+        # disponibilité du stockage objet.
+        from unittest import mock
+
         ec = self._ecriture(date(2026, 4, 3), 'Brouillon', '400')
-        res = self.api.post(URL_PIECES, {
-            'ecriture': ec.id, 'libelle': 'Reçu',
-            'fichier': SimpleUploadedFile(
-                'h.pdf', b'%PDF-1.4', 'application/pdf'),
-        }, format='multipart')
+        meta = ({'file_key': f'attachments/{self.co.id}/h.pdf',
+                 'filename': 'h.pdf', 'size': 8,
+                 'mime': 'application/pdf'}, None)
+        with mock.patch('apps.records.storage.store_attachment',
+                        return_value=meta):
+            res = self.api.post(URL_PIECES, {
+                'ecriture': ec.id, 'libelle': 'Reçu',
+                'fichier': SimpleUploadedFile(
+                    'h.pdf', b'%PDF-1.4', 'application/pdf'),
+            }, format='multipart')
         self.assertEqual(res.status_code, 201)
         piece_id = res.data['id']
         res = self.api.delete(f'{URL_PIECES}{piece_id}/')

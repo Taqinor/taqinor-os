@@ -4,6 +4,7 @@ nouvelle. On accepte PDF + images courantes ; pas de traitement d'image (donc
 pas besoin d'un nouveau package) — on stocke le fichier tel quel."""
 import io
 import os
+import typing
 import uuid
 
 from django.conf import settings
@@ -133,6 +134,150 @@ def presign_attachment(key):
             ExpiresIn=3600)
     except Exception:
         return None
+
+
+# --- AUD835 — routage des pièces jointes portées par un MODÈLE ---------------
+# AUD309 a montré le patron : un modèle qui portait un ``FileField`` Django
+# brut porte désormais quatre colonnes (clé MinIO + métadonnées) et son upload
+# passe par ``store_attachment``. Le ``FileField`` historique reste en base,
+# vide et jamais réécrit, pour ne rien perdre des lignes anciennes.
+#
+# Ces deux helpers évitent de recopier treize fois le même quadruplet (AUD835 :
+# ao, compta, frais, portail, stock + les 8 champs de flotte). Le PRÉFIXE est
+# le nom du champ historique (``fichier`` → ``fichier_key``,
+# ``fichier_filename``, ``fichier_size``, ``fichier_mime``) : un modèle qui
+# porte DEUX pièces jointes (``flotte.CarteGriseVehicule``) garde deux jeux de
+# colonnes distincts, sans ambiguïté.
+
+#: Suffixes des colonnes posées sur le modèle, dans l'ordre du dict rendu.
+ATTACHMENT_SUFFIXES = ('key', 'filename', 'size', 'mime')
+
+
+def attachment_field_names(prefixe):
+    """Noms des 4 colonnes pour ce préfixe (``('fichier_key', …)``)."""
+    return tuple(f'{prefixe}_{suffixe}' for suffixe in ATTACHMENT_SUFFIXES)
+
+
+def store_attachment_fields(file, *, prefixe, company=None, audio=False):
+    """Téléverse ``file`` et rend ``(dict des 4 colonnes, None)``.
+
+    ``(None, message)`` si le format est refusé ou le fichier trop volumineux —
+    l'appelant décide (400 DRF côté sérialiseur, message côté service). Le
+    stockage lui-même reste ``store_attachment`` : même bucket, même validation
+    d'octets magiques, même préfixe de clé par société (SCA42).
+    """
+    meta, erreur = store_attachment(file, audio=audio, company=company)
+    if meta is None:
+        return None, erreur
+    return {
+        f'{prefixe}_key': meta['file_key'],
+        f'{prefixe}_filename': meta['filename'],
+        f'{prefixe}_size': meta['size'],
+        f'{prefixe}_mime': meta['mime'],
+    }, None
+
+
+def attachment_url(instance, prefixe):
+    """URL présignée de la pièce jointe portée par ``instance``, ou ``None``.
+
+    ``None`` quand la ligne n'a pas de clé — typiquement une ligne HISTORIQUE
+    écrite avant AUD835, dont le ``FileField`` n'a jamais été servable (aucun
+    ``MEDIA_URL``/``MEDIA_ROOT``, aucune route ``/media/``, aucune ``location
+    /media/`` nginx). On rend ``None`` plutôt qu'une URL qui ne résout pas.
+    """
+    return presign_attachment(getattr(instance, f'{prefixe}_key', '') or '')
+
+
+def _fabrique_getter_url(prefixe):
+    """Méthode ``get_<champ>_url`` d'un ``SerializerMethodField`` (AUD835).
+
+    L'annotation de retour est OBLIGATOIRE : drf-spectacular résout le type
+    d'un ``SerializerMethodField`` par le type de retour, et un getter non
+    annoté produit un AVERTISSEMENT « unable to resolve type hint » que
+    ``check_openapi_schema.py`` (YAPIC6) refuse comme signature NOUVELLE.
+    """
+
+    def getter(self, obj) -> typing.Optional[str]:
+        return attachment_url(obj, prefixe)
+
+    getter.__name__ = f'get_{prefixe}_url'
+    return getter
+
+
+class AttachmentSerializerMixin:
+    """Sérialiseur dont un ou plusieurs champs fichier vont dans MinIO (AUD835).
+
+    À déclarer AVANT ``serializers.ModelSerializer`` dans les bases. Le
+    sérialiseur doit :
+
+    * lister ses champs dans ``attachment_fields`` (ex. ``('fichier',)``) ;
+    * déclarer chacun d'eux ``serializers.FileField(write_only=True,
+      required=False, allow_null=True)`` — le champ historique ne doit JAMAIS
+      être écrit, il n'est plus servable ;
+    * exposer, en lecture, ``<champ>_url`` (voir :func:`attachment_url`).
+
+    ``create``/``update`` remplacent alors le fichier par les quatre colonnes
+    ``<champ>_key/_filename/_size/_mime``. Un format refusé ou un fichier trop
+    volumineux lève une ``ValidationError`` DRF (400 propre) — jamais une ligne
+    créée avec une pièce jointe manquante en silence.
+    """
+
+    #: Noms des champs fichier routés vers MinIO.
+    attachment_fields = ()
+
+    def __init_subclass__(cls, **kwargs):
+        """Fournit le ``get_<champ>_url`` de chaque pièce jointe déclarée.
+
+        Un sérialiseur n'a donc qu'à déclarer ``<champ>_url =
+        serializers.SerializerMethodField()`` et à le lister dans
+        ``Meta.fields`` : la méthode qui le remplit (URL présignée, ``None``
+        sans clé) est posée ici, une fois, au lieu d'être recopiée treize fois.
+        Une méthode écrite à la main dans la classe reste PRIORITAIRE.
+        """
+        super().__init_subclass__(**kwargs)
+        for nom in getattr(cls, 'attachment_fields', ()) or ():
+            methode = f'get_{nom}_url'
+            if not hasattr(cls, methode):
+                setattr(cls, methode, _fabrique_getter_url(nom))
+
+    def _company_pour_stockage(self, validated_data, instance=None):
+        """Société qui préfixe la clé de stockage (SCA42), jamais lue du corps.
+
+        ``company`` arrive dans ``validated_data`` quand la vue la force
+        (``serializer.save(company=…)`` de ``TenantMixin``) ; sinon on la prend
+        sur l'instance modifiée, sinon sur l'utilisateur de la requête.
+        """
+        company = validated_data.get('company')
+        if company is None and instance is not None:
+            company = getattr(instance, 'company', None)
+        if company is None:
+            request = (getattr(self, 'context', None) or {}).get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+        return company
+
+    def _router_pieces_jointes(self, validated_data, instance=None):
+        from rest_framework.exceptions import ValidationError
+
+        company = self._company_pour_stockage(validated_data, instance)
+        for nom in self.attachment_fields:
+            if nom not in validated_data:
+                continue                      # champ absent : rien ne change
+            fichier = validated_data.pop(nom)
+            if not fichier:                   # None / '' : pièce jointe retirée
+                continue
+            champs, erreur = store_attachment_fields(
+                fichier, prefixe=nom, company=company)
+            if champs is None:
+                raise ValidationError({nom: erreur})
+            validated_data.update(champs)
+        return validated_data
+
+    def create(self, validated_data):
+        return super().create(self._router_pieces_jointes(validated_data))
+
+    def update(self, instance, validated_data):
+        return super().update(
+            instance, self._router_pieces_jointes(validated_data, instance))
 
 
 def delete_attachment(key):

@@ -305,9 +305,22 @@ class DocumentClientPortail(models.Model):
         verbose_name='Type de document')
     libelle = models.CharField(
         max_length=200, blank=True, default='', verbose_name='Libellé')
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/``,
+    # sans ``location /media/`` nginx — irrécupérable. Le contenu vit désormais
+    # dans MinIO (``records.storage``), désigné par ``fichier_key`` ; le dépôt
+    # GED canonique (WIR94, ``receivers.py``) relit les octets depuis cette clé.
     fichier = models.FileField(
         upload_to='compta/portail_docs/', null=True, blank=True,
-        verbose_name='Fichier')
+        verbose_name='Fichier (legacy, hors MinIO)')
+    fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     # WIR94 — dépôt GED canonique du même fichier (voir receivers.py). Pas de
     # cascade métier sur suppression du document GED — la ligne portail garde
     # simplement trace du dépôt (SET_NULL).

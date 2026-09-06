@@ -6,6 +6,8 @@ n'est jamais acceptée (multi-tenant).
 """
 from rest_framework import serializers
 
+from apps.records.storage import AttachmentSerializerMixin
+
 from .models import (
     ActifFlotte,
     AffectationConducteur,
@@ -999,7 +1001,8 @@ class GarageSerializer(serializers.ModelSerializer):
         return value
 
 
-class OrdreReparationSerializer(serializers.ModelSerializer):
+class OrdreReparationSerializer(AttachmentSerializerMixin,
+                                serializers.ModelSerializer):
     """FLOTTE17 — Ordre de réparation d'un actif auprès d'un garage.
 
     ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
@@ -1023,6 +1026,15 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
     # si aucun type n'a été choisi (OR "non catégorisé").
     type_service_libelle = serializers.SerializerMethodField()
 
+    # AUD835 - piece(s) jointe(s) routee(s) vers MinIO (``records.storage``) :
+    # le champ historique reste l'ENTREE d'upload (ecriture seule), la lecture
+    # passe par l'URL presignee derivee de la cle - jamais l'ancien ``FileField``,
+    # dont l'URL ne resolvait nulle part.
+    attachment_fields = ('devis_fichier',)
+    devis_fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    devis_fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = OrdreReparation
         fields = [
@@ -1030,7 +1042,8 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
             'echeance', 'type_service', 'type_service_libelle', 'description',
             'date_ouverture', 'date_cloture',
             'statut', 'statut_display', 'cout_main_oeuvre', 'cout_pieces',
-            'cout_total', 'sous_garantie', 'montant_devis', 'devis_fichier',
+            'cout_total', 'sous_garantie', 'montant_devis', 'devis_fichier', 'devis_fichier_url', 'devis_fichier_filename',
+            'devis_fichier_size', 'devis_fichier_mime',
             'approuve_par', 'date_approbation', 'ecart_facture_devis_pct',
             'notes', 'date_creation',
         ]
@@ -1367,7 +1380,8 @@ class BaremeVignetteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class AssuranceVehiculeSerializer(serializers.ModelSerializer):
+class AssuranceVehiculeSerializer(AttachmentSerializerMixin,
+                                  serializers.ModelSerializer):
     """FLOTTE21 — Police d'assurance d'un actif de flotte.
 
     ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
@@ -1387,11 +1401,21 @@ class AssuranceVehiculeSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     statut_calcule = serializers.SerializerMethodField()
 
+    # AUD835 - piece(s) jointe(s) routee(s) vers MinIO (``records.storage``) :
+    # le champ historique reste l'ENTREE d'upload (ecriture seule), la lecture
+    # passe par l'URL presignee derivee de la cle - jamais l'ancien ``FileField``,
+    # dont l'URL ne resolvait nulle part.
+    attachment_fields = ('attestation',)
+    attestation = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    attestation_url = serializers.SerializerMethodField()
+
     class Meta:
         model = AssuranceVehicule
         fields = [
             'id', 'actif_flotte', 'actif_label', 'assureur', 'numero_police',
-            'date_debut', 'date_echeance', 'franchise', 'attestation',
+            'date_debut', 'date_echeance', 'franchise', 'attestation', 'attestation_url', 'attestation_filename',
+            'attestation_size', 'attestation_mime',
             'alerte_jours', 'statut', 'statut_display', 'statut_calcule',
             'notes', 'date_creation',
         ]
@@ -1510,7 +1534,8 @@ class VisiteTechniqueSerializer(serializers.ModelSerializer):
 
 # ── FLOTTE23 — Carte grise & autorisation de circulation ───────────────────────
 
-class CarteGriseVehiculeSerializer(serializers.ModelSerializer):
+class CarteGriseVehiculeSerializer(AttachmentSerializerMixin,
+                                   serializers.ModelSerializer):
     """FLOTTE23 — Carte grise & autorisation de circulation d'un actif.
 
     ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
@@ -1531,13 +1556,27 @@ class CarteGriseVehiculeSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     statut_calcule = serializers.SerializerMethodField()
 
+    # AUD835 - piece(s) jointe(s) routee(s) vers MinIO (``records.storage``) :
+    # le champ historique reste l'ENTREE d'upload (ecriture seule), la lecture
+    # passe par l'URL presignee derivee de la cle - jamais l'ancien ``FileField``,
+    # dont l'URL ne resolvait nulle part.
+    attachment_fields = ('carte_grise_fichier', 'autorisation_fichier',)
+    carte_grise_fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    carte_grise_fichier_url = serializers.SerializerMethodField()
+    autorisation_fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    autorisation_fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = CarteGriseVehicule
         fields = [
             'id', 'actif_flotte', 'actif_label', 'numero_carte_grise',
             'date_immatriculation', 'date_mise_circulation',
             'autorisation_circulation_numero', 'autorisation_date_validite',
-            'carte_grise_fichier', 'autorisation_fichier', 'alerte_jours',
+            'carte_grise_fichier', 'carte_grise_fichier_url', 'carte_grise_fichier_filename',
+            'carte_grise_fichier_size', 'carte_grise_fichier_mime', 'autorisation_fichier', 'autorisation_fichier_url', 'autorisation_fichier_filename',
+            'autorisation_fichier_size', 'autorisation_fichier_mime', 'alerte_jours',
             'statut', 'statut_display', 'statut_calcule', 'notes',
             'date_creation',
         ]
@@ -1567,7 +1606,8 @@ class CarteGriseVehiculeSerializer(serializers.ModelSerializer):
 
 # ── FLOTTE25 — Sinistres (accident / constat / assurance) ──────────────────────
 
-class SinistreSerializer(serializers.ModelSerializer):
+class SinistreSerializer(AttachmentSerializerMixin,
+                         serializers.ModelSerializer):
     """FLOTTE25 — Sinistre d'un actif de flotte (accident, vol, bris de glace…).
 
     ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
@@ -1587,12 +1627,22 @@ class SinistreSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
 
+    # AUD835 - piece(s) jointe(s) routee(s) vers MinIO (``records.storage``) :
+    # le champ historique reste l'ENTREE d'upload (ecriture seule), la lecture
+    # passe par l'URL presignee derivee de la cle - jamais l'ancien ``FileField``,
+    # dont l'URL ne resolvait nulle part.
+    attachment_fields = ('constat_fichier',)
+    constat_fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    constat_fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Sinistre
         fields = [
             'id', 'actif_flotte', 'actif_label', 'assurance',
             'date_sinistre', 'type_sinistre', 'type_sinistre_display',
-            'description', 'lieu', 'constat_fichier', 'numero_declaration',
+            'description', 'lieu', 'constat_fichier', 'constat_fichier_url', 'constat_fichier_filename',
+            'constat_fichier_size', 'constat_fichier_mime', 'numero_declaration',
             'montant_estime', 'franchise', 'statut', 'statut_display',
             'date_declaration', 'notes', 'date_creation',
         ]
@@ -1639,7 +1689,8 @@ class SinistreSerializer(serializers.ModelSerializer):
 
 # ── FLOTTE26 — Infractions / PV de circulation ─────────────────────────────────
 
-class InfractionSerializer(serializers.ModelSerializer):
+class InfractionSerializer(AttachmentSerializerMixin,
+                           serializers.ModelSerializer):
     """FLOTTE26 — Infraction / PV de circulation contre un actif de flotte.
 
     ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
@@ -1661,13 +1712,23 @@ class InfractionSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
 
+    # AUD835 - piece(s) jointe(s) routee(s) vers MinIO (``records.storage``) :
+    # le champ historique reste l'ENTREE d'upload (ecriture seule), la lecture
+    # passe par l'URL presignee derivee de la cle - jamais l'ancien ``FileField``,
+    # dont l'URL ne resolvait nulle part.
+    attachment_fields = ('pv_fichier',)
+    pv_fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    pv_fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Infraction
         fields = [
             'id', 'actif_flotte', 'actif_label', 'conducteur',
             'conducteur_nom', 'date_infraction', 'type_infraction',
             'type_infraction_display', 'lieu', 'reference_pv',
-            'montant_amende', 'pv_fichier', 'statut', 'statut_display',
+            'montant_amende', 'pv_fichier', 'pv_fichier_url', 'pv_fichier_filename',
+            'pv_fichier_size', 'pv_fichier_mime', 'statut', 'statut_display',
             'date_paiement', 'notes', 'imputation_auto',
             'date_limite_contestation', 'refacture_conducteur',
             'montant_retenu', 'date_creation',
@@ -2142,7 +2203,8 @@ class CoutVehiculeSerializer(serializers.ModelSerializer):
         return value
 
 
-class SignalementVehiculeSerializer(serializers.ModelSerializer):
+class SignalementVehiculeSerializer(AttachmentSerializerMixin,
+                                    serializers.ModelSerializer):
     """XFLT5 — Signalement d'anomalie véhicule déposé par un conducteur.
 
     ``company`` ET ``auteur`` sont posés côté serveur (jamais lus du corps de
@@ -2162,12 +2224,22 @@ class SignalementVehiculeSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     auteur_nom = serializers.SerializerMethodField()
 
+    # AUD835 - piece(s) jointe(s) routee(s) vers MinIO (``records.storage``) :
+    # le champ historique reste l'ENTREE d'upload (ecriture seule), la lecture
+    # passe par l'URL presignee derivee de la cle - jamais l'ancien ``FileField``,
+    # dont l'URL ne resolvait nulle part.
+    attachment_fields = ('photo',)
+    photo = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    photo_url = serializers.SerializerMethodField()
+
     class Meta:
         from .models import SignalementVehicule
         model = SignalementVehicule
         fields = [
             'id', 'actif_flotte', 'actif_label', 'conducteur', 'auteur',
-            'auteur_nom', 'description', 'photo', 'gravite',
+            'auteur_nom', 'description', 'photo', 'photo_url', 'photo_filename',
+            'photo_size', 'photo_mime', 'gravite',
             'gravite_display', 'statut', 'statut_display',
             'ordre_reparation', 'date_creation',
         ]
@@ -2314,14 +2386,28 @@ class GarantieFlotteSerializer(serializers.ModelSerializer):
 
 # ── XFLT17 — Charte véhicule + accusé de lecture ────────────────────────────────
 
-class CharteVehiculeSerializer(serializers.ModelSerializer):
+class CharteVehiculeSerializer(AttachmentSerializerMixin,
+                               serializers.ModelSerializer):
     """XFLT17 — Charte véhicule versionnée. ``company`` posée côté serveur ;
     ``version`` est posée côté serveur (auto-incrémentée) — jamais du body."""
+
+    # AUD835 - piece(s) jointe(s) routee(s) vers MinIO (``records.storage``) :
+    # le champ historique reste l'ENTREE d'upload (ecriture seule), la lecture
+    # passe par l'URL presignee derivee de la cle - jamais l'ancien ``FileField``,
+    # dont l'URL ne resolvait nulle part.
+    attachment_fields = ('document',)
+    document = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    document_url = serializers.SerializerMethodField()
 
     class Meta:
         from .models import CharteVehicule
         model = CharteVehicule
-        fields = ['id', 'version', 'document', 'date_publication']
+        fields = [
+            'id', 'version', 'document', 'document_url',
+            'document_filename', 'document_size', 'document_mime',
+            'date_publication',
+        ]
         read_only_fields = ['version', 'date_publication']
 
 

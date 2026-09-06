@@ -5004,7 +5004,20 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
         chantier_refacturation=chantier_refacturation or '',
     )
     if justificatif is not None:
-        note.justificatif = justificatif
+        # AUD835 — le justificatif part dans MinIO (clé préfixée par la société,
+        # SCA42) au lieu du ``FileField`` dont l'URL était structurellement
+        # morte. Un format refusé ou un fichier trop volumineux lève une
+        # ``ValidationError`` DRF → 400 propre, et AUCUNE note n'est créée.
+        from rest_framework.exceptions import ValidationError
+
+        from apps.records.storage import store_attachment_fields
+
+        champs, erreur = store_attachment_fields(
+            justificatif, prefixe='justificatif', company=company)
+        if champs is None:
+            raise ValidationError({'justificatif': erreur})
+        for nom, valeur in champs.items():
+            setattr(note, nom, valeur)
     note.full_clean(exclude=['reference', 'employe', 'created_by'])
     from apps.ventes.utils.references import create_with_reference
 
@@ -5157,10 +5170,12 @@ def valider_note_frais(note, *, user=None, compte_charge=None):
             f"frais du {note.date_frais}.")
     # XACC27 — au-delà du seuil configuré, le justificatif devient obligatoire.
     plafond = plafond_note_frais_pour(company, note.categorie)
+    # AUD835 — « avoir un justificatif » = une clé MinIO OU l'ancien FileField
+    # (lignes créées avant la bascule) : la règle XACC27 ne change pas de sens.
     if (plafond is not None
             and plafond.seuil_justificatif_obligatoire is not None
             and montant > plafond.seuil_justificatif_obligatoire
-            and not note.justificatif):
+            and not (note.justificatif_key or note.justificatif)):
         raise ValidationError(
             "Justificatif obligatoire : le montant dépasse le seuil de "
             f"{plafond.seuil_justificatif_obligatoire} pour cette catégorie.")

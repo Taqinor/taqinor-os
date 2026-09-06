@@ -96,10 +96,27 @@ class NoteFrais(models.Model):
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant (TTC)')
     motif = models.CharField(max_length=255, verbose_name='Motif')
-    # Justificatif PHOTO (scan du ticket/reçu) stocké via le storage projet.
+    # Justificatif PHOTO (scan du ticket/reçu).
+    #
+    # AUD835 — le contenu vit dans MinIO (``records.storage``), désigné par
+    # ``justificatif_key``. Le commentaire d'origine annonçait « stocké via le
+    # storage projet » alors que ce ``FileField`` écrivait sur le disque du
+    # conteneur, sans qu'aucune URL ne puisse le resservir (ni ``MEDIA_URL``/
+    # ``MEDIA_ROOT``, ni route ``/media/``, ni ``location /media/`` nginx) : le
+    # justificatif d'une note remboursée n'était récupérable par PERSONNE.
+    # Le champ reste en base, VIDE et jamais réécrit, pour les lignes anciennes.
     justificatif = models.FileField(
         upload_to='notes_frais/justificatifs/%Y/%m/',
-        blank=True, null=True, verbose_name='Justificatif (photo)')
+        blank=True, null=True,
+        verbose_name='Justificatif (photo, legacy hors MinIO)')
+    justificatif_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    justificatif_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    justificatif_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    justificatif_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     statut = models.CharField(
         max_length=12, choices=Statut.choices,
         default=Statut.BROUILLON, verbose_name='Statut')
