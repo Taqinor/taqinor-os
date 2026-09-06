@@ -25,6 +25,9 @@ TRACKED_FIELDS = {
     'tags': 'Tags',
     'perdu': 'Perdu',
     'motif_perte': 'Motif de perte',
+    # MRY5 — un « ne plus contacter » posé par erreur coupe toutes les
+    # relances futures : il doit laisser une trace datée et nommée.
+    'ne_plus_contacter': 'Ne plus contacter',
     'relance_date': 'Relance',
     'type_installation': "Type d'installation",
     'facture_hiver': 'Facture hiver',

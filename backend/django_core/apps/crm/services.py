@@ -19,6 +19,7 @@ The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
 import contextlib
+import datetime
 import hashlib as _hashlib
 import logging
 import re as _re
@@ -535,56 +536,121 @@ def sync_relance_activity(lead, user):
 # envoi automatique (WhatsApp/e-mail) n'est jamais déclenché ici — ce sont des
 # rappels VISUELS pour le commercial (panneau « Relances du jour »), jamais un
 # message sortant.
-def initialiser_plan_relance(lead, user, *, depart=None):
-    """Matérialise le plan de relance de ``lead`` à partir de la cadence par
-    défaut de sa société (``parametres.CadenceRelanceEtape.cadence_pour``).
+def _refus_cadence(lead, user, raison):
+    """Note chatter expliquant pourquoi AUCUNE cadence n'a été posée.
 
-    IDEMPOTENT : si ``lead`` porte déjà des étapes de relance, elles sont
-    renvoyées telles quelles (jamais de doublon — un second appel « à la
-    demande » sur le même lead ne réinitialise rien). ``depart`` (date) est le
-    point de départ du plan, par défaut aujourd'hui.
-
-    Pose aussi ``Lead.relance_date`` sur l'échéance de la toute première
-    étape (via ``sync_relance_activity``) : le Calendrier / « Ma file »
-    reflètent immédiatement la prochaine touche de la cadence, sans second
-    système de rappel concurrent.
-
-    Retourne la liste des ``RelanceEtape`` (créées ou déjà existantes, dans
-    l'ordre des étapes)."""
-    existantes = list(
-        lead.relance_etapes.order_by('ordre', 'due_date'))
-    if existantes:
-        return existantes
-
-    from datetime import timedelta
-
-    from apps.parametres.models_relance import Cadence, CadenceRelanceEtape
-    # MRY4 — le gabarit porte désormais TROIS cadences nommées en plus de
-    # l'échelle historique. Tant que ce service n'accepte pas de cadence
-    # (MRY5), il reste ÉPINGLÉ sur `generique` : c'est exactement ce qu'il
-    # produisait avant, jamais un changement de comportement en douce.
-    cadence = CadenceRelanceEtape.cadence_pour(lead.company, Cadence.GENERIQUE)
-    if not cadence:
-        return []
-
-    depart = depart or aujourd_hui_local()
-    etapes = []
-    for gabarit in cadence:
-        etapes.append(RelanceEtape(
-            company=lead.company, lead=lead, ordre=gabarit.ordre,
-            due_date=depart + timedelta(days=gabarit.delai_jours),
-            canal=gabarit.canal, libelle=gabarit.libelle,
-        ))
-    RelanceEtape.objects.bulk_create(etapes)
-    resultats = list(lead.relance_etapes.order_by('ordre', 'due_date'))
-
+    Un refus silencieux est le pire des deux mondes : Meryem croit le lead
+    relancé alors qu'il ne l'est pas. Le refus est donc toujours écrit."""
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE,
-        body=f"Plan de relance initialisé ({len(resultats)} étape(s), "
-             f"prochaine le {resultats[0].due_date}).")
+        body=f'Cadence de relance non initialisée : {raison}.')
+    return []
+
+
+def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
+                             devis=None):
+    """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
+    société (``parametres.CadenceRelanceEtape.cadence_pour``).
+
+    IDEMPOTENT **PAR CADENCE** (MRY5) : un lead peut porter simultanément sa
+    prise de contact et le suivi d'un devis ; l'ancienne idempotence globale
+    « ce lead a déjà des étapes » les aurait confondus et un devis envoyé
+    n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
+    plus portée PAR DEVIS.
+
+    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
+    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
+    ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
+    l'instant est recalé sur la fenêtre d'appel de la société
+    (``horaires.prochain_creneau_appel``, MRY8). Une touche marquée
+    ``dimanche_ok`` connaît la fenêtre dominicale 16 h-19 h du Protocole v3.
+    ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
+    leur grain jour.
+
+    REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
+    ou archivé — les trois cas où relancer serait une faute.
+
+    Pose aussi ``Lead.relance_date`` sur l'échéance de la première touche (via
+    ``sync_relance_activity``) : le Calendrier / « Ma file » reflètent la
+    prochaine touche sans second système de rappel concurrent.
+
+    Retourne la liste des ``RelanceEtape`` de CETTE cadence (créées ou déjà
+    existantes)."""
+    from datetime import timedelta
+
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    if getattr(lead, 'ne_plus_contacter', False):
+        return _refus_cadence(lead, user, 'lead marqué « ne plus contacter »')
+    if getattr(lead, 'perdu', False):
+        return _refus_cadence(lead, user, 'lead perdu')
+    if getattr(lead, 'is_archived', False):
+        return _refus_cadence(lead, user, 'lead archivé')
+
+    deja = lead.relance_etapes.filter(cadence=cadence)
+    if cadence == 'apres_devis' and devis is not None:
+        deja = deja.filter(devis=devis)
+    existantes = list(deja.order_by('ordre', 'due_date'))
+    if existantes:
+        return existantes
+
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if not gabarits:
+        return []
+
+    if depart is None:
+        depart = timezone.now()
+    elif not isinstance(depart, datetime.datetime):
+        # Rétro-compat : un appelant historique passe une DATE. On la place à
+        # l'ouverture de la fenêtre plutôt qu'à minuit (qui serait aussitôt
+        # repoussé au lendemain par le recalage).
+        depart = datetime.datetime.combine(
+            depart, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+    elif timezone.is_naive(depart):
+        depart = timezone.make_aware(depart, datetime.timezone.utc)
+
+    etapes = []
+    for gabarit in gabarits:
+        echeance = depart + timedelta(
+            days=gabarit.delai_jours,
+            minutes=getattr(gabarit, 'delai_minutes', 0) or 0)
+        heure_cible = getattr(gabarit, 'heure_cible', None)
+        if heure_cible is not None:
+            locale = echeance.astimezone(horaires.CASABLANCA)
+            echeance = locale.replace(
+                hour=heure_cible.hour, minute=heure_cible.minute,
+                second=0, microsecond=0)
+        echeance = horaires.prochain_creneau_appel(
+            echeance, lead.company,
+            dimanche=bool(getattr(gabarit, 'dimanche_ok', False)))
+        etapes.append(RelanceEtape(
+            company=lead.company, lead=lead, cadence=cadence,
+            ordre=gabarit.ordre, due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            devis=devis,
+        ))
+    RelanceEtape.objects.bulk_create(etapes)
+    resultats = list(
+        lead.relance_etapes.filter(cadence=cadence)
+        .order_by('ordre', 'due_date'))
+    if devis is not None:
+        resultats = [e for e in resultats if e.devis_id == devis.pk]
 
     premiere = resultats[0]
+    quand = (premiere.due_at.astimezone(horaires.CASABLANCA)
+             .strftime('%d/%m/%Y à %H:%M') if premiere.due_at
+             else str(premiere.due_date))
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f'Plan de relance initialisé — cadence « {cadence} » '
+             f'({len(resultats)} touche(s), première le {quand}).')
+
     if not lead.relance_date or lead.relance_date > premiere.due_date:
         lead.relance_date = premiere.due_date
         lead.save(update_fields=['relance_date'])
@@ -609,7 +675,12 @@ def marquer_etape_relance(etape, user, statut, note=''):
     etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
 
     verbe = 'faite' if statut == RelanceEtape.Statut.FAIT else 'sautée'
-    body = f"Relance J+{etape.ordre} ({etape.get_canal_display()}) marquée {verbe}."
+    # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`
+    # est un RANG dans la cadence et non plus un délai en jours (la touche 2
+    # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    body = (f'Touche « {libelle} » ({etape.get_canal_display()}, cadence '
+            f'{etape.cadence}) marquée {verbe}.')
     if note:
         body += f" Note : {note}"
     LeadActivity.objects.create(
@@ -617,13 +688,26 @@ def marquer_etape_relance(etape, user, statut, note=''):
         kind=LeadActivity.Kind.NOTE, body=body)
 
     lead = etape.lead
-    prochaine = (lead.relance_etapes
-                 .filter(statut=RelanceEtape.Statut.A_FAIRE)
-                 .order_by('ordre', 'due_date').first())
+    prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
     return etape
+
+
+def _prochaine_touche_a_faire(lead):
+    """La prochaine touche À FAIRE du lead, toutes cadences confondues.
+
+    Trie sur ``due_at`` d'abord (granularité minute, MRY5) avec les lignes
+    d'avant MRY5 — qui n'ont pas d'heure — placées EN DERNIER plutôt qu'en
+    tête : sans ``nulls_last``, Postgres les remonterait et ``relance_date``
+    reculerait vers une vieille étape."""
+    from django.db.models import F
+
+    return (lead.relance_etapes
+            .filter(statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+            .first())
 
 
 def _leads_ouverts_count(commercial):

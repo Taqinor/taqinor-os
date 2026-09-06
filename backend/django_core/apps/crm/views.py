@@ -752,7 +752,35 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 qs = qs.filter(is_archived=True)
             elif archived != 'all':
                 qs = qs.filter(is_archived=False)
-        return qs
+        return self._annoter_prochaine_touche(qs)
+
+    @staticmethod
+    def _annoter_prochaine_touche(qs):
+        """MRY5 — la prochaine touche de cadence, EN UNE requête.
+
+        Le badge « touche due » et la chip « À relancer » (MRY16) doivent
+        s'afficher sur 50 cartes sans coûter 50 requêtes : ces trois valeurs
+        arrivent donc par Subquery/Exists dans le queryset, jamais par un
+        `SerializerMethodField` qui interrogerait la base par lead.
+        """
+        from django.db.models import DateTimeField, Exists, F, OuterRef, Subquery
+
+        from core.dates import aujourd_hui_local
+        from .models import RelanceEtape
+
+        ouvertes = RelanceEtape.objects.filter(
+            lead=OuterRef('pk'), statut=RelanceEtape.Statut.A_FAIRE)
+        prochaines = ouvertes.order_by(
+            F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+        return qs.annotate(
+            prochaine_touche_at=Subquery(
+                prochaines.values('due_at')[:1],
+                output_field=DateTimeField()),
+            prochaine_touche_canal=Subquery(
+                prochaines.values('canal')[:1]),
+            touche_en_retard_flag=Exists(
+                ouvertes.filter(due_date__lt=aujourd_hui_local())),
+        )
 
     def perform_create(self, serializer):
         # Société toujours côté serveur (TenantMixin). Si aucun responsable
@@ -1325,15 +1353,33 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='relance/initialiser',
             permission_classes=[IsResponsableOrAdmin])
     def initialiser_relance(self, request, pk=None):
-        """Initialise (à la demande) le plan de relance du lead à partir de la
-        cadence par défaut de la société (Paramètres → CRM). IDEMPOTENT : un
-        second appel sur un lead déjà initialisé renvoie le plan existant sans
-        rien dupliquer (voir ``services.initialiser_plan_relance``)."""
+        """Initialise (à la demande) une cadence de relance sur le lead depuis
+        le gabarit de la société (Paramètres → CRM).
+
+        Corps : ``{cadence}`` parmi `contact` (défaut), `apres_devis`,
+        `reveil`, `generique` — 400 sur toute autre valeur. IDEMPOTENT PAR
+        CADENCE : un second appel renvoie le plan existant sans rien dupliquer
+        (voir ``services.initialiser_plan_relance``). Un lead « ne plus
+        contacter » est refusé (400) : c'est une demande explicite de la
+        personne, pas un réglage à contourner."""
+        from apps.parametres.models_relance import Cadence
+
         lead = self.get_object()
+        cadence = (request.data.get('cadence') or Cadence.CONTACT)
+        if cadence not in {c for c, _ in Cadence.choices}:
+            return Response(
+                {'cadence': 'Cadence inconnue. Choisir parmi : '
+                            + ', '.join(c for c, _ in Cadence.choices) + '.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if lead.ne_plus_contacter:
+            return Response(
+                {'detail': 'Lead marqué « ne plus contacter ».'},
+                status=status.HTTP_400_BAD_REQUEST)
         from .services import initialiser_plan_relance
-        etapes = initialiser_plan_relance(lead, request.user)
+        etapes = initialiser_plan_relance(lead, request.user, cadence=cadence)
         return Response(
-            RelanceEtapeSerializer(etapes, many=True).data,
+            RelanceEtapeSerializer(
+                etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
@@ -2178,12 +2224,25 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def list(self, request, *args, **kwargs):
         """File « Relances du jour ». ``?scope=overdue|today|all`` (défaut
-        today) + ``?owner=<id>``."""
-        from .selectors import relance_etapes_dues
-        scope = request.query_params.get('scope', 'today')
-        owner = request.query_params.get('owner')
-        qs = relance_etapes_dues(
-            request.user.company, request.user, scope=scope, owner=owner)
+        today) + ``?owner=<id>``.
+
+        MRY5 — ``?lead=<id>`` renvoie TOUTES les touches de CE lead, tous
+        statuts et toutes cadences confondus (tri cadence puis ordre) : c'est
+        la FRISE de la fiche lead, qui doit montrer le passé autant que le
+        futur — `scope` est alors ignoré. La visibilité reste garantie par
+        ``get_queryset`` : un lead hors portée renvoie une liste vide, jamais
+        un 403 qui confirmerait son existence."""
+        lead_id = request.query_params.get('lead')
+        if lead_id:
+            qs = (self.get_queryset().filter(lead_id=lead_id)
+                  .select_related('lead', 'lead__owner', 'devis')
+                  .order_by('cadence', 'ordre', 'due_date'))
+        else:
+            from .selectors import relance_etapes_dues
+            scope = request.query_params.get('scope', 'today')
+            owner = request.query_params.get('owner')
+            qs = relance_etapes_dues(
+                request.user.company, request.user, scope=scope, owner=owner)
         serializer = self.get_serializer(qs, many=True)
         return Response({'count': qs.count(), 'results': serializer.data})
 

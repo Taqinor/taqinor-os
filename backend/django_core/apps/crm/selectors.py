@@ -1826,7 +1826,7 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     qs = RelanceEtape.objects.filter(
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
-    ).select_related('lead', 'lead__owner')
+    ).select_related('lead', 'lead__owner', 'devis')
     if scope == 'overdue':
         qs = qs.filter(due_date__lt=today)
     elif scope == 'all':
@@ -1842,7 +1842,55 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
 
     if owner:
         qs = qs.filter(lead__owner_id=owner)
-    return qs.order_by('due_date', 'ordre')
+    # MRY5 — tri à la MINUTE : `due_at` d'abord, les lignes d'avant MRY5 (sans
+    # heure) EN DERNIER. Sans `nulls_last`, Postgres les remonterait en tête
+    # de la file de Meryem alors qu'elles n'ont pas d'heure connue.
+    from django.db.models import F
+    return qs.order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+
+
+def prochaine_touche_par_lead(company, lead_ids):
+    """MRY5 — ``{lead_id: (due_at, due_date, cadence, canal)}`` de la prochaine
+    touche À FAIRE de chaque lead demandé.
+
+    Une seule requête pour N leads (le badge « touche due » de la liste et du
+    kanban ne peut pas coûter une requête par carte). Un lead sans touche
+    ouverte est simplement ABSENT du dictionnaire — jamais une entrée vide."""
+    from django.db.models import F
+
+    from .models import RelanceEtape
+
+    if not lead_ids:
+        return {}
+    lignes = (RelanceEtape.objects
+              .filter(company=company, lead_id__in=list(lead_ids),
+                      statut=RelanceEtape.Statut.A_FAIRE)
+              .order_by('lead_id', F('due_at').asc(nulls_last=True),
+                        'due_date', 'ordre')
+              .values_list('lead_id', 'due_at', 'due_date', 'cadence',
+                           'canal'))
+    out = {}
+    for lead_id, due_at, due_date, cadence, canal in lignes:
+        # La première ligne rencontrée par lead est la plus proche (tri
+        # ci-dessus) — les suivantes sont ignorées.
+        out.setdefault(lead_id, (due_at, due_date, cadence, canal))
+    return out
+
+
+def devis_a_cadence_active(devis_id):
+    """MRY7 — ce devis porte-t-il une cadence MRY encore À FAIRE ?
+
+    Consommé par ``ventes.domain.recouvrement`` pour SUPPRIMER la relance
+    vendeur QJ4 sur un devis déjà suivi par le moteur de Meryem : sans cette
+    porte, le client recevrait deux relances pour le même devis, le même jour,
+    de deux systèmes différents. Lecture seule ; ``ventes`` l'appelle par ce
+    sélecteur, jamais en important ``crm.models``."""
+    from .models import RelanceEtape
+
+    if not devis_id:
+        return False
+    return RelanceEtape.objects.filter(
+        devis_id=devis_id, statut=RelanceEtape.Statut.A_FAIRE).exists()
 
 
 def leads_chauds_non_contactes(company, user, seuil_score=None):
