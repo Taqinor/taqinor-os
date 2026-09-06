@@ -1,8 +1,8 @@
 import logging
 from contextlib import contextmanager
 
-from drf_spectacular.utils import extend_schema
-from rest_framework import filters, mixins, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -1757,6 +1757,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(result)
 
     # ── MRY21 — KPI de cadence (Cockpit + bilan hebdomadaire) ────────────────
+    # PACT7 — SANS cette déclaration, le schéma publierait cet agrégat avec le
+    # `LeadSerializer` du ViewSet alors qu'il renvoie sept chiffres : un schéma
+    # qui MENT est pire qu'un schéma vide. `allow_null` partout où le contrat
+    # MRY25 prévoit `null` sur un dénominateur vide.
+    @extend_schema(responses=inline_serializer('CrmKpiCadences', {
+        'joints_sous_5j_pct': serializers.FloatField(allow_null=True),
+        'cadences_completes': serializers.IntegerField(),
+        'cadences_arretees_joint': serializers.IntegerField(),
+        'perdus_avec_motif_pct': serializers.FloatField(allow_null=True),
+        'signatures': serializers.IntegerField(),
+        'devis_envoyes': serializers.IntegerField(),
+        'tentatives_moy_avant_abandon': serializers.FloatField(
+            allow_null=True),
+    }))
     @action(detail=False, methods=['get'], url_path='kpi-cadences',
             permission_classes=[IsAnyRole])
     def kpi_cadences(self, request):
@@ -1772,6 +1786,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(_kpi(request.user.company, jours=jours))
 
     # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
+    # PACT7 — même raison que `kpi_cadences` ci-dessous : un agrégat déclare
+    # sa forme, sinon le schéma la remplace par celle du ViewSet.
+    @extend_schema(responses=inline_serializer('CrmKpiPremierContact', {
+        'objectif_minutes': serializers.IntegerField(),
+        'nb_leads': serializers.IntegerField(),
+        'nb_sous_objectif': serializers.IntegerField(allow_null=True),
+        'pct_sous_objectif': serializers.FloatField(allow_null=True),
+        'mediane_minutes_ouvrees': serializers.IntegerField(allow_null=True),
+        'nb_nuit_rappeles_avant_930': serializers.IntegerField(
+            allow_null=True),
+        'nb_nuit': serializers.IntegerField(),
+    }))
     @action(detail=False, methods=['get'], url_path='kpi-premier-contact',
             permission_classes=[IsAnyRole])
     def kpi_premier_contact(self, request):

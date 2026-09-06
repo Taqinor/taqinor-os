@@ -74,16 +74,24 @@ class VraieDateArriveeTests(TestCase):
             abs((lead.date_creation - moment).total_seconds()), 90)
 
     def test_date_future_refusee(self):
-        futur = timezone.now() + datetime.timedelta(days=2)
+        # Bornes CAPTURÉES avant/après la création : on ne compare jamais à un
+        # `timezone.now()` évalué DANS l'assertion (garde
+        # `check_test_determinism`) — la borne serait alors postérieure au fait
+        # qu'elle prétend encadrer.
+        avant = timezone.now()
+        futur = avant + datetime.timedelta(days=2)
         lead = self._creer('3', futur.strftime('%Y-%m-%dT%H:%M:%S+0000'))
-        self.assertLess(lead.date_creation, timezone.now()
-                        + datetime.timedelta(minutes=1))
+        apres = timezone.now()
+        self.assertGreaterEqual(lead.date_creation, avant)
+        self.assertLessEqual(lead.date_creation, apres)
 
     def test_date_trop_ancienne_refusee(self):
-        vieux = timezone.now() - datetime.timedelta(days=200)
+        avant = timezone.now()
+        vieux = avant - datetime.timedelta(days=200)
         lead = self._creer('4', vieux.strftime('%Y-%m-%dT%H:%M:%S+0000'))
-        self.assertGreater(lead.date_creation,
-                           timezone.now() - datetime.timedelta(days=1))
+        apres = timezone.now()
+        self.assertGreaterEqual(lead.date_creation, avant)
+        self.assertLessEqual(lead.date_creation, apres)
 
     def test_lead_deja_capture_garde_sa_date(self):
         moment = timezone.now() - datetime.timedelta(hours=6)

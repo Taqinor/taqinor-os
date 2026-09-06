@@ -14,14 +14,36 @@ l'étiquetage : l'ordre 1 existe désormais dans chaque cadence.
 
 Rien n'est supprimé, rien n'est réécrit. `reverse` de l'étiquetage = no-op :
 la colonne disparaît de toute façon au rollback du `AddField`.
+
+L'index `(company, cadence, actif)` n'est PAS ici : il est posé EN CONCURRENT
+par 0084 (YOPSB6), pour ne pas verrouiller la table en écriture.
 """
 from django.db import migrations, models
 
 
+#: Taille de lot du backfill. Le gabarit compte quelques lignes par société,
+#: mais un `.update()` GLOBAL non borné prendrait quand même un verrou sur
+#: toute la table — on découpe donc explicitement (garde
+#: `check_safe_migrations`, UNBATCHED_RUNPYTHON_UPDATE).
+TAILLE_LOT = 500
+
+
 def etiqueter_generique(apps, schema_editor):
-    """Toutes les lignes EXISTANTES sont l'échelle neutre historique."""
+    """Toutes les lignes EXISTANTES sont l'échelle neutre historique.
+
+    Backfill PAR LOTS : on parcourt les identifiants avec `.iterator()` et on
+    met à jour par tranches de `TAILLE_LOT`, plutôt qu'un `.update()` global
+    qui verrouillerait la table entière d'un coup."""
     Etape = apps.get_model('parametres', 'CadenceRelanceEtape')
-    Etape.objects.all().update(cadence='generique')
+    lot = []
+    for pk in Etape.objects.values_list('pk', flat=True).iterator(
+            chunk_size=TAILLE_LOT):
+        lot.append(pk)
+        if len(lot) >= TAILLE_LOT:
+            Etape.objects.filter(pk__in=lot).update(cadence='generique')
+            lot = []
+    if lot:
+        Etape.objects.filter(pk__in=lot).update(cadence='generique')
 
 
 def noop(apps, schema_editor):
@@ -85,10 +107,5 @@ class Migration(migrations.Migration):
                 'verbose_name': 'Étape de cadence de relance',
                 'verbose_name_plural': 'Étapes de cadence de relance',
             },
-        ),
-        migrations.AddIndex(
-            model_name='cadencerelanceetape',
-            index=models.Index(fields=['company', 'cadence', 'actif'],
-                               name='param_cad_co_cad_act_idx'),
         ),
     ]

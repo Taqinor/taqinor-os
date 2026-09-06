@@ -7,6 +7,10 @@ NULL) continue de porter les filtres `scope`, dont le grain reste le JOUR.
 
 `devis` est une FK EN CHAÎNE vers `ventes.Devis` (`SET_NULL`) : crm ne connaît
 jamais les modèles de ventes (frontière M3, contrat import-linter).
+
+L'index `(company, lead, cadence, statut)` n'est PAS ici : `crm_relanceetape`
+est une table vivante, un `AddIndex` nu la verrouillerait en ÉCRITURE le temps
+de la construction. Il est posé EN CONCURRENT par 0092 (YOPSB6).
 """
 import django.db.models.deletion
 from django.db import migrations, models
@@ -54,11 +58,5 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name='relance_etapes', to='ventes.devis',
                 verbose_name='Devis suivi'),
-        ),
-        migrations.AddIndex(
-            model_name='relanceetape',
-            index=models.Index(
-                fields=['company', 'lead', 'cadence', 'statut'],
-                name='crm_relance_lead_cad_idx'),
         ),
     ]
