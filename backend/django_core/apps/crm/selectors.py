@@ -1488,14 +1488,19 @@ def kpi_cadences(company, *, jours=30):
 
     touches = RelanceEtape.objects.filter(company=company,
                                           traite_le__gte=depuis)
-    cadences_completes = (
+    # « Cadence menée à son terme » = ce lead a des touches `contact`
+    # TRAITÉES sur la période et plus AUCUNE ouverte. Écrit en deux requêtes
+    # simples plutôt qu'en une agrégation à double traversée : le chiffre
+    # doit être lisible par qui le relit, sinon personne ne peut le vérifier.
+    traites = set(
         touches.filter(cadence='contact', statut=RelanceEtape.Statut.FAIT)
-        .values('lead_id')
-        .annotate(restantes=Count(
-            'lead__relance_etapes',
-            filter=Q(lead__relance_etapes__cadence='contact',
-                     lead__relance_etapes__statut=RelanceEtape.Statut.A_FAIRE)))
-        .filter(restantes=0).count())
+        .values_list('lead_id', flat=True))
+    encore_ouverts = set(
+        RelanceEtape.objects.filter(
+            company=company, cadence='contact',
+            statut=RelanceEtape.Statut.A_FAIRE,
+            lead_id__in=traites).values_list('lead_id', flat=True))
+    cadences_completes = len(traites - encore_ouverts)
     cadences_arretees_joint = touches.filter(
         statut=RelanceEtape.Statut.SAUTEE, note__icontains='joint').count()
 
