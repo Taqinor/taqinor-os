@@ -8,9 +8,10 @@ instance, company)` pour chaque instance correspondante, so que les règles
 configurables sur ces déclencheurs temporels s'exécutent réellement.
 
 Principes :
-  - IDEMPOTENT : ne mute aucune donnée hors des actions de règles activées.
-    Re-lancer la tâche peut ré-exécuter des règles (c'est voulu et bien
-    journalisé dans `AutomationRun`) mais ne casse rien.
+  - IDEMPOTENT PAR JOUR ET PAR OBJET (AUD822) : un marqueur `AutomationRun` est
+    posé après chaque évaluation et vérifié avant la suivante — voir la section
+    « Marqueur d'idempotence » ci-dessous. Re-lancer la tâche le même jour ne
+    ré-exécute jamais une règle déjà tirée pour le même objet.
   - MULTI-TENANT : chaque société est traitée isolément.
   - DÉFENSIF : chaque section est dans son propre try/except ; une erreur sur
     un modèle absent ou une société ne bloque pas les autres.
@@ -26,6 +27,71 @@ logger = logging.getLogger(__name__)
 # ── Seuils ────────────────────────────────────────────────────────────────────
 WARRANTY_HORIZON_DAYS = 90   # identique à notifications/sweeps.py
 OVERDUE_GRACE_DAYS = 0       # facture en retard dès l'échéance dépassée
+
+
+# ── AUD822 — Marqueur d'idempotence des déclencheurs temporels ────────────────
+#
+# DÉFAUT CORRIGÉ : `_trigger_warranty_expiring` / `_trigger_maintenance_due` /
+# `_trigger_facture_overdue` bouclaient QUOTIDIENNEMENT et appelaient
+# `evaluate()` sans jamais vérifier qu'une évaluation avait déjà eu lieu la
+# veille — contrairement à `_trigger_date_echeance_champ` (XPLT3) qui posait et
+# vérifiait déjà un marqueur. Conséquences réelles : une facture impayée depuis
+# 60 jours envoyait au client le MÊME email de relance 60 fois (le preset
+# officiel `email_on_facture_overdue` a `requires_approval=False`), et une règle
+# `CREATE_SAV_TICKET` sur `MAINTENANCE_DUE` créait un ticket SAV par jour tant
+# que le contrat restait dû (`_create_sav_ticket` crée inconditionnellement).
+#
+# Le marqueur généralise EXACTEMENT le patron XPLT3 : une entrée `AutomationRun`
+# NOOP dont le message commence par une clé stable
+# `AUD822:<trigger>:<app.model>:<pk>:<jour ISO>`, vérifiée AVANT `evaluate()`.
+# `rule` est nul sur ces entrées (le marqueur vaut pour le couple
+# déclencheur+objet, pas pour une règle donnée : `evaluate` tire toutes les
+# règles activées d'un coup).
+#
+# Il n'est posé QUE si la société a au moins une règle activée sur ce
+# déclencheur : sans règle, il n'y a rien à rendre idempotent, et on n'inonde
+# pas le journal des sociétés qui n'automatisent pas.
+MARQUEUR_PREFIXE = 'AUD822'
+
+
+def _marqueur(trigger_type, model_label, obj_pk, jour):
+    """Clé stable du marqueur : déclencheur + objet + JOUR."""
+    return (f'{MARQUEUR_PREFIXE}:{trigger_type}:{model_label}:{obj_pk}:'
+            f'{jour.isoformat()}')
+
+
+def _a_des_regles(company, trigger_type):
+    """Vrai si la société a AU MOINS une règle activée sur ce déclencheur."""
+    try:
+        from apps.automation.models import AutomationRule
+        return AutomationRule.objects.filter(
+            company=company, enabled=True, trigger_type=trigger_type).exists()
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+def _deja_declenche(company, marqueur):
+    """Vrai si ce couple (déclencheur, objet, jour) a déjà été évalué."""
+    try:
+        from apps.automation.models import AutomationRun
+        return AutomationRun.objects.filter(
+            company=company, message__startswith=marqueur).exists()
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+def _poser_marqueur(company, marqueur, model_label, obj_pk):
+    """Journalise le marqueur d'idempotence (entrée NOOP, sans règle)."""
+    try:
+        from apps.automation.models import AutomationRun
+        AutomationRun.objects.create(
+            company=company, rule=None,
+            target_model=model_label, target_id=obj_pk,
+            status=AutomationRun.Status.NOOP,
+            message=f'{marqueur} — marqueur idempotence AUD822.')
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('automation.beat: marqueur %s non posé', marqueur,
+                       exc_info=True)
 
 
 def _companies():
@@ -59,9 +125,18 @@ def _trigger_warranty_expiring(company):
             date_fin_garantie__lte=horizon,
         )
         count = 0
+        # AUD822 — un équipement déjà évalué AUJOURD'HUI n'est pas réévalué.
+        garde = _a_des_regles(company, TriggerType.WARRANTY_EXPIRING)
         for eq in qs:
+            marqueur = _marqueur(
+                TriggerType.WARRANTY_EXPIRING, 'sav.equipement', eq.pk, today)
+            if garde and _deja_declenche(company, marqueur):
+                continue
             try:
                 evaluate(TriggerType.WARRANTY_EXPIRING, eq, company)
+                if garde:
+                    _poser_marqueur(
+                        company, marqueur, 'sav.equipement', eq.pk)
                 count += 1
             except Exception:  # pragma: no cover
                 logger.warning('automation.beat: warranty eq %s échoué',
@@ -83,11 +158,24 @@ def _trigger_maintenance_due(company):
         from apps.sav.models import ContratMaintenance
         qs = ContratMaintenance.objects.filter(company=company, actif=True)
         count = 0
+        # AUD822 — sans ce marqueur, une règle CREATE_SAV_TICKET créait un
+        # ticket par JOUR tant que le contrat restait dû.
+        today = date.today()
+        garde = _a_des_regles(company, TriggerType.MAINTENANCE_DUE)
         for contrat in qs:
             try:
                 if not contrat.is_due():
                     continue
+                marqueur = _marqueur(
+                    TriggerType.MAINTENANCE_DUE, 'sav.contratmaintenance',
+                    contrat.pk, today)
+                if garde and _deja_declenche(company, marqueur):
+                    continue
                 evaluate(TriggerType.MAINTENANCE_DUE, contrat, company)
+                if garde:
+                    _poser_marqueur(
+                        company, marqueur, 'sav.contratmaintenance',
+                        contrat.pk)
                 count += 1
             except Exception:  # pragma: no cover
                 logger.warning('automation.beat: maintenance contrat %s échoué',
@@ -120,9 +208,20 @@ def _trigger_facture_overdue(company):
             date_echeance__lt=today,
         ).exclude(statut='payee')
         count = 0
+        # AUD822 — sans ce marqueur, le client recevait le MÊME email de
+        # relance chaque jour tant que la facture restait impayée.
+        garde = _a_des_regles(company, TriggerType.FACTURE_OVERDUE)
         for facture in qs:
+            marqueur = _marqueur(
+                TriggerType.FACTURE_OVERDUE, 'ventes.facture', facture.pk,
+                today)
+            if garde and _deja_declenche(company, marqueur):
+                continue
             try:
                 evaluate(TriggerType.FACTURE_OVERDUE, facture, company)
+                if garde:
+                    _poser_marqueur(
+                        company, marqueur, 'ventes.facture', facture.pk)
                 count += 1
             except Exception:  # pragma: no cover
                 logger.warning('automation.beat: facture_overdue %s échouée',
@@ -262,7 +361,11 @@ def time_triggers_daily():
     FACTURE_OVERDUE et l'alerte de clôture de paie en retard (ZPAI12) afin
     que les règles configurables sur ces déclencheurs s'exécutent réellement.
     Best-effort par société ; renvoie le total d'évaluations déclenchées (pas
-    le nombre de règles exécutées)."""
+    le nombre de règles exécutées).
+
+    AUD822 — le total ne compte que les évaluations NOUVELLES : un objet déjà
+    évalué le même jour est ignoré (marqueur d'idempotence), donc deux passages
+    dans la journée ne relancent pas deux fois les mêmes envois."""
     total = 0
     for company in _companies():
         try:
