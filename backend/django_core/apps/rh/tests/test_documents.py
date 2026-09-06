@@ -47,7 +47,7 @@ def rows(resp):
     return data['results'] if isinstance(data, dict) and 'results' in data else data
 
 
-def _fake_store(file):
+def _fake_store(file, company=None):
     return ({'file_key': 'attachments/doc.pdf', 'filename': 'contrat.pdf',
              'size': 1234, 'mime': 'application/pdf'}, None)
 
