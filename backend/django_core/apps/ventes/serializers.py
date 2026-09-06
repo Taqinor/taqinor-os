@@ -835,16 +835,41 @@ class BonCommandeSerializer(serializers.ModelSerializer):
                             'statut']
 
     def get_has_facture(self, obj):
+        # AUD115 — lit l'annotation `Exists` posée par le viewset quand elle
+        # est là (un seul aller-retour pour toute la page) ; repli sur la
+        # requête historique pour les appelants qui sérialisent une instance
+        # nue (détail, tests, autres vues).
+        annote = getattr(obj, 'has_facture_annote', None)
+        if annote is not None:
+            return bool(annote)
         return Facture.objects.filter(bon_commande=obj).exists()
 
+    def _totaux(self, obj):
+        """AUD115 — LES TROIS TOTAUX EN UN SEUL PASSAGE. Chacun des trois
+        `get_total_*` traversait la chaîne canonique du devis de bout en bout
+        (`_totaux_argent()`), soit trois parcours complets des lignes par bon
+        de commande. On mémoïse la chaîne sur l'instance : la SOURCE des
+        chiffres ne change pas d'un centime, seul le nombre de parcours."""
+        if not obj.devis_id:
+            return None
+        totaux = getattr(obj, '_aud115_totaux', None)
+        if totaux is None:
+            from .domain.argent import Vue, totaux as _chaine
+            totaux = _chaine(obj.devis, vue=Vue.NET)
+            obj._aud115_totaux = totaux
+        return totaux
+
     def get_total_ht(self, obj):
-        return str(obj.devis.total_ht) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.ht_net) if totaux is not None else None
 
     def get_total_tva(self, obj):
-        return str(obj.devis.total_tva) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.tva) if totaux is not None else None
 
     def get_total_ttc(self, obj):
-        return str(obj.devis.total_ttc) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.ttc) if totaux is not None else None
 
 
 class LigneFactureSerializer(serializers.ModelSerializer):

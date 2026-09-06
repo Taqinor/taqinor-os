@@ -1,4 +1,5 @@
 from django.db import transaction  # noqa: F401
+from django.db.models import Exists, OuterRef  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
@@ -73,7 +74,20 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/get_permissions
     # SURCHARGENT la base : le scoping société et la matrice 401/403/404 restent
     # IDENTIQUES (règle #4 : aucun statut/sérialisation Devis/Facture touché).
-    queryset = BonCommande.objects.select_related('client', 'devis').all()
+    # AUD115 (constat FAC-9) — le N+1 EN SÉRIE de la liste BC. Le queryset ne
+    # faisait que `select_related('client','devis')` : `get_has_facture` posait
+    # un `.exists()` PAR LIGNE et les trois totaux traversaient TROIS fois la
+    # chaîne canonique du devis (chacune rechargeant ses lignes). Le prefetch
+    # des lignes + l'annotation d'existence rendent la liste bornée, et le
+    # sérialiseur ne calcule plus les totaux qu'UNE fois par BC.
+    queryset = (
+        BonCommande.objects
+        .select_related('client', 'devis')
+        .prefetch_related('devis__lignes__produit', 'livraisons__lignes')
+        .annotate(has_facture_annote=Exists(
+            Facture.objects.filter(bon_commande=OuterRef('pk'))))
+        .all()
+    )
     serializer_class = BonCommandeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'client__nom', 'client__email']
