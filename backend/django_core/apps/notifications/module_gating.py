@@ -33,6 +33,7 @@ EVENT_MODULE = {
     # plus aucune de ses notifications.
     EventType.RELANCE_DUE: 'crm',
     EventType.PREMIER_CONTACT_DEPASSE: 'crm',
+    EventType.CRM_BILAN_HEBDO: 'crm',
     # ventes (Devis + Facture + BonCommande vivent dans apps.ventes)
     EventType.DEVIS_ACCEPTED: 'ventes',
     EventType.DEVIS_OPENED: 'ventes',

@@ -147,3 +147,16 @@ def escalader_premier_contact_task():
         escalader_premier_contact,
     )
     return {'escalades': escalader_premier_contact()}
+
+
+@shared_task(name='crm.bilan_hebdo_relances')
+def bilan_hebdo_relances_task():
+    """MRY21 — Enveloppe Celery Beat du bilan hebdomadaire (lundi 07:00).
+
+    Le seul moment où quelqu'un regarde le moteur DE HAUT plutôt que touche
+    par touche : sans lui, une cadence qui dérape resterait invisible jusqu'au
+    trimestre. Délègue entièrement à la commande de gestion."""
+    from apps.crm.management.commands.bilan_hebdo_relances import (
+        bilan_hebdo_relances,
+    )
+    return {'bilans': bilan_hebdo_relances()}

@@ -976,6 +976,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           # MRY19 — lecture ouverte à tout
                                           # rôle, comme `sla_breach`.
                                           'kpi_premier_contact',
+                                          'kpi_cadences',
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
@@ -1754,6 +1755,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'nb_chantiers': c.installations.count() if hasattr(c, 'installations') else 0,
             })
         return Response(result)
+
+    # ── MRY21 — KPI de cadence (Cockpit + bilan hebdomadaire) ────────────────
+    @action(detail=False, methods=['get'], url_path='kpi-cadences',
+            permission_classes=[IsAnyRole])
+    def kpi_cadences(self, request):
+        """Forme `kpi_cadences` (contrat MRY25). ``?jours=`` (30).
+
+        `null` dès qu'un dénominateur est 0 — jamais un 0 % qui se lirait
+        comme un échec là où il n'y a rien à mesurer."""
+        try:
+            jours = max(1, min(365, int(request.query_params.get('jours', 30))))
+        except (TypeError, ValueError):
+            jours = 30
+        from .selectors import kpi_cadences as _kpi
+        return Response(_kpi(request.user.company, jours=jours))
 
     # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
     @action(detail=False, methods=['get'], url_path='kpi-premier-contact',

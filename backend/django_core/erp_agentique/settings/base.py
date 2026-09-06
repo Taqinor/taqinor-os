@@ -1035,6 +1035,8 @@ CELERY_TASK_ROUTES = {
     # MRY17 — digest 08:30 des touches dues + escalade premier contact.
     'crm.notifier_relances_dues': {'queue': 'scheduled'},
     'crm.escalader_premier_contact': {'queue': 'scheduled'},
+    # MRY21 — bilan hebdomadaire des relances (lundi 07:00).
+    'crm.bilan_hebdo_relances': {'queue': 'scheduled'},
     'notifications.daily_digest': {'queue': 'scheduled'},
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},

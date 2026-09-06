@@ -295,6 +295,12 @@ app.conf.beat_schedule = {
         'task': 'crm.escalader_premier_contact',
         'schedule': crontab(minute='*/5'),
     },
+    # MRY21 — bilan hebdomadaire du moteur de relances, lundi 07:00, à la
+    # direction. Sept chiffres : la seule vue de HAUT du moteur.
+    'crm-bilan-hebdo-relances': {
+        'task': 'crm.bilan_hebdo_relances',
+        'schedule': crontab(hour=7, minute=0, day_of_week=1),
+    },
     # QW4 — SLA rappel plus serré que le SLA générique premier-contact :
     # tourne plus souvent (toutes les 30 min) pour rattraper une escalade
     # rapidement sur un SLA rappel typiquement court (2 à quelques heures).

@@ -1447,6 +1447,102 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
     }
 
 
+def kpi_cadences(company, *, jours=30):
+    """MRY21 — Les sept chiffres du bilan de cadence (forme `kpi_cadences`).
+
+    Lus à la fois par le panneau du Cockpit et par le bilan hebdomadaire du
+    lundi. Trois règles les rendent honnêtes :
+
+    * ``null`` dès que le DÉNOMINATEUR est 0 — jamais un 0 % qui se lirait
+      comme un échec là où il n'y a simplement rien à mesurer ;
+    * les devis sont comptés via ``apps.ventes.selectors``, JAMAIS un import
+      de ``ventes.models`` (frontière M3) ;
+    * les tentatives comptées sont HUMAINES (MRY20) — une moyenne gonflée par
+      les lignes système ne dirait rien de l'effort réel.
+    """
+    from django.db.models import Count, Q
+    from django.utils import timezone
+
+    from . import horaires, stages
+    from .models import Lead, LeadActivity, RelanceEtape
+
+    depuis = timezone.now() - datetime.timedelta(days=int(jours))
+    leads = Lead.objects.filter(company=company, date_creation__gte=depuis)
+    nb_leads = leads.count()
+
+    # « Joint » = une issue d'appel joint/intéressé dans les 5 jours OUVRÉS
+    # suivant la création. Le délai est OUVRÉ pour la même raison que le KPI
+    # de premier contact : un week-end n'est pas du temps perdu.
+    joints = 0
+    for lead in leads.only('id', 'date_creation'):
+        premiere = (LeadActivity.objects
+                    .filter(lead=lead, outcome__in=('joint', 'interesse'),
+                            user__isnull=False)
+                    .order_by('created_at').first())
+        if premiere is None:
+            continue
+        minutes = horaires.minutes_ouvrees_entre(
+            lead.date_creation, premiere.created_at, company)
+        if minutes <= 5 * 24 * 60:
+            joints += 1
+
+    touches = RelanceEtape.objects.filter(company=company,
+                                          traite_le__gte=depuis)
+    cadences_completes = (
+        touches.filter(cadence='contact', statut=RelanceEtape.Statut.FAIT)
+        .values('lead_id')
+        .annotate(restantes=Count(
+            'lead__relance_etapes',
+            filter=Q(lead__relance_etapes__cadence='contact',
+                     lead__relance_etapes__statut=RelanceEtape.Statut.A_FAIRE)))
+        .filter(restantes=0).count())
+    cadences_arretees_joint = touches.filter(
+        statut=RelanceEtape.Statut.SAUTEE, note__icontains='joint').count()
+
+    perdus = leads.filter(perdu=True)
+    nb_perdus = perdus.count()
+    perdus_avec_motif = perdus.exclude(
+        Q(motif_perte__isnull=True) | Q(motif_perte='')).count()
+
+    signatures = LeadActivity.objects.filter(
+        company=company, field='stage', created_at__gte=depuis,
+        new_value=stages.STAGE_LABELS[stages.SIGNED]).count()
+
+    try:
+        from apps.ventes.selectors import devis_envoyes_periode
+        devis_envoyes = devis_envoyes_periode(
+            company, date_debut=depuis.date()).count()
+    except Exception:  # noqa: BLE001 — un KPI ne casse jamais sur ce point
+        devis_envoyes = 0
+
+    # Moyenne de tentatives des leads passés au FROID sur la période — la
+    # seule population où « avant abandon » veut dire quelque chose.
+    refroidis = list(
+        leads.filter(stage=stages.COLD)
+        .annotate(tentatives=Count(
+            'activites',
+            filter=Q(activites__kind__in=[
+                LeadActivity.Kind.APPEL, LeadActivity.Kind.WHATSAPP,
+                LeadActivity.Kind.EMAIL],
+                activites__user__isnull=False),
+            distinct=True))
+        .values_list('tentatives', flat=True))
+
+    return {
+        'joints_sous_5j_pct': (round(100.0 * joints / nb_leads, 1)
+                               if nb_leads else None),
+        'cadences_completes': cadences_completes,
+        'cadences_arretees_joint': cadences_arretees_joint,
+        'perdus_avec_motif_pct': (
+            round(100.0 * perdus_avec_motif / nb_perdus, 1)
+            if nb_perdus else None),
+        'signatures': signatures,
+        'devis_envoyes': devis_envoyes,
+        'tentatives_moy_avant_abandon': (
+            round(sum(refroidis) / len(refroidis), 1) if refroidis else None),
+    }
+
+
 def _objectif_premier_contact(company):
     """Objectif de la société (défaut 5 minutes ouvrées, MRY8)."""
     try:

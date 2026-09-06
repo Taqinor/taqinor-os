@@ -79,6 +79,11 @@ class EventType(models.TextChoices):
     PREMIER_CONTACT_DEPASSE = (
         'premier_contact_depasse',
         'Nouveau lead non touché (objectif dépassé)')
+    # MRY21 — bilan HEBDOMADAIRE du moteur de relances, envoyé à la
+    # direction le lundi matin. Clé distincte de `digest` : couper le
+    # récapitulatif générique ne doit pas couper le pilotage commercial.
+    CRM_BILAN_HEBDO = (
+        'crm_bilan_hebdo', 'Bilan hebdomadaire des relances')
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
