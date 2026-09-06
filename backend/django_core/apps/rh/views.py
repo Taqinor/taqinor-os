@@ -921,7 +921,9 @@ class DocumentEmployeViewSet(TenantMixin, viewsets.ModelViewSet):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
-        meta, err = store_attachment(file)
+        # AUD717 (jumeau) — même clé scopée société que le bulletin externe :
+        # sans `company=`, le coffre employé retombait sur la clé plate legacy.
+        meta, err = store_attachment(file, company=company)
         if err:
             return Response({'file': err},
                             status=status.HTTP_400_BAD_REQUEST)
