@@ -332,7 +332,20 @@ const ventesApi = {
   updateBonCommande: (id, data) => api.put(`/ventes/bons-commande/${id}/`, data),
   patchBonCommande: (id, data) => api.patch(`/ventes/bons-commande/${id}/`, data),
   confirmerBC: (id) => api.post(`/ventes/bons-commande/${id}/confirmer/`),
-  marquerLivreBC: (id) => api.post(`/ventes/bons-commande/${id}/marquer-livre/`),
+  // AUD119 (FG51) — LA PREUVE DE LIVRAISON PART ENFIN. Le backend lisait
+  // `signataire`, `note_pv` et le fichier `pv` depuis `marquer-livre` depuis le
+  // debut, mais AUCUN ecran ne les envoyait : `pv_livraison` restait toujours
+  // vide, `has_proof_of_delivery` toujours faux, et l'avertissement « vous
+  // facturez sans BL signe » etait permanent et donc ignore de tous. `payload`
+  // est optionnel : sans lui, le POST est exactement celui d'hier.
+  marquerLivreBC: (id, payload) => {
+    if (!payload) return api.post(`/ventes/bons-commande/${id}/marquer-livre/`)
+    const form = new FormData()
+    if (payload.signataire) form.append('signataire', payload.signataire)
+    if (payload.note_pv) form.append('note_pv', payload.note_pv)
+    if (payload.pv) form.append('pv', payload.pv)
+    return api.post(`/ventes/bons-commande/${id}/marquer-livre/`, form)
+  },
   // XSAL12 — livraison partielle : { lignes: [{ligne_devis, quantite}], date_livraison?, note? }.
   livrerPartielBC: (id, data) => api.post(`/ventes/bons-commande/${id}/livrer-partiel/`, data),
   annulerBC: (id) => api.post(`/ventes/bons-commande/${id}/annuler/`),

@@ -67,6 +67,9 @@ export default function BonCommandeList() {
   const [actionError, setActionError] = useState('')
   // XSAL12 — livraison partielle : BC ouvert dans le dialogue de saisie.
   const [livraisonBC, setLivraisonBC] = useState(null)
+  // AUD119 (FG51) — BC dont on saisit la preuve de livraison (dialogue
+  // « Livrer » : signataire + note + piece jointe optionnelle).
+  const [livrerBC, setLivrerBC] = useState(null)
 
   useEffect(() => { dispatch(fetchBonsCommande()) }, [dispatch])
 
@@ -227,6 +230,14 @@ export default function BonCommandeList() {
         />
       )}
 
+      {livrerBC && (
+        <PreuveLivraisonDialog
+          bc={livrerBC}
+          onClose={() => setLivrerBC(null)}
+          onSaved={() => { dispatch(fetchBonsCommande()); setLivrerBC(null) }}
+        />
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-1">
         <TabsList className="flex-wrap">
           {TABS.map(t => (
@@ -334,9 +345,15 @@ export default function BonCommandeList() {
                               Confirmer
                             </Button>
                           )}
+                          {/* AUD119 (FG51) — « Livrer » ouvre desormais un
+                              dialogue de PREUVE DE LIVRAISON. Le backend lisait
+                              signataire/note/piece jointe depuis le debut ;
+                              aucun ecran ne les envoyait, donc l'avertissement
+                              « vous facturez sans BL signe » etait permanent et
+                              sans valeur. */}
                           {bc.statut === 'confirme' && (
                             <Button size="sm" variant="success" loading={busy}
-                                    onClick={() => doAction(marquerLivreBC, bc.id, `Marquer le BC ${bc.reference} comme livré ?`)}>
+                                    onClick={() => setLivrerBC(bc)}>
                               Livrer
                             </Button>
                           )}
@@ -508,6 +525,89 @@ function BCForm({ bc = null, onClose, onSaved }) {
 // reliquat déjà calculé côté serveur `bc.reliquat_par_ligne`) ; le BC passe
 // automatiquement à « livré » côté serveur seulement quand tout le reliquat
 // est soldé — cet écran ne fait qu'envoyer la saisie.
+function PreuveLivraisonDialog({ bc, onClose, onSaved }) {
+  // AUD119 (FG51) — LA MOITIE MANQUANTE. `marquer-livre` sait lire
+  // `signataire`, `note_pv` et le fichier `pv` (stocke via le meme
+  // `store_attachment` que le reste du dossier) depuis le premier jour ; le
+  // bouton « Livrer » appelait pourtant `doAction` sans le moindre formulaire.
+  // Resultat : `pv_livraison` toujours vide, `has_proof_of_delivery` toujours
+  // faux, et l'avertissement « vous facturez sans bon de livraison signe »
+  // affiche a CHAQUE facturation — un bruit que tout le monde ignorait, alors
+  // qu'aucun chemin produit ne permettait d'y repondre.
+  const dispatch = useDispatch()
+  const [signataire, setSignataire] = useState('')
+  const [notePv, setNotePv] = useState('')
+  const [fichier, setFichier] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSaving(true)
+    try {
+      // La preuve reste OPTIONNELLE cote serveur : un BC peut etre livre sans
+      // signataire (la facturation n'est jamais bloquee). On n'envoie donc un
+      // corps multipart que s'il y a quelque chose a envoyer.
+      const preuve = (signataire || notePv || fichier)
+        ? { signataire, note_pv: notePv, pv: fichier }
+        : null
+      await dispatch(marquerLivreBC({ id: bc.id, preuve })).unwrap()
+      onSaved()
+    } catch (err) {
+      setError(err?.detail ?? 'La livraison a echoue. Reessayez.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Livrer &mdash; {bc.reference}</DialogTitle>
+        </DialogHeader>
+        <Form onSubmit={handleSubmit} className="gap-4">
+          <p className="text-sm text-muted-foreground">
+            Le bon de livraison signe leve l&apos;avertissement affiche a la
+            facturation. Tout est optionnel : le BC peut etre livre sans preuve.
+          </p>
+
+          <FormField label="Signataire" htmlFor="pv-signataire" fullWidth>
+            <Input id="pv-signataire" value={signataire}
+                   placeholder="Nom de la personne qui a receptionne"
+                   onChange={e => setSignataire(e.target.value)} />
+          </FormField>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="pv-note">Note</Label>
+            <Textarea id="pv-note" rows={2} value={notePv}
+                      onChange={e => setNotePv(e.target.value)}
+                      placeholder="Reserves, transporteur, reference du BL..." />
+          </div>
+
+          <FormField label="Bon de livraison signe" htmlFor="pv-fichier" fullWidth>
+            <Input id="pv-fichier" type="file"
+                   onChange={e => setFichier(e.target.files?.[0] ?? null)} />
+          </FormField>
+
+          {error && (
+            <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <FormActions sticky={false}>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>Marquer livre</Button>
+          </FormActions>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+
 function LivraisonPartielleDialog({ bc, onClose, onSaved }) {
   const dispatch = useDispatch()
   const reliquats = (bc.reliquat_par_ligne ?? []).filter(r => r.reliquat > 0)

@@ -150,9 +150,17 @@ export const confirmerBC = createAsyncThunk('ventes/confirmerBC', async (id, { r
   }
 })
 
-export const marquerLivreBC = createAsyncThunk('ventes/marquerLivreBC', async (id, { rejectWithValue }) => {
+// AUD119 (FG51) — LA MOITIE MANQUANTE DE LA PREUVE DE LIVRAISON. Ce thunk
+// n'acceptait qu'un id : le backend savait lire `signataire`, `note_pv` et le
+// fichier `pv` depuis le premier jour, mais aucun appelant ne les envoyait
+// jamais. `pv_livraison` restait donc toujours vide, `has_proof_of_delivery`
+// toujours faux, et l'avertissement « vous facturez sans BL signe » etait
+// permanent — donc sans valeur, un bruit que tout le monde ignorait.
+// Retro-compatible : `dispatch(marquerLivreBC(id))` reste valide (sans preuve).
+export const marquerLivreBC = createAsyncThunk('ventes/marquerLivreBC', async (arg, { rejectWithValue }) => {
+  const { id, preuve } = (arg && typeof arg === 'object') ? arg : { id: arg, preuve: null }
   try {
-    const res = await ventesApi.marquerLivreBC(id)
+    const res = await ventesApi.marquerLivreBC(id, preuve)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
