@@ -273,12 +273,16 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
     old_perdu = lead.perdu
     old_motif = lead.motif_perte
     lead.perdu = True
-    lead.motif_perte = (motif_refus or '')[:255] or None
+    # MRY22 — le TROISIÈME chemin vers « perdu ». Le refus d'un devis peut
+    # arriver sans motif saisi : on retombe alors sur « Devis refusé » plutôt
+    # que d'écrire NULL, sinon ce chemin serait le seul à produire des pertes
+    # sans raison — exactement ce que les deux autres refusent désormais.
+    lead.motif_perte = (motif_refus or '')[:255] or 'Devis refusé'
     lead.save(update_fields=['perdu', 'motif_perte'])
     crm_activity.log_bulk_change(lead, user, 'perdu', old_perdu, True)
-    if motif_refus:
+    if lead.motif_perte != old_motif:
         crm_activity.log_bulk_change(lead, user, 'motif_perte',
-                                     old_motif, motif_refus)
+                                     old_motif, lead.motif_perte)
     # MRY9 (c) — troisième chemin vers « perdu » : il arrête les relances
     # comme les deux autres. Une seule fonction, jamais une variante locale.
     arreter_cadence(lead, user=user,

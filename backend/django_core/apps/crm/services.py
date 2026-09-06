@@ -3753,6 +3753,12 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
 
             elif op == 'set_perdu':
                 motif = (params.get('motif') or '').strip() or None
+                if not motif:
+                    # MRY22 — même exigence qu'à l'unité : perdre 40 leads
+                    # d'un coup SANS raison est pire, pas plus acceptable.
+                    raise ValueError(
+                        'Motif de perte obligatoire pour une mise en perte '
+                        'en masse.')
                 if lead.perdu and lead.motif_perte == motif:
                     unchanged += 1
                     continue

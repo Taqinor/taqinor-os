@@ -691,6 +691,17 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         # Ordre fondateur 2026-08-01 : confirmation humaine d'un recul. Jamais
         # persisté non plus (champ hors modèle) — retiré ici comme ``undo``.
         confirme_recul = bool(attrs.pop('confirme_recul', False))
+        # MRY22 — MOTIF DE PERTE OBLIGATOIRE. « Perdu sans raison » est la
+        # ligne qui ne sert à personne : elle sort le lead du pipeline sans
+        # rien apprendre, et le KPI « perdus avec motif » (MRY21) ne peut plus
+        # rien dire. Un motif déjà posé sur l'instance suffit (on ne redemande
+        # pas un motif à qui ne fait que re-cocher la case).
+        if attrs.get('perdu') is True:
+            motif = (attrs.get('motif_perte')
+                     or getattr(self.instance, 'motif_perte', None) or '')
+            if not str(motif).strip():
+                raise serializers.ValidationError(
+                    {'motif_perte': 'Motif de perte obligatoire.'})
         # Garde funnel côté serveur (aligné sur la règle bulk _bulk_stage_allowed):
         # en MISE À JOUR, un lead perdu ne change pas d'étape, et un recul dans
         # l'entonnoir doit être EXPLICITEMENT assumé (Froid = parking, jamais
