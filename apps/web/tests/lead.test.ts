@@ -694,6 +694,30 @@ describe('WJ66 — idempotencyKey pass-through', () => {
   });
 });
 
+describe('WJ130 — buildIdempotencyKey en CSPRNG', () => {
+  it('le générateur par défaut n\'appelle jamais Math.random (CSPRNG requis)', () => {
+    const spy = vi.spyOn(Math, 'random');
+    try {
+      const key = buildIdempotencyKey();
+      expect(key).toHaveLength(32);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('le paramètre rand reste injectable — comportement inchangé pour les tests/appelants', () => {
+    let calls = 0;
+    const rand = () => {
+      calls++;
+      return 0;
+    };
+    const key = buildIdempotencyKey(rand);
+    expect(calls).toBe(32);
+    expect(key).toBe('a'.repeat(32));
+  });
+});
+
 describe('WJ66 — trackForwardLeadOutcome : alerte sur pannes CRM consécutives', () => {
   it('un succès réinitialise le compteur, jamais d\'alerte', () => {
     resetForwardLeadFailureStreak();
