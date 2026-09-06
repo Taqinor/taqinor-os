@@ -55,11 +55,16 @@ class _Base(TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client AUD136',
             telephone='+212600000136')
+        # Facture d'en-tête (sans lignes) : le contrat du modèle FIGE le
+        # TRIPLET montant_ht/montant_tva/montant_ttc. Ne poser que `montant_ht`
+        # laissait `total_tva` à 0 (aucune ligne à ventiler) et donc un TTC de
+        # 10 000 au lieu de 12 000.
         self.facture = Facture.objects.create(
             company=self.company, reference='FAC-AUD136-0001',
             client=self.client_obj, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20.00'), libelle='Prestation',
-            montant_ht=Decimal('10000.00'),
+            montant_ht=Decimal('10000.00'), montant_tva=Decimal('2000.00'),
+            montant_ttc=Decimal('12000.00'),
             date_echeance=date.today() + timedelta(days=30))
         self.api = APIClient()
         self.api.credentials(

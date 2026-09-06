@@ -203,7 +203,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'dgi_transmettre',
-            'bulk', 'lien_paiement', 'retour_client',
+            'bulk', 'lien_paiement', 'revoquer_lien_paiement',
+            'retour_client',
             'facturer_penalites', 'consolider', 'abandonner_solde',
             'remettre_brouillon', 'encaissement_groupe',
         ]:
@@ -1186,7 +1187,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         Le cycle de vie du lien n'avait aucune SORTIE : un lien créé avec un
         montant erroné ne pouvait être ni corrigé ni fermé, et restait payable
         jusqu'à son expiration. Idempotent : sans lien actif, 200 et rien à
-        faire — jamais une erreur pour un état déjà atteint."""
+        faire — jamais une erreur pour un état déjà atteint.
+
+        NB : `get_permissions` ci-dessus SURCHARGE les `permission_classes` du
+        décorateur ; l'action doit donc être nommée dans sa liste
+        `IsResponsableOrAdmin` (comme `lien_paiement`), sans quoi elle retombe
+        sur le `IsAdminRole()` terminal et rend 403 au responsable."""
         from ..services import revoquer_lien_paiement
         facture = self.get_object()
         lien = revoquer_lien_paiement(facture=facture, user=request.user)
