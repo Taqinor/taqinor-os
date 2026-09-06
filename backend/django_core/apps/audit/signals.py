@@ -111,6 +111,26 @@ TRACKED_MODELS = [
     ('rh', 'Pointage'),
 ]
 
+# ── UN SEUL ÉCRIVAIN PAR LIGNE D'AUDIT ─────────────────────────────────────
+# Modèles suivis dont la MODIFICATION porte déjà un écrivain DÉDIÉ dans son
+# app (``recorder.record_field_change`` appelé par la vue) : le diff générique
+# ci-dessous n'est alors PAS écrit, sans quoi chaque modification laisserait
+# DEUX lignes UPDATE (la dédiée, riche, et la générique) — un journal qui
+# compte double n'est plus un journal.
+#
+# La CRÉATION, la SUPPRESSION et les changements de statut restent, eux,
+# entièrement génériques : l'entrée du modèle dans ``TRACKED_MODELS`` garde
+# tout son sens.
+MODELES_SANS_UPDATE_GENERIQUE = {
+    # AUD609 a inscrit ``PrixContractuel`` ici pour que sa SUPPRESSION laisse
+    # enfin une trace (« Fix : PrixContractuel ajouté à TRACKED_MODELS pour que
+    # son DELETE soit journalisé »). Sa MODIFICATION, elle, appartient depuis
+    # NTCPQ46 à ``cpq.views.PrixContractuelViewSet.perform_update``, qui écrit
+    # l'ancien et le nouveau prix, et SEULEMENT quand ``prix_ht`` a bougé —
+    # une ligne plus précise que le diff générique, et la seule attendue.
+    ('cpq', 'PrixContractuel'),
+}
+
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).
 _STATUS_FIELDS = ('statut', 'stage')
 
@@ -223,6 +243,12 @@ def _on_post_save(sender, instance, created, **kwargs):
                 action=AuditLog.Action.STATUS, chatter=False,
                 detail=f'Statut : {old_label} → {new_label}')
             return
+    if (instance._meta.app_label,
+            instance._meta.object_name) in MODELES_SANS_UPDATE_GENERIQUE:
+        # L'app écrit elle-même la ligne UPDATE de ce modèle (plus riche, et
+        # conditionnée au champ qui l'intéresse) : en écrire une seconde ici
+        # doublerait chaque modification au Journal.
+        return
     changes = _diff_from_snapshot(
         instance, getattr(instance, '_audit_old_values', None))
     recorder.record(AuditLog.Action.UPDATE, instance=instance, changes=changes)
