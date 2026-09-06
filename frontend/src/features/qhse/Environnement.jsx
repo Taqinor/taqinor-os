@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Leaf, PlusCircle, Truck, CheckCircle2, PackageCheck, Recycle,
+  Leaf, PlusCircle, Truck, CheckCircle2, PackageCheck, Recycle, ClipboardCheck,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
@@ -408,6 +408,53 @@ function EnvCreateDialog({ spec, onClose, onDone }) {
   )
 }
 
+// AUDV14 (XQHS8/DRAFT165-99) — enregistre l'évaluation périodique d'une
+// exigence légale (`enregistrer_evaluation_conformite`, date posée côté
+// serveur) : les champs existaient sur le modèle mais aucun écran ne
+// pouvait les poser (absents du serializer jusqu'ici).
+function EvaluerConformiteDialog({ conformite, onClose, onDone }) {
+  const [resultat, setResultat] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!resultat.trim()) { toast.error('Le résultat est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.conformitesEnvironnementales.evaluer(conformite.id, {
+        resultat: resultat.trim(),
+      })
+      toast.success('Évaluation enregistrée.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Évaluer « {conformite.intitule} »</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label htmlFor="wir127-resultat-evaluation">Résultat de l’évaluation</Label>
+            <Textarea id="wir127-resultat-evaluation" rows={3} value={resultat}
+              onChange={(e) => setResultat(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // WIR127 — bouton d'ouverture du dialogue de création d'un onglet.
 function CreerButton({ onClick, label = 'Nouveau' }) {
   return (
@@ -467,6 +514,9 @@ export default function Environnement() {
     }
   }
 
+  // AUDV14 — évaluation périodique d'une exigence légale (XQHS8).
+  const [evaluerConf, setEvaluerConf] = useState(null)
+
   const dechetsCols = useMemo(() => [
     { id: 'libelle', header: 'Déchet', accessor: (r) => r.libelle },
     { id: 'code', header: 'Code', width: 120, accessor: (r) => r.code || '—' },
@@ -508,10 +558,17 @@ export default function Environnement() {
   const conformiteCols = useMemo(() => [
     { id: 'intitule', header: 'Conformité', accessor: (r) => r.intitule },
     { id: 'type', header: 'Type', width: 170, accessor: (r) => r.type_conformite_display || r.type_conformite },
+    // XQHS8 (AUDV14) — thématique du registre généralisé.
+    { id: 'thematique', header: 'Thématique', width: 130, accessor: (r) => r.thematique_display || r.thematique },
     { id: 'autorite', header: 'Autorité', accessor: (r) => r.autorite || '—' },
     {
       id: 'date_expiration', header: 'Expiration', width: 130, align: 'right',
       accessor: (r) => r.date_expiration, cell: (v) => formatDate(v),
+    },
+    {
+      id: 'derniere_evaluation', header: 'Dernière évaluation', width: 160,
+      accessor: (r) => r.resultat_derniere_evaluation,
+      cell: (v, r) => (v ? `${v} (${formatDate(r.date_derniere_evaluation)})` : '—'),
     },
     {
       id: 'statut', header: 'Statut', width: 140,
@@ -692,12 +749,15 @@ export default function Environnement() {
         <TabsContent value="conformite" className="mt-4">
           <QhseResourceList
             title="Conformités environnementales"
-            subtitle="Autorisations, études d’impact, rejets — échéances"
+            subtitle="Autorisations, études d’impact, rejets — échéances (registre XQHS8 étendu à toutes les thématiques)"
             fetcher={() => qhseApi.conformitesEnvironnementales.list()}
             columns={conformiteCols}
             exportName="qhse-conformites-env"
             deps={[reloadNonce]}
             actions={<CreerButton onClick={() => setCreateKey('conformitesEnvironnementales')} label="Nouvelle conformité" />}
+            rowActions={(r) => [
+              { id: 'evaluer', label: 'Évaluer', icon: ClipboardCheck, onClick: () => setEvaluerConf(r) },
+            ]}
           />
         </TabsContent>
 
@@ -775,6 +835,13 @@ export default function Environnement() {
         <EnvCreateDialog
           spec={ENV_CREATE_SPECS[createKey]}
           onClose={() => setCreateKey(null)}
+          onDone={bumpReload}
+        />
+      )}
+      {evaluerConf && (
+        <EvaluerConformiteDialog
+          conformite={evaluerConf}
+          onClose={() => setEvaluerConf(null)}
           onDone={bumpReload}
         />
       )}

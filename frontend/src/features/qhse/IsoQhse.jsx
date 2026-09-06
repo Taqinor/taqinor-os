@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
-import { Plus, Wrench } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Plus, Wrench, PlayCircle, Bell, CheckCircle2, RefreshCw, TrendingUp,
+} from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Dialog, DialogContent,
@@ -73,6 +75,95 @@ function CreerCampagneRappelDialog({ onClose, onCreated }) {
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={onClose}>Annuler</Button>
             <Button onClick={save} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// AUDV10 — clôture d'une campagne de rappel (vérification d'efficacité datée,
+// requise côté serveur par `cloturer_campagne_rappel`).
+function CloturerCampagneDialog({ campagne, onClose, onDone }) {
+  const [date, setDate] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function confirm() {
+    setSaving(true)
+    try {
+      await qhseApi.campagnesRappel.cloturer(campagne.id, {
+        date_verification_efficacite: date || undefined,
+      })
+      toast.success('Campagne clôturée.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Clôturer la campagne « {campagne.titre} »</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Date de vérification d’efficacité</Label>
+            <Input aria-label="Date de vérification d’efficacité" type="date"
+              value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={confirm} disabled={saving}>{saving ? 'Clôture…' : 'Clôturer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// AUDV10 — planifie le remplacement SAV d'un élément de rappel (client requis
+// côté serveur, résolu via `crm.selectors.get_company_client`).
+function PlanifierRemplacementDialog({ element, onClose, onDone }) {
+  const [clientId, setClientId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function confirm() {
+    if (!clientId) { toast.error('Le client est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.elementsRappel.planifierRemplacement(element.id, {
+        client_id: Number(clientId),
+      })
+      toast.success('Remplacement planifié — ticket SAV créé.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Planification impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>
+          Planifier le remplacement — {element.numero_serie || `élément #${element.id}`}
+        </DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Client (id)</Label>
+            <Input aria-label="Client (id)" inputMode="numeric" value={clientId}
+              onChange={(e) => setClientId(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={confirm} disabled={saving}>
+              {saving ? 'Planification…' : 'Planifier'}
+            </Button>
           </div>
         </div>
       </DialogContent>
@@ -181,6 +272,67 @@ function CreerProgrammeAuditDialog({ onClose, onCreated }) {
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// AUDV13 (XQHS11) — heatmap des constats d'audit par clause ISO + readiness
+// multi-référentiel, jusqu'ici sans aucun cockpit (`constats_par_clause` /
+// `readiness_multi_referentiel` n'avaient aucun appelant).
+function HeatmapReadinessPanel() {
+  const [heatmap, setHeatmap] = useState([])
+  const [readiness, setReadiness] = useState({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      qhseApi.clausesNorme.heatmapConstats(),
+      qhseApi.clausesNorme.readinessMultiReferentiel(),
+    ]).then(([h, r]) => {
+      if (!active) return
+      setHeatmap(h.data ?? [])
+      setReadiness(r.data ?? {})
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>
+
+  return (
+    <div className="flex flex-col gap-4 rounded-md border border-border p-3">
+      <div>
+        <h4 className="mb-2 text-sm font-semibold">Readiness multi-référentiel</h4>
+        {Object.keys(readiness).length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucune clause seedée.</p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(readiness).map(([ref, r]) => (
+              <div key={ref} className="rounded-md border border-border px-3 py-2 text-sm">
+                <div className="font-medium uppercase">{ref}</div>
+                <div className="text-muted-foreground">
+                  {r.pct == null ? '—' : `${r.pct} %`} ({r.couvertes}/{r.total_clauses})
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <h4 className="mb-2 text-sm font-semibold">Heatmap des constats par clause</h4>
+        {heatmap.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucun constat non conforme rattaché à une clause.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {heatmap.map((h) => (
+              <li key={`${h.referentiel}-${h.clause}`} className="flex items-center justify-between text-sm">
+                <span>{h.referentiel} — clause {h.clause}</span>
+                <span className="font-semibold">{h.nb_non_conformes}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -434,6 +586,43 @@ function CreerRevueObjectifDialog({ objectifs, onClose, onCreated }) {
   )
 }
 
+// AUDV14 (XQHS13) — trajectoire baseline→cible vs réel d'un objectif QHSE,
+// jusqu'ici sans aucun écran (`trajectoire_objectif` déjà câblé, sans appelant).
+function TrajectoireObjectifDialog({ objectif, data, onClose }) {
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Trajectoire — {objectif.intitule}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-4 text-sm">
+            <span>Baseline : <strong>{data.baseline ?? '—'}</strong></span>
+            <span>Cible : <strong>{data.cible ?? '—'}</strong></span>
+            <span>Échéance : {formatDate(data.echeance)}</span>
+          </div>
+          {data.points?.length ? (
+            <ul className="flex flex-col gap-1">
+              {data.points.map((p, i) => (
+                <li key={i} className="flex items-center justify-between text-sm">
+                  <span>{p.periode || formatDate(p.date_revue)}</span>
+                  <span>
+                    {p.valeur ?? '—'}
+                    {p.atteint != null && (p.atteint ? ' — atteint' : ' — non atteint')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">Aucune revue enregistrée.</p>
+          )}
+          <div className="flex justify-end pt-1">
+            <Button variant="outline" onClick={onClose}>Fermer</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function IsoQhse() {
   const [createKey, setCreateKey] = useState(null)
   const [reloadNonce, setReloadNonce] = useState(0)
@@ -443,6 +632,72 @@ export default function IsoQhse() {
   // décision (même patron que `ouvrirCreationLoto`, Risques.jsx).
   const [reunionOptions, setReunionOptions] = useState([])
   const [objectifOptions, setObjectifOptions] = useState([])
+  // AUDV10 — cycle de vie d'une campagne de rappel (peupler/notifier/clôturer)
+  // et planification du remplacement SAV d'un élément concerné.
+  const [cloturerCampagne, setCloturerCampagne] = useState(null)
+  const [planifierElement, setPlanifierElement] = useState(null)
+
+  async function peuplerCampagne(row) {
+    try {
+      const res = await qhseApi.campagnesRappel.peupler(row.id)
+      toast.success(`${res?.data?.crees ?? 0} élément(s) peuplé(s) depuis le parc.`)
+      bump()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Peuplement impossible.')
+    }
+  }
+
+  async function notifierCampagne(row) {
+    try {
+      const res = await qhseApi.campagnesRappel.notifier(row.id)
+      toast.success(`${res?.data?.notifies ?? 0} responsable(s) notifié(s).`)
+      bump()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Notification impossible.')
+    }
+  }
+
+  // AUDV13 — instancier/relancer un audit planifié.
+  async function instancierAudit(row) {
+    try {
+      await qhseApi.auditsPlanifies.instancier(row.id)
+      toast.success('Audit instancié.')
+      bump()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Instanciation impossible.')
+    }
+  }
+
+  async function relancerAudits() {
+    try {
+      const res = await qhseApi.auditsPlanifies.relancerAuditsEnRetard()
+      toast.success(`${res?.data?.length ?? 0} audit(s) planifié(s) relancé(s).`)
+      bump()
+    } catch {
+      toast.error('Relance impossible.')
+    }
+  }
+
+  // AUDV14 — relance des objectifs QHSE en revue due + trajectoire d'un objectif.
+  const [trajectoireObjectif, setTrajectoireObjectif] = useState(null)
+
+  async function relancerObjectifs() {
+    try {
+      const res = await qhseApi.objectifsQhse.relancerObjectifsRevueDue()
+      toast.success(`${res?.data?.notifiees ?? 0} objectif(s) relancé(s).`)
+    } catch {
+      toast.error('Relance impossible.')
+    }
+  }
+
+  async function voirTrajectoire(objectif) {
+    try {
+      const res = await qhseApi.objectifsQhse.trajectoire(objectif.id)
+      setTrajectoireObjectif({ objectif, data: res.data })
+    } catch {
+      toast.error('Trajectoire indisponible.')
+    }
+  }
 
   async function ouvrirCreationDecision() {
     try {
@@ -482,6 +737,16 @@ export default function IsoQhse() {
     { id: 'statut', header: 'Statut', width: 130, accessor: (r) => r.statut_display || r.statut },
   ], [])
 
+  const elementsRappelCols = useMemo(() => [
+    { id: 'campagne', header: 'Campagne', width: 100, accessor: (r) => r.campagne },
+    { id: 'serie', header: 'N° série', accessor: (r) => r.numero_serie || '—' },
+    { id: 'statut', header: 'Statut', width: 130, accessor: (r) => r.statut_display || r.statut },
+    {
+      id: 'ticket', header: 'Ticket SAV', width: 110, align: 'center',
+      accessor: (r) => r.ticket_sav_id, cell: (v) => (v ? `#${v}` : '—'),
+    },
+  ], [])
+
   const certificationsCols = useMemo(() => [
     { id: 'referentiel', header: 'Référentiel', width: 130, accessor: (r) => r.referentiel_display || r.referentiel },
     { id: 'organisme', header: 'Organisme', accessor: (r) => r.organisme || '—' },
@@ -499,6 +764,20 @@ export default function IsoQhse() {
     {
       id: 'nb_audits', header: 'Audits planifiés', width: 150, align: 'right',
       accessor: (r) => r.nb_audits_planifies ?? 0,
+    },
+  ], [])
+
+  // AUDV13 — audits planifiés (instancier/relancer les retards).
+  const auditsPlanifiesCols = useMemo(() => [
+    { id: 'processus', header: 'Processus / domaine', accessor: (r) => r.processus_domaine || '—' },
+    {
+      id: 'date_cible', header: 'Date cible', width: 120, align: 'right',
+      accessor: (r) => r.date_cible, cell: (v) => formatDate(v),
+    },
+    { id: 'statut', header: 'Statut', width: 130, accessor: (r) => r.statut_display || r.statut },
+    {
+      id: 'audit', header: 'Audit', width: 100, align: 'center',
+      accessor: (r) => r.audit, cell: (v) => (v ? `#${v}` : '—'),
     },
   ], [])
 
@@ -551,7 +830,7 @@ export default function IsoQhse() {
           <TabsTrigger value="objectifs">Objectifs QHSE</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rappels" className="mt-4">
+        <TabsContent value="rappels" className="mt-4 flex flex-col gap-6">
           <QhseResourceList
             title="Campagnes de rappel produit"
             subtitle="Défaut fournisseur produit-lot-série (XQHS5)"
@@ -564,6 +843,27 @@ export default function IsoQhse() {
                 <Plus size={16} /> Nouvelle campagne
               </Button>
             }
+            // AUDV10 — cycle de vie complet (peupler le parc réel, notifier les
+            // responsables, clôturer après vérification d'efficacité) jusqu'ici
+            // testé côté API (WIR275) sans aucun bouton d'écran.
+            rowActions={(r) => [
+              { id: 'peupler', label: 'Peupler depuis le parc', icon: PlayCircle, onClick: () => peuplerCampagne(r) },
+              { id: 'notifier', label: 'Notifier les responsables', icon: Bell, onClick: () => notifierCampagne(r) },
+              ...(r.statut !== 'cloturee'
+                ? [{ id: 'cloturer', label: 'Clôturer', icon: CheckCircle2, onClick: () => setCloturerCampagne(r) }]
+                : []),
+            ]}
+          />
+          <QhseResourceList
+            title="Éléments concernés"
+            subtitle="Équipements du parc peuplés par une campagne — remplacement SAV"
+            fetcher={() => qhseApi.elementsRappel.list()}
+            columns={elementsRappelCols}
+            exportName="qhse-elements-rappel"
+            deps={[reloadNonce]}
+            rowActions={(r) => (r.statut === 'remplace' || r.statut === 'clos'
+              ? []
+              : [{ id: 'planifier', label: 'Planifier remplacement', icon: Wrench, onClick: () => setPlanifierElement(r) }])}
           />
         </TabsContent>
 
@@ -583,7 +883,7 @@ export default function IsoQhse() {
           />
         </TabsContent>
 
-        <TabsContent value="programme-audit" className="mt-4">
+        <TabsContent value="programme-audit" className="mt-4 flex flex-col gap-6">
           <QhseResourceList
             title="Programme d’audit interne"
             subtitle="Programme annuel (XQHS10)"
@@ -597,6 +897,24 @@ export default function IsoQhse() {
               </Button>
             }
           />
+          <QhseResourceList
+            title="Audits planifiés"
+            subtitle="Instanciation + relance des audits en retard (XQHS10)"
+            fetcher={() => qhseApi.auditsPlanifies.list()}
+            columns={auditsPlanifiesCols}
+            exportName="qhse-audits-planifies"
+            deps={[reloadNonce]}
+            actions={
+              <Button variant="outline" onClick={relancerAudits}>
+                <RefreshCw size={16} /> Relancer les retards
+              </Button>
+            }
+            rowActions={(r) => (r.audit
+              ? []
+              : [{ id: 'instancier', label: 'Instancier', icon: PlayCircle, onClick: () => instancierAudit(r) }])}
+          />
+          {/* AUDV13 (XQHS11) — heatmap constats/clause + readiness multi-référentiel. */}
+          <HeatmapReadinessPanel />
         </TabsContent>
 
         <TabsContent value="revues-direction" className="mt-4 flex flex-col gap-6">
@@ -640,10 +958,18 @@ export default function IsoQhse() {
             exportName="qhse-objectifs"
             deps={[reloadNonce]}
             actions={
-              <Button onClick={() => setCreateKey('objectif')}>
-                <Plus size={16} /> Nouvel objectif
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={relancerObjectifs}>
+                  <RefreshCw size={16} /> Relancer les revues dues
+                </Button>
+                <Button onClick={() => setCreateKey('objectif')}>
+                  <Plus size={16} /> Nouvel objectif
+                </Button>
+              </div>
             }
+            rowActions={(r) => [
+              { id: 'trajectoire', label: 'Voir trajectoire', icon: TrendingUp, onClick: () => voirTrajectoire(r) },
+            ]}
           />
           <QhseResourceList
             title="Revues d’objectif"
@@ -663,6 +989,20 @@ export default function IsoQhse() {
 
       {createKey === 'campagne' && (
         <CreerCampagneRappelDialog onClose={() => setCreateKey(null)} onCreated={bump} />
+      )}
+      {cloturerCampagne && (
+        <CloturerCampagneDialog
+          campagne={cloturerCampagne}
+          onClose={() => setCloturerCampagne(null)}
+          onDone={bump}
+        />
+      )}
+      {planifierElement && (
+        <PlanifierRemplacementDialog
+          element={planifierElement}
+          onClose={() => setPlanifierElement(null)}
+          onDone={bump}
+        />
       )}
       {createKey === 'certification' && (
         <CreerCertificationDialog onClose={() => setCreateKey(null)} onCreated={bump} />
@@ -688,6 +1028,13 @@ export default function IsoQhse() {
           objectifs={objectifOptions}
           onClose={() => setCreateKey(null)}
           onCreated={bump}
+        />
+      )}
+      {trajectoireObjectif && (
+        <TrajectoireObjectifDialog
+          objectif={trajectoireObjectif.objectif}
+          data={trajectoireObjectif.data}
+          onClose={() => setTrajectoireObjectif(null)}
         />
       )}
     </>

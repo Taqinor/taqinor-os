@@ -157,6 +157,80 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
     return anomalies
 
 
+def decompter_stock_lignes(*, lignes, company, user, reference, note):
+    """AUD116 — LE DÉCOMPTEUR UNIQUE de stock des lignes d'un devis.
+
+    Il existait DEUX décompteurs pour le MÊME panier, et ils ne faisaient pas
+    le même travail : ``reserver_stock_devis_facture`` (facturation directe)
+    sautait les lignes sans produit et les lignes hors ``compte_dans_totaux``,
+    alors que ``bon_commande.marquer_livre`` itérait ``bc.devis.lignes`` NU et
+    appelait ``verrouiller_produit(ligne.produit_id)`` sans jamais tester
+    ``produit is None`` — alors que ``LigneDevis.produit`` est nullable depuis
+    XSAL14. Pire : ni l'un ni l'autre n'appliquait ``option_lines``, si bien
+    qu'un devis accepté « sans batterie » livrait les DEUX kits et le stock
+    physique divergeait du stock ERP du montant d'une batterie.
+
+    Les appelants passent désormais le MÊME panier que la facture et que la
+    nomenclature du chantier (``option_lines``), et cette fonction est la
+    seule à savoir décompter. Elle lève ``StockInsuffisantError`` (message FR
+    identique des deux côtés) ; à appeler dans la transaction de l'appelant.
+    Renvoie ``True`` si au moins un mouvement a été posé.
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    from apps.stock.services import (
+        mouvement_type_sortie, record_stock_movement,
+        verrouiller_produit, check_negative_stock_guard,
+    )
+
+    moved = False
+    for ligne in lignes:
+        # XSAL5/XSAL14 — ne décompte QUE les lignes produit effectives : ni
+        # option non activée, ni ligne de section/note (sans produit).
+        if not ligne.compte_dans_totaux or ligne.produit_id is None:
+            continue
+        # AUD216 — VERROU de ligne produit AVANT la lecture de
+        # `quantite_stock` : `refresh_from_db()` relisait sans verrouiller, et
+        # la garde « stock insuffisant » ci-dessous décidait donc sur une
+        # valeur qu'une transaction concurrente pouvait déjà avoir consommée
+        # (survente). Verrou pris par le thin service stock — jamais d'import
+        # des models stock ici.
+        produit = verrouiller_produit(ligne.produit_id)
+        if produit is None or ligne.quantite is None:
+            continue
+        # ERR15 — ne PAS tronquer la quantité décimale (int() perdait la partie
+        # fractionnaire : 3,5 → 3, dérive silencieuse du stock sur les lignes
+        # au mètre/câble). Le registre de stock est en entiers : on arrondit au
+        # plus proche (HALF_UP) au lieu de tronquer, donc 3,5 → 4.
+        qte = int(Decimal(ligne.quantite).quantize(
+            Decimal('1'), rounding=ROUND_HALF_UP))
+        if qte <= 0:
+            continue
+        qte_avant = produit.quantite_stock
+        qte_apres = qte_avant - qte
+        # AUD228 — route par la garde paramétrable (société) plutôt qu'un
+        # blocage en dur : `stock_negatif_autorise` (AchatsParametres) est
+        # respecté ici. Message INCHANGÉ quand le réglage refuse (défaut).
+        try:
+            check_negative_stock_guard(company, qte_avant, qte_apres)
+        except ValueError:
+            raise StockInsuffisantError(
+                f'Stock insuffisant pour « {produit.nom} » '
+                f'(disponible : {qte_avant}, requis : {qte}).')
+        record_stock_movement(
+            company=company,
+            produit=produit,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=qte,
+            quantite_avant=qte_avant,
+            quantite_apres=qte_apres,
+            reference=reference,
+            note=note,
+            created_by=user,
+        )
+        moved = True
+    return moved
+
+
 def reserver_stock_devis_facture(*, devis, user, company):
     """U9 — réserve/consomme le stock matériel d'un devis facturé EN DIRECT.
 
@@ -181,12 +255,9 @@ def reserver_stock_devis_facture(*, devis, user, company):
     Lève ``StockInsuffisantError`` si une ligne dépasse le disponible (la
     transaction de l'appelant est alors annulée, comme côté BC).
     """
-    from decimal import Decimal, ROUND_HALF_UP
-    from apps.stock.services import (
-        mouvement_type_sortie, record_stock_movement,
-        sortie_exists_for_reference, verrouiller_produit,
-    )
+    from apps.stock.services import sortie_exists_for_reference
     from apps.ventes.models import BonCommande
+    from apps.ventes.utils.options import option_lines
 
     reference = devis.reference
 
@@ -199,47 +270,15 @@ def reserver_stock_devis_facture(*, devis, user, company):
             devis=devis, statut=BonCommande.Statut.LIVRE).exists():
         return False
 
-    moved = False
-    for ligne in devis.lignes.select_related('produit'):
-        # XSAL5/XSAL14 — ne réserve QUE les lignes produit effectives : pas les
-        # options non activées ni les lignes de section/note (sans produit).
-        if not ligne.compte_dans_totaux:
-            continue
-        produit = ligne.produit
-        if produit is None:
-            continue
-        # AUD216 — VERROU de ligne produit AVANT la lecture de
-        # `quantite_stock` : `refresh_from_db()` relisait sans verrouiller, et
-        # la garde « stock insuffisant » ci-dessous décidait donc sur une
-        # valeur qu'une transaction concurrente pouvait déjà avoir consommée
-        # (survente, exactement ce que U9 existe pour empêcher). Verrou pris
-        # par le thin service stock — jamais d'import des models stock ici.
-        produit = verrouiller_produit(ligne.produit_id)
-        # Même règle que la livraison BC (ERR15) : on arrondit au plus proche
-        # (HALF_UP) au lieu de tronquer, le registre de stock étant en entiers.
-        qte = int(Decimal(ligne.quantite).quantize(
-            Decimal('1'), rounding=ROUND_HALF_UP))
-        if qte <= 0:
-            continue
-        qte_avant = produit.quantite_stock
-        qte_apres = qte_avant - qte
-        if qte_apres < 0:
-            raise StockInsuffisantError(
-                f'Stock insuffisant pour « {produit.nom} » '
-                f'(disponible : {qte_avant}, requis : {qte}).')
-        record_stock_movement(
-            company=company,
-            produit=produit,
-            type_mouvement=mouvement_type_sortie(),
-            quantite=qte,
-            quantite_avant=qte_avant,
-            quantite_apres=qte_apres,
-            reference=reference,
-            note=f'Facturation directe — devis {reference}',
-            created_by=user,
-        )
-        moved = True
-    return moved
+    # AUD116 — MÊME PANIER que la facture (`option_lines`) et que la
+    # nomenclature du chantier, MÊME décompteur que la livraison BC.
+    return decompter_stock_lignes(
+        lignes=option_lines(devis),
+        company=company,
+        user=user,
+        reference=reference,
+        note=f'Facturation directe — devis {reference}',
+    )
 
 
 def creer_facture_contrat(*, contrat, user, company):
@@ -255,6 +294,13 @@ def creer_facture_contrat(*, contrat, user, company):
         les forfaits de maintenance).
       - Statut EMISE directement (facture manuelle de redevance).
       - Après création, `derniere_facturation` du contrat est avancée à aujourd'hui.
+
+    XCTR22 (AUDV18) — le débit du mandat de prélèvement actif n'est PAS
+    déclenché ICI volontairement : le SEUL appelant (`sav.services.
+    facturer_contrat_maintenance`) ajoute encore la ligne d'usage XCTR16
+    APRÈS ce retour (AUD151, montant final recalculé depuis les lignes) —
+    débiter ici sous-facturerait tout contrat à tarif d'usage. Le branchement
+    vit donc dans l'appelant, une fois le montant définitif connu.
 
     Lève ValueError si les pré-conditions ne sont pas remplies.
     Renvoie la Facture créée.

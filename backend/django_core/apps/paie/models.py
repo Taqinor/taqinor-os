@@ -788,12 +788,16 @@ class ElementVariable(models.Model):
     supplémentaires, jours d'absence, primes ponctuelles, retenues. Importable
     depuis RH (heures/HS/absences) via ``services.importer_elements_rh`` — la
     paie ne lit jamais ``rh.models`` directement, le rapprochement passe par
-    ``apps.rh.selectors``.
+    ``apps.rh.selectors``. AUDV21 — importable aussi depuis la flotte (avantage
+    en nature véhicule) via ``services.importer_avantages_nature_flotte`` —
+    même principe, la paie ne lit jamais ``flotte.models`` directement, le
+    rapprochement passe par ``apps.flotte.selectors``.
 
     Rattaché à une ``PeriodePaie`` et à un ``ProfilPaie``. ``type`` qualifie la
     nature de l'élément (heures, HS, absence, prime, retenue) ; ``rubrique`` est
     la rubrique catalogue associée (facultatif). ``quantite`` et ``montant``
-    portent la valeur. ``source`` trace l'origine (saisie manuelle ou import RH).
+    portent la valeur. ``source`` trace l'origine (saisie manuelle, import RH ou
+    import flotte).
 
     Multi-société : ``company`` posée côté serveur.
     """
@@ -823,9 +827,15 @@ class ElementVariable(models.Model):
 
     SOURCE_MANUEL = 'manuel'
     SOURCE_RH = 'rh'
+    # AUDV21/XFLT29 — import cross-app en LECTURE des avantages en nature
+    # véhicule depuis la flotte (``services.importer_avantages_nature_flotte``,
+    # ``apps.flotte.selectors.avantages_en_nature``) — la flotte n'écrit
+    # jamais dans la paie, cette source ne fait que TRACER l'origine.
+    SOURCE_FLOTTE = 'flotte'
     SOURCE_CHOICES = [
         (SOURCE_MANUEL, 'Saisie manuelle'),
         (SOURCE_RH, 'Import RH'),
+        (SOURCE_FLOTTE, 'Import flotte (avantage en nature)'),
     ]
 
     company = models.ForeignKey(
@@ -1084,15 +1094,22 @@ class BulletinPaie(models.Model):
         related_name='paie_bulletins',
         verbose_name='Société',
     )
+    # AUD721 — PROTECT, pas CASCADE. La garde d'immuabilité posée dans
+    # ``save``/``delete`` ne s'applique qu'à un ``instance.delete()`` Python :
+    # supprimer la PÉRIODE ou le PROFIL depuis ``/admin/`` (ou par un
+    # ``queryset.delete()``) cascadait sur TOUS leurs bulletins — VALIDÉS
+    # compris — sans jamais lever ``BulletinVerrouille``. Avec PROTECT, la
+    # base elle-même refuse : on ne peut plus effacer un bulletin de paie par
+    # la bande.
     periode = models.ForeignKey(
         PeriodePaie,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='bulletins',
         verbose_name='Période',
     )
     profil = models.ForeignKey(
         ProfilPaie,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='bulletins',
         verbose_name='Profil de paie',
     )

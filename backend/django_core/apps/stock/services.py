@@ -1243,6 +1243,13 @@ def confirm_reception_fournisseur(reception, user):
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
+    # AUD233 — le rapprochement 3 voies du BCF est CRÉÉ/RAFRAÎCHI dès que la
+    # marchandise est réellement entrée : c'est le moment où « reçu » cesse
+    # d'être une hypothèse. Réglage société, ON par défaut, best-effort (une
+    # réception confirmée n'échoue jamais pour cette raison).
+    if bc is not None:
+        rafraichir_rapprochement_3voies_auto(
+            reception.company, bc.id, user=user)
     # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
     # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
     try:
@@ -1429,6 +1436,36 @@ def sortir_lot_entrepot(
 # Le solde dû d'une facture = TTC − Σ paiements. Le statut de règlement est
 # RECALCULÉ après chaque paiement (à payer / partiellement payée / payée). Les
 # montants d'achat sont INTERNES (jamais client-facing).
+
+def verrouiller_facture_fournisseur_et_verifier_solde(facture, montant):
+    """AUD208 (ZACC9) — verrouille la FactureFournisseur (``select_for_update``)
+    et RE-VÉRIFIE le solde dû sur la ligne FRAÎCHE, verrouillée, avant tout
+    enregistrement de paiement.
+
+    Le défaut d'origine : ``PaiementFournisseurSerializer.validate()`` compare
+    ``montant`` à ``facture.solde_du`` HORS verrou, AVANT que la vue n'ouvre
+    même sa transaction. Deux paiements concurrents, chacun INFÉRIEUR au
+    solde dû pris ISOLÉMENT mais dont la SOMME le dépasse, passent tous les
+    deux cette garde (chacun lit le même solde dû de départ). Ici, le premier
+    appelant à acquérir le verrou bloque le second jusqu'à son COMMIT ; le
+    second relit alors un ``solde_du`` qui reflète DÉJÀ le premier paiement et
+    est correctement refusé.
+
+    DOIT être appelée à l'intérieur d'un ``transaction.atomic()`` déjà ouvert
+    par l'appelant (``select_for_update()`` hors transaction lève une
+    ``TransactionManagementError``). Lève ``ValueError`` (jamais un 500 nu ;
+    l'appelant le traduit en 400) si le paiement dépasserait le solde dû
+    fraîchement lu. Renvoie la facture VERROUILLÉE, à réutiliser par
+    l'appelant plutôt que de relire la version non verrouillée."""
+    from .models import FactureFournisseur
+    facture_verrouillee = FactureFournisseur.objects.select_for_update().get(
+        pk=facture.pk)
+    if montant > facture_verrouillee.solde_du:
+        raise ValueError(
+            'Le montant dépasse le solde dû '
+            f'({facture_verrouillee.solde_du}).')
+    return facture_verrouillee
+
 
 def recompute_facture_fournisseur_statut(facture):
     """Recalcule le statut de règlement d'une facture fournisseur depuis ses
@@ -2089,7 +2126,14 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     Une ligne sans produit catalogue (désignation libre) ou pas encore
     comptée (``quantite_comptee`` None) est ignorée. Renvoie le nombre de
     mouvements postés. Scopé société ; verrouille le produit (select_for_update)
-    pour éviter une course avec un mouvement concurrent."""
+    pour éviter une course avec un mouvement concurrent.
+
+    AUD320 — CE SERVICE NE PORTE PAS L'IDEMPOTENCE. Il verrouille chaque
+    ``Produit`` mais jamais la ``SessionComptage``, et ne revérifie pas son
+    état : deux appels concurrents pour la MÊME session posteraient deux
+    ajustements. C'est l'APPELANT qui doit prendre le verrou de session
+    (``installations.views.comptage.terminer`` le fait, sous
+    ``select_for_update()`` + ``transaction.atomic()``)."""
     from django.db import transaction
     from .models import MouvementStock, Produit
 
@@ -2109,11 +2153,23 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
                 continue
             avant = produit.quantite_stock
             apres = ligne.quantite_comptee
+            # AUD320 — LA RÉFÉRENCE DU MOUVEMENT EST CELLE DU DOCUMENT SOURCE,
+            # TELLE QUELLE. `f'CYC-{reference}'` re-préfixait une référence de
+            # session qui porte DÉJÀ son préfixe (`create_with_reference(...,
+            # 'CYC', ...)` → `CYC-YYYYMM-NNNN`) : le registre stockait
+            # `CYC-CYC-202609-0001`, si bien qu'aucune recherche par la
+            # référence de la session — celle qu'affiche l'écran et que porte
+            # la `note` juste en dessous — ne retrouvait son ajustement. La
+            # fonction sœur `valider_inventaire_session` pose déjà
+            # `reference=session.reference` sans rien y ajouter ; c'est la
+            # convention de la maison. Les lignes historiques doublement
+            # préfixées restent lisibles (aucune migration : le champ est un
+            # libellé de traçabilité, jamais une clé).
             record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
                 quantite=abs(ecart), quantite_avant=avant,
-                quantite_apres=apres, reference=f'CYC-{reference}',
+                quantite_apres=apres, reference=reference,
                 note=f'Comptage cyclique {reference} — écart {ecart}',
                 created_by=user)
             count += 1
@@ -3194,6 +3250,13 @@ def supplier_performance(company, fournisseur):
         company=company, fournisseur=fournisseur, resolu=False,
         gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
 
+    # DRAFT165-79 (AUDV11) — compteur SCAR (demandes d'action corrective
+    # fournisseur QHSE) ADVISORY au scorecard : lu via le sélecteur qhse
+    # (jamais un import de modèle cross-app) ; best-effort à zéro si l'app
+    # qhse n'a aucune donnée pour ce fournisseur.
+    from apps.qhse.selectors import scar_count_par_fournisseur
+    scar = scar_count_par_fournisseur(company, fournisseur.id)
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
@@ -3203,6 +3266,8 @@ def supplier_performance(company, fournisseur):
         'otif_nb_retard': otif['nb_retard'],
         'otif_nb_incomplet': otif['nb_incomplet'],
         'incidents_qualite_critiques_ouverts': incidents_critiques,
+        'scar_total': scar['total'],
+        'scar_ouvertes': scar['ouvertes'],
         'avg_lead_time_days': round(sum(lead_times) / len(lead_times), 1) if lead_times else None,
         'fill_rate_pct': round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else None,
         'nb_retours': nb_retours,
@@ -4777,6 +4842,53 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
 
 # ── XPUR10 — tolérances 3 voies & file d'exceptions ─────────────────────────
 
+def rafraichir_rapprochement_3voies_auto(company, bon_commande_id, *,
+                                         user=None):
+    """AUD233 — auto-crée/rafraîchit le rapprochement 3 voies d'un BCF.
+
+    [DÉCISION FONDATEUR 03/09/2026] Le rapprochement commandé/reçu/facturé
+    était OPT-IN PAR BON DE COMMANDE et n'avait qu'UN seul créateur : une
+    action manuelle explicite. Conséquence en chaîne :
+    ``compta.selectors.rapprochement_ecart_pct`` renvoyait ``None`` faute de
+    ``Rapprochement``, donc ``evaluate_facture_exception`` était un NO-OP
+    STRUCTUREL — par défaut, une facture fournisseur pouvait être payée pour
+    plus que ce qui avait été reçu sans qu'aucune alerte ne se déclenche.
+
+    Réglage société ``AchatsParametres.rapprochement_3voies_auto``, ON par
+    défaut. **JAMAIS RÉTROACTIF** : cette fonction n'est appelée que par des
+    ÉVÉNEMENTS (confirmation d'une réception, évaluation d'une facture liée à
+    un BCF) — aucun rattrapage de l'historique n'a lieu, un BCF déjà reçu et
+    facturé avant la bascule reste exactement dans l'état où il était.
+
+    Écrit dans ``apps.compta`` par son SERVICE (jamais un import de ses
+    modèles). Best-effort et silencieuse : une réception ne doit jamais échouer
+    parce que la compta est indisponible.
+    """
+    from .models import AchatsParametres
+    if not bon_commande_id or company is None:
+        return None
+    try:
+        if not AchatsParametres.for_company(company).rapprochement_3voies_auto:
+            return None
+    except Exception:  # pragma: no cover - défensif (réglage illisible)
+        return None
+    try:
+        from apps.compta.services import creer_rapprochement_3voies
+    except Exception:  # pragma: no cover - défensif (compta indisponible)
+        return None
+    try:
+        parametres = AchatsParametres.for_company(company)
+        return creer_rapprochement_3voies(
+            company, bon_commande_id=bon_commande_id,
+            tolerance=parametres.tolerance_prix_absolu_mad or Decimal('0'),
+            note='AUD233 — rapprochement automatique.', user=user)
+    except Exception:  # pragma: no cover - best-effort, jamais bloquant
+        logger.exception(
+            'AUD233 rapprochement 3 voies automatique impossible pour le '
+            'BCF %s', bon_commande_id)
+        return None
+
+
 def evaluate_facture_exception(company, facture):
     """XPUR10 — compare l'écart du rapprochement 3 voies (FG131, lu via
     ``apps.compta.selectors`` — jamais d'import de modèles compta) du BCF
@@ -4794,6 +4906,12 @@ def evaluate_facture_exception(company, facture):
         from apps.compta.selectors import rapprochement_ecart_pct
     except Exception:  # pragma: no cover - défensif (compta indisponible)
         return False, None
+    # AUD233 — LE RAPPROCHEMENT EXISTE ENFIN QUAND ON LE LIT. Sans cette
+    # ligne, `rapprochement_ecart_pct` renvoyait `None` pour tout BCF dont
+    # personne n'avait cliqué le bouton manuel, et cette fonction ne pouvait
+    # STRUCTURELLEMENT jamais détecter le moindre écart. Idempotent
+    # (get_or_create + ré-évaluation) et gouverné par le réglage société.
+    rafraichir_rapprochement_3voies_auto(company, facture.bon_commande_id)
     ecart_pct = rapprochement_ecart_pct(company, facture.bon_commande_id)
     if ecart_pct is None:
         return False, None

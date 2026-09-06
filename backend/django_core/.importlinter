@@ -45,6 +45,20 @@ modules =
 # DIRECT cross-domain `X.models -> Y.models` import is a separate edge and stays
 # caught.
 ignore_imports =
+# AUD105/106/107 + QJR50 — l'arête d'entrée a DÉMÉNAGÉ, l'exception la suit.
+# La chaîne d'argent des documents client vit désormais dans la façade SANS
+# modèle `apps.facturation.totaux` (`TotauxDocumentMixin`), que `ventes.models`
+# et `facturation.models` importent en TÊTE de fichier ; c'est la façade qui
+# porte maintenant l'import FONCTION-LOCAL `-> apps.ventes.selectors` (dans les
+# properties `total_ht`/`tva_par_taux`/`_canonique`). Les deux anciennes
+# exceptions (`ventes.models -> ventes.selectors`,
+# `facturation.models -> ventes.selectors`) ne correspondaient donc plus à
+# aucune arête : import-linter les refusait (« No matches for ignored import »)
+# et s'arrêtait AVANT d'évaluer le moindre contrat — trois contrats cassés
+# masqués par une exception morte. On les remplace par l'arête réelle, une
+# seule, au même endroit sémantique. Un import DIRECT
+# `X.models -> Y.models` reste détecté.
+    apps.facturation.totaux -> apps.ventes.selectors
     apps.sav.models -> apps.sav.selectors
     apps.crm.models -> apps.crm.services
 # ODX17 — `apps.ventes.models` ends with a transitional RE-EXPORT shim
@@ -218,12 +232,14 @@ forbidden_modules =
     apps.sav.models
     apps.installations.models
     apps.compta.models
-# ODX17 / AUD105-107 — Facture/Avoir délèguent LAZILY leur calcul TVA au
-# selector partagé `ventes.selectors.tva_buckets/_canonical_totaux`, désormais
-# via le mixin `apps.facturation.totaux` (l'import function-local a déménagé de
-# models.py vers totaux.py avec TotauxDocumentMixin, 2026-09-06). Ignore
-# uniquement cette arête de couche selector ; un import DIRECT
-# `apps.facturation.models -> apps.ventes.models` resterait détecté.
+# ODX17 — Facture/Avoir (déplacées ici depuis ventes) délèguent LAZILY leur
+# calcul TVA au selector partagé `ventes.selectors.tva_buckets/_canonical_totaux`
+# (function-local import dans les properties `total_ht`/`tva_par_taux`/
+# `total_ttc`). Depuis AUD105/106/107 ce calcul vit dans la façade sans modèle
+# `apps.facturation.totaux`, que `facturation.models` importe en tête : c'est
+# donc la façade qui porte l'arête fonction-locale vers le selector, et c'est
+# ELLE qu'on ignore ici (même correction qu'au contrat M1 ci-dessus). Un import
+# DIRECT `apps.facturation.models -> apps.ventes.models` reste détecté.
 ignore_imports =
     apps.facturation.totaux -> apps.ventes.selectors
 
@@ -308,28 +324,97 @@ forbidden_modules =
     apps.sav.models
     apps.installations.models
 
+# AUD825 — COUVERTURE COMPLÉTÉE (28/09/2026). Ce contrat n'énumérait que 15 des
+# 77 paquets de `apps/` : 62 apps (compta, facturation, achats, ged, rh, paie,
+# contrats, cpq, marketing, pos, portail, ao…) n'étaient PAS couvertes, et un
+# contrat `forbidden` ne teste QUE ce qu'il énumère. Contrairement au contrat
+# `core` ci-dessous, on ne peut PAS écrire `forbidden_modules = apps` ici :
+# `apps.tiers` est un descendant de `apps` et import-linter refuse la
+# configuration (« Modules have shared descendants ») — même chose avec
+# `apps.*`. La couverture est donc EXHAUSTIVE PAR ÉNUMÉRATION : les 71 apps
+# ci-dessous = tous les paquets de `apps/` SAUF `tiers` lui-même et les apps de
+# FONDATION (`roles`, `records`, `parametres`, `customfields`, `core`), qui
+# n'ont jamais figuré parmi les 15 interdites — les exempter ne relâche donc
+# rien. Une app AJOUTÉE plus tard n'est pas couverte automatiquement : c'est la
+# limite structurelle du type `forbidden` avec une source interne au paquet.
 [importlinter:contract:tiers-is-a-base-layer]
 name = The tiers foundation app imports downward only (no domain-core or satellite app — locks ARC17)
 type = forbidden
 source_modules =
     apps.tiers
 forbidden_modules =
-    apps.crm
-    apps.ventes
-    apps.stock
-    apps.installations
-    apps.sav
-    apps.compta
-    apps.reporting
-    apps.automation
-    apps.monitoring
-    apps.notifications
-    apps.publicapi
+    apps.accessreview
+    apps.achats
+    apps.adminops
+    apps.adsengine
+    apps.agent
+    apps.agriculture
+    apps.ai_governance
+    apps.ao
+    apps.assurances
     apps.audit
-    apps.documents
-    apps.dataimport
+    apps.automation
+    apps.btp_chantier
+    apps.chat
+    apps.compta
     apps.contact
-# ARC18/19/21 — les modules de TEST des ponts Tiers importent volontairement les
+    apps.contacts
+    apps.contrats
+    apps.conversation_ai
+    apps.cpq
+    apps.credit
+    apps.crm
+    apps.dataimport
+    apps.documents
+    apps.douane
+    apps.ecommerce_connect
+    apps.education
+    apps.einvoice
+    apps.entites
+    apps.esg
+    apps.extensions
+    apps.facturation
+    apps.fiscal
+    apps.flotte
+    apps.fpa
+    apps.frais
+    apps.ged
+    apps.gestion_projet
+    apps.hospitality
+    apps.identity
+    apps.immobilier
+    apps.innovation
+    apps.installations
+    apps.kb
+    apps.litiges
+    apps.marketing
+    apps.migration
+    apps.monitoring
+    apps.mrp
+    apps.notifications
+    apps.offlinesync
+    apps.onboarding
+    apps.outillage
+    apps.paie
+    apps.portail
+    apps.pos
+    apps.promotions
+    apps.publicapi
+    apps.qhse
+    apps.reporting
+    apps.rh
+    apps.sante
+    apps.sav
+    apps.scm
+    apps.stock
+    apps.territoires
+    apps.transport
+    apps.trash
+    apps.uxviews
+    apps.veille_ao
+    apps.ventes
+    apps.voip
+# ARC18/19/21 + AUDV23 — les modules de TEST des ponts Tiers importent volontairement les
 # vrais modèles historiques (crm.Client/Lead, stock.Fournisseur, compta.Partenaire,
 # rh.DossierEmploye) et le service crm pour PROUVER que le miroir one-way et la
 # bascule flag-gatée fonctionnent de bout en bout. Ce sont des tests d'intégration
@@ -344,39 +429,70 @@ ignore_imports =
     apps.tiers.tests.test_arc19_bridge -> apps.rh.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.services
+    apps.tiers.tests.test_audv23_hooks_identite -> apps.crm.models
+    apps.tiers.tests.test_audv23_hooks_identite -> apps.stock.models
+    apps.tiers.tests.test_audv23_hooks_identite -> apps.stock.services
 
 # ARC6 — `core.numbering` (fabrique de références anti-collision, ex
 # `apps.ventes.utils.references`) est une primitive de FONDATION relogée ici :
 # elle reçoit en paramètre le modèle/préfixe/société dont elle a besoin, n'importe
 # donc AUCUNE app métier et respecte nativement le contrat base-layer ci-dessous.
 # `apps.ventes.utils.references` n'est plus qu'un shim de ré-export bit-identique.
+# AUD825 — POLARITÉ INVERSÉE (28/09/2026). Ce contrat énumérait 14 apps
+# interdites sur les 78 que porte `apps/` : compta, facturation, achats, ged,
+# rh, paie, contrats, cpq, marketing, pos, portail, ao… n'étaient PAS couverts,
+# et un contrat `forbidden` ne teste QUE ce qu'il énumère. La couche était
+# propre en fait, mais la GARDE avait un trou de 63 apps : une lane future qui
+# aurait écrit `from apps.compta.models import EcritureComptable` dans `core/`
+# serait passée avec une CI verte, réintroduisant le cycle d'import que M5
+# interdit. On interdit désormais le PAQUET ENTIER (`apps`) et on énumère les
+# arêtes légitimes ci-dessous — la liste à tenir devient celle des EXCEPTIONS
+# (qui se justifient une par une) et non celle des apps couvertes (qui se
+# périme à chaque `startapp`).
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
 type = forbidden
 source_modules =
     core
 forbidden_modules =
-    apps.crm
-    apps.ventes
-    apps.stock
-    apps.installations
-    apps.sav
-    apps.reporting
-    apps.automation
-    apps.monitoring
-    apps.notifications
-    apps.publicapi
-    apps.audit
-    apps.documents
-    apps.dataimport
-    apps.contact
+    apps
+# AUD825 / ARÊTES FONDATION → FONDATION. `roles`, `records` et `parametres`
+# sont des apps de FONDATION au sens de CLAUDE.md (« foundation-app imports
+# (roles, records, authentication, core, customfields, parametres, reporting…)
+# are exempt ») : elles vivaient déjà HORS de la liste des 14 interdites, donc
+# les exempter ici ne relâche RIEN par rapport à l'état d'avant l'inversion —
+# c'est la traduction fidèle de l'ancien périmètre. Deux arêtes de PRODUCTION
+# les empruntent (`core.scoping -> apps.roles.models`,
+# `core.feature_flags -> apps.records.models`, plus la commande
+# `preflight_edition`), le reste sont des tests noyau qui montent un rôle ou un
+# enregistrement réel. Un import `core -> apps.<domaine>` reste refusé.
+ignore_imports =
+    core.** -> apps.roles.**
+    core.** -> apps.records.**
+    core.** -> apps.parametres.**
+# MÊME arête fondation→fondation, atteinte d'une hop plus loin :
+# `core.tenant_context -> authentication.cookie_auth -> authentication.
+# session_policy -> apps.parametres.models` (lecture fonction-locale du
+# `CompanyProfile` pour la politique de session). `authentication` est une app
+# de fondation autorisée (elle n'a jamais figuré parmi les 14 interdites), et
+# `parametres` l'est aussi : on élague cette SEULE hop, exactement comme les
+# exceptions `authentication.tasks -> …` plus bas. Toute arête DIRECTE
+# `core.* -> apps.<domaine>` reste détectée.
+    authentication.session_policy -> apps.parametres.models
+# AUD231 — le test des huit balayages beat a DÉMÉNAGÉ dans apps/pos/tests
+# (contrat core = couche de base, fix-ci #620) : plus aucune arête core.tests
+# vers les domaines, les exceptions mortes sont retirées (06/09/2026).
+# SOL13/SOL14 + YHARD — trois autres tests noyau cross-couche révélés par
+# l'inversion : le registre des traitements CNDP s'appuie sur un dossier RH
+# réel, et le filtre « sociétés ayant tel module » sur une société d'adminops.
+    core.tests.test_registre_traitements -> apps.rh.models
+    core.tests.test_sol14_societes_avec_module -> apps.adminops.models
 # YRBAC6/YRBAC9 — two core SECURITY-RATCHET *test* modules deliberately import
 # real domain serializers/models to prove the core masking mixins actually strip
 # sensitive fields (prix_achat/marge) and that no public endpoint leaks. These
 # are cross-layer integration tests, not production `core` coupling: the base-
 # layer intent (core PRODUCTION code imports downward only) holds. Ignore only
 # these specific test→domain edges.
-ignore_imports =
     core.tests.test_sensitive_field_leak -> apps.stock.serializers
     core.tests.test_sensitive_field_leak -> apps.stock.models
     core.tests.test_public_endpoint_hardening -> apps.ventes.models
@@ -413,6 +529,15 @@ ignore_imports =
     core.tests.test_documents_viewset -> apps.records.views
     core.tests.test_documents_status -> apps.installations.models_demande_achat
     core.tests.test_documents_status -> apps.installations.models_ordre_soustraitance
+# AUD422 — AUCUNE exception ajoutée, et c'est délibéré : la suite de déni
+# cross-tenant RLS (`core/tests/test_rls_cross_tenant_denial.py`) peuple des
+# lignes RÉELLES dans les cinq tables argent en résolvant ses modèles par
+# CHAÎNE (`django.apps.apps.get_model('compta', 'EcritureComptable')`), jamais
+# par import. Un `from apps.compta.models import …` y ouvrait, en transitif,
+# une dizaine d'arêtes interdites (compta.models → crm.models → crm.services →
+# notifications / ventes / stock / sav / publicapi / reporting) : les élaguer
+# aurait affaibli le contrat pour TOUT LE MONDE. Ne pas « simplifier » ce test
+# en réintroduisant les imports.
 # NTDMO25 — `authentication.tasks.seed_demo_company_task` (Celery envelope)
 # imports `authentication.views_demo_wizard` LAZILY (function-local, only at
 # call time), which itself pulls in `authentication.views_console` and, from

@@ -53,3 +53,40 @@ describe('Conges — rapport annuel (ZRH3)', () => {
     expect(rhApi.getRapportConges).toHaveBeenCalled()
   })
 })
+
+/* AUDV20 — la fiche solde affiche le DROIT LÉGAL annuel théorique
+   (`droit_annuel`, servi par SoldeCongeSerializer depuis
+   services.droit_annuel). Clé du serveur, jamais inventée ici. */
+describe('Conges — droit annuel théorique sur la fiche solde (AUDV20)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('affiche le droit annuel quand le serveur le renvoie', async () => {
+    rhApi.getSoldesConge.mockResolvedValueOnce({
+      data: [{
+        id: 1, employe: 9, annee: 2026, acquis: '9.00', report: '0.00',
+        pris: '2.00', disponible: '7.00', droit_annuel: '19.50',
+      }],
+    })
+    renderConges()
+    await screen.findAllByText('Congés & absences')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Soldes' }))
+    expect(await screen.findByText(/Droit annuel théorique/)).toBeTruthy()
+    expect(screen.getByText(/19,5/)).toBeTruthy()
+  })
+
+  it('n’affiche aucun droit annuel si le serveur ne le calcule pas', async () => {
+    rhApi.getSoldesConge.mockResolvedValueOnce({
+      data: [{
+        id: 2, employe: 10, annee: 2026, acquis: '3.00', report: '0.00',
+        pris: '0.00', disponible: '3.00', droit_annuel: null,
+      }],
+    })
+    renderConges()
+    await screen.findAllByText('Congés & absences')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Soldes' }))
+    await screen.findByText(/acquis/)
+    expect(screen.queryByText(/Droit annuel théorique/)).toBeNull()
+  })
+})

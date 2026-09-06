@@ -267,3 +267,28 @@ class DeclarationCnssApiTests(TestCase):
         normal = make_user(self.company, 'cnss-normal', role='normal')
         resp = auth_client(normal).get(ECHEANCE_URL)
         self.assertEqual(resp.status_code, 403)
+
+    # ── AUD513 — garde de suppression ────────────────────────────────────────
+
+    def test_suppression_refusee_si_declaree(self):
+        jour = self.today
+        acc = make_accident(self.company, 'AT-202606-0020', jour)
+        # `DeclarationCnss.save()` rafraîchit INCONDITIONNELLEMENT `statut`
+        # via `statut_calcule()` (= 'declare' SEULEMENT si `date_declaration`
+        # est renseignée) : un simple `decl.statut = DECLARE` sans
+        # `date_declaration` est donc écrasé au save() suivant. Il faut passer
+        # par le vrai déclencheur — une déclaration effective.
+        decl = make_declaration(
+            self.company, acc, jour, delai_jours=2, date_declaration=jour)
+        self.assertEqual(decl.statut, DeclarationCnss.Statut.DECLARE)
+        resp = self.client_api.delete(f'{LIST_URL}{decl.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+        self.assertTrue(DeclarationCnss.objects.filter(id=decl.id).exists())
+
+    def test_suppression_autorisee_si_a_declarer(self):
+        jour = self.today
+        acc = make_accident(self.company, 'AT-202606-0021', jour)
+        decl = make_declaration(self.company, acc, jour, delai_jours=2)
+        resp = self.client_api.delete(f'{LIST_URL}{decl.id}/')
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', None))
+        self.assertFalse(DeclarationCnss.objects.filter(id=decl.id).exists())

@@ -58,15 +58,23 @@ def _ligne_rendue(ligne, devise):
 
 
 def contexte_gabarit(lignes, contexte=None, *, texte_clause=None,
-                     taux_tva=Decimal('20'), devise='DH'):
+                     taux_tva=Decimal('20'), devise='DH',
+                     remise_globale=None):
     """Le contexte du gabarit `ao/bordereau.html`.
 
     Toutes les valeurs y sont DÉJÀ calculées et formatées : le gabarit ne
     contient aucun chiffre littéral et ne fait aucune arithmétique.
+
+    :param remise_globale: remise globale du bordereau, en MONTANT (AUD603).
+        Le gabarit sait déjà l'imprimer (`avec_remise`/`remise_texte`) ; sans
+        ce paramètre, un bordereau réel portant une remise globale se serait
+        imprimé à son sous-total, c.-à-d. plus cher que l'offre. Défaut
+        `None` : comportement byte-identique pour les appelants existants.
     """
     contexte = contexte or {}
     lignes = list(lignes or ())
-    calcules = totaux(lignes, taux_defaut=taux_tva)
+    calcules = totaux(lignes, taux_defaut=taux_tva,
+                      remise_globale=remise_globale)
     partiels = sous_totaux(lignes)
 
     sections = []

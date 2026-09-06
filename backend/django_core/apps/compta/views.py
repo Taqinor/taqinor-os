@@ -101,6 +101,10 @@ from .models import (
     EtapeAuditConsolidation,
     # WIR279 — XACC14 / XACC19 : services complets, aucun ViewSet jusqu'ici.
     Emprunt, EcheanceEmprunt, EtatPersonnalise,
+    # AUDV06 / XACC17-XACC18 — devises.
+    TauxDevise, ItemOuvertDevise, ReevaluationCloture,
+    # AUDV09 / XACC20 — règles d'auto-imputation analytique.
+    RegleImputation,
 )
 from .serializers import (
     AcompteISSerializer, ConventionFiscaleSerializer,
@@ -192,6 +196,11 @@ from .serializers import (
     AbonnementEcritureSerializer,
     # WIR279 — XACC14 / XACC19.
     EmpruntSerializer, EcheanceEmpruntSerializer, EtatPersonnaliseSerializer,
+    # AUDV06 / XACC17-XACC18 — devises.
+    TauxDeviseSerializer, ItemOuvertDeviseSerializer,
+    ReevaluationClotureSerializer,
+    # AUDV09 / XACC20 — règles d'auto-imputation analytique.
+    RegleImputationSerializer,
 )
 
 
@@ -244,6 +253,42 @@ class CompteComptableViewSet(_ComptaBaseViewSet):
         if classe:
             qs = qs.filter(classe=classe)
         return qs
+
+    @action(detail=True, methods=['get'], url_path='fiche-tiers')
+    def fiche_tiers(self, request, pk=None):
+        """AUDV02 / DRAFT165-9+10 — Fiche d'un compte de tiers : encours réel
+        + lignes NON LETTRÉES qui le composent.
+
+        ``selectors.encours_tiers`` et ``selectors.lignes_non_lettrees``
+        existaient depuis COMPTA22 sans AUCUN appelant : le comptable n'avait
+        aucun écran pour répondre à « combien ce client me doit-il VRAIMENT ? »
+        (le solde brut du compte compte aussi les lignes déjà appariées).
+        L'encours est la Σ(débit) − Σ(crédit) des seules lignes non lettrées :
+        POSITIF = le tiers doit, NÉGATIF = la société doit. Lecture seule —
+        aucune écriture, aucun lettrage n'est posé ici.
+        """
+        compte = self.get_object()  # déjà scopé société par TenantMixin.
+        company = request.user.company
+        lignes = selectors.lignes_non_lettrees(company, compte)
+        return Response({
+            'compte': compte.id,
+            'compte_numero': compte.numero,
+            'compte_intitule': compte.intitule,
+            'encours': selectors.encours_tiers(company, compte),
+            'nb_lignes_non_lettrees': len(lignes),
+            'lignes_non_lettrees': [
+                {
+                    'id': ligne.id,
+                    'ecriture': ligne.ecriture_id,
+                    'date_ecriture': ligne.ecriture.date_ecriture,
+                    'reference': ligne.ecriture.reference,
+                    'libelle': ligne.libelle or ligne.ecriture.libelle,
+                    'debit': ligne.debit,
+                    'credit': ligne.credit,
+                }
+                for ligne in lignes
+            ],
+        })
 
 
 class JournalViewSet(_ComptaBaseViewSet):
@@ -308,8 +353,67 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
+        """AUDV03 / COMPTA4 (DRAFT165-30) — une OD manuelle SANS référence
+        reçoit un numéro de pièce SÉQUENTIEL.
+
+        Avant : `serializer.save()` posait la référence telle que le client
+        l'envoyait — donc VIDE quand l'écran n'en fournissait pas. Un journal
+        d'OD sans numérotation continue n'est pas auditable (et la continuité
+        des séquences est justement contrôlée ailleurs dans ce module).
+        `services.creer_ecriture_numerotee` existait pour ça, sans appelant.
+
+        Une référence FOURNIE est respectée à l'identique (comportement
+        historique strictement inchangé) : la numérotation ne s'applique qu'à
+        l'absence de référence. Le numéro vient de `create_with_reference`
+        (plus-haut-utilisé + 1, savepoint + retry sur course) — JAMAIS un
+        `count()+1`, qui a déjà collisionné en production.
+        """
+        company = self.request.user.company
+        donnees = serializer.validated_data
+        if (donnees.get('reference') or '').strip():
+            serializer.save(company=company, created_by=self.request.user)
+            return
+        try:
+            serializer.instance = services.creer_ecriture_numerotee(
+                company,
+                donnees['journal'],
+                donnees['date_ecriture'],
+                donnees.get('libelle', '') or '',
+                [dict(ligne) for ligne in donnees.get('lignes') or []],
+                created_by=self.request.user,
+                statut=donnees.get('statut'),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(
+                {'detail': exc.messages[0] if exc.messages else str(exc)})
+
+    @action(detail=False, methods=['get'], url_path='prochain-numero')
+    def prochain_numero(self, request):
+        """AUDV03 / COMPTA4 (DRAFT165-31) — aperçu du numéro qui SERA attribué.
+
+        `services.sequence_piece_journal` calcule la prochaine référence libre
+        d'un journal sans rien créer ; elle n'avait aucun appelant, donc
+        l'écran de saisie ne pouvait pas annoncer le numéro à l'avance. Pur
+        APERÇU : il ne réserve rien (deux saisies simultanées voient le même
+        numéro — c'est `create_with_reference` qui tranche à l'écriture).
+        """
+        journal_id = request.query_params.get('journal')
+        if not journal_id:
+            return Response(
+                {'detail': 'Paramètre `journal` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        journal = Journal.objects.filter(
+            company=request.user.company, id=journal_id).first()
+        if journal is None:
+            return Response(
+                {'detail': 'Journal inconnu pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'journal': journal.id,
+            'journal_code': journal.code,
+            'reference': services.sequence_piece_journal(
+                request.user.company, journal),
+        })
 
     def perform_destroy(self, instance):
         """AUD170 — une écriture VALIDÉE (ou scellée) ne se supprime pas.
@@ -414,6 +518,21 @@ class CompteTresorerieViewSet(_ComptaBaseViewSet):
             'mouvements': mouvements,
             'solde': total,
         })
+
+    @action(detail=False, methods=['get'], url_path='rib-invalides')
+    def rib_invalides(self, request):
+        """AUDV02 / DRAFT165-16 (XACC24) — Alerte : comptes de trésorerie
+        ACTIFS dont le RIB porte une clé mod-97 fausse.
+
+        ``selectors.comptes_tresorerie_rib_invalides`` n'avait aucun appelant :
+        un virement partait sur un RIB à clé fausse sans qu'aucun écran ne le
+        signale. WARNING pur — un RIB vide n'est PAS signalé (compte sans RIB
+        renseigné, cas normal), et rien n'est jamais bloqué : c'est de la
+        saisie historique qu'on ne casse pas rétroactivement.
+        """
+        comptes = selectors.comptes_tresorerie_rib_invalides(
+            request.user.company)
+        return Response({'nb': len(comptes), 'comptes': comptes})
 
 
 class EtatsComptablesViewSet(viewsets.ViewSet):
@@ -2296,6 +2415,64 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
                 plan_fiscal, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'],
+            url_path='poster-dotation-derogatoire',
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def poster_dotation_derogatoire(self, request, pk=None):
+        """AUDV07 / XACC16 (DRAFT165-37) — poste UNE dotation dérogatoire au GL.
+
+        `services.poster_dotation_derogatoire` n'avait aucun appelant : le plan
+        fiscal se générait bien (avec ses différences par exercice) mais AUCUNE
+        ne pouvait jamais être passée. La provision réglementée (1351) n'était
+        donc jamais constituée — l'écart entre l'amortissement fiscal et
+        l'amortissement comptable restait un chiffre d'écran, invisible du
+        bilan, alors que c'est exactement ce que l'administration fiscale
+        attend d'un amortissement dérogatoire.
+
+        Corps : ``{'annee': <exercice>}`` — la dotation est cherchée dans le
+        plan fiscal de CETTE immobilisation (404/400 sinon). Une différence
+        POSITIVE dote (débit 65941 / crédit 1351), une NÉGATIVE reprend (débit
+        1351 / crédit 7594) ; une différence NULLE ne poste rien mais marque la
+        dotation traitée. La vue refuse explicitement un re-post — même règle
+        que les autres postages du module. Verrou de période respecté.
+        """
+        immo = self.get_object()  # scopée société par TenantMixin.
+        plan_comptable = getattr(immo, 'plan_amortissement', None)
+        plan_fiscal = (getattr(plan_comptable, 'plan_fiscal', None)
+                       if plan_comptable else None)
+        if plan_fiscal is None:
+            return Response(
+                {'detail': "Aucun plan fiscal : générez-le d'abord."},
+                status=status.HTTP_400_BAD_REQUEST)
+        dotation = plan_fiscal.dotations_derogatoires.filter(
+            annee=request.data.get('annee')).first()
+        if dotation is None:
+            return Response(
+                {'detail': "Aucune dotation dérogatoire pour cet exercice."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if dotation.posted:
+            return Response(
+                {'detail': (
+                    f"La dotation dérogatoire {dotation.annee} est déjà "
+                    "postée : elle ne peut pas l'être une seconde fois.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.poster_dotation_derogatoire(
+                dotation, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        dotation.refresh_from_db()
+        return Response({
+            'dotation': dotation.id,
+            'annee': dotation.annee,
+            'difference': str(dotation.difference),
+            'posted': dotation.posted,
+            # `null` quand la différence est NULLE : il n'y avait rien à
+            # écrire, et inventer une écriture vide serait pire que rien.
+            'ecriture_id': ecriture.id if ecriture else None,
+            'reference': ecriture.reference if ecriture else '',
+        }, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'])
     def ceder(self, request, pk=None):
         """Enregistre et poste la cession / mise au rebut de l'actif (FG120).
@@ -2495,6 +2672,75 @@ class ChargeConstateeAvanceViewSet(_ComptaBaseViewSet):
         return Response(
             self.get_serializer(charge).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='poster-dotation')
+    def poster_dotation(self, request, pk=None):
+        """AUDV03 / XACC15 (DRAFT165-35) — poste UNE dotation mensuelle au GL.
+
+        `services.poster_dotation_etalement` n'avait aucun appelant : l'écran
+        générait bien l'échéancier de dotations… et aucune ne pouvait jamais
+        être passée. La charge restait donc éternellement au débit de 3491,
+        jamais étalée sur le compte de charge — l'inverse exact de ce que
+        XACC15 sert à faire.
+
+        Corps : ``{'dotation': <id>}``. Le service est idempotent (une
+        dotation déjà postée renvoie son écriture) mais la vue REFUSE
+        explicitement le re-post : un second clic doit le DIRE, pas rendre un
+        200 laissant croire à une nouvelle écriture (même règle que
+        ``EcheanceEmpruntViewSet.poster``). Le verrou de période (FG115) est
+        respecté par le service : une dotation en période close est refusée.
+        """
+        charge = self.get_object()  # scopée société par TenantMixin.
+        dotation = charge.dotations.filter(
+            id=request.data.get('dotation')).first()
+        if dotation is None:
+            return Response(
+                {'detail': "Dotation inconnue pour cette charge."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if dotation.posted:
+            return Response(
+                {'detail': (
+                    f"La dotation {dotation.numero} est déjà postée au grand "
+                    "livre : elle ne peut pas l'être une seconde fois.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.poster_dotation_etalement(
+                dotation, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        dotation.refresh_from_db()
+        return Response({
+            'dotation': dotation.id,
+            'numero': dotation.numero,
+            'posted': dotation.posted,
+            'ecriture_id': ecriture.id,
+            'reference': ecriture.reference,
+            'date_ecriture': ecriture.date_ecriture,
+            'montant': str(dotation.montant),
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def solde(self, request):
+        """AUDV08 / XACC15 (DRAFT165-14) — solde 3491 RESTANT à étaler.
+
+        `selectors.solde_charges_constatees_avance` n'avait aucun appelant :
+        l'écran comptait bien « n/12 dotations postées » par ligne, mais
+        personne ne pouvait lire le MONTANT encore immobilisé au compte 3491 —
+        le seul chiffre qui se rapproche du bilan, et celui que le comptable
+        doit justifier à la clôture.
+
+        ``?date_fin=YYYY-MM-DD`` borne les dotations prises en compte (défaut :
+        aujourd'hui) — un solde se lit toujours À UNE DATE. Lecture seule.
+        """
+        date_fin = request.query_params.get('date_fin')
+        try:
+            date_fin = _parse_date(date_fin) if date_fin else None
+        except ValueError:
+            return Response(
+                {'detail': '`date_fin` doit être une date ISO (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.solde_charges_constatees_avance(
+            request.user.company, date_fin=date_fin))
+
 
 # ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
 
@@ -2629,6 +2875,46 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         """Suggestions d'appariement relevé↔GL, notées par confiance (XACC3)."""
         rapprochement = self.get_object()  # scopé société par TenantMixin.
         return Response(selectors.suggestions_rapprochement(rapprochement))
+
+    @action(detail=True, methods=['get'], url_path='suggestions-apprises')
+    def suggestions_apprises(self, request, pk=None):
+        """AUDV02 / DRAFT165-18 (NTTRE4) — Suggestions APPRISES de l'historique.
+
+        ``services.suggerer_rapprochement_appris`` n'avait aucun appelant : le
+        moteur qui apprend des ``PointageReleve`` déjà validés de la société
+        (libellé récurrent → compte habituel) tournait à vide pendant que
+        l'écran n'affichait que les suggestions par RÈGLE
+        (``selectors.suggestions_rapprochement``, montant/date/tiers). Les deux
+        sont COMPLÉMENTAIRES et restent deux endpoints distincts : la règle
+        rattrape le cas exact, l'apprentissage rattrape le libellé bancaire
+        illisible qu'un humain a déjà classé dix fois.
+
+        Lecture seule : ne poste RIEN, ne pointe RIEN. Chaque ligne de relevé
+        encore NON POINTÉE reçoit au plus une suggestion ; celles sans
+        historique suffisant sont simplement absentes (jamais une suggestion
+        inventée à confiance nulle).
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        try:
+            seuil = float(request.query_params.get('seuil') or 0.5)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Le seuil de similarité doit être un nombre."},
+                status=status.HTTP_400_BAD_REQUEST)
+        lignes = list(rapprochement.lignes_releve.filter(
+            statut=LigneReleve.Statut.NON_POINTEE
+        ).order_by('date_operation', 'id'))
+        suggestions = []
+        for ligne in lignes:
+            suggestion = services.suggerer_rapprochement_appris(
+                ligne, seuil_similarite=seuil)
+            if suggestion:
+                suggestions.append({**suggestion, 'libelle': ligne.libelle})
+        return Response({
+            'rapprochement': rapprochement.id,
+            'nb_lignes_non_pointees': len(lignes),
+            'suggestions': suggestions,
+        })
 
     @action(detail=True, methods=['post'], url_path='accepter-suggestions')
     def accepter_suggestions(self, request, pk=None):
@@ -3000,6 +3286,38 @@ class EffetViewSet(_ComptaBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @action(detail=False, methods=['get'])
+    def echeancier(self, request):
+        """AUDV02 / DRAFT165-11+12 — Échéancier du portefeuille d'effets AVEC
+        ses totaux ouverts par sens.
+
+        ``selectors.echeancier_effets`` et ``selectors.total_effets_ouverts``
+        existaient depuis FG127/FG128 sans aucun appelant : l'écran listait les
+        effets ligne à ligne, SANS jamais totaliser. « Combien ai-je en
+        portefeuille à recevoir ce mois-ci ? » — la question la plus élémentaire
+        du poste — n'avait pas de réponse à l'écran.
+
+        Les totaux ne portent QUE sur les effets OUVERTS (portefeuille + remis),
+        jamais sur les encaissés/payés/impayés : un effet encaissé a déjà bougé
+        la banque, l'additionner au portefeuille double-compterait la trésorerie.
+        ``net`` = à recevoir − à payer. Lecture seule.
+        """
+        company = request.user.company
+        params = request.query_params
+        effets = selectors.echeancier_effets(
+            company, sens=params.get('sens') or None,
+            statut=params.get('statut') or None)
+        a_recevoir = selectors.total_effets_ouverts(
+            company, sens=Effet.Sens.RECEVOIR)
+        a_payer = selectors.total_effets_ouverts(company, sens=Effet.Sens.PAYER)
+        return Response({
+            'nb': len(effets),
+            'effets': effets,
+            'total_a_recevoir': a_recevoir,
+            'total_a_payer': a_payer,
+            'net': a_recevoir - a_payer,
+        })
+
     def list(self, request, *args, **kwargs):
         # NTTRE38 — export XLSX de la situation des effets (retraitement compta).
         if request.query_params.get('export') == 'xlsx':
@@ -3284,6 +3602,25 @@ class RapprochementViewSet(_ComptaBaseViewSet):
         if bon_commande:
             qs = qs.filter(bon_commande_id=bon_commande)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='en-ecart')
+    def en_ecart(self, request):
+        """AUDV02 / DRAFT165-13 — Alerte « à corriger AVANT paiement ».
+
+        ``selectors.rapprochements_en_ecart`` n'avait aucun appelant : l'écran
+        3 voies affichait bien une pastille « Bloqué (écart) » par ligne, mais
+        rien n'agrégeait les écarts en une ALERTE — il fallait déjà être dans
+        l'onglet et parcourir la liste pour les voir. Un écart non vu, c'est un
+        paiement fournisseur parti sur une facture non conforme.
+
+        Lecture seule, ordonné du plus récemment évalué au plus ancien.
+        """
+        rapprochements = selectors.rapprochements_en_ecart(request.user.company)
+        return Response({
+            'nb': len(rapprochements),
+            'rapprochements': self.get_serializer(
+                rapprochements, many=True).data,
+        })
 
     def create(self, request, *args, **kwargs):
         data = request.data
@@ -3714,6 +4051,28 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
         if self.action in ('valider', 'rejeter', 'rembourser'):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
+
+    def perform_destroy(self, instance):
+        """AUD805 — une note de frais ENGAGÉE ne se supprime plus.
+
+        ``NoteFraisViewSet`` n'avait aucun ``perform_destroy`` : un DELETE
+        réussissait même sur une note ``remboursee``, alors que
+        ``ecriture_charge`` et ``ecriture_remboursement`` sont en
+        ``on_delete=SET_NULL`` (``apps/frais/models.py``) — les DEUX écritures
+        postées au grand livre survivaient ORPHELINES, sans preuve ni
+        traçabilité de l'employé remboursé. La suppression reste ouverte tant
+        que rien n'est posté (brouillon/soumise sans écriture liée) ; ensuite,
+        le cycle passe par ``rejeter``, jamais par un DELETE.
+        """
+        engagee = instance.statut not in (
+            NoteFrais.Statut.BROUILLON, NoteFrais.Statut.SOUMISE)
+        if engagee or instance.ecriture_charge_id or (
+                instance.ecriture_remboursement_id):
+            raise ValidationError(
+                "Note de frais engagée comptablement : elle ne peut plus être "
+                "supprimée (des écritures resteraient orphelines au grand "
+                "livre). Utilisez « rejeter » ou une extourne.")
+        instance.delete()
 
     @action(detail=False, methods=['get'], url_path='refacturables')
     def refacturables(self, request):
@@ -4254,6 +4613,32 @@ class IndemniteChantierViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(indem).data, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        """AUDV03 / FG136 (DRAFT165-19) — éditer le GPS ou les jours RECALCULE
+        la distance et les montants.
+
+        Avant : le sérialiseur laisse `depart_lat/lng`, `site_lat/lng` et
+        `nombre_jours` MODIFIABLES mais fige les montants en lecture seule, et
+        `update()` était le CRUD par défaut. Un PATCH sur le GPS enregistrait
+        donc de nouvelles coordonnées EN GARDANT les anciens montants —
+        `services.recalculer_indemnite_chantier` existait pour exactement ça
+        et n'avait aucun appelant. Une indemnité déjà validée/remboursée est
+        refusée par le service (400 français) : ses montants sont postés au
+        grand livre, on ne les réécrit pas.
+        """
+        from django.db import transaction
+        # ATOMIQUE : sans cette transaction, un refus du service laisserait le
+        # nouveau GPS/nombre de jours ENREGISTRÉ avec les anciens montants —
+        # exactement l'incohérence que cette tâche supprime.
+        with transaction.atomic():
+            indem = serializer.save()
+            try:
+                services.recalculer_indemnite_chantier(indem)
+            except DjangoValidationError as exc:
+                raise ValidationError(
+                    {'detail': exc.messages[0] if exc.messages else str(exc)})
+        indem.refresh_from_db()
 
     @action(detail=True, methods=['post'])
     def soumettre(self, request, pk=None):
@@ -5532,6 +5917,57 @@ class BudgetViewSet(_ComptaBaseViewSet):
             return resp
         return Response(data)
 
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reviser(self, request, pk=None):
+        """AUDV09 / XACC22 (DRAFT165-44) — fige la version courante, crée la V+1.
+
+        `services.reviser_budget` n'avait aucun appelant : un budget se
+        modifiait donc SUR PLACE, écrasant la version approuvée. Plus aucune
+        comparaison « prévu à l'approbation » vs « prévu aujourd'hui » n'était
+        possible, alors que c'est tout l'objet d'une révision budgétaire.
+
+        La version N devient `figee` (lecture seule POUR TOUJOURS, donc
+        toujours consultable) et la V+1 est une copie éditable de ses lignes.
+        Réviser une version déjà figée est refusé (400 français) : la révision
+        suivante part de la dernière version éditable, jamais d'un embranchement
+        silencieux. Corps optionnel : ``{'libelle': '...'}``.
+        """
+        budget = self.get_object()  # scopé société par TenantMixin.
+        try:
+            nouvelle = services.reviser_budget(
+                budget, nouveau_libelle=request.data.get('libelle') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(nouvelle).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='scenario-what-if',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def scenario_what_if(self, request, pk=None):
+        """AUDV09 / XACC22 (DRAFT165-45) — copie optimiste/pessimiste du budget.
+
+        `services.creer_scenario_what_if` n'avait aucun appelant : impossible
+        de chiffrer une hypothèse haute ou basse sans toucher au budget
+        officiel — donc, en pratique, on y touchait.
+
+        Le scénario est une COPIE INDÉPENDANTE : ni le contrôle d'engagement
+        (XACC21) ni le suivi budget-vs-réel (FG149) ne le consomment, tous deux
+        restant sur le scénario `engage`. Corps : ``{'scenario':
+        'optimiste'|'pessimiste'}`` — demander `engage` est refusé (400), ce
+        serait fabriquer un second budget officiel.
+        """
+        budget = self.get_object()  # scopé société par TenantMixin.
+        try:
+            scenario = services.creer_scenario_what_if(
+                budget, scenario=request.data.get('scenario'),
+                user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(scenario).data,
+                        status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='generer-ligne-repartie',
             permission_classes=[IsResponsableOrAdmin])
     def generer_ligne_repartie(self, request, pk=None):
@@ -5802,14 +6238,125 @@ class CampagneViewSet(_ComptaBaseViewSet):
         if self.action in (
                 'apercu_fusion', 'precheck', 'cout_sms', 'clics_par_lien',
                 'roi', 'roi_leads_sources', 'kpi_mere', 'kanban', 'reporting',
-                'reporting_export', 'modeles', 'rendu_lead'):
+                'reporting_export', 'modeles', 'rendu_lead',
+                # AUDV17 — LECTURES de conformité (état CNDP, lien public de
+                # désinscription d'un destinataire) : même palier que les
+                # autres rapports du module.
+                'conformite_cndp', 'lien_desinscription'):
             return [IsResponsableOrAdmin()]
         if self.action in ('envoyer', 'envoyer_test'):
             return [HasPermissionOrLegacy('compta_valider')()]
         if self.action in ('creer_depuis_modele', 'dupliquer', 'annuler',
-                           'renvoyer_echecs', 'rattacher'):
+                           'renvoyer_echecs', 'rattacher',
+                           # AUDV17 — planifier est une SAISIE (elle met la
+                           # campagne en file), jamais une validation d'envoi.
+                           'planifier'):
             return [HasPermissionOrLegacy('compta_saisir')()]
         return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def planifier(self, request, pk=None):
+        """AUDV17 / XMKT7 (DRAFT165-20) — met la campagne EN FILE (brouillon
+        → en_file) pour un envoi daté.
+
+        `services.planifier_campagne` n'avait aucun appelant : la seule façon
+        de faire partir une campagne était `envoyer` — c'est-à-dire TOUT DE
+        SUITE. La planification, le beat qui dépile la file et la fenêtre de
+        silence (aucun SMS la nuit ni un jour férié) étaient tous écrits et
+        tous inatteignables.
+
+        Corps : ``{'planifiee_le': '<ISO>'}``. Le service est idempotent (une
+        campagne déjà envoyée/annulée n'est pas remise en file).
+        """
+        campagne = self.get_object()  # scopée société par TenantMixin.
+        planifiee_le = request.data.get('planifiee_le')
+        if not planifiee_le:
+            return Response(
+                {'detail': 'Paramètre `planifiee_le` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.planifier_campagne(campagne, planifiee_le=planifiee_le)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        campagne.refresh_from_db()
+        return Response(CampagneSerializer(campagne).data)
+
+    @action(detail=False, methods=['get'], url_path='conformite-cndp')
+    def conformite_cndp(self, request):
+        """AUDV17 / XMKT4-XMKT15 (DRAFT165-24/25/27) — état de conformité
+        loi 09-08 / CNDP de la société, en un seul appel.
+
+        Le toggle double opt-in (`double_optin_actif`), le pied de déclaration
+        CNDP (`cndp_footer_texte`) et la mention STOP existaient tous côté
+        services SANS AUCUNE surface : personne, dans l'ERP, ne pouvait dire si
+        les campagnes partaient conformes. Lecture seule — cet endpoint ne
+        change aucun réglage, il DIT l'état.
+        """
+        company = request.user.company
+        pied = services.cndp_footer_texte(company)
+        return Response({
+            'double_optin_actif': services.double_optin_actif(company),
+            'pied_cndp': pied,
+            # Le pied n'existe que si le numéro de déclaration est renseigné
+            # dans le profil société : sans lui, les emails partent SANS
+            # mention légale — c'est précisément ce que l'écran doit montrer.
+            'pied_cndp_configure': bool(pied),
+            'mention_stop_sms': services.ajouter_mention_stop(''),
+        })
+
+    @action(detail=False, methods=['post'], url_path='importer-opposition',
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def importer_opposition(self, request):
+        """AUDV17 / XMKT3 (DRAFT165-22) — importe une liste d'OPPOSITION
+        (loi 09-08) dans la liste de suppression marketing.
+
+        `services.importer_liste_opposition` n'avait aucun appelant : une
+        liste d'opposition reçue par courrier ou par un partenaire ne pouvait
+        pas entrer dans l'ERP, donc ses destinataires restaient ciblables —
+        exactement ce que la loi interdit. L'import est IDEMPOTENT : une entrée
+        déjà supprimée n'est jamais réécrite (son motif d'origine est conservé).
+
+        Corps : ``{'destinataires': ['a@x.ma', '+2126…'], 'source'?}``.
+        """
+        destinataires = request.data.get('destinataires')
+        if not isinstance(destinataires, list) or not destinataires:
+            return Response(
+                {'detail': 'Une liste `destinataires` non vide est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ajoutes = services.importer_liste_opposition(
+            request.user.company, destinataires,
+            source=request.data.get('source') or 'import_csv')
+        return Response({
+            'recus': len(destinataires),
+            'ajoutes': ajoutes,
+            # Déjà présents = ré-import du même fichier : aucun doublon, aucun
+            # motif écrasé. On le DIT plutôt que de laisser croire à un échec.
+            'deja_presents': len(destinataires) - ajoutes,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='lien-desinscription')
+    def lien_desinscription(self, request, pk=None):
+        """AUDV17 / XMKT3 (DRAFT165-21) — lien PUBLIC de désinscription d'un
+        destinataire donné.
+
+        La vue publique `desinscription_publique` consommait déjà ces jetons,
+        mais RIEN n'en générait : le destinataire d'un email marketing n'avait
+        aucun moyen de se désinscrire, ce que la loi 09-08 impose. Le jeton est
+        signé par (société, destinataire) : il ne désinscrit que CE
+        destinataire, jamais un autre — d'où un lien par personne, et non un
+        lien de campagne.
+        """
+        self.get_object()  # scoping société (404 hors société).
+        destinataire = (request.query_params.get('destinataire') or '').strip()
+        if not destinataire:
+            return Response(
+                {'detail': 'Paramètre `destinataire` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'destinataire': destinataire,
+            'lien': services.lien_desinscription(
+                request.user.company, destinataire),
+        })
 
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
@@ -6582,6 +7129,44 @@ class InscriptionEvenementViewSet(_ComptaBaseViewSet):
         inscription.refresh_from_db()
         return Response(InscriptionEvenementSerializer(inscription).data)
 
+    @action(detail=False, methods=['post'], url_path='pointer-borne')
+    def pointer_borne(self, request):
+        """AUDV17 / ZMKT18 (DRAFT165-49) — check-in LIBRE-SERVICE à la borne :
+        par QR scanné ou par sélection après recherche.
+
+        `services.pointer_presence_via_qr_ou_recherche` n'avait aucun appelant.
+        Seul `pointer` existait, et il exige de connaître d'AVANCE l'id de
+        l'inscription — inutilisable à une borne d'accueil, où l'on part d'un
+        QR scanné ou d'un nom cherché. Résultat : l'émargement se faisait à la
+        main dans la liste, une personne à la fois.
+
+        Corps : ``{'evenement': <id>, 'qr_token'?, 'inscription'?}``. Le jeton
+        QR est résolu DANS l'événement et DANS la société (jamais un pointage
+        croisé). Idempotent : re-scanner le même badge ne double pas la
+        présence. Endpoint AUTHENTIFIÉ — la borne est tenue par l'accueil, ce
+        n'est pas une surface publique.
+        """
+        evenement = EvenementMarketing.objects.filter(
+            company=request.user.company,
+            id=request.data.get('evenement')).first()
+        if evenement is None:
+            return Response(
+                {'detail': 'Événement inconnu pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        qr_token = request.data.get('qr_token') or None
+        inscription_id = request.data.get('inscription') or None
+        if not qr_token and not inscription_id:
+            return Response(
+                {'detail': 'Fournissez `qr_token` ou `inscription`.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        inscription = services.pointer_presence_via_qr_ou_recherche(
+            evenement, qr_token=qr_token, inscription_id=inscription_id)
+        if inscription is None:
+            return Response(
+                {'detail': "Aucun inscrit ne correspond pour cet événement."},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(InscriptionEvenementSerializer(inscription).data)
+
     @action(detail=True, methods=['get'])
     def badge(self, request, pk=None):
         """ZMKT19 — badge PDF imprimable d'un inscrit."""
@@ -6864,30 +7449,61 @@ class InscriptionSequenceViewSet(_ComptaBaseViewSet):
         return Response(InscriptionSequenceSerializer(inscription).data)
 
 
-# ── XMKT2 — Webhook Brevo (gated, public, aucune auth) ──────────────────────
+# ── XMKT2 — Webhook Brevo (gated, public, signé AUD616) ────────────────────
+
+def _payload_webhook_marketing(raw_body):
+    """Corps JSON d'un webhook marketing, décodé depuis les octets BRUTS —
+    les MÊMES que ceux couverts par la signature HMAC (AUD616).
+
+    Passer par ``request.data`` rouvrirait un écart entre ce qui est signé et
+    ce qui est interprété. ``None`` sur JSON invalide (400 côté vue), jamais
+    une 500."""
+    import json
+
+    try:
+        data = json.loads(raw_body or b'{}')
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([_MarketingPublicThrottle])
-def webhook_brevo_campagne(request):
+def webhook_brevo_campagne(request, cle=None):
     """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
-    opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
-    ``Campagne`` référencée (aucune session utilisateur côté webhook
-    externe). Payload minimal attendu : ``campagne_id``, ``destinataire``,
-    ``event``, et optionnellement ``reason`` (raison SMTP) + ``bounce_type``
-    (``hard``/``soft``, XMKT12).
+    opened/click/bounce/unsubscribed/complaint. Payload minimal attendu :
+    ``campagne_id``, ``destinataire``, ``event``, et optionnellement
+    ``reason`` (raison SMTP) + ``bounce_type`` (``hard``/``soft``, XMKT12).
+
+    AUD616 — la société ne vient PLUS d'un champ du corps. Elle est désignée
+    par la clé signée de l'URL, et le corps brut doit porter une signature
+    HMAC valide pour le secret PROPRE de cette société. Sans les deux, 403
+    (fail-closed). ``campagne_id`` est ensuite résolu SCOPÉ à cette société :
+    l'identifiant d'une campagne d'un autre tenant n'est plus atteignable.
     """
-    data = request.data or {}
+    from apps.marketing import services as marketing_services
+
+    raw_body = request.body
+    company = marketing_services.societe_webhook_authentifiee(
+        cle, raw_body, request.META.get(
+            marketing_services.WEBHOOK_SIGNATURE_HEADER))
+    if company is None:
+        return Response({'detail': 'signature invalide'}, status=403)
+    data = _payload_webhook_marketing(raw_body)
+    if data is None:
+        return Response({'detail': 'payload JSON invalide'}, status=400)
     campagne_id = data.get('campagne_id')
     destinataire = (data.get('destinataire') or '').strip()
     evenement = data.get('event') or ''
     if not campagne_id or not destinataire or not evenement:
         return Response({'detail': 'payload incomplet'}, status=400)
-    campagne = Campagne.objects.filter(id=campagne_id).first()
+    campagne = Campagne.objects.filter(
+        id=campagne_id, company=company).first()
     if not campagne:
         return Response({'detail': 'campagne introuvable'}, status=404)
     envoi = services.webhook_brevo_evenement(
-        campagne.company, campagne_id=campagne.id,
+        company, campagne_id=campagne.id,
         destinataire=destinataire, evenement=evenement,
         raison_smtp=data.get('reason', ''),
         bounce_type=data.get('bounce_type', ''))
@@ -6901,21 +7517,30 @@ def webhook_brevo_campagne(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([_MarketingPublicThrottle])
-def webhook_sms_stop(request):
+def webhook_sms_stop(request, cle=None):
     """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
-    d'agrégateur active). Payload minimal attendu : ``company_id``,
-    ``numero``. Désinscrit immédiatement le numéro (XMKT3).
-    """
-    from authentication.models import Company
+    d'agrégateur active). Payload minimal attendu : ``numero``. Désinscrit
+    immédiatement le numéro (XMKT3).
 
-    data = request.data or {}
-    company_id = data.get('company_id')
+    AUD616 — le ``company_id`` du CORPS a été SUPPRIMÉ : il laissait un tiers
+    non authentifié désinscrire les contacts de n'importe quelle société. La
+    société vient désormais de la clé signée de l'URL, et le corps brut doit
+    porter une signature HMAC valide pour le secret PROPRE de cette société.
+    """
+    from apps.marketing import services as marketing_services
+
+    raw_body = request.body
+    company = marketing_services.societe_webhook_authentifiee(
+        cle, raw_body, request.META.get(
+            marketing_services.WEBHOOK_SIGNATURE_HEADER))
+    if company is None:
+        return Response({'detail': 'signature invalide'}, status=403)
+    data = _payload_webhook_marketing(raw_body)
+    if data is None:
+        return Response({'detail': 'payload JSON invalide'}, status=400)
     numero = (data.get('numero') or '').strip()
-    if not company_id or not numero:
+    if not numero:
         return Response({'detail': 'payload incomplet'}, status=400)
-    company = Company.objects.filter(id=company_id).first()
-    if not company:
-        return Response({'detail': 'société introuvable'}, status=404)
     supprime = services.traiter_stop_entrant(company, numero)
     if not supprime:
         return Response({'detail': 'numéro invalide'}, status=400)
@@ -7019,6 +7644,13 @@ def enquete_soumettre(request, token):
     enquete = Enquete.objects.filter(token=token, actif=True).first()
     if not enquete:
         return Response({'detail': 'Enquête introuvable.'}, status=404)
+    # AUD621 — la soumission ne vérifiait AUCUN accès (seule la lecture des
+    # questions le faisait) : en mode invités-seulement, on pouvait répondre
+    # sans jeton du tout. Même réponse 404 que la lecture, aucune fuite
+    # d'existence, et un jeton épuisé n'ouvre plus rien.
+    jeton_invite = request.GET.get('invite') or request.data.get('invite')
+    if not services.acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
     debute_le_brut = request.data.get('debute_le')
     if debute_le_brut:
         debute_le = parse_datetime(debute_le_brut)
@@ -7029,7 +7661,8 @@ def enquete_soumettre(request, token):
     try:
         reponse = services.soumettre_reponse_enquete(
             enquete, reponses=reponses, contact_ref=contact_ref,
-            nom_repondant=request.data.get('nom_repondant', ''))
+            nom_repondant=request.data.get('nom_repondant', ''),
+            jeton_invite=jeton_invite)
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
     return Response({
@@ -7429,9 +8062,44 @@ class DemandeApprobationRibViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, demandeur=self.request.user)
 
+    @action(detail=False, methods=['get'], url_path='diagnostic-rib')
+    def diagnostic_rib(self, request):
+        """AUDV02 / DRAFT165-46 — Diagnostic mod-97 d'un RIB, AVANT de déposer
+        la demande de changement.
+
+        ``services.diagnostic_rib`` (le diagnostic PARTAGÉ stock/rh/compta)
+        n'avait aucun appelant HTTP : la file d'approbation acceptait un
+        nouveau RIB à clé fausse, et l'erreur ne se voyait qu'au rejet du
+        virement par la banque, des semaines plus tard. WARNING pur : cet
+        endpoint ne bloque RIEN — il DIT, l'écran affiche, l'humain décide.
+        """
+        rib = request.query_params.get('rib') or ''
+        if not rib.strip():
+            return Response(
+                {'detail': 'Paramètre `rib` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(services.diagnostic_rib(rib))
+
     @action(detail=True, methods=['post'])
     def approuver(self, request, pk=None):
+        """Approuve la demande — JAMAIS par son propre demandeur (XACC24).
+
+        AUDV02 — le principe des « 4 yeux » n'était affirmé que par la
+        docstring : rien n'empêchait celui qui a saisi le nouveau RIB de
+        l'approuver lui-même, ce qui rend le contrôle purement décoratif sur
+        le seul champ qui détourne un virement fournisseur. Le refus, lui,
+        n'est pas gardé : renoncer à SA propre demande n'est pas un
+        contournement, c'est une annulation.
+        """
         demande = self.get_object()
+        if (demande.demandeur_id
+                and demande.demandeur_id == request.user.id):
+            return Response(
+                {'detail': (
+                    "Contrôle à quatre yeux : le demandeur d'un changement de "
+                    "RIB ne peut pas approuver sa propre demande. Elle doit "
+                    "être approuvée par une autre personne.")},
+                status=status.HTTP_400_BAD_REQUEST)
         services.approuver_demande_rib(
             demande, decideur=request.user,
             commentaire=request.data.get('commentaire') or '')
@@ -7630,7 +8298,6 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
     ordering_fields = ['date_creation']
 
     def perform_create(self, serializer):
-        import secrets
         # DC32 — le client est lié PAR FK ; on vérifie qu'il est bien dans la
         # société de l'utilisateur (jamais un client d'un autre tenant).
         client = serializer.validated_data.get('client')
@@ -7639,9 +8306,24 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
                 client, 'company_id', None) != getattr(company, 'id', None):
             raise ValidationError(
                 {'client': 'Client inconnu pour cette société.'})
-        serializer.save(
-            company=company,
-            token_acces=secrets.token_urlsafe(32))
+        if client is None:
+            raise ValidationError(
+                {'client': 'Le client est requis pour ouvrir un accès portail.'})
+        # AUDV03 / FG228 (DRAFT165-29) — le provisionnement passe par le
+        # SERVICE, pas par un `serializer.save()` nu.
+        #
+        # Avant : chaque POST créait un compte de plus (ou heurtait la
+        # contrainte d'unicité). `services.provisionner_compte_portail` est
+        # idempotent par (société, client) : il renvoie le compte existant. Le
+        # token reste généré côté serveur, à l'intérieur du service.
+        #
+        # AUD148(c) — re-provisionner NE RÉACTIVE JAMAIS un compte révoqué
+        # (`actif=False`) : le service le renvoie TEL QUEL. Rouvrir un accès
+        # révoqué reste une action admin explicite
+        # (`apps.portail.services.reactiver_acces_client`), jamais un effet de
+        # bord d'un POST de provisionnement.
+        serializer.instance = services.provisionner_compte_portail(
+            company, client_id=client.id)
 
 
 class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
@@ -8032,10 +8714,27 @@ class CompteFideliteViewSet(_ComptaBaseViewSet):
         compte.refresh_from_db()
         return Response(self.get_serializer(compte).data)
 
+    @action(detail=True, methods=['post'], url_path='recalculer-solde')
+    def recalculer_solde(self, request, pk=None):
+        """AUD619 (doctrine D9) — re-dérive le solde depuis le LEDGER.
+
+        Le solde est un cache : cette action le recalcule = Σ des mouvements
+        du compte (plancher 0, comme à l'écriture). Répare tout compte dont le
+        cache a divergé, notamment ceux dont un mouvement a été supprimé en
+        base avant que le DELETE ne soit refusé."""
+        compte = self.get_object()
+        services.recalculer_solde_fidelite(compte)
+        compte.refresh_from_db()
+        return Response(self.get_serializer(compte).data)
+
 
 class MouvementFideliteViewSet(_ComptaBaseViewSet):
     """Mouvements de points de fidélité (FG240). La création recalcule le solde
-    et le palier du compte côté serveur (jamais depuis le corps)."""
+    et le palier du compte côté serveur (jamais depuis le corps).
+
+    AUD619 — doctrine D9 (fondateur) : c'est un LEDGER. La suppression est
+    REFUSÉE ; une correction s'écrit en mouvement de sens INVERSE, et
+    ``comptes-fidelite/<id>/recalculer-solde/`` re-dérive le cache."""
     queryset = MouvementFidelite.objects.all()
     serializer_class = MouvementFideliteSerializer
     filter_backends = [filters.OrderingFilter]
@@ -8049,6 +8748,27 @@ class MouvementFideliteViewSet(_ComptaBaseViewSet):
             data['compte'], points=data['points'],
             motif=data.get('motif', ''))
         serializer.instance = mouvement
+
+    def perform_destroy(self, instance):
+        """AUD619 — DELETE interdit sur un ledger.
+
+        Le routeur standard exposait un DELETE qui ne repassait JAMAIS par
+        ``appliquer_mouvement_fidelite`` à rebours : la ligne disparaissait et
+        ``CompteFidelite.points`` restait figé sur une valeur qui ne
+        correspondait plus à aucun historique — un solde faux, indétectable et
+        irréparable. La correction passe par un mouvement inverse.
+
+        ``perform_destroy`` (et non ``destroy``) : le scoping société de
+        ``get_object`` s'applique AVANT, donc un mouvement d'une autre société
+        continue de répondre 404, jamais 405."""
+        raise MethodNotAllowed(
+            'DELETE',
+            detail=(
+                'Un mouvement de fidélité est un enregistrement de registre : '
+                "il ne se supprime pas. Enregistrez un mouvement de sens "
+                'inverse (mêmes points, signe opposé), puis au besoin '
+                'recalculez le solde du compte via '
+                '« comptes-fidelite/<id>/recalculer-solde/ ».'))
 
 
 class RegleUpsellViewSet(_ComptaBaseViewSet):
@@ -8353,7 +9073,16 @@ class CompteAuxiliaireViewSet(_ComptaBaseViewSet):
 
 class PieceJustificativeViewSet(_ComptaBaseViewSet):
     """Pièces justificatives attachées aux écritures (COMPTA10). Filtrable par
-    écriture. ``ajoute_par`` est posé côté serveur."""
+    écriture. ``ajoute_par`` est posé côté serveur.
+
+    AUD805 — le jeu de pièces d'une écriture VALIDÉE est figé. Ce ViewSet
+    héritait de ``_ComptaBaseViewSet`` sans aucun ``perform_create`` /
+    ``perform_destroy`` vérifiant l'état de l'écriture : n'importe quel
+    Responsable pouvait SUPPRIMER la facture scannée d'une écriture validée
+    (204), ou en ATTACHER une nouvelle après coup — la preuve documentaire du
+    grand livre changeait sous une validation posée. Symétrique d'AUD804, qui
+    fige l'écriture elle-même.
+    """
     queryset = PieceJustificative.objects.select_related('ecriture').all()
     serializer_class = PieceJustificativeSerializer
     filter_backends = [filters.OrderingFilter]
@@ -8366,10 +9095,24 @@ class PieceJustificativeViewSet(_ComptaBaseViewSet):
             qs = qs.filter(ecriture_id=ecriture)
         return qs
 
+    @staticmethod
+    def _refuser_si_ecriture_validee(ecriture):
+        if ecriture is not None and (
+                ecriture.statut == EcritureComptable.Statut.VALIDEE):
+            raise ValidationError(
+                "Écriture validée : ses pièces justificatives sont figées. "
+                "Passez une écriture d'extourne pour corriger.")
+
     def perform_create(self, serializer):
+        self._refuser_si_ecriture_validee(
+            serializer.validated_data.get('ecriture'))
         serializer.save(
             company=self.request.user.company,
             ajoute_par=self.request.user)
+
+    def perform_destroy(self, instance):
+        self._refuser_si_ecriture_validee(instance.ecriture)
+        instance.delete()
 
 
 class PisteAuditComptableViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -8675,12 +9418,30 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
+    def _sceller(self, cycle, etape, *, snapshot=None, detail=''):
+        """AUDV05 / NTFIN55 (DRAFT165-52) — scelle l'étape dans la chaîne de
+        hachage d'audit du cycle.
+
+        `services.enregistrer_etape_audit_consolidation` n'avait AUCUN
+        appelant : l'action `etapes-audit` listait donc une table qui restait
+        vide POUR TOUJOURS en production. Une consolidation dont on ne peut pas
+        prouver l'ordre ni l'intégrité des étapes n'est pas auditable — c'est
+        exactement ce que NTFIN55 sert à garantir.
+
+        Le scellement est APPEND-ONLY et ne peut pas faire échouer l'étape
+        métier qui vient de réussir : il est appelé APRÈS elle.
+        """
+        return services.enregistrer_etape_audit_consolidation(
+            cycle, etape, acteur=self.request.user, snapshot=snapshot,
+            detail=detail)
+
     @action(detail=True, methods=['post'],
             permission_classes=[HasPermissionOrLegacy('compta_valider')])
     def ouvrir(self, request, pk=None):
         """NTFIN1 — Rouvre un cycle verrouillé."""
         cycle = self.get_object()
         services.ouvrir_cycle_consolidation(cycle)
+        self._sceller(cycle, 'ouverture', detail='Réouverture du cycle.')
         return Response(self.get_serializer(cycle).data)
 
     @action(detail=True, methods=['post'],
@@ -8689,6 +9450,10 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         """NTFIN1 — Verrouille un cycle (fige ses données agrégées)."""
         cycle = self.get_object()
         services.verrouiller_cycle_consolidation(cycle)
+        self._sceller(
+            cycle, 'verrouillage',
+            snapshot=selectors.bilan_consolide(cycle),
+            detail='Verrouillage du cycle (données figées).')
         return Response(self.get_serializer(cycle).data)
 
     @action(detail=True, methods=['post'],
@@ -8701,10 +9466,59 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         except DjangoValidationError as exc:
             return _err400(exc)
         cycle.refresh_from_db()
+        donnees = LiasseRemonteeSerializer(liasses, many=True).data
+        self._sceller(
+            cycle, 'collecte', snapshot=donnees,
+            detail=f'{len(liasses)} liasse(s) collectée(s).')
         return Response({
             'cycle': CycleConsolidationSerializer(cycle).data,
-            'liasses': LiasseRemonteeSerializer(liasses, many=True).data,
+            'liasses': donnees,
         })
+
+    @action(detail=True, methods=['post'], url_path='convertir-entite',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def convertir_entite(self, request, pk=None):
+        """AUDV05 / NTFIN5 (DRAFT165-50) — convertit la liasse d'une entité en
+        devise de présentation (méthode du cours de clôture).
+
+        `services.convertir_entite` n'avait aucun appelant : un groupe avec
+        une filiale en devise étrangère ne pouvait tout simplement PAS
+        consolider depuis l'écran — la balance de cette entité restait dans sa
+        devise locale, donc l'agrégat était faux.
+
+        Corps : ``{'liasse': <id>, 'taux_cloture': ..., 'taux_moyen': ...}``.
+        Bilan (classes 1-5) au cours de CLÔTURE, résultat (classes 6-7) au
+        cours MOYEN ; l'écart qui en résulte est l'écart de conversion (CTA),
+        renvoyé explicitement — jamais absorbé en silence. LECTURE SEULE sur la
+        liasse : la conversion est un CALCUL, elle ne réécrit pas le snapshot
+        collecté (l'original reste la preuve de ce que la filiale a déclaré).
+        """
+        from decimal import Decimal, InvalidOperation
+        cycle = self.get_object()
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, id=request.data.get('liasse')).first()
+        if liasse is None:
+            return Response(
+                {'detail': "Liasse inconnue pour ce cycle."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            taux_cloture = Decimal(str(request.data.get('taux_cloture')))
+            taux_moyen = Decimal(str(request.data.get('taux_moyen')))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {'detail': "`taux_cloture` et `taux_moyen` doivent être des "
+                           "nombres."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if taux_cloture <= 0 or taux_moyen <= 0:
+            return Response(
+                {'detail': "Un cours de change doit être strictement positif."},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.convertir_entite(liasse, taux_cloture, taux_moyen)
+        self._sceller(
+            cycle, 'conversion', snapshot=resultat,
+            detail=f'Conversion de la liasse {liasse.id} '
+                   f'(clôture {taux_cloture}, moyen {taux_moyen}).')
+        return Response({'liasse': liasse.id, **resultat})
 
     @action(detail=True, methods=['get'], url_path='controles-collecte')
     def controles_collecte(self, request, pk=None):
@@ -8728,7 +9542,10 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             ops = services.apparier_intercos(cycle)
         except DjangoValidationError as exc:
             return _err400(exc)
-        return Response(OperationIntercoSerializer(ops, many=True).data)
+        donnees = OperationIntercoSerializer(ops, many=True).data
+        self._sceller(cycle, 'appariement', snapshot=donnees,
+                      detail=f'{len(ops)} opération(s) inter-co appariée(s).')
+        return Response(donnees)
 
     @action(detail=True, methods=['get'])
     def eliminations(self, request, pk=None):
@@ -8746,7 +9563,10 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             elims = services.generer_eliminations_reciproques(cycle)
         except DjangoValidationError as exc:
             return _err400(exc)
-        return Response(EcritureEliminationSerializer(elims, many=True).data)
+        donnees = EcritureEliminationSerializer(elims, many=True).data
+        self._sceller(cycle, 'reciproques', snapshot=donnees,
+                      detail=f'{len(elims)} élimination(s) générée(s).')
+        return Response(donnees)
 
     @action(detail=True, methods=['post'], url_path='interets-minoritaires',
             permission_classes=[HasPermissionOrLegacy('compta_valider')])
@@ -8757,7 +9577,11 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             elims = services.calculer_interets_minoritaires(cycle)
         except DjangoValidationError as exc:
             return _err400(exc)
-        return Response(EcritureEliminationSerializer(elims, many=True).data)
+        donnees = EcritureEliminationSerializer(elims, many=True).data
+        self._sceller(cycle, 'interets_minoritaires', snapshot=donnees,
+                      detail=f'{len(elims)} écriture(s) d\'intérêts '
+                             'minoritaires.')
+        return Response(donnees)
 
     @action(detail=True, methods=['get'], url_path='etats-consolides')
     def etats_consolides(self, request, pk=None):
@@ -9666,6 +10490,35 @@ class MutationImmobilisationViewSet(_ComptaBaseViewSet):
             qs = qs.filter(immobilisation_id=immo)
         return qs
 
+    def perform_create(self, serializer):
+        """AUDV05 / NTFIN42 (DRAFT165-51) — `entite_source` est DÉRIVÉE, jamais
+        acceptée du corps.
+
+        Avant : CRUD nu. `entite_source` était un champ writable ordinaire, si
+        bien qu'un client pouvait déclarer une entité d'origine ARBITRAIRE — ou
+        n'en déclarer aucune — pour un actif dont la société propriétaire est
+        connue du serveur. `services.muter_immobilisation` dérive
+        `entite_source = immobilisation.company` et n'avait aucun appelant.
+
+        Multi-tenant : l'immobilisation est revérifiée dans la société de
+        l'appelant (le sérialiseur ne le fait pas pour ce modèle).
+        """
+        donnees = serializer.validated_data
+        company = self.request.user.company
+        immobilisation = donnees.get('immobilisation')
+        if getattr(immobilisation, 'company_id', None) != getattr(
+                company, 'id', None):
+            raise ValidationError(
+                {'immobilisation': 'Immobilisation inconnue pour cette société.'})
+        serializer.instance = services.muter_immobilisation(
+            immobilisation,
+            ancien_centre=donnees.get('ancien_centre'),
+            nouveau_centre=donnees.get('nouveau_centre'),
+            entite_cible=donnees.get('entite_cible'),
+            date=donnees.get('date'),
+            motif=donnees.get('motif', '') or '',
+        )
+
 
 class ImmobilisationEnCoursViewSet(_ComptaBaseViewSet):
     """Immobilisations en cours (CIP, NTFIN43) + ``mettre-en-service``."""
@@ -10153,3 +11006,242 @@ class EtatPersonnaliseViewSet(_ComptaBaseViewSet):
                 for ligne in resultat['lignes']
             ],
         })
+
+
+# ── AUDV06 / XACC17-XACC18 — Devises (exposition REST) ─────────────────────
+
+class TauxDeviseViewSet(_ComptaBaseViewSet):
+    """Table des taux de change ``devise`` → MAD (XACC17).
+
+    AUDV06 — le modèle, l'upsert et le sélecteur ``taux_du_jour`` existaient
+    sans AUCUN ViewSet : la table FX était inatteignable hors admin Django, si
+    bien que tout document en devise retombait silencieusement sur le repli
+    1:1. La création est ROUTÉE par ``services.enregistrer_taux_devise`` (et
+    non par ``ModelSerializer.create``) pour que la règle « never snap » —
+    un feed n'écrase jamais une saisie manuelle du même jour — s'applique
+    aussi aux saisies faites depuis l'écran.
+    """
+    queryset = TauxDevise.objects.all()
+    serializer_class = TauxDeviseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_taux', 'devise', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        devise = self.request.query_params.get('devise')
+        if devise:
+            qs = qs.filter(devise=devise.upper())
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            taux = services.enregistrer_taux_devise(
+                request.user.company,
+                devise=donnees['devise'],
+                date_taux=donnees['date_taux'],
+                taux_vers_mad=donnees['taux_vers_mad'],
+                source=donnees.get('source'),
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(taux).data, status=status.HTTP_201_CREATED)
+
+
+class ItemOuvertDeviseViewSet(_ComptaBaseViewSet):
+    """Postes ouverts en devise suivis pour l'écart de change (XACC18).
+
+    AUDV06 — ``enregistrer_item_ouvert_devise`` et ``constater_ecart_change``
+    n'avaient aucun appelant : aucun écran ne pouvait déclarer un poste ouvert
+    ni constater son écart au règlement, donc le gain/la perte de change
+    n'entrait JAMAIS au grand livre.
+
+    La création passe par le service (idempotente par document : le taux
+    d'origine reste FIGÉ une fois posé — c'est la référence de mesure de
+    l'écart).
+    """
+    queryset = ItemOuvertDevise.objects.select_related('ecart_change').all()
+    serializer_class = ItemOuvertDeviseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['document_reference', 'devise']
+    ordering_fields = ['date_origine', 'devise', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        devise = params.get('devise')
+        if devise:
+            qs = qs.filter(devise=devise.upper())
+        solde = params.get('solde')
+        if solde in ('true', 'false'):
+            qs = qs.filter(solde=(solde == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy',
+                           'constater_ecart'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            item = services.enregistrer_item_ouvert_devise(
+                request.user.company,
+                type_document=donnees['type_document'],
+                document_id=donnees['document_id'],
+                document_reference=donnees.get('document_reference', '') or '',
+                devise=donnees['devise'],
+                montant_devise=donnees['montant_devise'],
+                taux_origine=donnees['taux_origine'],
+                date_origine=donnees['date_origine'],
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(item).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='constater-ecart')
+    def constater_ecart(self, request, pk=None):
+        """Constate l'écart de change RÉALISÉ au règlement (XACC18).
+
+        Corps : ``{'date_reglement': 'YYYY-MM-DD', 'taux_reglement'?}`` — sans
+        taux explicite, celui de la table au jour du règlement est utilisé
+        (repli : le taux d'origine, donc écart nul). Gain → crédit 733, perte
+        → débit 633 ; un écart NUL ne poste aucune écriture (rien à dire).
+        La vue REFUSE un second constat : un poste soldé n'a qu'UN écart
+        réalisé, et un double clic doit le DIRE plutôt que de rendre un 200
+        trompeur. Verrou de période (FG115) respecté par le service.
+        """
+        item = self.get_object()  # scopé société par TenantMixin.
+        if item.solde:
+            return Response(
+                {'detail': (
+                    "Ce poste est déjà soldé : son écart de change a déjà été "
+                    "constaté et ne peut pas l'être une seconde fois.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        date_reglement = request.data.get('date_reglement')
+        if not date_reglement:
+            return Response(
+                {'detail': 'Paramètre `date_reglement` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            # Date NORMALISÉE avant le service : il la pose telle quelle sur
+            # un champ date et la compare au verrou de période.
+            services.constater_ecart_change(
+                item, date_reglement=_parse_date(date_reglement),
+                taux_reglement=request.data.get('taux_reglement') or None,
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        # L'écart est renvoyé IMBRIQUÉ dans le poste (`ecart_change`) : l'écran
+        # a besoin du poste soldé ET de son écart en une seule réponse.
+        item.refresh_from_db()
+        return Response(
+            self.get_serializer(item).data, status=status.HTTP_201_CREATED)
+
+
+class RegleImputationViewSet(_ComptaBaseViewSet):
+    """Règles d'AUTO-imputation analytique (XACC20).
+
+    AUDV09 — la règle et son moteur (`_appliquer_regle_imputation_si_match`,
+    déjà appelé par `creer_ecriture`) existaient sans AUCUN ViewSet : aucune
+    règle ne pouvait être créée hors admin Django, si bien que le moteur
+    tournait à vide et que chaque écriture devait être ventilée à la main,
+    indéfiniment.
+
+    La création est ROUTÉE par `services.creer_regle_imputation`, qui EXIGE
+    une distribution sommant à 100 % : une distribution partielle imputerait
+    silencieusement une part de la charge nulle part — précisément le genre
+    d'erreur qu'une auto-imputation doit rendre impossible.
+    """
+    queryset = RegleImputation.objects.prefetch_related(
+        'distributions__centre_cout').all()
+    serializer_class = RegleImputationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'prefixe_compte']
+    ordering_fields = ['priorite', 'libelle', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('true', 'false'):
+            qs = qs.filter(actif=(actif == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            regle = services.creer_regle_imputation(
+                request.user.company,
+                libelle=donnees['libelle'],
+                prefixe_compte=donnees['prefixe_compte'],
+                distributions=[dict(d)
+                               for d in donnees.get('distributions', [])],
+                tiers_id=donnees.get('tiers_id'),
+                produit_id=donnees.get('produit_id'),
+                priorite=donnees.get('priorite', 100),
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(regle).data, status=status.HTTP_201_CREATED)
+
+
+class ReevaluationClotureViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Runs de réévaluation de clôture des postes en devise (XACC18).
+
+    LECTURE SEULE : un run ne se saisit pas, il se LANCE. ``services.
+    reevaluer_cloture`` n'avait aucun appelant — la perte/le gain LATENT de
+    change n'était donc jamais constaté à la clôture, alors que c'est
+    précisément l'écriture que le commissaire aux comptes attend.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = ReevaluationCloture.objects.prefetch_related(
+        'lignes__item').all()
+    serializer_class = ReevaluationClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_cloture', 'id']
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def lancer(self, request):
+        """Lance (ou renvoie) le run de réévaluation d'une date de clôture.
+
+        Corps : ``{'date_cloture': 'YYYY-MM-DD'}``. IDEMPOTENT par (société,
+        date) : rejouer ne double jamais l'écriture — le run existant est
+        renvoyé tel quel. Poste l'écart LATENT (gain → 1701, perte → 2701) et
+        son EXTOURNE datée du lendemain, pour que l'exercice suivant reparte
+        du réel. Aucun poste en devise, ou aucun taux de clôture connu : le
+        run existe mais ne poste rien (jamais un écart inventé).
+        """
+        date_cloture = request.data.get('date_cloture')
+        if not date_cloture:
+            return Response(
+                {'detail': 'Paramètre `date_cloture` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            run = services.reevaluer_cloture(
+                request.user.company, date_cloture=_parse_date(date_cloture),
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(run).data, status=status.HTTP_201_CREATED)

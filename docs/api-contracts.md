@@ -112,12 +112,20 @@
     cycle:inconnu, detail:inconnu, liasses:inconnu
 - frontend/src/api/comptaApi.js :: controlesCollecte -> /api/django/compta/cycles-consolidation/<>/controles-collecte
     anomalies:inconnu, bloquant:inconnu
+- frontend/src/api/comptaApi.js :: diagnosticRib -> /api/django/compta/approbations-rib/diagnostic-rib
+    detail:texte, erreurs:inconnu, rib:inconnu, valide:booleen
+- frontend/src/api/comptaApi.js :: echeancier -> /api/django/compta/effets/echeancier
+    effets:inconnu, nb:nombre, net:nombre, total_a_payer:inconnu, total_a_recevoir:inconnu
+- frontend/src/api/comptaApi.js :: enEcart -> /api/django/compta/rapprochements-3voies/en-ecart
+    nb:nombre, rapprochements:inconnu
 - frontend/src/api/comptaApi.js :: etatsConsolides -> /api/django/compta/cycles-consolidation/<>/etats-consolides
     bilan:inconnu, cpc:inconnu
 - frontend/src/api/comptaApi.js :: etic -> /api/django/compta/etats/etic
     date_debut:texte, date_fin:texte, detail:texte, engagements_hors_bilan:objet, exercice:texte, immobilisations:inconnu, principes_methodes:texte, provisions:inconnu, resultat:inconnu, sections:liste
 - frontend/src/api/comptaApi.js :: executionBudgetaire -> /api/django/compta/etats/execution-budgetaire
     annee:inconnu, budget_id:inconnu, detail:texte, lignes:inconnu, total_budget:inconnu, total_disponible:inconnu, total_engage:inconnu, total_realise:inconnu
+- frontend/src/api/comptaApi.js :: ficheTiers -> /api/django/compta/comptes/<>/fiche-tiers
+    compte:inconnu, compte_intitule:inconnu, compte_numero:inconnu, encours:inconnu, lignes_non_lettrees:liste, nb_lignes_non_lettrees:nombre
 - frontend/src/api/comptaApi.js :: fraisBancaires -> /api/django/compta/etats/frais-bancaires
     par_compte:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: genererDues -> /api/django/compta/abonnements-ecriture/generer-dues
@@ -142,12 +150,18 @@
     comptes:inconnu, projection:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: positionsContratRevenu -> /api/django/compta/etats/positions-contrat-revenu
     lignes:inconnu, total_actif_sur_contrat:inconnu, total_produit_differe:inconnu
+- frontend/src/api/comptaApi.js :: posterDotation -> /api/django/compta/charges-avance/<>/poster-dotation
+    date_ecriture:inconnu, detail:inconnu, dotation:inconnu, ecriture_id:inconnu, montant:texte, numero:inconnu, posted:inconnu, reference:inconnu
+- frontend/src/api/comptaApi.js :: posterDotationDerogatoire -> /api/django/compta/immobilisations/<>/poster-dotation-derogatoire
+    annee:inconnu, detail:inconnu, difference:texte, dotation:inconnu, ecriture_id:inconnu, posted:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: posterMouvement -> /api/django/compta/caisses/<>/poster-mouvement
     detail:inconnu, ecriture_id:inconnu, mouvement:inconnu
 - frontend/src/api/comptaApi.js :: pretACloturer -> /api/django/compta/etats/pret-a-cloturer
     detail:texte, instance_id:inconnu, pret:booleen, taches_manquantes:inconnu
 - frontend/src/api/comptaApi.js :: previsionnelTresorerie -> /api/django/compta/etats/previsionnel-tresorerie
     date_debut:inconnu, date_rupture_estimee:inconnu, nb_semaines:inconnu, semaines:inconnu, solde_initial:inconnu
+- frontend/src/api/comptaApi.js :: prochainNumero -> /api/django/compta/ecritures/prochain-numero
+    detail:texte, journal:inconnu, journal_code:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: projectionDotations -> /api/django/compta/etats/projection-dotations
     annees:inconnu, par_actif:inconnu, referentiel:inconnu, totaux_par_annee:inconnu
 - frontend/src/api/comptaApi.js :: rapprochementsEnRetard -> /api/django/compta/etats/rapprochements-en-retard
@@ -162,8 +176,14 @@
     detail:texte, ok:booleen
 - frontend/src/api/comptaApi.js :: resultatAnalytique -> /api/django/compta/etats/resultat-analytique
     axe:inconnu, detail:texte, total_resultat:inconnu, valeurs:inconnu
+- frontend/src/api/comptaApi.js :: ribInvalides -> /api/django/compta/tresorerie/rib-invalides
+    comptes:inconnu, nb:nombre
 - frontend/src/api/comptaApi.js :: simuler -> /api/django/compta/cycles-consolidation/<>/simuler
     cycle:inconnu, detail:inconnu, part_minoritaires:inconnu, perimetre:inconnu, resultat_consolide:inconnu, resultat_part_groupe:nombre, simulation:booleen
+- frontend/src/api/comptaApi.js :: solde -> /api/django/compta/charges-avance/solde
+    charges:inconnu, detail:texte, total_restant:inconnu
+- frontend/src/api/comptaApi.js :: suggestionsApprises -> /api/django/compta/rapprochements/<>/suggestions-apprises
+    detail:texte, nb_lignes_non_pointees:nombre, rapprochement:inconnu, suggestions:inconnu
 - frontend/src/api/comptaApi.js :: variationCapitaux -> /api/django/compta/cycles-consolidation/<>/variation-capitaux
     capitaux_cloture_part_groupe:inconnu, capitaux_ouverture:inconnu, cycle:inconnu, dividendes:inconnu, ecart_conversion:inconnu, resultat_part_groupe:inconnu, resultat_part_minoritaires:inconnu
 - frontend/src/api/comptaApi.js :: verifier -> /api/django/compta/pistes-audit/verifier
@@ -248,6 +268,8 @@
     avertissements:inconnu, bloquantes:inconnu, detail:texte, valide:booleen, violations:inconnu
 - frontend/src/api/creditApi.js :: getLimiteHistorique -> /api/django/credit/limites/<>/historique
     count:nombre, entries:inconnu
+- frontend/src/api/crmApi.js :: arreterCadence -> /api/django/crm/leads/<>/relance/arreter
+    arretees:inconnu, cadences:texte, motif:texte
 - frontend/src/api/crmApi.js :: bulkLeads -> /api/django/crm/leads/bulk
     count:nombre, detail:texte, ok:booleen, op:texte, queue:inconnu, skipped:inconnu, total:nombre, unchanged:inconnu, updated:inconnu
 - frontend/src/api/crmApi.js :: checkDevisAuto -> /api/django/crm/leads/<>/devis-auto
@@ -272,7 +294,11 @@
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
+- frontend/src/api/crmApi.js :: getRelanceEtapeMessage -> /api/django/crm/relance-etapes/<>/message
+    langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesDues -> /api/django/crm/relance-etapes
+    count:nombre, results:inconnu
+- frontend/src/api/crmApi.js :: getRelanceEtapesLead -> /api/django/crm/relance-etapes
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelances -> /api/django/crm/leads/relances
     count:nombre, results:inconnu
@@ -294,6 +320,8 @@
     results:inconnu
 - frontend/src/api/crmApi.js :: whatsappDevis -> /api/django/crm/leads/<>/whatsapp-devis
     detail:texte, links:inconnu, message:inconnu, phone:inconnu, wa_url:inconnu
+- frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
+    detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, wa_url:inconnu
 - frontend/src/api/customFieldsApi.js :: reorder -> /api/django/custom-fields/definitions/reorder
     count:nombre, detail:texte, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo
@@ -328,6 +356,8 @@
     detail:texte, echecs:inconnu, reussies:inconnu
 - frontend/src/api/flotteApi.js :: ocr -> /api/django/flotte/pleins/ocr
     champs:objet, detail:texte, photo:texte
+- frontend/src/api/flotteApi.js :: proposerDateNarsa -> /api/django/flotte/visites-techniques/proposer-date-narsa
+    date_proposee:inconnu, detail:texte
 - frontend/src/api/flotteApi.js :: rapportBudget -> /api/django/flotte/rapports/budget
     annee:inconnu, categories:inconnu, total_budgete:nombre, total_realise:nombre
 - frontend/src/api/flotteApi.js :: rapportRemplacement -> /api/django/flotte/rapports/remplacement
@@ -375,7 +405,7 @@
 - frontend/src/api/gedApi.js :: leverLegalHold -> /api/django/ged/legal-holds/<>/lever
     detail:texte, leves:inconnu
 - frontend/src/api/gedApi.js :: ocrPiece -> /api/django/ged/documents/<>/ocr-piece
-    detail:inconnu, document:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
+    detail:inconnu, document:inconnu, en_validation:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
 - frontend/src/api/gedApi.js :: officeOuvrir -> /api/django/ged/documents/<>/office-ouvrir
     detail:texte, document_id:inconnu, editor_url:inconnu
 - frontend/src/api/gedApi.js :: purgerDocument -> /api/django/ged/documents/<>/purger
@@ -574,6 +604,8 @@
     corps_fusionne:inconnu, detail:texte
 - frontend/src/api/marketingApi.js :: cloturerPresences -> /api/django/marketing/evenements-marketing/<>/cloturer-presences
     absents_marques:inconnu
+- frontend/src/api/marketingApi.js :: conformiteCndp -> /api/django/marketing/campagnes/conformite-cndp
+    double_optin_actif:inconnu, mention_stop_sms:inconnu, pied_cndp:inconnu, pied_cndp_configure:booleen
 - frontend/src/api/marketingApi.js :: enregistrementsAttendus -> /api/django/marketing/domaines-envoi/<>/enregistrements-attendus
     dkim:objet, dmarc:objet, spf:objet
 - frontend/src/api/marketingApi.js :: envoyerTest -> /api/django/marketing/campagnes/<>/envoyer-test
@@ -584,12 +616,14 @@
     configured:inconnu
 - frontend/src/api/marketingApi.js :: importer -> /api/django/marketing/listes-diffusion/<>/importer
     ajoutes:nombre, doublons:nombre, ignores_supprimes:nombre
+- frontend/src/api/marketingApi.js :: importerOpposition -> /api/django/marketing/campagnes/importer-opposition
+    ajoutes:inconnu, deja_presents:nombre, detail:texte, recus:nombre
 - frontend/src/api/marketingApi.js :: instancier -> /api/django/marketing/modeles-journey/<>/instancier
     nom:inconnu, sequence_id:inconnu
+- frontend/src/api/marketingApi.js :: lienDesinscription -> /api/django/marketing/campagnes/<>/lien-desinscription
+    destinataire:inconnu, detail:texte, lien:inconnu
 - frontend/src/api/marketingApi.js :: participants -> /api/django/marketing/sequences-relance/<>/participants
     nb_actifs:inconnu, participants:inconnu
-- frontend/src/api/marketingApi.js :: planifier -> /api/django/marketing/sequences-relance/<>/planifier
-    etapes:inconnu
 - frontend/src/api/marketingApi.js :: precheck -> /api/django/marketing/campagnes/<>/precheck
     avertissements:inconnu, bloque:inconnu
 - frontend/src/api/marketingApi.js :: previsualiser -> /api/django/marketing/segments-marketing/<>/previsualiser
@@ -606,6 +640,8 @@
     detail:texte
 - frontend/src/api/messagesApi.js :: follow -> /api/django/chat/messages/<>/thread-follow
     status:texte
+- frontend/src/api/messagesApi.js :: getConversationRetention -> /api/django/chat/conversations/<>/retention
+    applicable:booleen, conversation_kind:inconnu, retention_months:inconnu
 - frontend/src/api/messagesApi.js :: remove -> /api/django/chat/canned-responses/<>
     detail:texte
 - frontend/src/api/messagesApi.js :: removeMember -> /api/django/chat/conversations/<>/members/<>
@@ -645,7 +681,7 @@
 - frontend/src/api/monitoringApi.js :: getWarrantyCurve -> /api/django/monitoring/warranties/<>/curve
     has_warranty:booleen, installation:inconnu, manufacturer_recourse:inconnu, points:inconnu, threshold_pct:inconnu
 - frontend/src/api/monitoringApi.js :: getWarrantyStatus -> /api/django/monitoring/warranties/<>/status
-    actual_kwh:inconnu, compensation_mad:inconnu, guaranteed_kwh:inconnu, has_warranty:booleen, shortfall_kwh:inconnu, within_tolerance:inconnu, year:inconnu
+    actual_kwh:inconnu, compensation_mad:inconnu, guaranteed_kwh:inconnu, has_warranty:booleen, shortfall_kwh:inconnu, within_tolerance:inconnu, year:inconnu, year_in_progress:inconnu
 - frontend/src/api/monitoringApi.js :: syncNow -> /api/django/monitoring/configs/<>/sync-now
     imported:inconnu, ok:booleen, provider:inconnu, ratio_pct:inconnu, ticket:inconnu, underperforming:inconnu
 - frontend/src/api/mrpApi.js :: clotureAssisteeOF -> /api/django/mrp/ordres-fabrication/<>/cloture-assistee
@@ -788,8 +824,12 @@
     detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
 - frontend/src/api/qhseApi.js :: calendrier -> /api/django/qhse/calendrier
     declarations_cnss:inconnu, evenements:inconnu, inspections:inconnu, permis:inconnu, today:texte, total:nombre, within_days:inconnu
+- frontend/src/api/qhseApi.js :: comparer -> /api/django/qhse/releves-thermographie/comparer
+    delta:inconnu, detail:texte, recette:inconnu, suivi:inconnu
 - frontend/src/api/qhseApi.js :: compteurs -> /api/django/qhse/observations-securite/compteurs
     a_risque:inconnu, par_superviseur_mois:liste, ratio_sur_pct:inconnu, sures:inconnu, total:inconnu
+- frontend/src/api/qhseApi.js :: conformiteLecture -> /api/django/qhse/procedures-qualite/conformite-lecture
+    detail:texte, lus:inconnu, pct:inconnu, total:inconnu
 - frontend/src/api/qhseApi.js :: criticite -> /api/django/qhse/evaluations-risque/<>/criticite
     criticite_max:inconnu, criticite_moyenne:inconnu, nb_lignes:inconnu, par_niveau:inconnu
 - frontend/src/api/qhseApi.js :: documentUniqueStatut -> /api/django/qhse/evaluations-risque/document-unique-statut
@@ -812,10 +852,18 @@
     chantier_id:inconnu, detail:texte, peut_cloturer:inconnu
 - frontend/src/api/qhseApi.js :: relancer -> /api/django/qhse/demandes-changement/relancer
     relances:nombre
+- frontend/src/api/qhseApi.js :: relancerDerogations -> /api/django/qhse/derogations/relancer
+    items:inconnu, notifiees:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: relancerEtapesAt -> /api/django/qhse/etapes-declaration-at/relancer
+    items:inconnu, notifiees:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: relancerExercices -> /api/django/qhse/exercices-urgence/relancer
     relances:nombre
 - frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
     relances:nombre
+- frontend/src/api/qhseApi.js :: relancerObjectifsRevueDue -> /api/django/qhse/objectifs/relancer
+    items:inconnu, notifiees:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: relancerRetardatairesLecture -> /api/django/qhse/diffusions-procedure/relancer
+    total:nombre
 - frontend/src/api/qhseApi.js :: relancerRetards -> /api/django/qhse/capa/relancer-retards
     items:inconnu, notifiees:inconnu, sans_responsable:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: statistiquesTfTg -> /api/django/qhse/incidents/statistiques-tf-tg
@@ -880,10 +928,14 @@
     detail:texte, id:inconnu, theme:inconnu
 - frontend/src/api/rhApi.js :: definirCodePointage -> /api/django/rh/employes/<>/definir-code-pointage
     code:texte, detail:texte
+- frontend/src/api/rhApi.js :: deleteDocument -> /api/django/rh/documents/<>
+    confirmer:texte, motif:texte
 - frontend/src/api/rhApi.js :: emargerDotationEpi -> /api/django/rh/dotations-epi/<>/emarger
     accuse_remise:inconnu, date_accuse:inconnu, deja_accusee:inconnu, detail:texte, emargement:inconnu
 - frontend/src/api/rhApi.js :: getCockpit -> /api/django/rh/cockpit
     alertes:inconnu, effectif_total:inconnu, masse_salariale_mensuelle:inconnu, par_contrat:inconnu, par_departement:inconnu, par_statut:inconnu, pyramide_anciennete:inconnu, turnover:objet
+- frontend/src/api/rhApi.js :: getEffectifChantier -> /api/django/rh/presences-chantier/effectif
+    date:texte, effectif:inconnu, installation_id:inconnu, presents:inconnu
 - frontend/src/api/rhApi.js :: getIntegration -> /api/django/rh/employes/<>/integration
     faits:inconnu, lignes:inconnu, progression_pct:inconnu, total:inconnu
 - frontend/src/api/rhApi.js :: getRapportConges -> /api/django/rh/demandes-conge/rapport
@@ -1007,7 +1059,9 @@
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire
     ajustes:nombre, detail:texte, inchanges:nombre, mouvements:liste
 - frontend/src/api/stockApi.js :: performanceFournisseur -> /api/django/stock/fournisseurs/<>/performance
-    avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
+    avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, scar_ouvertes:inconnu, scar_total:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
+- frontend/src/api/stockApi.js :: prixEffectifFournisseur -> /api/django/stock/prix-fournisseurs/effectif
+    detail:texte, prix_effectif:inconnu
 - frontend/src/api/stockApi.js :: produitPrevisionnel -> /api/django/stock/produits/<>/previsionnel
     disponible:inconnu, entrees_attendues:inconnu, produit_id:inconnu, solde_projete:inconnu, sorties_attendues:inconnu, timeline:inconnu
 - frontend/src/api/stockApi.js :: rebuterProduit -> /api/django/stock/produits/<>/rebuter
@@ -1075,7 +1129,7 @@
 - frontend/src/api/ventesApi.js :: getVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: lienPaiementFacture -> /api/django/ventes/factures/<>/lien-paiement
-    detail:texte, expires_at:texte, montant:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
+    detail:inconnu, expires_at:texte, montant:texte, montant_a_payer:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
 - frontend/src/api/ventesApi.js :: patchEtudeParams -> /api/django/ventes/devis/<>/etude-params
     detail:texte, etude_params:inconnu
 - frontend/src/api/ventesApi.js :: postEtudeHorairePreview -> /api/django/ventes/etude-horaire/preview
@@ -1649,8 +1703,6 @@
     statut ∈ {converti, en_attente, recompense_versee}
 - frontend/src/api/crmApi.js :: deleteSavedView -> /api/django/crm/vues-enregistrees/<>  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
-- frontend/src/api/crmApi.js :: deleteTag -> /api/django/crm/tags/<>  [LeadTagSerializer]
-    champs: archived, couleur, en_usage, id, nom
 - frontend/src/api/crmApi.js :: getAppointments -> /api/django/crm/appointments  [AppointmentSerializer]
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}
@@ -1690,8 +1742,6 @@
 - frontend/src/api/crmApi.js :: getSoumissionsLeadPartenaire -> /api/django/crm/soumissions-lead-partenaire  [SoumissionLeadPartenaireSerializer]
     champs: date_soumission, email_prospect, id, lead_id, nom_prospect, note, partenaire, statut, telephone_prospect, ville
     statut ∈ {converti, qualifie, rejete, soumis}
-- frontend/src/api/crmApi.js :: getTags -> /api/django/crm/tags  [LeadTagSerializer]
-    champs: archived, couleur, en_usage, id, nom
 - frontend/src/api/crmApi.js :: getWebsiteLeadPayloads -> /api/django/crm/website-lead-payloads  [WebsiteLeadPayloadSerializer]
     champs: company, error, id, lead, lead_nom, payload, processed, received_at, remote_addr, source, source_display
     source ∈ {meta_lead_ads, website}
@@ -1931,8 +1981,6 @@
     champs: actif, astuce, auto_remplir, code, created_at, created_by, hauteur_defaut, id, largeur_defaut, lecture_seule, libelle, mode_saisie, options, placeholder, updated_at
 - frontend/src/api/gedApi.js :: getValidationsOcr -> /api/django/ged/validations-ocr  [ValidationOcrDocumentSerializer]
     champs: champs_extraits, created_at, document, document_nom, id, score_confiance, updated_at, valide, valide_le, valide_par, valide_par_nom
-- frontend/src/api/gedApi.js :: getVersions -> /api/django/ged/versions  [DocumentVersionSerializer]
-    champs: checksum, created_at, document, file_key, filename, id, mime, restored_from, restored_from_version, size, uploaded_by, uploaded_by_nom, version
 - frontend/src/api/gedApi.js :: getVues -> /api/django/ged/vues  [VueGedEnregistreeSerializer]
     champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: renameDossier -> /api/django/ged/dossiers/<>  [FolderSerializer]
@@ -2933,7 +2981,7 @@
     champs: created_at, date, id, nom, recurrent_annuel
 - frontend/src/api/notificationsApi.js :: deleteRoutingRule -> /api/django/notifications/routing-rules/<>  [NotificationRoutingRuleSerializer]
     champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
-    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, compte_a_reactiver, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, uxviews_favoris_obsoletes, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, compte_a_reactiver, contrat_signe, crm_bilan_hebdo, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, lead_rattrape, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, premier_contact_depasse, product_announcement, projet_retard, projet_statut_change, relance_due, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, uxviews_favoris_obsoletes, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
 - frontend/src/api/notificationsApi.js :: deleteWhatsAppTemplate -> /api/django/notifications/whatsapp-templates/<>  [WhatsAppTemplateSerializer]
     champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
     categorie ∈ {marketing, utility}
@@ -2945,14 +2993,14 @@
     champs: created_at, date, id, nom, recurrent_annuel
 - frontend/src/api/notificationsApi.js :: getRoutingRules -> /api/django/notifications/routing-rules  [NotificationRoutingRuleSerializer]
     champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
-    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, compte_a_reactiver, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, uxviews_favoris_obsoletes, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, compte_a_reactiver, contrat_signe, crm_bilan_hebdo, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, lead_rattrape, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, premier_contact_depasse, product_announcement, projet_retard, projet_statut_change, relance_due, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, uxviews_favoris_obsoletes, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
 - frontend/src/api/notificationsApi.js :: getWhatsAppTemplates -> /api/django/notifications/whatsapp-templates  [WhatsAppTemplateSerializer]
     champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
     categorie ∈ {marketing, utility}
     statut_approbation ∈ {approuve, brouillon, rejete, soumis}
 - frontend/src/api/notificationsApi.js :: list -> /api/django/notifications/notifications  [NotificationSerializer]
     champs: body, category, created_at, event_label, event_type, id, is_action, link, read, read_at, reason, reason_label, severity, title
-    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, compte_a_reactiver, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, uxviews_favoris_obsoletes, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, compte_a_reactiver, contrat_signe, crm_bilan_hebdo, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, lead_rattrape, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, premier_contact_depasse, product_announcement, projet_retard, projet_statut_change, relance_due, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, uxviews_favoris_obsoletes, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
     reason ∈ {assigne_a_vous, manager, regle_de_routage, vous_suivez}
 - frontend/src/api/offlinesyncApi.js :: getOperation -> /api/django/offlinesync/operations/<>  [OfflineOperationSerializer]
     champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
@@ -3070,12 +3118,20 @@
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: deleteUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
     champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: getCadenceRelance -> /api/django/parametres/cadence-relance  [CadenceRelanceEtapeSerializer]
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, template_cle
+    cadence ∈ {apres_devis, contact, generique, reveil}
+    canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: getConditionsPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: getTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: getUnitesMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
     champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: updateCadenceRelanceEtape -> /api/django/parametres/cadence-relance/<>  [CadenceRelanceEtapeSerializer]
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, template_cle
+    cadence ∈ {apres_devis, contact, generique, reveil}
+    canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: updateConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: updateTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]
@@ -3182,7 +3238,7 @@
     champs: date_creation, date_debut, date_fin, date_modification, employe, employe_nom, id, note, permis_verifie, statut, statut_display, vehicule_id
     statut ∈ {active, terminee}
 - frontend/src/api/rhApi.js :: createCandidature -> /api/django/rh/candidatures  [CandidatureSerializer]
-    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    champs: cv_fichier, cv_nom, cv_url, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
     etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
 - frontend/src/api/rhApi.js :: createCauserieSecurite -> /api/django/rh/causeries-securite  [CauserieSecuriteSerializer]
     champs: animateur, animateur_nom, chantier_id, date_causerie, date_creation, date_modification, id, lieu, notes, participants, theme
@@ -3195,7 +3251,7 @@
 - frontend/src/api/rhApi.js :: createCompetenceEmploye -> /api/django/rh/competences-employe  [CompetenceEmployeSerializer]
     champs: competence, competence_code, competence_libelle, date_creation, date_modification, employe, employe_nom, evalue_le, evalue_par, id, niveau, niveau_display, note
 - frontend/src/api/rhApi.js :: createDemandeConge -> /api/django/rh/demandes-conge  [DemandeCongeSerializer]
-    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
+    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, justificatif_nom, justificatif_url, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
     statut ∈ {annulee, refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: createDeviceEmployeMap -> /api/django/rh/devices-employe-map  [EmployeDeviceMapSerializer]
     champs: date_creation, device_user_id, employe, employe_nom, id
@@ -3309,7 +3365,7 @@
 - frontend/src/api/rhApi.js :: getCampagnesPulse -> /api/django/rh/campagnes-pulse  [CampagnePulseSerializer]
     champs: date_creation, date_debut, date_fin, id, question_enps, question_libre
 - frontend/src/api/rhApi.js :: getCandidatures -> /api/django/rh/candidatures  [CandidatureSerializer]
-    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    champs: cv_fichier, cv_nom, cv_url, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
     etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
 - frontend/src/api/rhApi.js :: getCauseriesSecurite -> /api/django/rh/causeries-securite  [CauserieSecuriteSerializer]
     champs: animateur, animateur_nom, chantier_id, date_causerie, date_creation, date_modification, id, lieu, notes, participants, theme
@@ -3327,7 +3383,7 @@
     champs: date_creation, date_decision, decide_par, employe, employe_nom, id, jours, motif, statut, statut_display, type_absence, type_absence_code
     statut ∈ {refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: getDemandesConge -> /api/django/rh/demandes-conge  [DemandeCongeSerializer]
-    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
+    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, justificatif_nom, justificatif_url, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
     statut ∈ {annulee, refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: getDemandesRh -> /api/django/rh/demandes-rh  [DemandeRHSerializer]
     champs: attachment_id, date_creation, date_modification, employe, employe_nom, id, message, motif_refus, statut, statut_display, traite_le, traite_par, type, type_display
@@ -3438,7 +3494,7 @@
     statut ∈ {annulee, planifiee, realisee}
     type ∈ {externe, interne}
 - frontend/src/api/rhApi.js :: getSoldesConge -> /api/django/rh/soldes-conge  [SoldeCongeSerializer]
-    champs: acquis, annee, date_creation, date_modification, disponible, employe, id, pris, report
+    champs: acquis, annee, date_creation, date_modification, disponible, droit_annuel, employe, id, pris, report
 - frontend/src/api/rhApi.js :: getTentativesQuiz -> /api/django/rh/tentatives-quiz  [TentativeQuizSerializer]
     champs: date_creation, employe, employe_nom, id, quiz, quiz_intitule, reussi, score, session
 - frontend/src/api/rhApi.js :: getTypesAbsence -> /api/django/rh/types-absence  [TypeAbsenceSerializer]
@@ -3452,7 +3508,7 @@
     champs: a_jour, actif, aptitude, aptitude_display, date_creation, date_modification, date_visite, employe, employe_nom, id, medecin, note, organisme, prochaine_visite, restrictions
     aptitude ∈ {apte, apte_avec_restrictions, inapte}
 - frontend/src/api/rhApi.js :: updateCandidature -> /api/django/rh/candidatures/<>  [CandidatureSerializer]
-    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    champs: cv_fichier, cv_nom, cv_url, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
     etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
 - frontend/src/api/rhApi.js :: updateElementIntegration -> /api/django/rh/elements-integration/<>  [ElementIntegrationSerializer]
     champs: date_creation, id, libelle, modele, ordre
@@ -3593,7 +3649,7 @@
     champs: date_creation, date_decision, documents, fournisseur, fournisseur_nom, id, motif_rejet, note, progression, statut, statut_display, valide_par
     statut ∈ {documents_recus, en_attente, rejete, valide}
 - frontend/src/api/stockApi.js :: createFicheTechnique -> /api/django/stock/fiches-techniques  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pdf_filename, pdf_mime, pdf_size, pdf_url, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: createInventaireSession -> /api/django/stock/inventaire-sessions  [InventaireSessionSerializer]
     champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
@@ -3627,7 +3683,7 @@
 - frontend/src/api/stockApi.js :: deleteContactFournisseur -> /api/django/stock/contacts-fournisseur/<>  [ContactFournisseurSerializer]
     champs: email, fonction, fournisseur, id, nom, telephone
 - frontend/src/api/stockApi.js :: deleteFicheTechnique -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pdf_filename, pdf_mime, pdf_size, pdf_url, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: deleteModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
     champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
@@ -3660,7 +3716,7 @@
     champs: date_creation, date_emission, date_expiration, date_modification, est_valide, fournisseur, fournisseur_nom, id, note, obligatoire, reference, type_document, type_document_display
     type_document ∈ {arf, assurance, autre, cnss, rc}
 - frontend/src/api/stockApi.js :: getFichesTechniques -> /api/django/stock/fiches-techniques  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pdf_filename, pdf_mime, pdf_size, pdf_url, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: getInventaireSession -> /api/django/stock/inventaire-sessions/<>  [InventaireSessionSerializer]
     champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
@@ -3718,7 +3774,7 @@
 - frontend/src/api/stockApi.js :: updateContactFournisseur -> /api/django/stock/contacts-fournisseur/<>  [ContactFournisseurSerializer]
     champs: email, fonction, fournisseur, id, nom, telephone
 - frontend/src/api/stockApi.js :: updateFicheTechnique -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pdf_filename, pdf_mime, pdf_size, pdf_url, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: updateModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
     champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
@@ -3734,7 +3790,7 @@
     champs: encode, est_regex, id, motif, nomenclature, priorite
     encode ∈ {emplacement, lot, produit, quantite, serie}
 - frontend/src/api/stockApi.js :: uploadFicheTechniquePdf -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pdf_filename, pdf_mime, pdf_size, pdf_url, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/uxviewsApi.js :: createSavedView -> /api/django/uxviews/saved-views  [SavedViewSerializer]
     champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite

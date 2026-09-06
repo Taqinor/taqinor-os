@@ -31,7 +31,8 @@ from .models import (
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite, ReunionQhse,
+    ReleveCourbeIV, ReleveThermographie, ReponseCritere,
+    RetourClientQualite, ReunionQhse,
     RevueObjectif, RevueVeilleReglementaire,
     RisqueOpportunite, RisqueOpportuniteCapa,
     Secouriste,
@@ -115,6 +116,17 @@ class NonConformiteSerializer(serializers.ModelSerializer):
     def validate_code_defaut(self, value):
         return _meme_societe(self, value, 'Code de défaut')
 
+    def validate_statut(self, value):
+        # AUD512 — CLOTUREE ne passe QUE par l'action dédiée `cloturer/`
+        # (garde d'efficacité CAPA, QHSE13) ; les transitions
+        # ouverte→en_traitement→resolue restent volontairement au CRUD
+        # (CHATTER_FIELDS les trace déjà), donc PAS de read_only total.
+        if value == NonConformite.Statut.CLOTUREE:
+            raise serializers.ValidationError(
+                "La clôture passe par l'action dédiée cloturer/ (garde "
+                "d'efficacité CAPA), jamais un PATCH direct.")
+        return value
+
 
 class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
     type_action_display = serializers.CharField(
@@ -143,8 +155,12 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = [
-            'efficace', 'commentaire_verification', 'date_verification',
-            'verifiee_par', 'date_creation',
+            # AUD512 — `statut` ajouté : VERIFIEE (et toute autre transition)
+            # ne passe QUE par les actions dédiées (`verifier-efficacite/`
+            # notamment) — aucune transition intermédiaire CRUD légitime,
+            # contrairement à NonConformite (ouverte→en_traitement→resolue).
+            'statut', 'efficace', 'commentaire_verification',
+            'date_verification', 'verifiee_par', 'date_creation',
         ]
 
     def validate_non_conformite(self, value):
@@ -473,6 +489,30 @@ class ProcedureQualiteSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'version', 'statut', 'auteur', 'date_application', 'date_creation',
         ]
+
+
+class ReleveThermographieSerializer(serializers.ModelSerializer):
+    """Relevé de thermographie infrarouge (IEC 62446-3, AUDV15/XFSM14).
+
+    ``classe_severite``/``ncr`` sont DÉRIVÉS côté serveur (jamais reçus en
+    écriture) : la classification et la levée de NCR sur sévérité maximale
+    sont calculées par ``enregistrer_releve_thermographie`` (services.py),
+    seul créateur — jamais un ``ModelSerializer.create()`` nu."""
+    campagne_display = serializers.CharField(
+        source='get_campagne_display', read_only=True)
+    classe_severite_display = serializers.CharField(
+        source='get_classe_severite_display', read_only=True)
+
+    class Meta:
+        model = ReleveThermographie
+        fields = [
+            'id', 'chantier_id', 'equipement_ref', 'attachment_id',
+            'campagne', 'campagne_display', 'delta_t',
+            'seuil_a_surveiller', 'seuil_intervention',
+            'classe_severite', 'classe_severite_display',
+            'date_releve', 'note', 'ncr', 'releve_par', 'date_creation',
+        ]
+        read_only_fields = ['classe_severite', 'ncr', 'date_creation']
 
 
 class RetourClientQualiteSerializer(serializers.ModelSerializer):
@@ -1069,6 +1109,8 @@ class ConformiteEnvironnementaleSerializer(serializers.ModelSerializer):
     """
     type_conformite_display = serializers.CharField(
         source='get_type_conformite_display', read_only=True)
+    thematique_display = serializers.CharField(
+        source='get_thematique_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     statut_courant = serializers.SerializerMethodField()
@@ -1077,12 +1119,22 @@ class ConformiteEnvironnementaleSerializer(serializers.ModelSerializer):
         model = ConformiteEnvironnementale
         fields = [
             'id', 'intitule', 'type_conformite', 'type_conformite_display',
+            # XQHS8 (AUDV14/DRAFT165-99) — généralisation du registre à toutes
+            # les thématiques ISO 45001/9001 + évaluation périodique de
+            # conformité légale. `date_derniere_evaluation`/
+            # `resultat_derniere_evaluation` restent en lecture seule au CRUD :
+            # seule l'action `evaluer/` les pose (date posée côté serveur).
+            'thematique', 'thematique_display',
+            'date_derniere_evaluation', 'resultat_derniere_evaluation',
             'statut', 'statut_display', 'statut_courant', 'autorite',
             'reference_dossier', 'chantier_id', 'date_obtention',
             'date_expiration', 'prealerte_jours', 'responsable', 'notes',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = [
+            'date_creation', 'date_derniere_evaluation',
+            'resultat_derniere_evaluation',
+        ]
 
     def get_statut_courant(self, obj):
         return obj.statut_calcule()
@@ -1731,7 +1783,11 @@ class AuditPlanifieSerializer(serializers.ModelSerializer):
             'auditeur', 'responsable_domaine', 'statut', 'statut_display',
             'independance_ok', 'audit', 'date_creation',
         ]
-        read_only_fields = ['audit', 'date_creation']
+        # AUD512 — `statut` ajouté : PLANIFIE/REALISE/EN_RETARD ne sont
+        # pilotés que par `instancier_audit_planifie`/`relancer_audits_
+        # planifies_en_retard`, aucune transition intermédiaire CRUD
+        # légitime (même patron mineur que ActionCorrectivePreventive).
+        read_only_fields = ['audit', 'statut', 'date_creation']
 
     def get_independance_ok(self, obj) -> bool:
         return obj.independance_ok()

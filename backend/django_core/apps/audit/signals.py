@@ -78,7 +78,58 @@ TRACKED_MODELS = [
     ('btp_chantier', 'ReserveChantier'),
     ('btp_chantier', 'VisaDocument'),
     ('btp_chantier', 'AvenantChantier'),
+    # AUD609 — PrixContractuel : accord tarifaire NÉGOCIÉ client×produit, qui
+    # prime sur toute liste de prix. Sa suppression ne laissait AUCUNE trace :
+    # ni la vue (aucun destroy() gardé) ni ce mécanisme générique ne la
+    # journalisaient, alors que sa CRÉATION porte déjà un verrou d'auteur
+    # (NTCPQ37). Effacer un prix négocié fait silencieusement remonter le
+    # client au tarif catalogue — la trace de « qui l'a retiré, et quand » est
+    # exactement ce qui manquait.
+    ('cpq', 'PrixContractuel'),
+    # AUD813 — le changelog produit est GLOBAL (aucune FK société) et republié
+    # sans authentification par ``apps.publicapi`` : son écriture (désormais
+    # réservée au superutilisateur) doit laisser une trace au Journal.
+    ('core', 'ChangelogEntry'),
+    # AUD809 — les trois REGISTRES LÉGAUX CNDP / loi 09-08 (consentement,
+    # demandes de personnes concernées, registre des traitements) n'étaient
+    # dans AUCUN mécanisme de traçabilité : une preuve de consentement pouvait
+    # être fabriquée ou effacée sans laisser une ligne. Ils sont désormais
+    # append-only côté API ET suivis ici — la création reste la seule écriture
+    # possible, et elle est datée/attribuée.
+    ('core', 'ConsentRecord'),
+    ('core', 'DataSubjectRequest'),
+    ('core', 'RegistreTraitement'),
+    # AUD720 — `rh.Pointage` : `update()` écrit depuis XRH11 une
+    # `CorrectionPointage` IMMUABLE par champ corrigé, mais le DELETE générique
+    # n'était gardé par aucun `destroy()` — et `CorrectionPointage.pointage`
+    # étant en CASCADE, supprimer le pointage effaçait AUSSI les corrections
+    # déjà tracées. Sans soft-delete et absent d'ici, il ne restait
+    # littéralement aucune trace d'une heure travaillée effacée (pièce
+    # centrale d'un litige prud'homal). Le `destroy()` exige désormais un motif
+    # et journalise sur le dossier ; cette entrée ajoute la ligne AuditLog
+    # générique, hors de portée de la cascade.
+    ('rh', 'Pointage'),
 ]
+
+# ── UN SEUL ÉCRIVAIN PAR LIGNE D'AUDIT ─────────────────────────────────────
+# Modèles suivis dont la MODIFICATION porte déjà un écrivain DÉDIÉ dans son
+# app (``recorder.record_field_change`` appelé par la vue) : le diff générique
+# ci-dessous n'est alors PAS écrit, sans quoi chaque modification laisserait
+# DEUX lignes UPDATE (la dédiée, riche, et la générique) — un journal qui
+# compte double n'est plus un journal.
+#
+# La CRÉATION, la SUPPRESSION et les changements de statut restent, eux,
+# entièrement génériques : l'entrée du modèle dans ``TRACKED_MODELS`` garde
+# tout son sens.
+MODELES_SANS_UPDATE_GENERIQUE = {
+    # AUD609 a inscrit ``PrixContractuel`` ici pour que sa SUPPRESSION laisse
+    # enfin une trace (« Fix : PrixContractuel ajouté à TRACKED_MODELS pour que
+    # son DELETE soit journalisé »). Sa MODIFICATION, elle, appartient depuis
+    # NTCPQ46 à ``cpq.views.PrixContractuelViewSet.perform_update``, qui écrit
+    # l'ancien et le nouveau prix, et SEULEMENT quand ``prix_ht`` a bougé —
+    # une ligne plus précise que le diff générique, et la seule attendue.
+    ('cpq', 'PrixContractuel'),
+}
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).
 _STATUS_FIELDS = ('statut', 'stage')
@@ -192,6 +243,12 @@ def _on_post_save(sender, instance, created, **kwargs):
                 action=AuditLog.Action.STATUS, chatter=False,
                 detail=f'Statut : {old_label} → {new_label}')
             return
+    if (instance._meta.app_label,
+            instance._meta.object_name) in MODELES_SANS_UPDATE_GENERIQUE:
+        # L'app écrit elle-même la ligne UPDATE de ce modèle (plus riche, et
+        # conditionnée au champ qui l'intéresse) : en écrire une seconde ici
+        # doublerait chaque modification au Journal.
+        return
     changes = _diff_from_snapshot(
         instance, getattr(instance, '_audit_old_values', None))
     recorder.record(AuditLog.Action.UPDATE, instance=instance, changes=changes)

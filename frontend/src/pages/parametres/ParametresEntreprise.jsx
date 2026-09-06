@@ -170,6 +170,17 @@ export default function ParametresEntreprise() {
     // WR12 — flags jusqu'ici backend-only désormais éditables en Paramètres.
     lead_sla_hours: 24,       // FG28
     dgi_export_actif: false,  // N105 (interrupteur maître DGI, sensible/admin)
+    // MRY28/MRY8 — fenêtres d'appel de la société (heures « HH:MM », dates
+    // Ramadan « YYYY-MM-DD » ou vides). Défauts = ceux du Guide de Meryem.
+    appel_heure_debut: '08:30',
+    appel_heure_fin: '20:00',
+    vendredi_pause_debut: '11:30',
+    vendredi_pause_fin: '15:00',
+    ramadan_debut: '',
+    ramadan_fin: '',
+    ramadan_appel_debut: '10:00',
+    ramadan_appel_fin: '14:00',
+    premier_contact_objectif_min: 5,
     // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
     round_robin_leads_actif: false,
     round_robin_plafond_leads_ouverts: 20,
@@ -623,6 +634,16 @@ export default function ParametresEntreprise() {
       // WR12 — FG28 (SLA) + N105 (DGI) exposés en Paramètres.
       lead_sla_hours: profile.lead_sla_hours ?? 24,
       dgi_export_actif: profile.dgi_export_actif ?? false,
+      // MRY28/MRY8 — fenêtres d'appel.
+      appel_heure_debut: profile.appel_heure_debut ?? '08:30',
+      appel_heure_fin: profile.appel_heure_fin ?? '20:00',
+      vendredi_pause_debut: profile.vendredi_pause_debut ?? '11:30',
+      vendredi_pause_fin: profile.vendredi_pause_fin ?? '15:00',
+      ramadan_debut: profile.ramadan_debut ?? '',
+      ramadan_fin: profile.ramadan_fin ?? '',
+      ramadan_appel_debut: profile.ramadan_appel_debut ?? '10:00',
+      ramadan_appel_fin: profile.ramadan_appel_fin ?? '14:00',
+      premier_contact_objectif_min: profile.premier_contact_objectif_min ?? 5,
       // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
       round_robin_leads_actif: profile.round_robin_leads_actif ?? false,
       round_robin_plafond_leads_ouverts:
@@ -756,6 +777,18 @@ export default function ParametresEntreprise() {
       referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
       // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
       lead_sla_hours: Math.max(0, Math.trunc(Number(form.lead_sla_hours) || 0)),
+      // MRY28/MRY8 — fenêtres d'appel : dates Ramadan vides = null (jamais
+      // une période devinée), heures conservées telles quelles (« HH:MM »).
+      appel_heure_debut: form.appel_heure_debut || '08:30',
+      appel_heure_fin: form.appel_heure_fin || '20:00',
+      vendredi_pause_debut: form.vendredi_pause_debut || '11:30',
+      vendredi_pause_fin: form.vendredi_pause_fin || '15:00',
+      ramadan_debut: form.ramadan_debut || null,
+      ramadan_fin: form.ramadan_fin || null,
+      ramadan_appel_debut: form.ramadan_appel_debut || '10:00',
+      ramadan_appel_fin: form.ramadan_appel_fin || '14:00',
+      premier_contact_objectif_min: Math.max(
+        1, Math.trunc(Number(form.premier_contact_objectif_min) || 5)),
       // XSAL11 — round-robin équilibré des leads entrants.
       round_robin_leads_actif: !!form.round_robin_leads_actif,
       round_robin_plafond_leads_ouverts: Math.max(

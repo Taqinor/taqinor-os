@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import (
     AccidentTravail,
     AffectationRoster,
@@ -30,15 +32,27 @@ from .models import (
 )
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(Departement)
-class DepartementAdmin(admin.ModelAdmin):
+class DepartementAdmin(CompanyScopedAdmin):
     list_display = ('nom', 'code', 'company', 'actif')
     list_filter = ('actif',)
     search_fields = ('nom', 'code')
 
 
 @admin.register(Remuneration)
-class RemunerationAdmin(admin.ModelAdmin):
+class RemunerationAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'montant', 'devise', 'periodicite',
                     'date_effet', 'company')
     list_filter = ('periodicite', 'devise')
@@ -46,7 +60,7 @@ class RemunerationAdmin(admin.ModelAdmin):
 
 
 @admin.register(DossierEmploye)
-class DossierEmployeAdmin(admin.ModelAdmin):
+class DossierEmployeAdmin(CompanyScopedAdmin):
     list_display = ('matricule', 'nom', 'prenom', 'poste', 'departement',
                     'type_contrat', 'contrat_date_fin', 'statut', 'company')
     list_filter = ('type_contrat', 'statut', 'departement')
@@ -54,7 +68,7 @@ class DossierEmployeAdmin(admin.ModelAdmin):
 
 
 @admin.register(DocumentEmploye)
-class DocumentEmployeAdmin(admin.ModelAdmin):
+class DocumentEmployeAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'type_document', 'date_expiration',
                     'date_creation', 'company')
     list_filter = ('type_document',)
@@ -62,14 +76,14 @@ class DocumentEmployeAdmin(admin.ModelAdmin):
 
 
 @admin.register(Poste)
-class PosteAdmin(admin.ModelAdmin):
+class PosteAdmin(CompanyScopedAdmin):
     list_display = ('intitule', 'code', 'departement', 'actif', 'company')
     list_filter = ('actif',)
     search_fields = ('intitule', 'code')
 
 
 @admin.register(ElementSortie)
-class ElementSortieAdmin(admin.ModelAdmin):
+class ElementSortieAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'libelle', 'type_element', 'recupere',
                     'date_recuperation', 'company')
     list_filter = ('type_element', 'recupere')
@@ -77,7 +91,7 @@ class ElementSortieAdmin(admin.ModelAdmin):
 
 
 @admin.register(TypeAbsence)
-class TypeAbsenceAdmin(admin.ModelAdmin):
+class TypeAbsenceAdmin(CompanyScopedAdmin):
     list_display = ('code', 'libelle', 'decompte_jours_ouvres', 'deduit_solde',
                     'remunere', 'actif', 'company')
     list_filter = ('decompte_jours_ouvres', 'deduit_solde', 'remunere', 'actif')
@@ -85,14 +99,14 @@ class TypeAbsenceAdmin(admin.ModelAdmin):
 
 
 @admin.register(SoldeConge)
-class SoldeCongeAdmin(admin.ModelAdmin):
+class SoldeCongeAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'annee', 'acquis', 'report', 'pris', 'company')
     list_filter = ('annee',)
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
 
 
 @admin.register(DemandeConge)
-class DemandeCongeAdmin(admin.ModelAdmin):
+class DemandeCongeAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'type_absence', 'date_debut', 'date_fin',
                     'jours', 'statut', 'company')
     list_filter = ('statut', 'type_absence')
@@ -100,7 +114,7 @@ class DemandeCongeAdmin(admin.ModelAdmin):
 
 
 @admin.register(Pointage)
-class PointageAdmin(admin.ModelAdmin):
+class PointageAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'type_pointage', 'heure_arrivee', 'heure_depart',
                     'company', 'date_creation')
     list_filter = ('type_pointage',)
@@ -108,7 +122,7 @@ class PointageAdmin(admin.ModelAdmin):
 
 
 @admin.register(HeuresSupp)
-class HeuresSuppAdmin(admin.ModelAdmin):
+class HeuresSuppAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'date', 'heures_travaillees', 'hs_25', 'hs_50',
                     'hs_100', 'jour_repos_ferie', 'company')
     list_filter = ('jour_repos_ferie',)
@@ -116,7 +130,7 @@ class HeuresSuppAdmin(admin.ModelAdmin):
 
 
 @admin.register(AffectationRoster)
-class AffectationRosterAdmin(admin.ModelAdmin):
+class AffectationRosterAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'equipe', 'date', 'creneau', 'vehicule_id',
                     'conflit_conge', 'company')
     list_filter = ('creneau', 'conflit_conge')
@@ -124,7 +138,7 @@ class AffectationRosterAdmin(admin.ModelAdmin):
 
 
 @admin.register(PresenceChantier)
-class PresenceChantierAdmin(admin.ModelAdmin):
+class PresenceChantierAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'installation_id', 'date', 'statut', 'emarge',
                     'company')
     list_filter = ('statut', 'emarge')
@@ -132,7 +146,7 @@ class PresenceChantierAdmin(admin.ModelAdmin):
 
 
 @admin.register(IncidentPresence)
-class IncidentPresenceAdmin(admin.ModelAdmin):
+class IncidentPresenceAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'type_incident', 'date', 'minutes_retard',
                     'justifie', 'company')
     list_filter = ('type_incident', 'justifie')
@@ -140,14 +154,14 @@ class IncidentPresenceAdmin(admin.ModelAdmin):
 
 
 @admin.register(Competence)
-class CompetenceAdmin(admin.ModelAdmin):
+class CompetenceAdmin(CompanyScopedAdmin):
     list_display = ('code', 'libelle', 'domaine', 'actif', 'company')
     list_filter = ('domaine', 'actif')
     search_fields = ('code', 'libelle', 'description')
 
 
 @admin.register(CompetenceEmploye)
-class CompetenceEmployeAdmin(admin.ModelAdmin):
+class CompetenceEmployeAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'competence', 'niveau', 'evalue_le', 'company')
     list_filter = ('niveau', 'competence__domaine')
     search_fields = ('employe__matricule', 'employe__nom',
@@ -155,7 +169,7 @@ class CompetenceEmployeAdmin(admin.ModelAdmin):
 
 
 @admin.register(Habilitation)
-class HabilitationAdmin(admin.ModelAdmin):
+class HabilitationAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'type_habilitation', 'organisme',
                     'date_obtention', 'date_validite', 'actif', 'company')
     list_filter = ('type_habilitation', 'actif')
@@ -164,7 +178,7 @@ class HabilitationAdmin(admin.ModelAdmin):
 
 
 @admin.register(Certification)
-class CertificationAdmin(admin.ModelAdmin):
+class CertificationAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'type_certification', 'organisme',
                     'date_obtention', 'date_validite', 'actif', 'company')
     list_filter = ('type_certification', 'actif')
@@ -173,7 +187,7 @@ class CertificationAdmin(admin.ModelAdmin):
 
 
 @admin.register(VisiteMedicale)
-class VisiteMedicaleAdmin(admin.ModelAdmin):
+class VisiteMedicaleAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'aptitude', 'date_visite', 'prochaine_visite',
                     'medecin', 'organisme', 'actif', 'company')
     list_filter = ('aptitude', 'actif')
@@ -182,14 +196,14 @@ class VisiteMedicaleAdmin(admin.ModelAdmin):
 
 
 @admin.register(EpiCatalogue)
-class EpiCatalogueAdmin(admin.ModelAdmin):
+class EpiCatalogueAdmin(CompanyScopedAdmin):
     list_display = ('designation', 'type_epi', 'actif', 'company')
     list_filter = ('type_epi', 'actif')
     search_fields = ('designation',)
 
 
 @admin.register(DotationEpi)
-class DotationEpiAdmin(admin.ModelAdmin):
+class DotationEpiAdmin(CompanyScopedAdmin):
     list_display = ('employe', 'epi', 'taille', 'date_dotation',
                     'date_renouvellement', 'quantite', 'accuse_remise',
                     'company')
@@ -199,7 +213,7 @@ class DotationEpiAdmin(admin.ModelAdmin):
 
 
 @admin.register(EmargementEpi)
-class EmargementEpiAdmin(admin.ModelAdmin):
+class EmargementEpiAdmin(CompanyScopedAdmin):
     list_display = ('signataire_nom', 'dotation', 'role_signataire',
                     'methode', 'date_signature', 'company')
     list_filter = ('role_signataire', 'methode')
@@ -208,7 +222,7 @@ class EmargementEpiAdmin(admin.ModelAdmin):
 
 
 @admin.register(AccidentTravail)
-class AccidentTravailAdmin(admin.ModelAdmin):
+class AccidentTravailAdmin(CompanyScopedAdmin):
     list_display = ('reference', 'employe', 'date_accident', 'gravite',
                     'arret_travail', 'nb_jours_arret', 'declare_cnss',
                     'statut', 'company')
@@ -218,7 +232,7 @@ class AccidentTravailAdmin(admin.ModelAdmin):
 
 
 @admin.register(PresquAccident)
-class PresquAccidentAdmin(admin.ModelAdmin):
+class PresquAccidentAdmin(CompanyScopedAdmin):
     list_display = ('reference', 'date_constat', 'lieu',
                     'gravite_potentielle', 'statut', 'declare_par', 'company')
     list_filter = ('gravite_potentielle', 'statut')
@@ -233,7 +247,7 @@ class CauserieParticipantInline(admin.TabularInline):
 
 
 @admin.register(CauserieSecurite)
-class CauserieSecuriteAdmin(admin.ModelAdmin):
+class CauserieSecuriteAdmin(CompanyScopedAdmin):
     list_display = ('theme', 'date_causerie', 'chantier_id', 'animateur',
                     'lieu', 'company')
     list_filter = ('date_causerie',)
@@ -242,7 +256,7 @@ class CauserieSecuriteAdmin(admin.ModelAdmin):
 
 
 @admin.register(CauserieParticipant)
-class CauserieParticipantAdmin(admin.ModelAdmin):
+class CauserieParticipantAdmin(CompanyScopedAdmin):
     list_display = ('causerie', 'participant', 'present', 'emarge',
                     'emarge_le', 'company')
     list_filter = ('present', 'emarge')

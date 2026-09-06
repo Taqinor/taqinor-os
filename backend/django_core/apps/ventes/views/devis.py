@@ -2874,6 +2874,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         seuil = CompanyProfile.get(devis.company).discount_approval_threshold
         if seuil is None:
             return
+        # AUD611 — le seuil juge la remise EFFECTIVE (globale ET remises de
+        # LIGNE combinées), pas la seule remise globale : un devis à 0 % global
+        # et 40 % de remise de ligne partait sinon au client sans approbation.
+        # `remise` reste la valeur ENTRANTE (celle du PATCH), et la profondeur
+        # calculée n'est jamais INFÉRIEURE à elle.
+        from apps.cpq.services import profondeur_remise_effective
+        remise = profondeur_remise_effective(devis, remise_globale=remise)
         if (remise or 0) <= seuil or devis.remise_approuvee:
             return
         if getattr(self.request.user, 'is_admin_role', False):

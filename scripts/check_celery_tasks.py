@@ -1,15 +1,25 @@
 """YDATA14 — CI guard (advisory v1): Celery tasks with external effects
 should take PKs, never model instances, as parameters.
 
-DB-free, AST-only (mirrors ``scripts/check_on_delete.py``). Scans
-``apps/*/tasks.py``, ``apps/*/scheduled.py``, ``apps/*/beat_tasks.py`` for
-any function decorated with ``@shared_task``/``@app.task`` and flags a
-parameter that LOOKS like a model instance (named after a business object —
-``devis``, ``facture``, ``lead``, ``client``, ``chantier``, ``paiement``,
-``avoir``, ``bon_commande``… — WITHOUT an ``_id``/``_pk`` suffix) rather than
-a primary key. Recommends passing ``pk`` + re-fetching inside the task body
-(a stale/pickled instance is a correctness + idempotence risk across a
-retry).
+DB-free, AST-only (mirrors ``scripts/check_on_delete.py``). Scans EVERY
+source file across ``apps/*``, ``core`` and ``authentication`` (excluding
+``tests/``/``migrations/``) for any function decorated with
+``@shared_task``/``@app.task`` and flags a parameter that LOOKS like a model
+instance (named after a business object — ``devis``, ``facture``, ``lead``,
+``client``, ``chantier``, ``paiement``, ``avoir``, ``bon_commande``…
+WITHOUT an ``_id``/``_pk`` suffix) rather than a primary key. Recommends
+passing ``pk`` + re-fetching inside the task body (a stale/pickled instance
+is a correctness + idempotence risk across a retry).
+
+AUD828 (M-09) — before this fix the file discovery was a CLOSED SET of 3
+literal filenames (``tasks.py``/``scheduled.py``/``beat_tasks.py``), missing
+14 of 54 files that actually decorate a function with ``@shared_task``
+(``core/jobs.py``, ``core/idempotent_task.py``, ``authentication/tasks.py``,
+every ``*_tasks.py``/``sweeps.py``/``digests.py``/``*_alertes.py``-style
+split file…). Detection is now BY CONTENT: every source file is a candidate
+(cheap textual pre-filter for the decorator token, same false-negative-safe
+pattern as ``check_platform.py``'s full-tree scans), never a filename
+allowlist — a task module can be named anything.
 
 v1 = ADVISORY (per spec): a NEW task signature that passes what looks like a
 model instance fails CI; every signature already in the repo today is
@@ -30,9 +40,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"
+CORE_DIR = DJANGO_CORE / "core"
+AUTH_DIR = DJANGO_CORE / "authentication"
 ALLOWLIST_PATH = ROOT / "scripts" / "celery_task_allowlist.txt"
 
-TASK_FILE_NAMES = {"tasks.py", "scheduled.py", "beat_tasks.py"}
+# AUD828 (M-09) — cheap textual pre-filter only (the AST walk in check_file()
+# is the real, authoritative detector of an ACTUAL @shared_task/@app.task
+# decorator on a function); this just avoids parsing every source file in
+# the tree. A false-positive candidate (the substring appears but never as a
+# real decorator) costs nothing — check_file() finds 0 decorated functions
+# in it and moves on.
+_TASK_TOKEN_RE = re.compile(r"shared_task|\.task\s*\(")
+_EXCLUDED_DIR_PARTS = {"tests", "migrations", "__pycache__"}
 
 # Parameter names that look like a bare model INSTANCE (business object),
 # i.e. would need to be a fully hydrated ORM object rather than a PK, for a
@@ -47,14 +66,24 @@ PK_SUFFIX_RE = re.compile(r"(_id|_pk|_ids|_pks)$", re.IGNORECASE)
 
 
 def _iter_task_files():
-    if not APPS_DIR.is_dir():
-        return
-    for app_dir in sorted(APPS_DIR.iterdir()):
-        if not app_dir.is_dir():
+    """AUD828 (M-09) — content-based: every .py source file across apps/*,
+    core and authentication (excluding tests/migrations/__pycache__) that
+    TEXTUALLY mentions a task-decorator token, in deterministic path order.
+    Replaces the old closed filename set (tasks.py/scheduled.py/
+    beat_tasks.py) which missed a real @shared_task in 14 of 54 files."""
+    for root_dir in (APPS_DIR, CORE_DIR, AUTH_DIR):
+        if not root_dir.is_dir():
             continue
-        for name in sorted(TASK_FILE_NAMES):
-            path = app_dir / name
-            if path.exists():
+        for path in sorted(root_dir.glob("**/*.py")):
+            if path.name == "__init__.py":
+                continue
+            if _EXCLUDED_DIR_PARTS & set(path.relative_to(root_dir).parts[:-1]):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if _TASK_TOKEN_RE.search(text):
                 yield path
 
 
@@ -139,7 +168,8 @@ def main(argv):
             report_lines.append(message)
 
     print(f"check_celery_tasks: {len(all_rows)} instance-like task "
-          "parameter(s) found across tasks.py/scheduled.py/beat_tasks.py.")
+          "parameter(s) found across every @shared_task/@app.task in "
+          "apps/*, core, authentication.")
     for rel, lineno, task_name, param in all_rows:
         print(f"  {rel}:{lineno}  {task_name}({param})")
 

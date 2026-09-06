@@ -154,7 +154,7 @@ describe('PlanComptablePage — rendu smoke (UX3)', () => {
 })
 
 describe('module.config — enregistrement (UX2–UX9 + XACC/ZACC round 2)', () => {
-  it('déclare 33 routes/nav gatées responsable+admin sous /comptabilite', async () => {
+  it('déclare 34 routes/nav gatées responsable+admin sous /comptabilite', async () => {
     const { default: config } = await import('./module.config.jsx')
     expect(config.key).toBe('compta')
     // WIR107 a ajouté « Clôture » + « Écritures récurrentes » (11 → 13).
@@ -162,8 +162,11 @@ describe('module.config — enregistrement (UX2–UX9 + XACC/ZACC round 2)', () 
     // livrés par PACT28-42 + les 2 écrans WIR280 (emprunts/crédits-bails +
     // états paramétrables, XACC14/XACC19) — du backend déjà construit que
     // personne ne voyait, pas une dérive de structure.
-    expect(config.routes).toHaveLength(33)
-    expect(config.nav.items).toHaveLength(33)
+    // AUDV06 ajoute « Devises & change » (XACC17/XACC18, 33 → 34) : même
+    // motif exactement — quatre services complets sans ViewSet ni écran, un
+    // document en devise retombant en silence sur un change 1:1.
+    expect(config.routes).toHaveLength(34)
+    expect(config.nav.items).toHaveLength(34)
     // Chaque item de nav correspond à une route.
     const navTargets = config.nav.items.map((i) => i.to).sort()
     const routePaths = config.routes.map((r) => r.path).sort()

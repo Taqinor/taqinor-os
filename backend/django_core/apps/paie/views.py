@@ -69,6 +69,7 @@ from .serializers import (
 from .services import (
     TransitionPeriodeInterdite,
     annuler_saisie_arret,
+    appliquer_regularisation_ir,
     appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
@@ -113,6 +114,7 @@ from .services import (
     generer_ordre_virement,
     generer_run_gratification,
     historique_carriere,
+    importer_avantages_nature_flotte,
     importer_elements_rh,
     journal_de_paie,
     journal_de_paie_ventile,
@@ -700,6 +702,25 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'importes': importes}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'],
+            url_path='importer-avantages-nature-flotte')
+    def importer_avantages_nature_flotte_action(self, request, pk=None):
+        """Importe les avantages en nature véhicule du mois (AUDV21/XFLT29).
+
+        Lit ``apps.flotte.selectors.avantages_en_nature`` (cross-app, jamais
+        ``flotte.models``) et matérialise la valeur mensuelle de chaque
+        conducteur en usage privé en ``ElementVariable`` (rubrique
+        ``AV_VOITURE``, ``source='flotte'``). Gatée ``paie_gerer`` comme toute
+        écriture paie (élément variable = argent, jamais ``IsAnyRole``).
+        """
+        periode = self.get_object()
+        try:
+            importes = importer_avantages_nature_flotte(periode)
+        except TransitionPeriodeInterdite as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'importes': importes}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='reporter-elements')
     def reporter_elements(self, request, pk=None):
         """Reconduit les éléments récurrents de M-1 vers cette période (ZPAI11).
@@ -1260,6 +1281,25 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='regulariser-ir')
+    def regulariser_ir(self, request, pk=None):
+        """AUDV19 (DRAFT165-77, XPAI2) — applique la régularisation IR
+        annuelle sur un bulletin BROUILLON. Ajoute (ou remplace) une ligne
+        `IR-REGUL` (rappel si delta > 0, trop-perçu si delta < 0), met à
+        jour `ir`/`net_a_payer`. AUD709 (prérequis de cette tâche) : le
+        calcul respecte déjà l'exonération de régime (stagiaire/ANAPEC/
+        TAHFIZ) — aucun rappel indu sur un profil protégé."""
+        bulletin = self.get_object()
+        try:
+            delta = appliquer_regularisation_ir(bulletin)
+        except BulletinPaie.BulletinVerrouille as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        bulletin.refresh_from_db()
+        data = self.get_serializer(bulletin).data
+        data['regularisation_ir_delta'] = str(delta)
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='marquer-paye')
     def marquer_paye(self, request, pk=None):

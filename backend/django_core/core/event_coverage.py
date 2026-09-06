@@ -40,9 +40,14 @@ EVENTTYPE_FILE = APPS_ROOT / "notifications" / "models.py"
 # posés pour un découplage aval futur). Tout signal orphelin non listé ici est
 # une régression (ex. YEVNT1/3/4 avaient laissé s'accumuler des orphelins).
 ALLOWED_UNCONSUMED = {
-    # Destiné à l'app comptable (matérialiser un Paiement / rapprocher la
-    # facture) ; core n'importe jamais l'app comptable — abonné à venir.
-    "payment_captured",
+    # AUD806 — ``payment_captured`` était réservé ici comme « abonné à venir ».
+    # Le commentaire est PÉRIMÉ depuis YLEDG12 : ``apps/ventes/receivers.py``
+    # (``_materialize_paiement_on_payment_captured``) s'y abonne réellement et
+    # matérialise le ``Paiement``, puis solde la facture par le service unique
+    # (``domain.encaissements.marquer_facture_soldee``, AUD102). Le signal a
+    # donc un abonné : le laisser dans cette liste blanche masquait le VRAI
+    # défaut — aucun émetteur de production ne l'envoyait (``marquer_paye``
+    # n'était appelé que par des tests). RETIRÉ.
     # ARC36 — ``facture_payee``/``bon_commande_cree`` (YEVNT6) et
     # ``abonnement_monitoring_resilie`` (YSUBS4) ont désormais des abonnés
     # métier (compta lettrage + notifications vendeur/magasinier ;
@@ -319,13 +324,13 @@ NO_STATIC_EMITTER = {
     # CRM viendra dans une tâche ultérieure). Son entrée au catalogue reste
     # documentaire tant qu'un émetteur statique n'existe pas.
     "lead_erased",
-    # ``record_soft_deleted`` (NTUX7) : même forme — la corbeille transverse
-    # (`apps.trash`) pose le RÉCEPTEUR et le contrat de payload, mais aucune app
-    # métier n'émet encore le signal sur ses chemins de soft-delete (adoption
-    # app par app dans des tâches ultérieures). Réservation EXPLICITE plutôt
-    # qu'un catalogue qui prétend une parité invérifiable ; à retirer dès le
-    # premier émetteur réel, exactement comme ``document_produit`` ci-dessus.
-    "record_soft_deleted",
+    # ``record_soft_deleted`` (NTUX7) : RETIRÉ de cette réserve — AUD818 en a
+    # posé le premier émetteur de PRODUCTION (``core.models.SoftDeleteModel.
+    # soft_delete()``, donc tout adoptant du mixin : ``crm.Lead``,
+    # ``mrp.OrdreFabrication``, ``contrats.Contrat``). La parité de payload est
+    # désormais vérifiable et DOIT l'être (le cliquet se resserre, il ne se
+    # relâche jamais) — voir la garde
+    # ``core/tests/test_aud818_corbeille_emetteur.py``.
     # ``ao_depose`` / ``ao_gagne`` (AOF13) : émetteur RÉEL et unique
     # (``apps/ao/services.py::changer_statut_ao``), mais émis par TABLE DE
     # DISPATCH — ``signal = _SIGNAUX_PAR_STATUT.get(nouveau_statut)`` puis

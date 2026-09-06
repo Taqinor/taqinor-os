@@ -119,9 +119,39 @@ app.conf.beat_schedule = {
     # AOF15 — rappels d'échéances d'appel d'offres (remise des plis, ouverture,
     # fin de validité). Un dossier d'AO se perd sur une date, jamais sur la
     # technique : passage quotidien tôt, avant la journée de travail.
+    # AUD614 — la GÉNÉRATION de l'échéancier passe AVANT son rappel. Elle
+    # n'était dispatchée nulle part : `ao.rappeler_echeances` rappelait donc un
+    # échéancier qui n'existait pas — un no-op silencieux, la pire forme de
+    # panne (l'écran « Tâches planifiées » affichait vert). Générer APRÈS le
+    # rappel aurait fait attendre un jour à chaque nouvelle échéance.
+    'ao-generer-echeanciers': {
+        'task': 'ao.generer_echeanciers',
+        'schedule': crontab(hour=6, minute=15),
+    },
     'ao-rappeler-echeances': {
         'task': 'ao.rappeler_echeances',
         'schedule': crontab(hour=6, minute=30),
+    },
+    # AUD614 — relance PROACTIVE des pièces administratives qui vont expirer.
+    # Elle n'existait qu'en action GET : il fallait ALLER VOIR pour apprendre
+    # qu'une attestation expire, alors qu'une attestation périmée le jour de
+    # l'ouverture fait ÉCARTER le pli. Après les échéances (l'ordre du matin
+    # va du plus daté au plus administratif) ; cadencée à une relance par
+    # pièce tous les 7 jours (voir `ao/scheduled.py`).
+    'ao-relancer-pieces-administratives': {
+        'task': 'ao.relancer_pieces_administratives',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # AUD614 — expiration des avis dont la date limite est passée. Le service
+    # existait, testé, et n'était appelé par AUCUN chemin de production : un
+    # avis dont la remise est passée restait « nouveau » indéfiniment, et le
+    # tri humain se faisait sur une liste polluée. AUCUN appel réseau (règle
+    # #5) : la tâche compare une date déjà en base à l'horloge — elle n'est
+    # donc pas gardée par VEILLE_AO_COLLECTE_ACTIVE, qui arme l'ACQUISITION.
+    # Juste après la collecte de 06:00, pour nettoyer ce qu'elle vient de voir.
+    'veille-ao-expirer-avis-depasses': {
+        'task': 'veille_ao.expirer_avis_depasses',
+        'schedule': crontab(hour=6, minute=10),
     },
     # VAO22 — veille appels d'offres, collecte du matin. 06:00 parce que les
     # remises de plis sont à 10 h-11 h : l'information du matin est
@@ -227,9 +257,49 @@ app.conf.beat_schedule = {
         'task': 'ged.notifier_emetteurs_expiration_signature',
         'schedule': crontab(hour=8, minute=0),
     },
+    # XGED8 (AUDV12) — relance en masse les DemandeDocument en attente
+    # (documentée « à planifier », jamais câblée jusqu'ici).
+    'ged-relancer-demandes-document-dues': {
+        'task': 'ged.relancer_demandes_document_dues',
+        'schedule': crontab(hour=8, minute=15),
+    },
+    # XGED15 (AUDV12) — notifie les assignés des planifications de document
+    # échues (documentée « à planifier », jamais câblée jusqu'ici).
+    'ged-notifier-planifications-echues': {
+        'task': 'ged.notifier_planifications_echues',
+        'schedule': crontab(hour=8, minute=30),
+    },
     'crm-recycler-leads-non-travailles': {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
+    },
+    # MRY0 (lot C) — miroir Odoo → ERP. Il n'était planifié NULLE PART : le
+    # cockpit de Meryem décrochait silencieusement (dernière passe 01/09/2026).
+    # No-op propre sans config Odoo ni ODOO_SYNC_COMPANY_SLUG ; verrou interne
+    # contre deux passes simultanées. Odoo reste en LECTURE SEULE.
+    'crm-sync-odoo-leads': {
+        'task': 'crm.sync_odoo_leads',
+        'schedule': crontab(minute='*/30'),
+    },
+    # MRY17 — digest du matin : « N relance(s) à faire aujourd'hui », UNE
+    # fois par jour et par commercial (idempotent par jour). Le panneau
+    # « Relances du jour » ne sert à rien si personne ne l'ouvre.
+    'crm-notifier-relances-dues': {
+        'task': 'crm.notifier_relances_dues',
+        'schedule': crontab(hour=8, minute=30),
+    },
+    # MRY17 — surveillance de la promesse « rappelé en moins de cinq minutes
+    # OUVRÉES ». Toutes les 5 min ; hors fenêtre d'appel, zéro minute ouvrée
+    # s'écoule, donc aucune escalade la nuit.
+    'crm-escalader-premier-contact': {
+        'task': 'crm.escalader_premier_contact',
+        'schedule': crontab(minute='*/5'),
+    },
+    # MRY21 — bilan hebdomadaire du moteur de relances, lundi 07:00, à la
+    # direction. Sept chiffres : la seule vue de HAUT du moteur.
+    'crm-bilan-hebdo-relances': {
+        'task': 'crm.bilan_hebdo_relances',
+        'schedule': crontab(hour=7, minute=0, day_of_week=1),
     },
     # QW4 — SLA rappel plus serré que le SLA générique premier-contact :
     # tourne plus souvent (toutes les 30 min) pour rattraper une escalade
@@ -279,6 +349,15 @@ app.conf.beat_schedule = {
         'task': 'contrats.executer_dunning_daily',
         'schedule': crontab(hour=8, minute=0),
     },
+    # AUD524 (ZCTR2) — suspension des contrats impayes. Le service existait,
+    # la management command aussi, et `contrats/scheduled.py` renvoyait deja au
+    # « beat cloturer_contrats_impayes separe » — qui n'existait pas. Un
+    # contrat sans sequence de dunning n'etait donc JAMAIS suspendu
+    # automatiquement. Heure creuse, juste apres le dunning.
+    'contrats-cloturer-impayes-daily': {
+        'task': 'contrats.cloturer_contrats_impayes_daily',
+        'schedule': crontab(hour=8, minute=20),
+    },
     # XKB27 — envoie les messages chat programmés dus + notifie les rappels
     # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
     # qu'un message programmé parte proche de l'heure choisie, sans surcharger
@@ -319,6 +398,34 @@ app.conf.beat_schedule = {
     'rh-alertes-cdd': {
         'task': 'rh.alertes_cdd',
         'schedule': crontab(hour=7, minute=55),
+    },
+    # AUD730 — acquisition mensuelle des congés payés (ZRH2, « Accrual Time
+    # Off » Odoo) : le 1er de chaque mois, heure creuse. Idempotent (garde
+    # ``mois_acquis``) — une double exécution ne crédite jamais deux fois.
+    'rh-accruer-conges-mensuel': {
+        'task': 'rh.accruer_conges',
+        'schedule': crontab(hour=1, minute=30, day_of_month=1),
+    },
+    # AUD730 — clôture automatique des pointages restés ouverts (ZRH5,
+    # « Automatic check-out » Odoo), quotidien en fin de nuit. No-op tant
+    # qu'aucune société n'a configuré son seuil.
+    'rh-clore-pointages-ouverts': {
+        'task': 'rh.clore_pointages_ouverts',
+        'schedule': crontab(hour=3, minute=20),
+    },
+    # AUD730 — rétention CNDP des candidatures rejetées (XRH24), quotidien.
+    # DRY-RUN tant que RH_PURGE_CANDIDATURES_AUTO_APPLY n'est pas posé
+    # (anonymisation irréversible) — la tâche SIGNALE alors le volume éligible.
+    'rh-purger-candidatures': {
+        'task': 'rh.purger_candidatures',
+        'schedule': crontab(hour=3, minute=40),
+    },
+    # AUD730 — planification des appréciations dues (ZRH8), hebdomadaire (lundi).
+    # DRY-RUN tant que RH_APPRECIATIONS_AUTO_APPLY n'est pas posé : la cadence
+    # d'un cycle d'appréciation est une décision métier du fondateur.
+    'rh-planifier-appreciations': {
+        'task': 'rh.planifier_appreciations',
+        'schedule': crontab(hour=4, minute=10, day_of_week=1),
     },
     # YSERV5 — génération automatique des visites préventives dues (opt-in
     # par société via SavSlaSettings.generation_auto_visites), quotidien.
@@ -367,6 +474,19 @@ app.conf.beat_schedule = {
     'stock-alerter-surcapacite-zones': {
         'task': 'stock.alerter_surcapacite_zones',
         'schedule': crontab(hour=6, minute=25),
+    },
+    # XPUR1 (AUDV04) — documents de conformité fournisseur expirant sous 30
+    # jours : `notify_expiring_conformite_documents` existait déjà, testée,
+    # mais sans aucun cron pour la déclencher.
+    'stock-notifier-documents-conformite-expirants': {
+        'task': 'stock.notifier_documents_conformite_expirants',
+        'schedule': crontab(hour=6, minute=35),
+    },
+    # XPUR7 (AUDV04) — alerte ACHETEUR (BCF_LATE) des BCF ENVOYE en retard,
+    # distincte de la relance fournisseur ZPUR7 ci-dessus.
+    'stock-notifier-bcf-en-retard-buyer': {
+        'task': 'stock.notifier_bcf_en_retard_buyer',
+        'schedule': crontab(hour=6, minute=40),
     },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
@@ -504,6 +624,20 @@ app.conf.beat_schedule = {
         'task': 'qhse.relancer_csh_du_jour',
         'schedule': crontab(hour=7, minute=48),
     },
+    # AUD524 (XQHS2) — relance des derogations a echeance. Le service etait
+    # teste et correct, mais n'avait AUCUN appelant hors tests : une derogation
+    # arrivant a echeance n'etait jamais relancee. Quotidien, heure creuse.
+    'qhse-relancer-derogations': {
+        'task': 'qhse.relancer_derogations',
+        'schedule': crontab(hour=7, minute=52),
+    },
+    # AUD524 (XQHS10) — audits planifies dont la date cible est depassee. Meme
+    # constat : service teste, zero appelant, aucun passage automatique en
+    # « en_retard ». Quotidien, heure creuse.
+    'qhse-relancer-audits-planifies-en-retard': {
+        'task': 'qhse.relancer_audits_planifies_en_retard',
+        'schedule': crontab(hour=7, minute=56),
+    },
     # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
     # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.
     'ventes-poll-inbound-mailboxes': {
@@ -598,6 +732,14 @@ app.conf.beat_schedule = {
     'adsengine-pull-meta-leads': {
         'task': 'adsengine.pull_meta_leads',
         'schedule': crontab(hour=7, minute=25),
+    },
+    # MRY0 (lot B) — FILET de rattrapage toutes les 15 min (fenêtre 48 h). Le
+    # webhook temps réel reste le chemin nominal ; ce filet borne le retard
+    # maximal à 15 min quand il tombe en panne (incident AZIZ : 22 h de retard
+    # parce que seul le pull de 07:25 pouvait faire entrer le lead).
+    'adsengine-pull-meta-leads-recent': {
+        'task': 'adsengine.pull_meta_leads_recent',
+        'schedule': crontab(minute='*/15'),
     },
     # ADSDEEP27 — boucle de retour CAPI « signatures » (CRM Dataset Meta) : push
     # QUOTIDIEN de l'événement signed_contract par deal signé Odoo, idempotent

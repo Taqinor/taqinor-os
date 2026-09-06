@@ -10,9 +10,20 @@ l'endpoint ET utilise ``assertMaxQueries`` ou ``assertNumQueries``.
 But : rendre le manifeste opposable — on ne peut pas déclarer un budget sans
 prouver qu'il est réellement testé (complète la sonde de parité YAPIC11).
 
-Comportement dégradé (jamais un faux rouge) :
+AUD831 — ce script est un VRAI gate (peut rendre 1), pas un advisory, et est
+maintenant branché dans le job CI ``stage-names`` (jamais gaté par le filtre
+de chemins ``changes`` — il tourne sur CHAQUE push/PR, cf. ``ci.yml``). Avant
+ce branchement, ``docs/query-budgets.yml`` affirmait au lecteur « job CI
+stage-names / lint » alors que ``grep -rn query_budgets .github/`` rendait 0
+occurrence : un endpoint déclaré ``enforced: true`` sans test de budget ne
+faisait rougir AUCUN job CI.
+
+Comportement :
 - manifeste absent          -> notice + exit 0 (rien à garder) ;
-- PyYAML absent             -> notice + exit 0 (dépendance dev) ;
+- PyYAML absent             -> ÉCHEC EXPLICITE (exit 1, AUD831). Un
+  environnement CI où PyYAML manque est une régression d'environnement, pas
+  un cas légitime — un exit 0 silencieux serait exactement le faux-vert que
+  ce garde existe pour abolir une fois branché ;
 - manifeste illisible       -> exit 1 (drift à corriger).
 """
 from __future__ import annotations
@@ -65,8 +76,15 @@ def main() -> int:
     try:
         import yaml
     except ImportError:
-        print("check_query_budgets: PyYAML absent (dev) — skip.")
-        return 0
+        # AUD831 — branché dans le job CI stage-names : PyYAML y est
+        # désormais une dépendance requise (installée par le workflow), pas
+        # une commodité de poste dev. Une absence ICI est une régression
+        # d'environnement — l'ancien "notice + exit 0" aurait été le
+        # faux-vert exact que ce garde existe pour abolir.
+        print("check_query_budgets: PyYAML absent — impossible de valider "
+              "le manifeste (dépendance requise une fois ce garde branché "
+              "en CI ; jamais un faux-vert silencieux).", file=sys.stderr)
+        return 1
 
     try:
         data = yaml.safe_load(MANIFEST.read_text(encoding="utf-8")) or {}

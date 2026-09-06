@@ -32,6 +32,8 @@ beforeAll(() => {
 const {
   empty, campagneCreate, certificationCreate, programmeCreate, reunionCreate,
   decisionCreate, decisionCreerCapa, objectifCreate, revueObjectifCreate,
+  campagnePeupler, campagneNotifier, campagneCloturer, elementPlanifier,
+  auditInstancier, auditsRelancer, objectifTrajectoire, objectifsRelancer,
 } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   campagneCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
@@ -42,6 +44,18 @@ const {
   decisionCreerCapa: vi.fn(),
   objectifCreate: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
   revueObjectifCreate: vi.fn(() => Promise.resolve({ data: { id: 7 } })),
+  campagnePeupler: vi.fn(() => Promise.resolve({ data: { crees: 3 } })),
+  campagneNotifier: vi.fn(() => Promise.resolve({ data: { notifies: 2 } })),
+  campagneCloturer: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  elementPlanifier: vi.fn(() => Promise.resolve({ data: { ticket_id: 7 } })),
+  // AUDV13 — audits planifiés (instancier/relancer) + heatmap/readiness ISO.
+  auditInstancier: vi.fn(() => Promise.resolve({ data: { id: 5, audit: 9 } })),
+  auditsRelancer: vi.fn(() => Promise.resolve({ data: [] })),
+  // AUDV14 — trajectoire d'un objectif + relance des revues dues.
+  objectifTrajectoire: vi.fn(() => Promise.resolve({
+    data: { baseline: 10, cible: 2, echeance: '2027-01-01', points: [] },
+  })),
+  objectifsRelancer: vi.fn(() => Promise.resolve({ data: { total: 1, notifiees: 1 } })),
 }))
 
 const DECISION_ROW = {
@@ -55,12 +69,49 @@ const OBJECTIF_ROW = {
   id: 60, intitule: 'Taux de fréquence accidents', domaine: 'securite',
   domaine_display: 'Sécurité', valeur_cible: 2, echeance: '2027-01-01',
 }
+// AUDV10 — campagne de rappel peuplable/notifiable/clôturable + son élément.
+const CAMPAGNE_ROW = {
+  id: 1, titre: 'Rappel onduleurs X', produit: 12, gravite: 'majeure',
+  nb_elements: 1, statut: 'en_cours', statut_display: 'En cours',
+}
+const ELEMENT_ROW = {
+  id: 200, campagne: 1, numero_serie: 'SN-0042', statut: 'a_notifier',
+  statut_display: 'À notifier', ticket_sav_id: null,
+}
+// AUDV13 — audit planifié non encore instancié.
+const AUDIT_PLANIFIE_ROW = {
+  id: 5, processus_domaine: 'Qualité soudure', date_cible: '2026-09-10',
+  statut: 'planifie', statut_display: 'Planifié', audit: null,
+}
 
 vi.mock('../../api/qhseApi', () => ({
   default: {
-    campagnesRappel: { list: empty, create: (...a) => campagneCreate(...a) },
+    campagnesRappel: {
+      list: () => Promise.resolve({ data: [CAMPAGNE_ROW] }),
+      create: (...a) => campagneCreate(...a),
+      peupler: (...a) => campagnePeupler(...a),
+      notifier: (...a) => campagneNotifier(...a),
+      cloturer: (...a) => campagneCloturer(...a),
+    },
+    elementsRappel: {
+      list: () => Promise.resolve({ data: [ELEMENT_ROW] }),
+      planifierRemplacement: (...a) => elementPlanifier(...a),
+    },
     certifications: { list: empty, create: (...a) => certificationCreate(...a) },
     programmesAudit: { list: empty, create: (...a) => programmeCreate(...a) },
+    auditsPlanifies: {
+      list: () => Promise.resolve({ data: [AUDIT_PLANIFIE_ROW] }),
+      instancier: (...a) => auditInstancier(...a),
+      relancerAuditsEnRetard: (...a) => auditsRelancer(...a),
+    },
+    clausesNorme: {
+      heatmapConstats: () => Promise.resolve({
+        data: [{ clause: '8.5.1', referentiel: 'iso_9001', nb_non_conformes: 2 }],
+      }),
+      readinessMultiReferentiel: () => Promise.resolve({
+        data: { iso_9001: { total_clauses: 10, couvertes: 6, pct: 60 } },
+      }),
+    },
     reunionsQhse: {
       list: () => Promise.resolve({ data: [REUNION_ROW] }),
       create: (...a) => reunionCreate(...a),
@@ -73,6 +124,8 @@ vi.mock('../../api/qhseApi', () => ({
     objectifsQhse: {
       list: () => Promise.resolve({ data: [OBJECTIF_ROW] }),
       create: (...a) => objectifCreate(...a),
+      trajectoire: (...a) => objectifTrajectoire(...a),
+      relancerObjectifsRevueDue: (...a) => objectifsRelancer(...a),
     },
     revuesObjectif: { list: empty, create: (...a) => revueObjectifCreate(...a) },
   },
@@ -105,6 +158,52 @@ describe('IsoQhse — Rappels produit (WIR276)', () => {
   })
 })
 
+describe('IsoQhse — Cycle de rappel produit (AUDV10)', () => {
+  it('peuple une campagne depuis le parc réel', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click((await screen.findAllByRole('button', { name: 'Peupler depuis le parc' }))[0])
+    await waitFor(() => expect(campagnePeupler).toHaveBeenCalledWith(1))
+  })
+
+  it('notifie les responsables des éléments à notifier', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click((await screen.findAllByRole('button', { name: 'Notifier les responsables' }))[0])
+    await waitFor(() => expect(campagneNotifier).toHaveBeenCalledWith(1))
+  })
+
+  it('clôture une campagne après vérification d’efficacité (action au menu)', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    // Deux listes (campagnes + éléments) partagent l'onglet — le kebab de la
+    // campagne est le premier rendu dans le DOM.
+    const kebabs = await screen.findAllByRole('button', { name: "Plus d'actions sur la ligne" })
+    await user.click(kebabs[0])
+    await user.click(await screen.findByRole('menuitem', { name: 'Clôturer' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Date de vérification d’efficacité'), '2026-09-04')
+    await user.click(within(dialog).getByRole('button', { name: 'Clôturer' }))
+
+    await waitFor(() => expect(campagneCloturer).toHaveBeenCalledWith(
+      1, expect.objectContaining({ date_verification_efficacite: '2026-09-04' }),
+    ))
+  })
+
+  it('planifie le remplacement SAV d’un élément concerné', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click((await screen.findAllByRole('button', { name: 'Planifier remplacement' }))[0])
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Client (id)'), '55')
+    await user.click(within(dialog).getByRole('button', { name: 'Planifier' }))
+
+    await waitFor(() => expect(elementPlanifier).toHaveBeenCalledWith(
+      200, { client_id: 55 },
+    ))
+  })
+})
+
 describe('IsoQhse — Certifications (WIR276)', () => {
   it('crée une certification', async () => {
     const user = userEvent.setup()
@@ -133,6 +232,33 @@ describe('IsoQhse — Programme d\'audit (WIR276)', () => {
     await waitFor(() => expect(programmeCreate).toHaveBeenCalledWith(
       expect.objectContaining({ annee: new Date().getFullYear() }),
     ))
+  })
+})
+
+describe('IsoQhse — Audits planifiés + heatmap ISO (AUDV13)', () => {
+  async function ouvrirOnglet() {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(screen.getByRole('tab', { name: 'Programme d’audit' }))
+    return user
+  }
+
+  it('instancie un audit planifié non encore réalisé', async () => {
+    const user = await ouvrirOnglet()
+    await user.click((await screen.findAllByRole('button', { name: 'Instancier' }))[0])
+    await waitFor(() => expect(auditInstancier).toHaveBeenCalledWith(5))
+  })
+
+  it('relance les audits planifiés en retard', async () => {
+    const user = await ouvrirOnglet()
+    await user.click(await screen.findByRole('button', { name: /Relancer les retards/ }))
+    await waitFor(() => expect(auditsRelancer).toHaveBeenCalled())
+  })
+
+  it('affiche la heatmap des constats et le readiness multi-référentiel', async () => {
+    await ouvrirOnglet()
+    expect(await screen.findByText(/8\.5\.1/)).toBeInTheDocument()
+    expect(await screen.findByText(/60 %/)).toBeInTheDocument()
   })
 })
 
@@ -206,5 +332,24 @@ describe('IsoQhse — Objectifs QHSE (WIR276)', () => {
     await waitFor(() => expect(revueObjectifCreate).toHaveBeenCalledWith(
       expect.objectContaining({ objectif: 60, valeur_constatee: '1.5' }),
     ))
+  })
+
+  it('affiche la trajectoire d’un objectif (AUDV14)', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(screen.getByRole('tab', { name: 'Objectifs QHSE' }))
+    await user.click((await screen.findAllByRole('button', { name: 'Voir trajectoire' }))[0])
+
+    await waitFor(() => expect(objectifTrajectoire).toHaveBeenCalledWith(60))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Baseline')
+  })
+
+  it('relance les objectifs en revue due (AUDV14)', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(screen.getByRole('tab', { name: 'Objectifs QHSE' }))
+    await user.click(await screen.findByRole('button', { name: /Relancer les revues dues/ }))
+
+    await waitFor(() => expect(objectifsRelancer).toHaveBeenCalled())
   })
 })

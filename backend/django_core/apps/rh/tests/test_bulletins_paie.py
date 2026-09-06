@@ -8,6 +8,8 @@ Couvre :
 * Suppression efface la pièce jointe.
 * Isolation + permission (rôle normal refusé sur l'admin, autorisé sur
   mes-bulletins).
+* AUD717 — ``company`` transmis à ``store_attachment`` (préfixage SCA42 de la
+  clé MinIO), au lieu du repli plat historique ``attachments/{uuid}.ext``.
 """
 from io import BytesIO
 from unittest import mock
@@ -54,7 +56,7 @@ def rows(resp):
         else data
 
 
-def _fake_store(file):
+def _fake_store(file, company=None):
     return ({'file_key': 'attachments/bp.pdf', 'filename': 'bulletin.pdf',
              'size': 2048, 'mime': 'application/pdf'}, None)
 
@@ -158,3 +160,29 @@ class BulletinPaieTests(TestCase):
         normal = make_user(self.co_a, 'bp-normal', role='normal')
         resp = auth(normal).get(URL)
         self.assertEqual(resp.status_code, 403)
+
+    def test_store_attachment_recoit_company_aud717(self):
+        """AUD717 : la clé MinIO du bulletin externe doit être scopée société.
+
+        ``BulletinPaieViewSet.create`` doit appeler ``store_attachment`` avec
+        ``company=`` (SCA42) — comme ``DocumentEmployeViewSet.create`` le fait
+        déjà (``rh/views.py``) — au lieu du repli plat historique
+        ``attachments/{uuid}.ext``. Avant le fix AUD717, ``store_attachment``
+        est appelé avec le seul positionnel ``file`` : ce test échoue tant que
+        ``company`` n'est pas transmis.
+        """
+        fake_meta = {'file_key': 'attachments/bp.pdf',
+                     'filename': 'bulletin.pdf', 'size': 2048,
+                     'mime': 'application/pdf'}
+        patcher = mock.patch(
+            'apps.rh.views.store_attachment', return_value=(fake_meta, None))
+        with patcher as mocked:
+            data = {'employe': self.emp_a.id, 'annee': 2026, 'mois': 6}
+            pdf = BytesIO(b'%PDF-1.4 fake')
+            pdf.name = 'bulletin.pdf'
+            data['file'] = pdf
+            resp = auth(self.user_a).post(URL, data, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        mocked.assert_called_once()
+        _, kwargs = mocked.call_args
+        self.assertEqual(kwargs.get('company'), self.co_a)

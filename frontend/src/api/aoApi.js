@@ -150,6 +150,22 @@ const aoApi = {
       return api.post(`/ao/plans-source/${id}/upload/`, fd)
     },
   },
+  // AUDV24 (DRAFT165-5, AOF140) — versionnement des planches d'implantation :
+  // l'indice n'est JAMAIS saisi, posé côté serveur par `upload` (empreinte
+  // SHA-256 du fichier — inchangée = pas de nouvelle version).
+  planches: {
+    ...crud('planches'),
+    upload: ({ appel_offre, code_document, fichier, toiture, variante, motif }) => {
+      const fd = new FormData()
+      fd.append('appel_offre', appel_offre)
+      fd.append('code_document', code_document)
+      fd.append('fichier', fichier)
+      if (toiture != null) fd.append('toiture', toiture)
+      if (variante != null) fd.append('variante', variante)
+      if (motif) fd.append('motif', motif)
+      return api.post('/ao/planches/upload/', fd)
+    },
+  },
   releves: crud('releves'),
   /* WIR205 — les DEUX actions métier d'`ObstacleAOViewSet` (AOF22), relues
      dans `apps/ao/views.py` : un obstacle mesuré n'est JAMAIS supprimé, il

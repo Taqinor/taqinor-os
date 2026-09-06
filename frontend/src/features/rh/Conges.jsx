@@ -203,6 +203,19 @@ export default function Conges() {
                   value={`${formatNumber(s.disponible ?? 0, { decimals: 1 })} j`}
                   hint={`${formatNumber(s.acquis ?? 0, { decimals: 1 })} acquis · ${formatNumber(s.pris ?? 0, { decimals: 1 })} pris`}
                 />
+                {/* AUDV20 — droit légal annuel théorique (18 j + ancienneté,
+                    services.droit_annuel) : le repère qui manquait pour lire
+                    un « acquis » en cours d'année. Omis si le serveur ne le
+                    calcule pas (employé sans date d'embauche) — jamais un
+                    chiffre par défaut. */}
+                {s.droit_annuel != null && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Droit annuel théorique :
+                    {' '}
+                    {formatNumber(s.droit_annuel, { decimals: 1 })}
+                    {' j'}
+                  </p>
+                )}
               </Card>
             ))}
           </div>

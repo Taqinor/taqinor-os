@@ -110,6 +110,24 @@ class TestLivraisonPartielle(TestCase):
         self.assertEqual(resp2.status_code, 400)
         self.assertIn('insuffisant', resp2.data['detail'])
 
+    def test_aud228_stock_insuffisant_autorise_si_reglage_societe_actif(self):
+        """AUD228 — `AchatsParametres.stock_negatif_autorise` était ignoré ici
+        (blocage en dur) ; routé par `check_negative_stock_guard`, le réglage
+        société est désormais respecté : passage en négatif autorisé."""
+        from apps.stock.models import AchatsParametres
+        parametres = AchatsParametres.for_company(self.company)
+        parametres.stock_negatif_autorise = True
+        parametres.save()
+
+        self.panneau.quantite_stock = 2
+        self.panneau.save()
+        resp = self._livrer([{'ligne_devis': self.ligne_panneau.id, 'quantite': '3'}])
+        # Avant AUD228 : 400 quel que soit le réglage société. Après : le
+        # réglage actif autorise le passage en négatif.
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, -1)
+
     def test_marquer_livre_direct_still_works_without_partial(self):
         """Un BC sans livraison partielle reste marquable livré directement
         (comportement historique octet-identique)."""

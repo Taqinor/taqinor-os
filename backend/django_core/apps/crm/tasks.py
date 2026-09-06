@@ -66,3 +66,97 @@ def recalculer_scores_obsoletes_task():
     from apps.crm.services import recalculer_scores_obsoletes
 
     return recalculer_scores_obsoletes()
+
+
+#: MRY0 (lot C) — verrou anti-double-run du miroir Odoo (la passe complète dure
+#: plusieurs minutes ; le beat tourne toutes les 30 min).
+_ODOO_SYNC_LOCK = 'crm.sync_odoo_leads.lock'
+_ODOO_SYNC_LOCK_TIMEOUT = 1500
+
+
+@shared_task(name='crm.sync_odoo_leads')
+def sync_odoo_leads_task():
+    """MRY0 (lot C) — Enveloppe Celery Beat du miroir Odoo → ERP.
+
+    Le miroir n'était planifié NULLE PART (ni cron, ni timer, ni beat) : la
+    dernière passe datait du 01/09/2026 et le cockpit de Meryem décrochait
+    silencieusement. NO-OP PROPRE quand la config Odoo est incomplète ou que
+    ``ODOO_SYNC_COMPANY_SLUG`` est vide — jamais un slug en dur. Verrou cache
+    contre deux passes simultanées. Odoo reste en LECTURE SEULE (JSON-2).
+
+    ``ODOO_SYNC_ALIGN=0`` transmet ``--no-align`` : on rapatrie les leads sans
+    aligner le pipeline ERP sur Odoo (le jour où Meryem travaille dans l'ERP).
+    """
+    import io
+    import logging
+    import os
+
+    from django.core.cache import cache
+    from django.core.management import call_command
+
+    from apps.crm.odoo_sync import OdooConfig
+
+    logger = logging.getLogger(__name__)
+    if OdooConfig().incomplete:
+        logger.info('crm.sync_odoo_leads: config Odoo absente — no-op.')
+        return {'skipped': 'config'}
+    slug = (os.environ.get('ODOO_SYNC_COMPANY_SLUG', '') or '').strip()
+    if not slug:
+        logger.info(
+            'crm.sync_odoo_leads: ODOO_SYNC_COMPANY_SLUG vide — no-op.')
+        return {'skipped': 'company'}
+    if not cache.add(_ODOO_SYNC_LOCK, 1, timeout=_ODOO_SYNC_LOCK_TIMEOUT):
+        logger.info('crm.sync_odoo_leads: passe déjà en cours — no-op.')
+        return {'skipped': 'lock'}
+    sortie = io.StringIO()
+    try:
+        options = {'company': slug, 'stdout': sortie}
+        if (os.environ.get('ODOO_SYNC_ALIGN', '1') or '1').strip() == '0':
+            options['no_align'] = True
+        call_command('sync_odoo_leads', **options)
+    finally:
+        cache.delete(_ODOO_SYNC_LOCK)
+    rapport = sortie.getvalue()
+    logger.info('crm.sync_odoo_leads: %s', rapport.replace('\n', ' | '))
+    return {'rapport': rapport}
+
+
+@shared_task(name='crm.notifier_relances_dues')
+def notifier_relances_dues_task():
+    """MRY17 — Enveloppe Celery Beat du digest 08:30 des touches dues.
+
+    Planifiée dans ``erp_agentique/celery.py`` (``beat_schedule``). Délègue
+    entièrement à la commande de gestion (même logique, testable hors Celery
+    via ``manage.py notifier_relances_dues``). Idempotente par jour ET par
+    destinataire — indispensable avec ``acks_late``, qui peut relancer une
+    tâche après un crash worker."""
+    from apps.crm.management.commands.notifier_relances_dues import (
+        notifier_relances_dues,
+    )
+    envoyes, destinataires = notifier_relances_dues()
+    return {'digests': envoyes, 'destinataires': destinataires}
+
+
+@shared_task(name='crm.escalader_premier_contact')
+def escalader_premier_contact_task():
+    """MRY17 — Enveloppe Celery Beat de l'escalade « premier contact ».
+
+    Toutes les 5 minutes. Idempotente PAR LEAD (marqueur en note chatter) :
+    sans elle, la même alerte repartirait à chaque passage jusqu'au rappel."""
+    from apps.crm.management.commands.escalader_premier_contact import (
+        escalader_premier_contact,
+    )
+    return {'escalades': escalader_premier_contact()}
+
+
+@shared_task(name='crm.bilan_hebdo_relances')
+def bilan_hebdo_relances_task():
+    """MRY21 — Enveloppe Celery Beat du bilan hebdomadaire (lundi 07:00).
+
+    Le seul moment où quelqu'un regarde le moteur DE HAUT plutôt que touche
+    par touche : sans lui, une cadence qui dérape resterait invisible jusqu'au
+    trimestre. Délègue entièrement à la commande de gestion."""
+    from apps.crm.management.commands.bilan_hebdo_relances import (
+        bilan_hebdo_relances,
+    )
+    return {'bilans': bilan_hebdo_relances()}

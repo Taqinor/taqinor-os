@@ -2350,12 +2350,19 @@ def purger_corbeille_toutes_societes(*, grace_days=None, now=None, apply=False):
     Itère société par société (chacune bornée à ses propres documents — jamais
     de fuite cross-société) et agrège le résultat de `purger_corbeille_echue`.
     DRY-RUN par défaut (`apply=False`). Renvoie un dict agrégé avec un détail par
-    société (`par_societe`)."""
-    from authentication.models import Company
+    société (`par_societe`).
+
+    AUD415 — le balayage suit `authentication.selectors.active_companies()`
+    (SCA19), comme les cinq autres tâches beat de la GED : un tenant suspendu
+    ou en fermeture (`actif=False`) n'est plus balayé. C'était le SEUL fan-out
+    DESTRUCTIF de l'app resté sur `Company.objects.all()` — avec
+    `GED_PURGE_AUTO_APPLY=1`, la corbeille d'un tenant suspendu était purgée
+    DÉFINITIVEMENT chaque nuit à 02:30."""
+    from authentication.selectors import active_companies
 
     total = {'dry_run': not apply, 'eligibles': 0, 'purges': 0,
              'proteges': 0, 'par_societe': []}
-    for company in Company.objects.all():
+    for company in active_companies():
         res = purger_corbeille_echue(
             company, grace_days=grace_days, now=now, apply=apply)
         total['eligibles'] += res['eligibles']

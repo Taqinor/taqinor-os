@@ -563,6 +563,22 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
                 Convertir en client
               </DropdownMenuItem>
             )}
+            {/* MRY15 — raccourcis du moteur de relances (le choix complet de
+                cadence + l'arrêt avec motif vivent aussi dans Suivi
+                commercial, SectionPipeline) : jamais de crmApi direct ici
+                (contrat PerduPopover), tout passe par onAction. */}
+            <DropdownMenuItem
+              onSelect={() => onAction('relance-cadence')}
+              title="Relancer la cadence de contact de ce lead"
+            >
+              Relancer la cadence
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => onAction('relance-arreter')}
+              title="Arrêter les cadences de relance en cours (motif demandé)"
+            >
+              Arrêter la cadence
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               destructive={!archived}

@@ -10,7 +10,7 @@ lignes futures (statut ``a_venir``), jamais celles déjà ``facturee``/
 ``payee``/``en_retard``."""
 from decimal import Decimal
 
-from django.db.models import Q
+from django.db.models import F, Q
 
 
 def affectation_transport_active(eleve, annee_scolaire, a_la_date=None):
@@ -70,28 +70,42 @@ def resynchroniser_lignes_futures_transport(eleve):
     ``AffectationTransport``. JAMAIS rétroactif : une ligne déjà
     ``facturee``/``payee``/``en_retard`` garde son montant historique même si
     l'affectation change en cours d'année (retirer un élève du transport ne
-    modifie jamais la facture déjà émise, seulement les mois suivants)."""
+    modifie jamais la facture déjà émise, seulement les mois suivants).
+
+    AUD829 — deux resynchronisations concurrentes du MÊME élève (deux
+    affectations transport modifiées coup sur coup) lisaient le même
+    ``ligne.transport_montant``/``echeancier.montant_total`` et la seconde
+    écrasait le calcul de la première (lost update sur un CHAMP DÉRIVÉ, pas
+    un simple compteur). ``select_for_update()`` sur l'échéancier et ses
+    lignes SÉRIALISE toute resynchronisation concurrente pour cet élève ;
+    l'accumulation de ``montant_total`` passe par ``F()``.
+    """
+    from django.db import transaction
     from .models import EcheancierScolarite, LigneEcheance
 
-    for echeancier in EcheancierScolarite.objects.filter(eleve=eleve):
-        lignes = echeancier.lignes.filter(statut=LigneEcheance.Statut.A_VENIR)
-        montant_total_delta = Decimal('0')
-        for ligne in lignes:
-            # Montant évalué À LA DATE DE LA LIGNE : une affectation close en
-            # cours d'année laisse intactes les mensualités qu'elle couvrait
-            # encore et remet à zéro celles d'après, au lieu d'appliquer un
-            # montant unique à tout le reste de l'année.
-            nouveau_transport = montant_transport_mensuel(
-                eleve, echeancier.annee_scolaire,
-                a_la_date=ligne.date_echeance)
-            if ligne.transport_montant == nouveau_transport:
-                continue
-            montant_total_delta += nouveau_transport - ligne.transport_montant
-            ligne.montant = (
-                ligne.montant - ligne.transport_montant + nouveau_transport)
-            ligne.transport_montant = nouveau_transport
-            ligne.save(update_fields=['montant', 'transport_montant'])
-        if montant_total_delta:
-            echeancier.montant_total = (
-                echeancier.montant_total + montant_total_delta)
-            echeancier.save(update_fields=['montant_total'])
+    with transaction.atomic():
+        echeanciers = list(
+            EcheancierScolarite.objects.select_for_update().filter(eleve=eleve))
+        for echeancier in echeanciers:
+            lignes = list(
+                echeancier.lignes.select_for_update()
+                .filter(statut=LigneEcheance.Statut.A_VENIR))
+            montant_total_delta = Decimal('0')
+            for ligne in lignes:
+                # Montant évalué À LA DATE DE LA LIGNE : une affectation close en
+                # cours d'année laisse intactes les mensualités qu'elle couvrait
+                # encore et remet à zéro celles d'après, au lieu d'appliquer un
+                # montant unique à tout le reste de l'année.
+                nouveau_transport = montant_transport_mensuel(
+                    eleve, echeancier.annee_scolaire,
+                    a_la_date=ligne.date_echeance)
+                if ligne.transport_montant == nouveau_transport:
+                    continue
+                montant_total_delta += nouveau_transport - ligne.transport_montant
+                ligne.montant = (
+                    ligne.montant - ligne.transport_montant + nouveau_transport)
+                ligne.transport_montant = nouveau_transport
+                ligne.save(update_fields=['montant', 'transport_montant'])
+            if montant_total_delta:
+                echeancier.montant_total = F('montant_total') + montant_total_delta
+                echeancier.save(update_fields=['montant_total'])

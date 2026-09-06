@@ -99,10 +99,17 @@ vi.mock('../../api/comptaApi', () => ({
       pointer: (id, data) => pointerMock(id, data),
       suggestions: empty,
       accepterSuggestions: empty,
+      // AUDV02 — suggestions APPRISES (NTTRE4) : chargées avec les
+      // suggestions par règle à l'ouverture du dialogue.
+      suggestionsApprises: () => Promise.resolve({ data: { suggestions: [] } }),
       cloturer: vi.fn().mockResolvedValue({ data: {} }),
     },
     modelesRapprochement: { ...res(), appliquer: empty },
-    rapprochements3voies: { ...res(), evaluer: empty, valider: empty },
+    rapprochements3voies: {
+      ...res(), evaluer: empty, valider: empty,
+      // AUDV02 — alerte des écarts bloquants (onglet « 3 voies »).
+      enEcart: () => Promise.resolve({ data: { nb: 0, rapprochements: [] } }),
+    },
     budgets: res(), centresCout: res(), periodes: { ...res(), cloturer: empty, rouvrir: empty },
   },
 }))

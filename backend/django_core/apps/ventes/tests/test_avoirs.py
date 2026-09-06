@@ -6,7 +6,7 @@ le montant dû avec le split TVA 10/20 intact, garde admin sur la création.
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -186,3 +186,108 @@ class TestAvoirs(TestCase):
             format='json')
         self.assertEqual(r2.status_code, 400)
         self.assertEqual(Avoir.objects.count(), 1)
+
+    # ── AUD126 — la garde de plafond est SÉRIALISÉE ──
+    def test_creer_avoir_verrouille_la_facture_avant_de_lire_le_plafond(self):
+        """AUD126 — `creer_avoir` n'avait ni `transaction.atomic` ni
+        `select_for_update` : deux requêtes concurrentes lisaient chacune
+        l'ancien `reste_creditable` et passaient toutes deux la garde,
+        créditant le client de deux fois le plafond. C'est le motif déjà
+        corrigé sous ERR72 sur `enregistrer-paiement`.
+
+        Preuve DÉTERMINISTE (pas de course à reproduire) : la requête émet
+        bien un `SELECT ... FOR UPDATE` sur `ventes_facture`. ROUGE avant le
+        correctif, où aucune requête de la vue ne portait `FOR UPDATE`.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        api = self._api(self.admin)
+        with CaptureQueriesContext(connection) as capture:
+            r = api.post(
+                f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+                {'motif': 'Total'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        verrous = [
+            q['sql'] for q in capture.captured_queries
+            if 'for update' in q['sql'].lower()
+            and 'ventes_facture' in q['sql'].lower()
+        ]
+        self.assertTrue(
+            verrous,
+            'aucun SELECT ... FOR UPDATE sur la facture : la lecture du '
+            'plafond et la création ne sont pas sérialisées')
+
+
+class TestAvoirConcurrenceAUD126(TransactionTestCase):
+    """AUD126 — le scénario joué POUR DE VRAI, sur deux connexions.
+
+    ``TransactionTestCase`` (et non ``TestCase``) est indispensable : les
+    données doivent être COMMITÉES pour que les threads, qui ouvrent leur
+    propre connexion, les voient. Deux requêtes demandent chacune la
+    TOTALITÉ du reste créditable ; une seule doit réussir et
+    ``Facture.avoirs_total`` ne doit jamais dépasser le TTC.
+    """
+
+    def setUp(self):
+        from apps.roles.models import ALL_PERMISSIONS, Role
+        self.company = make_company(slug='avo-conc-co', nom='Avo Conc Co')
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='avo_conc_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='Conc',
+            telephone='+212600000126')
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-AUD126',
+            prix_vente=Decimal('5000'), quantite_stock=10,
+            tva=Decimal('20.00'))
+        self.facture = Facture.objects.create(
+            company=self.company, reference='FAC-AUD126-0001',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=self.facture, produit=self.onduleur,
+            designation='Onduleur', quantite=Decimal('1'),
+            prix_unitaire=Decimal('5000'), taux_tva=Decimal('20.00'))
+
+    def test_deux_avoirs_concurrents_ne_depassent_jamais_le_plafond(self):
+        import threading
+
+        url = f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/'
+        resultats = []
+        verrou_resultats = threading.Lock()
+        # La barrière garantit que les DEUX requêtes sont dans la vue en même
+        # temps : sans le verrou de ligne, elles lisent toutes deux l'ancien
+        # reste créditable et créent chacune un avoir plein.
+        barriere = threading.Barrier(2, timeout=30)
+
+        def _creer():
+            from django.db import connection as thread_connection
+            try:
+                api = APIClient()
+                api.credentials(
+                    HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+                barriere.wait()
+                reponse = api.post(url, {'motif': 'Total'}, format='json')
+                with verrou_resultats:
+                    resultats.append(reponse.status_code)
+            except threading.BrokenBarrierError:
+                pass
+            finally:
+                thread_connection.close()
+
+        threads = [threading.Thread(target=_creer) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=90)
+
+        self.assertEqual(sorted(resultats), [201, 400], resultats)
+        self.facture.refresh_from_db()
+        self.assertEqual(Avoir.objects.filter(facture=self.facture).count(), 1)
+        self.assertLessEqual(
+            self.facture.avoirs_total, self.facture.total_ttc)

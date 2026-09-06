@@ -70,8 +70,10 @@ from apps.records.platform_guards import (  # noqa: E402
     scan_handrolled_models,
     scan_kit_bypass_documents,
     scan_numbering,
+    scan_store_attachment_sans_company,
     scan_unscoped_viewsets,
     scan_weasyprint_import,
+    store_attachment_sans_company_error_line,
     unscoped_viewset_error_line,
     weasyprint_error_line,
 )
@@ -236,6 +238,31 @@ def check_flat_storage_keys() -> list[str]:
     return [flat_storage_key_error_line(p) for p in sorted(set(find_new_flat_storage_keys()))]
 
 
+def find_new_store_attachment_sans_company() -> list[str]:
+    """AUD311 — fichiers NOUVEAUX (hors baseline) appelant
+    ``store_attachment(...)`` sans ``company=``. La construction littérale
+    d'une clé plate était la seule chose que SCA42 voyait ; l'appelant qui
+    OMET l'argument — la façon dont une clé plate naît réellement — lui était
+    invisible."""
+    violations: list[str] = []
+    for base in (APPS_DIR, AUTH_DIR):
+        for path in base.glob("**/*.py"):
+            relpath = path.relative_to(DJANGO_CORE).as_posix()
+            # Le module de gardes CITE le nom de la fonction — l'exclure.
+            if relpath == "apps/records/platform_guards.py":
+                continue
+            if scan_store_attachment_sans_company(
+                    relpath, path.read_text(encoding="utf-8")):
+                violations.append(relpath)
+    return violations
+
+
+def check_store_attachment_sans_company() -> list[str]:
+    """AUD311 guard — plus d'appel nu à store_attachment (empty = OK)."""
+    return [store_attachment_sans_company_error_line(p)
+            for p in sorted(set(find_new_store_attachment_sans_company()))]
+
+
 FRONTEND_SRC = ROOT / "frontend" / "src"
 
 
@@ -293,6 +320,7 @@ def run_checks() -> list[str]:
     errors.extend(check_handrolled_models())
     errors.extend(check_unscoped_viewsets())
     errors.extend(check_flat_storage_keys())
+    errors.extend(check_store_attachment_sans_company())
     errors.extend(check_branding())
     errors.extend(check_kit_bypass_documents())
     return errors

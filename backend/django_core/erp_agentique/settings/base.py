@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import timedelta
 
 from . import editions  # noqa: E402  (registre statique, sans Django)
+from . import placeholders  # noqa: E402  (prédicat pur, sans Django)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -28,12 +29,26 @@ TAQINOR_EDITION = editions.edition_active()
 _DEBUG_FLAG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-change-me' if _DEBUG_FLAG else '')
 
-if not _DEBUG_FLAG and (not SECRET_KEY or SECRET_KEY == 'django-insecure-change-me'):
+# AUD410 — le garde couvre désormais les PLACEHOLDERS PUBLIÉS du dépôt, pas
+# seulement la chaîne vide et le littéral `django-insecure-change-me`.
+# `.env.example` publie `DJANGO_SECRET_KEY=change_me_generate_with_python_secrets`
+# et CLAUDE.md fait de « copy .env.example to .env » LE chemin d'installation :
+# cette valeur passait le garde tel quel, donc une instance déployée depuis le
+# modèle signait ses JWT avec une chaîne lisible sur GitHub. Le prédicat
+# partagé vit dans `placeholders.py` — même définition pour le contrôle système
+# QJR423 de `core/checks.py`, jamais deux listes à resynchroniser.
+if not _DEBUG_FLAG and placeholders.est_placeholder(SECRET_KEY):
     raise RuntimeError(
-        "La variable d'environnement DJANGO_SECRET_KEY est obligatoire en production."
+        "La variable d'environnement DJANGO_SECRET_KEY est obligatoire en "
+        "production, et ne peut pas rester un placeholder publié dans le dépôt "
+        "(vide, « django-insecure-change-me », ou toute valeur commençant par "
+        "« change_me » — dont le "
+        "`change_me_generate_with_python_secrets` de .env.example). Générez "
+        "une vraie clé : python -c \"from django.core.management.utils import "
+        "get_random_secret_key; print(get_random_secret_key())\"."
     )
 
-if _DEBUG_FLAG and SECRET_KEY == 'django-insecure-change-me':
+if _DEBUG_FLAG and placeholders.est_placeholder(SECRET_KEY):
     warnings.warn(
         "SECRET_KEY par défaut détectée. Générez une vraie clé avec :\n"
         "  python -c \"from django.core.management.utils import "
@@ -564,7 +579,25 @@ AUTH_USER_MODEL = 'authentication.CustomUser'
 
 # Internationalization
 LANGUAGE_CODE = 'fr-fr'
-TIME_ZONE = 'UTC'
+# AUD836 — le fuseau ACTIF est celui du métier, pas celui du serveur.
+#
+# Django vivait en UTC pendant que le métier ET le scheduler vivaient à
+# Casablanca (`erp_agentique/celery.py` : « toute la logique de temps des jobs
+# raisonne en Africa/Casablanca ; on planifie donc aussi le scheduler dans ce
+# fuseau »). `timezone.localdate()` rendait donc la date UTC PARTOUT, et le
+# Maroc étant à UTC+1 la majeure partie de l'année, la bascule de jour avait
+# lieu à 01 h 00 locale : un paiement carte capturé à 00 h 30 heure du Maroc
+# était daté DE LA VEILLE (`apps/ventes/receivers.py`, `date_paiement=
+# timezone.localdate()`), et le balayage des factures en retard
+# (`apps/automation/beat_tasks.py`, `date_echeance__lt=timezone.localdate()`)
+# changeait de jour une heure trop tard. Tout marqueur d'idempotence ou rapport
+# « du jour » clé-daté partageait le décalage.
+#
+# `USE_TZ = True` reste vrai : la base continue de STOCKER en UTC — seule
+# l'interprétation locale change. `core.dates.aujourd_hui_local` (CRX26) reste
+# le point de passage explicite du « aujourd'hui » métier ; les deux disent
+# désormais la même chose au lieu de se contredire une heure par nuit.
+TIME_ZONE = 'Africa/Casablanca'
 USE_I18N = True
 USE_TZ = True
 
@@ -1015,6 +1048,13 @@ CELERY_TASK_ROUTES = {
     'flotte.generer_couts_contrat_mensuel': {'queue': 'scheduled'},
     # NTCRM6 — snapshot forecast hebdomadaire (beat, tâche planifiée).
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
+    # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
+    'crm.sync_odoo_leads': {'queue': 'scheduled'},
+    # MRY17 — digest 08:30 des touches dues + escalade premier contact.
+    'crm.notifier_relances_dues': {'queue': 'scheduled'},
+    'crm.escalader_premier_contact': {'queue': 'scheduled'},
+    # MRY21 — bilan hebdomadaire des relances (lundi 07:00).
+    'crm.bilan_hebdo_relances': {'queue': 'scheduled'},
     'notifications.daily_digest': {'queue': 'scheduled'},
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},
@@ -1035,6 +1075,8 @@ CELERY_TASK_ROUTES = {
     'ged.signature_relances_expiration': {'queue': 'scheduled'},
     'ged.verifier_integrite_archives': {'queue': 'scheduled'},
     'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
+    'ged.relancer_demandes_document_dues': {'queue': 'scheduled'},
+    'ged.notifier_planifications_echues': {'queue': 'scheduled'},
     'contrats.generer_factures_recurrentes_dues': {'queue': 'scheduled'},
     'contrats.reconductions_et_alertes_daily': {'queue': 'scheduled'},
     'contrats.convertir_essais_expires_daily': {'queue': 'scheduled'},
@@ -1079,6 +1121,10 @@ CELERY_TASK_ROUTES = {
     # NTWMS42 — alerte de sur-stockage par zone (quotidienne, heure creuse).
     'stock.alerter_surcapacite_zones': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
+    # AUDV04 — les 2 alertes achats jusque-là sans cron (documents de
+    # conformité fournisseur expirants + BCF en retard côté acheteur).
+    'stock.notifier_documents_conformite_expirants': {'queue': 'scheduled'},
+    'stock.notifier_bcf_en_retard_buyer': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
     'ventes.pre_echeance_reminders': {'queue': 'scheduled'},
@@ -1135,6 +1181,8 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # MRY0 (lot B) — filet de rattrapage 15 min des leads Meta.
+    'adsengine.pull_meta_leads_recent': {'queue': 'scheduled'},
     # PUB89 — score quotidien de qualité de la chaîne d'attribution.
     'adsengine.check_attribution_quality': {'queue': 'scheduled'},
     # PUB94 — snapshot hebdo d'observabilité de L'Arbre (branches mortes).
@@ -1220,6 +1268,20 @@ CELERY_TASK_ROUTES = {
         'queue': 'scheduled'},                                     # XPRJ22
     'gestion_projet.rappels_timesheets': {'queue': 'scheduled'},   # XPRJ7
     'btp_chantier.alertes_rfi_retard': {'queue': 'scheduled'},     # NTCON4
+    # Batch AUDV/AOF/WIR (2026-09-06) — 10 tâches ajoutées au beat_schedule
+    # sans route explicite (garde core/tests/test_celery_task_routes.py) :
+    # chacune un balayage/relance planifié, aucune n'est déclenchée par un
+    # événement synchrone utilisateur.
+    'ao.generer_echeanciers': {'queue': 'scheduled'},
+    'ao.relancer_pieces_administratives': {'queue': 'scheduled'},
+    'veille_ao.expirer_avis_depasses': {'queue': 'scheduled'},
+    'contrats.cloturer_contrats_impayes_daily': {'queue': 'scheduled'},
+    'rh.accruer_conges': {'queue': 'scheduled'},
+    'rh.clore_pointages_ouverts': {'queue': 'scheduled'},
+    'rh.purger_candidatures': {'queue': 'scheduled'},
+    'rh.planifier_appreciations': {'queue': 'scheduled'},
+    'qhse.relancer_derogations': {'queue': 'scheduled'},
+    'qhse.relancer_audits_planifies_en_retard': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
@@ -1425,6 +1487,23 @@ RETENTION_AUTO_APPLY = os.environ.get('RETENTION_AUTO_APPLY', '0') == '1'
 # explicitement à 1 — le founder l'active en production le jour où il le
 # souhaite. Ne touche jamais une société non-démo (garde stricte est_demo=True).
 DEMO_AUTO_PURGE_ENABLED = os.environ.get('DEMO_AUTO_PURGE_ENABLED', '0') == '1'
+
+# AUD730 — les deux balayages RH nouvellement PLANIFIÉS dont l'effet n'est pas
+# neutre. Même convention que GED_PURGE_AUTO_APPLY ci-dessus : DRY-RUN PAR
+# DÉFAUT, la tâche compte et journalise sans rien écrire, le fondateur pose la
+# variable le jour où il veut l'exécution réelle.
+#   * `rh.purger_candidatures` (XRH24) anonymise IRRÉVERSIBLEMENT les
+#     candidatures rejetées hors vivier au-delà de la rétention CNDP.
+#   * `rh.planifier_appreciations` (ZRH8) crée les évaluations des jalons
+#     d'ancienneté franchis — la CADENCE d'un cycle d'appréciation est une
+#     décision métier, pas un défaut technique.
+# Les deux autres balayages du même lot (`rh.accruer_conges`,
+# `rh.clore_pointages_ouverts`) sont idempotents et non destructifs : ils
+# s'appliquent directement, sans variable d'opt-in.
+RH_PURGE_CANDIDATURES_AUTO_APPLY = os.environ.get(
+    'RH_PURGE_CANDIDATURES_AUTO_APPLY', '0') == '1'
+RH_APPRECIATIONS_AUTO_APPLY = os.environ.get(
+    'RH_APPRECIATIONS_AUTO_APPLY', '0') == '1'
 
 # GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
 # défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune

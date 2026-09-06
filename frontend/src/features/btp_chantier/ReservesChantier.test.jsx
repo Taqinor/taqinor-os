@@ -17,10 +17,12 @@ beforeAll(() => {
   }
 })
 
-const { reservesList, reservesCreate, reservesLever } = vi.hoisted(() => ({
+const { reservesList, reservesCreate, reservesLever, reservesBloquantes } = vi.hoisted(() => ({
   reservesList: vi.fn(),
   reservesCreate: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
   reservesLever: vi.fn(() => Promise.resolve({ data: {} })),
+  // AUDV25 (DRAFT165-6) — widget « réserves bloquantes actives ».
+  reservesBloquantes: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 
 vi.mock('../../api/btpChantierApi', () => ({
@@ -31,6 +33,7 @@ vi.mock('../../api/btpChantierApi', () => ({
       lever: (...args) => reservesLever(...args),
       contester: vi.fn(() => Promise.resolve({ data: {} })),
       photos: vi.fn(() => Promise.resolve({ data: [] })),
+      bloquantes: (...args) => reservesBloquantes(...args),
     },
   },
 }))
@@ -143,5 +146,36 @@ describe('ReservesChantier (PACT62)', () => {
       description: 'Câble apparent',
       localisation_plan: { document_ged_id: 42, x: 0.5, y: 0.5 },
     })))
+  })
+
+  /* AUDV25 (DRAFT165-6) — widget « réserves bloquantes actives ». */
+  describe('widget « réserves bloquantes actives »', () => {
+    it('affiche le décompte quand des réserves bloquantes existent', async () => {
+      reservesBloquantes.mockResolvedValueOnce({
+        data: [{ id: 9, gravite: 'bloquante', statut: 'ouverte' }],
+      })
+      withProviders(<ReservesChantier />)
+      await waitFor(() => expect(reservesBloquantes).toHaveBeenCalled())
+      expect(await screen.findByTestId('reserves-bloquantes-widget'))
+        .toHaveTextContent('1 réserve bloquante active')
+    })
+
+    it('reste invisible sans aucune réserve bloquante', async () => {
+      withProviders(<ReservesChantier />)
+      await waitFor(() => expect(reservesBloquantes).toHaveBeenCalled())
+      await waitFor(() => expect(screen.getAllByText('Prise manquante').length).toBeGreaterThan(0))
+      expect(screen.queryByTestId('reserves-bloquantes-widget')).not.toBeInTheDocument()
+    })
+
+    it('revérifie quand le chantier sélectionné change', async () => {
+      const user = userEvent.setup()
+      withProviders(<ReservesChantier />)
+      await waitFor(() => expect(reservesBloquantes).toHaveBeenCalledWith(undefined))
+
+      const sel = screen.getByLabelText('Chantier')
+      await user.selectOptions(sel, within(sel).getByRole('option', { name: /Villa Zenith/ }))
+
+      await waitFor(() => expect(reservesBloquantes).toHaveBeenCalledWith('5'))
+    })
   })
 })

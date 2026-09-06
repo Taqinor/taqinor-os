@@ -857,7 +857,8 @@ def _lead_ads_access_token(conn):
 
 
 def pull_ad_leads_for_company(company, conn, client, *, name_token='',
-                              access_token=''):
+                              access_token='', since_unix=None,
+                              alerter_rattrapage=False):
     """ADSDEEP18 — Pull-sync des leads lead-form d'une société.
 
     Pour chaque ad miroir, tire ``GET /<ad_id>/leads`` (fenêtre Meta 90 j),
@@ -872,7 +873,14 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
     campagne/ad set via le Graph API (env prioritaire, sinon token de la
     MetaConnection — cf. ``selectors.resolve_lead_ads_access_token`` par société ou
     ``_lead_ads_access_token`` par connexion). Vide (défaut) : résolution par les
-    seuls miroirs locaux, jamais d'appel réseau."""
+    seuls miroirs locaux, jamais d'appel réseau.
+
+    MRY0 (lot B) — ``since_unix`` restreint la fenêtre Meta (``time_created >
+    since``), ce que ``MetaClient.get_ad_leads`` supporte déjà : c'est le filet
+    de rattrapage 15 min qui s'en sert (48 h glissantes) pendant que le pull
+    quotidien garde sa fenêtre de 90 j. ``alerter_rattrapage`` (lot D) émet
+    ``LEAD_RATTRAPE`` quand ce filet CRÉE un lead vieux de plus de 20 min —
+    c'est-à-dire quand le webhook temps réel est resté muet."""
     from core.events import meta_lead_captured
 
     from .models import AdMirror
@@ -887,7 +895,8 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
     # Cache adset/campaign par ad (une seule résolution par ad).
     for ad in AdMirror.objects.filter(company=company):
         try:
-            leads = get_leads(ad.meta_id)
+            leads = (get_leads(ad.meta_id, since_unix=since_unix)
+                     if since_unix is not None else get_leads(ad.meta_id))
         except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres
             continue
         if not leads:
@@ -902,18 +911,34 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
                 continue
             field_data = lead_row.get('field_data') or []
             form_id = str(lead_row.get('form_id') or '')
+            # MRY0 (lot D) — « déjà connu » se lit sur NOTRE miroir (jamais sur
+            # les modèles crm) : un leadgen déjà miroité est arrivé par le
+            # webhook ou par un pull antérieur, donc ce passage ne crée rien.
+            deja_connu = False
+            if alerter_rattrapage:
+                from .models import MetaLeadMirror
+                deja_connu = MetaLeadMirror.objects.filter(
+                    company=company, leadgen_id=leadgen_id).exists()
             try:
                 from apps.crm.services import create_lead_from_meta_lead_ads
+                # MRY0 (lot B) — ``created_time`` : l'heure Meta RÉELLE, pas
+                # l'heure du pull. Sans elle, tout lead rattrapé portait
+                # l'heure du beat (07:25) : SLA, KPI premier contact et
+                # notifications « nouveau lead » étaient tous faux.
                 lead = create_lead_from_meta_lead_ads(
                     company=company, leadgen_id=leadgen_id,
                     field_data=field_data, ad_id=ad.meta_id,
                     adgroup_id=targeting.get('adset_id', ''), form_id=form_id,
-                    access_token=token)
+                    access_token=token,
+                    created_time=lead_row.get('created_time'),
+                    origine='Meta Lead Ads (pull)')
             except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas
                 logger.warning(
                     'adsengine.pull_ad_leads: création lead échouée (%s)',
                     leadgen_id, exc_info=True)
                 continue
+            if alerter_rattrapage and not deja_connu:
+                _alerter_lead_rattrape(company, lead, lead_row)
             # Même événement que le webhook → même récepteur → même miroir.
             try:
                 meta_lead_captured.send(
@@ -927,6 +952,111 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
                 pass
             processed += 1
     return processed
+
+
+#: MRY0 (lot D) — au-delà de ce délai entre l'heure Meta et le rattrapage,
+#: le webhook temps réel a manifestement été muet pour ce lead.
+RATTRAPAGE_SEUIL_MINUTES = 20
+
+#: Fenêtre du filet de rattrapage (Meta garde 90 j ; 48 h suffisent largement
+#: à couvrir une panne de webhook sans re-balayer tout l'historique).
+RATTRAPAGE_FENETRE_SECONDES = 48 * 3600
+
+
+def _alerter_lead_rattrape(company, lead, lead_row):
+    """MRY0 (lot D) — « Lead Meta rattrapé par le pull (webhook muet) ».
+
+    Émise UNIQUEMENT quand le filet de rattrapage CRÉE un lead dont l'heure
+    Meta a plus de ``RATTRAPAGE_SEUIL_MINUTES`` : quand le webhook fonctionne,
+    le pull ne crée plus rien et cette alerte ne part JAMAIS. Au plus une par
+    heure et par société (marqueur cache). Best-effort intégral."""
+    try:
+        import datetime
+
+        from django.core.cache import cache
+        from django.utils import timezone
+        from django.utils.dateparse import parse_datetime
+
+        brut = lead_row.get('created_time')
+        moment = None
+        if isinstance(brut, (int, float)):
+            moment = datetime.datetime.fromtimestamp(
+                int(brut), tz=datetime.timezone.utc)
+        elif brut:
+            moment = parse_datetime(str(brut))
+        if moment is None:
+            return
+        if timezone.is_naive(moment):
+            moment = timezone.make_aware(moment, datetime.timezone.utc)
+        retard = (timezone.now() - moment).total_seconds() / 60.0
+        if retard < RATTRAPAGE_SEUIL_MINUTES:
+            return
+        cle = f'adsengine.lead_rattrape.{getattr(company, "pk", 0)}'
+        if not cache.add(cle, 1, timeout=3600):
+            return
+        from apps.crm.visites import utilisateurs_direction
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify_many
+        notify_many(
+            utilisateurs_direction(company), EventType.LEAD_RATTRAPE,
+            title=(f'Lead Meta rattrapé après {int(retard)} min — '
+                   'webhook à vérifier'),
+            body=('Le pull de rattrapage a créé un lead que le webhook temps '
+                  "réel n'avait pas livré. Vérifier le Gestionnaire d'accès "
+                  'aux prospects de la Page (voir docs/crm/arrivee_leads.md).'),
+            link=f'/crm/leads?lead={getattr(lead, "pk", "")}',
+            company=company)
+    except Exception:  # noqa: BLE001 — une alerte n'empêche jamais un lead
+        logger.warning(
+            'adsengine.pull_meta_leads_recent: alerte de rattrapage échouée',
+            exc_info=True)
+
+
+@shared_task(name='adsengine.pull_meta_leads_recent')
+def pull_meta_leads_recent():
+    """MRY0 (lot B) — FILET de rattrapage des leads Meta, toutes les 15 min.
+
+    Même boucle que ``pull_meta_leads`` mais sur une fenêtre de 48 h : le
+    webhook temps réel reste le chemin nominal, ce filet borne à 15 minutes le
+    retard maximal quand il tombe en panne (incident AZIZ du 03/09/2026 :
+    22 h de retard, le lead n'entrant QUE par le pull quotidien de 07:25).
+    Le pull quotidien complet (fenêtre 90 j) reste inchangé — c'est lui qui
+    rattrape une annonce entrée tardivement dans ``AdMirror``."""
+    import time
+
+    from authentication.selectors import active_companies
+
+    from .meta_client import MetaAuthError, MetaClient
+    from .models import MetaConnection
+    from .selectors import resolve_lead_ads_access_token
+
+    since_unix = int(time.time()) - RATTRAPAGE_FENETRE_SECONDES
+    total = 0
+    for company in active_companies():
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            continue
+        try:
+            client = MetaClient.from_connection(conn)
+            name_token, token_source = resolve_lead_ads_access_token(company)
+            logger.info(
+                'adsengine.pull_meta_leads_recent: société %s — token %s',
+                company.pk, token_source)
+            total += pull_ad_leads_for_company(
+                company, conn, client, name_token=name_token,
+                since_unix=since_unix, alerter_rattrapage=True)
+        except MetaAuthError as exc:
+            _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
+            continue
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.pull_meta_leads_recent: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.pull_meta_leads_recent: %s lead(s) rattrapé(s)', total)
+    return {'leads_processed': total}
 
 
 @shared_task(name='adsengine.pull_meta_leads')

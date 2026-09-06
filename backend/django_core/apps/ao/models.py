@@ -2258,11 +2258,19 @@ class SectionBordereau(TenantModel):
 
     @property
     def total_ht(self):
-        """Total HT de la section (lignes de la section uniquement)."""
+        """Total HT de la section (lignes de la section uniquement).
+
+        AUD602 — ``ROUND_HALF_UP`` EXPLICITE, comme ``BordereauPrix``
+        (cf. le commentaire d'arrondi au-dessus de ``sous_total_ht``). Sans cet
+        argument, ``quantize`` appliquait l'arrondi BANCAIRE (HALF_EVEN) du
+        contexte décimal par défaut : une section dont la somme tombe
+        exactement sur ``,xx5`` s'affichait un centime en dessous du bordereau
+        qui la contient — deux sous-totaux différents pour les mêmes lignes.
+        """
         total = Decimal('0.00')
         for ligne in self.lignes.all():
             total += ligne.montant_ht
-        return total.quantize(Decimal('0.01'))
+        return total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 class LigneBordereau(TenantModel):
@@ -2425,6 +2433,18 @@ class CautionSoumission(TenantModel):
         RESTITUEE = 'restituee', 'Restituée'
         APPELEE = 'appelee', 'Appelée'
 
+    #: AUD610 — le graphe DÉCLARATIF des transitions. Une caution porte de
+    #: l'argent réellement engagé : ``appelee`` signifie que la banque a DÉJÀ
+    #: débité le montant, ``restituee`` que la garantie est rendue. Les deux
+    #: sont TERMINAUX — revenir en arrière effacerait la trace d'un débit réel.
+    #: Aucune migration : c'est un attribut de classe, pas un champ.
+    TRANSITIONS = {
+        Statut.CONSTITUEE: (Statut.RESTITUEE, Statut.APPELEE),
+        Statut.RESTITUEE: (),
+        Statut.APPELEE: (),
+    }
+    STATUT_INITIAL = Statut.CONSTITUEE
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
@@ -2557,9 +2577,22 @@ class PieceSoumission(TenantModel):
     obligatoire = models.BooleanField(
         default=True, verbose_name='Obligatoire')
     fournie = models.BooleanField(default=False, verbose_name='Fournie')
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur sans qu'aucune URL ne puisse le resservir (ni ``MEDIA_URL``/
+    # ``MEDIA_ROOT``, ni route ``/media/``, ni ``location /media/`` nginx). Il
+    # reste en base pour les lignes historiques ; le contenu vit désormais dans
+    # MinIO, désigné par ``fichier_key`` (conventions ``records.storage``).
     fichier = models.FileField(
         upload_to='compta/soumissions/', null=True, blank=True,
-        verbose_name='Document')
+        verbose_name='Document (legacy, hors MinIO)')
+    fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     date_depot = models.DateField(
         null=True, blank=True, verbose_name='Date de dépôt')
 
@@ -3675,6 +3708,12 @@ class PieceAdministrative(TenantModel):
         verbose_name='Dossiers rattachés')
     rappel_jours = models.PositiveIntegerField(
         default=30, verbose_name='Rappel avant expiration (jours)')
+    #: AUD614 — dernière relance PROACTIVE posée par le beat quotidien. Sans
+    #: cette date, une pièce dans sa fenêtre de rappel (30 jours par défaut)
+    #: recevrait une note de chatter CHAQUE MATIN : trente notes pour une seule
+    #: information, c'est-à-dire un canal qu'on apprend à ne plus lire.
+    derniere_relance_le = models.DateField(
+        null=True, blank=True, verbose_name='Dernière relance')
     actif = models.BooleanField(default=True, verbose_name='Active')
 
     class Meta:

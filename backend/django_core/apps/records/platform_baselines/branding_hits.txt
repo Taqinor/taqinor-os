@@ -96,3 +96,15 @@ frontend/src/pages/sav/TicketSuiviClientPanel.test.jsx
 frontend/src/pages/ventes/DevisList.jsx
 frontend/src/pages/ventes/ToitureDesign.jsx
 frontend/src/test/a11y.test.jsx
+# MRY12 (04/09/2026) — TEXTES VALIDÉS PAR LE FONDATEUR, copiés VERBATIM de
+# `docs/crm/messages_meryem.md` (Guide Meryem v2.1 + Protocole de rappel v3) et
+# épinglés par `tests_mry12_messages_relance.py`, qui re-dérive le fichier
+# source et rougit à la moindre reformulation. Ils disent « Meryem de TAQINOR
+# Solutions » parce que c'est ainsi qu'elle se présente au téléphone : réécrire
+# la marque en placeholder changerait le texte que le fondateur a validé.
+# Ce n'est PAS un contournement du white-label : `MessageTemplate` existe
+# précisément pour qu'une autre société écrase ces DÉFAUTS par ses propres
+# textes (`get_corps` préfère toujours la ligne de la société, écran
+# Paramètres → Messages). L'entrée deviendra inerte le jour où ces défauts
+# seront eux-mêmes tirés de `company_identity`.
+apps/parametres/models_messages.py

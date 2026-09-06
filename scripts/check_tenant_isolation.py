@@ -9,12 +9,25 @@ the request body: ``perform_create``/``perform_update`` must not read
 force-assigned server-side), and an associated serializer must not list
 ``company`` as a writable field.
 
-DB-free AST sweep over ``backend/django_core/apps/*/{views.py,views/*.py,
-*_views.py}`` (mirrors ``core/object_scope_scan.py``). ``core`` /
-``authentication`` (foundation) are out of scope by path. v1: foundation/public
-views already reviewed are listed in ``scripts/tenant_view_allowlist.txt``
-(``path::ClassName``); a NEW business view missing the company filter or
-exposing ``company`` writable fails CI.
+DB-free AST sweep over ``backend/django_core/{apps/*,core,authentication}/
+{views.py,views_*.py,*_views.py,views/*.py}`` (mirrors
+``core/object_scope_scan.py``) and the matching serializer surface
+(``{serializers.py,serializers_*.py,*_serializers.py,serializers/*.py}``).
+
+AUD828 (M-07) — before this fix the view scan matched ONLY the ``*_views.py``
+SUFFIX, missing 26 ``views_*.py`` PREFIX files (``authentication/
+views_console.py``, ``ao/views_qualification.py``…) and both ``core`` and
+``authentication`` entirely; the serializer scan matched only bare
+``serializers.py`` + a ``serializers/`` package, missing 17
+``serializers_*.py`` files. Widening the surface to its full declared shape
+found 0 NEW live violation on the current tree (a structural coverage gap,
+not a proven leak) — ``core``/``authentication`` foundation views that are
+legitimately unscoped stay covered by
+``scripts/tenant_view_allowlist.txt`` like any other reviewed exemption.
+
+v1: foundation/public views already reviewed are listed in
+``scripts/tenant_view_allowlist.txt`` (``path::ClassName``); a NEW business
+view missing the company filter or exposing ``company`` writable fails CI.
 
 Usage:
     python scripts/check_tenant_isolation.py            # check (CI)
@@ -30,6 +43,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"
+CORE_DIR = DJANGO_CORE / "core"
+AUTH_DIR = DJANGO_CORE / "authentication"
 ALLOWLIST_PATH = ROOT / "scripts" / "tenant_view_allowlist.txt"
 
 # A class is a DRF view if a base name ends with these.
@@ -50,22 +65,41 @@ COMPANY_TOKENS = ("company", "scope_queryset", "scope_client_queryset",
                   "peer_user_ids")
 
 
+# AUD828 (M-07) — the THREE dispositions the repo actually uses for a
+# "views" surface (mirrors check_platform.py's model-file pattern): a bare
+# ``views.py``, a split ``views_*.py`` (prefix) or ``*_views.py`` (suffix)
+# module, or a ``views/`` package. Exact filename patterns (never a loose
+# ``views*.py`` wildcard) so this never accidentally opens ``viewsets.py``
+# (a base-class module, not an endpoint module).
+_VIEW_FILE_PATTERNS = ("views.py", "views_*.py", "*_views.py")
+_SERIALIZER_FILE_PATTERNS = (
+    "serializers.py", "serializers_*.py", "*_serializers.py")
+
+
+def _app_dirs_and_foundation():
+    """Every apps/<app> dir PLUS the two foundation dirs (core, authentication)
+    — AUD828: these carry real ViewSets/serializers too (authentication/
+    views_console.py, core/views.py…) and were entirely unscanned before."""
+    dirs = list(sorted(APPS_DIR.iterdir())) if APPS_DIR.is_dir() else []
+    return dirs + [CORE_DIR, AUTH_DIR]
+
+
 def _iter_view_files():
-    if not APPS_DIR.is_dir():
-        return
-    for app_dir in sorted(APPS_DIR.iterdir()):
+    seen = set()
+    for app_dir in _app_dirs_and_foundation():
         if not app_dir.is_dir():
             continue
-        vp = app_dir / "views.py"
-        if vp.is_file():
-            yield vp
+        for pattern in _VIEW_FILE_PATTERNS:
+            for f in sorted(app_dir.glob(pattern)):
+                if f not in seen:
+                    seen.add(f)
+                    yield f
         vpkg = app_dir / "views"
         if vpkg.is_dir():
             for f in sorted(vpkg.glob("*.py")):
-                if f.name != "__init__.py":
+                if f.name != "__init__.py" and f not in seen:
+                    seen.add(f)
                     yield f
-        for f in sorted(app_dir.glob("*_views.py")):
-            yield f
 
 
 def _rel(path: Path) -> str:
@@ -268,16 +302,20 @@ def serializer_company_writable(path: Path):
 
 
 def _iter_serializer_files():
-    if not APPS_DIR.is_dir():
-        return
-    for app_dir in sorted(APPS_DIR.iterdir()):
-        sp = app_dir / "serializers.py"
-        if sp.is_file():
-            yield sp
+    seen = set()
+    for app_dir in _app_dirs_and_foundation():
+        if not app_dir.is_dir():
+            continue
+        for pattern in _SERIALIZER_FILE_PATTERNS:
+            for f in sorted(app_dir.glob(pattern)):
+                if f not in seen:
+                    seen.add(f)
+                    yield f
         spkg = app_dir / "serializers"
         if spkg.is_dir():
             for f in sorted(spkg.glob("*.py")):
-                if f.name != "__init__.py":
+                if f.name != "__init__.py" and f not in seen:
+                    seen.add(f)
                     yield f
 
 

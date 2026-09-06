@@ -19,6 +19,10 @@ const tiersApi = {
   // ARC20 — rapport LECTURE SEULE des doublons (même ICE/email sur
   // plusieurs fiches Tiers), admin-only côté backend.
   doublons: () => api.get('/tiers/tiers/doublons/'),
+  // AUDV22 (DRAFT165-123/124) — recherche EXACTE anti-doublon par ICE/email
+  // AVANT la création d'un Client/Fournisseur (ouvert à tout utilisateur).
+  verifierDoublon: ({ ice, email } = {}) =>
+    api.get('/tiers/tiers/verifier-doublon/', { params: { ice, email } }),
 }
 
 export default tiersApi

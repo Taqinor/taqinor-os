@@ -781,11 +781,36 @@ class DevisWriteSerializer(EcheancierValidationMixin,
                             'overrides']
         extra_kwargs = {'client': {'required': False}}
 
+    def validate_statut(self, value):
+        """AUD505 — ACCEPTE/REFUSE/EXPIRE ont chacun leur porte dédiée et
+        gardée : ``/accepter/`` (``accept_devis`` — contrôle crédit XFAC28,
+        avertissement vente ZSAL9, événement ``devis_accepted`` → création
+        Chantier), ``/refuser/`` (garde de statut + ``devis_refused``), et
+        EXPIRE posé par le seul système (domain/recouvrement.py). Un PATCH
+        brut du corps ne passait par AUCUNE de ces gardes tout en faisant
+        avancer le lead CRM en SIGNED via ``perform_update`` →
+        ``avancer_stage_pour_devis`` — c'est ce trou que cette validation
+        ferme. BROUILLON/ENVOYE restent écrivables ici (matrice
+        d'approbation NTCPQ7/8, funnel QUOTE_SENT inchangés)."""
+        bloques = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
+                   Devis.Statut.EXPIRE}
+        if value in bloques:
+            raise serializers.ValidationError(
+                'Statut réservé à une action dédiée (« accepter » / '
+                '« refuser ») — jamais un PATCH direct du corps.')
+        return value
+
 
 class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
+    # AUD118 — DISTINCT de `has_facture` : une facture ANNULÉE ne bloque plus
+    # rien. `has_facture` reste le prédicat « une facture a déjà été émise »
+    # (il gouverne le bouton « Facture », dont la garde serveur ne filtre pas
+    # le statut) ; `facture_active` est le prédicat « une facture VIVANTE est
+    # attachée », qui gouverne le bouton « Annuler ».
+    facture_active = serializers.SerializerMethodField()
     # FG51 — preuve de livraison (lecture seule : capturée par l'action
     # « marquer-livre », jamais par un PUT du corps).
     has_proof_of_delivery = serializers.BooleanField(read_only=True)
@@ -805,20 +830,65 @@ class BonCommandeSerializer(serializers.ModelSerializer):
         # company is force-assigned in perform_create — never accept it from the body.
         # FG51 — pv_livraison/date_livraison_reelle ne se posent QUE via
         # l'action « marquer-livre » (jamais un PUT direct du corps).
+        # AUD506 — ``statut`` en lecture seule : BonCommandeViewSet n'a AUCUN
+        # perform_update, un PATCH brut faisait donc passer un BC directement
+        # en_attente→livre sans réservation stock ni preuve de livraison.
+        # CONFIRME/LIVRE/ANNULE passent désormais UNIQUEMENT par leurs actions
+        # dédiées (confirmer/marquer-livre/annuler), qui posent le statut
+        # directement sur le modèle (hors de ce sérialiseur).
         read_only_fields = ['reference', 'date_creation', 'company',
-                            'pv_livraison', 'date_livraison_reelle']
+                            'pv_livraison', 'date_livraison_reelle',
+                            'statut']
 
     def get_has_facture(self, obj):
+        # AUD115 — lit l'annotation `Exists` posée par le viewset quand elle
+        # est là (un seul aller-retour pour toute la page) ; repli sur la
+        # requête historique pour les appelants qui sérialisent une instance
+        # nue (détail, tests, autres vues).
+        annote = getattr(obj, 'has_facture_annote', None)
+        if annote is not None:
+            return bool(annote)
         return Facture.objects.filter(bon_commande=obj).exists()
 
+    @extend_schema_field(serializers.BooleanField())
+    def get_facture_active(self, obj):
+        # AUD118 — même annotation servie par le viewset, filtrée sur les
+        # factures NON annulées : c'est elle qui décide si l'annulation du BC
+        # est encore possible.
+        annote = getattr(obj, 'facture_active_annote', None)
+        if annote is not None:
+            return bool(annote)
+        return (Facture.objects
+                .filter(bon_commande=obj)
+                .exclude(statut=Facture.Statut.ANNULEE)
+                .exists())
+
+    def _totaux(self, obj):
+        """AUD115 — LES TROIS TOTAUX EN UN SEUL PASSAGE. Chacun des trois
+        `get_total_*` traversait la chaîne canonique du devis de bout en bout
+        (`_totaux_argent()`), soit trois parcours complets des lignes par bon
+        de commande. On mémoïse la chaîne sur l'instance : la SOURCE des
+        chiffres ne change pas d'un centime, seul le nombre de parcours."""
+        if not obj.devis_id:
+            return None
+        totaux = getattr(obj, '_aud115_totaux', None)
+        if totaux is None:
+            from .domain.argent import Vue, totaux as _chaine
+            totaux = _chaine(obj.devis, vue=Vue.NET)
+            obj._aud115_totaux = totaux
+        return totaux
+
     def get_total_ht(self, obj):
-        return str(obj.devis.total_ht) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.ht_net) if totaux is not None else None
 
     def get_total_tva(self, obj):
-        return str(obj.devis.total_tva) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.tva) if totaux is not None else None
 
     def get_total_ttc(self, obj):
-        return str(obj.devis.total_ttc) if obj.devis_id else None
+        totaux = self._totaux(obj)
+        return str(totaux.ttc) if totaux is not None else None
 
 
 class LigneFactureSerializer(serializers.ModelSerializer):
@@ -857,6 +927,11 @@ class PaiementSerializer(serializers.ModelSerializer):
         max_digits=12, decimal_places=2, read_only=True)
     statut_affectation_display = serializers.CharField(
         source='get_statut_affectation_display', read_only=True)
+    # AUD132 (PAY-10) — l'écran Encaissements n'avait AUCUNE colonne statut :
+    # un paiement rejeté (chèque impayé) y était affiché comme un encaissement
+    # valide. Le libellé est servi ici pour que l'écran ne le réinvente pas.
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
 
     # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
     # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
@@ -895,8 +970,25 @@ class PaiementSerializer(serializers.ModelSerializer):
         # company/created_by forcés côté serveur — jamais depuis le corps.
         # escompte_montant (XFAC12) est calculé côté serveur (fenêtre + net
         # réglé), jamais accepté du corps de requête.
+        #
+        # AUD134 — `fields='__all__'` laissait SEPT champs de plus en écriture.
+        # `enregistrer-paiement` fait `PaiementSerializer(data=request.data)`
+        # puis `save(facture=…, company=…, created_by=…, escompte_montant=…)` :
+        # tout champ non surchargé passait tel quel. Concrètement, un corps
+        # pouvait poser `statut='rejete'` — contournant l'action `rejeter` et
+        # sa permission `IsResponsableOrAdmin` — et un `client` pointant sur
+        # une AUTRE société. Chacun de ces champs a son propriétaire serveur :
+        #   - `client`             → résolu depuis la facture, ou scopé société
+        #                            sur le chemin avance (`enregistrer-avance`
+        #                            passe par `crm.selectors.client_base_qs`) ;
+        #   - `statut` + `motif_rejet`/`frais_rejet`/`date_rejet`
+        #                          → l'action `rejeter` (YLEDG5) et elle seule ;
+        #   - `statut_affectation` → le service de ventilation (XFAC1) ;
+        #   - `provider_ref`       → le webhook PSP.
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
-                            'escompte_montant']
+                            'escompte_montant', 'client', 'statut',
+                            'statut_affectation', 'provider_ref',
+                            'motif_rejet', 'frais_rejet', 'date_rejet']
 
 
 class AffectationPaiementSerializer(serializers.ModelSerializer):
@@ -1082,7 +1174,15 @@ class NoteDebitSerializer(serializers.ModelSerializer):
 
 
 class PromessePaiementSerializer(serializers.ModelSerializer):
-    """XFAC5 — engagement de paiement client (« je paie le 15 »)."""
+    """XFAC5 — engagement de paiement client (« je paie le 15 »).
+
+    AUD133 — ``date_promise`` n'était BORNÉE nulle part : la valeur du corps
+    était écrite telle quelle dans ``facture.exclu_relances_jusquau``, et
+    ``relance_reminders`` exclut ``exclu_relances_jusquau__gte=today``. Une
+    promesse au 31/12/2030 gelait donc la relance pour toujours. Elle doit
+    désormais être FUTURE et rester sous le plafond société
+    (``recouvrement.PROMESSE_HORIZON_JOURS_MAX``, 90 j par défaut).
+    """
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
     statut_display = serializers.CharField(
@@ -1090,11 +1190,62 @@ class PromessePaiementSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
 
+    def validate_date_promise(self, value):
+        from datetime import timedelta
+
+        from .recouvrement import PROMESSE_HORIZON_JOURS_MAX
+        from .scheduled import casablanca_today
+
+        today = casablanca_today()
+        if value <= today:
+            raise serializers.ValidationError(
+                "Une promesse de paiement porte sur une date FUTURE.")
+        plafond = today + timedelta(days=PROMESSE_HORIZON_JOURS_MAX)
+        if value > plafond:
+            raise serializers.ValidationError(
+                f'Une promesse ne peut pas dépasser {PROMESSE_HORIZON_JOURS_MAX} '
+                f'jours (soit le {plafond.isoformat()}) : au-delà, elle gèle la '
+                f'relance au lieu d\'engager le client.')
+        return value
+
     class Meta:
         from .models import PromessePaiement
         model = PromessePaiement
         fields = '__all__'
         read_only_fields = ['company', 'created_by', 'date_creation', 'statut']
+
+
+class RelancerFactureSerializer(serializers.Serializer):
+    """AUD131 (PAY-18) — validation du corps de l'action ``relancer``.
+
+    Le corps était lu à cru : `niveau` non validé (un ordre inexistant laissait
+    `lvl` à None et la relance était consignée quand même) et
+    `prochaine_relance` affecté brut à la facture (une chaîne non-date
+    remontait en erreur base — un 500 — au lieu d'un 400).
+
+    La société est passée en contexte : un `niveau` est un ORDRE de
+    ``FollowupLevel``, résolu et donc scopé à la société de la facture.
+    """
+    niveau = serializers.IntegerField(required=False, allow_null=True)
+    note = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=True,
+        max_length=2000)
+    prochaine_relance = serializers.DateField(
+        required=False, allow_null=True)
+    envoyer_email = serializers.BooleanField(default=False)
+
+    def validate_niveau(self, value):
+        if value is None:
+            return value
+        from .models import FollowupLevel
+        company = self.context.get('company')
+        niveau = FollowupLevel.objects.filter(
+            company=company, ordre=value).first()
+        if niveau is None:
+            raise serializers.ValidationError(
+                'Niveau de relance inconnu pour cette société.')
+        self.context['followup_level'] = niveau
+        return value
 
 
 class FollowupLevelSerializer(serializers.ModelSerializer):

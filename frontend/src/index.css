@@ -10122,6 +10122,18 @@ textarea.form-control {
   flex-direction: column;
   gap: 0.18rem;
   padding: 0.36rem 0.5rem;
+  /* MRY16 (rouge CI mobile-safari, MB6) — la carte est un ITEM flex de
+     `.kb-col-body` (flex-direction: column) : sans `min-width: 0`, le
+     défaut `min-width: auto` de la spec Flexbox l'empêche de RÉTRÉCIR
+     sous le contenu min-content de `.kb-card-signals` (score + touche +
+     rotting, `flex: 0 0 auto`, jamais réduit). Le 3e badge posé par MRY16 a
+     fait franchir ce plancher à `.kb-col` (272px fixes) : la colonne — et
+     la carte — s'élargissaient au-delà du viewport iPhone (390px),
+     poussant le coin de la carte hors écran (`elementFromPoint` → null).
+     `.kb-card-value{overflow:clip}` peut alors enfin rogner ce qui ne
+     tient pas, comme prévu. Scopé à `--lead` (jamais `.kb-card` nu, partagé
+     avec le kanban Installations qui n'a pas ce badge). */
+  min-width: 0;
 }
 
 /* ---- L1 — nom + societe sur UNE ligne tronquee ---- */
@@ -10225,6 +10237,25 @@ textarea.form-control {
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1.5;
+}
+
+/* MRY16 — badge de la prochaine touche de cadence (heure Casablanca), rouge
+   si en retard. Meme gabarit que le micro-badge de score juste au-dessus. */
+.kb-card-touche-micro {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.24rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.kb-card-touche-micro--retard {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 /* Pastille de rotting (rampe LB14) — lisible au repos meme sans pill d'age. */

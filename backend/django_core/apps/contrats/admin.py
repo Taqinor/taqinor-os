@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import (
     AlerteContrat,
     Caution,
@@ -23,8 +25,20 @@ from .models import (
 )
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(Contrat)
-class ContratAdmin(admin.ModelAdmin):
+class ContratAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'objet', 'type_contrat', 'statut',
                     'confidentialite', 'montant', 'devise', 'company')
     list_filter = ('type_contrat', 'statut', 'confidentialite')
@@ -32,7 +46,7 @@ class ContratAdmin(admin.ModelAdmin):
 
 
 @admin.register(PartieContrat)
-class PartieContratAdmin(admin.ModelAdmin):
+class PartieContratAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'type_partie', 'nom', 'email',
                     'ordre', 'company')
     list_filter = ('type_partie',)
@@ -40,7 +54,7 @@ class PartieContratAdmin(admin.ModelAdmin):
 
 
 @admin.register(ContratLien)
-class ContratLienAdmin(admin.ModelAdmin):
+class ContratLienAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'type_cible', 'cible_id', 'libelle',
                     'company')
     list_filter = ('type_cible',)
@@ -48,7 +62,7 @@ class ContratLienAdmin(admin.ModelAdmin):
 
 
 @admin.register(ClauseContrat)
-class ClauseContratAdmin(admin.ModelAdmin):
+class ClauseContratAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'clause', 'titre', 'ordre',
                     'surchargee', 'company')
     list_filter = ('surchargee',)
@@ -56,7 +70,7 @@ class ClauseContratAdmin(admin.ModelAdmin):
 
 
 @admin.register(RegleApprobation)
-class RegleApprobationAdmin(admin.ModelAdmin):
+class RegleApprobationAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'type_contrat', 'montant_min',
                     'montant_max', 'niveau_approbation', 'nombre_approbateurs',
                     'priorite', 'actif', 'company')
@@ -65,7 +79,7 @@ class RegleApprobationAdmin(admin.ModelAdmin):
 
 
 @admin.register(EtapeApprobation)
-class EtapeApprobationAdmin(admin.ModelAdmin):
+class EtapeApprobationAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'niveau', 'niveau_approbation',
                     'statut', 'approbateur', 'decision_le', 'company')
     list_filter = ('statut', 'niveau_approbation')
@@ -73,7 +87,7 @@ class EtapeApprobationAdmin(admin.ModelAdmin):
 
 
 @admin.register(ContratActivity)
-class ContratActivityAdmin(admin.ModelAdmin):
+class ContratActivityAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'type', 'field', 'auteur',
                     'date_creation', 'company')
     list_filter = ('type', 'field')
@@ -81,24 +95,84 @@ class ContratActivityAdmin(admin.ModelAdmin):
 
 
 @admin.register(SignatureContrat)
-class SignatureContratAdmin(admin.ModelAdmin):
+class SignatureContratAdmin(CompanyScopedAdmin):
+    """AUD510 — une SIGNATURE est une PREUVE : elle se lit, jamais ne se
+    modifie ni ne se supprime.
+
+    Cet admin etait un ``ModelAdmin`` nu : un simple compte ``is_staff`` avec
+    les permissions modele par defaut pouvait SUPPRIMER une ``SignatureContrat``
+    ou en reecrire le nom du signataire depuis ``/django-admin/``. La promesse
+    d'immuabilite ne tenait que cote API DRF (``ReadOnlyModelViewSet``) ; la
+    porte admin restait grande ouverte sur la piece qui rend un contrat
+    opposable (loi 53-05). Meme patron de verrous que ``ClientAdmin`` /
+    ``WebsiteLeadPayloadAdmin`` deja en place dans le depot.
+    """
+
     list_display = ('id', 'contrat', 'role_signataire', 'signataire_nom',
                     'signataire', 'methode', 'date_signature', 'company')
     list_filter = ('role_signataire', 'methode')
     search_fields = ('signataire_nom',)
 
+    def has_delete_permission(self, request, obj=None):
+        """Verrou 1 — aucune suppression, pour personne (superuser compris)."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Verrou 2 — aucune modification : une preuve reecrite n'en est plus
+        une."""
+        return False
+
+    def has_add_permission(self, request):
+        """Verrou 3 — une signature se cree par l'action ``signer`` (qui pose
+        les preuves IP/user-agent cote serveur), jamais a la main ici."""
+        return False
+
+    def get_actions(self, request):
+        """Verrou 4 — retire l'action groupee ``delete_selected``, le chemin
+        le plus dangereux (aucun repli)."""
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
 
 @admin.register(VersionContrat)
-class VersionContratAdmin(admin.ModelAdmin):
+class VersionContratAdmin(CompanyScopedAdmin):
+    """AUD510 — un INSTANTANE se lit, jamais ne se reecrit.
+
+    Le docstring du modele promet l'immuabilite ; cet admin laissait pourtant
+    ``contenu`` MODIFIABLE (``readonly_fields`` ne couvrait que ``version`` et
+    ``cree_le``) et la suppression ouverte. Un instantane reecrit ne fige plus
+    rien : c'est exactement ce que la version existe pour empecher.
+    """
+
     list_display = ('id', 'contrat', 'version', 'motif', 'fichier_key',
                     'cree_par', 'cree_le', 'company')
     list_filter = ('version',)
     search_fields = ('motif', 'fichier_key')
     readonly_fields = ('version', 'cree_le')
 
+    def has_delete_permission(self, request, obj=None):
+        """Verrou 1 — aucune suppression, pour personne (superuser compris)."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Verrou 2 — aucune modification (``contenu`` compris)."""
+        return False
+
+    def has_add_permission(self, request):
+        """Verrou 3 — une version se cree par ``creer_version`` (signature,
+        avenant, resiliation), jamais a la main ici."""
+        return False
+
+    def get_actions(self, request):
+        """Verrou 4 — retire l'action groupee ``delete_selected``."""
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
 
 @admin.register(AlerteContrat)
-class AlerteContratAdmin(admin.ModelAdmin):
+class AlerteContratAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'type_alerte', 'date_declenchement',
                     'statut', 'date_envoi', 'cree_par', 'company')
     list_filter = ('type_alerte', 'statut')
@@ -107,7 +181,7 @@ class AlerteContratAdmin(admin.ModelAdmin):
 
 
 @admin.register(JalonContrat)
-class JalonContratAdmin(admin.ModelAdmin):
+class JalonContratAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'numero', 'intitule', 'date_cible',
                     'statut', 'date_atteinte', 'company')
     list_filter = ('statut',)
@@ -116,7 +190,7 @@ class JalonContratAdmin(admin.ModelAdmin):
 
 
 @admin.register(Obligation)
-class ObligationAdmin(admin.ModelAdmin):
+class ObligationAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'jalon', 'intitule', 'redevable',
                     'date_echeance', 'statut', 'date_realisation', 'company')
     list_filter = ('statut', 'redevable')
@@ -125,7 +199,7 @@ class ObligationAdmin(admin.ModelAdmin):
 
 
 @admin.register(EngagementSLA)
-class EngagementSLAAdmin(admin.ModelAdmin):
+class EngagementSLAAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'libelle', 'taux_cible', 'unite',
                     'mode_penalite', 'valeur_penalite', 'penalite_max',
                     'actif', 'company')
@@ -135,7 +209,7 @@ class EngagementSLAAdmin(admin.ModelAdmin):
 
 
 @admin.register(RetenueGarantie)
-class RetenueGarantieAdmin(admin.ModelAdmin):
+class RetenueGarantieAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'montant_base', 'taux', 'montant_retenu',
                     'date_retenue', 'date_liberation_prevue',
                     'date_liberation_effective', 'statut', 'company')
@@ -146,7 +220,7 @@ class RetenueGarantieAdmin(admin.ModelAdmin):
 
 
 @admin.register(Caution)
-class CautionAdmin(admin.ModelAdmin):
+class CautionAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'type_caution', 'garant', 'reference',
                     'montant', 'devise', 'date_emission', 'date_expiration',
                     'statut', 'company')
@@ -156,7 +230,7 @@ class CautionAdmin(admin.ModelAdmin):
 
 
 @admin.register(EcheancierContrat)
-class EcheancierContratAdmin(admin.ModelAdmin):
+class EcheancierContratAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'libelle', 'periodicite',
                     'montant_total', 'devise', 'statut', 'facturation_active',
                     'company')
@@ -166,7 +240,7 @@ class EcheancierContratAdmin(admin.ModelAdmin):
 
 
 @admin.register(LigneEcheance)
-class LigneEcheanceAdmin(admin.ModelAdmin):
+class LigneEcheanceAdmin(CompanyScopedAdmin):
     list_display = ('id', 'echeancier', 'numero', 'libelle', 'date_echeance',
                     'montant', 'statut', 'date_paiement', 'facture_id',
                     'company')
@@ -177,7 +251,7 @@ class LigneEcheanceAdmin(admin.ModelAdmin):
 
 
 @admin.register(IndexationPrix)
-class IndexationPrixAdmin(admin.ModelAdmin):
+class IndexationPrixAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'libelle', 'indice', 'valeur_base',
                     'part_fixe', 'periodicite', 'date_derniere_revision',
                     'actif', 'company')
@@ -187,7 +261,7 @@ class IndexationPrixAdmin(admin.ModelAdmin):
 
 
 @admin.register(PieceConformite)
-class PieceConformiteAdmin(admin.ModelAdmin):
+class PieceConformiteAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'type_piece', 'libelle', 'obligatoire',
                     'statut', 'ged_document_id', 'date_fourniture',
                     'date_expiration', 'company')

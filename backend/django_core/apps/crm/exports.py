@@ -12,10 +12,17 @@ L879 : la construction du classeur vit désormais dans le builder PARTAGÉ
 tous les appelants existants. Un seul format (en-têtes en gras, largeurs,
 coercition fr-MA) pour TOUS les exports de listes.
 """
-# ERR11 — la neutralisation de l'injection de formules vit désormais dans le
-# builder PARTAGÉ (apps.records.xlsx.build_xlsx_response), pour protéger TOUS les
-# exports xlsx téléchargés (pas seulement ceux du CRM) et préserver l'identité
-# du ré-export (test_crm_exports_reexports_shared). On le ré-exporte tel quel.
+# ERR11 — la neutralisation de l'injection de formules vit dans le builder
+# PARTAGÉ (apps.records.xlsx). On le ré-exporte tel quel (identité du ré-export
+# vérifiée par test_crm_exports_reexports_shared).
+#
+# AUD802 — CORRECTION DE CE COMMENTAIRE : il affirmait protéger « TOUS les
+# exports xlsx », ce qui était FAUX. Seul ``build_xlsx_response`` neutralisait ;
+# le chemin octets ``workbook_bytes`` ne le faisait PAS, et six appelants
+# remettaient réellement un fichier par ce chemin (téléchargements, pièces
+# jointes e-mail, lien public tokenisé). ``workbook_bytes`` neutralise
+# désormais par défaut ; seul le bundle ZIP de sauvegarde s'en exempte
+# (``neutralize=False``, round-trip de restauration).
 from apps.records.xlsx import build_xlsx_response  # noqa: F401
 
 from .stages import STAGE_LABELS

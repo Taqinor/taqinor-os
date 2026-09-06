@@ -12,8 +12,12 @@ reste une couche fondation) et n'appelle ``apps.tiers.services`` que par un
 import FONCTION-LOCAL. Best-effort : un échec du miroir ne fait JAMAIS échouer
 la sauvegarde du Fournisseur.
 """
+import logging
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+
+logger = logging.getLogger(__name__)
 
 
 def _roles_pour_fournisseur(fournisseur):
@@ -58,8 +62,23 @@ def mirror_fournisseur_to_tiers(sender, instance, **kwargs):
         )
         if fournisseur.tiers_id != tiers.id:
             sender.objects.filter(pk=fournisseur.pk).update(tiers=tiers)
+            fournisseur.tiers = tiers
+        # AUDV23 (ARC21) — LE HOOK D'ÉCRITURE, CÂBLÉ MAINTENANT. Voir le
+        # jumeau `apps/crm/tiers_bridge.py` : le service existait sans aucun
+        # appelant, donc activer `TIERS_SOURCE_ECRITURE` aurait été un
+        # chantier et non un flip. Flag OFF (le défaut) = NO-OP strict.
+        # L'identité SEULE est concernée : jamais un prix d'achat.
+        from apps.stock.services import ecrire_identite_fournisseur
+        ecrire_identite_fournisseur(fournisseur)
     except Exception:
-        pass
+        # CRX40 — le pont ne doit jamais casser une écriture Fournisseur, mais
+        # il ne doit pas non plus échouer EN SILENCE : un `pass` nu rendait un
+        # miroir cassé strictement invisible. L'exception reste avalée ; seule
+        # la trace est ajoutée (même correctif que le jumeau crm).
+        logger.exception(
+            'ARC18: miroir Fournisseur → Tiers échoué (fournisseur #%s, '
+            'société #%s) — le répertoire unifié peut diverger des achats.',
+            getattr(fournisseur, 'pk', None), fournisseur.company_id)
 
 
 def connect():

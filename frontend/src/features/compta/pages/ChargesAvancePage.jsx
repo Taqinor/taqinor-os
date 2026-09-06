@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Plus, CalendarClock } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
@@ -36,8 +36,34 @@ const FIELDS = [
   { name: 'compte_charge', label: 'Compte de charge (classe 6)', async: compteAsync },
 ]
 
-function DotationsDialog({ charge, onClose }) {
-  const dotations = charge.dotations || []
+function DotationsDialog({ charge, onClose, onPostee }) {
+  const [dotations, setDotations] = useState(charge.dotations || [])
+  const [busy, setBusy] = useState(null)
+
+  /* AUDV03 / XACC15 (DRAFT165-35) — poster UNE dotation au grand livre.
+     `services.poster_dotation_etalement` n'avait aucun appelant : l'écran
+     générait l'échéancier… et aucune dotation ne pouvait jamais être passée,
+     donc la charge restait éternellement immobilisée au débit de 3491 au lieu
+     d'être étalée sur le compte de charge. Le serveur REFUSE un re-post (400)
+     et respecte le verrou de période — rien n'est décidé ici. */
+  const poster = async (dotation) => {
+    setBusy(dotation.id)
+    try {
+      const res = await comptaApi.chargesAvance.posterDotation(
+        charge.id, dotation.id)
+      setDotations((prev) => prev.map((d) => (d.id === dotation.id
+        ? { ...d, posted: true, ecriture: res.data?.ecriture_id }
+        : d)))
+      toast.success(`Dotation ${dotation.numero} postée au grand livre.`)
+      onPostee?.()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Postage impossible.'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-w-2xl">
@@ -63,6 +89,16 @@ function DotationsDialog({ charge, onClose }) {
               { key: 'montant', label: 'Dotation', align: 'right', numeric: true,
                 sortValue: (d) => Number(d.montant) || 0, cell: (d) => formatMAD(d.montant) },
               { key: 'posted', label: 'Postée', cell: (d) => (d.posted ? 'Oui' : 'Non') },
+              { key: 'action', label: '', align: 'right',
+                cell: (d) => (d.posted ? null : (
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={busy === d.id}
+                    onClick={() => poster(d)}
+                  >
+                    {busy === d.id ? 'Postage…' : 'Poster'}
+                  </Button>
+                )) },
             ]}
           />
         )}
@@ -75,6 +111,26 @@ export default function ChargesAvancePage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [detail, setDetail] = useState(null)
   const list = useComptaList(comptaApi.chargesAvance.list, undefined)
+  /* AUDV08 / XACC15 (DRAFT165-14) — le solde 3491 RESTANT à étaler.
+     `selectors.solde_charges_constatees_avance` n'avait aucun appelant :
+     l'écran comptait « n/12 dotations postées » par ligne, mais personne ne
+     pouvait lire le MONTANT encore immobilisé au compte 3491 — le seul
+     chiffre qui se rapproche du bilan, et celui qu'il faut justifier à la
+     clôture. Il vient du serveur, jamais d'une somme calculée à l'écran (le
+     tableau est filtrable et paginé : une somme d'écran mentirait).
+     `useComptaList` ne convient pas ici : cet endpoint renvoie un OBJET
+     (`{charges, total_restant}`), pas une liste. */
+  const [solde, setSolde] = useState(null)
+
+  const chargerSolde = useCallback(() => {
+    let vivant = true
+    comptaApi.chargesAvance.solde()
+      .then((res) => { if (vivant) setSolde(res.data) })
+      .catch(() => { if (vivant) setSolde(null) })
+    return () => { vivant = false }
+  }, [])
+
+  useEffect(() => chargerSolde(), [chargerSolde])
 
   const submit = useCallback(
     (payload) => comptaApi.chargesAvance.create(payload), [])
@@ -82,6 +138,14 @@ export default function ChargesAvancePage() {
   const onSaved = () => {
     toast.success('Charge à étaler enregistrée.')
     list.reload()
+    chargerSolde()
+  }
+
+  // Poster une dotation DÉPLACE de l'argent hors de 3491 : le solde doit
+  // suivre immédiatement, sinon l'écran affiche un chiffre périmé.
+  const onDotationPostee = () => {
+    list.reload()
+    chargerSolde()
   }
 
   const columns = [
@@ -111,6 +175,17 @@ export default function ChargesAvancePage() {
         </div>
       </div>
 
+      {solde && (
+        <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+          <span className="text-muted-foreground">
+            Solde 3491 restant à étaler
+          </span>
+          <strong className="tabular-nums">
+            {formatMAD(solde.total_restant)}
+          </strong>
+        </div>
+      )}
+
       <ListShell
         hideHeader
         title="Charges constatées d'avance"
@@ -136,7 +211,11 @@ export default function ChargesAvancePage() {
       )}
 
       {detail && (
-        <DotationsDialog charge={detail} onClose={() => setDetail(null)} />
+        <DotationsDialog
+          charge={detail}
+          onClose={() => setDetail(null)}
+          onPostee={onDotationPostee}
+        />
       )}
     </div>
   )

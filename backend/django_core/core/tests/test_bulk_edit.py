@@ -4,7 +4,8 @@ Couvre :
   * registre de cibles + liste blanche de champs (champ hors liste rejeté) ;
   * application : seules les lignes du queryset scopé sont modifiées
     (id hors société ignoré) ;
-  * endpoint : cible inconnue → 404, champ non modifiable → 400 ;
+  * endpoint : palier responsable/admin exigé (AUD816), cible inconnue → 404,
+    champ non modifiable → 400 ;
   * découplage : cible enregistrée sur un modèle de FONDATION (CustomUser).
 """
 from django.contrib.auth import get_user_model
@@ -62,8 +63,11 @@ class BulkEditViewSetTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='ACME')
+        # AUD816 — l'édition en masse exige désormais le palier
+        # responsable/admin (un compte sans rôle obtenait 200 auparavant).
         cls.user = User.objects.create_user(
-            username='u1', password='x', company=cls.company)
+            username='u1', password='x', company=cls.company,
+            role_legacy='admin')
         cls.factory = APIRequestFactory()
 
     def setUp(self):

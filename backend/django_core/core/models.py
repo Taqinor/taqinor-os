@@ -115,6 +115,17 @@ class TenantModel(TimestampedModel):
 # CE mixin ``core.SoftDeleteModel`` (ne JAMAIS en créer un nouveau). Les modèles
 # pilotes d'adoption appartiennent à YDATA17, pas à ARC1/ARC15 : ici on se
 # contente d'acter le socle + de recenser l'adoption (nulle à ce jour).
+#
+# ── AUD818 — l'adoption a commencé, et le mixin ALIMENTE la corbeille ───────
+# Recensement à jour : ``crm.Lead``, ``mrp.OrdreFabrication`` et — premier objet
+# À VALEUR LÉGALE — ``contrats.Contrat`` héritent du mixin. Surtout :
+# ``soft_delete()`` ÉMET désormais ``core.events.record_soft_deleted``, l'unique
+# canal de la corbeille transverse 30 jours (``apps.trash``). Avant AUD818 la
+# corbeille était livrée complète (modèle + récepteur + rétention + endpoint)
+# mais AUCUN code de production n'émettait l'événement : l'écran de gouvernance
+# était vide non parce que rien n'avait été supprimé, mais parce que rien ne
+# parlait. L'émetteur vit ICI (fondation) : toute app qui adopte le mixin gagne
+# la corbeille sans importer ``apps.trash``.
 # ---------------------------------------------------------------------------
 
 
@@ -166,11 +177,22 @@ class SoftDeleteModel(models.Model):
     class Meta:
         abstract = True
 
-    def soft_delete(self, user=None, *, record=True):
+    def soft_delete(self, user=None, *, record=True, type_libelle='',
+                    libelle='', donnees=None):
         """Marque l'objet supprimé (sans le détruire) + journalise pour l'undo.
 
         ``record=True`` matérialise un ``DeletionRecord`` (corbeille/undo) si
         l'objet porte une ``company`` (multi-tenant). Idempotent.
+
+        AUD818 — le MÊME appel émet ``core.events.record_soft_deleted``, le
+        canal UNIQUE qui alimente la corbeille transverse 30 jours
+        (``apps.trash``). C'est ici, sur le mixin de fondation, que vit
+        l'émetteur de PRODUCTION : toute app qui adopte ``SoftDeleteModel``
+        gagne la corbeille SANS jamais importer ``apps.trash`` (l'émetteur
+        ignore la corbeille, la corbeille ignore l'émetteur — règle M6).
+        ``type_libelle`` / ``libelle`` / ``donnees`` permettent à l'appelant de
+        préciser le snapshot d'AFFICHAGE de l'entrée de corbeille ; à défaut ils
+        sont dérivés du modèle (``verbose_name`` / ``str(instance)``).
         """
         if self.is_deleted:
             return self
@@ -186,6 +208,18 @@ class SoftDeleteModel(models.Model):
                 object_id=self.pk,
                 label=str(self)[:255],
                 deleted_by=user,
+            )
+            # Import LOCAL : ``core.events`` ne dépend de rien, mais on garde
+            # ``core.models`` importable au plus tôt du démarrage Django.
+            from core.events import record_soft_deleted
+            record_soft_deleted.send(
+                sender=type(self),
+                instance=self,
+                company=company,
+                user=user,
+                type_libelle=str(type_libelle or self._meta.verbose_name or ''),
+                libelle=str(libelle or self),
+                donnees=donnees or {},
             )
         return self
 

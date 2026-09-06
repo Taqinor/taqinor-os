@@ -20,6 +20,7 @@ from authentication.models import Company
 
 from apps.qhse.models import ObjectifQhse, RevueObjectif
 from apps.qhse.selectors import objectifs_revue_due, trajectoire_objectif
+from apps.qhse.services import relancer_objectifs_revue_due
 
 User = get_user_model()
 
@@ -138,6 +139,35 @@ class ObjectifsRevueDueTests(TestCase):
         self.assertEqual(dus, [])
 
 
+class RelancerObjectifsRevueDueTests(TestCase):
+    """AUDV14 (DRAFT165-83) — relance (notification) des objectifs en revue
+    due, au-delà du simple listing ``revues-dues``."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs13-relance', 'CoXqhs13Relance')
+
+    def test_relance_notifie_le_responsable(self):
+        user = make_user(self.company, 'resp-xqhs13-relance')
+        objectif = ObjectifQhse.objects.create(
+            company=self.company, intitule='Nouveau', responsable=user)
+        digest = relancer_objectifs_revue_due(self.company)
+        self.assertEqual(digest['total'], 1)
+        self.assertEqual(digest['notifiees'], 1)
+        self.assertEqual(digest['items'][0]['objectif_id'], objectif.id)
+
+    def test_relance_sans_responsable_ne_notifie_pas(self):
+        ObjectifQhse.objects.create(company=self.company, intitule='Sans resp')
+        digest = relancer_objectifs_revue_due(self.company)
+        self.assertEqual(digest['total'], 1)
+        self.assertEqual(digest['notifiees'], 0)
+
+    def test_relance_isolation_societe(self):
+        autre = make_company('co-xqhs13-relance-autre', 'Autre')
+        ObjectifQhse.objects.create(company=self.company, intitule='X')
+        digest = relancer_objectifs_revue_due(autre)
+        self.assertEqual(digest['total'], 0)
+
+
 class ObjectifQhseApiTests(TestCase):
     """WIR275 — CRUD + actions ``revues-dues``/``trajectoire`` (selectors
     testés, jusqu'ici sans aucun endpoint)."""
@@ -176,6 +206,14 @@ class ObjectifQhseApiTests(TestCase):
         data = self.api.get(OBJECTIFS).data
         rows = data['results'] if isinstance(data, dict) else data
         self.assertEqual(len(rows), 0)
+
+    def test_relancer_action(self):
+        """AUDV14 (DRAFT165-83) — endpoint REST manquant sur
+        ``relancer_objectifs_revue_due``."""
+        self.api.post(OBJECTIFS, {'intitule': 'Nouveau'}, format='json')
+        resp = self.api.post(f'{OBJECTIFS}relancer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['total'], 1)
 
 
 class RevueObjectifApiTests(TestCase):

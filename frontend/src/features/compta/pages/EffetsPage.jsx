@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import {
   Plus, CheckCircle2, XCircle, Send, TrendingDown, Landmark, Download,
@@ -26,6 +26,45 @@ const TABS = [
   { value: 'bordereaux', label: 'Bordereaux de remise' },
   { value: 'paymentRuns', label: 'Campagnes de règlement' },
 ]
+
+/* AUDV02 / FG127-128 (DRAFT165-11+12) — les TOTAUX du portefeuille.
+   `selectors.total_effets_ouverts` existait sans aucun appelant : l'écran
+   listait les effets ligne à ligne sans jamais totaliser, donc « combien
+   ai-je en portefeuille à recevoir ? » — la question la plus élémentaire du
+   poste — n'avait pas de réponse. Les totaux viennent du SERVEUR et ne
+   portent que sur les effets OUVERTS (portefeuille + remis) : un effet
+   encaissé a déjà bougé la banque, l'additionner double-compterait. Rien
+   n'est recalculé ici — surtout pas en sommant les lignes affichées, qui
+   sont filtrées/paginées. */
+function TotauxPortefeuille() {
+  const [totaux, setTotaux] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    comptaApi.effets.echeancier()
+      .then((res) => { if (vivant) setTotaux(res.data) })
+      .catch(() => { if (vivant) setTotaux(null) })
+    return () => { vivant = false }
+  }, [])
+
+  if (!totaux) return null
+  return (
+    <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      {[
+        ['À recevoir (ouverts)', totaux.total_a_recevoir],
+        ['À payer (ouverts)', totaux.total_a_payer],
+        ['Net', totaux.net],
+      ].map(([libelle, montant]) => (
+        <div key={libelle} className="rounded-lg border px-3 py-2">
+          <div className="text-xs text-muted-foreground">{libelle}</div>
+          <div className="tabular-nums text-base font-semibold">
+            {formatMAD(montant)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const StatutEffet = statusPill({
   portefeuille: { label: 'Portefeuille', tone: 'neutral' },
@@ -214,6 +253,8 @@ export default function EffetsPage() {
       <div className="mb-3">
         <Segmented options={TABS} value={tab} onChange={setTab} aria-label="Onglet effets" />
       </div>
+
+      {tab === 'effets' && <TotauxPortefeuille />}
 
       <ListShell
         title={TABS.find((t) => t.value === tab).label}

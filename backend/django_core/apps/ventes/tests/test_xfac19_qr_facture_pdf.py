@@ -160,5 +160,8 @@ class XFAC19PdfPipelineTests(TestCase):
                 mock_wp.return_value = b'%PDF-fake'
                 key = generate_facture_pdf(self.facture.id)
                 html_arg = mock_wp.call_args[0][0]
-        self.assertEqual(key, f'factures/{self.facture.reference}.pdf')
+        self.assertEqual(
+            key,
+            f'factures/{self.facture.company_id}/'
+            f'{self.facture.reference}.pdf')
         self.assertNotIn('<div class="footer-qr">', html_arg)

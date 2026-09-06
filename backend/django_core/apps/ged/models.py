@@ -822,9 +822,17 @@ class DocumentVersion(models.Model):
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        """GED23 — Refuse la suppression d'une version d'un document archivé."""
+        """GED23/GED24 — Refuse la suppression d'une version protégée.
+
+        AUD810 — miroir de `Document.delete()` : cette garde ne testait
+        jusqu'ici QUE l'archivage légal write-once (GED23), laissant une
+        version d'un document sous rétention légale ACTIVE (GED24, legal
+        hold) purgeable — destruction de preuve possible sous hold. Les deux
+        gels restent des couches SÉPARÉES, comme sur le document parent."""
         if self._document_archive_legalement():
             raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+        if self.document_id is not None and self.document.est_sous_legal_hold:
+            raise LegalHoldError(LEGAL_HOLD_MESSAGE)
         return super().delete(*args, **kwargs)
 
     def __str__(self):

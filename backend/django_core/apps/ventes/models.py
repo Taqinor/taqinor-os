@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils.functional import cached_property
 
 from core.models import TenantModel
 
@@ -1083,24 +1084,61 @@ class BonCommande(models.Model):
     def __str__(self):
         return self.reference
 
-    @property
+    def refresh_from_db(self, *args, **kwargs):
+        # AUD115 — `reliquat_par_ligne` est mémoïsé (cached_property) pour que
+        # `est_partiellement_livre` ne rejoue pas la propriété une seconde fois
+        # sur chaque ligne de la liste. `livrer_partiel` relit le reliquat
+        # APRÈS avoir écrit ses lignes de livraison : la relecture doit voir la
+        # base, jamais le cache. On l'invalide donc ici, à la source, plutôt
+        # que de compter sur chaque appelant pour y penser.
+        self.__dict__.pop('reliquat_par_ligne', None)
+        return super().refresh_from_db(*args, **kwargs)
+
+    @cached_property
     def reliquat_par_ligne(self):
         """XSAL12 — quantité restant à livrer par ligne de devis source.
 
         Un BC sans devis (ou sans livraison partielle) renvoie une liste
         vide — comportement historique inchangé (le statut reste piloté par
-        `marquer_livre` seul dans ce cas)."""
+        `marquer_livre` seul dans ce cas).
+
+        AUD115 — SEULES LES LIGNES LIVRABLES SONT PARCOURUES. La boucle
+        itérait TOUTES les lignes du devis et calculait `ligne.quantite -
+        livre` ; or XSAL14 a rendu `LigneDevis.quantite` nullable et le
+        sérialiseur neutralise quantité/prix/produit sur une ligne de
+        section/note. `None - 0` levait TypeError, et la propriété étant
+        exposée SANS garde sur chaque ligne de la liste, un simple intertitre
+        « Kit batterie » dans un devis rendait l'écran Bons de commande de
+        toute la société inaccessible. On réutilise `compte_dans_totaux`, LE
+        prédicat maison déjà employé par `option_lines` et
+        `reserver_stock_devis_facture` — jamais un troisième filtre."""
         if self.devis_id is None:
             return []
-        from django.db.models import Sum
-        livre_par_ligne = dict(
-            LigneLivraisonBC.objects
-            .filter(livraison__bon_commande=self)
-            .values_list('ligne_devis_id')
-            .annotate(total=Sum('quantite_livree'))
-        )
+        cache = getattr(self, '_prefetched_objects_cache', None) or {}
+        if 'livraisons' in cache:
+            # AUD115 — la liste préfetche `livraisons__lignes` : on somme en
+            # mémoire au lieu d'une requête d'agrégat PAR bon de commande.
+            # Mêmes chiffres, à l'unité près — seul le nombre d'allers-retours
+            # change.
+            livre_par_ligne = {}
+            for livraison in self.livraisons.all():
+                for ligne_livree in livraison.lignes.all():
+                    cle = ligne_livree.ligne_devis_id
+                    livre_par_ligne[cle] = (
+                        (livre_par_ligne.get(cle) or 0)
+                        + ligne_livree.quantite_livree)
+        else:
+            from django.db.models import Sum
+            livre_par_ligne = dict(
+                LigneLivraisonBC.objects
+                .filter(livraison__bon_commande=self)
+                .values_list('ligne_devis_id')
+                .annotate(total=Sum('quantite_livree'))
+            )
         out = []
         for ligne in self.devis.lignes.all():
+            if not ligne.compte_dans_totaux or ligne.quantite is None:
+                continue
             livre = livre_par_ligne.get(ligne.id) or 0
             out.append({
                 'ligne_devis_id': ligne.id,
@@ -1242,7 +1280,11 @@ class LigneNoteDebit(models.Model):
 
     @property
     def total_ht(self):
-        return self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+        # Jumeau exact du 500 latent de LigneFacture (remise int par défaut →
+        # Decimal * float lève TypeError sur une ligne fraîchement créée).
+        from decimal import Decimal
+        remise = Decimal(str(self.remise or 0))
+        return self.quantite * self.prix_unitaire * (1 - remise / 100)
 
     @property
     def taux_tva_effectif(self):
@@ -1781,7 +1823,12 @@ class PaymentLink(models.Model):
         editable=False)
     # Clé du fournisseur (registre payments.providers). 'noop' = défaut inerte.
     provider = models.CharField(max_length=40, default='noop')
-    # Montant figé à la création du lien (= reste à payer au moment T).
+    # Montant CONSTATÉ à la création (trace de ce qui était dû ce jour-là).
+    # AUD136 — ce n'est PAS ce que le client paie : le montant encaissé est
+    # DÉRIVÉ de `facture.montant_du` à l'instant du paiement (voir
+    # `montant_a_payer` ci-dessous et `record_payment_from_link`). Un lien créé
+    # avec un montant erroné, ou une facture réglée entre-temps, ne peut donc
+    # pas encaisser un chiffre périmé.
     montant = models.DecimalField(max_digits=12, decimal_places=2)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
@@ -1799,6 +1846,16 @@ class PaymentLink(models.Model):
         verbose_name_plural = 'Liens de paiement'
         ordering = ['-created_at']
         indexes = [models.Index(fields=['token'])]
+        constraints = [
+            # AUD136 — UN SEUL lien EN ATTENTE par facture, garanti en base.
+            # `create_payment_link` réutilisait déjà un lien valide, mais rien
+            # n'empêchait deux liens actifs (course, écriture directe, ré-émission
+            # à volonté) sur la même facture.
+            models.UniqueConstraint(
+                fields=['facture'],
+                condition=models.Q(statut='en_attente'),
+                name='uniq_paymentlink_actif_par_facture'),
+        ]
 
     def __str__(self):
         return f'PaymentLink {self.token[:8]}… ({self.facture.reference})'
@@ -1807,6 +1864,20 @@ class PaymentLink(models.Model):
     def is_valid(self):
         return (self.statut == self.Statut.EN_ATTENTE
                 and self.expires_at > timezone.now())
+
+    @property
+    def montant_a_payer(self):
+        """AUD136 — le montant RÉELLEMENT dû, à l'instant où on le demande.
+
+        ``montant`` est la trace de ce qui était dû à la création ; l'afficher
+        au client (page publique) après un règlement partiel lui réclamait un
+        chiffre périmé. Le webhook borne déjà l'encaissement à ce reste dû —
+        c'est la même valeur, exposée au même endroit."""
+        from decimal import Decimal
+
+        facture = self.facture
+        reste = getattr(facture, 'montant_du', None)
+        return reste if reste is not None else Decimal('0')
 
 
 import hashlib  # noqa: E402
@@ -2586,6 +2657,10 @@ from .models_regulatory import (  # noqa: E402,F401
     Regularisation8221,
 )
 
+# AUD121 — session d'import de relevé bancaire jetonnée (modèle déporté dans
+# models_releve.py ; ré-exporté ici pour la découverte Django).
+from .models_releve import ReleveImportSession  # noqa: E402,F401
+
 # FG274-FG275 — mise en service & recette IEC 62446 (modèles déportés dans
 # models_commissioning.py).
 from .models_commissioning import (  # noqa: E402,F401
@@ -2665,8 +2740,17 @@ class RemiseEncaissement(models.Model):
 class LigneRemiseEncaissement(models.Model):
     """Une ligne = un ``Paiement`` (espèces/chèque) rattaché à cette remise.
 
-    Une fois la remise clôturée, ses lignes sont VERROUILLÉES (aucune
-    modification/suppression — appliqué côté service)."""
+    AUD135 — l'unicité était déclarée ``unique_together [('remise','paiement')]``,
+    donc PAR REMISE : rien n'empêchait le même Paiement d'apparaître dans N
+    remises, et ``RemiseEncaissement.montant_lignes`` le comptait dans chacune
+    (le même chèque de 15 000 déclaré dans deux bordereaux ⇒ 15 000 de trop au
+    rapprochement de caisse). La contrainte porte désormais sur ``paiement``
+    SEUL : un encaissement appartient à AU PLUS UNE remise, garanti en base.
+
+    AUD135 — le verrou post-clôture annoncé ici n'existait nulle part :
+    ``cloturer`` ne changeait que le statut et aucun service ne l'appliquait.
+    Il est maintenant RÉEL (``save``/``delete`` ci-dessous), pas une promesse
+    de docstring."""
     remise = models.ForeignKey(
         RemiseEncaissement, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='lignes')
@@ -2677,7 +2761,30 @@ class LigneRemiseEncaissement(models.Model):
     class Meta:
         verbose_name = 'Ligne de remise d\'encaissement'
         verbose_name_plural = 'Lignes de remise d\'encaissement'
-        unique_together = [('remise', 'paiement')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['paiement'],
+                name='uniq_ligne_remise_par_paiement'),
+        ]
+
+    def _garde_remise_ouverte(self, verbe):
+        """AUD135 — le verrou post-clôture, réellement appliqué."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        statut = getattr(self.remise, 'statut', None)
+        if statut and statut != RemiseEncaissement.Statut.OUVERTE:
+            raise DjangoValidationError(
+                f'Remise {self.remise.reference or self.remise_id} '
+                f'{self.remise.get_statut_display().lower()} : ses lignes sont '
+                f'verrouillées, impossible de les {verbe}.')
+
+    def save(self, *args, **kwargs):
+        self._garde_remise_ouverte('modifier')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._garde_remise_ouverte('supprimer')
+        return super().delete(*args, **kwargs)
 
     def __str__(self):
         return f'{self.remise_id} — paiement {self.paiement_id}'

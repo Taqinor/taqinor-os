@@ -209,6 +209,26 @@ def log_facture_remise_brouillon(facture, user, ancien_statut):
     )
 
 
+def log_facture_marquee_payee(facture, user, motif):
+    """AUD124 — chatter de la facture : bascule MANUELLE en « payée ».
+
+    Ce geste solde une facture sans encaissement enregistré : il la sort de
+    la balance âgée et des relances (le recouvrement filtre sur le STATUT).
+    Il ne laissait AUCUNE trace — ni motif, ni auteur, ni écriture. Le
+    chatter est désormais systématique et nomme les deux.
+    """
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?') if user else '?'
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='statut', field_label='Marquée payée (manuel)',
+        new_value='payee',
+        body=(f"Facture {facture.reference} marquée payée manuellement par "
+              f"{qui} — motif : {motif}."),
+    )
+
+
 def log_facture_acompte_transfere_sortie(facture, user, cible, montant, nb):
     """FG50 — chatter de la facture ANNULÉE : l'acompte part vers une autre.
 

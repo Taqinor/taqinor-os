@@ -85,20 +85,32 @@ class SignalementVehiculeApiTests(TestCase):
         self.actif = make_actif(self.co_a, "API")
 
     def test_create_avec_photo_tout_role(self):
+        # AUD835 - la piece part dans MinIO (`records.storage`) : la preuve
+        # du depot est la CLE ; le `FileField` legacy reste vide (son URL ne
+        # resolvait nulle part : ni MEDIA_URL, ni route /media/, ni nginx).
+        from unittest import mock
+
         photo = SimpleUploadedFile(
-            "anomalie.jpg", b"fake-image-bytes", content_type="image/jpeg")
-        resp = auth(self.user_a).post(URL, {
-            "actif_flotte": self.actif.id,
-            "description": "Bruit moteur suspect",
-            "gravite": "critique",
-            "photo": photo,
-            "company": self.co_b.id,  # injection ignorée.
-        }, format="multipart")
+            "anomalie.jpg", b"\xff\xd8\xfffake", content_type="image/jpeg")
+        meta = ({"file_key": f"attachments/{self.co_a.id}/anomalie.jpg",
+                 "filename": "anomalie.jpg", "size": 7,
+                 "mime": "image/jpeg"}, None)
+        with mock.patch("apps.records.storage.store_attachment",
+                        return_value=meta):
+            resp = auth(self.user_a).post(URL, {
+                "actif_flotte": self.actif.id,
+                "description": "Bruit moteur suspect",
+                "gravite": "critique",
+                "photo": photo,
+                "company": self.co_b.id,  # injection ignorée.
+            }, format="multipart")
         self.assertEqual(resp.status_code, 201, resp.data)
         sig = SignalementVehicule.objects.get()
         self.assertEqual(sig.company_id, self.co_a.id)
         self.assertEqual(sig.auteur_id, self.user_a.id)
-        self.assertTrue(sig.photo)
+        self.assertEqual(sig.photo_key,
+                         f"attachments/{self.co_a.id}/anomalie.jpg")
+        self.assertFalse(sig.photo)
 
     def test_scope_societe(self):
         SignalementVehicule.objects.create(

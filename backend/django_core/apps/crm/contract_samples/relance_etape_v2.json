@@ -1,0 +1,65 @@
+{
+  "endpoint": "GET /api/django/crm/relance-etapes/?scope=all",
+  "pourquoi": "MRY25 (PACT10) — la file « Relances du jour » de Meryem a deux moitiés qui ne partagent AUCUN fichier : `RelanceEtapeViewSet`/`RelanceEtapeSerializer` côté serveur, `RelancesDuJourWidget.jsx` + la frise de la fiche lead côté écran. Les 12 premiers champs existent déjà (`serializers.py` `RelanceEtapeSerializer`) ; MRY5 en AJOUTE six (`cadence`, `due_at`, `template_cle`, `devis`, `devis_reference`, et l'ordre de tri qui s'appuie sur `due_at`) parce que la cadence passe à la granularité MINUTE (touche 2 = J0 + 3 min) et qu'une touche peut désormais porter un devis. `due_date` reste la date locale Casablanca de `due_at` et continue de porter les filtres `scope=today|overdue|all` (grain JOUR) : `due_at` ne sert qu'au TRI et à l'affichage « à HH:MM ». `lead_telephone`/`lead_whatsapp` sont MASQUÉS (chaîne vide) quand l'utilisateur n'a pas `client_pii_voir` — même règle que `LeadSerializer.PII_FIELDS`. `?lead=<id>` renvoie TOUTES les étapes du lead (tous statuts, tri cadence puis ordre) en ignorant `scope` : c'est la frise de la fiche lead.",
+  "exemple": {
+    "count": 2,
+    "results": [
+      {
+        "id": 412,
+        "lead": 1489,
+        "lead_nom": "Aziz Benali",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212651971400",
+        "lead_whatsapp": "+212651971400",
+        "lead_langue": "fr",
+        "lead_score": 68,
+        "lead_priorite": "haute",
+        "cadence": "contact",
+        "ordre": 2,
+        "due_date": "2026-09-06",
+        "due_at": "2026-09-06T09:33:00Z",
+        "canal": "appel",
+        "libelle": "Appel d'ouverture",
+        "template_cle": "appel_ouverture",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": ""
+      },
+      {
+        "id": 418,
+        "lead": 1490,
+        "lead_nom": "Salma Idrissi",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "",
+        "lead_whatsapp": "",
+        "lead_langue": "fr",
+        "lead_score": 41,
+        "lead_priorite": "normale",
+        "cadence": "apres_devis",
+        "ordre": 3,
+        "due_date": "2026-09-05",
+        "due_at": "2026-09-05T13:00:00Z",
+        "canal": "whatsapp",
+        "libelle": "Preuve — installation comparable",
+        "template_cle": "j4_preuve",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": true,
+        "devis": 903,
+        "devis_reference": "DEV-2609-0042"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "results": []
+  },
+  "notes": {
+    "cadence": "contact | apres_devis | reveil | generique (enum `Cadence`, MRY4).",
+    "canal": "appel | whatsapp | email | visite — l'enum du GABARIT de cadence, jamais `crm.Canal` (qui décrit la SOURCE du lead).",
+    "statut": "a_faire | fait | sautee (statuts existants de `RelanceEtape`).",
+    "pii": "lead_telephone / lead_whatsapp = chaîne vide (jamais null) quand la permission `client_pii_voir` manque."
+  }
+}

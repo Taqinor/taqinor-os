@@ -189,6 +189,64 @@ class GouvernanceRefuseeHorsDirectionTests(_GedGouvernanceBase):
         self.assertEqual(resp.status_code, 201, resp.data)
 
 
+class PurgerGouvernanceTests(_GedGouvernanceBase):
+    """AUD811 — `purger` (effacement définitif IRRÉVERSIBLE d'un document déjà
+    en corbeille) tombait par défaut sur `ged_gerer` (écriture opérationnelle
+    courante), plus bas que `ged_gouvernance` qui protège pourtant ce même
+    document via les trois autres actions de gouvernance. L'action la moins
+    gardée causait le dommage le plus irréversible : un Technicien sans
+    mandat de direction pouvait mettre en corbeille PUIS purger n'importe
+    quel document (il n'a pas `ged_gouvernance` pour poser un hold en amont)."""
+
+    def _en_corbeille(self):
+        services.mettre_en_corbeille(
+            self.doc, self._user('setup-corbeille', perms=[GED_GOUVERNANCE]))
+        self.doc.refresh_from_db()
+        return self.doc
+
+    def test_ged_gerer_seul_403_sur_purger(self):
+        """AVANT le fix (purger absent de GOUVERNANCE_ACTIONS), cet appel
+        rendait 200/204 — n'importe quel porteur de `ged_gerer` détruisait
+        définitivement un document déjà en corbeille."""
+        self._en_corbeille()
+        client = _auth(self._user('purge-gerer', perms=[GED_VOIR, GED_GERER]))
+        resp = client.post(
+            f'{BASE}/documents/{self.doc.pk}/purger/', {}, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertTrue(Document.objects.filter(pk=self.doc.pk).exists())
+
+    def test_technicien_403_sur_purger(self):
+        """Même trou que les trois autres actions de gouvernance : un
+        Technicien (`ged_gerer` sans `ged_gouvernance`, cf. roles/models.py)
+        reste bloqué."""
+        self._en_corbeille()
+        client = _auth(self._user('purge-technicien', perms=TECHNICIEN_PERMISSIONS))
+        resp = client.post(
+            f'{BASE}/documents/{self.doc.pk}/purger/', {}, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertTrue(Document.objects.filter(pk=self.doc.pk).exists())
+
+    def test_ged_gouvernance_peut_purger(self):
+        """Un titulaire `ged_gouvernance` reste autorisé (aucune régression)."""
+        self._en_corbeille()
+        client = _auth(self._user(
+            'purge-gouv', perms=[GED_VOIR, GED_GERER, GED_GOUVERNANCE]))
+        resp = client.post(
+            f'{BASE}/documents/{self.doc.pk}/purger/', {}, format='json')
+        self.assertEqual(resp.status_code, 204, resp.data)
+        self.assertFalse(Document.objects.filter(pk=self.doc.pk).exists())
+
+    def test_compte_legacy_peut_toujours_purger(self):
+        """Compte SANS rôle fin (palier admin, repli HasPermissionOrLegacy) :
+        accès historique préservé — aucune régression sur ce chemin."""
+        self._en_corbeille()
+        client = _auth(self._user(
+            'purge-legacy', perms=None, role_legacy=CustomUser.ROLE_ADMIN))
+        resp = client.post(
+            f'{BASE}/documents/{self.doc.pk}/purger/', {}, format='json')
+        self.assertEqual(resp.status_code, 204, resp.data)
+
+
 class DefenseEnProfondeurServiceTests(_GedGouvernanceBase):
     """La garde ne vit pas QUE dans la vue : le service refuse aussi."""
 

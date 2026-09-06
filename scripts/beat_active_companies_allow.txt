@@ -1,0 +1,22 @@
+# AUD415 — exceptions ASSUMÉES au balayage par active_companies() (SCA19).
+#
+# Une ligne = un chemin relatif à la racine du dépôt, avec sa justification
+# juste au-dessus. Ajouter une ligne est un choix explicite, revu comme du
+# code : la règle par défaut reste « un fan-out beat itère
+# authentication.selectors.active_companies() ».
+
+# ── Les deux exceptions actées par SCA19 (2026-07-10), inchangées ───────────
+# compta : chaque écriture passe par un service scopé société qui ne produit
+# rien pour un tenant sans données ; laissé tel quel pour ne pas modifier la
+# sémantique comptable. Migrable séparément si un skip explicite est voulu.
+backend/django_core/apps/compta/tasks.py
+# chat : maintenance de sessions internes (ni facturation ni relance) — hors
+# périmètre SCA19.
+backend/django_core/apps/chat/tasks.py
+
+# ── Filtre actif=True recopié à la main : SÉMANTIQUE DÉJÀ CORRECTE ──────────
+# Ces fichiers n'ont jamais balayé un tenant suspendu ; il leur reste seulement
+# à passer par la source unique. Hors périmètre d'AUD415 (« touch only the
+# named files ») : à migrer par une tâche dédiée, sans urgence de sécurité.
+backend/django_core/apps/adminops/tasks.py
+backend/django_core/apps/compta/scheduled.py

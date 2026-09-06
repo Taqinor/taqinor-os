@@ -29,9 +29,15 @@ def seed_unites_mesure_hook(company, *, user=None):
 
 def seed_cadence_relance_hook(company, *, user=None):
     """RELANCE FOUNDATION — seede la cadence de relance neutre par défaut
-    (J+2/J+5/J+10/J+20/J+35) de la société (idempotent)."""
-    from .models_relance import CadenceRelanceEtape
+    (J+2/J+5/J+10/J+20/J+35) de la société (idempotent).
+
+    MRY4 — seede EN PLUS les trois cadences nommées du protocole de rappel
+    (contact / après devis / réveil). La cadence neutre reste seedée telle
+    quelle : elle n'est ni remplacée ni réécrite."""
+    from .models_relance import Cadence, CadenceRelanceEtape
     CadenceRelanceEtape.seed_defaults(company)
+    for cadence in (Cadence.CONTACT, Cadence.APRES_DEVIS, Cadence.REVEIL):
+        CadenceRelanceEtape.seed_cadence(company, cadence)
 
 
 def register_parametres_signup_hooks():

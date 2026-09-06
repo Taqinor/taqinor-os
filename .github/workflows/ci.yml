@@ -240,6 +240,18 @@ jobs:
             grep -qE '^backend/'     <<< "$changed" && backend=true  || true
             grep -qE '^frontend/'    <<< "$changed" && frontend=true || true
             grep -qE '^apps/web/'    <<< "$changed" && web=true      || true
+            # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
+            # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
+            # `backend == true` et lisent leur BASELINE ici
+            # (on_delete_allowlist.txt, tenant_view_allowlist.txt,
+            # read_modify_write_allow.txt, ...). Sans cette regle, un commit
+            # d'hygiene « allowlists rebasees » qui ELARGIT une exemption
+            # rendait backend=false : la garde modifiee ne tournait pas, les
+            # six checks requis restaient satisfaits (un `skipped` ne fait pas
+            # rougir un agregateur), et la PR fusionnait sans que la garde ne
+            # se soit JAMAIS validee elle-meme. Garde de non-regression :
+            # scripts/tests/test_ci_changes_filter.py (job `stage-names`).
+            grep -qE '^scripts/'     <<< "$changed" && backend=true  || true
             # Everything else (docs/**, *.md, top-level state files, etc.)
             # affects none of the heavy jobs — only the always-on stage-names
             # guard, which is not gated here.
@@ -444,6 +456,17 @@ jobs:
         run: python scripts/check_money_rounding.py
       - name: Test the money-rounding checker itself (QJR4)
         run: python -m unittest scripts.tests.test_check_money_rounding -v
+      # AUD515 - un modele a MACHINE D'ETATS (machine_etats.py / changer_statut*)
+      # ne laisse jamais son `statut` writable au serialiseur : un point de
+      # transition dedie ne vaut rien si un PATCH brut du corps pose le meme
+      # champ sans traverser aucune garde metier (« signe » sans signature,
+      # « cloture » sans CAPA, « livre » sans stock). Decouverte AST, aucune
+      # liste statique ; l'existant est fige dans
+      # scripts/machine_etats_statut_allow.txt (base qui ne peut que decroitre).
+      - name: Check statut read_only on state-machine models (AUD515)
+        run: python scripts/check_machine_etats_statut_readonly.py
+      - name: Test the state-machine statut checker itself (AUD515)
+        run: python -m unittest scripts.tests.test_check_machine_etats_statut_readonly -v
       # QJR6 — advisory: a path of the override registry (whitelist read from
       # the PACT10 contract apps/ventes/contract_samples/devis_overrides.json,
       # never copied into the script) may only be written in the sanctioned
@@ -510,6 +533,16 @@ jobs:
         run: python scripts/check_mouvement_stock_service.py
       - name: Test the MouvementStock-service checker itself (AUD223)
         run: python -m unittest scripts.tests.test_check_mouvement_stock_service -v
+      # AUD415 — un fan-out beat (apps/*/tasks.py, scheduled.py, beat_tasks.py)
+      # itère authentication.selectors.active_companies() (SCA19), jamais
+      # Company.objects.all() ni un filter(actif=True) recopié : un tenant
+      # suspendu ne doit plus être facturé, relancé, ni voir sa corbeille GED
+      # purgée. Fails on a NEW site not in
+      # scripts/beat_active_companies_allow.txt.
+      - name: Check fan-outs beat scopés aux sociétés actives (AUD415)
+        run: python scripts/check_beat_active_companies.py
+      - name: Test the beat-active-companies checker itself (AUD415)
+        run: python -m unittest scripts.tests.test_check_beat_active_companies -v
       # YDATA18 — business unique=True must be company-scoped; a unique on a
       # soft-delete model must be a partial index. Fails on a NEW unscoped
       # business unique not in scripts/unique_scoping_allow.txt.
@@ -531,6 +564,39 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # AUD834 — YDATA21 ci-dessus se satisfait de la BASE tenant : elle prouve
+      # l'INTENTION de scoper, jamais sa faisabilite. Poser
+      # CompanyScopedModelViewSet sur un modele SANS champ `company` donne un
+      # FieldError (500 sur list/retrieve/patch/delete) et une creation non
+      # scopee — defaut mesure sur TerritoireRegle/TerritoireMembre (AUD814).
+      # Le balayage YRBAC12 (core/tenant_isolation_scan.py) saute
+      # STRUCTURELLEMENT ces modeles : `build_minimal_instance` leve
+      # `SkipModel` sur toute FK obligatoire, or un enfant sans `company` en a
+      # une par definition. Cette garde est le seul appariement base<->modele.
+      - name: Check viewset tenant base vs model scope (AUD834)
+        run: python scripts/check_viewset_model_scope.py
+      - name: Test the viewset-model-scope checker itself (AUD834)
+        run: python -m unittest scripts.tests.test_check_viewset_model_scope -v
+      # AUD421 — a local get_permissions() must never SILENTLY OVERRIDE an
+      # @action(permission_classes=...): DRF calls get_permissions() for every
+      # request, so a raw branch that returns a default list makes the inline
+      # declaration decorative (the AUD403 defect on ventes/views/devis.py).
+      # Freezes the AUD403 sweep's verified-benign baseline; fails on a NEW
+      # class (or a NEW uncovered action) not in
+      # scripts/action_permission_override_allow.txt.
+      - name: Check @action permissions are never silently overridden (AUD421)
+        run: python scripts/check_action_permission_override.py
+      - name: Test the action-permission checker itself (AUD421)
+        run: python -m unittest scripts.tests.test_check_action_permission_override -v
+      # AUD601 — l'autre moitié d'YDATA21 : la vue scope ce qu'on LIT, ce guard
+      # scope ce qu'on ÉCRIT. Une FK cross-app écrivable d'un ModelSerializer
+      # accepte par défaut la ligne d'une société voisine (sur les surfaces AO
+      # elle finit dans un document remis à l'ACHETEUR). Échoue sur un NOUVEAU
+      # sérialiseur absent de scripts/fk_scoping_allow.txt.
+      - name: Check cross-app FK serializer scoping (AUD601)
+        run: python scripts/check_fk_scoping.py
+      - name: Test the FK-scoping checker itself (AUD601)
+        run: python -m unittest scripts.tests.test_check_fk_scoping -v
       # Incident du 03/08/2026 (production) : les lanes frontend/ao et
       # backend/ao ont ete construites en parallele avec des contrats
       # DIFFERENTS — l'ecran Bibliotheque appelait /ao/bibliotheque/, route
@@ -976,12 +1042,18 @@ jobs:
       # shards == exactement l'ensemble des modules `test*.py` de `apps`,
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
       # `coverage` reste hors du gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
+      # AUD830 — le total passait en litteral (6) A COTE de la matrice
+      # (`shard: [0, 1, 2, 3, 4, 5]`) : une PR qui retire une entree de la
+      # liste sans toucher ce litteral rendait chaque shard vert alors qu'un
+      # sixieme des modules backend n'etait plus jamais demande a Django,
+      # sans un seul signal rouge. `${{ strategy.job-total }}` (contexte
+      # GitHub Actions natif) lit TOUJOURS la longueur reelle de la matrice.
+      - name: Run Django test suite — shard ${{ matrix.shard }}/${{ strategy.job-total }} (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
           set -euo pipefail
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
-          echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} ${{ strategy.job-total }})
+          echo "Shard ${{ matrix.shard }}/${{ strategy.job-total }} -> $(echo "$LABELS" | wc -w) modules"
 
           # WOW-CI RONDE 5 — GARDE ANTI-`max_locks`, DEVENUE UNE CEINTURE.
           #
@@ -1209,11 +1281,14 @@ jobs:
       # sous-chaine, donc un chemin prefixe d'un autre embarquerait des fichiers
       # en trop. Completude de l'union prouvee par
       # scripts/tests/test_ci_frontend_shard.py (job stage-names).
-      - name: Frontend component + a11y tests — lane ${{ matrix.shard }}/4 (Vitest + Testing Library + axe)
+      # AUD830 — même défaut que backend-tests-shard : le total passait en
+      # litteral (4) a cote de la matrice (`shard: [1, 2, 3, 4]`).
+      # `${{ strategy.job-total }}` lit TOUJOURS la longueur reelle.
+      - name: Frontend component + a11y tests — lane ${{ matrix.shard }}/${{ strategy.job-total }} (Vitest + Testing Library + axe)
         working-directory: frontend
         run: |
           set -euo pipefail
-          VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) 4)"
+          VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) ${{ strategy.job-total }})"
           export VITEST_INCLUDE
           echo "Lane ${{ matrix.shard }}/4 -> $(echo "$VITEST_INCLUDE" | tr ',' '\n' | wc -l) fichiers"
           npm run test:coverage
@@ -1503,6 +1578,11 @@ jobs:
       # silencieusement cesse de garder. Ce test prouve que l'union des lanes
       # est exactement l'ensemble des modules `test*.py`, sans doublon, pour
       # plusieurs totaux de shards. Stdlib pure, ~6 s.
+      # AUD830 (06/09/2026) : test_ci_shard derive desormais le total de shards
+      # de strategy.job-total via PyYAML — l'install doit PRECEDER ce test (elle
+      # servait deja check_query_budgets plus bas).
+      - name: Install PyYAML (shard-split + query-budgets)
+        run: pip install PyYAML
       - name: Test the backend-test shard split itself (WOW-CI2 — completude du decoupage)
         run: python -m unittest scripts.tests.test_ci_shard -v
       # WOW-CI4 — meme garde pour les lanes Vitest : un fichier qui tomberait du
@@ -1510,6 +1590,28 @@ jobs:
       # vert. Stdlib pure, ~2 s.
       - name: Test the frontend-test lane split itself (WOW-CI4 — completude du decoupage)
         run: python -m unittest scripts.tests.test_ci_frontend_shard -v
+      # AUD826 — le filtre de chemins `changes` decide QUELS jobs lourds
+      # tournent. Une regression qui retirerait `^scripts/` rendrait a nouveau
+      # invisible tout commit d'hygiene sur les allowlists : la garde modifiee
+      # ne se validerait pas elle-meme. ICI et pas dans `backend-lint-fast` a
+      # DESSEIN : une PR qui ne touche que ci.yml ne met AUCUNE surface a true
+      # (`.github/**` tombe dans « le reste »), donc seul `stage-names`, non
+      # gate, peut garder le filtre. Stdlib pure, ~0,1 s.
+      - name: Test the ci.yml changes filter itself (AUD826 — scripts/ est une surface backend)
+        run: python -m unittest scripts.tests.test_ci_changes_filter -v
+      # AUD831 — docs/query-budgets.yml (le CONTRAT de perf par endpoint,
+      # NTPLT21) affirmait depuis l'origine « job CI stage-names / lint »
+      # alors que `grep -rn query_budgets .github/` rendait 0 occurrence :
+      # un endpoint `enforced: true` sans test de budget ne faisait rougir
+      # AUCUN job CI, le contrat de perf n'etait qu'une declaration
+      # d'intention. check_query_budgets.py est un VRAI gate (peut rendre
+      # 1), pas un advisory comme check_db_invariants.py — ICI, dans le
+      # seul job non gate, comme les autres check_*.py (DB-free ; seule
+      # dependance non-stdlib de ce job, d'ou l'install dediee).
+      - name: Check query-budget test coverage (endpoints "enforced" doivent avoir un test de budget)
+        run: python scripts/check_query_budgets.py
+      - name: Test the query-budgets checker itself (AUD831)
+        run: python -m unittest scripts.tests.test_check_query_budgets -v
 
   web-build-test:
     needs: changes
@@ -1964,9 +2066,20 @@ jobs:
       # Ce job n'est de toute façon pas sur le chemin critique du gate : ses
       # assertions tournent en moins d'une minute, le reste est la restauration
       # WOW8 que le volet A raccourcit déjà.
+      # AUD422 — la suite de déni cross-tenant sur les CINQ TABLES ARGENT
+      # (compta.EcritureComptable/LigneEcriture, ventes.Devis,
+      # facturation.Facture/Paiement) rejoint le sceau NTPLT5 dans ce même job :
+      # elle est opt-in par le MÊME flag, elle a les mêmes besoins (PostgreSQL
+      # réel + rôle NOBYPASSRLS), et la lancer ailleurs coûterait une seconde
+      # restauration WOW8 pour ~1 min d'assertions. Elle vérifie en plus que les
+      # policies posées par les migrations AUD422 sont bien là.
       - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
-        run: python manage.py test core.tests.test_rls -v 2 --keepdb --parallel 1
+        run: >-
+          python manage.py test
+          core.tests.test_rls
+          core.tests.test_rls_cross_tenant_denial
+          -v 2 --keepdb --parallel 1
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required

@@ -100,6 +100,11 @@ test('remindMe / toggleBookmark / listBookmarks → routes XKB27', () => {
   assert.match(src, /listBookmarks:[\s\S]*?'\/chat\/messages\/bookmarks\/'/)
 })
 
+test('cancelReminder / getConversationRetention → routes AUDV28', () => {
+  assert.match(src, /cancelReminder:[\s\S]*?\/chat\/reminders\/\$\{reminderId\}\/annuler\/`/)
+  assert.match(src, /getConversationRetention:[\s\S]*?\/chat\/conversations\/\$\{conversationId\}\/retention\/`/)
+})
+
 test('scheduled.create / cancel → /chat/scheduled-messages/', () => {
   assert.match(src, /scheduled:[\s\S]*?create:[\s\S]*?'\/chat\/scheduled-messages\/'/)
   assert.match(src, /cancel:[\s\S]*?\/chat\/scheduled-messages\/\$\{id\}\/`/)

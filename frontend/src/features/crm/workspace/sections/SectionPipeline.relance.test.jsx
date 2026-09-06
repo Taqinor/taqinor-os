@@ -1,9 +1,8 @@
-// Revue Fable finale — le plan de relance structuré (crm.RelanceEtape,
-// panneau « Relances du jour » du cockpit) n'avait AUCUN déclencheur côté
-// UI : crmApi.initialiserRelance n'était jamais appelé nulle part, donc le
-// widget restait vide en permanence quel que soit l'effort backend investi.
-// Ce test couvre le bouton minimal ajouté ici (« Initialiser le plan de
-// relance », près de « Relance le ») : appel de l'API, et gestion du succès
+// MRY15 — remplace l'ancien « Initialiser le plan de relance » (fondation
+// relance du 24/08/2026, revue Fable finale) : le moteur démarre maintenant
+// SEUL à l'arrivée d'un lead vivant (MRY6). Ce contrôle sert désormais à
+// RELANCER une cadence à la main (choix contact/après devis/réveil) ou à
+// L'ARRÊTER (motif obligatoire). Couvre : appel de l'API, gestion du succès
 // comme de l'échec via le toast maison (ui/confirm), jamais un throw non
 // attrapé qui casserait l'écran.
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -15,6 +14,9 @@ import SectionPipeline from './SectionPipeline'
 vi.mock('../../../../api/crmApi', () => ({
   default: {
     initialiserRelance: vi.fn(),
+    arreterCadence: vi.fn(),
+    // MRY15 — CadenceFrise se charge elle-même au montage (mode édition).
+    getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
     // useCanaux() (référentiel Canal géré) appelle getCanaux() au montage —
     // sans ce stub, chaque test crashe AVANT d'atteindre le bouton testé.
     getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
@@ -46,54 +48,75 @@ function renderSection(over = {}) {
   )
 }
 
-describe('SectionPipeline — « Initialiser le plan de relance » (fondation relance sans déclencheur)', () => {
-  it('un lead existant (mode édition) affiche le bouton, absent en création', () => {
+describe('SectionPipeline — « Relancer / Arrêter la cadence » (MRY15)', () => {
+  it('un lead existant (mode édition) affiche les contrôles, absents en création', () => {
     renderSection()
-    expect(screen.getByTestId('lf-init-relance')).toBeTruthy()
+    expect(screen.getByTestId('lf-relance-cadence')).toBeTruthy()
+    expect(screen.getByTestId('lf-arreter-cadence')).toBeTruthy()
     cleanup()
 
     const stateCreate = initState({ mode: 'create' })
     render(<SectionPipeline state={stateCreate} setField={vi.fn()} errors={{}} refData={REF_DATA} />)
-    expect(screen.queryByTestId('lf-init-relance')).toBeNull()
+    expect(screen.queryByTestId('lf-relance-cadence')).toBeNull()
+    expect(screen.queryByTestId('lf-arreter-cadence')).toBeNull()
   })
 
-  it('clic → crmApi.initialiserRelance(leadId) puis toast de succès (200)', async () => {
+  it('« Relancer la cadence » → crmApi.initialiserRelance(leadId, {cadence: "contact"}) puis toast de succès', async () => {
     const user = userEvent.setup()
     crmApi.initialiserRelance.mockResolvedValue({ data: [{ id: 1 }, { id: 2 }] })
     renderSection()
 
-    await user.click(screen.getByTestId('lf-init-relance'))
+    await user.click(screen.getByTestId('lf-relance-cadence'))
 
     expect(crmApi.initialiserRelance).toHaveBeenCalledTimes(1)
-    expect(crmApi.initialiserRelance).toHaveBeenCalledWith(77)
+    expect(crmApi.initialiserRelance).toHaveBeenCalledWith(77, { cadence: 'contact' })
     // La promesse de l'appel passe bien PAR toastPromise (jamais un
     // toast.success manuel à côté) — avec des messages FR honnêtes.
     await waitFor(() => expect(toastPromiseMock).toHaveBeenCalledTimes(1))
     const [, messages] = toastPromiseMock.mock.calls[0]
-    expect(messages.success).toMatch(/initialisé/i)
+    expect(messages.success).toMatch(/relancée/i)
     expect(messages.error).toMatch(/impossible/i)
   })
 
-  it('un échec serveur (403/500) ne casse pas l\'écran — le bouton redevient cliquable', async () => {
+  it('un échec serveur (403/500) sur « Relancer » ne casse pas l\'écran — le bouton redevient cliquable', async () => {
     const user = userEvent.setup()
     crmApi.initialiserRelance.mockRejectedValue({ response: { status: 403 } })
     renderSection()
 
-    const bouton = screen.getByTestId('lf-init-relance')
+    const bouton = screen.getByTestId('lf-relance-cadence')
     await user.click(bouton)
 
     await waitFor(() => expect(crmApi.initialiserRelance).toHaveBeenCalledTimes(1))
     // Pas d'exception non attrapée : le bouton reste dans le DOM, redevient actif.
-    await waitFor(() => expect(screen.getByTestId('lf-init-relance')).not.toBeDisabled())
+    await waitFor(() => expect(screen.getByTestId('lf-relance-cadence')).not.toBeDisabled())
   })
 
-  it('le bouton est désactivé pendant l\'appel en vol (anti double-clic)', async () => {
+  it('« Arrêter la cadence » exige un motif puis appelle crmApi.arreterCadence', async () => {
+    const user = userEvent.setup()
+    crmApi.arreterCadence.mockResolvedValue({ data: { arretees: 3 } })
+    renderSection()
+
+    await user.click(screen.getByTestId('lf-arreter-cadence'))
+    const confirmer = screen.getByRole('button', { name: 'Confirmer' })
+    // Motif vide : le bouton reste désactivé, aucun appel.
+    expect(confirmer).toBeDisabled()
+
+    await user.type(screen.getByTestId('lf-arreter-cadence-motif'), 'Client injoignable')
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }))
+
+    expect(crmApi.arreterCadence).toHaveBeenCalledWith(77, { motif: 'Client injoignable' })
+    await waitFor(() => expect(toastPromiseMock).toHaveBeenCalledTimes(1))
+    const [, messages] = toastPromiseMock.mock.calls[0]
+    expect(messages.success).toMatch(/arrêtée/i)
+  })
+
+  it('le bouton « Relancer » est désactivé pendant l\'appel en vol (anti double-clic)', async () => {
     const user = userEvent.setup()
     let resolvePromise
     crmApi.initialiserRelance.mockReturnValue(new Promise((resolve) => { resolvePromise = resolve }))
     renderSection()
 
-    const bouton = screen.getByTestId('lf-init-relance')
+    const bouton = screen.getByTestId('lf-relance-cadence')
     await user.click(bouton)
     await waitFor(() => expect(bouton).toBeDisabled())
 

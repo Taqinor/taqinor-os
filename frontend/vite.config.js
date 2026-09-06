@@ -238,7 +238,7 @@ export default defineConfig({
           { src: '/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         // NTMOB20 — raccourcis d'accès rapide : un appui long sur l'icône de
-        // l'app installée propose ces 4 actions. API standard des raccourcis
+        // l'app installée propose ces 5 actions. API standard des raccourcis
         // PWA ; les icônes réutilisent l'icône d'app déjà générée (aucun
         // nouvel asset à produire, aucune dépendance).
         // Chaque `url` DOIT être une route réelle de l'app :
@@ -246,6 +246,10 @@ export default defineConfig({
         //   • /stock?scan=1     → ouvre le panneau de scan (NTMOB14/15)
         //   • /ma-journee       → écran terrain du jour
         //   • /approbations     → boîte d'approbations (NTMOB5)
+        //   • /crm/cockpit      → Cockpit CRM, widget « Relances du jour »
+        //     (MRY18 — les notifications RELANCE_DUE de MRY17 pointent déjà
+        //     vers ce même lien ; le service worker (sw.js) navigue vers
+        //     `data.link` sans changement).
         shortcuts: [
           {
             name: 'Nouveau lead',
@@ -269,6 +273,12 @@ export default defineConfig({
             name: 'Approbations',
             short_name: 'Approbations',
             url: '/approbations',
+            icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Relances du jour',
+            short_name: 'Relances',
+            url: '/crm/cockpit',
             icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
           },
         ],

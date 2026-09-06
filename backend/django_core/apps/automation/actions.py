@@ -23,6 +23,72 @@ logger = logging.getLogger(__name__)
 Status = AutomationRun.Status
 
 
+# ── AUD821 — registre FERMÉ des champs assignables par SET_FIELD ────────────
+#
+# DÉFAUT CORRIGÉ : ``_set_field`` n'excluait QUE ``company``/``company_id``/
+# ``prix_achat`` en dur, puis faisait ``setattr`` + ``save(update_fields=[…])``
+# sur N'IMPORTE QUEL champ du modèle déclencheur — en contournant ``full_clean``
+# ET la machine à états. Un Admin pouvait configurer
+# ``{"field": "statut", "value": "accepte"}`` sur un Devis : le champ basculait
+# en base sans passer par ``DevisWriteSerializer``/``machine_etats`` et sans
+# émettre ``devis_accepted`` — le Chantier n'était jamais créé, mais tout
+# l'aval croyait la transition faite. Idem pour un montant de facture.
+#
+# La lecture avait déjà son registre FERMÉ (``list_sources.SOURCES``) ;
+# l'ÉCRITURE n'en avait aucun. Voici le sien, sur le patron de
+# ``models.record_state_change_targets()`` / ``DATE_TRIGGER_TARGETS`` :
+# ``'app_label.model' -> {champs sûrs}``.
+#
+# RÈGLE D'ADMISSION (à respecter pour toute future entrée) : JAMAIS un champ de
+# machine à états (``statut``, ``stage``, ``perdu``, ``annule``, ``is_archived``,
+# ``sla_*``…), JAMAIS un champ financier (``montant*``, ``prix*``, ``cout``,
+# ``remise*``, ``taux*``, ``acompte*``), JAMAIS la société. Seuls des champs
+# DESCRIPTIFS ou d'organisation du travail, dont la modification directe n'a
+# aucun effet de bord métier silencieux.
+SET_FIELD_TARGETS = {
+    'crm.lead': {
+        'priorite', 'canal', 'tags', 'note', 'relance_date',
+        'type_installation', 'langue_preferee',
+    },
+    'sav.ticket': {
+        'priorite', 'categorie', 'instructions', 'date_tournee',
+        'en_attente_client',
+    },
+    'ventes.devis': {
+        'note',
+    },
+}
+
+
+def set_field_targets():
+    """Registre FERMÉ ``{'app_label.model': {champ, …}}`` de SET_FIELD.
+
+    Copie défensive : un appelant ne peut pas élargir la whitelist en mutant
+    le dict renvoyé (le registre est FERMÉ, pas configurable à chaud).
+    """
+    return {cle: set(champs) for cle, champs in SET_FIELD_TARGETS.items()}
+
+
+def set_field_champs_autorises():
+    """Union de TOUS les champs déclarés, tous modèles confondus.
+
+    Sert à la validation du sérialiseur : ``action_config`` ne porte pas
+    toujours le modèle cible (il est impliqué par le DÉCLENCHEUR), donc la
+    création refuse déjà tout champ qui n'est sûr sur AUCUN modèle — et
+    l'exécution refait le contrôle STRICT sur le couple réel.
+    """
+    champs = set()
+    for valeurs in SET_FIELD_TARGETS.values():
+        champs |= set(valeurs)
+    return champs
+
+
+def set_field_autorise(cle_modele, field):
+    """Vrai si ``field`` est assignable sur ``cle_modele`` (ex. 'crm.lead')."""
+    cle = (cle_modele or '').strip().lower()
+    return field in SET_FIELD_TARGETS.get(cle, set())
+
+
 def run(rule, instance, company, context, user):
     """Aiguille vers le handler d'action. Best-effort, ne lève pas."""
     handler = _HANDLERS.get(rule.action_type)
@@ -219,6 +285,16 @@ def _set_field(rule, instance, company, context, user):
     # Sécurité : on n'autorise jamais d'écrire la société ni un prix d'achat.
     if field in ('company', 'company_id', 'prix_achat'):
         return Status.SKIPPED, f'Champ « {field} » protégé : refusé.'
+    # AUD821 — DEUXIÈME garde, défensive : le sérialiseur refuse déjà un champ
+    # hors registre à la CRÉATION, mais une règle plus ancienne (ou écrite hors
+    # API : shell, fixture, import) doit être refusée à l'EXÉCUTION aussi. Le
+    # contrôle est ici STRICT sur le couple réel (modèle déclencheur, champ).
+    cle_modele = _model_key(instance)
+    if not set_field_autorise(cle_modele, field):
+        return Status.SKIPPED, (
+            f'Champ « {cle_modele}.{field} » hors du registre des champs '
+            'assignables (machine à états / champ financier / non déclaré) : '
+            'refusé.')
     value = cfg.get('value')
     try:
         setattr(instance, field, value)
@@ -406,6 +482,12 @@ def _for_each(rule, instance, company, context, user):
 def _model_name(instance):
     meta = getattr(instance, '_meta', None)
     return getattr(meta, 'model_name', '') if meta else ''
+
+
+def _model_key(instance):
+    """Clé ``'app_label.model'`` de l'instance (AUD821) — '' si indéterminable."""
+    meta = getattr(instance, '_meta', None)
+    return str(getattr(meta, 'label_lower', '') or '') if meta else ''
 
 
 def _has_field(instance, name):

@@ -229,10 +229,59 @@ def resoudre_regle_remise(*, company, remise):
     return candidates[0]
 
 
+def profondeur_remise_effective(devis, *, remise_globale=None):
+    """AUD611 — la profondeur de remise RÉELLE du devis, en %.
+
+    Le palier d'approbation (NTCPQ7) ne regardait que ``remise_globale``. Or un
+    devis peut porter 0 % de remise globale et des remises de LIGNE cumulées
+    bien au-delà du seuil : il partait alors au client sans passer par la
+    moindre étape d'approbation. La remise de ligne et la remise globale sont
+    le MÊME geste commercial vu de deux endroits ; le palier doit voir leur
+    effet combiné.
+
+    Formule : ``1 − net / brut`` où ``brut`` est la somme des lignes AVANT
+    toute remise et ``net`` la somme APRÈS remise de ligne PUIS remise globale.
+    Elle se réduit exactement à ``remise_globale`` quand aucune ligne ne porte
+    de remise — le comportement d'hier est donc préservé au centième.
+
+    :param remise_globale: pourcentage global à considérer À LA PLACE de celui
+        porté par l'instance (le garde d'envoi juge la valeur ENTRANTE, pas
+        celle encore en base).
+
+    Le résultat n'est JAMAIS inférieur à la remise globale : une donnée de
+    ligne aberrante (remise négative, ligne à prix nul) ne peut pas AFFAIBLIR
+    un palier qui se déclenchait hier.
+    """
+    globale = Decimal(str(
+        (remise_globale if remise_globale is not None
+         else getattr(devis, 'remise_globale', 0)) or 0))
+    lignes_liees = getattr(devis, 'lignes', None)
+    if lignes_liees is None:
+        return globale
+
+    brut = Decimal('0')
+    net_lignes = Decimal('0')
+    for ligne in lignes_liees.all():
+        if not ligne.compte_dans_totaux:
+            continue
+        if ligne.quantite is None or ligne.prix_unitaire is None:
+            continue
+        brut += Decimal(str(ligne.quantite)) * Decimal(str(ligne.prix_unitaire))
+        # ``LigneDevis.total_ht`` PORTE déjà la remise de ligne : on ne
+        # réimplémente pas la formule d'argent de `ventes`, on la consomme.
+        net_lignes += Decimal(str(ligne.total_ht))
+    if brut <= 0:
+        return globale
+
+    net = net_lignes * (Decimal('1') - globale / Decimal('100'))
+    effective = ((Decimal('1') - net / brut) * Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return max(effective, globale)
+
+
 def _profondeur_remise(devis):
-    """Profondeur de remise réelle du devis (en %). Utilise ``remise_globale``
-    (déjà un pourcentage). Repli 0."""
-    return Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
+    """Alias historique — voir :func:`profondeur_remise_effective`."""
+    return profondeur_remise_effective(devis)
 
 
 def _echapper(texte):
@@ -762,13 +811,63 @@ def lancer_approbation_devis(devis, *, user=None, force=False, remise=None):
     if regle is None or regle.nombre_approbateurs < 1:
         return []
 
+    # AUD612 — l'approbateur est assigné AU MOMENT où l'étape passe
+    # ``en_attente``. Sans cela, aucune étape ne portait jamais d'approbateur
+    # en production, et les deux relances (NTCPQ28 manuelle, NTCPQ33 planifiée)
+    # — pourtant écrites et testées — sautaient systématiquement l'étape :
+    # du code mort que seule une pose manuelle en test faisait vivre.
+    candidats = approbateurs_candidats(devis.company,
+                                       regle.niveau_approbation)
+    if user is not None and len(candidats) > 1:
+        # Séparation des tâches : le demandeur n'approuve pas sa propre remise
+        # — sauf s'il est le seul habilité (mieux vaut une étape assignée à
+        # lui-même qu'une étape que personne ne relancera jamais).
+        candidats = [c for c in candidats if c.pk != user.pk] or candidats
+
     etapes = []
     for niveau in range(1, regle.nombre_approbateurs + 1):
         etapes.append(EtapeApprobationDevis.objects.create(
             company=devis.company, devis=devis, regle=regle,
             niveau=niveau, niveau_approbation=regle.niveau_approbation,
+            approbateur=(candidats[(niveau - 1) % len(candidats)]
+                         if candidats else None),
             statut=EtapeApprobationDevis.Statut.EN_ATTENTE))
     return etapes
+
+
+def approbateurs_candidats(company, niveau_approbation):
+    """AUD612 — les utilisateurs HABILITÉS à décider d'un palier de remise.
+
+    Ordre DÉTERMINISTE (clé primaire) : deux devis identiques routent vers le
+    même approbateur, et un test n'a pas à deviner lequel.
+
+    * ``administrateur`` / ``direction`` → les propriétaires/admins actifs de la
+      société (``CustomUser.admins_actifs_qs``, qui couvre déjà les DEUX
+      modèles de rôle : FK ``Role`` avec ``roles_gerer``, et le legacy
+      ``role_legacy='admin'``) ;
+    * ``responsable`` → les comptes actifs de la société portant un droit
+      d'écriture (``is_responsable``), avec REPLI sur les admins : un palier
+      « responsable » dans une société qui n'en a aucun doit remonter, jamais
+      rester sans destinataire.
+
+    Liste VIDE (société sans compte actif habilité) : l'étape est alors créée
+    sans approbateur, exactement comme avant — les relances la sautent, ce qui
+    reste préférable à une notification envoyée à quelqu'un qui n'a pas le
+    droit de décider.
+    """
+    from authentication.models import CustomUser
+
+    _Niveaux = RegleApprobationRemise.NiveauApprobation
+    admins = list(CustomUser.admins_actifs_qs(company).order_by('pk'))
+    if niveau_approbation in (_Niveaux.ADMINISTRATEUR, _Niveaux.DIRECTION):
+        return admins
+    responsables = [
+        utilisateur for utilisateur in CustomUser.objects.filter(
+            company=company, is_active=True).select_related('role')
+        .order_by('pk')
+        if utilisateur.is_responsable
+    ]
+    return responsables or admins
 
 
 def approuver_etape_devis(devis, *, user, commentaire=''):

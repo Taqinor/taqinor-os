@@ -83,6 +83,10 @@ const qhseApi = {
     // Gate advisory : le chantier peut-il clôturer ? (`?chantier_id=`)
     peutCloturer: (params) =>
       api.get('/qhse/notations-fin-chantier/peut-cloturer/', { params }),
+    // AUDV13 (DRAFT165-78) — notation la plus récente d'un chantier (score/
+    // verdict complets), en un appel (`?chantier_id=`).
+    derniere: (params) =>
+      api.get('/qhse/notations-fin-chantier/derniere/', { params }),
   },
   itemsNotation: crud('items-notation'),
   proceduresQualite: {
@@ -99,6 +103,13 @@ const qhseApi = {
     // validée côté serveur (jamais un id hors société).
     diffuser: (id, data) =>
       api.post(`/qhse/procedures-qualite/${id}/diffuser/`, data),
+    // AUDV15 (DRAFT165-84) — % de conformité de lecture d'une référence.
+    conformiteLecture: (params) =>
+      api.get('/qhse/procedures-qualite/conformite-lecture/', { params }),
+    // AUDV15 (DRAFT165-107) — rediffuse CETTE version (nouvelle) vers la
+    // population de la version précédente. Corps { procedure_precedente }.
+    rediffuserNouvelleVersion: (id, data) =>
+      api.post(`/qhse/procedures-qualite/${id}/rediffuser-nouvelle-version/`, data),
   },
   retoursClient: {
     ...crud('retours-client'),
@@ -202,13 +213,25 @@ const qhseApi = {
     ...crud('conformites-environnementales'),
     aRelancer: (params) =>
       api.get('/qhse/conformites-environnementales/a-relancer/', { params }),
+    // AUDV14 (XQHS8/DRAFT165-99) — enregistre l'évaluation périodique d'une
+    // exigence légale (date posée côté serveur). Corps { resultat, date? }.
+    evaluer: (id, data) =>
+      api.post(`/qhse/conformites-environnementales/${id}/evaluer/`, data),
   },
   bilansCarbone: crud('bilans-carbone'),
   lignesBilanCarbone: crud('lignes-bilan-carbone'),
   indicateursEsg: crud('indicateurs-esg'),
 
   // ── XQHS2 — Dérogations & disposition NCR ──────────────────────────────
-  derogations: crud('derogations'),
+  derogations: {
+    ...crud('derogations'),
+    // AUDV11 (DRAFT165-89) — relance des dérogations à échéance imminente
+    // ou dépassée (notifications best-effort, ne mute rien). Nommée
+    // spécifiquement (jamais `relancer` nu) : `qhseApi.js` porte déjà
+    // `demandesChangement.relancer` — un second `relancer` casse
+    // l'appariement mock↔route de check_api_shapes.py (ambiguïté par nom).
+    relancerDerogations: () => api.post('/qhse/derogations/relancer/'),
+  },
 
   // ── XQHS3 — Contrôle qualité à la réception fournisseur ────────────────
   plansControleReception: crud('plans-controle-reception'),
@@ -228,6 +251,10 @@ const qhseApi = {
     ...crud('etapes-declaration-at'),
     marquerFait: (id) =>
       api.post(`/qhse/etapes-declaration-at/${id}/marquer-fait/`),
+    // AUDV11 (DRAFT165-90) — relance des étapes AT/MP (loi 18-12) à échéance
+    // imminente ou dépassée. Nommée spécifiquement, même raison que
+    // `derogations.relancerDerogations` ci-dessus (ambiguïté par nom).
+    relancerEtapesAt: () => api.post('/qhse/etapes-declaration-at/relancer/'),
   },
 
   // ── XQHS16 — Signalement QR public (chantier) ──────────────────────────
@@ -364,6 +391,19 @@ qhseApi.nonConformites.analysePdf = (id, params) =>
     params, responseType: 'blob',
   })
 
+// ── AUDV11 (DRAFT165-85..88) — cycle d'approbation de clôture NCR (ARC10) ────
+qhseApi.nonConformites.demarrerCloture = (id) =>
+  api.post(`/qhse/non-conformites/${id}/demarrer-cloture/`)
+qhseApi.nonConformites.approuverCloture = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/approuver-cloture/`, data ?? {})
+qhseApi.nonConformites.rejeterCloture = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/rejeter-cloture/`, data ?? {})
+qhseApi.nonConformites.escaladerCloture = (id) =>
+  api.post(`/qhse/non-conformites/${id}/escalader-cloture/`)
+// ── AUDV11 (DRAFT165-97) — SCAR fournisseur depuis une NCR ───────────────────
+qhseApi.nonConformites.creerScar = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/creer-scar/`, data ?? {})
+
 // ── WIR275 (XQHS5) — campagnes de rappel produit ─────────────────────────────
 qhseApi.campagnesRappel = {
   ...crud('campagnes-rappel'),
@@ -390,6 +430,11 @@ qhseApi.programmesAudit = crud('programmes-audit')
 qhseApi.auditsPlanifies = {
   ...crud('audits-planifies'),
   instancier: (id) => api.post(`/qhse/audits-planifies/${id}/instancier/`),
+  // AUDV13 (DRAFT165-102) — relance des audits planifiés en retard. Nommée
+  // spécifiquement (jamais `relancer` nu, même raison que
+  // `derogations.relancerDerogations` : ambiguïté par nom pour
+  // check_api_shapes.py).
+  relancerAuditsEnRetard: () => api.post('/qhse/audits-planifies/relancer/'),
 }
 
 // ── WIR275 (XQHS11) — référentiel de clauses ISO multi-norme ─────────────────
@@ -420,6 +465,10 @@ qhseApi.objectifsQhse = {
   ...crud('objectifs'),
   revuesDues: () => api.get('/qhse/objectifs/revues-dues/'),
   trajectoire: (id) => api.get(`/qhse/objectifs/${id}/trajectoire/`),
+  // AUDV14 (DRAFT165-83) — relance des objectifs en revue due. Nommée
+  // spécifiquement (jamais `relancer` nu), même raison que
+  // `derogations.relancerDerogations` (ambiguïté par nom).
+  relancerObjectifsRevueDue: () => api.post('/qhse/objectifs/relancer/'),
 }
 qhseApi.revuesObjectif = crud('revues-objectif')
 
@@ -442,6 +491,18 @@ qhseApi.diffusionsProcedure = {
   // Accuse lecture pour l'UTILISATEUR COURANT uniquement — jamais un tiers.
   marquerLu: (id) =>
     api.post(`/qhse/diffusions-procedure/${id}/marquer-lu/`),
+  // AUDV15 (DRAFT165-106) — relance tous les accusés de lecture en attente
+  // de la société. Nommée spécifiquement (jamais `relancer` nu), même
+  // raison que `derogations.relancerDerogations` (ambiguïté par nom).
+  relancerRetardatairesLecture: () =>
+    api.post('/qhse/diffusions-procedure/relancer/'),
+}
+
+// ── AUDV15 (XFSM14) — Thermographie IR : NCR auto sur sévérité maximale ──────
+qhseApi.relevesThermographie = {
+  ...crud('releves-thermographie'),
+  comparer: (params) =>
+    api.get('/qhse/releves-thermographie/comparer/', { params }),
 }
 
 export default qhseApi

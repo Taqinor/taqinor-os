@@ -103,12 +103,29 @@ export const POST: APIRoute = async ({ request }) => {
 
   const url = acceptEndpoint(resolveApiBase(), token);
 
+  // QJW25 — preuve légale de signature (loi 53-05) : le registre immuable de
+  // l'ERP doit enregistrer l'IP du SIGNATAIRE, pas celle du proxy Worker.
+  // `proposition-accept.ts` était le SEUL des relais same-origin du site à ne
+  // transmettre ni CF-Connecting-IP ni X-Forwarded-For — précisément le relais
+  // qui porte l'acte juridique. Motif repris tel quel de `visite.ts:86-99`
+  // (aussi dans `questionnaire/[token].astro:69` et
+  // `proposition/[...token].astro:301`) : `clientIpFromRequest` retombe sur le
+  // littéral 'unknown' quand rien n'est déterminable (utile comme clé de
+  // rate-limit ci-dessus, JAMAIS comme valeur d'en-tête légale) — on l'exclut
+  // donc explicitement pour ne jamais envoyer une IP vide ni inventée.
+  const clientIp = clientIpFromRequest(request);
+  const signerIp = clientIp && clientIp !== 'unknown' ? clientIp : '';
+
   let upstreamStatus = 502;
   let upstreamPayload: unknown = null;
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        ...(signerIp ? { 'X-Forwarded-For': signerIp, 'CF-Connecting-IP': signerIp } : {}),
+      },
       body: JSON.stringify(upstreamBody),
     });
     upstreamStatus = res.status;

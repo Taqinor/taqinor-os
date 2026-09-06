@@ -1,7 +1,8 @@
+import logging
 from contextlib import contextmanager
 
-from drf_spectacular.utils import extend_schema
-from rest_framework import filters, mixins, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -61,6 +62,31 @@ from apps.compta.views import (  # noqa: F401
     SoumissionLeadPartenaireViewSet,
     TerritoireCommercialViewSet,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_rappel(date_str, heure_str=''):
+    """MRY10 — « AAAA-MM-JJ » (+ « HH:MM » optionnel) → datetime AWARE local.
+
+    Renvoie ``None`` si la saisie est invalide : l'appelant répond alors 400
+    plutôt que de reporter la touche à une date fantaisiste."""
+    import datetime as _dt
+
+    from apps.crm import horaires as _horaires
+    try:
+        jour = _dt.date.fromisoformat(str(date_str).strip())
+    except (TypeError, ValueError):
+        return None
+    heure = _dt.time(9, 0)
+    texte = (heure_str or '').strip()
+    if texte:
+        try:
+            heure = _dt.time.fromisoformat(texte)
+        except (TypeError, ValueError):
+            return None
+    return _dt.datetime.combine(jour, heure, tzinfo=_horaires.CASABLANCA)
+
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -752,7 +778,49 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 qs = qs.filter(is_archived=True)
             elif archived != 'all':
                 qs = qs.filter(is_archived=False)
-        return qs
+        return self._annoter_prochaine_touche(qs)
+
+    @staticmethod
+    def _annoter_prochaine_touche(qs):
+        """MRY5 — la prochaine touche de cadence, EN UNE requête.
+
+        Le badge « touche due » et la chip « À relancer » (MRY16) doivent
+        s'afficher sur 50 cartes sans coûter 50 requêtes : ces trois valeurs
+        arrivent donc par Subquery/Exists dans le queryset, jamais par un
+        `SerializerMethodField` qui interrogerait la base par lead.
+        """
+        from django.db.models import (
+            Count, DateTimeField, Exists, F, OuterRef, Q, Subquery)
+
+        from core.dates import aujourd_hui_local
+        from .models import LeadActivity, RelanceEtape
+
+        ouvertes = RelanceEtape.objects.filter(
+            lead=OuterRef('pk'), statut=RelanceEtape.Statut.A_FAIRE)
+        prochaines = ouvertes.order_by(
+            F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+        return qs.annotate(
+            prochaine_touche_at=Subquery(
+                prochaines.values('due_at')[:1],
+                output_field=DateTimeField()),
+            prochaine_touche_canal=Subquery(
+                prochaines.values('canal')[:1]),
+            touche_en_retard_flag=Exists(
+                ouvertes.filter(due_date__lt=aujourd_hui_local())),
+            # MRY20 — combien de fois a-t-on VRAIMENT essayé ? Seules les
+            # tentatives HUMAINES comptent (appel / WhatsApp / e-mail avec un
+            # auteur) : compter les lignes système gonflerait le chiffre
+            # jusqu'à le rendre inutilisable, et c'est lui qui décide quand
+            # un dossier a été assez travaillé pour être classé.
+            nb_tentatives=Count(
+                'activites',
+                filter=Q(activites__kind__in=[
+                    LeadActivity.Kind.APPEL,
+                    LeadActivity.Kind.WHATSAPP,
+                    LeadActivity.Kind.EMAIL,
+                ], activites__user__isnull=False),
+                distinct=True),
+        )
 
     def perform_create(self, serializer):
         # Société toujours côté serveur (TenantMixin). Si aucun responsable
@@ -775,9 +843,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import sync_relance_activity, recompute_lead_score
+        from .services import (
+            demarrer_cadence_contact, recompute_lead_score,
+            sync_relance_activity,
+        )
         sync_relance_activity(serializer.instance, user)
         recompute_lead_score(serializer.instance)
+        # MRY6 — un lead saisi à la main est une demande réelle : il entre
+        # dans la cadence comme ceux du site. Best-effort intégral — la
+        # création répond 201 même si la cadence échoue.
+        demarrer_cadence_contact(
+            serializer.instance, user=user, origine='saisie manuelle')
 
     #: CRX25 — colonnes DÉRIVÉES recalculées par ``Lead.save()`` (QW10) : sans
     #: elles dans ``update_fields``, un changement de téléphone/email ne serait
@@ -859,12 +935,48 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         recompute_lead_score(new_lead)
         # NTCRM12 — édition manuelle de l'étape depuis l'écran lead.
         _emit_stage_changed(new_lead, old.stage, new_lead.stage, self.request.user)
+        # MRY10 — UN SEUL système de rappel. Le rival historique
+        # (`CallLogPopover`, qui PATCHe `relance_date` seul) reste
+        # fonctionnel : sur un lead à cadence active, ce PATCH est traité
+        # comme un report de la prochaine touche, sinon les deux dates
+        # divergeraient dès le premier appel — exactement ce que
+        # l'invariant de `sync_relance_activity` interdit.
+        from .services import reporter_prochaine_touche
+        if ('relance_date' in serializer.validated_data
+                and new_lead.relance_date
+                and new_lead.relance_date != old.relance_date):
+            try:
+                reporter_prochaine_touche(
+                    new_lead, self.request.user, new_lead.relance_date)
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.warning(
+                    'MRY10: report de touche échoué sur le lead #%s',
+                    new_lead.pk, exc_info=True)
+        # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
+        # d'étape est déjà couvert par le receiver `lead_stage_changed`.
+        from .services import arreter_cadence
+        try:
+            if not old.perdu and new_lead.perdu:
+                arreter_cadence(
+                    new_lead, user=self.request.user,
+                    motif=(new_lead.motif_perte or 'lead perdu'))
+            if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
+                arreter_cadence(new_lead, user=self.request.user,
+                                motif='ne plus contacter')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'MRY9: arrêt de cadence échoué sur le lead #%s',
+                new_lead.pk, exc_info=True)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['duplicates',
                                           'check_duplicates', 'doublons',
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
+                                          # MRY19 — lecture ouverte à tout
+                                          # rôle, comme `sla_breach`.
+                                          'kpi_premier_contact',
+                                          'kpi_cadences',
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
@@ -889,6 +1001,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
             'appliquer_plan', 'initialiser_relance',
+            # MRY9 — arrêt manuel d'une cadence. get_permissions()
+            # PRIME sur le permission_classes de l'@action (bug CI #25) :
+            # sans cette ligne, l'action retomberait sur IsAdminRole et
+            # la Commerciale — qui est justement celle qui arrête —
+            # serait refusée.
+            'arreter_relance',
             # L-QUEST — get_permissions() PRIME sur le permission_classes de
             # l'@action : sans cette ligne, `questionnaire-lien` retomberait
             # sur le `return [IsAdminRole()]` final et la Commerciale — qui
@@ -1325,16 +1443,60 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='relance/initialiser',
             permission_classes=[IsResponsableOrAdmin])
     def initialiser_relance(self, request, pk=None):
-        """Initialise (à la demande) le plan de relance du lead à partir de la
-        cadence par défaut de la société (Paramètres → CRM). IDEMPOTENT : un
-        second appel sur un lead déjà initialisé renvoie le plan existant sans
-        rien dupliquer (voir ``services.initialiser_plan_relance``)."""
+        """Initialise (à la demande) une cadence de relance sur le lead depuis
+        le gabarit de la société (Paramètres → CRM).
+
+        Corps : ``{cadence}`` parmi `contact` (défaut), `apres_devis`,
+        `reveil`, `generique` — 400 sur toute autre valeur. IDEMPOTENT PAR
+        CADENCE : un second appel renvoie le plan existant sans rien dupliquer
+        (voir ``services.initialiser_plan_relance``). Un lead « ne plus
+        contacter » est refusé (400) : c'est une demande explicite de la
+        personne, pas un réglage à contourner."""
+        from apps.parametres.models_relance import Cadence
+
         lead = self.get_object()
+        cadence = (request.data.get('cadence') or Cadence.CONTACT)
+        if cadence not in {c for c, _ in Cadence.choices}:
+            return Response(
+                {'cadence': 'Cadence inconnue. Choisir parmi : '
+                            + ', '.join(c for c, _ in Cadence.choices) + '.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if lead.ne_plus_contacter:
+            return Response(
+                {'detail': 'Lead marqué « ne plus contacter ».'},
+                status=status.HTTP_400_BAD_REQUEST)
         from .services import initialiser_plan_relance
-        etapes = initialiser_plan_relance(lead, request.user)
+        etapes = initialiser_plan_relance(lead, request.user, cadence=cadence)
         return Response(
-            RelanceEtapeSerializer(etapes, many=True).data,
+            RelanceEtapeSerializer(
+                etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='relance/arreter',
+            permission_classes=[IsResponsableOrAdmin])
+    def arreter_relance(self, request, pk=None):
+        """MRY9 — Arrête les cadences en cours du lead. Corps : ``{motif}``
+        OBLIGATOIRE (400 sinon) et ``{cadences: [...]}`` optionnel.
+
+        Le motif n'est pas une politesse : c'est lui qui distingue plus tard
+        « joint » d'un abandon dans le KPI de cadence (MRY21), et il est écrit
+        sur chaque touche arrêtée. Idempotent : zéro touche ouverte renvoie
+        ``{arretees: 0}`` sans rien journaliser."""
+        lead = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': "Le motif d'arrêt est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        cadences = request.data.get('cadences') or None
+        if cadences is not None and not isinstance(cadences, list):
+            return Response(
+                {'cadences': 'Liste de cadences attendue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .services import arreter_cadence
+        arretees = arreter_cadence(
+            lead, user=request.user, motif=motif, cadences=cadences)
+        return Response({'arretees': arretees}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -1594,6 +1756,63 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             })
         return Response(result)
 
+    # ── MRY21 — KPI de cadence (Cockpit + bilan hebdomadaire) ────────────────
+    # PACT7 — SANS cette déclaration, le schéma publierait cet agrégat avec le
+    # `LeadSerializer` du ViewSet alors qu'il renvoie sept chiffres : un schéma
+    # qui MENT est pire qu'un schéma vide. `allow_null` partout où le contrat
+    # MRY25 prévoit `null` sur un dénominateur vide.
+    @extend_schema(responses=inline_serializer('CrmKpiCadences', {
+        'joints_sous_5j_pct': serializers.FloatField(allow_null=True),
+        'cadences_completes': serializers.IntegerField(),
+        'cadences_arretees_joint': serializers.IntegerField(),
+        'perdus_avec_motif_pct': serializers.FloatField(allow_null=True),
+        'signatures': serializers.IntegerField(),
+        'devis_envoyes': serializers.IntegerField(),
+        'tentatives_moy_avant_abandon': serializers.FloatField(
+            allow_null=True),
+    }))
+    @action(detail=False, methods=['get'], url_path='kpi-cadences',
+            permission_classes=[IsAnyRole])
+    def kpi_cadences(self, request):
+        """Forme `kpi_cadences` (contrat MRY25). ``?jours=`` (30).
+
+        `null` dès qu'un dénominateur est 0 — jamais un 0 % qui se lirait
+        comme un échec là où il n'y a rien à mesurer."""
+        try:
+            jours = max(1, min(365, int(request.query_params.get('jours', 30))))
+        except (TypeError, ValueError):
+            jours = 30
+        from .selectors import kpi_cadences as _kpi
+        return Response(_kpi(request.user.company, jours=jours))
+
+    # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
+    # PACT7 — même raison que `kpi_cadences` ci-dessous : un agrégat déclare
+    # sa forme, sinon le schéma la remplace par celle du ViewSet.
+    @extend_schema(responses=inline_serializer('CrmKpiPremierContact', {
+        'objectif_minutes': serializers.IntegerField(),
+        'nb_leads': serializers.IntegerField(),
+        'nb_sous_objectif': serializers.IntegerField(allow_null=True),
+        'pct_sous_objectif': serializers.FloatField(allow_null=True),
+        'mediane_minutes_ouvrees': serializers.IntegerField(allow_null=True),
+        'nb_nuit_rappeles_avant_930': serializers.IntegerField(
+            allow_null=True),
+        'nb_nuit': serializers.IntegerField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='kpi-premier-contact',
+            permission_classes=[IsAnyRole])
+    def kpi_premier_contact(self, request):
+        """Forme `kpi_premier_contact` (contrat MRY25). ``?jours=`` (30).
+
+        Minutes OUVRÉES, leads OS_NATIVE seulement, `null` partout sur zéro
+        lead — jamais un 0 % fabriqué. Ne touche PAS à `sla-breach`, dont le
+        contrat est consommé tel quel par `CrmInsightsPanel`."""
+        try:
+            jours = max(1, min(365, int(request.query_params.get('jours', 30))))
+        except (TypeError, ValueError):
+            jours = 30
+        from .selectors import kpi_premier_contact as _kpi
+        return Response(_kpi(request.user.company, jours=jours))
+
     # ── FG28 — Filtre SLA non contactés ──────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='sla-breach',
             permission_classes=[IsAnyRole])
@@ -1660,11 +1879,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if attachment:
             act.attachment = attachment
             act.save(update_fields=['attachment'])
-        # FG28 — première note = premier contact (même sans changer d'étape)
-        if lead.stage == 'NEW' and lead.first_contacted_at is None:
-            from django.utils import timezone
-            lead.first_contacted_at = timezone.now()
-            lead.save(update_fields=['first_contacted_at'])
+        # FG28/MRY19 — première note = premier contact. La condition
+        # « lead encore en NEW » a DISPARU : un lead saisi à la main, déjà
+        # CONTACTED, ne recevait jamais d'horodatage et sortait du KPI.
+        from .services import marquer_premier_contact
+        marquer_premier_contact(lead)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1684,7 +1903,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .models import LeadActivity
         lead = self.get_object()
         kind = (request.data.get('kind') or '').strip()
-        valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL}
+        # MRY10 — le WhatsApp est le canal PRINCIPAL de Meryem : il devait
+        # être journalisable comme un appel, pas noyé dans une note libre.
+        valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL,
+                       LeadActivity.Kind.WHATSAPP}
         if kind not in valid_kinds:
             return Response(
                 {'kind': f"Valeur invalide. Choisir parmi : {', '.join(valid_kinds)}."},
@@ -1698,6 +1920,19 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'outcome': f"Valeur invalide. Choisir parmi : {', '.join(valid_outcomes)}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # MRY10 — « rappelez-moi jeudi » : le rappel demandé au téléphone
+        # DÉPLACE la touche de cadence au lieu d'ouvrir un second système de
+        # rappel à côté d'elle.
+        rappel_le = (request.data.get('rappel_le') or '').strip()
+        rappel_heure = (request.data.get('rappel_heure') or '').strip()
+        quand = None
+        if outcome == 'rappel' and rappel_le:
+            quand = _parse_rappel(rappel_le, rappel_heure)
+            if quand is None:
+                return Response(
+                    {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
+                                  'heure HH:MM optionnelle).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         act = LeadActivity.objects.create(
             lead=lead,
             company=lead.company,
@@ -1706,11 +1941,13 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             outcome=outcome,
             user=request.user,
         )
-        # FG28 — tout contact direct = première prise de contact
-        if lead.stage == 'NEW' and lead.first_contacted_at is None:
-            from django.utils import timezone
-            lead.first_contacted_at = timezone.now()
-            lead.save(update_fields=['first_contacted_at'])
+        # FG28/MRY19 — tout contact direct = première prise de contact,
+        # posée par LA source unique. Aucune chaîne d'étape ne subsiste ici.
+        from .services import marquer_premier_contact
+        marquer_premier_contact(lead)
+        if quand is not None:
+            from .services import reporter_prochaine_touche
+            reporter_prochaine_touche(lead, request.user, quand)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1810,6 +2047,14 @@ class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    def list(self, request, *args, **kwargs):
+        # MRY2 — amorçage paresseux des étiquettes standard (même patron que
+        # MotifPerteViewSet/CanalViewSet). ADDITIF : une étiquette déjà
+        # présente n'est jamais touchée, aucune n'est supprimée.
+        if request.user.company_id:
+            seed_tags(request.user.company)
+        return super().list(request, *args, **kwargs)
+
     def destroy_guard_message(self, tag):
         if _tag_en_usage(tag.company, tag.nom) > 0:
             return ("Cette étiquette est utilisée par des leads — "
@@ -1829,7 +2074,61 @@ _DEFAULT_MOTIFS_PERTE = [
     ('Prix', False),
     ('Concurrent', False),
     ('Reporté', False),
+    # MRY2 — les cinq motifs que Meryem utilise réellement au téléphone et qui
+    # manquaient : sans eux, « Autre » avalait les vraies raisons et le KPI
+    # « perdus avec motif » (MRY21) ne disait plus rien. Aucun n'est « junk » :
+    # ce sont des pertes commerciales réelles, pas des faux prospects.
+    ('Locataire', False),
+    ('Consommation trop faible', False),
+    ('Déjà équipé', False),
+    ('Ne plus contacter', False),
+    ('Devis refusé', False),
 ]
+
+# MRY2 — étiquettes standard. `Lead.tags` reste un TEXTE LIBRE : cette liste
+# n'est qu'une source de suggestions et de couleurs, jamais une contrainte.
+# Les deux dernières sont celles que `poser_tag_lead` écrit à la clôture d'une
+# cadence (MRY11) : les seeder évite qu'elles arrivent sans couleur ni libellé
+# dans l'écran Paramètres → CRM.
+_DEFAULT_TAGS = [
+    'Compare les devis',
+    'Facilité de paiement',
+    'Décision à plusieurs',
+    "Client à l'étranger",
+    'En construction',
+    'Déjà équipé',
+    'Attente facture',
+    'Injoignable 7 tentatives',
+    'Devis sans suite',
+]
+
+
+def seed_tags(company):
+    """MRY2 — pose les étiquettes standard manquantes (idempotent, ADDITIF).
+
+    `LeadTag` n'avait aucun seeder : chaque société démarrait avec une liste
+    vide. `get_or_create` par `(company, nom)` — jamais de doublon, jamais de
+    modification d'une étiquette existante (couleur ou archivage compris),
+    jamais de suppression."""
+    if company is None:
+        return
+    for nom in _DEFAULT_TAGS:
+        LeadTag.objects.get_or_create(company=company, nom=nom,
+                                      defaults={'couleur': ''})
+
+
+def completer_motifs_perte(company):
+    """MRY2 — ajoute les motifs standard MANQUANTS d'une société.
+
+    `seed_motifs_perte` ne seede QUE les sociétés qui n'ont AUCUN motif : une
+    société déjà personnalisée n'a donc jamais reçu les cinq motifs de MRY2.
+    Cette fonction complète, sans jamais toucher un motif existant (libellé,
+    `est_junk`, archivage) ni en supprimer un."""
+    if company is None:
+        return
+    for nom, est_junk in _DEFAULT_MOTIFS_PERTE:
+        MotifPerte.objects.get_or_create(
+            company=company, nom=nom, defaults={'est_junk': est_junk})
 
 
 def seed_motifs_perte(company):
@@ -1865,6 +2164,11 @@ class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         # ayant déjà des motifs n'est jamais touchée).
         if request.user.company_id:
             seed_motifs_perte(request.user.company)
+            # MRY2 — `seed_motifs_perte` ne sert QUE les sociétés sans aucun
+            # motif : une liste déjà personnalisée n'avait donc jamais reçu
+            # les motifs standard ajoutés après coup. On COMPLÈTE ici, sans
+            # jamais modifier ni supprimer un motif existant.
+            completer_motifs_perte(request.user.company)
         return super().list(request, *args, **kwargs)
 
     def destroy_guard_message(self, motif):
@@ -2090,7 +2394,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
     serializer_class = RelanceEtapeSerializer
 
     def get_permissions(self):
-        if self.action == 'list':
+        # MRY10/MRY13 — `reporter` et `message` sont listées EXPLICITEMENT :
+        # get_permissions() PRIME sur le `permission_classes` de l'@action
+        # (bug CI #25), une action non listée retomberait silencieusement sur
+        # la mauvaise garde. `message` est une LECTURE (préparer le texte
+        # n'engage rien) ; `whatsapp` ÉCRIT (touche faite, activité, premier
+        # contact, AuditLog) et reste donc réservée.
+        if self.action in ('list', 'message'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2111,31 +2421,147 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def list(self, request, *args, **kwargs):
         """File « Relances du jour ». ``?scope=overdue|today|all`` (défaut
-        today) + ``?owner=<id>``."""
-        from .selectors import relance_etapes_dues
-        scope = request.query_params.get('scope', 'today')
-        owner = request.query_params.get('owner')
-        qs = relance_etapes_dues(
-            request.user.company, request.user, scope=scope, owner=owner)
+        today) + ``?owner=<id>``.
+
+        MRY5 — ``?lead=<id>`` renvoie TOUTES les touches de CE lead, tous
+        statuts et toutes cadences confondus (tri cadence puis ordre) : c'est
+        la FRISE de la fiche lead, qui doit montrer le passé autant que le
+        futur — `scope` est alors ignoré. La visibilité reste garantie par
+        ``get_queryset`` : un lead hors portée renvoie une liste vide, jamais
+        un 403 qui confirmerait son existence."""
+        lead_id = request.query_params.get('lead')
+        if lead_id:
+            qs = (self.get_queryset().filter(lead_id=lead_id)
+                  .select_related('lead', 'lead__owner', 'devis')
+                  .order_by('cadence', 'ordre', 'due_date'))
+        else:
+            from .selectors import relance_etapes_dues
+            scope = request.query_params.get('scope', 'today')
+            owner = request.query_params.get('owner')
+            qs = relance_etapes_dues(
+                request.user.company, request.user, scope=scope, owner=owner)
         serializer = self.get_serializer(qs, many=True)
         return Response({'count': qs.count(), 'results': serializer.data})
 
     def _marquer(self, request, statut):
         etape = self.get_object()
         note = (request.data.get('note') or '').strip()
-        from .services import marquer_etape_relance
-        etape = marquer_etape_relance(etape, request.user, statut, note=note)
+        outcome = (request.data.get('outcome') or '').strip()
+        body = (request.data.get('body') or '').strip()
+        from .models import LeadActivity as _LeadActivity
+        if outcome and outcome not in {
+                k for k, _ in _LeadActivity.OUTCOMES}:
+            return Response(
+                {'outcome': 'Issue inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # MRY10 — « rappelez-moi jeudi » saisi DEPUIS la touche : elle est
+        # reportée, plutôt que marquée faite et oubliée.
+        rappel_le = (request.data.get('rappel_le') or '').strip()
+        quand = None
+        if rappel_le:
+            quand = _parse_rappel(
+                rappel_le, (request.data.get('rappel_heure') or '').strip())
+            if quand is None:
+                return Response(
+                    {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
+                                  'heure HH:MM optionnelle).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        from .services import marquer_etape_relance, reporter_prochaine_touche
+        etape = marquer_etape_relance(
+            etape, request.user, statut, note=note, outcome=outcome,
+            body=body)
+        if quand is not None:
+            reporter_prochaine_touche(etape.lead, request.user, quand)
         return Response(self.get_serializer(etape).data)
 
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
-        """Marque cette étape de relance FAITE (note optionnelle)."""
+        """Marque cette étape FAITE.
+
+        Corps : ``{note?, outcome?, body?, rappel_le?, rappel_heure?}``.
+        L'``outcome`` déclenche les règles d'arrêt de MRY9 (« joint » arrête
+        la prise de contact) ; ``rappel_le`` reporte la touche suivante."""
         return self._marquer(request, RelanceEtape.Statut.FAIT)
 
     @action(detail=True, methods=['post'])
     def sauter(self, request, pk=None):
         """Marque cette étape de relance SAUTÉE (note optionnelle)."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
+
+    @action(detail=True, methods=['get'])
+    def message(self, request, pk=None):
+        """MRY13 — Le message de CETTE touche, rendu côté serveur.
+
+        Forme `relance_etape_message` (contrat MRY25). LECTURE PURE : rien
+        n'est envoyé, rien n'est marqué — l'écran affiche une modale d'aperçu
+        et c'est le clic humain qui ouvre WhatsApp (décision D5)."""
+        etape = self.get_object()
+        from .services import message_pour_etape
+        return Response(message_pour_etape(
+            etape, request=request, user=request.user))
+
+    @action(detail=True, methods=['post'])
+    def whatsapp(self, request, pk=None):
+        """MRY13 — Le CLIC : même rendu, puis la touche est marquée faite.
+
+        Le POST n'envoie RIEN (décision D5) : il enregistre qu'on a ouvert la
+        conversation. Marquer côté serveur est le seul moyen que la file du
+        lendemain soit juste. Refusé (400) si le numéro est inexploitable —
+        prétendre avoir contacté quelqu'un qu'on ne peut pas joindre fausserait
+        aussi bien la file que le KPI."""
+        etape = self.get_object()
+        from .services import (
+            marquer_etape_relance, marquer_premier_contact, message_pour_etape,
+        )
+        rendu = message_pour_etape(etape, request=request, user=request.user)
+        if not rendu.get('wa_url'):
+            return Response(
+                {'detail': 'Numéro de téléphone invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        etape = marquer_etape_relance(
+            etape, request.user, RelanceEtape.Statut.FAIT,
+            note='WhatsApp ouvert')
+        marquer_premier_contact(etape.lead)
+        try:
+            from apps.audit.models import AuditLog
+            from apps.audit.recorder import record
+            record(AuditLog.Action.WHATSAPP, instance=etape.lead,
+                   detail=f'Message de relance ouvert (touche #{etape.pk})')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'MRY13: AuditLog non écrit (étape #%s)', etape.pk,
+                exc_info=True)
+        rendu['etape'] = self.get_serializer(etape).data
+        return Response(rendu)
+
+    @action(detail=True, methods=['post'])
+    def reporter(self, request, pk=None):
+        """MRY10 — Reporte CETTE touche (et décale les suivantes du même
+        delta). Corps : ``{due_at}`` (ISO) ou ``{rappel_le, rappel_heure?}``.
+
+        Décaler la seule touche du jour serait faux : les suivantes se
+        téléscoperaient avec elle."""
+        etape = self.get_object()
+        brut = (request.data.get('due_at') or '').strip()
+        quand = None
+        if brut:
+            from django.utils.dateparse import parse_datetime
+            try:
+                quand = parse_datetime(brut)
+            except ValueError:
+                quand = None
+        elif request.data.get('rappel_le'):
+            quand = _parse_rappel(
+                (request.data.get('rappel_le') or '').strip(),
+                (request.data.get('rappel_heure') or '').strip())
+        if quand is None:
+            return Response(
+                {'due_at': 'Échéance invalide (datetime ISO attendu).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .services import reporter_prochaine_touche
+        etape = reporter_prochaine_touche(
+            etape.lead, request.user, quand, etape=etape)
+        return Response(self.get_serializer(etape).data)
 
 
 class EquipeCommercialeViewSet(CompanyScopedModelViewSet):

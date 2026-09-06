@@ -278,6 +278,29 @@ class NotationFinChantierApiTests(TestCase):
         resp = self.client.get(f'{self.NOTATIONS}peut-cloturer/?chantier_id=abc')
         self.assertEqual(resp.status_code, 400)
 
+    # --- AUDV13 (DRAFT165-78) — ``derniere/`` (notation_fin_chantier_latest) -
+
+    def test_derniere_action_renvoie_la_plus_recente(self):
+        make_notation(self.co, chantier_id=60)
+        plus_recente = make_notation(self.co, chantier_id=60)
+        resp = self.client.get(f'{self.NOTATIONS}derniere/?chantier_id=60')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['id'], plus_recente.id)
+
+    def test_derniere_action_404_sans_notation(self):
+        resp = self.client.get(f'{self.NOTATIONS}derniere/?chantier_id=999')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_derniere_action_chantier_id_requis(self):
+        resp = self.client.get(f'{self.NOTATIONS}derniere/')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_derniere_action_isolation_societe(self):
+        other = make_company('qhse17-api-derniere-b', 'B17bis')
+        make_notation(other, chantier_id=61)
+        resp = self.client.get(f'{self.NOTATIONS}derniere/?chantier_id=61')
+        self.assertEqual(resp.status_code, 404)
+
     # --- ItemNotation CRUD ---------------------------------------------------
 
     def test_create_item_forces_company(self):

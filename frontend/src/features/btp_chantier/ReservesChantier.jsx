@@ -40,6 +40,14 @@ export default function ReservesChantier() {
     btpChantierApi.reserves.list, params, [chantierId, lot, statut, gravite],
   )
 
+  // AUDV25 (DRAFT165-6) — widget « réserves bloquantes actives » : gravité
+  // BLOQUANTE + statut OUVERTE/EN_COURS combinés en un seul appel (un
+  // `?statut=` à valeur unique du filtre ci-dessus ne peut pas l'exprimer).
+  // Filtré sur le chantier sélectionné ; toute la société sinon.
+  const { data: reservesBloquantes } = useBtpChantierResource(
+    btpChantierApi.reserves.bloquantes, chantierId || undefined, [chantierId],
+  )
+
   // ── Plan (image de fond, document GED) ──────────────────────────────────
   const [planInput, setPlanInput] = useState('')
   const [planDocId, setPlanDocId] = useState('')
@@ -166,6 +174,26 @@ export default function ReservesChantier() {
         <MapPin size={20} strokeWidth={1.75} aria-hidden="true" />
         <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Réserves de chantier</h1>
       </div>
+
+      {/* AUDV25 (DRAFT165-6) — widget « réserves bloquantes actives ». */}
+      {reservesBloquantes.length > 0 && (
+        <div
+          role="alert"
+          data-testid="reserves-bloquantes-widget"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+            padding: '8px 12px', borderRadius: 8,
+            background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b',
+          }}
+        >
+          <AlertTriangle size={16} strokeWidth={1.75} aria-hidden="true" />
+          <span>
+            {reservesBloquantes.length} réserve{reservesBloquantes.length > 1 ? 's' : ''} bloquante
+            {reservesBloquantes.length > 1 ? 's' : ''} active{reservesBloquantes.length > 1 ? 's' : ''}
+            {chantierId ? ' sur ce chantier' : ' (toute la société)'}
+          </span>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <ChantierSelect value={chantierId} onChange={setChantierId} />

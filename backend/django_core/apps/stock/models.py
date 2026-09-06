@@ -415,6 +415,24 @@ class AchatsParametres(models.Model):
         max_digits=12, decimal_places=2, default=0)
     tolerance_quantite_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=0)
+    # AUD233 — [DÉCISION FONDATEUR 03/09/2026] le rapprochement 3 voies
+    # (commandé/reçu/facturé) était OPT-IN PAR BON DE COMMANDE et jamais
+    # auto-créé : `creer_rapprochement_3voies` n'avait qu'UN appelant, une
+    # action manuelle explicite. Par défaut, une facture fournisseur pouvait
+    # donc être payée pour PLUS que ce qui avait été reçu sans qu'aucune
+    # alerte ne se déclenche — `rapprochement_ecart_pct` renvoyait `None` et
+    # `evaluate_facture_exception` était un no-op structurel.
+    #
+    # ON par défaut : le Rapprochement est désormais créé/rafraîchi tout seul
+    # à la confirmation d'une réception et à l'évaluation d'une facture liée à
+    # un BCF. JAMAIS RÉTROACTIF : l'auto-création est pilotée par des
+    # ÉVÉNEMENTS, donc un BCF déjà reçu et facturé avant cette bascule n'en
+    # produit aucun et reste exactement dans l'état où le fondateur l'a laissé.
+    rapprochement_3voies_auto = models.BooleanField(
+        default=True,
+        help_text='Crée et rafraîchit automatiquement le rapprochement 3 '
+                  'voies à la réception et à la facturation d\'un BCF. '
+                  'Jamais rétroactif sur l\'historique.')
     # XPUR13 — écart % (par rapport au dernier prix / prix moyen d'achat)
     # au-delà duquel une ligne de BCF lève un warning « prix hors norme ».
     # 0 = comportement historique inchangé (aucun seuil, pas de warning
@@ -1511,8 +1529,13 @@ class AcompteFournisseur(models.Model):
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='acomptes_fournisseur')
+    # AUD207 — PROTECT (était CASCADE) : un BCF portant un acompte réellement
+    # versé ne doit jamais pouvoir l'effacer silencieusement à sa
+    # suppression. `BonCommandeFournisseurViewSet.perform_destroy` refuse
+    # déjà en 400 explicite AVANT ce point (cette contrainte DB est le filet
+    # de sécurité pour tout autre chemin de suppression, y compris l'admin).
     bon_commande = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
+        'achats.BonCommandeFournisseur', on_delete=models.PROTECT,
         related_name='acomptes')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
     date_versement = models.DateField(null=True, blank=True)
@@ -2165,9 +2188,23 @@ class FicheTechnique(models.Model):
                   'alors son hypothèse de référence et le dit.')
 
     # ── PDF constructeur d'origine (optionnel) ──
+    #
+    # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
+    # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/``,
+    # sans ``location /media/`` nginx — le PDF n'était téléchargeable par
+    # personne. Le contenu vit désormais dans MinIO (``records.storage``),
+    # désigné par ``pdf_key``.
     pdf = models.FileField(
         upload_to='stock/fiches_techniques/%Y/%m/', null=True, blank=True,
-        help_text='Fiche technique PDF du constructeur.')
+        help_text='Fiche technique PDF du constructeur (legacy, hors MinIO).')
+    pdf_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    pdf_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    pdf_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    pdf_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)

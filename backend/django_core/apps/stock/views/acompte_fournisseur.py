@@ -29,7 +29,7 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_versement', '-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['ouverts']:
             return [IsAnyRole()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -45,3 +45,12 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='ouverts')
+    def ouverts(self, request):
+        """XPUR8 (AUDV04/DRAFT165-113) — acomptes fournisseur PARTIELLEMENT/
+        NON consommés de la société, pour l'écran Achats/trésorerie. Sélecteur
+        dédié (jamais dupliqué) : `selectors.acomptes_fournisseur_ouverts`."""
+        from ..selectors import acomptes_fournisseur_ouverts
+        rows = acomptes_fournisseur_ouverts(request.user.company)
+        return Response(rows)

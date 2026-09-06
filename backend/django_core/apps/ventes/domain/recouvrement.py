@@ -586,6 +586,15 @@ def _nudge_suppressed(devis, today, engagement_days=3):
     effort : toute erreur → False (on ne bloque jamais une relance par bug)."""
     from datetime import timedelta
     try:
+        # MRY7 — QUATRIÈME signal, et le plus fort : ce devis porte-t-il une
+        # cadence de relance MRY encore ouverte ? Si oui, le moteur de Meryem
+        # s'en occupe déjà — laisser passer la relance vendeur enverrait DEUX
+        # messages au même client, le même jour, depuis deux systèmes. Les
+        # sociétés SANS cadence gardent QJ4 inchangé. Import LOCAL du
+        # sélecteur crm, jamais de `crm.models` (frontière M3).
+        from apps.crm.selectors import devis_a_cadence_active
+        if devis_a_cadence_active(getattr(devis, 'pk', None)):
+            return True
         lead_id = getattr(devis, 'lead_id', None)
         if lead_id:
             from apps.crm import selectors as crm_selectors

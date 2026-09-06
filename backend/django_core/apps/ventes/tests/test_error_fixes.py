@@ -204,6 +204,58 @@ class TestMarquerLivreDecimal(TestCase):
         self.assertEqual(mv.quantite_apres, 6)
 
 
+class TestMarquerLivreStockNegatifAutorise(TestCase):
+    """AUD228 — `AchatsParametres.stock_negatif_autorise` était ignoré par
+    `marquer-livre` (blocage en dur, quel que soit le réglage société).
+    Routé par `check_negative_stock_guard` : refus INCHANGÉ par défaut,
+    passage en négatif autorisé quand le réglage société l'active."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('mlv-negatif-co')
+        cls.user = User.objects.create_user(
+            username='mlv_negatif_resp', password='x',
+            role_legacy='responsable', company=cls.company)
+        cls.client_obj = make_client(cls.company, email='mlv-negatif@example.com')
+        cls.produit = Produit.objects.create(
+            company=cls.company, nom='Onduleur 5kW', sku='OND-MLVNEG',
+            prix_vente=Decimal('5000'), quantite_stock=2)
+        cls.devis = Devis.objects.create(
+            company=cls.company, reference=f'DEV-{MONTH}-1601',
+            client=cls.client_obj, statut=Devis.Statut.ACCEPTE)
+        LigneDevis.objects.create(
+            devis=cls.devis, produit=cls.produit, designation='Onduleur 5kW',
+            quantite=Decimal('3'), prix_unitaire=Decimal('5000'))
+        cls.bc = BonCommande.objects.create(
+            company=cls.company, reference=f'BC-{MONTH}-1601',
+            devis=cls.devis, client=cls.client_obj,
+            statut=BonCommande.Statut.CONFIRME)
+
+    def setUp(self):
+        self.api = auth(self.user)
+
+    def test_refuse_par_defaut(self):
+        # Stock 2, demande 3 → insuffisant, réglage société par défaut OFF.
+        r = self.api.post(
+            f'/api/django/ventes/bons-commande/{self.bc.id}/marquer-livre/')
+        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertIn('Stock insuffisant', r.data['detail'])
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 2)  # inchangé
+
+    def test_autorise_si_reglage_societe_actif(self):
+        from apps.stock.models import AchatsParametres
+        parametres = AchatsParametres.for_company(self.company)
+        parametres.stock_negatif_autorise = True
+        parametres.save()
+
+        r = self.api.post(
+            f'/api/django/ventes/bons-commande/{self.bc.id}/marquer-livre/')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, -1)
+
+
 class TestLegacyFactureHonorsOption(TestCase):
     """ERR16 — la voie legacy BC→Facture ne facture QUE les lignes de l'option
     retenue (« Sans batterie » / « Avec batterie »), pas les deux."""

@@ -10,6 +10,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.records.storage import AttachmentSerializerMixin, attachment_url
+
 from .models import (
     AcompteIS, ConventionFiscale,
     AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
@@ -81,6 +83,12 @@ from .models import (
     # paramétrables) : services complets, aucun ViewSet jusqu'ici.
     Emprunt, EcheanceEmprunt,
     EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
+    # AUDV06 / XACC17-XACC18 — devises : taux, postes ouverts, écarts de
+    # change réalisés et runs de réévaluation de clôture.
+    TauxDevise, ItemOuvertDevise, EcartChange, ReevaluationCloture,
+    LigneReevaluation,
+    # AUDV09 / XACC20 — règles d'auto-imputation analytique.
+    RegleImputation, LigneRegleImputation,
 )
 
 
@@ -171,6 +179,15 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'date_creation', 'source_type', 'source_id', 'total_debit',
             'total_credit', 'valide_par', 'date_validation',
+            # AUD804 — ``statut`` était dans ``fields`` mais ABSENT d'ici,
+            # contrairement à `NoteFraisSerializer`/`ExerciceComptableSerializer`
+            # du même fichier : un porteur de `compta_saisir` seul créait une
+            # écriture puis `PATCH {"statut":"validee"}` → 200, écriture VALIDÉE
+            # sans jamais passer par `services.valider_ecriture`, donc sans le
+            # contrôle à quatre yeux COMPTA40 (`created_by` ≠ valideur) et avec
+            # `valide_par`/`date_validation` restés NULL. La transition ne passe
+            # plus QUE par l'action `valider` du ViewSet.
+            'statut',
         ]
 
     def get_total_debit(self, obj):
@@ -218,6 +235,19 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
         return ecriture
 
     def update(self, instance, validated_data):
+        # AUD804 — refus EN ENTIER de la mise à jour d'une écriture VALIDÉE.
+        # Le refus ne peut pas se limiter au champ `statut` : ce bloc SUPPRIME
+        # puis RECRÉE les lignes, donc un porteur de `compta_saisir` seul
+        # pouvait réécrire montants et comptes d'une écriture déjà validée sans
+        # jamais toucher au statut — le grand livre changeait sous une
+        # validation posée. L'extourne (`services.extourner_ecriture`) est le
+        # seul chemin légitime de correction. Garde miroir côté modèle
+        # (`EcritureComptable._verifier_non_validee`) pour les chemins ORM.
+        if instance.statut == EcritureComptable.Statut.VALIDEE:
+            raise serializers.ValidationError(
+                "Écriture validée : elle ne peut plus être modifiée. "
+                "Passez une écriture d'extourne (contre-passation) pour la "
+                "corriger.")
         lignes = validated_data.pop('lignes', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -1022,27 +1052,40 @@ class PlanRelanceTresorerieSerializer(serializers.ModelSerializer):
         return value
 
 
-class NoteFraisSerializer(serializers.ModelSerializer):
+class NoteFraisSerializer(AttachmentSerializerMixin,
+                          serializers.ModelSerializer):
     """Note de frais employé (FG135).
 
     La création n'expose que les champs de saisie (employé, dépense,
     justificatif photo) ; ``company``/``reference``/statut et les écritures sont
     posés côté serveur. Le cycle (soumise/validée/rejetée/remboursée) évolue par
     les actions de service, jamais par écriture directe du corps.
+
+    AUD835 — le justificatif part dans MinIO : ``justificatif`` est l'entrée
+    d'upload (écriture seule, routée par ``services.creer_note_frais`` à la
+    création et par le mixin sur une mise à jour), ``justificatif_url`` l'URL
+    présignée de relecture (``None`` pour une note antérieure à la bascule).
     """
+    attachment_fields = ('justificatif',)
+
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     employe_nom = serializers.CharField(
         source='employe.get_full_name', read_only=True, default='')
+    justificatif = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    justificatif_url = serializers.SerializerMethodField()
 
     class Meta:
         model = NoteFrais
         fields = [
             'id', 'reference', 'employe', 'employe_nom', 'date_frais',
             'categorie', 'categorie_display', 'montant', 'motif',
-            'justificatif', 'statut', 'statut_display', 'compte_charge',
+            'justificatif', 'justificatif_url', 'justificatif_filename',
+            'justificatif_size', 'justificatif_mime',
+            'statut', 'statut_display', 'compte_charge',
             'valide_par', 'date_validation', 'ecriture_charge', 'motif_rejet',
             'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
             'rembourse_par', 'ecriture_remboursement', 'date_creation',
@@ -1058,7 +1101,12 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
             'date_creation', 'hors_politique', 'facture_refacturation_id',
             'escalade_direction', 'warning_delai',
+            'justificatif_filename', 'justificatif_size', 'justificatif_mime',
         ]
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_justificatif_url(self, obj):
+        return attachment_url(obj, 'justificatif')
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
@@ -1590,11 +1638,23 @@ class BudgetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Budget
+        # AUDV09/XACC22 — `version`, `figee`, `scenario` et `budget_parent`
+        # sont TOUT l'objet de la révision budgétaire (l'action `reviser/`
+        # renvoie la V+1) : sans eux au contrat, l'écran ne peut ni annoncer la
+        # version créée, ni distinguer une version figée d'une version
+        # éditable, ni relier une révision à celle dont elle descend. Tous
+        # dérivés côté serveur (`services.reviser_budget` /
+        # `services.scenario_what_if`), donc en LECTURE SEULE : jamais acceptés
+        # du corps de requête.
         fields = [
             'id', 'annee', 'libelle', 'statut', 'statut_display', 'lignes',
+            'version', 'figee', 'scenario', 'budget_parent',
             'created_by', 'date_creation',
         ]
-        read_only_fields = ['statut', 'created_by', 'date_creation']
+        read_only_fields = [
+            'statut', 'version', 'figee', 'scenario', 'budget_parent',
+            'created_by', 'date_creation',
+        ]
 
 
 # ── FG150 — Comptabilité analytique / centres de coût ──────────────────────
@@ -2522,7 +2582,15 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
             self, value, _resoudre_facture, 'Facture')
 
 
-class DocumentClientPortailSerializer(serializers.ModelSerializer):
+class DocumentClientPortailSerializer(AttachmentSerializerMixin,
+                                      serializers.ModelSerializer):
+    # AUD835 — l'upload part dans MinIO (``records.storage``) au lieu du
+    # ``FileField`` irrécupérable ; le dépôt GED canonique (WIR94) relit les
+    # octets par la clé (``apps/portail/receivers.py``). Le champ reste
+    # ÉCRIVABLE et jamais rendu : on n'expose toujours aucune URL brute, la
+    # relecture passe par la GED authentifiée (``lien_ged``).
+    attachment_fields = ('fichier',)
+
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
     client_id = serializers.IntegerField(min_value=0)
     lead_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
@@ -2554,8 +2622,13 @@ class DocumentClientPortailSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.BooleanField())
     def get_fichier_present(self, obj):
-        """Y a-t-il un binaire déposé ? (sans jamais publier son URL brute)"""
-        return bool(getattr(obj, 'fichier', None))
+        """Y a-t-il un binaire déposé ? (sans jamais publier son URL brute)
+
+        AUD835 — une clé MinIO compte autant que l'ancien ``FileField`` : un
+        document déposé après la bascule n'a plus que la clé.
+        """
+        return bool(getattr(obj, 'fichier_key', '')
+                    or getattr(obj, 'fichier', None))
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lien_ged(self, obj):
@@ -2870,14 +2943,36 @@ class CompteAuxiliaireSerializer(serializers.ModelSerializer):
 
 # ── COMPTA10 — Pièces justificatives sur écriture ──────────────────────────
 
-class PieceJustificativeSerializer(serializers.ModelSerializer):
+class PieceJustificativeSerializer(AttachmentSerializerMixin,
+                                   serializers.ModelSerializer):
+    """AUD835 — la pièce part dans MinIO (``records.storage``), plus dans un
+    ``FileField`` dont l'URL ne résolvait nulle part.
+
+    ``fichier`` reste l'entrée d'upload (multipart, écriture seule) ;
+    ``fichier_url`` est l'URL présignée dérivée de la clé — ``None`` pour une
+    pièce déposée avant la bascule, jamais une URL morte.
+    """
+    attachment_fields = ('fichier',)
+
+    fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PieceJustificative
         fields = [
-            'id', 'ecriture', 'libelle', 'fichier', 'ajoute_par',
+            'id', 'ecriture', 'libelle', 'fichier', 'fichier_url',
+            'fichier_filename', 'fichier_size', 'fichier_mime', 'ajoute_par',
             'date_creation',
         ]
-        read_only_fields = ['ajoute_par', 'date_creation']
+        read_only_fields = [
+            'ajoute_par', 'date_creation', 'fichier_filename', 'fichier_size',
+            'fichier_mime',
+        ]
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_fichier_url(self, obj):
+        return attachment_url(obj, 'fichier')
 
     def validate_ecriture(self, value):
         return _meme_societe(self, value, 'Écriture')
@@ -3513,7 +3608,14 @@ class DepreciationImmobilisationSerializer(serializers.ModelSerializer):
 
 
 class MutationImmobilisationSerializer(serializers.ModelSerializer):
-    """NTFIN42 — Mutation/transfert d'immobilisation."""
+    """NTFIN42 — Mutation/transfert d'immobilisation.
+
+    AUDV05 — ``entite_source`` est en LECTURE SEULE : elle est DÉRIVÉE de la
+    société propriétaire de l'immobilisation par
+    ``services.muter_immobilisation``, jamais lue du corps. Laisser le client
+    la déclarer permettait d'inventer une entité d'origine pour un actif dont
+    le serveur connaît déjà le propriétaire.
+    """
     class Meta:
         model = MutationImmobilisation
         fields = [
@@ -3521,7 +3623,7 @@ class MutationImmobilisationSerializer(serializers.ModelSerializer):
             'entite_source', 'entite_cible', 'date', 'motif',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['entite_source', 'created_at', 'updated_at']
 
 
 class LigneImmobilisationEnCoursSerializer(serializers.ModelSerializer):
@@ -3843,3 +3945,164 @@ class EtatPersonnaliseSerializer(serializers.ModelSerializer):
             'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
+
+
+# ── AUDV06 / XACC17-XACC18 — Devises : taux, postes ouverts, écarts ────────
+
+class TauxDeviseSerializer(serializers.ModelSerializer):
+    """Taux de change quotidien ``devise`` → MAD (XACC17).
+
+    AUDV06 — le modèle et ``services.enregistrer_taux_devise`` existaient sans
+    aucun ViewSet : la table FX était inatteignable hors admin Django, donc
+    tout document en devise retombait sur le repli 1:1. La création est ROUTÉE
+    par le service (upsert par (société, devise, jour) ; règle « never snap » :
+    un feed n'écrase JAMAIS une saisie manuelle du même jour).
+    """
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
+
+    class Meta:
+        model = TauxDevise
+        fields = [
+            'id', 'devise', 'date_taux', 'taux_vers_mad', 'source',
+            'source_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_devise(self, value):
+        devise = (value or '').upper()
+        if not devise:
+            raise serializers.ValidationError('Devise requise.')
+        if devise == 'MAD':
+            raise serializers.ValidationError(
+                "MAD n'a pas besoin de table de taux (1:1).")
+        return devise
+
+    def validate_taux_vers_mad(self, value):
+        if value is None or Decimal(value) <= 0:
+            raise serializers.ValidationError(
+                'Un taux de change doit être strictement positif.')
+        return value
+
+
+class EcartChangeSerializer(serializers.ModelSerializer):
+    """Écart de change RÉALISÉ au règlement (XACC18) — LECTURE SEULE.
+
+    Un écart ne se saisit pas : il est CONSTATÉ par
+    ``services.constater_ecart_change`` au règlement (gain 733 / perte 633).
+    """
+    class Meta:
+        model = EcartChange
+        fields = [
+            'id', 'item', 'date_reglement', 'taux_reglement', 'difference',
+            'posted', 'ecriture', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class ItemOuvertDeviseSerializer(serializers.ModelSerializer):
+    """Poste ouvert en devise suivi pour l'écart de change (XACC18).
+
+    ``taux_origine`` est FIGÉ à la création : ré-enregistrer le même document
+    renvoie l'item existant sans l'écraser — c'est la référence contre
+    laquelle l'écart sera mesuré. ``solde`` bascule au constat de l'écart,
+    jamais par le corps de la requête.
+    """
+    type_document_display = serializers.CharField(
+        source='get_type_document_display', read_only=True)
+    contre_valeur_origine = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    ecart_change = EcartChangeSerializer(read_only=True)
+
+    class Meta:
+        model = ItemOuvertDevise
+        fields = [
+            'id', 'type_document', 'type_document_display', 'document_id',
+            'document_reference', 'devise', 'montant_devise', 'taux_origine',
+            'date_origine', 'solde', 'contre_valeur_origine', 'ecart_change',
+            'date_creation',
+        ]
+        read_only_fields = ['solde', 'date_creation']
+
+    def validate_devise(self, value):
+        devise = (value or '').upper()
+        if not devise:
+            raise serializers.ValidationError('Devise requise.')
+        if devise == 'MAD':
+            raise serializers.ValidationError(
+                "Un document en MAD n'a pas besoin de suivi de change.")
+        return devise
+
+    def validate_taux_origine(self, value):
+        if value is None or Decimal(value) <= 0:
+            raise serializers.ValidationError(
+                "Le taux d'origine doit être strictement positif.")
+        return value
+
+
+class LigneReevaluationSerializer(serializers.ModelSerializer):
+    """Détail par poste d'un run de réévaluation de clôture (XACC18)."""
+    document_reference = serializers.CharField(
+        source='item.document_reference', read_only=True)
+    devise = serializers.CharField(source='item.devise', read_only=True)
+
+    class Meta:
+        model = LigneReevaluation
+        fields = [
+            'id', 'item', 'document_reference', 'devise', 'taux_cloture',
+            'ecart',
+        ]
+        read_only_fields = fields
+
+
+class LigneRegleImputationSerializer(serializers.ModelSerializer):
+    """Part (%) d'une règle d'imputation affectée à un centre de coût (XACC20)."""
+    centre_cout_libelle = serializers.CharField(
+        source='centre_cout.libelle', read_only=True)
+
+    class Meta:
+        model = LigneRegleImputation
+        fields = ['id', 'centre_cout', 'centre_cout_libelle', 'pourcentage']
+        read_only_fields = ['id']
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')
+
+
+class RegleImputationSerializer(serializers.ModelSerializer):
+    """Règle d'AUTO-imputation analytique (XACC20).
+
+    AUDV09 — la règle et son moteur d'application existaient sans aucun
+    ViewSet : chaque écriture devait être ventilée à la main, indéfiniment.
+    Les ``distributions`` sont acceptées IMBRIQUÉES ; la vue route la création
+    vers ``services.creer_regle_imputation``, qui EXIGE une somme de 100 % —
+    une distribution partielle imputerait silencieusement une partie de la
+    charge nulle part.
+    """
+    distributions = LigneRegleImputationSerializer(many=True, required=False)
+
+    class Meta:
+        model = RegleImputation
+        fields = [
+            'id', 'libelle', 'prefixe_compte', 'tiers_id', 'produit_id',
+            'priorite', 'actif', 'distributions', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ReevaluationClotureSerializer(serializers.ModelSerializer):
+    """Run de réévaluation de clôture des postes en devise (XACC18).
+
+    LECTURE SEULE : un run naît de l'action ``lancer`` (idempotente par
+    (société, date de clôture)), qui poste l'écart LATENT et son extourne
+    datée du lendemain. Le rejouer ne double jamais l'écriture.
+    """
+    lignes = LigneReevaluationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ReevaluationCloture
+        fields = [
+            'id', 'date_cloture', 'date_extourne', 'ecriture',
+            'ecriture_extourne', 'total_ecart', 'lignes', 'date_creation',
+        ]
+        read_only_fields = fields

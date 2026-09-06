@@ -88,6 +88,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import re
 from pathlib import Path
 
@@ -1232,6 +1233,155 @@ def write_baseline(entries: set, path: Path = BASELINE_PATH):
                     encoding="utf-8", newline="\n")
 
 
+# ===========================================================================
+# 5bis. Plancher d'inventaire versionne (AUD832)
+# ===========================================================================
+#
+# Une garde qui conclut sur une simple ABSENCE de constat rend 0 aussi bien
+# quand tout va bien que quand elle n'a RIEN analyse : « OK : 0 appel(s)
+# verifies » est un vert. Deplacez `frontend/src`, cassez l'heuristique de
+# reconnaissance du client HTTP, et la garde nee de l'incident du 03/08/2026
+# cesse de garder sans un seul signal. Le plancher ci-dessous rend cette
+# panne IMPOSSIBLE a rater : chaque garde enterine son inventaire dans
+# scripts/contract_inventory.json et echoue si le reel chute de plus de 30 %
+# sous la valeur committee, en NOMMANT la surface analysee en cause.
+#
+# Partage par check_api_shapes.py et check_ecrans_atteignables.py (qui
+# importent deja d'ici).
+
+INVENTORY_PATH = ROOT / "scripts" / "contract_inventory.json"
+# 30 % : large assez pour un vrai nettoyage (suppression d'app, parcage d'un
+# vertical), jamais assez pour laisser passer un effondrement a zero.
+INVENTORY_TOLERANCE = 0.30
+
+INVENTORY_HEADER = (
+    "Inventaire de reference des gardes de contrat (AUD832). Chaque compteur "
+    "est un PLANCHER : la garde echoue si le reel chute de plus de 30 % sous "
+    "la valeur enterinee ici, parce qu'une garde qui n'analyse plus rien rend "
+    "0 comme une garde satisfaite. Enteriner une baisse VOULUE : python "
+    "scripts/<garde>.py --write-inventory (le diff est la revue). Ce fichier "
+    "ne doit JAMAIS etre supprime : un fichier absent est une erreur, pas un "
+    "plancher a zero."
+)
+
+
+def load_inventory(path: Path | None = None) -> dict:
+    """Inventaire enterine. Fichier ABSENT ou illisible = ERREUR, jamais zero."""
+    path = path or INVENTORY_PATH
+    if not path.is_file():
+        raise SystemExit(
+            f"ECHEC : inventaire de reference introuvable ({path}).\n"
+            "Un fichier manquant ne vaut PAS un plancher a zero : sans lui "
+            "aucune garde ne peut prouver qu'elle a analyse quoi que ce soit.\n"
+            "Restaurez-le (git checkout scripts/contract_inventory.json) ou, "
+            "si la baisse est voulue, enterinez : "
+            "python scripts/<garde>.py --write-inventory"
+        )
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            f"ECHEC : inventaire de reference illisible ({path}) : {exc}"
+        )
+    if not isinstance(data, dict):
+        raise SystemExit(
+            f"ECHEC : inventaire de reference malforme ({path}) : objet attendu."
+        )
+    return data
+
+
+def verifier_plancher(garde: str, mesures: dict,
+                      path: Path | None = None,
+                      tolerance: float = INVENTORY_TOLERANCE) -> list:
+    """Rend la liste des messages d'echec (vide = plancher tenu).
+
+    `mesures` = {cle: valeur mesuree}. L'entree enterinee porte la valeur ET le
+    chemin de la surface analysee, pour que l'echec NOMME le coupable.
+    """
+    path = path or INVENTORY_PATH
+    inventaire = load_inventory(path)
+    attendu = inventaire.get(garde)
+    if not isinstance(attendu, dict):
+        raise SystemExit(
+            f"ECHEC : '{garde}' n'a aucune entree dans {path.name}. "
+            "Une garde sans plancher est une garde qui peut se vider en "
+            "silence — enterinez le sien : "
+            f"python scripts/{garde}.py --write-inventory"
+        )
+    echecs = []
+    for cle, valeur in sorted(mesures.items()):
+        entree = attendu.get(cle)
+        if not isinstance(entree, dict) or "valeur" not in entree:
+            raise SystemExit(
+                f"ECHEC : compteur '{garde}.{cle}' absent de {path.name}. "
+                f"Enterinez-le : python scripts/{garde}.py --write-inventory"
+            )
+        reference = int(entree["valeur"])
+        chemin = entree.get("chemin") or "surface non documentee"
+        plancher = int(reference * (1 - tolerance))
+        if valeur < plancher:
+            echecs.append(
+                f"  {garde}.{cle} : {valeur} mesure(s) contre {reference} "
+                f"enterine(s) — plancher {plancher} (-{tolerance:.0%}).\n"
+                f"      surface analysee : {chemin}\n"
+                f"      un correctif ne peut pas faire chuter un INVENTAIRE : "
+                f"soit ce chemin a bouge ou disparu, soit l'heuristique de "
+                f"reconnaissance ne matche plus. La garde a cesse de garder."
+            )
+    return echecs
+
+
+def rapport_plancher(garde: str, mesures: dict,
+                     path: Path | None = None) -> int:
+    """Imprime l'echec de plancher et rend 1, ou rend 0 en silence."""
+    path = path or INVENTORY_PATH
+    echecs = verifier_plancher(garde, mesures, path)
+    if not echecs:
+        return 0
+    print(f"\nECHEC : l'inventaire de {garde} est tombe sous son plancher "
+          f"versionne ({path.name}).\n")
+    for message in echecs:
+        print(message)
+    print("\nUne garde qui n'analyse plus rien conclut « OK : 0 » et rend 0 : "
+          "c'est exactement le faux-vert que ce plancher interdit (AUD832). "
+          "Reparez la surface nommee ci-dessus ; si la baisse est VOULUE et "
+          "assumee, enterinez-la (le diff est la revue) :")
+    print(f"  python scripts/{garde}.py --write-inventory")
+    return 1
+
+
+def write_inventory(garde: str, mesures: dict, surfaces: dict,
+                    path: Path | None = None) -> None:
+    """Enterine l'inventaire de CETTE garde sans toucher a celui des autres."""
+    path = path or INVENTORY_PATH
+    data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    if not isinstance(data, dict):
+        data = {}
+    data["_lisez_moi"] = INVENTORY_HEADER
+    data[garde] = {
+        cle: {"valeur": int(valeur),
+              "chemin": surfaces.get(cle, "surface non documentee")}
+        for cle, valeur in sorted(mesures.items())
+    }
+    ordonne = {"_lisez_moi": data.pop("_lisez_moi")}
+    ordonne.update({cle: data[cle] for cle in sorted(data)})
+    path.write_text(json.dumps(ordonne, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8", newline="\n")
+    try:
+        affiche = path.relative_to(ROOT)
+    except ValueError:                      # chemin hors depot (tests)
+        affiche = path
+    print(f"Inventaire enterine : {affiche} -> {garde} = "
+          + ", ".join(f"{cle}={valeur}" for cle, valeur in sorted(mesures.items())))
+
+
+# Surfaces analysees par CETTE garde, nommees dans le message d'echec.
+INVENTORY_SURFACES = {
+    "routes": "backend/django_core/**/urls.py + views*.py (routes Django/DRF resolues)",
+    "appels": "frontend/src/**/*.{js,jsx,ts,tsx} (appels client HTTP reconnus)",
+}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Garde front<->back : tout chemin appele existe-t-il au backend ?")
@@ -1241,9 +1391,18 @@ def main(argv=None) -> int:
                         help="retire de la base les dettes corrigees")
     parser.add_argument("--autoriser-croissance", action="store_true",
                         help="FONDATEUR UNIQUEMENT : autorise l'ajout de dettes")
+    parser.add_argument("--write-inventory", action="store_true",
+                        help="enterine l'inventaire courant comme nouveau "
+                             "plancher (scripts/contract_inventory.json)")
     args = parser.parse_args(argv)
 
     findings, stats = analyse()
+    mesures = {"routes": stats["routes"], "appels": stats["appels"]}
+
+    if args.write_inventory:
+        write_inventory("check_api_contract", mesures, INVENTORY_SURFACES)
+        return 0
+
     if args.stats:
         print(f"Routes backend resolues : {stats['routes']} "
               f"({stats['registres']} ressources de routeur, {stats['vues']} vues) ; "
@@ -1269,6 +1428,13 @@ def main(argv=None) -> int:
         print(f"Base de reference reecrite : {BASELINE_PATH.relative_to(ROOT)} "
               f"({len(signatures)} entree(s), {len(baseline - signatures)} retiree(s)).")
         return 0
+
+    # AUD832 — avant le verdict : la garde a-t-elle seulement analyse quelque
+    # chose ? « OK : 0 appel(s) » ne doit plus jamais valoir un vert. Verifie
+    # dans le SEUL chemin de verdict (jamais sur `--write-baseline` /
+    # `--write-inventory`, commandes de maintenance explicites).
+    if rapport_plancher("check_api_contract", mesures):
+        return 1
 
     new = [f for f in findings if f[3] not in baseline]
     fixed = baseline - signatures

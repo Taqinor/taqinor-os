@@ -285,3 +285,39 @@ def executer_dunning_daily():
         '%s contrat(s) suspendu(s)',
         total['etapes_jouees'], total['contrats_suspendus'])
     return total
+
+
+@shared_task(name='contrats.cloturer_contrats_impayes_daily')
+def cloturer_contrats_impayes_daily():
+    """AUD524 (ZCTR2) -- LE BEAT QUE CE MODULE AFFIRMAIT DEJA EXISTANT.
+
+    ``cloturer_contrats_impayes`` etait une pure management command, jamais
+    enveloppee en ``@shared_task`` ni inscrite au ``beat_schedule`` -- alors
+    que la docstring d'``executer_dunning_daily`` ci-dessus renvoie noir sur
+    blanc au « beat ``cloturer_contrats_impayes`` separe ». Le contrat sans
+    sequence de dunning n'etait donc JAMAIS suspendu automatiquement : seul un
+    lancement manuel de la commande le faisait.
+
+    Fine enveloppe planifiable : toute la logique reste dans
+    ``services.cloturer_contrats_impayes`` (testable sans Celery), la commande
+    reste utilisable telle quelle. Societes ACTIVES uniquement (AUD415/SCA19),
+    chacune isolee.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    suspendus = 0
+    for company in active_companies():
+        try:
+            suspendus += len(
+                services.cloturer_contrats_impayes(company) or [])
+        except Exception:  # pragma: no cover - defensif, isolation societe
+            logger.warning(
+                'contrats.cloturer_contrats_impayes_daily: echec societe %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.cloturer_contrats_impayes_daily: %s contrat(s) suspendu(s)',
+        suspendus)
+    return {'contrats_suspendus': suspendus}

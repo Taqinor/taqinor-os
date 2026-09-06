@@ -421,6 +421,13 @@ def render_lettre_relance_pdf(facture, niveau, message=None):
     resume = _facture_resume(facture)
     if message is None:
         message = _level_message_for(facture, niveau)
+    # AUD130 — TROISIÈME surface du même défaut : le corps configuré arrivait ici
+    # brut, donc le `{reference}` des niveaux semés s'imprimait littéralement sur
+    # la lettre premium remise au client. Même rendu unique que l'email et la
+    # lettre maison (ce module RESTE un pur rendu — rule #4 : aucun statut touché).
+    if message:
+        from apps.ventes.recouvrement import rendre_message_relance
+        message = rendre_message_relance(message, facture)
     html = build_lettre_relance_html(ctx, client_block, resume, niveau, message)
     return _render_pdf(html)
 

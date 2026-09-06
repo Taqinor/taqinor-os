@@ -222,6 +222,53 @@ class _LazyTargets:
 
 TARGETS = _LazyTargets()
 
+
+def module_proprietaire_de_cible(target):
+    """AUD606 — le module qui DÉCLARE une cible d'import, ou ``''``.
+
+    Lu au registre plateforme (``apps/<x>/platform.py``), jamais d'un ``if`` en
+    dur : c'est ce qui permet de NOMMER l'app à qui parler quand la cible n'est
+    pas servie par l'import générique.
+    """
+    try:
+        from core import platform
+
+        for cle, manifeste in platform.collect_platform_manifests().items():
+            if target in (manifeste.get('import_specs') or ()):
+                return cle
+    except Exception:  # pragma: no cover - registre indisponible
+        pass
+    return ''
+
+
+def verifier_cible_importable(target):
+    """AUD606 — refuse une cible inconnue, PUIS une cible à lecteur propre.
+
+    Quatre cibles (``obstacles``, ``chaines``, ``avis``, ``avis_veille``) sont
+    déclarées importables par le registre plateforme mais N'ONT PAS d'entrée
+    dans ``FIELD_MAPS`` : leur lecture est écrite dans leur app propriétaire
+    (``apps/ao/imports.py``, ``apps/veille_ao/imports.py``), pas ici. Elles
+    passaient donc le contrôle « cible connue » puis explosaient en ``KeyError``
+    sur ``FIELD_MAPS[target]`` — une exception non prévue, attrapée par le
+    ``except Exception`` générique de la vue, qui répondait au client
+    « Lecture du fichier impossible (format invalide ?) » sur un fichier
+    PARFAITEMENT valide. Le diagnostic était FAUX, et il envoyait l'utilisateur
+    corriger un fichier qui n'avait rien.
+
+    Lève ``ValueError`` — que la vue rend telle quelle en 400 lisible.
+    """
+    if target not in TARGETS:
+        raise ValueError("Cible d'import inconnue.")
+    if target not in FIELD_MAPS:
+        module = module_proprietaire_de_cible(target)
+        precision = (f' Elle est servie par le module « {module} ».'
+                     if module else '')
+        raise ValueError(
+            f"La cible « {target} » a son PROPRE écran d'import : elle n'est "
+            f"pas lue par l'import générique.{precision} Le fichier n'est pas "
+            'en cause.')
+
+
 # ERR53 — Plafond de lignes : au-delà, on refuse proprement (ValueError → 400
 # clair côté vue) plutôt que de charger un fichier géant en mémoire et risquer
 # un OOM. Doit rester aligné avec `views.MAX_ROWS`.
@@ -283,8 +330,7 @@ def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
     Sans ``company`` le rapprochement est impossible (multi-tenant) : l'aperçu
     se limite alors au mapping, comme avant.
     """
-    if target not in TARGETS:
-        raise ValueError("Cible d'import inconnue.")
+    verifier_cible_importable(target)
     _check_mode(target, mode)
     headers, rows = parse_rows(file_bytes, filename)
     if len(rows) > MAX_ROWS:
@@ -671,10 +717,23 @@ def _doublon_lead(company, f):
 
 
 def _doublon_client(company, f):
+    """Fiche existante qui fait IGNORER la ligne en mode ``creer``.
+
+    AUD824 — MÊME patron que ``_doublon_lead`` ci-dessus : email d'abord, repli
+    sur le téléphone. Sans ce repli, un carnet d'adresses terrain (nom +
+    téléphone + adresse, SANS colonne email) rejoué deux fois créait un
+    deuxième ``Client`` identique à chaque passage — ``crm.Client`` ne porte
+    aucune ``UniqueConstraint`` sur (company, email) ni (company, telephone),
+    donc rien n'arrêtait la ligne, ni en Python ni en base. L'aperçu, qui
+    rejoue CETTE fonction, mentait de la même façon.
+    """
     from apps.crm.models import Client
     if f.get('email'):
         return Client.objects.filter(
             company=company, email__iexact=f['email']).first()
+    if f.get('telephone'):
+        return Client.objects.filter(
+            company=company, telephone=f['telephone']).first()
     return None
 
 
@@ -700,6 +759,14 @@ def _raison_doublon_produit(f):
     """Motif d'ignorance affiché : dit VRAI sur la clé qui a matché."""
     return ('doublon (SKU existe)' if f.get('sku')
             else 'doublon (nom existe)')
+
+
+def _raison_doublon_client(f):
+    """AUD824 — même convention que ``_raison_doublon_produit`` : le motif
+    affiché nomme la clé qui a RÉELLEMENT matché. Depuis le repli téléphone,
+    « doublon (email existe) » aurait menti sur toutes les lignes sans email."""
+    return ('doublon (email existe)' if f.get('email')
+            else 'doublon (téléphone existe)')
 
 
 def _analyser_conflits(target, rows, mapped, company, mode, external_system,
@@ -754,7 +821,7 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
             else:
                 existing = _doublon_client(company, f)
                 if existing is not None:
-                    action, raison = 'ignoree', 'doublon (email existe)'
+                    action, raison = 'ignoree', _raison_doublon_client(f)
         elif target == 'products':
             existing = _doublon_produit(company, f)
             if existing is not None:
@@ -815,8 +882,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
     dans ``refuses``. ``ecraser=True`` = l'appelant assume les remplacements,
     qui sont alors tous journalisés (``ImportJobRow`` + ``AuditLog``).
     """
-    if target not in TARGETS:
-        raise ValueError("Cible d'import inconnue.")
+    verifier_cible_importable(target)
     # XPLT1 — le rapprochement maj/upsert n'est câblé que pour les cibles où un
     # contact (email/téléphone) permet un rapprochement fiable (leads, clients).
     # Les autres cibles gardent le comportement historique (création seule) et
@@ -932,7 +998,8 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     continue
 
                 if mode == 'creer' and _doublon_client(company, f) is not None:
-                    skipped.append({'ligne': i, 'raison': 'doublon (email existe)'})
+                    skipped.append(
+                        {'ligne': i, 'raison': _raison_doublon_client(f)})
                     continue
                 client = Client.objects.create(company=company, **f)
                 if ext_id:

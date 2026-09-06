@@ -204,7 +204,8 @@ def jour_bloque_conflit(employe, date_debut, date_fin):
 
 def calculer_jours_demande(type_absence, date_debut, date_fin,
                            extra_holidays=None,
-                           demi_journee_debut=False, demi_journee_fin=False):
+                           demi_journee_debut=False, demi_journee_fin=False,
+                           jours_exclus=None):
     """Durée décomptée d'une demande de congé (FG163).
 
     Si ``type_absence.decompte_jours_ouvres`` est vrai, ne compte que les jours
@@ -216,11 +217,23 @@ def calculer_jours_demande(type_absence, date_debut, date_fin,
     0,5 j du total (une demande d'1 jour avec les deux drapeaux reste bornée
     à 0 minimum — jamais négative). Un flag sur une plage de 0 jour (date
     invalide) n'a aucun effet.
+
+    AUDV20/XRH14 — ``jours_exclus`` est l'ensemble des dates DÉJÀ couvertes par
+    une fermeture collective (``selectors.jours_fermeture_exclus``) : elles ne
+    sont JAMAIS décomptées une seconde fois du solde. Sur un type en jours
+    ouvrés elles sont traitées exactement comme un férié ; sur un type en jours
+    calendaires elles sont retranchées du total (bornées à la plage demandée).
     """
+    exclus = {d for d in (jours_exclus or ())
+              if date_debut is not None and date_fin is not None
+              and date_debut <= d <= date_fin}
     if type_absence is not None and type_absence.decompte_jours_ouvres:
-        n = holidays.working_days(date_debut, date_fin, extra_holidays)
+        feries = set(extra_holidays or ()) | exclus
+        n = holidays.working_days(date_debut, date_fin, feries or None)
     else:
         n = holidays.calendar_days(date_debut, date_fin)
+        if n > 0 and exclus:
+            n = max(n - len(exclus), 0)
     jours = Decimal(n)
     if n > 0:
         if demi_journee_debut:
@@ -441,8 +454,10 @@ def valider_demande(demande, decide_par=None):
         raise ValueError(
             "Seule une demande soumise peut être validée.")
     plafond = demande.type_absence.jours_max_sans_justificatif
+    # AUD718 — ``a_justificatif`` accepte la pièce jointe MinIO comme le
+    # FileField legacy : une demande historique reste validable.
     if (plafond is not None and demande.jours is not None
-            and demande.jours > plafond and not demande.justificatif):
+            and demande.jours > plafond and not demande.a_justificatif):
         raise ValueError(
             "Justificatif obligatoire : cette absence de "
             f"{demande.jours} j dépasse le seuil de {plafond} j sans "
@@ -1372,6 +1387,44 @@ def _motif_fermeture(fermeture):
     return f'[Fermeture collective #{fermeture.id}] {fermeture.libelle}'
 
 
+def jours_conges_deja_valides(company, employe, date_debut, date_fin,
+                              exclure_pk=None):
+    """AUD722 — dates de ``[date_debut, date_fin]`` DÉJÀ couvertes par une
+    ``DemandeConge`` VALIDÉE de cet employé (donc déjà décomptées du solde).
+
+    Symétrique de ``selectors.jours_fermeture_exclus`` (qui répond « quels
+    jours sont déjà couverts par une FERMETURE ») : ici on répond « quels jours
+    sont déjà couverts par un congé PERSONNEL validé ». Les deux ensembles
+    alimentent ``calculer_jours_demande(jours_exclus=…)`` — un même jour n'est
+    JAMAIS retiré deux fois du solde, dans un sens comme dans l'autre.
+
+    ``exclure_pk`` ignore une demande précise (utile quand on recalcule une
+    demande existante). Renvoie un ``set`` de ``date`` (vide si rien).
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge
+
+    if company is None or employe is None \
+            or date_debut is None or date_fin is None:
+        return set()
+    qs = DemandeConge.objects.filter(
+        company=company, employe=employe,
+        statut=DemandeConge.Statut.VALIDEE,
+        date_debut__lte=date_fin, date_fin__gte=date_debut)
+    if exclure_pk is not None:
+        qs = qs.exclude(pk=exclure_pk)
+    couverts = set()
+    for demande in qs.only('date_debut', 'date_fin'):
+        debut = max(demande.date_debut, date_debut)
+        fin = min(demande.date_fin, date_fin)
+        jour = debut
+        while jour <= fin:
+            couverts.add(jour)
+            jour += timedelta(days=1)
+    return couverts
+
+
 @transaction.atomic
 def appliquer_fermeture(fermeture):
     """Applique une ``PeriodeFermeture`` : génère une ``DemandeConge`` VALIDÉE
@@ -1381,6 +1434,14 @@ def appliquer_fermeture(fermeture):
     toute la société. Un employé qui a DÉJÀ une demande générée par CETTE
     fermeture (marquée via ``motif``) est sauté. Renvoie la liste des
     ``DemandeConge`` créées (nouvelles seulement).
+
+    AUD722 — ANTI DOUBLE-DÉCOMPTE. La dédup ne portait QUE sur les demandes
+    générées par cette même fermeture : un employé déjà en congé personnel
+    VALIDÉ sur la période se voyait créer une SECONDE demande validée, et
+    ``valider_demande`` incrémentait ``SoldeConge.pris`` une deuxième fois pour
+    des jours déjà comptés. Désormais, les jours déjà couverts par un congé
+    validé sont retirés du décompte (``jours_exclus``) et un employé
+    ENTIÈREMENT couvert est sauté — aucune demande fantôme à 0 jour.
     """
     from .models import DemandeConge, DossierEmploye
 
@@ -1400,8 +1461,18 @@ def appliquer_fermeture(fermeture):
     for employe in employes_qs:
         if employe.id in deja_generes:
             continue
+        # AUD722 — jours déjà retirés du solde par un congé personnel VALIDÉ
+        # chevauchant la fermeture : ils ne sont pas recomptés.
+        deja_couverts = jours_conges_deja_valides(
+            fermeture.company, employe,
+            fermeture.date_debut, fermeture.date_fin)
         jours = calculer_jours_demande(
-            fermeture.type_absence, fermeture.date_debut, fermeture.date_fin)
+            fermeture.type_absence, fermeture.date_debut, fermeture.date_fin,
+            jours_exclus=deja_couverts)
+        if deja_couverts and jours <= 0:
+            # Employé déjà entièrement en congé sur la période : rien à
+            # générer (une demande à 0 jour ne serait qu'un doublon vide).
+            continue
         demande = DemandeConge.objects.create(
             company=fermeture.company,
             employe=employe,
@@ -1478,13 +1549,20 @@ def fusionner_candidatures(cible, source, *, auteur=None):
     if cible.pk == source.pk:
         raise ValueError('Impossible de fusionner une candidature avec elle-même.')
 
-    if not cible.cv_fichier and source.cv_fichier:
-        cible.cv_fichier = source.cv_fichier
+    # AUD718 — le CV vit désormais dans MinIO (``cv_attachment``) : la cible
+    # absorbe la RÉFÉRENCE, jamais une copie du fichier. Le champ legacy reste
+    # repris pour les candidatures antérieures à la bascule.
+    if not cible.a_cv:
+        if source.cv_attachment_id:
+            cible.cv_attachment = source.cv_attachment
+        elif source.cv_fichier:
+            cible.cv_fichier = source.cv_fichier
     if source.note:
         cible.note = (
             f'{cible.note}\n[Fusionné depuis #{source.id}] {source.note}'
             if cible.note else source.note)
-    cible.save(update_fields=['cv_fichier', 'note', 'date_modification'])
+    cible.save(update_fields=[
+        'cv_fichier', 'cv_attachment', 'note', 'date_modification'])
 
     CandidatureActivity.objects.filter(candidature=source).update(
         candidature=cible)
@@ -1622,6 +1700,9 @@ def rattacher_depuis_vivier(candidature_vivier, ouverture):
         email=candidature_vivier.email,
         telephone=candidature_vivier.telephone,
         cv_fichier=candidature_vivier.cv_fichier,
+        # AUD718 — même pièce jointe MinIO (référence partagée, aucun
+        # re-téléversement).
+        cv_attachment=candidature_vivier.cv_attachment,
         source=candidature_vivier.source,
         etape=Candidature.Etape.RECU,
         vivier_origine=candidature_vivier,
@@ -1666,18 +1747,35 @@ def parser_cv(candidature):
     """
     from core.ai.services import extract_document
 
-    if not candidature.cv_fichier:
+    if not candidature.a_cv:
         raise CvParsingUnavailable('Aucun CV attaché à cette candidature.')
 
-    nom_fichier = candidature.cv_fichier.name or ''
-    ext = nom_fichier.rsplit('.', 1)[-1].lower() if '.' in nom_fichier else ''
-    mime_type = _CV_MIME_TYPES.get(ext, 'application/octet-stream')
+    # AUD718 — le CV vit dans MinIO : on lit les octets par
+    # ``records.storage.fetch_attachment``. Le repli sur le ``FileField``
+    # legacy reste en place pour les candidatures antérieures à la bascule
+    # (leur fichier est encore sur le disque du conteneur).
+    if candidature.cv_attachment_id:
+        from apps.records.storage import fetch_attachment
 
-    try:
-        candidature.cv_fichier.open('rb')
-        content = candidature.cv_fichier.read()
-    finally:
-        candidature.cv_fichier.close()
+        attachment = candidature.cv_attachment
+        content, erreur = fetch_attachment(attachment.file_key)
+        if erreur or content is None:
+            raise CvParsingUnavailable(
+                'CV introuvable dans le stockage : ' + (erreur or 'illisible'))
+        nom_fichier = attachment.filename or ''
+        mime_type = attachment.mime or _CV_MIME_TYPES.get(
+            nom_fichier.rsplit('.', 1)[-1].lower() if '.' in nom_fichier
+            else '', 'application/octet-stream')
+    else:
+        nom_fichier = candidature.cv_fichier.name or ''
+        ext = (nom_fichier.rsplit('.', 1)[-1].lower()
+               if '.' in nom_fichier else '')
+        mime_type = _CV_MIME_TYPES.get(ext, 'application/octet-stream')
+        try:
+            candidature.cv_fichier.open('rb')
+            content = candidature.cv_fichier.read()
+        finally:
+            candidature.cv_fichier.close()
 
     result = extract_document(
         content=content, mime_type=mime_type, schema='cv')
@@ -1771,6 +1869,15 @@ def anonymiser_candidature(candidature):
     personnelle librement saisie)."""
     if candidature.cv_fichier:
         candidature.cv_fichier.delete(save=False)
+    # AUD718 — rétention CNDP : l'objet MinIO DOIT partir aussi, sinon le CV
+    # anonymisé resterait téléchargeable par son URL de pièce jointe.
+    if candidature.cv_attachment_id:
+        from apps.records.storage import delete_attachment
+
+        attachment = candidature.cv_attachment
+        candidature.cv_attachment = None
+        delete_attachment(attachment.file_key)
+        attachment.delete()
 
     candidature.nom = _ANONYMISE_NOM
     candidature.email = ''
@@ -1780,7 +1887,7 @@ def anonymiser_candidature(candidature):
     candidature.cv_fichier = None
     candidature.save(update_fields=[
         'nom', 'email', 'telephone', 'note', 'tags_vivier', 'cv_fichier',
-        'date_modification'])
+        'cv_attachment', 'date_modification'])
     return candidature
 
 

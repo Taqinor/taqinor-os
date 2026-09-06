@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
@@ -129,16 +130,27 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     lead_nom = serializers.SerializerMethodField()
     lead_owner_nom = serializers.SerializerMethodField()
+    lead_telephone = serializers.SerializerMethodField()
+    lead_whatsapp = serializers.SerializerMethodField()
+    lead_langue = serializers.SerializerMethodField()
+    lead_score = serializers.SerializerMethodField()
+    lead_priorite = serializers.SerializerMethodField()
+    devis_reference = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
+        # MRY5 — forme `relance_etape_v2` (contrat MRY25).
         fields = [
-            'id', 'lead', 'lead_nom', 'lead_owner_nom', 'ordre', 'due_date',
-            'canal', 'libelle', 'statut', 'note', 'overdue',
+            'id', 'lead', 'lead_nom', 'lead_owner_nom', 'lead_telephone',
+            'lead_whatsapp', 'lead_langue', 'lead_score', 'lead_priorite',
+            'cadence', 'ordre', 'due_date', 'due_at', 'canal', 'libelle',
+            'template_cle', 'statut', 'note', 'overdue', 'devis',
+            'devis_reference',
         ]
         read_only_fields = [
-            'id', 'lead', 'ordre', 'due_date', 'canal', 'libelle',
+            'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
+            'libelle', 'template_cle', 'devis',
         ]
 
     def get_lead_nom(self, obj) -> str:
@@ -146,6 +158,34 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_lead_owner_nom(self, obj) -> str | None:
         return getattr(obj.lead.owner, 'username', None)
+
+    def _pii_masquee(self) -> bool:
+        """MRY5 — MÊME règle que ``LeadSerializer.PII_FIELDS`` : un rôle sans
+        ``client_pii_voir`` ne doit pas récupérer par la file de relances le
+        numéro que la fiche lui masque."""
+        request = self.context.get('request')
+        return pii_masquee_pour(getattr(request, 'user', None))
+
+    def get_lead_telephone(self, obj) -> str:
+        return '' if self._pii_masquee() else (obj.lead.telephone or '')
+
+    def get_lead_whatsapp(self, obj) -> str:
+        return '' if self._pii_masquee() else (obj.lead.whatsapp or '')
+
+    def get_lead_langue(self, obj) -> str:
+        return obj.lead.langue_preferee or 'fr'
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_lead_score(self, obj):
+        return getattr(obj.lead, 'score', None)
+
+    def get_lead_priorite(self, obj) -> str:
+        return getattr(obj.lead, 'priorite', '') or ''
+
+    def get_devis_reference(self, obj) -> str:
+        # `select_related('devis')` côté sélecteur : jamais une requête par
+        # ligne dans la file de Meryem.
+        return getattr(obj.devis, 'reference', '') or ''
 
     def get_overdue(self, obj) -> bool:
         from core.dates import aujourd_hui_local
@@ -397,6 +437,23 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
     # pré-signée PAR LEAD, ce qui serait un N+1 franc sur une liste de 50
     # cartes. Voir get_fields() plus bas.
     conception = serializers.SerializerMethodField()
+    # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
+    # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
+    # liste et le kanban affichent le badge « touche due » pour 50 cartes,
+    # une requête par carte serait un N+1 franc. Les trois champs valent
+    # ``None``/``False`` quand l'annotation est absente (ex. un `retrieve`
+    # servi par un autre queryset) — jamais une exception.
+    prochaine_touche_at = serializers.DateTimeField(
+        read_only=True, required=False, allow_null=True, default=None)
+    prochaine_touche_canal = serializers.CharField(
+        read_only=True, required=False, allow_null=True, default=None)
+    touche_en_retard = serializers.SerializerMethodField()
+    # MRY20 — nombre de TENTATIVES humaines (appel/WhatsApp/e-mail avec un
+    # auteur), annoté par `LeadViewSet.get_queryset`. C'est ce chiffre qui dit
+    # si un dossier a été assez travaillé pour être classé — et il vaut 0,
+    # jamais `None`, quand l'annotation est absente (un `retrieve` servi par
+    # un autre queryset ne doit pas afficher un trou).
+    nb_tentatives = serializers.SerializerMethodField()
     # LB39 — marqueur d'ANNULATION du dernier changement d'étape. Champ HORS
     # MODÈLE, write-only, jamais persisté (retiré dans validate()) : à lui
     # seul il n'autorise RIEN — il déclenche seulement la vérification
@@ -642,6 +699,17 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         # Ordre fondateur 2026-08-01 : confirmation humaine d'un recul. Jamais
         # persisté non plus (champ hors modèle) — retiré ici comme ``undo``.
         confirme_recul = bool(attrs.pop('confirme_recul', False))
+        # MRY22 — MOTIF DE PERTE OBLIGATOIRE. « Perdu sans raison » est la
+        # ligne qui ne sert à personne : elle sort le lead du pipeline sans
+        # rien apprendre, et le KPI « perdus avec motif » (MRY21) ne peut plus
+        # rien dire. Un motif déjà posé sur l'instance suffit (on ne redemande
+        # pas un motif à qui ne fait que re-cocher la case).
+        if attrs.get('perdu') is True:
+            motif = (attrs.get('motif_perte')
+                     or getattr(self.instance, 'motif_perte', None) or '')
+            if not str(motif).strip():
+                raise serializers.ValidationError(
+                    {'motif_perte': 'Motif de perte obligatoire.'})
         # Garde funnel côté serveur (aligné sur la règle bulk _bulk_stage_allowed):
         # en MISE À JOUR, un lead perdu ne change pas d'étape, et un recul dans
         # l'entonnoir doit être EXPLICITEMENT assumé (Froid = parking, jamais
@@ -775,6 +843,18 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         verrouillés-cadenas au lieu de laisser croire à une édition qui
         sera jetée (drop silencieux au PATCH)."""
         return self._pii_masked()
+
+    def get_nb_tentatives(self, obj) -> int:
+        """MRY20 — lit l'annotation ; 0 par défaut, jamais une requête."""
+        return int(getattr(obj, 'nb_tentatives', 0) or 0)
+
+    def get_touche_en_retard(self, obj) -> bool:
+        """MRY5 — une touche de cadence est-elle ÉCHUE sur ce lead ?
+
+        Lit l'annotation ``touche_en_retard_flag`` posée par
+        ``LeadViewSet.get_queryset`` (Exists) ; ``False`` quand l'annotation
+        est absente — jamais une requête supplémentaire par lead."""
+        return bool(getattr(obj, 'touche_en_retard_flag', False))
 
     def get_conception(self, obj):
         """PV78 — ``{kwc, image_url}`` de la conception 3D du lead.

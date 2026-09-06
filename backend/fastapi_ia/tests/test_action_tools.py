@@ -422,21 +422,27 @@ class ConfirmProposalTests(unittest.TestCase):
     def test_confirm_runs_stashed_proposal(self):
         ctx = _ctx(role="admin")
         token = self._stash_pdf(ctx)
-        captured = {}
+        calls = []
 
         def fake_call(ctx, path, method="POST", payload=None):
-            captured["path"] = path
-            captured["method"] = method
+            calls.append({"path": path, "method": method, "payload": payload})
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
         with mock.patch.object(at, "fetch_catalogue", lambda c: _FULL_CATALOGUE), \
                 mock.patch.object(at, "_django_call", fake_call):
             res = at.confirm_proposal(ctx, token)
         self.assertTrue(res["ok"])
-        self.assertEqual(captured["path"], "/api/django/ventes/devis/5/proposal/")
-        self.assertEqual(captured["method"], "GET")
+        self.assertEqual(calls[0]["path"], "/api/django/ventes/devis/5/proposal/")
+        self.assertEqual(calls[0]["method"], "GET")
         # usage unique : le jeton est consomme.
         self.assertIsNone(self.fake_redis.get(at._proposal_key(token)))
+        # AUDV27 — la confirmation est journalisee cote Django APRES exécution.
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["path"], "/api/django/agent/logs/confirmer/")
+        self.assertEqual(calls[1]["method"], "POST")
+        self.assertEqual(calls[1]["payload"]["action_key"],
+                         "ventes.devis.proposal_pdf")
+        self.assertEqual(calls[1]["payload"]["risk_level"], "outward")
 
     def test_confirm_unknown_token(self):
         ctx = _ctx(role="admin")
@@ -471,6 +477,26 @@ class ConfirmProposalTests(unittest.TestCase):
         with mock.patch.object(at, "fetch_catalogue", lambda c: [_CAT_LEAD_LIST]):
             res = at.confirm_proposal(ctx, token)
         self.assertFalse(res["ok"])
+
+    def test_confirm_still_succeeds_when_logging_call_fails(self):
+        """AUDV27 — la journalisation est best-effort : une panne du 2e appel
+        (logs/confirmer/) ne doit JAMAIS faire echouer une action deja
+        executee avec succes cote metier."""
+        ctx = _ctx(role="admin")
+        token = self._stash_pdf(ctx)
+        calls = []
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            calls.append(path)
+            if path.endswith("/logs/confirmer/"):
+                return {"ok": False, "status": 500, "error": "panne"}
+            return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
+
+        with mock.patch.object(at, "fetch_catalogue", lambda c: _FULL_CATALOGUE), \
+                mock.patch.object(at, "_django_call", fake_call):
+            res = at.confirm_proposal(ctx, token)
+        self.assertTrue(res["ok"])
+        self.assertEqual(len(calls), 2)
 
     def test_confirm_revalidates_offcatalogue_inputs(self):
         """Si le catalogue courant a un schema plus strict, des entrees
@@ -550,17 +576,17 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(collector[0]["type"], "proposal")
         # Le jeton appose dans le collecteur EST utilisable par /confirm.
         token = collector[0]["confirm_token"]
-        captured = {}
+        calls = []
 
         def fake_call(ctx, path, method="POST", payload=None):
-            captured["path"] = path
+            calls.append(path)
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
         with mock.patch.object(at, "fetch_catalogue", lambda c: _FULL_CATALOGUE), \
                 mock.patch.object(at, "_django_call", fake_call):
             res = at.confirm_proposal(ctx, token)
         self.assertTrue(res["ok"])
-        self.assertEqual(captured["path"], "/api/django/ventes/devis/9/proposal/")
+        self.assertEqual(calls[0], "/api/django/ventes/devis/9/proposal/")
 
 
 class FetchCatalogueTests(unittest.TestCase):
@@ -656,24 +682,29 @@ class GuardedWriteToolsTests(unittest.TestCase):
         prop = self._assert_proposal_not_executed(
             _CAT_CLIENT_CREATE, {"nom": "Confirmé"})
         token = prop["confirm_token"]
-        captured = {}
+        calls = []
 
         def fake_call(ctx, path, method="POST", payload=None):
-            captured["path"] = path
-            captured["method"] = method
-            captured["payload"] = payload
+            calls.append({"path": path, "method": method, "payload": payload})
             return {"ok": True, "status": 201, "data": {"id": 42}}
 
         with mock.patch.object(at, "fetch_catalogue", lambda c: _GUARDED_WRITES), \
                 mock.patch.object(at, "_django_call", fake_call):
             res = at.confirm_proposal(ctx, token)
         self.assertTrue(res["ok"])
-        self.assertEqual(captured["path"], "/api/django/crm/clients/")
-        self.assertEqual(captured["method"], "POST")
+        self.assertEqual(calls[0]["path"], "/api/django/crm/clients/")
+        self.assertEqual(calls[0]["method"], "POST")
         # La société n'est jamais transmise dans le corps : Django l'impose.
-        self.assertNotIn("company", captured["payload"] or {})
+        self.assertNotIn("company", calls[0]["payload"] or {})
         # usage unique : le jeton est consommé.
         self.assertIsNone(self.fake_redis.get(at._proposal_key(token)))
+        # AUDV27 — la confirmation est journalisee, avec l'id renvoye par
+        # Django (`{"id": 42}`) pour que le journal PILOTE (crm.client.create)
+        # puisse resoudre content_type/object_id cote Django.
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["path"], "/api/django/agent/logs/confirmer/")
+        self.assertEqual(calls[1]["payload"]["action_key"], "crm.client.create")
+        self.assertEqual(calls[1]["payload"]["object_id"], 42)
 
     def test_build_tools_warns_guarded_writes(self):
         try:

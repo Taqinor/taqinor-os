@@ -17,8 +17,12 @@ Règles (gardes) :
   ``en_approbation → signe`` exigent qu'un contrat ait **au moins deux parties**
   (``Contrat.valider_parties``) — on ne soumet/signe pas un contrat à une seule
   partie.
-- Les états ``resilie`` et ``expire`` sont **terminaux** : aucune transition
-  sortante.
+- ``expire`` est le seul état **terminal** : aucune transition sortante.
+- ``resilie`` porte UNE arête sortante, ``resilie → actif``, **réservée** à
+  l'action ``annuler-resiliation`` (AUD511 : annuler une résiliation saisie par
+  erreur, dans la fenêtre de préavis). La porte générique ``changer-statut``
+  la refuse explicitement en 400 — ressusciter un contrat n'est pas un geste
+  administratif.
 
 Ce module ne dépend que des modèles de l'app `contrats` (foundation interne) et
 n'effectue qu'une seule écriture (``Contrat.save`` du seul champ ``statut``).
@@ -46,8 +50,21 @@ def _transitions():
         S.SIGNE: {S.ACTIF, S.RESILIE},
         S.ACTIF: {S.SUSPENDU, S.RESILIE, S.EXPIRE},
         S.SUSPENDU: {S.ACTIF, S.RESILIE, S.EXPIRE},
-        # États terminaux : aucune transition sortante.
-        S.RESILIE: set(),
+        # AUD511 — LA MARCHE ARRIÈRE DANS LA FENÊTRE DE PRÉAVIS. `Resiliation`
+        # déclarait trois statuts, mais `annulee` et `effective` étaient des
+        # ÉTATS MORTS : seul `resilier_contrat` créait une Resiliation (toujours
+        # en `demande`), aucun service n'écrivait les deux autres, et `RESILIE`
+        # était terminal — donc même une résiliation annulée n'aurait jamais
+        # rendu son contrat ACTIF. Une résiliation faite par erreur était
+        # IRRATTRAPABLE. Décision fondateur : câbler une vraie annulation
+        # (besoin métier réel), pas retirer les états.
+        #
+        # Cette arête est RÉSERVÉE à l'action `annuler-resiliation` (fenêtre de
+        # préavis + passage de la Resiliation à ANNULEE). La porte générique
+        # `changer-statut` la refuse explicitement (même patron qu'AUD501) :
+        # ressusciter un contrat n'est pas un geste administratif.
+        S.RESILIE: {S.ACTIF},
+        # État terminal : aucune transition sortante.
         S.EXPIRE: set(),
     }
 

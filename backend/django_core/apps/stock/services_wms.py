@@ -519,8 +519,19 @@ def creer_unite_logistique(*, company, type_unite='colis', parent=None,
 
 def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
                                    lot=None, ligne_picking=None):
-    """Ajoute (ou cumule) une ligne de contenu dans une unité NON scellée."""
-    from .models_wms import UniteLogistiqueLigne
+    """Ajoute (ou cumule) une ligne de contenu dans une unité NON scellée.
+
+    AUD829 — deux scans concurrents sur la MÊME unité lisaient tous deux la
+    même ``ligne.quantite`` et le second écrasait le cumul du premier (lost
+    update) ; un lire-décide-écrire non verrouillé pouvait aussi laisser
+    deux créations concurrentes dupliquer la ligne. ``select_for_update()``
+    sur l'unité SÉRIALISE tout ajout de contenu concurrent pour CETTE unité
+    (même patron que ``prelever_ligne_picking``, AUD219) ; l'incrément
+    lui-même passe par ``F()``.
+    """
+    from django.db import transaction
+    from django.db.models import F
+    from .models_wms import UniteLogistique, UniteLogistiqueLigne
 
     if unite.est_figee:
         raise ValueError(
@@ -534,15 +545,18 @@ def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
     if produit is None or produit.company_id != getattr(company, 'id', None):
         raise ValueError('Produit introuvable dans cette société.')
 
-    ligne = UniteLogistiqueLigne.objects.filter(
-        unite=unite, produit=produit, lot=lot).first()
-    if ligne is None:
-        return UniteLogistiqueLigne.objects.create(
-            company=company, unite=unite, produit=produit, quantite=quantite,
-            lot=lot, ligne_picking=ligne_picking)
-    ligne.quantite += quantite
-    ligne.save(update_fields=['quantite'])
-    return ligne
+    with transaction.atomic():
+        UniteLogistique.objects.select_for_update().get(pk=unite.pk)
+        ligne = UniteLogistiqueLigne.objects.filter(
+            unite=unite, produit=produit, lot=lot).first()
+        if ligne is None:
+            return UniteLogistiqueLigne.objects.create(
+                company=company, unite=unite, produit=produit,
+                quantite=quantite, lot=lot, ligne_picking=ligne_picking)
+        ligne.quantite = F('quantite') + quantite
+        ligne.save(update_fields=['quantite'])
+        ligne.refresh_from_db(fields=['quantite'])
+        return ligne
 
 
 def sceller_unite_logistique(*, unite, user=None):
@@ -810,9 +824,22 @@ def controler_scan_emballage(*, company, unite, produit, quantite=1,
 
     En cas de succès, la ligne de contenu est créée/incrémentée et HORODATÉE
     (``scanne_le``/``scanne_par``) pour l'audit.
+
+    AUD829 — deux scans concurrents visant le MÊME produit d'une vague
+    relisaient le même total ``deja_emballe`` et pouvaient TOUS LES DEUX
+    passer sous le plafond prélevé (dépassement silencieux du contrôle
+    BLOQUANT, pas seulement un cumul de quantité perdu) ; deux scans sur la
+    MÊME unité perdaient de plus un cumul de ``ligne.quantite`` (lost
+    update). ``select_for_update()`` sur la vague (SÉRIALISE tout scan
+    concurrent pour ce produit, quelle que soit l'unité) puis sur l'unité
+    (SÉRIALISE le cumul de sa ligne) — même patron que
+    ``ajouter_ligne_unite_logistique``/``prelever_ligne_picking`` (AUD219).
     """
+    from django.db import transaction
+    from django.db.models import F
     from django.utils import timezone
-    from .models_wms import LignePicking, UniteLogistiqueLigne
+    from .models_wms import (
+        LignePicking, UniteLogistique, UniteLogistiqueLigne, VaguePicking)
 
     if unite is None or unite.company_id != getattr(company, 'id', None):
         raise ValueError('Unité logistique introuvable dans cette société.')
@@ -828,38 +855,45 @@ def controler_scan_emballage(*, company, unite, produit, quantite=1,
     if quantite <= 0:
         raise ValueError('La quantité doit être positive.')
 
-    ligne_picking = None
-    if unite.vague_id:
-        attendues = LignePicking.objects.filter(
-            vague_id=unite.vague_id, produit=produit,
-            quantite_prelevee__gt=0)
-        ligne_picking = attendues.order_by('ordre_parcours', 'id').first()
-        if ligne_picking is None:
-            raise ValueError(
-                f'« {produit.nom} » n\'appartient pas à la vague en cours '
-                f'd\'emballage — colis refusé.')
-        total_attendu = sum(
-            ligne.quantite_prelevee for ligne in attendues)
-        deja_emballe = sum(
-            ligne.quantite for ligne in UniteLogistiqueLigne.objects.filter(
-                unite__vague_id=unite.vague_id, produit=produit))
-        if deja_emballe + quantite > total_attendu:
-            raise ValueError(
-                f'Quantité emballée supérieure au prélevé pour '
-                f'« {produit.nom} » ({total_attendu} prélevé(s)) — colis '
-                f'refusé.')
+    with transaction.atomic():
+        if unite.vague_id:
+            VaguePicking.objects.select_for_update().get(pk=unite.vague_id)
+        UniteLogistique.objects.select_for_update().get(pk=unite.pk)
 
-    ligne = UniteLogistiqueLigne.objects.filter(
-        unite=unite, produit=produit, lot=None).first()
-    if ligne is None:
-        ligne = UniteLogistiqueLigne(
-            company=company, unite=unite, produit=produit, quantite=0,
-            ligne_picking=ligne_picking)
-    ligne.quantite += quantite
-    ligne.scanne_le = timezone.now()
-    ligne.scanne_par = user
-    ligne.save()
-    return ligne
+        ligne_picking = None
+        if unite.vague_id:
+            attendues = LignePicking.objects.filter(
+                vague_id=unite.vague_id, produit=produit,
+                quantite_prelevee__gt=0)
+            ligne_picking = attendues.order_by('ordre_parcours', 'id').first()
+            if ligne_picking is None:
+                raise ValueError(
+                    f'« {produit.nom} » n\'appartient pas à la vague en cours '
+                    f'd\'emballage — colis refusé.')
+            total_attendu = sum(
+                ligne.quantite_prelevee for ligne in attendues)
+            deja_emballe = sum(
+                ligne.quantite for ligne in UniteLogistiqueLigne.objects.filter(
+                    unite__vague_id=unite.vague_id, produit=produit))
+            if deja_emballe + quantite > total_attendu:
+                raise ValueError(
+                    f'Quantité emballée supérieure au prélevé pour '
+                    f'« {produit.nom} » ({total_attendu} prélevé(s)) — colis '
+                    f'refusé.')
+
+        ligne = UniteLogistiqueLigne.objects.filter(
+            unite=unite, produit=produit, lot=None).first()
+        if ligne is None:
+            return UniteLogistiqueLigne.objects.create(
+                company=company, unite=unite, produit=produit,
+                quantite=quantite, ligne_picking=ligne_picking,
+                scanne_le=timezone.now(), scanne_par=user)
+        ligne.quantite = F('quantite') + quantite
+        ligne.scanne_le = timezone.now()
+        ligne.scanne_par = user
+        ligne.save(update_fields=['quantite', 'scanne_le', 'scanne_par'])
+        ligne.refresh_from_db(fields=['quantite'])
+        return ligne
 
 
 # ═══════════════════════════════════════════════════════════════════════════

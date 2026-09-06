@@ -116,6 +116,8 @@ class TestEmailService(TestCase):
             direction=EmailLog.Direction.SORTANT).exists())
 
     def test_relancer_sends_relance_email(self):
+        # AUD129 — l'envoi est désormais un OPT-IN explicite : `envoyer_email`
+        # absent ne doit RIEN envoyer (cf. test_aud129_relance_consigner).
         FollowupLevel.objects.create(
             company=self.company, ordre=1, nom='Rappel', delai_jours=7,
             message='Merci de régulariser.')
@@ -124,7 +126,8 @@ class TestEmailService(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/relancer/',
-            {'niveau': 1, 'note': 'rappel'}, format='json')
+            {'niveau': 1, 'note': 'rappel', 'envoyer_email': True},
+            format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(RelanceLog.objects.filter(facture=self.facture).exists())
         self.assertTrue(EmailLog.objects.filter(
@@ -350,9 +353,12 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
     @override_settings(
         EMAIL_BACKEND=LOCMEM,
         ANYMAIL={'SENDINBLUE_API_KEY': 'real-brevo-key', 'SENDGRID_API_KEY': ''})
-    def test_generic_new_lead_notification_still_defaults_email_off(self):
-        # QW8 n'ouvre le canal email par défaut QUE pour le rappel — le
-        # générique lead_new reste email=False par défaut (aucune régression).
+    def test_lead_new_ouvre_aussi_l_email_depuis_mry3(self):
+        # QW8 n'ouvrait le canal email par défaut QUE pour le rappel. MRY3
+        # (2026-09, décision fondateur) l'ouvre AUSSI pour `lead_new` :
+        # l'arrivée d'un lead est l'événement le plus périssable du CRM, elle
+        # ne doit pas rester une simple ligne in-app. Le défaut GÉNÉRIQUE, lui,
+        # reste email=False — c'est ce que garde le test suivant.
         from apps.crm.models import Lead
         from apps.crm.services import notify_new_lead
 
@@ -360,4 +366,14 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
             company=self.company, nom='Prospect générique',
             telephone='+212600998855', owner=self.owner)
         notify_new_lead(lead)
-        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_le_defaut_generique_reste_email_off(self):
+        """Seuls les événements de `EVENT_DEFAULT_OVERRIDES` ouvrent l'email —
+        la liste n'est jamais devenue un défaut global."""
+        from apps.notifications.services import (
+            DEFAULT_PREFS, EVENT_DEFAULT_OVERRIDES, default_prefs_for,
+        )
+        self.assertFalse(DEFAULT_PREFS['email'])
+        self.assertFalse(default_prefs_for('stock_low')['email'])
+        self.assertIn('lead_new', EVENT_DEFAULT_OVERRIDES)

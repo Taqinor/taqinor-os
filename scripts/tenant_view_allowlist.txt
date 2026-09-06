@@ -12,3 +12,25 @@ backend/django_core/apps/chat/views.py::UserChatStatusViewSet
 # no company FK — see tenant_exempt_models.txt). No per-tenant rows are exposed;
 # there is no create/update surface. Reviewed safe 2026-07-16.
 backend/django_core/apps/extensions/views.py::ExtensionPackageCatalogueView
+#
+# AUD828 (M-07) — core/authentication were entirely UNSCANNED before this
+# fix (the guard excluded them by path); widening the surface to its full
+# declared shape surfaces these 6, all reviewed foundation/global views —
+# 0 new proven leak, a coverage gap only:
+# RegisterView/RegisterCompanyView: pre-authentication onboarding endpoints
+# (create the FIRST user/company, or an admin creating a user strictly in
+# their OWN request.user.company via IsAdminRole — no cross-tenant list
+# surface). MeView: get_object() always returns self.request.user (scoped to
+# exactly one row, the caller). LogoutView: no queryset, no data exposure —
+# a token-revocation action endpoint. Reviewed safe 2026-09-06.
+backend/django_core/authentication/views.py::RegisterView
+backend/django_core/authentication/views.py::RegisterCompanyView
+backend/django_core/authentication/views.py::MeView
+backend/django_core/authentication/views.py::LogoutView
+# ChangelogViewSet/OutboxEventViewSet (core/views.py): both explicitly
+# documented as GLOBAL/cross-company, SUPERUSER-only exploitant views
+# ("aucune portée société" / "vue transverse à toutes les sociétés,
+# réservée à l'exploitant") — by design, not an oversight. Reviewed safe
+# 2026-09-06.
+backend/django_core/core/views.py::ChangelogViewSet
+backend/django_core/core/views.py::OutboxEventViewSet

@@ -108,7 +108,9 @@ class DocumentProduitFactureTests(TestCase):
 
         key = generate_facture_pdf(facture.id)
 
-        self.assertEqual(key, f'factures/{facture.reference}.pdf')
+        self.assertEqual(
+            key,
+            f'factures/{facture.company_id}/{facture.reference}.pdf')
         mock_upload.assert_called_once()
         facture.refresh_from_db()
         self.assertEqual(facture.fichier_pdf, key)
@@ -133,7 +135,9 @@ class DocumentProduitFactureTests(TestCase):
         facture = make_facture(self.user, self.client_obj, self.produit)
         key = generate_facture_pdf(facture.id)
 
-        self.assertEqual(key, f'factures/{facture.reference}.pdf')
+        self.assertEqual(
+            key,
+            f'factures/{facture.company_id}/{facture.reference}.pdf')
         documents = Document.objects.filter(company=self.company)
         self.assertEqual(documents.count(), 1)
         document = documents.first()
@@ -184,6 +188,8 @@ class DocumentProduitFactureTests(TestCase):
                 side_effect=RuntimeError('minio down')):
             key = generate_facture_pdf(facture.id)
 
-        self.assertEqual(key, f'factures/{facture.reference}.pdf')
+        self.assertEqual(
+            key,
+            f'factures/{facture.company_id}/{facture.reference}.pdf')
         facture.refresh_from_db()
         self.assertEqual(facture.fichier_pdf, key)

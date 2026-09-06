@@ -128,6 +128,12 @@ CATALOG = {
     'avoir_cree': _e(
         'Un avoir est créé.',
         ['instance', 'company']),
+    # AUD127 — symétrique manquant d'avoir_cree, émis à l'annulation d'un
+    # avoir (apps/ventes/views/avoir.py AvoirViewSet.annuler) ; abonné par
+    # compta (YLEDG4) pour extourner l'écriture d'avoir.
+    'avoir_annule': _e(
+        'Un avoir est annulé.',
+        ['instance', 'company']),
     'facture_fournisseur_creee': _e(
         'Une facture fournisseur est créée.',
         ['instance', 'company', 'user']),
@@ -214,6 +220,14 @@ CATALOG = {
         "Une application est installée ou désinstallée pour une société "
         "(bascule d'un core.ModuleToggle).",
         ['toggle', 'company', 'module', 'actif', 'user', 'raison']),
+    # AUD816 — l'édition en masse écrit par ``queryset.update()`` : aucun
+    # ``save()``/signal, donc aucune ligne d'audit générique. Cet événement est
+    # le SEUL canal de traçabilité du lot ; abonné : ``apps/audit/receivers.py``.
+    'bulk_edit_applied': _e(
+        "Une édition en masse a été appliquée sur une cible enregistrée "
+        "(core.bulk_edit) — écriture par queryset.update(), donc invisible "
+        "des signaux CRUD.",
+        ['target', 'label', 'fields', 'count', 'company', 'user']),
     # AOF13 — les DEUX seuls événements du domaine « appel d'offres »
     # (``apps.ao``). Émis EXCLUSIVEMENT par ``apps.ao.services.changer_statut_ao``
     # (jamais d'un modèle ni d'une vue), sur FRANCHISSEMENT de statut. Abonné

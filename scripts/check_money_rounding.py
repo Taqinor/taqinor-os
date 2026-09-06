@@ -1,6 +1,21 @@
-"""YDATA8 / QJR4 -- garde ADVISORY : un `round()` sur une valeur d'apparence
-monetaire, dans un module qui publie du prix, devrait passer par
-`core.money.quantize_mad` (voir docs/money-convention.md).
+"""YDATA8 / QJR4 / AUD189 -- garde ADVISORY : une valeur d'apparence monetaire
+arrondie hors politique, dans un module qui calcule ou publie du prix, devrait
+passer par `core.money.quantize_mad` (voir docs/money-convention.md).
+
+DEUX DETECTEURS, UNE SEULE POLITIQUE (AUD189, 03/09/2026) :
+
+  1. `round(x)` sur une expression d'apparence monetaire (detecteur d'origine) ;
+  2. `x.quantize(...)` SANS mot-cle `rounding=`, donc en arrondi bancaire
+     ROUND_HALF_EVEN -- le defaut de `Decimal`. `docs/money-convention.md`
+     ecrit noir sur blanc que ce n'est PAS « la politique moitie-vers-le-haut
+     attendue en comptabilite marocaine », et la garde ne voyait pourtant que
+     `round()` : la classe entiere lui etait invisible, et la CI restait verte
+     en laissant croire que la convention etait tenue partout (`12.505` rendait
+     12.50 au lieu de 12.51, `0.125` rendait 0.12 au lieu de 0.13, sur une
+     dotation d'amortissement comme sur une ligne de regie).
+
+Garde SEMANTIQUE (lecon OR3) : elle regarde la FORME de l'appel, jamais un
+nombre de sites epingle.
 
 DB-free, AST seul. La garde ne bloque JAMAIS sur l'existant : chaque site
 present dans l'arbre au moment de la capture est inscrit dans
@@ -57,6 +72,15 @@ ALLOWLIST_PATH = ROOT / "scripts" / "money_rounding_allow.txt"
 MODULE_QUALNAME = "<module>"
 SEPARATOR = "|"
 NEW_SITE_REASON = "A RELIRE -- capture par --regenerate, raison a completer."
+# AUD189 -- REPRISE. Les sites `quantize` sans `rounding=` presents dans
+# l'arbre au moment ou le second detecteur est ne sont inscrits d'office :
+# la garde protege contre une REINTRODUCTION des aujourd'hui, la reprise de
+# l'existant se fait fichier par fichier ensuite. Un site quantize NOUVEAU
+# fait echouer backend-lint.
+QUANTIZE_REPRISE_REASON = (
+    "AUD189 reprise -- quantize sans rounding= present a la capture ; "
+    "A RELIRE (ROUND_HALF_UP via core.money.quantize_mad)."
+)
 
 # Modules scannes : ceux qui calculent OU publient un montant client-facing.
 # QJR4 elargit la liste d'origine (services/builder/compta) aux cinq modules
@@ -92,6 +116,28 @@ TARGET_FILES = [
     VENTES / "utils" / "options.py",
     VENTES / "selectors.py",
     DJANGO_CORE / "apps" / "compta" / "services.py",
+    # AUD189 ELARGIT LE PERIMETRE. La liste ci-dessus ne couvrait NI le rendu
+    # legataire des documents client (`ventes/utils/pdf.py` -- la facture,
+    # l'avoir et la note de debit y sont mis en page) NI aucune des apps du
+    # perimetre R1 nommees par le constat : facturation (la chaine d'argent
+    # canonique des documents !), portail, credit, frais, einvoice, plus
+    # `compta/selectors.py` et `gestion_projet/services.py`. Un fichier qui
+    # calcule ou publie un montant DOIT etre scanne, sans quoi la CI reste
+    # verte en laissant croire que la convention est tenue partout.
+    VENTES / "utils" / "pdf.py",
+    DJANGO_CORE / "apps" / "compta" / "selectors.py",
+    DJANGO_CORE / "apps" / "gestion_projet" / "services.py",
+    DJANGO_CORE / "apps" / "facturation" / "models.py",
+    DJANGO_CORE / "apps" / "facturation" / "totaux.py",
+    DJANGO_CORE / "apps" / "facturation" / "services.py",
+    DJANGO_CORE / "apps" / "facturation" / "selectors.py",
+    DJANGO_CORE / "apps" / "portail" / "services.py",
+    DJANGO_CORE / "apps" / "portail" / "selectors.py",
+    DJANGO_CORE / "apps" / "credit" / "services.py",
+    DJANGO_CORE / "apps" / "credit" / "selectors.py",
+    DJANGO_CORE / "apps" / "frais" / "services.py",
+    DJANGO_CORE / "apps" / "frais" / "selectors.py",
+    DJANGO_CORE / "apps" / "einvoice" / "services.py",
 ] + sorted(p for p in (VENTES / "domain").glob("*.py"))
 
 MONEY_NAME_RE = re.compile(
@@ -102,16 +148,23 @@ MONEY_NAME_RE = re.compile(
 
 
 class Site:
-    """Un site de `round()` retenu par le detecteur."""
+    """Un site d'arrondi retenu par l'un des deux detecteurs.
 
-    __slots__ = ("path", "lineno", "qualname", "expr", "key")
+    ``kind`` vaut ``'round'`` (detecteur d'origine YDATA8/QJR4) ou
+    ``'quantize'`` (AUD189 : un `.quantize(...)` SANS mot-cle `rounding=`,
+    donc en arrondi bancaire ROUND_HALF_EVEN -- pas la politique
+    moitie-vers-le-haut que `docs/money-convention.md` impose).
+    """
 
-    def __init__(self, path, lineno, qualname, expr, key):
+    __slots__ = ("path", "lineno", "qualname", "expr", "key", "kind")
+
+    def __init__(self, path, lineno, qualname, expr, key, kind="round"):
         self.path = path
         self.lineno = lineno
         self.qualname = qualname
         self.expr = expr
         self.key = key
+        self.kind = kind
 
     def __repr__(self):  # pragma: no cover - confort de debogage
         return f"<Site {self.key} ligne {self.lineno}>"
@@ -164,6 +217,41 @@ def _iter_round_calls(tree):
     return found
 
 
+def _iter_quantize_calls(tree):
+    """AUD189 -- rend (noeud Call, qualname) pour chaque `X.quantize(...)`
+    appele SANS mot-cle `rounding=`.
+
+    POURQUOI CE SECOND DETECTEUR. `docs/money-convention.md` impose
+    `quantize_mad()` = `quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)` et
+    explique noir sur blanc que l'arrondi bancaire (le DEFAUT de `Decimal`,
+    ROUND_HALF_EVEN) « n'est pas la politique moitie-vers-le-haut attendue en
+    comptabilite marocaine ». Le detecteur d'origine ne voyait QUE les appels a
+    `round()` : la classe entiere des `quantize` sans mode lui etait invisible,
+    et la CI restait verte en laissant croire que la convention etait tenue
+    partout. Garde SEMANTIQUE (lecon OR3) : on regarde la FORME de l'appel,
+    jamais un nombre de sites epingle.
+    """
+    found = []
+
+    def visit(node, stack):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                  ast.ClassDef)):
+                visit(child, stack + [child.name])
+                continue
+            if (isinstance(child, ast.Call)
+                    and isinstance(child.func, ast.Attribute)
+                    and child.func.attr == "quantize"
+                    and not any(kw.arg == "rounding"
+                                for kw in child.keywords)):
+                found.append((child, ".".join(stack) if stack
+                              else MODULE_QUALNAME))
+            visit(child, stack)
+
+    visit(tree, [])
+    return found
+
+
 def collect_sites(source: str, rel: str):
     """Rend la liste des Site retenus dans ce source, en ordre de source."""
     tree = ast.parse(source)
@@ -174,20 +262,33 @@ def collect_sites(source: str, rel: str):
         expr = normalize_expr(_arg_source(node.args[0]))
         if not expr or not MONEY_NAME_RE.search(expr):
             continue
-        raw.append((node.lineno, node.col_offset, qualname, expr))
-    raw.sort()
+        raw.append((node.lineno, node.col_offset, qualname, expr, "round"))
+    for node, qualname in _iter_quantize_calls(tree):
+        # L'expression d'identite est le RECEVEUR (`x` dans `x.quantize(...)`) :
+        # c'est lui que l'arrondi transforme, et c'est lui qu'un humain relit.
+        expr = normalize_expr(_arg_source(node.func.value))
+        if not expr:
+            continue
+        raw.append((node.lineno, node.col_offset, qualname, expr, "quantize"))
+    raw.sort(key=lambda item: (item[0], item[1], item[4]))
 
-    counts = Counter((qualname, expr) for _, _, qualname, expr in raw)
+    counts = Counter((kind, qualname, expr)
+                     for _, _, qualname, expr, kind in raw)
     seen = Counter()
     sites = []
-    for lineno, _col, qualname, expr in raw:
-        base = f"{rel}::{qualname}::{content_sha(expr)}"
-        if counts[(qualname, expr)] > 1:
-            seen[(qualname, expr)] += 1
-            key = f"{base}#{seen[(qualname, expr)]}"
+    for lineno, _col, qualname, expr, kind in raw:
+        # La cle des sites `round()` reste EXACTEMENT celle d'avant AUD189 :
+        # la base de reference livree (170 lignes) ne se perime pas. Les sites
+        # `quantize` prennent un sel de type, pour qu'un `round(x)` et un
+        # `x.quantize(...)` sur la MEME expression ne se confondent jamais.
+        graine = expr if kind == "round" else f"{kind}:{expr}"
+        base = f"{rel}::{qualname}::{content_sha(graine)}"
+        if counts[(kind, qualname, expr)] > 1:
+            seen[(kind, qualname, expr)] += 1
+            key = f"{base}#{seen[(kind, qualname, expr)]}"
         else:
             key = base
-        sites.append(Site(rel, lineno, qualname, expr, key))
+        sites.append(Site(rel, lineno, qualname, expr, key, kind))
     return sites
 
 
@@ -259,6 +360,13 @@ HEADER = """\
 # ete relu ; un site NOUVEAU fait echouer backend-lint, le temps qu'un humain
 # ecrive sa raison ici (ou corrige le calcul).
 #
+# AUD189 -- DEUX DETECTEURS alimentent cette base : `round(x)` sur une valeur
+# d'apparence monetaire, et `x.quantize(...)` SANS `rounding=` (arrondi
+# bancaire par defaut, contraire a la convention marocaine). Les entrees
+# « AUD189 reprise » sont l'existant capture le jour ou le second detecteur est
+# ne : la garde protege contre une REINTRODUCTION des aujourd'hui, la reprise
+# se fait fichier par fichier ensuite.
+#
 # Regenerer apres une revue : python scripts/check_money_rounding.py --regenerate
 """
 
@@ -273,15 +381,24 @@ def render_allowlist(sites, existing_reasons=None):
             current_file = site.path
             lines.append("")
             lines.append(f"# --- {current_file}")
-        reason = existing_reasons.get(site.key) or NEW_SITE_REASON
+        defaut = (QUANTIZE_REPRISE_REASON if site.kind == "quantize"
+                  else NEW_SITE_REASON)
+        reason = existing_reasons.get(site.key) or defaut
         lines.append(f"{site.key} {SEPARATOR} {reason}")
     return "\n".join(lines) + "\n"
+
+
+def _forme(site):
+    """Rendu lisible du site, selon le detecteur qui l'a vu."""
+    if site.kind == "quantize":
+        return f"{site.expr[:60]}.quantize(...)  # sans rounding="
+    return f"round({site.expr[:60]})"
 
 
 def _print_sites(sites):
     for site in sites:
         print(f"  {site.path}:{site.lineno}  {site.qualname}  "
-              f"round({site.expr[:60]})")
+              f"{_forme(site)}")
 
 
 def main(argv=None):
@@ -299,7 +416,7 @@ def main(argv=None):
     if args.list_mode:
         for site in sites:
             print(f"{site.key} | {site.path}:{site.lineno} "
-                  f"round({site.expr})")
+                  f"{_forme(site)}")
         return 0
 
     if args.regenerate:
@@ -313,8 +430,11 @@ def main(argv=None):
     allowed = load_allowlist()
     offenders, orphans = evaluate(sites, allowed)
 
-    print(f"check_money_rounding: {len(sites)} site(s) round() sur une valeur "
-          "d'apparence monetaire dans les modules de prix/taxe.")
+    n_round = sum(1 for s in sites if s.kind == "round")
+    n_quantize = len(sites) - n_round
+    print(f"check_money_rounding: {n_round} site(s) round() sur une valeur "
+          f"d'apparence monetaire et {n_quantize} site(s) quantize() sans "
+          "rounding= dans les modules de prix/taxe/rendu.")
     _print_sites(sites)
 
     if orphans:
@@ -331,7 +451,7 @@ def main(argv=None):
               f"{_rel(ALLOWLIST_PATH)} :")
         for site in offenders:
             print(f"  - {site.path}:{site.lineno} ({site.qualname}) "
-                  f"round({site.expr[:60]})")
+                  f"{_forme(site)}")
             print(f"    cle: {site.key}")
         print("\nPreferer core.money.quantize_mad() (docs/money-convention.md) "
               "pour un montant persiste. Si l'arrondi est un AFFICHAGE relu, "

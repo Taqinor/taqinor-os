@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import {
   fetchFactures,
+  fetchFacturesKpis,
   emettreFacture,
   marquerPayeeFacture,
   annulerFacture,
@@ -693,7 +694,7 @@ export default function FactureList() {
   // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
   const { confirm } = useConfirmDialog()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { factures, loading, error } = useSelector(s => s.ventes)
+  const { factures, loading, error, facturesKpis } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
   // VX21 — chargement différé anti-scintillement (parité DevisList) : spinner
   // discret puis squelette, en-tête de page toujours visible.
@@ -1054,6 +1055,12 @@ export default function FactureList() {
   }
 
   useEffect(() => { dispatch(fetchFactures()) }, [dispatch])
+  // AUD157 (FAC-13) — LES KPI D'ARGENT VIENNENT DU SERVEUR, en UN appel.
+  // Ils etaient sommes ici a partir des factures chargees, sans filtrer le
+  // statut des paiements : un cheque revenu impaye comptait comme encaisse,
+  // et la definition divergeait de `Facture.montant_paye`. L'ecran ne calcule
+  // plus aucun montant : il formate ce que le serveur lui donne.
+  useEffect(() => { dispatch(fetchFacturesKpis()) }, [dispatch])
 
   // VX231(a) — une fois les factures chargées, si un ?facture=<id> est ciblé,
   // scrolle la ligne au centre et retire la surbrillance après 3 s (le repère
@@ -1107,68 +1114,27 @@ export default function FactureList() {
     annulee:   factures.filter(f => f.statut === 'annulee').length,
   }), [factures])
 
-  // Total encaissé du mois courant, dérivé on-the-fly des paiements des
-  // factures chargées (date_paiement dans le mois en cours).
-  const encaisseMois = useMemo(() => {
-    const ym = today.slice(0, 7)  // AAAA-MM
-    let total = 0
-    for (const f of factures) {
-      for (const p of (f.paiements || [])) {
-        if ((p.date_paiement || '').slice(0, 7) === ym) {
-          total += toNumber(p.montant) || 0
-        }
-      }
-    }
-    return total
-  }, [factures])
-
-  // VX21 — cockpit trésorerie : 3 cartes additionnelles dérivées des factures
-  // déjà chargées (aucun appel réseau). Encaissé ce mois (au-dessus) mesure le
-  // flux entrant ; Total dû / En retard / À échoir ≤7 j mesurent l'encours.
-  const encaisseMoisPrecedent = useMemo(() => {
-    const d = new Date()
-    d.setMonth(d.getMonth() - 1)
-    const ym = d.toISOString().slice(0, 7)
-    let total = 0
-    for (const f of factures) {
-      for (const p of (f.paiements || [])) {
-        if ((p.date_paiement || '').slice(0, 7) === ym) {
-          total += toNumber(p.montant) || 0
-        }
-      }
-    }
-    return total
-  }, [factures])
-
-  const totalDu = useMemo(
-    () => factures.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
-    [factures])
-
-  // APX11 — sous-titre utile de l'en-tête : combien de factures restent à
-  // encaisser (dérivé des factures DÉJÀ chargées, aucun appel réseau).
-  const impayeesCount = useMemo(
-    () => factures.filter(f => f.statut !== 'annulee' && f.statut !== 'brouillon'
-      && (toNumber(f.montant_du) || 0) > 0).length,
-    [factures])
-
-  const totalEnRetard = useMemo(
-    () => factures.filter(isOverdue)
-      .reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
-    [factures])
-  const countEnRetard = useMemo(() => factures.filter(isOverdue).length, [factures])
-
-  // À échoir dans les 7 prochains jours (émise, pas déjà en retard).
-  const in7Days = new Date(today)
-  in7Days.setDate(in7Days.getDate() + 7)
-  const in7DaysIso = in7Days.toISOString().slice(0, 10)
-  const aEcheoirSoon = useMemo(
-    () => factures.filter(f =>
-      f.statut === 'emise' && !isOverdue(f)
-      && f.date_echeance && f.date_echeance >= today && f.date_echeance <= in7DaysIso),
-    [factures, in7DaysIso])
-  const totalAEcheoirSoon = useMemo(
-    () => aEcheoirSoon.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
-    [aEcheoirSoon])
+  // AUD157 (FAC-13) — LES CINQ CHIFFRES D'ARGENT DE L'EN-TETE VIENNENT DU
+  // SERVEUR, plus d'une somme faite ici. « Encaisse ce mois » sommait
+  // `p.montant` de tous les paiements des factures chargees SANS filtrer
+  // `p.statut` : l'ecran comptait des cheques revenus impayes, avec une
+  // definition differente de `Facture.montant_paye` (qui exclut les paiements
+  // rejetes — YLEDG5 — et compte l'escompte — XFAC12). Le proprietaire unique
+  // est desormais `ventes.selectors.kpis_factures` ; l'ecran FORMATE, il ne
+  // calcule plus. Contrat PACT10 :
+  // backend/django_core/apps/ventes/contract_samples/factures_kpis.json
+  const encaisseMois = toNumber(facturesKpis?.encaisse_mois) || 0
+  const encaisseMoisPrecedent = toNumber(facturesKpis?.encaisse_mois_precedent) || 0
+  const totalDu = toNumber(facturesKpis?.total_du) || 0
+  const impayeesCount = facturesKpis?.nb_impayees ?? 0
+  const totalEnRetard = toNumber(facturesKpis?.total_en_retard) || 0
+  const countEnRetard = facturesKpis?.nb_en_retard ?? 0
+  const totalAEcheoirSoon = toNumber(facturesKpis?.total_a_echoir_7j) || 0
+  // Le decompte des factures a echoir se lit sur la page chargee (aucun
+  // montant : c'est un simple cardinal d'affichage).
+  const nbAEcheoirSoon = useMemo(() => factures.filter(f =>
+    f.statut === 'emise' && !isOverdue(f) && f.date_echeance
+    && f.date_echeance >= today).length, [factures])
 
   // VX142(a) — Export comptable DGI (groundwork) : factures validées d'une
   // plage, en .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux).
@@ -1345,6 +1311,9 @@ export default function FactureList() {
   // EXPLIQUE la perte (mode, date et référence du règlement ne seront pas
   // enregistrés). Jamais une popup « êtes-vous sûr ? ».
   const [payeeSecheTarget, setPayeeSecheTarget] = useState(null)
+  // AUD124 — le marquage sec exige un MOTIF (le serveur refuse sans) : il est
+  // tracé dans le chatter de la facture avec son auteur.
+  const [payeeSecheMotif, setPayeeSecheMotif] = useState('')
   const openMarquerPayee = (f) => setPayeeSecheTarget(f)
   const fetchFacturePreviewBlob = useCallback(async () => {
     const f = previewFacture
@@ -1828,17 +1797,34 @@ export default function FactureList() {
           riche en échappatoire (« Encaisser » capture mode/date/référence). */}
       <ConfirmDialog
         open={!!payeeSecheTarget}
-        onOpenChange={(o) => { if (!o) setPayeeSecheTarget(null) }}
+        onOpenChange={(o) => { if (!o) { setPayeeSecheTarget(null); setPayeeSecheMotif('') } }}
         severity="medium"
         title={`Marquer ${payeeSecheTarget?.reference ?? ''} payée sans détail ?`}
         description="Le MODE de règlement, la DATE et la RÉFÉRENCE ne seront pas enregistrés : la facture passera à « payée » sans trace d'encaissement. Préférez « Encaisser » si vous avez ces informations."
         confirmLabel="Marquer payée quand même"
         onConfirm={() => {
           const f = payeeSecheTarget
+          const motif = payeeSecheMotif.trim()
           setPayeeSecheTarget(null)
-          if (f) doAction(marquerPayeeFacture, f.id)
+          setPayeeSecheMotif('')
+          if (!motif) {
+            toast.error('Motif obligatoire : dites pourquoi cette facture est soldée sans encaissement.')
+            return
+          }
+          if (f) doAction(marquerPayeeFacture, { id: f.id, motif })
         }}
-      />
+      >
+        {/* AUD124 — sans motif, ce geste faisait disparaître une créance de
+            la balance âgée sans que rien ne dise qui, quand ni pourquoi. */}
+        <FormField label="Motif (obligatoire)" htmlFor="motif-payee-seche">
+          <Input
+            id="motif-payee-seche"
+            value={payeeSecheMotif}
+            onChange={(e) => setPayeeSecheMotif(e.target.value)}
+            placeholder="Ex. : virement encaissé hors ERP, constaté au relevé"
+          />
+        </FormField>
+      </ConfirmDialog>
 
       {/* EZ12 — après l'encaissement, l'action SUIVANTE est offerte : voir
           l'encaissement dans les Encaissements, filtré sur ce client
@@ -2280,7 +2266,7 @@ export default function FactureList() {
             className="p-3 sm:p-3"
             label="À échoir ≤ 7 j"
             value={formatMAD(totalAEcheoirSoon)}
-            hint={`${aEcheoirSoon.length} facture${aEcheoirSoon.length > 1 ? 's' : ''} · 7 prochains jours`}
+            hint={`${nbAEcheoirSoon} facture${nbAEcheoirSoon > 1 ? 's' : ''} · 7 prochains jours`}
           />
         </div>
       )}

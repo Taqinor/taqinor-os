@@ -57,6 +57,8 @@ const WIRING_LABELS = {
   page: 'Page Facebook',
   paused: 'Client en pause (par design)',
   business: 'Business Portfolio',
+  // MRY0 — arrivée des leads en TEMPS RÉEL (webhook Meta « leadgen »).
+  webhook_leadgen: 'Webhook leads temps réel',
 }
 
 export function normalizeWiringStatuses(raw) {
@@ -66,6 +68,10 @@ export function normalizeWiringStatuses(raw) {
     return list
       .filter(Boolean)
       .map(s => ({
+        // MRY0 — les champs SUPPLÉMENTAIRES du serveur voyagent tels quels
+        // (`page_subscribed`, `has_pages_manage_metadata`, `days_runway`…) :
+        // une tuile qui en a besoin les lit sans second appel réseau.
+        ...s,
         key: s.key,
         label: s.label || WIRING_LABELS[s.key] || s.key,
         ok: !!s.ok,

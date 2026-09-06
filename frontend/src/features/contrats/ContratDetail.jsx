@@ -434,7 +434,16 @@ export default function ContratDetail() {
   // Barre d'actions du cycle de vie (CONTRAT12/23) + PDF.
   const actions = (
     <>
-      {suivants.map((s) => (
+      {/* AUD501 — LES DEUX CHEMINS NE SONT PLUS COTE A COTE. Cette barre
+          proposait un bouton generique pour CHAQUE statut suivant, y compris
+          « signe » et « resilie » : le premier posait l'etat sans creer la
+          moindre SignatureContrat, le second sans creer la moindre
+          Resiliation (donc sans desactiver la maintenance SAV). Le serveur
+          les refuse desormais en 400 ; on cesse de proposer un geste refuse.
+          Ces deux statuts ont chacun leur porte dediee : la signature dans
+          l'onglet Signatures, la resiliation par le bouton « Resilier le
+          contrat » de l'onglet Resiliations. */}
+      {suivants.filter((s) => s !== 'signe' && s !== 'resilie').map((s) => (
         <Button key={s} size="sm" variant="outline" disabled={busy} onClick={() => changerStatut(s)}>
           → {CONTRAT_STATUS[s]?.label || s}
         </Button>

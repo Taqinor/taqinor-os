@@ -8,6 +8,15 @@ d'isolation YRBAC12), active Row Level Security + une policy
     python manage.py rls --apply     # applique réellement (ENABLE+FORCE+policy)
     python manage.py rls --revert    # retire policy + désactive RLS
 
+AUD422 — ``--only`` permet un déploiement ÉTAGÉ (le tout-ou-rien d'origine
+était la raison pour laquelle RLS n'a jamais été activé sur AUCUNE table) :
+
+    python manage.py rls --dry-run --only argent
+    python manage.py rls --apply --only compta.EcritureComptable,facturation.Facture
+
+Les 5 tables argent sont d'ailleurs posées par MIGRATION (compta, ventes,
+facturation) : la commande reste l'outil d'inspection et d'élargissement.
+
 JAMAIS lancée automatiquement : c'est une bascule d'infrastructure délibérée
 (elle suppose le GUC posé — NTPLT1 — et le rôle applicatif non-BYPASSRLS —
 NTPLT3). Idempotente et réversible. Refuse sur un backend non-PostgreSQL.
@@ -33,13 +42,37 @@ class Command(BaseCommand):
         group.add_argument(
             '--revert', action='store_true', default=False,
             help='Retire les policies et désactive RLS.')
+        # AUD422 — déploiement ÉTAGÉ. Sans cette option la commande était
+        # tout-ou-rien sur les ~900 tables company-scopées : le seul geste
+        # possible était un big-bang que personne n'ose lancer, et RLS n'a donc
+        # JAMAIS été activé sur une seule table depuis NTPLT2.
+        parser.add_argument(
+            '--only', default='',
+            help="Restreint à une liste de modèles « app_label.Model » séparés "
+                 "par des virgules (ex. compta.EcritureComptable,"
+                 "facturation.Facture). Un libellé inconnu FAIT ÉCHOUER la "
+                 "commande — jamais un silence. Raccourci : « argent » vise "
+                 "les 5 tables argent (core.rls.TABLES_ARGENT).")
+
+    def _labels(self, brut):
+        """Résout ``--only`` : '' → None (tout), 'argent' → TABLES_ARGENT."""
+        valeur = (brut or '').strip()
+        if not valeur:
+            return None
+        if valeur.lower() == 'argent':
+            return list(rls.TABLES_ARGENT)
+        return [part.strip() for part in valeur.split(',') if part.strip()]
 
     def handle(self, *args, **options):
         action = 'apply' if options['apply'] else (
             'revert' if options['revert'] else 'dry-run')
 
-        tables, statements = rls.build_statements(
-            'revert' if action == 'revert' else 'apply')
+        try:
+            only = self._labels(options.get('only'))
+            tables, statements = rls.build_statements(
+                'revert' if action == 'revert' else 'apply', only=only)
+        except ValueError as exc:
+            raise CommandError(str(exc))
 
         if not tables:
             self.stdout.write(self.style.WARNING(

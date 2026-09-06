@@ -118,16 +118,49 @@ class LigneFactureViewSet(CompanyScopedModelViewSet):
                 ),
             })
 
+    @staticmethod
+    def _check_periode(facture):
+        """AUD128 — YLEDG3 : une facture d'un exercice CLÔTURÉ n'est plus
+        modifiable, ligne par ligne non plus.
+
+        `_check_immuable` ci-dessus ne consulte que `CompanyProfile.
+        factures_immuables` (XFAC24, opt-in, défaut OFF) : ni `perform_create`,
+        ni `perform_update`, ni `perform_destroy` (qui fait un `delete()`
+        PHYSIQUE) n'appelaient la garde de période, que `FactureViewSet`
+        applique pourtant systématiquement et qu'`AvoirViewSet` duplique. Le
+        total d'une facture d'un exercice déjà déclaré à la DGI se modifiait
+        donc ligne par ligne, sans qu'aucune garde ne s'y oppose et sans que
+        l'écriture GL correspondante bouge.
+
+        Utilise la fonction PARTAGÉE créée en AUD122 : compta absente ou
+        aucune période verrouillée = no-op silencieux, comportement
+        historique strictement inchangé.
+        """
+        if facture is None:
+            return
+        from ..utils.periode import guard_periode_verrouillee
+        guard_periode_verrouillee(facture)
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
-        self._check_immuable(serializer.validated_data.get('facture'))
+        facture = serializer.validated_data.get('facture')
+        self._check_periode(facture)
+        self._check_immuable(facture)
         serializer.save()
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        self._check_periode(serializer.instance.facture)
+        # Un PATCH peut DÉPLACER la ligne vers une autre facture : la cible
+        # doit elle aussi être hors période close (sinon on écrirait dans un
+        # exercice clôturé par la porte de derrière).
+        cible = serializer.validated_data.get('facture')
+        if cible is not None and cible.pk != serializer.instance.facture_id:
+            self._check_periode(cible)
         self._check_immuable(serializer.instance.facture)
         serializer.save()
 
     def perform_destroy(self, instance):
+        self._check_periode(instance.facture)
         self._check_immuable(instance.facture)
         instance.delete()

@@ -47,7 +47,7 @@ def rows(resp):
     return data['results'] if isinstance(data, dict) and 'results' in data else data
 
 
-def _fake_store(file):
+def _fake_store(file, company=None):
     return ({'file_key': 'attachments/doc.pdf', 'filename': 'contrat.pdf',
              'size': 1234, 'mime': 'application/pdf'}, None)
 
@@ -146,8 +146,13 @@ class DocumentEmployeTests(TestCase):
         resp = _upload(api, self.emp_a.id)
         doc_id = resp.data['id']
         att_id = DocumentEmploye.objects.get(id=doc_id).attachment_id
+        # AUD719 — un CONTRAT est une pièce sensible : sa suppression
+        # (irréversible, fichier MinIO compris) exige désormais un motif ET une
+        # confirmation explicite. Le reste du contrat de l'endpoint est
+        # inchangé (204, ligne + pièce jointe effacées, stockage libéré).
         with mock.patch('apps.rh.views.delete_attachment') as del_mock:
-            d = api.delete(f'{self.BASE}{doc_id}/')
+            d = api.delete(
+                f'{self.BASE}{doc_id}/?motif=doublon&confirmer=contrat')
         self.assertEqual(d.status_code, 204)
         self.assertFalse(DocumentEmploye.objects.filter(id=doc_id).exists())
         self.assertFalse(Attachment.objects.filter(id=att_id).exists())

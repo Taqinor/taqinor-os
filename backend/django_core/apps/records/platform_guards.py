@@ -518,6 +518,74 @@ def flat_storage_key_error_line(relpath: str) -> str:
     )
 
 
+# ── AUD311 — L'APPELANT QUI OMET ``company=`` ÉTAIT INVISIBLE AU GARDE ────────
+#
+# ``FLAT_STORAGE_KEY_RE`` ci-dessus ne détecte que la CONSTRUCTION LITTÉRALE
+# d'une clé plate. Or la façon dont une clé plate naît réellement, c'est un
+# appelant qui écrit ``store_attachment(file)`` sans ``company=`` : le helper
+# retombe alors en silence sur ``attachments/{uuid}.ext`` au lieu du préfixe
+# SCA42. Cette classe ENTIÈRE — 16 des 33 sites d'appel au moment du constat —
+# était invisible au garde, qui restait vert.
+#
+# Garde SÉMANTIQUE (AST) : on regarde la FORME de l'appel, jamais un nombre de
+# sites épinglé. Les fichiers qui omettent encore ``company=`` sont gelés
+# ci-dessous — la reprise se fait app par app ; une RÉINTRODUCTION dans un
+# fichier déjà corrigé (ou un fichier neuf) est rouge dès aujourd'hui.
+GRANDFATHERED_STORE_ATTACHMENT_CALLERS = frozenset({
+    "apps/automation/services.py",
+    "apps/chat/views.py",
+    "apps/crm/intake_photo.py",
+    "apps/customfields/serializers.py",
+    "apps/ged/services.py",
+    "apps/ged/views.py",
+    "apps/kb/views.py",
+    "apps/rh/services.py",
+    "apps/rh/views.py",
+    "apps/sav/public_views.py",
+    "apps/stock/views/facture_fournisseur.py",
+})
+
+
+def scan_store_attachment_sans_company(relpath: str, text: str) -> bool:
+    """True si ``text`` appelle ``store_attachment(...)`` SANS ``company=``
+    et que ``relpath`` n'est ni gelé ni un fichier de tests.
+
+    ``relpath`` : chemin POSIX relatif à ``backend/django_core``."""
+    import ast
+    if relpath in GRANDFATHERED_STORE_ATTACHMENT_CALLERS or is_test_path(relpath):
+        return False
+    if "store_attachment" not in text:
+        return False
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:  # pragma: no cover - fichier cassé, un autre garde le dira
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        nom = (func.attr if isinstance(func, ast.Attribute)
+               else getattr(func, "id", None))
+        if nom != "store_attachment":
+            continue
+        if not any(kw.arg == "company" for kw in node.keywords):
+            return True
+    return False
+
+
+def store_attachment_sans_company_error_line(relpath: str) -> str:
+    return (
+        f"[SCA42/AUD311] Appel NU à store_attachment(...) dans « {relpath} » : "
+        f"sans « company= », la clé retombe en silence sur "
+        f"« attachments/{{uuid}}.ext » au lieu du préfixe société "
+        f"« attachments/{{company_id}}/{{uuid}}.ext ». Passez la société de "
+        f"l'OBJET porteur (jamais celle de la requête). La liste gelée des "
+        f"appelants restant à reprendre vit dans "
+        f"apps/records/platform_guards.py "
+        f"(GRANDFATHERED_STORE_ATTACHMENT_CALLERS)."
+    )
+
+
 # ── SCA29 — anti-branding « taqinor » hardcodé dans les surfaces user-facing ──
 #
 # Constat : ~146 fichiers backend + 49 frontend mentionnent « taqinor » — la

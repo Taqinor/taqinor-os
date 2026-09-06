@@ -678,6 +678,10 @@ REFUS = {
     "frontend/src/lib/monitoring.test.mjs": [("Sentry frontend", "TEST")],
     "frontend/src/router/moduleRoutes.jsx": [
         ("AUCUNE copie de cette règle", "COMPORTEMENT")],
+    # MRY14 06/09/2026 — OUTCOME_CHOICES reflète OUTCOME_LABELS de
+    # ChatterTimeline (constante JS partagée), pas un champ choices= serveur.
+    "frontend/src/pages/crm/RelancesDuJourWidget.jsx": [
+        ("miroir de", "MIROIR_JS")],
     "frontend/src/pages/crm/leads/views/KanbanView.jsx": [
         ("STAGES.py", "HORS_MODELE")],
     "frontend/src/pages/crm/leads/views/ListView.jsx": [

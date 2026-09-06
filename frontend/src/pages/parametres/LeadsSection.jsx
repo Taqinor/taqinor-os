@@ -106,6 +106,66 @@ export default function LeadsSection({
                    name="lead_sla_hours" value={form.lead_sla_hours}
                    onChange={set} />
           </Field>
+          {/* MRY28/MRY8 — fenêtres d'appel : décident quand une touche du
+              moteur de relances tombe (`crm.horaires.prochain_creneau_appel`)
+              et servent de base au KPI « premier contact » en minutes
+              ouvrées. Les jours ouvrés/fériés restent portés par
+              Paramètres → Notifications (WorkingHoursConfig/Holiday). */}
+          <p className="mb-1 mt-3.5 text-[12.5px] text-muted-foreground">
+            Fenêtres d'appel : heures pendant lesquelles le moteur de
+            relances peut poser une touche « appel ». Le vendredi, la
+            pause de prière est respectée ; pendant le Ramadan (dates
+            laissées vides = hors Ramadan), une fenêtre plus courte
+            s'applique.
+          </p>
+          <div className="mb-1 grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-4">
+            <Field label="Début des appels" htmlFor="pe-appel-heure-debut">
+              <Input id="pe-appel-heure-debut" type="time"
+                     name="appel_heure_debut" value={form.appel_heure_debut}
+                     onChange={set} />
+            </Field>
+            <Field label="Fin des appels" htmlFor="pe-appel-heure-fin">
+              <Input id="pe-appel-heure-fin" type="time"
+                     name="appel_heure_fin" value={form.appel_heure_fin}
+                     onChange={set} />
+            </Field>
+            <Field label="Vendredi — début de pause" htmlFor="pe-vendredi-pause-debut">
+              <Input id="pe-vendredi-pause-debut" type="time"
+                     name="vendredi_pause_debut" value={form.vendredi_pause_debut}
+                     onChange={set} />
+            </Field>
+            <Field label="Vendredi — fin de pause" htmlFor="pe-vendredi-pause-fin">
+              <Input id="pe-vendredi-pause-fin" type="time"
+                     name="vendredi_pause_fin" value={form.vendredi_pause_fin}
+                     onChange={set} />
+            </Field>
+            <Field label="Ramadan — début" htmlFor="pe-ramadan-debut">
+              <Input id="pe-ramadan-debut" type="date"
+                     name="ramadan_debut" value={form.ramadan_debut}
+                     onChange={set} />
+            </Field>
+            <Field label="Ramadan — fin" htmlFor="pe-ramadan-fin">
+              <Input id="pe-ramadan-fin" type="date"
+                     name="ramadan_fin" value={form.ramadan_fin}
+                     onChange={set} />
+            </Field>
+            <Field label="Ramadan — début des appels" htmlFor="pe-ramadan-appel-debut">
+              <Input id="pe-ramadan-appel-debut" type="time"
+                     name="ramadan_appel_debut" value={form.ramadan_appel_debut}
+                     onChange={set} />
+            </Field>
+            <Field label="Ramadan — fin des appels" htmlFor="pe-ramadan-appel-fin">
+              <Input id="pe-ramadan-appel-fin" type="time"
+                     name="ramadan_appel_fin" value={form.ramadan_appel_fin}
+                     onChange={set} />
+            </Field>
+          </div>
+          <Field label="Objectif premier contact (minutes ouvrées)" htmlFor="pe-premier-contact-objectif">
+            <Input id="pe-premier-contact-objectif" type="number" min="1" step="1"
+                   name="premier_contact_objectif_min"
+                   value={form.premier_contact_objectif_min}
+                   onChange={set} />
+          </Field>
           {/* XSAL11 — round-robin équilibré, OFF par défaut (comportement
               actuel inchangé). ON : rotation entre commerciaux actifs en
               sautant qui dépasse le plafond de leads ouverts ci-dessous. */}

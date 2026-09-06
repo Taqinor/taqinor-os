@@ -6,8 +6,11 @@ faisait tourner — Odoo lance une action nocturne « reordering rules run ».
 Aujourd'hui personne n'est notifié tant qu'un humain n'ouvre pas l'écran.
 
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
-``apps.rh.tasks``/``apps.installations.tasks``. Boucle PAR société active
-(jamais une company lue d'une requête) ; une exception sur l'une n'empêche
+``apps.rh.tasks``/``apps.installations.tasks``. Boucle PAR société ACTIVE, au
+sens de ``authentication.selectors.active_companies()`` (SCA19/AUD415) : un
+tenant suspendu ou en fermeture n'est jamais balayé — la docstring l'affirmait
+avant AUD415 alors que le code itérait ``Company.objects.all()``.
+Jamais une company lue d'une requête ; une exception sur l'une n'empêche
 jamais les suivantes (best-effort, journalisé). Aucun BCF n'est créé
 automatiquement ici — SUGGESTION seulement (réutilise `produits_a_reapprovisionner`,
 jamais de logique dupliquée).
@@ -20,6 +23,7 @@ AUJOURD'HUI (Africa/Casablanca).
 import logging
 
 from celery import shared_task
+from django.db.models import F
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -61,14 +65,14 @@ def recompute_reordering_task():
     Idempotent : une seule notification par jour par société. Renvoie un dict
     {company_id: nb_produits_notifies} (0 = aucun produit sous seuil, ou déjà
     notifié aujourd'hui)."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from apps.stock.services import produits_a_reapprovisionner
     from apps.notifications.services import notify_many
     from apps.notifications.models import EventType
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             besoins = produits_a_reapprovisionner(company)
         except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
@@ -114,14 +118,14 @@ def relancer_bcf_en_retard_task():
     proposition par jour par BCF (le lien encode le BCF + la date). Best-
     effort : une société/un BCF en échec n'arrête jamais les suivants.
     Renvoie {company_id: nb_bcf_relances_proposees}."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from .models import AchatsParametres
     from .services import bcf_en_retard_list
     from apps.ventes.services import bcf_share_url
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         params = AchatsParametres.objects.filter(
             company=company, relance_bcf_actif=True).first()
         if params is None:
@@ -160,14 +164,95 @@ def relancer_bcf_en_retard_task():
                     recipients, EventType.BCF_RELANCE_PROPOSEE,
                     title=f'Brouillon de relance proposé ({bc.reference})',
                     body=message, link=link, company=company)
-                bc.nb_relances = (bc.nb_relances or 0) + 1
-                bc.save(update_fields=['nb_relances'])
+                # AUD829 — F() atomic increment: a bare
+                # `bc.nb_relances = (... or 0) + 1` then save() loses a
+                # concurrent relance under two racing runs on the same BCF
+                # (cross-app model — type(bc) avoids importing
+                # apps.achats.models here, per the services.py boundary).
+                type(bc).objects.filter(pk=bc.pk).update(
+                    nb_relances=F('nb_relances') + 1)
                 count += 1
             except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
                 logger.warning(
                     'stock.relancer_bcf_en_retard: échec pour BCF %s',
                     bc.pk, exc_info=True)
         result[company.id] = count
+    return result
+
+
+def _deja_notifie_aujourdhui_societe(event_type, company):
+    """Vrai si une notification de CE type a déjà été créée AUJOURD'HUI pour
+    CETTE société — utilisé quand la fonction notifiée (best-effort,
+    existante, testée ailleurs) ne pose pas de ``link`` par notification
+    (contrairement à `_deja_notifie_aujourdhui`, clé par lien stable)."""
+    from apps.notifications.models import Notification
+    today = timezone.localdate()
+    try:
+        return Notification.objects.filter(
+            event_type=event_type, company=company,
+            created_at__date=today).exists()
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+@shared_task(name='stock.notifier_documents_conformite_expirants')
+def notifier_documents_conformite_expirants_task():
+    """XPUR1 (AUDV04/DRAFT165-115) — pour CHAQUE société active, notifie les
+    responsables/admins des documents de conformité fournisseur expirant
+    sous 30 jours (réutilise `services.notify_expiring_conformite_documents`
+    — jamais de logique dupliquée). ``notify_expiring_conformite_documents``
+    existait déjà, testée, mais SANS AUCUN cron : cette tâche était le trou
+    (le paramètre société `bloquer_paiement_conformite_expiree` bloque un
+    paiement, mais rien n'alertait EN AMONT de l'échéance). Idempotent : au
+    plus une notification-lot par jour par société. Renvoie
+    {company_id: nb_documents_notifies}."""
+    from authentication.selectors import active_companies
+    from apps.notifications.models import EventType
+    from .services import notify_expiring_conformite_documents
+
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        if _deja_notifie_aujourdhui_societe(
+                EventType.SUPPLIER_DOC_EXPIRING, company):
+            result[company.id] = 0
+            continue
+        try:
+            result[company.id] = notify_expiring_conformite_documents(
+                company, jours=30)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+            logger.warning(
+                'stock.notifier_documents_conformite_expirants: échec '
+                'société %s', company.id, exc_info=True)
+            result[company.id] = 0
+    return result
+
+
+@shared_task(name='stock.notifier_bcf_en_retard_buyer')
+def notifier_bcf_en_retard_buyer_task():
+    """XPUR7 (AUDV04/DRAFT165-116) — pour CHAQUE société active, notifie les
+    responsables/admins (l'ACHETEUR, pas le fournisseur — distinct de
+    `stock.relancer_bcf_en_retard` qui propose une relance AU fournisseur)
+    des BCF ENVOYE en retard (réutilise `services.notify_bcf_en_retard` —
+    jamais de logique dupliquée). Cette fonction existait déjà, testée, mais
+    n'avait AUCUN appelant ni cron : le buyer alert XPUR7 (`BCF_LATE`) ne
+    partait donc jamais en pratique. Idempotent : au plus une notification-
+    lot par jour par société. Renvoie {company_id: nb_bcf_notifies}."""
+    from authentication.selectors import active_companies
+    from apps.notifications.models import EventType
+    from .services import notify_bcf_en_retard
+
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        if _deja_notifie_aujourdhui_societe(EventType.BCF_LATE, company):
+            result[company.id] = 0
+            continue
+        try:
+            result[company.id] = notify_bcf_en_retard(company)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+            logger.warning(
+                'stock.notifier_bcf_en_retard_buyer: échec société %s',
+                company.id, exc_info=True)
+            result[company.id] = 0
     return result
 
 
@@ -186,12 +271,12 @@ def alerter_surcapacite_zones_task(seuil_pct=None):
 
     Renvoie ``{company_id: nb_zones_alertees}``.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from .selectors_entrepot import zones_en_surcapacite
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             zones = zones_en_surcapacite(company, seuil_pct=seuil_pct)
         except Exception:  # noqa: BLE001 — société suivante, jamais bloquant
@@ -237,13 +322,13 @@ def expiration_alerts_task():
     fenêtre configurable `CompanyProfile.jours_alerte_peremption` (défaut 30).
     Réutilise `produits_expirant_bientot` (FG64) tel quel — jamais de logique
     d'expiry dupliquée. Renvoie {company_id: nb_produits_notifies}."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from apps.parametres.models import CompanyProfile
     from .services import produits_expirant_bientot
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             profile = CompanyProfile.get(company=company)
             jours = profile.jours_alerte_peremption or 30

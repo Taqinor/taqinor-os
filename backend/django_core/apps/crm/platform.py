@@ -48,5 +48,10 @@ PLATFORM = {
     ],
 
     # Fournisseurs de KPI/agrégats exposés au reporting (funnel commercial).
-    'kpi_providers': ['crm_sales_report'],
+    # AUD606 — c'était `'crm_sales_report'`, une chaîne SANS POINT : le seul
+    # consommateur (`reporting.reports.kpi_federes`) saute explicitement toute
+    # clé sans point, donc le hub KPI fédéré et les badges d'accueil
+    # n'affichaient JAMAIS de tuile de funnel CRM. Chemin dotted RÉSOLUBLE
+    # désormais, comme cpq/ventes/ao/adsengine.
+    'kpi_providers': ['apps.crm.kpis.kpi_crm'],
 }

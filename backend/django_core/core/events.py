@@ -272,6 +272,12 @@ importe ``apps.audit``.
     * ``instance`` — l'objet ``Paiement`` ou ``Avoir`` concerné ;
     * ``company`` — la société (posée côté serveur).
 
+    AUD127 — ``avoir_annule`` est le symétrique manquant d'``avoir_cree`` :
+    même contrat d'arguments, émis à l'annulation d'un avoir, et abonné par
+    compta pour EXTOURNER l'écriture d'avoir (YLEDG4). Sans lui, l'ERP
+    rendait la créance (``avoirs_total`` exclut les avoirs annulés) pendant
+    que le grand livre gardait l'avoir.
+
 ``facture_fournisseur_creee`` / ``paiement_fournisseur_enregistre``
     Symétrique achat de ``facture_emise``/``paiement_enregistre`` — YLEDG2.
     Émis SYNCHRONE, best-effort, au point de création canonique :
@@ -610,6 +616,19 @@ bon_commande_cree = django.dispatch.Signal()
 paiement_enregistre = django.dispatch.Signal()
 avoir_cree = django.dispatch.Signal()
 
+# AUD127 — SYMÉTRIQUE d'``avoir_cree`` : l'annulation d'un avoir n'émettait
+# RIEN, alors que sa création émet ``avoir_cree`` auquel compta abonne
+# l'écriture d'avoir (YLEDG1). L'effet ERP était pourtant immédiat :
+# ``Facture.avoirs_total`` exclut les avoirs annulés, donc ``montant_du``
+# remonte — pendant que le grand livre, lui, garde l'avoir. Une créance de
+# 20 000 réapparaissait côté ERP alors que la comptabilité la considérait
+# toujours comme créditée. Émis SYNCHRONE, best-effort, au seul point
+# d'annulation (``ventes.views.avoir.AvoirViewSet.annuler``), exactement une
+# fois (l'action est idempotente). Arguments : instance (ventes.Avoir),
+# company. Abonné : compta (YLEDG4, extourne l'écriture d'avoir — jamais de
+# suppression d'écriture validée, COMPTA11).
+avoir_annule = django.dispatch.Signal()
+
 # YLEDG2 / YPROC3 — CRÉATION d'une stock.FactureFournisseur (saisie manuelle
 # via la vue, OU construite par ``stock.services.facturer_reception`` depuis
 # une réception). Contrat UNIFIÉ (un seul signal, deux abonnés) :
@@ -826,6 +845,19 @@ ao_gagne = django.dispatch.Signal()
 # ``records`` (``apps/records/receivers.py`` → chatter générique ARC8 sur le
 # toggle) — voir la docstring du module ci-dessus.
 module_toggled = django.dispatch.Signal()
+
+# AUD816 — une ÉDITION EN MASSE a été appliquée (``core.bulk_edit``). Ce
+# chemin écrit par ``queryset.update()`` : il court-circuite ``Model.save()``,
+# ``full_clean()`` et TOUS les signaux — donc l'audit générique par
+# ``post_save`` (``apps.audit.signals.TRACKED_MODELS``) ne voit RIEN passer.
+# Cet événement est le SEUL canal par lequel une opération de masse laisse une
+# trace, et il permet à ``core`` (fondation) de la produire sans importer
+# ``apps.audit`` (contrat import-linter ``core-foundation-is-a-base-layer``).
+# Émis UNE fois par lot réellement appliqué (jamais si 0 ligne modifiée).
+# Arguments : ``target`` (nom logique de la cible), ``label``, ``fields``
+# (liste des champs écrits), ``count`` (nb de lignes modifiées), ``company``,
+# ``user`` (peut être None). Abonné : ``apps/audit/receivers.py``.
+bulk_edit_applied = django.dispatch.Signal()
 
 
 # ===========================================================================

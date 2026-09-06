@@ -208,7 +208,52 @@ def contexte_fusion(contrat):
         "parties": "\n".join(lignes_parties),
         # Clauses résolues (CONTRAT9)
         "clauses": "\n\n".join(blocs_clauses),
+        # AUD503 — LE DOCUMENT PORTE SA PREUVE DE SIGNATURE (décision D11).
+        "signatures": bloc_signatures(contrat),
     }
+
+
+#: AUD503 / décision fondateur D11 — ÉTIQUETAGE HONNÊTE DU NIVEAU DE SIGNATURE.
+#: Le dispositif est une signature électronique SIMPLE (nom dactylographié +
+#: preuves de connexion, éventuellement un OTP) au sens de la loi 43-20 : ce
+#: n'est ni une signature avancée ni une signature qualifiée. Le document le
+#: DIT, plutôt que de laisser croire à davantage.
+MENTION_NIVEAU_SIGNATURE = (
+    "Signature électronique simple (loi 43-20) : nom dactylographié et "
+    "preuves de connexion horodatées. Ni signature avancée, ni qualifiée."
+)
+
+
+def bloc_signatures(contrat) -> str:
+    """AUD503 — le bloc de signature IMPRIMABLE d'un contrat.
+
+    ``contexte_fusion`` ne posait NI signataire, NI date, NI méthode, NI
+    référence de preuve : le PDF d'un contrat SIGNÉ ne montrait donc AUCUNE
+    trace de sa signature — un document juridique muet sur ce qui le rend
+    opposable. Les ``SignatureContrat`` existaient pourtant depuis CONTRAT16.
+
+    Le bloc nomme, pour chaque signataire : son nom (celui qui fait foi), son
+    rôle, la date/heure, la méthode et la RÉFÉRENCE DE PREUVE (id de la
+    ``SignatureContrat`` + empreinte d'IP). Il se termine par l'étiquetage
+    honnête du niveau de signature (décision D11). Lecture seule.
+    """
+    signatures = list(contrat.signatures.all().order_by('date_signature', 'id'))
+    if not signatures:
+        return "Non signé à ce jour."
+    lignes = []
+    for signature in signatures:
+        role = signature.get_role_signataire_display()
+        methode = (signature.get_methode_display()
+                   if signature.methode else 'non précisée')
+        lignes.append(
+            f"- {signature.signataire_nom} ({role}) — "
+            f"signé le {_fmt_date(signature.date_signature)}, "
+            f"méthode : {methode}, "
+            f"référence de preuve : SIG-{signature.pk}"
+            + (f" / IP {signature.ip_adresse}" if signature.ip_adresse else ""))
+    lignes.append("")
+    lignes.append(MENTION_NIVEAU_SIGNATURE)
+    return "\n".join(lignes)
 
 
 def fusionner(gabarit, contexte):
@@ -272,6 +317,19 @@ def _contrat_html(contrat):
     corps = _html.escape(rendu).replace("\n", "<br/>")
     titre = _html.escape(contrat.objet or "Contrat")
     reference = _html.escape(contrat.reference or "")
+    # AUD503 — LE BLOC DE SIGNATURE EST SUR LE DOCUMENT, TOUJOURS. Le poser
+    # dans `contexte_fusion` ne suffit pas : un `ModeleContrat` maison n'a
+    # aucune raison de porter le jeton `{{ signatures }}`, et le PDF d'un
+    # contrat SIGNÉ resterait alors muet sur ce qui le rend opposable. On
+    # l'ajoute donc ici quand le rendu ne le contient pas déjà — jamais deux
+    # fois (le gabarit par défaut, lui, le porte).
+    bloc = bloc_signatures(contrat)
+    signatures_html = ""
+    if bloc and bloc not in rendu:
+        signatures_html = (
+            "<div class='signatures'><h2>Signatures</h2>"
+            + _html.escape(bloc).replace("\n", "<br/>")
+            + "</div>")
     return (
         "<html><head><meta charset='utf-8'>"
         "<style>"
@@ -281,10 +339,14 @@ def _contrat_html(contrat):
         "padding-bottom:6px;}"
         ".ref{color:#555;font-size:10pt;margin-bottom:18px;}"
         ".corps{white-space:normal;}"
+        ".signatures{margin-top:24px;border-top:1px solid #ccc;"
+        "padding-top:12px;font-size:10pt;}"
+        ".signatures h2{font-size:12pt;margin:0 0 8px;}"
         "</style></head><body>"
         f"<h1>{titre}</h1>"
         f"<div class='ref'>Référence : {reference}</div>"
         f"<div class='corps'>{corps}</div>"
+        f"{signatures_html}"
         "</body></html>"
     )
 
@@ -324,7 +386,10 @@ def _gabarit_par_defaut(contexte):
         "Montant : {{ montant }}\n"
         "Période : {{ date_debut }} → {{ date_fin }}\n\n"
         "Parties :\n{{ parties }}\n\n"
-        "Clauses :\n{{ clauses }}\n"
+        "Clauses :\n{{ clauses }}\n\n"
+        # AUD503 — le bloc de signature fait partie du DOCUMENT, pas d'un
+        # écran : un contrat signé doit porter sa preuve.
+        "Signatures :\n{{ signatures }}\n"
     )
 
 
@@ -1447,6 +1512,13 @@ def _prochain_numero_avenant(contrat):
     return (plus_haut or 0) + 1
 
 
+class AvenantError(Exception):
+    """AUD507 — levée quand un avenant ne peut pas être créé (état terminal).
+
+    Même patron que ``RenouvellementError`` : la vue la traduit en 400 français,
+    jamais en 500 ni en silence."""
+
+
 @transaction.atomic
 def creer_avenant(contrat, *, objet, description='', date_effet=None,
                   montant_delta=None, auteur=None):
@@ -1481,6 +1553,16 @@ def creer_avenant(contrat, *, objet, description='', date_effet=None,
     renseigné).
     """
     from .models import Avenant, Contrat
+
+    # AUD507 — UN ÉTAT TERMINAL NE S'AMENDE PAS. `creer_avenant` n'avait AUCUN
+    # test de statut, contrairement à `renouveler_contrat` qui refuse
+    # explicitement RESILIE/EXPIRE via `_statuts_non_renouvelables()` : un
+    # avenant FINANCIER (`montant_delta`) était donc créable sur un contrat
+    # MORT, et il changeait bel et bien `Contrat.montant`. `appliquer_indexation`
+    # héritait du même trou puisqu'il appelle ce service sans contrôle.
+    if contrat.statut in _statuts_non_renouvelables():
+        raise AvenantError(
+            "Un contrat résilié ou expiré ne peut pas recevoir d'avenant.")
 
     nom = (objet or '').strip()
     if not nom:
@@ -1938,6 +2020,74 @@ def resilier_contrat(contrat, *, motif='', motif_ref=None, date_effet=None,
     except Exception:  # pragma: no cover - défensif (best-effort)
         pass
 
+    return resiliation
+
+
+class AnnulationResiliationError(Exception):
+    """AUD511 — levée quand une résiliation ne peut pas être annulée.
+
+    Même patron que ``ResiliationError`` : la vue la traduit en 400 français,
+    jamais en 500 ni en silence."""
+
+
+@transaction.atomic
+def annuler_resiliation(contrat, *, motif='', auteur=None, today=None):
+    """AUD511 — ANNULE une résiliation faite par erreur, dans le préavis.
+
+    CE QUI MANQUAIT. ``Resiliation`` déclare TROIS statuts
+    (``demande``/``effective``/``annulee``) mais seul ``resilier_contrat`` en
+    créait — toujours en ``demande``. Aucun service, aucune vue, aucun admin
+    n'écrivait ``annulee`` ni ``effective`` : c'étaient des ÉTATS MORTS. Pire,
+    ``Contrat.statut = RESILIE`` était TERMINAL dans la machine d'états, donc
+    même une résiliation annulée n'aurait jamais rendu son contrat ACTIF. Une
+    résiliation faite par erreur de saisie était IRRATTRAPABLE.
+
+    Décision fondateur : câbler une VRAIE annulation (besoin métier réel), pas
+    retirer les états.
+
+    LA FENÊTRE. L'annulation n'est possible qu'AVANT la date d'effet : passé
+    cette date la résiliation a produit ses conséquences (échéances annulées,
+    maintenance SAV désactivée par l'événement ``contrat_resilie``), et la
+    « défaire » serait une réécriture d'histoire, pas une correction de saisie.
+
+    Ce que fait le service, dans cet ordre (les REFUS d'abord) :
+
+      1. refuse s'il n'existe aucune résiliation active sur ce contrat ;
+      2. refuse hors fenêtre de préavis (``date_effet`` atteinte ou dépassée) ;
+      3. passe la ``Resiliation`` à ``ANNULEE`` ;
+      4. ramène le ``Contrat`` à ``ACTIF`` par la machine d'états GARDÉE
+         (arête ``RESILIE → ACTIF`` réservée à ce service — la porte générique
+         ``changer-statut`` la refuse) ;
+      5. journalise la transition au chatter (auteur posé côté serveur).
+
+    Renvoie la ``Resiliation`` annulée. Lève ``AnnulationResiliationError``.
+    """
+    from .models import Contrat, Resiliation
+
+    if today is None:
+        today = timezone.localdate()
+
+    resiliation = resiliation_active(contrat)
+    if resiliation is None:
+        raise AnnulationResiliationError(
+            "Ce contrat ne porte aucune résiliation à annuler.")
+    if resiliation.date_effet and resiliation.date_effet <= today:
+        raise AnnulationResiliationError(
+            "La date d'effet de cette résiliation est atteinte : elle a déjà "
+            "produit ses conséquences et ne peut plus être annulée.")
+
+    ancien_statut = contrat.statut
+    resiliation.statut = Resiliation.Statut.ANNULEE
+    resiliation.save(update_fields=['statut'])
+
+    if contrat.statut == Contrat.Statut.RESILIE:
+        changer_statut(contrat, Contrat.Statut.ACTIF, user=auteur)
+        journaliser_transition(
+            contrat, field='statut', old_value=ancien_statut,
+            new_value=contrat.statut,
+            message=(f'Annulation de la résiliation n°{resiliation.pk}'
+                     + (f' — {motif}' if motif else '')),
+            auteur=auteur)
     return resiliation
 
 
@@ -2550,6 +2700,21 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=None):
         contrat, field='facturation', old_value='',
         new_value=f'Facture {facture.reference} (échéance n°{ligne.numero})',
         message='Facturation récurrente d\'une échéance.', auteur=user)
+
+    # XCTR22 (AUDV18) — branchement ADDITIF : tente le débit du mandat de
+    # prélèvement actif du client sur cette échéance, via la porte publique
+    # de ventes (jamais ses modèles — frontière cross-app CLAUDE.md), comme
+    # `ajouter_ligne_echeance_contrat` ci-dessus. Best-effort : sans mandat
+    # actif (comportement d'aujourd'hui), no-op strict ; un échec provider ne
+    # remet JAMAIS en cause la facture déjà émise ci-dessus.
+    try:
+        from apps.ventes.services import debiter_mandat_pour_facture
+        debiter_mandat_pour_facture(
+            facture=facture, periode=ligne.date_echeance.isoformat())
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'XCTR22 : débit mandat indisponible pour la facture %s',
+            facture.reference, exc_info=True)
 
     return facture
 

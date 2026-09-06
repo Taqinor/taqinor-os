@@ -8,8 +8,17 @@ field (quantities, aggregate counters, balances) takes a lock. A bare
 under concurrency loses updates (lost-update anomaly).
 
 DB-free, AST-only (mirrors ``scripts/check_get_or_create.py`` /
-``check_safe_migrations.py``). Scans every ``apps/*/services.py`` and, per
-function, flags a read-modify-write pattern:
+``check_safe_migrations.py``). Scans every ``{apps/*,core,authentication}/
+{services.py,services_*.py,services/*.py}`` and, per function, flags a
+read-modify-write pattern:
+
+AUD828 (M-03) — before this fix the scan matched ONLY the bare
+``services.py`` file, missing ~20 ``services_*.py`` split files (e.g.
+``apps/stock/services_wms.py``) and both ``core``/``authentication``
+entirely. A contre-sonde over the widened surface found real NEW unlocked
+sites (AUD829: ``services_wms.py::ajouter_ligne_unite_logistique`` /
+``controler_scan_emballage``, among ~20 others) — this was NOT a pure
+coverage gap like M-07/M-08/M-09, it hid live debt.
 
   * an assignment ``obj.field = <expr referencing obj.field>`` OR an augmented
     assignment ``obj.field += / -= ...`` on a numeric-looking attribute,
@@ -36,16 +45,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"
+CORE_DIR = DJANGO_CORE / "core"
+AUTH_DIR = DJANGO_CORE / "authentication"
 ALLOWLIST_PATH = ROOT / "scripts" / "read_modify_write_allow.txt"
 
 
 def _iter_services_files():
-    if not APPS_DIR.is_dir():
-        return
-    for app_dir in sorted(APPS_DIR.iterdir()):
-        svc = app_dir / "services.py"
-        if svc.is_file():
+    # AUD828 (M-03) — the THREE dispositions this repo uses for a
+    # "services" surface (same pattern as check_on_delete.py's model-file
+    # iterator): bare services.py, split services_*.py, or a services/
+    # package — across apps/* AND the two foundation dirs.
+    dirs = list(sorted(APPS_DIR.iterdir())) if APPS_DIR.is_dir() else []
+    for app_dir in dirs + [CORE_DIR, AUTH_DIR]:
+        if not app_dir.is_dir():
+            continue
+        for svc in sorted(app_dir.glob("services.py")):
             yield svc
+        for svc in sorted(app_dir.glob("services_*.py")):
+            yield svc
+        svc_pkg = app_dir / "services"
+        if svc_pkg.is_dir():
+            for f in sorted(svc_pkg.glob("*.py")):
+                if f.name != "__init__.py":
+                    yield f
 
 
 def _rel(path: Path) -> str:

@@ -10,6 +10,7 @@ import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
 import { toast } from '../../ui/confirm'
+import CadenceRelanceEditor from './CadenceRelanceEditor'
 
 // Icône (chemins bruts) partagée par les trois cartes de référentiel.
 const REF_ICON = <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>
@@ -234,6 +235,20 @@ export default function ReferentielsSection() {
         <CardContent className="space-y-3 pt-4">
           <SectionTitle icon={REF_ICON} label="Unités de mesure" />
           <UnitesList />
+        </CardContent>
+      </Card>
+      {/* MRY28 — éditeur des trois cadences de relance (contact / après devis /
+          réveil). Les fenêtres d'appel de la société vivent dans l'onglet
+          « Leads » (LeadsSection), à côté du SLA de premier contact. */}
+      <Card>
+        <CardContent className="space-y-3 pt-4">
+          <SectionTitle icon={REF_ICON} label="Cadences de relance" />
+          <p className="text-sm text-muted-foreground">
+            Ordonnancement des touches automatiques du moteur de relances
+            (délai, canal, gabarit de message). Les lignes sont posées à
+            l'activation — cet écran modifie, n'ajoute ni ne supprime rien.
+          </p>
+          <CadenceRelanceEditor />
         </CardContent>
       </Card>
     </div>

@@ -7,7 +7,7 @@ Couvre :
     ouvert) ;
   * `cout` est un champ interrogeable (le masquage vit côté reporting).
 """
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -57,8 +57,18 @@ class SavTicketsDatasetTests(TestCase):
         t = Ticket.objects.create(
             company=self.company, reference='ZT-2', client=self.client_obj,
             technicien_responsable=self.tech, date_resolution=today)
-        Ticket.objects.filter(pk=t.pk).update(
-            date_creation=today - timedelta(days=3))
+        # AUD836 — `settings.TIME_ZONE` est 'Africa/Casablanca' (UTC+1), mais
+        # la session Postgres reste UTC (aucune clé 'TIME_ZONE' dans
+        # DATABASES) : assigner un `date` NU à `date_creation` (DateTimeField)
+        # le fait passer par minuit-Casablanca → converti en UTC, soit la
+        # VEILLE 23h UTC — un jour de moins que voulu une fois recasté en date
+        # côté SQL (`Cast('date_creation', DateField)`, lu en session UTC).
+        # On pose donc un instant AWARE explicite à midi (aucune ambiguïté de
+        # fuseau possible) au lieu d'un `date` nu laissé à la conversion
+        # implicite de Django.
+        creation_instant = datetime.combine(
+            today - timedelta(days=3), time(12, 0), tzinfo=dt_timezone.utc)
+        Ticket.objects.filter(pk=t.pk).update(date_creation=creation_instant)
         rows = data_explorer.run_query(
             DATASET_NAME, self.company, self.user,
             {'select': ['id', 'delai_resolution_jours']})

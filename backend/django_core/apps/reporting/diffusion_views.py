@@ -43,8 +43,21 @@ def make_report_token(report):
     return signing.dumps(report.pk, salt=_SALT)
 
 
-def resolve_report_token(token, max_age=DUREE_LIEN_SECONDES):
-    """Rapport désigné par le jeton, ou ``None`` (invalide/expiré/supprimé)."""
+def resolve_report_token(token, max_age=DUREE_LIEN_SECONDES, ip=None):
+    """Rapport désigné par le jeton, ou ``None``.
+
+    ``None`` couvre : jeton absent, signature invalide, jeton expiré, rapport
+    supprimé — et, depuis AUD803, rapport dont le PARTAGE A ÉTÉ RÉVOQUÉ.
+
+    AUD803 — la révocabilité est la justification ÉCRITE du dispositif
+    (« un .xlsx qui circule ne se révoque pas », en-tête de ce module), or le
+    LIEN ne se révoquait pas davantage : cette fonction ne faisait qu'un
+    ``filter(pk=…).first()``, sans aucun état révocable ; seule l'expiration à
+    7 jours bornait l'exposition (catalogue + stocks + funnel leads, servis en
+    ``AllowAny``). Chaque résolution RÉUSSIE écrit désormais une ligne
+    ``AccesRapportPartage`` (IP + horodatage) — sans elle, personne ne peut
+    savoir qu'un lien fuité est consulté, ni décider de le révoquer.
+    """
     if not token:
         return None
     try:
@@ -52,7 +65,33 @@ def resolve_report_token(token, max_age=DUREE_LIEN_SECONDES):
     except signing.BadSignature:
         return None
     from .models import SavedReport
-    return SavedReport.objects.filter(pk=report_id).first()
+    report = SavedReport.objects.filter(pk=report_id).first()
+    if report is None or not report.partage_actif:
+        return None
+    _tracer_acces(report, ip)
+    return report
+
+
+def _tracer_acces(report, ip):
+    """Écrit la trace d'accès (best-effort : jamais bloquer un lien légitime)."""
+    from .models import AccesRapportPartage
+    try:
+        AccesRapportPartage.objects.create(
+            company=report.company, saved_report=report, ip=ip or None)
+    except Exception:  # noqa: BLE001 — une trace en échec ne casse pas l'accès
+        import logging
+        logging.getLogger(__name__).warning(
+            'AUD803 : trace d\'accès non écrite (rapport %s)', report.pk,
+            exc_info=True)
+
+
+def _ip_appelant(request):
+    """IP du demandeur — ``X-Forwarded-For`` d'abord (le service est derrière
+    Caddy/nginx), sinon ``REMOTE_ADDR``. Jamais d'exception."""
+    if request is None:
+        return None
+    transmise = (request.META.get('HTTP_X_FORWARDED_FOR') or '').split(',')[0]
+    return (transmise.strip() or request.META.get('REMOTE_ADDR') or '') or None
 
 
 def lien_rapport(report, base_url=''):
@@ -127,9 +166,11 @@ def rapport_partage_public(request, token):
     """Rendu PUBLIC d'un rapport, résolu depuis le SEUL jeton signé.
 
     Aucune identité de confiance : le jeton porte le rapport et son expiration.
-    Un jeton invalide/expiré renvoie 404 générique — jamais d'indice sur
-    l'existence du rapport."""
-    report = resolve_report_token(token)
+    Un jeton invalide/expiré — ou dont le partage a été RÉVOQUÉ (AUD803) —
+    renvoie le MÊME 404 générique : jamais d'indice sur l'existence du rapport
+    ni sur le motif du refus. Chaque résolution réussie laisse une trace
+    (IP + horodatage)."""
+    report = resolve_report_token(token, ip=_ip_appelant(request))
     if report is None:
         return Response({'detail': 'Lien invalide ou expiré.'},
                         status=status.HTTP_404_NOT_FOUND)

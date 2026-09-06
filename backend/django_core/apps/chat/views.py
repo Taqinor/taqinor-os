@@ -25,8 +25,8 @@ from apps.records.storage import (
 from . import services
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction, UserChatStatus, ScheduledMessage, CannedResponse,
-    RetentionPolicy, RetentionSweepRun,
+    MessageReaction, MessageReminder, UserChatStatus, ScheduledMessage,
+    CannedResponse, RetentionPolicy, RetentionSweepRun,
 )
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
@@ -34,7 +34,7 @@ from .serializers import (
     ConversationSerializer, MessageSerializer, UserChatStatusSerializer,
     ScheduledMessageSerializer, MessageBookmarkSerializer,
     CannedResponseSerializer, RetentionPolicySerializer,
-    RetentionSweepRunSerializer,
+    RetentionSweepRunSerializer, MessageReminderSerializer,
 )
 
 
@@ -82,6 +82,21 @@ class ConversationViewSet(viewsets.ModelViewSet):
             if u is not None and u.pk != self.request.user.pk:
                 ConversationMember.objects.get_or_create(
                     conversation=conv, user=u)
+
+    @action(detail=True, methods=['get'])
+    def retention(self, request, pk=None):
+        """AUDV28 (DRAFT165-8, XKB32) — politique de rétention applicable à
+        CETTE conversation. `get_retention_policy` existait déjà (purge,
+        testée) mais rien n'affichait la durée de conservation dans l'écran
+        de conversation. Aucune politique posée = aucune purge (comportement
+        historique), `applicable=False`."""
+        conv = self.get_object()
+        policy = services.get_retention_policy(conv.company, conv.kind)
+        return Response({
+            'conversation_kind': conv.kind,
+            'retention_months': policy.retention_months if policy else None,
+            'applicable': bool(policy and policy.retention_months),
+        })
 
     @action(detail=True, methods=['post'])
     def archive(self, request, pk=None):
@@ -790,6 +805,43 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_403_FORBIDDEN)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MessageReminderViewSet(viewsets.ReadOnlyModelViewSet):
+    """AUDV28 (DRAFT165-7, XKB27) — rappels de message : lecture + annulation,
+    strictement scopés au CRÉATEUR. La création reste `MessageViewSet.
+    remind_me` (inchangée) ; ce viewset ferme le trou inverse — un rappel
+    programmé PAR ERREUR n'avait aucun moyen d'être annulé."""
+    serializer_class = MessageReminderSerializer
+    permission_classes = [IsAuthenticated]
+    # drf-spectacular : base d'introspection du paramètre de chemin (le
+    # runtime passe toujours par get_queryset ci-dessous).
+    queryset = MessageReminder.objects.none()
+
+    def get_queryset(self):
+        # Scopé société (`message__company`, MessageReminder n'a pas de FK
+        # `company` propre) EN PLUS du créateur — la garde
+        # check_tenant_isolation exige la société explicitement, même quand
+        # le filtre par utilisateur la rend déjà impossible à traverser.
+        company = _company(self.request)
+        if company is None:
+            return MessageReminder.objects.none()
+        return MessageReminder.objects.filter(
+            user=self.request.user, message__company=company,
+        ).order_by('remind_at')
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        reminder = self.get_object()
+        try:
+            services.cancel_reminder(reminder, request.user)
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reminder).data)
 
 
 class RetentionPolicyViewSet(viewsets.ModelViewSet):

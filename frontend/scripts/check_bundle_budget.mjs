@@ -177,7 +177,10 @@ const PER_CHUNK_BUDGET_KB = 350
 // panneau Surcharges du générateur, CarteFacturesElectriques partagée).
 // Mesuré 3501,7 Ko en CI — aucune nouvelle dépendance npm, tout en lazy ;
 // palier serré (~18 Ko), même convention que les deux paliers précédents.
-const TOTAL_BUDGET_KB = 3520
+// 2026-09-06 — 3520 -> 3560. Drain AUD/MRY batch 3 (~124 tâches, écrans neufs
+// réels : portefeuille GP, éditeur de cadences, panneau KPI relances, planches
+// AO, présents-chantier, dialogue NARSA — mesuré 3536,7 Ko ; marge ~23 Ko).
+const TOTAL_BUDGET_KB = 3560
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -280,7 +283,9 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // déjà utilisé ailleurs — KanbanView.jsx). Croissance une-route-un-chunk, pas
 // une prolifération de structure ; le budget gzip (3320) + PER_CHUNK_BUDGET_KB
 // (350) restent les vrais garde-fous de poids.
-export const MAX_CHUNK_COUNT = 760
+// 2026-09-06 : 760 -> 770. Batch 3 AUD/MRY — 6 écrans/panneaux code-splittés
+// de plus (mesuré 763).
+export const MAX_CHUNK_COUNT = 770
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

@@ -332,7 +332,20 @@ const ventesApi = {
   updateBonCommande: (id, data) => api.put(`/ventes/bons-commande/${id}/`, data),
   patchBonCommande: (id, data) => api.patch(`/ventes/bons-commande/${id}/`, data),
   confirmerBC: (id) => api.post(`/ventes/bons-commande/${id}/confirmer/`),
-  marquerLivreBC: (id) => api.post(`/ventes/bons-commande/${id}/marquer-livre/`),
+  // AUD119 (FG51) — LA PREUVE DE LIVRAISON PART ENFIN. Le backend lisait
+  // `signataire`, `note_pv` et le fichier `pv` depuis `marquer-livre` depuis le
+  // debut, mais AUCUN ecran ne les envoyait : `pv_livraison` restait toujours
+  // vide, `has_proof_of_delivery` toujours faux, et l'avertissement « vous
+  // facturez sans BL signe » etait permanent et donc ignore de tous. `payload`
+  // est optionnel : sans lui, le POST est exactement celui d'hier.
+  marquerLivreBC: (id, payload) => {
+    if (!payload) return api.post(`/ventes/bons-commande/${id}/marquer-livre/`)
+    const form = new FormData()
+    if (payload.signataire) form.append('signataire', payload.signataire)
+    if (payload.note_pv) form.append('note_pv', payload.note_pv)
+    if (payload.pv) form.append('pv', payload.pv)
+    return api.post(`/ventes/bons-commande/${id}/marquer-livre/`, form)
+  },
   // XSAL12 — livraison partielle : { lignes: [{ligne_devis, quantite}], date_livraison?, note? }.
   livrerPartielBC: (id, data) => api.post(`/ventes/bons-commande/${id}/livrer-partiel/`, data),
   annulerBC: (id) => api.post(`/ventes/bons-commande/${id}/annuler/`),
@@ -343,6 +356,12 @@ const ventesApi = {
   // Factures
   // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
   getFactures: (params, config) => api.get('/ventes/factures/', { params, ...config }),
+  // AUD157 (FAC-13) — KPI monétaires AGRÉGÉS PAR LE SERVEUR. « Encaissé ce
+  // mois » était sommé ici même, dans l'écran, sur `p.montant` sans filtrer
+  // `p.statut` : des chèques revenus impayés étaient comptés comme encaissés.
+  // Un seul propriétaire désormais (`selectors.kpis_factures`). Contrat PACT10 :
+  // backend/django_core/apps/ventes/contract_samples/factures_kpis.json
+  getFacturesKpis: (config) => api.get('/ventes/factures/kpis/', { ...config }),
   getFacture: (id) => api.get(`/ventes/factures/${id}/`),
   createFacture: (data) => api.post('/ventes/factures/', data),
   updateFacture: (id, data) => api.put(`/ventes/factures/${id}/`, data),
@@ -357,7 +376,11 @@ const ventesApi = {
   // N31 — audit admin de la numérotation séquentielle (trous/doublons).
   auditNumerotation: () => api.get('/ventes/numerotation-audit/'),
   emettreFacture: (id) => api.post(`/ventes/factures/${id}/emettre/`),
-  marquerPayeeFacture: (id) => api.post(`/ventes/factures/${id}/marquer-payee/`),
+  // AUD124 — motif OBLIGATOIRE : marquer une facture payée sans encaissement
+  // la sort de la balance âgée et des relances ; le serveur refuse (400) sans
+  // justification, et trace l'auteur + le motif dans le chatter.
+  marquerPayeeFacture: (id, motif) => api.post(
+    `/ventes/factures/${id}/marquer-payee/`, { motif }),
   annulerFacture: (id) => api.post(`/ventes/factures/${id}/annuler/`),
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
@@ -408,6 +431,14 @@ const ventesApi = {
   // Encaissements : liste lecture seule de TOUS les paiements de la société
   // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
   getPaiements: (params) => api.get('/ventes/paiements/', { params }),
+  // AUD132 (PAY-10) — « Chèque impayé ». L'action serveur `rejeter` (YLEDG5)
+  // existait depuis sa livraison SANS aucun appelant côté écran : un chèque
+  // revenu impayé était donc INGÉRABLE depuis le produit. `motif` est
+  // OBLIGATOIRE (400 sinon) ; `frais` et `date_rejet` sont optionnels. Le
+  // paiement n'est jamais supprimé (piste d'audit) : il passe REJETÉ, la
+  // facture rouvre et les relances se ré-arment. Rôle responsable/admin.
+  rejeterPaiement: (id, payload) =>
+    api.post(`/ventes/paiements/${id}/rejeter/`, payload),
 
   // ── WIR265/FG42 — Import d'un relevé bancaire (dry-run puis commit) ──────
   // Le couple d'endpoints multipart existait et testé depuis FG42, SANS aucun
@@ -421,11 +452,13 @@ const ventesApi = {
     form.append('file', file)
     return api.post('/ventes/paiements/import-releve/dry-run/', form)
   },
-  importReleveCommit: (file) => {
-    const form = new FormData()
-    form.append('file', file)
-    return api.post('/ventes/paiements/import-releve/commit/', form)
-  },
+  // AUD121 — le commit ne prend PLUS de fichier : il rejoue les décisions du
+  // dry-run, identifiées par son `token`. C'est ce qui garantit que l'import
+  // écrit exactement ce que l'opérateur a vu, une seule fois.
+  importReleveCommit: (token, lignes) => api.post(
+    '/ventes/paiements/import-releve/commit/',
+    lignes === undefined ? { token } : { token, lignes },
+  ),
 
   // Avoirs (notes de crédit)
   creerAvoir: (factureId, data) => api.post(`/ventes/factures/${factureId}/creer-avoir/`, data),

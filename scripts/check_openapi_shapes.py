@@ -287,10 +287,29 @@ def analyser(root: Path = DJANGO_ROOT):
     return sorted(set(vides)), sorted(set(agreges))
 
 
-def compter_non_devinables(path: Path = SCHEMA_BASELINE_PATH) -> int:
-    """R2 — signatures « unable to guess serializer » figees dans la base."""
+def compter_non_devinables(path: Path | None = None) -> int:
+    """R2 — signatures « unable to guess serializer » figees dans la base.
+
+    AUD833 — un fichier ABSENT est une ERREUR, JAMAIS un zero. Rendre 0 sur un
+    fichier disparu (conflit de fusion, `git checkout --theirs`) faisait passer
+    le cliquet sous son plafond et imprimait « PROGRES... descendu a 0. Abaissez
+    PLAFOND_NON_DEVINABLES a 0 » : l'agent qui suivait l'instruction figeait la
+    garde sur du NEANT et effacait de tout tableau de bord une dette reelle de
+    406 vues. Meme principe que ci_fast_gate_steps.py, qui refuse un workflow
+    illisible plutot que d'en deduire zero etape.
+    """
+    path = path or SCHEMA_BASELINE_PATH
     if not path.is_file():
-        return 0
+        raise SystemExit(
+            f"ECHEC (R2) : base de reference introuvable ({path}).\n"
+            "Un fichier manquant ne vaut PAS zero signature « unable to guess "
+            "serializer » : sans lui le cliquet R2 ne mesure plus rien et "
+            "invite a se figer sur du neant.\n"
+            "Restaurez-le : git checkout scripts/openapi_schema_allow.txt "
+            "(il est committe, il ne se regenere pas tout seul), ou "
+            "regenerez-le : python scripts/check_openapi_schema.py "
+            "--write-baseline"
+        )
     return sum(
         1 for ligne in path.read_text(encoding="utf-8").splitlines()
         if ligne.strip() and not ligne.startswith("#")
@@ -400,10 +419,23 @@ def main(argv=None) -> int:
         print("resolvable est exactement la classe d'endpoint qui a plante le 03/08 :")
         print("declarez sa forme (serializer_class, @extend_schema(responses=...),")
         print("inline_serializer) au lieu de laisser le generateur deviner.")
-    elif non_devinables < PLAFOND_NON_DEVINABLES:
+    elif 0 < non_devinables < PLAFOND_NON_DEVINABLES:
         print(f"PROGRES : « unable to guess serializer » descendu a {non_devinables} "
               f"(plafond {PLAFOND_NON_DEVINABLES}). Abaissez PLAFOND_NON_DEVINABLES "
               f"a {non_devinables} dans scripts/check_openapi_shapes.py.")
+    elif non_devinables == 0 and PLAFOND_NON_DEVINABLES > 0:
+        # AUD833 — un compte NUL face a un plafond de plusieurs centaines n'est
+        # PAS un progres a enteriner : une dette de 406 vues ne tombe pas a zero
+        # d'un coup. On refuse donc d'imprimer « abaissez le plafond a 0 » (une
+        # instruction qui figerait la garde sur du neant) et on demande une
+        # verification du fichier.
+        print(f"VERIFIEZ : 0 signature « unable to guess serializer » lue dans "
+              f"{SCHEMA_BASELINE_PATH.name} alors que le plafond gele est "
+              f"{PLAFOND_NON_DEVINABLES}. Une dette de cette taille ne tombe "
+              f"pas a zero d'un coup : la base a probablement ete videe, "
+              f"tronquee, ou sa signature a change.")
+        print("N'ABAISSEZ PAS PLAFOND_NON_DEVINABLES sur ce chiffre : verifiez "
+              "d'abord le fichier (git diff scripts/openapi_schema_allow.txt).")
 
     # R3 — cliquet sur les endpoints agreges sans forme declaree.
     nouveaux = sorted(set(agreges) - base)

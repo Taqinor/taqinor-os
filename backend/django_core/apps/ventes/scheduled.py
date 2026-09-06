@@ -66,11 +66,23 @@ def check_overdue_factures():
 
     Idempotent : ne touche que les factures encore ``emise`` (ou brouillon
     émis) avec un reste à payer > 0 et une échéance (effective) passée. Renvoie
-    le nombre de factures basculées."""
-    from .models import Facture
+    le nombre de factures basculées.
+
+    AUD131 (PAY-9) — AMORCE de la cadence automatique. ``relance_reminders``
+    sélectionne ``prochaine_relance__lte=today``, or le seul site d'écriture
+    non nulle était l'action manuelle `relancer` : aucune facture impayée
+    n'était donc relancée tant qu'un humain n'avait pas relancé une première
+    fois à la main. La bascule EN_RETARD initialise désormais la date, à
+    ``échéance + delai_jours`` du PREMIER ``FollowupLevel`` de la société —
+    et seulement si aucune date n'est déjà posée (une date existante n'est
+    JAMAIS écrasée). Aucun niveau configuré ⇒ rien n'est posé, comportement
+    strictement inchangé."""
+    from .models import Facture, FollowupLevel
 
     today = casablanca_today()
     flipped = 0
+    # Un seul SELECT par société, pas un par facture.
+    premiers_niveaux = {}
     # On ne considère que les statuts « ouverts » : émise (déjà en retard exclu
     # car déjà au bon statut → idempotence), jamais payée/annulée.
     candidates = Facture.objects.filter(
@@ -83,7 +95,20 @@ def check_overdue_factures():
         if echeance >= today:
             continue
         facture.statut = Facture.Statut.EN_RETARD
-        facture.save(update_fields=['statut'])
+        champs = ['statut']
+        # AUD131 — amorce de cadence : sans cette date, le beat ne verrait
+        # JAMAIS cette facture (cf. docstring).
+        if facture.prochaine_relance is None:
+            cid = facture.company_id
+            if cid not in premiers_niveaux:
+                premiers_niveaux[cid] = FollowupLevel.objects.filter(
+                    company_id=cid).order_by('delai_jours', 'ordre').first()
+            premier = premiers_niveaux[cid]
+            if premier is not None:
+                facture.prochaine_relance = echeance + timedelta(
+                    days=premier.delai_jours or 0)
+                champs.append('prochaine_relance')
+        facture.save(update_fields=champs)
         flipped += 1
     logger.info('check_overdue_factures: %s facture(s) basculée(s) en retard',
                 flipped)
@@ -142,7 +167,11 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
     canal = getattr(niveau, 'canal', FollowupLevel.Canal.EMAIL) \
         if niveau is not None else FollowupLevel.Canal.EMAIL
     niveau_nom = niveau.nom if niveau is not None else ''
-    message = niveau.message if niveau is not None else ''
+    # AUD130 — le beat passait `niveau.message` BRUT aux quatre canaux : le
+    # `{reference}` des niveaux semés atteignait donc aussi l'activité d'appel
+    # que lit le gestionnaire. Un seul rendu, partagé avec email et lettre.
+    from .recouvrement import rendre_message_relance
+    message = rendre_message_relance(niveau, facture)
 
     if canal == FollowupLevel.Canal.WHATSAPP:
         try:
@@ -237,10 +266,14 @@ def relance_reminders():
             mode=ParametrageRelanceClient.Mode.MANUEL,
         ).values_list('client_id', flat=True)
     )
+    # AUD131 — MÊME liste de statuts que la vue `relancer` et que la liste des
+    # impayés : un seul propriétaire de la définition (`recouvrement`).
+    from .recouvrement import STATUTS_NON_RELANCABLES, facture_relancable
+
     factures = Facture.objects.filter(
         prochaine_relance__lte=today, exclu_relances=False,
     ).exclude(
-        statut__in=['payee', 'annulee', 'brouillon'],
+        statut__in=STATUTS_NON_RELANCABLES,
     ).exclude(
         exclu_relances_jusquau__gte=today,
     ).exclude(
@@ -258,7 +291,9 @@ def relance_reminders():
             logger.info(
                 'relance_reminders: facture %s suspendue (litige actif)', facture.id)
             continue
-        if facture.montant_du <= 0:
+        # AUD131 — le prédicat partagé remplace le court-circuit local
+        # `montant_du <= 0` (le filtre de statut est déjà appliqué en SQL).
+        if not facture_relancable(facture)[0]:
             facture.prochaine_relance = None
             facture.save(update_fields=['prochaine_relance'])
             continue
@@ -505,10 +540,10 @@ def devis_a_facturer_reminder(jours=7):
     même si le job tourne plusieurs fois. Renvoie le nombre de rappels posés."""
     from . import activity
     from .selectors import devis_a_facturer
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         candidats = devis_a_facturer(company, jours=jours)
         for devis in candidats:
             jours_ecoules = (casablanca_today() - devis.date_acceptation).days
@@ -532,10 +567,10 @@ def poll_inbound_mailboxes():
     d'une requête). Best-effort par société : un échec n'arrête pas les autres.
     Renvoie le total {fetched, handled}."""
     from core.email_intake import poll_mailbox
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     fetched = handled = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             res = poll_mailbox(company)
             fetched += int(res.get('fetched', 0) or 0)

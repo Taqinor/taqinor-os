@@ -1,11 +1,19 @@
 """CRX26 — la date « aujourd'hui » du CRM est celle de Casablanca, pas d'UTC.
 
-``settings.TIME_ZONE`` vaut ``'UTC'`` : ``timezone.localdate()`` rendait donc
+``settings.TIME_ZONE`` valait ``'UTC'`` : ``timezone.localdate()`` rendait donc
 la date UTC. Africa/Casablanca étant à UTC+1 la majeure partie de l'année,
 **entre 23 h et minuit UTC il est déjà demain au Maroc** — et pendant cette
 heure-là, chaque décision de date du CRM était fausse d'un jour entier :
 relance « du jour », étape « en retard », signal d'intérêt « déjà noté
 aujourd'hui », départ d'une cadence de relance, certification échue.
+
+AUD836 a depuis basculé ``settings.TIME_ZONE`` sur ``'Africa/Casablanca'`` :
+le fuseau ACTIF et le fuseau MÉTIER coïncident enfin. Ce module reste la
+source de vérité du sujet — le helper ``aujourd_hui_local`` continue de
+convertir EXPLICITEMENT (il ne dépend pas du réglage, c'est le but) et la
+garde ci-dessous continue d'interdire un ``timezone.localdate()`` nu dans
+``apps/crm`` : une décision de date métier se lit dans le fuseau métier, pas
+dans un réglage global qu'un déploiement pourrait changer.
 
 Ce module vérifie le helper ``core.dates.aujourd_hui_local``, deux sites
 métier de bout en bout, et pose la GARDE qui empêche un nouveau
@@ -57,8 +65,18 @@ class AujourdHuiLocalTests(TestCase):
         self.assertEqual(local.minute, 30)
 
     def test_datetime_naif_est_rendu_aware_avant_conversion(self):
+        """Un datetime NAÏF est interprété dans le fuseau ACTIF de Django.
+
+        AUD836 — ce fuseau actif est désormais Africa/Casablanca (il valait
+        'UTC') : 23 h 30 naïf est donc déjà une heure LOCALE marocaine, et la
+        conversion vers le fuseau métier ne déplace plus rien. Ce que le test
+        verrouille reste le même : jamais de datetime laissé naïf.
+        """
         naif = dt.datetime(2026, 5, 1, 23, 30)
-        self.assertEqual(aujourd_hui_local(naif), dt.date(2026, 5, 2))
+        local = maintenant_local(naif)
+        self.assertIsNotNone(local.tzinfo)
+        self.assertEqual(local.hour, 23)
+        self.assertEqual(aujourd_hui_local(naif), dt.date(2026, 5, 1))
 
 
 class SitesMetierTests(TestCase):

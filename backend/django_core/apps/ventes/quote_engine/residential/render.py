@@ -15,7 +15,7 @@ from . import cover, options, trust
 _QJ_RE = re.compile(r'<div class="qj" data-w="(\d+)"></div>')
 
 
-def build_ctx(data: dict) -> dict:
+def build_ctx(data: dict, compact_p3: bool = False) -> dict:
     # QX4 — identité société (multi-tenant) résolue UNE fois et partagée par
     # toutes les pages. Chaque littéral d'identité (footer, bande légale,
     # « Pourquoi … », signature, cover, liens) lit ``ident`` et retombe sur le
@@ -33,6 +33,9 @@ def build_ctx(data: dict) -> dict:
         "hero_img": theme.hero_image_b64(data.get("puissance_kwc"), "residentiel"),
         "charts": charts_mod.build_all(data),
         "ident": ident,
+        # ERR114 — rythme vertical resserré de la page 3, demandé par le
+        # renderer UNIQUEMENT après avoir MESURÉ un débordement réel.
+        "compact_p3": bool(compact_p3),
     }
 
 
@@ -64,10 +67,14 @@ def _wrap(inner: str, n: int, data: dict, ident: dict, total: int = 3,
     return f'<div class="page">{inner}{foot}</div>'
 
 
-def build_html(data: dict, elastic: dict | None = None) -> str:
+def build_html(data: dict, elastic: dict | None = None,
+               compact_p3: bool = False) -> str:
     """``elastic`` (QRES62) : {numéro de page 1-based: mm de vide à répartir
-    sur les joints de cette page}. None/absent → joints inertes (passe 1)."""
-    ctx = build_ctx(data)
+    sur les joints de cette page}. None/absent → joints inertes (passe 1).
+
+    ``compact_p3`` (ERR114) : resserre le rythme vertical de la page 3 sans en
+    retirer le moindre bloc. Faux par défaut → HTML inchangé au bit près."""
+    ctx = build_ctx(data, compact_p3=compact_p3)
     ident = ctx["ident"]
     # QRES17 — pagination variable : un devis chargé rend 2+ pages
     # « installation » (tableau découpé + page rentabilité dédiée) ; le pied

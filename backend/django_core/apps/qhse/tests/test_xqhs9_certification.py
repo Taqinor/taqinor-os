@@ -145,6 +145,23 @@ class CertificationApiTests(TestCase):
         rows = data['results'] if isinstance(data, dict) else data
         self.assertEqual(len(rows), 0)
 
+    # ── AUD513 — garde de suppression ────────────────────────────────────────
+
+    def test_suppression_refusee_si_numero_certificat_pose(self):
+        certif = Certification.objects.create(
+            company=self.company, referentiel='iso_9001',
+            numero_certificat='IMANOR-2026-042')
+        resp = self.api.delete(f'{CERTIFICATIONS}{certif.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+        self.assertTrue(Certification.objects.filter(id=certif.id).exists())
+
+    def test_suppression_autorisee_sans_numero_certificat(self):
+        certif = Certification.objects.create(
+            company=self.company, referentiel='iso_9001')
+        resp = self.api.delete(f'{CERTIFICATIONS}{certif.id}/')
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', None))
+        self.assertFalse(Certification.objects.filter(id=certif.id).exists())
+
 
 class AuditCertificationApiTests(TestCase):
     """WIR275 — CRUD + action ``lever-ncr`` (``lever_ncr_audit_certification``
@@ -175,3 +192,21 @@ class AuditCertificationApiTests(TestCase):
             'certification': certif_autre.id,
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
+
+    # ── AUD513 — garde de suppression ────────────────────────────────────────
+
+    def test_suppression_refusee_si_date_audit_posee(self):
+        audit = AuditCertification.objects.create(
+            company=self.company, certification=self.certif,
+            date_audit=date.today())
+        resp = self.api.delete(f'{AUDITS_CERTIF}{audit.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+        self.assertTrue(AuditCertification.objects.filter(id=audit.id).exists())
+
+    def test_suppression_autorisee_si_pas_encore_realise(self):
+        audit = AuditCertification.objects.create(
+            company=self.company, certification=self.certif)
+        resp = self.api.delete(f'{AUDITS_CERTIF}{audit.id}/')
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', None))
+        self.assertFalse(
+            AuditCertification.objects.filter(id=audit.id).exists())

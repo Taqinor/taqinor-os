@@ -375,7 +375,18 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
     bougent que via le flux de paiement (``core.payment``), jamais par PATCH
     direct. La cible (facture) est désignée de façon générique par
     ``content_type``/``object_id``.
+
+    AUD806 — ``montant``, ``content_type`` et ``object_id`` restaient
+    MODIFIABLES jusqu'à la capture : un PATCH avant capture repointait la
+    transaction sur une AUTRE facture de la même société — l'argent de Dupont
+    soldait la facture d'Alami. Ces trois champs sont désormais figés dès que
+    la transaction a quitté ``STATUT_INITIE`` (une transaction déjà envoyée au
+    PSP ne change plus ni de montant ni de cible) ; corriger une cible se fait
+    en créant une nouvelle transaction.
     """
+    #: AUD806 — champs figés après l'initiation auprès du PSP.
+    _CHAMPS_FIGES_APRES_INITIATION = ('montant', 'content_type', 'object_id')
+
     class Meta:
         model = PaymentTransaction
         fields = [
@@ -387,6 +398,25 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
             'id', 'statut', 'external_ref', 'redirect_url', 'paye_le',
             'detail', 'created_at', 'updated_at',
         ]
+
+    def validate(self, attrs):
+        """AUD806 — refus EXPLICITE (400), jamais un champ silencieusement
+        ignoré : un opérateur qui croit avoir repointé la transaction doit le
+        savoir. Les champs restent donc écrivables au SCHÉMA (création) et
+        c'est l'ÉTAT de l'instance qui décide."""
+        attrs = super().validate(attrs)
+        instance = self.instance
+        if instance is not None and instance.statut != (
+                PaymentTransaction.STATUT_INITIE):
+            interdits = [nom for nom in self._CHAMPS_FIGES_APRES_INITIATION
+                         if nom in attrs]
+            if interdits:
+                raise serializers.ValidationError({
+                    nom: ("Transaction déjà envoyée au fournisseur de "
+                          "paiement : ce champ ne peut plus être modifié. "
+                          "Créez une nouvelle transaction.")
+                    for nom in interdits})
+        return attrs
 
 
 class SavedQuerySerializer(serializers.ModelSerializer):
@@ -449,15 +479,22 @@ class DeletionRecordSerializer(serializers.ModelSerializer):
 
 
 class ModuleToggleSerializer(serializers.ModelSerializer):
-    """FG391 — activation/désactivation d'un module par société.
+    """FG391 — état d'activation d'un module par société (LECTURE SEULE).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+
+    AUD815 — TOUS les champs sont en lecture seule : la bascule d'un module
+    passe exclusivement par ``/core/modules/{key}/activer|desactiver/``
+    (``core.feature_flags``), seul chemin qui applique la fermeture de
+    dépendances et émette ``module_toggled`` (journal d'installation ODY25).
+    Ce sérialiseur ne sert donc plus qu'au rendu.
     """
     class Meta:
         model = ModuleToggle
         fields = ['id', 'module', 'actif', 'raison',
                   'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'module', 'actif', 'raison',
+                            'created_at', 'updated_at']
 
 
 class TenantThemeSerializer(serializers.ModelSerializer):
@@ -499,7 +536,20 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
     """FG394 — entrée du registre de consentement.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+
+    AUD809 — DÉFENSE EN PROFONDEUR derrière l'append-only du ViewSet : les
+    champs de PREUVE du double opt-in (``granted``, ``occurred_at``,
+    ``version_texte``, ``ip_confirmation``) ne sont écrivables qu'à la CRÉATION.
+    Un retrait de consentement s'enregistre par une NOUVELLE ligne
+    ``granted=False`` — jamais en réécrivant la preuve d'une ligne existante,
+    ce qui reviendrait à fabriquer (ou détruire) une preuve légale.
     """
+    # Écrits à la création, jamais modifiables ensuite : DRF n'expose plus de
+    # PUT/PATCH sur ce ViewSet (append-only), et si un futur chemin d'écriture
+    # apparaissait, ces champs resteraient figés sur une ligne existante.
+    _CHAMPS_PREUVE = ('granted', 'occurred_at', 'version_texte',
+                      'ip_confirmation')
+
     class Meta:
         model = ConsentRecord
         fields = [
@@ -508,6 +558,14 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if self.instance is not None:
+            for nom in self._CHAMPS_PREUVE:
+                if nom in fields:
+                    fields[nom].read_only = True
+        return fields
 
 
 class DataSubjectRequestSerializer(serializers.ModelSerializer):

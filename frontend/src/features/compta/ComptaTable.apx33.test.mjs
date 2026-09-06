@@ -26,9 +26,14 @@ test('zéro table écrite à la main dans features/compta/pages/', () => {
   assert.deepEqual(offenders, [], `table nue restante : ${offenders.join(', ')}`)
 })
 
-test('les NEUF tables sont migrées (6 APX33 + plan fiscal PACT163 + OCR XACC30 + échéances WIR255)', () => {
+test('les TREIZE tables sont migrées (9 historiques + 4 AUDV01/AUDV02)', () => {
   const attendu = {
-    'TresoreriePage.jsx': 3, // Position, Prévisionnel, Journal de caisse
+    // AUDV01 — « Détail des mouvements prévus » (les lignes NOMMÉES du
+    // prévisionnel, dont les échéances d'emprunt XACC14).
+    // AUDV02 — l'alerte RIB invalides (XACC24) et la fiche tiers (encours +
+    // lignes non lettrées, COMPTA22).
+    'TresoreriePage.jsx': 6, // Position, Prévisionnel, Mouvements prévus,
+    //                          Journal de caisse, RIB invalides, Fiche tiers
     // WIR255 — EcheancesSousNJoursCard (retenues de garantie + cautions
     // bancaires) ajoute un second ComptaTable à côté de Provisions FNP/FAE.
     'EngagementsPage.jsx': 2, // Provisions FNP/FAE + échéances sous N jours
@@ -37,7 +42,10 @@ test('les NEUF tables sont migrées (6 APX33 + plan fiscal PACT163 + OCR XACC30 
     'ImmobilisationsPage.jsx': 2, // Plan d'amortissement + plan fiscal
     // XACC30 a ajouté l'import OCR d'un relevé : l'aperçu des lignes
     // extraites est un second tableau, distinct des suggestions.
-    'RapprochementsPage.jsx': 2, // Suggestions d'appariement + lignes OCR
+    // AUDV02 (NTTRE4) — les suggestions APPRISES sont un TROISIÈME tableau,
+    // délibérément séparé des suggestions par règle : on n'accepte jamais
+    // automatiquement un appariement déduit de l'historique.
+    'RapprochementsPage.jsx': 3, // Suggestions + lignes OCR + apprises
   }
   let total = 0
   for (const [f, n] of Object.entries(attendu)) {
@@ -47,9 +55,9 @@ test('les NEUF tables sont migrées (6 APX33 + plan fiscal PACT163 + OCR XACC30 
     assert.equal(count, n, `${f} : ${count} table(s) migrée(s) au lieu de ${n}`)
     total += count
   }
-  // 6 tables APX33 d'origine + le plan fiscal (PACT163) + l'aperçu OCR
-  // (XACC30) + les échéances sous N jours (WIR255).
-  assert.equal(total, 9)
+  // 6 tables APX33 d'origine + plan fiscal (PACT163) + aperçu OCR (XACC30) +
+  // échéances sous N jours (WIR255) + 4 AUDV01/AUDV02.
+  assert.equal(total, 13)
 })
 
 test('ComptaTable s’appuie sur le primitif partagé, sans le réécrire', () => {

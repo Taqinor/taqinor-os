@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   FolderKanban, CalendarRange, Users, Wallet, ShieldAlert, Clock3, ListChecks,
-  Settings2,
+  Settings2, LayoutDashboard,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -30,6 +30,7 @@ const ROLES = ['normal', 'responsable', 'admin']
 const GATE = { roles: ROLES, perm: 'projet_voir', permRepliPalier: true }
 
 const ProjetsPage = lazy(() => import('./pages/ProjetsPage'))
+const PortefeuillePage = lazy(() => import('./pages/PortefeuillePage'))
 const ProjetDetailPage = lazy(() => import('./pages/ProjetDetailPage'))
 const PlanningPage = lazy(() => import('./pages/PlanningPage'))
 const RessourcesPage = lazy(() => import('./pages/RessourcesPage'))
@@ -58,6 +59,7 @@ export default {
     accent: 'warning', // VX8 — pilotage/reporting = accent warning (dérivé)
     items: [
       { to: '/projets', label: 'Projets', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/portefeuille', label: 'Portefeuille', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
       { to: '/projets/planning', label: 'Planning', icon: <CalendarRange size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
       { to: '/projets/taches', label: 'Tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
       { to: '/projets/taches/mes-taches', label: 'Mes tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
@@ -70,6 +72,7 @@ export default {
   },
   // routes.meta : du plus SPÉCIFIQUE au plus général.
   titles: [
+    ['/projets/portefeuille', 'Portefeuille'],
     ['/projets/planning', 'Planning'],
     ['/projets/taches/mes-taches', 'Mes tâches'],
     ['/projets/taches', 'Tâches'],
@@ -83,6 +86,7 @@ export default {
   sectionLabels: { projets: 'Projets' },
   routes: [
     // Les sous-routes fixes AVANT la route de détail paramétrée.
+    { path: '/projets/portefeuille', component: PortefeuillePage, ...GATE },
     { path: '/projets/planning', component: PlanningPage, ...GATE },
     { path: '/projets/taches/mes-taches', component: MesTachesPage, ...GATE },
     { path: '/projets/taches', component: TachesPage, ...GATE },

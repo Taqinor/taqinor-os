@@ -10,10 +10,12 @@ Couvre la couche DÉTERMINISTE (parsing local, sans clé, sans MinIO) :
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.ged import services
-from apps.ged.models import Cabinet, Document, Folder
+from apps.ged.models import Cabinet, Document, Folder, ValidationOcrDocument
 
 User = get_user_model()
 
@@ -21,6 +23,17 @@ User = get_user_model()
 def make_company(slug, nom):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
     return company
+
+
+def make_user(company, username, role='admin'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def auth(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
 
 
 class DetectionTests(TestCase):
@@ -111,3 +124,49 @@ class OcrPieceFusionTests(TestCase):
     def test_aucun_texte_aucune_meta(self):
         meta = services.ocr_piece_vers_metadonnees(self.doc, file_bytes=None)
         self.assertEqual(meta, {})
+
+
+class OcrPieceEndpointRouteParValidationTests(TestCase):
+    """DRAFT165-64 (AUDV12) — l'action REST ``ocr-piece/`` appelait TOUJOURS
+    l'ancienne ``ocr_piece_vers_metadonnees`` : un document à faible confiance
+    n'atterrissait jamais dans la file ``ValidationOcrDocument`` malgré
+    ``ValidationOcrDocumentViewSet`` déjà exposé sur ``/validations-ocr/``."""
+
+    def setUp(self):
+        self.co = make_company('ged33-route', 'Ged33Route')
+        self.user = make_user(self.co, 'ged33-route-user')
+        self.cab = Cabinet.objects.create(company=self.co, nom='Pièces')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='Factures')
+        self.doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='Facture scannée')
+
+    @override_settings(GED_OCR_ENABLED=False)
+    def test_faible_confiance_met_en_file_de_validation(self):
+        services.set_ocr_text(self.doc, 'facture')
+        resp = auth(self.user).post(
+            f'/api/django/ged/documents/{self.doc.pk}/ocr-piece/',
+            {'type_piece': 'facture'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['en_validation'])
+        self.assertTrue(
+            ValidationOcrDocument.objects.filter(document=self.doc).exists())
+        # Les métadonnées ne sont PAS fusionnées tant que non validées.
+        self.doc.refresh_from_db()
+        self.assertNotIn('numero_facture', self.doc.custom_data or {})
+
+    @override_settings(GED_OCR_ENABLED=False)
+    def test_haute_confiance_fusionne_directement_sans_file(self):
+        services.set_ocr_text(
+            self.doc,
+            'FACTURE N: 2026-042\nTotal TTC: 1500,00\nDate: 01/07/2026\n'
+            'Merci pour votre confiance, ceci est un texte suffisamment long.')
+        resp = auth(self.user).post(
+            f'/api/django/ged/documents/{self.doc.pk}/ocr-piece/',
+            {'type_piece': 'facture'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['en_validation'])
+        self.assertFalse(
+            ValidationOcrDocument.objects.filter(document=self.doc).exists())
+        self.doc.refresh_from_db()
+        self.assertIn('numero_facture', self.doc.custom_data)

@@ -34,6 +34,11 @@ const BULLETIN = {
   personnes_a_charge: 1, brut: '8000.00', lignes: [],
 }
 
+const BULLETIN_BROUILLON = {
+  id: 78, periode: 5, profil: 12, statut: 'brouillon', paye: false,
+  personnes_a_charge: 1, brut: '8000.00', ir: '350.00', lignes: [],
+}
+
 vi.mock('../../api/paieApi', () => ({
   default: {
     getBulletin: vi.fn(() => Promise.resolve({ data: BULLETIN })),
@@ -49,6 +54,10 @@ vi.mock('../../api/paieApi', () => ({
         { id: 5, libelle: 'Juin 2026', mois: 6, annee: 2026 },
         { id: 6, libelle: 'Juillet 2026', mois: 7, annee: 2026 },
       ],
+    })),
+    // AUDV19 (DRAFT165-77, XPAI2) — régularisation IR (bulletin BROUILLON).
+    regulariserIrBulletin: vi.fn(() => Promise.resolve({
+      data: { ...BULLETIN_BROUILLON, ir: '500.00', regularisation_ir_delta: '150.00' },
     })),
   },
 }))
@@ -117,4 +126,18 @@ describe('BulletinDetail — cycle de vie du bulletin (WIR39)', () => {
       // Le bulletin réel n'est jamais re-fetché par la simulation.
       expect(paieApi.getBulletin).toHaveBeenCalledTimes(1)
     })
+
+  it('régulariser IR appelle regulariserIrBulletin sur un bulletin BROUILLON et recharge le bulletin',
+    async () => {
+      paieApi.getBulletin.mockResolvedValueOnce({ data: BULLETIN_BROUILLON })
+      renderAt('78')
+      await userEvent.click(await screen.findByRole('button', { name: /Régulariser IR/i }))
+      await waitFor(() => expect(paieApi.regulariserIrBulletin).toHaveBeenCalledWith('78'))
+    })
+
+  it("le bouton régulariser IR n'apparaît pas sur un bulletin déjà validé", async () => {
+    renderAt()
+    await screen.findByRole('button', { name: /Marquer payé/i })
+    expect(screen.queryByRole('button', { name: /Régulariser IR/i })).not.toBeInTheDocument()
+  })
 })

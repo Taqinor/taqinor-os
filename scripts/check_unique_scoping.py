@@ -1,8 +1,17 @@
 """YDATA18 — CI guard: unique constraints on tenant data must be company-scoped;
 a unique on a soft-delete model must be a partial index.
 
-Two AST checks over ``backend/django_core/apps/*/models.py`` (DB-free, mirrors
-``check_company_fk.py`` / ``check_safe_migrations.py``):
+Two AST checks over ``backend/django_core/{apps/*,core,authentication}/
+{models.py,models_*.py,models/*.py}`` (DB-free, mirrors
+``check_company_fk.py`` / ``check_safe_migrations.py`` / the model-file
+iterator in ``check_on_delete.py``):
+
+AUD828 (M-08) — before this fix the scan matched ONLY the bare
+``models.py`` file, missing 68 ``models_*.py`` split files (e.g.
+``installations/models_intervention.py``) and both ``core``/
+``authentication`` entirely. Widening the surface found 0 NEW live
+violation on the current tree (a structural coverage gap, not a proven
+leak).
 
   (a) A business field declared ``unique=True`` is a GLOBAL uniqueness — in a
       multi-tenant ERP two companies can legitimately reuse the same reference,
@@ -36,6 +45,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"
+CORE_DIR = DJANGO_CORE / "core"
+AUTH_DIR = DJANGO_CORE / "authentication"
 ALLOWLIST_PATH = ROOT / "scripts" / "unique_scoping_allow.txt"
 
 # Field NAMES that are legitimately globally unique (tokens/hashes/opaque ids),
@@ -51,12 +62,23 @@ SOFT_DELETE_CONDITION_MARKERS = ("is_deleted", "deleted_at")
 
 
 def _iter_models_files():
-    if not APPS_DIR.is_dir():
-        return
-    for app_dir in sorted(APPS_DIR.iterdir()):
-        m = app_dir / "models.py"
-        if m.is_file():
+    # AUD828 (M-08) — the THREE dispositions this repo uses for a "models"
+    # surface (same pattern as check_on_delete.py's _iter_model_files):
+    # bare models.py, split models_*.py, or a models/ package — across
+    # apps/* AND the two foundation dirs.
+    dirs = list(sorted(APPS_DIR.iterdir())) if APPS_DIR.is_dir() else []
+    for app_dir in dirs + [CORE_DIR, AUTH_DIR]:
+        if not app_dir.is_dir():
+            continue
+        for m in sorted(app_dir.glob("models.py")):
             yield m
+        for m in sorted(app_dir.glob("models_*.py")):
+            yield m
+        models_pkg = app_dir / "models"
+        if models_pkg.is_dir():
+            for f in sorted(models_pkg.glob("*.py")):
+                if f.name != "__init__.py":
+                    yield f
 
 
 def _rel(path: Path) -> str:

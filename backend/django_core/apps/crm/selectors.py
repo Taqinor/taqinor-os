@@ -5,6 +5,7 @@ fonctions plutôt qu'en important `apps.crm.models` directement (voir CLAUDE.md,
 règle de modularité). Comportement strictement identique aux requêtes inline
 d'origine.
 """
+import datetime
 
 
 def client_base_qs(company=None):
@@ -46,6 +47,45 @@ def clients_pour_controle_ice(company):
         }
         for client in qs
     ]
+
+
+def find_client_by_ice_or_libelle(company, ice=None, libelle=None):
+    """AUD121 — identifie le DONNEUR D'ORDRE d'une ligne de relevé bancaire.
+
+    Point d'entrée cross-app pour ``ventes.paiement_import`` : l'import de
+    relevé ne doit plus rapprocher une somme d'argent sur le seul MONTANT
+    (un virement de 12 000 soldait la facture d'un autre client qui devait
+    la même somme). Il lui faut un client IDENTIFIABLE ; ce sélecteur est
+    la seule façon dont ``ventes`` lit ``crm.Client`` pour cela.
+
+    Deux pistes, dans l'ordre de fiabilité :
+      1. l'ICE exact (identifiant légal, jamais ambigu) ;
+      2. le nom du client CONTENU dans le libellé bancaire libre — un nom
+         de moins de 4 caractères est ignoré (trop de faux positifs), et
+         une correspondance MULTIPLE renvoie None : mieux vaut envoyer la
+         ligne en revue humaine que créditer le mauvais client.
+
+    Lecture seule. Renvoie un ``Client`` ou None.
+    """
+    ice = (ice or '').strip()
+    if ice:
+        hits = list(client_base_qs(company).filter(ice__iexact=ice)[:2])
+        if len(hits) == 1:
+            return hits[0]
+        return None
+
+    libelle = (libelle or '').strip().lower()
+    if len(libelle) < 4:
+        return None
+    trouves = []
+    for client in client_base_qs(company).only('id', 'nom', 'prenom'):
+        nom = (client.nom or '').strip().lower()
+        if len(nom) < 4 or nom not in libelle:
+            continue
+        trouves.append(client)
+        if len(trouves) > 1:
+            return None
+    return trouves[0] if len(trouves) == 1 else None
 
 
 def find_client_by_phone(company, telephone):
@@ -1334,6 +1374,202 @@ def leads_response_time_rows(company):
     return rows
 
 
+def kpi_premier_contact(company, *, jours=30, objectif_min=None):
+    """MRY19 — « rappelé en moins de N minutes OUVRÉES » — forme
+    `kpi_premier_contact` (contrat MRY25).
+
+    Trois décisions qui font que ce chiffre veut dire quelque chose :
+
+    * les minutes sont OUVRÉES (``horaires.minutes_ouvrees_entre``) — un lead
+      arrivé vendredi 21 h et rappelé lundi 08:32 vaut 2 minutes, pas 60
+      heures. Un KPI en minutes calendaires serait faux à charge et
+      ininterprétable ;
+    * seuls les leads ``OS_NATIVE`` comptent : les 930 leads du miroir Odoo ne
+      sont pas des demandes que Meryem doit rappeler ;
+    * ``null`` PARTOUT dès que ``nb_leads == 0`` — jamais un 0 %, jamais une
+      médiane fabriquée sur zéro ligne.
+
+    « Leads de nuit » = arrivés HORS fenêtre d'appel ; « rappelés avant 9 h 30 »
+    = ceux d'entre eux dont le premier contact tombe avant 09:30 locales.
+    """
+    from django.utils import timezone
+
+    from . import horaires
+    from .models import Lead
+
+    if objectif_min is None:
+        objectif_min = _objectif_premier_contact(company)
+    depuis = timezone.now() - datetime.timedelta(days=int(jours))
+    leads = (Lead.objects
+             .filter(company=company, is_archived=False,
+                     source=Lead.Source.OS_NATIVE,
+                     date_creation__gte=depuis)
+             .only('id', 'date_creation', 'first_contacted_at'))
+
+    minutes = []
+    nb_leads = 0
+    nb_nuit = 0
+    nb_nuit_rappeles = 0
+    for lead in leads:
+        nb_leads += 1
+        de_nuit = not horaires.est_dans_fenetre(lead.date_creation, company)
+        if de_nuit:
+            nb_nuit += 1
+        if lead.first_contacted_at is None:
+            continue
+        minutes.append(horaires.minutes_ouvrees_entre(
+            lead.date_creation, lead.first_contacted_at, company))
+        if de_nuit:
+            contact_local = lead.first_contacted_at.astimezone(
+                horaires.CASABLANCA)
+            if contact_local.time() <= datetime.time(9, 30):
+                nb_nuit_rappeles += 1
+
+    if not nb_leads:
+        return {
+            'objectif_minutes': objectif_min,
+            'nb_leads': 0,
+            'nb_sous_objectif': None,
+            'pct_sous_objectif': None,
+            'mediane_minutes_ouvrees': None,
+            'nb_nuit_rappeles_avant_930': None,
+            'nb_nuit': 0,
+        }
+    sous = sum(1 for m in minutes if m <= objectif_min)
+    return {
+        'objectif_minutes': objectif_min,
+        'nb_leads': nb_leads,
+        'nb_sous_objectif': sous,
+        'pct_sous_objectif': round(100.0 * sous / nb_leads, 1),
+        'mediane_minutes_ouvrees': _mediane(minutes),
+        'nb_nuit_rappeles_avant_930': nb_nuit_rappeles,
+        'nb_nuit': nb_nuit,
+    }
+
+
+def kpi_cadences(company, *, jours=30):
+    """MRY21 — Les sept chiffres du bilan de cadence (forme `kpi_cadences`).
+
+    Lus à la fois par le panneau du Cockpit et par le bilan hebdomadaire du
+    lundi. Trois règles les rendent honnêtes :
+
+    * ``null`` dès que le DÉNOMINATEUR est 0 — jamais un 0 % qui se lirait
+      comme un échec là où il n'y a simplement rien à mesurer ;
+    * les devis sont comptés via ``apps.ventes.selectors``, JAMAIS un import
+      de ``ventes.models`` (frontière M3) ;
+    * les tentatives comptées sont HUMAINES (MRY20) — une moyenne gonflée par
+      les lignes système ne dirait rien de l'effort réel.
+    """
+    from django.db.models import Count, Q
+    from django.utils import timezone
+
+    from . import horaires, stages
+    from .models import Lead, LeadActivity, RelanceEtape
+
+    depuis = timezone.now() - datetime.timedelta(days=int(jours))
+    leads = Lead.objects.filter(company=company, date_creation__gte=depuis)
+    nb_leads = leads.count()
+
+    # « Joint » = une issue d'appel joint/intéressé dans les 5 jours OUVRÉS
+    # suivant la création. Le délai est OUVRÉ pour la même raison que le KPI
+    # de premier contact : un week-end n'est pas du temps perdu.
+    joints = 0
+    for lead in leads.only('id', 'date_creation'):
+        premiere = (LeadActivity.objects
+                    .filter(lead=lead, outcome__in=('joint', 'interesse'),
+                            user__isnull=False)
+                    .order_by('created_at').first())
+        if premiere is None:
+            continue
+        minutes = horaires.minutes_ouvrees_entre(
+            lead.date_creation, premiere.created_at, company)
+        if minutes <= 5 * 24 * 60:
+            joints += 1
+
+    touches = RelanceEtape.objects.filter(company=company,
+                                          traite_le__gte=depuis)
+    # « Cadence menée à son terme » = ce lead a des touches `contact`
+    # TRAITÉES sur la période et plus AUCUNE ouverte. Écrit en deux requêtes
+    # simples plutôt qu'en une agrégation à double traversée : le chiffre
+    # doit être lisible par qui le relit, sinon personne ne peut le vérifier.
+    traites = set(
+        touches.filter(cadence='contact', statut=RelanceEtape.Statut.FAIT)
+        .values_list('lead_id', flat=True))
+    encore_ouverts = set(
+        RelanceEtape.objects.filter(
+            company=company, cadence='contact',
+            statut=RelanceEtape.Statut.A_FAIRE,
+            lead_id__in=traites).values_list('lead_id', flat=True))
+    cadences_completes = len(traites - encore_ouverts)
+    cadences_arretees_joint = touches.filter(
+        statut=RelanceEtape.Statut.SAUTEE, note__icontains='joint').count()
+
+    perdus = leads.filter(perdu=True)
+    nb_perdus = perdus.count()
+    perdus_avec_motif = perdus.exclude(
+        Q(motif_perte__isnull=True) | Q(motif_perte='')).count()
+
+    signatures = LeadActivity.objects.filter(
+        company=company, field='stage', created_at__gte=depuis,
+        new_value=stages.STAGE_LABELS[stages.SIGNED]).count()
+
+    try:
+        from apps.ventes.selectors import devis_envoyes_periode
+        devis_envoyes = devis_envoyes_periode(
+            company, date_debut=depuis.date()).count()
+    except Exception:  # noqa: BLE001 — un KPI ne casse jamais sur ce point
+        devis_envoyes = 0
+
+    # Moyenne de tentatives des leads passés au FROID sur la période — la
+    # seule population où « avant abandon » veut dire quelque chose.
+    refroidis = list(
+        leads.filter(stage=stages.COLD)
+        .annotate(tentatives=Count(
+            'activites',
+            filter=Q(activites__kind__in=[
+                LeadActivity.Kind.APPEL, LeadActivity.Kind.WHATSAPP,
+                LeadActivity.Kind.EMAIL],
+                activites__user__isnull=False),
+            distinct=True))
+        .values_list('tentatives', flat=True))
+
+    return {
+        'joints_sous_5j_pct': (round(100.0 * joints / nb_leads, 1)
+                               if nb_leads else None),
+        'cadences_completes': cadences_completes,
+        'cadences_arretees_joint': cadences_arretees_joint,
+        'perdus_avec_motif_pct': (
+            round(100.0 * perdus_avec_motif / nb_perdus, 1)
+            if nb_perdus else None),
+        'signatures': signatures,
+        'devis_envoyes': devis_envoyes,
+        'tentatives_moy_avant_abandon': (
+            round(sum(refroidis) / len(refroidis), 1) if refroidis else None),
+    }
+
+
+def _objectif_premier_contact(company):
+    """Objectif de la société (défaut 5 minutes ouvrées, MRY8)."""
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        valeur = getattr(profil, 'premier_contact_objectif_min', None)
+        return int(valeur) if valeur is not None else 5
+    except Exception:  # noqa: BLE001 — défaut assumé
+        return 5
+
+
+def _mediane(valeurs):
+    """Médiane entière, ou ``None`` sur une liste vide (jamais un 0 inventé)."""
+    if not valeurs:
+        return None
+    ordonnees = sorted(valeurs)
+    milieu = len(ordonnees) // 2
+    if len(ordonnees) % 2:
+        return int(ordonnees[milieu])
+    return int((ordonnees[milieu - 1] + ordonnees[milieu]) / 2)
+
+
 def site_location_for_devis(devis):
     """DC13 — localisation du chantier à créer depuis un devis.
 
@@ -1787,7 +2023,7 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     qs = RelanceEtape.objects.filter(
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
-    ).select_related('lead', 'lead__owner')
+    ).select_related('lead', 'lead__owner', 'devis')
     if scope == 'overdue':
         qs = qs.filter(due_date__lt=today)
     elif scope == 'all':
@@ -1803,7 +2039,55 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
 
     if owner:
         qs = qs.filter(lead__owner_id=owner)
-    return qs.order_by('due_date', 'ordre')
+    # MRY5 — tri à la MINUTE : `due_at` d'abord, les lignes d'avant MRY5 (sans
+    # heure) EN DERNIER. Sans `nulls_last`, Postgres les remonterait en tête
+    # de la file de Meryem alors qu'elles n'ont pas d'heure connue.
+    from django.db.models import F
+    return qs.order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+
+
+def prochaine_touche_par_lead(company, lead_ids):
+    """MRY5 — ``{lead_id: (due_at, due_date, cadence, canal)}`` de la prochaine
+    touche À FAIRE de chaque lead demandé.
+
+    Une seule requête pour N leads (le badge « touche due » de la liste et du
+    kanban ne peut pas coûter une requête par carte). Un lead sans touche
+    ouverte est simplement ABSENT du dictionnaire — jamais une entrée vide."""
+    from django.db.models import F
+
+    from .models import RelanceEtape
+
+    if not lead_ids:
+        return {}
+    lignes = (RelanceEtape.objects
+              .filter(company=company, lead_id__in=list(lead_ids),
+                      statut=RelanceEtape.Statut.A_FAIRE)
+              .order_by('lead_id', F('due_at').asc(nulls_last=True),
+                        'due_date', 'ordre')
+              .values_list('lead_id', 'due_at', 'due_date', 'cadence',
+                           'canal'))
+    out = {}
+    for lead_id, due_at, due_date, cadence, canal in lignes:
+        # La première ligne rencontrée par lead est la plus proche (tri
+        # ci-dessus) — les suivantes sont ignorées.
+        out.setdefault(lead_id, (due_at, due_date, cadence, canal))
+    return out
+
+
+def devis_a_cadence_active(devis_id):
+    """MRY7 — ce devis porte-t-il une cadence MRY encore À FAIRE ?
+
+    Consommé par ``ventes.domain.recouvrement`` pour SUPPRIMER la relance
+    vendeur QJ4 sur un devis déjà suivi par le moteur de Meryem : sans cette
+    porte, le client recevrait deux relances pour le même devis, le même jour,
+    de deux systèmes différents. Lecture seule ; ``ventes`` l'appelle par ce
+    sélecteur, jamais en important ``crm.models``."""
+    from .models import RelanceEtape
+
+    if not devis_id:
+        return False
+    return RelanceEtape.objects.filter(
+        devis_id=devis_id, statut=RelanceEtape.Statut.A_FAIRE).exists()
 
 
 def leads_chauds_non_contactes(company, user, seuil_score=None):
@@ -3299,3 +3583,25 @@ def attribution_comparaison_devis(devis):
             for modele in ATTRIBUTION_MODELES
         },
     }
+
+
+def lead_ids_by_contact(company, *, email=None, phone=None):
+    """AUD620 — ids des leads d'une société joignables à cet e-mail OU ce
+    téléphone (saisie libre acceptée, mêmes normaliseurs que la détection de
+    doublons QJ8). Lecture seule, scopée société.
+
+    Sert au chemin de DÉSINSCRIPTION marketing (loi 09-08/CNDP) : le
+    destinataire qui clique « ne plus me contacter » n'est connu que par son
+    adresse ou son numéro ; il faut le rattacher à ses leads pour le sortir de
+    ses séquences/journeys actifs. Renvoie ``[]`` si rien ne correspond —
+    l'appelant se contente alors de la liste de suppression.
+    """
+    from .services import find_duplicates_by_contact
+
+    if not email and not phone:
+        return []
+    return [
+        lead.pk
+        for lead in find_duplicates_by_contact(
+            company, email=email, phone=phone)
+    ]

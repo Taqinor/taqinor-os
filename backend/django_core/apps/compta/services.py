@@ -36,6 +36,10 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
+# YDATA8 — arrondi monétaire centralisé (``core`` est une app de FONDATION :
+# import exempt de la frontière cross-app M3).
+from core.money import quantize_mad
+
 from .models import (
     AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
@@ -1934,7 +1938,17 @@ def coefficient_degressif_maroc(duree_annees):
 
 
 def _arrondi(montant):
-    return Decimal(montant).quantize(Decimal('0.01'))
+    """AUD189 — UNE seule politique d'arrondi, un seul helper.
+
+    Ce helper — l'unique point d'arrondi du module amortissement — appelait
+    ``quantize(Decimal('0.01'))`` SANS ``rounding``, donc en arrondi bancaire
+    (``ROUND_HALF_EVEN``, le défaut Python) : ``0.125`` devenait ``0.12`` au
+    lieu de ``0.13`` sur une dotation, exactement ce que
+    ``docs/money-convention.md`` déclare ne PAS être « la politique
+    moitié-vers-le-haut attendue en comptabilité marocaine ». On délègue au
+    helper unique ``core.money.quantize_mad`` (ROUND_HALF_UP)."""
+    from core.money import quantize_mad
+    return quantize_mad(montant)
 
 
 def _calcul_annuites(base, duree, mode, coefficient, *, mois_premiere_annee=12):
@@ -3999,8 +4013,22 @@ def _amounts_3voies(company, bc_id):
 
 
 def _statut_depuis_ecart(ecart, tolerance):
-    """Concordant si |écart| ≤ tolérance, sinon écart détecté (bloquant)."""
-    if abs(Decimal(ecart or 0)) <= Decimal(tolerance or 0):
+    """Concordant tant que la SUR-facturation ne dépasse pas la tolérance.
+
+    Le test portait sur ``|écart|``, ce qui rangeait dans « écart détecté
+    (bloquant) » une marchandise REÇUE PAS ENCORE FACTURÉE (écart négatif) au
+    même titre qu'une facture supérieure au reçu. Ce contrôle est un contrôle
+    de PRÉ-PAIEMENT — « on ne paie pas plus que reçu » (docstring de
+    ``Rapprochement``) : sous-facturer n'expose à rien.
+
+    Sans effet tant que ``creer_rapprochement_3voies`` n'avait qu'un appelant
+    manuel ; AUD233 crée désormais le rapprochement à chaque réception
+    confirmée, si bien que tout BCF reçu et pas encore facturé atterrissait en
+    ``ecart`` et remplissait l'alerte « à corriger avant paiement »
+    (``selectors.rapprochements_en_ecart``) de faux positifs. Miroir exact de
+    la borne posée dans ``selectors.rapprochement_ecart_pct``.
+    """
+    if Decimal(ecart or 0) <= Decimal(tolerance or 0):
         return Rapprochement.Statut.CONCORDANT
     return Rapprochement.Statut.ECART
 
@@ -5000,7 +5028,20 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
         chantier_refacturation=chantier_refacturation or '',
     )
     if justificatif is not None:
-        note.justificatif = justificatif
+        # AUD835 — le justificatif part dans MinIO (clé préfixée par la société,
+        # SCA42) au lieu du ``FileField`` dont l'URL était structurellement
+        # morte. Un format refusé ou un fichier trop volumineux lève une
+        # ``ValidationError`` DRF → 400 propre, et AUCUNE note n'est créée.
+        from rest_framework.exceptions import ValidationError
+
+        from apps.records.storage import store_attachment_fields
+
+        champs, erreur = store_attachment_fields(
+            justificatif, prefixe='justificatif', company=company)
+        if champs is None:
+            raise ValidationError({'justificatif': erreur})
+        for nom, valeur in champs.items():
+            setattr(note, nom, valeur)
     note.full_clean(exclude=['reference', 'employe', 'created_by'])
     from apps.ventes.utils.references import create_with_reference
 
@@ -5153,10 +5194,12 @@ def valider_note_frais(note, *, user=None, compte_charge=None):
             f"frais du {note.date_frais}.")
     # XACC27 — au-delà du seuil configuré, le justificatif devient obligatoire.
     plafond = plafond_note_frais_pour(company, note.categorie)
+    # AUD835 — « avoir un justificatif » = une clé MinIO OU l'ancien FileField
+    # (lignes créées avant la bascule) : la règle XACC27 ne change pas de sens.
     if (plafond is not None
             and plafond.seuil_justificatif_obligatoire is not None
             and montant > plafond.seuil_justificatif_obligatoire
-            and not note.justificatif):
+            and not (note.justificatif_key or note.justificatif)):
         raise ValidationError(
             "Justificatif obligatoire : le montant dépasse le seuil de "
             f"{plafond.seuil_justificatif_obligatoire} pour cette catégorie.")
@@ -7577,17 +7620,94 @@ def envoyer_campagnes_planifiees(company, *, maintenant=None):
     )
     envoyees = []
     for campagne in campagnes:
-        destinataires = _destinataires_des_listes(campagne)
+        # AUD617 — le reliquat d'un lot throttlé doit REPARTIR au tick
+        # suivant, sans jamais re-cibler qui a déjà été traité.
+        restants = _destinataires_non_traites(
+            campagne, _destinataires_des_listes(campagne))
         if campagne.debit_max_par_heure:
-            lot = destinataires[:campagne.debit_max_par_heure]
+            lot = restants[:campagne.debit_max_par_heure]
+            reste = restants[campagne.debit_max_par_heure:]
         else:
-            lot = destinataires
-        envoyees.append(envoyer_campagne(campagne, destinataires=lot))
+            lot, reste = restants, []
+        envoyees.append(envoyer_campagne(
+            campagne, destinataires=lot, partiel=bool(reste)))
     return envoyees
 
 
-def envoyer_campagne(campagne, *, destinataires=None):
+def lien_desinscription(company, destinataire):
+    """AUDV17 / XMKT3 (DRAFT165-21) — lien PUBLIC de désinscription un clic.
+
+    `generer_token_desinscription` existait et la vue publique
+    `desinscription_publique` la consommait déjà… mais RIEN ne générait ni
+    n'insérait le lien dans un message sortant : le destinataire recevait un
+    email marketing sans aucun moyen de se désinscrire, ce que la loi 09-08
+    impose. Le jeton est signé par (société, destinataire) : il ne désinscrit
+    que CE destinataire, jamais un autre.
+    """
+    # `PUBLIC_SITE_URL` (repli documenté sur `SITE_URL`) est LE réglage de base
+    # publique du projet : n'en inventons pas un second.
+    base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    token = generer_token_desinscription(
+        getattr(company, 'id', company), destinataire)
+    chemin = f'/api/django/compta/desinscription/{token}/'
+    return f'{base}{chemin}' if base else chemin
+
+
+def _corps_conforme_cndp(campagne):
+    """AUDV17 — ajoute au corps les mentions légales dues au canal (loi 09-08).
+
+    Email : pied de déclaration CNDP (`cndp_footer_texte`, chaîne vide donc
+    NO-OP tant que le numéro de déclaration n'est pas renseigné dans le profil
+    société — le comportement historique est strictement préservé).
+    SMS : mention STOP obligatoire (`ajouter_mention_stop`, idempotente).
+    Les deux fonctions existaient sans le moindre appelant.
+    """
+    corps = campagne.corps or ''
+    if campagne.canal == Campagne.Canal.SMS:
+        return ajouter_mention_stop(corps)
+    pied = cndp_footer_texte(campagne.company)
+    if pied and pied not in corps:
+        corps = f'{corps}\n\n{pied}'
+    return corps
+
+
+def _destinataires_non_traites(campagne, destinataires):
+    """AUD617 — retire les destinataires DÉJÀ couverts par un lot précédent
+    de cette campagne.
+
+    ``_destinataires_des_listes`` renvoie à chaque tick la liste COMPLÈTE des
+    inscrits : sans ce filtre, la reprise du reliquat re-solliciterait les
+    destinataires du premier lot à chaque passage beat. Une ligne
+    ``EnvoiCampagne`` existe pour tout destinataire traité — y compris ceux
+    écartés (consentement, plafond de pression, dormant), qui ne doivent pas
+    être retentés non plus.
+    """
+    deja = set(
+        EnvoiCampagne.objects.filter(
+            company=campagne.company, campagne=campagne,
+        ).values_list('destinataire', flat=True))
+    if not deja:
+        return list(destinataires)
+    restants = []
+    for cible in destinataires:
+        brute = cible.get('destinataire') if isinstance(cible, dict) else cible
+        if (brute or '').strip() in deja:
+            continue
+        restants.append(cible)
+    return restants
+
+
+def envoyer_campagne(campagne, *, destinataires=None, partiel=False):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
+
+    AUD617 — ``partiel=True`` signale que ce lot ne couvre PAS tous les
+    destinataires (débit horaire ``debit_max_par_heure``) : la campagne
+    retourne alors ``en_file`` (jamais ``envoyee``) avec sa ``planifiee_le``
+    inchangée, et ses compteurs CUMULENT au lieu d'être écrasés — le reliquat
+    repart au tick beat suivant. C'est ``en_file`` et non ``envoi_en_cours``
+    parce que c'est le seul statut que la requête d'``envoyer_campagnes_
+    planifiees`` reprend : une campagne laissée ``envoi_en_cours`` entre deux
+    ticks ne serait jamais reprise.
 
     ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0), ou de
     dicts ``{'destinataire': ..., 'contact_ref': ...}`` pour porter la
@@ -7609,6 +7729,11 @@ def envoyer_campagne(campagne, *, destinataires=None):
     if campagne.statut not in (Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE):
         return campagne
     statut_avant = campagne.statut
+    # AUD617 — reprise d'un lot throttlé : les compteurs doivent CUMULER, pas
+    # être écrasés par le dernier lot. Une campagne qui porte déjà des lignes
+    # ``EnvoiCampagne`` est forcément la reprise d'un lot précédent (le garde
+    # de statut ci-dessus interdit tout second envoi hors throttle).
+    reprise = campagne.envois.exists()
     campagne.statut = Campagne.Statut.ENVOI_EN_COURS
     campagne.save(update_fields=['statut'])
     brutes = list(destinataires or [])
@@ -7691,27 +7816,66 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 statut=EnvoiCampagne.Statut.REBOND,
                 raison_smtp='contact_dormant_sunset',
             )
-    campagne.nb_destinataires = len(cibles)
+    # ── AUDV17 / XMKT15 (DRAFT165-28) — VALIDATION DES NUMÉROS avant SMS ──
+    # `filtrer_destinataires_sms` n'avait aucun appelant : un fixe ou un
+    # numéro malformé partait au facturier, la société payait un SMS mort et
+    # personne ne le voyait. Le canal SMS filtre désormais ses cibles, et
+    # chaque exclusion laisse une trace (jamais une disparition silencieuse).
+    if campagne.canal == Campagne.Canal.SMS and cibles:
+        tri = filtrer_destinataires_sms([_adresse(cible) for cible in cibles])
+        valides = set(tri['valides'])
+        for exclu in tri['exclus']:
+            if exclu['numero']:
+                EnvoiCampagne.objects.create(
+                    company=campagne.company, campagne=campagne,
+                    destinataire=exclu['numero'], contact_ref='',
+                    statut=EnvoiCampagne.Statut.REBOND,
+                    raison_smtp=f"numero_invalide:{exclu['motif']}",
+                )
+        cibles = [
+            cible for cible in cibles
+            if _normaliser_destinataire(_adresse(cible)) in valides
+        ]
+
+    # AUD617 — cumul sur une reprise, écrasement sur un envoi neuf.
+    base_destinataires = campagne.nb_destinataires if reprise else 0
+    base_envois = campagne.nb_envois if reprise else 0
+    campagne.nb_destinataires = base_destinataires + len(cibles)
     if campagne.canal == Campagne.Canal.WHATSAPP and cibles:
         # XMKT10 — le canal whatsapp ne dépend jamais de Brevo (email/SMS
         # uniquement) : chaque destinataire obtient TOUJOURS un message —
         # via BSP (jeton présent) ou repli manuel (lien wa.me), jamais aucun
         # des deux (comportement du provider QJ23/FG33). On compte l'envoi
         # comme « traité » indépendamment de brevo_actif().
-        campagne.nb_envois = len(cibles)
+        campagne.nb_envois = base_envois + len(cibles)
     elif brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
         # On laisse le compteur d'envois aligné sur les destinataires ; les
         # ouvertures/clics seront remontés par les webhooks Brevo.
-        campagne.nb_envois = len(cibles)
+        campagne.nb_envois = base_envois + len(cibles)
     # XMKT9 — réécrit les liens du corps en redirections tokenisées AU MOMENT
     # DE L'ENVOI (une seule fois, jamais si aucun lien HTTP(S) présent).
     if cibles:
         corps_reecrit, _liens = envelopper_liens_campagne(campagne)
         if corps_reecrit != campagne.corps:
             campagne.corps = corps_reecrit
-    campagne.statut = Campagne.Statut.ENVOYEE
-    campagne.envoyee_le = timezone.now()
+        # ── AUDV17 — CONFORMITÉ CNDP / loi 09-08, posée AU MOMENT DE L'ENVOI ──
+        # Trois fonctions écrites, testées et JAMAIS appelées par ce pipeline :
+        # `cndp_footer_texte` (DRAFT165-25) et `ajouter_mention_stop`
+        # (DRAFT165-27). Conséquence : les campagnes partaient sans mention
+        # légale et sans le mot-clé STOP obligatoire — une non-conformité
+        # invisible tant qu'aucun destinataire ne se plaint.
+        campagne.corps = _corps_conforme_cndp(campagne)
+    if partiel:
+        # AUD617 — il RESTE des destinataires non couverts par ce lot : la
+        # campagne n'est pas « envoyée ». Elle retourne en file (échéance
+        # inchangée) et le reliquat part au tick beat suivant. Avant ce
+        # correctif elle passait `envoyee` dès le premier lot et le reliquat
+        # n'était JAMAIS envoyé.
+        campagne.statut = Campagne.Statut.EN_FILE
+    else:
+        campagne.statut = Campagne.Statut.ENVOYEE
+        campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
         'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le', 'corps'])
     maintenant = timezone.now() if campagne.nb_envois else None
@@ -8166,7 +8330,49 @@ def supprimer_destinataire(company, destinataire, *, motif=SuppressionMarketing.
         company=company, destinataire=destinataire,
         defaults={'motif': motif, 'source': source or ''},
     )
+    # AUD620 (CNDP, loi 09-08) — ne plus être contacté doit AUSSI arrêter les
+    # séquences déjà en cours, pas seulement les envois futurs.
+    _sortir_des_sequences_du_destinataire(company, destinataire, motif=motif)
     return obj
+
+
+def _sortir_des_sequences_du_destinataire(company, destinataire, *, motif=''):
+    """AUD620 — sort un contact supprimé de TOUTES ses séquences/journeys
+    ACTIFS.
+
+    Avant ce correctif, ``supprimer_destinataire`` ne posait qu'un
+    ``SuppressionMarketing`` : les envois FUTURS étaient bien filtrés, mais
+    une ``InscriptionSequence`` déjà ``ACTIF`` le restait et continuait d'être
+    avancée à chaque tick beat par ``executer_etapes_dues`` (moteur linéaire)
+    et ``executer_journeys_dus`` (moteur graphe) — un contact ayant demandé à
+    ne plus être contacté restait donc dans le tunnel. Impact dormant tant que
+    l'envoi réel est no-op (FG31), actif dès qu'une intégration est branchée.
+
+    Le contact n'est connu que par son e-mail/téléphone : on le rattache à ses
+    leads via ``crm.selectors`` (frontière inter-app — jamais un import des
+    modèles crm). Aucun lead correspondant → rien à faire, la liste de
+    suppression suffit.
+
+    Couvre TOUS les motifs de suppression (désinscription volontaire, plainte,
+    rebond dur, liste d'opposition) : dans chaque cas, continuer d'avancer le
+    contact dans un journey serait une sollicitation de plus.
+    """
+    from apps.crm.selectors import lead_ids_by_contact
+
+    destinataire = (destinataire or '').strip()
+    if not destinataire:
+        return []
+    if '@' in destinataire:
+        lead_ids = lead_ids_by_contact(company, email=destinataire)
+    else:
+        lead_ids = lead_ids_by_contact(company, phone=destinataire)
+    sorties = []
+    for lead_id in lead_ids:
+        sorties.extend(sortir_inscriptions_pour_lead(
+            company, lead_id,
+            motif=f'suppression_marketing:{motif}' if motif
+            else 'suppression_marketing'))
+    return sorties
 
 
 def generer_token_desinscription(company_id, destinataire):
@@ -8221,6 +8427,13 @@ def importer_liste_opposition(company, destinataires, *, source='import_csv'):
         )
         if cree:
             ajoutes += 1
+        # AUD620 — même obligation que les autres chemins de suppression :
+        # une liste d'opposition importée doit AUSSI sortir le contact de ses
+        # séquences actives (cette fonction écrit sa propre ligne pour garder
+        # son compteur ``cree`` — d'où l'appel explicite au même helper).
+        _sortir_des_sequences_du_destinataire(
+            company, destinataire,
+            motif=SuppressionMarketing.Motif.IMPORT)
     return ajoutes
 
 
@@ -9184,19 +9397,27 @@ def _appliquer_action_alternative(inscription, etape, action):
             f'autre objet (branche alternative étape {etape.ordre})')
 
 
-def _executer_action_crm(inscription, etape):
-    """XMKT19 — exécute l'action CRM configurée sur ``etape.action_crm``
-    (JSON ``{"action": ..., "params": {...}}``), toujours via
-    ``apps.crm.services`` (jamais d'import direct du modèle CRM). Renvoie
-    ``'execute'`` / ``'lead_introuvable'`` / ``'action_inconnue'`` / ``'erreur'``.
+def executer_action_crm_config(company, lead_id, action_crm, *,
+                               note_chatter=''):
+    """XMKT19 / AUD622 — exécute une action CRM déclarée en JSON
+    (``{"action": ..., "params": {...}}``), toujours via ``apps.crm.services``
+    (jamais d'import direct du modèle CRM). Renvoie ``'execute'`` /
+    ``'lead_introuvable'`` / ``'action_inconnue'`` / ``'erreur'``.
+
+    AUD622 — extraite de ``_executer_action_crm`` (moteur LINÉAIRE XMKT19)
+    pour que le moteur GRAPHE (``marketing.services.avancer_journey``) exécute
+    EXACTEMENT la même logique. Le nœud ACTION du graphe est libellé
+    « Action (message / CRM) » et sa config documente ``action_crm``, mais
+    aucune action CRM ne s'y produisait : la branche ne lisait que
+    ``config['canal']`` pour tracer, silencieusement.
     """
     from apps.crm.selectors import get_company_lead
     from apps.crm import services as crm_services
 
-    lead = get_company_lead(inscription.company, inscription.lead_id)
+    lead = get_company_lead(company, lead_id)
     if lead is None:
         return 'lead_introuvable'
-    config = etape.action_crm or {}
+    config = action_crm or {}
     action = config.get('action')
     params = config.get('params') or {}
     try:
@@ -9218,11 +9439,23 @@ def _executer_action_crm(inscription, etape):
             return 'action_inconnue'
     except Exception:
         return 'erreur'
-    noter_touche_marketing_pour_lead(
-        inscription.company, f'lead:{inscription.lead_id}',
-        f'Séquence « {inscription.sequence.nom} » — action CRM « {action} » '
-        f'exécutée (étape {etape.ordre})')
+    if note_chatter:
+        noter_touche_marketing_pour_lead(
+            company, f'lead:{lead_id}', note_chatter)
     return 'execute'
+
+
+def _executer_action_crm(inscription, etape):
+    """XMKT19 — action CRM d'une ÉTAPE du moteur linéaire (``etape.action_crm``).
+    Enveloppe fine d'``executer_action_crm_config``, partagée avec le moteur
+    graphe depuis AUD622 — la logique n'existe qu'à un seul endroit.
+    """
+    action = (etape.action_crm or {}).get('action')
+    return executer_action_crm_config(
+        inscription.company, inscription.lead_id, etape.action_crm,
+        note_chatter=(
+            f'Séquence « {inscription.sequence.nom} » — action CRM '
+            f'« {action} » exécutée (étape {etape.ordre})'))
 
 
 def _executer_une_etape(inscription, etape, *, maintenant=None):
@@ -9500,27 +9733,36 @@ def executer_etapes_dues(company, *, maintenant=None):
     """
     maintenant = maintenant or timezone.now()
     executions = []
-    qs = InscriptionSequence.objects.filter(
-        company=company, statut=InscriptionSequence.Statut.ACTIF,
-        etape_courante__isnull=False,
-    ).select_related('etape_courante', 'sequence')
-    for inscription in qs:
-        etape = inscription.etape_courante
-        echeance = inscription.declenchee_le + timezone.timedelta(
-            days=etape.delai_jours)
-        if maintenant < echeance:
-            continue
-        executions.append(
-            _executer_une_etape(inscription, etape, maintenant=maintenant))
-        suivante = inscription.sequence.etapes.filter(
-            ordre__gt=etape.ordre).order_by('ordre').first()
-        if suivante:
-            inscription.etape_courante = suivante
-            inscription.save(update_fields=['etape_courante'])
-        else:
-            inscription.etape_courante = None
-            inscription.statut = InscriptionSequence.Statut.TERMINE
-            inscription.save(update_fields=['etape_courante', 'statut'])
+    # AUD622 — VERROU DE TICK (même garde que le moteur graphe
+    # ``marketing.services.executer_journeys_dus``, par cohérence : le risque
+    # de double exécution était partagé). Sans lui, deux ticks beat qui se
+    # chevauchent exécutent la même étape deux fois. ``skip_locked`` : un tick
+    # ignore ce qu'un autre traite au lieu d'attendre. ``of=('self',)`` ne
+    # verrouille que la ligne d'inscription, jamais les tables jointes.
+    with transaction.atomic():
+        inscriptions = list(
+            InscriptionSequence.objects.filter(
+                company=company, statut=InscriptionSequence.Statut.ACTIF,
+                etape_courante__isnull=False,
+            ).select_related('etape_courante', 'sequence')
+            .select_for_update(skip_locked=True, of=('self',)))
+        for inscription in inscriptions:
+            etape = inscription.etape_courante
+            echeance = inscription.declenchee_le + timezone.timedelta(
+                days=etape.delai_jours)
+            if maintenant < echeance:
+                continue
+            executions.append(
+                _executer_une_etape(inscription, etape, maintenant=maintenant))
+            suivante = inscription.sequence.etapes.filter(
+                ordre__gt=etape.ordre).order_by('ordre').first()
+            if suivante:
+                inscription.etape_courante = suivante
+                inscription.save(update_fields=['etape_courante'])
+            else:
+                inscription.etape_courante = None
+                inscription.statut = InscriptionSequence.Statut.TERMINE
+                inscription.save(update_fields=['etape_courante', 'statut'])
     return executions
 
 
@@ -10235,6 +10477,35 @@ def appliquer_mouvement_fidelite(compte, *, points, motif=''):
         compte.palier = palier_pour_points(compte.points)
         compte.save(update_fields=['points', 'palier'])
     return mouvement
+
+
+def recalculer_solde_fidelite(compte):
+    """AUD619 (doctrine D9) — re-dérive le solde CACHÉ d'un compte de fidélité
+    depuis le LEDGER, seule source de vérité.
+
+    ``MouvementFidelite`` est un registre : on ne supprime pas une ligne, on
+    en écrit une de sens inverse (le DELETE API est refusé, voir
+    ``MouvementFideliteViewSet.perform_destroy``). ``CompteFidelite.points``
+    n'est qu'un cache incrémental — cette fonction le RECALCULE, ce qui répare
+    tout compte dont le cache aurait divergé (mouvements supprimés en base
+    avant ce correctif, import, correction manuelle).
+
+    Le plancher à 0 est le MÊME que celui d'``appliquer_mouvement_fidelite``
+    (le solde d'un compte ne descend jamais sous zéro) : le résultat reste
+    donc entièrement dérivable du ledger, jamais path-dépendant. Renvoie le
+    solde recalculé.
+    """
+    from django.db.models import Sum
+
+    from .models import MouvementFidelite
+    with transaction.atomic():
+        total = MouvementFidelite.objects.filter(
+            company=compte.company, compte=compte,
+        ).aggregate(total=Sum('points'))['total'] or 0
+        compte.points = max(0, int(total))
+        compte.palier = palier_pour_points(compte.points)
+        compte.save(update_fields=['points', 'palier'])
+    return compte.points
 
 
 # ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
@@ -11223,24 +11494,46 @@ def poster_echeance_emprunt(echeance, *, user=None):
     return ecriture
 
 
-def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13):
-    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel 13 semaines
-    (FG126) — lecture seule, pure. Renvoie une liste de dicts compatibles avec
-    les lignes du prévisionnel : ``{'libelle', 'date_prevue', 'montant'}``
-    (montant NÉGATIF = décaissement). Ne persiste rien : c'est
-    ``selectors.previsionnel_tresorerie`` qui les agrège à l'existant.
+def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13,
+                                    inclure_postees=False):
+    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel (FG126).
+
+    AUDV01 / DRAFT165-34 — cette fonction est l'UNIQUE source des lignes
+    « échéance d'emprunt » du prévisionnel roulant :
+    ``selectors.previsionnel_tresorerie`` l'APPELLE désormais au lieu de
+    refaire la même requête à côté. Elle était orpheline (sa propre docstring
+    affirmait le contraire) pendant que le sélecteur en dupliquait la logique —
+    deux copies d'une même règle ne peuvent que diverger.
+
+    Lecture seule, pure, ne persiste rien. Chaque ligne a la forme d'une ligne
+    de prévisionnel : ``{'type': 'echeance_emprunt', 'libelle', 'categorie',
+    'date', 'date_prevue', 'montant'}``. ``montant`` est NÉGATIF (décaissement).
+    ``date`` est le nom de clé des lignes de ``previsionnel_tresorerie`` ;
+    ``date_prevue`` est celui du champ ``LignePrevisionnelTresorerie`` — les
+    deux portent la même valeur pour que la ligne soit utilisable des deux
+    côtés sans traduction.
+
+    Une échéance DÉJÀ POSTÉE au grand livre n'est plus un prévisionnel (elle a
+    bougé la trésorerie réelle) : elle est exclue sauf ``inclure_postees``.
+    L'horizon est ``[date_debut, date_debut + nb_semaines[`` — borne de fin
+    EXCLUE, exactement celle du prévisionnel.
     """
     from datetime import timedelta
-    debut = date_debut or timezone.now().date()
+    debut = date_debut or timezone.localdate()
     fin = debut + timedelta(weeks=nb_semaines)
     qs = EcheanceEmprunt.objects.filter(
-        company=company, date_echeance__gte=debut, date_echeance__lte=fin,
-    ).select_related('emprunt').order_by('date_echeance')
+        company=company, date_echeance__gte=debut, date_echeance__lt=fin,
+    ).select_related('emprunt').order_by('date_echeance', 'id')
+    if not inclure_postees:
+        qs = qs.filter(posted=False)
     return [
         {
+            'type': 'echeance_emprunt',
             'libelle': f'Échéance emprunt {e.emprunt.banque or e.emprunt.reference}',
+            'categorie': 'decaissement',
+            'date': e.date_echeance,
             'date_prevue': e.date_echeance,
-            'montant': -Decimal(e.mensualite),
+            'montant': -quantize_mad(e.mensualite or 0),
         }
         for e in qs
     ]
@@ -12484,20 +12777,43 @@ def limite_temps_depassee(enquete, *, debute_le, maintenant=None):
 
 
 def soumettre_reponse_enquete(
-        enquete, *, reponses, contact_ref='', nom_repondant=''):
-    """ZMKT11 — refuse (ValueError) si ``tentatives_max`` est dépassé pour
-    ``contact_ref`` (email d'un répondant identifié)."""
-    if contact_ref and enquete.tentatives_max:
+        enquete, *, reponses, contact_ref='', nom_repondant='',
+        jeton_invite=None):
+    """ZMKT11 — refuse (ValueError) si ``tentatives_max`` est dépassé.
+
+    AUD621 — trois gardes qui manquaient :
+
+    * ``connexion_requise`` était déclaré sur le modèle mais n'avait AUCUNE
+      occurrence côté service/vue : une enquête « connexion requise »
+      acceptait une soumission anonyme (``contact_ref=''``). Elle est
+      désormais réellement exigée.
+    * en mode ``invites_seulement``, les tentatives se comptent sur le JETON
+      d'invitation (émis par l'ERP, infalsifiable) et non sur ``contact_ref``
+      — champ LIBRE du POST, jamais vérifié contre une identité réelle, qu'il
+      suffisait d'omettre ou de changer pour repartir à zéro.
+    * le jeton est CONSOMMÉ : au-delà de ``tentatives_max`` (1 par défaut en
+      mode invités), il ne sert plus. Un lien ``?invite=`` partagé ne vaut
+      plus un nombre illimité de répondants.
+    """
+    if enquete.connexion_requise and not (contact_ref or '').strip():
+        raise ValueError(
+            'Cette enquête exige de vous identifier (email de contact).')
+
+    if enquete.mode_acces == Enquete.ModeAcces.INVITES_SEULEMENT:
+        if not acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
+            raise ValueError("Jeton d'invitation invalide ou déjà utilisé.")
+    elif contact_ref and enquete.tentatives_max:
         restantes = tentatives_restantes(enquete, contact_ref)
         if restantes is not None and restantes <= 0:
             raise ValueError('Nombre maximum de tentatives atteint.')
     return _soumettre_reponse_enquete_interne(
         enquete, reponses=reponses, contact_ref=contact_ref,
-        nom_repondant=nom_repondant)
+        nom_repondant=nom_repondant, jeton_invite=jeton_invite)
 
 
 def _soumettre_reponse_enquete_interne(
-        enquete, *, reponses, contact_ref='', nom_repondant=''):
+        enquete, *, reponses, contact_ref='', nom_repondant='',
+        jeton_invite=None):
     """XMKT27 — soumission publique d'une enquête (sans auth). Ne valide QUE
     les questions effectivement visibles (logique conditionnelle) : une
     question masquée n'est jamais requise. Lève ``ValueError`` si une
@@ -12525,7 +12841,10 @@ def _soumettre_reponse_enquete_interne(
     reponse = ReponseEnquete.objects.create(
         company=enquete.company, enquete=enquete,
         contact_ref=contact_ref or '', reponses=reponses,
-        score_pct=score_pct, reussi=reussi)
+        score_pct=score_pct, reussi=reussi,
+        # AUD621 — trace « jeton consommé » : c'est elle qui décompte les
+        # tentatives en mode invités-seulement.
+        jeton_invite=(jeton_invite or '')[:64])
 
     if enquete.est_certification and reussi:
         reponse.certificat_genere = True
@@ -12557,10 +12876,33 @@ def calculer_score_enquete(enquete, reponses):
 def acces_enquete_autorise(enquete, *, jeton_invite=None):
     """ZMKT11 — vérifie le mode d'accès : lien public toujours autorisé,
     invités-seulement exige un jeton émis (présent dans ``jetons_invites``).
+
+    AUD621 — un jeton ÉPUISÉ n'ouvre plus rien. Avant ce correctif, aucun code
+    ne retirait ni ne marquait un jeton après une soumission réussie : un lien
+    ``?invite=`` partagé servait un nombre ILLIMITÉ de répondants.
     """
     if enquete.mode_acces == Enquete.ModeAcces.LIEN_PUBLIC:
         return True
-    return bool(jeton_invite and jeton_invite in (enquete.jetons_invites or []))
+    if not jeton_invite or jeton_invite not in (enquete.jetons_invites or []):
+        return False
+    return tentatives_restantes_jeton(enquete, jeton_invite) > 0
+
+
+def tentatives_restantes_jeton(enquete, jeton_invite):
+    """AUD621 — tentatives restantes pour un JETON d'invitation.
+
+    Le décompte porte sur le jeton (émis par l'ERP, infalsifiable) et non sur
+    ``contact_ref``, champ libre du POST qu'il suffisait d'omettre ou de
+    changer pour repartir à zéro. Sans ``tentatives_max`` configuré, un jeton
+    d'invitation vaut UNE soumission — « invités seulement » n'a de sens que
+    si l'invitation est nominative et non transmissible à volonté.
+    """
+    if not jeton_invite:
+        return 0
+    maximum = enquete.tentatives_max or 1
+    deja = ReponseEnquete.objects.filter(
+        enquete=enquete, jeton_invite=jeton_invite).count()
+    return max(0, maximum - deja)
 
 
 def emettre_jeton_invite(enquete):

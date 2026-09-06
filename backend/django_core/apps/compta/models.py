@@ -340,7 +340,45 @@ class EcritureComptable(models.Model):
                 "modifiée."
             )
 
+    # ── AUD804 — Immutabilité d'une écriture VALIDÉE ───────────────────────
+    def _verifier_non_validee(self):
+        """Refuse toute réécriture d'une écriture DÉJÀ validée en base.
+
+        COMPTA40 pose un contrôle à quatre yeux (``created_by`` ≠
+        ``valide_par``) dans ``services.valider_ecriture``. Il était
+        contournable de deux façons par un simple porteur de ``compta_saisir``:
+        poser ``statut='validee'`` dans un PATCH (le champ n'était pas en
+        lecture seule au sérialiseur), et — plus grave — RÉÉCRIRE LES LIGNES
+        (montants, comptes) d'une écriture déjà validée sans toucher au statut,
+        puisque la mise à jour supprime et recrée les lignes : le grand livre
+        aurait changé SOUS une validation posée. L'EXTOURNE
+        (``services.extourner_ecriture``, qui crée une écriture INVERSE) reste
+        le seul chemin légitime de correction.
+
+        On compare au statut PERSISTÉ, pas à celui en mémoire : la transition
+        de validation elle-même (brouillon → validée) doit passer.
+
+        Volontairement PAS dans ``clean()`` : ``services.creer_ecriture``
+        appelle ``clean()`` sur des écritures créées DIRECTEMENT en ``VALIDEE``
+        (auto-génération depuis les documents) — l'y placer les casserait
+        toutes sans rien protéger de plus (à la création, il n'y a rien à
+        réécrire).
+        """
+        if not self.pk:
+            return
+        ancien = (type(self).objects
+                  .filter(pk=self.pk)
+                  .values_list('statut', flat=True)
+                  .first())
+        if ancien == self.Statut.VALIDEE:
+            raise ValidationError(
+                "Écriture validée : elle ne peut plus être modifiée. "
+                "Passez une écriture d'extourne (contre-passation) pour la "
+                "corriger."
+            )
+
     def save(self, *args, **kwargs):
+        self._verifier_non_validee()
         self._verifier_periode_ouverte()
         super().save(*args, **kwargs)
 
@@ -4963,9 +5001,16 @@ class PieceJustificative(models.Model):
     """Document justificatif attaché à une écriture comptable (scan, PDF…).
 
     Une écriture peut porter plusieurs pièces (facture scannée, reçu, contrat).
-    Le fichier est stocké via le storage projet (MinIO/S3). Multi-société :
-    la pièce porte sa propre ``company`` (posée côté serveur) et pointe une
-    écriture de la MÊME société (validé au niveau serializer).
+    Multi-société : la pièce porte sa propre ``company`` (posée côté serveur) et
+    pointe une écriture de la MÊME société (validé au niveau serializer).
+
+    AUD835 — le fichier vit dans MinIO (``records.storage``), désigné par
+    ``fichier_key``. Le docstring affirmait « stocké via le storage projet
+    (MinIO/S3) » alors que le ``FileField`` ci-dessous écrivait en réalité sur
+    le disque du conteneur, sans qu'aucune URL ne puisse le resservir (ni
+    ``MEDIA_URL``/``MEDIA_ROOT``, ni route ``/media/``, ni ``location /media/``
+    nginx) : une pièce comptable — obligation légale de conservation — n'était
+    récupérable par PERSONNE en production.
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -4981,9 +5026,20 @@ class PieceJustificative(models.Model):
     )
     libelle = models.CharField(
         max_length=200, blank=True, default='', verbose_name='Libellé')
+    # AUD835 — LEGACY, jamais réécrit (voir le docstring de la classe) ; devient
+    # optionnel pour que les lignes historiques restent lisibles et qu'une
+    # nouvelle pièce n'ait plus rien à y écrire.
     fichier = models.FileField(
-        upload_to='compta/pieces/%Y/%m/',
-        verbose_name='Fichier justificatif')
+        upload_to='compta/pieces/%Y/%m/', blank=True, null=True,
+        verbose_name='Fichier justificatif (legacy, hors MinIO)')
+    fichier_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    fichier_filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    fichier_size = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    fichier_mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     ajoute_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

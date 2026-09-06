@@ -30,6 +30,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminOrResponsableTier,
     IsAdminRole,
+    IsResponsableOrAdmin,
 )
 
 from django.db.models import Q
@@ -43,6 +44,7 @@ from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
+from .permissions import declared_action_permissions
 from .models import (
     ApiUsagePlan,
     BackupRun,
@@ -333,10 +335,29 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
     avec un détail explicite, jamais d'appel réseau). Aucune importation d'app
     domaine : la cible (facture) est désignée via ``content_type``/``object_id``
     et le rapprochement comptable passe par l'événement ``payment_captured``.
+
+    AUD806 — cette promesse n'était PAS tenue : ``core.payment.marquer_paye``
+    (seul émetteur de ``payment_captured``, seul à poser ``paye_le``) n'avait
+    AUCUN appelant de production, et le seul chemin qui écrivait ``statut``
+    était ``rafraichir``, par écriture directe. Le PSP confirmait, l'opérateur
+    cliquait « Rafraîchir » → transaction « payée » mais AUCUN ``Paiement``
+    créé (``apps/ventes/receivers._materialize_paiement_on_payment_captured``
+    ne s'exécutait jamais), la facture restait « émise » et partait en relance.
+    L'écriture passe désormais par ``marquer_paye``. La garde d'écriture monte
+    au palier responsable/admin : encaisser n'est pas une action de lecture.
     """
     serializer_class = PaymentTransactionSerializer
     permission_classes = [IsAuthenticated]
     queryset = PaymentTransaction.objects.all()
+
+    def get_permissions(self):
+        # AUD806 — lecture ouverte à tout authentifié (une facture consultée
+        # affiche l'état de sa transaction) ; toute ÉCRITURE — création,
+        # modification, suppression, et la capture par ``rafraichir`` — exige
+        # le palier responsable/admin.
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
 
     def perform_create(self, serializer):
         # company imposée côté serveur ; on initie aussitôt auprès du PSP.
@@ -345,14 +366,31 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def rafraichir(self, request, pk=None):
-        """Interroge le PSP et synchronise le statut (no-op si non configuré)."""
+        """Interroge le PSP et synchronise le statut (no-op si non configuré).
+
+        AUD806 — une capture passe OBLIGATOIREMENT par
+        ``core.payment.marquer_paye`` : elle pose ``paye_le`` et émet
+        ``payment_captured`` (que ``ventes`` consomme pour matérialiser le
+        ``Paiement`` et solder la facture via ``marquer_facture_soldee``,
+        AUD102). C'est un « À LA PLACE DE », jamais un « EN PLUS » : si
+        ``statut='paye'`` était posé d'abord, le garde d'idempotence de
+        ``marquer_paye`` (statut déjà PAYÉ → return) avalerait l'événement à
+        jamais — corriger l'un sans l'autre armerait le défaut.
+        """
+        from .models import PaymentTransaction as _PT
+
         transaction = self.get_object()
         provider = payment_infra._provider_for(transaction)
         if provider is not None:
             res = provider.fetch_status(transaction)
             if res.get('ok') and res.get('statut'):
-                transaction.statut = res['statut']
-                transaction.save(update_fields=['statut', 'updated_at'])
+                if res['statut'] == _PT.STATUT_PAYE:
+                    payment_infra.marquer_paye(
+                        transaction,
+                        external_ref=res.get('external_ref', '') or '')
+                else:
+                    transaction.statut = res['statut']
+                    transaction.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(transaction).data)
 
 
@@ -459,11 +497,28 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
       * ``GET  …/corbeille/``            — entrées non restaurées de la société ;
       * ``GET  …/corbeille/?undo=1``     — uniquement la fenêtre d'« annuler » ;
       * ``POST …/corbeille/{id}/restaurer/`` — restaure l'objet d'origine.
+
+    AUD817 — ``restaurer`` REMET EN CIRCULATION un enregistrement que la
+    direction avait volontairement supprimé : elle héritait de la garde
+    générique ``IsAuthenticated`` de la classe, donc un compte strictement en
+    LECTURE pouvait la déclencher. L'action porte désormais sa propre garde
+    (``IsResponsableOrAdmin``, honorée via ``declared_action_permissions`` —
+    la brique du dépôt qui empêche un ``get_permissions`` de jeter en silence
+    ce que le décorateur annonce). La LISTE reste ouverte à tout authentifié.
     """
     serializer_class = DeletionRecordSerializer
     permission_classes = [IsAuthenticated]
     queryset = DeletionRecord.objects.all()
     pagination_class = None
+
+    def get_permissions(self):
+        # AUD817 — la garde DÉCLARÉE par l'@action prime (patron canonique de
+        # ``core.permissions.declared_action_permissions``) ; à défaut, la
+        # lecture reste ouverte à tout utilisateur authentifié.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         qs = super().get_queryset().filter(restored_at__isnull=True)
@@ -473,8 +528,10 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(id__in=list(ids))
         return qs
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
     def restaurer(self, request, pk=None):
+        """AUD817 — remise en circulation : palier responsable/admin exigé."""
         record = self.get_object()
         obj = trash_infra.restaurer(record)
         record.refresh_from_db()
@@ -495,8 +552,38 @@ class BulkEditViewSet(viewsets.ViewSet):
       * ``GET  …/bulk-edit/targets/`` — cibles éditables + champs autorisés ;
       * ``POST …/bulk-edit/appliquer/`` — corps
         ``{"target": "...", "ids": [...], "changes": {champ: valeur}}``.
+
+    AUD816 — l'endpoint était gardé par ``IsAuthenticated`` SEUL : un compte en
+    lecture seule pouvait désactiver 200 lignes d'un coup, et
+    ``bulk_edit.apply_bulk_edit`` écrit par ``queryset.update()`` — donc sans
+    ``save()``/``full_clean()``/signal, sans ``updated_at`` et sans une ligne de
+    journal. Les cibles d'aujourd'hui sont étroites (3 cibles CPQ, aucun champ
+    de prix) mais CHAQUE cible future héritait du défaut du socle. Désormais :
+    palier responsable/admin par défaut, une cible pouvant DÉCLARER sa propre
+    garde (``permission=`` de ``register_bulk_target``), et un lot appliqué émet
+    ``bulk_edit_applied`` — journalisé par ``apps/audit/receivers.py``.
     """
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """Lecture du catalogue : tout authentifié. Écriture : palier de rôle.
+
+        Si la cible visée déclare ses PROPRES permissions, elles priment (une
+        app peut resserrer l'accès à ses données) ; sinon le palier du socle
+        s'applique. La cible est lue du corps de façon défensive : un corps
+        illisible retombe sur le palier par défaut, jamais sur ``IsAuthenticated``.
+        """
+        if self.action == 'targets':
+            return [IsAuthenticated()]
+        try:
+            target = (self.request.data or {}).get('target')
+        except Exception:  # noqa: BLE001 — corps illisible → palier par défaut
+            target = None
+        if target:
+            declarees = bulk_edit_infra.target_permissions(target)
+            if declarees:
+                return declarees
+        return [IsAdminOrResponsableTier()]
 
     @action(detail=False, methods=['get'])
     def targets(self, request):
@@ -523,22 +610,31 @@ class BulkEditViewSet(viewsets.ViewSet):
 
 
 class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
-    """FG391 — flags de modules par société (activation/désactivation).
+    """FG391 — flags de modules par société — LECTURE SEULE (AUD815).
 
-    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
-    L'écriture est réservée au palier admin/responsable (paramétrage société) ;
-    la lecture est ouverte à tout utilisateur authentifié pour que la SPA sache
-    quels modules afficher. Aucune importation d'app domaine : ``module`` est
-    une clé libre.
+    Multi-tenant : ``TenantMixin`` filtre par société. La lecture est ouverte à
+    tout utilisateur authentifié pour que la SPA sache quels modules afficher.
+    Aucune importation d'app domaine : ``module`` est une clé libre.
+
+    AUD815 — ce ViewSet exposait un CRUD BRUT sur la table de bascule, à côté
+    du chemin nommé ``ModuleCatalogViewSet.activer``/``desactiver`` : un
+    ``PATCH {"actif": false}`` coupait un module dont d'autres dépendent sans
+    jamais évaluer ``feature_flags.DependencyError``, et sans émettre
+    ``module_toggled`` — donc sans une seule ligne au journal d'installation
+    ODY25 (``apps/records/receivers.py`` n'écoute que cet événement). Pire, un
+    DELETE de la ligne RÉACTIVAIT le module en silence (politique FG391 :
+    « absence de ligne = actif »). Toute mutation passe désormais
+    OBLIGATOIREMENT par ``/core/modules/{key}/activer|desactiver/``, seul
+    émetteur de l'événement et seul évaluateur de la fermeture de dépendances.
     """
     serializer_class = ModuleToggleSerializer
     queryset = ModuleToggle.objects.all()
     pagination_class = None
+    # AUD815 — aucune méthode d'écriture : POST/PUT/PATCH/DELETE → 405.
+    http_method_names = ['get', 'head', 'options']
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
-            return [IsAuthenticated()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAuthenticated()]
 
 
 class ModuleCatalogViewSet(viewsets.ViewSet):
@@ -685,10 +781,23 @@ class ConsentRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     Réservé au palier admin/responsable (donnée de conformité sensible). Aucune
     importation d'app domaine : la personne est désignée par un identifiant
     générique (email/téléphone).
+
+    AUD809 — REGISTRE LÉGAL, DONC APPEND-ONLY. C'était un ``ModelViewSet``
+    complet : un Responsable pouvait PATCH une ligne pour FABRIQUER une preuve
+    de consentement (``granted``/``occurred_at``/``version_texte``/
+    ``ip_confirmation`` sont les preuves du double opt-in), ou DELETE pour faire
+    disparaître un refus — sans aucune trace (le modèle n'était pas suivi par le
+    Journal d'activité). La correction est en trois temps : plus aucune méthode
+    de MODIFICATION ni de SUPPRESSION (``http_method_names``), champs de preuve
+    en lecture seule (un RETRAIT de consentement = une NOUVELLE ligne
+    ``granted=False``, jamais une réécriture), et le modèle ajouté à
+    ``apps.audit.signals.TRACKED_MODELS``.
     """
     serializer_class = ConsentRecordSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = ConsentRecord.objects.all()
+    # AUD809 — append-only : lecture + création, jamais PUT/PATCH/DELETE.
+    http_method_names = ['get', 'post', 'head', 'options']
 
 
 class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -701,10 +810,17 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
 
       * ``POST …/dsr-requests/{id}/traiter/`` — exécute la demande (accès →
         export agrégé ; effacement → suppression/anonymisation agrégée).
+
+    AUD809 — APPEND-ONLY (même raison que ``ConsentRecordViewSet``) : une
+    demande supprimée, c'est un dépassement de délai légal effacé. Le cycle de
+    vie légitime passe par l'action ``traiter`` (le statut et le résultat sont
+    déjà en lecture seule au sérialiseur), jamais par un DELETE.
     """
     serializer_class = DataSubjectRequestSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = DataSubjectRequest.objects.all()
+    # AUD809 — append-only ; ``traiter`` (POST) reste le seul chemin d'évolution.
+    http_method_names = ['get', 'post', 'head', 'options']
 
     @action(detail=True, methods=['post'])
     def traiter(self, request, pk=None):
@@ -722,11 +838,26 @@ class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):
     importation d'app domaine.
 
       * ``GET …/registre-traitements/export-csv/`` — export CSV du registre.
+
+    AUD809 — APPEND-ONLY (même famille que les deux registres ci-dessus) : le
+    registre des traitements est le document que la CNDP peut exiger ; un
+    ``ModelViewSet`` complet, sans immuabilité ni trace, permettait de le
+    réécrire ou d'en supprimer une ligne après coup. Une évolution se déclare
+    par une NOUVELLE ligne (le champ ``actif`` porte l'état de la version
+    courante), jamais par une réécriture de l'ancienne.
+
+    CONSÉQUENCE FRONTEND connue et assumée : ``frontend/src/pages/parametres/
+    ConfidentialiteSection.jsx`` appelle encore ``update`` (bascule ``actif``)
+    et ``remove`` sur ce registre — ces deux boutons renverront 405 tant que
+    l'écran n'est pas recâblé sur une création de nouvelle version. Hors
+    périmètre de cette tâche (Files: backend uniquement).
     """
     serializer_class = RegistreTraitementSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = RegistreTraitement.objects.all()
     pagination_class = None
+    # AUD809 — append-only : lecture + création, jamais PUT/PATCH/DELETE.
+    http_method_names = ['get', 'post', 'head', 'options']
 
     @action(detail=False, methods=['get'], url_path='export-csv')
     def export_csv(self, request):
@@ -895,13 +1026,22 @@ class ChangelogViewSet(viewsets.ModelViewSet):
 
     Le changelog est GLOBAL au produit (aucune portée société) : la lecture est
     ouverte à tout utilisateur authentifié et ne renvoie que les notes publiées ;
-    l'écriture (publication) est réservée au palier admin. Le suivi de lecture
+    l'écriture (publication) est réservée à l'ÉDITEUR. Le suivi de lecture
     est PAR UTILISATEUR. Aucune importation d'app domaine.
 
       * ``GET …/changelog/``            — notes publiées + drapeau ``lu``.
       * ``GET …/changelog/non_lues/``   — compte de notes non lues.
       * ``POST …/changelog/{id}/marquer_lu/`` — accuse lecture d'une note.
       * ``POST …/changelog/marquer_tout_lu/`` — accuse lecture de tout.
+
+    AUD813 — l'écriture est réservée au SUPERUTILISATEUR Django
+    (``_IsSuperUser``, le même palier que ``TenantUsageSnapshotViewSet`` /
+    ``OutboxEventViewSet`` / ``maintenance_toggle``) et NON à ``IsAdminRole`` :
+    la table n'a aucune FK société et ``apps/publicapi`` republie les notes
+    publiées en ``AllowAny``, donc un ``role_legacy='admin'`` de n'importe quel
+    tenant pouvait publier chez TOUS les tenants (et sur l'endpoint public sans
+    clé), ou supprimer les notes de l'éditeur. ``('core', 'ChangelogEntry')``
+    est par ailleurs suivi par le Journal d'activité (``TRACKED_MODELS``).
     """
     serializer_class = ChangelogEntrySerializer
     pagination_class = None
@@ -910,7 +1050,9 @@ class ChangelogViewSet(viewsets.ModelViewSet):
         if self.action in ('list', 'retrieve', 'non_lues', 'marquer_lu',
                            'marquer_tout_lu'):
             return [IsAuthenticated()]
-        return [IsAdminRole()]
+        # AUD813 — toute méthode NON SÛRE (create/update/partial_update/
+        # destroy) : superutilisateur uniquement, jamais un admin de tenant.
+        return [_IsSuperUser()]
 
     def get_queryset(self):
         qs = ChangelogEntry.objects.all()

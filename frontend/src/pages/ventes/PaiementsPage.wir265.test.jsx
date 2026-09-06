@@ -13,13 +13,28 @@ vi.mock('../../api/ventesApi', () => ({
     getPaiements: vi.fn(() => Promise.resolve({ data: [] })),
     importReleveDryRun: vi.fn(),
     importReleveCommit: vi.fn(),
+    rejeterPaiement: vi.fn(),
   },
+}))
+// AUD132 — l'écran gate le rejet sur le palier responsable/admin
+// (`useIsAdminOrResponsable` → `useSelector`) : sans store Redux ici, on mocke
+// le hook. Ce test-ci ne porte que sur l'assistant d'import (WIR265).
+vi.mock('../../hooks/useHasPermission', () => ({
+  useHasPermission: () => false,
+  useHasRole: () => false,
+  useIsAdmin: () => false,
+  useIsAdminOrResponsable: () => false,
 }))
 
 import ventesApi from '../../api/ventesApi'
 import PaiementsPage from './PaiementsPage'
 
 const APERCU = {
+  // AUD121 — le dry-run rend un JETON : c'est lui, et pas le fichier, que le
+  // commit rejoue.
+  token: 'JETON-DRY-RUN-TEST',
+  revue: [],
+  ambigus: 0,
   columns: { Date: 'date', Libellé: 'reference', Montant: 'montant' },
   unmapped: ['Solde'],
   total_rows: 3,
@@ -125,6 +140,8 @@ describe('PaiementsPage — WIR265 : import de relevé bancaire', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Importer' }))
     await waitFor(() => expect(ventesApi.importReleveCommit).toHaveBeenCalled())
+    // AUD121 — c'est le JETON du dry-run qui est rejoué, jamais le fichier.
+    expect(ventesApi.importReleveCommit.mock.calls[0][0]).toBe(APERCU.token)
     expect(await screen.findByText(/encaissement\(s\) créé\(s\)/)).toBeInTheDocument()
     // La liste est rechargée : les paiements créés sont visibles sans F5.
     await waitFor(() => expect(ventesApi.getPaiements).toHaveBeenCalledTimes(2))

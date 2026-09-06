@@ -73,12 +73,40 @@ const crmApi = {
   getRelanceEtapesDues: (params, config) =>
     api.get('/crm/relance-etapes/', { params, ...config }),
   // Initialise (à la demande) le plan de relance d'un lead à partir de la
-  // cadence par défaut de la société — idempotent (ré-appel = pas de doublon).
-  initialiserRelance: (leadId) => api.post(`/crm/leads/${leadId}/relance/initialiser/`),
-  marquerRelanceEtapeFait: (id, note) =>
-    api.post(`/crm/relance-etapes/${id}/fait/`, note ? { note } : {}),
+  // cadence par défaut de la société — idempotent PAR CADENCE (ré-appel = pas
+  // de doublon). MRY15 — `payload` optionnel `{cadence}` (contact/après
+  // devis/réveil), défaut serveur = 'contact'.
+  initialiserRelance: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/relance/initialiser/`, payload || {}),
+  // MRY15 — frise de la fiche lead : TOUTES les étapes du lead (tous statuts,
+  // toutes cadences), tri serveur cadence puis ordre (`?lead=` de MRY5).
+  getRelanceEtapesLead: (leadId) =>
+    api.get('/crm/relance-etapes/', { params: { lead: leadId, scope: 'lead' } }),
+  // MRY9/MRY15 — arrête la ou les cadences en cours du lead. `motif`
+  // OBLIGATOIRE côté serveur (400 sinon) ; `cadences` optionnel (liste).
+  arreterCadence: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/relance/arreter/`, payload),
+  // MRY14 — `payload` accepte soit une simple note (compat historique), soit
+  // l'objet complet {note?, outcome?, body?, rappel_le?, rappel_heure?} du
+  // mini-formulaire « Fait » (MRY10 : `outcome` déclenche les règles d'arrêt
+  // de MRY9, `rappel_le`/`rappel_heure` reportent la touche suivante).
+  marquerRelanceEtapeFait: (id, payload) => {
+    const body = typeof payload === 'string'
+      ? (payload ? { note: payload } : {})
+      : (payload || {})
+    return api.post(`/crm/relance-etapes/${id}/fait/`, body)
+  },
   marquerRelanceEtapeSautee: (id, note) =>
     api.post(`/crm/relance-etapes/${id}/sauter/`, note ? { note } : {}),
+  // MRY13 — message rendu côté serveur (forme `relance_etape_message`) : lu
+  // AVANT ouverture de WhatsApp (aperçu), jamais un envoi.
+  getRelanceEtapeMessage: (id) => api.get(`/crm/relance-etapes/${id}/message/`),
+  // MRY13 — LE CLIC qui ouvre WhatsApp : marque la touche faite côté serveur
+  // (jamais d'envoi réseau — décision D5).
+  whatsappRelanceEtape: (id) => api.post(`/crm/relance-etapes/${id}/whatsapp/`),
+  // MRY10 — reporte cette touche (et décale les suivantes du même delta).
+  reporterRelanceEtape: (id, { due_at }) =>
+    api.post(`/crm/relance-etapes/${id}/reporter/`, { due_at }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
@@ -155,6 +183,13 @@ const crmApi = {
   getObjectifsAttainment: (params) =>
     api.get('/crm/objectifs/attainment/', { params }),
   getObjectifAttainment: (id) => api.get(`/crm/objectifs/${id}/attainment/`),
+  // MRY29 — panneau KPI du Cockpit : premier contact (forme
+  // `kpi_premier_contact`) + bilan des cadences (forme `kpi_cadences`).
+  // `?jours=` (défaut 30 côté serveur). `null` partout quand le dénominateur
+  // est 0 — jamais un 0 % inventé.
+  getKpiPremierContact: (params) =>
+    api.get('/crm/leads/kpi-premier-contact/', { params }),
+  getKpiCadences: (params) => api.get('/crm/leads/kpi-cadences/', { params }),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
   getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),

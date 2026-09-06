@@ -333,3 +333,78 @@ class DiffusionProcedureViewSetApiTests(TestCase):
         self.assertFalse(
             AccuseLecture.objects.filter(
                 user=autre_cible, lu_le__isnull=False).exists())
+
+    def test_relancer_action(self):
+        """AUDV15 (DRAFT165-106) — endpoint REST manquant sur
+        ``relancer_retardataires_lecture`` (service déjà testé
+        ci-dessus, aucun appelant REST)."""
+        resp = self.api.post(f'{DIFFUSIONS}relancer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['total'], 1)
+
+
+class ConformiteLectureProcedureApiTests(TestCase):
+    """AUDV15 (DRAFT165-84) — endpoint REST manquant sur
+    ``conformite_lecture_procedure`` (sélecteur déjà testé ci-dessus)."""
+    BASE = f'{PROCEDURES}conformite-lecture/'
+
+    def setUp(self):
+        self.company = make_company('co-xqhs15-conf-api', 'CoXqhs15ConfApi')
+        self.procedure = make_procedure(self.company)
+        # Lecture gardée par `qhse_voir` (rôle réel, jamais IsAnyRole — PACT10) :
+        # un compte légacy sans rôle fin n'y accède qu'au palier Responsable.
+        self.user = make_user(
+            self.company, 'user-xqhs15-conf-api', role='responsable')
+        self.api = auth_client(self.user)
+
+    def test_calcule_pct(self):
+        lecteur = make_user(self.company, 'lecteur-xqhs15-conf-api')
+        diffusion = diffuser_procedure(self.procedure, [lecteur])
+        accuser_lecture(diffusion, lecteur)
+        resp = self.api.get(f'{self.BASE}?reference={self.procedure.reference}')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data, {'total': 1, 'lus': 1, 'pct': 100.0})
+
+    def test_reference_requise(self):
+        resp = self.api.get(self.BASE)
+        self.assertEqual(resp.status_code, 400)
+
+
+class RediffuserNouvelleVersionApiTests(TestCase):
+    """AUDV15 (DRAFT165-107) — endpoint REST manquant sur
+    ``rediffuser_nouvelle_version`` (service déjà testé ci-dessus)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs15-redif-api', 'CoXqhs15RedifApi')
+        self.v1 = make_procedure(self.company, version=1)
+        self.v2 = make_procedure(self.company, version=2)
+        self.lecteur = make_user(self.company, 'lecteur-xqhs15-redif-api')
+        # Écriture gardée par `qhse_gerer` (rôle réel, jamais IsAnyRole —
+        # PACT10) : un compte légacy sans rôle fin n'y accède qu'au palier
+        # Responsable, comme `DiffuserActionApiTests` ci-dessus.
+        self.user = make_user(
+            self.company, 'user-xqhs15-redif-api', role='responsable')
+        self.api = auth_client(self.user)
+        diffuser_procedure(self.v1, [self.lecteur])
+
+    def test_rediffuse_sur_la_meme_population(self):
+        resp = self.api.post(
+            f'{PROCEDURES}{self.v2.id}/rediffuser-nouvelle-version/',
+            {'procedure_precedente': self.v1.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['procedure'], self.v2.id)
+        self.assertTrue(
+            AccuseLecture.objects.filter(
+                diffusion__procedure=self.v2, user=self.lecteur).exists())
+
+    def test_procedure_precedente_requise(self):
+        resp = self.api.post(f'{PROCEDURES}{self.v2.id}/rediffuser-nouvelle-version/')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_procedure_precedente_hors_societe_404(self):
+        autre = make_company('co-xqhs15-redif-api-x', 'Autre')
+        autre_procedure = make_procedure(autre, reference='PRO-AUTRE-REDIF')
+        resp = self.api.post(
+            f'{PROCEDURES}{self.v2.id}/rediffuser-nouvelle-version/',
+            {'procedure_precedente': autre_procedure.id}, format='json')
+        self.assertEqual(resp.status_code, 404)

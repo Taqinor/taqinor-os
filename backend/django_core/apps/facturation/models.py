@@ -442,9 +442,20 @@ class Facture(TotauxDocumentMixin, models.Model):
         escomptes = sum(
             (p.escompte_montant or Decimal('0') for p in actifs),
             Decimal('0'))
+        # AUD157 — `.select_related('paiement')` CHAÎNE un nouveau queryset :
+        # il repart donc en base même quand l'appelant a préfetché
+        # `affectations_paiement__paiement`, une requête PAR FACTURE sur toute
+        # la liste. `.all()` nu est la seule forme que le gestionnaire de
+        # relation sert depuis `_prefetched_objects_cache` (et le `paiement` de
+        # chaque affectation y est déjà chargé). Sans préfetch, on garde le
+        # `select_related` d'origine — mêmes lignes, mêmes montants.
+        cache = getattr(self, '_prefetched_objects_cache', None) or {}
+        if 'affectations_paiement' in cache:
+            affectations = self.affectations_paiement.all()
+        else:
+            affectations = self.affectations_paiement.select_related('paiement')
         via_affectation = sum(
-            (a.montant
-             for a in self.affectations_paiement.select_related('paiement')
+            (a.montant for a in affectations
              if a.paiement.statut != Paiement.Statut.REJETE),
             Decimal('0'))
         return direct + escomptes + via_affectation
@@ -681,8 +692,16 @@ class LigneFacture(models.Model):
 
     @property
     def total_ht(self):
+        # AUD128 — `remise` porte un défaut ENTIER (`default=0`) et Django ne
+        # convertit un défaut qu'à la RELECTURE en base : sur une ligne tout
+        # juste créée (POST sans `remise`), `self.remise` vaut l'int 0, donc
+        # `0 / 100` rend un FLOAT et `Decimal * float` lève TypeError — la
+        # création d'une ligne de facture par l'API rendait 500. On normalise
+        # ici, au seul endroit qui calcule le montant.
+        from decimal import Decimal
+        remise = Decimal(str(self.remise or 0))
         return (
-            self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+            self.quantite * self.prix_unitaire * (1 - remise / 100)
         )
 
     @property
@@ -1001,7 +1020,11 @@ class LigneAvoir(models.Model):
 
     @property
     def total_ht(self):
-        return self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+        # Jumeau exact du 500 latent de LigneFacture (remise int par défaut →
+        # Decimal * float lève TypeError sur une ligne fraîchement créée).
+        from decimal import Decimal
+        remise = Decimal(str(self.remise or 0))
+        return self.quantite * self.prix_unitaire * (1 - remise / 100)
 
     @property
     def taux_tva_effectif(self):

@@ -75,7 +75,17 @@ UNGUARDED_ACTION_BASELINE = {
     # (`RetentionSweepRun.objects.filter(company=_company(request))`). Le
     # scanner statique ne crédite que les gardes PAR action → 16 → 17 en dette
     # apparente, pas un vrai trou de garde.
-    "chat": 17,
+    # AUDV28 (DRAFT165-7/8, XKB27/32) — 17 → 19 : `ConversationViewSet.
+    # retention` (lecture politique de rétention applicable) rejoint les 11
+    # autres @action de la même classe, gardées au niveau CLASSE par
+    # `permission_classes = [IsAuthenticated]` + `get_queryset` restreint aux
+    # conversations dont l'utilisateur est MEMBRE (`member_conversation_ids`)
+    # — même dette coarse déjà comptée pour cette classe. `MessageReminderView
+    # Set.annuler` (nouveau viewset, 1 @action) est gardé pareil : `permission
+    # _classes = [IsAuthenticated]` + `get_queryset` restreint à `user=
+    # request.user` — un rappel ne peut être annulé que par son créateur.
+    # Dette coarse apparente, pas un trou réel.
+    "chat": 19,
     # compta 128->212, flotte 38->39, paie 55->70, rh 84->103, +stock/ventes:
     # re-stamped to CURRENT debt after the batch-4 feature drain (the 37
     # XMKT/ZMKT marketing tasks added coarse-guarded @actions to compta's mega-
@@ -103,7 +113,17 @@ UNGUARDED_ACTION_BASELINE = {
     # Vague AUD (2026-09-03) : une @action compta de plus est passée sous garde
     # explicite -> réel 110. Le cliquet se resserre d'un cran (mesuré par
     # `core.action_permission_scan.unguarded_counts()`, jamais estimé).
-    "compta": 110,
+    # Lot #621 (2026-09-06) — 110 -> 118 : 8 @action neuves, TOUTES sur des
+    # viewsets héritant de `_ComptaBaseViewSet` (`permission_classes =
+    # [IsResponsableOrAdmin]` + `TenantMixin` company-scopé), le même patron
+    # coarse que tout le reste de ce baseline : `CompteComptableViewSet.
+    # fiche_tiers`, `CompteTresorerieViewSet.rib_invalides`,
+    # `ChargeConstateeAvanceViewSet.poster_dotation`/`.solde`,
+    # `RapprochementViewSet.en_ecart`, `InscriptionEvenementViewSet.
+    # pointer_borne`, `DemandeApprobationRibViewSet.diagnostic_rib`,
+    # `CompteFideliteViewSet.recalculer_solde`. Dette coarse apparente,
+    # vérifiée classe par classe, pas un trou réel.
+    "compta": 118,
     "contrats": 56,
     # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
     # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
@@ -111,7 +131,13 @@ UNGUARDED_ACTION_BASELINE = {
     # 2 autres @action (export/importer) sont, elles, FINE-gardées par action.
     # Dette coarse figée (fine-grain ultérieur, YRBAC3).
     "entites": 3,
-    "flotte": 39,
+    # AUDV21/XFLT10 — 39 → 40 : `VisiteTechniqueViewSet.proposer_date_narsa`
+    # (GET, propose une date NARSA sans jamais écrire), ajoutée à
+    # `READ_ACTIONS` : gardée par le `get_permissions` HÉRITÉ de
+    # `_FlotteBaseViewSet` (`IsAnyRole` pour toute action de `READ_ACTIONS`,
+    # `TenantMixin` company-scopé) — le scanner ne suit pas l'héritage vers
+    # une AUTRE classe, d'où 1 en dette coarse apparente, pas un trou réel.
+    "flotte": 40,
     # NTFPA — viewsets FP&A gardés au niveau CLASSE (CompanyScopedModelViewSet
     # + rôle Directeur/FP&A), company-scopés ; dette coarse figée (fine-grain
     # ultérieur, YRBAC3).
@@ -165,7 +191,15 @@ UNGUARDED_ACTION_BASELINE = {
     # décorateur décoratif — même raisonnement que ``ao`` ci-dessus.
     "marketing": 2,
     "notifications": 4,
-    "paie": 70,
+    # AUDV19/AUDV21 (XPAI2/XFLT29) — 70 → 72 : `BulletinPaieViewSet.
+    # regulariser_ir` (POST) et `PeriodePaieViewSet.
+    # importer_avantages_nature_flotte_action` (POST) sont toutes deux
+    # gardées par le `get_permissions` du mixin `_PaieVoirOuGerer`, HÉRITÉ
+    # (pas dans le corps de leur propre classe) : écriture (POST/PUT/PATCH/
+    # DELETE, actions custom incluses) exige `paie_gerer`, jamais `IsAnyRole`
+    # — un élément variable de paie EST de l'argent. Dette coarse apparente,
+    # pas un trou réel.
+    "paie": 72,
     "pos": 5,
     # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
     # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.
@@ -180,13 +214,44 @@ UNGUARDED_ACTION_BASELINE = {
     # sur le MÊME patron _QhseBaseViewSet — gardées au niveau CLASSE
     # (write_permission='qhse_gerer'), revue Fable + tests 403/404 par action ;
     # même dette APPARENTE de scanner, pas un trou réel (68 → 84).
-    "qhse": 84,
-    "rh": 103,
+    # Lot #621 (2026-09-06) — 84 -> 99 : 15 @action neuves. 14 sur le MÊME
+    # patron `_QhseBaseViewSet` (write_permission='qhse_gerer' gate tout
+    # POST, y compris les actions custom) : `NonConformiteViewSet.
+    # demarrer_cloture`/`.approuver_cloture`/`.rejeter_cloture`/
+    # `.escalader_cloture`/`.creer_scar` (workflow de clôture NC), `Derogation
+    # ViewSet.relancer`, `EtapeDeclarationAtViewSet.relancer`, `Conformite
+    # EnvironnementaleViewSet.evaluer`, `AuditPlanifieViewSet.relancer`,
+    # `ObjectifQhseViewSet.relancer`, `ProcedureQualiteViewSet.
+    # conformite_lecture`/`.rediffuser_nouvelle_version_action`,
+    # `NotationFinChantierViewSet.derniere`, `ReleveThermographieViewSet.
+    # comparer`. La 15e, `DiffusionProcedureViewSet.relancer` (POST), est sur
+    # un viewset à part (`TenantMixin` + `permission_classes=[ScopedPermission]`
+    # sans `read_permission`/`write_permission` déclarés) : « authentifié
+    # interne + société suffit », posture DOCUMENTÉE déjà utilisée ailleurs
+    # dans ce baseline (cf. `tiers`) — jamais un trou ouvert sur Internet.
+    # Dette coarse apparente, vérifiée classe par classe, pas un trou réel.
+    "qhse": 99,
+    # AUDV20 — +1 @action `effectif` de PresenceChantierViewSet (effectif
+    # RÉELLEMENT présent sur un chantier un jour donné) : gardée au niveau
+    # CLASSE par `_RhBaseViewSet` (WriteScopedPermissionMixin,
+    # read_permission='rh_voir' route déjà toute lecture, y compris cette
+    # @action GET) — même patron que ses voisines `emarger`/`chantier` déjà
+    # dans ce baseline ; dette apparente, pas un trou (103 → 104).
+    "rh": 104,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
     # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
     # ne fait que DÉCROÎTRE).
     "roles": 0,
     "stock": 3,
+    # AUDV22 — +1 @action `verifier_doublon` de TiersViewSet (recherche
+    # EXACTE anti-doublon ICE/email avant création Client/Fournisseur) :
+    # gardée au niveau CLASSE par `ScopedPermission` (`read_permission=None`
+    # sur ce répertoire de fondation = « authentifié + société suffit », la
+    # posture DOCUMENTÉE et voulue de toute la classe — voir son docstring),
+    # comme sa voisine `doublons` (elle, admin-only via un
+    # `permission_classes=` par action, donc déjà créditée par le scanner).
+    # Dette apparente, pas un trou (0 → 1).
+    "tiers": 1,
     # WIR281 (2026-08-26) : +1 @action `resoudre` de PlanCommissionViewSet —
     # gardée au niveau CLASSE (`permission_classes` prix_achat_voir/admin sur
     # tout le viewset, testée 403) ; dette apparente, pas un trou (1 → 2).

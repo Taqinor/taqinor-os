@@ -3,7 +3,7 @@
 Couvre :
   * service : activé par défaut (pas de ligne), désactivé sur ligne actif=False ;
   * modules_desactives ;
-  * endpoint : écriture admin-only, lecture ouverte, company imposée, isolation.
+  * endpoint : LECTURE SEULE (AUD815 — toute écriture → 405), isolation société.
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -50,23 +50,22 @@ class ModuleToggleViewSetTests(TestCase):
             company=cls.company)
         cls.factory = APIRequestFactory()
 
-    def test_create_requires_admin_tier(self):
-        req = self.factory.post(
-            '/module-toggles/', {'module': 'sav', 'actif': False},
-            format='json')
-        force_authenticate(req, user=self.user)
-        resp = ModuleToggleViewSet.as_view({'post': 'create'})(req)
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+    def test_create_refuse_meme_a_l_admin(self):
+        """AUD815 — plus aucune écriture par le CRUD brut : 405 pour TOUS.
 
-    def test_create_imposes_company(self):
-        req = self.factory.post(
-            '/module-toggles/', {'module': 'sav', 'actif': False},
-            format='json')
-        force_authenticate(req, user=self.admin)
-        resp = ModuleToggleViewSet.as_view({'post': 'create'})(req)
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        tog = ModuleToggle.objects.get(pk=resp.data['id'])
-        self.assertEqual(tog.company, self.company)
+        La bascule passe exclusivement par ``/core/modules/{key}/activer|
+        desactiver/`` (seul chemin qui applique la fermeture de dépendances et
+        émet ``module_toggled``)."""
+        for acteur in (self.user, self.admin):
+            req = self.factory.post(
+                '/module-toggles/', {'module': 'sav', 'actif': False},
+                format='json')
+            force_authenticate(req, user=acteur)
+            resp = ModuleToggleViewSet.as_view({'post': 'create'})(req)
+            self.assertEqual(
+                resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertFalse(
+            ModuleToggle.objects.filter(company=self.company).exists())
 
     def test_list_company_isolation(self):
         ModuleToggle.objects.create(

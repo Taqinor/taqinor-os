@@ -6,7 +6,7 @@ validation puis import effectif). Scopé société, jamais d'écriture en dry-ru
 import logging
 
 from rest_framework.decorators import api_view, permission_classes, parser_classes
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -39,7 +39,8 @@ def releve_dry_run(request):
 
     Renvoie le mapping colonnes, un aperçu des 10 premières lignes avec le
     statut de chaque ligne (a_importer, non_trouve, deja_regle, surpaiement,
-    montant_invalide) + totaux.
+    montant_invalide, ambigu, client_non_identifie), la FILE DE REVUE
+    (``revue``) et — AUD121 — le ``token`` à repasser au commit.
     """
     from ..paiement_import import dry_run
     file_bytes, filename, err = _read_file(request)
@@ -47,7 +48,7 @@ def releve_dry_run(request):
         return err
     company = request.user.company
     try:
-        result = dry_run(file_bytes, filename, company)
+        result = dry_run(file_bytes, filename, company, user=request.user)
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
     except Exception:
@@ -60,25 +61,38 @@ def releve_dry_run(request):
 
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
-@parser_classes([MultiPartParser, FormParser])
+@parser_classes([JSONParser, MultiPartParser, FormParser])
 def releve_commit(request):
     """FG42 — Import effectif du relevé bancaire.
 
     POST /ventes/paiements/import-releve/commit/
-    Corps : fichier XLSX ou CSV (champ ``file``).
+    Corps : ``{token, lignes?}`` — le ``token`` rendu par le dry-run et,
+    optionnellement, les numéros de ligne que l'opérateur a validés.
 
-    Crée les Paiement manquants pour les lignes matchées (référence ou montant).
-    Réutilise la garde sur-paiement existante. Renvoie le bilan par ligne.
+    AUD121 — le commit ne reçoit PLUS de fichier : il rejoue les décisions
+    du dry-run correspondant. Sans jeton → 400 ; jeton déjà consommé → 400 ;
+    contenu de fichier déjà importé pour cette société → 400 (c'est la
+    déduplication du double-import). Réutilise la garde sur-paiement.
     """
     from ..paiement_import import commit
-    file_bytes, filename, err = _read_file(request)
-    if err:
-        return err
     company = request.user.company
+    token = request.data.get('token')
+    lignes = request.data.get('lignes')
+    if lignes is not None and not isinstance(lignes, (list, tuple)):
+        return Response(
+            {'detail': 'lignes doit être une liste de numéros de ligne.'},
+            status=400)
+    from rest_framework.exceptions import APIException
     try:
-        result = commit(file_bytes, filename, company, request.user)
-    except ValueError as exc:
+        result = commit(company, request.user, token, lignes=lignes)
+    except (ValueError, TypeError) as exc:
         return Response({'detail': str(exc)}, status=400)
+    except APIException:
+        # AUD122 — le verrou de période comptable lève une `ValidationError`
+        # DRF : c'est un REFUS délibéré (400 porteur du motif), pas une
+        # « erreur inattendue ». Le filet ci-dessous la transformait en 500 et
+        # masquait la garde.
+        raise
     except Exception:
         logger.warning('Relevé commit échoué', exc_info=True)
         return Response(

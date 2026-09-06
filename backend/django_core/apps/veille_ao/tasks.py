@@ -30,7 +30,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['collecte_active', 'collecte_quotidienne']
+__all__ = ['collecte_active', 'collecte_quotidienne', 'expirer_avis_depasses']
 
 
 def collecte_active():
@@ -93,11 +93,11 @@ def _collecter_les_societes(company_id=None):
     Chaque société est indépendante : une société en panne n'empêche pas les
     autres de collecter.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .services import collecter_toutes_les_sources
 
-    societes = Company.objects.all()
+    societes = active_companies()  # AUD415/SCA19 — pas les suspendus
     if company_id is not None:
         societes = societes.filter(pk=company_id)
 
@@ -111,3 +111,39 @@ def _collecter_les_societes(company_id=None):
             resultats.append({'source_id': None, 'source': '',
                               'verdict': 'echec', 'message': str(erreur)})
     return resultats
+
+
+@shared_task(name='veille_ao.expirer_avis_depasses')
+def expirer_avis_depasses():
+    """AUD614 — fait EXPIRER les avis dont la date limite est passée.
+
+    ``services.expirer_avis_depasses`` était écrit, testé… et appelé par AUCUN
+    chemin de production : ni cette app, ni le beat. Un avis dont la remise
+    est passée restait donc « nouveau » indéfiniment dans le sas, et le tri
+    humain se faisait sur une liste polluée par des marchés déjà clos.
+
+    RIEN À VOIR AVEC LA COLLECTE (règle #5). Cette tâche ne lit AUCUN portail
+    et n'ouvre aucune connexion : elle compare une date déjà en base à
+    l'horloge, et bascule un statut par le point de passage unique
+    (``changer_statut_avis``, avec sa trace au chatter). Elle n'est donc pas
+    gardée par ``VEILLE_AO_COLLECTE_ACTIVE`` — l'armement de la veille porte
+    sur l'ACQUISITION de données, pas sur l'entretien de celles qu'on a.
+
+    Multi-tenant : boucle par société ; une société en erreur n'empêche pas les
+    suivantes (best-effort, journalisée).
+    """
+    from authentication.selectors import active_companies
+
+    from .models import AvisMarche
+
+    total = 0
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        try:
+            total += AvisMarche.objects.filter(
+                company=company).expirer_les_depasses()
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+            logger.warning(
+                'veille_ao.expirer_avis_depasses : société #%s en échec',
+                getattr(company, 'pk', '?'), exc_info=True)
+    logger.info('veille_ao.expirer_avis_depasses : %s avis expiré(s)', total)
+    return {'expires': total}

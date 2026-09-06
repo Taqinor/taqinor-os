@@ -1,0 +1,19 @@
+{
+  "endpoint": "GET /api/django/btp-chantier/reserves-chantier/bloquantes/",
+  "pourquoi": "AUDV25 (DRAFT165-6) — `selectors.reserves_actives_bloquantes` (gravité BLOQUANTE + statut OUVERTE/EN_COURS) existait déjà mais aucune action ne l'exposait : le filtre `?statut=` du ViewSet existant n'accepte qu'UNE valeur, il ne peut pas exprimer le OR entre OUVERTE et EN_COURS qu'exige le widget « réserves bloquantes actives » du tableau de bord chantier. PACT10 : action LECTURE SEULE, `?chantier=` optionnel (toute la société sinon) — le chantier doit appartenir à la société de l'appelant (lu via `installations.selectors.installation_scoped`, jamais un import direct du modèle).",
+  "avertissement_forme": "Le corps HTTP RÉEL est DIRECTEMENT ce tableau, SANS enveloppe (`views.py::bloquantes` fait `return Response(ReserveChantierSerializer(qs, many=True).data)`, prouvé par `tests/test_audv25_reserves_bloquantes.py` qui lit `resp.data` comme une liste). `exemple` l'enveloppe sous `reserves` uniquement parce que ce fichier de contrat exige un OBJET (scripts/check_api_shapes.py) — un test qui consomme cette fixture doit lire `exempleContrat(...).reserves`, jamais le document entier.",
+  "exemple": {
+    "reserves": [
+      {
+        "id": 42,
+        "chantier": 7,
+        "lot": "électricité",
+        "gravite": "bloquante",
+        "statut": "ouverte",
+        "description": "Tableau électrique non conforme — pose bloquée",
+        "date_limite": "2026-09-10"
+      }
+    ]
+  },
+  "exemple_vide": { "reserves": [] }
+}

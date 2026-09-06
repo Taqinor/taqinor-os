@@ -151,3 +151,62 @@ class CapaEfficaciteApiTests(TestCase):
             f'/api/django/qhse/capa/{self.capa.id}/verifier-efficacite/',
             {'efficace': True}, format='json')
         self.assertEqual(resp.status_code, 403)
+
+
+class Aud512StatutGuardTests(TestCase):
+    """AUD512 — un PATCH direct atteignait CLOTUREE/VERIFIEE sans jamais
+    passer par cloturer_ncr/ncr_capa_bloquantes ni verifier_efficacite_capa
+    (statut absent de read_only_fields, contrairement aux serializers
+    jumeaux PermisTravail/ConsignationLoto/DemandeChangement)."""
+
+    def setUp(self):
+        self.co = make_company('aud512-guard', 'Aud512Guard')
+        self.user = make_user(self.co, 'aud512-guard-user')
+
+    def test_patch_ncr_cloturee_refuse_avec_capa_non_verifiees(self):
+        ncr = make_ncr(self.co)
+        make_capa(self.co, ncr, statut=S.A_FAIRE)  # CAPA bloquante non vérifiée.
+        resp = auth(self.user).patch(
+            f'/api/django/qhse/non-conformites/{ncr.id}/',
+            {'statut': 'cloturee'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        ncr.refresh_from_db()
+        self.assertNotEqual(ncr.statut, NonConformite.Statut.CLOTUREE)
+
+    def test_patch_ncr_transitions_intermediaires_toujours_autorisees(self):
+        """PAS de read_only total : ouverte→en_traitement→resolue reste au CRUD."""
+        ncr = make_ncr(self.co)
+        resp = auth(self.user).patch(
+            f'/api/django/qhse/non-conformites/{ncr.id}/',
+            {'statut': 'en_traitement'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ncr.refresh_from_db()
+        self.assertEqual(ncr.statut, NonConformite.Statut.EN_TRAITEMENT)
+
+    def test_patch_capa_verifiee_refuse_sans_passer_par_verifier_efficacite(self):
+        ncr = make_ncr(self.co)
+        capa = make_capa(self.co, ncr, statut=S.REALISEE)
+        resp = auth(self.user).patch(
+            f'/api/django/qhse/capa/{capa.id}/',
+            {'statut': 'verifiee'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        capa.refresh_from_db()
+        # `statut` est read_only : ignoré silencieusement, jamais forcé.
+        self.assertEqual(capa.statut, S.REALISEE)
+        self.assertIsNone(capa.efficace)
+        self.assertIsNone(capa.verifiee_par)
+
+    def test_patch_audit_planifie_statut_ignore(self):
+        from apps.qhse.models import AuditPlanifie, GrilleAudit, ProgrammeAudit
+
+        grille = GrilleAudit.objects.create(company=self.co, nom='Grille')
+        programme = ProgrammeAudit.objects.create(company=self.co, annee=2026)
+        audit_planifie = AuditPlanifie.objects.create(
+            company=self.co, programme=programme,
+            processus_domaine='Qualité', grille=grille)
+        resp = auth(self.user).patch(
+            f'/api/django/qhse/audits-planifies/{audit_planifie.id}/',
+            {'statut': 'realise'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        audit_planifie.refresh_from_db()
+        self.assertEqual(audit_planifie.statut, AuditPlanifie.Statut.PLANIFIE)

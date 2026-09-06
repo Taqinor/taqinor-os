@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 
 __all__ = [
     'MIME_PAR_FORMAT',
@@ -206,6 +207,316 @@ def _monter_simulation(dossier, piece, contexte=None):
         'apps.ao.fabrique.rendus.simulation:rendre_simulation_pdf', simulation)
 
 
+# ── AUD603 — le pont DossierAO -> contexte gelé AOF111 ───────────────────────
+#
+# Le contexte gelé (``fabrique.contexte.construire_contexte``) attend un mapping
+# préparé par la couche Django. Ce mapping n'était assemblé NULLE PART hors des
+# tests : c'est l'unique raison pour laquelle les deux pièces BLOQUANTES d'un
+# pli marocain — le bordereau des prix et l'acte d'engagement — restaient
+# déclarées sans monteur, et donc pourquoi la fabrique ne pouvait produire aucun
+# pli déposable. Le pont est ICI, une seule fois, pour les deux.
+
+def _bordereau_du_dossier(dossier):
+    """Le bordereau qui FAIT FOI — le même que la passe de contrôle."""
+    from .coherence import bordereau_de_reference
+
+    return bordereau_de_reference(list(dossier.appel_offre.bordereaux.all()))
+
+
+def _remise_de_ligne(ligne):
+    """La remise de LIGNE en MONTANT (le modèle la porte en pourcentage)."""
+    brut = (ligne.quantite or Decimal('0')) * (
+        ligne.prix_unitaire or Decimal('0'))
+    pct = ligne.remise_pct or Decimal('0')
+    if not pct:
+        return Decimal('0')
+    return (brut * pct / Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def _lignes_du_bordereau(bordereau):
+    """Les lignes du BOQ au format attendu par ``fabrique.ordonnancement``.
+
+    ``cle`` est la clé primaire de la ligne : c'est elle que la comparaison
+    PDF ↔ classeur (``bordereau_pdf.comparer``) apparie, et une clé stable est
+    ce qui permet de nommer la ligne fautive plutôt que « un écart quelque
+    part ».
+    """
+    lignes = []
+    for ligne in (bordereau.lignes
+                  .select_related('section', 'batiment')
+                  .order_by('numero', 'id')):
+        section = ligne.section
+        lignes.append({
+            'cle': str(ligne.pk),
+            'numero': ligne.numero,
+            'section': ('%s — %s' % (section.numero, section.libelle)
+                        if section is not None else ''),
+            'designation': ligne.designation,
+            'unite': ligne.unite,
+            'quantite': ligne.quantite,
+            'prix_unitaire': ligne.prix_unitaire,
+            'remise': _remise_de_ligne(ligne),
+            'taux_tva': ligne.taux_tva_effectif,
+            'batiment': getattr(ligne.batiment, 'code', '') or '',
+            'quantite_source': ligne.quantite_source,
+        })
+    return lignes
+
+
+def _identite_pour_contexte(ao):
+    """Traduit l'identité AOF144 vers les clés du contexte gelé AOF111.
+
+    Les deux vocabulaires diffèrent (``identifiant_fiscal`` ↔ ``if_fiscal``,
+    ``signataire_nom`` ↔ ``signataire``…) : la traduction est ici, explicite,
+    plutôt que dupliquée dans chaque monteur.
+    """
+    source = appeler('apps.ao.fabrique.identite:identite_soumissionnaire', ao)
+    return {
+        'raison_sociale': source.get('raison_sociale', ''),
+        'forme_juridique': '',
+        'adresse': source.get('adresse', ''),
+        'ville': '',
+        'ice': source.get('ice', ''),
+        'rc': source.get('registre_commerce', ''),
+        'if_fiscal': source.get('identifiant_fiscal', ''),
+        'cnss': '',
+        'patente': '',
+        'rib': source.get('rib', ''),
+        'banque': '',
+        'signataire': source.get('signataire_nom', ''),
+        'qualite_signataire': source.get('signataire_qualite', ''),
+        'telephone': '',
+        'email': '',
+    }
+
+
+def _dossier_pour_contexte(dossier, bordereau, lignes):
+    """Le mapping que ``contexte.construire_contexte`` attend, depuis la base.
+
+    ``calepinage`` est DÉLIBÉRÉMENT vide : la section du contexte oppose le
+    contrat AOF112 (``valider_lot``) aux résultats de calepinage, et ni le
+    bordereau ni l'acte n'en impriment quoi que ce soit. Y verser des variantes
+    non validées aurait fait échouer les deux pièces sur une donnée qu'elles ne
+    lisent pas.
+    """
+    ao = dossier.appel_offre
+    calcules = appeler('apps.ao.fabrique.ordonnancement:totaux', lignes,
+                       taux_defaut=bordereau.taux_tva_defaut,
+                       remise_globale=bordereau.montant_remise_globale)
+    return {
+        'identite': _identite_pour_contexte(ao),
+        'acheteur': {
+            'nom': ao.maitre_ouvrage or ao.acheteur or '',
+            'adresse': ao.site_adresse or '',
+            'ville': '',
+            'representant': '',
+        },
+        'marche': {
+            'objet': ao.objet or '',
+            'reference_acheteur': ao.reference_acheteur or '',
+            'reference': ao.reference or '',
+            'type_prix': ('unitaires' if bordereau.marche_prix_unitaires
+                          else 'forfaitaires'),
+            'lot': ao.lot or '',
+            'mode_passation': ao.mode_passation or '',
+            'lieu_execution': ao.site_adresse or '',
+            'delai_execution_jours': ao.delai_execution_jours,
+            'validite_offre_jours': ao.validite_offre_jours,
+        },
+        'batiments': [
+            {'code': batiment.code, 'libelle': batiment.designation,
+             'engagement_modules': batiment.engagement_modules}
+            for batiment in ao.batiments.all().order_by('ordre', 'code')
+        ],
+        'calepinage': [],
+        'equipements': [
+            {'role': equipement.role,
+             'designation': equipement.designation,
+             'marque': equipement.marque,
+             'reference': equipement.reference_constructeur,
+             'quantite': equipement.quantite,
+             'unite': equipement.unite,
+             'batiment': getattr(equipement.batiment, 'code', '') or ''}
+            for equipement in ao.equipements.filter(actif=True)
+            .select_related('batiment').order_by('role', 'id')
+        ],
+        'montants': {
+            'sous_total_ht': calcules.sous_total_ht,
+            'remise': calcules.remise,
+            'total_ht': calcules.total_ht,
+            'taux_tva': Decimal(str(bordereau.taux_tva_defaut or 20)),
+            'tva': calcules.tva,
+            'total_ttc': calcules.total_ttc,
+            'devise': 'DH',
+        },
+        'clauses': {'reserve': bordereau.clause_reserve or ''},
+        'dates': {
+            'offre': dossier.date_depot or dossier.created_at,
+            'remise_offre': ao.date_limite,
+            'ouverture_plis': ao.date_ouverture_plis,
+        },
+        'engagements': [
+            {'batiment': batiment.code,
+             'modules': batiment.engagement_modules}
+            for batiment in ao.batiments.all().order_by('ordre', 'code')
+            if batiment.engagement_modules
+        ],
+    }
+
+
+def _entrees_de_bordereau(dossier):
+    """``(bordereau, lignes, contexte_gele)`` — ou un échec NOMMÉ."""
+    bordereau = _bordereau_du_dossier(dossier)
+    if bordereau is None:
+        raise ProducteurIndisponible(
+            'Aucun bordereau des prix n\'est rattaché à cet appel d\'offres : '
+            'un pli sans bordereau des prix est déclaré irrecevable à '
+            'l\'ouverture. Créer le bordereau avant de produire le pack.')
+    lignes = _lignes_du_bordereau(bordereau)
+    if not lignes:
+        raise ProducteurIndisponible(
+            'Le bordereau des prix ne porte aucune ligne : la pièce serait '
+            'un tableau vide, refusée à l\'ouverture.')
+    contexte = appeler(
+        'apps.ao.fabrique.contexte:construire_contexte',
+        _dossier_pour_contexte(dossier, bordereau, lignes))
+    return bordereau, lignes, contexte
+
+
+def _monter_bordereau(dossier, piece, contexte=None):
+    """03 — Bordereau des prix (PDF) : PIÈCE BLOQUANTE d'un pli marocain."""
+    from core.pdf import render_pdf
+
+    from .rendus import bordereau_pdf
+
+    bordereau, lignes, gele = _entrees_de_bordereau(dossier)
+    donnees = appeler(
+        'apps.ao.fabrique.rendus.bordereau_pdf:contexte_gabarit',
+        lignes, gele,
+        texte_clause=(bordereau.clause_reserve or None),
+        taux_tva=bordereau.taux_tva_defaut,
+        remise_globale=bordereau.montant_remise_globale)
+    return render_pdf(template=bordereau_pdf.NOM_GABARIT, context=donnees,
+                      company=_company_de(dossier))
+
+
+def _modele_acte_de_l_acheteur(ao):
+    """La ``PieceConsultation`` portant l'acte FOURNI par l'acheteur, si elle
+    existe : sa seule présence bascule l'acte en fiche de REPORT (AOF132) —
+    refabriquer le document de l'acheteur est un motif d'écartement."""
+    from ..models import PieceConsultation
+
+    piece = (PieceConsultation.objects
+             .filter(company=ao.company, appel_offre=ao,
+                     type_piece=PieceConsultation.TypePiece.MODELE_ACTE)
+             .order_by('-id').first())
+    if piece is None:
+        return None
+    return {'reference': piece.reference or '',
+            'libelle': piece.get_type_piece_display()}
+
+
+def _monter_acte_engagement(dossier, piece, contexte=None):
+    """09 — Acte d'engagement : PIÈCE BLOQUANTE d'un pli marocain.
+
+    Un acte dont un blanc OBLIGATOIRE est vide fait écarter le pli : il échoue
+    ici en NOMMANT les blancs manquants, plutôt que de partir dans le ZIP.
+    """
+    from core.pdf import render_pdf
+
+    from .rendus import acte_engagement
+
+    bordereau, lignes, gele = _entrees_de_bordereau(dossier)
+    donnees = appeler(
+        'apps.ao.fabrique.rendus.acte_engagement:contexte_gabarit',
+        lignes, gele,
+        modele_acheteur=_modele_acte_de_l_acheteur(dossier.appel_offre),
+        taux_tva=bordereau.taux_tva_defaut,
+        remise_globale=bordereau.montant_remise_globale)
+    manquants = appeler(
+        'apps.ao.fabrique.rendus.acte_engagement:blancs_non_remplis', donnees)
+    if manquants:
+        raise ProducteurIndisponible(
+            'Acte d\'engagement INCOMPLET — blancs obligatoires vides : %s. '
+            'Un acte incomplet fait écarter le pli : renseigner l\'identité '
+            'du soumissionnaire (IdentiteAO) et les données du marché avant '
+            'de produire le pack.' % ', '.join(manquants))
+    return render_pdf(template=acte_engagement.NOM_GABARIT, context=donnees,
+                      company=_company_de(dossier))
+
+
+def _pieces_administratives_a_fusionner(dossier):
+    """Les pièces administratives ACTIVES et non périmées à la date de remise.
+
+    La péremption N'EST PAS re-contrôlée ici : elle a déjà sa porte (AOF137 /
+    ``AO_PIECE_ADMIN_EXPIREE``, BLOQUANTE), et le ZIP de dépôt refuse tant
+    qu'un contrôle est rouge. Ce producteur se borne donc à ne PAS coller dans
+    le dossier administratif une attestation que la commission rejetterait.
+    """
+    reference = dossier.date_reference_controle
+    pieces = list(dossier.pieces_administratives.filter(actif=True)
+                  .select_related('attachment')
+                  .order_by('type_piece', 'id'))
+    if reference is None:
+        return pieces
+    return [piece for piece in pieces if not piece.est_expiree_a(reference)]
+
+
+def _monter_administratif(dossier, piece, contexte=None):
+    """08 — Dossier administratif : FUSION des scans des pièces valides.
+
+    3e pièce bloquante d'un pli marocain. La fusion se fait en octets, sans
+    créer de document GED : un pack de dépôt ne doit rien laisser derrière lui
+    dans la gestion documentaire.
+    """
+    from apps.records.storage import fetch_attachment
+
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:  # pragma: no cover — dépendance déclarée
+        raise ProducteurIndisponible(
+            'PyMuPDF est absent : le dossier administratif ne peut pas être '
+            'fusionné. Une pièce vide ne part jamais à sa place.') from exc
+
+    pieces = _pieces_administratives_a_fusionner(dossier)
+    if not pieces:
+        raise ProducteurIndisponible(
+            'Aucune pièce administrative valide n\'est rattachée à ce '
+            'dossier à la date de remise des plis : un pli sans dossier '
+            'administratif est écarté. Rattacher les attestations avant de '
+            'produire le pack.')
+    sans_scan = [p.libelle for p in pieces if p.attachment_id is None]
+    if sans_scan:
+        raise ProducteurIndisponible(
+            'Pièces administratives SANS scan joint : %s. Le dossier '
+            'administratif serait amputé de ces pièces sans que rien ne le '
+            'dise.' % ', '.join(sans_scan))
+
+    sortie = fitz.open()
+    try:
+        for administrative in pieces:
+            octets, erreur = fetch_attachment(administrative.attachment.file_key)
+            if erreur or not octets:
+                raise ProducteurIndisponible(
+                    'Scan illisible pour la pièce administrative '
+                    '« %s » : %s.' % (administrative.libelle,
+                                      erreur or 'contenu vide'))
+            try:
+                source = fitz.open(stream=octets, filetype='pdf')
+            except Exception as exc:
+                raise ProducteurIndisponible(
+                    'Le scan de « %s » n\'est pas un PDF exploitable : %s.'
+                    % (administrative.libelle, exc)) from exc
+            try:
+                sortie.insert_pdf(source)
+            finally:
+                source.close()
+        return sortie.tobytes()
+    finally:
+        sortie.close()
+
+
 # ── Producteurs DÉCLARÉS mais pas encore montés ──────────────────────────────
 #
 # Ils sont nommés ICI, avec la fabrique qui les rendra et l'entrée qui leur
@@ -287,8 +598,10 @@ REGISTRE = {
             'apps.ao.fabrique.rendus.bordereau_xlsx:construire_classeur',
             'apps.ao.fabrique.rendus.bordereau_xlsx:vers_octets',
             'apps.ao.fabrique.ordonnancement:totaux',
+            'apps.ao.fabrique.contexte:construire_contexte',
+            'apps.ao.fabrique.identite:identite_soumissionnaire',
         ),
-        motif_indisponible=_indisponible('bordereau'),
+        monteur=_monter_bordereau,
         formats=('pdf', 'xlsx'),
     ),
     'simulation': Producteur(
@@ -333,14 +646,19 @@ REGISTRE = {
     'administratif': Producteur(
         generateur='administratif',
         libelle='Dossier administratif',
+        # AUD604/AUD603 — ce producteur assemble des SCANS déjà rattachés au
+        # dossier (records/MinIO), il ne rend rien : citer ici
+        # `pack_pdf:fusionner_pack` (comme le faisait l'entrée non montée)
+        # aurait été faux, cette fonction crée un document GED, or un pack de
+        # dépôt ne doit rien laisser derrière lui. La fabrique RÉELLEMENT
+        # appelée par `_monter_administratif` est le sélecteur ci-dessous
+        # (le stockage MinIO est le socle transverse, hors `apps.ao.fabrique`
+        # — voir PACT180 `HORS_REGISTRE_JUSTIFIE`) : la nommer ici est ce qui
+        # évite que ce producteur reste orphelin.
         fabriques=(
-            'apps.ao.fabrique.pack_pdf:fusionner_pack',
-            'apps.ao.fabrique.identite:identite_soumissionnaire',
+            'apps.ao.fabrique.producteurs:_pieces_administratives_a_fusionner',
         ),
-        motif_indisponible=(
-            'Le dossier administratif fusionne les PieceAdministrative valides '
-            'à la date de remise : aucun monteur ne les assemble encore. Pièce '
-            'déclarée, pas produite.'),
+        monteur=_monter_administratif,
     ),
     'acte_engagement': Producteur(
         generateur='acte_engagement',
@@ -351,8 +669,10 @@ REGISTRE = {
             'apps.ao.fabrique.rendus.acte_engagement:blancs_non_remplis',
             'apps.ao.fabrique.rendus.acte_engagement:valeurs_de_controle',
             'apps.ao.fabrique.rendus.acte_engagement:controler_vs',
+            'apps.ao.fabrique.contexte:construire_contexte',
+            'apps.ao.fabrique.identite:identite_soumissionnaire',
         ),
-        motif_indisponible=_indisponible('acte_engagement'),
+        monteur=_monter_acte_engagement,
     ),
 }
 

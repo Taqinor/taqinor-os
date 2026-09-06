@@ -26,6 +26,12 @@ vi.mock('../../api/parametresApi', () => ({
     createUniteMesure: vi.fn(async () => ({ data: {} })),
     updateUniteMesure: vi.fn(async () => ({ data: {} })),
     deleteUniteMesure: vi.fn(async () => ({ data: {} })),
+    // MRY28 — éditeur des cadences de relance, monté sous les trois
+    // référentiels historiques (CadenceRelanceEditor.mry4f.test.jsx couvre
+    // son propre comportement en détail).
+    getMessages: vi.fn(async () => ({ data: [] })),
+    getCadenceRelance: vi.fn(async () => ({ data: [] })),
+    updateCadenceRelanceEtape: vi.fn(async () => ({ data: {} })),
   },
 }))
 

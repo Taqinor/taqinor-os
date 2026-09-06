@@ -152,6 +152,57 @@ def poll_mail_intake_task():
     return total
 
 
+@shared_task(name='ged.relancer_demandes_document_dues')
+def relancer_demandes_document_dues_task():
+    """XGED8 (AUDV12/DRAFT165-66) — relance en masse toutes les
+    ``DemandeDocument`` en attente, une société à la fois. Le service était
+    documenté « à planifier en tâche périodique » (même famille que XGED2/
+    ZGED14, tâches sœurs déjà planifiées) mais aucune tâche Celery ne
+    l'appelait — seule la relance UNITAIRE était câblée côté écran. Best-effort
+    par société : une société KO n'interrompt jamais les suivantes."""
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = 0
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
+        try:
+            total += len(services.relancer_demandes_document_dues(company))
+        except Exception:  # pragma: no cover - défensif, une société KO
+            # n'interrompt jamais les suivantes.
+            logger.warning(
+                'ged.relancer_demandes_document_dues: échec société %s',
+                company.pk, exc_info=True)
+    logger.info(
+        'ged.relancer_demandes_document_dues: %d relance(s)', total)
+    return {'relances': total}
+
+
+@shared_task(name='ged.notifier_planifications_echues')
+def notifier_planifications_echues_task():
+    """XGED15 (AUDV12/DRAFT165-69) — notifie les assignés des planifications de
+    document échues, une société à la fois. Documenté « à planifier en tâche
+    périodique » (même famille que les relances signataires/expiration/
+    intégrité archives ci-dessus, toutes déjà planifiées) mais aucune tâche
+    Celery ne l'appelait. Best-effort par société."""
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = 0
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
+        try:
+            total += len(services.notifier_planifications_echues(company))
+        except Exception:  # pragma: no cover - défensif, une société KO
+            # n'interrompt jamais les suivantes.
+            logger.warning(
+                'ged.notifier_planifications_echues: échec société %s',
+                company.pk, exc_info=True)
+    logger.info(
+        'ged.notifier_planifications_echues: %d notification(s)', total)
+    return {'notifications': total}
+
+
 @shared_task(name='ged.migrer_pieces_jointes')
 def migrer_pieces_jointes_task():
     """WIR73 — planifie `migrate_attachments_to_ged` (GED7) en récurrent.

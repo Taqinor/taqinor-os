@@ -343,6 +343,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   // Sélection d'un produit : pré-remplit le prix d'achat U. (interne) depuis le
   // prix_achat catalogue quand la ligne n'en a pas encore — modifiable ensuite.
   const pickProduit = (idx, produitId) => {
+    const ligneQuantite = Number(lignes[idx]?.quantite) || 1
     setLignes((ls) => ls.map((l, i) => {
       if (i !== idx) return l
       const next = { ...l, produit: produitId }
@@ -354,6 +355,23 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       }
       return next
     }))
+    // AUDV04 (DRAFT165-117, XPUR14) — prix palier NÉGOCIÉ avec CE fournisseur
+    // (quantité prise en compte) : par-dessus le repli catalogue ci-dessus
+    // dès qu'il répond. Best-effort, jamais bloquant (pas de fournisseur
+    // choisi, pas de tarif, ou requête en échec → le repli catalogue reste).
+    if (fournisseur && produitId) {
+      stockApi.prixEffectifFournisseur({
+        produit: produitId, fournisseur, quantite: ligneQuantite,
+      }).then((r) => {
+        const prix = r.data?.prix_effectif
+        if (prix == null) return
+        setLignes((ls) => ls.map((l, i) => (
+          i === idx && String(l.produit) === String(produitId)
+            ? { ...l, prix_achat_unitaire: String(prix) }
+            : l
+        )))
+      }).catch(() => {})
+    }
   }
 
   // QS2 — produit créé à la volée : l'ajoute au catalogue local, le dépose sur

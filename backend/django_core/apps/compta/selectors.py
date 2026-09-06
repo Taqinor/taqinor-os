@@ -15,7 +15,7 @@ from .models import (
     Budget, BudgetLigne, Caisse, CautionBancaire, CessionImmobilisation,
     ChargeConstateeAvance,
     CompteComptable,
-    CompteTresorerie, EcheanceEmprunt,
+    CompteTresorerie,
     Effet, Emprunt,
     EntiteConsolidation, Immobilisation, IndemniteChantier, LigneEcriture,
     LignePrevisionnelTresorerie,
@@ -1890,11 +1890,15 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13,
         date_echeance__lt=fin_horizon,
         statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
     ).order_by('date_echeance', 'id'))
-    # XACC14 — échéances d'emprunt FUTURES non postées : décaissement prévu.
-    echeances_emprunt = list(EcheanceEmprunt.objects.filter(
-        company=company, date_echeance__gte=debut,
-        date_echeance__lt=fin_horizon, posted=False,
-    ).select_related('emprunt').order_by('date_echeance', 'id'))
+    # XACC14 / AUDV01 — échéances d'emprunt FUTURES non postées : décaissement
+    # prévu. UNE SEULE source de vérité : ``services.injecter_echeances_
+    # previsionnel``. Ce sélecteur refaisait la même requête à côté pendant que
+    # cette fonction restait orpheline (DRAFT165-34) — deux copies d'une même
+    # règle finissent toujours par diverger. Import local : même patron que le
+    # reste du module (évite tout cycle selectors ↔ services au chargement).
+    from . import services as _svc
+    lignes_emprunt = _svc.injecter_echeances_previsionnel(
+        company, date_debut=debut, nb_semaines=nb_semaines)
 
     semaines = []
     for i in range(nb_semaines):
@@ -1934,17 +1938,21 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13,
                     'date': ef.date_echeance,
                     'montant': signe,
                 })
-        for ee in echeances_emprunt:
-            if s_debut <= ee.date_echeance <= s_fin:
-                montant = ee.mensualite or Decimal('0')
-                sorties += montant
+        for le in lignes_emprunt:
+            if s_debut <= le['date'] <= s_fin:
+                # ``montant`` est déjà NÉGATIF (décaissement) côté service ;
+                # ``sorties`` compte en valeur absolue comme les effets.
+                sorties += -le['montant']
+                # Les clés publiées restent EXACTEMENT celles des autres types
+                # de ligne (``date_prevue``, propre au modèle
+                # ``LignePrevisionnelTresorerie``, n'est pas republiée ici) :
+                # la forme du contrat ne bouge pas.
                 lignes.append({
-                    'type': 'echeance_emprunt',
-                    'libelle': (
-                        f'Échéance emprunt {ee.emprunt.banque or ee.emprunt.reference}'),
-                    'categorie': 'decaissement',
-                    'date': ee.date_echeance,
-                    'montant': -montant,
+                    'type': le['type'],
+                    'libelle': le['libelle'],
+                    'categorie': le['categorie'],
+                    'date': le['date'],
+                    'montant': le['montant'],
                 })
         flux_net = entrees - sorties
         solde += flux_net
@@ -2033,14 +2041,26 @@ def rapprochement_ecart_pct(company, bon_commande_id):
     BCF, pour que ``apps.stock`` puisse comparer aux tolérances société sans
     jamais importer ``apps.compta.models``. Renvoie ``None`` si aucun
     rapprochement n'existe encore pour ce BCF (pas encore évalué — no-op,
-    comportement historique). Lecture seule, scopée société."""
+    comportement historique). Lecture seule, scopée société.
+
+    L'écart mesuré est la SUR-facturation seule (``facturé − reçu`` borné à 0),
+    parce que c'est exactement ce que ce contrôle protège : « on ne paie pas
+    plus que reçu » (docstring de ``Rapprochement``). La formule prenait la
+    valeur ABSOLUE, ce qui donnait le même verdict à une facture de 900 sur 720
+    reçus (le risque : payer 180 de trop) et à une marchandise reçue pas encore
+    facturée (aucun risque — l'état normal d'un GR/IR entre la réception et
+    l'arrivée de la facture). Tant que ``creer_rapprochement_3voies`` n'avait
+    qu'un appelant manuel, personne n'atteignait ce second cas ; AUD233, qui
+    crée le rapprochement à CHAQUE réception confirmée, en a fait le cas
+    courant — une marchandise reçue affichait « 100 % d'écart »."""
     rapp = Rapprochement.objects.filter(
         company=company, bon_commande_id=bon_commande_id).first()
     if rapp is None:
         return None
     if not rapp.montant_recu:
         return None
-    return abs(rapp.ecart) / rapp.montant_recu * Decimal('100')
+    sur_facturation = max(rapp.ecart, Decimal('0'))
+    return sur_facturation / rapp.montant_recu * Decimal('100')
 
 
 # ── FG132 — Échéancier & relevé fournisseur (balance âgée AP + relevé) ──────
@@ -3789,7 +3809,20 @@ def evaluer_etat_personnalise(etat, *, colonnes_override=None):
             for colonne in colonnes:
                 if colonne.type_colonne == 'budget':
                     if colonne.budget_id:
+                        # AUD418 — re-vérification société À LA LECTURE. La
+                        # seule garantie que ``colonne.budget_id`` désigne un
+                        # budget de CETTE société était
+                        # ``ColonneEtatPersonnaliseSerializer.validate_budget``
+                        # — un contrôle posé uniquement à l'ÉCRITURE, par ce
+                        # sérialiseur précis. Tout autre chemin (admin non
+                        # scopé, script de migration de données, futur endpoint
+                        # bulk) y aurait posé l'id d'un budget concurrent, et
+                        # l'agrégat aurait affiché ses montants dans l'état
+                        # financier de la victime. Les ~11 autres agrégats de
+                        # ce fichier posent ``company`` systématiquement :
+                        # celui-ci l'oubliait.
                         total = BudgetLigne.objects.filter(
+                            company=company,
                             budget_id=colonne.budget_id).aggregate(
                             **{f'm{i:02d}': Sum(f'm{i:02d}') for i in range(1, 13)})
                         valeurs[colonne.id] = sum(

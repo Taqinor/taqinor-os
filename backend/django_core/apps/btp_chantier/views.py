@@ -127,6 +127,30 @@ class ReserveChantierViewSet(
                 '— verrouillée contre la suppression (levée ou contestée).')
         super().perform_destroy(instance)
 
+    @action(detail=False, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def bloquantes(self, request):
+        """AUDV25 (DRAFT165-6) — réserves actives de gravité BLOQUANTE
+        (statut OUVERTE ou EN_COURS), combinées en UN SEUL appel — un simple
+        `?statut=` à valeur unique ne peut pas exprimer un OR sur deux
+        statuts. Filtre optionnel ``?chantier=`` (widget « réserves
+        bloquantes actives » du tableau de bord chantier) ; sans lui,
+        toutes les réserves bloquantes actives de la société."""
+        chantier_id = request.query_params.get('chantier')
+        chantier = None
+        if chantier_id:
+            # Lecture cross-app par le SÉLECTEUR de la cible (jamais son
+            # `models`/`views`) — même patron que `selectors.py:254`.
+            from apps.installations import selectors as installations_selectors
+            chantier = installations_selectors.installation_scoped(
+                request.user.company, chantier_id)
+            if chantier is None:
+                return Response([])
+        qs = selectors.reserves_actives_bloquantes(
+            request.user.company, chantier=chantier)
+        return Response(
+            ReserveChantierSerializer(qs, many=True).data)
+
     @action(detail=True, methods=['get'],
             permission_classes=[ScopedPermission])
     def photos(self, request, pk=None):

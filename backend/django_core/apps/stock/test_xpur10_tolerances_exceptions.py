@@ -4,10 +4,20 @@
 Couvre :
   * une facture à +0,5 % passe bon-à-payer (dans la tolérance) ;
   * une facture à +8 % a son paiement refusé jusqu'à résolution motivée ;
+  * une SOUS-facturation (reçu > facturé) n'est JAMAIS une exception ;
   * les défauts société pré-remplissent (tolerance_prix_pct) ;
   * résolution débloque le paiement + trace l'acteur ;
   * pas de BCF/rapprochement = comportement historique (jamais bloqué) ;
   * lecture via compta.selectors (jamais d'import de modèles compta).
+
+AUD233 + borne de sur-facturation : l'écart est TOUJOURS recalculé depuis les
+montants RÉELS (``montant_ht`` des factures rattachées au BCF, jamais
+``montant_ttc``) et BORNÉ à la sur-facturation seule (``facturé − reçu``, min 0)
+— c'est un contrôle de PRÉ-paiement : « on ne paie pas plus que reçu ».
+Chaque fixture « hors tolérance » doit donc porter un ``montant_ht`` STRICTEMENT
+SUPÉRIEUR au reçu (10 × 1 000 = 10 000 MAD HT), sans quoi elle décrit une
+sous-facturation et ne peut pas — à juste titre — déclencher la file
+d'exceptions.
 
 Run:
     python manage.py test apps.stock.test_xpur10_tolerances_exceptions -v 2
@@ -105,6 +115,12 @@ class TestNoBcfNoRapprochement(Xpur10Base):
         check_facture_exception_gate(self.company, facture)
 
     def test_bcf_sans_rapprochement_evalue_never_exception(self):
+        # AUD233 auto-crée/rafraîchit le rapprochement 3 voies dès qu'on
+        # évalue une facture liée à un BCF (réglage société ON par défaut) —
+        # ce test cible précisément le cas OÙ le réglage est désactivé :
+        # aucun rapprochement n'existe alors, comportement historique inchangé.
+        AchatsParametres.objects.create(
+            company=self.company, rapprochement_3voies_auto=False)
         bcf = self._bcf_recu()
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0002',
@@ -121,18 +137,54 @@ class TestWithinTolerance(Xpur10Base):
         AchatsParametres.objects.create(
             company=self.company, tolerance_prix_pct=Decimal('1'))
         bcf = self._bcf_recu()
+        # AUD233 — l'évaluation RAFRAÎCHIT le rapprochement depuis les
+        # montants RÉELS (`montant_ht` de la facture, jamais `montant_ttc`) :
+        # le seed manuel ci-dessous est écrasé au premier appel, donc le HT
+        # de la facture doit lui-même porter l'écart de 0,5 % attendu.
         self._rapprochement(
             bcf, montant_recu=Decimal('10000'), montant_facture=Decimal('10050'))
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0003',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12060'))
+            montant_ht=Decimal('10050'), montant_ttc=Decimal('12060'))
         en_exception, ecart_pct = evaluate_facture_exception(
             self.company, facture)
         self.assertFalse(en_exception)
         self.assertAlmostEqual(float(ecart_pct), 0.5, places=1)
         # Payment allowed.
         check_facture_exception_gate(self.company, facture)
+
+
+class TestSousFacturation(Xpur10Base):
+    """La borne de sur-facturation, épinglée explicitement.
+
+    Un BCF reçu dont la facture est INFÉRIEURE au reçu (GR/IR normal : la
+    marchandise est entrée, la facture n'est pas encore complète) n'est PAS une
+    exception, quel que soit l'écart : ce contrôle protège du paiement en trop,
+    pas de l'inverse. Sans ce test, un retour à la valeur ABSOLUE ferait
+    re-basculer chaque réception confirmée dans la file d'exceptions sans
+    qu'aucun test ne s'en aperçoive.
+    """
+
+    def test_sous_facturation_ne_declenche_jamais_exception(self):
+        AchatsParametres.objects.create(
+            company=self.company, tolerance_prix_pct=Decimal('1'))
+        bcf = self._bcf_recu()
+        # Reçu 10 000 HT, facturé 9 200 HT → −8 % : très hors tolérance en
+        # valeur absolue, mais aucune sur-facturation.
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-XPUR10-0013',
+            fournisseur=self.fournisseur, bon_commande=bcf,
+            montant_ht=Decimal('9200'), montant_ttc=Decimal('11040'))
+        en_exception, ecart_pct = evaluate_facture_exception(
+            self.company, facture)
+        self.assertFalse(en_exception)
+        self.assertEqual(ecart_pct, Decimal('0'))
+        # Le paiement passe, et la facture reste 'normale'.
+        check_facture_exception_gate(self.company, facture)
+        facture.refresh_from_db()
+        self.assertEqual(
+            facture.statut_controle, FactureFournisseur.StatutControle.NORMALE)
 
 
 class TestOutsideTolerance(Xpur10Base):
@@ -145,7 +197,7 @@ class TestOutsideTolerance(Xpur10Base):
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0004',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12960'))
+            montant_ht=Decimal('10800'), montant_ttc=Decimal('12960'))
         with self.assertRaises(ValueError):
             check_facture_exception_gate(self.company, facture)
         facture.refresh_from_db()
@@ -162,7 +214,7 @@ class TestOutsideTolerance(Xpur10Base):
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0005',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12960'))
+            montant_ht=Decimal('10800'), montant_ttc=Decimal('12960'))
         resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
             'facture': facture.id, 'montant': '12960',
         }, format='json')
@@ -177,7 +229,7 @@ class TestOutsideTolerance(Xpur10Base):
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0006',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12960'))
+            montant_ht=Decimal('10800'), montant_ttc=Decimal('12960'))
         resp = self.api.post(
             f'/api/django/stock/factures-fournisseur/{facture.id}/paiements/',
             {'montant': '12960'}, format='json')
@@ -194,7 +246,7 @@ class TestResolution(Xpur10Base):
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0007',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12960'))
+            montant_ht=Decimal('10800'), montant_ttc=Decimal('12960'))
         with self.assertRaises(ValueError):
             check_facture_exception_gate(self.company, facture)
         facture.refresh_from_db()
@@ -231,7 +283,7 @@ class TestResolution(Xpur10Base):
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0009',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12960'))
+            montant_ht=Decimal('10800'), montant_ttc=Decimal('12960'))
         evaluate_facture_exception(self.company, facture)
         resp = self.api.post(
             f'/api/django/stock/factures-fournisseur/{facture.id}/'
@@ -251,7 +303,7 @@ class TestExceptionQueue(Xpur10Base):
         facture_exception = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0010',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12960'))
+            montant_ht=Decimal('10800'), montant_ttc=Decimal('12960'))
         evaluate_facture_exception(self.company, facture_exception)
         facture_normale = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0011',
@@ -270,7 +322,7 @@ class TestExceptionQueue(Xpur10Base):
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-XPUR10-0012',
             fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ttc=Decimal('12960'))
+            montant_ht=Decimal('10800'), montant_ttc=Decimal('12960'))
         evaluate_facture_exception(self.company, facture)
         resp = self.api.get(
             '/api/django/stock/factures-fournisseur/en-exception/')

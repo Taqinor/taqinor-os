@@ -64,9 +64,9 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # LigneFacture, Paiement, Avoir et LigneAvoir insèrent des lignes AVANT ces
     # deux champs dans le même fichier. MÊME champ, déclaration byte-identique
     # avant/après (vérifiée contre 024a132c). Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:901",
-    "backend/django_core/apps/facturation/models.py:1088",
-    "backend/django_core/apps/ventes/models.py:1183",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
+    "backend/django_core/apps/facturation/models.py:920",
+    "backend/django_core/apps/facturation/models.py:1111",
+    "backend/django_core/apps/ventes/models.py:1221",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
@@ -107,14 +107,14 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # MÊME champ, déclaration identique avant/après (vérifié contre e17ef026 :
     # `paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2457",  # CommissionPartenaire.paye_le
+    "backend/django_core/apps/crm/models.py:2497",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.
     # PUB75 (batch-2) — ConsentRecord.date_consentement : DATE (jour) de recueil
     # du consentement image/témoignage (loi 09-08), pas un horodatage. Le champ
     # timestamp de ce modèle (revoked_at) EST bien un DateTimeField. Pas un bug.
-    "backend/django_core/apps/adsengine/models.py:2589",  # ConsentRecord.date_consentement
+    "backend/django_core/apps/adsengine/models.py:2602",  # ConsentRecord.date_consentement
 }
 
 TIMESTAMP_NAME_RE = re.compile(

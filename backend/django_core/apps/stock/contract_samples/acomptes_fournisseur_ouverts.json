@@ -1,0 +1,19 @@
+{
+  "endpoint": "GET /api/django/stock/acomptes-fournisseur/ouverts/",
+  "pourquoi": "AUDV04 (DRAFT165-113) — le sélecteur `acomptes_fournisseur_ouverts` existait déjà (consommé par la trésorerie compta) mais aucune action ne l'exposait côté écran Achats : un Acheteur n'avait aucun moyen de voir les acomptes fournisseur PARTIELLEMENT/NON consommés. PACT10 : ce fichier part avant le code frontend — l'action est en LECTURE SEULE sur `AcompteFournisseurViewSet` (stock), même gate `IsAnyRole` que la liste des acomptes elle-même. Montants internes (achat) — jamais un montant inventé, toujours dérivé de `AcompteFournisseur.montant - montant_consomme`.",
+  "avertissement_forme": "Le corps HTTP RÉEL est DIRECTEMENT ce tableau, SANS enveloppe (`views/acompte_fournisseur.py::ouverts` fait `return Response(rows)`, prouvé par `test_audv04_ecran_achats.py` qui lit `rep.data[0]`/`rep.data == []`). `exemple` l'enveloppe sous `acomptes` uniquement parce que ce fichier de contrat exige un OBJET (scripts/check_api_shapes.py) — un test qui consomme cette fixture doit lire `exempleContrat(...).acomptes`, jamais le document entier.",
+  "exemple": {
+    "acomptes": [
+      {
+        "id": 12,
+        "bon_commande_id": 47,
+        "bon_commande_reference": "BCF-2026-0047",
+        "fournisseur_nom": "Import Solar SARL",
+        "montant": "1000.00",
+        "montant_non_consomme": "600.00",
+        "date_versement": "2026-08-01"
+      }
+    ]
+  },
+  "exemple_vide": { "acomptes": [] }
+}

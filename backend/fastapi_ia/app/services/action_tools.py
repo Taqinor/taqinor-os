@@ -570,7 +570,48 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     if not res.get("ok"):
         return {"ok": False, "status": res.get("status"),
                 "error": res.get("error", "L'action a echoue.")}
+
+    # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.
+    # `log_confirmed_action` existait côté Django, testée, mais aucun appelant
+    # ne l'invoquait jamais depuis ce point : le journal restait vide en
+    # production. Toute action qui atteint `confirm_proposal` est forcément
+    # outward/irreversible (seul risque stashé par `run_catalogue_action`).
+    # Best-effort : `_django_call` ne leve jamais, une panne de journalisation
+    # ne doit pas faire echouer une action deja executee avec succes.
+    _log_confirmed_action(ctx, action_key, action, inputs, token, res.get("data"))
+
     return {"ok": True, "action_key": action_key, "data": res.get("data")}
+
+
+def _log_confirmed_action(
+    ctx: ActionContext, action_key: str, action: dict[str, Any],
+    inputs: dict[str, Any], token: str, resulted_data: Any,
+) -> None:
+    """Relaie la journalisation de la confirmation vers Django (AUDV27).
+
+    ``resulted_data`` est le corps JSON renvoye par l'endpoint metier
+    (ex. le Client cree) : son ``id`` (s'il existe) permet a Django de
+    resoudre content_type/object_id pour les actions PILOTES connues (table
+    ``_RESULTED_OBJECT_MODELS`` cote Django) — sans cle ``id``, le journal est
+    quand meme cree, seulement sans cible resolue.
+
+    Best-effort : `_django_call` capture deja ses propres erreurs reseau et
+    renvoie `{ok: False, ...}` plutot que de lever — un log warning suffit,
+    jamais une exception propagee (l'action a deja reussi cote metier)."""
+    object_id = resulted_data.get("id") if isinstance(resulted_data, dict) else None
+    payload = {
+        "action_key": action_key,
+        "risk_level": action.get("risk"),
+        "inputs": inputs,
+        "proposal_hash": (token or "")[:64],
+        "object_id": object_id,
+    }
+    log_res = _django_call(
+        ctx, "/api/django/agent/logs/confirmer/", method="POST", payload=payload)
+    if not log_res.get("ok"):
+        logger.warning(
+            "Journalisation de l'action confirmee echouee (%s): %s",
+            action_key, log_res.get("error"))
 
 
 # ── Fabrique d'outils LangChain ───────────────────────────────────────────────

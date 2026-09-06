@@ -38,6 +38,54 @@ def get_tiers(company, tiers_id):
 
 # ── ARC20 — Recoupement « qui est ce tiers ? » (lecture seule) ──────────────
 
+#: AUD609 — nom du champ ENTIER par lequel les apps aval désignent un tiers
+#: sans pouvoir l'importer (pseudo-FK : aucune contrainte de clé étrangère).
+CHAMP_PSEUDO_FK = 'tiers_id'
+
+
+def modeles_referencant_un_tiers():
+    """Les modèles installés portant une pseudo-FK ``tiers_id`` ENTIÈRE.
+
+    Découverte par le REGISTRE des applications, jamais par un import d'app de
+    domaine : ``tiers`` est une couche de fondation et ne doit connaître aucun
+    de ses consommateurs (contrat import-linter ``tiers-is-a-base-layer``).
+    Un vrai ``ForeignKey`` porte lui aussi un attribut ``<nom>_id``, mais son
+    champ est RELATIONNEL — Django s'en charge alors seul (``on_delete``), et
+    il est exclu ici pour ne pas compter deux fois.
+    """
+    from django.apps import apps as django_apps
+    from django.core.exceptions import FieldDoesNotExist
+
+    trouves = []
+    for modele in django_apps.get_models():
+        try:
+            champ = modele._meta.get_field(CHAMP_PSEUDO_FK)
+        except FieldDoesNotExist:
+            continue
+        if getattr(champ, 'is_relation', False) or not champ.concrete:
+            continue
+        trouves.append(modele)
+    return trouves
+
+
+def references_pseudo_fk(tiers):
+    """``[(libellé du modèle, nombre de lignes)]`` pointant CE tiers.
+
+    Liste VIDE = la fiche est librement supprimable. Sert de garde au DELETE
+    (AUD609) : sans elle, effacer un tiers laissait des ``tiers_id`` orphelins
+    dans des écritures comptables, des cautions bancaires ou des retenues de
+    garantie — des pièces qui désignent alors un tiers inexistant.
+    """
+    references = []
+    for modele in modeles_referencant_un_tiers():
+        nombre = modele.objects.filter(
+            **{CHAMP_PSEUDO_FK: tiers.pk}).count()
+        if nombre:
+            references.append((str(modele._meta.verbose_name), nombre))
+    references.sort()
+    return references
+
+
 def _norm(value):
     """Clé de rapprochement épurée (minuscules, sans espaces de bord). Vide si
     la valeur ne porte rien de significatif."""

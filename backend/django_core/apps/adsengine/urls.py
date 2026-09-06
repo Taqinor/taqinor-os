@@ -44,6 +44,7 @@ from .views import (
     InstagramMediaListView, InstagramMediaToggleCommentsView,
     InstagramPublishView, InstagramQuotaView, MediaResolveView,
     MetaConnectionHealthView,
+    MetaWebhookLeadgenSubscribeView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
     MdeCalculatorView,
@@ -126,6 +127,10 @@ urlpatterns = [
          name='adsengine-connection'),
     path('connection/health/', MetaConnectionHealthView.as_view(),
          name='adsengine-connection-health'),
+    # MRY0 — abonne la Page au champ leadgen (bouton « Abonner la Page »).
+    path('connection/webhook-leadgen/subscribe/',
+         MetaWebhookLeadgenSubscribeView.as_view(),
+         name='adsengine-webhook-leadgen-subscribe'),
     # PUB41 — fraîcheur de synchro par type (bandeau global + tuiles horodatées).
     path('sync-status/', SyncStatusView.as_view(),
          name='adsengine-sync-status'),

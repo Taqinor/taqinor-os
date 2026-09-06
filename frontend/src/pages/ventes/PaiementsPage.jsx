@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, Wallet } from 'lucide-react'
+import { Ban, Upload, Wallet } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { formatMAD } from '../../lib/format'
 import {
-  Card, CardContent, Skeleton, EmptyState, Input, Button, Badge,
+  Card, CardContent, Skeleton, EmptyState, Input, Button, Badge, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Table } from '../reporting/Table'
+// AUD132 — le rejet est une écriture réservée au palier responsable/admin
+// (même garde que le serveur : `get_permissions` → IsResponsableOrAdmin).
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
@@ -125,10 +128,12 @@ export default function PaiementsPage() {
   }
 
   const lancerImport = async () => {
-    if (!fichier) return
+    // AUD121 — l'import rejoue les décisions de l'aperçu : sans jeton de
+    // dry-run il n'y a rien à valider (le serveur refuserait en 400).
+    if (!apercu?.token) return
     setImportBusy(true); setImportErreur('')
     try {
-      const r = await ventesApi.importReleveCommit(fichier)
+      const r = await ventesApi.importReleveCommit(apercu.token)
       setBilan(r.data)
       // Les paiements créés doivent être VISIBLES sans recharger la page.
       setLoading(true)
@@ -149,10 +154,55 @@ export default function PaiementsPage() {
     })
   }, [rows, mode, du, au, clientFilter])
 
+  // AUD132 (PAY-10) — un paiement REJETÉ (chèque impayé) sort du total affiché,
+  // exactement comme il sort de `Facture.montant_paye` côté serveur. Il reste
+  // VISIBLE dans la liste, badgé « Rejeté » : c'est une piste d'audit, pas un
+  // encaissement.
+  const estRejete = (p) => p.statut === 'rejete'
   const total = useMemo(
-    () => filtered.reduce((s, p) => s + Number(p.montant || 0), 0),
+    () => filtered.reduce(
+      (s, p) => (estRejete(p) ? s : s + Number(p.montant || 0)), 0),
     [filtered],
   )
+
+  /* ── AUD132 (PAY-10) — « Chèque impayé » ────────────────────────────────
+     L'action serveur `POST /ventes/paiements/{id}/rejeter/` (YLEDG5) existait
+     sans AUCUN appelant : grep `rejeter` dans `ventesApi.js` ne trouvait que
+     `rejeterEtapeDevis`. Un chèque revenu impayé était donc ingérable depuis
+     le produit — et l'écran, sans colonne statut, affichait de toute façon un
+     paiement rejeté comme un encaissement valide. Le motif est OBLIGATOIRE
+     (le serveur refuse en 400 sans lui) ; le message d'erreur serveur est
+     affiché TEL QUEL. */
+  const peutRejeter = useIsAdminOrResponsable()
+  const [rejetCible, setRejetCible] = useState(null)
+  const [rejetMotif, setRejetMotif] = useState('')
+  const [rejetFrais, setRejetFrais] = useState('')
+  const [rejetDate, setRejetDate] = useState('')
+  const [rejetBusy, setRejetBusy] = useState(false)
+  const [rejetErreur, setRejetErreur] = useState('')
+
+  const ouvrirRejet = (p) => {
+    setRejetCible(p)
+    setRejetMotif(''); setRejetFrais(''); setRejetDate(''); setRejetErreur('')
+  }
+
+  const confirmerRejet = async () => {
+    if (!rejetCible || !rejetMotif.trim()) return
+    setRejetBusy(true); setRejetErreur('')
+    try {
+      await ventesApi.rejeterPaiement(rejetCible.id, {
+        motif: rejetMotif.trim(),
+        frais: rejetFrais || undefined,
+        date_rejet: rejetDate || undefined,
+      })
+      setRejetCible(null)
+      setLoading(true)
+      await chargerPaiements()
+    } catch (err) {
+      setRejetErreur(
+        err?.response?.data?.detail || 'Le rejet a échoué. Réessayez.')
+    } finally { setRejetBusy(false) }
+  }
 
   return (
     <div className="ui-root page">
@@ -401,13 +451,46 @@ export default function PaiementsPage() {
                     </button>
                   ) : (p.client_nom || '—')),
                 },
-                { key: 'montant', header: 'Montant', align: 'right', cell: (p) => <strong>{dh(p.montant)}</strong> },
+                {
+                  key: 'montant',
+                  header: 'Montant',
+                  align: 'right',
+                  cell: (p) => (estRejete(p)
+                    ? <s className="text-muted-foreground">{dh(p.montant)}</s>
+                    : <strong>{dh(p.montant)}</strong>),
+                },
                 { key: 'date', header: 'Date', cell: (p) => p.date_paiement || '—' },
                 { key: 'mode', header: 'Mode', cell: (p) => p.mode_display || p.mode },
+                // AUD132 — la colonne qui manquait : sans elle, un chèque
+                // impayé se lisait comme un encaissement valide.
+                {
+                  key: 'statut',
+                  header: 'Statut',
+                  cell: (p) => (estRejete(p) ? (
+                    <Badge tone="danger"
+                           title={p.motif_rejet || 'Règlement rejeté'}>
+                      Rejeté
+                    </Badge>
+                  ) : (
+                    <Badge tone="success">Encaissé</Badge>
+                  )),
+                },
                 { key: 'par_qui', header: 'Par qui', cell: (p) => p.created_by_username || '—' },
                 {
                   key: 'ecriture', header: 'Écriture',
                   cell: (p) => <EcritureSourceLink sourceType="paiement" sourceId={p.id} />,
+                },
+                {
+                  key: 'actions',
+                  header: '',
+                  align: 'right',
+                  cell: (p) => (peutRejeter && !estRejete(p) ? (
+                    <Button size="sm" variant="outline"
+                            onClick={() => ouvrirRejet(p)}
+                            title="Chèque impayé / virement rejeté">
+                      <Ban className="size-4" /> Rejeter
+                    </Button>
+                  ) : null),
                 },
               ]}
               rows={filtered}
@@ -423,15 +506,69 @@ export default function PaiementsPage() {
               )}
               footer={filtered.length > 0 && (
                 <tr className="border-t border-border font-bold">
-                  <td className="px-3 py-2" colSpan={2} data-label="Total">Total ({filtered.length})</td>
+                  <td className="px-3 py-2" colSpan={2} data-label="Total">
+                    Total encaissé ({filtered.filter(p => !estRejete(p)).length})
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums" data-label="Montant">{dh(total)}</td>
-                  <td className="px-3 py-2" colSpan={3} />
+                  <td className="px-3 py-2" colSpan={6} />
                 </tr>
               )}
             />
           </CardContent>
         </Card>
       )}
+
+      {/* ── AUD132 (PAY-10) — Rejeter un règlement (chèque impayé) ───────── */}
+      <Dialog open={!!rejetCible}
+              onOpenChange={(o) => { if (!o) setRejetCible(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Rejeter le règlement de {dh(rejetCible?.montant)}
+            </DialogTitle>
+            <DialogDescription>
+              Le paiement n’est jamais supprimé : il passe « Rejeté », sort des
+              totaux, la facture rouvre et les relances se ré-arment.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="rejet-motif">Motif du rejet</Label>
+              <Input id="rejet-motif" value={rejetMotif}
+                     placeholder="Chèque sans provision"
+                     onChange={(e) => setRejetMotif(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="rejet-frais">Frais bancaires (optionnel)</Label>
+              <Input id="rejet-frais" type="number" step="any"
+                     value={rejetFrais}
+                     onChange={(e) => setRejetFrais(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="rejet-date">Date du rejet (optionnel)</Label>
+              <Input id="rejet-date" type="date" value={rejetDate}
+                     onChange={(e) => setRejetDate(e.target.value)} />
+            </div>
+            {rejetErreur && (
+              <div role="alert"
+                   className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {rejetErreur}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRejetCible(null)}>
+              Annuler
+            </Button>
+            <Button variant="destructive" loading={rejetBusy}
+                    disabled={!rejetMotif.trim()} onClick={confirmerRejet}>
+              Confirmer le rejet
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

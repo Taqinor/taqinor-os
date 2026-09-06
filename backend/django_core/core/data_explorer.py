@@ -21,6 +21,29 @@ Conception
 
 Le modèle ``SavedQuery`` (multi-tenant) persiste une spec sauvegardée pour
 rejouer une analyse ad-hoc.
+
+AUD801 — CHAMPS SOUS PERMISSION (``gated_fields``)
+--------------------------------------------------
+Le moteur n'avait AUCUNE notion de champ sous permission : ``sav_tickets``
+déléguait explicitement le masquage de ``cout`` (coût interne d'un ticket) à
+« l'appelant », et AUCUN des huit consommateurs ne le faisait — ni
+``SavedQueryViewSet.run_adhoc`` (``IsAuthenticated`` seul, corps libre), ni le
+drill, ni les formules, ni les widgets de tableau de bord, ni le cache BI, ni
+le classeur, ni les rapports, ni l'extrait planifié vers SFTP/S3 (qui appelle
+``run_query`` avec ``user=None`` littéral). N'importe quel rôle interne
+récupérait les coûts bruts en JSON.
+
+Le masquage est donc désormais DANS LE MOTEUR, une seule fois pour les huit
+chemins : ``register_dataset(..., gated_fields={'cout': 'can_view_buy_prices'})``
+associe un champ à un attribut de permission de l'utilisateur, et ``run_query``
+écarte ce champ de TOUTES les positions de la spec — ``select``, ``filters``
+(sinon on infère la valeur par dichotomie : ``{"cout__gt": X}`` + ``count``),
+``group_by``, ``order_by``, ``aggregates`` (sinon ``{"fn":"sum",
+"field":"cout"}`` rend le total des coûts) et la projection par DÉFAUT (une
+spec SANS ``select`` projetait TOUS les champs). Permission absente OU
+``user=None`` (tâche planifiée) ⇒ champ écarté, toujours. Un champ gated n'est
+jamais une ERREUR (400) : il est silencieusement retiré, pour qu'un extrait
+planifié continue de livrer ses colonnes légitimes.
 """
 from __future__ import annotations
 
@@ -56,7 +79,7 @@ class ChampNonAutorise(Exception):
 
 
 def register_dataset(name, label, fields, queryset_provider,
-                     cache_partage=False):
+                     cache_partage=False, gated_fields=None):
     """Enregistre un dataset interrogeable (idempotent).
 
     ``fields`` = liste blanche de chemins de champs. ``queryset_provider`` =
@@ -67,14 +90,28 @@ def register_dataset(name, label, fields, queryset_provider,
     dataset peut masquer des champs selon ses droits. Un dataset dont le
     résultat ne dépend QUE de la société peut le déclarer VRAI pour partager
     l'entrée entre ses utilisateurs.
+
+    AUD801 — ``gated_fields`` : dict ``{champ: attribut_de_permission}`` (ex.
+    ``{'cout': 'can_view_buy_prices'}``). Le champ n'est rendu qu'aux
+    utilisateurs pour lesquels ``getattr(user, attribut)`` est vrai ; il est
+    écarté de toutes les positions de la spec sinon (et TOUJOURS quand
+    ``user`` est ``None``). Un dataset qui déclare des champs gated ne peut PAS
+    partager son cache : le résultat dépend du LECTEUR, pas seulement de la
+    société — ``cache_partage`` est donc refusé avec ``gated_fields``.
     """
     if not name or not callable(queryset_provider):
         raise ValueError('Dataset : nom + queryset_provider requis.')
+    gated = dict(gated_fields or {})
+    if gated and cache_partage:
+        raise ValueError(
+            'Dataset %r : « cache_partage » est incompatible avec des champs '
+            'sous permission (le résultat dépend du lecteur).' % name)
     _DATASETS[name] = {
         'label': label or name,
         'fields': list(fields or []),
         'provider': queryset_provider,
         'cache_partage': bool(cache_partage),
+        'gated_fields': gated,
     }
 
 
@@ -109,6 +146,44 @@ def _check_fields(allowed, paths):
     for p in paths:
         if _field_root(p) not in allowed_set:
             raise ChampNonAutorise(f'Champ non autorisé : {p!r}')
+
+
+def champs_interdits(dataset, user):
+    """AUD801 — champs ``gated_fields`` que ``user`` n'a PAS le droit de voir.
+
+    ``user`` à ``None`` (extrait planifié, tâche) ⇒ TOUS les champs gated sont
+    interdits : un chemin sans acteur ne peut pas prouver une permission.
+    L'attribut de permission est lu par ``getattr`` (propriété du modèle
+    utilisateur, ex. ``can_view_buy_prices``) — ``core`` reste fondation et
+    n'importe aucun modèle d'app.
+    """
+    gated = (dataset or {}).get('gated_fields') or {}
+    if not gated:
+        return set()
+    return {
+        champ for champ, permission in gated.items()
+        if user is None or not getattr(user, permission, False)
+    }
+
+
+def _sans_champs_interdits(interdits, select, filters, group_by, order_by,
+                           aggregates):
+    """Retire ``interdits`` de TOUTES les positions de la spec.
+
+    Les cinq positions comptent : ``select`` (fuite directe), ``filters``
+    (inférence par dichotomie ``{"cout__gt": X}`` + comptage), ``group_by``
+    (les valeurs deviennent des clés de ligne), ``order_by`` (un tri révèle
+    l'ordre relatif) et ``aggregates`` (une somme rend le total).
+    """
+    select = [f for f in select if _field_root(f) not in interdits]
+    filters = {k: v for k, v in filters.items()
+               if _field_root(k) not in interdits}
+    group_by = [f for f in group_by if _field_root(f) not in interdits]
+    order_by = [o for o in order_by
+                if _field_root(o.lstrip('-')) not in interdits]
+    aggregates = [a for a in aggregates
+                  if _field_root(a.get('field') or '') not in interdits]
+    return select, filters, group_by, order_by, aggregates
 
 
 def _apply_formula_measures(rows, formula_measures):
@@ -190,6 +265,17 @@ def run_query(name, company, user, spec):
     _check_fields(allowed, [o.lstrip('-') for o in order_by])
     _check_fields(allowed, [a.get('field') for a in aggregates if a.get('field')])
 
+    # AUD801 — masquage des champs sous permission, APRÈS la liste blanche (un
+    # champ inconnu reste une erreur 400 ; un champ gated est silencieusement
+    # écarté). ``allowed`` est réduit AUSSI : c'est lui qui sert de projection
+    # par défaut quand la spec ne fournit pas de ``select``.
+    interdits = champs_interdits(dataset, user)
+    if interdits:
+        allowed = [f for f in allowed if f not in interdits]
+        select, filters, group_by, order_by, aggregates = (
+            _sans_champs_interdits(interdits, select, filters, group_by,
+                                   order_by, aggregates))
+
     if filters:
         qs = qs.filter(**filters)
 
@@ -211,7 +297,12 @@ def run_query(name, company, user, spec):
         rows = [qs.aggregate(**annotations)]
         return _apply_formula_measures(rows, formula_measures)
     else:
-        qs = qs.values(*(select or allowed))
+        # AUD801 — JAMAIS ``values()`` sans argument : cela projetterait TOUTES
+        # les colonnes du modèle, champs gated compris. Une projection vidée
+        # par le masquage retombe sur la liste blanche RÉDUITE, jamais sur le
+        # modèle entier ; si elle est vide elle aussi, on ne rend que ``id``.
+        projection = select or allowed or ['id']
+        qs = qs.values(*projection)
 
     if order_by:
         qs = qs.order_by(*order_by)

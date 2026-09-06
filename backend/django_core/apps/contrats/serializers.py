@@ -132,6 +132,17 @@ class ContratSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'created_by', 'date_creation',
             'date_dernier_renouvellement', 'nb_renouvellements',
+            # AUD501 — LE DOCSTRING DE `perform_update` DISAIT DÉJÀ VRAI, LE
+            # CODE NON. `statut` était absent de cette liste : un PATCH brut du
+            # corps posait « signe » sur un contrat en approbation sans qu'AUCUNE
+            # `SignatureContrat` n'existe, sans événement `contrat_signe`, sans
+            # `VersionContrat` figée — et « resilie » sans la moindre
+            # `Resiliation`, donc sans désactivation de la maintenance SAV. La
+            # machine d'états n'était qu'un décor tant que cette porte restait
+            # grande ouverte. Les transitions passent par `changer-statut`
+            # (administratives) ou par leur action dédiée (`signer`,
+            # `resilier`).
+            'statut',
         ]
 
     responsable_nom = serializers.SerializerMethodField()
@@ -154,16 +165,44 @@ class ContratSerializer(serializers.ModelSerializer):
                     'contrat', company, attrs.get('custom_data'))
         return attrs
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # AUD528 — cache {(company_id, client_id): libellé} partagé par TOUTE
+        # la page sérialisée (patron YOPSB13, apps/sav/serializers.py) : avec
+        # ``many=True``, DRF réutilise UNE seule instance enfant pour chaque
+        # ligne, donc un cache d'instance survit d'un contrat à l'autre.
+        # `get_client_nom` traversait `crm_selectors.client_label` — une
+        # requête DB PAR LIGNE — sans aucun cache ; sur une page de 20
+        # contrats c'était 20 requêtes de plus, et autant de doublons dès que
+        # plusieurs contrats partagent le même client.
+        #
+        # RÉSIDUEL ASSUMÉ : le cache supprime les lectures RÉPÉTÉES, pas la
+        # première de chaque client DISTINCT. La frontière M3 n'offre qu'une
+        # porte unitaire (`crm.selectors.client_label`, un client à la fois) ;
+        # rendre le budget totalement plat demanderait un `client_labels(
+        # company, ids)` EN VRAC côté `apps/crm/selectors.py` — une addition
+        # dans crm, pas ici. Tant qu'elle n'existe pas, le coût marginal d'un
+        # contrat est d'UNE lecture (plus zéro depuis qu'AUD528 précharge
+        # `company` sur le queryset), jamais deux.
+        self._client_label_cache = {}
+
     def get_responsable_nom(self, obj):
         return getattr(obj.responsable, 'username', None)
 
     def get_client_nom(self, obj):
         """WIR77 — libellé du client via crm.selectors (lecture cross-app,
-        frontière M3). Dégrade en None sans client / hors société."""
+        frontière M3). Dégrade en None sans client / hors société.
+
+        AUD528 — mémoïsé par page (voir ``__init__``). La SOURCE du libellé ne
+        change pas : c'est toujours le sélecteur cross-app de ``crm``."""
         if not obj.client_id:
             return None
-        from apps.crm import selectors as crm_selectors
-        return crm_selectors.client_label(obj.company, obj.client_id)
+        cle = (obj.company_id, obj.client_id)
+        if cle not in self._client_label_cache:
+            from apps.crm import selectors as crm_selectors
+            self._client_label_cache[cle] = crm_selectors.client_label(
+                obj.company, obj.client_id)
+        return self._client_label_cache[cle]
 
     def get_echeance_preavis(self, obj):
         echeance = obj.echeance_preavis()

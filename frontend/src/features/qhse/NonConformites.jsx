@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
-  Wrench, ShieldAlert, Send, FileText,
+  Wrench, ShieldAlert, Send, FileText, PlayCircle, ThumbsUp, ThumbsDown,
+  ArrowUpCircle,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { downloadBlob } from '../../utils/downloadBlob'
@@ -11,7 +12,6 @@ import {
   toast, DefinitionList, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { FieldSelect } from './QhseForm'
-import { QhseResourceList } from './QhseResourceList'
 import { formatDate } from '../../lib/format'
 import { useQhseList } from './useQhseList'
 import {
@@ -382,9 +382,10 @@ function ScarCreateDialog({ ncr, onClose, onDone }) {
   async function save() {
     setSaving(true)
     try {
-      await qhseApi.demandesActionFournisseur.create({
-        fournisseur: ncr.fournisseur,
-        ncr_source: ncr.id,
+      // AUDV11 (DRAFT165-97) — route par `creer-scar/` (pont+validation
+      // métier serveur : exige un fournisseur rattaché à la NCR), plus le
+      // CRUD générique invoqué à la main jusqu'ici.
+      await qhseApi.nonConformites.creerScar(ncr.id, {
         description_defaut: descriptionDefaut,
         echeance_reponse: echeanceReponse || undefined,
       })
@@ -573,6 +574,64 @@ function NcrDetail({ ncr, onBack, onChanged }) {
   const [derogOpen, setDerogOpen] = useState(false)
   // WIR201 — SCAR recommandée depuis la fiche NCR (fournisseur déjà tracé).
   const [scarOpen, setScarOpen] = useState(false)
+  // AUDV11 — cycle d'approbation de clôture à deux temps (ARC10), jusqu'ici
+  // testé côté service (test_arc10_workflow_cloture_ncr.py) sans aucun
+  // bouton d'écran — seule la clôture DIRECTE était atteignable.
+  const [workflowBusy, setWorkflowBusy] = useState(false)
+
+  async function demarrerCloture() {
+    setWorkflowBusy(true)
+    try {
+      await qhseApi.nonConformites.demarrerCloture(ncr.id)
+      toast.success('Cycle de clôture démarré (ARC10).')
+      onChanged()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Démarrage du cycle impossible.')
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
+
+  async function approuverCloture() {
+    setWorkflowBusy(true)
+    try {
+      const r = await qhseApi.nonConformites.approuverCloture(ncr.id)
+      toast.success(r.data?.statut === 'termine'
+        ? 'Dernière étape approuvée — NCR clôturée.'
+        : 'Étape approuvée — cycle en cours.')
+      onChanged()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Approbation impossible.')
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
+
+  async function rejeterCloture() {
+    setWorkflowBusy(true)
+    try {
+      await qhseApi.nonConformites.rejeterCloture(ncr.id)
+      toast.success('Étape rejetée — la non-conformité reste ouverte.')
+      onChanged()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Rejet impossible.')
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
+
+  async function escaladerCloture() {
+    setWorkflowBusy(true)
+    try {
+      await qhseApi.nonConformites.escaladerCloture(ncr.id)
+      toast.success('Étape en attente escaladée.')
+      onChanged()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Escalade impossible.')
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
 
   async function creerInterventionSav() {
     setCreatingIntervention(true)
@@ -647,6 +706,24 @@ function NcrDetail({ ncr, onBack, onChanged }) {
               <Button size="sm" variant="outline" onClick={() => setScarOpen(true)}>
                 <Send size={15} /> Demander une action au fournisseur
               </Button>
+            )}
+            {/* AUDV11 (ARC10) — cycle d'approbation de clôture à deux temps,
+                en complément de la clôture DIRECTE ci-dessous (inchangée). */}
+            {ncr.statut !== 'cloturee' && (
+              <>
+                <Button size="sm" variant="outline" onClick={demarrerCloture} disabled={workflowBusy}>
+                  <PlayCircle size={15} /> Démarrer clôture (ARC10)
+                </Button>
+                <Button size="sm" variant="outline" onClick={approuverCloture} disabled={workflowBusy}>
+                  <ThumbsUp size={15} /> Approuver l’étape
+                </Button>
+                <Button size="sm" variant="outline" onClick={rejeterCloture} disabled={workflowBusy}>
+                  <ThumbsDown size={15} /> Rejeter l’étape
+                </Button>
+                <Button size="sm" variant="outline" onClick={escaladerCloture} disabled={workflowBusy}>
+                  <ArrowUpCircle size={15} /> Escalader
+                </Button>
+              </>
             )}
             {ncr.statut !== 'cloturee' && (
               <Button size="sm" onClick={cloturer} disabled={busy}>
@@ -1034,6 +1111,22 @@ function CapaRegister() {
 
 // XQHS2 — Dérogations (acceptations en l'état bornées) liées à une NCR.
 function DerogationsRegister() {
+  const { rows, loading, error, reload } = useQhseList(
+    () => qhseApi.derogations.list(), [])
+
+  // AUDV11 (DRAFT165-89) — relance des dérogations à échéance imminente ou
+  // dépassée, même pattern que CAPA/étapes AT ci-dessus, jusqu'ici sans
+  // aucun bouton d'écran.
+  async function relancer() {
+    try {
+      const res = await qhseApi.derogations.relancerDerogations()
+      toast.success(`Relance envoyée (${res.data?.total ?? 0} dérogation(s) à échéance).`)
+      reload()
+    } catch {
+      toast.error('Relance impossible.')
+    }
+  }
+
   const columns = useMemo(() => [
     { id: 'non_conformite', header: 'NCR', accessor: (r) => r.non_conformite_reference || r.non_conformite },
     { id: 'motif', header: 'Motif', accessor: (r) => r.motif || '—' },
@@ -1043,12 +1136,20 @@ function DerogationsRegister() {
     },
   ], [])
   return (
-    <QhseResourceList
+    <ListShell
       title="Dérogations"
       subtitle="Acceptations en l'état bornées, liées à une NCR"
-      fetcher={() => qhseApi.derogations.list()}
       columns={columns}
+      rows={rows}
+      loading={loading}
+      error={error}
+      searchable
       exportName="qhse-derogations"
+      actions={
+        <Button variant="outline" onClick={relancer}>
+          <RefreshCw size={16} /> Relancer les échéances
+        </Button>
+      }
     />
   )
 }

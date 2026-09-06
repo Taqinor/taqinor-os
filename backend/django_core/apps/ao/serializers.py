@@ -9,6 +9,9 @@ un champ exposé : elle est posée côté serveur par le socle
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.records.storage import AttachmentSerializerMixin, attachment_url
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     AppelOffre,
     BatimentAO,
@@ -30,6 +33,7 @@ from .models import (
     PieceConsultation,
     PieceSoumission,
     PlanSource,
+    PlancheAO,
     PresetCalepinage,
     ReleveAO,
     QuestionAO,
@@ -391,6 +395,49 @@ class TeleversementPlanSourceSerializer(serializers.Serializer):
     fichier = serializers.FileField(label='Fichier du plan (PDF ou image)')
 
 
+class PlancheAOSerializer(serializers.ModelSerializer):
+    """AUDV24 (DRAFT165-5, AOF140) — l'indice n'est JAMAIS saisi (posé côté
+    serveur par ``services.generer_indice_planche``/``televerser_planche``) :
+    lecture seule, comme ``empreinte``/``statut``/``cartouche``/
+    ``bandeau_engagement``."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    reference_complete = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = PlancheAO
+        fields = [
+            'id', 'appel_offre', 'toiture', 'variante', 'code_document',
+            'indice', 'reference_complete', 'empreinte', 'motif_revision',
+            'statut', 'statut_display', 'cartouche', 'bandeau_engagement',
+            'attachment',
+        ]
+        read_only_fields = [
+            'indice', 'empreinte', 'statut', 'cartouche',
+            'bandeau_engagement', 'attachment',
+        ]
+
+
+class TeleversementPlancheSerializer(serializers.Serializer):
+    """AUDV24 (DRAFT165-5) — entrée MULTIPART de ``planches/upload``.
+
+    ``appel_offre``/``code_document``/``fichier`` obligatoires ;
+    ``toiture``/``variante``/``motif`` optionnels. Même garde ARC26 que
+    ``TeleversementPlanSourceSerializer`` : le binaire ne devient jamais une
+    colonne, seul un ``records.Attachment`` est référencé."""
+    appel_offre = serializers.PrimaryKeyRelatedField(
+        queryset=AppelOffre.objects.all())
+    code_document = serializers.CharField(max_length=20)
+    fichier = serializers.FileField(label='Fichier de la planche (PDF ou image)')
+    toiture = serializers.PrimaryKeyRelatedField(
+        queryset=ToitureAO.objects.all(), required=False, allow_null=True)
+    variante = serializers.PrimaryKeyRelatedField(
+        queryset=VarianteCalepinage.objects.all(), required=False,
+        allow_null=True)
+    motif = serializers.CharField(
+        required=False, allow_blank=True, default='')
+
+
 class BatimentAOSerializer(serializers.ModelSerializer):
     toitures = ToitureAOSerializer(many=True, read_only=True)
     #: Agrégat CALCULÉ (somme des toitures), jamais une colonne recopiée.
@@ -407,11 +454,13 @@ class BatimentAOSerializer(serializers.ModelSerializer):
 
 # ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
 
-class PieceConsultationSerializer(serializers.ModelSerializer):
+class PieceConsultationSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
     """AOF21 — le DCE REÇU de l'acheteur, pièce par pièce."""
     type_piece_display = serializers.CharField(
         source='get_type_piece_display', read_only=True)
     est_additif = serializers.BooleanField(read_only=True)
+    same_company_fields = ('attachment',)
 
     class Meta:
         model = PieceConsultation
@@ -439,8 +488,10 @@ class ExigenceCPSSerializer(serializers.ModelSerializer):
         ]
 
 
-class VarianteCalepinageSerializer(serializers.ModelSerializer):
+class VarianteCalepinageSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """AOF28 — le modèle PIVOT : role + parent + PREUVE."""
+    same_company_fields = ('job',)
     role_display = serializers.CharField(
         source='get_role_display', read_only=True)
     statut_display = serializers.CharField(
@@ -481,8 +532,10 @@ class PresetCalepinageSerializer(serializers.ModelSerializer):
 
 # ── AOF26 — Kits de calepinage ─────────────────────────────────────────────
 
-class KitCalepinageSerializer(serializers.ModelSerializer):
+class KitCalepinageSerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """AOF26 — le kit ne porte AUCUN prix : il vient du produit lié."""
+    same_company_fields = ('produit',)
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     #: kWc = modules × puissance unitaire — CALCULÉ, jamais recopié.
@@ -508,7 +561,12 @@ class KitCalepinageSerializer(serializers.ModelSerializer):
 
 # ── FG223 — Bordereaux des prix (BOQ) ──────────────────────────────────────
 
-class LigneBordereauSerializer(serializers.ModelSerializer):
+class LigneBordereauSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
+    #: AUD601 — le produit cité par une ligne de bordereau est RENDU dans le
+    #: bordereau des prix remis à l'acheteur : une ligne pointant le catalogue
+    #: d'une société voisine ferait imprimer sa désignation chez le client.
+    same_company_fields = ('produit',)
     # AOF120 — montants RECALCULÉS côté serveur, jamais acceptés du client.
     montant_ht = serializers.DecimalField(
         max_digits=16, decimal_places=2, read_only=True)
@@ -605,7 +663,9 @@ class BordereauPrixSerializer(serializers.ModelSerializer):
 
 # ── FG224 — Cautions de soumission ─────────────────────────────────────────
 
-class CautionSoumissionSerializer(serializers.ModelSerializer):
+class CautionSoumissionSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
+    same_company_fields = ('attachment',)
     type_caution_display = serializers.CharField(
         source='get_type_caution_display', read_only=True)
     statut_display = serializers.CharField(
@@ -624,18 +684,47 @@ class CautionSoumissionSerializer(serializers.ModelSerializer):
             'expire_avant_ouverture', 'statut', 'statut_display',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        #: AUD610 — `statut` en LECTURE SEULE. Une caution de soumission porte
+        #: de l'argent réellement engagé : « appelée » signifie que la banque a
+        #: DÉJÀ débité le montant. Tant que ce champ était PATCHable, la
+        #: machine d'états n'était qu'un affichage — un retour « appelée →
+        #: constituée » effaçait la trace d'un débit réel. Toute transition
+        #: passe par `POST /cautions-soumission/<id>/changer-statut/`, qui
+        #: valide le graphe et journalise au chatter. La caution naît donc
+        #: toujours CONSTITUÉE (son état initial par définition).
+        read_only_fields = ['date_creation', 'statut']
 
 
 # ── FG225 — Dossiers et pièces de soumission ───────────────────────────────
 
-class PieceSoumissionSerializer(serializers.ModelSerializer):
+class PieceSoumissionSerializer(AttachmentSerializerMixin,
+                                serializers.ModelSerializer):
+    """AUD835 — le document part dans MinIO (``records.storage``), plus jamais
+    dans un ``FileField`` dont l'URL était structurellement morte.
+
+    ``fichier`` reste l'entrée d'upload (multipart, écriture seule) ;
+    ``fichier_url`` est l'URL présignée dérivée de la clé, ``None`` tant qu'une
+    ligne n'a pas de clé (dépôt antérieur à la bascule) — jamais une URL qui ne
+    résout pas.
+    """
+    attachment_fields = ('fichier',)
+
+    fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    fichier_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PieceSoumission
         fields = [
             'id', 'dossier', 'libelle', 'obligatoire', 'fournie', 'fichier',
+            'fichier_url', 'fichier_filename', 'fichier_size', 'fichier_mime',
             'date_depot',
         ]
+        read_only_fields = ['fichier_filename', 'fichier_size', 'fichier_mime']
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_fichier_url(self, obj):
+        return attachment_url(obj, 'fichier')
 
 
 class DossierSoumissionSerializer(serializers.ModelSerializer):
@@ -691,7 +780,13 @@ class ResultatAOSerializer(serializers.ModelSerializer):
             'classement', 'notre_rang', 'motif', 'date_resultat',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        #: AUD605 — `issue` et `appel_offre` en LECTURE SEULE : les écrire fait
+        #: suivre le statut de l'AO, le chatter et l'événement `ao_gagne`. Le
+        #: seul chemin d'écriture est l'action `/resultats-ao/enregistrer/`
+        #: (qui lit le corps de requête, pas ce sérialiseur) — la garde ici est
+        #: la seconde barrière, pour qu'aucun futur ViewSet ne rouvre la porte
+        #: en réutilisant ce sérialiseur.
+        read_only_fields = ['date_creation', 'issue', 'appel_offre']
 
 
 # ── AOF115 — Dossier de dépôt (kit ``core/documents.py``) ──────────────────
@@ -734,7 +829,9 @@ class PieceDossierAOSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PieceAdministrativeSerializer(serializers.ModelSerializer):
+class PieceAdministrativeSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
+    same_company_fields = ('attachment',)
     type_piece_display = serializers.CharField(
         source='get_type_piece_display', read_only=True)
     #: Dérivée de la date d'émission + la durée réglementaire — jamais saisie.
@@ -817,7 +914,8 @@ class DossierAOSerializer(serializers.ModelSerializer):
 
 # ── AOF118/AOF141 — Équipements engagés : snapshot figé, AUCUN prix ────────
 
-class EquipementAOSerializer(serializers.ModelSerializer):
+class EquipementAOSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
     """L'équipement ENGAGÉ tel que l'écran Équipements du dossier le montre.
 
     **Aucun montant ne traverse ce sérialiseur.** Le produit du catalogue porte
@@ -835,6 +933,10 @@ class EquipementAOSerializer(serializers.ModelSerializer):
     voie. Elle est lue par la string-FK, jamais par un import de
     ``apps.stock.models`` (contrat ``ao-models-decoupled``).
     """
+
+    #: AUD601 — le produit engagé est LU par l'acheteur sur l'onglet
+    #: Équipements du dossier ; il ne peut jamais venir d'un autre catalogue.
+    same_company_fields = ('produit',)
 
     role_display = serializers.CharField(
         source='get_role_display', read_only=True)

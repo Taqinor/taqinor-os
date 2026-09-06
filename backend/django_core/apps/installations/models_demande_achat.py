@@ -76,11 +76,18 @@ class DemandeAchat(DocumentMetier):
         HAUTE = 'haute', 'Haute'
         URGENTE = 'urgente', 'Urgente'
 
-    # SCA36 — table déclarative du graphe d'états (kit), miroir des gardes de
-    # vue historiques (soumettre/approuver/refuser/marquer_commandee +
-    # generer_bcf) hors ré-application idempotente du même statut. Documentaire :
-    # les actions de vue restent le point d'écriture (approbation = moteur
-    # propre, chemin ARC10 nommé).
+    # SCA36/AUD819 — table déclarative du graphe d'états (kit). Elle n'est PLUS
+    # documentaire : depuis AUD819 les actions de vue
+    # (soumettre/approuver/refuser/marquer_commandee/generer-bcf) ET les services
+    # cross-app (``decider_demande_achat``, ``approuver_etape_achat``,
+    # ``rejeter_etape_achat``) écrivent le statut via
+    # ``services.appliquer_statut_document`` → ``core.documents.changer_statut``,
+    # qui CONSULTE cette table et émet ``core.events.document_statut_change``.
+    # Elle est donc l'unique propriétaire du graphe. HORS table : la
+    # ré-application idempotente du même statut (permise par les vues) — un
+    # document ne « transite » pas vers lui-même, cf. ``changer_statut``.
+    # Le cycle d'APPROBATION reste un moteur propre (chemin ARC10 nommé) : le
+    # statut de document n'est pas une étape d'approbation.
     TRANSITIONS = {
         Statut.BROUILLON: {Statut.SOUMISE},
         Statut.SOUMISE: {Statut.APPROUVEE, Statut.REFUSEE},

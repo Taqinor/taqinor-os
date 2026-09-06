@@ -33,7 +33,7 @@ from .views import (
     casiers_a_reapprovisionner_view, scanner_retour_fournisseur_view,
     IncidentQualiteFournisseurViewSet, DepotConsignationViewSet,
     AccordRFAFournisseurViewSet, catalogue_b2b_view, stock_embarque_view,
-    parametres_negoce_view,
+    parametres_negoce_view, ProfilSaisonnierViewSet,
 )
 
 router = DefaultRouter()
@@ -108,6 +108,7 @@ router.register(
 router.register(r'consignations', DepotConsignationViewSet)
 # NTDST5 - accords de remise arriere (RFA) fournisseur.
 router.register(r'accords-rfa-fournisseur', AccordRFAFournisseurViewSet)
+router.register(r'profils-saisonniers', ProfilSaisonnierViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).

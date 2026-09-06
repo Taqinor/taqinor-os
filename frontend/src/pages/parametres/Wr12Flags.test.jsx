@@ -41,6 +41,12 @@ const baseForm = {
   dgi_export_actif: false, tva_standard: 20, tva_panneaux: 10,
   referral_enabled: false, referral_reward: '', lead_sla_hours: 24,
   responsable_defaut_leads: '', default_installer: '',
+  // MRY28/MRY8 — fenêtres d'appel (defaults du Guide de Meryem).
+  appel_heure_debut: '08:30', appel_heure_fin: '20:00',
+  vendredi_pause_debut: '11:30', vendredi_pause_fin: '15:00',
+  ramadan_debut: '', ramadan_fin: '',
+  ramadan_appel_debut: '10:00', ramadan_appel_fin: '14:00',
+  premier_contact_objectif_min: 5,
 }
 
 const devisProps = {

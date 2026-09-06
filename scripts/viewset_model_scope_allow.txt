@@ -1,0 +1,13 @@
+# AUD834 — cas SAINS de `check_viewset_model_scope.py` : une vue a base tenant
+# servant un modele sans champ `company`, dont le contournement du filtre de la
+# base est EXPLICITE et documente (scoping reel ailleurs).
+#
+# Format : `chemin/vers/views.py::NomDeClasse`, un par ligne ; `#` = commentaire.
+# Chaque entree doit porter, juste au-dessus, la raison du bypass — une ligne
+# sans justification est un defaut en attente, pas une exemption.
+#
+# ELLE EST VIDE, ET C'EST NORMAL : sur l'arbre actuel les 406 vues a base tenant
+# servent toutes un modele porteur de `company`, ou scopent elles-memes par le
+# parent sans passer par super() (patron de sortie d'AUD814, mixin
+# `_PlaybookEnfantViewSetMixin` de crm). N'ajoutez une ligne ici que si le
+# bypass est reel et documente dans le code.
