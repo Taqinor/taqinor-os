@@ -12,6 +12,7 @@ Run :
 """
 from decimal import Decimal
 
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from apps.cpq import services
@@ -88,9 +89,27 @@ class TestComportementHistoriquePreserve(BasePalier):
         devis = self._devis(remise_globale='0', remises_de_ligne=('8',))
         self.assertEqual(services.lancer_approbation_devis(devis), [])
 
+    def test_une_remise_de_ligne_negative_nest_meme_plus_storable(self):
+        """AUD188 — le backstop DB `ck_lignedevis_remise_0_100` interdit la
+        remise de ligne négative EN BASE : le premier des deux cas aberrants
+        nommés par la docstring de `profondeur_remise_effective` ne peut plus
+        arriver du tout. On l'AFFIRME au lieu de le fabriquer."""
+        devis = self._devis(remise_globale='25')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LigneDevisFactory(devis=devis, quantite=Decimal('1'),
+                              prix_unitaire=Decimal('1000.00'),
+                              remise=Decimal('-10'))
+
     def test_la_profondeur_ne_descend_jamais_sous_la_remise_globale(self):
-        """Garde-fou : une donnée de ligne aberrante n'affaiblit aucun palier."""
-        devis = self._devis(remise_globale='25', remises_de_ligne=('-10',))
+        """Garde-fou : une donnée de ligne aberrante n'affaiblit aucun palier.
+
+        Cas aberrant TOUJOURS storable après AUD188 (qui n'exige que
+        ``prix_unitaire >= 0``) : une ligne à prix nul aux côtés d'une ligne
+        normale. Le plancher du service tient — la profondeur effective ne
+        descend pas sous la remise globale."""
+        devis = self._devis(remise_globale='25', remises_de_ligne=('0',))
+        LigneDevisFactory(devis=devis, quantite=Decimal('1'),
+                          prix_unitaire=Decimal('0'), remise=Decimal('0'))
         self.assertGreaterEqual(
             services.profondeur_remise_effective(devis), Decimal('25'))
 
