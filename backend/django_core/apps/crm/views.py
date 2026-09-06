@@ -1810,6 +1810,14 @@ class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    def list(self, request, *args, **kwargs):
+        # MRY2 — amorçage paresseux des étiquettes standard (même patron que
+        # MotifPerteViewSet/CanalViewSet). ADDITIF : une étiquette déjà
+        # présente n'est jamais touchée, aucune n'est supprimée.
+        if request.user.company_id:
+            seed_tags(request.user.company)
+        return super().list(request, *args, **kwargs)
+
     def destroy_guard_message(self, tag):
         if _tag_en_usage(tag.company, tag.nom) > 0:
             return ("Cette étiquette est utilisée par des leads — "
@@ -1829,7 +1837,61 @@ _DEFAULT_MOTIFS_PERTE = [
     ('Prix', False),
     ('Concurrent', False),
     ('Reporté', False),
+    # MRY2 — les cinq motifs que Meryem utilise réellement au téléphone et qui
+    # manquaient : sans eux, « Autre » avalait les vraies raisons et le KPI
+    # « perdus avec motif » (MRY21) ne disait plus rien. Aucun n'est « junk » :
+    # ce sont des pertes commerciales réelles, pas des faux prospects.
+    ('Locataire', False),
+    ('Consommation trop faible', False),
+    ('Déjà équipé', False),
+    ('Ne plus contacter', False),
+    ('Devis refusé', False),
 ]
+
+# MRY2 — étiquettes standard. `Lead.tags` reste un TEXTE LIBRE : cette liste
+# n'est qu'une source de suggestions et de couleurs, jamais une contrainte.
+# Les deux dernières sont celles que `poser_tag_lead` écrit à la clôture d'une
+# cadence (MRY11) : les seeder évite qu'elles arrivent sans couleur ni libellé
+# dans l'écran Paramètres → CRM.
+_DEFAULT_TAGS = [
+    'Compare les devis',
+    'Facilité de paiement',
+    'Décision à plusieurs',
+    "Client à l'étranger",
+    'En construction',
+    'Déjà équipé',
+    'Attente facture',
+    'Injoignable 7 tentatives',
+    'Devis sans suite',
+]
+
+
+def seed_tags(company):
+    """MRY2 — pose les étiquettes standard manquantes (idempotent, ADDITIF).
+
+    `LeadTag` n'avait aucun seeder : chaque société démarrait avec une liste
+    vide. `get_or_create` par `(company, nom)` — jamais de doublon, jamais de
+    modification d'une étiquette existante (couleur ou archivage compris),
+    jamais de suppression."""
+    if company is None:
+        return
+    for nom in _DEFAULT_TAGS:
+        LeadTag.objects.get_or_create(company=company, nom=nom,
+                                      defaults={'couleur': ''})
+
+
+def completer_motifs_perte(company):
+    """MRY2 — ajoute les motifs standard MANQUANTS d'une société.
+
+    `seed_motifs_perte` ne seede QUE les sociétés qui n'ont AUCUN motif : une
+    société déjà personnalisée n'a donc jamais reçu les cinq motifs de MRY2.
+    Cette fonction complète, sans jamais toucher un motif existant (libellé,
+    `est_junk`, archivage) ni en supprimer un."""
+    if company is None:
+        return
+    for nom, est_junk in _DEFAULT_MOTIFS_PERTE:
+        MotifPerte.objects.get_or_create(
+            company=company, nom=nom, defaults={'est_junk': est_junk})
 
 
 def seed_motifs_perte(company):
@@ -1865,6 +1927,11 @@ class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         # ayant déjà des motifs n'est jamais touchée).
         if request.user.company_id:
             seed_motifs_perte(request.user.company)
+            # MRY2 — `seed_motifs_perte` ne sert QUE les sociétés sans aucun
+            # motif : une liste déjà personnalisée n'avait donc jamais reçu
+            # les motifs standard ajoutés après coup. On COMPLÈTE ici, sans
+            # jamais modifier ni supprimer un motif existant.
+            completer_motifs_perte(request.user.company)
         return super().list(request, *args, **kwargs)
 
     def destroy_guard_message(self, motif):
