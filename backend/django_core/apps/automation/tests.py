@@ -402,8 +402,32 @@ class RecursionGuardTests(TestCase):
         self.co = make_company('auto-rec', 'Auto Rec')
 
     def test_self_referential_rule_does_not_recurse(self):
-        # La règle écoute le changement d'étape ET réécrit `stage`. Sans garde,
-        # le save de l'action ré-émet post_save → RecursionError.
+        # La règle écoute le changement d'étape ET réécrit un champ de
+        # l'enregistrement. Sans garde, le save de l'action ré-émet post_save →
+        # RecursionError. Le champ réécrit est `priorite` (AUD821 : `stage` est
+        # un champ de MACHINE À ÉTATS, plus jamais assignable par une
+        # automatisation — voir le test suivant).
+        AutomationRule.objects.create(
+            company=self.co, nom='Boucle priorité',
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        lead = Lead.objects.create(company=self.co, nom='T', stage='NEW')
+        lead.stage = 'SIGNED'
+        lead.save()  # ne doit PAS lever RecursionError
+        lead.refresh_from_db()
+        # L'action s'est exécutée une fois (écrit la priorité) sans reboucler.
+        self.assertEqual(lead.priorite, 'haute')
+        # Exactement un run journalisé : pas de cascade d'évaluations.
+        self.assertEqual(
+            AutomationRun.objects.filter(company=self.co).count(), 1)
+
+    def test_ecriture_dun_champ_machine_a_etats_est_refusee(self):
+        """AUD821 — l'ancienne règle « réécrire stage » est désormais REFUSÉE.
+
+        Le refus est défensif (à l'exécution) : une règle héritée, créée avant
+        le registre ou hors API, ne peut plus contourner la machine à états.
+        """
         AutomationRule.objects.create(
             company=self.co, nom='Boucle stage',
             trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
@@ -411,13 +435,11 @@ class RecursionGuardTests(TestCase):
             action_config={'field': 'stage', 'value': 'CONTACTED'})
         lead = Lead.objects.create(company=self.co, nom='T', stage='NEW')
         lead.stage = 'SIGNED'
-        lead.save()  # ne doit PAS lever RecursionError
+        lead.save()  # ne doit PAS lever RecursionError non plus
         lead.refresh_from_db()
-        # L'action s'est exécutée une fois (écrit CONTACTED) sans reboucler.
-        self.assertEqual(lead.stage, 'CONTACTED')
-        # Exactement un run journalisé : pas de cascade d'évaluations.
-        self.assertEqual(
-            AutomationRun.objects.filter(company=self.co).count(), 1)
+        self.assertEqual(lead.stage, 'SIGNED')
+        run = AutomationRun.objects.get(company=self.co)
+        self.assertEqual(run.status, AutomationRun.Status.SKIPPED)
 
     def test_action_save_does_not_retrigger_other_rules(self):
         # Une seconde règle sur le même déclencheur ne doit pas être relancée

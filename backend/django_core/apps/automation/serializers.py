@@ -1,7 +1,10 @@
 from rest_framework import serializers
 
+from .actions import (
+    SET_FIELD_TARGETS, set_field_autorise, set_field_champs_autorises,
+)
 from .models import (
-    ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
+    ActionType, ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRun,
     IncomingWebhookTrigger, TriggerType, record_state_change_targets,
 )
@@ -32,7 +35,15 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
         ``record_state_change_targets()``), et son arbre de ``conditions``
         optionnel doit être structurellement valide
         (``core.rules.validate_condition_group``, FG367). Les autres types de
-        déclencheurs sont INCHANGÉS (aucune validation ajoutée)."""
+        déclencheurs sont INCHANGÉS (aucune validation ajoutée).
+
+        AUD821 — la validation ne portait QUE sur ``trigger_config`` : le
+        ``action_config`` n'était JAMAIS validé, donc une action ``SET_FIELD``
+        pouvait viser ``Devis.statut`` ou ``Facture.montant_ttc`` et écrire
+        directement en base (hors machine à états, hors ``core.events``). Le
+        champ visé est désormais confronté au registre FERMÉ
+        ``actions.SET_FIELD_TARGETS`` — voir ``_valider_set_field``."""
+        self._valider_set_field(attrs)
         trigger_type = attrs.get(
             'trigger_type', getattr(self.instance, 'trigger_type', None))
         if trigger_type != TriggerType.RECORD_STATE_CHANGE:
@@ -68,6 +79,48 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'trigger_config': erreurs})
         return attrs
+
+    def _valider_set_field(self, attrs):
+        """AUD821 — une action ``SET_FIELD`` ne vise qu'un champ DÉCLARÉ.
+
+        ``action_config`` ne porte pas toujours le modèle cible (il est impliqué
+        par le déclencheur), donc la création refuse tout champ qui n'est sûr
+        sur AUCUN modèle du registre ; l'exécution (``actions._set_field``)
+        refait le contrôle STRICT sur le couple réel. Un ``action_config`` qui
+        précise ``model`` est validé sur le COUPLE tout de suite.
+        """
+        action_type = attrs.get(
+            'action_type', getattr(self.instance, 'action_type', None))
+        if action_type != ActionType.SET_FIELD:
+            return
+        config = attrs.get(
+            'action_config',
+            getattr(self.instance, 'action_config', None)) or {}
+        field = (config.get('field') or '').strip()
+        if not field:
+            raise serializers.ValidationError({
+                'action_config': (
+                    "Une action « Mettre à jour un champ » exige "
+                    "action_config['field']."),
+            })
+        modele = (config.get('model') or '').strip().lower()
+        if modele:
+            autorise = set_field_autorise(modele, field)
+        else:
+            autorise = field in set_field_champs_autorises()
+        if not autorise:
+            couples = ', '.join(
+                f'{m}.{f}' for m in sorted(SET_FIELD_TARGETS)
+                for f in sorted(SET_FIELD_TARGETS[m])) or 'aucun'
+            cible = f'{modele}.{field}' if modele else field
+            raise serializers.ValidationError({
+                'action_config': (
+                    f'Champ non assignable par une automatisation : '
+                    f'« {cible} ». Une automatisation n\'écrit jamais un champ '
+                    f'de machine à états ni un champ financier — elle doit '
+                    f'passer par le service métier. Champs déclarés : '
+                    f'{couples}.'),
+            })
 
 
 class AutomationRunSerializer(serializers.ModelSerializer):
