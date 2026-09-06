@@ -132,12 +132,12 @@ def expirer_avis_depasses():
     Multi-tenant : boucle par société ; une société en erreur n'empêche pas les
     suivantes (best-effort, journalisée).
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .models import AvisMarche
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += AvisMarche.objects.filter(
                 company=company).expirer_les_depasses()

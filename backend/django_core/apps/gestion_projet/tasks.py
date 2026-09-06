@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 def _companies():
-    from authentication.models import Company
-    return list(Company.objects.all())
+    # AUD415/SCA19 — un tenant suspendu ou en fermeture n'est plus balayé.
+    from authentication.selectors import active_companies
+    return list(active_companies())
 
 
 @shared_task(name='gestion_projet.generer_taches_recurrentes')
