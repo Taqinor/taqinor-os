@@ -125,11 +125,23 @@ def _display(lead: Lead, field: str, value):
     return str(value)
 
 
-def log_creation(lead: Lead, user):
+def log_creation(lead: Lead, user, *, origine: str = ''):
+    """Ligne « création » du chatter.
+
+    MRY0 — quand la création vient d'un SYSTÈME (``user is None``), le corps
+    nomme l'origine (« Lead créé via Meta Lead Ads (webhook) ») au lieu de
+    « Lead créé par ? », qui ne disait rien à Meryem et masquait précisément
+    l'information dont l'incident AZIZ du 03/09/2026 avait besoin : par quel
+    chemin ce lead est-il entré ? Sans ``origine`` explicite, le comportement
+    historique est strictement inchangé."""
+    if user is None and origine:
+        corps = f'Lead créé via {origine}'
+    else:
+        corps = f"Lead créé par {getattr(user, 'username', '?')}"
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.CREATION,
-        body=f"Lead créé par {getattr(user, 'username', '?')}",
+        body=corps,
     )
 
 

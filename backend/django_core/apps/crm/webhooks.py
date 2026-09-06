@@ -2399,7 +2399,11 @@ def _process_meta_lead_entry(raw, value, company, access_token):
         company=company, leadgen_id=leadgen_id,
         field_data=field_data, ad_id=ad_id,
         adgroup_id=adgroup_id, form_id=form_id,
-        access_token=access_token)
+        access_token=access_token,
+        # MRY0 (lot B) — l'heure Meta RÉELLE (epoch secondes côté webhook),
+        # jamais l'heure de réception : SLA/KPI mesurent depuis l'arrivée.
+        created_time=value.get('created_time'),
+        origine='Meta Lead Ads (webhook)')
     raw.lead = lead
     raw.processed = True
     raw.error = ''

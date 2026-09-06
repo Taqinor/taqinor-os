@@ -2207,7 +2207,58 @@ class MetaConnectionHealthView(APIView):
             'balance': bal_detail.get('balance'),
             'currency': bal_detail.get('currency', ''),
         })
+        # MRY0 (lot A) — tuile « Webhook leads temps réel ». Les appels Graph
+        # sont MIS EN CACHE 10 min et ne bloquent JAMAIS la santé : une panne
+        # Meta rend la tuile rouge avec « Meta injoignable », jamais un 500.
+        statuses.append(self._statut_webhook_leadgen(company))
         return Response({'statuses': statuses})
+
+    @staticmethod
+    def _statut_webhook_leadgen(company):
+        from django.core.cache import cache
+
+        cle = f'adsengine.webhook_leadgen.health.{getattr(company, "pk", 0)}'
+        etat = cache.get(cle)
+        if etat is None:
+            try:
+                from .webhook_leadgen import etat_webhook_leadgen
+                etat = etat_webhook_leadgen(company)
+            except Exception:  # noqa: BLE001 — jamais bloquant
+                logger.warning(
+                    'adsengine.health: état webhook leadgen indisponible',
+                    exc_info=True)
+                etat = {'ok': False, 'detail': 'Meta injoignable.'}
+            cache.set(cle, etat, 600)
+        return {
+            'key': 'webhook_leadgen',
+            'ok': bool(etat.get('ok')),
+            'detail': etat.get('detail') or '',
+            'page_subscribed': etat.get('page_subscribed'),
+            'has_pages_manage_metadata': bool(
+                etat.get('has_pages_manage_metadata')),
+        }
+
+
+class MetaWebhookLeadgenSubscribeView(APIView):
+    """MRY0 (lot A) — Abonne la Page au champ ``leadgen`` (bouton de l'écran
+    Connexion). Écriture de CÂBLAGE (jamais une dépense) : permission
+    ``adsengine_manage``. L'erreur Meta est renvoyée telle quelle."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from django.core.cache import cache
+
+        from .webhook_leadgen import abonner_page_leadgen
+        resultat = abonner_page_leadgen(company)
+        # L'état affiché doit refléter l'action immédiatement.
+        cache.delete(f'adsengine.webhook_leadgen.health.'
+                     f'{getattr(company, "pk", 0)}')
+        return Response(resultat,
+                        status=200 if resultat.get('ok') else 400)
 
 
 class SyncStatusView(APIView):

@@ -55,6 +55,25 @@ def on_meta_lead_captured(sender, **kwargs):
         'phone_key': phone_key[:32],
         'crm_lead_id': getattr(lead, 'pk', None),
     }
+    # MRY0 — l'ORIGINE se lit sur le ``sender`` de l'événement : le webhook
+    # temps réel (``crm.meta_lead_ads_webhook``) et le pull de rattrapage
+    # (``adsengine.pull_ad_leads``) convergent sur la même ligne, mais on doit
+    # pouvoir dire lequel a parlé — sans quoi « le webhook est muet » reste
+    # indétectable (incident AZIZ, 03/09/2026). Un rattrapage n'écrase JAMAIS
+    # une origine « webhook » déjà posée : le premier arrivé fait foi.
+    envoyeur = str(sender or '')
+    origine = ''
+    if 'webhook' in envoyeur:
+        origine = MetaLeadMirror.Origine.WEBHOOK
+    elif 'pull' in envoyeur:
+        origine = MetaLeadMirror.Origine.PULL
+    if origine:
+        deja = (MetaLeadMirror.objects
+                .filter(company=company, leadgen_id=leadgen_id)
+                .values_list('origine', flat=True).first())
+        if not (deja == MetaLeadMirror.Origine.WEBHOOK
+                and origine == MetaLeadMirror.Origine.PULL):
+            defaults['origine'] = origine
     try:
         MetaLeadMirror.objects.update_or_create(
             company=company, leadgen_id=leadgen_id, defaults=defaults)

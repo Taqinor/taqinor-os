@@ -27,6 +27,8 @@ EVENT_MODULE = {
     EventType.HOT_LEAD_UNREAD: 'crm',
     EventType.LEAD_CALLBACK_REQUESTED: 'crm',
     EventType.LEAD_CALLBACK_SLA_BREACH: 'crm',
+    # MRY0 — alerte « webhook muet » : elle porte sur l'arrivée des leads.
+    EventType.LEAD_RATTRAPE: 'crm',
     # ventes (Devis + Facture + BonCommande vivent dans apps.ventes)
     EventType.DEVIS_ACCEPTED: 'ventes',
     EventType.DEVIS_OPENED: 'ventes',

@@ -70,6 +70,21 @@ _HTML_TAG_RE = re.compile(r'<[^>]*>')
 # ce n'est pas une raison sociale. Comparé en minuscules.
 SOCIETES_FICTIVES = {'facebook lead'}
 
+# MRY0 (lot C) — leads de TEST du « Lead Ads Testing Tool » de Meta. Ils
+# arrivent dans Odoo comme les vrais ; supprimés de l'ERP, ils y revenaient à
+# chaque synchronisation (piège constaté le 01/09/2026). Comparé en minuscules
+# sur ``name`` et ``contact_name``.
+MARQUEURS_LEAD_TEST = ('test lead', 'dummy data')
+
+
+def est_lead_de_test(lead):
+    """Le lead Odoo est-il un lead de TEST Meta (jamais un vrai prospect) ?"""
+    for champ in ('name', 'contact_name'):
+        valeur = str(lead.get(champ) or '').lower()
+        if any(marqueur in valeur for marqueur in MARQUEURS_LEAD_TEST):
+            return True
+    return False
+
 
 # ── CRX10 — assainissement PARTAGÉ par les deux chemins d'entrée ────────────
 # Ces trois règles étaient enfermées dans ``build_rows`` (chemin JSON-2) : un
@@ -235,6 +250,17 @@ def _clean_phone(raw):
     return text, None
 
 
+class LignesImport(list):
+    """Lignes d'import + compteur de leads de TEST ignorés (MRY0 lot C).
+
+    Sous-classe de ``list`` pour que TOUS les appelants existants (itération,
+    ``len``, indexation) restent inchangés — seul le compteur est nouveau."""
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.ignores_test = 0
+
+
 def build_rows(odoo_leads, tag_names):
     """Projette les leads Odoo bruts vers les lignes d'import de l'ERP.
 
@@ -243,9 +269,17 @@ def build_rows(odoo_leads, tag_names):
     note, téléphones aberrants en note, note = trace Odoo complète (étape
     d'origine, date, responsable, tags, motif de perte, revenu attendu).
     L'étape part en clair (nom Odoo) : la table de ``import_odoo_leads``
-    fait foi pour la conversion en clé canonique."""
-    rows = []
+    fait foi pour la conversion en clé canonique.
+
+    MRY0 (lot C) — les leads de TEST Meta (« Test Lead » / « dummy data »)
+    sont IGNORÉS et comptés dans ``rows.ignores_test`` : supprimés de l'ERP,
+    ils y revenaient sinon à chaque passe (piège du 01/09/2026). La valeur de
+    retour reste une liste (aucun appelant n'est cassé)."""
+    rows = LignesImport()
     for lead in odoo_leads:
+        if est_lead_de_test(lead):
+            rows.ignores_test += 1
+            continue
         stage_odoo = lead['stage_id'][1] if lead.get('stage_id') else ''
         street = (lead.get('street') or '').strip()
         street2 = (lead.get('street2') or '').strip()

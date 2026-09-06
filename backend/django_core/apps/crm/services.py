@@ -1943,9 +1943,67 @@ def _ensure_meta_form_note(lead, extras, form_id=''):
         kind=LeadActivity.Kind.NOTE, body='\n'.join(lines))
 
 
+#: MRY0 (lot B) — bornes d'acceptation d'une ``created_time`` Meta : on ne
+#: repose JAMAIS une date de création hors de cette fenêtre (une valeur
+#: aberrante fausserait SLA et KPI aussi sûrement que l'heure du pull).
+_META_CREATED_TIME_MAX_ANCIENNETE_JOURS = 90
+_META_CREATED_TIME_MARGE_FUTUR_MINUTES = 5
+
+
+def _parse_meta_created_time(brut):
+    """``created_time`` Meta → datetime aware, ou ``None``.
+
+    Deux formes réelles : ISO ``2026-09-03T11:04:04+0000`` (pull) et epoch
+    secondes (webhook). Hors de la fenêtre ``[now - 90 j, now + 5 min]`` →
+    ``None`` (refusée, jamais posée)."""
+    import datetime as _dt
+
+    from django.utils.dateparse import parse_datetime as _parse_dt
+
+    if brut in (None, ''):
+        return None
+    moment = None
+    if isinstance(brut, bool):
+        return None
+    if isinstance(brut, _dt.datetime):
+        moment = brut
+    elif isinstance(brut, (int, float)):
+        try:
+            moment = _dt.datetime.fromtimestamp(
+                int(brut), tz=_dt.timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    else:
+        texte = str(brut).strip()
+        if texte.isdigit():
+            try:
+                moment = _dt.datetime.fromtimestamp(
+                    int(texte), tz=_dt.timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                return None
+        else:
+            try:
+                moment = _parse_dt(texte)
+            except ValueError:
+                return None
+    if moment is None:
+        return None
+    if timezone.is_naive(moment):
+        moment = timezone.make_aware(moment, _dt.timezone.utc)
+    maintenant = timezone.now()
+    if moment > maintenant + _dt.timedelta(
+            minutes=_META_CREATED_TIME_MARGE_FUTUR_MINUTES):
+        return None
+    if moment < maintenant - _dt.timedelta(
+            days=_META_CREATED_TIME_MAX_ANCIENNETE_JOURS):
+        return None
+    return moment
+
+
 def create_lead_from_meta_lead_ads(
         *, company, leadgen_id, field_data,
-        ad_id='', adgroup_id='', form_id='', access_token='') -> Lead:
+        ad_id='', adgroup_id='', form_id='', access_token='',
+        created_time=None, origine='') -> Lead:
     """XMKT32 — Crée (ou dédupe sur) un lead depuis un formulaire Meta Lead Ads.
 
     Point d'entrée cross-app sanctionné (services.py), appelé par
@@ -1991,6 +2049,15 @@ def create_lead_from_meta_lead_ads(
     Best-effort côté séquence de bienvenue : XMKT1 (moteur d'exécution des
     séquences) n'est pas encore construit — aucune inscription automatique
     tant qu'il n'existe pas ; ce service reste le point d'accroche futur.
+
+    MRY0 (lot B) — ``created_time`` : l'heure Meta RÉELLE de la soumission.
+    Appliquée UNIQUEMENT à la création (jamais sur un lead déjà capturé) et
+    seulement si elle tombe dans ``[now - 90 j, now + 5 min]``. ``date_creation``
+    étant ``auto_now_add``, elle n'est pas posable au ``create()`` : on la
+    repose par un ``update()`` ciblé. Sans elle, un lead rattrapé par le pull
+    portait l'heure du beat (07:25) et faussait SLA, KPI premier contact et
+    notifications. ``origine`` (texte libre, ex. « Meta Lead Ads (webhook) »)
+    nomme le chemin d'entrée dans la ligne « création » du chatter.
     """
     fields = {}
     for entry in (field_data or []):
@@ -2107,7 +2174,13 @@ def create_lead_from_meta_lead_ads(
     changed = _apply_meta_form_extras(lead, extras)
     if changed:
         lead.save(update_fields=changed)
-    activity.log_creation(lead, None)
+    # MRY0 (lot B) — vraie date d'arrivée : ``date_creation`` est
+    # ``auto_now_add`` (models.py), donc jamais posable au ``create()``.
+    moment_meta = _parse_meta_created_time(created_time)
+    if moment_meta is not None:
+        Lead.objects.filter(pk=lead.pk).update(date_creation=moment_meta)
+        lead.refresh_from_db(fields=['date_creation'])
+    activity.log_creation(lead, None, origine=origine)
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,

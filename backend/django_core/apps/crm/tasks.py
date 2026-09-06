@@ -66,3 +66,56 @@ def recalculer_scores_obsoletes_task():
     from apps.crm.services import recalculer_scores_obsoletes
 
     return recalculer_scores_obsoletes()
+
+
+#: MRY0 (lot C) — verrou anti-double-run du miroir Odoo (la passe complète dure
+#: plusieurs minutes ; le beat tourne toutes les 30 min).
+_ODOO_SYNC_LOCK = 'crm.sync_odoo_leads.lock'
+_ODOO_SYNC_LOCK_TIMEOUT = 1500
+
+
+@shared_task(name='crm.sync_odoo_leads')
+def sync_odoo_leads_task():
+    """MRY0 (lot C) — Enveloppe Celery Beat du miroir Odoo → ERP.
+
+    Le miroir n'était planifié NULLE PART (ni cron, ni timer, ni beat) : la
+    dernière passe datait du 01/09/2026 et le cockpit de Meryem décrochait
+    silencieusement. NO-OP PROPRE quand la config Odoo est incomplète ou que
+    ``ODOO_SYNC_COMPANY_SLUG`` est vide — jamais un slug en dur. Verrou cache
+    contre deux passes simultanées. Odoo reste en LECTURE SEULE (JSON-2).
+
+    ``ODOO_SYNC_ALIGN=0`` transmet ``--no-align`` : on rapatrie les leads sans
+    aligner le pipeline ERP sur Odoo (le jour où Meryem travaille dans l'ERP).
+    """
+    import io
+    import logging
+    import os
+
+    from django.core.cache import cache
+    from django.core.management import call_command
+
+    from apps.crm.odoo_sync import OdooConfig
+
+    logger = logging.getLogger(__name__)
+    if OdooConfig().incomplete:
+        logger.info('crm.sync_odoo_leads: config Odoo absente — no-op.')
+        return {'skipped': 'config'}
+    slug = (os.environ.get('ODOO_SYNC_COMPANY_SLUG', '') or '').strip()
+    if not slug:
+        logger.info(
+            'crm.sync_odoo_leads: ODOO_SYNC_COMPANY_SLUG vide — no-op.')
+        return {'skipped': 'company'}
+    if not cache.add(_ODOO_SYNC_LOCK, 1, timeout=_ODOO_SYNC_LOCK_TIMEOUT):
+        logger.info('crm.sync_odoo_leads: passe déjà en cours — no-op.')
+        return {'skipped': 'lock'}
+    sortie = io.StringIO()
+    try:
+        options = {'company': slug, 'stdout': sortie}
+        if (os.environ.get('ODOO_SYNC_ALIGN', '1') or '1').strip() == '0':
+            options['no_align'] = True
+        call_command('sync_odoo_leads', **options)
+    finally:
+        cache.delete(_ODOO_SYNC_LOCK)
+    rapport = sortie.getvalue()
+    logger.info('crm.sync_odoo_leads: %s', rapport.replace('\n', ' | '))
+    return {'rapport': rapport}

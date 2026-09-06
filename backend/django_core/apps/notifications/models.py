@@ -66,6 +66,11 @@ class EventType(models.TextChoices):
     # du SLA générique premier contact) : escalade dédiée.
     LEAD_CALLBACK_SLA_BREACH = (
         'lead_callback_sla_breach', 'Rappel demandé non actionné (SLA)')
+    # MRY0 — le filet de rattrapage 15 min a créé un lead Meta que le webhook
+    # temps réel n'avait pas livré : le câblage du webhook est à vérifier.
+    # Zéro alerte quand le webhook fonctionne (le pull ne crée alors rien).
+    LEAD_RATTRAPE = (
+        'lead_rattrape', 'Lead Meta rattrapé par le pull (webhook muet)')
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
