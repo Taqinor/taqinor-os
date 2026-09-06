@@ -211,6 +211,16 @@ def _client_ip(request):
     return ip[:45]
 
 
+# AUD719 — pièces du coffre employé dont la destruction est la plus lourde de
+# conséquences (obligation légale de conservation, pièce d'identité, coordonnées
+# bancaires) : leur suppression exige un motif ET une confirmation explicite.
+DOCUMENTS_EMPLOYE_SENSIBLES = frozenset({
+    DocumentEmploye.TypeDocument.CONTRAT,
+    DocumentEmploye.TypeDocument.CIN,
+    DocumentEmploye.TypeDocument.RIB,
+})
+
+
 def televerser_piece_jointe(file, *, company):
     """AUD718 — valide + téléverse ``file`` dans MinIO. ``(meta, None)`` ou
     ``(None, message)``.
@@ -848,8 +858,64 @@ class DocumentEmployeViewSet(TenantMixin, viewsets.ModelViewSet):
                 'type_document', DocumentEmploye.TypeDocument.AUTRE),
             date_expiration=ser.validated_data.get('date_expiration'),
             note=ser.validated_data.get('note', ''))
+        # AUD719 — le dépôt laisse une trace WHO/WHAT/WHEN dans le chatter du
+        # dossier : jusqu'ici, déposer le contrat de travail d'un salarié
+        # n'écrivait STRICTEMENT rien nulle part.
+        activity.log_note(
+            employe, request.user,
+            f'Document déposé : {doc.get_type_document_display()} '
+            f'« {attachment.filename} » (document #{doc.pk}).')
         return Response(self.get_serializer(doc).data,
                         status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        """AUD719 — suppression TRACÉE et, sur les pièces sensibles, CONFIRMÉE.
+
+        La suppression est IRRÉVERSIBLE : la ligne part et l'objet MinIO avec.
+        Un porteur ``rh_gerer`` pouvait donc détruire le contrat de travail ou
+        la CIN scannée d'un salarié sans que le chatter du dossier n'en garde
+        la moindre trace — le document n'avait alors jamais existé.
+
+        Désormais : pour un CONTRAT / une CIN / un RIB, le corps doit porter un
+        ``motif`` non vide ET ``confirmer`` égal au type du document (le
+        « tapez le nom pour confirmer » des suppressions dangereuses) ; sinon
+        400, rien n'est effacé. Dans tous les cas, une ligne
+        ``DossierActivity`` (auteur, type, nom de fichier, clé de stockage,
+        motif) est écrite AVANT la destruction — elle vit sur le DOSSIER, donc
+        elle survit au document supprimé.
+        """
+        instance = self.get_object()
+        motif = str(request.data.get('motif')
+                    or request.query_params.get('motif') or '').strip()
+        confirmer = str(request.data.get('confirmer')
+                        or request.query_params.get('confirmer') or '').strip()
+        if instance.type_document in DOCUMENTS_EMPLOYE_SENSIBLES:
+            libelle = instance.get_type_document_display()
+            if not motif:
+                return Response(
+                    {'motif': (
+                        f'Suppression irréversible d\'un document '
+                        f'« {libelle} » : un motif est obligatoire.')},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if confirmer != instance.type_document:
+                return Response(
+                    {'confirmer': (
+                        f'Confirmation requise : renvoyez '
+                        f'confirmer="{instance.type_document}" pour supprimer '
+                        f'définitivement ce document « {libelle} » (fichier '
+                        f'compris).')},
+                    status=status.HTTP_400_BAD_REQUEST)
+        att = instance.attachment
+        activity.log_note(
+            instance.employe, request.user,
+            f'Document SUPPRIMÉ définitivement : '
+            f'{instance.get_type_document_display()} '
+            f'« {att.filename if att else "?"} » '
+            f'(document #{instance.pk}, stockage '
+            f'{att.file_key if att else "?"})'
+            + (f' — motif : {motif}' if motif else ''))
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def perform_destroy(self, instance):
         # Efface le fichier MinIO puis le document (la pièce jointe part en
