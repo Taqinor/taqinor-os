@@ -181,12 +181,27 @@ UNGUARDED_ACTION_BASELINE = {
     # (write_permission='qhse_gerer'), revue Fable + tests 403/404 par action ;
     # même dette APPARENTE de scanner, pas un trou réel (68 → 84).
     "qhse": 84,
-    "rh": 103,
+    # AUDV20 — +1 @action `effectif` de PresenceChantierViewSet (effectif
+    # RÉELLEMENT présent sur un chantier un jour donné) : gardée au niveau
+    # CLASSE par `_RhBaseViewSet` (WriteScopedPermissionMixin,
+    # read_permission='rh_voir' route déjà toute lecture, y compris cette
+    # @action GET) — même patron que ses voisines `emarger`/`chantier` déjà
+    # dans ce baseline ; dette apparente, pas un trou (103 → 104).
+    "rh": 104,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
     # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
     # ne fait que DÉCROÎTRE).
     "roles": 0,
     "stock": 3,
+    # AUDV22 — +1 @action `verifier_doublon` de TiersViewSet (recherche
+    # EXACTE anti-doublon ICE/email avant création Client/Fournisseur) :
+    # gardée au niveau CLASSE par `ScopedPermission` (`read_permission=None`
+    # sur ce répertoire de fondation = « authentifié + société suffit », la
+    # posture DOCUMENTÉE et voulue de toute la classe — voir son docstring),
+    # comme sa voisine `doublons` (elle, admin-only via un
+    # `permission_classes=` par action, donc déjà créditée par le scanner).
+    # Dette apparente, pas un trou (0 → 1).
+    "tiers": 1,
     # WIR281 (2026-08-26) : +1 @action `resoudre` de PlanCommissionViewSet —
     # gardée au niveau CLASSE (`permission_classes` prix_achat_voir/admin sur
     # tout le viewset, testée 403) ; dette apparente, pas un trou (1 → 2).

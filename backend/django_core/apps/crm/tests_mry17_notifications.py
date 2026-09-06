@@ -106,7 +106,13 @@ class DigestRelancesTests(TestCase):
         self._touche(self.meryem, jours=4)
         digests, _ = notifier_relances_dues(today=self.aujourdhui)
         self.assertEqual(digests, 1)
-        notif = Notification.objects.get(recipient=self.meryem)
+        # `_touche` pose `owner` à la création du Lead : le signal PRÉEXISTANT
+        # `apps.notifications.signals.lead_post_save` (ERR50) émet DÉJÀ un
+        # LEAD_ASSIGNED pour ce même destinataire — filtrer sur l'event_type
+        # du digest est donc la seule requête univoque, jamais « la seule
+        # notification du destinataire ».
+        notif = Notification.objects.get(
+            recipient=self.meryem, event_type=EventType.RELANCE_DUE)
         self.assertIn('1 relance', notif.title)
 
     def test_aucun_digest_sans_touche_due(self):
@@ -121,7 +127,11 @@ class DigestRelancesTests(TestCase):
         digests, _ = notifier_relances_dues(
             dry_run=True, today=self.aujourdhui)
         self.assertEqual(digests, 1)
-        self.assertFalse(Notification.objects.exists())
+        # `_touche` pose `owner` à la création : le LEAD_ASSIGNED préexistant
+        # (ERR50) part quoi qu'il arrive — seul RELANCE_DUE dépend du dry-run.
+        self.assertFalse(
+            Notification.objects.filter(
+                event_type=EventType.RELANCE_DUE).exists())
 
     def test_module_crm_desactive_coupe_le_digest(self):
         from core.models import ModuleToggle
@@ -223,7 +233,12 @@ class EscaladePremierContactTests(TestCase):
         self.assertEqual(nb, 1)
         self.assertFalse(
             LeadActivity.objects.filter(body__startswith=MARQUEUR).exists())
-        self.assertFalse(Notification.objects.exists())
+        # `_lead` pose `owner` à la création : le LEAD_ASSIGNED préexistant
+        # (ERR50) part quoi qu'il arrive — seul PREMIER_CONTACT_DEPASSE
+        # dépend du dry-run de CETTE commande.
+        self.assertFalse(
+            Notification.objects.filter(
+                event_type=EventType.PREMIER_CONTACT_DEPASSE).exists())
 
 
 class SeveriteEtPreferencesTests(TestCase):

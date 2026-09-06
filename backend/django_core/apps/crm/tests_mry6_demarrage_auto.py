@@ -207,7 +207,9 @@ class PointsExclusTests(_Base):
         from apps.crm.models import Client
         client = Client.objects.create(
             company=self.company, nom='Client', email='c@example.com')
-        lead = services.create_lead_depuis_ticket(
+        # ZSAV8 — renvoie (lead, created) : jamais le lead seul (voir
+        # apps.sav.views, seul autre appelant, qui déballe pareil).
+        lead, _created = services.create_lead_depuis_ticket(
             company=self.company, user=self.acteur, client=client,
             contexte='Suite SAV')
         self.assertEqual(

@@ -35,7 +35,7 @@ from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from core.checks import (
-    ID_MINIO, ID_SECRET_KEY, secret_est_placeholder,
+    ID_MINIO, ID_MODULE_NON_PROD, ID_SECRET_KEY, secret_est_placeholder,
     verifier_reglages_production)
 from erp_agentique.settings import placeholders
 
@@ -178,7 +178,17 @@ class LeControleSystemeCouvreCeQueLeGardeDeBaseNeVoitPas(SimpleTestCase):
                        SECRET_KEY=CLE_REELLE, MINIO_SECRET_KEY=CLE_REELLE)
     def test_une_production_bien_reglee_ne_bloque_rien(self):
         with self._prod():
-            self.assertEqual(verifier_reglages_production(), [])
+            erreurs = verifier_reglages_production()
+        # AUD411 — ce harnais simule SEULEMENT la variable d'environnement
+        # (``_prod()``) : il ne charge jamais réellement
+        # erp_agentique.settings.prod (une SimpleTestCase tourne sous
+        # settings.dev/test). L'avertissement NON-BLOQUANT « module non
+        # prod » se déclenche donc systématiquement ici par construction du
+        # test, jamais un vrai défaut des réglages simulés ci-dessus — « ne
+        # bloque rien » porte sur les erreurs bloquantes, pas cet
+        # avertissement documenté comme jamais bloquant (core/checks.py).
+        self.assertEqual(
+            [e for e in erreurs if e.id != ID_MODULE_NON_PROD], [])
 
     @override_settings(DEBUG=True, ALLOWED_HOSTS=['localhost', '127.0.0.1'],
                        SECRET_KEY=CLE_PUBLIEE, MINIO_SECRET_KEY=MINIO_PUBLIE)

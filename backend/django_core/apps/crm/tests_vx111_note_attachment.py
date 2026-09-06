@@ -100,7 +100,12 @@ class NoterAttachmentTests(TestCase):
         self.assertEqual(att.object_id, self.lead_id)
 
         # La LeadActivity (note) porte bien la référence à cette attachment.
-        act = LeadActivity.objects.get(lead_id=self.lead_id, kind='note')
+        # MRY6 — la création du lead (setUp) pose déjà, best-effort, une note
+        # système « cadence non initialisée » (aucun numéro exploitable) :
+        # cibler par l'attachment lié est la seule requête univoque, jamais
+        # « la seule note du lead ».
+        act = LeadActivity.objects.get(
+            lead_id=self.lead_id, kind='note', attachment_id=att.id)
         self.assertEqual(act.attachment_id, att.id)
 
     def test_note_sans_body_mais_avec_fichier_est_acceptee(self):
@@ -134,7 +139,12 @@ class NoterAttachmentTests(TestCase):
             self._noter_url(), {'body': 'x', 'file': upload}, format='multipart')
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(Attachment.objects.count(), 0)
-        self.assertEqual(LeadActivity.objects.filter(kind='note').count(), 0)
+        # MRY6 — la note système de cadence (setUp) existe déjà : on vérifie
+        # que CET appel n'a écrit aucune note portant CE corps, jamais un
+        # compte global qu'un lead sans numéro exploitable ferait échouer.
+        self.assertFalse(
+            LeadActivity.objects.filter(
+                lead_id=self.lead_id, kind='note', body='x').exists())
 
     def test_company_scoping_attachment(self):
         upload = SimpleUploadedFile('photo4.png', _FAKE_PNG, content_type='image/png')

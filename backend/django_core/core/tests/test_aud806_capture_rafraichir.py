@@ -74,9 +74,13 @@ class Aud806RafraichirCaptureTests(TestCase):
             company=self.company, provider='cmi', montant=Decimal('1200.00'),
             statut=PaymentTransaction.STATUT_EN_ATTENTE)
         self.recus = []
+        # `weak=False` : un lambda inline n'a AUCUNE autre référence forte —
+        # avec le `weak=True` par défaut de Django, il est garbage-collecté
+        # dès la fin de cette ligne et le récepteur ne se déclenche jamais
+        # (même patron que test_aud101_emission_unique/test_aud102_bascule_payee).
         payment_captured.connect(
             lambda sender, **kw: self.recus.append(kw),
-            dispatch_uid='aud806_spy')
+            dispatch_uid='aud806_spy', weak=False)
         self.addCleanup(payment_captured.disconnect,
                         dispatch_uid='aud806_spy')
 

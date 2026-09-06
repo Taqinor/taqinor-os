@@ -103,9 +103,12 @@ class Aud816BulkEditPalierTests(TestCase):
         from core import events
 
         recus = []
+        # `weak=False` : un lambda inline n'a aucune autre référence forte —
+        # avec le `weak=True` par défaut de Django il peut être garbage-
+        # collecté avant l'émission (même patron que test_aud806/test_aud101).
         events.bulk_edit_applied.connect(
             lambda sender, **kw: recus.append(kw),
-            dispatch_uid='aud816_test_spy')
+            dispatch_uid='aud816_test_spy', weak=False)
         self.addCleanup(
             events.bulk_edit_applied.disconnect,
             dispatch_uid='aud816_test_spy')
@@ -128,7 +131,7 @@ class Aud816BulkEditPalierTests(TestCase):
         recus = []
         events.bulk_edit_applied.connect(
             lambda sender, **kw: recus.append(kw),
-            dispatch_uid='aud816_test_spy_vide')
+            dispatch_uid='aud816_test_spy_vide', weak=False)
         self.addCleanup(
             events.bulk_edit_applied.disconnect,
             dispatch_uid='aud816_test_spy_vide')

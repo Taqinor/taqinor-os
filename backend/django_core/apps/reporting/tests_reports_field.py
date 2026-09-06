@@ -81,7 +81,13 @@ class TestFieldServiceReport(FieldReportBase):
         self.assertEqual(ftf['pct_ftf'], 50.0)
 
     def test_mttr_average_days(self):
-        today = date.today()
+        # CRX26/AUD836 — date MÉTIER (Casablanca), pas `date.today()` (fuseau
+        # système du serveur CI) : le rapport convertit `date_creation` via
+        # le même fuseau (apps/reporting/reports_field.py), donc les deux
+        # côtés doivent partir de la même référence pour rester déterministes
+        # autour de minuit.
+        from core.dates import aujourd_hui_local
+        today = aujourd_hui_local()
         t1 = self._ticket(date_resolution=today)
         Ticket.objects.filter(pk=t1.pk).update(
             date_creation=datetime.combine(today - timedelta(days=2), datetime.min.time()))

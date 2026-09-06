@@ -540,9 +540,18 @@ def _refus_cadence(lead, user, raison):
     """Note chatter expliquant pourquoi AUCUNE cadence n'a été posée.
 
     Un refus silencieux est le pire des deux mondes : Meryem croit le lead
-    relancé alors qu'il ne l'est pas. Le refus est donc toujours écrit."""
+    relancé alors qu'il ne l'est pas. Le refus est donc toujours écrit.
+
+    FG28/MRY19 — note SYSTÈME (``user=None``), jamais l'utilisateur qui a
+    déclenché la création/l'initialisation : même motif que
+    ``create_lead_depuis_ticket`` (ZSAV8). Le récepteur QJ7
+    (``_avancer_stage_on_contact_activity``) ne fait avancer NEW → CONTACTED
+    (et ne stampe ``first_contacted_at``) que sur un contact MANUEL
+    (``instance.user is not None``) — un refus automatique de cadence n'est
+    JAMAIS un premier contact, et posait pourtant CONTACTED + le stamp SLA
+    dès la simple création d'un lead sans numéro exploitable."""
     LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=user,
+        company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Cadence de relance non initialisée : {raison}.')
     return []
@@ -645,8 +654,14 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     quand = (premiere.due_at.astimezone(horaires.CASABLANCA)
              .strftime('%d/%m/%Y à %H:%M') if premiere.due_at
              else str(premiere.due_date))
+    # FG28/MRY19 — note SYSTÈME (``user=None``), pas l'utilisateur qui a
+    # déclenché l'initialisation : DÉMARRER une cadence n'est pas AVOIR
+    # contacté le lead. Avec ``user`` posé ici, le récepteur QJ7 la traitait
+    # comme un premier contact manuel et avançait NEW → CONTACTED (+ stampait
+    # ``first_contacted_at``) dès la création — avant qu'un humain n'ait
+    # réellement appelé/écrit. Même motif que ``_refus_cadence`` ci-dessus.
     LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=user,
+        company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Plan de relance initialisé — cadence « {cadence} » '
              f'({len(resultats)} touche(s), première le {quand}).')
@@ -916,7 +931,10 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
     Six gardes, dans cet ordre, CHACUNE journalisée en chatter quand elle
     refuse — un refus muet ferait croire que le lead est suivi :
 
-      1. le lead vient bien d'une demande réelle (``source == OS_NATIVE``) ;
+      1. le lead vient bien d'une demande réelle (``source != ODOO_IMPORT_TEST``
+         — le miroir Odoo n'en est pas une ; OS_NATIVE/SITE_WEB/META_LEAD_ADS
+         le sont TOUTES : un lead Meta Ads ou site web mérite sa cadence
+         exactement comme une saisie manuelle, cf. ``test_meta_lead_ads``) ;
       2. il est neuf (étape NEW) et jamais contacté ;
       3. ni perdu, ni archivé, ni « ne plus contacter » ;
       4. il porte un numéro exploitable — sans lui, aucune des touches
@@ -931,7 +949,7 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
     try:
         if lead is None:
             return []
-        if lead.source != Lead.Source.OS_NATIVE:
+        if lead.source == Lead.Source.ODOO_IMPORT_TEST:
             return []          # import/miroir : silencieux, pas un refus
         if lead.stage != stages.NEW or lead.first_contacted_at is not None:
             return []

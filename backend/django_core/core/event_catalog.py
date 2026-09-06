@@ -128,6 +128,12 @@ CATALOG = {
     'avoir_cree': _e(
         'Un avoir est créé.',
         ['instance', 'company']),
+    # AUD127 — symétrique manquant d'avoir_cree, émis à l'annulation d'un
+    # avoir (apps/ventes/views/avoir.py AvoirViewSet.annuler) ; abonné par
+    # compta (YLEDG4) pour extourner l'écriture d'avoir.
+    'avoir_annule': _e(
+        'Un avoir est annulé.',
+        ['instance', 'company']),
     'facture_fournisseur_creee': _e(
         'Une facture fournisseur est créée.',
         ['instance', 'company', 'user']),

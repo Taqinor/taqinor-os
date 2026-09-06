@@ -10,13 +10,12 @@ Lecture seule, multi-tenant (même patron que `reports.py`/`insights.py` :
 import LOCAL de `apps.sav.models`, jamais au chargement du module — aucune
 arête d'import statique vers `sav`). Réservé responsable/admin.
 """
-from datetime import date
-
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from apps.crm.exports import build_xlsx_response
+from core.dates import aujourd_hui_local, maintenant_local
 
 
 def _co(user):
@@ -87,7 +86,9 @@ def sav_sla_insight(request):
         reponse_ok = [
             t for t in subset
             if t.date_premiere_reponse and t.sla_due_at
-            and t.date_premiere_reponse.date() <= t.sla_due_at
+            # CRX26/AUD836 — date MÉTIER : `.date()` sur le datetime chargé
+            # (UTC brut) décale d'un jour autour de minuit heure marocaine.
+            and maintenant_local(t.date_premiere_reponse).date() <= t.sla_due_at
         ]
         reponse_total = [t for t in subset if t.date_premiere_reponse]
         resolution_ok = [
@@ -121,7 +122,9 @@ def sav_sla_insight(request):
         entry['total'] += 1
         if t.date_premiere_reponse:
             entry['reponse_total'] += 1
-            if t.sla_due_at and t.date_premiere_reponse.date() <= t.sla_due_at:
+            if (t.sla_due_at
+                    and maintenant_local(t.date_premiere_reponse).date()
+                    <= t.sla_due_at):
                 entry['reponse_ok'] += 1
         if t.date_resolution:
             entry['resolution_total'] += 1
@@ -151,20 +154,22 @@ def sav_sla_insight(request):
     delais_resolution = []
     for t in tickets:
         if t.date_premiere_reponse and t.date_creation:
-            delta = (t.date_premiere_reponse.date()
-                     - t.date_creation.date()).days
+            delta = (maintenant_local(t.date_premiere_reponse).date()
+                     - maintenant_local(t.date_creation).date()).days
             delais_reponse.append(max(delta, 0))
         if t.date_resolution and t.date_creation:
-            delta = (t.date_resolution - t.date_creation.date()).days
+            delta = (t.date_resolution
+                     - maintenant_local(t.date_creation).date()).days
             delais_resolution.append(max(delta, 0))
 
     # ── Backlog vieilli (tickets encore ouverts) ────────────────────────────
-    today = date.today()
+    today = aujourd_hui_local()
     ouverts = [t for t in tickets if t.statut in Ticket.OPEN_STATUTS]
     backlog = {'0_2j': 0, '3_7j': 0, 'plus_7j': 0}
     backlog_ids = {'0_2j': [], '3_7j': [], 'plus_7j': []}
     for t in ouverts:
-        age = (today - t.date_creation.date()).days if t.date_creation else 0
+        age = ((today - maintenant_local(t.date_creation).date()).days
+               if t.date_creation else 0)
         if age <= 2:
             bucket = '0_2j'
         elif age <= 7:

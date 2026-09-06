@@ -56,8 +56,15 @@ class _Base(TestCase):
 class FactureOverdueIdempotenceTests(_Base):
     def _facture(self, reference='F-AUD822'):
         from apps.ventes.models import Facture
+        # CRX24 — email unique (insensible à la casse) par société : deux
+        # appels de cette factory (test_deux_factures_sont_traitees_
+        # independamment en crée deux) ne peuvent plus partager le même
+        # e-mail de client, sinon IntegrityError sur
+        # crx24_client_email_unique_ci. Dérivé de `reference`, qui varie déjà
+        # à chaque appel dans ce fichier.
+        email = f'{reference.lower().replace(" ", "-")}@example.com'
         client = Client.objects.create(
-            company=self.co, nom='Cli822', email='cli822@example.com')
+            company=self.co, nom='Cli822', email=email)
         return Facture.objects.create(
             company=self.co, client=client, reference=reference,
             statut='envoye', date_echeance=date.today() - timedelta(days=30))
