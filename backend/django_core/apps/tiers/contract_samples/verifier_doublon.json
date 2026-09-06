@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/tiers/tiers/verifier-doublon/?ice=<optionnel>&email=<optionnel>",
+  "pourquoi": "AUDV22 (DRAFT165-123/124, ARC20) — `find_by_ice`/`find_by_email` existaient déjà (testés) mais rien ne les appelait AVANT la création d'un Client/Fournisseur : le registre unifié `tiers.Tiers` (miroir one-way ARC18 de crm.Client et stock.Fournisseur, post_save) détecte pourtant déjà les doublons a posteriori (rapport admin `doublons/`) sans jamais avertir au moment où ça compte. PACT10 : recherche EXACTE (insensible casse/espaces), en COMPLÉMENT de la recherche floue existante (autocomplete VX239/QC1) — jamais bloquant, l'appelant décide d'afficher l'avertissement. Company-scopé, ouvert à tout utilisateur authentifié (même gate que le CRUD Tiers lui-même).",
+  "exemple": {
+    "ice_matches": [
+      {
+        "id": 12,
+        "nom": "Import Solaire SARL",
+        "roles": {
+          "client": false,
+          "fournisseur": true,
+          "partenaire": false,
+          "soustraitant": false
+        }
+      }
+    ],
+    "email_matches": []
+  },
+  "exemple_vide": {
+    "ice_matches": [],
+    "email_matches": []
+  },
+  "exemple_erreur_parametres_manquants": {
+    "detail": "Le paramètre ice ou email est requis."
+  }
+}
