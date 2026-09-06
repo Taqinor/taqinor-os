@@ -156,7 +156,10 @@ class TestGenerateFacturePdfLanguageWiring(TestCase):
     def test_generate_facture_pdf_still_succeeds_for_ar_client(self, mock_dl, mock_upload):
         from apps.ventes.utils.pdf import generate_facture_pdf
         key = generate_facture_pdf(self.facture.id)
-        self.assertEqual(key, f'factures/{self.facture.reference}.pdf')
+        self.assertEqual(
+            key,
+            f'factures/{self.facture.company_id}/'
+            f'{self.facture.reference}.pdf')
         mock_upload.assert_called_once()
         pdf_bytes_arg = mock_upload.call_args[0][0]
         self.assertTrue(pdf_bytes_arg[:4] == b'%PDF')

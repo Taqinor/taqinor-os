@@ -95,7 +95,10 @@ class ClePdfAJourFactureTests(TestCase):
 
         key = cle_facture_pdf_a_jour(self.facture)
 
-        self.assertEqual(key, f'factures/{self.facture.reference}.pdf')
+        self.assertEqual(
+            key,
+            f'factures/{self.facture.company_id}/'
+            f'{self.facture.reference}.pdf')
         mock_upload.assert_called_once()
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.fichier_pdf, key)
@@ -147,7 +150,9 @@ class ClePdfAJourFactureTests(TestCase):
         de quoi il a été rendu — jamais un fichier périmé servi à l'aveugle."""
         from apps.ventes.utils.pdf import cle_facture_pdf_a_jour
 
-        self.facture.fichier_pdf = f'factures/{self.facture.reference}.pdf'
+        self.facture.fichier_pdf = (
+            f'factures/{self.facture.company_id}/'
+            f'{self.facture.reference}.pdf')
         self.facture.pdf_render_meta = None
         self.facture.save(update_fields=['fichier_pdf', 'pdf_render_meta'])
 
