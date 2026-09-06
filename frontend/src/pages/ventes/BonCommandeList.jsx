@@ -358,7 +358,13 @@ export default function BonCommandeList() {
                                   onClick={() => handleTelechargerPdfBC(bc)}>
                             PDF
                           </Button>
-                          {bc.statut !== 'livre' && bc.statut !== 'annule' && (
+                          {/* AUD118 — un BC deja facture ne s'annule pas :
+                              le serveur refuse en 400 (la facture reste
+                              vivante et orpheline sinon). On masque le bouton
+                              plutot que de proposer un geste refuse ; la voie
+                              correcte est d'annuler la FACTURE d'abord. */}
+                          {bc.statut !== 'livre' && bc.statut !== 'annule'
+                            && !bc.facture_active && (
                             <Button size="sm" variant="outline" loading={busy}
                                     onClick={() => doAction(annulerBC, bc.id, `Annuler le BC ${bc.reference} ?`)}>
                               Annuler

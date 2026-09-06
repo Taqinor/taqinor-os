@@ -85,8 +85,15 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         BonCommande.objects
         .select_related('client', 'devis')
         .prefetch_related('devis__lignes__produit', 'livraisons__lignes')
-        .annotate(has_facture_annote=Exists(
-            Facture.objects.filter(bon_commande=OuterRef('pk'))))
+        .annotate(
+            has_facture_annote=Exists(
+                Facture.objects.filter(bon_commande=OuterRef('pk'))),
+            # AUD118 — facture VIVANTE (non annulée) : le prédicat qui décide
+            # si le bon de commande peut encore être annulé.
+            facture_active_annote=Exists(
+                Facture.objects
+                .filter(bon_commande=OuterRef('pk'))
+                .exclude(statut=Facture.Statut.ANNULEE)))
         .all()
     )
     serializer_class = BonCommandeSerializer
@@ -376,6 +383,27 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         if bc.statut == BonCommande.Statut.LIVRE:
             return Response(
                 {'detail': 'Un BC livré ne peut pas être annulé.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # AUD118 — UN BC DÉJÀ FACTURÉ NE S'ANNULE PAS EN SILENCE. Le bouton
+        # « Facture » est proposé dès `confirme` et le bouton Annuler restait
+        # visible tant que le statut n'était ni `livre` ni `annule` : un BC
+        # annulé « par erreur de saisie » laissait en vie une facture ÉMISE que
+        # plus aucun écran ne rattachait à son origine (le stepper rendait même
+        # un état contradictoire). On dirige vers la voie correcte : annuler
+        # d'abord la FACTURE (action `annuler`, qui émet `facture_annulee` et
+        # déclenche l'extourne), puis le bon de commande.
+        facture = (Facture.objects
+                   .filter(bon_commande=bc)
+                   .exclude(statut=Facture.Statut.ANNULEE)
+                   .first())
+        if facture is not None:
+            return Response(
+                {'detail': (
+                    f'La facture {facture.reference} est encore vivante sur '
+                    'ce bon de commande : annulez-la d\'abord, puis annulez '
+                    'le bon de commande.'
+                )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         bc.statut = BonCommande.Statut.ANNULE

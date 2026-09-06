@@ -805,6 +805,12 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
+    # AUD118 — DISTINCT de `has_facture` : une facture ANNULÉE ne bloque plus
+    # rien. `has_facture` reste le prédicat « une facture a déjà été émise »
+    # (il gouverne le bouton « Facture », dont la garde serveur ne filtre pas
+    # le statut) ; `facture_active` est le prédicat « une facture VIVANTE est
+    # attachée », qui gouverne le bouton « Annuler ».
+    facture_active = serializers.SerializerMethodField()
     # FG51 — preuve de livraison (lecture seule : capturée par l'action
     # « marquer-livre », jamais par un PUT du corps).
     has_proof_of_delivery = serializers.BooleanField(read_only=True)
@@ -843,6 +849,18 @@ class BonCommandeSerializer(serializers.ModelSerializer):
         if annote is not None:
             return bool(annote)
         return Facture.objects.filter(bon_commande=obj).exists()
+
+    def get_facture_active(self, obj):
+        # AUD118 — même annotation servie par le viewset, filtrée sur les
+        # factures NON annulées : c'est elle qui décide si l'annulation du BC
+        # est encore possible.
+        annote = getattr(obj, 'facture_active_annote', None)
+        if annote is not None:
+            return bool(annote)
+        return (Facture.objects
+                .filter(bon_commande=obj)
+                .exclude(statut=Facture.Statut.ANNULEE)
+                .exists())
 
     def _totaux(self, obj):
         """AUD115 — LES TROIS TOTAUX EN UN SEUL PASSAGE. Chacun des trois
