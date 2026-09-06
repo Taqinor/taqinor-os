@@ -32,6 +32,7 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from ..domain.facturation_ops import StockInsuffisantError  # noqa: F401
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -184,64 +185,41 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             pv['filename'] = meta['filename']
         if pv:
             pv['signed_at'] = _tz.now().isoformat()
-        from decimal import Decimal, ROUND_HALF_UP
         # YDOCF7 — toggle ON : la réservation créée à `confirmer` est SOLDÉE
         # (consommée) ici au lieu d'un second décrément direct — jamais les
         # deux (double décompte). Toggle OFF : chemin historique inchangé.
         toggle_bc_stock = _reserver_stock_bc_actif(bc.company)
-        with transaction.atomic():
-            if bc.devis and not toggle_bc_stock:
-                for ligne in bc.devis.lignes.select_related('produit'):
-                    # AUD216 — VERROU de ligne produit AVANT la lecture de
-                    # `quantite_stock` : `refresh_from_db()` relisait sans
-                    # verrouiller, donc la garde « stock insuffisant » plus bas
-                    # décidait sur une valeur qu'une livraison concurrente
-                    # pouvait déjà avoir consommée (survente). Verrou pris par
-                    # le thin service stock — jamais d'import des models stock.
-                    produit = verrouiller_produit(ligne.produit_id)
-                    # ERR15 — ne PAS tronquer la quantité décimale (int() perdait
-                    # la partie fractionnaire : 3,5 → 3, dérive silencieuse du
-                    # stock sur les lignes au mètre/câble). Le ledger de stock
-                    # est en entiers (IntegerField) : on arrondit au plus proche
-                    # (HALF_UP) au lieu de tronquer, donc 3,5 → 4.
-                    qte = int(Decimal(ligne.quantite).quantize(
-                        Decimal('1'), rounding=ROUND_HALF_UP))
-                    qte_avant = produit.quantite_stock
-                    qte_apres = qte_avant - qte
-                    # AUD228 — route par la garde paramétrable (société)
-                    # plutôt qu'un blocage en dur : `stock_negatif_autorise`
-                    # (AchatsParametres) est désormais respecté ici aussi.
-                    # Message INCHANGÉ quand le réglage refuse (défaut).
-                    try:
-                        check_negative_stock_guard(
-                            bc.company, qte_avant, qte_apres)
-                    except ValueError:
-                        return Response(
-                            {'detail': (
-                                f'Stock insuffisant pour '
-                                f'« {produit.nom} » '
-                                f'(disponible : {qte_avant}, '
-                                f'requis : {qte}).'
-                            )},
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-                    record_stock_movement(
+        try:
+            with transaction.atomic():
+                if bc.devis and not toggle_bc_stock:
+                    # AUD116 — LE MÊME PANIER ET LE MÊME DÉCOMPTEUR que la
+                    # facture du BC et que la nomenclature du chantier. Cette
+                    # boucle lisait `bc.devis.lignes` NU : elle plantait sur
+                    # une ligne sans produit (nullable depuis XSAL14) et, sur
+                    # un devis à deux options accepté « sans batterie », elle
+                    # consommait les DEUX kits — le stock physique divergeait
+                    # du stock ERP du montant d'une batterie.
+                    from ..utils.options import option_lines
+                    from ..domain.facturation_ops import decompter_stock_lignes
+                    decompter_stock_lignes(
+                        lignes=option_lines(bc.devis),
                         company=bc.company,
-                        produit=produit,
-                        type_mouvement=mouvement_type_sortie(),
-                        quantite=qte,
-                        quantite_avant=qte_avant,
-                        quantite_apres=qte_apres,
+                        user=request.user,
                         reference=bc.reference,
                         note=f'Livraison BC {bc.reference}',
-                        created_by=request.user,
                     )
-            bc.statut = BonCommande.Statut.LIVRE
-            from django.utils import timezone as _tz2
-            bc.date_livraison_reelle = _tz2.now().date()
-            if pv:
-                bc.pv_livraison = pv
-            bc.save()
+                bc.statut = BonCommande.Statut.LIVRE
+                from django.utils import timezone as _tz2
+                bc.date_livraison_reelle = _tz2.now().date()
+                if pv:
+                    bc.pv_livraison = pv
+                bc.save()
+        except StockInsuffisantError as exc:
+            # Message FR INCHANGÉ : il vit désormais dans le décompteur unique.
+            return Response(
+                {'detail': exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if toggle_bc_stock:
             from apps.installations.services import consommer_reservation_bc
             consommer_reservation_bc(bc, request.user)
