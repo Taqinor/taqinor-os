@@ -28,4 +28,6 @@ mrp.generer_echeances_entretien    # non planifié (distinct de mrp.rappeler_ent
 mrp.sweep_ecos_effectivite    # non planifié
 parametres.purge_audit_retention    # non planifié
 publicapi.retry_webhook_deliveries    # non planifié
-rh.accruer_conges    # non planifié
+# AUD730 — `rh.accruer_conges` est retirée de cette dette : la commande est
+# désormais RÉELLEMENT planifiée (tâche `rh.accruer_conges`, beat
+# `rh-accruer-conges-mensuel`, le 1er de chaque mois).
