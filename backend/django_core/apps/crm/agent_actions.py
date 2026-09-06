@@ -171,12 +171,48 @@ _ACTIONS = (
 )
 
 
+# AUDV27 (YHARD2) — handler de rollback PILOTE pour ``crm.client.create``
+# (l'action est déclarée dans ``apps.agent.registry`` — builtins, RISK_OUTWARD
+# — pas dans ce module). Le handler est du code CRM (il connaît ``Client``),
+# enregistré dans le registre technique ``apps.agent.services`` — même sens de
+# dépendance que l'enregistrement du catalogue ci-dessus (CRM → agent, jamais
+# l'inverse : ``apps.agent`` n'importe aucune app métier).
+def _annuler_creation_client(log):
+    """Supprime le ``Client`` créé par une action ``crm.client.create``
+    confirmée — SAUF si des documents (devis/facture) le référencent déjà
+    (``ProtectedError``), auquel cas l'annulation dégrade en NO-OP motivé
+    plutôt que de lever une erreur non rattrapée."""
+    from django.db.models import ProtectedError
+
+    from .models import Client
+
+    if not log.object_id:
+        return "Aucun client identifié sur ce journal — rien à annuler."
+    client = Client.objects.filter(
+        pk=log.object_id, company_id=log.company_id).first()
+    if client is None:
+        return "Client déjà supprimé ou introuvable — rien à annuler."
+    nom = client.nom
+    try:
+        client.delete()
+    except ProtectedError:
+        return (
+            f"Client « {nom} » NON supprimé : des documents (devis/facture) "
+            "le référencent déjà — annulez-les d'abord.")
+    return f"Client « {nom} » supprimé (annulation de sa création)."
+
+
 def register_crm_actions() -> None:
     """Enregistre les actions CRM dans le registre AG1 (idempotent).
 
     Sûre si ``CrmConfig.ready()`` est appelée plus d'une fois : on ne
-    ré-enregistre pas une clé déjà présente.
+    ré-enregistre pas une clé déjà présente. Enregistre aussi le handler de
+    rollback PILOTE de ``crm.client.create`` (AUDV27) — ``register_undo_
+    handler`` est lui-même idempotent (dernier appel gagne).
     """
     for action in _ACTIONS:
         if action.key not in _REGISTRY:
             register(action)
+
+    from apps.agent.services import register_undo_handler
+    register_undo_handler('crm.client.create', _annuler_creation_client)

@@ -7,6 +7,7 @@ et donc société-aware via son rôle). Métadonnées uniquement : aucune exécu
 YHARD2 — journal des actions IA confirmées (lecture admin/Directeur) + endpoint
 d'annulation pour une action réversible.
 """
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,7 +16,18 @@ from authentication.permissions import IsAdminRole
 
 from .models import AgentActionLog
 from .registry import for_user
-from .services import ActionNotUndoableError, annuler_action
+from .services import ActionNotUndoableError, annuler_action, log_confirmed_action
+
+# AUDV27 — mappe une ``action_key`` PILOTE vers le modèle (app_label, nom) de
+# l'objet qu'elle crée, pour dériver ``content_type``/``object_id`` du journal
+# SANS jamais importer le modèle de l'app métier ici (résolu par
+# ``django.apps.apps.get_model``, string-only — même garde que les FK string
+# cross-app). Volontairement minimal (1 entrée pilote, AUDV27) : une action
+# absente de cette table est quand même journalisée, seulement sans cible
+# résolue (``object_repr`` vide).
+_RESULTED_OBJECT_MODELS = {
+    'crm.client.create': ('crm', 'Client'),
+}
 
 
 class AgentActionsView(APIView):
@@ -86,6 +98,57 @@ class AgentActionUndoView(APIView):
             return Response({'detail': str(exc)}, status=409)
 
         return Response(_serialize_log(log))
+
+
+class AgentActionConfirmerView(APIView):
+    """AUDV27 (YHARD2) — ``POST /api/django/agent/logs/confirmer/`` :
+    journalise la CONFIRMATION d'une action IA APRÈS son exécution réelle
+    (appelé par le relais FastAPI juste après un ``confirm_proposal``
+    réussi — jamais à la simple proposition, éphémère côté agent/Redis).
+
+    Le journal YHARD2 restait vide en production : ``log_confirmed_action``
+    existait, testée, mais AUCUN appelant ne l'invoquait après une exécution
+    réelle. Self-service (tout utilisateur authentifié journalise SA PROPRE
+    action confirmée) — la LECTURE/l'ANNULATION du journal restent admin/
+    Directeur (``AgentActionLogView``/``AgentActionUndoView``). ``company``/
+    ``user`` posés côté serveur, jamais lus du corps."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data or {}
+        action_key = (data.get('action_key') or '').strip()
+        risk_level = data.get('risk_level') or ''
+        if not action_key or risk_level not in AgentActionLog.RiskLevel.values:
+            return Response(
+                {'detail': 'action_key et risk_level (valide) sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = request.user.company
+        if company is None:
+            return Response(
+                {'detail': "Aucune société associée à l'utilisateur."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        resulted_object = None
+        object_id = data.get('object_id')
+        mapping = _RESULTED_OBJECT_MODELS.get(action_key)
+        if object_id and mapping:
+            from django.apps import apps as django_apps
+            try:
+                model = django_apps.get_model(*mapping)
+            except LookupError:
+                model = None
+            if model is not None:
+                resulted_object = model.objects.filter(
+                    pk=object_id, company=company).first()
+
+        log = log_confirmed_action(
+            company=company, user=request.user, action_key=action_key,
+            risk_level=risk_level, inputs=data.get('inputs') or {},
+            proposal_hash=data.get('proposal_hash') or '',
+            resulted_object=resulted_object,
+        )
+        return Response(_serialize_log(log), status=status.HTTP_201_CREATED)
 
 
 class AutomationDraftView(APIView):
