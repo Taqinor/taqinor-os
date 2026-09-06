@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
-  Handshake, Swords, Trophy,
+  Handshake, Swords, Trophy, CalendarClock,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -57,6 +57,9 @@ const PartenairesPage = lazy(() => import('./Partenaires'))
 const ConcurrentsPertePage = lazy(() => import('./ConcurrentsPerte'))
 // NTCRM24 — leaderboard des défis d'équipe (NTCRM23), visible de toute l'équipe.
 const DefisPage = lazy(() => import('../../pages/crm/defis/DefisPage'))
+// MRY31 — écran « Suivi des relances » : les touches de cadence par jour et
+// leur statut (au-delà de la file « aujourd'hui + retard » du Cockpit).
+const RelancesSuiviPage = lazy(() => import('../../pages/crm/RelancesSuiviPage'))
 
 const config = {
   key: 'crm',
@@ -98,6 +101,10 @@ const config = {
       // NTCRM24 — classement des défis d'équipe : visible de toute l'équipe
       // (gamification), pas juste le manager.
       { to: '/crm/defis',            label: 'Défis',            k: 'nav.defis',      icon: navIcon(Trophy),     roles: ['normal','responsable','admin'] },
+      // MRY31 — suivi des relances par jour (au-delà du widget Cockpit) :
+      // visible de toute l'équipe, le filtre Responsable se réserve lui-même
+      // aux rôles responsable/admin à l'intérieur de l'écran.
+      { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'] },
     ],
   },
   routes: [
@@ -123,6 +130,8 @@ const config = {
     { path: '/crm/concurrents-perte', component: ConcurrentsPertePage },
     // NTCRM24 — leaderboard des défis d'équipe.
     { path: '/crm/defis', component: DefisPage },
+    // MRY31 — suivi des relances par jour.
+    { path: '/crm/relances', component: RelancesSuiviPage },
   ],
 }
 

@@ -72,6 +72,13 @@ const crmApi = {
   // ?scope=overdue|today|all (défaut today) + ?owner=<id>. {count, results}.
   getRelanceEtapesDues: (params, config) =>
     api.get('/crm/relance-etapes/', { params, ...config }),
+  // MRY30/MRY31 — file « Suivi des relances » : TOUS statuts, `due_date` dans
+  // [date_debut, date_fin] (62 j max), portée via le lead, `resume` compté
+  // serveur AVANT le filtre `statut`. `params` OBLIGATOIRES `date_debut`/
+  // `date_fin` (YYYY-MM-DD, Africa/Casablanca) + `owner`/`statut` optionnels.
+  // Forme : `contract_samples/relance_etapes_suivi.json` (PACT10).
+  getRelanceEtapesSuivi: (params) =>
+    api.get('/crm/relance-etapes/suivi/', { params }),
   // Initialise (à la demande) le plan de relance d'un lead à partir de la
   // cadence par défaut de la société — idempotent PAR CADENCE (ré-appel = pas
   // de doublon). MRY15 — `payload` optionnel `{cadence}` (contact/après
