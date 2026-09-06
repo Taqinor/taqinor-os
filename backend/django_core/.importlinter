@@ -45,7 +45,6 @@ modules =
 # DIRECT cross-domain `X.models -> Y.models` import is a separate edge and stays
 # caught.
 ignore_imports =
-<<<<<<< HEAD
 # AUD105/106/107 + QJR50 — l'arête d'entrée a DÉMÉNAGÉ, l'exception la suit.
 # La chaîne d'argent des documents client vit désormais dans la façade SANS
 # modèle `apps.facturation.totaux` (`TotauxDocumentMixin`), que `ventes.models`
@@ -60,8 +59,6 @@ ignore_imports =
 # seule, au même endroit sémantique. Un import DIRECT
 # `X.models -> Y.models` reste détecté.
     apps.facturation.totaux -> apps.ventes.selectors
-=======
->>>>>>> origin/main
     apps.sav.models -> apps.sav.selectors
     apps.crm.models -> apps.crm.services
 # ODX17 — `apps.ventes.models` ends with a transitional RE-EXPORT shim
@@ -235,7 +232,6 @@ forbidden_modules =
     apps.sav.models
     apps.installations.models
     apps.compta.models
-<<<<<<< HEAD
 # ODX17 — Facture/Avoir (déplacées ici depuis ventes) délèguent LAZILY leur
 # calcul TVA au selector partagé `ventes.selectors.tva_buckets/_canonical_totaux`
 # (function-local import dans les properties `total_ht`/`tva_par_taux`/
@@ -244,14 +240,6 @@ forbidden_modules =
 # donc la façade qui porte l'arête fonction-locale vers le selector, et c'est
 # ELLE qu'on ignore ici (même correction qu'au contrat M1 ci-dessus). Un import
 # DIRECT `apps.facturation.models -> apps.ventes.models` reste détecté.
-=======
-# ODX17 / AUD105-107 — Facture/Avoir délèguent LAZILY leur calcul TVA au
-# selector partagé `ventes.selectors.tva_buckets/_canonical_totaux`, désormais
-# via le mixin `apps.facturation.totaux` (l'import function-local a déménagé de
-# models.py vers totaux.py avec TotauxDocumentMixin, 2026-09-06). Ignore
-# uniquement cette arête de couche selector ; un import DIRECT
-# `apps.facturation.models -> apps.ventes.models` resterait détecté.
->>>>>>> origin/main
 ignore_imports =
     apps.facturation.totaux -> apps.ventes.selectors
 
@@ -491,19 +479,9 @@ ignore_imports =
 # exceptions `authentication.tasks -> …` plus bas. Toute arête DIRECTE
 # `core.* -> apps.<domaine>` reste détectée.
     authentication.session_policy -> apps.parametres.models
-# AUD231 — le test noyau des huit balayages « planifiables par Celery beat »
-# doit importer les VRAIES tâches domaine pour prouver que le `beat_schedule`
-# pointe sur du code existant (et qu'une réservation Click & Collect expirée est
-# réellement libérée). Même motif test→domaine que les exceptions ci-dessous ;
-# le code de PRODUCTION de `core` n'y touche pas.
-    core.tests.test_aud231_jobs_planifies -> apps.btp_chantier.tasks
-    core.tests.test_aud231_jobs_planifies -> apps.crm.models
-    core.tests.test_aud231_jobs_planifies -> apps.gestion_projet.tasks
-    core.tests.test_aud231_jobs_planifies -> apps.installations.tasks
-    core.tests.test_aud231_jobs_planifies -> apps.pos.models
-    core.tests.test_aud231_jobs_planifies -> apps.pos.tasks
-    core.tests.test_aud231_jobs_planifies -> apps.stock.models
-    core.tests.test_aud231_jobs_planifies -> apps.stock.tasks
+# AUD231 — le test des huit balayages beat a DÉMÉNAGÉ dans apps/pos/tests
+# (contrat core = couche de base, fix-ci #620) : plus aucune arête core.tests
+# vers les domaines, les exceptions mortes sont retirées (06/09/2026).
 # SOL13/SOL14 + YHARD — trois autres tests noyau cross-couche révélés par
 # l'inversion : le registre des traitements CNDP s'appuie sur un dossier RH
 # réel, et le filtre « sociétés ayant tel module » sur une société d'adminops.
