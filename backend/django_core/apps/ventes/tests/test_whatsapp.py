@@ -356,10 +356,17 @@ class TestMessagesSettingsApi(TestCase):
         self.api = make_api(self.admin)
 
     def test_list_returns_all_keys_with_defaults(self):
+        from apps.parametres.models import MessageTemplate
         resp = self.api.get('/api/django/parametres/messages/')
         self.assertEqual(resp.status_code, 200, resp.data)
         cles = {row['cle'] for row in resp.data}
-        self.assertEqual(cles, {
+        # L'écran sert TOUTES les clés du référentiel : on compare à la source
+        # unique (`MessageTemplate.Cle`) plutôt qu'à une liste recopiée, qui
+        # meurt à chaque ajout — MRY12 (2026-09) a porté le référentiel à
+        # 25 clés de plus (moteur de relances : valeur_j1, reveil_a3, …).
+        self.assertEqual(cles, set(MessageTemplate.Cle.values))
+        # Les clés WhatsApp historiques restent servies (aucune régression).
+        self.assertTrue({
             'devis_unique', 'devis_multi_entete', 'devis_multi_ligne',
             'facture', 'relance',
             # XSAV4 — notifications client aux transitions du ticket SAV.
@@ -367,7 +374,7 @@ class TestMessagesSettingsApi(TestCase):
             # XSTK22 — notifications client aux transitions de livraison.
             'livraison_en_transit', 'livraison_livree',
             # XFSM6 — rappel client J-1 (RDV planifié demain, non confirmé).
-            'rappel_rdv'})
+            'rappel_rdv'}.issubset(cles))
         unique = next(r for r in resp.data if r['cle'] == 'devis_unique')
         self.assertIn('{reference}', unique['corps_fr'])
         self.assertIn('placeholders', unique)
@@ -488,8 +495,6 @@ class TestWhatsAppChatterLogging(TestCase):
 
     def test_lead_devis_whatsapp_writes_note_to_chatter(self):
         from apps.crm.models import LeadActivity
-        before_notes = LeadActivity.objects.filter(
-            lead=self.lead, kind=LeadActivity.Kind.NOTE).count()
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/',
             {'devis_ids': [self.devis.id]}, format='json')
@@ -498,15 +503,19 @@ class TestWhatsAppChatterLogging(TestCase):
             lead=self.lead, kind=LeadActivity.Kind.NOTE)
         # U4 : l'action WhatsApp ajoute la note de partage (kind=NOTE) ; faire
         # passer le devis à « envoyé » fait AUSSI avancer le tunnel (→ QUOTE_SENT),
-        # ce qui journalise une activité kind=MODIFICATION SÉPARÉE. On vérifie
-        # donc spécifiquement la note WhatsApp.
-        self.assertEqual(notes.count(), before_notes + 1)
-        last = notes.order_by('-created_at').first()
-        self.assertIn('WhatsApp', last.body)
-        self.assertIn('DEV-LOG-1', last.body)
+        # ce qui journalise une activité kind=MODIFICATION SÉPARÉE. MRY7 (2026-09)
+        # démarre EN PLUS la cadence « après devis » sur ce même événement, et
+        # `initialiser_plan_relance` pose sa PROPRE note (« Plan de relance
+        # initialisé… ») : compter le total de notes ne dit donc plus rien. On
+        # cible la note WhatsApp elle-même — et on exige qu'il n'y en ait
+        # qu'UNE (c'est le doublon que ce test garde).
+        whatsapp = [n for n in notes if 'WhatsApp' in (n.body or '')]
+        self.assertEqual(len(whatsapp), 1, [n.body for n in notes])
+        note = whatsapp[0]
+        self.assertIn('DEV-LOG-1', note.body)
         # Acteur et société posés côté serveur.
-        self.assertEqual(last.user, self.user)
-        self.assertEqual(last.company, self.company)
+        self.assertEqual(note.user, self.user)
+        self.assertEqual(note.company, self.company)
 
     def test_facture_whatsapp_writes_note_to_chatter(self):
         from apps.ventes.models import FactureActivity

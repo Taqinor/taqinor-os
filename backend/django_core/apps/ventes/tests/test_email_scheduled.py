@@ -353,9 +353,12 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
     @override_settings(
         EMAIL_BACKEND=LOCMEM,
         ANYMAIL={'SENDINBLUE_API_KEY': 'real-brevo-key', 'SENDGRID_API_KEY': ''})
-    def test_generic_new_lead_notification_still_defaults_email_off(self):
-        # QW8 n'ouvre le canal email par défaut QUE pour le rappel — le
-        # générique lead_new reste email=False par défaut (aucune régression).
+    def test_lead_new_ouvre_aussi_l_email_depuis_mry3(self):
+        # QW8 n'ouvrait le canal email par défaut QUE pour le rappel. MRY3
+        # (2026-09, décision fondateur) l'ouvre AUSSI pour `lead_new` :
+        # l'arrivée d'un lead est l'événement le plus périssable du CRM, elle
+        # ne doit pas rester une simple ligne in-app. Le défaut GÉNÉRIQUE, lui,
+        # reste email=False — c'est ce que garde le test suivant.
         from apps.crm.models import Lead
         from apps.crm.services import notify_new_lead
 
@@ -363,4 +366,14 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
             company=self.company, nom='Prospect générique',
             telephone='+212600998855', owner=self.owner)
         notify_new_lead(lead)
-        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_le_defaut_generique_reste_email_off(self):
+        """Seuls les événements de `EVENT_DEFAULT_OVERRIDES` ouvrent l'email —
+        la liste n'est jamais devenue un défaut global."""
+        from apps.notifications.services import (
+            DEFAULT_PREFS, EVENT_DEFAULT_OVERRIDES, default_prefs_for,
+        )
+        self.assertFalse(DEFAULT_PREFS['email'])
+        self.assertFalse(default_prefs_for('stock_low')['email'])
+        self.assertIn('lead_new', EVENT_DEFAULT_OVERRIDES)

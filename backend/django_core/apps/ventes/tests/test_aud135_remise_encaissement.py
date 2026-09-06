@@ -56,7 +56,12 @@ class TestAud135RemiseEncaissement(TestCase):
             date_paiement=date.today(), created_by=self.user, **kwargs)
 
     def _creer_remise(self, paiements, montant_declare='15000.00'):
+        # `technicien` est un champ obligatoire du contrat XFSM19 (FK non
+        # nullable, PROTECT) : l'écran l'envoie explicitement — l'omettre ici
+        # rendait VERT pour la mauvaise raison les cas « virement refusé » et
+        # « paiement rejeté » (400 sur le champ manquant, jamais sur le motif).
         return self.api.post(URL, {
+            'technicien': self.user.id,
             'date_collecte': date.today().isoformat(),
             'montant_declare': montant_declare,
             'lignes': [{'paiement': p.id} for p in paiements],

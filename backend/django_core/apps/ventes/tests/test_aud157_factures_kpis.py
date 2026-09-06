@@ -173,6 +173,14 @@ class TestFacturesKpis(TestCase):
             for _ in range(n):
                 f = self._facture(echeance=aujourdhui + timedelta(days=10))
                 self._paiement(f, '1000', aujourdhui)
+            # Le PREMIER appel crée le `CompanyProfile` de la société
+            # (`CompanyProfile.get` = get_or_create : SELECT + SAVEPOINT +
+            # INSERT + RELEASE au lieu d'un simple SELECT ensuite). Ce coût
+            # d'amorçage n'est pas une croissance avec le portefeuille : on
+            # mesure les deux points À CHAUD, sinon le premier relevé est
+            # gonflé de quelques requêtes et le test « N+1 » ment dans les
+            # deux sens.
+            self.api.get('/api/django/ventes/factures/')
             with CaptureQueriesContext(connection) as ctx:
                 resp = self.api.get('/api/django/ventes/factures/')
                 self.assertEqual(resp.status_code, 200, resp.content)

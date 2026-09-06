@@ -79,12 +79,16 @@ class TestAud134PaiementChampsLectureSeule(TestCase):
         self.assertIsNone(paiement.date_rejet)
 
     def test_statut_affectation_du_corps_est_ignore(self):
-        resp = self._enregistrer(statut_affectation='affecte')
+        # XFAC1 — un règlement posé SUR une facture est `affecte` (défaut du
+        # modèle). Le corps envoie donc la valeur CONTRAIRE : c'est le seul
+        # moyen de prouver qu'il est ignoré (envoyer « affecte », comme avant,
+        # ne distinguait rien du défaut serveur).
+        resp = self._enregistrer(statut_affectation='non_affecte')
         self.assertEqual(resp.status_code, 201, resp.data)
         paiement = Paiement.objects.get(facture=self.facture)
         self.assertEqual(
             paiement.statut_affectation,
-            Paiement.StatutAffectation.NON_AFFECTE)
+            Paiement.StatutAffectation.AFFECTE)
 
     def test_client_du_corps_est_ignore(self):
         """Un `client` d'une AUTRE société ne doit jamais être posé."""

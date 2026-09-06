@@ -72,6 +72,10 @@ class TestBudgetRequetesRecouvrement(TestCase):
     def _cout(self, url, n_nouvelles):
         for _ in range(n_nouvelles):
             self._facture_due()
+        # Les deux points sont mesurés À CHAUD : un coût d'amorçage (création
+        # paresseuse d'une ligne de configuration au premier appel) n'est pas
+        # une croissance avec le portefeuille et fausserait la comparaison.
+        self.api.get(url)
         with CaptureQueriesContext(connection) as ctx:
             resp = self.api.get(url)
             self.assertEqual(resp.status_code, 200, resp.content)

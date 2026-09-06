@@ -25,6 +25,7 @@ from apps.facturation.models import Facture, LigneFacture, Paiement
 from apps.roles.models import (
     PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT, Role,
 )
+from apps.stock.models import Produit
 from authentication.models import Company, CustomUser
 
 _seq = itertools.count(1)
@@ -48,6 +49,11 @@ class MesFacturesBudgetRequetesTests(TestCase):
         self.user.portee = CustomUser.PORTEE_PORTAIL_CLIENT
         self.user.portail_client_id = self.client_obj.id
         self.user.save()
+        # `LigneFacture.produit` est une FK NON NULLE (PROTECT) : une ligne
+        # d'en-tête seule viole la contrainte en base.
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Kit PV', sku=f'AUD159-{n}',
+            prix_vente=Decimal('10000'), quantite_stock=500)
         self.api = APIClient()
         self.api.force_authenticate(user=self.user)
 
@@ -58,7 +64,7 @@ class MesFacturesBudgetRequetesTests(TestCase):
             client=self.client_obj, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20'))
         LigneFacture.objects.create(
-            facture=facture, designation='Kit PV',
+            facture=facture, produit=self.produit, designation='Kit PV',
             quantite=Decimal('1'), prix_unitaire=Decimal('10000'),
             taux_tva=Decimal('20'))
         Paiement.objects.create(
@@ -70,6 +76,9 @@ class MesFacturesBudgetRequetesTests(TestCase):
     def _cout(self, n_nouvelles):
         for _ in range(n_nouvelles):
             self._facture()
+        # Mesure À CHAUD : un coût d'amorçage au premier appel n'est pas une
+        # croissance avec le portefeuille.
+        self.api.get('/api/django/portail/mes-factures/')
         with CaptureQueriesContext(connection) as ctx:
             res = self.api.get('/api/django/portail/mes-factures/')
             self.assertEqual(res.status_code, 200, res.content)

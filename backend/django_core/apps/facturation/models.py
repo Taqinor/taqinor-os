@@ -692,8 +692,16 @@ class LigneFacture(models.Model):
 
     @property
     def total_ht(self):
+        # AUD128 — `remise` porte un défaut ENTIER (`default=0`) et Django ne
+        # convertit un défaut qu'à la RELECTURE en base : sur une ligne tout
+        # juste créée (POST sans `remise`), `self.remise` vaut l'int 0, donc
+        # `0 / 100` rend un FLOAT et `Decimal * float` lève TypeError — la
+        # création d'une ligne de facture par l'API rendait 500. On normalise
+        # ici, au seul endroit qui calcule le montant.
+        from decimal import Decimal
+        remise = Decimal(str(self.remise or 0))
         return (
-            self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+            self.quantite * self.prix_unitaire * (1 - remise / 100)
         )
 
     @property
