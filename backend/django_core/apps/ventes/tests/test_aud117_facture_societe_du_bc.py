@@ -70,6 +70,14 @@ class TestFactureSocieteDuBonCommande(TestCase):
             company=self.a, reference=f'BC-AUD117-{_nxt()}',
             devis=self.devis_a, client=self.client_a,
             statut=BonCommande.Statut.CONFIRME)
+        # `BonCommande.devis` est un OneToOneField : `devis_a` est DÉJÀ pris
+        # par `bc_a`. Un POST qui le réutilise échoue sur l'unicité du devis
+        # AVANT d'atteindre la garde cross-tenant qu'on veut prouver — d'où ce
+        # second devis, libre de tout bon de commande.
+        self.devis_a2 = Devis.objects.create(
+            company=self.a, client=self.client_a,
+            reference=f'DEV-AUD117-{_nxt()}',
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
 
     def test_facture_prend_la_societe_du_bc(self):
         """ROUGE avant le correctif : company NULL (celle du superutilisateur)."""
@@ -85,7 +93,7 @@ class TestFactureSocieteDuBonCommande(TestCase):
         profil (elle vivait dans `if company is not None`)."""
         resp = self.api.post(
             '/api/django/ventes/bons-commande/',
-            {'client': self.client_b.id, 'devis': self.devis_a.id},
+            {'client': self.client_b.id, 'devis': self.devis_a2.id},
             format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('client', resp.data)
