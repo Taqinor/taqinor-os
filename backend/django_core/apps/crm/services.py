@@ -789,6 +789,120 @@ def cloturer_cadence(lead, user, cadence):
             getattr(lead, 'pk', '?'), cadence, exc_info=True)
 
 
+#: MRY13 — la touche dont le texte est un SCRIPT à dire, pas un message à
+#: coller : son lien wa.me ne doit donc porter aucun `?text=`.
+_TEMPLATES_VOCAUX = frozenset({'vocal_j3'})
+
+#: Placeholders que le rendu sait remplir. Un placeholder de cette liste resté
+#: SANS valeur fait OMETTRE sa phrase — jamais un blanc, jamais un défaut.
+_PLACEHOLDERS_RENDUS = (
+    'civilite', 'nom', 'prenom', 'ville', 'reference', 'lien',
+    'lien_rdv', 'date_validite', 'conseiller')
+
+
+def _omettre_phrases_incompletes(texte, manquants):
+    """MRY13 — retire les phrases qui portent un placeholder sans valeur.
+
+    Laisser un blanc à la place d'une date de validité ou d'une référence
+    produirait un message client trompeur (« valable jusqu'au  »). On préfère
+    perdre la phrase que mentir : découpe par ligne puis par « . », et on
+    ne garde que les fragments dont tous les placeholders sont résolus."""
+    if not manquants:
+        return texte
+    trous = ['{' + cle + '}' for cle in manquants]
+    lignes_gardees = []
+    for ligne in (texte or '').split('\n'):
+        if not any(trou in ligne for trou in trous):
+            lignes_gardees.append(ligne)
+            continue
+        morceaux = ligne.split('. ')
+        gardes = [m for m in morceaux
+                  if not any(trou in m for trou in trous)]
+        if gardes:
+            recolle = '. '.join(gardes)
+            if ligne.rstrip().endswith('.') and not recolle.endswith('.'):
+                recolle += '.'
+            lignes_gardees.append(recolle)
+    return '\n'.join(lignes_gardees).strip()
+
+
+def message_pour_etape(etape, *, request=None, user=None):
+    """MRY13 — Le message d'UNE touche, rendu côté serveur.
+
+    Forme `relance_etape_message` (contrat MRY25) :
+    ``{message, wa_url, langue, phone, placeholders_manquants}``.
+
+    Le serveur RÉEND, il n'ENVOIE pas (décision D5) : l'écran montre une
+    modale d'aperçu, et c'est le clic humain qui ouvre WhatsApp. Aucun BSP,
+    aucun appel réseau sortant.
+
+    Règle absolue du lot : AUCUN chiffre inventé. Une phrase dont le
+    placeholder n'a pas de valeur réelle est OMISE (jamais un blanc, jamais un
+    défaut), et `placeholders_manquants` le dit à l'appelant. Les prix, kWc et
+    économies ne sont pas des placeholders du tout : ils restent dans le devis
+    et la proposition."""
+    from apps.parametres.models_messages import MessageTemplate
+    from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
+
+    lead = etape.lead
+    langue = lead.langue_preferee or 'fr'
+    corps = MessageTemplate.get_corps(
+        lead.company, etape.template_cle, langue) if etape.template_cle else ''
+
+    contexte = {
+        'civilite': (getattr(lead, 'civilite', '') or ''),
+        'nom': (lead.nom or '').strip(),
+        'prenom': (lead.prenom or '').strip(),
+        'ville': (lead.ville or '').strip(),
+        'conseiller': (getattr(user, 'first_name', '')
+                       or getattr(user, 'username', '') or ''),
+        'reference': '',
+        'lien': '',
+        'date_validite': '',
+    }
+    if etape.devis_id:
+        try:
+            from apps.ventes.selectors import get_devis_by_pk
+            from apps.ventes.utils.client_links import url_proposition
+            devis = get_devis_by_pk(etape.devis_id)
+            if devis is not None:
+                contexte['reference'] = getattr(devis, 'reference', '') or ''
+                validite = getattr(devis, 'date_validite', None)
+                if validite:
+                    contexte['date_validite'] = validite.strftime('%d/%m/%Y')
+                contexte['lien'] = url_proposition(devis) or ''
+        except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé
+            logger.warning(
+                'MRY13: contexte devis illisible (étape #%s)',
+                getattr(etape, 'pk', '?'), exc_info=True)
+
+    # `{lien_rdv}` n'est résolu QUE s'il est présent (aucun jeton créé sinon).
+    corps = resoudre_lien_rdv(corps, lead, request=request)
+
+    manquants = [cle for cle in _PLACEHOLDERS_RENDUS
+                 if '{' + cle + '}' in (corps or '')
+                 and not str(contexte.get(cle, '')).strip()]
+    corps = _omettre_phrases_incompletes(corps, manquants)
+    message = render_message_template(corps, contexte)
+
+    phone = lead.whatsapp or lead.telephone or ''
+    if etape.template_cle in _TEMPLATES_VOCAUX:
+        # Le texte est le SCRIPT du vocal : on ouvre la conversation, on ne
+        # pré-remplit rien — coller un script à dire serait absurde.
+        wa_url = build_wa_url(phone, '')
+        if wa_url:
+            wa_url = wa_url.split('?text=')[0]
+    else:
+        wa_url = build_wa_url(phone, message)
+    return {
+        'message': message,
+        'wa_url': wa_url,
+        'langue': langue,
+        'phone': phone,
+        'placeholders_manquants': manquants,
+    }
+
+
 def demarrer_cadence_contact(lead, *, user=None, origine=''):
     """MRY6 — Démarre la cadence « contact » à l'arrivée d'un lead VIVANT.
 

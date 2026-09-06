@@ -2368,11 +2368,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
     serializer_class = RelanceEtapeSerializer
 
     def get_permissions(self):
-        # MRY10 — `reporter` est ajoutée EXPLICITEMENT dans la branche
-        # écriture : get_permissions() PRIME sur le `permission_classes` de
-        # l'@action (bug CI #25), une action non listée ici retomberait
-        # silencieusement sur la mauvaise garde.
-        if self.action == 'list':
+        # MRY10/MRY13 — `reporter` et `message` sont listées EXPLICITEMENT :
+        # get_permissions() PRIME sur le `permission_classes` de l'@action
+        # (bug CI #25), une action non listée retomberait silencieusement sur
+        # la mauvaise garde. `message` est une LECTURE (préparer le texte
+        # n'engage rien) ; `whatsapp` ÉCRIT (touche faite, activité, premier
+        # contact, AuditLog) et reste donc réservée.
+        if self.action in ('list', 'message'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2459,6 +2461,52 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
     def sauter(self, request, pk=None):
         """Marque cette étape de relance SAUTÉE (note optionnelle)."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
+
+    @action(detail=True, methods=['get'])
+    def message(self, request, pk=None):
+        """MRY13 — Le message de CETTE touche, rendu côté serveur.
+
+        Forme `relance_etape_message` (contrat MRY25). LECTURE PURE : rien
+        n'est envoyé, rien n'est marqué — l'écran affiche une modale d'aperçu
+        et c'est le clic humain qui ouvre WhatsApp (décision D5)."""
+        etape = self.get_object()
+        from .services import message_pour_etape
+        return Response(message_pour_etape(
+            etape, request=request, user=request.user))
+
+    @action(detail=True, methods=['post'])
+    def whatsapp(self, request, pk=None):
+        """MRY13 — Le CLIC : même rendu, puis la touche est marquée faite.
+
+        Le POST n'envoie RIEN (décision D5) : il enregistre qu'on a ouvert la
+        conversation. Marquer côté serveur est le seul moyen que la file du
+        lendemain soit juste. Refusé (400) si le numéro est inexploitable —
+        prétendre avoir contacté quelqu'un qu'on ne peut pas joindre fausserait
+        aussi bien la file que le KPI."""
+        etape = self.get_object()
+        from .services import (
+            marquer_etape_relance, marquer_premier_contact, message_pour_etape,
+        )
+        rendu = message_pour_etape(etape, request=request, user=request.user)
+        if not rendu.get('wa_url'):
+            return Response(
+                {'detail': 'Numéro de téléphone invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        etape = marquer_etape_relance(
+            etape, request.user, RelanceEtape.Statut.FAIT,
+            note='WhatsApp ouvert')
+        marquer_premier_contact(etape.lead)
+        try:
+            from apps.audit.models import AuditLog
+            from apps.audit.recorder import record
+            record(AuditLog.Action.WHATSAPP, instance=etape.lead,
+                   detail=f'Message de relance ouvert (touche #{etape.pk})')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'MRY13: AuditLog non écrit (étape #%s)', etape.pk,
+                exc_info=True)
+        rendu['etape'] = self.get_serializer(etape).data
+        return Response(rendu)
 
     @action(detail=True, methods=['post'])
     def reporter(self, request, pk=None):
