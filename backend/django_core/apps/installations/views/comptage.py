@@ -116,17 +116,38 @@ class SessionComptageViewSet(CompanyScopedModelViewSet):
         """FG324/YSTCK1 — clôture la session (→ terminé) ET poste l'écart
         constaté en `MouvementStock` AJUSTEMENT (couche de CONSTAT → le
         stock canonique s'aligne enfin sur le compté). IDEMPOTENTE : une
-        session déjà TERMINE ne re-poste jamais."""
+        session déjà TERMINE ne re-poste jamais.
+
+        AUD320 — L'IDEMPOTENCE NE TENAIT QUE POUR DES APPELS SÉQUENTIELS. La
+        lecture de `statut` se faisait par un `get_object()` simple, SANS
+        `select_for_update()` et sans `transaction.atomic()` englobant
+        lecture + écriture + appel à `appliquer_ecarts_comptage` ; ce dernier
+        verrouille chaque `Produit` mais jamais la SESSION, et ne revérifie
+        pas son état sous verrou. Deux POST concurrents (double-clic, retry
+        réseau, deux onglets) lisaient donc tous deux `statut=EN_COURS` avant
+        que l'un ou l'autre committe : les deux passaient la garde et
+        postaient DEUX `MouvementStock` AJUSTEMENT pour le même écart.
+
+        Le verrou est pris sur la SESSION elle-même, et le statut relu SOUS
+        ce verrou : le second appel voit TERMINE et ne poste rien."""
+        from django.db import transaction
         session = self.get_object()
-        deja_terminee = session.statut == SessionComptage.Statut.TERMINE
-        session.statut = SessionComptage.Statut.TERMINE
-        session.save(update_fields=['statut', 'date_modification'])
-        if not deja_terminee:
-            from apps.stock.services import appliquer_ecarts_comptage
-            appliquer_ecarts_comptage(
-                company=request.user.company,
-                lignes=list(session.lignes.all()),
-                user=request.user, reference=session.reference)
+        with transaction.atomic():
+            verrouillee = (SessionComptage.objects
+                           .select_for_update()
+                           .get(pk=session.pk))
+            deja_terminee = (
+                verrouillee.statut == SessionComptage.Statut.TERMINE)
+            verrouillee.statut = SessionComptage.Statut.TERMINE
+            verrouillee.save(
+                update_fields=['statut', 'date_modification'])
+            if not deja_terminee:
+                from apps.stock.services import appliquer_ecarts_comptage
+                appliquer_ecarts_comptage(
+                    company=request.user.company,
+                    lignes=list(verrouillee.lignes.all()),
+                    user=request.user, reference=verrouillee.reference)
+        session.refresh_from_db()
         return Response(self.get_serializer(session).data)
 
 

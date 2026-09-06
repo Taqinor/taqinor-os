@@ -2126,7 +2126,14 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     Une ligne sans produit catalogue (désignation libre) ou pas encore
     comptée (``quantite_comptee`` None) est ignorée. Renvoie le nombre de
     mouvements postés. Scopé société ; verrouille le produit (select_for_update)
-    pour éviter une course avec un mouvement concurrent."""
+    pour éviter une course avec un mouvement concurrent.
+
+    AUD320 — CE SERVICE NE PORTE PAS L'IDEMPOTENCE. Il verrouille chaque
+    ``Produit`` mais jamais la ``SessionComptage``, et ne revérifie pas son
+    état : deux appels concurrents pour la MÊME session posteraient deux
+    ajustements. C'est l'APPELANT qui doit prendre le verrou de session
+    (``installations.views.comptage.terminer`` le fait, sous
+    ``select_for_update()`` + ``transaction.atomic()``)."""
     from django.db import transaction
     from .models import MouvementStock, Produit
 
