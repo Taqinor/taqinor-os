@@ -1848,6 +1848,30 @@ class CandidatureSerializer(serializers.ModelSerializer):
                     f'{obj.cv_attachment_id}/download/')
         return None
 
+    def validate_etape(self, value):
+        """AUD723 — la transition VERS « embauche » passe par ``embaucher/``.
+
+        ``etape`` restait writable en PATCH : un
+        ``PATCH {"etape": "embauche"}`` passait la validation, journalisait la
+        transition et déclenchait l'email automatique « vous êtes embauché »…
+        alors que ``employe_cree`` restait NULL et que l'``OuverturePoste`` ne
+        basculait JAMAIS en pourvu. Seule l'action dédiée
+        ``POST {id}/embaucher/`` (→ ``services.embaucher``) crée réellement le
+        ``DossierEmploye``, lie la candidature et pourvoit l'ouverture.
+
+        Les AUTRES transitions du pipeline (présélection, entretien, offre,
+        rejet) restent éditables — c'est ce que fait l'écran Recrutement.
+        """
+        deja_embauche = (
+            self.instance is not None
+            and self.instance.etape == Candidature.Etape.EMBAUCHE)
+        if value == Candidature.Etape.EMBAUCHE and not deja_embauche:
+            raise serializers.ValidationError(
+                "L'embauche ne se pose pas directement : utilisez l'action "
+                "« embaucher » (POST {id}/embaucher/), qui crée le dossier "
+                "employé et bascule l'ouverture en pourvu.")
+        return value
+
     def get_ouverture_intitule(self, obj):
         if not obj.ouverture_id:
             return ''
