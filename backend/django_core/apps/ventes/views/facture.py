@@ -2,6 +2,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError  # n
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.exceptions import ValidationError  # noqa: F401
@@ -1867,6 +1869,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(responses=inline_serializer('FacturesKpis', {
+        'mois': drf_serializers.CharField(),
+        'mois_precedent': drf_serializers.CharField(),
+        'encaisse_mois': drf_serializers.CharField(),
+        'encaisse_mois_precedent': drf_serializers.CharField(),
+        'total_du': drf_serializers.CharField(),
+        'nb_impayees': drf_serializers.IntegerField(),
+        'total_en_retard': drf_serializers.CharField(),
+        'nb_en_retard': drf_serializers.IntegerField(),
+        'total_a_echoir_7j': drf_serializers.CharField(),
+    }))
     @action(detail=False, methods=['get'], url_path='kpis',
             permission_classes=[IsAnyRole])
     def kpis(self, request):

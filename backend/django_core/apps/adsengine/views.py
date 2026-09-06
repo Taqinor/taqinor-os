@@ -8,7 +8,6 @@ suivantes de la lane et sont tous basés sur
 import logging
 import os
 
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
@@ -2247,7 +2246,11 @@ class MetaWebhookLeadgenSubscribeView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @extend_schema(request=None, responses=inline_serializer(
+        'LeadgenAbonnement', {
+            'ok': drf_serializers.BooleanField(),
+            'detail': drf_serializers.CharField(required=False),
+        }))
     def post(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:

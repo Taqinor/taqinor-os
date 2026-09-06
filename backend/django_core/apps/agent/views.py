@@ -7,11 +7,12 @@ et donc société-aware via son rôle). Métadonnées uniquement : aucune exécu
 YHARD2 — journal des actions IA confirmées (lecture admin/Directeur) + endpoint
 d'annulation pour une action réversible.
 """
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole
@@ -117,7 +118,18 @@ class AgentActionConfirmerView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=inline_serializer(
+        'AgentActionConfirmee', {
+            'id': drf_serializers.IntegerField(),
+            'action_key': drf_serializers.CharField(),
+            'risk_level': drf_serializers.CharField(),
+            'user': drf_serializers.CharField(allow_null=True),
+            'confirmed_at': drf_serializers.DateTimeField(allow_null=True),
+            'executed_at': drf_serializers.DateTimeField(allow_null=True),
+            'object_repr': drf_serializers.CharField(),
+            'undone_at': drf_serializers.DateTimeField(allow_null=True),
+            'is_undoable': drf_serializers.BooleanField(),
+        }))
     def post(self, request):
         data = request.data or {}
         action_key = (data.get('action_key') or '').strip()
