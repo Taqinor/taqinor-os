@@ -22,6 +22,7 @@ from django.test import TestCase
 from django.urls import Resolver404, resolve
 
 from apps.compta.serializers import DocumentClientPortailSerializer
+from apps.ged.models import Cabinet, Document, Folder
 from apps.portail.models import DocumentClientPortail
 from authentication.models import Company
 
@@ -91,10 +92,23 @@ class DocumentPortailVersMinioTests(TestCase):
     def test_le_depot_ged_relit_les_octets_par_la_cle(self):
         """WIR94 conservé : sans ce raccord, le dépôt GED disparaissait."""
         cle = f'attachments/{self.co.id}/portail835.pdf'
+        # `document_ged` est une VRAIE FK (`on_delete=SET_NULL`, contrainte DB)
+        # vers `ged.Document` : le récepteur écrit `document_ged_id` par un
+        # `.update()` brut (`apps.portail.receivers.deposer_upload_dans_ged`),
+        # donc un simple `mock.Mock(pk=4242)` sans ligne réelle en base viole
+        # la contrainte FK. `ged.services.deposit_document` (mocké ici, comme
+        # le reste de la frontière cross-app) doit donc renvoyer un document
+        # GED réellement existant — cabinet/dossier minimaux, pattern déjà
+        # utilisé par apps/ged/tests/test_classification.py.
+        cabinet = Cabinet.objects.create(company=self.co, nom='Portail')
+        dossier = Folder.objects.create(
+            company=self.co, cabinet=cabinet, nom='Documents clients')
+        document_ged = Document.objects.create(
+            company=self.co, folder=dossier, nom='Facture ONEE')
         with mock.patch('apps.records.storage.fetch_attachment',
                         return_value=(PDF, None)) as relit:
             with mock.patch('apps.ged.services.deposit_document') as depose:
-                depose.return_value = (mock.Mock(pk=4242), True)
+                depose.return_value = (document_ged, True)
                 doc = DocumentClientPortail.objects.create(
                     company=self.co, libelle='Facture ONEE',
                     fichier_key=cle, fichier_filename='facture.pdf',
@@ -108,7 +122,7 @@ class DocumentPortailVersMinioTests(TestCase):
         self.assertEqual(kwargs['contenu_bytes'], PDF)
         self.assertEqual(kwargs['mime'], 'application/pdf')
         doc.refresh_from_db()
-        self.assertEqual(doc.document_ged_id, 4242)
+        self.assertEqual(doc.document_ged_id, document_ged.pk)
 
     def test_sans_cle_ni_fichier_aucun_depot_ged(self):
         with mock.patch('apps.ged.services.deposit_document') as depose:

@@ -72,8 +72,15 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertIsNotNone(lead.consent_timestamp)
         self.assertEqual(lead.source, Lead.Source.SITE_WEB)
         self.assertEqual(lead.canal, Lead.Canal.SITE_WEB)
-        # Historique : « créé via le site web »
-        activity = LeadActivity.objects.get(lead=lead)
+        # Historique : « créé via le site web ».
+        # MRY6 — un lead SITE_WEB neuf, avec numéro exploitable, déclenche
+        # aussi sa cadence `contact` (`demarrer_cadence_contact`, guard par
+        # source réelle) : la note système « Plan de relance initialisé »
+        # coexiste légitimement avec la note de création, donc on cible par
+        # `kind` (pattern rond 2 établi dans tests_vx111_note_attachment),
+        # jamais « la seule LeadActivity du lead ».
+        activity = LeadActivity.objects.get(
+            lead=lead, kind=LeadActivity.Kind.CREATION)
         self.assertEqual(activity.kind, LeadActivity.Kind.CREATION)
         self.assertIn('site web', activity.body)
         # Brut stocké et rattaché

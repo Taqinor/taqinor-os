@@ -1070,8 +1070,16 @@ def arreter_cadence(lead, *, user, motif, cadences=None):
         traite_par=user,
         traite_le=timezone.now())
     quelles = ', '.join(cadences) if cadences else 'toutes cadences'
+    # FG28/MRY19 — note SYSTÈME (``user=None``), jamais l'utilisateur qui a
+    # déclenché l'arrêt (même motif que ``initialiser_plan_relance`` et
+    # ``_refus_cadence`` ci-dessus) : ARRÊTER une cadence n'est pas AVOIR
+    # contacté le lead. Avec ``user`` posé ici, le récepteur QJ7
+    # (``_avancer_stage_on_contact_activity``) traitait cette note comme un
+    # premier contact manuel et avançait NEW → CONTACTED dès qu'un lead tout
+    # neuf était marqué « perdu » / « ne plus contacter » — le bug était
+    # visible dans ``test_une_seule_note_chatter`` (4 notes au lieu de 3).
     LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=user,
+        company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Cadence {quelles} arrêtée ({len(pks)} touche(s)) : {motif}.')
     prochaine = _prochaine_touche_a_faire(lead)
