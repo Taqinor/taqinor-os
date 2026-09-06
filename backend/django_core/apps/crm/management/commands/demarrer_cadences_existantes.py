@@ -4,9 +4,10 @@ Sans elle, le moteur ne démarrerait que sur les leads arrivés APRÈS le déplo
 tout le portefeuille en cours resterait sans cadence, et le bénéfice n'arriverait
 qu'au fil des semaines. Cette commande rattrape trois populations :
 
-  1. les devis ENVOYÉS depuis moins de 14 jours → cadence « après devis »,
-     datée depuis l'envoi RÉEL, avec les touches déjà passées SAUTÉES (les
-     rejouer enverrait aujourd'hui le message du J+1 d'il y a dix jours) ;
+  1. les devis ENVOYÉS depuis moins de 14 jours et TOUJOURS en attente de
+     réponse (statut « envoyé ») → cadence « après devis », datée depuis
+     l'envoi RÉEL, avec les touches déjà passées SAUTÉES (les rejouer
+     enverrait aujourd'hui le message du J+1 d'il y a dix jours) ;
   2. les leads NEUFS jamais contactés, créés depuis moins de 5 jours →
      cadence « contact », avec les MÊMES gardes que MRY6 ;
   3. les dormants (COLD, ou devis sans suite depuis 30 jours) → cadence
@@ -104,13 +105,19 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
 
     Renvoie ``{apres_devis, contact, reveil, ignores}``. IDEMPOTENTE :
     l'idempotence par cadence de `initialiser_plan_relance` (MRY5) fait qu'un
-    second passage ne crée rien."""
+    second passage ne crée rien.
+
+    Le DRY-RUN applique EXACTEMENT les mêmes gardes que ``--apply`` (via
+    ``services._garde_cadence_contact``, fonction pure) : une simulation qui
+    annonce plus de dossiers que la vraie exécution n'en traite ne sert à
+    rien — et c'est sur ce chiffre que se décide le lancement."""
     from django.utils import timezone
 
     from apps.crm import stages
     from apps.crm.models import Lead, RelanceEtape
     from apps.crm.services import (
-        demarrer_cadence_contact, initialiser_plan_relance)
+        _garde_cadence_contact, demarrer_cadence_contact,
+        initialiser_plan_relance)
 
     maintenant = now or timezone.now()
     rapport = {'apres_devis': _bloc(), 'contact': _bloc(),
@@ -152,11 +159,15 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
     for lead in neufs:
         if lead.relance_etapes.filter(cadence='contact').exists():
             continue
-        if not apply_changes:
-            _noter(rapport['contact'], lead.pk)
-            continue
         # MÊMES gardes que MRY6 (numéro exploitable, doublon vivant…) : la
-        # reprise ne doit pas être une porte dérobée qui les contourne.
+        # reprise ne doit pas être une porte dérobée qui les contourne — ni,
+        # en simulation, promettre des cadences qu'elles refuseront.
+        if not apply_changes:
+            if _garde_cadence_contact(lead) is None:
+                _noter(rapport['contact'], lead.pk)
+            else:
+                rapport['ignores'] += 1
+            continue
         if demarrer_cadence_contact(lead, origine='reprise MRY23'):
             _noter(rapport['contact'], lead.pk)
         else:
@@ -194,12 +205,18 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
 
 
 def _devis_envoyes_recents(company, depuis):
-    """Devis ENVOYÉS depuis ``depuis``, lus par le sélecteur de ``ventes`` —
-    jamais un import de ``ventes.models`` (frontière M3)."""
+    """Devis ENVOYÉS **et toujours en attente** depuis ``depuis``, lus par le
+    sélecteur de ``ventes`` — jamais un import de ``ventes.models``
+    (frontière M3).
+
+    Le statut compte autant que la date : ``devis_envoyes_periode`` ne filtre
+    QUE ``date_envoi``, si bien que la reprise démarrait une cadence « après
+    devis » sur des propositions déjà ACCEPTÉES, refusées ou expirées — et
+    demandait « alors, ce PDF ? » trois jours après la signature."""
     try:
-        from apps.ventes.selectors import devis_envoyes_periode
-        return [d for d in devis_envoyes_periode(
-            company, date_debut=depuis.date()) if getattr(d, 'lead_id', None)]
+        from apps.ventes.selectors import devis_envoyes_en_attente
+        return [d for d in devis_envoyes_en_attente(company, depuis)
+                if getattr(d, 'lead_id', None)]
     except Exception:  # noqa: BLE001 — une reprise n'échoue jamais sur ce point
         logger.warning(
             'MRY23: devis récents illisibles (société %s)',

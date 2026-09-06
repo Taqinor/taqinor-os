@@ -2018,6 +2018,42 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
     return qs.order_by('date_envoi', 'id')
 
 
+def devis_envoyes_en_attente(company, since=None):
+    """MRY23 — Devis ENVOYÉS et TOUJOURS en attente de réponse depuis ``since``.
+
+    Point d'entrée cross-app en LECTURE (``apps.crm`` démarre sa cadence
+    « après devis » dessus sans importer ``apps.ventes.models``). Différence
+    avec ``devis_envoyes_periode``, qui reste inchangé : le statut est
+    contraint à ``ENVOYE``. Sans ce filtre, la reprise MRY23 relançait un
+    client sur une proposition qu'il avait déjà ACCEPTÉE (ou refusée, ou qui
+    avait expiré) — « alors, ce PDF ? » trois jours après la signature.
+
+    ``since`` est un datetime (borne basse sur ``date_envoi``, ouverte si
+    absente)."""
+    from .models import Devis
+    qs = Devis.objects.filter(
+        company=company, statut=Devis.Statut.ENVOYE,
+        date_envoi__isnull=False)
+    if since is not None:
+        qs = qs.filter(date_envoi__gte=since)
+    return qs.order_by('date_envoi', 'id')
+
+
+def lead_a_un_devis(lead):
+    """MRY11 — Ce lead a-t-il déjà REÇU une proposition (devis sorti du
+    brouillon : envoyé, accepté, refusé ou expiré) ?
+
+    Lecture cross-app pour ``apps.crm`` (choix du gabarit de réveil : un lead
+    jamais chiffré ne doit pas lire « vous aviez reçu un devis chez nous »).
+    Un brouillon jamais envoyé ne compte pas."""
+    from .models import Devis
+    if lead is None or not getattr(lead, 'pk', None):
+        return False
+    return Devis.objects.filter(
+        company_id=lead.company_id, lead=lead,
+    ).exclude(statut=Devis.Statut.BROUILLON).exists()
+
+
 def devis_en_cours(company):
     """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
 

@@ -13,6 +13,7 @@ from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from .models import (
     CLES_RELANCE,
     MESSAGE_TEMPLATE_DEFAULTS,
+    MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
     PLACEHOLDERS_RELANCE,
     MessageTemplate,
     SettingsAuditLog,
@@ -87,6 +88,10 @@ def _messages_list(request):
             'corps_fr': (row.corps_fr if row and row.corps_fr else default),
             'corps_darija': (row.corps_darija if row else ''),
             'default_fr': default,
+            # MRY12 — défaut Darija validé, exposé à côté du défaut FR :
+            # sans lui, l'écran Paramètres → Messages n'avait aucun moyen de
+            # montrer le texte Darija validé en aperçu/défaut.
+            'default_darija': MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle, ''),
             'placeholders': _MESSAGE_PLACEHOLDERS.get(cle, []),
         })
     return Response(out)

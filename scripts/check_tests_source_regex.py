@@ -230,6 +230,13 @@ CRM_ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/crm/leads/views/LeadCardTouchPII.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardVX24.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardVX45Emojis.test.mjs": _CRM_RAISON_GELEE,
+    "frontend/src/pages/crm/leads/views/LeadCard.mry16.test.mjs":
+        "MRY16 (2026-09-06) - LeadCard.jsx (composant React/JSX, imports "
+        "Radix/router) non importable pur sous node --test, meme contrainte "
+        "que les onze LeadCard*.test.mjs geles ; le test EXTRAIT les deux "
+        "fonctions pures estAujourdhuiCasa/heureToucheFr du source et les "
+        "EXECUTE (6 cas : nul/invalide, aujourd'hui = heure seule, autre "
+        "jour = jour court + heure) - jamais une assertion regex sur le code.",
     "frontend/src/pages/crm/leads/views/ListViewCallReady.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/ListViewColumnChooser.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/ListViewDensity.apx5.test.mjs": _CRM_RAISON_GELEE,

@@ -136,6 +136,76 @@ class DevisRecentsTests(_Base):
         self.assertGreaterEqual(rapport['ignores'], 2)
 
 
+class StatutDuDevisTests(_Base):
+    """MRY23 — seuls les devis TOUJOURS EN ATTENTE sont repris.
+
+    `devis_envoyes_periode` ne filtre QUE `date_envoi` : la reprise démarrait
+    donc une cadence « après devis » sur des propositions déjà ACCEPTÉES,
+    refusées ou expirées — et demandait « alors, ce PDF ? » trois jours après
+    la signature.
+    """
+
+    slug = 'mry23-statut'
+
+    def _devis_au_statut(self, nom, reference, statut):
+        lead = self._lead(nom)
+        devis = self._devis(lead, reference, jours=3)
+        # `.update()` : on change le statut SANS déclencher les événements de
+        # domaine (acceptation/refus), qui poseraient leurs propres cadences.
+        Devis.objects.filter(pk=devis.pk).update(statut=statut)
+        return lead
+
+    def test_un_devis_ACCEPTE_recent_ne_declenche_aucune_cadence(self):
+        lead = self._devis_au_statut('Signé', 'DEV-MRY23-0200', 'accepte')
+        demarrer_cadences_existantes(self.company, apply_changes=True)
+        self.assertEqual(self._touches(lead, 'apres_devis').count(), 0)
+
+    def test_un_devis_REFUSE_recent_non_plus(self):
+        lead = self._devis_au_statut('Refusé', 'DEV-MRY23-0201', 'refuse')
+        demarrer_cadences_existantes(self.company, apply_changes=True)
+        self.assertEqual(self._touches(lead, 'apres_devis').count(), 0)
+
+    def test_un_devis_EXPIRE_non_plus(self):
+        lead = self._devis_au_statut('Expiré', 'DEV-MRY23-0202', 'expire')
+        demarrer_cadences_existantes(self.company, apply_changes=True)
+        self.assertEqual(self._touches(lead, 'apres_devis').count(), 0)
+
+    def test_un_devis_ENVOYE_reste_repris(self):
+        """Contrôle positif : le filtre ne doit pas tout écarter."""
+        lead = self._devis_au_statut('En attente', 'DEV-MRY23-0203', 'envoye')
+        demarrer_cadences_existantes(self.company, apply_changes=True)
+        self.assertGreater(self._touches(lead, 'apres_devis').count(), 0)
+
+
+class PariteDryRunApplyTests(_Base):
+    """MRY23 — la simulation annonce EXACTEMENT ce que `--apply` fera.
+
+    Le dry-run ne vérifiait que « ce lead a-t-il déjà une cadence ? » et
+    comptait donc des dossiers que `--apply` refusait ensuite (sans numéro,
+    doublon vivant). C'est pourtant sur ce chiffre que se décide le lancement
+    d'une reprise de portefeuille.
+    """
+
+    slug = 'mry23-parite'
+
+    def test_les_compteurs_du_dry_run_valent_ceux_de_apply(self):
+        self._lead('Joignable', telephone='+212661000001')
+        self._lead('Sans numéro', telephone=None, whatsapp=None)
+        simulation = demarrer_cadences_existantes(self.company)
+        applique = demarrer_cadences_existantes(
+            self.company, apply_changes=True)
+        self.assertEqual(simulation['contact']['nb'],
+                         applique['contact']['nb'])
+        self.assertEqual(simulation['ignores'], applique['ignores'])
+
+    def test_le_lead_sans_numero_est_compte_comme_ecarte_des_le_dry_run(self):
+        self._lead('Joignable', telephone='+212661000002')
+        self._lead('Sans numéro', telephone=None, whatsapp=None)
+        simulation = demarrer_cadences_existantes(self.company)
+        self.assertEqual(simulation['contact']['nb'], 1)
+        self.assertGreaterEqual(simulation['ignores'], 1)
+
+
 class LeadsNeufsTests(_Base):
     slug = 'mry23-neufs'
 

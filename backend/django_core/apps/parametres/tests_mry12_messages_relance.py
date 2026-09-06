@@ -193,6 +193,21 @@ class GetCorpsTests(TestCase):
             MessageTemplate.get_corps(self.company, 'identite'),
             MESSAGE_TEMPLATE_DEFAULTS['identite'])
 
+    def test_darija_defaut_valide_sort_sans_aucune_ligne(self):
+        """Défaut MAJEUR (données mortes) : sans ligne enregistrée, le défaut
+        Darija validé doit sortir — pas le défaut FR."""
+        self.assertEqual(
+            MessageTemplate.get_corps(self.company, 'identite', 'darija'),
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA['identite'])
+
+    def test_darija_sans_defaut_valide_et_sans_ligne_retombe_sur_le_fr(self):
+        """`j1_pdf` n'a pas de défaut Darija validé (chaîne "Après devis") :
+        sans ligne, le repli est le défaut FR — jamais une clé inventée."""
+        self.assertNotIn('j1_pdf', MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+        self.assertEqual(
+            MessageTemplate.get_corps(self.company, 'j1_pdf', 'darija'),
+            MESSAGE_TEMPLATE_DEFAULTS['j1_pdf'])
+
 
 class MessagesApiTests(TestCase):
     def setUp(self):
@@ -213,6 +228,17 @@ class MessagesApiTests(TestCase):
                 self.assertIn(cle, lignes)
                 self.assertEqual(lignes[cle]['default_fr'],
                                  MESSAGE_TEMPLATE_DEFAULTS[cle])
+
+    def test_default_darija_expose_pour_identite(self):
+        """Défaut MAJEUR (données mortes) : l'écran Paramètres → Messages
+        doit recevoir le défaut Darija validé, comme il reçoit `default_fr`."""
+        resp = self.api.get(MESSAGES_URL)
+        self.assertEqual(resp.status_code, 200)
+        lignes = {r['cle']: r for r in resp.data}
+        self.assertEqual(lignes['identite']['default_darija'],
+                         MESSAGE_TEMPLATE_DEFAULTS_DARIJA['identite'])
+        # Une clé sans défaut Darija validé (`j1_pdf`) n'en invente pas un.
+        self.assertEqual(lignes['j1_pdf']['default_darija'], '')
 
     def test_une_cle_de_relance_est_enregistrable_avec_ses_placeholders(self):
         """Sans entrée dans `_MESSAGE_PLACEHOLDERS`, la sauvegarde aurait été

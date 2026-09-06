@@ -70,17 +70,37 @@ function requestFocusSection(leadId, section) {
 const formatDateFr = (iso) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR')
 
+// F5/MRY16 — vrai si `iso` tombe le même JOUR qu'aujourd'hui, en Casablanca
+// (jamais le fuseau du navigateur — même motif que heureToucheFr ci-dessous).
+// `en-CA` formate nativement en AAAA-MM-JJ : deux jours se comparent alors
+// par simple égalité de chaîne (même patron que isEnRetard plus bas).
+const estAujourdhuiCasa = (iso) => {
+  const t = new Date(iso)
+  if (Number.isNaN(t.getTime())) return false
+  const jour = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(d)
+  return jour(t) === jour(new Date())
+}
+
 // MRY16 — heure Casablanca de la prochaine touche de cadence (comme
 // `RelancesDuJourWidget.jsx heureDue`, fuseau EXPLICITE — jamais l'heure
 // locale du navigateur). `null` si absente/invalide (aucune touche program-
-// mée pour ce lead, le badge ne rend alors rien).
+// mée pour ce lead, le badge ne rend alors rien). F5 — une touche qui n'est
+// PAS aujourd'hui ajoute le jour de semaine court devant l'heure (« lun.
+// 08:30 »), sinon un badge affichant seulement une heure passée pouvait se
+// lire comme « en retard aujourd'hui » alors qu'elle vise un autre jour ;
+// une touche du jour garde l'heure seule (le cas le plus fréquent).
 const heureToucheFr = (iso) => {
   if (!iso) return null
   const t = new Date(iso).getTime()
   if (Number.isNaN(t)) return null
-  return new Intl.DateTimeFormat('fr-FR', {
+  const heure = new Intl.DateTimeFormat('fr-FR', {
     hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Casablanca',
   }).format(t)
+  if (estAujourdhuiCasa(iso)) return heure
+  const jourCourt = new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'short', timeZone: 'Africa/Casablanca',
+  }).format(t)
+  return `${jourCourt} ${heure}`
 }
 
 // Date locale du jour au format YYYY-MM-DD (comparaison de chaînes fiable).

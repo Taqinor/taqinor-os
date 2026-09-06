@@ -93,6 +93,123 @@ class CadenceContactTests(TestCase):
                 etape.due_at.astimezone(horaires.CASABLANCA).date())
 
 
+class OrigineDesTouchesDuJourTests(TestCase):
+    """MRY5/MRY8 — les trois touches du JOUR MÊME gardent leurs écarts.
+
+    Chaque touche J0 était recalée INDÉPENDAMMENT sur la fenêtre d'appel : un
+    lead arrivé la nuit ou le week-end voyait les touches 1, 2 et 3 (J0+0,
+    J0+3 min, J0+2 h 30) écrasées sur la MÊME minute d'ouverture — 08:30,
+    08:30, 08:30. Trois rappels simultanés au lieu d'une séquence, et un
+    « rappelé dans les cinq minutes » qui ne voulait plus rien dire.
+    """
+
+    def setUp(self):
+        self.company = _company('mry5-origine')
+        self.acteur = User.objects.create_user(
+            username='mry5-origine-u', password='x',
+            role_legacy='responsable', company=self.company)
+
+    def _heures(self, depart):
+        lead = Lead.objects.create(
+            company=self.company, nom='Prospect', owner=self.acteur)
+        etapes = initialiser_plan_relance(
+            lead, self.acteur, depart=depart, cadence='contact')
+        trois = sorted(etapes, key=lambda e: e.ordre)[:3]
+        return [e.due_at.astimezone(horaires.CASABLANCA) for e in trois]
+
+    def test_un_lead_du_dimanche_midi_est_appele_en_sequence_le_lundi(self):
+        # Dimanche 6 septembre 2026, 12:28 → ouverture lundi 7 à 08:30.
+        heures = self._heures(datetime.datetime(
+            2026, 9, 6, 12, 28, tzinfo=horaires.CASABLANCA))
+        self.assertEqual(
+            [(h.date(), h.hour, h.minute) for h in heures],
+            [(datetime.date(2026, 9, 7), 8, 30),
+             (datetime.date(2026, 9, 7), 8, 33),
+             (datetime.date(2026, 9, 7), 11, 0)])
+
+    def test_un_lead_arrive_dans_la_fenetre_est_inchange(self):
+        # Mardi 8 septembre 2026, 11:00 — déjà appelable.
+        heures = self._heures(datetime.datetime(
+            2026, 9, 8, 11, 0, tzinfo=horaires.CASABLANCA))
+        self.assertEqual(
+            [(h.date(), h.hour, h.minute) for h in heures],
+            [(datetime.date(2026, 9, 8), 11, 0),
+             (datetime.date(2026, 9, 8), 11, 3),
+             (datetime.date(2026, 9, 8), 13, 30)])
+
+    def test_les_trois_touches_ne_tombent_jamais_a_la_meme_minute(self):
+        """LE défaut, énoncé comme propriété."""
+        heures = self._heures(datetime.datetime(
+            2026, 9, 6, 12, 28, tzinfo=horaires.CASABLANCA))
+        self.assertEqual(len({h for h in heures}), 3)
+
+
+class ToucheDominicaleTests(TestCase):
+    """MRY4/MRY8 — l'« appel du dimanche » tombe un DIMANCHE.
+
+    C'est le seul rendez-vous dominical du Protocole v3, réservé aux prospects
+    qu'on ne trouve jamais en semaine. Calculé comme les autres (J+5 puis
+    recalage sur la fenêtre du jour), il tombait un lundi : `dimanche_ok`
+    n'ouvrait la fenêtre 16 h-19 h que SI la touche était déjà un dimanche —
+    il ne l'y déplaçait pas.
+    """
+
+    def setUp(self):
+        self.company = _company('mry5-dimanche')
+        self.acteur = User.objects.create_user(
+            username='mry5-dim-u', password='x', role_legacy='responsable',
+            company=self.company)
+
+    def _touche_dominicale(self, depart):
+        lead = Lead.objects.create(
+            company=self.company, nom='Prospect', owner=self.acteur)
+        etapes = initialiser_plan_relance(
+            lead, self.acteur, depart=depart, cadence='contact')
+        touche = next(e for e in etapes if e.template_cle == 'appel_dimanche')
+        self.assertEqual(touche.ordre, 8)
+        return touche
+
+    def test_un_lead_du_mercredi_est_appele_le_dimanche_suivant(self):
+        # Mercredi 2 septembre 2026 10:00 ; J+5 = lundi 7 → dimanche 13.
+        touche = self._touche_dominicale(
+            datetime.datetime(2026, 9, 2, 10, 0, tzinfo=horaires.CASABLANCA))
+        locale = touche.due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual(locale.date(), datetime.date(2026, 9, 13))
+        self.assertEqual((locale.hour, locale.minute), (16, 30))
+        self.assertEqual(touche.due_date, datetime.date(2026, 9, 13))
+
+    def test_un_lead_du_samedi_soir_aussi(self):
+        # Samedi 5 septembre 20:00 ; J+5 = jeudi 10 → dimanche 13.
+        touche = self._touche_dominicale(
+            datetime.datetime(2026, 9, 5, 20, 0, tzinfo=horaires.CASABLANCA))
+        locale = touche.due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual(locale.date(), datetime.date(2026, 9, 13))
+        self.assertEqual((locale.hour, locale.minute), (16, 30))
+
+    def test_elle_tombe_toujours_un_dimanche_dans_la_fenetre(self):
+        touche = self._touche_dominicale(
+            datetime.datetime(2026, 9, 2, 10, 0, tzinfo=horaires.CASABLANCA))
+        self.assertEqual(
+            touche.due_at.astimezone(horaires.CASABLANCA).weekday(), 6)
+        self.assertTrue(horaires.est_dans_fenetre(
+            touche.due_at, self.company, dimanche=True))
+
+    def test_les_autres_touches_restent_sur_des_jours_ouvres(self):
+        """Garde négative : seule la touche marquée `dimanche_ok` bouge."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Autre', owner=self.acteur)
+        etapes = initialiser_plan_relance(
+            lead, self.acteur,
+            depart=datetime.datetime(2026, 9, 2, 10, 0,
+                                     tzinfo=horaires.CASABLANCA),
+            cadence='contact')
+        for etape in etapes:
+            if etape.template_cle == 'appel_dimanche':
+                continue
+            jour = etape.due_at.astimezone(horaires.CASABLANCA).weekday()
+            self.assertLess(jour, 5, etape.libelle)
+
+
 class IdempotenceParCadenceTests(TestCase):
     def setUp(self):
         self.company = _company('mry5-idem')

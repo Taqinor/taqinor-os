@@ -248,12 +248,20 @@ class MessageTemplate(models.Model):
     def get_corps(cls, company, cle, langue='fr'):
         """Corps du message pour (company, cle, langue), défaut si absent.
 
-        La Darija vide retombe sur le FR ; le FR vide retombe sur le défaut.
+        MRY12 — la Darija a son PROPRE défaut validé
+        (``MESSAGE_TEMPLATE_DEFAULTS_DARIJA``) : ``row.corps_darija`` prime
+        s'il est renseigné ; sinon le défaut Darija de la clé s'il existe ;
+        sinon seulement la chaîne FR (``row.corps_fr`` puis le défaut FR) —
+        jamais une traduction automatique.
         """
         row = cls.objects.filter(company=company, cle=cle).first()
         default = MESSAGE_TEMPLATE_DEFAULTS.get(cle, '')
-        if row is None:
-            return default
-        if langue == 'darija' and row.corps_darija.strip():
-            return row.corps_darija
-        return row.corps_fr.strip() or default
+        corps_fr = row.corps_fr if row is not None else ''
+        corps_darija = row.corps_darija if row is not None else ''
+        if langue == 'darija':
+            if corps_darija.strip():
+                return corps_darija
+            default_darija = MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle)
+            if default_darija:
+                return default_darija
+        return corps_fr.strip() or default

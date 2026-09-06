@@ -276,3 +276,75 @@ class CadenceApiTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         cree = CadenceRelanceEtape.objects.get(ordre=99)
         self.assertEqual(cree.company_id, self.company.pk)
+
+
+class CadenceEditeurMry28Tests(TestCase):
+    """MRY28 (défaut MAJEUR) — sur une société EXISTANTE (qui a déjà utilisé
+    `contact`/`reveil`, comme n'importe quel tenant réel), les onglets
+    « Après devis » et « Réveil » de l'éditeur de Paramètres → CRM
+    affichaient « Aucune étape pour cette cadence. » sans aucun moyen d'en
+    sortir tant que personne n'avait initialisé cette cadence sur un lead
+    (seul ``CadenceRelanceEtape.cadence_pour`` seedait, jamais l'éditeur).
+    """
+
+    def setUp(self):
+        self.company = _company('mry28-editeur')
+        self.admin = User.objects.create_user(
+            username='mry28-admin', password='pw', role_legacy='admin',
+            company=self.company)
+        self.api = _auth(self.admin)
+        # La société a déjà de l'activité sur D'AUTRES cadences — le bug
+        # n'était pas « société toute neuve », mais « cadence jamais
+        # touchée », même sur un tenant actif de longue date.
+        CadenceRelanceEtape.seed_cadence(self.company, Cadence.CONTACT)
+
+    def _rows(self, resp):
+        return (resp.data['results']
+                if isinstance(resp.data, dict) and 'results' in resp.data
+                else resp.data)
+
+    def test_get_cadence_apres_devis_seede_a_la_lecture(self):
+        self.assertFalse(
+            CadenceRelanceEtape.objects.filter(
+                company=self.company, cadence=Cadence.APRES_DEVIS).exists())
+        resp = self.api.get(CADENCE_URL, {'cadence': 'apres_devis'})
+        self.assertEqual(resp.status_code, 200)
+        rows = self._rows(resp)
+        self.assertEqual(len(rows), len(CADENCE_APRES_DEVIS_DEFAUT))
+        self.assertEqual({r['cadence'] for r in rows}, {'apres_devis'})
+
+    def test_get_cadence_apres_devis_reste_idempotent(self):
+        premier = self._rows(
+            self.api.get(CADENCE_URL, {'cadence': 'apres_devis'}))
+        second = self._rows(
+            self.api.get(CADENCE_URL, {'cadence': 'apres_devis'}))
+        self.assertEqual(len(premier), len(CADENCE_APRES_DEVIS_DEFAUT))
+        self.assertEqual(len(second), len(CADENCE_APRES_DEVIS_DEFAUT))
+        self.assertEqual(
+            CadenceRelanceEtape.objects.filter(
+                company=self.company, cadence=Cadence.APRES_DEVIS).count(),
+            len(CADENCE_APRES_DEVIS_DEFAUT))
+
+    def test_cadence_inconnue_est_refusee(self):
+        resp = self.api.get(CADENCE_URL, {'cadence': 'bidon'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('cadence', resp.data)
+        # Rien n'a été seedé sous le nom invalide.
+        self.assertFalse(
+            CadenceRelanceEtape.objects.filter(
+                company=self.company, cadence='bidon').exists())
+
+    def test_post_sur_apres_devis_force_aussi_la_company(self):
+        """La création reste ouverte sur cette cadence, et la société vient
+        TOUJOURS du serveur — jamais du corps de la requête."""
+        autre = _company('mry28-editeur-autre')
+        resp = self.api.post(CADENCE_URL, {
+            'cadence': 'apres_devis', 'ordre': 42, 'delai_jours': 1,
+            'canal': 'appel', 'libelle': 'Test MRY28', 'company': autre.pk,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        cree = CadenceRelanceEtape.objects.get(
+            company=self.company, cadence='apres_devis', ordre=42)
+        self.assertEqual(cree.company_id, self.company.pk)
+        self.assertFalse(
+            CadenceRelanceEtape.objects.filter(company=autre).exists())

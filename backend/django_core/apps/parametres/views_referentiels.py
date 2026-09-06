@@ -13,13 +13,14 @@ n'avaient aucune exposition REST : cet écran les rend consultables/éditables.
 du corps. Aucune clé canonique (code TVA/unité) ne migre (garde au sérialiseur).
 """
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models_payment_terms import ConditionPaiement
-from .models_relance import CadenceRelanceEtape
+from .models_relance import Cadence, CadenceRelanceEtape
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 from .serializers_referentiels import (
@@ -107,7 +108,17 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
     MRY4 — ``?cadence=contact|apres_devis|reveil|generique`` filtre sur UNE
     cadence : c'est l'onglet de l'éditeur de Paramètres → CRM. Sans le
     paramètre, la liste reste celle de toutes les cadences (comportement
-    d'avant, jamais une restriction implicite)."""
+    d'avant, jamais une restriction implicite).
+
+    MRY28 — les cadences nommées (``apres_devis``/``reveil``) n'étaient
+    seedées qu'à leur premier USE (``CadenceRelanceEtape.cadence_pour``,
+    appelé côté lead) : sur une société existante qui n'avait encore jamais
+    initialisé l'une d'elles, l'onglet correspondant de cet éditeur
+    affichait « Aucune étape pour cette cadence. » sans aucun moyen d'en
+    sortir. Un ``?cadence=`` dont la société n'a AUCUNE ligne seede
+    maintenant le gabarit ICI, à la lecture — idempotent et additif comme
+    ``seed_cadence`` lui-même, jamais une ré-écriture d'un barreau déjà
+    personnalisé."""
 
     queryset = CadenceRelanceEtape.objects.all()
     serializer_class = CadenceRelanceEtapeSerializer
@@ -119,5 +130,13 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
             qs = qs.filter(actif=True)
         cadence = (self.request.query_params.get('cadence') or '').strip()
         if cadence:
+            if cadence not in Cadence.values:
+                raise ValidationError(
+                    {'cadence': 'Cadence inconnue. Choisir parmi : '
+                                + ', '.join(Cadence.values) + '.'})
             qs = qs.filter(cadence=cadence)
+            company = (self.request.user.company
+                       if self.request.user.company_id else None)
+            if company is not None and not qs.exists():
+                CadenceRelanceEtape.seed_cadence(company, cadence)
         return qs

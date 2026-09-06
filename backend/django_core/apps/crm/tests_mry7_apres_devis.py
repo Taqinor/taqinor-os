@@ -130,6 +130,61 @@ class BasculementTests(_Base):
         self.assertEqual(self._touches('apres_devis').count(), 0)
 
 
+class DimancheFamilleTests(_Base):
+    """MRY4 — « Dimanche famille » est RÉSERVÉE aux dossiers étiquetés
+    « Décision à plusieurs ».
+
+    Posée sur tous, elle envoyait un message dominical « parlez-en en
+    famille » à des prospects qui décident seuls — le dimanche, hors de toute
+    fenêtre d'appel ouvrée.
+    """
+
+    slug = 'mry7-dimanche'
+
+    def _dimanche_famille(self):
+        return self._touches('apres_devis').filter(
+            template_cle='dimanche_famille')
+
+    def test_sans_letiquette_la_touche_nest_pas_posee(self):
+        self._envoyer(self._devis('DEV-MRY7-0300'))
+        self.assertEqual(self._dimanche_famille().count(), 0)
+        self.assertEqual(self._touches('apres_devis').count(), 9)
+
+    def test_avec_letiquette_la_touche_est_posee(self):
+        self.lead.tags = 'Décision à plusieurs'
+        self.lead.save(update_fields=['tags'])
+        self._envoyer(self._devis('DEV-MRY7-0301'))
+        self.assertEqual(self._dimanche_famille().count(), 1)
+        self.assertEqual(self._touches('apres_devis').count(), 10)
+
+    def test_letiquette_est_reconnue_sans_accent_ni_casse(self):
+        """`Lead.tags` est un champ LIBRE saisi à la main : « decision a
+        plusieurs » désigne la même chose."""
+        self.lead.tags = 'Compare les devis, DECISION A PLUSIEURS'
+        self.lead.save(update_fields=['tags'])
+        self._envoyer(self._devis('DEV-MRY7-0302'))
+        self.assertEqual(self._dimanche_famille().count(), 1)
+
+    def test_la_touche_tombe_bien_un_dimanche_dans_sa_fenetre(self):
+        self.lead.tags = 'Décision à plusieurs'
+        self.lead.save(update_fields=['tags'])
+        self._envoyer(self._devis('DEV-MRY7-0303'))
+        touche = self._dimanche_famille().get()
+        locale = touche.due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual(locale.weekday(), 6)
+        self.assertGreaterEqual(locale.time(), horaires.DIMANCHE_DEBUT)
+        self.assertLess(locale.time(), horaires.DIMANCHE_FIN)
+
+    def test_la_numerotation_du_gabarit_garde_son_trou(self):
+        """Les `ordre` viennent du gabarit de la société, jamais d'un
+        compteur local : écarter un barreau ne renumérote pas les autres."""
+        self._envoyer(self._devis('DEV-MRY7-0304'))
+        ordres = sorted(
+            self._touches('apres_devis').values_list('ordre', flat=True))
+        self.assertNotIn(3, ordres)
+        self.assertEqual(ordres, [1, 2, 4, 5, 6, 7, 8, 9, 10])
+
+
 class RefusTests(_Base):
     slug = 'mry7-refus'
 

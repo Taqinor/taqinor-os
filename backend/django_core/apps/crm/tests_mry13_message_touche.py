@@ -11,6 +11,7 @@ pas des placeholders du tout : ils restent dans le devis et la proposition.
 """
 import datetime
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -158,6 +159,56 @@ class AucunChiffreInventeTests(_Base):
         from apps.parametres.models_messages import PLACEHOLDERS_RELANCE
         for interdit in ('{prix}', '{montant}', '{kwc}', '{economie}'):
             self.assertNotIn(interdit, PLACEHOLDERS_RELANCE)
+
+
+class LienDeRendezVousTests(_Base):
+    """MRY13 — `{lien_rdv}` obéit à la MÊME règle que les autres placeholders.
+
+    Il y échappait : `resoudre_lien_rdv` remplaçait le placeholder par '' dès
+    que la génération du jeton échouait, AVANT le calcul des placeholders
+    manquants. La phrase « réservez ici :  » n'était donc jamais omise et
+    partait au client avec un blanc — exactement ce que la règle « aucun
+    chiffre/lien inventé » interdit —, et `placeholders_manquants` n'en disait
+    rien à l'appelant.
+    """
+
+    slug = 'mry13-lien-rdv'
+
+    def _gabarit(self):
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr=('Bonjour {prenom}. Réservez votre visite ici : '
+                      '{lien_rdv}. Je reste disponible.'))
+
+    def test_un_lien_introuvable_fait_OMETTRE_la_phrase(self):
+        self._gabarit()
+        with mock.patch('apps.crm.services.public_booking_url',
+                        side_effect=RuntimeError('jeton indisponible')):
+            rendu = message_pour_etape(self._touche(), user=self.acteur)
+        self.assertIn('lien_rdv', rendu['placeholders_manquants'])
+        self.assertNotIn('Réservez', rendu['message'])
+        self.assertNotIn('{lien_rdv}', rendu['message'])
+        # Le reste du message survit : on perd la phrase, jamais la vérité.
+        self.assertIn('Bonjour Aziz', rendu['message'])
+        self.assertIn('Je reste disponible', rendu['message'])
+
+    def test_un_lien_resolu_garde_la_phrase(self):
+        self._gabarit()
+        with mock.patch('apps.crm.services.public_booking_url',
+                        return_value='https://exemple.test/rdv/jeton'):
+            rendu = message_pour_etape(self._touche(), user=self.acteur)
+        self.assertEqual(rendu['placeholders_manquants'], [])
+        self.assertIn('Réservez', rendu['message'])
+        self.assertIn('https://exemple.test/rdv/jeton', rendu['message'])
+
+    def test_un_gabarit_sans_le_placeholder_ne_cree_aucun_jeton(self):
+        """Garde négative (XSAL17) : aucun lien n'est généré à l'avance."""
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite', corps_fr='Bonjour {prenom}.')
+        with mock.patch('apps.crm.services.public_booking_url') as booking:
+            rendu = message_pour_etape(self._touche(), user=self.acteur)
+        booking.assert_not_called()
+        self.assertEqual(rendu['message'], 'Bonjour Aziz.')
 
 
 class VocalTests(_Base):

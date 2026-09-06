@@ -1374,6 +1374,33 @@ def leads_response_time_rows(company):
     return rows
 
 
+#: MRY19 — l'heure que promet « rappelé le lendemain matin ».
+HEURE_RAPPEL_DU_MATIN = datetime.time(9, 30)
+
+
+def _limite_rappel_du_matin(creation, company):
+    """L'instant limite pour qu'un lead de nuit compte comme rappelé le matin.
+
+    9 h 30 du PROCHAIN JOUR OUVRÉ suivant l'arrivée — sauf pour un lead arrivé
+    un jour ouvré AVANT l'ouverture (par exemple 07 h 00), auquel cas c'est
+    9 h 30 le JOUR MÊME : il n'a pas de nuit à attendre. Les jours ouvrés et
+    les fériés viennent de ``notifications.calendar_utils``, source unique.
+    """
+    from apps.notifications.calendar_utils import prochain_jour_ouvre
+
+    from . import horaires
+
+    local = creation.astimezone(horaires.CASABLANCA)
+    fenetre = horaires.fenetre_du_jour(local.date(), company)
+    if fenetre is not None and local.time() < fenetre[0]:
+        jour = local.date()
+    else:
+        jour = prochain_jour_ouvre(
+            local.date() + datetime.timedelta(days=1), company)
+    return datetime.datetime.combine(
+        jour, HEURE_RAPPEL_DU_MATIN, tzinfo=horaires.CASABLANCA)
+
+
 def kpi_premier_contact(company, *, jours=30, objectif_min=None):
     """MRY19 — « rappelé en moins de N minutes OUVRÉES » — forme
     `kpi_premier_contact` (contrat MRY25).
@@ -1390,7 +1417,11 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
       médiane fabriquée sur zéro ligne.
 
     « Leads de nuit » = arrivés HORS fenêtre d'appel ; « rappelés avant 9 h 30 »
-    = ceux d'entre eux dont le premier contact tombe avant 09:30 locales.
+    = ceux d'entre eux rappelés avant 09:30 du PROCHAIN JOUR OUVRÉ suivant leur
+    arrivée. La DATE compte autant que l'heure : un lead arrivé lundi 23 h et
+    rappelé jeudi 08:00 passait pour « rappelé avant 9 h 30 » alors qu'il avait
+    dormi deux jours — la promesse mesurée était « le lendemain matin », pas
+    « un matin ».
     """
     from django.utils import timezone
 
@@ -1419,11 +1450,9 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
             continue
         minutes.append(horaires.minutes_ouvrees_entre(
             lead.date_creation, lead.first_contacted_at, company))
-        if de_nuit:
-            contact_local = lead.first_contacted_at.astimezone(
-                horaires.CASABLANCA)
-            if contact_local.time() <= datetime.time(9, 30):
-                nb_nuit_rappeles += 1
+        if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
+                lead.date_creation, company):
+            nb_nuit_rappeles += 1
 
     if not nb_leads:
         return {
@@ -1445,6 +1474,32 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
         'nb_nuit_rappeles_avant_930': nb_nuit_rappeles,
         'nb_nuit': nb_nuit,
     }
+
+
+#: MRY21 — la promesse mesurée : joindre le prospect dans les 5 jours OUVRÉS.
+JOURS_OUVRES_JOINDRE = 5
+
+
+def _minutes_ouvrees_de_5_jours(creation, company):
+    """Le seuil « 5 jours ouvrés », EXPRIMÉ en minutes ouvrées.
+
+    Comparer des minutes ouvrées à ``5 * 24 * 60`` mélangeait deux unités :
+    7 200 minutes de calendrier valent ~10 jours ouvrés de 11 h 30, soit le
+    DOUBLE de la promesse — le KPI se donnait deux fois plus de temps qu'il
+    n'en annonçait. On mesure donc la même chose des deux côtés : les minutes
+    ouvrées séparant la création de la FERMETURE du 5ᵉ jour ouvré suivant."""
+    from apps.notifications.calendar_utils import ajouter_jours_ouvres
+
+    from . import horaires
+
+    local = creation.astimezone(horaires.CASABLANCA)
+    jour_fin = ajouter_jours_ouvres(
+        local.date(), JOURS_OUVRES_JOINDRE, company)
+    fenetre = horaires.fenetre_du_jour(jour_fin, company)
+    fermeture = fenetre[1] if fenetre else datetime.time(20, 0)
+    fin = datetime.datetime.combine(
+        jour_fin, fermeture, tzinfo=horaires.CASABLANCA)
+    return horaires.minutes_ouvrees_entre(creation, fin, company)
 
 
 def kpi_cadences(company, *, jours=30):
@@ -1472,7 +1527,11 @@ def kpi_cadences(company, *, jours=30):
 
     # « Joint » = une issue d'appel joint/intéressé dans les 5 jours OUVRÉS
     # suivant la création. Le délai est OUVRÉ pour la même raison que le KPI
-    # de premier contact : un week-end n'est pas du temps perdu.
+    # de premier contact : un week-end n'est pas du temps perdu. Le SEUIL doit
+    # l'être aussi : comparer des minutes OUVRÉES à `5 * 24 * 60` (7 200
+    # minutes de calendrier) revenait à accorder ~10 jours ouvrés de 11 h 30 —
+    # deux fois la promesse. Le seuil est donc lui-même compté en minutes
+    # ouvrées, jusqu'à la fermeture du 5ᵉ jour ouvré.
     joints = 0
     for lead in leads.only('id', 'date_creation'):
         premiere = (LeadActivity.objects
@@ -1483,7 +1542,7 @@ def kpi_cadences(company, *, jours=30):
             continue
         minutes = horaires.minutes_ouvrees_entre(
             lead.date_creation, premiere.created_at, company)
-        if minutes <= 5 * 24 * 60:
+        if minutes <= _minutes_ouvrees_de_5_jours(lead.date_creation, company):
             joints += 1
 
     touches = RelanceEtape.objects.filter(company=company,
