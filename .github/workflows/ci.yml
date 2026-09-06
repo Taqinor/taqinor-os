@@ -1578,6 +1578,11 @@ jobs:
       # silencieusement cesse de garder. Ce test prouve que l'union des lanes
       # est exactement l'ensemble des modules `test*.py`, sans doublon, pour
       # plusieurs totaux de shards. Stdlib pure, ~6 s.
+      # AUD830 (06/09/2026) : test_ci_shard derive desormais le total de shards
+      # de strategy.job-total via PyYAML — l'install doit PRECEDER ce test (elle
+      # servait deja check_query_budgets plus bas).
+      - name: Install PyYAML (shard-split + query-budgets)
+        run: pip install PyYAML
       - name: Test the backend-test shard split itself (WOW-CI2 — completude du decoupage)
         run: python -m unittest scripts.tests.test_ci_shard -v
       # WOW-CI4 — meme garde pour les lanes Vitest : un fichier qui tomberait du
@@ -1603,8 +1608,6 @@ jobs:
       # 1), pas un advisory comme check_db_invariants.py — ICI, dans le
       # seul job non gate, comme les autres check_*.py (DB-free ; seule
       # dependance non-stdlib de ce job, d'ou l'install dediee).
-      - name: Install PyYAML (query-budgets manifest)
-        run: pip install PyYAML
       - name: Check query-budget test coverage (endpoints "enforced" doivent avoir un test de budget)
         run: python scripts/check_query_budgets.py
       - name: Test the query-budgets checker itself (AUD831)
