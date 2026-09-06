@@ -553,6 +553,19 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # AUD834 — YDATA21 ci-dessus se satisfait de la BASE tenant : elle prouve
+      # l'INTENTION de scoper, jamais sa faisabilite. Poser
+      # CompanyScopedModelViewSet sur un modele SANS champ `company` donne un
+      # FieldError (500 sur list/retrieve/patch/delete) et une creation non
+      # scopee — defaut mesure sur TerritoireRegle/TerritoireMembre (AUD814).
+      # Le balayage YRBAC12 (core/tenant_isolation_scan.py) saute
+      # STRUCTURELLEMENT ces modeles : `build_minimal_instance` leve
+      # `SkipModel` sur toute FK obligatoire, or un enfant sans `company` en a
+      # une par definition. Cette garde est le seul appariement base<->modele.
+      - name: Check viewset tenant base vs model scope (AUD834)
+        run: python scripts/check_viewset_model_scope.py
+      - name: Test the viewset-model-scope checker itself (AUD834)
+        run: python -m unittest scripts.tests.test_check_viewset_model_scope -v
       # AUD421 — a local get_permissions() must never SILENTLY OVERRIDE an
       # @action(permission_classes=...): DRF calls get_permissions() for every
       # request, so a raw branch that returns a default list makes the inline
