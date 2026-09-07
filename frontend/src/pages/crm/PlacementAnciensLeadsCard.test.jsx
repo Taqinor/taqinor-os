@@ -40,7 +40,14 @@ import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
 beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(true)
   confirmMock.mockResolvedValue(true)
-  crmApi.placerAnciensLeads.mockResolvedValue(reponseContrat('crm', 'placement_anciens_leads'))
+  // Aperçu → l'exemple du contrat (restants == a_placer) ; application → tout
+  // placé en un lot (applique = a_placer, restants 0). Le contrat ne porte
+  // qu'un exemple d'aperçu : une réponse d'application se dérive de lui.
+  crmApi.placerAnciensLeads.mockImplementation((body) => Promise.resolve(
+    body?.apply
+      ? { data: { ...DONNEES, apply: true, applique: DONNEES.a_placer, restants: 0 } }
+      : reponseContrat('crm', 'placement_anciens_leads'),
+  ))
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -67,7 +74,7 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
     expect(screen.getByText(DONNEES.apercu[0].nom)).toBeInTheDocument()
   })
 
-  it('« Appliquer » est désactivé avant tout aperçu, puis ouvre la confirmation et appelle l\'API avec apply=true', async () => {
+  it('« Appliquer » est désactivé avant tout aperçu, puis ouvre la confirmation et appelle l\'API avec apply=true, limite=40', async () => {
     render(<PlacementAnciensLeadsCard />)
     expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()
 
@@ -81,8 +88,62 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
     expect(options.description).toContain(String(DONNEES.a_placer))
     expect(options.description).toContain('208')
 
-    await waitFor(() => expect(crmApi.placerAnciensLeads).toHaveBeenCalledWith({ apply: true }))
+    // Le premier lot est envoyé avec `limite: 40` (jamais un unique appel
+    // sans borne — PERFORMANCE, incident du 07/09).
+    await waitFor(() => expect(crmApi.placerAnciensLeads)
+      .toHaveBeenCalledWith({ apply: true, limite: 40 }))
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
+  })
+
+  it('« Appliquer » boucle par lots de 40 jusqu\'à épuisement puis recharge l\'aperçu', async () => {
+    crmApi.placerAnciensLeads
+      .mockResolvedValueOnce(reponseContrat('crm', 'placement_anciens_leads')) // Aperçu initial
+      .mockResolvedValueOnce({ data: { ...DONNEES, apply: true, applique: 40, restants: 10 } }) // lot 1
+      .mockResolvedValueOnce({ data: { ...DONNEES, apply: true, applique: 10, restants: 0 } }) // lot 2
+      .mockResolvedValueOnce(reponseContrat('crm', 'placement_anciens_leads')) // aperçu rechargé
+
+    render(<PlacementAnciensLeadsCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Appliquer' })).not.toBeDisabled())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
+    await waitFor(() => expect(confirmMock).toHaveBeenCalled())
+
+    // La ligne de progression reflète le DERNIER `restants` reçu, jamais un
+    // décompte recalculé côté écran.
+    // La ligne de progression est transitoire (React peut ne jamais la peindre
+    // entre deux lots résolus en microtâches) : on vérifie l'état FINAL.
+
+    // Deux lots enchaînés (`apply:true, limite:40`), puis un rechargement
+    // d'aperçu (`apply:false`) une fois `restants === 0`.
+    await waitFor(() => expect(crmApi.placerAnciensLeads.mock.calls.length).toBe(4))
+    expect(crmApi.placerAnciensLeads.mock.calls[0][0]).toEqual({ apply: false })
+    expect(crmApi.placerAnciensLeads.mock.calls[1][0]).toEqual({ apply: true, limite: 40 })
+    expect(crmApi.placerAnciensLeads.mock.calls[2][0]).toEqual({ apply: true, limite: 40 })
+    expect(crmApi.placerAnciensLeads.mock.calls[3][0]).toEqual({ apply: false })
+
+    // Le toast final annonce le CUMUL des deux lots (40 + 10 = 50), jamais le
+    // seul dernier lot.
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('50')))
+  })
+
+  it('un lot qui ne place plus personne arrête la boucle et affiche « Reprendre »', async () => {
+    crmApi.placerAnciensLeads
+      .mockResolvedValueOnce(reponseContrat('crm', 'placement_anciens_leads')) // Aperçu initial
+      .mockResolvedValueOnce({ data: { ...DONNEES, apply: true, applique: 0, restants: 5 } })
+
+    render(<PlacementAnciensLeadsCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Appliquer' })).not.toBeDisabled())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
+    await waitFor(() => expect(confirmMock).toHaveBeenCalled())
+
+    expect(await screen.findByRole('button', { name: 'Reprendre' })).toBeInTheDocument()
+    // Une seule tentative : la boucle s'arrête dès qu'un lot ne place plus
+    // personne, même s'il en reste (jamais un bouclage sans fin).
+    expect(crmApi.placerAnciensLeads.mock.calls.filter(([body]) => body.apply === true)).toHaveLength(1)
+    expect(toast.success).not.toHaveBeenCalled()
   })
 
   it('Annuler la confirmation n\'appelle jamais l\'API avec apply=true', async () => {

@@ -613,67 +613,36 @@ _TEMPLATE_DIMANCHE_FAMILLE = 'dimanche_famille'
 _TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
 
 
-def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
-                             devis=None):
-    """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
-    société (``parametres.CadenceRelanceEtape.cadence_pour``).
+def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
+    """Les ÉCHÉANCES d'une cadence, SANS RIEN ÉCRIRE :
+    ``[(gabarit, échéance aware), …]`` dans l'ordre du gabarit.
 
-    IDEMPOTENT **PAR CADENCE** (MRY5) : un lead peut porter simultanément sa
-    prise de contact et le suivi d'un devis ; l'ancienne idempotence globale
-    « ce lead a déjà des étapes » les aurait confondus et un devis envoyé
-    n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
-    plus portée PAR DEVIS.
+    C'est le cœur de calcul d'``initialiser_plan_relance``, extrait pour que
+    l'APERÇU du placement (MRY30) puisse DATER une cadence sans la
+    matérialiser. L'aperçu créait auparavant les touches des 277 candidats
+    dans une transaction annulée : plus de 20 s de calcul pour un écran dont
+    le navigateur abandonne au bout de 20 s — les deux 499 lus dans nginx le
+    07/09/2026.
 
-    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
-    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
-    ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
-    l'instant est recalé sur la fenêtre d'appel de la société
-    (``horaires.prochain_creneau_appel``, MRY8). EXCEPTION pour les touches du
-    JOUR MÊME (``delai_jours == 0`` sans ``heure_cible``) : elles s'enchaînent
-    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart)``) et non
-    depuis l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait
-    ses trois premières touches écrasées sur la même minute d'ouverture. Une
-    touche marquée
-    ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
-    dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
-    dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
-    ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
-    leur grain jour.
+    ``initialiser_plan_relance`` appelle CETTE fonction : les deux ne peuvent
+    donc pas diverger — ce que l'aperçu annonce EST ce que l'application
+    créera. C'était déjà l'intention du dry-run en transaction annulée ; c'en
+    est la version qui ne coûte rien.
 
-    ÉCARTE (MRY4) le barreau ``dimanche_famille`` du suivi après devis quand
-    le lead ne porte PAS l'étiquette « Décision à plusieurs » : le Guide v2.1
-    le réserve aux dossiers décidés en famille.
-
-    REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
-    ou archivé — les trois cas où relancer serait une faute.
-
-    Pose aussi ``Lead.relance_date`` sur l'échéance de la première touche (via
-    ``sync_relance_activity``) : le Calendrier / « Ma file » reflètent la
-    prochaine touche sans second système de rappel concurrent.
-
-    Retourne la liste des ``RelanceEtape`` de CETTE cadence (créées ou déjà
-    existantes)."""
+    Ne lit la base que pour le gabarit
+    (``CadenceRelanceEtape.cadence_pour``, qui SEEDE la cadence à son premier
+    usage — comportement pré-existant, assumé) et pour les horaires de la
+    société. ``gabarits`` permet de réutiliser un gabarit déjà chargé et
+    d'éviter cette lecture : un placement en lit trois, pas trois cents.
+    """
     from datetime import timedelta
 
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import horaires
 
-    if getattr(lead, 'ne_plus_contacter', False):
-        return _refus_cadence(lead, user, 'lead marqué « ne plus contacter »')
-    if getattr(lead, 'perdu', False):
-        return _refus_cadence(lead, user, 'lead perdu')
-    if getattr(lead, 'is_archived', False):
-        return _refus_cadence(lead, user, 'lead archivé')
-
-    deja = lead.relance_etapes.filter(cadence=cadence)
-    if cadence == 'apres_devis' and devis is not None:
-        deja = deja.filter(devis=devis)
-    existantes = list(deja.order_by('ordre', 'due_date'))
-    if existantes:
-        return existantes
-
-    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if gabarits is None:
+        gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     if not gabarits:
         return []
 
@@ -697,7 +666,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # minutes » qui ne voulait plus rien dire.
     origine = horaires.prochain_creneau_appel(depart, lead.company)
 
-    etapes = []
+    echeances = []
     for gabarit in gabarits:
         if ((getattr(gabarit, 'template_cle', '') or '')
                 == _TEMPLATE_DIMANCHE_FAMILLE
@@ -742,14 +711,89 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)))
-        etapes.append(RelanceEtape(
+        echeances.append((gabarit, echeance))
+    return echeances
+
+
+def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
+                             devis=None):
+    """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
+    société (``parametres.CadenceRelanceEtape.cadence_pour``).
+
+    IDEMPOTENT **PAR CADENCE** (MRY5) : un lead peut porter simultanément sa
+    prise de contact et le suivi d'un devis ; l'ancienne idempotence globale
+    « ce lead a déjà des étapes » les aurait confondus et un devis envoyé
+    n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
+    plus portée PAR DEVIS.
+
+    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
+    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
+    ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
+    l'instant est recalé sur la fenêtre d'appel de la société
+    (``horaires.prochain_creneau_appel``, MRY8). EXCEPTION pour les touches du
+    JOUR MÊME (``delai_jours == 0`` sans ``heure_cible``) : elles s'enchaînent
+    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart)``) et non
+    depuis l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait
+    ses trois premières touches écrasées sur la même minute d'ouverture. Une
+    touche marquée
+    ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
+    dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
+    dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
+    ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
+    leur grain jour.
+
+    ÉCARTE (MRY4) le barreau ``dimanche_famille`` du suivi après devis quand
+    le lead ne porte PAS l'étiquette « Décision à plusieurs » : le Guide v2.1
+    le réserve aux dossiers décidés en famille.
+
+    REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
+    ou archivé — les trois cas où relancer serait une faute.
+
+    Pose aussi ``Lead.relance_date`` sur l'échéance de la première touche (via
+    ``sync_relance_activity``) : le Calendrier / « Ma file » reflètent la
+    prochaine touche sans second système de rappel concurrent.
+
+    Le CALCUL des échéances vit dans ``calculer_echeances_cadence`` (partagé
+    avec l'aperçu du placement MRY30) : cette fonction ne fait qu'en
+    matérialiser le résultat, si bien qu'aperçu et application ne peuvent pas
+    dater deux choses différentes.
+
+    Retourne la liste des ``RelanceEtape`` de CETTE cadence (créées ou déjà
+    existantes)."""
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    if getattr(lead, 'ne_plus_contacter', False):
+        return _refus_cadence(lead, user, 'lead marqué « ne plus contacter »')
+    if getattr(lead, 'perdu', False):
+        return _refus_cadence(lead, user, 'lead perdu')
+    if getattr(lead, 'is_archived', False):
+        return _refus_cadence(lead, user, 'lead archivé')
+
+    deja = lead.relance_etapes.filter(cadence=cadence)
+    if cadence == 'apres_devis' and devis is not None:
+        deja = deja.filter(devis=devis)
+    existantes = list(deja.order_by('ordre', 'due_date'))
+    if existantes:
+        return existantes
+
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if not gabarits:
+        return []
+
+    etapes = [
+        RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
             canal=gabarit.canal, libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis=devis,
-        ))
+        )
+        for gabarit, echeance in calculer_echeances_cadence(
+            lead, cadence, depart, gabarits=gabarits)
+    ]
     if not etapes:
         # Tous les barreaux de la cadence ont été écartés (cas limite : une
         # société dont la cadence ne contient QUE la touche réservée).
@@ -5523,10 +5567,21 @@ def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
 #   2. il n'y a pas de fenêtre d'éligibilité qui laisse des leads de côté :
 #      un dossier trop ancien pour être relancé n'est pas ignoré, il est mis
 #      en DORMANCE explicite (Froid + étiquette + réveil étalé) ;
-#   3. l'aperçu et l'application suivent LE MÊME chemin de code — l'aperçu est
-#      une exécution complète dans une transaction annulée (voir
-#      `placer_anciens_leads`). Un dry-run qui recalcule les décisions « à
-#      côté » finit toujours par annoncer autre chose que ce que --apply fait.
+#   3. l'aperçu et l'application partagent LE MÊME CALCUL — sans partager
+#      les écritures. L'aperçu était une exécution complète dans une
+#      transaction annulée : fidèle, mais il matérialisait les touches des
+#      277 candidats pour les jeter aussitôt, soit plus de 20 s pendant
+#      lesquelles le navigateur abandonnait (deux 499 dans nginx le
+#      07/09/2026, sur le clic « Aperçu » du Cockpit). Il est désormais un
+#      CALCUL PUR : mêmes décisions, mêmes créneaux, mêmes dates — obtenus
+#      par `calculer_echeances_cadence`, la fonction que l'application
+#      utilise elle aussi pour créer les touches. Un dry-run qui recalcule
+#      « à côté » finit toujours par annoncer autre chose que ce que --apply
+#      fait ; partager la FONCTION donne la même garantie que partager
+#      l'exécution, pour le prix d'un calcul ;
+#   4. l'application se fait PAR LOTS de `limite` leads (défaut 40), l'écran
+#      rappelant tant que `restants > 0`. Écrire 277 dossiers d'un trait
+#      dépassait le délai du navigateur exactement comme l'aperçu.
 
 #: Au-delà de ce silence, un dossier n'est plus « en cours » : lui envoyer la
 #: touche J+1 d'une cadence positionnée serait un message hors sujet. Il part
@@ -5605,6 +5660,21 @@ _PLACEMENT_TAGS = {
 #: enverrait aujourd'hui le message du J+1 d'il y a dix jours.
 PLACEMENT_NOTE_PASSEE = 'passée avant le moteur'
 
+#: Leads placés PAR APPEL d'application. 277 dossiers d'un trait, c'est
+#: plusieurs milliers d'écritures dans une seule requête HTTP — au-delà du
+#: délai du navigateur (20 s côté axios), donc un 499 et un placement dont
+#: personne ne sait ce qu'il a fait. L'écran rappelle jusqu'à `restants == 0`.
+PLACEMENT_LOT_DEFAUT = 40
+
+#: Borne haute de `limite` : au-delà, on retombe dans le cas qui a produit le
+#: 499. Ce n'est pas un réglage de confort, c'est la garde.
+PLACEMENT_LOT_MAX = 200
+
+#: Lignes détaillées du rapport. Ce sont les SEULES à être datées : calculer
+#: l'échéance des 270 autres coûterait le prix qu'on vient justement de
+#: supprimer, pour un écran qui n'en montre que vingt.
+PLACEMENT_APERCU_MAX = 20
+
 
 class PlacementImpossible(Exception):
     """Un lead retenu n'a finalement pas pu être placé (cadence vide, gabarit
@@ -5657,13 +5727,21 @@ def _placement_devis_du_lot(company, lead_ids):
         return set(), {}
 
 
-def _decider_placements(company, maintenant):
-    """Phase PURE du placement : QUI est candidat, QUI est écarté, et QUELLE
-    décision s'applique à chacun. N'ÉCRIT RIEN.
+def _decider_placements(company, maintenant, gabarits=None):
+    """Phase de DÉCISION : QUI est candidat, QUI est écarté, QUELLE décision
+    s'applique à chacun — et, pour les cadences positionnées, s'il leur reste
+    seulement une touche à faire (sinon elles basculent en dormance ici même,
+    cf. ``_trancher_cadence_positionnee``).
+
+    N'écrit AUCUNE donnée métier — pas une touche, pas une étiquette, pas un
+    changement d'étape. Seule exception, pré-existante et assumée :
+    ``CadenceRelanceEtape.cadence_pour`` seede le GABARIT d'une société qui
+    n'en a pas encore (un référentiel de paramètres, jamais un dossier).
 
     Renvoie ``(decisions, ignores, total_candidats)``. Chaque décision est un
-    dictionnaire de travail que la phase d'exécution complète (``creneau``,
-    ``prochaine_touche``…) — jamais un modèle enregistré."""
+    dictionnaire de travail que l'étalement puis l'exécution complètent
+    (``creneau``…) — jamais un modèle enregistré."""
+    gabarits = gabarits or _placement_gabarits(company)
     candidats = list(
         Lead.objects.filter(
             company=company, is_archived=False, perdu=False,
@@ -5729,7 +5807,7 @@ def _decider_placements(company, maintenant):
             code, depart = (('contact_complete', maintenant) if recent
                             else ('dormant_jamais_chiffre', None))
 
-        decisions.append({
+        entree = {
             'lead': lead,
             'code': code,
             'cadence': _PLACEMENT_CADENCES[code],
@@ -5744,29 +5822,124 @@ def _decider_placements(company, maintenant):
             'creneau': None,
             'prochaine_touche': '',
             'prochaine_le': None,
-        })
+        }
+        if entree['positionne']:
+            _trancher_cadence_positionnee(entree, maintenant, gabarits)
+        decisions.append(entree)
     return decisions, ignores, total
 
 
-def _placement_delai_reveil(company):
-    """Délai (jours) de la première touche de réveil de ``company``.
+def _echeances_best_effort(lead, cadence, depart, gabarits):
+    """``calculer_echeances_cadence`` en mode best-effort : une liste vide au
+    lieu d'une exception.
 
-    Lu SANS seeder (contrairement à ``cadence_pour``) : la phase de calcul des
-    créneaux ne doit rien écrire, pas même un gabarit — sinon l'aperçu
-    laisserait une trace."""
+    Le placement est best-effort LEAD PAR LEAD (`PlacementImpossible`) : un
+    dossier dont les horaires ou le gabarit se lisent mal ne doit pas faire
+    tomber l'aperçu des 276 autres — c'est-à-dire toute la carte."""
     try:
-        from apps.parametres.models_relance import Cadence, CadenceRelanceEtape
-        premier = (CadenceRelanceEtape.objects
-                   .filter(company=company, cadence=Cadence.REVEIL, actif=True)
-                   .order_by('ordre', 'delai_jours').first())
-        return (getattr(premier, 'delai_jours', None)
-                or PLACEMENT_REVEIL_DELAI_JOURS)
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        logger.warning('MRY30: gabarit de réveil illisible', exc_info=True)
-        return PLACEMENT_REVEIL_DELAI_JOURS
+        return calculer_echeances_cadence(lead, cadence, depart,
+                                          gabarits=gabarits(cadence))
+    except Exception:  # noqa: BLE001 — un dossier bancal n'arrête rien
+        logger.warning('MRY30: échéances illisibles (lead #%s, cadence %s)',
+                       getattr(lead, 'pk', '?'), cadence, exc_info=True)
+        return []
 
 
-def _etaler_reveils(dormants, company, maintenant):
+def _trancher_cadence_positionnee(entree, maintenant, gabarits):
+    """Date une cadence positionnée — ou la BASCULE en dormance.
+
+    Une cadence positionnée dont TOUTES les touches sont déjà échues ne
+    relancerait personne : elle bascule sur la dormance de sa famille. Cette
+    bascule change un CHIFFRE que la carte affiche (`par_etape`), elle
+    appartient donc à la DÉCISION, pas à l'exécution — sinon l'aperçu
+    annoncerait « après devis : 30 » là où l'application écrirait « dormants :
+    30 », et le second clic montrerait autre chose que le premier. C'est la
+    leçon de MRY23, tirée un cran plus tôt.
+
+    C'est le SEUL calcul d'échéances mené pour toute une famille — et il ne
+    concerne que les positionnés (42 sur 270 en production) : une cadence
+    complète part de maintenant et un dormant de son créneau, ni l'une ni
+    l'autre n'a de touche passée à examiner."""
+    echeances = _echeances_best_effort(
+        entree['lead'], entree['cadence'], entree['depart'], gabarits)
+    if not echeances:
+        # Gabarit vide ou illisible : la cadence n'est pas « intégralement
+        # passée », elle est INCONNUE. Basculer tout un portefeuille au froid
+        # sur un référentiel absent serait la pire lecture de ce silence ;
+        # l'exécution comptera ces leads en `erreurs`, ce qui est la vérité.
+        return
+    futures = [(echeance, gabarit.ordre, gabarit)
+               for gabarit, echeance in echeances if echeance >= maintenant]
+    if futures:
+        echeance, _, gabarit = min(futures, key=lambda ligne: ligne[:2])
+        entree['prochaine_touche'] = gabarit.libelle or ''
+        entree['prochaine_le'] = echeance
+        return
+    entree.update(code=_PLACEMENT_REPLI_DORMANT[entree['code']],
+                  cadence='reveil', positionne=False, devis=None, depart=None)
+
+
+def _placement_gabarits(company):
+    """``cadence -> gabarit`` mémorisé pour la durée d'UN placement.
+
+    Sans cette mémoire, chaque lead relisait (et seedait) sa cadence : 270
+    allers-retours pour trois réponses possibles."""
+    cache = {}
+
+    def lire(cadence):
+        if cadence not in cache:
+            try:
+                from apps.parametres.models_relance import CadenceRelanceEtape
+                cache[cadence] = CadenceRelanceEtape.cadence_pour(
+                    company, cadence)
+            except Exception:  # noqa: BLE001 — jamais bloquant
+                logger.warning('MRY30: gabarit « %s » illisible', cadence,
+                               exc_info=True)
+                cache[cadence] = []
+        return cache[cadence]
+
+    return lire
+
+
+def _placement_gabarit_reveil(company, gabarits=None):
+    """Le PREMIER barreau actif du gabarit « réveil » de la société.
+
+    Trois réponses d'une seule lecture : son ``delai_jours`` (pour remonter le
+    départ jusqu'au créneau visé), son ``ordre`` (pour reconnaître les réveils
+    DÉJÀ posés, cf. `_placement_occupation_reveils`) et son ``libelle`` (la
+    touche que l'aperçu annonce pour un dormant, « Réveil J30 » par défaut).
+    ``None`` si le gabarit est illisible — le placement continue alors sur les
+    valeurs de repli plutôt que d'échouer en bloc."""
+    lire = gabarits or _placement_gabarits(company)
+    barreaux = lire('reveil')
+    return barreaux[0] if barreaux else None
+
+
+def _placement_occupation_reveils(company, jour_zero, gabarit):
+    """``{jour local: premières touches de réveil DÉJÀ posées}``, à partir de
+    ``jour_zero``.
+
+    Sans elle, chaque lot d'application recommencerait la file au premier
+    créneau : le lot 2 poserait ses huit réveils SUR ceux du lot 1 — seize
+    messages le même matin depuis le même numéro, précisément ce que
+    l'étalement existe pour empêcher. Et l'aperçu lancé entre deux lots
+    annoncerait des créneaux déjà pris.
+
+    Ne compte que le PREMIER barreau (``ordre``) : c'est lui qu'on étale ; le
+    J60 suit mécaniquement."""
+    from collections import Counter
+
+    ordre = getattr(gabarit, 'ordre', None)
+    if ordre is None:
+        return Counter()
+    return Counter(
+        RelanceEtape.objects.filter(
+            company=company, cadence='reveil', ordre=ordre,
+            statut=RelanceEtape.Statut.A_FAIRE, due_date__gte=jour_zero,
+        ).values_list('due_date', flat=True))
+
+
+def _etaler_reveils(dormants, company, maintenant, *, gabarit=None):
     """Pose ``creneau`` (et le ``depart`` qui en découle) sur chaque dormant,
     8 par jour ouvré, LES ANCRES LES PLUS RÉCENTES D'ABORD.
 
@@ -5776,15 +5949,21 @@ def _etaler_reveils(dormants, company, maintenant):
 
     Le premier jour est AUJOURD'HUI si la fenêtre d'appel n'est pas déjà
     close, sinon le prochain jour ouvré : ``prochain_creneau_appel`` répond
-    exactement à cette question. Renvoie les dormants DANS L'ORDRE d'étalement.
-    """
+    exactement à cette question. Les jours déjà PLEINS (réveils posés par un
+    lot précédent) sont sautés, et un jour partiellement occupé reprend au
+    créneau suivant : la file se PROLONGE, elle ne recommence jamais.
+
+    N'écrit rien : renvoie les dormants DANS L'ORDRE d'étalement."""
     from apps.notifications.calendar_utils import ajouter_jours_ouvres
 
     from . import horaires
 
     if not dormants:
         return []
-    delai = _placement_delai_reveil(company)
+    if gabarit is None:
+        gabarit = _placement_gabarit_reveil(company)
+    delai = (getattr(gabarit, 'delai_jours', None)
+             or PLACEMENT_REVEIL_DELAI_JOURS)
     base = horaires.prochain_creneau_appel(maintenant, company)
     base_locale = base.astimezone(horaires.CASABLANCA)
     jour_zero = base_locale.date()
@@ -5793,11 +5972,15 @@ def _etaler_reveils(dormants, company, maintenant):
         # placement lancé l'après-midi commence le PROCHAIN jour ouvré, jamais
         # avec des touches « en retard » à la seconde où elles naissent.
         jour_zero = ajouter_jours_ouvres(jour_zero, 1, company)
+    occupation = _placement_occupation_reveils(company, jour_zero, gabarit)
     ordonnes = sorted(dormants,
                       key=lambda e: (e['ancre'], e['lead'].pk), reverse=True)
-    for index, entree in enumerate(ordonnes):
-        offset, rang = divmod(index, PLACEMENT_REVEILS_PAR_JOUR)
-        jour = ajouter_jours_ouvres(jour_zero, offset, company)
+    jour = jour_zero
+    for entree in ordonnes:
+        while occupation[jour] >= PLACEMENT_REVEILS_PAR_JOUR:
+            jour = ajouter_jours_ouvres(jour, 1, company)
+        rang = occupation[jour]
+        occupation[jour] += 1
         creneau = horaires.prochain_creneau_appel(
             datetime.datetime.combine(
                 jour, PLACEMENT_CRENEAUX[rang], tzinfo=horaires.CASABLANCA),
@@ -5831,7 +6014,11 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     l'inscrit dans la cadence.
 
     Renvoie ``True`` si une touche reste À FAIRE, ``False`` si la cadence est
-    intégralement passée (l'appelant bascule alors sur la dormance)."""
+    intégralement passée. Ce second cas est désormais TRANCHÉ EN AMONT par
+    ``_trancher_cadence_positionnee`` (l'aperçu doit annoncer la bascule) : le
+    voir ici est une anomalie, que l'appelant compte en ``erreurs``. La remise
+    en état reste néanmoins écrite, parce qu'elle doit être exacte le jour où
+    elle sert."""
     lead = entree['lead']
     # Photo d'AVANT : de quoi défaire proprement si la cadence s'avère
     # intégralement passée (voir plus bas). Un rappel posé à la main par un
@@ -5859,7 +6046,7 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
         # Rien ne reste à faire : cette cadence ne relancerait personne. On
         # défait TOUT ce qu'on vient de créer — touches, note « Plan de
         # relance initialisé » (elle annoncerait un plan qui n'existe plus) et
-        # `relance_date` — puis l'appelant passe en dormance. Sans cette
+        # `relance_date` — puis l'appelant compte l'anomalie. Sans cette
         # remise en état, le lead gardait une échéance de relance pointant sur
         # une touche supprimée : un rappel fantôme, en retard pour toujours.
         RelanceEtape.objects.filter(pk__in=[e.pk for e in etapes]).delete()
@@ -5905,13 +6092,15 @@ def _placer_dormant(entree, *, user):
 
 
 def _placer_un(entree, *, user, maintenant):
-    """Place UN lead, puis note dans ``entree`` la touche qui l'attend."""
-    from . import horaires
-
+    """Place UN lead, puis journalise la touche qui l'attend."""
     if entree['cadence'] != 'reveil':
         if not _placer_cadence_positionnee(
                 entree, user=user, maintenant=maintenant):
-            return False
+            # La DÉCISION a déjà vérifié qu'une touche restait à faire
+            # (`_trancher_cadence_positionnee`) : si la matérialisation dit le
+            # contraire, c'est une anomalie — comptée, jamais silencieuse.
+            raise PlacementImpossible(
+                'cadence intégralement passée après décision')
     else:
         _placer_dormant(entree, user=user)
 
@@ -5919,11 +6108,12 @@ def _placer_un(entree, *, user, maintenant):
     touches = _placement_touches_creees(
         lead, entree['cadence'], devis=entree['devis'])
     a_faire = [e for e in touches if e.statut == RelanceEtape.Statut.A_FAIRE]
-    reference = (a_faire or touches)[0]
-    entree['prochaine_touche'] = reference.libelle or ''
-    entree['prochaine_le'] = (
-        reference.due_at.astimezone(horaires.CASABLANCA).isoformat()
-        if reference.due_at else None)
+    reference = (a_faire or touches or [None])[0]
+    # Le libellé est relu sur la touche RÉELLEMENT créée : la décision ne date
+    # que les vingt lignes de l'aperçu, et cette note doit nommer la bonne
+    # touche pour les 250 autres aussi.
+    libelle = (getattr(reference, 'libelle', '') or ''
+               or entree['prochaine_touche'])
     # FG28/MRY19 — note SYSTÈME (``user=None``), JAMAIS l'utilisateur qui a
     # lancé le placement. Le récepteur QJ7 (`_avancer_stage_on_contact_
     # activity`) fait avancer NEW → CONTACTED et stampe `first_contacted_at`
@@ -5938,51 +6128,82 @@ def _placer_un(entree, *, user, maintenant):
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Placé dans la cadence {entree["cadence"]} à la touche '
-             f'« {entree["prochaine_touche"]} » ({PLACEMENT_MARQUEUR}).')
+             f'« {libelle} » ({PLACEMENT_MARQUEUR}).')
     return True
 
 
-def _executer_placements(decisions, *, company, user, maintenant):
-    """Exécute TOUTES les décisions, lead par lead, best-effort.
+def _placement_ordre(decisions, company, maintenant, *, gabarit=None):
+    """L'ordre de traitement d'un lot : les cadences vivantes (les dossiers
+    les plus RÉCENTS d'abord), puis les dormants dans leur ordre d'étalement.
 
-    Deux passes, et l'ordre compte : les cadences positionnées d'abord, parce
-    qu'une cadence intégralement passée BASCULE en dormance — les créneaux de
-    réveil ne peuvent donc être étalés qu'une fois ces bascules connues, sans
-    quoi les derniers arrivés se retrouveraient sans créneau.
+    L'étalement est calculé ICI, pour tout le monde et dans les deux modes :
+    c'est lui qui donne son créneau à chaque dormant, donc `reveils_jusqu_au`
+    et la date affichée par l'aperçu. Borner le lot APRÈS cet ordre garantit
+    que le lot 1 prend bien les premiers créneaux et le lot 2 les suivants."""
+    dormants = _etaler_reveils(
+        [e for e in decisions if e['cadence'] == 'reveil'], company,
+        maintenant, gabarit=gabarit)
+    vivants = sorted([e for e in decisions if e['cadence'] != 'reveil'],
+                     key=lambda e: (e['jours'], e['lead'].pk))
+    return vivants + dormants
 
-    Renvoie ``(applique, erreurs)``."""
+
+def _dater_apercu(decisions, maintenant, *, gabarits, gabarit_reveil):
+    """Donne sa touche et sa date à CHACUNE des vingt lignes de l'aperçu —
+    et à elles seules.
+
+    C'est le cœur de la correction du 07/09 : dater les 270 décisions
+    revenait à matérialiser 270 cadences (le dry-run en transaction annulée),
+    alors que le rapport n'en montre que vingt. Les positionnées sont déjà
+    datées par la décision (elle devait, de toute façon, savoir s'il leur
+    restait une touche) ; restent les cadences complètes, calculées ici, et
+    les dormants, dont la date EST leur créneau étalé."""
+    for entree in sorted(
+            decisions,
+            key=lambda e: (e['jours'], e['lead'].pk))[:PLACEMENT_APERCU_MAX]:
+        if entree['prochaine_le'] is not None:
+            continue
+        if entree['cadence'] == 'reveil':
+            entree['prochaine_touche'] = (
+                getattr(gabarit_reveil, 'libelle', '') or '')
+            entree['prochaine_le'] = entree['creneau']
+            continue
+        echeances = _echeances_best_effort(
+            entree['lead'], entree['cadence'], entree['depart'], gabarits)
+        futures = [(echeance, gabarit.ordre, gabarit)
+                   for gabarit, echeance in echeances
+                   if echeance >= maintenant]
+        if futures:
+            echeance, _, gabarit = min(futures, key=lambda ligne: ligne[:2])
+            entree['prochaine_touche'] = gabarit.libelle or ''
+            entree['prochaine_le'] = echeance
+
+
+def _executer_placements(entrees, *, user, maintenant):
+    """Exécute les décisions du LOT, lead par lead, best-effort.
+
+    ``entrees`` arrive déjà ordonné et borné (`_placement_ordre`, `limite`) :
+    cette fonction ne décide plus rien — elle pose ce que la décision a
+    tranché. Renvoie ``(applique, erreurs)``."""
     from django.db import transaction
 
-    compteurs = {'applique': 0, 'erreurs': 0}
-
-    def _tenter(entree):
+    applique = erreurs = 0
+    for entree in entrees:
         try:
             with transaction.atomic():
-                place = _placer_un(entree, user=user, maintenant=maintenant)
+                _placer_un(entree, user=user, maintenant=maintenant)
         except Exception:  # noqa: BLE001 — un dossier bancal n'arrête rien
             logger.warning(
                 'MRY30: placement échoué (lead #%s, code %s)',
                 entree['lead'].pk, entree['code'], exc_info=True)
-            compteurs['erreurs'] += 1
-            return None
-        if place:
-            compteurs['applique'] += 1
-        return place
-
-    for entree in [e for e in decisions if e['cadence'] != 'reveil']:
-        if _tenter(entree) is False and entree['positionne']:
-            # Cadence intégralement passée → dormance de la MÊME famille.
-            entree.update(code=_PLACEMENT_REPLI_DORMANT[entree['code']],
-                          cadence='reveil', positionne=False, devis=None)
-
-    for entree in _etaler_reveils(
-            [e for e in decisions if e['cadence'] == 'reveil'],
-            company, maintenant):
-        _tenter(entree)
-    return compteurs['applique'], compteurs['erreurs']
+            erreurs += 1
+            continue
+        applique += 1
+    return applique, erreurs
 
 
-def _rapport_placement(decisions, ignores, total, *, apply, applique, erreurs):
+def _rapport_placement(decisions, ignores, total, *, apply, applique, erreurs,
+                       restants):
     """Le rapport, forme ``contract_samples/placement_anciens_leads.json``."""
     from . import horaires
 
@@ -6006,10 +6227,14 @@ def _rapport_placement(decisions, ignores, total, *, apply, applique, erreurs):
             'code': entree['code'],
             'cadence': entree['cadence'],
             'prochaine_touche': entree['prochaine_touche'],
-            'prochaine_le': entree['prochaine_le'],
+            'prochaine_le': (
+                entree['prochaine_le'].astimezone(
+                    horaires.CASABLANCA).isoformat()
+                if entree['prochaine_le'] is not None else None),
         }
         for entree in sorted(
-            decisions, key=lambda e: (e['jours'], e['lead'].pk))[:20]
+            decisions,
+            key=lambda e: (e['jours'], e['lead'].pk))[:PLACEMENT_APERCU_MAX]
     ]
     creneaux = [e['creneau'] for e in decisions if e['creneau'] is not None]
     return {
@@ -6024,42 +6249,70 @@ def _rapport_placement(decisions, ignores, total, *, apply, applique, erreurs):
             if creneaux else None),
         'applique': applique,
         'erreurs': erreurs,
+        'restants': restants,
     }
 
 
-def placer_anciens_leads(company, user, *, apply=False, maintenant=None):
+def _placement_limite(limite):
+    """``limite`` bornée à [1, PLACEMENT_LOT_MAX] (défaut PLACEMENT_LOT_DEFAUT).
+
+    La vue REFUSE une valeur hors bornes (400) : ce garde-fou-ci protège les
+    appelants internes (commande, tâche) d'un lot de 100 000 leads."""
+    if limite is None:
+        return PLACEMENT_LOT_DEFAUT
+    return max(1, min(int(limite), PLACEMENT_LOT_MAX))
+
+
+def placer_anciens_leads(company, user, *, apply=False, maintenant=None,
+                         limite=None):
     """MRY30 — Place les anciens leads d'une société dans les cadences du
     moteur de relances. Rapport = ``contract_samples/placement_anciens_leads``.
 
-    ``apply=False`` (défaut) n'écrit RIEN : l'aperçu exécute EXACTEMENT le
-    même chemin de code dans une transaction ANNULÉE
-    (``transaction.set_rollback``). C'est délibéré, et c'est la seule façon
-    d'obtenir un aperçu fidèle : la reprise MRY23 avait déjà payé la leçon —
-    son dry-run, qui recalculait les décisions « à côté », annonçait des
-    dossiers que ``--apply`` n'atteignait jamais. Ici, ce que l'aperçu affiche
-    (code, cadence, prochaine touche, créneaux de réveil) EST le résultat de
-    la vraie exécution, simplement défait ensuite.
+    ``apply=False`` (défaut) est un CALCUL PUR : aucune écriture, aucune
+    transaction, aucun rollback. L'aperçu partage le CALCUL de l'application
+    — ``calculer_echeances_cadence`` pour les dates, ``_etaler_reveils`` pour
+    les créneaux, ``_decider_placements`` pour les codes — et c'est ce partage
+    qui le rend fidèle, comme l'était l'ancienne exécution en transaction
+    annulée. Celle-ci matérialisait en revanche les touches des 277 candidats
+    pour les jeter aussitôt : plus de 20 s, donc un 499 (le navigateur
+    abandonne à 20 s) et un écran qui n'affichait jamais rien — l'incident du
+    07/09/2026. Les vingt lignes de l'aperçu sont les seules datées.
 
-    ``apply=True`` applique lead par lead sous ``transaction.atomic`` :
-    l'échec d'un dossier est journalisé et compté dans ``erreurs``, il
-    n'annule jamais les autres. IDEMPOTENT : un second passage retrouve tous
-    les leads en ``deja_en_cadence`` et ne crée rien."""
-    from django.db import transaction
+    ``apply=True`` place AU PLUS ``limite`` leads (défaut 40), dans l'ordre
+    d'`_placement_ordre` : les cadences vivantes des dossiers les plus récents
+    d'abord, puis les dormants dans leur ordre d'étalement. Chaque lead est
+    posé sous son propre ``transaction.atomic`` : son échec est journalisé et
+    compté dans ``erreurs``, il n'annule jamais les autres. La réponse porte
+    ``restants`` ; l'écran (et la commande) rappellent jusqu'à ce qu'il tombe
+    à zéro. IDEMPOTENT : les leads du lot précédent reviennent en
+    ``deja_en_cadence``, et l'étalement REPREND à la suite des réveils déjà
+    posés — jamais au premier créneau du jour.
 
+    ``par_etape``, ``apercu`` et ``reveils_jusqu_au`` décrivent l'ensemble
+    RESTANT au DÉBUT de l'appel : ce qu'un aperçu montrerait à cette seconde,
+    dans les deux modes."""
     maintenant = maintenant or timezone.now()
-    decisions, ignores, total = _decider_placements(company, maintenant)
-
-    if apply:
-        applique, erreurs = _executer_placements(
-            decisions, company=company, user=user, maintenant=maintenant)
-    else:
-        with transaction.atomic():
-            _, erreurs = _executer_placements(
-                decisions, company=company, user=user, maintenant=maintenant)
-            # DERNIÈRE instruction du bloc : toute requête posée après
-            # `set_rollback` lèverait `TransactionManagementError`.
-            transaction.set_rollback(True)
-        applique = 0
-    return _rapport_placement(
-        decisions, ignores, total,
-        apply=apply, applique=applique, erreurs=erreurs)
+    gabarits = _placement_gabarits(company)
+    decisions, ignores, total = _decider_placements(
+        company, maintenant, gabarits)
+    # Lu SEULEMENT s'il y a un dormant : `cadence_pour` seede la cadence
+    # absente, et une société sans aucun dormant n'a aucune raison de voir
+    # naître un gabarit de réveil au passage d'un aperçu.
+    gabarit_reveil = (
+        _placement_gabarit_reveil(company, gabarits)
+        if any(e['cadence'] == 'reveil' for e in decisions) else None)
+    ordre = _placement_ordre(decisions, company, maintenant,
+                             gabarit=gabarit_reveil)
+    _dater_apercu(decisions, maintenant, gabarits=gabarits,
+                  gabarit_reveil=gabarit_reveil)
+    rapport = _rapport_placement(
+        decisions, ignores, total, apply=apply, applique=0, erreurs=0,
+        restants=len(decisions))
+    if not apply:
+        return rapport
+    applique, erreurs = _executer_placements(
+        ordre[:_placement_limite(limite)], user=user, maintenant=maintenant)
+    rapport['applique'] = applique
+    rapport['erreurs'] = erreurs
+    rapport['restants'] = max(0, len(decisions) - applique - erreurs)
+    return rapport

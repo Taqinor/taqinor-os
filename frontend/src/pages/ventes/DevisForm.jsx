@@ -33,6 +33,7 @@ import { useHasPermission } from '../../hooks/useHasPermission'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { formatMAD, timeAgo } from '../../lib/format'
 import QuoteTotalsSummary from '../../features/ventes/QuoteTotalsSummary'
+import { puRemise, repartirRemiseParLigne } from '../../features/ventes/remise'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -349,6 +350,17 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
     return sum + lineNetHT(l) * (1 - remGlobal / 100) * (rate / 100)
   }, 0)
   const totalTTC = totalHT + totalTVA
+
+  // QJRREM (fondateur, 07/09/2026) — « la remise est gardée partout et
+  // s'applique aussi à chaque poste ». La remise globale n'apparaissait que
+  // dans le bloc de totaux : le vendeur ne pouvait dire à son client ce que
+  // CETTE ligne coûte après remise. La répartition vient du miroir du noyau
+  // (`features/ventes/remise.js`, mêmes cas de test que
+  // `apps/ventes/tests/test_remise_par_ligne.py`), jamais d'un calcul local :
+  // la somme des lignes affichées vaut EXACTEMENT le Total HT ci-dessous.
+  // Remise nulle ⇒ rien n'est affiché de plus (écran inchangé).
+  const lignesRemisees = repartirRemiseParLigne(
+    lines.map(l => ({ totalHt: lineNetHT(l) })), remGlobal)
 
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
   const setField = (k, v) => { setDirty(true); clearField(k); setFields(f => ({ ...f, [k]: v })) }
@@ -721,11 +733,15 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map(l => {
+                  {lines.map((l, iLigne) => {
                     const lineTotal =
                       (parseFloat(l.quantite) || 0) *
                       (parseFloat(l.prix_unitaire) || 0) *
                       (1 - (parseFloat(l.remise) || 0) / 100)
+                    // QJRREM — le montant de CETTE ligne après remise globale,
+                    // tel que le PDF l'imprimera (répartition partagée).
+                    const totalApresRemise = lignesRemisees[iLigne]
+                    const montrerRemise = remGlobal > 0 && totalApresRemise != null
                     return (
                       <tr key={l._key} data-line-key={l._key}>
                         <td data-label="Produit">
@@ -763,6 +779,15 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.prix_unitaire}
                                  onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)} />
+                          {/* QJRREM — P.U. après remise globale, LECTURE SEULE :
+                              la saisie reste le prix catalogue (celui que le
+                              « Sous-total HT » additionne, celui que le PDF
+                              barre). */}
+                          {montrerRemise && (
+                            <div className="mt-0.5 text-right text-xs text-muted-foreground">
+                              après remise : {formatMAD(puRemise(totalApresRemise, l.quantite))}
+                            </div>
+                          )}
                         </td>
                         <td data-label="Rem. %">
                           <Input type="number" min="0" max="100" step="0.01"
@@ -777,7 +802,16 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                                  value={l.taux_tva}
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
-                        <td className="line-total" data-label="Total HT">{formatMAD(lineTotal)}</td>
+                        <td className="line-total" data-label="Total HT">
+                          {formatMAD(lineTotal)}
+                          {/* QJRREM — la somme de ces montants vaut EXACTEMENT
+                              le « Total HT » du bloc ci-dessous, au centime. */}
+                          {montrerRemise && (
+                            <div className="mt-0.5 text-xs font-normal text-muted-foreground">
+                              après remise : {formatMAD(totalApresRemise)}
+                            </div>
+                          )}
+                        </td>
                         <td>
                           {lines.length > 1 && (
                             <IconButton type="button" label="Supprimer la ligne" size="sm"

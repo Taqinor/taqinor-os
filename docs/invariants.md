@@ -71,6 +71,22 @@ Format d'une entrée : `ID | invariant | fichier::Classe::test_méthode`.
    `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestAucunPrixAchatDansLesCinqDocuments::test_releve_client`
    `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestAucunPrixAchatDansLesCinqDocuments::test_quittance`
 
+10. **REMISE-PAR-LIGNE** — quand la remise globale est répartie ligne par ligne
+    pour l'affichage (demande fondateur du 07/09/2026 : « la remise est gardée
+    partout et s'applique aussi à chaque poste »), la SOMME des lignes remisées
+    affichées vaut EXACTEMENT le Total HT net imprimé juste dessous, au
+    centime. Sans cette contrainte, N arrondis indépendants dérivent du total :
+    le client additionne le tableau et ne retombe pas dessus. La répartition
+    (part exacte `montant × ht_net / ht_brut`, quantifiée ROUND_HALF_UP, puis
+    centimes résiduels par le PLUS FORT RESTE, ex æquo départagés par l'ordre
+    des lignes) est déclarée UNE fois dans
+    `apps/ventes/domain/argent.py::repartir_remise_par_ligne` ; le miroir JS
+    `frontend/src/features/ventes/remise.js` porte la MÊME table de cas
+    (`FIXTURES`, des deux côtés) pour que l'écran du vendeur et le PDF du
+    client ne puissent pas se contredire d'un centime.
+    `apps/ventes/tests/test_remise_par_ligne.py::TestRepartitionRemiseParLigne::test_la_somme_des_lignes_remisees_est_le_total_net`
+    `apps/ventes/tests/test_remise_par_ligne.py::TestChargeUtileMoteurPdf::test_la_somme_des_totaux_remises_est_le_ht_net_du_panier`
+
 ## Règle : un bug corrigé atterrit avec un test rouge-d'abord
 
 Tout bug corrigé DOIT être livré avec un test qui échoue AVANT le correctif et
