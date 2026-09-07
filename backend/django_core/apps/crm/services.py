@@ -1003,6 +1003,68 @@ def cloturer_cadence(lead, user, cadence):
             getattr(lead, 'pk', '?'), cadence, exc_info=True)
 
 
+#: MRY34 — libellé du FILET « client joint » : l'étape unique posée quand une
+#: cadence s'arrête sur une issue de SUCCÈS (joint/intéressé) sans qu'aucune
+#: autre étape ne reste ouverte. Sans elle, le lead qu'on venait de JOINDRE
+#: disparaissait de toutes les vues de relance (incident du 07/09/2026 : onze
+#: touches barrées « joint », plus AUCUNE prochaine étape) — l'inverse exact
+#: de MRY11, qui ne parque au froid que les cadences épuisées SANS réponse.
+FILET_JOINT_LIBELLE = 'Prochaine étape — envoyer le devis ou fixer un rappel'
+
+#: Délai (jours) du filet : DEMAIN, recalé sur le prochain créneau d'appel de
+#: la société (fenêtres MRY4). Si Meryem donne une date de rappel en marquant
+#: la touche, `reporter_prochaine_touche` déplace ce filet sur SA date — le
+#: J+1 n'est que le défaut quand aucune date n'est saisie.
+FILET_JOINT_DELAI_JOURS = 1
+
+
+def assurer_prochaine_etape_apres_succes(lead, user):
+    """MRY34 — un lead qu'on vient de JOINDRE ne reste jamais sans étape.
+
+    Appelée quand une issue de succès (« joint » / « intéressé ») vient
+    d'arrêter la cadence de contact (MRY9) : si PLUS AUCUNE touche n'est
+    ouverte — pas d'après-devis en cours, pas de rappel — le lead sortirait
+    de toutes les files sans que personne ne le remarque. On pose alors UNE
+    étape `generique` (« envoyer le devis ou fixer un rappel ») à demain,
+    au prochain créneau de la société.
+
+    No-op dès qu'une prochaine étape existe déjà, ou que le lead est signé,
+    au froid (le réveil s'en charge), perdu ou archivé. Renvoie l'étape créée
+    ou ``None``."""
+    from . import horaires
+
+    if not getattr(lead, 'pk', None):
+        return None
+    # L'instance peut être périmée (même précaution que `cloturer_cadence`).
+    lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived'])
+    if lead.perdu or lead.is_archived:
+        return None
+    if lead.stage in (stages.SIGNED, stages.COLD):
+        return None
+    if lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists():
+        return None
+    vise = timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS)
+    quand = horaires.prochain_creneau_appel(vise, lead.company, canal='appel')
+    etape = RelanceEtape.objects.create(
+        company=lead.company, lead=lead, cadence='generique', ordre=1,
+        canal=RelanceEtape.Canal.APPEL, libelle=FILET_JOINT_LIBELLE,
+        due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
+        note='Posée automatiquement : client joint, cadence arrêtée.')
+    lead.relance_date = etape.due_date
+    lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+    # Note SYSTÈME (``user=None``, même motif que `arreter_cadence`) : poser
+    # un rappel n'est pas AVOIR contacté le lead (garde QJ7).
+    quand_local = quand.astimezone(horaires.CASABLANCA)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Client joint : étape « {FILET_JOINT_LIBELLE} » posée '
+              f'automatiquement pour le {quand_local:%d/%m/%Y à %H:%M}.'))
+    return etape
+
+
 #: MRY13 — la touche dont le texte est un SCRIPT à dire, pas un message à
 #: coller : son lien wa.me ne doit donc porter aucun `?text=`.
 _TEMPLATES_VOCAUX = frozenset({'vocal_j3'})

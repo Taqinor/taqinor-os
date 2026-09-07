@@ -26,6 +26,7 @@ from .services import (
     _CONTACT_KINDS,
     arreter_cadence,
     arreter_cadence_du_lead_id,
+    assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
     avancer_stage_pour_devis,
@@ -510,6 +511,13 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     try:
         arreter_cadence(instance.lead, user=instance.user, motif=motif,
                         cadences=cadences)
+        # MRY34 — filet « client joint » : si l'arrêt (ou l'absence de toute
+        # cadence) laisse le lead SANS prochaine étape, une étape `generique`
+        # est posée à demain — un client qu'on vient de joindre ne disparaît
+        # jamais des files. `refus`, lui, ne pose rien : la suite d'un refus
+        # est une décision humaine (MRY22), pas un rappel automatique.
+        if issue in ('joint', 'interesse'):
+            assurer_prochaine_etape_apres_succes(instance.lead, instance.user)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY9: arrêt de cadence échoué sur l'issue « %s » (lead #%s)",
