@@ -2545,6 +2545,71 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         for it in onepage_source if it["quantite"] > 0
     ]
 
+    # ── QJRREM — CHAQUE LIGNE PORTE LA REMISE GLOBALE ───────────────────────
+    # Demande fondateur (07/09/2026) : « la remise de 5 % est gardée partout et
+    # s'applique aussi à chaque poste de la liste des composants, de
+    # l'installation, de tout ». Les quatre clés ajoutées sont un fait
+    # d'AFFICHAGE : les clés historiques (``prix_unit_ht``, ``prix_unit_ttc``)
+    # gardent leur sens CATALOGUE, aucun total ne bouge, et la répartition vient
+    # du noyau (``domain.argent.repartir_remise_par_ligne``) — jamais d'une
+    # seconde règle écrite ici.
+    #
+    # PLACÉ ICI, LE PLUS TARD POSSIBLE : après le découpage d'options, après
+    # l'agrégation kit (L-NIV) et après la construction de ``all_items``, donc
+    # sur EXACTEMENT les lignes que chaque format imprime. La répartition se
+    # fait PAR PANIER (chaque option a son propre Total HT net), avec le montant
+    # de remise que la chaîne canonique a déjà arrêté pour CE panier — la somme
+    # des lignes remisées d'un panier vaut donc son « Total HT » au centime
+    # (invariant #10).
+    #
+    # Les listes sont RECOPIÉES : un équipement commun aux deux options est le
+    # MÊME dict dans ``sans_items`` et ``avec_items``, et les deux paniers n'ont
+    # pas forcément le même centime résiduel — sans copie, la seconde annotation
+    # écraserait la première.
+    def _annoter_remise(rows, totaux_du_panier):
+        """Les quatre clés « après remise » de chaque ligne de ``rows``.
+
+        ``remise`` nulle ⇒ les clés valent MOT POUR MOT les valeurs catalogue
+        (aucun arrondi introduit) : un devis sans remise globale est rendu
+        octet pour octet comme avant.
+        """
+        from core.money import quantize_mad as _q
+
+        from apps.ventes.domain.argent import pu_remise as _pu_remise
+        from apps.ventes.domain.argent import (
+            repartir_remise_par_ligne as _repartir,
+        )
+
+        rows = [dict(r) for r in rows]
+        if not rows:
+            return rows
+        remise = Decimal(str((totaux_du_panier or {}).get("remise") or 0))
+        parts = _repartir(
+            [_LigneArgentPdf(r, tva_pct) for r in rows], remise)
+        for row, part in zip(rows, parts):
+            qte = Decimal(str(row.get("quantite") or 0))
+            pu_ht_cat = Decimal(str(row.get("prix_unit_ht") or 0))
+            pu_ttc_cat = Decimal(str(row.get("prix_unit_ttc") or 0))
+            if remise == 0 or part is None:
+                pu_ht, total_ht = pu_ht_cat, pu_ht_cat * qte
+                pu_ttc, total_ttc = pu_ttc_cat, pu_ttc_cat * qte
+            else:
+                taux = Decimal(str(row.get("taux_tva", tva_pct) or 0))
+                coef = Decimal(1) + taux / Decimal(100)
+                total_ht = part
+                pu_ht = _pu_remise(part, qte)
+                pu_ttc = _q(pu_ht * coef)
+                total_ttc = _q(total_ht * coef)
+            row["pu_ht_remise"] = float(pu_ht)
+            row["total_ht_remise"] = float(total_ht)
+            row["pu_ttc_remise"] = float(pu_ttc)
+            row["total_ttc_remise"] = float(total_ttc)
+        return rows
+
+    sans_items = _annoter_remise(sans_items, totaux_sans)
+    avec_items = _annoter_remise(avec_items, totaux_avec)
+    all_items = _annoter_remise(all_items, totaux_all)
+
     # Puces des cartes d'option de la page 1 — générées depuis l'équipement
     # RÉEL de chaque option, jamais du texte boilerplate.
     #
