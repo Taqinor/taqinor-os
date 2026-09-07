@@ -29,7 +29,9 @@ export default function VilleCheckDialog({
   const [erreur, setErreur] = useState(false)
   const [data, setData] = useState(null)
   const [choix, setChoix] = useState('')
-  const [mode, setMode] = useState(MODE_VOISINE)
+  // Ville vide (douar tapé en adresse) : la ville choisie DEVIENT la
+  // ville du lead — défaut « même ville » ; sinon défaut « voisine ».
+  const [mode, setMode] = useState(ville ? MODE_VOISINE : MODE_MEME)
 
   useEffect(() => {
     if (!open) return
@@ -54,7 +56,7 @@ export default function VilleCheckDialog({
   const markers = [
     ...(position ? [{
       id: 'client', lat: position.lat, lng: position.lng,
-      label: `« ${ville} » (position estimée)`, color: '#dc2626',
+      label: ville ? `« ${ville} » (position estimée)` : 'Repère du lead', color: '#dc2626',
     }] : []),
     ...proches.map((p) => ({
       id: p.ville, lat: p.lat, lng: p.lng,
@@ -73,7 +75,7 @@ export default function VilleCheckDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Vérifier la ville — « {ville} »</DialogTitle>
+          <DialogTitle>{ville ? `Vérifier la ville — « ${ville} »` : 'Choisir la ville du lead'}</DialogTitle>
         </DialogHeader>
         {loading ? (
           <Spinner />
@@ -123,7 +125,7 @@ export default function VilleCheckDialog({
                   checked={mode === MODE_MEME} onChange={() => setMode(MODE_MEME)}
                 />
                 <span>
-                  C’est la <b>même ville</b> — remplacer « {ville} » par la ville choisie
+                  C’est la <b>même ville</b> — {ville ? `remplacer « ${ville} » par la ville choisie` : 'la ville choisie devient la ville du lead'}
                 </span>
               </label>
               <label className="flex items-center gap-2 text-sm">

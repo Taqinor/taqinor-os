@@ -73,8 +73,12 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
     }, 700)
     return () => clearTimeout(timer)
   }, [villeTapee])
+  // Cas « Sidi Hashass » (07/09) : le douar est tapé dans ADRESSE, Ville
+  // reste vide — mais un repère GPS existe : le bouton doit apparaître aussi,
+  // la carte proposera les villes ERP autour du repère.
   const villeAVerifier = !villeRattachee
-    && (villeStatut === 'inconnue' || villeStatut === 'ambigue')
+    && ((villeStatut === 'inconnue' || villeStatut === 'ambigue')
+      || (!villeTapee && !!v('gps_lat') && !!v('gps_lng')))
   const choisirVille = ({ mode, ville }) => {
     if (mode === 'meme') {
       setField('ville', ville)
