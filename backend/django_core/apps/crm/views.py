@@ -1508,12 +1508,19 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     def placement_cadences(self, request):
         """MRY30 — Place les ANCIENS leads dans les cadences du moteur.
 
-        Corps ``{"apply": false}`` (défaut) = APERÇU, n'écrit rien ;
-        ``{"apply": true}`` applique. Réponse = forme
+        Corps ``{"apply": false, "limite": 40}`` — ``{"apply": false}``
+        (défaut) = APERÇU, n'écrit rien ; ``{"apply": true}`` applique AU PLUS
+        ``limite`` leads (1..200, défaut 40) et renvoie ``restants`` : l'écran
+        rappelle tant qu'il est > 0. Réponse = forme
         `contract_samples/placement_anciens_leads.json` dans les deux cas —
         c'est le point : l'aperçu et l'application rendent le MÊME rapport,
-        seul ``applique`` change, si bien que l'écran ne peut pas afficher
-        deux choses différentes selon le mode.
+        seuls ``applique``/``restants`` changent, si bien que l'écran ne peut
+        pas afficher deux choses différentes selon le mode.
+
+        Le LOT existe pour une raison mesurée : le 07/09/2026, un aperçu sur
+        277 candidats a dépassé les 20 s du délai axios et nginx a journalisé
+        deux 499. L'aperçu est désormais un calcul pur, et l'application ne
+        traite qu'un lot par requête — les deux moitiés du même incident.
 
         Réservé responsable/admin (l'action déplace des centaines de dossiers
         au froid et pose des cadences ; ce n'est pas un geste de file
@@ -1526,9 +1533,31 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'apply': 'Booléen attendu (true pour appliquer).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import placer_anciens_leads
+        from .services import (
+            PLACEMENT_LOT_DEFAUT, PLACEMENT_LOT_MAX, placer_anciens_leads)
+        limite = request.data.get('limite')
+        if limite in (None, ''):
+            limite = PLACEMENT_LOT_DEFAUT
+        # `bool` est un `int` en Python : sans ce refus, `{"limite": true}`
+        # passerait pour un lot de 1.
+        elif isinstance(limite, bool):
+            limite = None
+        else:
+            try:
+                limite = int(limite)
+            except (TypeError, ValueError):
+                limite = None
+        if limite is None or not 1 <= limite <= PLACEMENT_LOT_MAX:
+            # LEVÉ, pas renvoyé : `check_api_shapes` lit le CONTRAT d'une vue
+            # comme l'union de tous ses `return Response({…})` littéraux — un
+            # refus rendu de cette façon ferait entrer `limite` dans la forme
+            # de la réponse, alors que c'est un champ du CORPS DE REQUÊTE.
+            # DRF rend le même 400.
+            raise DRFValidationError(
+                {'limite': f'Entier attendu entre 1 et {PLACEMENT_LOT_MAX} '
+                           f'(défaut {PLACEMENT_LOT_DEFAUT}).'})
         rapport = placer_anciens_leads(
-            request.user.company, request.user, apply=apply)
+            request.user.company, request.user, apply=apply, limite=limite)
         return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
