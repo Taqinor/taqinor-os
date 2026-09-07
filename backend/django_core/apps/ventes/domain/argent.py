@@ -52,7 +52,7 @@ entrées de ``tva_par_taux`` portent ``{taux, base, montant}``, exactement le
 contrat — ``base`` étant la part de ``ht_net`` imposée à CE taux.
 """
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Optional, Tuple
 
@@ -235,3 +235,131 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
         devis,
         _lignes_du_devis(devis, lignes, avec_produit=bool(option)),
         option)
+
+
+# ── QJRREM — LA REMISE GLOBALE, LIGNE PAR LIGNE ─────────────────────────────
+#
+# CE QUE C'EST (demande fondateur du 07/09/2026 : « la remise de 5 % est gardée
+# partout et s'applique aussi à chaque poste de la liste des composants, de
+# l'installation, de tout »). ``Devis.remise_globale`` est un POURCENTAGE porté
+# par le DOCUMENT : la chaîne canonique le fait entrer comme UNE ligne agrégée
+# (``ht_brut`` → ``remise`` → ``ht_net``), et chaque ligne s'imprimait au prix
+# CATALOGUE. Le client voyait donc un tableau dont aucune ligne ne portait la
+# remise qu'il venait de négocier.
+#
+# CE QUE CE N'EST PAS. Ce n'est PAS une huitième chaîne monétaire : rien ici ne
+# recalcule ``ht_net``, ``tva`` ni ``ttc`` — la fonction REÇOIT le montant de
+# remise que le noyau a déjà arrêté et se contente de le RÉPARTIR sur les
+# lignes. C'est un fait d'AFFICHAGE, et il est contraint par l'invariant #10 :
+# la somme des lignes remisées affichées vaut EXACTEMENT le Total HT net, au
+# centime. Sans cette contrainte, N arrondis indépendants dérivent du total
+# imprimé juste dessous — le client additionne et ne retombe pas.
+#
+# LECTURE PURE : n'écrit rien, ne change aucun statut (règle #4), et ne porte
+# JAMAIS ``prix_achat`` ni aucune marge.
+
+
+def repartir_remise_par_ligne(lignes, remise, *, cle_montant='total_ht'):
+    """Le montant APRÈS remise globale de chaque ligne — somme EXACTE.
+
+    ``lignes`` — les lignes du document, dans leur ordre d'affichage. Seules
+    les lignes COMPTÉES (``selectors.ligne_compte_dans_totaux`` : ligne produit
+    non optionnelle) reçoivent une part ; les autres — sections, notes, add-ons
+    non activés — rendent ``None`` à leur position, exactement comme elles sont
+    absentes des totaux.
+
+    ``remise`` — le MONTANT de remise globale, tel que la chaîne canonique l'a
+    arrêté (``Totaux.remise``). Jamais un pourcentage : le pourcentage a déjà
+    été appliqué et arrondi une fois, en un seul endroit, et le ré-appliquer
+    ici rouvrirait la divergence que toute cette façade existe pour fermer.
+
+    ``cle_montant`` — l'attribut qui porte le montant HT de la ligne
+    (``total_ht`` par défaut, la convention du noyau).
+
+    RENDU : une liste ALIGNÉE sur ``lignes`` (même longueur, mêmes positions),
+    de ``Decimal`` au centime ou ``None``.
+
+    LA GARANTIE : ``sum(parts non nulles) == ht_net`` au centime EXACT, où
+    ``ht_net = q(Σ montants − remise)`` — la valeur même que le document
+    imprime en « Total HT ». La part exacte d'une ligne vaut
+    ``montant × ht_net / ht_brut`` ; elle est quantifiée ROUND_HALF_UP, puis
+    les centimes résiduels (positifs OU négatifs) sont attribués par la méthode
+    du PLUS FORT RESTE — le reste fractionnaire le plus grand d'abord, les
+    ex æquo départagés par l'ORDRE DES LIGNES. Déterministe : deux appels sur
+    les mêmes lignes rendent le même découpage, donc l'écran, le PDF et un
+    re-rendu du même devis ne peuvent pas se contredire d'un centime.
+
+    REMISE NULLE ⇒ chaque ligne comptée rend son propre montant quantifié (et
+    la somme vaut toujours ``ht_net``, qui vaut alors ``ht_brut``).
+    """
+    from core.money import quantize_mad
+
+    from apps.ventes.selectors import ligne_compte_dans_totaux
+
+    lignes = list(lignes)
+    comptees = [i for i, li in enumerate(lignes)
+                if ligne_compte_dans_totaux(li)]
+    if not comptees:
+        return [None] * len(lignes)
+
+    montants = {
+        i: Decimal(str(getattr(lignes[i], cle_montant, 0) or 0))
+        for i in comptees
+    }
+    ht_brut = sum(montants.values(), Decimal('0'))
+    remise = Decimal(str(remise or 0))
+    ht_net = quantize_mad(ht_brut - remise)
+
+    if ht_brut == 0:
+        # Rien à répartir proportionnellement : chaque ligne garde son montant.
+        exacts = dict(montants)
+    else:
+        exacts = {i: montants[i] * ht_net / ht_brut for i in comptees}
+
+    parts = {i: quantize_mad(v) for i, v in exacts.items()}
+
+    # ── Le plus fort reste ───────────────────────────────────────────────────
+    # ``residu`` est ce qu'il manque (ou ce qui dépasse) après N arrondis
+    # indépendants : quelques centimes, jamais plus. On les pose sur les lignes
+    # dont l'arrondi a le plus « perdu » (reste le plus grand), et on les
+    # retire de celles qui ont le plus « gagné » (reste le plus négatif).
+    centime = Decimal('0.01')
+    residu = ht_net - sum(parts.values(), Decimal('0'))
+    n_centimes = int(
+        (residu / centime).to_integral_value(rounding=ROUND_HALF_UP))
+    if n_centimes:
+        if n_centimes > 0:
+            # Reste DÉCROISSANT ; à reste égal, la ligne la plus HAUTE d'abord.
+            cibles = sorted(comptees,
+                            key=lambda i: (exacts[i] - parts[i], -i),
+                            reverse=True)
+        else:
+            # Reste CROISSANT ; à reste égal, la ligne la plus HAUTE d'abord.
+            cibles = sorted(comptees,
+                            key=lambda i: (exacts[i] - parts[i], i))
+        pas = centime if n_centimes > 0 else -centime
+        for rang in range(abs(n_centimes)):
+            i = cibles[rang % len(cibles)]
+            parts[i] = parts[i] + pas
+
+    return [parts.get(i) for i in range(len(lignes))]
+
+
+def pu_remise(total_remise, quantite):
+    """Le PRIX UNITAIRE d'une ligne après remise globale, au centime.
+
+    Dérivé du TOTAL réparti (``repartir_remise_par_ligne``) divisé par la
+    quantité — jamais l'inverse : c'est le TOTAL qui porte l'invariant #10, et
+    un prix unitaire arrondi puis re-multiplié ne retomberait pas dessus. La
+    conséquence assumée est que ``pu_remise × quantité`` peut différer du total
+    de ligne d'un centime : le document imprime les deux, et c'est le TOTAL qui
+    s'additionne au Total HT.
+
+    Quantité nulle ou absente ⇒ ``Decimal('0.00')`` (rien à répartir).
+    """
+    from core.money import quantize_mad
+
+    quantite = Decimal(str(quantite or 0))
+    if quantite == 0:
+        return quantize_mad(Decimal('0'))
+    return quantize_mad(Decimal(str(total_remise or 0)) / quantite)
