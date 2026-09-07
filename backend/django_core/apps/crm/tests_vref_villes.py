@@ -64,6 +64,16 @@ class ResolveurTests(TestCase):
         self.assertIn('Skoura', r['candidats'])
         self.assertIn('Ouarzazate', r['candidats'])
 
+    def test_un_prenom_dans_le_champ_ville_nest_jamais_corrige(self):
+        """Relecture du dry-run prod (07/09) : à 0.85, « Said » partait sur
+        Saidia et « mohamed » sur Mohammedia — des PRÉNOMS. À 0.90, plus
+        aucun pari ; l'écran carte tranche."""
+        self.assertNotEqual(resoudre_ville('Said')['statut'], 'corrigee')
+        self.assertNotEqual(resoudre_ville('mohamed')['statut'], 'corrigee')
+        self.assertNotEqual(resoudre_ville('Tanja')['statut'], 'corrigee')
+        self.assertNotEqual(
+            resoudre_ville('Salla jadida')['statut'], 'corrigee')
+
     def test_ville_dans_un_texte(self):
         self.assertEqual(corriger_ville('settat centre ville'), 'Settat')
 
