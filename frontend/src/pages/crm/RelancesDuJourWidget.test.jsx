@@ -178,4 +178,32 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     // que le bouton existe et reste cliquable sans lever d'erreur.
     expect(() => fireEvent.click(screen.getByText(PREMIERE.lead_nom))).not.toThrow()
   })
+
+  // MRY32 — sélecteur « Aujourd'hui + retard | Demain | 7 jours ».
+  it('MRY32 — « Demain » interroge scope=tomorrow et les lignes futures se lisent seulement (pas de bouton Fait)', async () => {
+    // Échéance FUTURE (demain, Africa/Casablanca) — `readOnly` du widget
+    // compare au jour courant, jamais au scope demandé : une ligne dont
+    // l'échéance est déjà passée resterait actionnable même sous scope=
+    // tomorrow, ce que ce test ne doit PAS prouver par accident.
+    const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' })
+      .format(new Date()).split('-').map(Number)
+    const demain = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+    crmApi.getRelanceEtapesDues.mockResolvedValue({
+      data: { count: 1, results: [{ ...PREMIERE, id: 999, due_date: demain }] },
+    })
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('radio', { name: 'Demain' }))
+    await waitFor(() => expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'tomorrow' }))
+    expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Reporter/ })).not.toBeInTheDocument()
+  })
+
+  it('MRY32 — « 7 jours » interroge scope=week', async () => {
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('radio', { name: '7 jours' }))
+    await waitFor(() => expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'week' }))
+  })
 })

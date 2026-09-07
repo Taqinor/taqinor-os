@@ -127,7 +127,7 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
   // `friseReload` ci-dessous (propres boutons Relancer/Arrêter de CETTE
   // section) : les deux sources de rechargement de la frise coexistent sans
   // jamais s'écraser l'une l'autre.
-  const { users = [], tagOptions = [], motifOptions = [], relanceVersion = 0 } = refData
+  const { users = [], tagOptions = [], motifOptions = [], relanceVersion = 0, onRelanceChanged } = refData
   const { labels: canalLabels } = useCanaux()
   const perdu = !!getField(state, 'perdu')
   const neplusContacter = !!getField(state, 'ne_plus_contacter')
@@ -135,6 +135,15 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
   // MRY15 — bumped après « Relancer »/« Arrêter la cadence » pour forcer
   // CadenceFrise à recharger, sans dupliquer sa logique réseau ici.
   const [friseReload, setFriseReload] = useState(0)
+  // MRY32 — la frise fait désormais elle-même Fait/Sauter/Reporter/WhatsApp
+  // (touches compactes) : son propre `onChanged` doit à la fois recharger LA
+  // FRISE (même compteur que ci-dessus) et LA FICHE entière (une touche
+  // « Fait » peut avancer l'étape/les tags du lead — `refData.onRelanceChanged`,
+  // posé par `LeadWorkspace.jsx`).
+  const onFriseChanged = () => {
+    setFriseReload((n) => n + 1)
+    onRelanceChanged?.()
+  }
 
   return (
     <>
@@ -174,7 +183,10 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
                 onChanged={() => setFriseReload((n) => n + 1)}
               />
               <div className="mt-1.5">
-                <CadenceFrise leadId={state.leadId} reloadToken={friseReload + relanceVersion} />
+                <CadenceFrise
+                  leadId={state.leadId} reloadToken={friseReload + relanceVersion}
+                  onChanged={onFriseChanged}
+                />
               </div>
             </>
           )}

@@ -1,0 +1,61 @@
+{
+  "endpoint": "POST /api/django/crm/leads/placement-cadences/",
+  "pourquoi": "MRY30/MRY33 (PACT10) — le PLACEMENT des anciens leads dans les cadences du moteur de relances (décision fondateur 06/09/2026 : « tous les anciens leads non Froid sont traités ; le moteur décide à quelle étape des six appels chacun se trouve »). Corps `{\"apply\": false}` = APERÇU, n'écrit rien ; `{\"apply\": true}` = applique et renvoie le même rapport avec `applique`. Lu par la carte « Anciens leads à placer » du Cockpit (MRY33) et par la commande `placer_anciens_leads`. Règles de décision (service `placer_anciens_leads`) : lead vivant (ni Froid, ni Signé, ni perdu/archivé/« ne plus contacter ») SANS aucune touche de cadence ; `ancre` = le plus récent de la création, de la dernière activité humaine, du dernier changement d'étape journalisé et de la date d'envoi d'un devis ERP ; devis ERP envoyé → « Après devis » depuis son envoi (touches passées sautées) ; devis envoyé ou relance sans devis ERP → « Après devis » positionnée si l'ancre a ≤ 14 jours, sinon dormant « Devis sans suite » ; contacté sans devis → « Contact » positionnée si ≤ 14 jours, sinon dormant « Jamais chiffré » ; nouveau → « Contact » complète depuis maintenant si ≤ 14 jours, sinon dormant « Jamais chiffré » ; dormant = Froid + tag + cadence « Réveil » dont la première touche est ÉTALÉE à 8 leads par jour ouvré, les plus récents d'abord. Un devis accepté sans signature est listé, jamais touché.",
+  "exemple": {
+    "apply": false,
+    "total_candidats": 277,
+    "a_placer": 270,
+    "ignores": {
+      "deja_en_cadence": 4,
+      "devis_accepte_non_signe": 3
+    },
+    "par_etape": [
+      {"code": "contact_complete", "libelle": "Contact — depuis la première touche (Message d'identité)", "cadence": "contact", "nombre": 20},
+      {"code": "contact_positionne", "libelle": "Contact — positionné selon l'ancienneté, touches passées sautées", "cadence": "contact", "nombre": 12},
+      {"code": "apres_devis_positionne", "libelle": "Après devis — positionné depuis l'envoi, touches passées sautées", "cadence": "apres_devis", "nombre": 30},
+      {"code": "dormant_devis", "libelle": "Dormant — Froid, tag « Devis sans suite », réveil étalé", "cadence": "reveil", "nombre": 150},
+      {"code": "dormant_jamais_chiffre", "libelle": "Dormant — Froid, tag « Jamais chiffré », réveil étalé", "cadence": "reveil", "nombre": 58}
+    ],
+    "apercu": [
+      {
+        "lead": 1490,
+        "nom": "Prospect Exemple",
+        "stage_libelle": "Relance",
+        "source": "meta_lead_ads",
+        "ancre": "2026-08-30",
+        "jours": 7,
+        "code": "apres_devis_positionne",
+        "cadence": "apres_devis",
+        "prochaine_touche": "Garanties fabricants",
+        "prochaine_le": "2026-09-08T10:00:00+01:00"
+      }
+    ],
+    "reveils_jusqu_au": "2026-10-14",
+    "applique": 0,
+    "erreurs": 0
+  },
+  "exemple_vide": {
+    "apply": false,
+    "total_candidats": 0,
+    "a_placer": 0,
+    "ignores": {
+      "deja_en_cadence": 0,
+      "devis_accepte_non_signe": 0
+    },
+    "par_etape": [],
+    "apercu": [],
+    "reveils_jusqu_au": null,
+    "applique": 0,
+    "erreurs": 0
+  },
+  "notes": {
+    "total_candidats": "leads vivants de la société hors Froid/Signé, non perdus, non archivés, sans « ne plus contacter » (miroir Odoo inclus).",
+    "a_placer": "candidats retenus après les ignorés ; `sum(par_etape[].nombre) == a_placer`.",
+    "ignores": "`deja_en_cadence` : au moins une touche de cadence existe déjà (le moteur les tient) ; `devis_accepte_non_signe` : à passer en Signé à la main, jamais relancé.",
+    "par_etape": "un objet par code de décision, dans l'ordre ci-dessus ; `cadence` ∈ {contact, apres_devis, reveil}. `nombre` est un entier, jamais null.",
+    "apercu": "les 20 premiers leads à placer (ordre : `jours` croissant) ; `stage_libelle` = libellé français de l'étape actuelle (STAGES.py) ; `prochaine_touche` = libellé de la première touche À FAIRE créée ; `prochaine_le` = son `due_at` ISO Africa/Casablanca ; `ancre` = date locale.",
+    "reveils_jusqu_au": "date locale de la dernière première-touche de réveil étalée (8 leads par jour ouvré), null sans dormant.",
+    "applique": "nombre de leads réellement placés ; toujours 0 en aperçu.",
+    "erreurs": "nombre de leads dont le placement a échoué (best-effort lead par lead : une erreur n'arrête jamais les autres, elle est journalisée et comptée ici). 0 en fonctionnement normal ; compté aussi en aperçu, où il annonce l'échec que `--apply` rencontrerait."
+  }
+}

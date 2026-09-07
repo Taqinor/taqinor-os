@@ -137,20 +137,31 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     lead_priorite = serializers.SerializerMethodField()
     devis_reference = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
+    # MRY30 — QUI a traité la touche, et QUAND. Le modèle les portait déjà
+    # (`traite_par`/`traite_le`, écrits par `marquer_etape_relance`) mais rien
+    # ne les servait : l'écran « Suivi des relances » montrait une touche
+    # « faite » sans pouvoir dire par qui ni à quelle heure — une traçabilité
+    # écrite en base et invisible ne trace rien.
+    traite_le = serializers.DateTimeField(read_only=True)
+    traite_par_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
         # MRY5 — forme `relance_etape_v2` (contrat MRY25).
+        # MRY30 — `traite_le`/`traite_par_nom` s'ajoutent (contrat
+        # `relance_etapes_suivi`) : ADDITIF, la file du jour les sert aussi
+        # (null / '' tant que la touche est à faire) plutôt que d'entretenir
+        # deux sérialiseurs qui divergeraient.
         fields = [
             'id', 'lead', 'lead_nom', 'lead_owner_nom', 'lead_telephone',
             'lead_whatsapp', 'lead_langue', 'lead_score', 'lead_priorite',
             'cadence', 'ordre', 'due_date', 'due_at', 'canal', 'libelle',
             'template_cle', 'statut', 'note', 'overdue', 'devis',
-            'devis_reference',
+            'devis_reference', 'traite_le', 'traite_par_nom',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
-            'libelle', 'template_cle', 'devis',
+            'libelle', 'template_cle', 'devis', 'traite_le',
         ]
 
     def get_lead_nom(self, obj) -> str:
@@ -190,6 +201,12 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     def get_overdue(self, obj) -> bool:
         from core.dates import aujourd_hui_local
         return obj.due_date < aujourd_hui_local()
+
+    def get_traite_par_nom(self, obj) -> str:
+        # `select_related('traite_par')` côté sélecteur de période : jamais
+        # une requête par ligne. '' — jamais null — pour une touche à faire
+        # ou marquée par le système (contrat `relance_etapes_suivi`).
+        return getattr(obj.traite_par, 'username', '') or ''
 
 
 class _CurrentCompanyDefault:

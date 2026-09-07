@@ -740,6 +740,14 @@ export default function LeadWorkspace({
                 leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
                 // F4 — voir la déclaration de relanceVersion plus haut.
                 relanceVersion,
+                // MRY32 — la frise de la fiche (CadenceFrise, via
+                // SectionPipeline) fait désormais elle-même Fait/Sauter/
+                // Reporter/WhatsApp sur ses touches compactes : ce callback
+                // lui permet de rafraîchir la FICHE ENTIÈRE (pas seulement
+                // elle-même) — même geste que 'relance-cadence'/'relance-
+                // arreter' ci-dessus (onAction), factorisé ici pour ne pas
+                // dupliquer `draft.refreshServer()` + `setRelanceVersion`.
+                onRelanceChanged: () => { draft.refreshServer(); setRelanceVersion((n) => n + 1) },
               }}
             />
             {/* LW34 — 768-1023 : le rail contexte quitte la grille 2 colonnes,
