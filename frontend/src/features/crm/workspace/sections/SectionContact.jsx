@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
+import { toast } from '../../../../ui/confirm'
+import crmApi from '../../../../api/crmApi'
 import { getField, isSuggested } from '../draftCore'
 import { useDuplicateCheck } from '../../../../hooks/useDuplicateCheck'
 import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../../../hooks/usePasteClean'
@@ -53,6 +55,23 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
   })
 
   const villeSuggested = isSuggested(state, 'ville')
+
+  // GPS7 — résolution GPS (lien Google Maps ou adresse) via le résolveur
+  // serveur PUR ; on ne fait que remplir les champs du brouillon.
+  const [gpsBusy, setGpsBusy] = useState(false)
+  const resoudreGps = async (payload, messageOk) => {
+    setGpsBusy(true)
+    try {
+      const { data } = await crmApi.resoudreGps(payload)
+      setField('gps_lat', data.gps_lat)
+      setField('gps_lng', data.gps_lng)
+      toast.success(messageOk(data))
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Résolution GPS impossible.')
+    } finally {
+      setGpsBusy(false)
+    }
+  }
 
   return (
     <>
@@ -145,6 +164,41 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
         <FormField label="GPS long." htmlFor="lf-gps-lng">
           <Input id="lf-gps-lng" type="number" step="any" value={v('gps_lng')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('gps_lng', e.target.value)} />
         </FormField>
+      </div>
+      {/* GPS7 — lien Google Maps collé par le client → GPS exact ; ou
+          géocodage de l'adresse (repli centre-ville, annoncé comme tel).
+          Résolveur PUR côté serveur : les champs sont remplis ici, c'est
+          l'enregistrement normal qui persiste et journalise. */}
+      <div className="form-row">
+        <div className="form-group fg-grow">
+          <FormField label="Lien Google Maps (envoyé par le client)" htmlFor="lf-lien-maps">
+            <Input
+              id="lf-lien-maps" value={v('lien_maps')} disabled={piiMasked} title={piiTitle}
+              placeholder="https://maps.app.goo.gl/…"
+              onChange={(e) => setField('lien_maps', e.target.value)}
+            />
+          </FormField>
+        </div>
+        <Button
+          type="button" size="sm" variant="outline"
+          disabled={gpsBusy || piiMasked || !v('lien_maps')}
+          onClick={() => resoudreGps(
+            { lien: v('lien_maps') },
+            () => 'GPS extrait du lien Google Maps.')}
+        >
+          Lien → GPS{gpsBusy ? '…' : ''}
+        </Button>
+        <Button
+          type="button" size="sm" variant="outline"
+          disabled={gpsBusy || piiMasked || (!v('adresse') && !v('ville'))}
+          onClick={() => resoudreGps(
+            { adresse: v('adresse'), ville: v('ville') },
+            (d) => (d.precision === 'ville'
+              ? 'GPS approximatif posé (centre-ville) — affinez si besoin.'
+              : 'GPS résolu depuis l’adresse.'))}
+        >
+          Adresse → GPS{gpsBusy ? '…' : ''}
+        </Button>
       </div>
       {v('gps_lat') && v('gps_lng') && (
         <div className="form-row">

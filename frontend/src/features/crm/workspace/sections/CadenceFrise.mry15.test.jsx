@@ -93,7 +93,10 @@ describe('MRY32 — actions directement depuis la frise', () => {
     const faite = { ...ETAPES[1], id: 502, statut: 'fait', overdue: false }
     crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { count: 2, results: [prochaine, faite] } })
     render(<CadenceFrise leadId={1489} />)
-    await waitFor(() => expect(screen.getAllByTestId('cadence-frise-etape')).toHaveLength(2))
+    // QJ-LISIBILITÉ — les touches passées sont repliées par défaut.
+    await waitFor(() => expect(screen.getAllByTestId('cadence-frise-etape')).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: /touche\(s\) passée\(s\)/ }))
+    expect(screen.getAllByTestId('cadence-frise-etape')).toHaveLength(2)
     // Une seule ligne d'action rendue (`relance-etape-row`, mode compact) :
     // celle de la prochaine touche à faire — la touche déjà faite n'en a pas.
     expect(screen.getAllByTestId('relance-etape-row')).toHaveLength(1)
@@ -115,8 +118,11 @@ describe('MRY32 — actions directement depuis la frise', () => {
     render(<CadenceFrise leadId={1489} onChanged={onChanged} />)
     await waitFor(() => expect(screen.getByRole('button', { name: /^Fait$/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    // QJ-QUESTIONS — une réponse est désormais OBLIGATOIRE avant Confirmer.
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    await waitFor(() => expect(crmApi.marquerRelanceEtapeFait).toHaveBeenCalledWith(501, {}))
+    await waitFor(() => expect(crmApi.marquerRelanceEtapeFait)
+      .toHaveBeenCalledWith(501, { outcome: 'non_joint' }))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
 })

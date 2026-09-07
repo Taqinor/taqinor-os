@@ -312,6 +312,8 @@
     texte:inconnu
 - frontend/src/api/crmApi.js :: replayWebsiteLeadPayload -> /api/django/crm/website-lead-payloads/<>/replay
     detail:inconnu, payload:inconnu
+- frontend/src/api/crmApi.js :: resoudreGps -> /api/django/crm/leads/resoudre-gps
+    detail:texte, gps_lat:texte, gps_lng:texte, precision:inconnu
 - frontend/src/api/crmApi.js :: restaurerCorbeille -> /api/django/core/corbeille/<>/restaurer
     record:inconnu, restored:booleen
 - frontend/src/api/crmApi.js :: scanCarteVisite -> /api/django/crm/leads/scan-carte

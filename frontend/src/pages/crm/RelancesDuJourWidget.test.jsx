@@ -98,7 +98,8 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Joint' }))
+    // QJ-QUESTIONS — la réponse en langage clair porte l'issue serveur.
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.marquerRelanceEtapeFait)
       .toHaveBeenCalledWith(PREMIERE.id, { outcome: 'joint' }))

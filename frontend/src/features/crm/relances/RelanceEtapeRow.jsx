@@ -7,7 +7,6 @@ import {
 } from '../../../ui'
 import ScoreBadge from '../ScoreBadge'
 import { PRIORITE_LABELS } from '../stages'
-import { OUTCOME_LABELS } from '../../../components/ChatterTimeline'
 
 /* ============================================================================
    MRY31 — `RelanceEtapeRow` EXTRAIT de `pages/crm/RelancesDuJourWidget.jsx`
@@ -66,9 +65,64 @@ const CADENCE_TONE = {
   generique: 'outline',
 }
 
-// Choix d'issue proposés au mini-formulaire « Fait » (miroir de
-// LeadActivity.OUTCOMES, même liste que CallLogPopover — hors la clé vide).
-const OUTCOME_CHOICES = Object.entries(OUTCOME_LABELS).filter(([k]) => k !== '')
+// QJ-QUESTIONS (fondateur 07/09/2026) — chaque touche pose LA bonne question,
+// et la réponse choisie décide seule de la suite (routage serveur
+// QJ-INVARIANT : la liste de relances d'un lead ne se termine que par Froid
+// ou Signé). Les réponses restent les issues serveur (LeadActivity.OUTCOMES) :
+// aucun nouveau contrat — seulement la bonne question au bon moment.
+const QUESTIONS = {
+  contact: {
+    question: 'Résultat de la touche ?',
+    reponses: [
+      { outcome: 'joint', label: 'Client joint',
+        suite: 'La prise de contact s’arrête. S’il a un devis, le suivi de proposition démarre ; sinon une étape « envoyer le devis » est posée pour demain.' },
+      { outcome: 'non_joint', label: 'Pas de réponse',
+        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
+        suite: 'La prochaine touche est déplacée à la date choisie.' },
+      { outcome: 'refuse', label: 'Refus',
+        suite: 'Les relances s’arrêtent ; une étape « décider la suite » (perdu ou relance ultérieure) est posée.' },
+    ],
+  },
+  apres_devis: {
+    question: 'Réponse du client sur la proposition ?',
+    aide: 'Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.',
+    reponses: [
+      { outcome: 'interesse', label: 'Intéressé',
+        suite: 'Le suivi de proposition continue (une étape de suite est posée si c’était la dernière touche).' },
+      { outcome: 'non_joint', label: 'Sans réponse',
+        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
+        suite: 'La prochaine touche est déplacée à la date choisie.' },
+      { outcome: 'refuse', label: 'Refuse la proposition',
+        suite: 'Le suivi s’arrête ; une étape « décider la suite » est posée — marquer perdu reste votre décision.' },
+    ],
+  },
+  generique: {
+    question: 'Où en est ce dossier ?',
+    reponses: [
+      { outcome: '', label: 'Fait — passer à la suite',
+        suite: 'S’il a un devis, le suivi de proposition démarre ; sinon une nouvelle étape est posée pour demain.' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
+        suite: 'L’étape est déplacée à la date choisie.' },
+      { outcome: 'refuse', label: 'Client refuse',
+        suite: 'Une étape « décider la suite » est posée — marquer perdu reste votre décision.' },
+    ],
+  },
+}
+QUESTIONS.reveil = {
+  question: 'Résultat du réveil ?',
+  reponses: [
+    { outcome: 'joint', label: 'Client joint',
+      suite: 'Le dossier SORT du Froid ; le suivi redémarre (plan après-devis s’il a un devis, sinon prochaine étape demain). Les réveils restants sont annulés.' },
+    { outcome: 'non_joint', label: 'Pas de réponse',
+      suite: 'Le réveil suivant reste programmé ; le dossier reste au Froid.' },
+    { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
+      suite: 'Le prochain réveil est déplacé à la date choisie.' },
+    { outcome: 'refuse', label: 'Refus',
+      suite: 'Les réveils s’arrêtent ; le dossier reste au Froid.' },
+  ],
+}
 
 /** `due_at` (ISO) → « HH:MM » heure Casablanca, ou « maintenant » si déjà
     passé. Repli sur `null` (pas d'heure connue) pour laisser l'appelant
@@ -121,7 +175,7 @@ export default function RelanceEtapeRow({
   // '' | 'sauter' | 'fait' | 'reporter' — un seul panneau ouvert à la fois.
   const [panel, setPanel] = useState('')
   const [note, setNote] = useState('')
-  const [outcome, setOutcome] = useState('')
+  const [reponseIdx, setReponseIdx] = useState(null)
   const [rappelLe, setRappelLe] = useState('')
   const [rappelHeure, setRappelHeure] = useState('')
   const [reportDate, setReportDate] = useState('')
@@ -130,15 +184,21 @@ export default function RelanceEtapeRow({
 
   const fermer = () => {
     setPanel('')
-    setNote(''); setOutcome(''); setRappelLe(''); setRappelHeure('')
+    setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
     setReportDate(''); setReportHeure('')
   }
 
+  const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
+  const reponseChoisie = reponseIdx == null
+    ? null : questionsTouche.reponses[reponseIdx]
+
   const confirmerFait = () => {
+    if (!reponseChoisie) return
+    if (reponseChoisie.rappel && !rappelLe) return
     const payload = {}
     if (note.trim()) payload.note = note.trim()
-    if (outcome) payload.outcome = outcome
-    if (rappelLe) {
+    if (reponseChoisie.outcome) payload.outcome = reponseChoisie.outcome
+    if (reponseChoisie.rappel && rappelLe) {
       payload.rappel_le = rappelLe
       if (rappelHeure) payload.rappel_heure = rappelHeure
     }
@@ -243,45 +303,53 @@ export default function RelanceEtapeRow({
       )}
       {!readOnly && panel === 'fait' && (
         <div className="mt-2 flex flex-col gap-1.5">
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Résultat de la touche">
-            {OUTCOME_CHOICES.map(([key, label]) => (
+          <p className="text-sm font-medium">{questionsTouche.question}</p>
+          {questionsTouche.aide && (
+            <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>
+          )}
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={questionsTouche.question}>
+            {questionsTouche.reponses.map((r, idx) => (
               <Button
-                key={key} type="button" size="sm"
-                variant={outcome === key ? 'default' : 'outline'}
-                onClick={() => setOutcome((cur) => (cur === key ? '' : key))}
+                key={r.label} type="button" size="sm"
+                variant={reponseIdx === idx ? 'default' : 'outline'}
+                onClick={() => setReponseIdx((cur) => (cur === idx ? null : idx))}
               >
-                {label}
+                {r.label}
               </Button>
             ))}
           </div>
-          {(outcome === 'joint' || outcome === 'interesse') && (
-            <p className="text-xs text-muted-foreground" data-testid="hint-joint">
-              Client joint : la cadence s’arrête. Donnez une date de rappel
-              ci-dessous — sinon une étape « envoyer le devis ou fixer un
-              rappel » sera posée automatiquement pour demain.
+          {reponseChoisie && (
+            <p className="text-xs text-muted-foreground" data-testid="suite-reponse">
+              {reponseChoisie.suite}
             </p>
+          )}
+          {reponseChoisie?.rappel && (
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs" htmlFor={`rappel-le-${etape.id}`}>Rappeler le</Label>
+                <Input id={`rappel-le-${etape.id}`} type="date" className="w-40"
+                       value={rappelLe} onChange={(e) => setRappelLe(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs" htmlFor={`rappel-heure-${etape.id}`}>Heure</Label>
+                <Input id={`rappel-heure-${etape.id}`} type="time" className="w-28"
+                       value={rappelHeure} onChange={(e) => setRappelHeure(e.target.value)} />
+              </div>
+            </div>
           )}
           <Textarea
             rows={2} placeholder="Note (optionnelle)"
             value={note} onChange={(e) => setNote(e.target.value)}
           />
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs" htmlFor={`rappel-le-${etape.id}`}>Rappeler le</Label>
-              <Input id={`rappel-le-${etape.id}`} type="date" className="w-40"
-                     value={rappelLe} onChange={(e) => setRappelLe(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs" htmlFor={`rappel-heure-${etape.id}`}>Heure</Label>
-              <Input id={`rappel-heure-${etape.id}`} type="time" className="w-28"
-                     value={rappelHeure} onChange={(e) => setRappelHeure(e.target.value)} />
-            </div>
-          </div>
           <div className="flex justify-end gap-1.5">
             <Button size="sm" variant="outline" disabled={busy} onClick={fermer}>
               Annuler
             </Button>
-            <Button size="sm" disabled={busy} onClick={confirmerFait}>
+            <Button
+              size="sm"
+              disabled={busy || !reponseChoisie || (reponseChoisie.rappel && !rappelLe)}
+              onClick={confirmerFait}
+            >
               Confirmer
             </Button>
           </div>

@@ -203,11 +203,23 @@ class RefusTests(_Base):
         self.lead.refresh_from_db()
         self.assertFalse(self.lead.perdu)
 
-    def test_un_refus_sans_cadence_ouverte_ne_journalise_rien(self):
+    def test_un_refus_sans_cadence_ouverte_pose_l_etape_de_decision(self):
+        """QJ-INVARIANT (revue Fable m5, 07/09/2026) — même sans cadence
+        active, un devis refusé laisse une étape « décider la suite » (le
+        dossier ne disparaît pas) ; un événement REJOUÉ n'ajoute rien (le
+        filet no-op sur une étape déjà ouverte — anti-spam conservé)."""
+        from apps.crm.services import FILET_REFUS_LIBELLE
         devis = self._devis('DEV-MRY7-0101')
+        devis_refused.send(sender='test', devis=devis, user=self.acteur,
+                           motif_refus='Trop cher')
+        decisions = self.lead.relance_etapes.filter(
+            cadence='generique', libelle=FILET_REFUS_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(decisions.count(), 1)
         avant = LeadActivity.objects.filter(lead=self.lead).count()
         devis_refused.send(sender='test', devis=devis, user=self.acteur,
                            motif_refus='Trop cher')
+        self.assertEqual(decisions.count(), 1)
         self.assertEqual(
             LeadActivity.objects.filter(lead=self.lead).count(), avant)
 
