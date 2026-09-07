@@ -33,12 +33,23 @@ export default function VilleCheckDialog({
   // ville du lead — défaut « même ville » ; sinon défaut « voisine ».
   const [mode, setMode] = useState(ville ? MODE_VOISINE : MODE_MEME)
 
+  // Remise à zéro à l'OUVERTURE par le motif « ajuster l'état au rendu »
+  // (React officiel, même patron que VX237) — jamais un setState synchrone
+  // dans le corps d'un effet (react-hooks v7).
+  const [prevOpen, setPrevOpen] = useState(false)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) {
+      setLoading(true)
+      setErreur(false)
+      setData(null)
+      setChoix('')
+      setMode(ville ? MODE_VOISINE : MODE_MEME)
+    }
+  }
+
   useEffect(() => {
     if (!open) return
-    setLoading(true)
-    setErreur(false)
-    setData(null)
-    setChoix('')
     crmApi.villeStatut({ ville, proches: true, gps_lat: gpsLat || undefined, gps_lng: gpsLng || undefined })
       .then((r) => {
         setData(r.data)

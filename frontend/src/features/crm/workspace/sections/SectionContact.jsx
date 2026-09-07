@@ -65,8 +65,10 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
   const [villeStatut, setVilleStatut] = useState(null)
   const [villeDialog, setVilleDialog] = useState(false)
   useEffect(() => {
-    if (!villeTapee || villeTapee.trim().length < 3) { setVilleStatut(null); return undefined }
+    // Tout setState vit DANS le timer (react-hooks v7 : jamais de setState
+    // synchrone dans le corps d'un effet — rendus en cascade).
     const timer = setTimeout(() => {
+      if (!villeTapee || villeTapee.trim().length < 3) { setVilleStatut(null); return }
       crmApi.villeStatut({ ville: villeTapee })
         .then((r) => setVilleStatut(r.data?.statut ?? null))
         .catch(() => setVilleStatut(null))
