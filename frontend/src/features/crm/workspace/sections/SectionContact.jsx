@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import { toast } from '../../../../ui/confirm'
 import crmApi from '../../../../api/crmApi'
+import VilleCheckDialog from './VilleCheckDialog'
 import { getField, isSuggested } from '../draftCore'
 import { useDuplicateCheck } from '../../../../hooks/useDuplicateCheck'
 import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../../../hooks/usePasteClean'
@@ -55,6 +56,33 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
   })
 
   const villeSuggested = isSuggested(state, 'ville')
+
+  // VREF — statut de la ville tapée, vérifié en différé (700 ms) : le bouton
+  // « Vérifier la ville » n'apparaît QUE quand elle est inconnue du gazetier
+  // ou ambiguë (2+ villes possibles). Une ville déjà rattachée l'affiche.
+  const villeTapee = v('ville')
+  const villeRattachee = v('ville_reference')
+  const [villeStatut, setVilleStatut] = useState(null)
+  const [villeDialog, setVilleDialog] = useState(false)
+  useEffect(() => {
+    if (!villeTapee || villeTapee.trim().length < 3) { setVilleStatut(null); return undefined }
+    const timer = setTimeout(() => {
+      crmApi.villeStatut({ ville: villeTapee })
+        .then((r) => setVilleStatut(r.data?.statut ?? null))
+        .catch(() => setVilleStatut(null))
+    }, 700)
+    return () => clearTimeout(timer)
+  }, [villeTapee])
+  const villeAVerifier = !villeRattachee
+    && (villeStatut === 'inconnue' || villeStatut === 'ambigue')
+  const choisirVille = ({ mode, ville }) => {
+    if (mode === 'meme') {
+      setField('ville', ville)
+      setField('ville_reference', '')
+    } else {
+      setField('ville_reference', ville)
+    }
+  }
 
   // GPS7 — résolution GPS (lien Google Maps ou adresse) via le résolveur
   // serveur PUR ; on ne fait que remplir les champs du brouillon.
@@ -132,7 +160,9 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
         <FormField
           label="Ville / quartier"
           htmlFor="lf-ville"
-          hint={villeSuggested ? 'Suggéré — modifiable' : undefined}
+          hint={villeRattachee
+            ? `Rattachée à ${villeRattachee} (PVGIS, transport)`
+            : (villeSuggested ? 'Suggéré — modifiable' : undefined)}
         >
           <Input
             id="lf-ville"
@@ -140,6 +170,22 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
             value={v('ville')} onChange={(e) => setField('ville', e.target.value)}
           />
         </FormField>
+        {(villeAVerifier || villeRattachee) && (
+          <Button
+            type="button" size="sm" variant="outline"
+            onClick={() => setVilleDialog(true)}
+          >
+            {villeRattachee ? 'Modifier le rattachement' : 'Vérifier la ville'}
+          </Button>
+        )}
+        <VilleCheckDialog
+          open={villeDialog}
+          onOpenChange={setVilleDialog}
+          ville={villeTapee}
+          gpsLat={v('gps_lat')}
+          gpsLng={v('gps_lng')}
+          onChoisir={choisirVille}
+        />
         <div className="form-group">
           <FormField label="Email" htmlFor="lf-email" error={errors.email}>
             <Input

@@ -1021,6 +1021,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # retomberait sur IsAdminRole et la Commerciale serait
             # refusée alors que l'@action déclare crm_modifier.
             'resoudre_gps',
+            # VREF — même motif (bug CI #25) pour « Vérifier la ville ».
+            'ville_statut',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -1599,6 +1601,53 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response({
             'gps_lat': str(lat), 'gps_lng': str(lng),
             'precision': precision,
+        })
+
+    @action(detail=False, methods=['post'], url_path='ville-statut',
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
+    def ville_statut(self, request):
+        """VREF — statut d'une ville tapée + villes ERP proches, SANS RIEN
+        ÉCRIRE (l'écran « Vérifier la ville » décide, l'enregistrement
+        normal persiste).
+
+        Corps : ``{ville, gps_lat?, gps_lng?}``. La position pour les villes
+        proches vient du GPS fourni (le repère du lead — le plus fiable),
+        sinon du géocodage de la ville tapée (Nominatim, repli gazetier).
+        ``statut`` ∈ exacte/corrigee/ambigue/inconnue ; ``proches`` liste
+        les villes ERP triées par distance (vide sans position)."""
+        from apps.parametres.villes_resolution import (
+            resoudre_ville, villes_proches)
+        ville = (request.data.get('ville') or '').strip()
+        resultat = resoudre_ville(ville)
+        position = None
+        proches = []
+        # ``proches: true`` = l'écran-carte (dialogue) ; le simple contrôle
+        # de statut (débouncé à la frappe) reste PUR — aucun géocodage réseau.
+        if bool(request.data.get('proches')):
+            try:
+                lat = float(request.data.get('gps_lat'))
+                lng = float(request.data.get('gps_lng'))
+                if -90 <= lat <= 90 and -180 <= lng <= 180:
+                    position = (lat, lng)
+            except (TypeError, ValueError):
+                position = None
+            if position is None and resultat['coords']:
+                position = (float(resultat['coords'][0]),
+                            float(resultat['coords'][1]))
+            if position is None and ville:
+                from .geolocalisation import coords_depuis_adresse
+                geo = coords_depuis_adresse(ville)
+                if geo:
+                    position = (float(geo[0]), float(geo[1]))
+            if position:
+                proches = villes_proches(position[0], position[1])
+        return Response({
+            'statut': resultat['statut'],
+            'ville_canonique': resultat['ville'],
+            'candidats': resultat['candidats'],
+            'position': ({'lat': position[0], 'lng': position[1]}
+                         if position else None),
+            'proches': proches,
         })
 
     @action(detail=True, methods=['post'], url_path='convertir-client',

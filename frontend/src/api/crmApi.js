@@ -147,6 +147,10 @@ const crmApi = {
     // avant la mise en cache des fenêtres d'appel).
     return api.post('/crm/leads/placement-cadences/', corps, { timeout: 90000 })
   },
+  // VREF — statut d'une ville tapée + villes ERP proches (PUR, n'écrit
+  // rien) : {ville, gps_lat?, gps_lng?} → {statut, ville_canonique,
+  // candidats, position, proches}. Écran « Vérifier la ville ».
+  villeStatut: (data) => api.post('/crm/leads/ville-statut/', data, { timeout: 20000 }),
   // GPS7 — résolveur GPS PUR (n'écrit rien) : {lien} (lien Google Maps,
   // liens courts inclus — résolus côté serveur) OU {adresse, ville}.
   // Renvoie {gps_lat, gps_lng, precision: 'lien'|'adresse'|'ville'} ;

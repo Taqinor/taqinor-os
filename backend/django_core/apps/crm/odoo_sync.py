@@ -113,6 +113,16 @@ def societe_reelle(raw):
     return societe
 
 
+def _ville_odoo_corrigee(brut):
+    """VREF — nom canonique du gazetier quand la résolution est CONFIANTE,
+    sinon la ville Odoo telle quelle (tronquée comme avant), None si vide."""
+    from apps.parametres.villes_resolution import corriger_ville
+    texte = (str(brut or '')).strip()[:120]
+    if not texte:
+        return None
+    return corriger_ville(texte)
+
+
 def est_reponse_formulaire(street):
     """``street`` Odoo contient-il en fait les réponses d'un formulaire Meta
     (fourchette de facture, usage…) plutôt qu'une adresse postale ?"""
@@ -331,7 +341,10 @@ def build_rows(odoo_leads, tag_names):
             'email': email,
             'telephone': telephone,
             'adresse': adresse,
-            'ville': (lead.get('city') or '').strip()[:120] or None,
+            # VREF — même auto-correction qu'au formulaire et au webhook :
+            # graphie connue/raccourci unique/faute sûre → nom canonique du
+            # gazetier ; ambigu/inconnu → le texte Odoo tel quel.
+            'ville': _ville_odoo_corrigee(lead.get('city')),
             'stage': stage_odoo,
             'note': '\n'.join(note_lines),
         }

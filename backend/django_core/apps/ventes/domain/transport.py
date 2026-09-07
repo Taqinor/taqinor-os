@@ -69,7 +69,10 @@ def repricer_transport_devis(devis):
     ville de son lead. Rend le nombre de lignes modifiées (0 si ville
     inconnue, pas de lead, ou pas de ligne Transport)."""
     lead = getattr(devis, 'lead', None)
-    ville = getattr(lead, 'ville', '') or ''
+    # VREF — la ville ERP de rattachement (douar hors gazetier) prime : le
+    # barème est défini sur les villes du gazetier, jamais sur un nom libre.
+    ville = (getattr(lead, 'ville_reference', '') or ''
+             or getattr(lead, 'ville', '') or '')
     prix = prix_transport_ht(ville)
     if prix is None:
         return 0

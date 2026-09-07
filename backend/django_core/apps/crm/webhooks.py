@@ -743,6 +743,14 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
 MAX_LONGUEUR_ADRESSE = 500
 
 
+def _ville_corrigee(brut):
+    """VREF — nom canonique du gazetier quand la résolution est CONFIANTE,
+    sinon le texte du visiteur tel quel (tronqué comme avant)."""
+    from apps.parametres.villes_resolution import corriger_ville
+    texte = str(brut).strip()[:120]
+    return corriger_ville(texte)
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -760,7 +768,11 @@ def _map_payload_to_fields(data: dict) -> dict:
         'nom': str(data.get('fullName') or '').strip()[:255] or 'Lead site web',
         'telephone': str(data.get('phoneE164') or data.get('phone') or '').strip()[:50],
         'email': str(data.get('email') or '').strip()[:254] or None,
-        'ville': (str(data.get('city')).strip()[:120] if data.get('city') else None),
+        # VREF — auto-correction à l'entrée (même résolveur que le formulaire
+        # et la sync Odoo) : graphie connue/raccourci unique/faute sûre →
+        # nom canonique ; ambigu/inconnu → texte conservé tel quel.
+        'ville': (_ville_corrigee(data.get('city'))
+                  if data.get('city') else None),
         'roof_type': (str(data.get('roofType')).strip()[:30] if data.get('roofType') else None),
         'bill_range_bucket': data.get('billRange') if data.get('billRange') in Lead.BillRangeBucket.values else None,
         'roi_band': roi_band,

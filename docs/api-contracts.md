@@ -320,6 +320,8 @@
     detail:inconnu, doublons:inconnu, email:inconnu, nom:inconnu, prenom:inconnu, societe:inconnu, telephone:inconnu
 - frontend/src/api/crmApi.js :: searchClients -> /api/django/crm/clients/search
     results:inconnu
+- frontend/src/api/crmApi.js :: villeStatut -> /api/django/crm/leads/ville-statut
+    candidats:inconnu, position:inconnu, proches:inconnu, statut:inconnu, ville_canonique:inconnu
 - frontend/src/api/crmApi.js :: whatsappDevis -> /api/django/crm/leads/<>/whatsapp-devis
     detail:texte, links:inconnu, message:inconnu, phone:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
