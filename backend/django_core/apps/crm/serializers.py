@@ -43,7 +43,7 @@ from apps.compta.serializers import (  # noqa: F401,E402
 # chatter (action ``historique``, ``chatter_recent`` embarqué au retrieve, et
 # l'enveloppe uniforme ARC9).
 LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
-                   'gps_lat', 'gps_lng')
+                   'gps_lat', 'gps_lng', 'lien_maps')
 
 #: Remplacement affiché à la place d'une valeur PII masquée.
 PII_MASQUE = '•••'

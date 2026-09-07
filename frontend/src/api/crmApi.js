@@ -147,6 +147,11 @@ const crmApi = {
     // avant la mise en cache des fenêtres d'appel).
     return api.post('/crm/leads/placement-cadences/', corps, { timeout: 90000 })
   },
+  // GPS7 — résolveur GPS PUR (n'écrit rien) : {lien} (lien Google Maps,
+  // liens courts inclus — résolus côté serveur) OU {adresse, ville}.
+  // Renvoie {gps_lat, gps_lng, precision: 'lien'|'adresse'|'ville'} ;
+  // l'écran remplit les champs et l'enregistrement normal persiste.
+  resoudreGps: (data) => api.post('/crm/leads/resoudre-gps/', data, { timeout: 20000 }),
   // XSAL8 — scan de carte de visite (photo) → pré-remplissage du lead
   // express. Ne crée jamais de lead ; renvoie {nom, prenom, societe,
   // telephone, email, doublons}. 503 si l'OCR n'est pas configuré (clé absente).

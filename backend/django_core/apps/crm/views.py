@@ -1560,6 +1560,43 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             request.user.company, request.user, apply=apply, limite=limite)
         return Response(rapport, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['post'], url_path='resoudre-gps',
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
+    def resoudre_gps(self, request):
+        """GPS7 — résout des coordonnées GPS, SANS RIEN ÉCRIRE.
+
+        Corps : ``{lien}`` (lien Google Maps, y compris lien court) OU
+        ``{adresse, ville}``. L'écran remplit ``gps_lat``/``gps_lng`` (et
+        ``lien_maps``) avec la réponse ; l'enregistrement normal du lead
+        persiste et journalise — ce résolveur reste PUR, utilisable aussi
+        en création avant tout enregistrement. ``precision`` dit d'où vient
+        le point : ``lien`` (exact, choisi par le client), ``adresse``
+        (géocodeur), ``ville`` (centre-ville approximatif)."""
+        from .geolocalisation import (
+            coords_depuis_adresse, coords_depuis_lien_maps)
+        lien = (request.data.get('lien') or '').strip()
+        if lien:
+            coords = coords_depuis_lien_maps(lien)
+            if coords is None:
+                return Response(
+                    {'detail': 'Aucune coordonnée trouvée dans ce lien '
+                               'Google Maps.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            lat, lng, precision = (*coords, 'lien')
+        else:
+            resultat = coords_depuis_adresse(
+                request.data.get('adresse'), request.data.get('ville'))
+            if resultat is None:
+                return Response(
+                    {'detail': "Adresse introuvable (ni géocodable, ni une "
+                               'ville connue du gazetier).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            lat, lng, precision = resultat
+        return Response({
+            'gps_lat': str(lat), 'gps_lng': str(lng),
+            'precision': precision,
+        })
+
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
