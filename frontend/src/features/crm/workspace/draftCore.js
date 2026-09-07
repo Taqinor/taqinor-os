@@ -263,6 +263,13 @@ export function toPayload(subset) {
   if (has(out, 'ete_differente') && out.ete_differente === false) {
     out.facture_ete = null
   }
+  // 08/09/2026 — vider un champ GPS est un geste EXPLICITE de l'utilisateur :
+  // le flag laisse passer la garde serveur du 24/08 (qui continue de
+  // protéger le GPS contre les imports/scripts/webhooks).
+  if ((has(out, 'gps_lat') && out.gps_lat === null)
+    || (has(out, 'gps_lng') && out.gps_lng === null)) {
+    out.effacer_gps = true
+  }
   return out
 }
 

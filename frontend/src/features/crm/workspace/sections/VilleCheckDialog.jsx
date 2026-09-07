@@ -104,6 +104,13 @@ export default function VilleCheckDialog({
                   : `Reconnue comme « ${data.ville_canonique} ».`}
               {!position && ' (Position introuvable — liste sans carte.)'}
             </p>
+            {data.gps_hors_zone && (
+              <p className="text-xs text-warning" role="alert">
+                Le repère GPS enregistré sur ce lead est hors du Maroc — il a
+                été ignoré. Vérifiez les champs GPS lat./long. (ou utilisez
+                « Lien → GPS » avec le lien Google Maps du client).
+              </p>
+            )}
             {position && (
               <MapView
                 markers={markers}

@@ -161,6 +161,69 @@ class VilleStatutEndpointTests(_Base):
                          'Mechraa Bel Ksiri')
 
 
+class EffacerGpsTests(_Base):
+    slug = 'vref-effacer'
+
+    def _lead_avec_gps(self):
+        return Lead.objects.create(
+            company=self.company, nom='GPS', owner=self.user,
+            gps_lat='33.5731', gps_lng='-7.5898')
+
+    def test_sans_flag_la_garde_du_24_08_protege_toujours(self):
+        lead = self._lead_avec_gps()
+        self.api.patch(
+            f'/api/django/crm/leads/{lead.pk}/',
+            {'gps_lat': None, 'gps_lng': None}, format='json')
+        lead.refresh_from_db()
+        self.assertIsNotNone(lead.gps_lat)
+
+    def test_avec_le_flag_l_humain_peut_effacer(self):
+        """08/09/2026 (relevé fondateur) : on pouvait MODIFIER le GPS mais
+        pas l'EFFACER — le geste explicite de l'écran passe désormais."""
+        lead = self._lead_avec_gps()
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{lead.pk}/',
+            {'gps_lat': None, 'gps_lng': None, 'effacer_gps': True},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertIsNone(lead.gps_lat)
+        self.assertIsNone(lead.gps_lng)
+
+
+class GpsHorsZoneTests(_Base):
+    slug = 'vref-gps'
+
+    URL = '/api/django/crm/leads/ville-statut/'
+
+    def test_un_gps_hors_maroc_est_ignore_et_signale(self):
+        """Incident 08/09 : un GPS de test en plein Atlantique (19.59/-30.61)
+        rendait « Bir Ghandouz, 1 466 km » comme ville la plus proche. Hors
+        de l'emprise Maroc+Sahara, le repère est IGNORÉ et signalé."""
+        from unittest.mock import patch
+        with patch('requests.get', side_effect=OSError('down')):
+            resp = self.api.post(
+                self.URL,
+                {'ville': 'douar bidon', 'proches': True,
+                 'gps_lat': 19.5883, 'gps_lng': -30.6114},
+                format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['gps_hors_zone'])
+        self.assertIsNone(resp.data['position'])
+        self.assertEqual(resp.data['proches'], [])
+
+    def test_un_gps_marocain_reste_utilise(self):
+        resp = self.api.post(
+            self.URL,
+            {'ville': 'douar bidon', 'proches': True,
+             'gps_lat': 34.5619, 'gps_lng': -5.9541},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['gps_hors_zone'])
+        self.assertEqual(resp.data['proches'][0]['ville'],
+                         'Mechraa Bel Ksiri')
+
+
 class RattrapageVillesTests(_Base):
     slug = 'vref-cmd'
 
