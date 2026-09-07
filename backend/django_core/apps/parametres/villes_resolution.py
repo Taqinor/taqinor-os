@@ -75,29 +75,52 @@ def resoudre_ville(texte):
     if not cle:
         return _resultat('inconnue')
 
-    # ① exact / collé / séquence de mots (même discipline que le gazetier).
+    # ① exact / collé.
     direct = None
     if cle in _COORDS:
         direct = cle
     elif cle.replace(' ', '') in _CLES_COLLEES.values():
         colle = cle.replace(' ', '')
         direct = next(c for c, g in _CLES_COLLEES.items() if g == colle)
-    else:
-        mots = cle.replace(',', ' ').split()
-        for candidat in sorted(_CLES, key=lambda c: -len(c.split())):
-            seq = candidat.split()
-            n = len(seq)
-            if n > len(mots):
-                continue
-            if any(mots[i:i + n] == seq for i in range(len(mots) - n + 1)):
-                direct = candidat
-                break
     if direct is not None:
         statut = ('exacte' if nom_canonique(direct).strip().lower()
                   == str(texte or '').strip().lower() else 'corrigee')
         return _resultat(statut, direct)
 
-    # ② contenance UNIQUE (formes collées, deux sens).
+    # ①bis — le NOM ENTIER très proche d'une clé AVANT la séquence de mots
+    # (cas « El Kelaâ des Sraghna » : GeoNames écrit « Srarhna » ; le
+    # scanner de mots matchait l'alias court « el kelaa »… attribué à
+    # Kelaat Mgouna, à 300 km — la similarité pleine trouve la bonne ville).
+    proches = difflib.get_close_matches(cle, _CLES, n=3, cutoff=SEUIL_TYPO)
+    coords = {_COORDS[c] for c in proches}
+    if len(coords) == 1:
+        return _resultat('corrigee', proches[0])
+    if len(coords) > 1:
+        return _resultat('ambigue', candidats=proches)
+
+    # ② ville en SÉQUENCE DE MOTS dans un texte (adresse…). TOUS les
+    # candidats sont collectés : deux villes différentes dans le même texte
+    # (« Skoura Ouarzazate ») ⇒ AMBIGU, jamais la première par ordre
+    # alphabétique.
+    mots = cle.replace(',', ' ').split()
+    trouves = []
+    for candidat in sorted(_CLES, key=lambda c: -len(c.split())):
+        seq = candidat.split()
+        n = len(seq)
+        if n > len(mots):
+            continue
+        if any(mots[i:i + n] == seq for i in range(len(mots) - n + 1)):
+            # Un candidat CONTENU dans un déjà-trouvé plus long (même ville
+            # ou pas) ne compte pas séparément quand il chevauche : on garde
+            # la granularité VILLE via les coordonnées ci-dessous.
+            trouves.append(candidat)
+    if trouves:
+        coords = {_COORDS[c] for c in trouves}
+        if len(coords) == 1:
+            return _resultat('corrigee', trouves[0])
+        return _resultat('ambigue', candidats=trouves)
+
+    # ③ contenance UNIQUE (formes collées, deux sens — « belksiri »).
     colle = cle.replace(' ', '')
     if len(colle) >= CONTENANCE_MIN:
         contenants = {c for c, g in _CLES_COLLEES.items()
@@ -107,14 +130,6 @@ def resoudre_ville(texte):
             return _resultat('corrigee', sorted(contenants, key=len)[-1])
         if len(coords) > 1:
             return _resultat('ambigue', candidats=sorted(contenants))
-
-    # ③ faute de frappe, candidat unique au seuil élevé.
-    proches = difflib.get_close_matches(cle, _CLES, n=3, cutoff=SEUIL_TYPO)
-    coords = {_COORDS[c] for c in proches}
-    if len(coords) == 1:
-        return _resultat('corrigee', proches[0])
-    if len(coords) > 1:
-        return _resultat('ambigue', candidats=proches)
     return _resultat('inconnue')
 
 

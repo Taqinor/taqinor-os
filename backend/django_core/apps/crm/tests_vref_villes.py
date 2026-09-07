@@ -47,6 +47,23 @@ class ResolveurTests(TestCase):
         # Trop court pour la contenance : jamais un pari sur « ain ».
         self.assertEqual(resoudre_ville('ain')['statut'], 'inconnue')
 
+    def test_nom_entier_proche_prime_sur_l_alias_court(self):
+        """Cas prod #1452 : « El Kelaâ des Sraghna » (GeoNames écrit
+        « Srarhna ») partait sur l'alias court « el kelaa »… attribué à
+        Kelaat Mgouna, à 300 km. La similarité PLEIN NOM prime."""
+        r = resoudre_ville('El Kelaâ des Sraghna')
+        self.assertEqual(r['statut'], 'corrigee')
+        self.assertEqual(r['ville'], 'El Kelaa des Srarhna')
+
+    def test_deux_villes_dans_le_texte_est_ambigu(self):
+        """Cas prod #1489 : « Skoura Ouarzazate » nomme DEUX villes du
+        gazetier — jamais la première par ordre alphabétique : l'écran
+        carte tranche."""
+        r = resoudre_ville('Skoura Ouarzazate')
+        self.assertEqual(r['statut'], 'ambigue')
+        self.assertIn('Skoura', r['candidats'])
+        self.assertIn('Ouarzazate', r['candidats'])
+
     def test_ville_dans_un_texte(self):
         self.assertEqual(corriger_ville('settat centre ville'), 'Settat')
 
