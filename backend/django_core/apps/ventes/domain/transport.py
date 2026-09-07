@@ -23,6 +23,7 @@ import unicodedata
 from decimal import Decimal
 
 from apps.parametres.transport_bareme import prix_transport_ht
+from core.money import quantize_mad
 
 
 def _sans_accents(texte):
@@ -57,9 +58,8 @@ def repricer_transport_lignes_dict(lignes, ville):
         except ArithmeticError:
             taux = Decimal('20')
         ht = Decimal(prix)
-        ligne['prix_unitaire_ht'] = str(ht.quantize(Decimal('0.01')))
-        ligne['prix_unitaire_ttc'] = str(
-            (ht * (1 + taux / 100)).quantize(Decimal('0.01')))
+        ligne['prix_unitaire_ht'] = str(quantize_mad(ht))
+        ligne['prix_unitaire_ttc'] = str(quantize_mad(ht * (1 + taux / 100)))
         modifiees += 1
     return modifiees
 
