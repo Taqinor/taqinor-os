@@ -83,7 +83,7 @@
     "apercu": "les 20 premiers leads à placer (ordre : `jours` croissant) ; `stage_libelle` = libellé français de l'étape actuelle (STAGES.py) ; `prochaine_touche` = libellé de la première touche À FAIRE créée ; `prochaine_le` = son `due_at` ISO Africa/Casablanca ; `ancre` = date locale.",
     "reveils_jusqu_au": "date locale de la dernière première-touche de réveil étalée (8 leads par jour ouvré), null sans dormant.",
     "applique": "nombre de leads réellement placés PAR CET APPEL (au plus `limite`, défaut 40) ; toujours 0 en aperçu.",
-    "erreurs": "nombre de leads dont le placement a échoué (best-effort lead par lead : une erreur n'arrête jamais les autres, elle est journalisée et comptée ici). 0 en fonctionnement normal ; compté aussi en aperçu, où il annonce l'échec que `--apply` rencontrerait.",
+    "erreurs": "nombre de leads dont le placement a échoué DANS CET APPEL (best-effort lead par lead : une erreur n'arrête jamais les autres, elle est journalisée et comptée ici). Toujours 0 en aperçu — l'aperçu est un calcul pur, il n'exécute rien.",
     "restants": "leads encore à placer APRÈS cet appel : en aperçu = `a_placer` ; en application = `a_placer − applique − erreurs` de ce lot (0 quand tout est passé). L'écran rappelle `{\"apply\": true}` tant que `restants > 0`.",
     "corps": "`{\"apply\": bool, \"limite\": int?}` — `limite` (1..200, défaut 40) borne le nombre de leads placés par appel d'application ; ignoré en aperçu."
   }
