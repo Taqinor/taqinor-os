@@ -1147,6 +1147,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             return Response(
                 {'detail': exc.message, 'field': exc.field},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        # BARÈME TRANSPORT (fondateur 07/09/2026) — ``ville`` (optionnelle,
+        # texte libre : l'écran envoie celle du lead sélectionné) reprice la
+        # ligne Transport au barème Nouaceur, pour que l'aperçu écran affiche
+        # EXACTEMENT ce que la création écrira (``build_devis_auto`` applique
+        # le même barème). Ville absente/inconnue ⇒ réponse byte-identique.
+        ville = (request.data.get('ville') or '').strip()
+        if ville and isinstance(resultat, dict):
+            from ..domain.transport import repricer_transport_lignes_dict
+            repricer_transport_lignes_dict(resultat.get('lignes'), ville)
         return Response(resultat, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='auto',

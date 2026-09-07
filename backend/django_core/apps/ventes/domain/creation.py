@@ -1115,6 +1115,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # aucun bloc estampillé, donc les quatre études se calculent de toute
     # façon (et la fusion ``etude_extra`` ci-dessus est déjà entrée dans
     # l'empreinte des entrées).
+    # BARÈME TRANSPORT (fondateur 07/09/2026) — la ligne Transport prend le
+    # prix de la VILLE du lead (barème Nouaceur), AVANT les études : le
+    # transport entre dans le total TTC, donc dans le prix/kWc et le payback.
+    # Ville inconnue ⇒ prix catalogue conservé, aucun chiffre deviné.
+    from .transport import repricer_transport_devis
+    repricer_transport_devis(devis)
     rafraichir_etudes_du_devis(devis)
 
     logger.info(

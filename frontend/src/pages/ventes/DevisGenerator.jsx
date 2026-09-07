@@ -2745,6 +2745,10 @@ export default function DevisGenerator({
           panel_watt: parseFloat(panelW) || 710,
           structure_type: structureType,
         }
+        // BARÈME TRANSPORT (fondateur 07/09/2026) — la ville du lead reprice
+        // la ligne Transport côté serveur (barème Nouaceur) ; sans ville
+        // reconnue, le serveur garde le prix catalogue, réponse inchangée.
+        if (selectedLead?.ville) body.ville = selectedLead.ville
         // OFFGRID — champ additif optionnel (contrat backend) : absent quand
         // `horsReseau` est faux, le serveur dérive alors de
         // `lead.raccordement == 'aucun'` lui-même. Envoyé explicitement ici
