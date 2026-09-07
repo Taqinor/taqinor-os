@@ -223,4 +223,6 @@ class ChatterPiiMasqueTests(TestCase):
     def test_une_seule_liste_de_champs_pii(self):
         from apps.crm.serializers import LEAD_PII_FIELDS, LeadSerializer
         self.assertIs(LeadSerializer.PII_FIELDS, LEAD_PII_FIELDS)
-        self.assertEqual(len(LEAD_PII_FIELDS), 6)
+        # GPS7 (07/09/2026) : + `lien_maps` — le lien Google Maps du client
+        # localise son domicile, PII au même titre que gps_lat/gps_lng.
+        self.assertEqual(len(LEAD_PII_FIELDS), 7)
