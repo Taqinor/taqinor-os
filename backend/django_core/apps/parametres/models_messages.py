@@ -58,23 +58,23 @@ MESSAGE_TEMPLATE_DEFAULTS = {
 # la main, jamais un défaut inventé. Aucun chiffre n'est un placeholder.
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'identite':
-        "Bonjour {prenom}, je suis Meryem de TAQINOR Solutions. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+        "Bonjour M. {prenom}, je suis Meryem de TAQINOR Solutions. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
     'appel_ouverture':
-        "Bonjour {prenom}, Meryem de TAQINOR Solutions. Vous venez de remplir notre formulaire pour le solaire. Je vous dérange deux minutes ?",
+        "Bonjour M. {prenom}, Meryem de TAQINOR Solutions. Vous venez de remplir notre formulaire pour le solaire. Je vous dérange deux minutes ?",
     'repondeur':
-        "Bonjour {prenom}, Meryem de TAQINOR. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
     'valeur_j1':
-        "Bonjour {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+        "Bonjour M. {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
     'vocal_j3':
-        "Bonjour {prenom}, c'est Meryem de TAQINOR. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
+        "Bonjour M. {prenom}, c'est Meryem de TAQINOR. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
     'appel_dimanche':
-        "Bonjour {prenom}, Meryem de TAQINOR. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
     'je_classe_j7':
-        "Bonjour {prenom}, Meryem de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans trois jours. Un simple « plus tard » me suffit pour la garder ouverte.",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans trois jours. Un simple « plus tard » me suffit pour la garder ouverte.",
     'cloture_j14':
-        "Bonjour {prenom}, Meryem de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.",
     'reveil_a2':
-        "Bonjour {prenom}, Meryem de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour.",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour.",
     'rappel_plus_tard':
         "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
     'stop_contact':
@@ -92,19 +92,19 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     'j14_pause':
         "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver.",
     'dimanche_famille':
-        "Bonjour {prenom}, Meryem de TAQINOR. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
     'annonce_appel_reda':
-        "Bonjour {prenom}, Meryem de TAQINOR. Reda, le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Reda, le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?",
     'offre_reda':
-        "Bonjour {prenom}, Meryem de TAQINOR. Suite à votre échange avec Reda : [la raison réelle], il vous accorde [montant en dirhams] sur la proposition n° {reference}, soit [nouveau total TTC]. Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour toute question.",
+        "Bonjour M. {prenom}, Meryem de TAQINOR. Suite à votre échange avec Reda : [la raison réelle], il vous accorde [montant en dirhams] sur la proposition n° {reference}, soit [nouveau total TTC]. Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour toute question.",
     'reveil_a1':
-        "Bonjour {prenom}, c'est Meryem de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous il y a quelques mois. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)",
+        "Bonjour M. {prenom}, c'est Meryem de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous il y a quelques mois. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)",
     'reveil_a3':
-        "Bonjour {prenom}, Meryem de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?",
+        "Bonjour M. {prenom}, Meryem de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?",
     'reveil_b':
-        "Bonjour {prenom}, c'est Meryem de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?",
+        "Bonjour M. {prenom}, c'est Meryem de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?",
     'avis_google':
-        "Bonjour {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien}. Merci beaucoup !",
+        "Bonjour M. {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien}. Merci beaucoup !",
     'parrainage':
         "Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.",
 })
@@ -114,33 +114,33 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 # automatique.
 MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'identite':
-        "السلام عليكم {prenom}، أنا مريم من TAQINOR Solutions. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+        "السلام عليكم السي {prenom}، أنا مريم من TAQINOR Solutions. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'appel_ouverture':
-        "السلام عليكم {prenom}، مريم من TAQINOR Solutions. عمرتو دابا الفورم ديالنا على الطاقة الشمسية. نقدر ناخد منكم جوج دقايق؟",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR Solutions. عمرتو دابا الفورم ديالنا على الطاقة الشمسية. نقدر ناخد منكم جوج دقايق؟",
     'repondeur':
-        "السلام عليكم {prenom}، مريم من TAQINOR. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
     'valeur_j1':
-        "السلام عليكم {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+        "السلام عليكم السي {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
     'vocal_j3':
-        "السلام عليكم {prenom}، مريم من TAQINOR. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
     'appel_dimanche':
-        "السلام عليكم {prenom}، مريم من TAQINOR. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
     'je_classe_j7':
-        "السلام عليكم {prenom}، مريم من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لتلت أيام. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لتلت أيام. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.",
     'cloture_j14':
-        "السلام عليكم {prenom}، مريم من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.",
     'reveil_a2':
-        "السلام عليكم {prenom}، مريم من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد.",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد.",
     'rappel_plus_tard':
         "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانت الفاتورة عندكم، تصويرة ديالها غادي تعاونني نوجد التقدير.",
     'stop_contact':
         "واخا، فهمتكم، ما غاديش نعاود نعيط ليكم. غير كنخلي ليكم هاد الرقم إلا شي نهار رجع المشروع. نهاركم مبروك.",
     'dimanche_famille':
-        "السلام عليكم {prenom}، مريم من TAQINOR. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
     'annonce_appel_reda':
-        "السلام عليكم {prenom}، مريم من TAQINOR. رضا، المؤسس ديال الشركة اللي كيراجع كل دراسة، بغا يعيط ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت آخر؟",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. رضا، المؤسس ديال الشركة اللي كيراجع كل دراسة، بغا يعيط ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت آخر؟",
     'offre_reda':
-        "السلام عليكم {prenom}، مريم من TAQINOR. بعد الهضرة ديالكم مع رضا: [السبب الحقيقي]، نقص ليكم [المبلغ بالدرهم] من العرض رقم {reference}، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.",
+        "السلام عليكم السي {prenom}، مريم من TAQINOR. بعد الهضرة ديالكم مع رضا: [السبب الحقيقي]، نقص ليكم [المبلغ بالدرهم] من العرض رقم {reference}، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre

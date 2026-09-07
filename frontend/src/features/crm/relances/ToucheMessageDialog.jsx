@@ -70,7 +70,14 @@ export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent 
           <p className="text-sm text-muted-foreground">Message indisponible pour le moment.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm">
+            {/* Darija = écriture arabe, de droite à gauche : sans `dir`, le
+                navigateur range les segments (prénom latin, « TAQINOR
+                Solutions ») dans un ordre illisible — incident du 07/09. */}
+            <div
+              className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${rendu.langue === 'darija' ? ' text-right' : ''}`}
+              dir={rendu.langue === 'darija' ? 'rtl' : 'auto'}
+              lang={rendu.langue === 'darija' ? 'ar' : 'fr'}
+            >
               {rendu?.message || '…'}
             </div>
             {/* Règle « aucun chiffre inventé » — un placeholder sans valeur
