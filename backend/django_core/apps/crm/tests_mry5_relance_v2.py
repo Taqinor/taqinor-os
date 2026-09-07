@@ -4,9 +4,10 @@ Ce que ce fichier verrouille, et POURQUOI :
   * l'idempotence devient PAR CADENCE — sans elle, un lead déjà en prise de
     contact n'aurait jamais reçu le suivi de son devis (l'ancienne garde
     « ce lead a déjà des étapes » les confondait) ;
-  * une touche porte une HEURE (`due_at`) recalée sur la fenêtre d'appel :
-    un lead créé un vendredi 20:30 est rappelé lundi 08:30, pas le lendemain
-    à 20:30 ;
+  * une touche porte une HEURE (`due_at`) recalée sur la fenêtre de SON
+    CANAL : un lead créé un vendredi 20:30 reçoit son message d'identité
+    lundi 08:30, pas le lendemain à 20:30 — et son premier APPEL à 09:00,
+    jamais 08:33 (décision fondateur du 07/09/2026) ;
   * un lead « ne plus contacter », perdu ou archivé n'est JAMAIS relancé, et
     le refus laisse une trace (un refus silencieux ferait croire à Meryem que
     le lead est suivi) ;
@@ -62,7 +63,9 @@ class CadenceContactTests(TestCase):
 
     def test_un_lead_du_vendredi_soir_est_rappele_lundi_matin(self):
         """LE défaut que MRY8+MRY5 corrigent : sans recalage, la touche 1
-        tombait vendredi 20:30 — hors fenêtre d'appel."""
+        tombait vendredi 20:30 — hors fenêtre d'appel. Elle reste à 08:30
+        après le 07/09/2026 : c'est un MESSAGE (message d'identité), et les
+        messages ouvrent à 08:30."""
         etapes = initialiser_plan_relance(
             self.lead, self.acteur, depart=VENDREDI_SOIR)
         premiere = etapes[0]
@@ -101,6 +104,12 @@ class OrigineDesTouchesDuJourTests(TestCase):
     J0+3 min, J0+2 h 30) écrasées sur la MÊME minute d'ouverture — 08:30,
     08:30, 08:30. Trois rappels simultanés au lieu d'une séquence, et un
     « rappelé dans les cinq minutes » qui ne voulait plus rien dire.
+
+    Depuis le 07/09/2026 chaque touche est en plus recalée sur la fenêtre de
+    SON canal : l'origine reste celle du MESSAGE (08:30, touche 1), mais
+    l'appel d'ouverture calculé à 08:33 tombe à 09:00 — un appel d'affaires
+    ne se passe pas à 8 h 33 au Maroc. Le troisième (08:30 + 2 h 30) tombe
+    naturellement à 11:00, déjà dans la fenêtre d'appel.
     """
 
     def setUp(self):
@@ -118,16 +127,48 @@ class OrigineDesTouchesDuJourTests(TestCase):
         return [e.due_at.astimezone(horaires.CASABLANCA) for e in trois]
 
     def test_un_lead_du_dimanche_midi_est_appele_en_sequence_le_lundi(self):
+        """Décision fondateur du 07/09/2026 : le MESSAGE d'identité part à
+        08:30, le premier APPEL à 09:00 (plus 08:33), le second à 11:00.
+        C'est la seule attente de ce fichier qui change — et elle change
+        parce qu'un appel d'affaires ne se passe pas à 8 h 33 au Maroc."""
         # Dimanche 6 septembre 2026, 12:28 → ouverture lundi 7 à 08:30.
         heures = self._heures(datetime.datetime(
             2026, 9, 6, 12, 28, tzinfo=horaires.CASABLANCA))
         self.assertEqual(
             [(h.date(), h.hour, h.minute) for h in heures],
             [(datetime.date(2026, 9, 7), 8, 30),
-             (datetime.date(2026, 9, 7), 8, 33),
+             (datetime.date(2026, 9, 7), 9, 0),
              (datetime.date(2026, 9, 7), 11, 0)])
 
+    def test_le_premier_appel_nest_jamais_avant_neuf_heures(self):
+        """La règle, énoncée comme propriété plutôt que comme horaire : sur
+        un lead de nuit, AUCUNE touche `appel` ne tombe avant 09:00, et le
+        message, lui, part bien avant."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Nuit', owner=self.acteur)
+        etapes = initialiser_plan_relance(
+            lead, self.acteur,
+            depart=datetime.datetime(2026, 9, 6, 23, 40,
+                                     tzinfo=horaires.CASABLANCA),
+            cadence='contact')
+        appels = [e for e in etapes if e.canal == 'appel'
+                  and e.template_cle != 'appel_dimanche']
+        self.assertTrue(appels)
+        for etape in appels:
+            locale = etape.due_at.astimezone(horaires.CASABLANCA)
+            self.assertGreaterEqual(
+                locale.time(), datetime.time(9, 0), etape.libelle)
+        premier_message = min(
+            (e for e in etapes if e.canal == 'whatsapp'),
+            key=lambda e: e.due_at)
+        self.assertEqual(
+            premier_message.due_at.astimezone(horaires.CASABLANCA).time(),
+            datetime.time(8, 30))
+
     def test_un_lead_arrive_dans_la_fenetre_est_inchange(self):
+        """Garde négative de la décision du 07/09/2026 : elle ne déplace QUE
+        les touches calculées avant 09:00. Un lead arrivé en pleine journée
+        garde exactement les écarts du protocole."""
         # Mardi 8 septembre 2026, 11:00 — déjà appelable.
         heures = self._heures(datetime.datetime(
             2026, 9, 8, 11, 0, tzinfo=horaires.CASABLANCA))
