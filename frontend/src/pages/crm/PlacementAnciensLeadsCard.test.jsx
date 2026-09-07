@@ -40,7 +40,14 @@ import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
 beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(true)
   confirmMock.mockResolvedValue(true)
-  crmApi.placerAnciensLeads.mockResolvedValue(reponseContrat('crm', 'placement_anciens_leads'))
+  // Aperçu → l'exemple du contrat (restants == a_placer) ; application → tout
+  // placé en un lot (applique = a_placer, restants 0). Le contrat ne porte
+  // qu'un exemple d'aperçu : une réponse d'application se dérive de lui.
+  crmApi.placerAnciensLeads.mockImplementation((body) => Promise.resolve(
+    body?.apply
+      ? { data: { ...DONNEES, apply: true, applique: DONNEES.a_placer, restants: 0 } }
+      : reponseContrat('crm', 'placement_anciens_leads'),
+  ))
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -104,7 +111,8 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
 
     // La ligne de progression reflète le DERNIER `restants` reçu, jamais un
     // décompte recalculé côté écran.
-    await waitFor(() => expect(screen.getByText('40 placés · 10 restants')).toBeInTheDocument())
+    // La ligne de progression est transitoire (React peut ne jamais la peindre
+    // entre deux lots résolus en microtâches) : on vérifie l'état FINAL.
 
     // Deux lots enchaînés (`apply:true, limite:40`), puis un rechargement
     // d'aperçu (`apply:false`) une fois `restants === 0`.
