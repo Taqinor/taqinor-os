@@ -67,6 +67,20 @@ describe('MRY14 ToucheMessageDialog', () => {
     expect(screen.getByText(/Aucun numéro exploitable/)).toBeInTheDocument()
   })
 
+  it('un message en darija se lit de droite à gauche (dir="rtl")', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: { ...MESSAGE, langue: 'darija' } })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    const bloc = await screen.findByText(MESSAGE.message)
+    expect(bloc).toHaveAttribute('dir', 'rtl')
+    expect(bloc).toHaveAttribute('lang', 'ar')
+  })
+
+  it('un message en français garde le sens de lecture automatique', async () => {
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    const bloc = await screen.findByText(MESSAGE.message)
+    expect(bloc).toHaveAttribute('dir', 'auto')
+  })
+
   it('ne charge rien quand fermé', () => {
     render(<ToucheMessageDialog etape={ETAPE} open={false} onOpenChange={() => {}} />)
     expect(crmApi.getRelanceEtapeMessage).not.toHaveBeenCalled()

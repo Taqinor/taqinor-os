@@ -352,3 +352,31 @@ class AucunEnvoiReseauTests(_Base):
         defaut = MESSAGE_TEMPLATE_DEFAULTS['identite']
         self.assertIn(defaut.split('{prenom}')[0].strip()[:20],
                       rendu['message'])
+
+
+class CiviliteTests(_Base):
+    """Décision fondateur 07/09/2026 : on s'adresse à quelqu'un qu'on ne
+    connaît pas avec « M. » / « السي » devant le prénom — jamais le prénom
+    nu — et un prénom manquant ne fait pas sauter la salutation."""
+    slug = 'mry13-civilite'
+
+    def test_le_defaut_francais_dit_monsieur_devant_le_prenom(self):
+        rendu = message_pour_etape(self._touche(), user=self.acteur)
+        self.assertIn('Bonjour M. Aziz', rendu['message'])
+
+    def test_la_civilite_darija_est_si(self):
+        self.lead.langue_preferee = 'darija'
+        self.lead.save(update_fields=['langue_preferee'])
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr='Bonjour {civilite} {prenom}',
+            corps_darija='السلام عليكم {civilite} {prenom}')
+        rendu = message_pour_etape(self._touche(), user=self.acteur)
+        self.assertIn('السي Aziz', rendu['message'])
+
+    def test_un_prenom_manquant_laisse_la_place_au_nom(self):
+        self.lead.prenom = ''
+        self.lead.save(update_fields=['prenom'])
+        rendu = message_pour_etape(self._touche(), user=self.acteur)
+        self.assertIn(f'Bonjour M. {self.lead.nom}', rendu['message'])
+        self.assertNotIn('prenom', rendu['placeholders_manquants'])
