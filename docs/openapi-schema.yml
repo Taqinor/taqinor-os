@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9790, operations: 17477, components: 5129}
+counts: {paths: 9792, operations: 17479, components: 5129}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2634,6 +2634,7 @@ operations:
 - get /api/django/crm/leads/kpi-premier-contact/ -> django_crm_leads_kpi_premier_contact_retrieve
 - post /api/django/crm/leads/placement-cadences/ -> django_crm_leads_placement_cadences_create
 - get /api/django/crm/leads/relances/ -> django_crm_leads_relances_retrieve
+- post /api/django/crm/leads/resoudre-gps/ -> django_crm_leads_resoudre_gps_create
 - get /api/django/crm/leads/roi-sources/ -> django_crm_leads_roi_sources_retrieve
 - post /api/django/crm/leads/scan-carte/ -> django_crm_leads_scan_carte_create
 - get /api/django/crm/leads/sla-breach/ -> django_crm_leads_sla_breach_retrieve
@@ -11410,6 +11411,7 @@ operations:
 - get /api/v1/crm/leads/kpi-premier-contact/ -> v1_crm_leads_kpi_premier_contact_retrieve
 - post /api/v1/crm/leads/placement-cadences/ -> v1_crm_leads_placement_cadences_create
 - get /api/v1/crm/leads/relances/ -> v1_crm_leads_relances_retrieve
+- post /api/v1/crm/leads/resoudre-gps/ -> v1_crm_leads_resoudre_gps_create
 - get /api/v1/crm/leads/roi-sources/ -> v1_crm_leads_roi_sources_retrieve
 - post /api/v1/crm/leads/scan-carte/ -> v1_crm_leads_scan_carte_create
 - get /api/v1/crm/leads/sla-breach/ -> v1_crm_leads_sla_breach_retrieve
