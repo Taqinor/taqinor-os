@@ -1297,6 +1297,76 @@ def _item_pu_ht(it):
     return float(pu_ht)
 
 
+# ── QJRREM — LA REMISE GLOBALE SUR CHAQUE LIGNE ──────────────────────────────
+# Demande fondateur (07/09/2026) : « la remise de 5 % est gardée partout et
+# s'applique aussi à chaque poste de la liste des composants, de l'installation,
+# de tout ». Le moteur RENDAIT chaque ligne au prix CATALOGUE avec une unique
+# ligne « Remise (X %) » plus bas : le client ne pouvait rapprocher aucun poste
+# de la remise qu'il venait de négocier.
+#
+# CE QUI NE BOUGE PAS. La chaîne « Sous-total HT → Remise (X %) → Total HT →
+# TVA → Total TTC » est intacte (Sous-total = somme CATALOGUE, Total HT = net),
+# les valeurs viennent toujours du builder (aucun calcul ici), et la carte
+# d'option garde son prix barré + son badge « −X % REMISE ».
+#
+# CE QUI CHANGE. Les colonnes P.U. et Total portent DEUX nombres DANS LA MÊME
+# CELLULE : le prix catalogue barré, en petit, puis le prix après remise en
+# chiffre principal. Aucune ligne de tableau supplémentaire — la pagination des
+# trois formats (3 pages / 4 avec étude / une page qui ne déborde jamais) ne
+# peut donc pas bouger du fait d'une remise.
+
+
+def _item_pu_ht_remise(it):
+    """P.U. HT APRÈS remise globale — le catalogue si la clé n'est pas là.
+
+    Le repli couvre les appelants historiques qui bâtissent leurs items à la
+    main (tests de gabarit, échantillons) : sans la clé du builder, la cellule
+    affiche exactement ce qu'elle affichait avant.
+    """
+    valeur = it.get("pu_ht_remise")
+    return float(valeur) if valeur is not None else _item_pu_ht(it)
+
+
+def _item_total_ht_remise(it):
+    """Total HT de la ligne APRÈS remise globale — le catalogue à défaut."""
+    valeur = it.get("total_ht_remise")
+    if valeur is not None:
+        return float(valeur)
+    try:
+        qte = float(it.get("quantite") or 0)
+    except (TypeError, ValueError):
+        qte = 0.0
+    return qte * _item_pu_ht(it)
+
+
+def _cellule_prix_remise(valeur_catalogue, valeur_remisee, taille="0.78em"):
+    """Prix catalogue BARRÉ puis prix remisé, dans UNE SEULE cellule.
+
+    Sans remise globale (le cas courant), rend exactement ``_fmt2`` — le
+    document est alors octet pour octet celui d'avant.
+    """
+    if DISCOUNT_PCT <= 0:
+        return _fmt2(valeur_remisee)
+    return (f'<span style="font-size:{taille};color:{CG4};'
+            f'text-decoration:line-through;white-space:nowrap;">'
+            f'{_fmt2(valeur_catalogue)}</span> '
+            f'<span style="white-space:nowrap;">{_fmt2(valeur_remisee)}</span>')
+
+
+def _note_remise_par_ligne():
+    """LA phrase qui dit ce que le tableau montre — jamais un nombre de plus.
+
+    Un seul chiffre y figure : le pourcentage de remise déjà imprimé par le
+    bloc de totaux. Aucune remise ⇒ chaîne vide (rien n'est ajouté au
+    document).
+    """
+    if DISCOUNT_PCT <= 0:
+        return ""
+    pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+    return (f"Remise de {pct} % appliquée sur chaque ligne "
+            f"— prix catalogue barrés, totaux après remise.")
+
+
 def _desc_lines_html(it, max_lines, font_pt):
     """Indented detail lines under the designation (competitor style)."""
     desc = (it.get("description") or "").strip()
@@ -1507,8 +1577,12 @@ def equip_rows(items, totaux, hi_bat=False):
         # ne pouvait pas rapprocher les lignes du total. Seul un prix NUL
         # continue de s'afficher en tiret.
         dash = "\u2014"
-        pu_ht_s = _fmt2(pu_ht) if pu_ht else dash
-        tot_ht_s = _fmt2(qty * pu_ht) if pu_ht else dash
+        # QJRREM - deux nombres dans la MEME cellule (catalogue barre + remise)
+        # des qu'une remise globale existe ; sinon, le formatage d'avant.
+        pu_ht_s = (_cellule_prix_remise(pu_ht, _item_pu_ht_remise(it))
+                   if pu_ht else dash)
+        tot_ht_s = (_cellule_prix_remise(qty * pu_ht, _item_total_ht_remise(it))
+                    if pu_ht else dash)
         taux = it.get("taux_tva", TVA_PCT)
         taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
@@ -2042,6 +2116,12 @@ def page2(sans_items, img_roi, img_mon):
         f'</div>'
     ) if img_mon else ""
 
+    # QJRREM - LA phrase qui dit ce que les deux tableaux montrent. Elle
+    # rejoint la note de TVA deja presente sous les tableaux : aucune ligne de
+    # tableau, aucun bloc, aucune hauteur en plus.
+    _nr = _note_remise_par_ligne()
+    _note_remise_p2 = f" &#183; {_nr}" if _nr else ""
+
     return f"""
 <div class="page">
   {tbl_css}
@@ -2081,7 +2161,7 @@ def page2(sans_items, img_roi, img_mon):
 
     </div>
     <div style="margin-top:4px;font-size:6pt;color:{CG4};font-style:italic;">
-      * {TVA_NOTE}
+      * {TVA_NOTE}{_note_remise_p2}
     </div>
   </div>
 
@@ -3538,9 +3618,11 @@ def page_onepage(items, tronquees=0):
             f'<div style="font-weight:700;color:{CN};">{des}</div>{detail_html}</td>'
             f'<td style="padding:{pad_px}px 10px;">{marque_html}</td>'
             f'<td style="padding:{pad_px}px 10px;text-align:center;color:{CG7};">{qty_str}</td>'
-            f'<td style="padding:{pad_px}px 10px;text-align:right;color:{CG7};">{_fmt2(pu_ht)}</td>'
+            f'<td style="padding:{pad_px}px 10px;text-align:right;color:{CG7};">'
+            f'{_cellule_prix_remise(pu_ht, _item_pu_ht_remise(it))}</td>'
             f'<td style="padding:{pad_px}px 10px;text-align:center;color:{CG4};font-size:7.5pt;">{_taux_s}</td>'
-            f'<td style="padding:{pad_px}px 10px;text-align:right;font-weight:500;color:{CN};">{_fmt2(line_total)}</td>'
+            f'<td style="padding:{pad_px}px 10px;text-align:right;font-weight:500;color:{CN};">'
+            f'{_cellule_prix_remise(line_total, _item_total_ht_remise(it))}</td>'
             f'</tr>'
         )
         row_idx += 1
@@ -3708,6 +3790,7 @@ def page_onepage(items, tronquees=0):
       <span style="margin-right:20px;">&#183; {PAY_M}&#37; &#224; la r&#233;ception du mat&#233;riel</span>
       <span style="margin-right:20px;">&#183; {PAY_S}&#37; apr&#232;s mise en marche</span>
       <span>&#183; {TVA_NOTE}</span>
+      {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
     </div>
   </div>
 
