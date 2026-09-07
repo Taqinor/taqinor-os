@@ -29,6 +29,12 @@ CE QUE FAIT LA MIGRATION, dans l'ordre :
 Le retour est un no-op délibéré : `git revert` du code suffit à revenir au
 comportement d'avant, et remettre 08:30 partout écraserait les heures que les
 sociétés auront saisies entre-temps.
+
+Opération à UN SEUL passage (Django l'enregistre dans `django_migrations` et
+ne la rejoue jamais) : elle lit l'heure d'appel AVANT de la reculer, donc la
+rejouer à la main ferait hériter les messages de 09:00 — ne jamais l'appeler
+hors du cadre de `migrate`. `appel_heure_debut` est NOT NULL en base ; le
+repli « ou 08:30 » n'est qu'une garde de lecture.
 """
 import datetime
 

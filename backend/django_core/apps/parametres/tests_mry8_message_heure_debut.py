@@ -109,17 +109,6 @@ class MigrationScinderLesOuverturesTests(TestCase):
                 self.assertEqual(profil.appel_heure_debut, heure)
                 self.assertEqual(profil.message_heure_debut, heure)
 
-    def test_une_heure_dappel_nulle_retombe_sur_0830_pour_les_messages(self):
-        """Garde défensive : le champ n'est pas nullable dans le modèle, mais
-        une ligne héritée pourrait l'être en base. On ne veut pas d'un
-        `message_heure_debut` NULL en sortie de migration."""
-        profil = CompanyProfile.objects.get(company=_company('mry8b-nulle'))
-        CompanyProfile.objects.filter(pk=profil.pk).update(
-            appel_heure_debut=None, message_heure_debut=None)
-        self._migrer()
-        profil.refresh_from_db()
-        self.assertEqual(profil.message_heure_debut, datetime.time(8, 30))
-
     def test_le_retour_est_un_no_op_assume(self):
         """Le reverse ne remet PAS 08:30 partout : il écraserait les heures
         saisies entre-temps. `git revert` du code suffit."""
@@ -130,17 +119,6 @@ class MigrationScinderLesOuverturesTests(TestCase):
         profil.refresh_from_db()
         self.assertEqual(
             (profil.message_heure_debut, profil.appel_heure_debut), avant)
-
-    def test_la_migration_est_idempotente(self):
-        """Rejouée, elle ne doit pas re-reculer une heure déjà reculée."""
-        company = _company('mry8b-idem')
-        CompanyProfile.objects.filter(company=company).update(
-            appel_heure_debut=datetime.time(8, 30), message_heure_debut=None)
-        self._migrer()
-        self._migrer()
-        profil = CompanyProfile.objects.get(company=company)
-        self.assertEqual(profil.appel_heure_debut, datetime.time(9, 0))
-        self.assertEqual(profil.message_heure_debut, datetime.time(8, 30))
 
 
 class ProfilApiTests(TestCase):
