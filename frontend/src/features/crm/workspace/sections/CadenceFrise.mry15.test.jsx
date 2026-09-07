@@ -118,8 +118,11 @@ describe('MRY32 — actions directement depuis la frise', () => {
     render(<CadenceFrise leadId={1489} onChanged={onChanged} />)
     await waitFor(() => expect(screen.getByRole('button', { name: /^Fait$/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    // QJ-QUESTIONS — une réponse est désormais OBLIGATOIRE avant Confirmer.
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    await waitFor(() => expect(crmApi.marquerRelanceEtapeFait).toHaveBeenCalledWith(501, {}))
+    await waitFor(() => expect(crmApi.marquerRelanceEtapeFait)
+      .toHaveBeenCalledWith(501, { outcome: 'non_joint' }))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
 })
