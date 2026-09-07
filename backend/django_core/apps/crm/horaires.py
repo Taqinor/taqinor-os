@@ -9,6 +9,17 @@ autorité sur trois questions :
   * `minutes_ouvrees_entre(a, b, company)` — le temps réellement disponible
     entre deux instants (base du KPI « premier contact » de MRY19).
 
+DEUX OUVERTURES, PAS UNE (décision fondateur du 07/09/2026, recherche à
+l'appui). Toutes ces fonctions prennent un `canal` : un message WhatsApp ou
+e-mail peut partir dès `CompanyProfile.message_heure_debut` (08:30), un APPEL
+jamais avant `appel_heure_debut` (09:00). Avec une fenêtre unique, un lead de
+nuit recevait son message d'identité à 08:30 puis un coup de téléphone à
+08:33 — avant l'heure à laquelle un appel d'affaires se fait au Maroc. Ce qui
+reste COMMUN aux deux canaux : la fermeture du soir, la fenêtre de Ramadan et
+la fenêtre dominicale du Protocole v3. Ce qui ne l'est pas : la pause de la
+prière du vendredi, qui ne vaut que pour les APPELS — un message est
+silencieux, il ne dérange personne à la mosquée.
+
 Pourquoi ce module existe. Une touche planifiée « J+1 » tombait mécaniquement
 à l'heure de création du lead : un prospect arrivé à 23 h se voyait rappelé à
 23 h le lendemain. Et un délai mesuré en minutes CALENDAIRES comptait la nuit
@@ -43,6 +54,18 @@ _MAX_JOURS = 60
 DIMANCHE_DEBUT = datetime.time(16, 0)
 DIMANCHE_FIN = datetime.time(19, 0)
 
+#: Canaux SILENCIEUX (décision fondateur 07/09/2026) : ils ouvrent à
+#: `message_heure_debut` et ignorent la pause de la prière du vendredi. Tout
+#: autre canal (`appel`, `visite`) suit la fenêtre d'APPEL. Les valeurs sont
+#: celles de `parametres.CanalRelance` / `crm.RelanceEtape.canal`, reprises en
+#: littéral : ce module ne dépend d'aucun modèle.
+CANAUX_MESSAGE = frozenset({'whatsapp', 'email'})
+
+#: Ouverture par défaut des messages quand la société n'a rien saisi.
+DEFAUT_MESSAGE_DEBUT = datetime.time(8, 30)
+#: Ouverture par défaut des appels — 9 h, jamais 8 h 30 (07/09/2026).
+DEFAUT_APPEL_DEBUT = datetime.time(9, 0)
+
 
 def _profil(company):
     if company is None:
@@ -60,6 +83,21 @@ def _heure(profil, champ, defaut):
     return valeur if isinstance(valeur, datetime.time) else defaut
 
 
+def est_un_message(canal):
+    """`canal` désigne-t-il une touche ÉCRITE (WhatsApp / e-mail) ?
+
+    Tolère `None` et une valeur inconnue : dans le doute, c'est la fenêtre
+    d'APPEL — la plus tardive et la plus prudente — qui s'applique."""
+    return str(canal or '').lower() in CANAUX_MESSAGE
+
+
+def _ouverture(profil, canal):
+    """L'heure d'ouverture du jour pour CE canal (hors Ramadan/dimanche)."""
+    if est_un_message(canal):
+        return _heure(profil, 'message_heure_debut', DEFAUT_MESSAGE_DEBUT)
+    return _heure(profil, 'appel_heure_debut', DEFAUT_APPEL_DEBUT)
+
+
 def est_en_ramadan(d, company, profil=None):
     """`d` tombe-t-il dans la période de Ramadan SAISIE par la société ?
 
@@ -73,12 +111,17 @@ def est_en_ramadan(d, company, profil=None):
     return debut <= d <= fin
 
 
-def fenetre_du_jour(d, company, *, dimanche=False):
+def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
     """`(debut, fin, pause)` du jour `d`, ou ``None`` si non appelable.
 
     `pause` est ``(debut, fin)`` le vendredi (prière), sinon ``None``.
     `dimanche=True` renvoie la fenêtre dominicale 16 h-19 h du Protocole v3 —
     réservée à la touche marquée `dimanche_ok`, jamais au reste.
+
+    `canal` (07/09/2026) décide de la seule chose qui SÉPARE les deux
+    fenêtres : l'ouverture (`message_heure_debut` pour WhatsApp/e-mail,
+    `appel_heure_debut` sinon) et la pause du vendredi, qui ne s'applique
+    qu'aux appels. La fermeture, le Ramadan et le dimanche sont communs.
     """
     profil = _profil(company)
     if dimanche and d.weekday() == 6:
@@ -88,14 +131,16 @@ def fenetre_du_jour(d, company, *, dimanche=False):
         return None
     if est_en_ramadan(d, company, profil=profil):
         # Pendant le Ramadan, la fenêtre entière se resserre — et la pause du
-        # vendredi n'a plus lieu d'être (elle tombe hors de 10 h-14 h).
+        # vendredi n'a plus lieu d'être (elle tombe hors de 10 h-14 h). Elle
+        # est COMMUNE aux deux canaux : c'est la journée entière qui se
+        # déplace, pas seulement l'heure des appels.
         return (_heure(profil, 'ramadan_appel_debut', datetime.time(10, 0)),
                 _heure(profil, 'ramadan_appel_fin', datetime.time(14, 0)),
                 None)
-    debut = _heure(profil, 'appel_heure_debut', datetime.time(8, 30))
+    debut = _ouverture(profil, canal)
     fin = _heure(profil, 'appel_heure_fin', datetime.time(20, 0))
     pause = None
-    if d.weekday() == 4:  # vendredi
+    if d.weekday() == 4 and not est_un_message(canal):  # vendredi, appels
         pause = (_heure(profil, 'vendredi_pause_debut', datetime.time(11, 30)),
                  _heure(profil, 'vendredi_pause_fin', datetime.time(15, 0)))
     return (debut, fin, pause)
@@ -113,10 +158,11 @@ def _combiner(d, t):
     return datetime.datetime.combine(d, t, tzinfo=CASABLANCA)
 
 
-def est_dans_fenetre(dt, company, *, dimanche=False):
-    """L'instant `dt` est-il dans la fenêtre d'appel de son jour ?"""
+def est_dans_fenetre(dt, company, *, dimanche=False, canal='appel'):
+    """L'instant `dt` est-il dans la fenêtre de son jour, pour ce `canal` ?"""
     local = _local(dt)
-    fenetre = fenetre_du_jour(local.date(), company, dimanche=dimanche)
+    fenetre = fenetre_du_jour(local.date(), company, dimanche=dimanche,
+                              canal=canal)
     if fenetre is None:
         return False
     debut, fin, pause = fenetre
@@ -128,19 +174,25 @@ def est_dans_fenetre(dt, company, *, dimanche=False):
     return True
 
 
-def prochain_creneau_appel(dt, company, *, dimanche=False):
-    """Le prochain instant APPELABLE à partir de `dt` (inclus).
+def prochain_creneau_appel(dt, company, *, dimanche=False, canal='appel'):
+    """Le prochain instant JOIGNABLE à partir de `dt` (inclus), pour `canal`.
 
     Renvoie `dt` inchangé s'il est déjà dans la fenêtre. Sinon, dans l'ordre :
     la pause du vendredi pousse à sa fin ; avant l'ouverture on attend
     l'ouverture ; après la fermeture (ou un jour non ouvré) on passe au
     prochain jour ouvré à son heure d'ouverture. Sortie AWARE, dans le même
-    fuseau que l'entrée."""
+    fuseau que l'entrée.
+
+    `canal` porte la décision du 07/09/2026 : une touche WhatsApp/e-mail se
+    pose dès 08:30, un appel jamais avant 09:00. Le NOM de la fonction reste
+    historique — elle recale désormais toutes les touches, pas seulement les
+    appels."""
     tz_entree = dt.tzinfo or datetime.timezone.utc
     local = _local(dt)
     jour = local.date()
     for _ in range(_MAX_JOURS):
-        fenetre = fenetre_du_jour(jour, company, dimanche=dimanche)
+        fenetre = fenetre_du_jour(jour, company, dimanche=dimanche,
+                                  canal=canal)
         if fenetre is not None:
             debut, fin, pause = fenetre
             candidat = local if jour == local.date() else _combiner(jour, debut)
@@ -194,11 +246,19 @@ def prochain_dimanche(dt, heure=DIMANCHE_HEURE_DEFAUT):
     return _combiner(cible, heure).astimezone(tz_entree)
 
 
-def minutes_ouvrees_entre(a, b, company):
+def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
     """Minutes d'ouverture écoulées entre `a` et `b` (0 si `b <= a`).
 
     C'est LA mesure du KPI « premier contact » : une nuit ou un week-end
-    complet vaut 0 minute. La pause du vendredi est retranchée."""
+    complet vaut 0 minute. La pause du vendredi est retranchée pour les
+    appels.
+
+    Le défaut est `whatsapp`, PAS `appel` (07/09/2026) : la première prise de
+    contact du protocole est un MESSAGE, posé dès 08:30. Compter ce délai sur
+    la fenêtre d'appel (09:00) rendrait négatives les 30 premières minutes de
+    la journée — un lead de nuit rappelé par message à 08:32 afficherait 0
+    minute écoulée, et l'escalade `escalader_premier_contact` ne partirait
+    jamais avant 9 h."""
     if a is None or b is None:
         return 0
     debut_local = _local(a)
@@ -210,7 +270,7 @@ def minutes_ouvrees_entre(a, b, company):
     for _ in range(_MAX_JOURS):
         if jour > fin_local.date():
             break
-        fenetre = fenetre_du_jour(jour, company)
+        fenetre = fenetre_du_jour(jour, company, canal=canal)
         if fenetre is not None:
             ouverture, fermeture, pause = fenetre
             plages = [(ouverture, fermeture)]

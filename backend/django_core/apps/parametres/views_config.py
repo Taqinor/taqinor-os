@@ -43,7 +43,7 @@ PROFILE_CONFIG_FIELDS = [
     # MRY8 — fenêtres d'appel de la société (forme `fenetres_appel` du
     # contrat MRY25) : elles decident QUAND une touche de cadence tombe
     # et servent de base au KPI premier contact en minutes OUVRÉES.
-    'appel_heure_debut', 'appel_heure_fin',
+    'message_heure_debut', 'appel_heure_debut', 'appel_heure_fin',
     'vendredi_pause_debut', 'vendredi_pause_fin',
     'ramadan_debut', 'ramadan_fin',
     'ramadan_appel_debut', 'ramadan_appel_fin',

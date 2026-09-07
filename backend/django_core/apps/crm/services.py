@@ -641,6 +641,10 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 
     from . import horaires
 
+    def _canal(gabarit):
+        """Le canal de CETTE touche — `appel` par défaut, jamais deviné."""
+        return getattr(gabarit, 'canal', None) or 'appel'
+
     if gabarits is None:
         gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     if not gabarits:
@@ -658,13 +662,19 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
         depart = timezone.make_aware(depart, datetime.timezone.utc)
 
     # MRY5/MRY8 — l'ORIGINE des touches du jour même : le premier instant
-    # réellement appelable à partir du départ. Sans elle, chaque touche J0
+    # réellement joignable à partir du départ. Sans elle, chaque touche J0
     # était recalée INDÉPENDAMMENT, et un lead arrivé la nuit ou le week-end
     # voyait ses trois premières touches (J0+0, J0+3 min, J0+2 h 30) écrasées
     # sur la MÊME minute d'ouverture — 08:30, 08:30, 08:30 : trois rappels
     # simultanés au lieu d'une séquence, et un « rappelé dans les cinq
     # minutes » qui ne voulait plus rien dire.
-    origine = horaires.prochain_creneau_appel(depart, lead.company)
+    # L'origine est celle du MESSAGE (07/09/2026) : la touche 1 du protocole
+    # est le message d'identité, posé dès 08:30. Les écarts du protocole se
+    # comptent donc à partir de là, et chaque touche est ENSUITE recalée sur
+    # la fenêtre de SON canal — l'appel d'ouverture calculé à 08:33 tombe à
+    # 09:00, le suivant (08:30 + 2 h 30) à 11:00.
+    origine = horaires.prochain_creneau_appel(
+        depart, lead.company, canal='whatsapp')
 
     echeances = []
     for gabarit in gabarits:
@@ -710,7 +720,8 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
                     second=0, microsecond=0)
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
-            dimanche=bool(getattr(gabarit, 'dimanche_ok', False)))
+            dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
+            canal=_canal(gabarit))
         echeances.append((gabarit, echeance))
     return echeances
 
@@ -730,11 +741,14 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
     ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
     l'instant est recalé sur la fenêtre d'appel de la société
-    (``horaires.prochain_creneau_appel``, MRY8). EXCEPTION pour les touches du
+    (``horaires.prochain_creneau_appel``, MRY8) — sur la fenêtre de SON CANAL
+    (07/09/2026) : un message dès ``message_heure_debut`` (08:30), un appel
+    jamais avant ``appel_heure_debut`` (09:00). EXCEPTION pour les touches du
     JOUR MÊME (``delai_jours == 0`` sans ``heure_cible``) : elles s'enchaînent
-    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart)``) et non
-    depuis l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait
-    ses trois premières touches écrasées sur la même minute d'ouverture. Une
+    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart,
+    canal='whatsapp')``, l'ouverture du message d'identité) et non depuis
+    l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait ses trois
+    premières touches écrasées sur la même minute d'ouverture. Une
     touche marquée
     ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
     dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
@@ -1228,10 +1242,11 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None):
     cadence glissent donc du MÊME delta — jamais réordonnées, jamais
     recalculées depuis zéro.
 
-    ``quand`` est un datetime (ou une date) ; il est recalé sur la fenêtre
-    d'appel de la société. ``etape`` cible une touche précise ; sinon c'est la
-    prochaine À FAIRE. Renvoie la touche déplacée, ou ``None`` s'il n'y en a
-    aucune.
+    ``quand`` est un datetime (ou une date) ; il est recalé sur la fenêtre de
+    la société pour le CANAL de la touche déplacée (07/09/2026 : « rappelez-moi
+    jeudi 8 h » vaut 08:30 pour un message, 09:00 pour un appel). ``etape``
+    cible une touche précise ; sinon c'est la prochaine À FAIRE. Renvoie la
+    touche déplacée, ou ``None`` s'il n'y en a aucune.
     """
     from . import horaires
 
@@ -1243,7 +1258,8 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None):
             quand, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
     elif timezone.is_naive(quand):
         quand = timezone.make_aware(quand, datetime.timezone.utc)
-    nouveau = horaires.prochain_creneau_appel(quand, lead.company)
+    nouveau = horaires.prochain_creneau_appel(
+        quand, lead.company, canal=getattr(cible, 'canal', None) or 'appel')
 
     ancien = cible.due_at
     delta = (nouveau - ancien) if ancien else None
@@ -5594,8 +5610,10 @@ PLACEMENT_FENETRE_JOURS = 14
 PLACEMENT_REVEILS_PAR_JOUR = 8
 
 #: Les huit créneaux du matin, 20 minutes d'écart (10 h 00 → 12 h 20). Chacun
-#: passe ensuite par `horaires.prochain_creneau_appel` : un créneau qui tombe
-#: dans la pause du vendredi ou hors fenêtre est recalé, jamais gardé tel quel.
+#: passe ensuite par `horaires.prochain_creneau_appel` au canal `whatsapp`
+#: (une cadence de réveil s'ouvre par un message) : un créneau hors fenêtre
+#: est recalé, jamais gardé tel quel. La pause du vendredi ne le concerne pas
+#: — elle ne vaut que pour les appels (07/09/2026).
 PLACEMENT_CRENEAUX = tuple(
     datetime.time(10 + (rang * 20) // 60, (rang * 20) % 60)
     for rang in range(PLACEMENT_REVEILS_PAR_JOUR))
@@ -5964,7 +5982,10 @@ def _etaler_reveils(dormants, company, maintenant, *, gabarit=None):
         gabarit = _placement_gabarit_reveil(company)
     delai = (getattr(gabarit, 'delai_jours', None)
              or PLACEMENT_REVEIL_DELAI_JOURS)
-    base = horaires.prochain_creneau_appel(maintenant, company)
+    # Une cadence « réveil » commence par un MESSAGE WhatsApp : sa fenêtre est
+    # celle des messages (08:30), pas celle des appels (09:00) — 07/09/2026.
+    base = horaires.prochain_creneau_appel(
+        maintenant, company, canal='whatsapp')
     base_locale = base.astimezone(horaires.CASABLANCA)
     jour_zero = base_locale.date()
     if base_locale.time() > PLACEMENT_CRENEAUX[0]:
@@ -5984,7 +6005,7 @@ def _etaler_reveils(dormants, company, maintenant, *, gabarit=None):
         creneau = horaires.prochain_creneau_appel(
             datetime.datetime.combine(
                 jour, PLACEMENT_CRENEAUX[rang], tzinfo=horaires.CASABLANCA),
-            company)
+            company, canal='whatsapp')
         entree['creneau'] = creneau
         # La cadence « réveil » place sa première touche à J+`delai` : on
         # remonte donc le départ d'autant pour qu'elle tombe SUR le créneau.

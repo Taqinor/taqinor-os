@@ -60,6 +60,7 @@ _PROFILE_FIELD_LABELS = {
     # WR12 — flags exposés en Paramètres (FG28 SLA + N105 export DGI).
     'lead_sla_hours': 'SLA premier contact (heures)',
     # MRY8 — fenêtres d'appel (libellés FR de l'écran Paramètres).
+    'message_heure_debut': 'Début des messages',
     'appel_heure_debut': 'Début des appels',
     'appel_heure_fin': 'Fin des appels',
     'vendredi_pause_debut': 'Vendredi — début de pause',
