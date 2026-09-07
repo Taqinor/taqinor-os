@@ -13,6 +13,7 @@ fixer un rappel » est posée à demain. Si Meryem saisit une date de rappel en
 marquant la touche, `reporter_prochaine_touche` déplace ce filet sur SA date.
 """
 import datetime
+from decimal import Decimal
 from io import StringIO
 
 from django.contrib.auth import get_user_model
@@ -26,7 +27,8 @@ from authentication.models import Company
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.services import (
-    FILET_JOINT_LIBELLE, initialiser_plan_relance)
+    FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE, initialiser_plan_relance,
+    marquer_etape_relance)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -113,11 +115,45 @@ class FiletJointTests(_Base):
         self._fait(self.etapes[2], outcome='interesse')
         self.assertEqual(self._filets().count(), 0)
 
-    def test_refus_ne_pose_pas_de_filet(self):
-        """La suite d'un refus est une décision humaine (MRY22), jamais un
-        rappel automatique."""
+    def test_refus_pose_une_etape_de_decision_jamais_le_filet_joint(self):
+        """QJ-INVARIANT : un refus ne pose jamais le filet « envoyer le
+        devis » — mais le dossier ne disparaît pas : une étape « décider la
+        suite » (perdu + motif, MRY22 — décision humaine) reste ouverte."""
         self._fait(self.etapes[2], outcome='refuse')
         self.assertEqual(self._filets().count(), 0)
+        decisions = self.lead.relance_etapes.filter(
+            cadence='generique', libelle=FILET_REFUS_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(decisions.count(), 1)
+
+    def test_etape_generique_traitee_avec_devis_demarre_l_apres_devis(self):
+        """Cas AR (07/09/2026) : le filet « envoyer le devis » coché — devis
+        parti par WhatsApp, statut resté « brouillon » — doit DÉMARRER le
+        vrai plan après-devis, jamais laisser zéro étape."""
+        self._fait(self.etapes[2], outcome='joint')
+        filet = self._filets().get()
+        from apps.crm.models import Client as ClientCrm
+        from apps.ventes.models import Devis
+        client = ClientCrm.objects.create(
+            company=self.company, nom='AR', email='mry34-ar@example.com')
+        Devis.objects.create(
+            company=self.company, reference='DEV-MRY34-0001', client=client,
+            lead=self.lead, taux_tva=Decimal('20'))
+        marquer_etape_relance(
+            filet, self.acteur, RelanceEtape.Statut.FAIT,
+            note='Devis envoyé par WhatsApp')
+        apres = self.lead.relance_etapes.filter(
+            cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertGreater(apres.count(), 0)
+
+    def test_etape_generique_traitee_sans_devis_en_repose_une(self):
+        """QJ-INVARIANT : sans devis, cocher le filet en repose un — la
+        liste de relances ne se termine que par Froid ou Signé."""
+        self._fait(self.etapes[2], outcome='joint')
+        filet = self._filets().get()
+        marquer_etape_relance(
+            filet, self.acteur, RelanceEtape.Statut.FAIT)
+        self.assertEqual(self._filets().count(), 1)
 
     def test_un_lead_signe_ne_recoit_pas_de_filet(self):
         self.lead.stage = stages.SIGNED

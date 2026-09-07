@@ -26,6 +26,7 @@ from .services import (
     _CONTACT_KINDS,
     arreter_cadence,
     arreter_cadence_du_lead_id,
+    FILET_REFUS_LIBELLE,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
@@ -189,6 +190,12 @@ def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
         arreter_cadence(lead, user=user,
                         motif=(motif_refus or 'devis refusé'),
                         cadences=['apres_devis'])
+        # QJ-INVARIANT — le lead reste VIVANT après ce refus (pas marqué
+        # perdu) : une étape « décider la suite » le garde dans les files —
+        # sa liste de relances ne se termine que par Froid ou Signé. Jamais
+        # le plan après-devis (relancer la proposition refusée).
+        assurer_prochaine_etape_apres_succes(
+            lead, user, libelle=FILET_REFUS_LIBELLE, avec_plan_devis=False)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY7: arrêt de la cadence après devis échoué (devis #%s)",
@@ -511,13 +518,17 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     try:
         arreter_cadence(instance.lead, user=instance.user, motif=motif,
                         cadences=cadences)
-        # MRY34 — filet « client joint » : si l'arrêt (ou l'absence de toute
-        # cadence) laisse le lead SANS prochaine étape, une étape `generique`
-        # est posée à demain — un client qu'on vient de joindre ne disparaît
-        # jamais des files. `refus`, lui, ne pose rien : la suite d'un refus
-        # est une décision humaine (MRY22), pas un rappel automatique.
+        # QJ-INVARIANT — si l'arrêt (ou l'absence de toute cadence) laisse le
+        # lead SANS prochaine étape, le filet en pose une : un client joint ne
+        # disparaît jamais des files, et un REFUS téléphonique laisse une
+        # étape « décider la suite » — la décision (perdu + motif, MRY22)
+        # reste humaine, mais le dossier reste visible en attendant.
         if issue in ('joint', 'interesse'):
             assurer_prochaine_etape_apres_succes(instance.lead, instance.user)
+        elif issue == 'refuse':
+            assurer_prochaine_etape_apres_succes(
+                instance.lead, instance.user,
+                libelle=FILET_REFUS_LIBELLE, avec_plan_devis=False)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY9: arrêt de cadence échoué sur l'issue « %s » (lead #%s)",

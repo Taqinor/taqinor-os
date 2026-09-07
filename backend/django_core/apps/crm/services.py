@@ -924,6 +924,16 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     #     convenir d'un rappel ne clôt jamais un dossier au froid.
     if restantes_avant == 0 and (outcome or '') not in _OUTCOMES_SANS_CLOTURE:
         cloturer_cadence(lead, user, etape.cadence)
+    # QJ-INVARIANT (fondateur 07/09/2026, « fix this relance once and for
+    # all ») — aucun geste de relance ne laisse un lead ACTIF sans prochaine
+    # étape : si ni la cadence, ni la clôture MRY11 (parking Froid + réveils),
+    # ni le récepteur MRY9 n'ont laissé de suite, le filet en pose une (plan
+    # après-devis complet si un devis existe — l'étape générique « envoyer le
+    # devis » traitée démarre ainsi le VRAI suivi de proposition — sinon une
+    # étape générique). Ses gardes (signé/froid/perdu/archivé) décident
+    # seules : la liste ne se termine que par Froid ou Signé.
+    if _prochaine_touche_a_faire(lead) is None:
+        assurer_prochaine_etape_apres_succes(lead, user)
     return etape
 
 
@@ -1011,6 +1021,11 @@ def cloturer_cadence(lead, user, cadence):
 #: de MRY11, qui ne parque au froid que les cadences épuisées SANS réponse.
 FILET_JOINT_LIBELLE = 'Prochaine étape — envoyer le devis ou fixer un rappel'
 
+#: QJ-INVARIANT — libellé du filet après un REFUS (téléphonique ou de devis) :
+#: la suite d'un refus est une décision HUMAINE (MRY22), mais le dossier ne
+#: doit pas disparaître des files en attendant qu'elle soit prise.
+FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieure'
+
 #: Délai (jours) du filet : DEMAIN, recalé sur le prochain créneau d'appel de
 #: la société (fenêtres MRY4). Si Meryem donne une date de rappel en marquant
 #: la touche, `reporter_prochaine_touche` déplace ce filet sur SA date — le
@@ -1018,19 +1033,27 @@ FILET_JOINT_LIBELLE = 'Prochaine étape — envoyer le devis ou fixer un rappel'
 FILET_JOINT_DELAI_JOURS = 1
 
 
-def assurer_prochaine_etape_apres_succes(lead, user):
-    """MRY34 — un lead qu'on vient de JOINDRE ne reste jamais sans étape.
+def assurer_prochaine_etape_apres_succes(lead, user,
+                                         libelle=FILET_JOINT_LIBELLE,
+                                         avec_plan_devis=True):
+    """QJ-INVARIANT (fondateur 07/09/2026) — un lead ACTIF ne reste JAMAIS
+    sans prochaine étape : sa liste de relances ne se termine que par le
+    parking Froid ou la signature.
 
-    Appelée quand une issue de succès (« joint » / « intéressé ») vient
-    d'arrêter la cadence de contact (MRY9) : si PLUS AUCUNE touche n'est
-    ouverte — pas d'après-devis en cours, pas de rappel — le lead sortirait
-    de toutes les files sans que personne ne le remarque. On pose alors UNE
-    étape `generique` (« envoyer le devis ou fixer un rappel ») à demain,
-    au prochain créneau de la société.
+    Appelée partout où un geste de relance peut laisser zéro touche ouverte
+    (issue « joint »/« intéressé », étape générique traitée, refus). Deux
+    suites possibles, dans cet ordre :
+
+    * le lead a un DEVIS relançable (brouillon compris — un devis parti par
+      WhatsApp hors ERP reste « brouillon », cas AR du 07/09) → le PLAN
+      APRÈS-DEVIS complet démarre, daté de maintenant (idempotent par devis,
+      ``initialiser_plan_relance``) ;
+    * sinon → UNE étape `generique` (``libelle``) à demain, au prochain
+      créneau de la société.
 
     No-op dès qu'une prochaine étape existe déjà, ou que le lead est signé,
-    au froid (le réveil s'en charge), perdu ou archivé. Renvoie l'étape créée
-    ou ``None``."""
+    au froid (le réveil s'en charge), perdu ou archivé. Renvoie l'étape
+    posée (la première du plan) ou ``None``."""
     from . import horaires
 
     if not getattr(lead, 'pk', None):
@@ -1044,13 +1067,28 @@ def assurer_prochaine_etape_apres_succes(lead, user):
     if lead.relance_etapes.filter(
             statut=RelanceEtape.Statut.A_FAIRE).exists():
         return None
+    # Frontière M3 : le devis du lead se lit via le sélecteur de ventes.
+    from apps.ventes.selectors import dernier_devis_relancable_du_lead
+    # ``avec_plan_devis=False`` (refus) : relancer la PROPOSITION que le
+    # client vient de refuser serait un contresens — étape de décision
+    # générique seulement.
+    devis = (dernier_devis_relancable_du_lead(lead)
+             if avec_plan_devis else None)
+    if devis is not None:
+        etapes = initialiser_plan_relance(
+            lead, user, cadence='apres_devis', devis=devis)
+        ouvertes = [e for e in etapes
+                    if e.statut == RelanceEtape.Statut.A_FAIRE]
+        if ouvertes:
+            return ouvertes[0]
+        # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
     vise = timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS)
     quand = horaires.prochain_creneau_appel(vise, lead.company, canal='appel')
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,
-        canal=RelanceEtape.Canal.APPEL, libelle=FILET_JOINT_LIBELLE,
+        canal=RelanceEtape.Canal.APPEL, libelle=libelle,
         due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
-        note='Posée automatiquement : client joint, cadence arrêtée.')
+        note='Posée automatiquement : aucune autre relance ouverte.')
     lead.relance_date = etape.due_date
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
@@ -1060,8 +1098,9 @@ def assurer_prochaine_etape_apres_succes(lead, user):
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
-        body=(f'Client joint : étape « {FILET_JOINT_LIBELLE} » posée '
-              f'automatiquement pour le {quand_local:%d/%m/%Y à %H:%M}.'))
+        body=(f'Étape « {libelle} » posée automatiquement pour le '
+              f'{quand_local:%d/%m/%Y à %H:%M} — aucune autre relance '
+              'ouverte.'))
     return etape
 
 

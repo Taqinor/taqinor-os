@@ -2054,6 +2054,23 @@ def lead_a_un_devis(lead):
     ).exclude(statut=Devis.Statut.BROUILLON).exists()
 
 
+def dernier_devis_relancable_du_lead(lead):
+    """QJ-INVARIANT (fondateur 07/09/2026) — le devis le PLUS RÉCENT du lead
+    encore relançable (ni refusé ni expiré). Le BROUILLON compte : un devis
+    envoyé par WhatsApp hors ERP reste « brouillon » (cas AR du 07/09) — le
+    suivi de proposition doit démarrer quand même. ``None`` si aucun.
+
+    Lecture cross-app pour ``apps.crm`` (le filet « jamais un lead actif sans
+    prochaine étape » choisit entre plan après-devis et étape générique)."""
+    from .models import Devis
+    if lead is None or not getattr(lead, 'pk', None):
+        return None
+    return (Devis.objects
+            .filter(company_id=lead.company_id, lead=lead)
+            .exclude(statut__in=[Devis.Statut.REFUSE, Devis.Statut.EXPIRE])
+            .order_by('-id').first())
+
+
 def leads_avec_devis_accepte(company, lead_ids):
     """MRY30 — sous-ensemble de ``lead_ids`` portant AU MOINS un devis
     ACCEPTÉ. Renvoie un ``set`` d'identifiants de leads.

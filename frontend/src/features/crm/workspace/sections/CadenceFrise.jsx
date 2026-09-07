@@ -64,6 +64,7 @@ function heureDueAt(dueAt) {
 export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(false)
+  const [montrerPassees, setMontrerPassees] = useState(false)
   const [etapes, setEtapes] = useState([])
   // MRY32 — état des actions rendues en mode compact ci-dessous (mêmes noms
   // que `RelancesDuJourWidget.jsx`/`RelancesSuiviPage.jsx`).
@@ -109,10 +110,28 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   // actionnable (MRY32), comme toute touche à faire déjà en retard.
   const prochaineId = etapes.find((e) => e.statut === 'a_faire')?.id ?? null
 
+  // QJ-LISIBILITÉ (fondateur 07/09/2026, « all the list is still hashed ») —
+  // les touches PASSÉES (faites/sautées) sont repliées par défaut : la frise
+  // montre ce qui RESTE à faire, l'historique s'ouvre à la demande.
+  const passees = etapes.filter((e) => e.statut !== 'a_faire')
+  const visibles = montrerPassees
+    ? etapes : etapes.filter((e) => e.statut === 'a_faire')
+
   return (
     <>
+      {passees.length > 0 && (
+        <button
+          type="button"
+          className="text-xs text-muted-foreground underline underline-offset-2"
+          onClick={() => setMontrerPassees((v) => !v)}
+        >
+          {montrerPassees
+            ? 'Masquer les touches passées'
+            : `Afficher les ${passees.length} touche(s) passée(s)`}
+        </button>
+      )}
       <ol className="flex flex-col gap-1" data-testid="cadence-frise" aria-label="Frise de cadence">
-        {etapes.map((etape) => {
+        {visibles.map((etape) => {
           const Icon = STATUT_ICON[etape.statut] ?? Clock3
           const estProchaine = etape.id === prochaineId
           const heureAt = heureDueAt(etape.due_at)

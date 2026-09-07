@@ -79,7 +79,7 @@ def coords_depuis_lien_maps(lien):
         import requests
         reponse = requests.get(
             lien, timeout=_TIMEOUT_S, allow_redirects=True,
-            headers={'User-Agent': 'TAQINOR-OS/1.0 (resolution GPS lead)'})
+            headers={'User-Agent': 'solar-erp-geocoder/1.0 (resolution GPS lead)'})
         coords = _extraire(reponse.url)
         if coords:
             return coords
@@ -106,7 +106,7 @@ def coords_depuis_adresse(adresse, ville=''):
                 params={'format': 'json', 'q': q, 'limit': 1,
                         'countrycodes': 'ma'},
                 timeout=_TIMEOUT_S,
-                headers={'User-Agent': 'TAQINOR-OS/1.0 (geocodage lead)'})
+                headers={'User-Agent': 'solar-erp-geocoder/1.0 (geocodage lead)'})
             resultats = reponse.json() if reponse.ok else []
             if resultats:
                 coords = _valides(resultats[0].get('lat'),

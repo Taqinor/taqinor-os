@@ -177,7 +177,13 @@ class DeclencheurIssueAppelTests(_Base):
 
     def test_refus_arrete_les_deux_sans_marquer_perdu(self):
         self._appel('refuse')
-        self.assertEqual(self._ouvertes(), 0)
+        # QJ-INVARIANT (07/09/2026) : les DEUX cadences sont arrêtées, mais le
+        # dossier ne disparaît pas — une étape « décider la suite » reste (la
+        # liste ne se termine que par Froid ou Signé ; « perdu » ci-dessous la
+        # retire).
+        self.assertEqual(self._ouvertes('contact'), 0)
+        self.assertEqual(self._ouvertes('apres_devis'), 0)
+        self.assertEqual(self._ouvertes('generique'), 1)
         self.lead.refresh_from_db()
         self.assertFalse(
             self.lead.perdu,

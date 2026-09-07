@@ -1017,6 +1017,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # sur le `return [IsAdminRole()]` final et la Commerciale — qui
             # envoie justement le questionnaire — serait refusée.
             'questionnaire_lien',
+            # GPS7 — même motif : sans cette ligne, resoudre-gps
+            # retomberait sur IsAdminRole et la Commerciale serait
+            # refusée alors que l'@action déclare crm_modifier.
+            'resoudre_gps',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
