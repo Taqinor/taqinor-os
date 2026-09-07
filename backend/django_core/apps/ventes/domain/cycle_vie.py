@@ -1920,3 +1920,21 @@ from apps.ventes.domain.etudes import (  # noqa: E402,F401
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
 from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402,F401
 from apps.ventes.domain.tarification import prix_applicable  # noqa: E402,F401
+
+
+def poser_validite_devis(devis, date_validite):
+    """VALID1 (fondateur 07/09/2026) — pose ``date_validite`` si VIDE.
+
+    Appelée par ``apps.crm`` au DÉMARRAGE du plan après-devis : la
+    proposition est valable jusqu'à la FIN du plan de suivi (la date de sa
+    dernière touche — dérivée des cadences configurées par le fondateur,
+    jamais un nombre inventé). Les messages WhatsApp « validité de la
+    proposition » cessent ainsi d'omettre leur phrase. Une validité DÉJÀ
+    posée (choix humain) n'est jamais écrasée. Renvoie True si posée."""
+    if devis is None or getattr(devis, 'date_validite', None):
+        return False
+    if not date_validite:
+        return False
+    devis.date_validite = date_validite
+    devis.save(update_fields=['date_validite'])
+    return True

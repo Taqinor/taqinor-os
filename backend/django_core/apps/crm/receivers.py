@@ -33,6 +33,7 @@ from .services import (
     avancer_stage_pour_devis,
     generer_playbook_progress,
     initialiser_plan_relance,
+    marquer_premier_contact,
     signaler_mismatch_signe_sur_refus,
 )
 
@@ -494,7 +495,14 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     if instance.user is None:
         return  # uniquement un contact MANUEL d'un utilisateur (pas auto/système)
     lead = instance.lead
-    avancer_stage_new_vers_contacted(lead, instance.user)
+    # RÈGLE FONDATEUR 07/09/2026 — le funnel ne bouge que sur une RÉPONSE
+    # CONFIRMÉE de Meryem : « joint » / « intéressé ». Une simple note, un
+    # appel sans réponse ou un WhatsApp ENVOYÉ ne déplacent plus l'étape
+    # (l'ancien « auto — premier contact » sur toute activité est mort) ;
+    # le KPI de premier contact, lui, reste horodaté (MRY19).
+    marquer_premier_contact(lead)
+    if (instance.outcome or '').strip() in ('joint', 'interesse'):
+        avancer_stage_new_vers_contacted(lead, instance.user)
 
 
 @receiver(post_save, sender=LeadActivity,

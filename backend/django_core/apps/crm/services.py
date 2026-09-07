@@ -841,6 +841,24 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         lead.relance_date = premiere.due_date
         lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
+    # VALID1 (fondateur 07/09/2026) — le plan après-devis POSE la validité
+    # de la proposition (si vide) : valable jusqu'à la DERNIÈRE touche du
+    # plan — une date dérivée des cadences du fondateur, jamais inventée.
+    # Les messages « validité de la proposition » cessent d'omettre leur
+    # phrase. Frontière M3 : écriture via la façade services de ventes.
+    if cadence == 'apres_devis' and devis is not None:
+        try:
+            from apps.ventes.services import poser_validite_devis
+            derniere = resultats[-1]
+            if poser_validite_devis(devis, derniere.due_date):
+                LeadActivity.objects.create(
+                    company=lead.company, lead=lead, user=None,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=(f'Validité de la proposition posée au '
+                          f'{derniere.due_date:%d/%m/%Y} — fin du plan de '
+                          'suivi.'))
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
     return resultats
 
 
@@ -3383,7 +3401,9 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a ouvert le devis {devis_reference}")
-    avancer_stage_sur_ouverture_devis(lead)
+    # RÈGLE FONDATEUR 07/09/2026 — plus d'avance de funnel AUTOMATIQUE sur
+    # l'ouverture (YLEAD10 débranché) : le funnel ne bouge que sur une
+    # réponse confirmée de Meryem. La note et la notification restent.
 
 
 def noter_devis_reouvert(devis_reference: str, lead, vues=None) -> None:
