@@ -125,7 +125,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/credit/views.py:399` | get_or_create | ReglageCredit.objects | company |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:198` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:5237` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:5253` | get_or_create | MessageTemplate.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2183` | get_or_create | LeadTag.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2197` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2209` | get_or_create | MotifPerte.objects | company, nom |
@@ -238,8 +238,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:6454` | get_or_create | StructurePaie.objects | code, company |
 | `backend/django_core/apps/paie/services.py:6464` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
 | `backend/django_core/apps/paie/services.py:6490` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
-| `backend/django_core/apps/parametres/models_company.py:822` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_company.py:827` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_company.py:831` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_company.py:836` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |

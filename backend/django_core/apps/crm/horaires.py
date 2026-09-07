@@ -255,10 +255,10 @@ def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
 
     Le défaut est `whatsapp`, PAS `appel` (07/09/2026) : la première prise de
     contact du protocole est un MESSAGE, posé dès 08:30. Compter ce délai sur
-    la fenêtre d'appel (09:00) rendrait négatives les 30 premières minutes de
-    la journée — un lead de nuit rappelé par message à 08:32 afficherait 0
-    minute écoulée, et l'escalade `escalader_premier_contact` ne partirait
-    jamais avant 9 h."""
+    la fenêtre d'appel (09:00) ferait disparaître les 30 premières minutes de
+    la journée — un lead de nuit rappelé par message à 08:35 afficherait 0
+    minute écoulée alors que Meryem a bien travaillé 5 minutes, et l'escalade
+    `escalader_premier_contact` ne partirait jamais avant 9 h."""
     if a is None or b is None:
         return 0
     debut_local = _local(a)
