@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Users2 } from 'lucide-react'
 import crmApi from '../../api/crmApi'
 import {
@@ -20,7 +20,20 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
    Gate de rôle FAIT ICI (composant auto-suffisant, `null` pour un rôle
    normal) plutôt que dans `CrmCockpit.jsx` — même esprit que le badge « vient
    de la pub » de `IdentityRail.jsx` (`useIsAdminOrResponsable`).
+
+   PERFORMANCE (incident du 07/09 en prod : « Aperçu » a dépassé le timeout
+   axios de 20 s — nginx 499). L'aperçu est resté un calcul pur côté serveur
+   (rapide, inchangé) ; « Appliquer » écrit maintenant PAR LOTS (`limite`,
+   défaut 40) et renvoie `restants` — cet écran rappelle l'API tant qu'il en
+   reste ET qu'un lot a effectivement avancé, jamais un unique appel qui
+   pourrait de nouveau dépasser le timeout sur un grand volume.
    ========================================================================== */
+
+// Taille de lot envoyée au serveur (`limite`, alignée sur le défaut du
+// contrat) et plafond de sécurité du nombre de lots enchaînés — un filet
+// jamais atteint en pratique (le volume réel tient en quelques lots de 40).
+const TAILLE_LOT = 40
+const PLAFOND_LOTS = 50
 
 // `prochaine_le` (ISO, fuseau posé par le serveur) → « JJ/MM HH:MM » Casablanca
 // EXPLICITE (jamais le fuseau du navigateur — même trick que `heureDue` de
@@ -51,6 +64,17 @@ export default function PlacementAnciensLeadsCard() {
   const [erreur, setErreur] = useState(false)
   const [donnees, setDonnees] = useState(null)
   const [applying, setApplying] = useState(false)
+  // Progression du lot en cours (`{ places, restants }`, lus tels quels sur
+  // chaque réponse — jamais recalculés). `interrompu` + `nonPlaces` portent
+  // l'arrêt anormal (lot sans avancée ou erreur réseau) qui affiche
+  // « Reprendre » à la place d'« Appliquer ».
+  const [progression, setProgression] = useState(null)
+  const [interrompu, setInterrompu] = useState(false)
+  const [nonPlaces, setNonPlaces] = useState(0)
+  // Cumul des leads placés sur TOUTE la séquence (survit à un « Reprendre »,
+  // remis à zéro seulement par un nouveau clic sur « Appliquer ») — le toast
+  // final annonce ce total, jamais le seul dernier lot.
+  const totalPlaceRef = useRef(0)
 
   if (!isResponsableOuAdmin) return null
 
@@ -61,6 +85,51 @@ export default function PlacementAnciensLeadsCard() {
       .then((r) => setDonnees(r.data))
       .catch(() => setErreur(true))
       .finally(() => setLoading(false))
+  }
+
+  // Un lot (`{apply:true, limite:40}`) à la fois : avance le cumul, publie la
+  // progression, et continue tant qu'il reste des leads ET que le dernier
+  // lot en a placé au moins un — sinon (tout a échoué) ou au-delà du plafond
+  // de sécurité, on s'arrête et on laisse « Reprendre » relancer plus tard.
+  const lancerLot = async () => {
+    setApplying(true)
+    setInterrompu(false)
+    setNonPlaces(0)
+    let iterations = 0
+    let reponse = { applique: 0, erreurs: 0, restants: 1 }
+    try {
+      do {
+        iterations += 1
+        const r = await crmApi.placerAnciensLeads({ apply: true, limite: TAILLE_LOT })
+        reponse = r.data || {}
+        totalPlaceRef.current += reponse.applique || 0
+        setProgression({ places: totalPlaceRef.current, restants: reponse.restants || 0 })
+      } while (
+        (reponse.restants || 0) > 0
+        && (reponse.applique || 0) > 0
+        && iterations < PLAFOND_LOTS
+      )
+      if ((reponse.restants || 0) === 0) {
+        toast.success(`${totalPlaceRef.current} lead(s) placé(s).`)
+        setProgression(null)
+        totalPlaceRef.current = 0
+        // La carte se resynchronise sur le nouvel état serveur (peut désormais
+        // retomber à 0 à placer, ou refléter les ignorés recalculés) — jamais
+        // un décrément local optimiste qui divergerait du vrai résultat.
+        chargerApercu()
+      } else {
+        // Le dernier lot n'a rien avancé (ou le plafond de sécurité est
+        // atteint) alors qu'il en reste : on arrête plutôt que de boucler
+        // sans fin sur des leads qui échouent tous.
+        setNonPlaces(reponse.erreurs || 0)
+        setInterrompu(true)
+      }
+    } catch {
+      toast.error('Placement impossible pour le moment.')
+      setInterrompu(true)
+    } finally {
+      setApplying(false)
+    }
   }
 
   const appliquer = async () => {
@@ -75,20 +144,14 @@ export default function PlacementAnciensLeadsCard() {
       destructive: false,
     })
     if (!ok) return
-    setApplying(true)
-    try {
-      const r = await crmApi.placerAnciensLeads({ apply: true })
-      toast.success(`${r.data?.applique ?? 0} lead(s) placé(s).`)
-      // La carte se resynchronise sur le nouvel état serveur (peut désormais
-      // retomber à 0 à placer, ou refléter les ignorés recalculés) — jamais
-      // un décrément local optimiste qui divergerait du vrai résultat.
-      chargerApercu()
-    } catch {
-      toast.error('Placement impossible pour le moment.')
-    } finally {
-      setApplying(false)
-    }
+    totalPlaceRef.current = 0
+    await lancerLot()
   }
+
+  // « Reprendre » relance la même boucle SANS reconfirmer (l'utilisateur a
+  // déjà validé l'action globale) — elle continue le cumul là où il s'est
+  // arrêté.
+  const reprendre = () => { lancerLot() }
 
   const aApercu = !!donnees
   const aucunAPlacer = aApercu && donnees.a_placer === 0
@@ -109,10 +172,27 @@ export default function PlacementAnciensLeadsCard() {
           <Button size="sm" variant="outline" onClick={chargerApercu} disabled={loading || applying}>
             Aperçu
           </Button>
-          <Button size="sm" onClick={appliquer} disabled={!aApercu || donnees?.a_placer === 0 || applying}>
-            Appliquer
-          </Button>
+          {interrompu ? (
+            <Button size="sm" onClick={reprendre} disabled={applying}>
+              Reprendre
+            </Button>
+          ) : (
+            <Button size="sm" onClick={appliquer} disabled={!aApercu || donnees?.a_placer === 0 || applying}>
+              Appliquer
+            </Button>
+          )}
+          {applying && <Spinner className="h-4 w-4" label="Placement en cours…" />}
         </div>
+        {applying && progression && (
+          <p className="mb-2 text-xs text-muted-foreground">
+            {progression.places} placés · {progression.restants} restants
+          </p>
+        )}
+        {interrompu && nonPlaces > 0 && (
+          <p className="mb-2 text-sm text-muted-foreground">
+            {nonPlaces} lead(s) n&apos;ont pas pu être placés.
+          </p>
+        )}
         {loading ? (
           <Spinner />
         ) : erreur ? (
@@ -128,6 +208,9 @@ export default function PlacementAnciensLeadsCard() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="outline">Candidats : {donnees.total_candidats}</Badge>
               <Badge tone="primary">À placer : {donnees.a_placer}</Badge>
+              {donnees.restants !== donnees.a_placer && (
+                <Badge tone="neutral">Restants : {donnees.restants}</Badge>
+              )}
               {donnees.ignores.deja_en_cadence > 0 && (
                 <Badge tone="neutral">Déjà en cadence : {donnees.ignores.deja_en_cadence}</Badge>
               )}

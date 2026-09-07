@@ -133,10 +133,17 @@ const crmApi = {
   checkDuplicates: (params) => api.get('/crm/leads/check-duplicates/', { params }),
   // MRY30/MRY33 — placement des anciens leads dans les cadences du moteur de
   // relances (décision fondateur 06/09/2026). `{apply: false}` = APERÇU,
-  // n'écrit rien ; `{apply: true}` = applique et renvoie le même rapport avec
-  // `applique`. Forme : `contract_samples/placement_anciens_leads.json`
-  // (PACT10) — carte Cockpit `PlacementAnciensLeadsCard.jsx`.
-  placerAnciensLeads: (payload) => api.post('/crm/leads/placement-cadences/', payload),
+  // n'écrit rien ; `{apply: true, limite}` = applique PAR LOTS (`limite`
+  // leads, défaut serveur 40) et renvoie le même rapport avec `applique` +
+  // `restants` (perf, incident du 07/09 — timeout axios 20 s). `limite` omise
+  // du corps quand `undefined` (aperçu). Forme :
+  // `contract_samples/placement_anciens_leads.json` (PACT10) — carte Cockpit
+  // `PlacementAnciensLeadsCard.jsx`.
+  placerAnciensLeads: ({ apply, limite } = {}) => {
+    const corps = { apply }
+    if (limite !== undefined) corps.limite = limite
+    return api.post('/crm/leads/placement-cadences/', corps)
+  },
   // XSAL8 — scan de carte de visite (photo) → pré-remplissage du lead
   // express. Ne crée jamais de lead ; renvoie {nom, prenom, societe,
   // telephone, email, doublons}. 503 si l'OCR n'est pas configuré (clé absente).
