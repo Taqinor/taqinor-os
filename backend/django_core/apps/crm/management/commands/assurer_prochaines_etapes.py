@@ -43,7 +43,8 @@ class Command(BaseCommand):
             outcome__in=['joint', 'interesse'])
         candidats = (
             Lead.objects
-            .filter(perdu=False, is_archived=False)
+            .filter(perdu=False, is_archived=False,
+                    ne_plus_contacter=False)
             .exclude(stage__in=[stages.SIGNED, stages.COLD])
             .annotate(a_ouverte=Exists(ouvertes), a_succes=Exists(succes))
             .filter(a_ouverte=False, a_succes=True)

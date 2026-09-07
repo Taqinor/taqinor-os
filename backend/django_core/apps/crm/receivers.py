@@ -155,9 +155,15 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
                 body=('Cadence après devis déjà en cours pour '
                       f'{reference} — aucune seconde série lancée.'))
             return
-        initialiser_plan_relance(
+        etapes = initialiser_plan_relance(
             lead, user, cadence='apres_devis',
             depart=getattr(devis, 'date_envoi', None), devis=devis)
+        # M2 (revue Fable 07/09/2026) — société sans gabarit après-devis (ou
+        # barreaux tous écartés) : le plan est vide et la prise de contact
+        # vient d'être arrêtée — sans filet, le lead sortait de toutes les
+        # files. L'étape générique tient l'invariant Froid-ou-Signé.
+        if not any(getattr(e, 'statut', '') == 'a_faire' for e in etapes):
+            assurer_prochaine_etape_apres_succes(lead, user)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY7: cadence après devis non planifiée (devis #%s)",
@@ -183,13 +189,12 @@ def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
             pk=lead_id, company=getattr(devis, 'company', None)).first()
         if lead is None:
             return
-        if not RelanceEtape.objects.filter(
+        if RelanceEtape.objects.filter(
                 devis_id=devis.pk,
                 statut=RelanceEtape.Statut.A_FAIRE).exists():
-            return
-        arreter_cadence(lead, user=user,
-                        motif=(motif_refus or 'devis refusé'),
-                        cadences=['apres_devis'])
+            arreter_cadence(lead, user=user,
+                            motif=(motif_refus or 'devis refusé'),
+                            cadences=['apres_devis'])
         # QJ-INVARIANT — le lead reste VIVANT après ce refus (pas marqué
         # perdu) : une étape « décider la suite » le garde dans les files —
         # sa liste de relances ne se termine que par Froid ou Signé. Jamais
@@ -509,10 +514,14 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     if not created or instance.user is None:
         return
     issue = (instance.outcome or '').strip()
+    # M1 (revue Fable 07/09/2026) — la cadence ``reveil`` est arrêtée comme
+    # les autres : un client JOINT au réveil J30 ne doit pas recevoir le J60,
+    # et un refus au réveil termine les réveils (le dossier reste au Froid).
     if issue in ('joint', 'interesse'):
-        motif, cadences = 'joint', ['contact']
+        motif, cadences = 'joint', ['contact', 'reveil']
     elif issue == 'refuse':
-        motif, cadences = 'refus au téléphone', ['contact', 'apres_devis']
+        motif, cadences = ('refus au téléphone',
+                           ['contact', 'apres_devis', 'reveil'])
     else:
         return
     try:
@@ -524,6 +533,14 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
         # étape « décider la suite » — la décision (perdu + motif, MRY22)
         # reste humaine, mais le dossier reste visible en attendant.
         if issue in ('joint', 'interesse'):
+            # M1 — un client joint pendant un RÉVEIL sort du parking : COLD
+            # est rangé SOUS toute étape active (rang -1), l'avance vers
+            # CONTACTED est donc légitime et réactive le dossier — sans quoi
+            # la garde COLD du filet le laisserait figé au Froid sans suite.
+            instance.lead.refresh_from_db(fields=['stage'])
+            if instance.lead.stage == stages.COLD:
+                avancer_stage_lead_vers(
+                    instance.lead, instance.user, stages.CONTACTED)
             assurer_prochaine_etape_apres_succes(instance.lead, instance.user)
         elif issue == 'refuse':
             assurer_prochaine_etape_apres_succes(

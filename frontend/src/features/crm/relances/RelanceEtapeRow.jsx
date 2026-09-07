@@ -77,7 +77,7 @@ const QUESTIONS = {
       { outcome: 'joint', label: 'Client joint',
         suite: 'La prise de contact s’arrête. S’il a un devis, le suivi de proposition démarre ; sinon une étape « envoyer le devis » est posée pour demain.' },
       { outcome: 'non_joint', label: 'Pas de réponse',
-        suite: 'La cadence continue normalement.' },
+        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
         suite: 'La prochaine touche est déplacée à la date choisie.' },
       { outcome: 'refuse', label: 'Refus',
@@ -86,11 +86,12 @@ const QUESTIONS = {
   },
   apres_devis: {
     question: 'Réponse du client sur la proposition ?',
+    aide: 'Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.',
     reponses: [
       { outcome: 'interesse', label: 'Intéressé',
-        suite: 'Le suivi de proposition continue.' },
+        suite: 'Le suivi de proposition continue (une étape de suite est posée si c’était la dernière touche).' },
       { outcome: 'non_joint', label: 'Sans réponse',
-        suite: 'La cadence continue normalement.' },
+        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
         suite: 'La prochaine touche est déplacée à la date choisie.' },
       { outcome: 'refuse', label: 'Refuse la proposition',
@@ -109,7 +110,19 @@ const QUESTIONS = {
     ],
   },
 }
-QUESTIONS.reveil = { ...QUESTIONS.contact, question: 'Résultat du réveil ?' }
+QUESTIONS.reveil = {
+  question: 'Résultat du réveil ?',
+  reponses: [
+    { outcome: 'joint', label: 'Client joint',
+      suite: 'Le dossier SORT du Froid ; le suivi redémarre (plan après-devis s’il a un devis, sinon prochaine étape demain). Les réveils restants sont annulés.' },
+    { outcome: 'non_joint', label: 'Pas de réponse',
+      suite: 'Le réveil suivant reste programmé ; le dossier reste au Froid.' },
+    { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
+      suite: 'Le prochain réveil est déplacé à la date choisie.' },
+    { outcome: 'refuse', label: 'Refus',
+      suite: 'Les réveils s’arrêtent ; le dossier reste au Froid.' },
+  ],
+}
 
 /** `due_at` (ISO) → « HH:MM » heure Casablanca, ou « maintenant » si déjà
     passé. Repli sur `null` (pas d'heure connue) pour laisser l'appelant
@@ -291,6 +304,9 @@ export default function RelanceEtapeRow({
       {!readOnly && panel === 'fait' && (
         <div className="mt-2 flex flex-col gap-1.5">
           <p className="text-sm font-medium">{questionsTouche.question}</p>
+          {questionsTouche.aide && (
+            <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>
+          )}
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={questionsTouche.question}>
             {questionsTouche.reponses.map((r, idx) => (
               <Button

@@ -146,6 +146,45 @@ class FiletJointTests(_Base):
             cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
         self.assertGreater(apres.count(), 0)
 
+    def test_refus_sur_la_DERNIERE_touche_ne_cloture_pas_en_injoignable(self):
+        """B1 (revue Fable 07/09/2026) — le client a RÉPONDU : refus sur la
+        dernière touche ⇒ jamais le Froid « Injoignable » ni les réveils
+        J30/J60 « vous étiez injoignable » ; l'étape « décider la suite »
+        reste la seule route."""
+        for etape in self.etapes[:-1]:
+            marquer_etape_relance(
+                etape, self.acteur, RelanceEtape.Statut.FAIT,
+                outcome='non_joint')
+        self._fait(self.etapes[-1], outcome='refuse')
+        self.lead.refresh_from_db()
+        self.assertNotEqual(self.lead.stage, stages.COLD)
+        self.assertNotIn('Injoignable', self.lead.tags or '')
+        self.assertEqual(
+            self.lead.relance_etapes.filter(cadence='reveil').count(), 0)
+        decisions = self.lead.relance_etapes.filter(
+            cadence='generique', libelle=FILET_REFUS_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(decisions.count(), 1)
+
+    def test_joint_au_reveil_sort_le_lead_du_froid_avec_une_suite(self):
+        """M1 (revue Fable 07/09/2026) — un client JOINT pendant un réveil
+        sort du parking : les réveils restants sont annulés, le lead remonte
+        à CONTACTED et une prochaine étape existe."""
+        self.lead.stage = stages.COLD
+        self.lead.save(update_fields=['stage'])
+        reveils = initialiser_plan_relance(
+            self.lead, self.acteur, depart=LUNDI, cadence='reveil')
+        self.assertGreater(len(reveils), 1)
+        self._fait(reveils[0], outcome='joint')
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+        self.assertEqual(
+            self.lead.relance_etapes.filter(
+                cadence='reveil',
+                statut=RelanceEtape.Statut.A_FAIRE).count(), 0)
+        self.assertTrue(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+
     def test_etape_generique_traitee_sans_devis_en_repose_une(self):
         """QJ-INVARIANT : sans devis, cocher le filet en repose un — la
         liste de relances ne se termine que par Froid ou Signé."""

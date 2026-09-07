@@ -940,7 +940,11 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
 #: MRY11 × MRY9 — les issues qui INTERDISENT la clôture, même sur la dernière
 #: touche : on a joint la personne (ou on est convenu d'un rappel). La mettre
 #: au froid et l'étiqueter « injoignable » serait l'inverse du bon geste.
-_OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel'})
+#: B1 (revue Fable 07/09/2026) — ``refuse`` aussi : le client a RÉPONDU.
+#: Clôturer l'étiquetterait « Injoignable » et lui enverrait des réveils
+#: J30/J60 « vous étiez injoignable » ; le filet « décider la suite » (posé
+#: par le récepteur MRY9) assure déjà la suite du dossier.
+_OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel', 'refuse'})
 
 
 #: MRY11 — ce que devient un lead dont la cadence s'est épuisée sans réponse.
@@ -1059,8 +1063,10 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     if not getattr(lead, 'pk', None):
         return None
     # L'instance peut être périmée (même précaution que `cloturer_cadence`).
-    lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived'])
-    if lead.perdu or lead.is_archived:
+    lead.refresh_from_db(
+        fields=['stage', 'perdu', 'is_archived', 'ne_plus_contacter'])
+    if (lead.perdu or lead.is_archived
+            or getattr(lead, 'ne_plus_contacter', False)):
         return None
     if lead.stage in (stages.SIGNED, stages.COLD):
         return None
@@ -4305,6 +4311,10 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 activity.log_bulk_change(lead, user, 'perdu', True, False)
                 if old_motif:
                     activity.log_bulk_change(lead, user, 'motif_perte', old_motif, None)
+                # QJ-INVARIANT — un lead REPRIS (dé-perdu) redevient actif :
+                # ses cadences avaient été arrêtées au marquage, le filet lui
+                # repose une prochaine étape (plan après-devis si devis).
+                assurer_prochaine_etape_apres_succes(lead, user)
                 updated += 1
 
             elif op == 'archive':
@@ -4331,6 +4341,8 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 activity.log_bulk_note(
                     lead, user,
                     f"Lead restauré en masse par {getattr(user, 'username', '?')}")
+                # QJ-INVARIANT — même filet qu'au dé-perdu ci-dessus.
+                assurer_prochaine_etape_apres_succes(lead, user)
                 updated += 1
 
             elif op == 'plan_activity':

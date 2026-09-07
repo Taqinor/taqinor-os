@@ -188,11 +188,17 @@ class TestMarquerEtapeRelance(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.relance_date, self.etapes[1].due_date)
 
-    def test_derniere_etape_traitee_vide_relance_date(self):
+    def test_derniere_etape_traitee_pose_le_filet_et_garde_relance_date(self):
+        """QJ-INVARIANT (fondateur 07/09/2026) — épuiser la cadence ne vide
+        plus la relance : le filet pose la prochaine étape (la liste d'un
+        lead actif ne se termine que par Froid ou Signé) et ``relance_date``
+        la suit — jamais None sur un lead encore dans le funnel."""
         for etape in self.etapes:
             marquer_etape_relance(etape, self.acteur, RelanceEtape.Statut.FAIT)
         self.lead.refresh_from_db()
-        self.assertIsNone(self.lead.relance_date)
+        self.assertIsNotNone(self.lead.relance_date)
+        self.assertTrue(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
 
     def test_statut_invalide_leve(self):
         with self.assertRaises(ValueError):

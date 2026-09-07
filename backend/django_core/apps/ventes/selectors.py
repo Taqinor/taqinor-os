@@ -2065,9 +2065,13 @@ def dernier_devis_relancable_du_lead(lead):
     from .models import Devis
     if lead is None or not getattr(lead, 'pk', None):
         return None
+    # M4 (revue Fable 07/09/2026) — ACCEPTE exclu aussi : relancer « alors,
+    # cette proposition ? » un client qui a dit oui est exactement ce que
+    # ``leads_avec_devis_accepte`` (placement) veut éviter.
     return (Devis.objects
             .filter(company_id=lead.company_id, lead=lead)
-            .exclude(statut__in=[Devis.Statut.REFUSE, Devis.Statut.EXPIRE])
+            .exclude(statut__in=[Devis.Statut.REFUSE, Devis.Statut.EXPIRE,
+                                 Devis.Statut.ACCEPTE])
             .order_by('-id').first())
 
 
