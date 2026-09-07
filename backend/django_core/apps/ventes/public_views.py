@@ -8,6 +8,7 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+import datetime
 import logging
 import math
 import re
@@ -320,6 +321,12 @@ def _stamp_view(link):
     try:
         now = timezone.now()
         is_first = link.first_viewed_at is None
+        # QJ1bis (fondateur 07/09/2026) — mémorise la vue PRÉCÉDENTE et le
+        # fait qu'un stamp a bien eu lieu, pour que ``_notify_open`` sache
+        # distinguer une RÉOUVERTURE réelle (nouvelle session de lecture)
+        # d'un simple rechargement — et ne notifie jamais sans stamp.
+        link._vue_precedente = link.last_viewed_at
+        link._vue_stampee = True
         # Increment atomically; set last_viewed_at unconditionally.
         ShareLink.objects.filter(pk=link.pk).update(
             view_count=F('view_count') + 1,
@@ -436,6 +443,57 @@ def _notifier_variante_consultee(link):
     fired.add(marqueur)
     link.engagement_triggers_fired = sorted(fired)
     link.save(update_fields=['engagement_triggers_fired'])
+
+
+#: QJ1bis — fenêtre de SESSIONISATION des réouvertures : deux GET du même
+#: lien espacés de moins de ce délai comptent pour UNE seule lecture (le
+#: client navigue entre les pages, recharge, télécharge le PDF…). Au-delà,
+#: c'est une nouvelle visite : notification + note chatter, à chaque fois
+#: (demande fondateur du 07/09/2026 — « every time the client enters »).
+REOUVERTURE_FENETRE = datetime.timedelta(minutes=15)
+
+
+def _notify_open(link, request=None, *, is_first):
+    """QJ1bis — notifie et journalise CHAQUE ouverture cliente du lien.
+
+    Première ouverture : comportement QJ1/QJ2 historique intact
+    (``_notify_first_open`` — note chatter + notification + avance funnel
+    YLEAD10). Réouverture : si la vue précédente date de plus de
+    ``REOUVERTURE_FENETRE``, une note chatter « le client a rouvert » ET la
+    même notification partent — l'historique du lead garde ainsi TOUTES les
+    consultations, pas seulement la première (les notifications s'effacent,
+    le chatter reste). Jamais rien via le jeton interne : sans stamp
+    (``_vue_stampee``), cette fonction ne fait rien. Best-effort."""
+    if not getattr(link, '_vue_stampee', False):
+        return
+    if is_first:
+        _notify_first_open(link, request)
+        return
+    precedente = getattr(link, '_vue_precedente', None)
+    if (precedente is not None
+            and timezone.now() - precedente < REOUVERTURE_FENETRE):
+        return
+    try:
+        if not link.devis_id:
+            return
+        lead = getattr(link.devis, 'lead', None)
+        if lead is None:
+            return
+        from apps.crm.services import (
+            noter_devis_reouvert, notify_devis_opened)
+        noter_devis_reouvert(
+            link.devis.reference, lead, vues=link.view_count)
+        ip, appareil = '', ''
+        if request is not None:
+            from apps.crm.services import (
+                appareil_de_requete, ip_de_requete)
+            ip, appareil = (ip_de_requete(request),
+                            appareil_de_requete(request))
+        notify_devis_opened(
+            link.devis.reference, lead, ip=ip, appareil_id=appareil,
+            reprise=True)
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
 
 
 def _niveau_lien(link):
@@ -640,9 +698,9 @@ def public_document(request, token):
             status=status.HTTP_404_NOT_FOUND,
         ))
 
-    # QJ1 — chatter notification on first open (best-effort, after PDF success).
-    if is_first:
-        _notify_first_open(link, request)
+    # QJ1/QJ1bis — chatter + notification à CHAQUE ouverture cliente
+    # (best-effort, after PDF success).
+    _notify_open(link, request, is_first=is_first)
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -2673,8 +2731,7 @@ def proposal_data(request, token):
     # _stamp_view_si_public) — aucune trace d'ouverture ne doit résulter d'un
     # aperçu commercial.
     is_first = _stamp_view_si_public(link, link.via_interne, request)
-    if is_first:
-        _notify_first_open(link, request)
+    _notify_open(link, request, is_first=is_first)
 
     # L-NIV (24/08/2026) — niveau d'affichage RÉVOCABLE, posé sur le lien
     # (jamais sur le jeton). Un lien créé avant la migration 0100 vaut
@@ -3413,8 +3470,7 @@ def proposal_pdf(request, token):
     # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
     # jamais de stamp/notification via le jeton interne.
     is_first = _stamp_view_si_public(link, link.via_interne, request)
-    if is_first:
-        _notify_first_open(link, request)
+    _notify_open(link, request, is_first=is_first)
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.

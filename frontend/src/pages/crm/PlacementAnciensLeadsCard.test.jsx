@@ -81,12 +81,19 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Appliquer' })).not.toBeDisabled())
 
+    // Le choix du volume (décision fondateur 07/09/2026) est proposé à UN lot
+    // par défaut — jamais les 270 d'un coup dans la file de Meryem.
+    expect(screen.getByLabelText('Nombre à placer')).toHaveValue(40)
+
     fireEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
     await waitFor(() => expect(confirmMock).toHaveBeenCalled())
-    // N = a_placer, M = somme des codes dormant_* (150 + 58 = 208 sur le contrat).
+    // Placement PARTIEL (40 sur 270) : la confirmation dit les deux nombres
+    // et ne promet AUCUN décompte Froid (le moteur décide lead par lead —
+    // un chiffre exact n'existe que sur un placement complet).
     const [options] = confirmMock.mock.calls[0]
+    expect(options.description).toContain('40')
     expect(options.description).toContain(String(DONNEES.a_placer))
-    expect(options.description).toContain('208')
+    expect(options.description).not.toContain('208')
 
     // Le premier lot est envoyé avec `limite: 40` (jamais un unique appel
     // sans borne — PERFORMANCE, incident du 07/09).
@@ -95,36 +102,49 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
   })
 
-  it('« Appliquer » boucle par lots de 40 jusqu\'à épuisement puis recharge l\'aperçu', async () => {
+  it('placer TOUT (nombre = a_placer) garde la confirmation complète avec le décompte Froid', async () => {
+    render(<PlacementAnciensLeadsCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Appliquer' })).not.toBeDisabled())
+
+    fireEvent.change(screen.getByLabelText('Nombre à placer'), {
+      target: { value: String(DONNEES.a_placer) },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
+    await waitFor(() => expect(confirmMock).toHaveBeenCalled())
+    // M = somme des codes dormant_* (150 + 58 = 208 sur le contrat).
+    const [options] = confirmMock.mock.calls[0]
+    expect(options.description).toContain(String(DONNEES.a_placer))
+    expect(options.description).toContain('208')
+  })
+
+  it('« Appliquer » boucle par lots dans la limite du nombre choisi puis recharge l\'aperçu', async () => {
     crmApi.placerAnciensLeads
       .mockResolvedValueOnce(reponseContrat('crm', 'placement_anciens_leads')) // Aperçu initial
-      .mockResolvedValueOnce({ data: { ...DONNEES, apply: true, applique: 40, restants: 10 } }) // lot 1
-      .mockResolvedValueOnce({ data: { ...DONNEES, apply: true, applique: 10, restants: 0 } }) // lot 2
+      .mockResolvedValueOnce({ data: { ...DONNEES, apply: true, applique: 40, restants: 230 } }) // lot 1
+      .mockResolvedValueOnce({ data: { ...DONNEES, apply: true, applique: 10, restants: 220 } }) // lot 2
       .mockResolvedValueOnce(reponseContrat('crm', 'placement_anciens_leads')) // aperçu rechargé
 
     render(<PlacementAnciensLeadsCard />)
     fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Appliquer' })).not.toBeDisabled())
 
+    // Meryem/Reda choisit 50 : un lot plein de 40, puis un lot de 10 —
+    // jamais un 3ᵉ lot même s'il reste 220 leads côté serveur.
+    fireEvent.change(screen.getByLabelText('Nombre à placer'), { target: { value: '50' } })
     fireEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
     await waitFor(() => expect(confirmMock).toHaveBeenCalled())
 
-    // La ligne de progression reflète le DERNIER `restants` reçu, jamais un
-    // décompte recalculé côté écran.
-    // La ligne de progression est transitoire (React peut ne jamais la peindre
-    // entre deux lots résolus en microtâches) : on vérifie l'état FINAL.
-
-    // Deux lots enchaînés (`apply:true, limite:40`), puis un rechargement
-    // d'aperçu (`apply:false`) une fois `restants === 0`.
     await waitFor(() => expect(crmApi.placerAnciensLeads.mock.calls.length).toBe(4))
     expect(crmApi.placerAnciensLeads.mock.calls[0][0]).toEqual({ apply: false })
     expect(crmApi.placerAnciensLeads.mock.calls[1][0]).toEqual({ apply: true, limite: 40 })
-    expect(crmApi.placerAnciensLeads.mock.calls[2][0]).toEqual({ apply: true, limite: 40 })
+    expect(crmApi.placerAnciensLeads.mock.calls[2][0]).toEqual({ apply: true, limite: 10 })
     expect(crmApi.placerAnciensLeads.mock.calls[3][0]).toEqual({ apply: false })
 
-    // Le toast final annonce le CUMUL des deux lots (40 + 10 = 50), jamais le
-    // seul dernier lot.
+    // Le toast final annonce le CUMUL des deux lots (40 + 10 = 50) ET les
+    // restants côté serveur — deux chiffres lus sur la réponse.
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('50')))
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('220'))
   })
 
   it('un lot qui ne place plus personne arrête la boucle et affiche « Reprendre »', async () => {

@@ -3,6 +3,7 @@ import { Users2 } from 'lucide-react'
 import crmApi from '../../api/crmApi'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Button, Spinner,
+  Input, Label,
 } from '../../ui'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -75,6 +76,13 @@ export default function PlacementAnciensLeadsCard() {
   // remis à zéro seulement par un nouveau clic sur « Appliquer ») — le toast
   // final annonce ce total, jamais le seul dernier lot.
   const totalPlaceRef = useRef(0)
+  // Choix du NOMBRE de leads à placer maintenant (décision fondateur
+  // 07/09/2026) : « Appliquer » ne déverse plus TOUT dans la file de Meryem —
+  // Reda ou elle dose le volume selon sa bande passante et les dossiers déjà
+  // en cours. `budgetRef` = ce qui reste autorisé sur la séquence en cours
+  // (décrémenté lot par lot, survit à « Reprendre »).
+  const [nombreAPlacer, setNombreAPlacer] = useState('')
+  const budgetRef = useRef(0)
 
   if (!isResponsableOuAdmin) return null
 
@@ -82,15 +90,32 @@ export default function PlacementAnciensLeadsCard() {
     setLoading(true)
     setErreur(false)
     crmApi.placerAnciensLeads({ apply: false })
-      .then((r) => setDonnees(r.data))
+      .then((r) => {
+        setDonnees(r.data)
+        // Proposition par défaut : une journée raisonnable (un lot), jamais
+        // plus que ce qu'il y a à placer. L'utilisateur reste libre de taper
+        // n'importe quel nombre — jamais de snap pendant la saisie.
+        const aPlacer = r.data?.a_placer || 0
+        setNombreAPlacer(aPlacer > 0 ? String(Math.min(TAILLE_LOT, aPlacer)) : '')
+      })
       .catch(() => setErreur(true))
       .finally(() => setLoading(false))
   }
 
-  // Un lot (`{apply:true, limite:40}`) à la fois : avance le cumul, publie la
-  // progression, et continue tant qu'il reste des leads ET que le dernier
-  // lot en a placé au moins un — sinon (tout a échoué) ou au-delà du plafond
-  // de sécurité, on s'arrête et on laisse « Reprendre » relancer plus tard.
+  // Le nombre choisi, borné à [1, a_placer] SEULEMENT au moment d'appliquer
+  // (une saisie vide ou invalide retombe sur le défaut d'un lot).
+  const nombreChoisi = () => {
+    const aPlacer = donnees?.a_placer || 0
+    const saisi = parseInt(nombreAPlacer, 10)
+    if (Number.isNaN(saisi) || saisi < 1) return Math.min(TAILLE_LOT, aPlacer)
+    return Math.min(saisi, aPlacer)
+  }
+
+  // Un lot (`{apply:true, limite:…}`) à la fois : avance le cumul, publie la
+  // progression, et continue tant qu'il reste des leads, que le BUDGET choisi
+  // n'est pas atteint ET que le dernier lot en a placé au moins un — sinon
+  // (tout a échoué) ou au-delà du plafond de sécurité, on s'arrête et on
+  // laisse « Reprendre » relancer plus tard.
   const lancerLot = async () => {
     setApplying(true)
     setInterrompu(false)
@@ -100,19 +125,29 @@ export default function PlacementAnciensLeadsCard() {
     try {
       do {
         iterations += 1
-        const r = await crmApi.placerAnciensLeads({ apply: true, limite: TAILLE_LOT })
+        const limite = Math.min(TAILLE_LOT, budgetRef.current)
+        const r = await crmApi.placerAnciensLeads({ apply: true, limite })
         reponse = r.data || {}
         totalPlaceRef.current += reponse.applique || 0
+        budgetRef.current = Math.max(0, budgetRef.current - (reponse.applique || 0))
         setProgression({ places: totalPlaceRef.current, restants: reponse.restants || 0 })
       } while (
         (reponse.restants || 0) > 0
         && (reponse.applique || 0) > 0
+        && budgetRef.current > 0
         && iterations < PLAFOND_LOTS
       )
-      if ((reponse.restants || 0) === 0) {
-        toast.success(`${totalPlaceRef.current} lead(s) placé(s).`)
+      if ((reponse.restants || 0) === 0 || budgetRef.current <= 0) {
+        // Séquence TERMINÉE : tout est placé, ou le nombre choisi est
+        // atteint. Le toast annonce le cumul + ce qui reste côté serveur
+        // (deux chiffres lus sur la réponse, jamais recalculés à la main).
+        const restants = reponse.restants || 0
+        toast.success(restants > 0
+          ? `${totalPlaceRef.current} lead(s) placé(s) · ${restants} restant(s) à placer plus tard.`
+          : `${totalPlaceRef.current} lead(s) placé(s).`)
         setProgression(null)
         totalPlaceRef.current = 0
+        budgetRef.current = 0
         // La carte se resynchronise sur le nouvel état serveur (peut désormais
         // retomber à 0 à placer, ou refléter les ignorés recalculés) — jamais
         // un décrément local optimiste qui divergerait du vrai résultat.
@@ -134,17 +169,27 @@ export default function PlacementAnciensLeadsCard() {
 
   const appliquer = async () => {
     if (!donnees) return
+    const n = nombreChoisi()
+    if (n < 1) return
+    const placeTout = n >= donnees.a_placer
     const m = nombreDormants(donnees.par_etape)
     const ok = await confirm({
       title: 'Placer les anciens leads dans les cadences ?',
-      description: `${donnees.a_placer} lead(s) seront placés dans une cadence, `
-        + `dont ${m} passeront en Froid avec un réveil. Continuer ?`,
+      // Le décompte « M en Froid » n'est exact que sur un placement COMPLET
+      // (le moteur décide lead par lead) : sur un placement partiel, on ne
+      // promet aucun chiffre qu'on ne connaît pas.
+      description: placeTout
+        ? `${donnees.a_placer} lead(s) seront placés dans une cadence, `
+          + `dont ${m} passeront en Froid avec un réveil. Continuer ?`
+        : `${n} lead(s) sur ${donnees.a_placer} seront placés dans une cadence `
+          + '(les autres resteront à placer plus tard). Continuer ?',
       confirmLabel: 'Appliquer',
       cancelLabel: 'Annuler',
       destructive: false,
     })
     if (!ok) return
     totalPlaceRef.current = 0
+    budgetRef.current = n
     await lancerLot()
   }
 
@@ -172,6 +217,17 @@ export default function PlacementAnciensLeadsCard() {
           <Button size="sm" variant="outline" onClick={chargerApercu} disabled={loading || applying}>
             Aperçu
           </Button>
+          {aApercu && !aucunAPlacer && (
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs" htmlFor="placement-nombre">Nombre à placer</Label>
+              <Input
+                id="placement-nombre" type="number" inputMode="numeric"
+                min="1" max={donnees.a_placer} step="any" className="w-24"
+                value={nombreAPlacer} disabled={applying}
+                onChange={(e) => setNombreAPlacer(e.target.value)}
+              />
+            </div>
+          )}
           {interrompu ? (
             <Button size="sm" onClick={reprendre} disabled={applying}>
               Reprendre

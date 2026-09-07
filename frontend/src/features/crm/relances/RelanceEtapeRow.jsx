@@ -254,6 +254,13 @@ export default function RelanceEtapeRow({
               </Button>
             ))}
           </div>
+          {(outcome === 'joint' || outcome === 'interesse') && (
+            <p className="text-xs text-muted-foreground" data-testid="hint-joint">
+              Client joint : la cadence s’arrête. Donnez une date de rappel
+              ci-dessous — sinon une étape « envoyer le devis ou fixer un
+              rappel » sera posée automatiquement pour demain.
+            </p>
+          )}
           <Textarea
             rows={2} placeholder="Note (optionnelle)"
             value={note} onChange={(e) => setNote(e.target.value)}
