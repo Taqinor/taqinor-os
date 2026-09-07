@@ -290,8 +290,17 @@ class CompanyProfile(models.Model):
     # neutres. Les JOURS ouvrés et les FÉRIÉS ne sont PAS ici : ils restent
     # portés par `notifications.WorkingHoursConfig` / `Holiday` (source
     # unique) — ces champs ne portent que des HEURES.
+    # Décision fondateur du 07/09/2026 (recherche à l'appui : au Maroc les
+    # appels d'affaires commencent à 9 h, un message écrit passe plus tôt) :
+    # DEUX ouvertures, pas une. Le message part dès 08:30 ; l'appel jamais
+    # avant 09:00. Une fenêtre unique faisait sonner le téléphone à 08:33.
+    message_heure_debut = models.TimeField(
+        default=datetime.time(8, 30), null=True, blank=True,
+        verbose_name='Début des messages',
+        help_text='Heure à partir de laquelle une touche WhatsApp/e-mail '
+                  'peut être posée.')
     appel_heure_debut = models.TimeField(
-        default=datetime.time(8, 30),
+        default=datetime.time(9, 0),
         verbose_name="Début des appels",
         help_text="Heure locale à partir de laquelle on peut appeler.")
     appel_heure_fin = models.TimeField(

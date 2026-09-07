@@ -170,9 +170,12 @@ export default function ParametresEntreprise() {
     // WR12 — flags jusqu'ici backend-only désormais éditables en Paramètres.
     lead_sla_hours: 24,       // FG28
     dgi_export_actif: false,  // N105 (interrupteur maître DGI, sensible/admin)
-    // MRY28/MRY8 — fenêtres d'appel de la société (heures « HH:MM », dates
-    // Ramadan « YYYY-MM-DD » ou vides). Défauts = ceux du Guide de Meryem.
-    appel_heure_debut: '08:30',
+    // MRY28/MRY8 — fenêtres de contact de la société (heures « HH:MM », dates
+    // Ramadan « YYYY-MM-DD » ou vides). Défauts = ceux du Guide de Meryem,
+    // avec la scission du 07/09/2026 : message dès 08:30, appel jamais avant
+    // 09:00.
+    message_heure_debut: '08:30',
+    appel_heure_debut: '09:00',
     appel_heure_fin: '20:00',
     vendredi_pause_debut: '11:30',
     vendredi_pause_fin: '15:00',
@@ -634,8 +637,9 @@ export default function ParametresEntreprise() {
       // WR12 — FG28 (SLA) + N105 (DGI) exposés en Paramètres.
       lead_sla_hours: profile.lead_sla_hours ?? 24,
       dgi_export_actif: profile.dgi_export_actif ?? false,
-      // MRY28/MRY8 — fenêtres d'appel.
-      appel_heure_debut: profile.appel_heure_debut ?? '08:30',
+      // MRY28/MRY8 — fenêtres de contact (message ≠ appel, 07/09/2026).
+      message_heure_debut: profile.message_heure_debut ?? '08:30',
+      appel_heure_debut: profile.appel_heure_debut ?? '09:00',
       appel_heure_fin: profile.appel_heure_fin ?? '20:00',
       vendredi_pause_debut: profile.vendredi_pause_debut ?? '11:30',
       vendredi_pause_fin: profile.vendredi_pause_fin ?? '15:00',
@@ -777,9 +781,10 @@ export default function ParametresEntreprise() {
       referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
       // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
       lead_sla_hours: Math.max(0, Math.trunc(Number(form.lead_sla_hours) || 0)),
-      // MRY28/MRY8 — fenêtres d'appel : dates Ramadan vides = null (jamais
+      // MRY28/MRY8 — fenêtres de contact : dates Ramadan vides = null (jamais
       // une période devinée), heures conservées telles quelles (« HH:MM »).
-      appel_heure_debut: form.appel_heure_debut || '08:30',
+      message_heure_debut: form.message_heure_debut || '08:30',
+      appel_heure_debut: form.appel_heure_debut || '09:00',
       appel_heure_fin: form.appel_heure_fin || '20:00',
       vendredi_pause_debut: form.vendredi_pause_debut || '11:30',
       vendredi_pause_fin: form.vendredi_pause_fin || '15:00',

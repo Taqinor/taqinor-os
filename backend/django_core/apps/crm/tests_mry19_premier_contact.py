@@ -10,6 +10,11 @@ Le KPI, lui, ne vaut quelque chose que parce qu'il compte en minutes OUVRÉES :
 un lead arrivé vendredi 21 h et rappelé lundi 08:32 vaut 2 minutes, pas
 60 heures. Et il renvoie `null` partout sur zéro lead — jamais un 0 % qui
 laisserait croire à un échec.
+
+Ces minutes se comptent sur la fenêtre des MESSAGES (décision fondateur du
+07/09/2026 : messages dès 08:30, appels jamais avant 09:00) : la première
+touche du protocole est le message d'identité, et la demi-heure pendant
+laquelle Meryem écrit compte pour du travail.
 """
 import datetime
 
@@ -151,6 +156,27 @@ class KpiPremierContactTests(TestCase):
         self.assertEqual(kpi['mediane_minutes_ouvrees'], 2)
         self.assertEqual(kpi['nb_sous_objectif'], 1)
         self.assertEqual(kpi['pct_sous_objectif'], 100.0)
+
+    def test_les_minutes_ouvrees_comptent_depuis_louverture_des_messages(self):
+        """Décision fondateur du 07/09/2026 — la première prise de contact du
+        protocole est un MESSAGE, posable dès 08:30 ; les appels, eux,
+        n'ouvrent qu'à 09:00. Le compteur de ce KPI doit donc partir de 08:30,
+        sinon un lead de nuit répondu par WhatsApp à 08:35 afficherait 0
+        minute écoulée — et l'escalade `escalader_premier_contact` ne partirait
+        jamais avant 9 h, quel que soit le retard pris avant."""
+        # Arrivé dimanche 6 septembre (hors jour ouvré), message lundi 08:35.
+        self._lead(datetime.datetime(2026, 9, 6, 12, 0, tzinfo=CASA),
+                   datetime.datetime(2026, 9, 7, 8, 35, tzinfo=CASA))
+        kpi = kpi_premier_contact(self.company, jours=3650)
+        self.assertEqual(kpi['mediane_minutes_ouvrees'], 5)
+        # Le même délai compté sur la fenêtre d'APPEL vaudrait 0 : c'est
+        # exactement le chiffre que ce KPI ne doit PAS produire.
+        self.assertEqual(
+            horaires.minutes_ouvrees_entre(
+                datetime.datetime(2026, 9, 6, 12, 0, tzinfo=CASA),
+                datetime.datetime(2026, 9, 7, 8, 35, tzinfo=CASA),
+                self.company, canal='appel'),
+            0)
 
     def test_un_lead_lent_sort_de_lobjectif(self):
         self._lead(datetime.datetime(2026, 9, 2, 9, 0, tzinfo=CASA),

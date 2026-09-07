@@ -112,13 +112,21 @@ export default function LeadsSection({
               ouvrées. Les jours ouvrés/fériés restent portés par
               Paramètres → Notifications (WorkingHoursConfig/Holiday). */}
           <p className="mb-1 mt-3.5 text-[12.5px] text-muted-foreground">
-            Fenêtres d'appel : heures pendant lesquelles le moteur de
-            relances peut poser une touche « appel ». Le vendredi, la
-            pause de prière est respectée ; pendant le Ramadan (dates
+            Fenêtres de contact : heures pendant lesquelles le moteur de
+            relances peut poser une touche. Les messages (WhatsApp / e-mail)
+            partent à partir de « Début des messages », les appels seulement
+            à partir de « Début des appels » — la journée téléphonique
+            commence plus tard qu'un message écrit. Le vendredi, la pause de
+            prière est respectée pour les appels ; pendant le Ramadan (dates
             laissées vides = hors Ramadan), une fenêtre plus courte
-            s'applique.
+            s'applique aux deux.
           </p>
           <div className="mb-1 grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-4">
+            <Field label="Début des messages" htmlFor="pe-message-heure-debut">
+              <Input id="pe-message-heure-debut" type="time"
+                     name="message_heure_debut" value={form.message_heure_debut}
+                     onChange={set} />
+            </Field>
             <Field label="Début des appels" htmlFor="pe-appel-heure-debut">
               <Input id="pe-appel-heure-debut" type="time"
                      name="appel_heure_debut" value={form.appel_heure_debut}
