@@ -34,6 +34,11 @@ export default function LigneTable({
   villaGroups, renameVillaGroup, removeVillaGroup, addVillaGroup,
   // ── Divers ──
   errorLines, accessoiresOnly, setAccessoiresOnly,
+  // QJRREM (fondateur 07/09/2026) — remise globale déjà répartie par ligne
+  // (miroir du noyau, calculée dans la coquille DevisGenerator.jsx, JAMAIS
+  // ici : « AUCUNE règle métier ici »). `lignesRemiseesTtc` est ALIGNÉ sur
+  // `lines` ; `montrerRemise` gate l'affichage (remise > 0).
+  lignesRemiseesTtc, montrerRemise,
   // Le RAIL D'ARGENT (`RailArgent`) vit DANS cette même carte, sous la table :
   // c'est le contrat visuel historique (mêmes `CardContent`, même bordure).
   // Il est passé en `children` pour que le DOM rendu soit inchangé à l'octet.
@@ -210,6 +215,11 @@ export default function LigneTable({
                   tarifBadge={tarifBadges[l._key]}
                   tvaPanneaux={quoteLogic.tvaPanneaux}
                   tvaStandard={quoteLogic.tvaStandard}
+                  // QJRREM — prop SCALAIRE (nombre ou null) : la mémoïsation
+                  // React.memo de DevisLineRow reste efficace (pas un nouveau
+                  // tableau/objet recréé à chaque rendu).
+                  totalTtcRemise={lignesRemiseesTtc?.[i] ?? null}
+                  montrerRemise={montrerRemise}
                   onSetField={onSetField}
                   onDesignationBlur={onDesignationBlur}
                   onProduitChange={onProduitChange}

@@ -8,6 +8,11 @@ import ProduitPicker from '../../components/ProduitPicker'
 import {
   formatMoney, expectedTvaForDesignation, classifyProduct, htFromTtc,
 } from '../../features/ventes/solar'
+// QJRREM (fondateur 07/09/2026) — P.U. après remise globale, dérivé du TOTAL
+// réparti (miroir du noyau, calculé une seule fois dans DevisGenerator.jsx et
+// reçu ici en prop `totalTtcRemise` : cette ligne ne recalcule jamais la
+// répartition elle-même).
+import { puRemise } from '../../features/ventes/remise'
 
 // VX188 — ligne de devis extraite en composant mémoïsé. DevisGenerator.jsx a
 // 64 useState ; le tableau de lignes était du JSX inline dans `lines.map()`,
@@ -37,6 +42,13 @@ function DevisLineRowImpl({
   onQuantiteChange,
   onSetGroupe,
   onRemove,
+  // QJRREM (fondateur 07/09/2026) — montant TTC de CETTE ligne après remise
+  // globale (miroir partagé, calculé dans DevisGenerator.jsx), `null` si la
+  // ligne ne compte pas dans les totaux ; `montrerRemise` gate l'affichage
+  // (remise > 0). Deux props scalaires : la mémoïsation React.memo (`areEqual`
+  // plus bas) reste efficace.
+  totalTtcRemise,
+  montrerRemise,
   // PVORD (fondateur 19/08/2026) — réordonnancement manuel des lignes
   // (monter/descendre). `canMoveUp`/`canMoveDown` bornent le premier/dernier
   // rang ; les callbacks reçoivent la clé de ligne (même patron que
@@ -47,6 +59,10 @@ function DevisLineRowImpl({
   onMoveDown,
 }) {
   const lineTtc = (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  // QJRREM — condition d'affichage = remise > 0 ET cette ligne compte dans les
+  // totaux (`totalTtcRemise` non nul, posé par `ligneCompteDansTotaux` côté
+  // DevisGenerator.jsx) — jamais « montant ≠ catalogue ».
+  const afficherRemiseLigne = montrerRemise && totalTtcRemise != null
   // U4 (fondateur 20/08/2026) — HT dérivé en LECTURE SEULE uniquement pour
   // l'affichage : l'écran reste 100 % TTC pour la saisie (aucun nouvel
   // input, aucune conversion au moment de l'enregistrement, payload
@@ -218,6 +234,15 @@ function DevisLineRowImpl({
         <div className="mt-0.5 text-xs text-muted-foreground ta-right">
           HT : {formatMoney(uniteHt)}
         </div>
+        {/* QJRREM — P.U. après remise globale, LECTURE SEULE : la saisie
+            reste le prix catalogue (celui que le total « Coût » du rail
+            additionne avant remise, celui que le PDF barre). Même patron que
+            DevisForm.jsx (écran d'édition HT, déjà livré). */}
+        {afficherRemiseLigne && (
+          <div className="mt-0.5 text-xs text-muted-foreground ta-right">
+            après remise : {formatMoney(puRemise(totalTtcRemise, l.quantite))}
+          </div>
+        )}
       </td>
       <td data-label="TVA %">
         {/* VX249(b) — 1 des 4 champs VX93 exactement (avec owner/ville sur
@@ -239,7 +264,16 @@ function DevisLineRowImpl({
         {tvaWarning && <div className="mt-0.5 text-xs text-warning">{tvaWarning}</div>}
       </td>
       <td className="line-total" data-label="Total TTC">
-        {formatMoney(lineTtc)}
+        {/* QJRREM — remise globale déjà répartie sur cette ligne (miroir
+            partagé) : le montant PRINCIPAL devient le total remisé, le
+            catalogue reste visible en secondaire, BARRÉ — jamais remplacé en
+            silence (le PDF barre de même le prix catalogue). */}
+        {formatMoney(afficherRemiseLigne ? totalTtcRemise : lineTtc)}
+        {afficherRemiseLigne && (
+          <div className="mt-0.5 text-xs">
+            <s className="text-muted-foreground">{formatMoney(lineTtc)}</s>
+          </div>
+        )}
         {/* U4 — total HT de la ligne (quantité × HT unitaire dérivé), affichage
             discret secondaire ; le TTC reste la valeur principale. */}
         <div className="mt-0.5 text-xs text-muted-foreground">
@@ -288,6 +322,12 @@ function areEqual(prev, next) {
     && prev.onQuantiteChange === next.onQuantiteChange
     && prev.onSetGroupe === next.onSetGroupe
     && prev.onRemove === next.onRemove
+    // QJRREM — deux props SCALAIRES (nombre ou null / booléen) : comparées par
+    // égalité simple, sans casser la mémoïsation. Sans cette ligne, une ligne
+    // dont le montant remisé change (remise éditée) resterait affichée avec
+    // son ANCIEN montant après remise — le memo doit voir ce changement.
+    && prev.totalTtcRemise === next.totalTtcRemise
+    && prev.montrerRemise === next.montrerRemise
     // PVORD — canMoveUp/canMoveDown dépendent de la POSITION de la ligne
     // (index dans `lines`), donc changent bien quand l'ordre bouge : à
     // inclure explicitement, sinon une ligne déplacée garderait ses
