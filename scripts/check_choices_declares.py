@@ -676,6 +676,14 @@ REFUS = {
         ("CanViewAoRentabilite", "TEST"),
         ("user.is_responsable", "TEST")],
     "frontend/src/lib/monitoring.test.mjs": [("Sentry frontend", "TEST")],
+    # QJRREM 07/09/2026 — fixture de test reprise de DevisLineRow.test.jsx
+    # (aucun choix rendu a l'ecran) ; et « `lignesRemiseesTtc` est ALIGNE
+    # sur `lines` » decrit un tableau aligne (comportement), pas un
+    # vocabulaire de valeurs.
+    "frontend/src/pages/ventes/DevisLineRowRemise.test.jsx": [
+        ("Mêmes valeurs que", "TEST")],
+    "frontend/src/pages/ventes/generator/LigneTable.jsx": [
+        ("est ALIGNÉ sur", "COMPORTEMENT")],
     "frontend/src/router/moduleRoutes.jsx": [
         ("AUCUNE copie de cette règle", "COMPORTEMENT")],
     # MRY14 06/09/2026 — OUTCOME_CHOICES reflète OUTCOME_LABELS de
