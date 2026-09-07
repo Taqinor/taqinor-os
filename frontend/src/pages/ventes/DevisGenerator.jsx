@@ -168,6 +168,11 @@ import PanneauResidentiel from './generator/PanneauResidentiel'
 import PanneauIndustriel from './generator/PanneauIndustriel'
 import PanneauCommercial from './generator/PanneauCommercial'
 import PanneauAgricole from './generator/PanneauAgricole'
+// QJRREM (fondateur 07/09/2026) — miroir EXACT du noyau de répartition de la
+// remise globale par ligne (même module que DevisForm.jsx, l'écran d'édition
+// HT déjà livré) ; jamais un calcul local ici. `puRemise` (P.U. après remise)
+// est utilisé par `DevisLineRow`, pas ici.
+import { repartirRemiseParLigne } from '../../features/ventes/remise'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -1041,6 +1046,50 @@ export default function DevisGenerator({
     () => optionTotalsTTC(lines, discountPct),
     [lines, discountPct],
   )
+
+  // ── QJRREM (fondateur 07/09/2026) — remise par ligne, écran de création ──
+  // « La remise de 5 % est gardée partout et s'applique aussi à chaque poste
+  // de la liste des composants, de l'installation, de tout. » Jusqu'ici la
+  // remise globale n'apparaissait QUE dans le rail (`totals` ci-dessus) :
+  // impossible de dire au client ce que CE poste coûte après remise.
+  // Répartition partagée avec le miroir du noyau (`features/ventes/remise.js`,
+  // mêmes cas de test que `apps/ventes/tests/test_remise_par_ligne.py`),
+  // jamais un calcul local — même patron que `DevisForm.jsx` (écran
+  // d'édition HT, déjà livré). Le champ s'appelle `totalHt` dans le miroir
+  // mais reçoit ici le TTC de ligne (même formule que `DevisLineRow.lineTtc`,
+  // cet écran restant 100 % TTC — aucune conversion HT).
+  //
+  // POPULATION — DIVERGENCE DOCUMENTÉE, PAS UN OUBLI : `repartirRemiseParLigne`
+  // retient les lignes non optionnelles de type produit (`ligneCompteDansTotaux`,
+  // via les champs `optionnelle`/`typeLigne` mappés ci-dessous). Le total du
+  // rail (`optionTotalsTTC` ci-dessus) ne teste JAMAIS `optionnelle` : il
+  // répartit les lignes en DEUX paniers Sans/Avec batterie au fil des
+  // mots-clés/`variante` (`appartientAuPanierSans`/`appartientAuPanierAvec`).
+  // Sur un devis mono-composition (l'immense majorité, aucune ligne
+  // `variante`), les deux paniers réunissent exactement les mêmes lignes non
+  // optionnelles que `ligneCompteDansTotaux` : la somme des montants par
+  // ligne ci-dessous recolle donc au centime avec `totals.totalSans`/
+  // `totalAvec`. Sur un devis « Les deux » (deux options DÉCLARÉES, lignes
+  // `variante: 'sans'|'avec'`), la répartition ci-dessous porte sur TOUTES
+  // les lignes non optionnelles des deux paniers réunis — elle recolle au
+  // total des deux paniers ADDITIONNÉS, pas au total d'une option affichée
+  // séparément. Une vraie répartition PAR PANIER exigerait deux appels
+  // distincts au miroir sur deux univers de lignes disjoints : hors périmètre
+  // de QJRREM, laissé pour une tâche dédiée si le fondateur le demande.
+  const lignesRemiseesTtc = useMemo(
+    () => repartirRemiseParLigne(
+      lines.map(l => ({
+        totalHt: (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0),
+        optionnelle: l.optionnelle,
+        typeLigne: l.typeLigne,
+      })),
+      discountPct,
+    ),
+    [lines, discountPct],
+  )
+  // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
+  // remise nulle ⇒ écran inchangé à l'octet (le miroir rend le catalogue).
+  const montrerRemise = (parseFloat(discountPct) || 0) > 0
 
   // QJ31 — aperçu multi-propriétés (miroir écran du backend QJ29). Null quand
   // aucun mode multi n'est actif (aperçu mono-système inchangé).
@@ -4758,6 +4807,8 @@ export default function DevisGenerator({
           errorLines={errors.lines}
           accessoiresOnly={accessoiresOnly}
           setAccessoiresOnly={setAccessoiresOnly}
+          lignesRemiseesTtc={lignesRemiseesTtc}
+          montrerRemise={montrerRemise}
         >
           <RailArgent
             showSans={showSans}
