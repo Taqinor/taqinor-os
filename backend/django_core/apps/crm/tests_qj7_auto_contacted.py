@@ -216,10 +216,11 @@ class TestQJ7ReceiverOnLeadActivity(TestCase):
         company_b = _make_company('qj7-co-b')
         lead_a = _make_lead(self.company, stage=NEW)
         lead_b = _make_lead(company_b, stage=NEW)
-        # Activité dans la société A
+        # Réponse CONFIRMÉE dans la société A (règle 07/09 : seule une
+        # issue joint/intéressé avance le funnel).
         LeadActivity.objects.create(
             company=self.company, lead=lead_a, user=self.user,
-            kind=LeadActivity.Kind.NOTE,
+            kind=LeadActivity.Kind.APPEL, outcome='joint',
             body='Contact société A',
         )
         lead_a.refresh_from_db()

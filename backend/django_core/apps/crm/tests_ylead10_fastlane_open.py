@@ -84,5 +84,6 @@ class FastLaneOpenTests(TestCase):
         self.assertTrue(
             any('ouvert le devis DEV-2026-001' in (n.body or '')
                 for n in notes))
-        self.assertTrue(
+        # Plus AUCUNE ligne « auto — devis ouvert » : l'étape n'a pas bougé.
+        self.assertFalse(
             any('auto — devis ouvert' in (n.body or '') for n in notes))
