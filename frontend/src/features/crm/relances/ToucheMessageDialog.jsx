@@ -71,12 +71,13 @@ export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent 
         ) : (
           <div className="flex flex-col gap-3">
             {/* Darija = écriture arabe, de droite à gauche : sans `dir`, le
-                navigateur range les segments (prénom latin, « TAQINOR
-                Solutions ») dans un ordre illisible — incident du 07/09. */}
+                navigateur range les segments (prénom en lettres latines, nom
+                de la société) dans un ordre illisible — incident du 07/09.
+                `rendu` est encore null au premier rendu (avant le chargement). */}
             <div
-              className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${rendu.langue === 'darija' ? ' text-right' : ''}`}
-              dir={rendu.langue === 'darija' ? 'rtl' : 'auto'}
-              lang={rendu.langue === 'darija' ? 'ar' : 'fr'}
+              className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${rendu?.langue === 'darija' ? ' text-right' : ''}`}
+              dir={rendu?.langue === 'darija' ? 'rtl' : 'auto'}
+              lang={rendu?.langue === 'darija' ? 'ar' : 'fr'}
             >
               {rendu?.message || '…'}
             </div>
