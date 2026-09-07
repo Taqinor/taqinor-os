@@ -22,7 +22,7 @@ from apps.ged.management.commands import publier_documents_meryem as cmd
 from apps.ged.models import AclGed, Cabinet, Document, DocumentVersion, Folder
 from apps.notifications.models import Notification
 from apps.parametres.models_company import CompanyProfile
-from apps.roles.models import Role
+from apps.roles.models import ROLE_PORTAIL_CLIENT, Role
 
 User = get_user_model()
 
@@ -77,6 +77,11 @@ class PublicationMeryemTestsBase(TestCase):
         self.role_directeur = Role.objects.create(
             company=self.company, nom='Directeur', est_systeme=True,
             permissions=[])
+        # Rôle système du portail (compte EXTERNE, palier « normal » par
+        # construction) : ne doit recevoir AUCUNE ACL de lecture.
+        self.role_portail = Role.objects.create(
+            company=self.company, nom=ROLE_PORTAIL_CLIENT, est_systeme=True,
+            permissions=[])
 
     def _ecrire_manifeste(self, manifest, contenus):
         (self.docs_dir / cmd.MANIFEST_NOM).write_text(
@@ -112,6 +117,9 @@ class PremierRunTests(PublicationMeryemTestsBase):
             herite=True).exists())
         self.assertFalse(AclGed.objects.filter(
             folder=dossier, role=self.role_directeur).exists())
+        # Le rôle portail (externe) n'a aucune entrée ACL, à aucun niveau.
+        self.assertFalse(AclGed.objects.filter(
+            folder=dossier, role=self.role_portail).exists())
 
         # Notifications : 3 documents x 2 destinataires (sales rep + admin).
         notifs = Notification.objects.filter(company=self.company)

@@ -92,7 +92,7 @@ from apps.notifications.models import EventType
 from apps.notifications.services import notify_many
 from apps.parametres.models_company import CompanyProfile
 from apps.records.storage import store_attachment
-from apps.roles.models import Role
+from apps.roles.models import CANONICAL_PORTAIL_ROLES, Role
 
 CABINET_NOM = 'Documents internes'
 DOSSIER_RACINE_NOM = 'Commercial'
@@ -181,9 +181,20 @@ def _non_admin_roles(company):
     « gestion » de façon inconditionnelle via ``is_admin_role``, avant même
     de consulter l'ACL. Le reste (Commercial, Commercial responsable,
     Technicien, rôles personnalisés…) est le public visé par « les rôles
-    qu'un commercial peut porter »."""
+    qu'un commercial peut porter ».
+
+    Les trois rôles système du PORTAIL (client / fournisseur / partenaire —
+    ``CANONICAL_PORTAIL_ROLES``, semés par ``init_roles`` pour chaque société)
+    sont EXCLUS : ce sont des comptes externes, et un guide de vente interne
+    ne leur est jamais destiné. Aujourd'hui ``IsAnyRole`` (``portee !=
+    interne`` → 403) les tient déjà hors de toute route GED ; l'exclusion
+    ici garantit qu'aucune ligne d'ACL ne leur promet cette lecture non plus
+    (une future ouverture de la GED au portail ne l'exposerait pas)."""
+    noms_portail = {nom for nom, _permissions in CANONICAL_PORTAIL_ROLES}
     roles = []
     for role in Role.objects.filter(company=company):
+        if role.nom in noms_portail:
+            continue
         tier = tier_for_role_fields(
             role.nom, role.est_systeme, role.permissions or [])
         if tier != ROLE_ADMIN:
