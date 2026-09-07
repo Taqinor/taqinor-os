@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9792, operations: 17479, components: 5129}
+counts: {paths: 9794, operations: 17481, components: 5129}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2638,6 +2638,7 @@ operations:
 - get /api/django/crm/leads/roi-sources/ -> django_crm_leads_roi_sources_retrieve
 - post /api/django/crm/leads/scan-carte/ -> django_crm_leads_scan_carte_create
 - get /api/django/crm/leads/sla-breach/ -> django_crm_leads_sla_breach_retrieve
+- post /api/django/crm/leads/ville-statut/ -> django_crm_leads_ville_statut_create
 - delete /api/django/crm/leads/{id}/ -> django_crm_leads_destroy
 - get /api/django/crm/leads/{id}/ -> django_crm_leads_retrieve
 - patch /api/django/crm/leads/{id}/ -> django_crm_leads_partial_update
@@ -11415,6 +11416,7 @@ operations:
 - get /api/v1/crm/leads/roi-sources/ -> v1_crm_leads_roi_sources_retrieve
 - post /api/v1/crm/leads/scan-carte/ -> v1_crm_leads_scan_carte_create
 - get /api/v1/crm/leads/sla-breach/ -> v1_crm_leads_sla_breach_retrieve
+- post /api/v1/crm/leads/ville-statut/ -> v1_crm_leads_ville_statut_create
 - delete /api/v1/crm/leads/{id}/ -> v1_crm_leads_destroy
 - get /api/v1/crm/leads/{id}/ -> v1_crm_leads_retrieve
 - patch /api/v1/crm/leads/{id}/ -> v1_crm_leads_partial_update

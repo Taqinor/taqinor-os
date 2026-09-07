@@ -30,7 +30,10 @@ SORTIE = (Path(__file__).resolve().parent.parent / 'backend' / 'django_core'
           / 'apps' / 'parametres' / 'villes_maroc.py')
 
 POPULATION_MIN = 5000
-CODES_TOUJOURS = {'PPLA', 'PPLA2'}
+# VREF (07/09/2026, cas Madagh 2 677 hab.) — les CHEFS-LIEUX DE COMMUNE
+# (PPLA3/PPLA4) entrent quelle que soit leur population : de vraies
+# villes clientes qui, absentes, forçaient un rattachement manuel.
+CODES_TOUJOURS = {'PPLA', 'PPLA2', 'PPLA3', 'PPLA4'}
 
 
 def _normaliser(texte: str) -> str:

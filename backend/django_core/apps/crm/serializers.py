@@ -525,6 +525,19 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
     def validate_whatsapp(self, value):
         return self._canonical_phone(value)
 
+    def validate_ville(self, value):
+        """VREF — auto-correction de la ville à l'écriture (même règle que
+        le webhook site et la sync Odoo) : une graphie connue, une forme
+        raccourcie unique (« belksiri » → Mechraa Bel Ksiri) ou une faute de
+        frappe sûre est remplacée par le nom canonique du gazetier — le log
+        de champ automatique du chatter trace le remplacement. Ambigu ou
+        inconnu : le texte reste TEL QUEL (jamais deviné), l'écran
+        « Vérifier la ville » prend le relais."""
+        if not value:
+            return value
+        from apps.parametres.villes_resolution import corriger_ville
+        return corriger_ville(value)
+
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
         POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""

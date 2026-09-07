@@ -566,6 +566,14 @@ class Lead(SoftDeleteModel):
     lien_maps = models.URLField(
         max_length=500, blank=True, default='',
         verbose_name='Lien Google Maps')
+    # VREF (fondateur 07/09/2026) — ville ERP de RATTACHEMENT quand la ville
+    # tapée n'est pas dans le gazetier (douar, petit village) : choisie par
+    # Meryem sur l'écran « Vérifier la ville » (carte + villes proches). Le
+    # nom tapé par le client est CONSERVÉ dans `ville` ; l'affichage devient
+    # « X, près de Y » et les calculs (PVGIS, transport) lisent Y.
+    ville_reference = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Ville ERP de rattachement')
 
     # ── Pipeline / CRM ──
     owner = models.ForeignKey(
