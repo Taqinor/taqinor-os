@@ -613,67 +613,36 @@ _TEMPLATE_DIMANCHE_FAMILLE = 'dimanche_famille'
 _TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
 
 
-def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
-                             devis=None):
-    """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
-    société (``parametres.CadenceRelanceEtape.cadence_pour``).
+def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
+    """Les ÉCHÉANCES d'une cadence, SANS RIEN ÉCRIRE :
+    ``[(gabarit, échéance aware), …]`` dans l'ordre du gabarit.
 
-    IDEMPOTENT **PAR CADENCE** (MRY5) : un lead peut porter simultanément sa
-    prise de contact et le suivi d'un devis ; l'ancienne idempotence globale
-    « ce lead a déjà des étapes » les aurait confondus et un devis envoyé
-    n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
-    plus portée PAR DEVIS.
+    C'est le cœur de calcul d'``initialiser_plan_relance``, extrait pour que
+    l'APERÇU du placement (MRY30) puisse DATER une cadence sans la
+    matérialiser. L'aperçu créait auparavant les touches des 277 candidats
+    dans une transaction annulée : plus de 20 s de calcul pour un écran dont
+    le navigateur abandonne au bout de 20 s — les deux 499 lus dans nginx le
+    07/09/2026.
 
-    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
-    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
-    ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
-    l'instant est recalé sur la fenêtre d'appel de la société
-    (``horaires.prochain_creneau_appel``, MRY8). EXCEPTION pour les touches du
-    JOUR MÊME (``delai_jours == 0`` sans ``heure_cible``) : elles s'enchaînent
-    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart)``) et non
-    depuis l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait
-    ses trois premières touches écrasées sur la même minute d'ouverture. Une
-    touche marquée
-    ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
-    dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
-    dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
-    ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
-    leur grain jour.
+    ``initialiser_plan_relance`` appelle CETTE fonction : les deux ne peuvent
+    donc pas diverger — ce que l'aperçu annonce EST ce que l'application
+    créera. C'était déjà l'intention du dry-run en transaction annulée ; c'en
+    est la version qui ne coûte rien.
 
-    ÉCARTE (MRY4) le barreau ``dimanche_famille`` du suivi après devis quand
-    le lead ne porte PAS l'étiquette « Décision à plusieurs » : le Guide v2.1
-    le réserve aux dossiers décidés en famille.
-
-    REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
-    ou archivé — les trois cas où relancer serait une faute.
-
-    Pose aussi ``Lead.relance_date`` sur l'échéance de la première touche (via
-    ``sync_relance_activity``) : le Calendrier / « Ma file » reflètent la
-    prochaine touche sans second système de rappel concurrent.
-
-    Retourne la liste des ``RelanceEtape`` de CETTE cadence (créées ou déjà
-    existantes)."""
+    Ne lit la base que pour le gabarit
+    (``CadenceRelanceEtape.cadence_pour``, qui SEEDE la cadence à son premier
+    usage — comportement pré-existant, assumé) et pour les horaires de la
+    société. ``gabarits`` permet de réutiliser un gabarit déjà chargé et
+    d'éviter cette lecture : un placement en lit trois, pas trois cents.
+    """
     from datetime import timedelta
 
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import horaires
 
-    if getattr(lead, 'ne_plus_contacter', False):
-        return _refus_cadence(lead, user, 'lead marqué « ne plus contacter »')
-    if getattr(lead, 'perdu', False):
-        return _refus_cadence(lead, user, 'lead perdu')
-    if getattr(lead, 'is_archived', False):
-        return _refus_cadence(lead, user, 'lead archivé')
-
-    deja = lead.relance_etapes.filter(cadence=cadence)
-    if cadence == 'apres_devis' and devis is not None:
-        deja = deja.filter(devis=devis)
-    existantes = list(deja.order_by('ordre', 'due_date'))
-    if existantes:
-        return existantes
-
-    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if gabarits is None:
+        gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     if not gabarits:
         return []
 
@@ -697,7 +666,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # minutes » qui ne voulait plus rien dire.
     origine = horaires.prochain_creneau_appel(depart, lead.company)
 
-    etapes = []
+    echeances = []
     for gabarit in gabarits:
         if ((getattr(gabarit, 'template_cle', '') or '')
                 == _TEMPLATE_DIMANCHE_FAMILLE
@@ -742,14 +711,89 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)))
-        etapes.append(RelanceEtape(
+        echeances.append((gabarit, echeance))
+    return echeances
+
+
+def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
+                             devis=None):
+    """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
+    société (``parametres.CadenceRelanceEtape.cadence_pour``).
+
+    IDEMPOTENT **PAR CADENCE** (MRY5) : un lead peut porter simultanément sa
+    prise de contact et le suivi d'un devis ; l'ancienne idempotence globale
+    « ce lead a déjà des étapes » les aurait confondus et un devis envoyé
+    n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
+    plus portée PAR DEVIS.
+
+    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
+    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
+    ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
+    l'instant est recalé sur la fenêtre d'appel de la société
+    (``horaires.prochain_creneau_appel``, MRY8). EXCEPTION pour les touches du
+    JOUR MÊME (``delai_jours == 0`` sans ``heure_cible``) : elles s'enchaînent
+    depuis l'ORIGINE ouvrable (``prochain_creneau_appel(depart)``) et non
+    depuis l'heure brute d'arrivée, sans quoi un lead arrivé la nuit voyait
+    ses trois premières touches écrasées sur la même minute d'ouverture. Une
+    touche marquée
+    ``dimanche_ok`` échappe à cette formule : elle est PLACÉE sur le premier
+    dimanche atteignant ``depart + delai_jours``, à 16 h 30 (fenêtre
+    dominicale 16 h-19 h du Protocole v3, ``horaires.prochain_dimanche``).
+    ``due_date`` = date LOCALE de ``due_at`` : les filtres `scope` gardent
+    leur grain jour.
+
+    ÉCARTE (MRY4) le barreau ``dimanche_famille`` du suivi après devis quand
+    le lead ne porte PAS l'étiquette « Décision à plusieurs » : le Guide v2.1
+    le réserve aux dossiers décidés en famille.
+
+    REFUSE (liste vide + note chatter) un lead ``ne_plus_contacter``, ``perdu``
+    ou archivé — les trois cas où relancer serait une faute.
+
+    Pose aussi ``Lead.relance_date`` sur l'échéance de la première touche (via
+    ``sync_relance_activity``) : le Calendrier / « Ma file » reflètent la
+    prochaine touche sans second système de rappel concurrent.
+
+    Le CALCUL des échéances vit dans ``calculer_echeances_cadence`` (partagé
+    avec l'aperçu du placement MRY30) : cette fonction ne fait qu'en
+    matérialiser le résultat, si bien qu'aperçu et application ne peuvent pas
+    dater deux choses différentes.
+
+    Retourne la liste des ``RelanceEtape`` de CETTE cadence (créées ou déjà
+    existantes)."""
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    if getattr(lead, 'ne_plus_contacter', False):
+        return _refus_cadence(lead, user, 'lead marqué « ne plus contacter »')
+    if getattr(lead, 'perdu', False):
+        return _refus_cadence(lead, user, 'lead perdu')
+    if getattr(lead, 'is_archived', False):
+        return _refus_cadence(lead, user, 'lead archivé')
+
+    deja = lead.relance_etapes.filter(cadence=cadence)
+    if cadence == 'apres_devis' and devis is not None:
+        deja = deja.filter(devis=devis)
+    existantes = list(deja.order_by('ordre', 'due_date'))
+    if existantes:
+        return existantes
+
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if not gabarits:
+        return []
+
+    etapes = [
+        RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
             canal=gabarit.canal, libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis=devis,
-        ))
+        )
+        for gabarit, echeance in calculer_echeances_cadence(
+            lead, cadence, depart, gabarits=gabarits)
+    ]
     if not etapes:
         # Tous les barreaux de la cadence ont été écartés (cas limite : une
         # société dont la cadence ne contient QUE la touche réservée).
