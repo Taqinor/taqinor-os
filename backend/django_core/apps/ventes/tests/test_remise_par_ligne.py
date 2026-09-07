@@ -351,6 +351,9 @@ class TestRenduPdfRemiseParLigne(TestCase):
     #: lui, un ``opacity`` entre les deux propriétés.
     BARRE = 'text-decoration:line-through;white-space:nowrap;">'
     PHRASE = 'appliquée sur chaque ligne'
+    #: L'espace fine insécable de la maison, entre le nombre et le
+    #: « % » — la même que celle du bloc de totaux.
+    FINE = ' '
 
     def setUp(self):
         self.company = make_company()
@@ -410,7 +413,7 @@ class TestRenduPdfRemiseParLigne(TestCase):
             with self.subTest(opts=opts):
                 html, _ = self._render(devis, opts)
                 self.assertIn(self.PHRASE, html)
-                self.assertIn('Remise de 5 %', html)
+                self.assertIn('Remise de 5' + self.FINE + '%', html)
 
     def test_sans_remise_ni_prix_barre_ni_phrase(self):
         """Remise nulle ⇒ le document est celui d'avant : aucun prix barré de

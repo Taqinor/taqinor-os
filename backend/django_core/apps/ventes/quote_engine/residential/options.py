@@ -519,7 +519,7 @@ def build_pages(ctx) -> list:
         _pct_txt = (int(_remise_pct) if _remise_pct == int(_remise_pct)
                     else _remise_pct)
         note_remise = (
-            f' &middot; Remise de {_pct_txt} % appliquée sur chaque ligne '
+            f' &middot; Remise de {_pct_txt} % appliquée sur chaque ligne '
             '— prix catalogue barrés, totaux après remise.')
 
     # ── QJ30 — multi-propriétés (rendu ; dégrade à la mise en page à plat) ────

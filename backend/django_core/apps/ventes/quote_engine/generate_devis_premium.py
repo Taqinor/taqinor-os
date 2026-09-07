@@ -1342,11 +1342,12 @@ def _item_total_ht_remise(it):
 def _cellule_prix_remise(valeur_catalogue, valeur_remisee, taille="0.78em"):
     """Prix catalogue BARRÉ puis prix remisé, dans UNE SEULE cellule.
 
-    Sans remise globale (le cas courant), rend exactement ``_fmt2`` — le
-    document est alors octet pour octet celui d'avant.
+    Sans remise globale (le cas courant), rend exactement ``_fmt2`` de la
+    valeur CATALOGUE — c'est-à-dire l'expression d'avant, mot pour mot, et non
+    une valeur re-dérivée qui pourrait différer d'un bit de flottant.
     """
     if DISCOUNT_PCT <= 0:
-        return _fmt2(valeur_remisee)
+        return _fmt2(valeur_catalogue)
     return (f'<span style="font-size:{taille};color:{CG4};'
             f'text-decoration:line-through;white-space:nowrap;">'
             f'{_fmt2(valeur_catalogue)}</span> '
