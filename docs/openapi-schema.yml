@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9786, operations: 17473, components: 5129}
+counts: {paths: 9790, operations: 17477, components: 5129}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2632,6 +2632,7 @@ operations:
 - post /api/django/crm/leads/export-xlsx/ -> django_crm_leads_export_xlsx_create
 - get /api/django/crm/leads/kpi-cadences/ -> django_crm_leads_kpi_cadences_retrieve
 - get /api/django/crm/leads/kpi-premier-contact/ -> django_crm_leads_kpi_premier_contact_retrieve
+- post /api/django/crm/leads/placement-cadences/ -> django_crm_leads_placement_cadences_create
 - get /api/django/crm/leads/relances/ -> django_crm_leads_relances_retrieve
 - get /api/django/crm/leads/roi-sources/ -> django_crm_leads_roi_sources_retrieve
 - post /api/django/crm/leads/scan-carte/ -> django_crm_leads_scan_carte_create
@@ -2749,6 +2750,7 @@ operations:
 - post /api/django/crm/public/visite/ -> django_crm_public_visite_create
 - get /api/django/crm/rapports/attribution/ -> django_crm_rapports_attribution_retrieve
 - get /api/django/crm/relance-etapes/ -> django_crm_relance_etapes_list
+- get /api/django/crm/relance-etapes/suivi/ -> django_crm_relance_etapes_suivi_retrieve
 - post /api/django/crm/relance-etapes/{id}/fait/ -> django_crm_relance_etapes_fait_create
 - get /api/django/crm/relance-etapes/{id}/message/ -> django_crm_relance_etapes_message_retrieve
 - post /api/django/crm/relance-etapes/{id}/reporter/ -> django_crm_relance_etapes_reporter_create
@@ -11406,6 +11408,7 @@ operations:
 - post /api/v1/crm/leads/export-xlsx/ -> v1_crm_leads_export_xlsx_create
 - get /api/v1/crm/leads/kpi-cadences/ -> v1_crm_leads_kpi_cadences_retrieve
 - get /api/v1/crm/leads/kpi-premier-contact/ -> v1_crm_leads_kpi_premier_contact_retrieve
+- post /api/v1/crm/leads/placement-cadences/ -> v1_crm_leads_placement_cadences_create
 - get /api/v1/crm/leads/relances/ -> v1_crm_leads_relances_retrieve
 - get /api/v1/crm/leads/roi-sources/ -> v1_crm_leads_roi_sources_retrieve
 - post /api/v1/crm/leads/scan-carte/ -> v1_crm_leads_scan_carte_create
@@ -11523,6 +11526,7 @@ operations:
 - post /api/v1/crm/public/visite/ -> v1_crm_public_visite_create
 - get /api/v1/crm/rapports/attribution/ -> v1_crm_rapports_attribution_retrieve
 - get /api/v1/crm/relance-etapes/ -> v1_crm_relance_etapes_list
+- get /api/v1/crm/relance-etapes/suivi/ -> v1_crm_relance_etapes_suivi_retrieve
 - post /api/v1/crm/relance-etapes/{id}/fait/ -> v1_crm_relance_etapes_fait_create
 - get /api/v1/crm/relance-etapes/{id}/message/ -> v1_crm_relance_etapes_message_retrieve
 - post /api/v1/crm/relance-etapes/{id}/reporter/ -> v1_crm_relance_etapes_reporter_create
