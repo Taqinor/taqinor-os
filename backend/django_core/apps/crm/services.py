@@ -6286,6 +6286,18 @@ def _placement_limite(limite):
 
 def placer_anciens_leads(company, user, *, apply=False, maintenant=None,
                          limite=None):
+    """Enveloppe de `_placer_anciens_leads_sans_cache` sous `horaires.cache_local()` :
+    profil société et jours ouvrés lus UNE fois pour toute l'opération. Sans
+    cela, dater les touches de 272 leads coûtait ~7 000 requêtes et 24 s en
+    production (07/09/2026), au-delà du délai du navigateur."""
+    from . import horaires
+    with horaires.cache_local():
+        return _placer_anciens_leads_sans_cache(
+            company, user, apply=apply, maintenant=maintenant, limite=limite)
+
+
+def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
+                                     maintenant=None, limite=None):
     """MRY30 — Place les anciens leads d'une société dans les cadences du
     moteur de relances. Rapport = ``contract_samples/placement_anciens_leads``.
 

@@ -441,3 +441,49 @@ class RamadanPacingTests(TestCase):
 
     def test_societe_absente_reste_fausse(self):
         self.assertFalse(services._ramadan_pacing_enabled(None))
+
+
+class CacheLocalTests(TestCase):
+    """Cache LOCAL à une opération (`horaires.cache_local`) : le profil et les
+    jours ouvrés ne sont lus qu'une fois par bloc — 24 s mesurées en prod le
+    07/09 pour dater 272 leads sans lui. Hors bloc, rien n'est mis en cache :
+    un réglage modifié se voit tout de suite."""
+
+    def setUp(self):
+        from authentication.models import Company
+        from apps.parametres.models import CompanyProfile
+        self.company, _ = Company.objects.get_or_create(
+            slug='mry8-cache', defaults={'nom': 'mry8-cache'})
+        CompanyProfile.objects.get_or_create(company=self.company)
+
+    def _requetes(self, appels):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        jour = datetime.date(2026, 9, 9)  # mercredi ouvré
+        with CaptureQueriesContext(connection) as ctx:
+            for _ in range(appels):
+                horaires.fenetre_du_jour(jour, self.company)
+        return len(ctx.captured_queries)
+
+    def test_dans_le_bloc_le_calendrier_n_est_lu_qu_une_fois(self):
+        une = self._requetes(1)
+        with horaires.cache_local():
+            cinq = self._requetes(5)
+        self.assertGreater(une, 0)
+        self.assertEqual(cinq, une)
+
+    def test_hors_du_bloc_rien_n_est_memorise(self):
+        une = self._requetes(1)
+        cinq = self._requetes(5)
+        self.assertEqual(cinq, 5 * une)
+
+    def test_un_reglage_modifie_se_voit_apres_le_bloc(self):
+        from apps.parametres.models import CompanyProfile
+        jour = datetime.date(2026, 9, 9)
+        with horaires.cache_local():
+            avant = horaires.fenetre_du_jour(jour, self.company)[0]
+        CompanyProfile.objects.filter(company=self.company).update(
+            appel_heure_debut=datetime.time(10, 15))
+        apres = horaires.fenetre_du_jour(jour, self.company)[0]
+        self.assertNotEqual(avant, apres)
+        self.assertEqual(apres, datetime.time(10, 15))

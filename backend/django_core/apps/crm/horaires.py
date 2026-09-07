@@ -36,6 +36,8 @@ pratique) ; tout le raisonnement se fait en heure locale Africa/Casablanca.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import datetime
 import logging
 from zoneinfo import ZoneInfo
@@ -67,15 +69,55 @@ DEFAUT_MESSAGE_DEBUT = datetime.time(8, 30)
 DEFAUT_APPEL_DEBUT = datetime.time(9, 0)
 
 
+#: Cache LOCAL à une opération (jamais global, jamais entre requêtes) : le
+#: profil société et les jours ouvrés sont relus à CHAQUE appel de fenêtre —
+#: 3 requêtes par jour parcouru, ~7 000 requêtes et 24 s pour dater les
+#: touches de 272 leads en production (07/09/2026). Une opération longue
+#: s'enveloppe dans `with cache_local():` ; hors contexte, rien n'est mis en
+#: cache — les tests et les écrans ordinaires gardent le comportement exact.
+_CACHE = contextvars.ContextVar('crm_horaires_cache', default=None)
+
+
+@contextlib.contextmanager
+def cache_local():
+    """Mémorise profil et jours ouvrés le temps du bloc, puis oublie tout."""
+    token = _CACHE.set({})
+    try:
+        yield
+    finally:
+        _CACHE.reset(token)
+
+
 def _profil(company):
     if company is None:
         return None
+    cache = _CACHE.get()
+    cle = ('profil', getattr(company, 'pk', None))
+    if cache is not None and cle in cache:
+        return cache[cle]
     try:
         from apps.parametres.models import CompanyProfile
-        return CompanyProfile.objects.filter(company=company).first()
+        profil = CompanyProfile.objects.filter(company=company).first()
     except Exception:  # noqa: BLE001 — jamais bloquant, défauts assumés
         logger.warning('crm.horaires: profil illisible', exc_info=True)
         return None
+    if cache is not None:
+        cache[cle] = profil
+    return profil
+
+
+def _jour_ouvre(d, company):
+    """`is_jour_ouvre` de `notifications.calendar_utils`, mémorisé dans le
+    cache local quand il est actif (une date + une société = une réponse)."""
+    cache = _CACHE.get()
+    cle = ('ouvre', getattr(company, 'pk', None), d)
+    if cache is not None and cle in cache:
+        return cache[cle]
+    from apps.notifications.calendar_utils import is_jour_ouvre
+    ouvre = is_jour_ouvre(d, company)
+    if cache is not None:
+        cache[cle] = ouvre
+    return ouvre
 
 
 def _heure(profil, champ, defaut):
@@ -126,8 +168,7 @@ def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
     profil = _profil(company)
     if dimanche and d.weekday() == 6:
         return (DIMANCHE_DEBUT, DIMANCHE_FIN, None)
-    from apps.notifications.calendar_utils import is_jour_ouvre
-    if not is_jour_ouvre(d, company):
+    if not _jour_ouvre(d, company):
         return None
     if est_en_ramadan(d, company, profil=profil):
         # Pendant le Ramadan, la fenêtre entière se resserre — et la pause du
