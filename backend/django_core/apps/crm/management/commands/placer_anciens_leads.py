@@ -11,10 +11,18 @@ service que l'endpoint ``POST leads/placement-cadences/``) : cette commande
 n'est qu'une PORTE, jamais une seconde logique qui divergerait de l'écran.
 
 DRY-RUN PAR DÉFAUT. Rien n'est écrit sans ``--apply`` — et l'aperçu n'est pas
-une estimation : il exécute le vrai chemin de code dans une transaction
-annulée, donc ce qu'il affiche est exactement ce que ``--apply`` fera.
+une estimation : il partage le CALCUL de l'application (mêmes décisions, mêmes
+créneaux, mêmes dates), donc ce qu'il affiche est exactement ce que ``--apply``
+fera.
 
     python manage.py placer_anciens_leads [--company <slug|id>] [--apply]
+                                          [--limite N]
+
+``--apply`` place PAR LOTS de ``--limite`` leads (défaut 40) et RECOMMENCE
+jusqu'à ce qu'il ne reste rien, une ligne de progression par lot. Écrire 277
+dossiers d'un seul trait dépassait le délai du navigateur côté écran (deux 499
+le 07/09/2026) ; la commande suit la même découpe pour rester interruptible et
+reprenable — chaque lot est acquis, le suivant repart de l'état réel.
 
 ``--company`` est FACULTATIF quand l'installation ne compte qu'UNE société :
 l'exiger là où il n'y a aucun choix à faire n'ajoute qu'une occasion de se
@@ -38,14 +46,59 @@ class Command(BaseCommand):
         parser.add_argument(
             '--apply', action='store_true',
             help='Écrit réellement (sinon : aperçu, aucune écriture).')
+        parser.add_argument(
+            '--limite', dest='limite', type=int, default=None,
+            help='Leads placés par lot (1..200, défaut 40).')
 
     def handle(self, *args, **options):
-        from apps.crm.services import placer_anciens_leads
+        from apps.crm.services import (
+            PLACEMENT_LOT_DEFAUT, PLACEMENT_LOT_MAX, placer_anciens_leads)
 
         company = _resoudre_company(options.get('company'))
         apply = bool(options.get('apply'))
-        rapport = placer_anciens_leads(company, None, apply=apply)
-        self._imprimer(rapport, apply=apply, company=company)
+        limite = options.get('limite')
+        limite = PLACEMENT_LOT_DEFAUT if limite is None else limite
+        if not 1 <= limite <= PLACEMENT_LOT_MAX:
+            raise CommandError(
+                f'--limite doit être entre 1 et {PLACEMENT_LOT_MAX} '
+                f'(reçu {limite}).')
+
+        if not apply:
+            self._imprimer(
+                placer_anciens_leads(company, None, apply=False,
+                                     limite=limite),
+                apply=False, company=company)
+            return
+
+        # Les lots s'enchaînent jusqu'à `restants == 0`. Le rapport de
+        # SYNTHÈSE est celui du PREMIER lot : lui seul décrit le portefeuille
+        # entier (`par_etape`, `apercu`, `reveils_jusqu_au`) — après le
+        # dernier lot il ne reste, par construction, plus rien à décrire.
+        synthese = None
+        applique = erreurs = 0
+        lot = 0
+        while True:
+            lot += 1
+            rapport = placer_anciens_leads(company, None, apply=True,
+                                           limite=limite)
+            synthese = synthese or dict(rapport)
+            applique += rapport['applique']
+            erreurs += rapport['erreurs']
+            self.stdout.write(
+                f'Lot {lot} : {rapport["applique"]} placé(s), '
+                f'{rapport["erreurs"]} en échec — '
+                f'restants {rapport["restants"]}.')
+            if rapport['restants'] <= 0:
+                break
+            if rapport['applique'] == 0:
+                # Un lot qui ne place RIEN ne placera rien de plus au tour
+                # suivant : boucler serait infini. On s'arrête en le disant.
+                self.stdout.write(self.style.WARNING(
+                    'Lot sans progression : arrêt (voir les journaux).'))
+                break
+        synthese.update(applique=applique, erreurs=erreurs,
+                        restants=rapport['restants'])
+        self._imprimer(synthese, apply=True, company=company)
 
     def _imprimer(self, rapport, *, apply, company):
         prefixe = '' if apply else '[aperçu] '
