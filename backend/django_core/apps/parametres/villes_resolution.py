@@ -10,8 +10,8 @@ Meryem ne corrige plus les villes à la main. Un texte de ville se résout :
    forme collée d'EXACTEMENT une ville (« belksiri » ⊂ « mechraabelksiri »)
    → nom canonique. Deux villes candidates ou plus → AMBIGU, jamais un
    choix silencieux.
-③ FAUTE DE FRAPPE — similarité ``difflib`` à seuil ÉLEVÉ (0.85) avec un
-   candidat unique (« casablanka » → Casablanca).
+③ FAUTE DE FRAPPE — similarité ``difflib`` à seuil TRÈS élevé (0.90)
+   avec un candidat unique (« casablanka » → Casablanca).
 
 Tout le reste → INCONNU : le texte est laissé TEL QUEL (règle « zéro
 chiffre/fait inventé ») ; l'écran « Vérifier la ville » prend le relais.
@@ -26,8 +26,12 @@ from .transport_bareme import VILLES_SUPPLEMENT
 from .villes_canoniques import VILLES_CANONIQUES
 from .villes_maroc import VILLES_MAROC, _normaliser
 
-#: Seuil de similarité « faute de frappe » — élevé, pour ne jamais deviner.
-SEUIL_TYPO = 0.85
+#: Seuil de similarité « faute de frappe » — TRÈS élevé (0.90, relevé le
+#: 07/09 après relecture du dry-run prod : à 0.85, « Said » partait sur
+#: Saidia et « mohamed » sur Mohammedia — des PRÉNOMS tapés dans le champ
+#: ville). « Oudja »→« oudjda » (0.91) et « El Kelaâ des Sraghna » (0.95)
+#: survivent ; en dessous, l'écran carte tranche.
+SEUIL_TYPO = 0.90
 
 #: Longueur minimale (collée) pour la contenance : en dessous, « ain » ou
 #: « sidi » matcheraient la moitié du pays.
@@ -123,8 +127,16 @@ def resoudre_ville(texte):
     # ③ contenance UNIQUE (formes collées, deux sens — « belksiri »).
     colle = cle.replace(' ', '')
     if len(colle) >= CONTENANCE_MIN:
+        def _aligne_debut_de_mot(candidat, g):
+            # Le fragment doit s'ALIGNER sur un début de mot du candidat
+            # (« belksiri » ↔ « [mechraa] bel ksiri ») : à 0.85/milieu de
+            # mot, « tanja » tombait dans un alias quelconque d'Oujda.
+            mots_c = candidat.split()
+            return any(''.join(mots_c[i:]).startswith(colle)
+                       for i in range(len(mots_c)))
         contenants = {c for c, g in _CLES_COLLEES.items()
-                      if colle in g or (len(g) >= CONTENANCE_MIN and g in colle)}
+                      if (colle in g and _aligne_debut_de_mot(c, g))
+                      or (len(g) >= CONTENANCE_MIN and g in colle)}
         coords = {_COORDS[c] for c in contenants}
         if len(coords) == 1:
             return _resultat('corrigee', sorted(contenants, key=len)[-1])
