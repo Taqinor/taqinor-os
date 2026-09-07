@@ -271,6 +271,11 @@ if [ "$UNAPPLIED" != "0" ]; then echo "MIGRATIONS INCOMPLETES ($UNAPPLIED) -> ec
 # avec roles/models.py : indispensable quand un deploiement ajoute de nouveaux
 # codes de permission (ex. equipement_*/sav_*). Idempotent, sans effet sinon.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py init_roles
+# Publie (versionne) le Guide de Meryem/Protocole de rappel/Carte one-page
+# dans la GED + notifie Meryem et la direction a chaque nouvelle version --
+# best-effort : docs/meryem/ absent ou inchange ne doit jamais faire echouer
+# un deploiement.
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py publier_documents_meryem || true
 # PVOND (18/08/2026) — RE-APPLIQUE LES FICHES CATALOGUE a chaque deploiement.
 # Le bandeau « Onduleur(s) non chiffrable(s) » vu par le fondateur venait de la
 # ET SEULEMENT DE la : le code du seeder portait bien les specs sourcees, mais

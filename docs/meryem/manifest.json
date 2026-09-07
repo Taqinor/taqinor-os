@@ -1,0 +1,20 @@
+[
+  {
+    "fichier": "Guide_Meryem.pdf",
+    "titre": "Guide de Meryem",
+    "version": "2.1",
+    "description": "Guide complet du moteur de relances de Meryem : cadences d'appel, scripts et étapes du parcours commercial."
+  },
+  {
+    "fichier": "Protocole_Rappel_Meryem.pdf",
+    "titre": "Protocole de rappel (FR + darija)",
+    "version": "3.0",
+    "description": "Protocole de rappel des leads en français et en darija : cadence des relances et messages validés par le fondateur."
+  },
+  {
+    "fichier": "Carte_Meryem.pdf",
+    "titre": "Carte de Meryem — une page",
+    "version": "1.0",
+    "description": "Carte one-page résumant le parcours et les repères clés du poste de Meryem."
+  }
+]

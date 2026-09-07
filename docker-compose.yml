@@ -39,6 +39,12 @@ services:
       # Canonical pipeline stages — single source of truth (CLAUDE.md rule #2).
       # Mounted outside /app so it never creates a placeholder in the source tree.
       - ./STAGES.py:/opt/STAGES.py:ro
+      # Documents internes de Meryem (manifeste + PDF) publiés dans la GED par
+      # `manage.py publier_documents_meryem` (voir scripts/auto-deploy.sh /
+      # deploy-prod.ps1). `docs/` n'est PAS sous /app (build context =
+      # backend/django_core) : sans ce bind mount dédié, en lecture seule, le
+      # conteneur ne verrait jamais ces fichiers. Même patron que STAGES.py.
+      - ./docs/meryem:/opt/docs-meryem:ro
     env_file:
       - ./.env
     # SCA10 — cible le cache Django sur l'instance Redis dédiée par défaut
@@ -60,6 +66,11 @@ services:
       POSTGRES_RLS_ENABLED: ${POSTGRES_RLS_ENABLED:-0}
       DB_APP_USER: ${DB_APP_USER:-}
       DB_APP_PASSWORD: ${DB_APP_PASSWORD:-}
+      # Pointe `publier_documents_meryem` vers le bind mount ci-dessus (docs/
+      # n'existe pas sous /app). Vide/absent => le manifeste se lit avec le
+      # défaut inchangé (répertoire du dépôt), pour un `manage.py` lancé hors
+      # conteneur (rare, jamais le chemin de déploiement).
+      MERYEM_DOCS_DIR: /opt/docs-meryem
     depends_on:
       - db
       - redis
