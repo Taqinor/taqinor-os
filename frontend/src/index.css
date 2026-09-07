@@ -7131,7 +7131,14 @@ textarea.form-control {
 
 .lw-context-tabs {
   width: 100%;
-  justify-content: space-between;
+  justify-content: flex-start;
+  /* 5 onglets + compteurs ne tiennent pas toujours sur la largeur du rail :
+     sans retour à la ligne, la rangée force un défilement HORIZONTAL de tout
+     le panneau et « Pièces » disparaît hors écran (incident du 07/09/2026).
+     La rangée passe sur deux lignes au besoin — tout reste visible. */
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+  height: auto;
 }
 
 .lw-context-timeline,
