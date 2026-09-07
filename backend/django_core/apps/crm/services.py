@@ -1049,10 +1049,23 @@ def message_pour_etape(etape, *, request=None, user=None):
     corps = MessageTemplate.get_corps(
         lead.company, etape.template_cle, langue) if etape.template_cle else ''
 
+    # Civilité (décision fondateur 07/09/2026) : on s'adresse à une personne
+    # qu'on ne connaît pas encore avec « M. » / « السي » devant le prénom —
+    # l'usage marocain respectueux — jamais le prénom nu. Une civilité connue
+    # sur le lead (champ futur) prime ; « Mme » se rend « لالة » en darija.
+    civilite = (getattr(lead, 'civilite', '') or '').strip()
+    if langue == 'darija':
+        civilite = {'': 'السي', 'M.': 'السي', 'Mme': 'لالة'}.get(
+            civilite, civilite)
+    else:
+        civilite = civilite or 'M.'
+    # Sans prénom (formulaire Meta au nom seul, société), le nom prend sa place
+    # dans la salutation plutôt que de faire SAUTER toute la phrase d'accueil.
+    prenom = (lead.prenom or '').strip() or (lead.nom or '').strip()
     contexte = {
-        'civilite': (getattr(lead, 'civilite', '') or ''),
+        'civilite': civilite,
         'nom': (lead.nom or '').strip(),
-        'prenom': (lead.prenom or '').strip(),
+        'prenom': prenom,
         'ville': (lead.ville or '').strip(),
         'conseiller': (getattr(user, 'first_name', '')
                        or getattr(user, 'username', '') or ''),

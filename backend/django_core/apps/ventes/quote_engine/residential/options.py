@@ -138,14 +138,57 @@ def _name_html(it, produits_base):
             f'<span class="p2-fiche-i">&rsaquo;</span></a>')
 
 
+# ── QJRREM — LA REMISE GLOBALE, SUR CHAQUE LIGNE DU TABLEAU ─────────────────
+# Demande fondateur (07/09/2026). Le builder pose sur chaque item les clés
+# ``pu_ht_remise`` / ``total_ht_remise`` (réparties par
+# ``domain.argent.repartir_remise_par_ligne``, somme == Total HT net au
+# centime) ; ce module ne fait que les AFFICHER. Sans remise globale — ou sur
+# un item bâti à la main, sans ces clés — les deux nombres formatés coïncident
+# et la cellule rend UN seul prix : la page est alors celle d'avant, au
+# caractère près.
+
+
+def _pu_ht_affiche(it):
+    """P.U. HT à afficher : après remise globale, ou le catalogue à défaut."""
+    valeur = it.get("pu_ht_remise")
+    if valeur is None:
+        return float(it.get("prix_unit_ht") or 0)
+    return float(valeur)
+
+
+def _total_ht_affiche(it):
+    """Total HT de la ligne à afficher : après remise globale, ou catalogue."""
+    valeur = it.get("total_ht_remise")
+    if valeur is None:
+        return float(it.get("prix_unit_ht") or 0) * float(
+            it.get("quantite") or 0)
+    return float(valeur)
+
+
+def _deux_prix(fmt, valeur_catalogue, valeur_remisee):
+    """« <s>1 500</s> 1 425 » — le prix catalogue barré, puis le prix remisé.
+
+    Les deux nombres FORMATÉS sont comparés (et non les flottants) : quand le
+    format les rend identiques, on n'imprime pas deux fois le même prix avec un
+    trait au milieu.
+    """
+    catalogue = fmt(valeur_catalogue)
+    remise = fmt(valeur_remisee)
+    if catalogue == remise:
+        return remise
+    return (f'<span class="p2-was">{catalogue}</span> '
+            f'<span class="p2-now">{remise}</span>')
+
+
 def _row(it, fmt, produits_base="taqinor.ma/produits"):
     """One <tr> for the shared equipment table."""
     marque = it.get("marque") or ""
     qte = it["quantite"]
     qte_txt = f"{qte:g}"
-    pu = fmt(it["prix_unit_ht"])
+    pu = _deux_prix(fmt, it["prix_unit_ht"], _pu_ht_affiche(it))
     tva = f"{int(round(it['taux_tva']))}%"
-    total_ht = fmt(it["prix_unit_ht"] * it["quantite"])
+    total_ht = _deux_prix(fmt, it["prix_unit_ht"] * it["quantite"],
+                          _total_ht_affiche(it))
     marque_html = (f'<span class="p2-mk">{marque}</span>' if marque else "")
     return (
         f'<tr>'
@@ -185,7 +228,9 @@ def _row_pair(pair, fmt, produits_base="taqinor.ma/produits"):
     marque = s.get("marque") or a.get("marque") or ""
     marque_html = (f'<span class="p2-mk">{marque}</span>' if marque else "")
     qte = _deux_valeurs(f'{s["quantite"]:g}', f'{a["quantite"]:g}')
-    pu = _deux_valeurs(fmt(s["prix_unit_ht"]), fmt(a["prix_unit_ht"]))
+    pu = _deux_valeurs(
+        _deux_prix(fmt, s["prix_unit_ht"], _pu_ht_affiche(s)),
+        _deux_prix(fmt, a["prix_unit_ht"], _pu_ht_affiche(a)))
     # QJR31 — LE TAUX AUSSI EST PAR COLONNE. Seule cellule de cette ligne à
     # n'avoir qu'UNE valeur, elle imprimait TOUJOURS le taux du côté SANS : sur
     # une paire dont les deux variantes ne portent pas le même taux (10 %
@@ -195,8 +240,11 @@ def _row_pair(pair, fmt, produits_base="taqinor.ma/produits"):
     # déjà juste (``tva_par_taux``) — c'est l'affichage par ligne qui mentait.
     tva = _deux_valeurs(f"{int(round(s['taux_tva']))}%",
                         f"{int(round(a['taux_tva']))}%")
-    tot = _deux_valeurs(fmt(s["prix_unit_ht"] * s["quantite"]),
-                        fmt(a["prix_unit_ht"] * a["quantite"]))
+    tot = _deux_valeurs(
+        _deux_prix(fmt, s["prix_unit_ht"] * s["quantite"],
+                   _total_ht_affiche(s)),
+        _deux_prix(fmt, a["prix_unit_ht"] * a["quantite"],
+                   _total_ht_affiche(a)))
     return (
         f'<tr class="p2-tr-2v">'
         f'<td class="p2-d">{_name_html(s, produits_base)}{marque_html}</td>'
@@ -229,7 +277,8 @@ def _delta_lines(items, fmt, produits_base="taqinor.ma/produits"):
     for it in items:
         qte = it["quantite"]
         q = f"{qte:g}× " if qte and qte != 1 else ""
-        total_ht = fmt(it["prix_unit_ht"] * it["quantite"])
+        total_ht = _deux_prix(fmt, it["prix_unit_ht"] * it["quantite"],
+                              _total_ht_affiche(it))
         out.append(
             f'<li><span class="p2-dl-n">{q}{_name_html(it, produits_base)}</span>'
             f'<span class="p2-dl-p">{total_ht} HT</span></li>'
@@ -459,6 +508,19 @@ def build_pages(ctx) -> list:
         equipement_lbl = "Votre équipement"
 
     tva_note = d.get("tva_note", "")
+
+    # QJRREM — LA phrase qui dit ce que le tableau montre, sur la ligne de
+    # légende DÉJÀ présente sous les totaux : aucun bloc, aucune ligne de
+    # tableau en plus. Un seul chiffre y figure — le pourcentage que la chaîne
+    # de totaux imprime déjà juste au-dessus.
+    _remise_pct = float(d.get("discount_pct") or 0)
+    note_remise = ""
+    if _remise_pct > 0:
+        _pct_txt = (int(_remise_pct) if _remise_pct == int(_remise_pct)
+                    else _remise_pct)
+        note_remise = (
+            f' &middot; Remise de {_pct_txt} % appliquée sur chaque ligne '
+            '— prix catalogue barrés, totaux après remise.')
 
     # ── QJ30 — multi-propriétés (rendu ; dégrade à la mise en page à plat) ────
     # (A) ×N villas identiques : ligne « × N propriétés identiques » + total mis
@@ -821,6 +883,12 @@ def build_pages(ctx) -> list:
   .p2-mk {{ color:{C['muted']}; font-size:7.6pt; margin-left:5px; }}
   .p2-tva {{ color:{C['muted']}; font-size:8pt; }}
   .p2-tot {{ font-weight:700; color:{C['navy']}; white-space:nowrap; }}
+  /* QJRREM — prix catalogue BARRÉ, en petit, devant le prix après remise
+     globale. Dans la MÊME cellule : la hauteur de ligne du tableau (donc la
+     pagination) ne dépend pas de la présence d'une remise. */
+  .p2-was {{ font-size:.82em; color:{C['muted_2']};
+    text-decoration:line-through; white-space:nowrap; }}
+  .p2-now {{ white-space:nowrap; }}
 
   /* L-2OPTPDF — ligne à deux valeurs (rôle présent dans les deux options avec
      des quantités différentes) : une seule ligne de tableau, jamais la même
@@ -1099,7 +1167,7 @@ def build_pages(ctx) -> list:
         # L-2OPT — le comparatif se lit JUSTE SOUS les deux cartes de totaux,
         # à l'endroit où le client compare. Vide ⇒ page inchangée.
         f'{comparatif_html}'
-        f'<div class="p2-tva-note">{tva_note}{fiche_inline}</div>'
+        f'<div class="p2-tva-note">{tva_note}{note_remise}{fiche_inline}</div>'
         f'{multi_html}')
 
     # M6 (audit du 19/08/2026) — la carte « Performance garantie » lisait
