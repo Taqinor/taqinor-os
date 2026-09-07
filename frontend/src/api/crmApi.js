@@ -142,7 +142,10 @@ const crmApi = {
   placerAnciensLeads: ({ apply, limite } = {}) => {
     const corps = { apply }
     if (limite !== undefined) corps.limite = limite
-    return api.post('/crm/leads/placement-cadences/', corps)
+    // Aperçu/lot sur des centaines de dossiers : plus long que le timeout global
+    // de 20 s (VX55) — 90 s pour CET appel seulement (mesuré 24 s en prod le 07/09
+    // avant la mise en cache des fenêtres d'appel).
+    return api.post('/crm/leads/placement-cadences/', corps, { timeout: 90000 })
   },
   // XSAL8 — scan de carte de visite (photo) → pré-remplissage du lead
   // express. Ne crée jamais de lead ; renvoie {nom, prenom, societe,
