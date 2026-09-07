@@ -210,6 +210,7 @@ SURFACE_PUBLIQUE = (
     # (``poser_puissance_kwc``, un cache estampillé) et sa lecture
     # (``puissance_kwc_du_devis``, registre sinon dérivation PVUNI, plus bas).
     "poser_puissance_kwc",
+    "poser_validite_devis",
     "prix_applicable",
     "prix_forfait_ht",
     # QJR107 (30/08/2026) — ``profil_reel_existe`` RETIRÉE de la surface :

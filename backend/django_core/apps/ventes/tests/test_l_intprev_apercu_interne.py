@@ -270,14 +270,17 @@ class TestZeroTraceChatterEtStageFunnel(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
 
-    def test_jeton_public_pose_la_note_et_avance_le_stage(self):
-        """Témoin positif : le comportement QJ1/YLEAD10 existant n'a pas
-        bougé pour le jeton public."""
+    def test_jeton_public_pose_la_note_sans_bouger_le_stage(self):
+        """Témoin positif recalé (règle fondateur 07/09/2026) : le jeton
+        public pose toujours la note QJ1, mais l'ouverture ne déplace PLUS
+        l'étape — le funnel ne bouge que sur une réponse confirmée de
+        l'utilisateur ERP."""
+        ancien_stage = self.lead.stage
         resp = DjangoClient().get(
             f'/api/django/public/proposal/{self.link.token}/data/')
         self.assertEqual(resp.status_code, 200)
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.stage, stages.FOLLOW_UP)
+        self.assertEqual(self.lead.stage, ancien_stage)
         notes = LeadActivity.objects.filter(lead=self.lead)
         self.assertTrue(any(
             'ouvert le devis DEV-IP-C1' in (n.body or '') for n in notes))

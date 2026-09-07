@@ -185,6 +185,31 @@ class FiletJointTests(_Base):
         self.assertTrue(self.lead.relance_etapes.filter(
             statut=RelanceEtape.Statut.A_FAIRE).exists())
 
+    def test_le_plan_apres_devis_pose_la_validite_de_la_proposition(self):
+        """VALID1 (07/09/2026) — le démarrage du plan après-devis pose
+        ``Devis.date_validite`` (si vide) à la date de la DERNIÈRE touche du
+        plan : la phrase « validité de la proposition » des messages
+        WhatsApp cesse d'être omise. Une validité déjà posée n'est jamais
+        écrasée."""
+        self._fait(self.etapes[2], outcome='joint')
+        filet = self._filets().get()
+        from apps.crm.models import Client as ClientCrm
+        from apps.ventes.models import Devis
+        client = ClientCrm.objects.create(
+            company=self.company, nom='VAL', email='mry34-val@example.com')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-MRY34-0002', client=client,
+            lead=self.lead, taux_tva=Decimal('20'))
+        self.assertIsNone(devis.date_validite)
+        marquer_etape_relance(
+            filet, self.acteur, RelanceEtape.Statut.FAIT)
+        devis.refresh_from_db()
+        derniere = (self.lead.relance_etapes
+                    .filter(cadence='apres_devis')
+                    .order_by('-due_date').first())
+        self.assertIsNotNone(devis.date_validite)
+        self.assertEqual(devis.date_validite, derniere.due_date)
+
     def test_etape_generique_traitee_sans_devis_en_repose_une(self):
         """QJ-INVARIANT : sans devis, cocher le filet en repose un — la
         liste de relances ne se termine que par Froid ou Signé."""

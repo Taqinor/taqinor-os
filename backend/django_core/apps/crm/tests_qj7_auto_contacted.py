@@ -104,7 +104,11 @@ class TestQJ7ReceiverOnLeadActivity(TestCase):
         self.company = _make_company('qj7-rcv')
         self.user = _make_user(self.company, 'qj7rcv')
 
-    def test_first_note_advances_new_to_contacted(self):
+    def test_note_sans_reponse_ne_bouge_plus_le_funnel(self):
+        """RÈGLE FONDATEUR 07/09/2026 — l'ancien « auto — premier contact »
+        sur toute activité est mort : seule une RÉPONSE confirmée (joint /
+        intéressé) déplace l'étape. Le KPI first_contacted_at, lui, reste
+        horodaté."""
         lead = _make_lead(self.company, stage=NEW)
         LeadActivity.objects.create(
             company=self.company, lead=lead, user=self.user,
@@ -112,34 +116,45 @@ class TestQJ7ReceiverOnLeadActivity(TestCase):
             body='Premier appel passé',
         )
         lead.refresh_from_db()
-        self.assertEqual(lead.stage, _CONTACTED)
+        self.assertEqual(lead.stage, NEW)
+        self.assertIsNotNone(lead.first_contacted_at)
 
-    def test_first_appel_advances_new_to_contacted(self):
+    def test_appel_joint_avance_new_to_contacted(self):
         lead = _make_lead(self.company, stage=NEW)
         LeadActivity.objects.create(
             company=self.company, lead=lead, user=self.user,
-            kind=LeadActivity.Kind.APPEL,
+            kind=LeadActivity.Kind.APPEL, outcome='joint',
             body='Appel commercial',
         )
         lead.refresh_from_db()
         self.assertEqual(lead.stage, _CONTACTED)
 
-    def test_first_email_advances_new_to_contacted(self):
+    def test_appel_sans_reponse_ne_bouge_pas(self):
         lead = _make_lead(self.company, stage=NEW)
         LeadActivity.objects.create(
             company=self.company, lead=lead, user=self.user,
-            kind=LeadActivity.Kind.EMAIL,
-            body='Email envoyé',
+            kind=LeadActivity.Kind.APPEL, outcome='non_joint',
+            body='Répondeur',
+        )
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, NEW)
+
+    def test_email_interesse_avance_new_to_contacted(self):
+        lead = _make_lead(self.company, stage=NEW)
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, user=self.user,
+            kind=LeadActivity.Kind.EMAIL, outcome='interesse',
+            body='Réponse client positive',
         )
         lead.refresh_from_db()
         self.assertEqual(lead.stage, _CONTACTED)
 
     def test_second_contact_activity_does_not_change_stage(self):
         lead = _make_lead(self.company, stage=NEW)
-        # Premier contact → avance vers CONTACTED
+        # Premier contact CONFIRMÉ (joint) → avance vers CONTACTED
         LeadActivity.objects.create(
             company=self.company, lead=lead, user=self.user,
-            kind=LeadActivity.Kind.NOTE,
+            kind=LeadActivity.Kind.APPEL, outcome='joint',
             body='Premier contact',
         )
         lead.refresh_from_db()
@@ -201,10 +216,11 @@ class TestQJ7ReceiverOnLeadActivity(TestCase):
         company_b = _make_company('qj7-co-b')
         lead_a = _make_lead(self.company, stage=NEW)
         lead_b = _make_lead(company_b, stage=NEW)
-        # Activité dans la société A
+        # Réponse CONFIRMÉE dans la société A (règle 07/09 : seule une
+        # issue joint/intéressé avance le funnel).
         LeadActivity.objects.create(
             company=self.company, lead=lead_a, user=self.user,
-            kind=LeadActivity.Kind.NOTE,
+            kind=LeadActivity.Kind.APPEL, outcome='joint',
             body='Contact société A',
         )
         lead_a.refresh_from_db()

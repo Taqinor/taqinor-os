@@ -71,14 +71,19 @@ class FastLaneOpenTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.FOLLOW_UP)
 
-    def test_noter_devis_ouvert_calls_fastlane_and_logs_note(self):
+    def test_noter_devis_ouvert_ne_bouge_plus_le_funnel(self):
+        """RÈGLE FONDATEUR 07/09/2026 — l'ouverture du devis NOTE et
+        NOTIFIE mais ne déplace plus l'étape : le funnel ne bouge que sur
+        une réponse confirmée de Meryem. `avancer_stage_sur_ouverture_devis`
+        (testé plus haut) reste disponible mais débranché de ce chemin."""
         lead = _make_lead(self.company, stage=stages.QUOTE_SENT)
         noter_devis_ouvert('DEV-2026-001', lead)
         lead.refresh_from_db()
-        self.assertEqual(lead.stage, stages.FOLLOW_UP)
+        self.assertEqual(lead.stage, stages.QUOTE_SENT)
         notes = LeadActivity.objects.filter(lead=lead)
         self.assertTrue(
             any('ouvert le devis DEV-2026-001' in (n.body or '')
                 for n in notes))
-        self.assertTrue(
+        # Plus AUCUNE ligne « auto — devis ouvert » : l'étape n'a pas bougé.
+        self.assertFalse(
             any('auto — devis ouvert' in (n.body or '') for n in notes))

@@ -185,6 +185,7 @@ generer_facture_intervention = _facturation_ops.generer_facture_intervention
 # RÉ-EXPORTS — QJR70 : cycle de vie du devis → ``domain/cycle_vie.py``
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import cycle_vie as _cycle_vie  # noqa: E402
+poser_validite_devis = _cycle_vie.poser_validite_devis
 AcceptError = _cycle_vie.AcceptError
 activate_optional_line = _cycle_vie.activate_optional_line
 OTP_CACHE_TTL = _cycle_vie.OTP_CACHE_TTL
@@ -702,6 +703,7 @@ __all__ = [
     'validate_otp_lecture',
     'ventiler_avance',
     'verifier_credit_hold',
+    'poser_validite_devis',
     'verifier_devis_envoyable',
     'verifier_empreinte_signature',
     'verifier_sale_warnings',
