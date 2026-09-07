@@ -246,6 +246,7 @@ SURFACE_PUBLIQUE = (
     "validate_otp_lecture",
     "ventiler_avance",
     "verifier_credit_hold",
+    "poser_validite_devis",
     "verifier_devis_envoyable",
     # QJR144 (30/08/2026) — AJOUT LÉGITIME : le vérificateur du sceau d'un
     # devis signé. ``DevisSignature.content_hash`` existait depuis QJ10 mais
