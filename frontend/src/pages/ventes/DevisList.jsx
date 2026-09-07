@@ -916,6 +916,18 @@ function DevisRow({ d, ctx }) {
                   Copier le lien de la proposition{shareBusyId === d.id ? '…' : ''}
                 </DropdownMenuItem>
               )}
+              {/* L-INTPREV/QJ1bis — même page, jeton INTERNE : vérifier la
+                  proposition sans déclencher la notification d'ouverture
+                  ni aucune trace. Jamais à envoyer au client. */}
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                <DropdownMenuItem
+                  disabled={shareBusyId === d.id}
+                  onSelect={() => handleCopierApercuInterne(d)}
+                >
+                  <Link2 className="size-3.5" aria-hidden="true" />
+                  Copier l&rsquo;aperçu interne (sans notification){shareBusyId === d.id ? '…' : ''}
+                </DropdownMenuItem>
+              )}
               {/* QG10/QJ15 — « Variante » : ouvre une modale pour
                   confirmer/éditer le pourcentage (défaut = config société),
                   créer les 3 variantes puis router vers la comparaison
@@ -1904,12 +1916,38 @@ export default function DevisList() {
     toast.success('Lien interne du devis copié.')
   }
 
+  const [shareBusyId, setShareBusyId] = useState(null)
+
+  // L-INTPREV/QJ1bis — « Copier l'aperçu interne » : la MÊME page publique
+  // que le client, servie par le jeton INTERNE (ShareLink.token_interne) —
+  // aucune notification, aucun compteur de vues, aucune note chatter, aucune
+  // avance de funnel. C'est le lien que Reda/Meryem ouvrent pour vérifier ;
+  // le lien CLIENT (WR2 ci-dessous) reste le seul à envoyer.
+  const handleCopierApercuInterne = async (d) => {
+    setShareBusyId(d.id)
+    try {
+      const res = await ventesApi.shareLinkDevis(d.id)
+      const path = res?.data?.path_interne
+      if (path) {
+        const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')
+        const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+        try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+        toast.success('Aperçu interne copié — ne l’envoyez jamais au client (aucune notification).')
+      } else {
+        toast.error('Aperçu interne indisponible.')
+      }
+    } catch (err) {
+      toast.error(frenchError(err, 'Génération de l’aperçu interne impossible.'))
+    } finally {
+      setShareBusyId(null)
+    }
+  }
+
   // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
   // devis (DevisViewSet.share_link) et le copie au presse-papier, sans passer
   // par l'envoi email/WhatsApp. Surface une fonctionnalité serveur jusqu'ici
   // invisible côté ERP. Aucun statut ne bouge (le backend ne fait que produire
   // le lien).
-  const [shareBusyId, setShareBusyId] = useState(null)
   const handleCopierLienProposition = async (d) => {
     setShareBusyId(d.id)
     try {

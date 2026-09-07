@@ -3341,6 +3341,21 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
     avancer_stage_sur_ouverture_devis(lead)
 
 
+def noter_devis_reouvert(devis_reference: str, lead, vues=None) -> None:
+    """QJ1bis (fondateur 07/09/2026) — Consigne une RÉOUVERTURE du devis dans
+    le chatter du lead : chaque retour du client sur sa proposition doit
+    rester lisible dans l'historique (les notifications s'effacent, le
+    chatter reste). Appelé par ``public_views._notify_open`` sur toute
+    ouverture publique au-delà de la première, hors fenêtre de
+    sessionisation. ``vues`` (compteur ShareLink) contextualise sans jamais
+    être inventé — omis s'il est inconnu."""
+    suffixe = f' — {int(vues)}ᵉ consultation' if vues and int(vues) > 1 else ''
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Le client a rouvert le devis {devis_reference}{suffixe}")
+
+
 def noter_devis_envoye(devis_reference: str, lead) -> None:
     """ZSAL5 — Consigne « Devis DEV-… envoyé par email » dans le chatter du
     lead. Appelé par ``apps.ventes`` (jamais d'import des models crm depuis
@@ -3579,8 +3594,13 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
 
 
 def notify_devis_opened(devis_reference: str, lead, *, ip='',
-                        appareil_id='') -> None:
-    """QJ2 (b) — Notifie le responsable du lead à la PREMIÈRE ouverture du devis.
+                        appareil_id='', reprise=False) -> None:
+    """QJ2 (b) — Notifie le responsable du lead à l'ouverture du devis.
+
+    QJ1bis (fondateur 07/09/2026) — ``reprise=True`` : ce n'est plus la
+    première ouverture mais un RETOUR du client sur sa proposition ; même
+    notification, formulée « a rouvert » — le fondateur veut être prévenu à
+    CHAQUE visite, pas seulement la première.
 
     Complémente noter_devis_ouvert (QJ1) : en plus de la note chatter, envoie
     une notification in-app + Web Push au owner du lead, avec un lien wa.me
@@ -3604,7 +3624,8 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
         from apps.notifications.services import notify_many
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Votre client'
         wa_url = _build_lead_wa_reply_url(lead)
-        body_parts = [f'{nom} vient d\'ouvrir le devis {devis_reference}.']
+        verbe = 'a rouvert' if reprise else "vient d'ouvrir"
+        body_parts = [f'{nom} {verbe} le devis {devis_reference}.']
         if ip:
             body_parts.append(f'Ouverture depuis l’adresse IP {ip}.')
         if appareil_id:
@@ -3626,7 +3647,8 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
         notify_many(
             recipients,
             'devis_opened',
-            f'Devis {devis_reference} ouvert par le client',
+            (f'Devis {devis_reference} rouvert par le client' if reprise
+             else f'Devis {devis_reference} ouvert par le client'),
             body='\n'.join(body_parts),
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
