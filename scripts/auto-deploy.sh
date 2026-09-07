@@ -81,6 +81,12 @@ fi
 # déploiement qui livre une image périmée ne l'est pas.
 A_CONSTRUIRE=""
 TOUT=0
+# Le code BACKEND a-t-il bougé ? Monté en bind, seul un restart le charge
+# (cf. piège n° 2 plus bas). Diff impossible -> on suppose que oui.
+BACKEND_TOUCHE=0
+if [ -z "$CHANGES" ] || echo "$CHANGES" | grep -qE '^backend/'; then
+  BACKEND_TOUCHE=1
+fi
 if [ -z "$CHANGES" ]; then
   TOUT=1   # commit précédent inconnu ou diff impossible : on ne parie pas.
 else
@@ -134,7 +140,24 @@ fi
 # annonce « OK » sans rien livrer. Avant la construction sélective, la mise à
 # jour était portée PAR ACCIDENT : `COPY . /app/` changeait à chaque commit,
 # donc l'image changeait, donc compose recréait.
-if [ "$ok" = "1" ] && [ "$RIEN_CONSTRUIT" = "1" ]; then
+# ── PIÈGE N° 2 — LA CONSTRUCTION CIBLÉE QUI SAUTE LE BACKEND (07/09/2026) ──
+# Quand SEUL le frontend est reconstruit alors que du code backend a bougé
+# (le cas ordinaire d'un lot complet : écran + API), `RIEN_CONSTRUIT` vaut 0,
+# l'image Django n'a pas changé, `up -d` ne recrée pas django_core, et le
+# restart ci-dessous était sauté : gunicorn servait l'ANCIEN code (route
+# neuve en 404) sous un « DEPLOY — OK ». Mesuré sur la fusion 2873e029
+# (django_core « Up 6 hours » après le déploiement). Le backend est donc
+# redémarré dès que son code a bougé SANS que son image ait été reconstruite
+# — une image reconstruite (ciblée ou complète) est, elle, recréée par
+# `up -d`, un restart de plus serait inutile.
+RESTART_BACKEND=0
+if [ "$RIEN_CONSTRUIT" = "1" ]; then
+  RESTART_BACKEND=1
+elif [ "$TOUT" != "1" ] && [ "$BACKEND_TOUCHE" = "1" ] \
+     && ! echo " $A_CONSTRUIRE " | grep -q ' django_core '; then
+  RESTART_BACKEND=1
+fi
+if [ "$ok" = "1" ] && [ "$RESTART_BACKEND" = "1" ]; then
   $COMPOSE restart django_core celery_worker celery_worker_interactive \
                    celery_beat fastapi_ia || ok=0
 fi
