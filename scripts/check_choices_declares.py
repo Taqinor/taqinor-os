@@ -680,7 +680,9 @@ REFUS = {
         ("AUCUNE copie de cette règle", "COMPORTEMENT")],
     # MRY14 06/09/2026 — OUTCOME_CHOICES reflète OUTCOME_LABELS de
     # ChatterTimeline (constante JS partagée), pas un champ choices= serveur.
-    "frontend/src/pages/crm/RelancesDuJourWidget.jsx": [
+    # MRY31 07/09/2026 — la ligne a suivi le composant extrait du widget vers
+    # features/crm/relances/RelanceEtapeRow.jsx (même promesse, même motif).
+    "frontend/src/features/crm/relances/RelanceEtapeRow.jsx": [
         ("miroir de", "MIROIR_JS")],
     "frontend/src/pages/crm/leads/views/KanbanView.jsx": [
         ("STAGES.py", "HORS_MODELE")],

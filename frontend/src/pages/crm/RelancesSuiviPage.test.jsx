@@ -60,6 +60,15 @@ function mount() {
 // Bornes Casablanca — recalculées ICI indépendamment de l'écran (jamais un
 // import de son détail interne) pour que le test reste une vraie preuve, pas
 // une tautologie — même esprit que `CadenceFrise.mry15.test.jsx` (F3).
+// Un `TabsTrigger` Radix s'active sur mousedown (bouton 0) — jamais sur un
+// simple `click` synthétique (piège DOM RTL, même famille que le pointerdown
+// des menus Radix) : les deux événements, dans cet ordre.
+function activerOnglet(name) {
+  const tab = screen.getByRole('tab', { name })
+  fireEvent.mouseDown(tab, { button: 0 })
+  fireEvent.click(tab)
+}
+
 function casaISO(d) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(d)
 }
@@ -75,7 +84,7 @@ describe('RelancesSuiviPage (MRY31)', () => {
     // à l'onglet par défaut « Aujourd'hui + retard », qui compare au jour
     // réel d'exécution) — la seule façon de tester le regroupement/les
     // badges sans dépendre de la date du jour où la CI tourne.
-    fireEvent.click(screen.getByRole('tab', { name: '7 derniers jours' }))
+    activerOnglet('7 derniers jours')
     await waitFor(() => expect(screen.getAllByTestId('relance-etape-row')).toHaveLength(2))
 
     // `resume` vient TEL QUEL du serveur (jamais recompté écran) : 1/0/1/0.
@@ -93,13 +102,15 @@ describe('RelancesSuiviPage (MRY31)', () => {
     expect(screen.getByText(new RegExp(`${semaine} ${jour} ${mois}`, 'i'))).toBeInTheDocument()
 
     // La touche « fait » (id 412 du contrat) affiche l'auteur du marquage.
-    expect(screen.getByText(new RegExp(ETAPES[0].traite_par_nom))).toBeInTheDocument()
+    // Le badge complet (« Fait · HH:MM · auteur ») : le seul nom de l'auteur
+    // apparaît AUSSI dans la puce responsable de chaque ligne.
+    expect(screen.getByText(new RegExp(`^Fait · \\d{2}:\\d{2} · ${ETAPES[0].traite_par_nom}$`))).toBeInTheDocument()
   })
 
   it('« Demain » appelle l\'API avec les bornes de demain (Africa/Casablanca)', async () => {
     mount()
     await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('tab', { name: 'Demain' }))
+    activerOnglet('Demain')
     const today = casaISO(new Date())
     const demain = decalerJours(today, 1)
     await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledWith(
