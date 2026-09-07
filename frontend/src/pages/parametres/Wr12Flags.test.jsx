@@ -41,8 +41,10 @@ const baseForm = {
   dgi_export_actif: false, tva_standard: 20, tva_panneaux: 10,
   referral_enabled: false, referral_reward: '', lead_sla_hours: 24,
   responsable_defaut_leads: '', default_installer: '',
-  // MRY28/MRY8 — fenêtres d'appel (defaults du Guide de Meryem).
-  appel_heure_debut: '08:30', appel_heure_fin: '20:00',
+  // MRY28/MRY8 — fenêtres de contact (defaults du Guide de Meryem, scindées
+  // le 07/09/2026 : message 08:30, appel 09:00).
+  message_heure_debut: '08:30',
+  appel_heure_debut: '09:00', appel_heure_fin: '20:00',
   vendredi_pause_debut: '11:30', vendredi_pause_fin: '15:00',
   ramadan_debut: '', ramadan_fin: '',
   ramadan_appel_debut: '10:00', ramadan_appel_fin: '14:00',
@@ -131,5 +133,38 @@ describe('WR12 — LeadsSection (SLA premier contact FG28)', () => {
     expect(input).toBeInTheDocument()
     expect(input).toHaveValue(24)
     expect(input).toHaveAttribute('name', 'lead_sla_hours')
+  })
+})
+
+/* Décision fondateur du 07/09/2026 — les messages partent dès 08:30, les
+   appels jamais avant 09:00. L'écran doit donc porter DEUX ouvertures : une
+   seule aurait laissé Meryem régler « 09:00 » et retarder aussi le message
+   d'identité (ou régler « 08:30 » et faire sonner le téléphone à 08:33). */
+describe('MRY8 — LeadsSection (deux ouvertures : messages ≠ appels)', () => {
+  it('expose « Début des messages » lié à message_heure_debut', () => {
+    render(<LeadsSection {...leadsProps} />)
+    const input = screen.getByLabelText('Début des messages')
+    expect(input).toHaveAttribute('name', 'message_heure_debut')
+    expect(input).toHaveAttribute('type', 'time')
+    expect(input).toHaveValue('08:30')
+  })
+
+  it('garde « Début des appels » distinct, à 09:00', () => {
+    render(<LeadsSection {...leadsProps} />)
+    const appels = screen.getByLabelText('Début des appels')
+    expect(appels).toHaveAttribute('name', 'appel_heure_debut')
+    expect(appels).toHaveValue('09:00')
+    expect(appels).not.toBe(screen.getByLabelText('Début des messages'))
+  })
+
+  it('remonte la saisie au formulaire parent via `set`', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    const set = vi.fn()
+    render(<LeadsSection {...leadsProps} set={set} />)
+    await user.type(screen.getByLabelText('Début des messages'), '09:15')
+    expect(set).toHaveBeenCalled()
+    const evenement = set.mock.calls.at(-1)[0]
+    expect(evenement.target.name).toBe('message_heure_debut')
   })
 })
