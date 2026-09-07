@@ -165,6 +165,11 @@ fi
 if [ "$ok" = "1" ]; then
   $COMPOSE exec -T django_core python manage.py migrate --noinput   || ok=0
   $COMPOSE exec -T django_core python manage.py init_roles          || ok=0
+  # Publie (versionné) le Guide de Meryem/Protocole de rappel/Carte one-page
+  # dans la GED + notifie Meryem et la direction à chaque nouvelle version —
+  # best-effort : docs/meryem/ absent ou inchangé ne doit jamais faire
+  # échouer un déploiement.
+  $COMPOSE exec -T django_core python manage.py publier_documents_meryem || true
   # nginx garde l'ancienne adresse de django après recréation -> 502 sinon.
   $COMPOSE restart nginx                                            || ok=0
   # Caddyfile est un bind mount : reload explicite (zéro coupure), inoffensif sinon.
