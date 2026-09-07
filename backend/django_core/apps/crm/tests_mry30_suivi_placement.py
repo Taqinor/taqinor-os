@@ -20,7 +20,15 @@ centaines de dossiers d'un coup :
   * une cadence positionnée dont toutes les touches sont déjà passées : elle
     ne relancerait personne, et laisserait un rappel fantôme derrière elle ;
   * 200 réveils le même matin, c'est-à-dire 200 messages en rafale depuis le
-    même numéro.
+    même numéro ;
+  * un aperçu qui CALCULE en écrivant : celui du 06/09 matérialisait les
+    touches des 277 candidats dans une transaction annulée — plus de 20 s,
+    donc deux 499 dans nginx le 07/09 (le navigateur abandonne à 20 s) et un
+    écran qui n'affichait jamais rien. Aperçu comme application se traitent
+    désormais par petits morceaux : calcul pur d'un côté, lots de `limite`
+    leads de l'autre ;
+  * des lots qui se marchent dessus : sans compter les réveils DÉJÀ posés,
+    le lot 2 reposerait ses huit réveils sur les créneaux du lot 1.
 
 Le temps est GELÉ dans tous ces tests : « aujourd'hui », « en retard » et les
 créneaux étalés sont exactement les questions qu'une horloge vivante rend
@@ -43,8 +51,8 @@ from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import relance_etapes_dues
 from apps.crm.services import (
-    PLACEMENT_NOTE_PASSEE, PLACEMENT_REVEILS_PAR_JOUR, initialiser_plan_relance,
-    placer_anciens_leads)
+    PLACEMENT_CRENEAUX, PLACEMENT_NOTE_PASSEE, PLACEMENT_REVEILS_PAR_JOUR,
+    calculer_echeances_cadence, initialiser_plan_relance, placer_anciens_leads)
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 
@@ -312,8 +320,9 @@ class _PlacementBase(_Base):
             taux_tva=Decimal('20.00'),
             date_envoi=MERCREDI - datetime.timedelta(days=jours))
 
-    def _placer(self, *, apply=True):
-        return placer_anciens_leads(self.company, self.acteur, apply=apply)
+    def _placer(self, *, apply=True, limite=None):
+        return placer_anciens_leads(self.company, self.acteur, apply=apply,
+                                    limite=limite)
 
     def _codes(self, rapport):
         return {bloc['code']: bloc['nombre'] for bloc in rapport['par_etape']}
@@ -558,7 +567,7 @@ class ApercuTests(_PlacementBase):
         self.assertEqual(
             set(self._placer(apply=False)),
             {'apply', 'total_candidats', 'a_placer', 'ignores', 'par_etape',
-             'apercu', 'reveils_jusqu_au', 'applique', 'erreurs'})
+             'apercu', 'reveils_jusqu_au', 'applique', 'erreurs', 'restants'})
 
     def test_sans_dormant_reveils_jusqu_au_est_nul(self):
         self.dormant.delete()
@@ -665,6 +674,26 @@ class EndpointTests(_PlacementBase):
         self.assertEqual(resp.data['applique'], 1)
         self.assertGreater(RelanceEtape.objects.count(), 0)
 
+    def test_une_limite_hors_bornes_est_refusee(self):
+        """`limite` borne le nombre d'écritures d'UNE requête : 0 ne placerait
+        rien pour toujours, 201 ramène le cas qui a produit le 499."""
+        for valeur in (0, 201):
+            resp = self._api().post(
+                PLACEMENT_URL, {'apply': True, 'limite': valeur},
+                format='json')
+            self.assertEqual(resp.status_code, 400, valeur)
+            self.assertIn('limite', resp.data)
+        self.assertEqual(RelanceEtape.objects.count(), 0)
+
+    def test_la_limite_borne_le_lot_et_restants_annonce_la_suite(self):
+        self._lead('Second', stage=stages.NEW, jours=3)
+        resp = self._api().post(PLACEMENT_URL, {'apply': True, 'limite': 1},
+                                format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['a_placer'], 2)
+        self.assertEqual(resp.data['applique'], 1)
+        self.assertEqual(resp.data['restants'], 1)
+
     def test_un_apply_non_booleen_est_refuse(self):
         resp = self._api().post(PLACEMENT_URL, {'apply': 'oui'},
                                 format='json')
@@ -699,6 +728,28 @@ class CommandeTests(_PlacementBase):
         self.assertIn('2 lead(s) placé(s).', texte)
         self.assertGreater(RelanceEtape.objects.count(), 0)
 
+    def test_apply_par_lots_boucle_jusqu_a_restants_zero(self):
+        """La commande suit la même découpe que l'écran : un lot par appel,
+        et elle rappelle tant qu'il reste quelque chose. Sans la boucle,
+        `--apply --limite 2` laisserait 3 dossiers non placés en silence."""
+        for rang in range(3):
+            self._lead(f'Dormant {rang}', stage=stages.NEW, jours=70 + rang)
+        texte = self._appeler('--apply', '--limite', '2')
+        lots = [ligne for ligne in texte.splitlines()
+                if ligne.startswith('Lot ')]
+        self.assertEqual(len(lots), 3, texte)
+        self.assertTrue(lots[-1].endswith('restants 0.'), lots)
+        self.assertIn('5 lead(s) placé(s).', texte)
+        self.assertEqual(
+            Lead.objects.filter(company=self.company,
+                                relance_etapes__isnull=True).count(), 0)
+
+    def test_une_limite_hors_bornes_est_refusee(self):
+        with self.assertRaises(CommandError):
+            call_command('placer_anciens_leads', '--company',
+                         self.company.slug, '--apply', '--limite', '0',
+                         stdout=io.StringIO())
+
     def test_une_societe_introuvable_est_refusee(self):
         with self.assertRaises(CommandError):
             call_command('placer_anciens_leads', '--company', 'inexistante',
@@ -711,3 +762,182 @@ class CommandeTests(_PlacementBase):
         _company(f'{self.slug}-bis')
         with self.assertRaises(CommandError):
             call_command('placer_anciens_leads', stdout=io.StringIO())
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. Le calcul d'échéances, extrait — et l'aperçu qui s'en sert
+# ═══════════════════════════════════════════════════════════════════════════
+
+class CalculEcheancesTests(_Base):
+    """`calculer_echeances_cadence` est la fonction que l'aperçu du placement
+    utilise pour DATER une cadence sans l'écrire. Si elle divergeait d'un
+    cheveu de ce qu'`initialiser_plan_relance` crée, l'aperçu recommencerait à
+    mentir — la faute même que le dry-run en transaction annulée évitait."""
+
+    slug = 'mry30-echeances'
+
+    def test_le_calcul_pur_donne_exactement_les_echeances_ecrites(self):
+        lead = self._lead('Neuf', stage=stages.NEW, jours=2)
+        calcule = [echeance for _, echeance in calculer_echeances_cadence(
+            lead, 'contact', MERCREDI)]
+        ecrites = [etape.due_at for etape in initialiser_plan_relance(
+            lead, self.acteur, cadence='contact', depart=MERCREDI)]
+        self.assertEqual(ecrites, calcule)
+        self.assertGreater(len(calcule), 1)
+
+    def test_la_touche_dominicale_est_datee_a_lidentique(self):
+        """Le barreau `dimanche_famille` est le seul qui ne suit pas la
+        formule : il se PLACE sur un dimanche. C'est donc lui qu'un calcul
+        « à côté » raterait en premier."""
+        lead = self._lead('Famille', stage=stages.QUOTE_SENT, jours=1,
+                          tags='Décision à plusieurs')
+        calcule = [echeance for _, echeance in calculer_echeances_cadence(
+            lead, 'apres_devis', MERCREDI)]
+        ecrites = [etape.due_at for etape in initialiser_plan_relance(
+            lead, self.acteur, cadence='apres_devis', depart=MERCREDI)]
+        self.assertEqual(ecrites, calcule)
+        self.assertTrue(
+            any(echeance.astimezone(horaires.CASABLANCA).weekday() == 6
+                for echeance in calcule))
+
+    def test_le_calcul_pur_necrit_aucune_touche(self):
+        lead = self._lead('Neuf', stage=stages.NEW, jours=2)
+        calculer_echeances_cadence(lead, 'contact', MERCREDI)
+        self.assertEqual(RelanceEtape.objects.count(), 0)
+
+
+class ApercuPurTests(_PlacementBase):
+    """L'aperçu ne passe plus par une exécution annulée : il CALCULE."""
+
+    slug = 'mry30-apercu-pur'
+
+    def setUp(self):
+        super().setUp()
+        self.neuf = self._lead('Neuf', stage=stages.NEW, jours=2)
+        self.suivi = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        self.dormant = self._lead('Dormant', stage=stages.NEW, jours=60)
+
+    def test_lapercu_ne_cree_ni_touche_ni_ligne_de_chatter(self):
+        avant = (RelanceEtape.objects.count(), LeadActivity.objects.count())
+        rapport = self._placer(apply=False)
+        self.assertEqual(
+            (RelanceEtape.objects.count(), LeadActivity.objects.count()),
+            avant)
+        self.assertEqual(rapport['applique'], 0)
+        self.assertEqual(rapport['erreurs'], 0)
+
+    def test_deux_apercus_de_suite_annoncent_la_meme_chose(self):
+        """Rien n'ayant été écrit, le second aperçu doit être le premier —
+        au caractère près. Un aperçu qui écrivait « un peu » (un gabarit, une
+        touche oubliée) se trahirait ici."""
+        premier = self._placer(apply=False)
+        second = self._placer(apply=False)
+        self.assertEqual(premier['apercu'], second['apercu'])
+        self.assertEqual(premier['par_etape'], second['par_etape'])
+        self.assertEqual(premier['reveils_jusqu_au'],
+                         second['reveils_jusqu_au'])
+
+    def test_en_apercu_restants_vaut_a_placer(self):
+        rapport = self._placer(apply=False)
+        self.assertEqual(rapport['a_placer'], 3)
+        self.assertEqual(rapport['restants'], rapport['a_placer'])
+
+    def test_lapercu_date_chacune_de_ses_lignes(self):
+        for ligne in self._placer(apply=False)['apercu']:
+            self.assertTrue(ligne['prochaine_touche'], ligne)
+            self.assertTrue(ligne['prochaine_le'], ligne)
+
+
+class ApercuPositionneTests(_PlacementBase):
+    slug = 'mry30-apercu-positionne'
+
+    def test_la_ligne_positionnee_date_la_premiere_touche_non_passee(self):
+        """La cadence part d'il y a dix jours : ses premières touches sont
+        derrière nous. L'aperçu doit annoncer la première touche À VENIR — et
+        exactement celle que l'application créera ensuite."""
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        ligne = self._placer(apply=False)['apercu'][0]
+        self.assertEqual(ligne['code'], 'contact_positionne')
+
+        self._placer(apply=True)
+        touche = (lead.relance_etapes
+                  .filter(statut=RelanceEtape.Statut.A_FAIRE)
+                  .order_by('due_at').first())
+        self.assertIsNotNone(touche)
+        self.assertGreaterEqual(touche.due_at, MERCREDI)
+        self.assertEqual(ligne['prochaine_touche'], touche.libelle)
+        self.assertEqual(
+            ligne['prochaine_le'],
+            touche.due_at.astimezone(horaires.CASABLANCA).isoformat())
+
+    def test_une_cadence_entierement_passee_est_annoncee_dormante(self):
+        """La bascule appartient à la DÉCISION : annoncée « après devis » puis
+        écrite « dormant », la carte montrerait deux chiffres différents pour
+        le même clic."""
+        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=40)
+        self._devis(lead, jours=30)
+        apercu = self._placer(apply=False)
+        self.assertEqual(self._codes(apercu), {'dormant_devis': 1})
+        self.assertEqual(apercu['apercu'][0]['cadence'], 'reveil')
+        self.assertEqual(self._codes(self._placer(apply=True)),
+                         {'dormant_devis': 1})
+
+
+class LotsTests(_PlacementBase):
+    """L'application par lots — et la continuité des créneaux entre eux."""
+
+    slug = 'mry30-lots'
+
+    def setUp(self):
+        super().setUp()
+        # Ancres décroissantes : `dormants[0]` (60 j) prend le premier
+        # créneau, `dormants[4]` (64 j) le dernier.
+        self.dormants = [
+            self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang)
+            for rang in range(5)]
+
+    def _creneau(self, rang):
+        return datetime.datetime.combine(
+            MERCREDI.date(), PLACEMENT_CRENEAUX[rang],
+            tzinfo=horaires.CASABLANCA)
+
+    def _premiere(self, lead):
+        return self._reveils(lead)[0].due_at.astimezone(horaires.CASABLANCA)
+
+    def test_un_lot_de_deux_place_deux_leads_et_annonce_le_reste(self):
+        rapport = self._placer(limite=2)
+        self.assertEqual(rapport['a_placer'], 5)
+        self.assertEqual(rapport['applique'], 2)
+        self.assertEqual(rapport['erreurs'], 0)
+        self.assertEqual(rapport['restants'], 3)
+        self.assertEqual([self._premiere(lead) for lead in self.dormants[:2]],
+                         [self._creneau(0), self._creneau(1)])
+        self.assertEqual(
+            RelanceEtape.objects.filter(lead__in=self.dormants[2:]).count(), 0)
+
+    def test_le_lot_suivant_prolonge_la_file_au_lieu_de_la_recommencer(self):
+        """LE piège des lots : sans compter les réveils déjà posés, les trois
+        derniers dormants repartiraient au créneau de 10 h — cinq messages
+        empilés sur deux créneaux, depuis le même numéro."""
+        self._placer(limite=2)
+        rapport = self._placer(limite=40)
+        self.assertEqual(rapport['a_placer'], 3)
+        self.assertEqual(rapport['applique'], 3)
+        self.assertEqual(rapport['restants'], 0)
+        self.assertEqual([self._premiere(lead) for lead in self.dormants],
+                         [self._creneau(rang) for rang in range(5)])
+
+    def test_un_apercu_entre_deux_lots_annonce_le_prochain_creneau_libre(self):
+        self._placer(limite=2)
+        ligne = self._placer(apply=False)['apercu'][0]
+        self.assertEqual(ligne['lead'], self.dormants[2].pk)
+        self.assertEqual(ligne['prochaine_le'], self._creneau(2).isoformat())
+        self.assertEqual(ligne['prochaine_touche'], 'Réveil J30')
+
+    def test_le_lot_ne_deborde_pas_sur_le_jour_suivant_sans_raison(self):
+        """Cinq dormants tiennent dans les huit créneaux d'un jour ouvré :
+        aucun ne doit partir au lendemain."""
+        self._placer(limite=40)
+        self.assertEqual(
+            {self._premiere(lead).date() for lead in self.dormants},
+            {MERCREDI.date()})
