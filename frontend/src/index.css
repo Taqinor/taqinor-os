@@ -6324,6 +6324,33 @@ textarea.form-control {
   border-color: color-mix(in oklch, var(--destructive) 40%, transparent);
   cursor: pointer;
 }
+/* RÈGLE FONDATEUR 08/09/2026 — chip d'erreur NOMMÉ (fieldLabels.js) : le
+   message peut être long (« Non enregistré — « <Label> » : <texte serveur> »),
+   tronqué visuellement (titre HTML porte le texte complet) ; « Réessayer »
+   reste un second bouton distinct, toujours visible à côté. */
+.lw-savechip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+.lw-savechip-group .lw-savechip--error {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lw-savechip-retry {
+  font-size: var(--text-small);
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
+  background: transparent;
+  color: var(--destructive);
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
 
 /* Bannières (brouillon restauré / stale). */
 .lw-banner {

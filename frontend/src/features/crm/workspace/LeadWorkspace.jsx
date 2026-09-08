@@ -29,6 +29,8 @@ import { useConfirmerRecul } from '../confirmRecul'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
+import { jumpToField } from './jumpToField'
+import fieldLabels from './fieldLabels'
 import IdentityRail from './IdentityRail'
 import SectionsPane from './SectionsPane'
 import ContextRail from './ContextRail'
@@ -89,7 +91,15 @@ function goToSection(id) {
 }
 
 // Chip d'état de sauvegarde (autosauvegarde D2). Jamais de spinner bloquant.
-function SaveChip({ saveState, onRetry }) {
+// RÈGLE FONDATEUR 08/09/2026 — en erreur, le chip NOMME le champ fautif (déjà
+// résolu par l'appelant via fieldLabels.js → `errorField`) et un clic dessus y
+// saute (déplie + focalise, `jumpToField` — jamais de re-saisie manuelle de la
+// même logique que SectionsPane/DevisTab). « Réessayer » reste TOUJOURS une
+// action distincte et visible : quand aucun champ n'est résolvable (échec
+// réseau/serveur générique — pas de data 400 exploitable), le chip retombe sur
+// son unique bouton historique (texte + comportement inchangés, régression
+// zéro pour ce cas — cf. LeadWorkspace.test.jsx « échec réseau »).
+function SaveChip({ saveState, saveError, errorField, onRetry }) {
   if (saveState === 'saving') {
     return <span className="lw-savechip lw-savechip--saving" role="status" aria-live="polite">Enregistrement…</span>
   }
@@ -97,6 +107,23 @@ function SaveChip({ saveState, onRetry }) {
     return <span className="lw-savechip lw-savechip--saved" role="status" aria-live="polite">✓ Enregistré</span>
   }
   if (saveState === 'error') {
+    if (errorField) {
+      return (
+        <span className="lw-savechip-group" role="alert">
+          <button
+            type="button"
+            className="lw-savechip lw-savechip--error"
+            title={saveError}
+            onClick={() => jumpToField({ section: errorField.section, field: errorField.inputId })}
+          >
+            ⚠ {saveError}
+          </button>
+          <button type="button" className="lw-savechip-retry" onClick={onRetry}>
+            Réessayer
+          </button>
+        </span>
+      )
+    }
     return (
       <button type="button" className="lw-savechip lw-savechip--error" onClick={onRetry}>
         ⚠ Non enregistré — Réessayer
@@ -153,6 +180,11 @@ export default function LeadWorkspace({
   const {
     state, field, setField, saveState, leaveGuard, changeStage, loadFresh,
   } = draft
+  // RÈGLE FONDATEUR 08/09/2026 — quel champ nommer sur le chip d'erreur (SaveChip) :
+  // la PREMIÈRE clé de `errors` qui a une entrée dans fieldLabels.js (celles sans
+  // entrée — `submit`, motif_perte posé par la validation CLIENT de création,
+  // etc. — sont ignorées ici, `find(Boolean)` saute silencieusement les `undefined`).
+  const primaryErrorField = Object.keys(errors).map((k) => fieldLabels[k]).find(Boolean) || null
   // Primitives STABLES hoistées : le compilateur React (lint v7) refuse de
   // préserver un useCallback dont les deps mêlent optional-chaining et objet
   // entier — on ne dépend que de scalaires.
@@ -654,7 +686,14 @@ export default function LeadWorkspace({
               Contexte
             </Button>
           )}
-          {mode === 'edit' && <SaveChip saveState={saveState} onRetry={draft.retry} />}
+          {mode === 'edit' && (
+            <SaveChip
+              saveState={saveState}
+              saveError={state.saveError}
+              errorField={primaryErrorField}
+              onRetry={draft.retry}
+            />
+          )}
           <button type="button" className="modal-close" onClick={requestClose} aria-label="Fermer">✕</button>
         </div>
       </header>

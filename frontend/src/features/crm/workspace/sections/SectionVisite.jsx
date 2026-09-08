@@ -4,15 +4,18 @@ import AppointmentBooker from '../../../../pages/crm/leads/AppointmentBooker'
 
 // LW11 — Visite technique : port 1:1 + AppointmentBooker embarqué (satellite
 // conservé en place), édition uniquement.
-export default function SectionVisite({ state, setField, mode, refData = {} }) {
+export default function SectionVisite({ state, setField, errors = {}, mode, refData = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const visiteEffectuee = !!getField(state, 'visite_effectuee')
   const { leadId } = refData
   return (
     <>
       <div className="form-row">
-        <FormField label="Visite prévue le" htmlFor="lf-visite-prevue">
-          <Input id="lf-visite-prevue" type="date" value={v('visite_prevue_le')} onChange={(e) => setField('visite_prevue_le', e.target.value)} />
+        <FormField label="Visite prévue le" htmlFor="lf-visite-prevue" error={errors.visite_prevue_le}>
+          <Input
+            id="lf-visite-prevue" type="date" invalid={!!errors.visite_prevue_le}
+            value={v('visite_prevue_le')} onChange={(e) => setField('visite_prevue_le', e.target.value)}
+          />
         </FormField>
         <div className="form-group" style={{ alignSelf: 'flex-end' }}>
           <label className="pdf-toggle">
@@ -24,8 +27,11 @@ export default function SectionVisite({ state, setField, mode, refData = {} }) {
           </label>
         </div>
         <div className="form-group fg-grow">
-          <FormField label="Notes de visite" htmlFor="lf-visite-notes">
-            <Input id="lf-visite-notes" value={v('visite_notes')} onChange={(e) => setField('visite_notes', e.target.value)} />
+          <FormField label="Notes de visite" htmlFor="lf-visite-notes" error={errors.visite_notes}>
+            <Input
+              id="lf-visite-notes" invalid={!!errors.visite_notes}
+              value={v('visite_notes')} onChange={(e) => setField('visite_notes', e.target.value)}
+            />
           </FormField>
         </div>
       </div>
