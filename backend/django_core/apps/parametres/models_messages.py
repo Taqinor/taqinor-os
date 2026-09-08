@@ -82,7 +82,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     'j1_pdf':
         "Le PDF s'ouvre bien ? Qu'est-ce qui vous a le plus parlé ?",
     'j4_preuve':
-        "Voici une installation comparable à la vôtre, posée en [mois] à [ville] ; le suivi de production est en temps réel, je peux vous montrer.",
+        "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Le suivi de production est en temps réel, je peux vous montrer.",
     'j6_garanties':
         "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive.",
     'j9_validite':
@@ -146,7 +146,15 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
 # (prix, kWc, économies) : ces valeurs restent dans le devis et la
 # proposition, jamais dans un message automatique.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}"]
+#
+# Ordre fondateur du 08/09/2026 — les trois derniers sont la PREUVE de la
+# touche `j4_preuve` : mois, ville et lien de page publique d'une
+# `parametres.Realisation` RÉELLE, choisie côté serveur par
+# `parametres.selectors.realisation_pour_lead`. Ce ne sont pas des chiffres
+# commerciaux : ce sont les coordonnées d'un chantier existant que le client
+# peut aller voir. Sans réalisation, ils restent vides et la phrase est OMISE
+# (MRY13) — jamais un crochet à remplir à la main, jamais une preuve inventée.
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [

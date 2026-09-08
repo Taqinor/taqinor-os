@@ -108,6 +108,7 @@ export const SETTINGS_SEARCH_INDEX = [
   { tab: 'tarification', terms: ['barème onee', 'paliers', 'force motrice', 'agricole', 'surplus injecté', 'autoconsommation', 'pertes système', 'productible', 'pvgis', 'irradiation', 'roi', 'rentabilité'] },
   { tab: 'stock', terms: ['stock', 'catégories', 'fournisseurs', 'marques', 'seuil'] },
   { tab: 'point_de_vente', terms: ['point de vente', 'pos', 'caisse', 'boutique', 'boutiques', 'taux horaire comptoir', 'surface', 'adresse boutique'] },
+  { tab: 'realisations', terms: ['réalisations', 'realisations', 'installations réelles', 'chantier comparable', 'preuve', 'références clients', 'page publique', 'suivi de production'] },
   { tab: 'statuts', terms: ['statuts', 'libellé', 'ordre'] },
   { tab: 'monitoring', terms: ['supervision', 'sous-performance', 'auto-ticket', 'sav'] },
   { tab: 'checklists', terms: ['checklist', 'modèles de checklist', 'étapes', 'capture série'] },

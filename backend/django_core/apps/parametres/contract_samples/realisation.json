@@ -1,0 +1,49 @@
+{
+  "endpoint": "GET /api/django/parametres/realisations/",
+  "pourquoi": "PACT10 — le catalogue « Réalisations » (ordre fondateur 08/09/2026) a deux moitiés qui ne partagent aucun fichier : l'écran Paramètres → Réalisations (frontend) et le modèle `parametres.Realisation` + le sélecteur `realisation_pour_lead` qui alimente la touche J4 `j4_preuve`. Le contrat est donc publié d'avance. Ce qu'il fige : `company` n'est JAMAIS dans le corps (forcée par le socle ARC2) ; `date_creation` est le `created_at` du socle TenantModel exposé sous son nom métier (pas de colonne dupliquée) ; `ville` est renvoyée CANONISÉE par le gazetier (`villes_resolution.corriger_ville` — « belksiri » enregistré ressort « Mechraa Bel Ksiri »), et un texte non reconnu ressort INCHANGÉ ; `mise_en_service` est toujours le 1er du mois (précision MOIS, le message ne dit jamais mieux) ; `puissance_kwc` et `mise_en_service` sont NULLABLES — un champ inconnu reste `null` et sa phrase est omise au rendu (MRY13), jamais un défaut forfaitaire. Unicité `(company, url_page)` : une page publique décrit UNE installation. `?actif=true` filtre la liste.",
+  "exemple": {
+    "id": 12,
+    "titre": "Villa à Bouskoura",
+    "ville": "Bouskoura",
+    "puissance_kwc": "6.60",
+    "mise_en_service": "2026-07-01",
+    "url_page": "https://taqinor.ma/realisations/villa-bouskoura/",
+    "lien_suivi": "https://monitoring.example.com/p/villa-bouskoura",
+    "actif": true,
+    "date_creation": "2026-09-08T09:15:00Z"
+  },
+  "exemple_liste": [
+    {
+      "id": 12,
+      "titre": "Villa à Bouskoura",
+      "ville": "Bouskoura",
+      "puissance_kwc": "6.60",
+      "mise_en_service": "2026-07-01",
+      "url_page": "https://taqinor.ma/realisations/villa-bouskoura/",
+      "lien_suivi": "https://monitoring.example.com/p/villa-bouskoura",
+      "actif": true,
+      "date_creation": "2026-09-08T09:15:00Z"
+    },
+    {
+      "id": 13,
+      "titre": "Ferme à Mechraa Bel Ksiri",
+      "ville": "Mechraa Bel Ksiri",
+      "puissance_kwc": null,
+      "mise_en_service": null,
+      "url_page": "https://taqinor.ma/realisations/ferme-mechraa-bel-ksiri/",
+      "lien_suivi": "",
+      "actif": true,
+      "date_creation": "2026-09-08T09:20:00Z"
+    }
+  ],
+  "exemple_vide": [],
+  "notes": {
+    "company": "jamais dans le corps ni dans la réponse — filtrée et forcée par CompanyScopedModelViewSet (ARC2).",
+    "ville": "nom canonique du gazetier quand il reconnaît le texte (statut exacte/corrigee) ; sinon le texte tel quel.",
+    "puissance_kwc": "chaîne décimale (6,2) ou null. Sert à départager deux réalisations d'une même ville, jamais à remplir un message.",
+    "mise_en_service": "date ISO au 1er du mois, ou null. Rendue « juillet 2026 » dans le message ({mois_preuve}).",
+    "lien_suivi": "chaîne vide quand le suivi de production n'est pas public — jamais null.",
+    "permissions": "lecture : tout rôle ; écriture (POST/PATCH/DELETE) : Administrateur ou Responsable promu (403 sinon).",
+    "consommateur": "parametres.selectors.realisation_pour_lead → crm.services.message_pour_etape remplit {ville_preuve}/{mois_preuve}/{lien_preuve} de la touche j4_preuve ; sans réalisation les trois restent vides et la phrase est OMISE."
+  }
+}

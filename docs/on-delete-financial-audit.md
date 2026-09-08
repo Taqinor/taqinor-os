@@ -733,6 +733,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/parametres/models_payment_terms.py::ConditionPaiement.company` | backend/django_core/apps/parametres/models_payment_terms.py:26 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py::ParametresPos.company` | backend/django_core/apps/parametres/models_pos.py:30 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py::BoutiquePos.company` | backend/django_core/apps/parametres/models_pos.py:82 | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_realisations.py::Realisation.company` | backend/django_core/apps/parametres/models_realisations.py:45 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_relance.py::CadenceRelanceEtape.company` | backend/django_core/apps/parametres/models_relance.py:176 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_statuses.py::StatutConfig.company` | backend/django_core/apps/parametres/models_statuses.py:31 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_tariff.py::TariffSettings.company` | backend/django_core/apps/parametres/models_tariff.py:81 | authentication.Company | CASCADE |

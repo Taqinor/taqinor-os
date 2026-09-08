@@ -11,7 +11,14 @@ champs tels quels, avec un repli explicite quand le profil est absent.
 """
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
+
+#: Rayon maximal (km) d'une preuve « ville voisine ». Au-delà, « une
+#: installation comparable à la vôtre » ne serait plus vrai : mieux vaut
+#: n'envoyer aucune preuve (la phrase est alors OMISE, MRY13) qu'en montrer
+#: une à l'autre bout du pays.
+RAYON_PREUVE_KM = 60
 
 
 def _profile(company):
@@ -142,3 +149,120 @@ def residential_tranches_for(company) -> dict | None:
             mk = mk - tol
         pairs.append((mk, float(t["prix_kwh_ttc"])))
     return {"pairs": pairs, "selective_threshold": seuil, "boundary_tolerance": tol}
+
+
+# ── Catalogue « Réalisations » — la preuve de la touche J4 ─────────────────
+# Ordre fondateur du 08/09/2026 : le message d'après-devis « Voici une
+# installation comparable à la vôtre » ne se remplit plus à la main. Ces
+# lectures choisissent l'installation RÉELLE à montrer. Tout est PUR : aucune
+# écriture, et rien n'est fabriqué — sans candidate crédible on rend ``None``,
+# et le rendu OMET la phrase (MRY13) au lieu d'inventer une preuve.
+
+
+def _ville_canonique(texte):
+    """Nom canonique du gazetier pour ``texte``, sinon le texte nettoyé.
+
+    Même règle que ``villes_resolution.corriger_ville`` (VREF 07/09/2026) :
+    seule une résolution CONFIANTE (``exacte``/``corrigee``) remplace le
+    texte ; ``ambigue``/``inconnue`` le laissent intact — on ne devine pas
+    une ville."""
+    from .villes_resolution import corriger_ville
+    return corriger_ville((texte or "").strip())
+
+
+def _cle_recence(realisation):
+    """Clé de tri « la plus récente d'abord » (mise en service, puis id).
+
+    Une mise en service inconnue n'est jamais promue devant une date réelle :
+    elle prend la date minimale."""
+    return (realisation.mise_en_service or datetime.date.min,
+            realisation.id or 0)
+
+
+def _puissance_du_dernier_devis(lead):
+    """kWc du dernier devis calepiné du lead, ou ``None``.
+
+    Lecture cross-app par le SÉLECTEUR de ``ventes``
+    (``conception_pour_lead``), jamais par ses modèles — frontière M3. Ce
+    sélecteur ne regarde que les devis PORTANT UN CALEPINAGE (``roof_layout``)
+    et retombe sur ``etude_params['puissance_kwc']`` : un lead sans conception
+    3D rend donc ``None``, ce qui fait simplement tomber le départage par
+    puissance sur « la plus récente ». Aucun chiffre n'est fabriqué ici."""
+    try:
+        from apps.ventes.selectors import conception_pour_lead
+        kwc = (conception_pour_lead(lead, lead.company) or {}).get("kwc")
+        return float(kwc) if kwc not in (None, "") else None
+    except Exception:  # noqa: BLE001 — un message ne casse jamais sur ce point
+        return None
+
+
+def realisation_pour_lead(lead):
+    """La réalisation à MONTRER à ce lead, ou ``None``.
+
+    Ordre de choix, strictement :
+
+    a. **même ville** (nom canonique du gazetier des deux côtés) — s'il y en a
+       plusieurs, celle dont la puissance est la plus proche de celle du
+       dernier devis du lead quand elle est connue, sinon la plus récente ;
+    b. sinon la **plus proche** à vol d'oiseau (haversine sur les coordonnées
+       du gazetier), dans la limite de ``RAYON_PREUVE_KM`` ;
+    c. sinon ``None``.
+
+    La ville du lead est ``ville_reference`` (ville ERP de rattachement choisie
+    sur l'écran « Vérifier la ville ») quand elle existe, sinon ``ville`` — le
+    texte tapé par le client. Un lead SANS ville rend ``None`` : « comparable à
+    la vôtre » est une affirmation géographique, on ne la fait pas au hasard.
+
+    Lecture PURE (aucune écriture), scopée à ``lead.company``."""
+    company = getattr(lead, "company", None) if lead is not None else None
+    if company is None:
+        return None
+
+    from .models_realisations import Realisation
+    from .villes_maroc import coordonnees_ville
+    from .villes_resolution import _haversine_km  # même formule, une seule fois
+
+    lignes = sorted(
+        Realisation.objects.filter(company=company, actif=True),
+        key=_cle_recence, reverse=True)
+    if not lignes:
+        return None
+
+    ville_lead = _ville_canonique(
+        (getattr(lead, "ville_reference", "") or "").strip()
+        or (getattr(lead, "ville", "") or "").strip())
+    if not ville_lead:
+        return None
+
+    # (a) Même ville. ``lignes`` est déjà trié du plus récent au plus ancien :
+    # ``min`` renvoyant le PREMIER minimum, un ex æquo de puissance revient
+    # naturellement à la réalisation la plus récente.
+    memes = [r for r in lignes
+             if _ville_canonique(r.ville).casefold() == ville_lead.casefold()]
+    if memes:
+        if len(memes) == 1:
+            return memes[0]
+        cible = _puissance_du_dernier_devis(lead)
+        chiffrees = [r for r in memes if r.puissance_kwc is not None]
+        if cible is not None and chiffrees:
+            return min(chiffrees,
+                       key=lambda r: abs(float(r.puissance_kwc) - cible))
+        return memes[0]
+
+    # (b) La plus proche, dans le rayon. Une ville absente du gazetier (des
+    # deux côtés) n'a pas de coordonnées : elle ne participe pas au calcul
+    # plutôt que d'être placée arbitrairement.
+    origine = coordonnees_ville(ville_lead)
+    if origine is None:
+        return None
+    meilleure, distance_min = None, None
+    for realisation in lignes:
+        coords = coordonnees_ville(realisation.ville)
+        if coords is None:
+            continue
+        distance = _haversine_km(origine, coords)
+        if distance > RAYON_PREUVE_KM:
+            continue
+        if distance_min is None or distance < distance_min:
+            meilleure, distance_min = realisation, distance
+    return meilleure

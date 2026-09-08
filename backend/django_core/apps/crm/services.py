@@ -1174,7 +1174,61 @@ _TEMPLATES_VOCAUX = frozenset({'vocal_j3'})
 #: SANS valeur fait OMETTRE sa phrase — jamais un blanc, jamais un défaut.
 _PLACEHOLDERS_RENDUS = (
     'civilite', 'nom', 'prenom', 'ville', 'reference', 'lien',
-    'lien_rdv', 'date_validite', 'conseiller')
+    'lien_rdv', 'date_validite', 'conseiller',
+    # 08/09/2026 — la PREUVE de la touche `j4_preuve` (mois, ville et lien de
+    # la page publique d'une `parametres.Realisation` réelle).
+    'mois_preuve', 'ville_preuve', 'lien_preuve')
+
+#: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
+#: réalisation QUE si le texte en porte au moins un (même discipline que
+#: `{lien_rdv}` : aucun travail, aucune requête, quand ce n'est pas demandé).
+_PLACEHOLDERS_PREUVE = ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}')
+
+#: Noms de mois en français, pour « posée en juillet 2026 ». Codés ici plutôt
+#: que via une locale système : le rendu d'un message client ne doit pas
+#: dépendre des locales installées sur le serveur.
+_MOIS_FR = (
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
+    'août', 'septembre', 'octobre', 'novembre', 'décembre')
+
+
+def _mois_francais(valeur):
+    """« juillet 2026 » à partir d'une date, ou '' si elle est inconnue.
+
+    Une date absente rend une chaîne VIDE, ce qui fait omettre la phrase
+    (MRY13) — on n'écrit jamais un mois approximatif."""
+    if valeur is None:
+        return ''
+    try:
+        return f'{_MOIS_FR[valeur.month - 1]} {valeur.year}'
+    except (AttributeError, IndexError, TypeError):
+        return ''
+
+
+def _contexte_preuve(lead):
+    """MRY-PREUVE — mois / ville / lien d'une réalisation RÉELLE pour ce lead.
+
+    Le catalogue et le choix vivent dans l'app FONDATION `parametres`
+    (`selectors.realisation_pour_lead` : même ville d'abord, sinon la plus
+    proche dans le rayon) ; `crm` ne fait que consommer ce sélecteur. Aucune
+    réalisation utilisable → les trois valeurs restent VIDES et
+    `_omettre_phrases_incompletes` retire la phrase entière : jamais un
+    chantier inventé, jamais un crochet laissé au client."""
+    vide = {'mois_preuve': '', 'ville_preuve': '', 'lien_preuve': ''}
+    try:
+        from apps.parametres.selectors import realisation_pour_lead
+        realisation = realisation_pour_lead(lead)
+    except Exception:  # noqa: BLE001 — une preuve absente n'est jamais inventée
+        logger.warning('Preuve J4 : catalogue illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return vide
+    if realisation is None:
+        return vide
+    return {
+        'mois_preuve': _mois_francais(realisation.mise_en_service),
+        'ville_preuve': (realisation.ville or '').strip(),
+        'lien_preuve': (realisation.url_page or '').strip(),
+    }
 
 
 def _omettre_phrases_incompletes(texte, manquants):
@@ -1297,6 +1351,13 @@ def message_pour_etape(etape, *, request=None, user=None):
     if '{lien_rdv}' in (corps or ''):
         contexte['lien_rdv'] = (
             resoudre_lien_rdv('{lien_rdv}', lead, request=request) or '')
+
+    # La PREUVE de la touche J4 : mois, ville et lien d'une réalisation RÉELLE
+    # de la société, choisie sur la ville du lead. Résolue seulement si le
+    # texte la demande, et rejoignant le CONTEXTE (donc soumise au calcul des
+    # placeholders manquants) — sans catalogue, la phrase est OMISE.
+    if any(t in (corps or '') for t in _PLACEHOLDERS_PREUVE):
+        contexte.update(_contexte_preuve(lead))
 
     manquants = [cle for cle in _PLACEHOLDERS_RENDUS
                  if '{' + cle + '}' in (corps or '')

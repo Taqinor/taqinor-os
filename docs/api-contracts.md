@@ -3112,12 +3112,16 @@
     champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
 - frontend/src/api/parametresApi.js :: createConditionPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: createRealisation -> /api/django/parametres/realisations  [RealisationSerializer]
+    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: createTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: createUniteMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
     champs: actif, code, id, libelle
 - frontend/src/api/parametresApi.js :: deleteConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: deleteRealisation -> /api/django/parametres/realisations/<>  [RealisationSerializer]
+    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: deleteTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: deleteUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
@@ -3128,6 +3132,8 @@
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: getConditionsPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: getRealisations -> /api/django/parametres/realisations  [RealisationSerializer]
+    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: getTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: getUnitesMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
@@ -3138,6 +3144,8 @@
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: updateConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: updateRealisation -> /api/django/parametres/realisations/<>  [RealisationSerializer]
+    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: updateTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: updateUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
