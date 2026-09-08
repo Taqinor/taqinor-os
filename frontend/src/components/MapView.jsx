@@ -15,6 +15,10 @@ import { useTheme } from '../design/theme-context'
 //   zoom          : number             — zoom par défaut
 //   height        : CSS height (défaut 70vh)
 //   fitToMarkers  : bool — recadre la vue sur l'ensemble des marqueurs
+//   onMapClick    : ({ lat, lng }) => void — VREF-CARTE : clic sur le FOND de
+//                   carte (jamais sur un marqueur : Leaflet ne fait pas remonter
+//                   le clic d'un marqueur jusqu'à la carte). Sans la prop, rendu
+//                   et comportement byte-identiques à l'existant.
 //
 // VX32 — tuiles OSM assombries en mode sombre via filtre CSS (lit le thème
 // résolu depuis <ThemeProvider>) : pas de fond blanc figé la nuit.
@@ -71,6 +75,7 @@ export default function MapView({
   zoom = DEFAULT_ZOOM,
   height = '70vh',
   fitToMarkers = true,
+  onMapClick,
   // APX29 — tracé simple facultatif ([[lat, lng], …]) : relie les arrêts d'une
   // tournée dans l'ordre. Aucun service de routage (aucune clé, aucun appel) —
   // c'est une polyligne entre les points, jamais un itinéraire routier simulé.
@@ -81,10 +86,12 @@ export default function MapView({
   const layerRef = useRef(null)
   const tileLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
+  const mapClickRef = useRef(onMapClick)
   const { resolvedTheme } = useTheme()
 
   // Garde le gestionnaire de clic à jour sans recréer les marqueurs.
   useEffect(() => { clickRef.current = onMarkerClick }, [onMarkerClick])
+  useEffect(() => { mapClickRef.current = onMapClick }, [onMapClick])
 
   // Initialise la carte une seule fois.
   useEffect(() => {
@@ -100,6 +107,10 @@ export default function MapView({
       maxZoom: 19,
     }).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
+    // VREF-CARTE — clic sur le fond de carte → position cliquée.
+    map.on('click', (e) => {
+      if (mapClickRef.current) mapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng })
+    })
     mapRef.current = map
     return () => {
       map.remove()

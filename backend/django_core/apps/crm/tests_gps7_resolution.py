@@ -97,6 +97,39 @@ class AdresseTests(TestCase):
             self.assertIsNone(coords_depuis_adresse('xyz', 'Atlantis'))
 
 
+class _NominatimVide:
+    """Nominatim joignable mais qui ne connaît pas le lieu (réponse ``[]``)."""
+    ok = True
+
+    @staticmethod
+    def json():
+        return []
+
+
+class LieuDitTests(TestCase):
+    """VREF-LIEUX (08/09/2026) — le douar « sidi hashass » : Nominatim rend
+    ``[]``, le lieu-dit GeoNames (Douar Sidi Hashas, près de Madagh) place le
+    lead avec la précision ``'lieu-dit'`` ANNONCÉE — jamais maquillée en
+    adresse ; un homonyme (« Oulad Ali ») ne place jamais en silence."""
+
+    def test_lieu_dit_geonames_quand_nominatim_ignore_le_douar(self):
+        with patch('requests.get', return_value=_NominatimVide()):
+            resultat = coords_depuis_adresse('sidi hashass', '')
+        self.assertIsNotNone(resultat)
+        lat, lng, precision = resultat
+        self.assertEqual(precision, 'lieu-dit')
+        self.assertEqual((lat, lng), (Decimal('35.00611'), Decimal('-2.37346')))
+
+    def test_adresse_douar_corroboree_par_la_ville_du_lead(self):
+        with patch('requests.get', return_value=_NominatimVide()):
+            resultat = coords_depuis_adresse('Douar Sidi Hashass', 'Berkane')
+        self.assertEqual(resultat[2], 'lieu-dit')
+
+    def test_homonyme_ne_place_jamais_en_silence(self):
+        with patch('requests.get', return_value=_NominatimVide()):
+            self.assertIsNone(coords_depuis_adresse('oulad ali', ''))
+
+
 class ResolveurHttpTests(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(

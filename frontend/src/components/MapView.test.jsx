@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import MapView from './MapView'
 import { ThemeProvider } from '../design/ThemeProvider'
@@ -60,5 +60,27 @@ describe('MapView (VX195 — accessibilité clavier)', () => {
     renderMap({ markers: [] })
     expect(screen.queryByText('Liste des points de la carte (accès clavier)')).not.toBeInTheDocument()
     expect(screen.getByRole('application', { name: 'Carte, 0 points' })).toBeInTheDocument()
+  })
+})
+
+/* VREF-CARTE (08/09/2026) — `onMapClick` : un clic sur le FOND de carte (pas
+   sur un marqueur) remonte la position {lat, lng} cliquée. Sans la prop, le
+   rendu et le comportement sont byte-identiques à l'existant. */
+describe('MapView — onMapClick (VREF-CARTE)', () => {
+  it('un clic sur le fond de carte appelle onMapClick avec une position lat/lng', () => {
+    const onMapClick = vi.fn()
+    renderMap({ markers: [], onMapClick })
+    const carte = screen.getByRole('application', { name: 'Carte, 0 points' })
+    fireEvent.click(carte, { clientX: 10, clientY: 10 })
+    expect(onMapClick).toHaveBeenCalledTimes(1)
+    const position = onMapClick.mock.calls[0][0]
+    expect(Number.isFinite(position.lat)).toBe(true)
+    expect(Number.isFinite(position.lng)).toBe(true)
+  })
+
+  it('sans onMapClick, un clic sur le fond de carte est inerte', () => {
+    renderMap({ markers: [] })
+    const carte = screen.getByRole('application', { name: 'Carte, 0 points' })
+    expect(() => fireEvent.click(carte, { clientX: 10, clientY: 10 })).not.toThrow()
   })
 })
