@@ -18,6 +18,7 @@ import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import Picture from '../../../components/Picture.astro';
 import PhotoCaption from '../../../components/PhotoCaption.astro';
+import LiteVideo from '../../../components/LiteVideo.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../../lib/realisations';
@@ -65,7 +66,7 @@ const description = cs.description;
 const articleJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: `Solar installation ${r.kwc} ${cityIntro} — ref. ${r.ref}`,
+  headline: `Solar installation${r.kwc ? ` ${r.kwc}` : ''} ${cityIntro} — ref. ${r.ref}`,
   description: cs.resume,
   image: heroImg,
   about: { '@type': 'Thing', name: 'Photovoltaic solar installation' },
@@ -97,7 +98,7 @@ const galleryPhotos = rest;
       items={[
         { label: 'Home', href: L('/') },
         { label: 'Projects', href: L('/realisations') },
-        { label: `${r.ville} · ${r.kwc}` },
+        { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville },
       ]}
     />
 
@@ -111,7 +112,9 @@ const galleryPhotos = rest;
       <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Ref. {r.ref} · {r.ville} · {r.date}</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
-          {r.kwc} of solar installation {cityIntro}
+          {r.kwc
+            ? <>{r.kwc} of solar installation {cityIntro}</>
+            : <>Solar installation {cityIntro}</>}
         </h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{cs.resume}</p>
       </div>
@@ -120,11 +123,13 @@ const galleryPhotos = rest;
     <!-- Key figures — only what is published -->
     <section class="border-y border-white/10 px-4 py-14 sm:py-16">
       <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          {/* W211 — whitespace-nowrap removed: wide production values can overflow at 320 px */}
-          <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Installed power</dt>
-        </div>
+        {r.kwc && (
+          <div class="v2-rise" style="--v2-i:0">
+            {/* W211 — whitespace-nowrap removed: wide production values can overflow at 320 px */}
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Installed power</dt>
+          </div>
+        )}
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
@@ -135,10 +140,12 @@ const galleryPhotos = rest;
             </dt>
           </div>
         )}
-        <div class="v2-rise" style="--v2-i:2">
-          <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Panels fitted</dt>
-        </div>
+        {r.panneaux && (
+          <div class="v2-rise" style="--v2-i:2">
+            <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Panels fitted</dt>
+          </div>
+        )}
         <div class="v2-rise" style="--v2-i:3">
           <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
           <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
@@ -149,11 +156,34 @@ const galleryPhotos = rest;
     <!-- The project narrative: situation, sizing, measured result -->
     <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
       <p class="tech-label v2-kicker rule-brass text-lune">The project, told</p>
-      <h2 class="display v2-section-title mt-5 text-white">Why {r.kwc}, on this roof</h2>
+      <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>Why {r.kwc}, on this roof</> : 'What this project shows'}</h2>
       <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
     </section>
+
+    <!-- (2026-09) Project video specific to THIS case study — absent for any
+         realisation without `video` (unchanged for historical entries). -->
+    {r.video && (
+      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+        <div class="mx-auto max-w-3xl">
+          <p class="tech-label v2-kicker rule-brass text-lune">The project on film</p>
+          <h2 class="display v2-section-title mt-5 text-white">Watch the project on video</h2>
+          <div class="mt-8 border border-brass-400/40">
+            <LiteVideo
+              id={`realisation-video-${r.slug}`}
+              src={r.video.src}
+              poster={r.video.poster}
+              alt={r.video.alt}
+              playLabel="Play the project video"
+              aspectRatio="16/9"
+              posterWidth={1600}
+              posterHeight={900}
+            />
+          </div>
+        </div>
+      </section>
+    )}
 
     <!-- W309 — Before/During/After diptych (when data is present) -->
     {hasDiptych && (
@@ -295,6 +325,12 @@ const galleryPhotos = rest;
         <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
           Our latest projects →
         </a>
+        {/* (2026-09) Monitoring link specific to this project — empty until provided. */}
+        {r.monitoringUrl && (
+          <a href={r.monitoringUrl} rel="noopener noreferrer" target="_blank" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+            This project's production monitoring →
+          </a>
+        )}
       </div>
     </section>
 

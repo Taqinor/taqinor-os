@@ -2222,8 +2222,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // jamais le point brut de `String(est.kwc)`.
   import { formatKwc } from '../../lib/proposition';
   // W342 — « installation la plus proche » : haversine client-side sur le
-  // repère GPS posé (aucun appel réseau).
-  import { nearestRealisation } from '../../lib/realisations';
+  // repère GPS posé (aucun appel réseau). (2026-09) pool restreint aux
+  // chantiers publiant un `kwc` — cette carte l'affiche, donc jamais un
+  // chantier réel mais sans chiffre publié (ex. Bouskoura).
+  import { nearestRealisation, REALISATIONS } from '../../lib/realisations';
+  const REALISATIONS_WITH_KWC = REALISATIONS.filter((r) => r.kwc);
   // L-WEBT — silhouettes d'occupation SERVEUR (CJ2a) : lib/dayProfiles.ts
   // recopie VERBATIM backend/django_core/apps/ventes/courbes_journalieres.py
   // SILHOUETTES_OCCUPATION (test croisé backend↔TS). Aucun poids inventé ici.
@@ -4108,7 +4111,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // carte reste masquée — jamais une ville devinée depuis le texte libre.
     const nearestEl = $('mt-nearest-install');
     if (nearestEl && capturePin) {
-      const near = nearestRealisation(capturePin.lat, capturePin.lng);
+      const near = nearestRealisation(capturePin.lat, capturePin.lng, 80, REALISATIONS_WITH_KWC);
       if (near) {
         const { realisation: r, distanceKm } = near;
         const textEl = $('mt-nearest-install-text');

@@ -125,7 +125,7 @@ const jsonLd = {
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {REALISATIONS.map((r, i) => (
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{r.ville} · {r.kwc} · réf. {r.ref} · {r.date}</span>
+              <span class="text-sm font-semibold">{[r.ville, r.kwc, `réf. ${r.ref}`, r.date].filter(Boolean).join(' · ')}</span>
               <span class="whitespace-normal text-right text-sm text-azur-600">
                 {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
               </span>
