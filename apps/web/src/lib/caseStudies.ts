@@ -402,13 +402,13 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
     fr: {
       title: 'Installation solaire 3,72 kWc à Nouaceur — 6 panneaux JA Solar (réf. NC-10/25) | Taqinor',
       description:
-        'Réf. NC-10/25 : 3,72 kWc à Nouaceur, dans la périphérie de Casablanca, 6 panneaux JA Solar posés en octobre 2025 avec le même soin d’implantation que nos plus grands chantiers.',
+        'Réf. NC-10/25 : 3,72 kWc à Nouaceur, dans la périphérie de Casablanca, 6 panneaux JA Solar posés en octobre 2025 avec le même soin d’implantation que nos plus grands chantiers. Photos et vidéo réelles du chantier.',
       situation:
         'À Nouaceur, dans la périphérie de Casablanca, une installation de 3,72 kWc : six panneaux JA Solar, posés avec le même soin d’implantation que sur nos chantiers de plus grande taille, sur une toiture qui n’en demandait pas plus.',
       sizing:
         'Six modules JA Solar pour 3,72 kWc : la puissance répond au besoin réel du foyer, et l’honnêteté commande de ne pas poser au-delà de ce que la consommation justifie. Le tracé des rails et l’alignement se calculent ici avec la même rigueur qu’à 17 kWc.',
       install:
-        'Les photos du dossier montrent le travail de fond : l’installateur en gilet Taqinor posant les rails de la structure, le traçage et la mesure au mètre des fixations, puis le nettoyage au jet du champ une fois les modules en place. C’est cette préparation invisible qui tient une installation sur la durée.',
+        'Les photos et la vidéo du dossier montrent le travail de fond : les installateurs Taqinor posent les blocs de lestage et les rails de la structure, une équipe mesure au mètre l’implantation avant la pose des modules, puis le nettoyage au jet du champ une fois les panneaux en place. À l’intérieur, l’onduleur MUST est posé à côté du coffret électrique. C’est cette préparation invisible qui tient une installation sur la durée.',
       result:
         'Posée en octobre 2025, l’installation suit notre standard d’implantation et d’entretien, avec la même possibilité de suivi de production en temps réel, accès client, que sur nos autres chantiers.',
       resume:
@@ -419,13 +419,13 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
     en: {
       title: 'Solar installation 3.72 kWc in Nouaceur — 6 JA Solar panels (ref. NC-10/25) | Taqinor',
       description:
-        'Ref. NC-10/25: 3.72 kWc in Nouaceur, on the outskirts of Casablanca, 6 JA Solar panels fitted in October 2025 with the same care of layout as our largest projects.',
+        'Ref. NC-10/25: 3.72 kWc in Nouaceur, on the outskirts of Casablanca, 6 JA Solar panels fitted in October 2025 with the same care of layout as our largest projects. Real photos and video of the project.',
       situation:
         'In Nouaceur, on the outskirts of Casablanca, a 3.72 kWc installation: six JA Solar panels, fitted with the same care of layout as on our larger projects, on a roof that asked for no more.',
       sizing:
         'Six JA Solar modules for 3.72 kWc: the power answers the household’s real need, and honesty dictates not installing beyond what consumption justifies. The rail layout and the alignment are computed here with the same rigour as at 17 kWc.',
       install:
-        'The file’s photos show the groundwork: the installer in a Taqinor vest fitting the structure’s rails, the marking out and the tape measurement of the fixings, then the jet cleaning of the array once the modules are in place. It is this invisible preparation that holds an installation over time.',
+        'The file’s photos and video show the groundwork: Taqinor installers set out the ballast blocks and the structure’s rails, a team measures out the layout with a tape before fitting the modules, then the jet cleaning of the array once the panels are in place. Indoors, the MUST inverter sits next to the electrical enclosure. It is this invisible preparation that holds an installation over time.',
       result:
         'Fitted in October 2025, the installation follows our standard of layout and upkeep, with the same real-time production monitoring available, client access included, as on our other projects.',
       resume:
@@ -435,18 +435,24 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'equipe-gilet-taqinor': 'Installer in a Taqinor vest fitting a structure’s rails, Nouaceur',
         'mesure-rails': 'Marking out and tape measurement of the fixing rails on the roof, Nouaceur',
         'entretien-jet': 'Jet cleaning of the panel array, Nouaceur',
+        'nouaceur-toit': 'Row of six solar panels at sunset, palm trees in the background, Nouaceur',
+        'nouaceur-panneaux-couchant': 'Close-up of the six solar panels aligned at dusk, Nouaceur',
+        'nouaceur-structure-lestage': 'Two Taqinor installers set the ballast blocks and rails before fitting the panels, Nouaceur',
+        'nouaceur-equipe-rails': 'Taqinor vest and mounting rails being aligned on the roof, Nouaceur',
+        'nouaceur-mesure-equipe': 'Three Taqinor installers measure the rail layout on the roof, Nouaceur',
+        'nouaceur-onduleur-must': 'MUST solar inverter fitted on an interior wall, next to the electrical enclosure, Nouaceur',
       },
     },
     ar: {
       title: 'تركيب شمسي 3,72 kWc في النواصر — 6 ألواح JA Solar (المرجع NC-10/25) | Taqinor',
       description:
-        'المرجع NC-10/25: 3,72 kWc في النواصر، بضواحي الدار البيضاء، 6 ألواح JA Solar مُركَّبة في أكتوبر 2025 بنفس عناية التنصيب التي في أكبر أوراشنا.',
+        'المرجع NC-10/25: 3,72 kWc في النواصر، بضواحي الدار البيضاء، 6 ألواح JA Solar مُركَّبة في أكتوبر 2025 بنفس عناية التنصيب التي في أكبر أوراشنا. صور وفيديو حقيقيان من الورش.',
       situation:
         'في النواصر، بضواحي الدار البيضاء، تركيبة بقدرة 3,72 kWc: ستة ألواح JA Solar، مُركَّبة بنفس عناية التنصيب التي في أوراشنا الأكبر حجماً، على سطح لم يطلب أكثر.',
       sizing:
         'ستة ألواح JA Solar من أجل 3,72 kWc: القدرة تستجيب للحاجة الحقيقية للأسرة، والصدق يقتضي عدم التركيب فوق ما يبرّره الاستهلاك. تخطيط السكك والمحاذاة يُحسبان هنا بنفس الصرامة كما عند 17 kWc.',
       install:
-        'صور الملف تُظهر العمل الأساسي: المُركِّب بسترة تاكينور يضع سكك البنية، والتخطيط والقياس بالمتر للمثبّتات، ثم تنظيف الحقل بالماء بمجرّد وضع الألواح. هذا التحضير غير المرئي هو ما يُبقي التركيبة على المدى.',
+        'صور وفيديو الملف تُظهر العمل الأساسي: يضع مُركِّبو تاكينور كتل الإرساء وسكك البنية، ويقيس فريق التنصيب بالمتر تخطيط السكك قبل تركيب الألواح، ثم يُنظَّف الحقل بالماء بمجرّد وضع الألواح. في الداخل، يوجد عاكس MUST إلى جانب اللوحة الكهربائية. هذا التحضير غير المرئي هو ما يُبقي التركيبة على المدى.',
       result:
         'مُركَّبة في أكتوبر 2025، تتبع التركيبة معيارنا في التنصيب والصيانة، مع نفس إمكانية متابعة الإنتاج في الوقت الحقيقي، بولوج الزبون، المتوفرة في باقي أوراشنا.',
       resume:
@@ -456,6 +462,12 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'equipe-gilet-taqinor': 'مُركِّب بسترة تاكينور يضع سكك بنية، النواصر',
         'mesure-rails': 'تخطيط وقياس بالمتر لسكك التثبيت على السطح، النواصر',
         'entretien-jet': 'تنظيف حقل الألواح بنفث الماء، النواصر',
+        'nouaceur-toit': 'صف من ستة ألواح شمسية عند الغروب، نخيل في الخلفية، النواصر',
+        'nouaceur-panneaux-couchant': 'لقطة قريبة لمحاذاة الألواح الشمسية الستة عند الغروب، النواصر',
+        'nouaceur-structure-lestage': 'مُركِّبان من تاكينور يضعان كتل الإرساء والسكك قبل تركيب الألواح، النواصر',
+        'nouaceur-equipe-rails': 'سترة تاكينور وسكك التثبيت أثناء المحاذاة على السطح، النواصر',
+        'nouaceur-mesure-equipe': 'ثلاثة مُركِّبين من تاكينور يقيسون تخطيط السكك على السطح، النواصر',
+        'nouaceur-onduleur-must': 'عاكس شمسي MUST مُركَّب على جدار داخلي، إلى جانب اللوحة الكهربائية، النواصر',
       },
     },
   },

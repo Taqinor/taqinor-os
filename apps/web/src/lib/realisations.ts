@@ -235,6 +235,12 @@ export const REALISATIONS: Realisation[] = [
     ],
   },
   {
+    // (2026-09) Enrichissement médias — faits FONDATEUR (Reda, 08/09/2026) :
+    // Nouaceur est l'UNIQUE installation de Nouaceur, 3,72 kWc / 6 × JA Solar /
+    // octobre 2025 — valeurs déjà publiées CONFIRMÉES, inchangées. Chantier
+    // photographié/filmé par le fondateur les 18-20/10/2025 ; 6 nouvelles
+    // photos + 1 vidéo ajoutées (les 3 photos déjà publiées restent, à
+    // l'identique, en fin de tableau). Production toujours non relevée → `null`.
     slug: 'nouaceur-4-kwc',
     ref: 'NC-10/25',
     ville: 'Nouaceur',
@@ -253,10 +259,21 @@ export const REALISATIONS: Realisation[] = [
     resume:
       'Une installation à Nouaceur, dans la périphérie de Casablanca : six panneaux JA Solar posés avec le même soin d’implantation que nos chantiers de plus grande taille.',
     photos: [
+      { name: 'nouaceur-toit', alt: 'Rangée de six panneaux solaires au coucher du soleil, palmiers en arrière-plan, Nouaceur', ratio: 16 / 9, widths: [2000, 1280, 768, 480] },
+      { name: 'nouaceur-structure-lestage', alt: 'Deux installateurs Taqinor posent les blocs de lestage et les rails avant la pose des panneaux, Nouaceur', ratio: 4 / 3, widths: [1600, 1024, 640] },
+      { name: 'nouaceur-equipe-rails', alt: "Gilet Taqinor et rails de fixation en cours d'alignement sur le toit, Nouaceur", ratio: 1, widths: [1600, 1024, 640] },
+      { name: 'nouaceur-mesure-equipe', alt: "Trois installateurs Taqinor mesurent l'implantation des rails sur le toit, Nouaceur", ratio: 3 / 2, widths: [1600, 1024, 640] },
+      { name: 'nouaceur-onduleur-must', alt: 'Onduleur solaire MUST installé sur un mur intérieur, à côté du coffret électrique, Nouaceur', ratio: 4 / 3, widths: [1600, 1024, 640] },
+      { name: 'nouaceur-panneaux-couchant', alt: "Gros plan sur l'alignement des six panneaux solaires à la tombée du jour, Nouaceur", ratio: 3 / 2, widths: [1600, 1024, 640] },
       { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", ratio: 1, widths: [1600, 1024, 640], phase: 'during' as const },
       { name: 'mesure-rails', alt: 'Traçage et mesure au mètre des rails de fixation sur toiture, Nouaceur', ratio: 4 / 3, widths: [1600, 1024, 640], phase: 'before' as const },
       { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", ratio: 1, widths: [1600, 1024, 640], phase: 'after' as const },
     ],
+    video: {
+      src: '/videos/nouaceur-chantier.mp4',
+      poster: '/videos/nouaceur-chantier-poster',
+      alt: 'Équipe Taqinor au travail sur le chantier solaire de Nouaceur',
+    },
   },
   {
     // (2026-09) Villa de Bouskoura — faits FONDATEUR (Reda, 08/09/2026) :
