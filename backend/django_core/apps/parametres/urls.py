@@ -13,6 +13,7 @@ from .views_referentiels import (
     TauxTVAViewSet,
     UniteMesureViewSet,
 )
+from .views_realisations import RealisationViewSet
 from .views_pos import (
     BoutiquePosViewSet,
     get_parametres_pos,
@@ -54,6 +55,12 @@ referentiels_router.register(r'unites-mesure', UniteMesureViewSet,
 # editable), consommé par apps.crm.services.initialiser_plan_relance.
 referentiels_router.register(r'cadence-relance', CadenceRelanceEtapeViewSet,
                              basename='cadence-relance')
+
+# Catalogue « Réalisations » (08/09/2026) — installations réelles de la société
+# et leur page publique, source de la preuve de la touche J4. Routeur isolé.
+realisations_router = DefaultRouter()
+realisations_router.register(r'realisations', RealisationViewSet,
+                             basename='realisation')
 
 # NTEXT19 — gabarits de document custom : lecture + rendu PDF. Routeur isolé.
 gabarits_router = DefaultRouter()
@@ -102,6 +109,9 @@ urlpatterns = [
     # WIR66 — référentiels société : taux de TVA, conditions de paiement,
     # unités de mesure (lecture tout rôle, écriture admin/responsable).
     path('', include(referentiels_router.urls)),
+    # Catalogue « Réalisations » : installations réelles + page publique
+    # (lecture tout rôle, écriture admin/responsable).
+    path('', include(realisations_router.urls)),
     # NTEXT19 — gabarits de document custom (lecture + rendu PDF par cible).
     path('', include(gabarits_router.urls)),
     # NTRET8 — Paramètres POS (Point de vente) : taux horaire comptoir +

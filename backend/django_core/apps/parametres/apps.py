@@ -46,6 +46,10 @@ class ParametresConfig(AppConfig):
         # ARC27 — référentiel des unités de mesure par société (également
         # ré-exporté par models.py) ; import ici pour l'enregistrement.
         import apps.parametres.models_units  # noqa: F401
+        # Catalogue « Réalisations » (08/09/2026) — installations réelles de la
+        # société, source de la preuve de la touche J4 ; également ré-exporté
+        # par models.py, import ici pour l'enregistrement au démarrage.
+        import apps.parametres.models_realisations  # noqa: F401
         # ARC23 — hook de seed « nouvelle société » des taux de TVA usuels.
         from .signup_hooks import register_parametres_signup_hooks
         register_parametres_signup_hooks()
