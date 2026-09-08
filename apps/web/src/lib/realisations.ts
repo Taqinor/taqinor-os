@@ -7,9 +7,10 @@
  * n'est inventé. Toute valeur non confirmée reste `null` et n'est jamais
  * affichée comme un nombre.
  *
- * Total installé : 17,04 + 11,36 + 5,68 + 5,68 + 3,72 = 43,48 kWc (= le chiffre
- * « 43,48 kWc installés » de l'accueil). Ce sont des CAPACITÉS posées (kWc),
- * conservées telles quelles.
+ * Total installé : 17,04 + 11,36 + 5,68 + 5,68 + 3,72 + 11,44 (Bouskoura,
+ * fondateur 08/09/2026) = 54,92 kWc — le total n'est plus affiché sur l'accueil
+ * (WC5), les tests d'intégrité le vérifient. Ce sont des CAPACITÉS posées
+ * (kWc), conservées telles quelles.
  *
  * WB1 — CORRECTION (2026-07-04, données Deye Cloud réelles du fondateur) :
  * les quatre `productionNum` ANNUELS d'origine (21406, 14271, 7135, 7135)
@@ -66,10 +67,25 @@ export interface Realisation {
    */
   lat: number;
   lng: number;
-  kwc: string;
-  kwcNum: number;
-  /** Mois d'installation tel que publié. */
+  /**
+   * (2026-09) Optionnels : certains chantiers filmés/photographiés n'ont pas
+   * encore de puissance installée CONFIRMÉE publiable (un chantier tourné
+   * avant tout relevé) — absents plutôt que `0`/deviné, jamais affichés
+   * comme un chiffre dans ce cas (chaque appelant garde `r.kwc &&`/`r.kwcNum &&`).
+   */
+  kwc?: string;
+  kwcNum?: number;
+  /** Mois d'année tel que publié — voir `dateType` pour sa signification exacte. */
   date: string;
+  /**
+   * (2026-09) Ce que `date` désigne : `'installed'` (mois de MISE EN SERVICE,
+   * défaut — comportement historique inchangé pour toute entrée qui omet ce
+   * champ) ou `'filmed'` (mois de TOURNAGE photo/vidéo, quand la mise en
+   * service réelle n'est pas connue). `standardCaption` choisit
+   * le verbe juste selon cette valeur ; ne jamais afficher « installé en » pour
+   * une date qui n'est que celle du tournage.
+   */
+  dateType?: 'installed' | 'filmed';
   /** Production mesurée (Deye Cloud) — `null` si non publiée sur le site. */
   production: string | null;
   productionNum: number | null;
@@ -105,6 +121,20 @@ export interface Realisation {
    * mention est OMISE, jamais remplacée par une estimation.
    */
   measuredLabel?: string;
+  /**
+   * (2026-09) Vidéo de chantier RÉELLE et propre à cette installation — jamais
+   * partagée entre chantiers. `src` : chemin complet du MP4 auto-hébergé.
+   * `poster` : chemin RACINE sans extension (même convention que LiteVideo —
+   * .avif/.webp dérivés). Absent = aucune vidéo pour ce chantier (pas de
+   * lecteur rendu), comme pour toutes les entrées historiques.
+   */
+  video?: { src: string; poster: string; alt: string };
+  /**
+   * (2026-09) Lien vers le suivi de production en temps réel de CE chantier
+   * (accès client), quand il existe et peut être partagé publiquement. Vide
+   * tant que non fourni — jamais un lien générique/deviné.
+   */
+  monitoringUrl?: string;
 }
 
 export const REALISATIONS: Realisation[] = [
@@ -228,6 +258,47 @@ export const REALISATIONS: Realisation[] = [
       { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", ratio: 1, widths: [1600, 1024, 640], phase: 'after' as const },
     ],
   },
+  {
+    // (2026-09) Villa de Bouskoura — faits FONDATEUR (Reda, 08/09/2026) :
+    // 16 panneaux de 715 Wc = 11,44 kWc, 2 batteries DYNESS 5 kWh (modules
+    // DL5.0C visibles à l'image), onduleur hybride Deye, mise en service en
+    // juillet 2026 ; chantier filmé le 09/07/2026 (photos + montage du
+    // vidéaste). Production non relevée → `null`, jamais un chiffre deviné.
+    // Coordonnées = centre-ville GeoNames (gazetier `villes_maroc`).
+    slug: 'bouskoura-villa-2026',
+    ref: 'BSK-07/26',
+    ville: 'Bouskoura',
+    region: 'Casablanca-Settat',
+    lat: 33.4498,
+    lng: -7.6524,
+    kwc: '11,44 kWc',
+    kwcNum: 11.44,
+    date: 'juillet 2026',
+    dateType: 'installed',
+    production: null,
+    productionNum: null,
+    panneaux: '16 × 715 Wc',
+    onduleur: 'Deye',
+    batterie: '2 × DYNESS 5 kWh (DL5.0C)',
+    segment: 'residentiel',
+    resume:
+      'Une villa à Bouskoura équipée de seize panneaux de 715 Wc (11,44 kWc), onduleur hybride Deye et deux batteries DYNESS de 5 kWh — mise en service en juillet 2026.',
+    photos: [
+      { name: 'bouskoura-toit', alt: 'Toiture-terrasse d’une villa entièrement couverte de panneaux solaires, Bouskoura', ratio: 16 / 9, widths: [2000, 1280, 768, 480] },
+      { name: 'bouskoura-toit-large', alt: 'Vue aérienne large du toit solaire de la villa et du quartier, Bouskoura', ratio: 16 / 9, widths: [1600, 1024, 640] },
+      { name: 'bouskoura-panneaux', alt: 'Gros plan sur l’alignement des panneaux solaires et leur structure de fixation, Bouskoura', ratio: 3 / 2, widths: [1600, 1024, 640] },
+      { name: 'bouskoura-gilet-taqinor', alt: 'Gilet de travail Taqinor porté par un installateur sur le chantier de Bouskoura', ratio: 1, widths: [1600, 1024, 640] },
+      { name: 'bouskoura-cablage-onduleur', alt: 'Câblage à l’intérieur du compartiment de raccordement de l’onduleur, chantier de Bouskoura', ratio: 4 / 3, widths: [1600, 1024, 640] },
+      { name: 'bouskoura-coffret-technicien', alt: 'Un technicien Taqinor raccorde un coffret électrique, chantier de Bouskoura', ratio: 4 / 3, widths: [1600, 1024, 640] },
+      { name: 'bouskoura-equipe-mur-technique', alt: 'Deux installateurs Taqinor devant l’onduleur et le tableau électrique, chantier de Bouskoura', ratio: 3 / 2, widths: [1600, 1024, 640] },
+      { name: 'bouskoura-batterie-dyness', alt: 'Batterie de stockage DYNESS (module DL5.0C) installée sur le chantier de Bouskoura', ratio: 4 / 3, widths: [1600, 1024, 640] },
+    ],
+    video: {
+      src: '/videos/bouskoura-chantier.mp4',
+      poster: '/videos/bouskoura-chantier-poster',
+      alt: 'Équipe Taqinor au travail sur le chantier solaire de Bouskoura',
+    },
+  },
 ];
 
 /**
@@ -350,15 +421,23 @@ export interface NearestRealisation {
  * Casablanca–El Jadida–Nouaceur) évite d'annoncer « la plus proche » pour un
  * visiteur à Tanger ou Agadir, où le chantier le plus proche resterait à
  * plusieurs centaines de km — pas une vraie preuve de proximité.
+ *
+ * (2026-09) `pool` optionnel (défaut : `REALISATIONS`, comportement inchangé
+ * pour tout appelant existant) — permet à un appelant qui AFFICHE le `kwc` du
+ * résultat (ex. « X — 11,36 kWc — à environ Y km ») de restreindre la
+ * recherche aux chantiers qui en publient un (`REALISATIONS.filter(r =>
+ * r.kwc)`), pour retomber naturellement sur le suivant-plus-proche plutôt que
+ * d'afficher un chantier réel mais sans chiffre publiable (ex. Bouskoura).
  */
 export function nearestRealisation(
   lat: number,
   lng: number,
   maxKm = 80,
+  pool: Realisation[] = REALISATIONS,
 ): NearestRealisation | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   let best: NearestRealisation | null = null;
-  for (const r of REALISATIONS) {
+  for (const r of pool) {
     const distanceKm = haversineKm(lat, lng, r.lat, r.lng);
     if (!best || distanceKm < best.distanceKm) best = { realisation: r, distanceKm };
   }
@@ -372,11 +451,11 @@ export function nearestRealisation(
  * d'adresse fourni. Retourne la PREMIÈRE réalisation dont la ville apparaît
  * dans le texte — jamais une correspondance floue/devinée.
  */
-export function nearestRealisationByCityText(addressText: string): Realisation | null {
+export function nearestRealisationByCityText(addressText: string, pool: Realisation[] = REALISATIONS): Realisation | null {
   const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const hay = norm(addressText || '');
   if (!hay.trim()) return null;
-  for (const r of REALISATIONS) {
+  for (const r of pool) {
     if (hay.includes(norm(r.ville))) return r;
   }
   return null;
@@ -400,15 +479,24 @@ export function nearestRealisationByCityText(addressText: string): Realisation |
  * Locale-aware (FR par défaut) : seuls les connecteurs sont traduits, aucun
  * chiffre n'est reformulé (mêmes chiffres latins dans les trois locales).
  */
-const CAPTION_STR: Record<'fr' | 'en' | 'ar', { installed: string; measured: string; estimated: string }> = {
-  fr: { installed: 'installé en', measured: 'kWh mesurés', estimated: 'kWh estimés' },
-  en: { installed: 'installed in', measured: 'kWh measured', estimated: 'kWh estimated' },
-  ar: { installed: 'رُكِّبت في', measured: 'kWh مقيسة', estimated: 'kWh مقدَّرة' },
+const CAPTION_STR: Record<'fr' | 'en' | 'ar', { installed: string; filmed: string; measured: string; estimated: string }> = {
+  fr: { installed: 'installé en', filmed: 'filmé en', measured: 'kWh mesurés', estimated: 'kWh estimés' },
+  en: { installed: 'installed in', filmed: 'filmed in', measured: 'kWh measured', estimated: 'kWh estimated' },
+  ar: { installed: 'رُكِّبت في', filmed: 'صُوِّرت في', measured: 'kWh مقيسة', estimated: 'kWh مقدَّرة' },
 };
 
+/**
+ * (2026-09) `kwc` est désormais optionnel (chantiers filmés avant tout relevé
+ * de puissance, ex. Bouskoura) — ce segment est alors OMIS du tiret plutôt que
+ * d'afficher `undefined`. `dateType: 'filmed'` bascule le verbe sur « filmé
+ * en » pour ne jamais laisser croire à une mise en service confirmée.
+ */
 export const standardCaption = (r: Realisation, locale: 'fr' | 'en' | 'ar' = 'fr'): string => {
   const s = CAPTION_STR[locale] ?? CAPTION_STR.fr;
-  const parts = [r.ville, r.kwc, `${s.installed} ${r.date}`];
+  const dateVerb = r.dateType === 'filmed' ? s.filmed : s.installed;
+  const parts = [r.ville];
+  if (r.kwc) parts.push(r.kwc);
+  parts.push(`${dateVerb} ${r.date}`);
   if (r.production) {
     const unitLabel = r.productionEstimated ? s.estimated : s.measured;
     parts.push(`${r.production.replace(/\/an$/, '')} ${unitLabel}`);
@@ -450,7 +538,7 @@ export const CITIES: City[] = [
     name: 'Casablanca',
     intro: 'à Casablanca',
     sunshineHours: '≈ 2 950',
-    featuredRefs: ['400', '134', 'NC-10/25', '468', '236'],
+    featuredRefs: ['400', '134', 'NC-10/25', '468', '236', 'BSK-07/26'],
     hasLocalInstall: true,
   },
   {

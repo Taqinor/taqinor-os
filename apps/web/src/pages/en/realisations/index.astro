@@ -52,7 +52,7 @@ const itemListJsonLd = {
     '@type': 'ListItem',
     position: i + 1,
     url: new URL(L(`/realisations/${r.slug}`), Astro.site).href,
-    name: `Solar installation ${r.kwc} in ${r.ville} — ref. ${r.ref}`,
+    name: `Solar installation${r.kwc ? ` ${r.kwc}` : ''} in ${r.ville} — ref. ${r.ref}`,
   })),
   provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
 };
@@ -120,7 +120,7 @@ const itemListJsonLd = {
               data-lightbox-trigger
               data-lightbox-src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`}
               data-lightbox-alt={altOf(r)}
-              data-lightbox-label={`${r.ville} · ${r.kwc} · ${r.date}`}
+              data-lightbox-label={[r.ville, r.kwc, r.date].filter(Boolean).join(' · ')}
               aria-label={`Enlarge photo: ${altOf(r)}`}
             >
               <Picture
