@@ -196,6 +196,21 @@ def _puissance_du_dernier_devis(lead):
         return None
 
 
+def _repli(lignes, cible):
+    """Repli fondateur (08/09/2026) : sans réalisation dans la ville ni dans le
+    rayon, on montre quand même la DERNIÈRE installation de la société — celle
+    dont la puissance est la plus proche de ``cible`` (kWc du devis du lead) si
+    elle est connue, sinon la plus récente. ``lignes`` est trié « la plus
+    récente d'abord »."""
+    if not lignes:
+        return None
+    chiffrees = [r for r in lignes if r.puissance_kwc is not None]
+    if cible is not None and chiffrees:
+        return min(chiffrees,
+                   key=lambda r: abs(float(r.puissance_kwc) - cible))
+    return lignes[0]
+
+
 def realisation_pour_lead(lead):
     """La réalisation à MONTRER à ce lead, ou ``None``.
 
@@ -206,12 +221,16 @@ def realisation_pour_lead(lead):
        dernier devis du lead quand elle est connue, sinon la plus récente ;
     b. sinon la **plus proche** à vol d'oiseau (haversine sur les coordonnées
        du gazetier), dans la limite de ``RAYON_PREUVE_KM`` ;
-    c. sinon ``None``.
+    c. sinon (repli fondateur 08/09/2026, lead de Sidi Hashass à 400 km de
+       tout chantier : « show our last installation… similar size ») la
+       DERNIÈRE installation de la société — puissance la plus proche du
+       devis du lead si elle est connue, sinon la plus récente. La ville
+       affichée reste la SIENNE, vraie : « comparable » parle de la taille,
+       jamais du lieu.
 
     La ville du lead est ``ville_reference`` (ville ERP de rattachement choisie
     sur l'écran « Vérifier la ville ») quand elle existe, sinon ``ville`` — le
-    texte tapé par le client. Un lead SANS ville rend ``None`` : « comparable à
-    la vôtre » est une affirmation géographique, on ne la fait pas au hasard.
+    texte tapé par le client. Un lead SANS ville reçoit le repli (c).
 
     Lecture PURE (aucune écriture), scopée à ``lead.company``."""
     company = getattr(lead, "company", None) if lead is not None else None
@@ -232,7 +251,7 @@ def realisation_pour_lead(lead):
         (getattr(lead, "ville_reference", "") or "").strip()
         or (getattr(lead, "ville", "") or "").strip())
     if not ville_lead:
-        return None
+        return _repli(lignes, _puissance_du_dernier_devis(lead))
 
     # (a) Même ville. ``lignes`` est déjà trié du plus récent au plus ancien :
     # ``min`` renvoyant le PREMIER minimum, un ex æquo de puissance revient
@@ -254,7 +273,7 @@ def realisation_pour_lead(lead):
     # plutôt que d'être placée arbitrairement.
     origine = coordonnees_ville(ville_lead)
     if origine is None:
-        return None
+        return _repli(lignes, _puissance_du_dernier_devis(lead))
     meilleure, distance_min = None, None
     for realisation in lignes:
         coords = coordonnees_ville(realisation.ville)
@@ -265,4 +284,6 @@ def realisation_pour_lead(lead):
             continue
         if distance_min is None or distance < distance_min:
             meilleure, distance_min = realisation, distance
-    return meilleure
+    if meilleure is not None:
+        return meilleure
+    return _repli(lignes, _puissance_du_dernier_devis(lead))
