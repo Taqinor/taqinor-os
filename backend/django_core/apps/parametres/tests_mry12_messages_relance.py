@@ -40,7 +40,15 @@ _CROCHETS = [
     (r'\[date\]', '{date_validite}'),
     (r'\[référence\]', '{reference}'),
     (r'\[المرجع\]', '{reference}'),
+    # 08/09/2026 — la PREUVE de `j4_preuve` (catalogue « Réalisations »).
+    # `[lien preuve]` passe AVANT toute autre règle de lien : la conversion
+    # est une SUITE de `re.sub`, donc une règle « lien » plus large appliquée
+    # d'abord l'avalerait et rendrait `{lien}` (le lien du devis) à la place
+    # du lien de la réalisation — deux liens différents dans le même message.
+    (r'\[lien preuve\]', '{lien_preuve}'),
     (r'\[lien de la fiche TAQINOR\]', '{lien}'),
+    (r'\[mois\]', '{mois_preuve}'),
+    (r'\[ville\]', '{ville_preuve}'),
     (r'\[Conseiller\]', '{conseiller}'),
     (r'\[المستشار\]', '{conseiller}'),
 ]
