@@ -126,10 +126,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:198` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
 | `backend/django_core/apps/crm/services.py:5408` | get_or_create | MessageTemplate.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2273` | get_or_create | LeadTag.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2287` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2299` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2356` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/views.py:2282` | get_or_create | LeadTag.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2296` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2308` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2365` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |

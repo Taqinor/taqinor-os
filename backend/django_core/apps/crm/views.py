@@ -1621,14 +1621,22 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         resultat = resoudre_ville(ville)
         position = None
         proches = []
+        gps_hors_zone = False
         # ``proches: true`` = l'écran-carte (dialogue) ; le simple contrôle
         # de statut (débouncé à la frappe) reste PUR — aucun géocodage réseau.
         if bool(request.data.get('proches')):
             try:
                 lat = float(request.data.get('gps_lat'))
                 lng = float(request.data.get('gps_lng'))
-                if -90 <= lat <= 90 and -180 <= lng <= 180:
+                # Garde de PLAUSIBILITÉ (incident 08/09 : un GPS de test à
+                # 19.59/-30.61 — plein Atlantique — rendait « Bir Ghandouz,
+                # 1 466 km » comme ville la plus proche). Hors de l'emprise
+                # Maroc + Sahara, le repère est IGNORÉ et signalé — jamais
+                # une liste de villes calculée depuis un point absurde.
+                if 20.0 <= lat <= 36.5 and -17.5 <= lng <= -0.9:
                     position = (lat, lng)
+                elif -90 <= lat <= 90 and -180 <= lng <= 180:
+                    gps_hors_zone = True
             except (TypeError, ValueError):
                 position = None
             if position is None and resultat['coords']:
@@ -1648,6 +1656,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'position': ({'lat': position[0], 'lng': position[1]}
                          if position else None),
             'proches': proches,
+            'gps_hors_zone': gps_hors_zone,
         })
 
     @action(detail=True, methods=['post'], url_path='convertir-client',

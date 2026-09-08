@@ -778,7 +778,13 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         # futur écran) : une mise à jour qui n'apporte pas de nouvelles
         # coordonnées EXPLICITES (vide/nulle) ne doit jamais effacer un GPS
         # déjà posé sur ce lead.
-        if self.instance is not None:
+        # 08/09/2026 (relevé fondateur) — la garde bloquait AUSSI l'humain :
+        # impossible d'EFFACER un GPS depuis le formulaire alors qu'on peut
+        # le MODIFIER. L'écran envoie ``effacer_gps: true`` quand
+        # l'utilisateur vide explicitement les champs : ce geste-là passe ;
+        # tout autre appelant (import, script, webhook) reste protégé.
+        effacer_gps = bool((self.initial_data or {}).get('effacer_gps'))
+        if self.instance is not None and not effacer_gps:
             for gps_field in ('gps_lat', 'gps_lng'):
                 if (gps_field in attrs and attrs[gps_field] in (None, '')
                         and getattr(self.instance, gps_field) is not None):
