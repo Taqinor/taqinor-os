@@ -2749,25 +2749,26 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     @action(detail=True, methods=['post'])
     def whatsapp(self, request, pk=None):
-        """MRY13 — Le CLIC : même rendu, puis la touche est marquée faite.
+        """MRY13 — Le CLIC : même rendu, puis le clic est JOURNALISÉ.
 
-        Le POST n'envoie RIEN (décision D5) : il enregistre qu'on a ouvert la
-        conversation. Marquer côté serveur est le seul moyen que la file du
-        lendemain soit juste. Refusé (400) si le numéro est inexploitable —
-        prétendre avoir contacté quelqu'un qu'on ne peut pas joindre fausserait
-        aussi bien la file que le KPI."""
+        Le POST n'envoie RIEN (décision D5). RELANCE-WA (fondateur 08/09/2026) :
+        ouvrir WhatsApp n'avance plus la touche — une activité « WhatsApp
+        ouvert » entre dans l'historique, le premier contact est horodaté
+        (MRY19) et la touche reste À FAIRE jusqu'à la réponse aux questions
+        « Fait ». Refusé (400) si le numéro est inexploitable — prétendre
+        avoir contacté quelqu'un qu'on ne peut pas joindre fausserait aussi
+        bien la file que le KPI."""
         etape = self.get_object()
         from .services import (
-            marquer_etape_relance, marquer_premier_contact, message_pour_etape,
+            journaliser_whatsapp_ouvert, marquer_premier_contact,
+            message_pour_etape,
         )
         rendu = message_pour_etape(etape, request=request, user=request.user)
         if not rendu.get('wa_url'):
             return Response(
                 {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        etape = marquer_etape_relance(
-            etape, request.user, RelanceEtape.Statut.FAIT,
-            note='WhatsApp ouvert')
+        journaliser_whatsapp_ouvert(etape, request.user)
         marquer_premier_contact(etape.lead)
         try:
             from apps.audit.models import AuditLog

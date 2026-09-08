@@ -274,24 +274,34 @@ class ApiTests(_Base):
             f'/api/django/crm/relance-etapes/{touche.pk}/whatsapp/')
         self.assertEqual(resp.status_code, 403)
 
-    def test_le_POST_marque_fait_et_pose_le_premier_contact(self):
+    def test_le_POST_journalise_sans_avancer_la_touche(self):
+        """RELANCE-WA (fondateur 08/09/2026) — ouvrir WhatsApp n'est pas une
+        réponse du client : la touche reste À FAIRE, le clic entre dans
+        l'historique (activité typée WhatsApp) et le premier contact est
+        horodaté (MRY19)."""
         touche = self._touche()
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{touche.pk}/whatsapp/')
         self.assertEqual(resp.status_code, 200, resp.data)
         touche.refresh_from_db()
-        self.assertEqual(touche.statut, RelanceEtape.Statut.FAIT)
+        self.assertEqual(touche.statut, RelanceEtape.Statut.A_FAIRE)
         self.lead.refresh_from_db()
         self.assertIsNotNone(self.lead.first_contacted_at)
         # MRY10 — une activité TYPÉE WhatsApp, pas une note libre.
-        self.assertTrue(LeadActivity.objects.filter(
-            lead=self.lead, kind=LeadActivity.Kind.WHATSAPP).exists())
+        activite = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.WHATSAPP).first()
+        self.assertIsNotNone(activite)
+        self.assertIn('WhatsApp ouvert', activite.body)
+        self.assertEqual(activite.user, self.acteur)
+        # Aucune issue posée : la cadence n'est ni arrêtée ni avancée.
+        self.assertEqual(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.SAUTEE).count(), 0)
 
     def test_la_reponse_du_POST_porte_letape_a_jour(self):
         touche = self._touche()
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{touche.pk}/whatsapp/')
-        self.assertEqual(resp.data['etape']['statut'], 'fait')
+        self.assertEqual(resp.data['etape']['statut'], 'a_faire')
 
     def test_touche_dune_autre_societe_404(self):
         autre = _company('mry13-autre')
