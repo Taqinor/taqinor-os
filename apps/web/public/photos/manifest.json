@@ -128,5 +128,70 @@
       640
     ],
     "ratio": 1
+  },
+  "bouskoura-toit": {
+    "widths": [
+      2000,
+      1280,
+      768,
+      480
+    ],
+    "ratio": 1.7777777777777777
+  },
+  "bouskoura-toit-large": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.7777777777777777
+  },
+  "bouskoura-panneaux": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.5
+  },
+  "bouskoura-gilet-taqinor": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1
+  },
+  "bouskoura-cablage-onduleur": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "bouskoura-coffret-technicien": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "bouskoura-equipe-mur-technique": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.5
+  },
+  "bouskoura-batterie-dyness": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
   }
 }
