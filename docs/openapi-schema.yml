@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9794, operations: 17481, components: 5129}
+counts: {paths: 9798, operations: 17493, components: 5133}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -6015,6 +6015,12 @@ operations:
 - get /api/django/parametres/pos/ -> django_parametres_pos_retrieve
 - patch /api/django/parametres/pos/update/ -> django_parametres_pos_update_partial_update
 - put /api/django/parametres/pos/update/ -> django_parametres_pos_update_update
+- get /api/django/parametres/realisations/ -> django_parametres_realisations_list
+- post /api/django/parametres/realisations/ -> django_parametres_realisations_create
+- delete /api/django/parametres/realisations/{id}/ -> django_parametres_realisations_destroy
+- get /api/django/parametres/realisations/{id}/ -> django_parametres_realisations_retrieve
+- patch /api/django/parametres/realisations/{id}/ -> django_parametres_realisations_partial_update
+- put /api/django/parametres/realisations/{id}/ -> django_parametres_realisations_update
 - get /api/django/parametres/statuts/ -> django_parametres_statuts_list
 - post /api/django/parametres/statuts/ -> django_parametres_statuts_create
 - put /api/django/parametres/statuts/bulk/ -> django_parametres_statuts_bulk_update
@@ -14793,6 +14799,12 @@ operations:
 - get /api/v1/parametres/pos/ -> v1_parametres_pos_retrieve
 - patch /api/v1/parametres/pos/update/ -> v1_parametres_pos_update_partial_update
 - put /api/v1/parametres/pos/update/ -> v1_parametres_pos_update_update
+- get /api/v1/parametres/realisations/ -> v1_parametres_realisations_list
+- post /api/v1/parametres/realisations/ -> v1_parametres_realisations_create
+- delete /api/v1/parametres/realisations/{id}/ -> v1_parametres_realisations_destroy
+- get /api/v1/parametres/realisations/{id}/ -> v1_parametres_realisations_retrieve
+- patch /api/v1/parametres/realisations/{id}/ -> v1_parametres_realisations_partial_update
+- put /api/v1/parametres/realisations/{id}/ -> v1_parametres_realisations_update
 - get /api/v1/parametres/statuts/ -> v1_parametres_statuts_list
 - post /api/v1/parametres/statuts/ -> v1_parametres_statuts_create
 - put /api/v1/parametres/statuts/bulk/ -> v1_parametres_statuts_bulk_update
@@ -20255,6 +20267,7 @@ components:
 - PaginatedRapprochementBancaireList
 - PaginatedRapprochementCompteList
 - PaginatedRapprochementList
+- PaginatedRealisationList
 - PaginatedReceptionFournisseurList
 - PaginatedReceptionNonFactureeList
 - PaginatedRecetteList
@@ -21235,6 +21248,7 @@ components:
 - PatchedRapprochementBancaireRequest
 - PatchedRapprochementCompteRequest
 - PatchedRapprochementRequest
+- PatchedRealisationRequest
 - PatchedReceptionFournisseurRequest
 - PatchedReceptionNonFactureeRequest
 - PatchedRecetteRequest
@@ -21781,6 +21795,8 @@ components:
 - RapprochementCompteStatutEnum
 - RapprochementRequest
 - RapprochementStatutEnum
+- Realisation
+- RealisationRequest
 - ReasonEnum
 - ReceptionFournisseur
 - ReceptionFournisseurRequest
