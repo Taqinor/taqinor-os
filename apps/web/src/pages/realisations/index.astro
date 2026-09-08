@@ -62,7 +62,9 @@ const itemListJsonLd = {
     '@type': 'ListItem',
     position: i + 1,
     url: new URL(`/realisations/${r.slug}`, Astro.site).href,
-    name: `Installation solaire ${r.kwc} à ${r.ville} — réf. ${r.ref}`,
+    // (2026-09) kwc absent (chantier filmé avant tout relevé de puissance,
+    // ex. Bouskoura) : omis plutôt qu'un "undefined" dans le JSON-LD.
+    name: `Installation solaire${r.kwc ? ` ${r.kwc}` : ''} à ${r.ville} — réf. ${r.ref}`,
   })),
   provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
 };
@@ -131,7 +133,7 @@ const itemListJsonLd = {
               data-lightbox-trigger
               data-lightbox-src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`}
               data-lightbox-alt={r.photos[0].alt}
-              data-lightbox-label={`${r.ville} · ${r.kwc} · ${r.date}`}
+              data-lightbox-label={[r.ville, r.kwc, r.date].filter(Boolean).join(' · ')}
               aria-label={`Agrandir la photo : ${r.photos[0].alt}`}
             >
               {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS : les photos

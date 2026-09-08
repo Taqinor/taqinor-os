@@ -2049,7 +2049,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // WJ72 — UN SEUL style de nombre kWc, partagé avec la proposition.
   import { formatKwc } from '../../../lib/proposition';
   // W342 — « installation la plus proche » : haversine client-side sur le repère GPS posé.
-  import { nearestRealisation } from '../../../lib/realisations';
+  // (2026-09) pool restreint aux chantiers publiant un `kwc` (cette carte
+  // l'affiche) — jamais un chantier réel mais sans chiffre publié (Bouskoura).
+  import { nearestRealisation, REALISATIONS } from '../../../lib/realisations';
+  const REALISATIONS_WITH_KWC = REALISATIONS.filter((r) => r.kwc);
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ41 — رسائل نظام الخريطة/محدد المواقع (roofPro11/mapDraw.ts + captureBoot.ts
@@ -3719,7 +3722,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     };
     const nearestEl = $('mt-nearest-install');
     if (nearestEl && capturePin) {
-      const near = nearestRealisation(capturePin.lat, capturePin.lng);
+      const near = nearestRealisation(capturePin.lat, capturePin.lng, 80, REALISATIONS_WITH_KWC);
       if (near) {
         const { realisation: r, distanceKm } = near;
         const textEl = $('mt-nearest-install-text');
