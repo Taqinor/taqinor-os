@@ -54,7 +54,7 @@ describe('W54 — plus de double listing des installations', () => {
 
   it('les six installations restent présentes et NON décomptées (2026-09 : + Bouskoura)', () => {
     // 6 slugs distincts dans la galerie (El Jadida 17/6, Casablanca 11/6,
-    // Nouaceur 4, Bouskoura — 2026-09, kwc non publié).
+    // Nouaceur 4, Bouskoura 11,44 — 2026-09).
     const slugs = [...index.matchAll(/slug:\s*'([^']+)'/g)].map((m) => m[1]);
     const distinct = new Set(slugs);
     expect(distinct.size).toBe(6);

@@ -467,37 +467,41 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
   // faute de données — seul ce qui est VISIBLE sur les images (onduleur Deye,
   // batterie DYNESS DL5.0C, équipe en gilet Taqinor) est décrit.
   'bouskoura-villa-2026': {
+    // Faits fondateur (Reda, 08/09/2026) : 16 panneaux de 715 Wc = 11,44 kWc,
+    // 2 batteries DYNESS 5 kWh (DL5.0C), onduleur hybride Deye, mise en
+    // service juillet 2026 ; chantier filmé le 09/07/2026. Production non
+    // relevée : jamais un chiffre deviné.
     fr: {
-      title: 'Installation solaire à Bouskoura — chantier filmé en juillet 2026 | Taqinor',
+      title: 'Installation solaire 11,44 kWc à Bouskoura — villa mise en service en juillet 2026 | Taqinor',
       description:
-        'Une installation solaire résidentielle à Bouskoura : onduleur hybride Deye et stockage DYNESS (DL5.0C), chantier filmé en juillet 2026. Photos et vidéo réelles, sans chiffre de puissance ni de production tant qu’ils ne sont pas confirmés.',
+        'Une villa à Bouskoura équipée de seize panneaux de 715 Wc (11,44 kWc), d’un onduleur hybride Deye et de deux batteries DYNESS de 5 kWh, mise en service en juillet 2026. Photos et vidéo réelles du chantier.',
       situation:
-        'À Bouskoura, dans la région de Casablanca-Settat, toute la toiture-terrasse d’une villa a été équipée en panneaux solaires. Ce chantier a été filmé le 9 juillet 2026, au moment des derniers réglages : câblage, contrôle au multimètre et mise en route de l’onduleur.',
+        'À Bouskoura, dans la région de Casablanca-Settat, toute la toiture-terrasse d’une villa a été équipée en panneaux solaires. Le chantier a été filmé le 9 juillet 2026, au moment des derniers réglages : câblage, contrôle au multimètre et mise en route de l’onduleur.',
       sizing:
-        'La puissance installée n’est pas encore publiée pour ce chantier : elle sera ajoutée dès qu’elle sera confirmée. Cette étude de cas s’appuie pour l’instant sur les images réelles du chantier plutôt que sur ses chiffres.',
+        'Seize panneaux de 715 Wc, soit 11,44 kWc installés, avec un onduleur hybride Deye et deux batteries DYNESS de 5 kWh (10 kWh de stockage).',
       install:
-        'Le matériel identifiable sur les images : un onduleur hybride Deye et un système de stockage DYNESS (module DL5.0C). L’équipe Taqinor, reconnaissable à son gilet de travail, assure le câblage et les vérifications finales avant mise en route.',
+        'L’équipe Taqinor, reconnaissable à son gilet de travail, a posé les seize panneaux sur la toiture-terrasse, raccordé l’onduleur hybride Deye et installé les deux modules DYNESS DL5.0C, puis effectué les vérifications finales avant la mise en route.',
       result:
-        'Le suivi de production de ce chantier n’est pas encore publié ici. Comme sur le reste de nos installations, l’onduleur Deye permet un suivi de production en temps réel, accès client compris, dès qu’il est activé.',
+        'Installation mise en service en juillet 2026. Comme sur nos autres chantiers, l’onduleur Deye permet un suivi de production en temps réel, accès client compris ; les chiffres de production seront publiés une fois relevés.',
       resume:
-        'Une installation solaire résidentielle à Bouskoura, onduleur hybride Deye et stockage DYNESS — chantier filmé en juillet 2026.',
+        'Une villa à Bouskoura équipée de seize panneaux de 715 Wc (11,44 kWc), onduleur hybride Deye et deux batteries DYNESS de 5 kWh — mise en service en juillet 2026.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
-      title: 'Solar installation in Bouskoura — project filmed in July 2026 | Taqinor',
+      title: 'Solar installation 11.44 kWc in Bouskoura — villa commissioned in July 2026 | Taqinor',
       description:
-        'A residential solar installation in Bouskoura: Deye hybrid inverter and DYNESS (DL5.0C) storage, project filmed in July 2026. Real photos and video, with no power or production figure until confirmed.',
+        'A villa in Bouskoura fitted with sixteen 715 Wc panels (11.44 kWc), a Deye hybrid inverter and two DYNESS 5 kWh batteries, commissioned in July 2026. Real photos and video of the project.',
       situation:
-        'In Bouskoura, in the Casablanca-Settat region, an entire villa roof terrace was fitted with solar panels. This project was filmed on 9 July 2026, during the final adjustments: wiring, multimeter checks and starting up the inverter.',
+        'In Bouskoura, in the Casablanca-Settat region, an entire villa roof terrace was fitted with solar panels. The project was filmed on 9 July 2026, during the final adjustments: wiring, multimeter checks and starting up the inverter.',
       sizing:
-        'The installed power is not yet published for this project: it will be added once confirmed. This case study currently relies on real footage of the project rather than on its figures.',
+        'Sixteen 715 Wc panels, i.e. 11.44 kWc installed, with a Deye hybrid inverter and two DYNESS 5 kWh batteries (10 kWh of storage).',
       install:
-        'The equipment identifiable in the images: a Deye hybrid inverter and a DYNESS (DL5.0C module) storage system. The Taqinor team, recognisable by their work vest, handles the wiring and final checks before start-up.',
+        'The Taqinor team, recognisable by its work vest, mounted the sixteen panels on the roof terrace, connected the Deye hybrid inverter and installed the two DYNESS DL5.0C modules, then carried out the final checks before start-up.',
       result:
-        'This project’s production monitoring is not yet published here. As with the rest of our installations, the Deye inverter supports real-time production monitoring, client access included, once activated.',
+        'Commissioned in July 2026. As on our other projects, the Deye inverter provides real-time production monitoring, client access included; production figures will be published once recorded.',
       resume:
-        'A residential solar installation in Bouskoura, Deye hybrid inverter and DYNESS storage — project filmed in July 2026.',
+        'A villa in Bouskoura with sixteen 715 Wc panels (11.44 kWc), a Deye hybrid inverter and two DYNESS 5 kWh batteries — commissioned in July 2026.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
       alts: {
         'bouskoura-toit': 'A villa roof terrace fully covered in solar panels, Bouskoura',
@@ -511,19 +515,19 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       },
     },
     ar: {
-      title: 'تركيب شمسي في بوسكورة — ورش صُوِّر في يوليوز 2026 | Taqinor',
+      title: 'تركيب شمسي 11,44 kWc في بوسكورة — فيلا شُغِّلت في يوليوز 2026 | Taqinor',
       description:
-        'تركيب شمسي سكني في بوسكورة: عاكس هجين Deye وتخزين DYNESS (DL5.0C)، ورش صُوِّر في يوليوز 2026. صور وفيديو حقيقيان، دون أي رقم قدرة أو إنتاج قبل تأكيده.',
+        'فيلا في بوسكورة مجهزة بستة عشر لوحاً بقدرة 715 واط (11,44 kWc)، وعاكس هجين Deye وبطاريتي DYNESS بسعة 5 كيلوواط-ساعة، شُغِّلت في يوليوز 2026. صور وفيديو حقيقيان من الورش.',
       situation:
         'في بوسكورة، بجهة الدار البيضاء-سطات، جُهِّز سطح فيلا بأكمله بألواح شمسية. صُوِّر هذا الورش يوم 9 يوليوز 2026، في لحظة الضبط الأخير: التوصيل، الفحص بالمقياس المتعدد، وتشغيل العاكس.',
       sizing:
-        'القدرة المُركَّبة غير منشورة بعد لهذا الورش: ستُضاف بمجرد تأكيدها. تعتمد دراسة الحالة هذه حالياً على صور الورش الحقيقية بدل أرقامه.',
+        'ستة عشر لوحاً بقدرة 715 واط، أي 11,44 kWc مُركَّبة، مع عاكس هجين Deye وبطاريتين DYNESS بسعة 5 كيلوواط-ساعة (10 كيلوواط-ساعة من التخزين).',
       install:
-        'العتاد القابل للتعرّف عليه في الصور: عاكس هجين Deye ونظام تخزين DYNESS (وحدة DL5.0C). فريق تاكينور، الذي يُعرَف بسترة العمل، يتولى التوصيل والفحوصات الأخيرة قبل التشغيل.',
+        'فريق تاكينور، الذي يُعرَف بسترة العمل، ركَّب الألواح الستة عشر على سطح الفيلا، ووصّل العاكس الهجين Deye وثبّت وحدتي DYNESS DL5.0C، ثم أجرى الفحوصات الأخيرة قبل التشغيل.',
       result:
-        'متابعة إنتاج هذا الورش غير منشورة بعد هنا. كما في باقي تركيباتنا، يتيح عاكس Deye متابعة الإنتاج في الوقت الحقيقي، بولوج الزبون، بمجرد تفعيلها.',
+        'شُغِّل التركيب في يوليوز 2026. كما في باقي أوراشنا، يتيح عاكس Deye متابعة الإنتاج في الوقت الحقيقي، بولوج الزبون؛ وستُنشر أرقام الإنتاج بمجرد تسجيلها.',
       resume:
-        'تركيب شمسي سكني في بوسكورة، عاكس هجين Deye وتخزين DYNESS — ورش صُوِّر في يوليوز 2026.',
+        'فيلا في بوسكورة بستة عشر لوحاً بقدرة 715 واط (11,44 kWc)، عاكس هجين Deye وبطاريتي DYNESS بسعة 5 كيلوواط-ساعة — شُغِّلت في يوليوز 2026.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'bouskoura-toit': 'سطح فيلا مغطى بالكامل بألواح شمسية، بوسكورة',

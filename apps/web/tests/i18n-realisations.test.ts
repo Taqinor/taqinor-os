@@ -222,14 +222,14 @@ describe('pages EN/AR créées — contrat SEO + i18n', () => {
 });
 
 describe('realisations.ts — non touché (faits intacts)', () => {
-  it('toujours 6 installations (2026-09 : + Bouskoura, kwc non publié), total 43,48 kWc', () => {
-    // (2026-09) Bouskoura ajoutée — chantier réel, filmé, mais SANS kwc publié
+  it('toujours 6 installations (2026-09 : + Bouskoura 11,44 kWc), total 54,92 kWc', () => {
+    // (2026-09) Bouskoura ajoutée — chantier réel, 11,44 kWc (faits fondateur 08/09/2026)
     // (voir la note d'intégrité en tête de realisations.ts) : `kwcNum` reste
     // optionnel et est exclu de la somme (`?? 0`) plutôt que de faire planter
     // le total en NaN — les 5 totaux ORIGINAUX, eux, restent bit à bit intacts.
     expect(REALISATIONS).toHaveLength(6);
     const total = REALISATIONS.reduce((s, r) => s + (r.kwcNum ?? 0), 0);
-    expect(Number(total.toFixed(2))).toBe(43.48);
+    expect(Number(total.toFixed(2))).toBe(54.92);
   });
 
   it('Nouaceur sans production ; réf. 134 sans onduleur/batterie', () => {

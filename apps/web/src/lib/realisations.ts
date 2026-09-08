@@ -7,9 +7,10 @@
  * n'est inventé. Toute valeur non confirmée reste `null` et n'est jamais
  * affichée comme un nombre.
  *
- * Total installé : 17,04 + 11,36 + 5,68 + 5,68 + 3,72 = 43,48 kWc (= le chiffre
- * « 43,48 kWc installés » de l'accueil). Ce sont des CAPACITÉS posées (kWc),
- * conservées telles quelles.
+ * Total installé : 17,04 + 11,36 + 5,68 + 5,68 + 3,72 + 11,44 (Bouskoura,
+ * fondateur 08/09/2026) = 54,92 kWc — le total n'est plus affiché sur l'accueil
+ * (WC5), les tests d'intégrité le vérifient. Ce sont des CAPACITÉS posées
+ * (kWc), conservées telles quelles.
  *
  * WB1 — CORRECTION (2026-07-04, données Deye Cloud réelles du fondateur) :
  * les quatre `productionNum` ANNUELS d'origine (21406, 14271, 7135, 7135)
@@ -68,8 +69,8 @@ export interface Realisation {
   lng: number;
   /**
    * (2026-09) Optionnels : certains chantiers filmés/photographiés n'ont pas
-   * encore de puissance installée CONFIRMÉE publiable (ex. Bouskoura, tourné
-   * avant toute mesure/relevé) — absents plutôt que `0`/deviné, jamais affichés
+   * encore de puissance installée CONFIRMÉE publiable (un chantier tourné
+   * avant tout relevé) — absents plutôt que `0`/deviné, jamais affichés
    * comme un chiffre dans ce cas (chaque appelant garde `r.kwc &&`/`r.kwcNum &&`).
    */
   kwc?: string;
@@ -80,7 +81,7 @@ export interface Realisation {
    * (2026-09) Ce que `date` désigne : `'installed'` (mois de MISE EN SERVICE,
    * défaut — comportement historique inchangé pour toute entrée qui omet ce
    * champ) ou `'filmed'` (mois de TOURNAGE photo/vidéo, quand la mise en
-   * service réelle n'est pas connue — ex. Bouskoura). `standardCaption` choisit
+   * service réelle n'est pas connue). `standardCaption` choisit
    * le verbe juste selon cette valeur ; ne jamais afficher « installé en » pour
    * une date qui n'est que celle du tournage.
    */
@@ -258,32 +259,30 @@ export const REALISATIONS: Realisation[] = [
     ],
   },
   {
-    // (2026-09) Villa de Bouskoura — chantier FILMÉ le 09/07/2026 (photos +
-    // montage vidéo du vidéaste). Puissance/production NON connues pour ce
-    // chantier : `kwc`/`kwcNum`/`production` restent absents (jamais un
-    // défaut deviné) — voir la note d'intégrité en tête de fichier. `date`
-    // désigne ici le MOIS DE TOURNAGE (`dateType: 'filmed'`), pas une mise en
-    // service confirmée. `onduleur`/`batterie` sont les seules specs
-    // matérielles VISIBLES ET LISIBLES sur les images (écran/châssis Deye,
-    // étiquette DYNESS DL5.0C) — `panneaux` reste vide : le nombre/modèle
-    // exact des modules n'est pas lisible avec certitude sur les prises de
-    // vue disponibles, donc omis plutôt que compté à l'œil.
+    // (2026-09) Villa de Bouskoura — faits FONDATEUR (Reda, 08/09/2026) :
+    // 16 panneaux de 715 Wc = 11,44 kWc, 2 batteries DYNESS 5 kWh (modules
+    // DL5.0C visibles à l'image), onduleur hybride Deye, mise en service en
+    // juillet 2026 ; chantier filmé le 09/07/2026 (photos + montage du
+    // vidéaste). Production non relevée → `null`, jamais un chiffre deviné.
+    // Coordonnées = centre-ville GeoNames (gazetier `villes_maroc`).
     slug: 'bouskoura-villa-2026',
     ref: 'BSK-07/26',
     ville: 'Bouskoura',
     region: 'Casablanca-Settat',
-    lat: 33.44,
-    lng: -7.65,
+    lat: 33.4498,
+    lng: -7.6524,
+    kwc: '11,44 kWc',
+    kwcNum: 11.44,
     date: 'juillet 2026',
-    dateType: 'filmed',
+    dateType: 'installed',
     production: null,
     productionNum: null,
-    panneaux: '',
+    panneaux: '16 × 715 Wc',
     onduleur: 'Deye',
-    batterie: 'DYNESS (DL5.0C)',
+    batterie: '2 × DYNESS 5 kWh (DL5.0C)',
     segment: 'residentiel',
     resume:
-      'Une installation solaire résidentielle à Bouskoura, onduleur hybride Deye et stockage DYNESS — chantier filmé en juillet 2026.',
+      'Une villa à Bouskoura équipée de seize panneaux de 715 Wc (11,44 kWc), onduleur hybride Deye et deux batteries DYNESS de 5 kWh — mise en service en juillet 2026.',
     photos: [
       { name: 'bouskoura-toit', alt: 'Toiture-terrasse d’une villa entièrement couverte de panneaux solaires, Bouskoura', ratio: 16 / 9, widths: [2000, 1280, 768, 480] },
       { name: 'bouskoura-toit-large', alt: 'Vue aérienne large du toit solaire de la villa et du quartier, Bouskoura', ratio: 16 / 9, widths: [1600, 1024, 640] },
