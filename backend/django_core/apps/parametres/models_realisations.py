@@ -111,7 +111,12 @@ class Realisation(TenantModel):
         et stockerait sinon « belksiri », que la comparaison de villes du
         sélecteur ne retrouverait pas."""
         self.ville = corriger_ville((self.ville or '').strip())
-        if self.mise_en_service is not None and self.mise_en_service.day != 1:
+        # ``getattr`` plutôt qu'un accès direct : une date affectée sous forme
+        # de CHAÎNE (``objects.create(mise_en_service='2026-07-18')``, que
+        # Django convertit seulement à l'écriture SQL) n'a pas de ``.day`` —
+        # on la laisse alors passer telle quelle au lieu de planter.
+        jour = getattr(self.mise_en_service, 'day', None)
+        if jour is not None and jour != 1:
             self.mise_en_service = self.mise_en_service.replace(day=1)
 
     def clean(self):
