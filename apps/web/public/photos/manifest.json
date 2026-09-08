@@ -193,5 +193,54 @@
       640
     ],
     "ratio": 1.3333333333333333
+  },
+  "nouaceur-toit": {
+    "widths": [
+      2000,
+      1280,
+      768,
+      480
+    ],
+    "ratio": 1.7777777777777777
+  },
+  "nouaceur-panneaux-couchant": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.5
+  },
+  "nouaceur-structure-lestage": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "nouaceur-equipe-rails": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1
+  },
+  "nouaceur-mesure-equipe": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.5
+  },
+  "nouaceur-onduleur-must": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
   }
 }
