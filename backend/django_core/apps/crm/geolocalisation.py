@@ -11,13 +11,15 @@ Deux résolveurs, PURS (aucune écriture — l'écran remplit ``gps_lat``/
   d'une estimation (règle « zéro chiffre inventé »).
 
 * ``coords_depuis_adresse`` — géocodage Nominatim (OpenStreetMap, gratuit,
-  ``countrycodes=ma``) de l'adresse ; en repli, l'ancre GeoNames de la VILLE
-  du gazetier (précision « ville », annoncée telle quelle, jamais maquillée
-  en adresse exacte).
+  ``countrycodes=ma``) de l'adresse ; puis (VREF-LIEUX, 08/09/2026) le
+  LIEU-DIT GeoNames nommé dans l'adresse ou la ville (douar, quartier —
+  ``apps/parametres/lieux_maroc.py``, correspondance sans équivoque
+  seulement) ; en repli, l'ancre GeoNames de la VILLE du gazetier (précision
+  « ville », annoncée telle quelle, jamais maquillée en adresse exacte).
 
 Précisions rendues : ``'lien'`` (exact, choisi par le client), ``'adresse'``
-(géocodeur), ``'ville'`` (centre-ville approximatif). Échec ⇒ ``None`` —
-l'appelant n'écrit rien.
+(géocodeur), ``'lieu-dit'`` (centre d'un douar/quartier), ``'ville'``
+(centre-ville approximatif). Échec ⇒ ``None`` — l'appelant n'écrit rien.
 """
 from __future__ import annotations
 
@@ -91,9 +93,10 @@ def coords_depuis_lien_maps(lien):
 def coords_depuis_adresse(adresse, ville=''):
     """(lat, lng, precision) depuis l'adresse postale, ou ``None``.
 
-    Nominatim d'abord (précision ``'adresse'``) ; en repli l'ancre GeoNames
-    de la ville du gazetier (précision ``'ville'`` — un centre-ville
-    approximatif ANNONCÉ comme tel, jamais présenté comme le toit du client).
+    Nominatim d'abord (précision ``'adresse'``) ; puis le lieu-dit GeoNames
+    (précision ``'lieu-dit'``) ; en repli l'ancre GeoNames de la ville du
+    gazetier (précision ``'ville'`` — un centre-ville approximatif ANNONCÉ
+    comme tel, jamais présenté comme le toit du client).
     """
     adresse = (adresse or '').strip()
     ville = (ville or '').strip()
@@ -115,6 +118,17 @@ def coords_depuis_adresse(adresse, ville=''):
                     return (*coords, 'adresse')
         except Exception:  # noqa: BLE001 — best-effort, repli ville
             pass
+    # VREF-LIEUX (08/09/2026, cas « Sidi Hashass ») — lieu-dit GeoNames
+    # (douar, quartier, hameau) : l'ADRESSE d'abord, corroborée par la ville
+    # tapée, puis le champ ville lui-même. Correspondance sans équivoque
+    # seulement (homonymes éloignés → None) ; précision « lieu-dit » annoncée.
+    from apps.parametres.lieux_maroc import position_lieu_dit
+    for texte, contexte in ((adresse, ville), (ville, '')):
+        if not texte:
+            continue
+        lieu = position_lieu_dit(texte, contexte_ville=contexte)
+        if lieu:
+            return (Decimal(str(lieu[0])), Decimal(str(lieu[1])), 'lieu-dit')
     from apps.parametres.villes_maroc import coordonnees_ville
     for texte in (ville, adresse):
         if not texte:

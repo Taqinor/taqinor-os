@@ -247,7 +247,9 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
             { adresse: v('adresse'), ville: v('ville') },
             (d) => (d.precision === 'ville'
               ? 'GPS approximatif posé (centre-ville) — affinez si besoin.'
-              : 'GPS résolu depuis l’adresse.'))}
+              : d.precision === 'lieu-dit'
+                ? 'GPS approximatif posé (centre du lieu-dit) — affinez si besoin.'
+                : 'GPS résolu depuis l’adresse.'))}
         >
           Adresse → GPS{gpsBusy ? '…' : ''}
         </Button>

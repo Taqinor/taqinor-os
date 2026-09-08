@@ -248,3 +248,33 @@ class RattrapageVillesTests(_Base):
         self.assertTrue(LeadActivity.objects.filter(
             lead=casse, body__contains='Ville corrigée automatiquement',
         ).exists())
+
+
+class LieuDitEndpointTests(_Base):
+    """VREF-LIEUX (08/09/2026) — « sidi hashass » : Nominatim ne connaît pas
+    le douar, le lieu-dit GeoNames (Douar Sidi Hashas) le place ; le dialogue
+    reçoit donc une POSITION et les villes ERP proches (Madagh, Berkane…)
+    depuis le seul nom — plus jamais « position introuvable »."""
+    slug = 'vref-lieu'
+
+    URL = '/api/django/crm/leads/ville-statut/'
+
+    def test_un_douar_geonames_place_le_dialogue(self):
+        class _NominatimVide:
+            ok = True
+
+            @staticmethod
+            def json():
+                return []
+        from unittest.mock import patch
+        with patch('requests.get', return_value=_NominatimVide()):
+            resp = self.api.post(
+                self.URL, {'ville': 'sidi hashass', 'proches': True},
+                format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], 'inconnue')
+        self.assertIsNotNone(resp.data['position'])
+        self.assertAlmostEqual(resp.data['position']['lat'], 35.006, places=2)
+        self.assertAlmostEqual(resp.data['position']['lng'], -2.373, places=2)
+        self.assertEqual(resp.data['proches'][0]['ville'], 'Madagh')
+        self.assertFalse(resp.data['gps_hors_zone'])
