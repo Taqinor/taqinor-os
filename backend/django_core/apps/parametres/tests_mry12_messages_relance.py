@@ -41,6 +41,8 @@ _CROCHETS = [
     (r'\[référence\]', '{reference}'),
     (r'\[المرجع\]', '{reference}'),
     (r'\[lien de la fiche TAQINOR\]', '{lien}'),
+    (r'\[Conseiller\]', '{conseiller}'),
+    (r'\[المستشار\]', '{conseiller}'),
 ]
 
 _TOKEN_RE = re.compile(r'\{[^{}]*\}')
@@ -138,6 +140,35 @@ class ClesEtDefautsTests(TestCase):
         for cle in ('devis_unique', 'facture', 'relance', 'rappel_rdv'):
             self.assertIn(cle, MESSAGE_TEMPLATE_DEFAULTS)
         self.assertIn('{reference}', MESSAGE_TEMPLATE_DEFAULTS['facture'])
+
+
+class ReglePasDePrenomCodeEnDurTests(TestCase):
+    """Règle fondateur du 08/09/2026 : aucun prénom de personne (Meryem, Reda)
+    n'est codé en dur dans un texte qui atteint le client — l'expéditeur est
+    désormais `{conseiller}`, résolu côté serveur depuis le RESPONSABLE du
+    lead. On teste les TEXTES (les valeurs), jamais les clés : les clés
+    `annonce_appel_reda`/`offre_reda` contiennent la sous-chaîne « reda » par
+    construction (identifiants internes, jamais renommés)."""
+
+    INTERDITS = ('Meryem', 'مريم', 'Reda', 'رضا')
+
+    def test_aucun_defaut_fr_ne_code_un_prenom_en_dur(self):
+        for cle, texte in MESSAGE_TEMPLATE_DEFAULTS.items():
+            with self.subTest(cle=cle):
+                for mot in self.INTERDITS:
+                    self.assertNotIn(
+                        mot, texte,
+                        f'{cle} (FR) contient « {mot} » en dur — utiliser '
+                        '{conseiller} ou « le fondateur ».')
+
+    def test_aucun_defaut_darija_ne_code_un_prenom_en_dur(self):
+        for cle, texte in MESSAGE_TEMPLATE_DEFAULTS_DARIJA.items():
+            with self.subTest(cle=cle):
+                for mot in self.INTERDITS:
+                    self.assertNotIn(
+                        mot, texte,
+                        f'{cle} (darija) contient « {mot} » en dur — '
+                        'utiliser {conseiller} ou « le fondateur ».')
 
 
 class PlaceholdersTests(TestCase):
