@@ -108,9 +108,13 @@ export function captureWhatsappText(p: {
  * WhatsApp) arrive déjà contextualisé côté équipe. Aucun chiffre inventé :
  * les trois champs viennent tels quels de `Realisation` (lib/realisations.ts).
  */
-export function caseStudyWhatsappText(p: { ville: string; kwc: string; ref: string }): string {
+export function caseStudyWhatsappText(p: { ville: string; kwc?: string; ref: string }): string {
+  // (2026-09) `kwc` absent (chantier filmé avant tout relevé de puissance,
+  // ex. Bouskoura) : le segment "de X" est omis plutôt que d'écrire "de
+  // undefined" — jamais de chiffre deviné dans un message pré-rempli.
+  const kwcPart = p.kwc ? `de ${p.kwc} ` : '';
   return (
-    `Bonjour, j'ai vu l'installation de ${p.kwc} à ${p.ville} (réf. ${p.ref}) sur taqinor.ma ` +
+    `Bonjour, j'ai vu l'installation ${kwcPart}à ${p.ville} (réf. ${p.ref}) sur taqinor.ma ` +
     `et je souhaite une étude similaire pour mon propre projet.`
   );
 }
