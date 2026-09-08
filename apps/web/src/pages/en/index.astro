@@ -54,7 +54,10 @@ const waZeroForm = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
 // The largest published residential installation (ref. 468, El Jadida) —
 // protagonist of the hero and closing aside. Derived by sorting on kwcNum,
 // never a hand-copied reference.
-const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+// (2026-09) `kwcNum` is now optional (e.g. Bouskoura, filmed before any
+// power reading) — filtered BEFORE sorting: the hero's protagonist must stay
+// a real, known power figure.
+const featured = REALISATIONS.filter((r) => r.kwcNum != null).sort((a, b) => b.kwcNum! - a.kwcNum!)[0];
 
 // WB1 (2026-07-04) — old WJ73 note removed: it invited visitors to divide
 // production/kWc for the flagship install, which exposed that the 4 non-null
@@ -98,14 +101,24 @@ const galleryRaw = [
   { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
   { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  // (2026-09) Bouskoura — power not yet published for this project: `type`
+  // stays qualitative (brands confirmed on camera), never a guessed panel count.
+  { name: 'bouskoura-toit', alt: 'A villa roof terrace fully covered in solar panels, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Deye inverter · DYNESS storage', slug: 'bouskoura-villa-2026' },
 ];
 const gallery = galleryRaw.map((g) => {
   const r = realisationBySlug(g.slug);
+  const ville = r?.ville ?? '';
+  const kwc = r?.kwc ?? '';
+  const prod = g.showProd ? (r?.production?.replace('/an', '/yr') ?? null) : null;
+  // (2026-09) `kwc` can be empty (project filmed before any power reading,
+  // e.g. Bouskoura): filtered joins instead of a separator dangling on nothing.
   return {
     ...g,
-    ville: r?.ville ?? '',
-    kwc: r?.kwc ?? '',
-    prod: g.showProd ? (r?.production?.replace('/an', '/yr') ?? null) : null,
+    ville,
+    kwc,
+    prod,
+    caption: [ville, kwc, prod].filter(Boolean).join(' · '),
+    ariaLabel: [ville, kwc, prod].filter(Boolean).join(', '),
   };
 });
 
@@ -350,7 +363,7 @@ const investment = [
         <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
             <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
-              <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`View the installation: ${g.ville}, ${g.kwc}`}></a>
+              <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`View the installation: ${g.ariaLabel}`}></a>
               {/* Uniform "golden hour" grade — .v3-grade on the content photo */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
@@ -360,12 +373,12 @@ const investment = [
               <button
                 type="button"
                 class="gallery-zoom-btn absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
-                aria-label={`Enlarge photo: ${g.ville}, ${g.kwc}${g.prod ? `, ${g.prod}` : ''}`}
+                aria-label={`Enlarge photo: ${g.ariaLabel}`}
                 data-lightbox-open
                 data-name={g.name}
                 data-alt={g.alt}
                 data-widths={g.widths.join(',')}
-                data-caption={`${g.ville} · ${g.kwc}${g.prod ? ` · ${g.prod}` : ''}`}
+                data-caption={g.caption}
                 data-type={g.type}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -373,7 +386,7 @@ const investment = [
                 </svg>
               </button>
               <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-                <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
+                <span class="tech-label block text-lune">{g.caption}</span>
                 <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
               </div>
             </div>

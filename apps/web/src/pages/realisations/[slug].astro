@@ -22,6 +22,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import Picture from '../../components/Picture.astro';
 import PhotoCaption from '../../components/PhotoCaption.astro';
+import LiteVideo from '../../components/LiteVideo.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../lib/realisations';
@@ -66,10 +67,14 @@ const equipment = [
 const title = cs.title;
 const description = cs.description;
 
+// (2026-09) kwc absent (chantier filmé avant tout relevé de puissance, ex.
+// Bouskoura) : le segment "X " est omis plutôt que d'écrire "undefined".
+const headline = `Installation solaire${r.kwc ? ` ${r.kwc}` : ''} à ${r.ville} — réf. ${r.ref}`;
+
 const articleJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: `Installation solaire ${r.kwc} à ${r.ville} — réf. ${r.ref}`,
+  headline,
   description: r.resume,
   image: heroImg,
   about: { '@type': 'Thing', name: 'Installation solaire photovoltaïque' },
@@ -93,10 +98,14 @@ const galleryPhotos = rest;
 // W327 — « kWc le plus proche du vôtre » : l'autre étude dont la puissance
 // installée (kwcNum) est la plus proche de celle-ci, en excluant la page
 // courante. Comparaison purement numérique sur un champ réel — aucune
-// proximité inventée.
-const nearestCase = REALISATIONS
-  .filter((other) => other.slug !== r.slug)
-  .sort((a, b) => Math.abs(a.kwcNum - r.kwcNum) - Math.abs(b.kwcNum - r.kwcNum))[0];
+// proximité inventée. (2026-09) `kwcNum` est optionnel : sans lui pour LA
+// page courante OU pour un candidat, aucune comparaison numérique n'a de sens
+// — les deux côtés sont donc exclus plutôt que comparés à `NaN`.
+const nearestCase = r.kwcNum != null
+  ? REALISATIONS
+      .filter((other) => other.slug !== r.slug && other.kwcNum != null)
+      .sort((a, b) => Math.abs(a.kwcNum! - r.kwcNum!) - Math.abs(b.kwcNum! - r.kwcNum!))[0]
+  : undefined;
 
 // W350 — bouton WhatsApp PROPRE À CETTE étude (bio-link social → réalisation
 // → WhatsApp déjà contextualisé). Distinct du bouton générique de StickyCta.
@@ -111,7 +120,7 @@ const waCaseStudy = whatsappLink(
   description={description}
   ogSlug={ogSlug}
   ogImage={heroImg}
-  ogImageAlt={`Installation solaire ${r.kwc} à ${r.ville} — photo de chantier`}
+  ogImageAlt={`Installation solaire${r.kwc ? ` ${r.kwc}` : ''} à ${r.ville} — photo de chantier`}
 >
   <script type="application/ld+json" set:html={JSON.stringify(articleJsonLd)} />
   <div class="v2">
@@ -122,7 +131,7 @@ const waCaseStudy = whatsappLink(
       items={[
         { label: 'Accueil', href: '/' },
         { label: 'Réalisations', href: '/realisations' },
-        { label: `${r.ville} · ${r.kwc}` },
+        { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville },
       ]}
     />
 
@@ -157,7 +166,9 @@ const waCaseStudy = whatsappLink(
       <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Réf. {r.ref} · {r.ville} · {r.date}</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
-          {r.kwc} d'installation solaire {cityPage ? cityPage.intro : `à ${r.ville}`}
+          {r.kwc
+            ? <>{r.kwc} d'installation solaire {cityPage ? cityPage.intro : `à ${r.ville}`}</>
+            : <>Installation solaire {cityPage ? cityPage.intro : `à ${r.ville}`}</>}
         </h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{r.resume}</p>
       </div>
@@ -166,11 +177,13 @@ const waCaseStudy = whatsappLink(
     <!-- Chiffres-clés — uniquement ce qui est publié -->
     <section class="border-y border-white/10 px-4 py-14 sm:py-16">
       <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          {/* W211 — whitespace-nowrap retiré (un long chiffre kWh/an peut déborder à 320 px) */}
-          <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Puissance installée</dt>
-        </div>
+        {r.kwc && (
+          <div class="v2-rise" style="--v2-i:0">
+            {/* W211 — whitespace-nowrap retiré (un long chiffre kWh/an peut déborder à 320 px) */}
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Puissance installée</dt>
+          </div>
+        )}
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
@@ -181,10 +194,12 @@ const waCaseStudy = whatsappLink(
             </dt>
           </div>
         )}
-        <div class="v2-rise" style="--v2-i:2">
-          <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Panneaux posés</dt>
-        </div>
+        {r.panneaux && (
+          <div class="v2-rise" style="--v2-i:2">
+            <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Panneaux posés</dt>
+          </div>
+        )}
         <div class="v2-rise" style="--v2-i:3">
           <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
           <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
@@ -195,7 +210,7 @@ const waCaseStudy = whatsappLink(
     <!-- Le récit du chantier : situation, dimensionnement, résultat mesuré -->
     <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Le chantier, raconté</p>
-      <h2 class="display v2-section-title mt-5 text-white">Pourquoi {r.kwc}, sur cette toiture</h2>
+      <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>Pourquoi {r.kwc}, sur cette toiture</> : 'Ce que ce chantier montre'}</h2>
       <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
@@ -209,6 +224,30 @@ const waCaseStudy = whatsappLink(
         </blockquote>
       )}
     </section>
+
+    <!-- (2026-09) Vidéo de chantier propre à CETTE étude — absente pour toute
+         réalisation sans `video` (comportement historique inchangé). Façade
+         clic-pour-lire LiteVideo : aucun MP4 préchargé. -->
+    {r.video && (
+      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+        <div class="mx-auto max-w-3xl">
+          <p class="tech-label v2-kicker rule-brass text-lune">Le chantier filmé</p>
+          <h2 class="display v2-section-title mt-5 text-white">Voir le chantier en vidéo</h2>
+          <div class="mt-8 border border-brass-400/40">
+            <LiteVideo
+              id={`realisation-video-${r.slug}`}
+              src={r.video.src}
+              poster={r.video.poster}
+              alt={r.video.alt}
+              playLabel="Lire la vidéo du chantier"
+              aspectRatio="16/9"
+              posterWidth={1600}
+              posterHeight={900}
+            />
+          </div>
+        </div>
+      </section>
+    )}
 
     <!-- W184 — Diptych avant/pendant/après (si données présentes) -->
     {hasDiptych && (
@@ -371,6 +410,13 @@ const waCaseStudy = whatsappLink(
         <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
           Nos dernières réalisations →
         </a>
+        {/* (2026-09) Lien de suivi de production PROPRE à ce chantier — vide
+            tant que non fourni (jamais un lien générique/deviné). */}
+        {r.monitoringUrl && (
+          <a href={r.monitoringUrl} rel="noopener noreferrer" target="_blank" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+            Suivi de production de ce chantier →
+          </a>
+        )}
       </div>
     </section>
 
@@ -381,7 +427,7 @@ const waCaseStudy = whatsappLink(
          réalisation → WhatsApp déjà contextualisé, sans rien à retaper). -->
     <section class="border-t border-white/10 bg-blanc-azur px-4 py-10 text-center text-encre">
       <p class="mx-auto max-w-xl text-sm text-encre-soft">
-        Une question sur cette installation de {r.kwc} à {r.ville} ?
+        Une question sur cette installation{r.kwc ? ` de ${r.kwc}` : ''} à {r.ville} ?
       </p>
       <a
         href={waCaseStudy}

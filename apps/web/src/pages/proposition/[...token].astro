@@ -201,12 +201,18 @@ import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // (fondateur 2026-08-17) + date du relevé de production et appariement DOCUMENTÉ
 // « réalisation → centrale mesurée » (jamais deviné).
 import {
+  REALISATIONS,
   nearestRealisation,
   nearestRealisationByCityText,
   measuredPlantFor,
   formatDateFr,
   MEASURED_FLEET_READ_AT_FR,
 } from '../../lib/realisations';
+// (2026-09) cette carte affiche `kwc`/`kwcNum` du résultat (ligne 5010+) — la
+// recherche est restreinte aux chantiers qui en publient un, pour retomber
+// sur le suivant-plus-proche plutôt qu'un chantier réel mais sans chiffre
+// publié (ex. Bouskoura, filmé avant tout relevé de puissance).
+const REALISATIONS_WITH_KWC = REALISATIONS.filter((r) => r.kwc);
 // (fondateur 2026-08-17) SOURCE UNIQUE des durées de garantie affichées : le
 // bloc « Pourquoi nous faire confiance » ne code plus aucun chiffre en dur.
 // TAILLES · QUICK WIN (26/08/2026) — le bloc garanties dit désormais les DEUX
@@ -1440,9 +1446,12 @@ const noteSimplifiee = ok && data ? noteVersionSimplifiee(data) : null;
 // Honnêtement scopé aux villes réelles de REALISATIONS (nearestRealisation
 // borne à 80 km) — jamais une ville devinée.
 const roofPinLngLat = roofLayout?.zones?.[0]?.vertices?.[0] ?? null;
+// (2026-09) pool restreint aux chantiers publiant un `kwc` (voir
+// REALISATIONS_WITH_KWC ci-dessus) : cette carte affiche kwc/kwcNum, donc
+// jamais un chantier réel mais sans chiffre publié (ex. Bouskoura).
 const nearestInstall = ok
-  ? (roofPinLngLat ? nearestRealisation(roofPinLngLat[1], roofPinLngLat[0])?.realisation ?? null : null) ??
-    (q?.client_addr ? nearestRealisationByCityText(q.client_addr) : null)
+  ? (roofPinLngLat ? nearestRealisation(roofPinLngLat[1], roofPinLngLat[0], 80, REALISATIONS_WITH_KWC)?.realisation ?? null : null) ??
+    (q?.client_addr ? nearestRealisationByCityText(q.client_addr, REALISATIONS_WITH_KWC) : null)
   : null;
 const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug}` : '';
 // (fondateur 2026-08-17) production MESURÉE de ce chantier — affichée UNIQUEMENT

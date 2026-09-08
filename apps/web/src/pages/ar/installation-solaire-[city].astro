@@ -177,8 +177,8 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
                 <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
                   sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
                 <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
-                  <span class="fig block text-2xl text-white" dir="ltr">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>
-                  <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>
+                  {r!.kwc && <span class="fig block text-2xl text-white" dir="ltr">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>}
+                  {r!.panneaux && <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>}
                   <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
                 </div>
               </a>
@@ -205,7 +205,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <div class="mt-8 flex flex-wrap gap-3">
             {nearby.map((r) => (
               <a href={L(`/realisations/${r!.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r!.ville} · <span dir="ltr">{r!.kwc}</span> <span class="inline-block rtl:-scale-x-100">→</span>
+                {r!.kwc ? <>{r!.ville} · <span dir="ltr">{r!.kwc}</span></> : r!.ville} <span class="inline-block rtl:-scale-x-100">→</span>
               </a>
             ))}
           </div>
@@ -227,7 +227,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <div class="mt-8 flex flex-wrap gap-3">
             {closest.map((r) => (
               <a href={L(`/realisations/${r.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r.ville} · <span dir="ltr">{r.kwc}</span> <span class="inline-block rtl:-scale-x-100">→</span>
+                {r.kwc ? <>{r.ville} · <span dir="ltr">{r.kwc}</span></> : r.ville} <span class="inline-block rtl:-scale-x-100">→</span>
               </a>
             ))}
             <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
