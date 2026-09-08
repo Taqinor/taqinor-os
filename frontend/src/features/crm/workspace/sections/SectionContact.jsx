@@ -145,33 +145,37 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
             </div>
           )}
         </div>
-        <FormField label="Prénom" htmlFor="lf-prenom">
-          <Input id="lf-prenom" value={v('prenom')} onChange={(e) => setField('prenom', e.target.value)} />
-        </FormField>
-        <FormField label="Téléphone" htmlFor="lf-telephone">
+        <FormField label="Prénom" htmlFor="lf-prenom" error={errors.prenom}>
           <Input
-            id="lf-telephone" value={v('telephone')} disabled={piiMasked} title={piiTitle}
+            id="lf-prenom" invalid={!!errors.prenom}
+            value={v('prenom')} onChange={(e) => setField('prenom', e.target.value)}
+          />
+        </FormField>
+        <FormField label="Téléphone" htmlFor="lf-telephone" error={errors.telephone}>
+          <Input
+            id="lf-telephone" invalid={!!errors.telephone} value={v('telephone')} disabled={piiMasked} title={piiTitle}
             onChange={(e) => setField('telephone', e.target.value)} onPaste={onTelephonePaste}
           />
           <PhoneHint value={v('telephone')} testId="lf-tel-hint" />
         </FormField>
       </div>
       <div className="form-row">
-        <FormField label="WhatsApp" htmlFor="lf-whatsapp">
+        <FormField label="WhatsApp" htmlFor="lf-whatsapp" error={errors.whatsapp}>
           <Input
-            id="lf-whatsapp" value={v('whatsapp')} disabled={piiMasked} title={piiTitle}
+            id="lf-whatsapp" invalid={!!errors.whatsapp} value={v('whatsapp')} disabled={piiMasked} title={piiTitle}
             onChange={(e) => setField('whatsapp', e.target.value)} onPaste={onWhatsappPaste}
           />
         </FormField>
         <FormField
           label="Ville / quartier"
           htmlFor="lf-ville"
+          error={errors.ville}
           hint={villeRattachee
             ? `Rattachée à ${villeRattachee} (PVGIS, transport)`
             : (villeSuggested ? 'Suggéré — modifiable' : undefined)}
         >
           <Input
-            id="lf-ville"
+            id="lf-ville" invalid={!!errors.ville}
             className={villeSuggested ? 'vx-suggested-field' : undefined}
             value={v('ville')} onChange={(e) => setField('ville', e.target.value)}
           />
@@ -202,19 +206,31 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
         </div>
       </div>
       <div className="form-row">
-        <FormField label="Société" htmlFor="lf-societe">
-          <Input id="lf-societe" value={v('societe')} onChange={(e) => setField('societe', e.target.value)} />
+        <FormField label="Société" htmlFor="lf-societe" error={errors.societe}>
+          <Input
+            id="lf-societe" invalid={!!errors.societe}
+            value={v('societe')} onChange={(e) => setField('societe', e.target.value)}
+          />
         </FormField>
         <div className="form-group fg-grow">
-          <FormField label="Adresse" htmlFor="lf-adresse">
-            <Input id="lf-adresse" value={v('adresse')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('adresse', e.target.value)} />
+          <FormField label="Adresse" htmlFor="lf-adresse" error={errors.adresse}>
+            <Input
+              id="lf-adresse" invalid={!!errors.adresse} value={v('adresse')} disabled={piiMasked} title={piiTitle}
+              onChange={(e) => setField('adresse', e.target.value)}
+            />
           </FormField>
         </div>
-        <FormField label="GPS lat." htmlFor="lf-gps-lat">
-          <Input id="lf-gps-lat" type="number" step="any" value={v('gps_lat')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('gps_lat', e.target.value)} />
+        <FormField label="GPS lat." htmlFor="lf-gps-lat" error={errors.gps_lat}>
+          <Input
+            id="lf-gps-lat" type="number" step="any" invalid={!!errors.gps_lat}
+            value={v('gps_lat')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('gps_lat', e.target.value)}
+          />
         </FormField>
-        <FormField label="GPS long." htmlFor="lf-gps-lng">
-          <Input id="lf-gps-lng" type="number" step="any" value={v('gps_lng')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('gps_lng', e.target.value)} />
+        <FormField label="GPS long." htmlFor="lf-gps-lng" error={errors.gps_lng}>
+          <Input
+            id="lf-gps-lng" type="number" step="any" invalid={!!errors.gps_lng}
+            value={v('gps_lng')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('gps_lng', e.target.value)}
+          />
         </FormField>
       </div>
       {/* GPS7 — lien Google Maps collé par le client → GPS exact ; ou
@@ -223,9 +239,9 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
           l'enregistrement normal qui persiste et journalise. */}
       <div className="form-row">
         <div className="form-group fg-grow">
-          <FormField label="Lien Google Maps (envoyé par le client)" htmlFor="lf-lien-maps">
+          <FormField label="Lien Google Maps (envoyé par le client)" htmlFor="lf-lien-maps" error={errors.lien_maps}>
             <Input
-              id="lf-lien-maps" value={v('lien_maps')} disabled={piiMasked} title={piiTitle}
+              id="lf-lien-maps" invalid={!!errors.lien_maps} value={v('lien_maps')} disabled={piiMasked} title={piiTitle}
               placeholder="https://maps.app.goo.gl/…"
               onChange={(e) => setField('lien_maps', e.target.value)}
             />

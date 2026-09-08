@@ -180,7 +180,11 @@ export function SectionWebQuestionnaire({ state }) {
 
 // LW11 — Compléments : Note générale + Champs personnalisés — ENFIN dans la nav
 // (orphelins du scroll-spy avant, recon 01 §6.9).
-export default function SectionDivers({ state, setField }) {
+// RÈGLE FONDATEUR 08/09/2026 — seul champ de cette section hors FormField (un
+// <label htmlFor>/<textarea> bruts) : l'erreur serveur est donc affichée à la
+// main, dans le MÊME langage visuel qu'un FormField (rouge, role="alert",
+// juste sous le contrôle) plutôt que de restructurer le balisage existant.
+export default function SectionDivers({ state, setField, errors = {} }) {
   const note = getField(state, 'note') ?? ''
   const customData = getField(state, 'custom_data') || {}
   return (
@@ -188,9 +192,13 @@ export default function SectionDivers({ state, setField }) {
       <div className="form-group">
         <label className="form-label" htmlFor="lf-note">Note générale</label>
         <textarea
-          id="lf-note" className="form-control" rows={2}
+          id="lf-note"
+          className={errors.note ? 'form-control is-invalid' : 'form-control'}
+          aria-invalid={errors.note ? true : undefined}
+          rows={2}
           value={note} onChange={(e) => setField('note', e.target.value)}
         />
+        {errors.note && <p role="alert" className="text-xs text-destructive">{errors.note}</p>}
       </div>
       <CustomFieldsInput
         module="lead"

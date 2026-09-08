@@ -36,7 +36,7 @@ const enumOptions = (labels) => [
 // devient le champ normal — l'autosauvegarde rend le raccourci redondant,
 // blueprint D3), ete_differente, conso, tranche, raccordement, 82-21.
 // Le placeholder « ex: 650 » sur #lf-facture-hiver est un contrat e2e.
-export default function SectionEnergie({ state, setField }) {
+export default function SectionEnergie({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const eteDifferente = !!getField(state, 'ete_differente')
   const regularisation = !!getField(state, 'regularisation_8221')
@@ -46,9 +46,10 @@ export default function SectionEnergie({ state, setField }) {
         <FormField
           label={eteDifferente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'}
           htmlFor="lf-facture-hiver"
+          error={errors.facture_hiver}
         >
           <Input
-            id="lf-facture-hiver" type="number" step="any" placeholder="ex: 650"
+            id="lf-facture-hiver" type="number" step="any" placeholder="ex: 650" invalid={!!errors.facture_hiver}
             value={v('facture_hiver')} onChange={(e) => setField('facture_hiver', e.target.value)}
           />
         </FormField>
@@ -62,23 +63,34 @@ export default function SectionEnergie({ state, setField }) {
           </label>
         </div>
         {eteDifferente && (
-          <FormField label="Facture Été (MAD/mois)" htmlFor="lf-facture-ete">
+          <FormField label="Facture Été (MAD/mois)" htmlFor="lf-facture-ete" error={errors.facture_ete}>
             <Input
-              id="lf-facture-ete" type="number" step="any" placeholder="ex: 420"
+              id="lf-facture-ete" type="number" step="any" placeholder="ex: 420" invalid={!!errors.facture_ete}
               value={v('facture_ete')} onChange={(e) => setField('facture_ete', e.target.value)}
             />
           </FormField>
         )}
       </div>
       <div className="form-row">
-        <FormField label="Conso mensuelle (kWh)" htmlFor="lf-conso-mensuelle">
-          <Input id="lf-conso-mensuelle" type="number" step="any" value={v('conso_mensuelle_kwh')} onChange={(e) => setField('conso_mensuelle_kwh', e.target.value)} />
+        <FormField label="Conso mensuelle (kWh)" htmlFor="lf-conso-mensuelle" error={errors.conso_mensuelle_kwh}>
+          <Input
+            id="lf-conso-mensuelle" type="number" step="any" invalid={!!errors.conso_mensuelle_kwh}
+            value={v('conso_mensuelle_kwh')} onChange={(e) => setField('conso_mensuelle_kwh', e.target.value)}
+          />
         </FormField>
-        <FormField label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee">
-          <Input id="lf-tranche-onee" value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)} />
+        <FormField label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee" error={errors.tranche_onee}>
+          <Input
+            id="lf-tranche-onee" invalid={!!errors.tranche_onee}
+            value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)}
+          />
         </FormField>
-        <FormField label="Raccordement" htmlFor="lf-raccordement">
-          <select id="lf-raccordement" className="form-select" value={v('raccordement')} onChange={(e) => setField('raccordement', e.target.value)}>
+        <FormField label="Raccordement" htmlFor="lf-raccordement" error={errors.raccordement}>
+          <select
+            id="lf-raccordement"
+            className={errors.raccordement ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.raccordement ? true : undefined}
+            value={v('raccordement')} onChange={(e) => setField('raccordement', e.target.value)}
+          >
             {enumOptions(RACCORDEMENTS)}
           </select>
         </FormField>
@@ -112,9 +124,14 @@ function onTriStateChange(setField, key) {
     setField(key, val === 'oui' ? true : val === 'non' ? false : null)
   }
 }
-function TriStateSelect({ id, value, onChange }) {
+function TriStateSelect({ id, value, onChange, invalid = false }) {
   return (
-    <select id={id} className="form-select" value={triStateValue(value)} onChange={onChange}>
+    <select
+      id={id}
+      className={invalid ? 'form-select is-invalid' : 'form-select'}
+      aria-invalid={invalid ? true : undefined}
+      value={triStateValue(value)} onChange={onChange}
+    >
       <option value="">— (pas encore demandé)</option>
       <option value="oui">Oui</option>
       <option value="non">Non</option>
@@ -139,7 +156,7 @@ const AUTRES_QUESTIONS_APPEL = [
   { label: "L'été est différent de l'hiver ?", section: 'energie', field: 'lf-facture-hiver' },
 ]
 
-export function SectionEquipements({ state, setField }) {
+export function SectionEquipements({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const piscine = getField(state, 'equip_piscine')
   const ve = getField(state, 'equip_voiture_electrique')
@@ -150,9 +167,12 @@ export function SectionEquipements({ state, setField }) {
         <FormField
           label="Y a-t-il quelqu'un à la maison en journée ?"
           htmlFor="lf-occupation-jour"
+          error={errors.occupation_jour}
         >
           <select
-            id="lf-occupation-jour" className="form-select"
+            id="lf-occupation-jour"
+            className={errors.occupation_jour ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.occupation_jour ? true : undefined}
             value={v('occupation_jour')}
             onChange={(e) => setField('occupation_jour', e.target.value)}
           >
@@ -161,9 +181,9 @@ export function SectionEquipements({ state, setField }) {
         </FormField>
       </div>
       <div className="form-row">
-        <FormField label="Avez-vous une piscine ?" htmlFor="lf-equip-piscine">
+        <FormField label="Avez-vous une piscine ?" htmlFor="lf-equip-piscine" error={errors.equip_piscine}>
           <TriStateSelect
-            id="lf-equip-piscine" value={piscine}
+            id="lf-equip-piscine" value={piscine} invalid={!!errors.equip_piscine}
             onChange={onTriStateChange(setField, 'equip_piscine')}
           />
         </FormField>
@@ -171,9 +191,10 @@ export function SectionEquipements({ state, setField }) {
           <FormField
             label="Puissance de la pompe de filtration (kW)"
             htmlFor="lf-equip-piscine-kw"
+            error={errors.equip_piscine_pompe_kw}
           >
             <Input
-              id="lf-equip-piscine-kw" type="number" step="any"
+              id="lf-equip-piscine-kw" type="number" step="any" invalid={!!errors.equip_piscine_pompe_kw}
               placeholder="plaque signalétique du moteur"
               value={v('equip_piscine_pompe_kw')}
               onChange={(e) => setField('equip_piscine_pompe_kw', e.target.value)}
@@ -187,16 +208,25 @@ export function SectionEquipements({ state, setField }) {
           aucune clé « kw estimation » séparée n'existe côté serveur). */}
       {piscine === true && (
         <div className="form-row">
-          <FormField label="Heures de filtration par jour" htmlFor="lf-equip-piscine-heures">
+          <FormField
+            label="Heures de filtration par jour" htmlFor="lf-equip-piscine-heures"
+            error={errors.equip_piscine_heures_jour}
+          >
             <Input
               id="lf-equip-piscine-heures" type="number" step="any" min="0" max="24" placeholder="ex: 6"
+              invalid={!!errors.equip_piscine_heures_jour}
               value={v('equip_piscine_heures_jour')}
               onChange={(e) => setField('equip_piscine_heures_jour', e.target.value)}
             />
           </FormField>
-          <FormField label="Quand la pompe tourne-t-elle le plus ?" htmlFor="lf-equip-piscine-creneau">
+          <FormField
+            label="Quand la pompe tourne-t-elle le plus ?" htmlFor="lf-equip-piscine-creneau"
+            error={errors.equip_piscine_creneau}
+          >
             <select
-              id="lf-equip-piscine-creneau" className="form-select"
+              id="lf-equip-piscine-creneau"
+              className={errors.equip_piscine_creneau ? 'form-select is-invalid' : 'form-select'}
+              aria-invalid={errors.equip_piscine_creneau ? true : undefined}
               value={v('equip_piscine_creneau')}
               onChange={(e) => setField('equip_piscine_creneau', e.target.value)}
             >
@@ -209,9 +239,10 @@ export function SectionEquipements({ state, setField }) {
         <FormField
           label="Avez-vous ou prévoyez-vous un véhicule électrique ?"
           htmlFor="lf-equip-ve"
+          error={errors.equip_voiture_electrique}
         >
           <TriStateSelect
-            id="lf-equip-ve" value={ve}
+            id="lf-equip-ve" value={ve} invalid={!!errors.equip_voiture_electrique}
             onChange={onTriStateChange(setField, 'equip_voiture_electrique')}
           />
         </FormField>
@@ -219,9 +250,10 @@ export function SectionEquipements({ state, setField }) {
           <FormField
             label={<>Combien de km par semaine avec ce véhicule ?<span className="req-auto"> *</span></>}
             htmlFor="lf-equip-ve-km"
+            error={errors.equip_ve_km_semaine}
           >
             <Input
-              id="lf-equip-ve-km" type="number" step="any" placeholder="ex: 150"
+              id="lf-equip-ve-km" type="number" step="any" placeholder="ex: 150" invalid={!!errors.equip_ve_km_semaine}
               value={v('equip_ve_km_semaine')}
               onChange={(e) => setField('equip_ve_km_semaine', e.target.value)}
             />
@@ -230,16 +262,25 @@ export function SectionEquipements({ state, setField }) {
       </div>
       {ve === true && (
         <div className="form-row">
-          <FormField label="Puissance du chargeur/borne (kW)" htmlFor="lf-equip-ve-chargeur-kw">
+          <FormField
+            label="Puissance du chargeur/borne (kW)" htmlFor="lf-equip-ve-chargeur-kw"
+            error={errors.equip_ve_chargeur_kw}
+          >
             <Input
               id="lf-equip-ve-chargeur-kw" type="number" step="any" placeholder="ex: 7.4"
+              invalid={!!errors.equip_ve_chargeur_kw}
               value={v('equip_ve_chargeur_kw')}
               onChange={(e) => setField('equip_ve_chargeur_kw', e.target.value)}
             />
           </FormField>
-          <FormField label="Quand rechargez-vous le plus souvent ?" htmlFor="lf-equip-ve-creneau">
+          <FormField
+            label="Quand rechargez-vous le plus souvent ?" htmlFor="lf-equip-ve-creneau"
+            error={errors.equip_ve_creneau}
+          >
             <select
-              id="lf-equip-ve-creneau" className="form-select"
+              id="lf-equip-ve-creneau"
+              className={errors.equip_ve_creneau ? 'form-select is-invalid' : 'form-select'}
+              aria-invalid={errors.equip_ve_creneau ? true : undefined}
               value={v('equip_ve_creneau')}
               onChange={(e) => setField('equip_ve_creneau', e.target.value)}
             >
@@ -249,16 +290,20 @@ export function SectionEquipements({ state, setField }) {
         </div>
       )}
       <div className="form-row">
-        <FormField label="Avez-vous la climatisation ?" htmlFor="lf-equip-clim">
+        <FormField label="Avez-vous la climatisation ?" htmlFor="lf-equip-clim" error={errors.equip_clim}>
           <TriStateSelect
-            id="lf-equip-clim" value={clim}
+            id="lf-equip-clim" value={clim} invalid={!!errors.equip_clim}
             onChange={onTriStateChange(setField, 'equip_clim')}
           />
         </FormField>
         {clim === true && (
-          <FormField label="Combien de pièces/unités climatisées ?" htmlFor="lf-equip-clim-pieces">
+          <FormField
+            label="Combien de pièces/unités climatisées ?" htmlFor="lf-equip-clim-pieces"
+            error={errors.equip_clim_pieces}
+          >
             <Input
               id="lf-equip-clim-pieces" type="number" step="1" min="0" placeholder="ex: 2"
+              invalid={!!errors.equip_clim_pieces}
               value={v('equip_clim_pieces')}
               onChange={(e) => setField('equip_clim_pieces', e.target.value)}
             />
@@ -267,16 +312,24 @@ export function SectionEquipements({ state, setField }) {
       </div>
       {clim === true && (
         <div className="form-row">
-          <FormField label="Puissance totale climatisation (kW)" htmlFor="lf-equip-clim-kw">
+          <FormField
+            label="Puissance totale climatisation (kW)" htmlFor="lf-equip-clim-kw"
+            error={errors.equip_clim_kw}
+          >
             <Input
-              id="lf-equip-clim-kw" type="number" step="any" placeholder="ex: 2.8"
+              id="lf-equip-clim-kw" type="number" step="any" placeholder="ex: 2.8" invalid={!!errors.equip_clim_kw}
               value={v('equip_clim_kw')}
               onChange={(e) => setField('equip_clim_kw', e.target.value)}
             />
           </FormField>
-          <FormField label="Quand la clim tourne-t-elle le plus ?" htmlFor="lf-equip-clim-creneau">
+          <FormField
+            label="Quand la clim tourne-t-elle le plus ?" htmlFor="lf-equip-clim-creneau"
+            error={errors.equip_clim_creneau}
+          >
             <select
-              id="lf-equip-clim-creneau" className="form-select"
+              id="lf-equip-clim-creneau"
+              className={errors.equip_clim_creneau ? 'form-select is-invalid' : 'form-select'}
+              aria-invalid={errors.equip_clim_creneau ? true : undefined}
               value={v('equip_clim_creneau')}
               onChange={(e) => setField('equip_clim_creneau', e.target.value)}
             >
@@ -286,25 +339,38 @@ export function SectionEquipements({ state, setField }) {
         </div>
       )}
       <div className="form-row">
-        <FormField label="Votre chauffe-eau est-il électrique ?" htmlFor="lf-equip-chauffe-eau">
+        <FormField
+          label="Votre chauffe-eau est-il électrique ?" htmlFor="lf-equip-chauffe-eau"
+          error={errors.equip_chauffe_eau_electrique}
+        >
           <TriStateSelect
             id="lf-equip-chauffe-eau" value={getField(state, 'equip_chauffe_eau_electrique')}
+            invalid={!!errors.equip_chauffe_eau_electrique}
             onChange={onTriStateChange(setField, 'equip_chauffe_eau_electrique')}
           />
         </FormField>
       </div>
       {getField(state, 'equip_chauffe_eau_electrique') === true && (
         <div className="form-row">
-          <FormField label="Puissance chauffe-eau (kW)" htmlFor="lf-equip-chauffe-eau-kw">
+          <FormField
+            label="Puissance chauffe-eau (kW)" htmlFor="lf-equip-chauffe-eau-kw"
+            error={errors.equip_chauffe_eau_kw}
+          >
             <Input
               id="lf-equip-chauffe-eau-kw" type="number" step="any" placeholder="ex: 2.4"
+              invalid={!!errors.equip_chauffe_eau_kw}
               value={v('equip_chauffe_eau_kw')}
               onChange={(e) => setField('equip_chauffe_eau_kw', e.target.value)}
             />
           </FormField>
-          <FormField label="Créneau de chauffe principal" htmlFor="lf-equip-chauffe-eau-creneau">
+          <FormField
+            label="Créneau de chauffe principal" htmlFor="lf-equip-chauffe-eau-creneau"
+            error={errors.equip_chauffe_eau_creneau}
+          >
             <select
-              id="lf-equip-chauffe-eau-creneau" className="form-select"
+              id="lf-equip-chauffe-eau-creneau"
+              className={errors.equip_chauffe_eau_creneau ? 'form-select is-invalid' : 'form-select'}
+              aria-invalid={errors.equip_chauffe_eau_creneau ? true : undefined}
               value={v('equip_chauffe_eau_creneau')}
               onChange={(e) => setField('equip_chauffe_eau_creneau', e.target.value)}
             >
@@ -340,19 +406,37 @@ export function SectionEquipements({ state, setField }) {
 
 // Sous-bloc Pompage (agricole) — nav-section dédiée, mais fichier ÉNERGIE
 // (blueprint file map). Champs requis pour le devis automatique.
-export function SectionPompage({ state, setField }) {
+export function SectionPompage({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   return (
     <>
       <div className="form-row">
-        <FormField label={<>Pompe (CV)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-cv">
-          <Input id="lf-pompe-cv" type="number" step="any" placeholder="ex: 10" value={v('pompe_cv')} onChange={(e) => setField('pompe_cv', e.target.value)} />
+        <FormField
+          label={<>Pompe (CV)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-cv"
+          error={errors.pompe_cv}
+        >
+          <Input
+            id="lf-pompe-cv" type="number" step="any" placeholder="ex: 10" invalid={!!errors.pompe_cv}
+            value={v('pompe_cv')} onChange={(e) => setField('pompe_cv', e.target.value)}
+          />
         </FormField>
-        <FormField label={<>HMT (m)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-hmt">
-          <Input id="lf-pompe-hmt" type="number" step="any" placeholder="ex: 80" value={v('pompe_hmt_m')} onChange={(e) => setField('pompe_hmt_m', e.target.value)} />
+        <FormField
+          label={<>HMT (m)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-hmt"
+          error={errors.pompe_hmt_m}
+        >
+          <Input
+            id="lf-pompe-hmt" type="number" step="any" placeholder="ex: 80" invalid={!!errors.pompe_hmt_m}
+            value={v('pompe_hmt_m')} onChange={(e) => setField('pompe_hmt_m', e.target.value)}
+          />
         </FormField>
-        <FormField label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-debit">
-          <Input id="lf-pompe-debit" type="number" step="any" placeholder="ex: 12" value={v('pompe_debit_m3h')} onChange={(e) => setField('pompe_debit_m3h', e.target.value)} />
+        <FormField
+          label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-debit"
+          error={errors.pompe_debit_m3h}
+        >
+          <Input
+            id="lf-pompe-debit" type="number" step="any" placeholder="ex: 12" invalid={!!errors.pompe_debit_m3h}
+            value={v('pompe_debit_m3h')} onChange={(e) => setField('pompe_debit_m3h', e.target.value)}
+          />
         </FormField>
       </div>
       <p className="gen-hint">

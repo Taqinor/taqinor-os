@@ -148,9 +148,12 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
   return (
     <>
       <div className="form-row">
-        <FormField label="Type d'installation" htmlFor="lf-type-installation">
+        <FormField label="Type d'installation" htmlFor="lf-type-installation" error={errors.type_installation}>
           <select
-            id="lf-type-installation" className="form-select" value={v('type_installation')}
+            id="lf-type-installation"
+            className={errors.type_installation ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.type_installation ? true : undefined}
+            value={v('type_installation')}
             onChange={(e) => setField('type_installation', e.target.value)}
           >
             {enumOptions(TYPE_INSTALLATION_LABELS)}
@@ -173,8 +176,11 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
           )}
         </div>
         <div className="form-group">
-          <FormField label="Relance le" htmlFor="lf-relance-date">
-            <Input id="lf-relance-date" type="date" value={v('relance_date')} onChange={(e) => setField('relance_date', e.target.value)} />
+          <FormField label="Relance le" htmlFor="lf-relance-date" error={errors.relance_date}>
+            <Input
+              id="lf-relance-date" type="date" invalid={!!errors.relance_date}
+              value={v('relance_date')} onChange={(e) => setField('relance_date', e.target.value)}
+            />
           </FormField>
           {state.mode === 'edit' && (
             <>
@@ -194,33 +200,51 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
       </div>
       <div className="form-row">
         {/* XSAL7 — pipeline pondéré pré-devis. */}
-        <FormField label="Montant estimé (MAD)" htmlFor="lf-montant-estime">
-          <Input id="lf-montant-estime" type="number" step="any" value={v('montant_estime')} onChange={(e) => setField('montant_estime', e.target.value)} />
+        <FormField label="Montant estimé (MAD)" htmlFor="lf-montant-estime" error={errors.montant_estime}>
+          <Input
+            id="lf-montant-estime" type="number" step="any" invalid={!!errors.montant_estime}
+            value={v('montant_estime')} onChange={(e) => setField('montant_estime', e.target.value)}
+          />
         </FormField>
-        <FormField label="Clôture prévue le" htmlFor="lf-date-cloture">
-          <Input id="lf-date-cloture" type="date" value={v('date_cloture_prevue')} onChange={(e) => setField('date_cloture_prevue', e.target.value)} />
+        <FormField label="Clôture prévue le" htmlFor="lf-date-cloture" error={errors.date_cloture_prevue}>
+          <Input
+            id="lf-date-cloture" type="date" invalid={!!errors.date_cloture_prevue}
+            value={v('date_cloture_prevue')} onChange={(e) => setField('date_cloture_prevue', e.target.value)}
+          />
         </FormField>
       </div>
       <div className="form-row">
-        <FormField label="Priorité" htmlFor="lf-priorite">
-          <select id="lf-priorite" className="form-select" value={v('priorite')} onChange={(e) => setField('priorite', e.target.value)}>
+        <FormField label="Priorité" htmlFor="lf-priorite" error={errors.priorite}>
+          <select
+            id="lf-priorite" className={errors.priorite ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.priorite ? true : undefined}
+            value={v('priorite')} onChange={(e) => setField('priorite', e.target.value)}
+          >
             {enumOptions(PRIORITE_LABELS)}
           </select>
         </FormField>
-        <FormField label="Canal" htmlFor="lf-canal">
-          <select id="lf-canal" className="form-select" value={v('canal')} onChange={(e) => setField('canal', e.target.value)}>
+        <FormField label="Canal" htmlFor="lf-canal" error={errors.canal}>
+          <select
+            id="lf-canal" className={errors.canal ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.canal ? true : undefined}
+            value={v('canal')} onChange={(e) => setField('canal', e.target.value)}
+          >
             {enumOptions(canalLabels)}
           </select>
         </FormField>
-        <FormField label="Langue préférée" htmlFor="lf-langue-preferee">
-          <select id="lf-langue-preferee" className="form-select" value={v('langue_preferee')} onChange={(e) => setField('langue_preferee', e.target.value)}>
+        <FormField label="Langue préférée" htmlFor="lf-langue-preferee" error={errors.langue_preferee}>
+          <select
+            id="lf-langue-preferee" className={errors.langue_preferee ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.langue_preferee ? true : undefined}
+            value={v('langue_preferee')} onChange={(e) => setField('langue_preferee', e.target.value)}
+          >
             {enumOptions(LANGUES_PREFEREES)}
           </select>
         </FormField>
         <div className="form-group fg-grow">
-          <FormField label="Tags (séparés par des virgules)" htmlFor="lf-tags">
+          <FormField label="Tags (séparés par des virgules)" htmlFor="lf-tags" error={errors.tags}>
             <Input
-              id="lf-tags" value={v('tags')} onChange={(e) => setField('tags', e.target.value)}
+              id="lf-tags" invalid={!!errors.tags} value={v('tags')} onChange={(e) => setField('tags', e.target.value)}
               placeholder="ex: Régularisation 82-21, VIP" list="ld-tags"
             />
           </FormField>
