@@ -1203,6 +1203,28 @@ def _omettre_phrases_incompletes(texte, manquants):
     return '\n'.join(lignes_gardees).strip()
 
 
+def _nom_affiche_conseiller(lead, user):
+    """Règle fondateur du 08/09/2026 : aucun prénom de personne (Meryem,
+    Reda) n'est codé en dur dans un message client — l'expéditeur affiché
+    est TOUJOURS le RESPONSABLE du lead (``lead.owner``), jamais forcément
+    l'utilisateur qui clique sur « Envoyer ». Repli sur le responsable par
+    défaut des leads de la société (``CompanyProfile.responsable_defaut_leads``
+    — même lecture que ``default_responsable_for``, sans son round-robin : on
+    rend un message, on n'assigne pas un lead) ; en dernier repli seulement,
+    l'utilisateur courant."""
+    conseiller = getattr(lead, 'owner', None)
+    if conseiller is None:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=lead.company).first()
+        conseiller = profile.responsable_defaut_leads if profile else None
+    if conseiller is None:
+        conseiller = user
+    if conseiller is None:
+        return ''
+    return (getattr(conseiller, 'first_name', '')
+            or getattr(conseiller, 'username', '') or '')
+
+
 def message_pour_etape(etape, *, request=None, user=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
 
@@ -1244,8 +1266,7 @@ def message_pour_etape(etape, *, request=None, user=None):
         'nom': (lead.nom or '').strip(),
         'prenom': prenom,
         'ville': (lead.ville or '').strip(),
-        'conseiller': (getattr(user, 'first_name', '')
-                       or getattr(user, 'username', '') or ''),
+        'conseiller': _nom_affiche_conseiller(lead, user),
         'reference': '',
         'lien': '',
         'date_validite': '',
