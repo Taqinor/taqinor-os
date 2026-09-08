@@ -284,3 +284,54 @@ class OccupationJourPourDevisSelectorTests(TestCase):
             occupation_jour=Lead.OccupationJour.ABSENT)
         self.assertEqual(
             occupation_jour_pour_devis(_DevisAvecLead(lead)), 'absent')
+
+
+class PuissanceEnWattsTests(TestCase):
+    """Relevé fondateur 08/09/2026 (lead Ali Mahraz) : une puissance tapée en
+    WATTS (« 2800 » pour 2,8 kW) dépassait les 3 chiffres entiers du champ et
+    faisait échouer toute l'autosauvegarde du lead. Une valeur ≥ 200 est lue
+    comme des watts et ramenée en kW (conversion d'unité, jamais un chiffre
+    inventé) ; une saisie en kW reste intacte ; vide reste inconnu."""
+
+    def setUp(self):
+        self.company = _company('l4-watts', 'L4 Watts')
+        self.user = User.objects.create_user(
+            username='l4-watts-u', password='x',
+            role_legacy='responsable', company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Watts', owner=self.user)
+
+    def _patch(self, **champs):
+        return self.api.patch(
+            f'/api/django/crm/leads/{self.lead.pk}/', champs, format='json')
+
+    def test_une_saisie_en_watts_est_ramenee_en_kw(self):
+        resp = self._patch(
+            equip_clim_kw='2800', equip_piscine_pompe_kw='1500',
+            equip_ve_chargeur_kw=22000, equip_chauffe_eau_kw='2400')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.equip_clim_kw, Decimal('2.80'))
+        self.assertEqual(self.lead.equip_piscine_pompe_kw, Decimal('1.50'))
+        self.assertEqual(self.lead.equip_ve_chargeur_kw, Decimal('22.00'))
+        self.assertEqual(self.lead.equip_chauffe_eau_kw, Decimal('2.40'))
+
+    def test_une_saisie_en_kw_reste_intacte(self):
+        resp = self._patch(
+            equip_clim_kw='2.8', equip_ve_chargeur_kw='22', equip_piscine_pompe_kw='150')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.equip_clim_kw, Decimal('2.80'))
+        self.assertEqual(self.lead.equip_ve_chargeur_kw, Decimal('22.00'))
+        # 150 < seuil 200 : lu tel quel (kW), jamais divisé par mille.
+        self.assertEqual(self.lead.equip_piscine_pompe_kw, Decimal('150.00'))
+
+    def test_vide_reste_inconnu_et_virgule_francaise_acceptee(self):
+        resp = self._patch(equip_clim_kw=None, equip_chauffe_eau_kw='2,4')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.equip_clim_kw)
+        self.assertEqual(self.lead.equip_chauffe_eau_kw, Decimal('2.40'))

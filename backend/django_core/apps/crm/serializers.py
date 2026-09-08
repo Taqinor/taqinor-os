@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -405,6 +407,31 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
         return str(total)
 
 
+class _PuissanceKwField(serializers.DecimalField):
+    """Puissance d'ÉQUIPEMENT saisie en kW (questionnaire d'appel).
+
+    Relevé fondateur 08/09/2026 (lead Ali Mahraz) : une valeur tapée en WATTS
+    (« 2800 » pour une clim de 2,8 kW) dépassait les 3 chiffres entiers du
+    champ et faisait échouer TOUTE l'autosauvegarde du lead, avec pour seul
+    message « pas plus de 3 chiffres avant la virgule » — sans nommer le
+    champ. Aucun équipement domestique de ce questionnaire n'atteint 200 kW :
+    une valeur ≥ 200 est lue comme des WATTS et ramenée en kW (2800 → 2,80).
+    C'est une conversion d'unité tracée par le chatter (ancien → nouveau),
+    jamais un chiffre inventé ; une saisie en kW reste intacte."""
+
+    SEUIL_WATTS = Decimal('200')
+
+    def to_internal_value(self, data):
+        brut = data.strip().replace(',', '.') if isinstance(data, str) else data
+        try:
+            valeur = Decimal(str(brut))
+        except (InvalidOperation, TypeError, ValueError):
+            return super().to_internal_value(data)
+        if valeur >= self.SEUIL_WATTS:
+            brut = str((valeur / Decimal('1000')).quantize(Decimal('0.01')))
+        return super().to_internal_value(brut)
+
+
 class LeadSerializer(_CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
     # CRX13 — ``deleted_by`` (auto-construit depuis ``__all__``) désignait
@@ -413,6 +440,17 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
     # promotion est alors un no-op, conservée comme filet si le champ
     # redevenait un jour inscriptible.
     scoped_relations = ('deleted_by',)
+
+    # Relevé fondateur 08/09/2026 — les puissances d'équipement acceptent une
+    # saisie en watts (ramenée en kW) au lieu de bloquer l'autosauvegarde.
+    equip_piscine_pompe_kw = _PuissanceKwField(
+        max_digits=5, decimal_places=2, required=False, allow_null=True)
+    equip_chauffe_eau_kw = _PuissanceKwField(
+        max_digits=5, decimal_places=2, required=False, allow_null=True)
+    equip_ve_chargeur_kw = _PuissanceKwField(
+        max_digits=5, decimal_places=2, required=False, allow_null=True)
+    equip_clim_kw = _PuissanceKwField(
+        max_digits=5, decimal_places=2, required=False, allow_null=True)
 
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
