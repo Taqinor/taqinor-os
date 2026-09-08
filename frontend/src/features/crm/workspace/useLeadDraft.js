@@ -7,6 +7,7 @@ import {
   toPayload, currentFields,
 } from './draftCore'
 import { getPrefetched } from './leadPrefetch'
+import fieldLabels from './fieldLabels'
 
 // LW9/LW12 — Hook moteur d'état du Lead Workspace : branche les effets (PATCH
 // réseau, debounce d'autosauvegarde, miroir sessionStorage, garde stale,
@@ -58,6 +59,27 @@ function withPrefetched(lead, mode) {
   if (mode !== 'edit' || id == null) return lead
   const cached = getPrefetched(id)
   return cached ? { ...lead, ...cached } : lead
+}
+
+// RÈGLE FONDATEUR 08/09/2026 — « all the errors should point at the field
+// creating this error and even say what is exactly the error ». Un 400 DRF
+// ({ champ: ['message'] }) est traduit en un message qui NOMME le champ
+// fautif (fieldLabels.js) au lieu du générique « Non enregistré — Réessayer »
+// (incident du 08/09 : equip_clim_kw refusait « plus de 3 chiffres avant la
+// virgule » sans jamais dire lequel champ). `null` si la réponse ne porte
+// aucun champ exploitable (detail/non_field_errors seuls, ou pas un 400) —
+// l'appelant retombe alors sur le message générique historique.
+function messageChampErreur(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+  const entries = Object.entries(data).filter(([k]) => k !== 'detail' && k !== 'non_field_errors')
+  if (!entries.length) return null
+  const [firstKey, firstVal] = entries[0]
+  const msg = Array.isArray(firstVal) ? firstVal.find((v) => typeof v === 'string') : firstVal
+  if (!msg || typeof msg !== 'string') return null
+  const label = fieldLabels[firstKey]?.label || firstKey
+  const reste = entries.length - 1
+  const suffixe = reste > 0 ? ` (+ ${reste} autre${reste > 1 ? 's' : ''})` : ''
+  return `Non enregistré — « ${label} » : ${msg}${suffixe}`
 }
 
 export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUserId = null, onSaved, onFieldErrors } = {}) {
@@ -159,10 +181,17 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       }
       return true
     } catch (err) {
-      dispatch({
-        type: 'FLUSH_ERROR',
-        error: err?.response?.data?.detail ?? "Échec d'enregistrement — réessayez.",
-      })
+      // RÈGLE FONDATEUR 08/09/2026 — le message NOMME le champ fautif quand la
+      // réponse 400 en porte un exploitable (messageChampErreur ci-dessus) ;
+      // sinon on retombe sur le générique historique (detail, ou le message
+      // fixe). `toast.error` fait connaître l'échec au moment où il survient
+      // (une seule fois par échec — appelé ici, jamais au rendu) ; le même
+      // texte alimente le chip d'état (SaveChip, LeadWorkspace.jsx) via
+      // `state.saveError`.
+      const champErreur = err?.response?.status === 400 ? messageChampErreur(err.response.data) : null
+      const message = champErreur ?? (err?.response?.data?.detail ?? "Échec d'enregistrement — réessayez.")
+      dispatch({ type: 'FLUSH_ERROR', error: message })
+      toast.error(message)
       // Erreurs PAR CHAMP d'un 400 DRF (critique Fable #6) : sans ce relais,
       // l'utilisateur ne savait jamais QUEL champ bloquait l'autosauvegarde.
       if (err?.response?.status === 400 && err.response.data) {
