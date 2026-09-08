@@ -117,20 +117,24 @@ const solutionIcons: Record<string, string> = {
 // maintenance, régularisation) n'ont ENCORE aucune photo Taqinor publiée pour
 // ce type de chantier : la carte ne rend rien pour eux plutôt que d'inventer
 // ou de réutiliser une photo hors-sujet — jamais de placeholder.
-const bestRealisation = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+// (2026-09) `kwcNum` est optionnel (chantiers filmés avant tout relevé de
+// puissance, ex. Bouskoura) — filtrés AVANT le tri : cette carte doit montrer
+// une puissance réelle et connue, jamais un chantier sans chiffre publié.
+const bestRealisation = REALISATIONS.filter((r) => r.kwcNum != null).sort((a, b) => b.kwcNum! - a.kwcNum!)[0];
 const solutionPreview: Record<string, { photo: string; alt: string; ville: string; kwc: string; production: string | null }> = {
   '/résidentiel': {
     photo: bestRealisation.photos[0].name,
     alt: bestRealisation.photos[0].alt,
     ville: bestRealisation.ville,
-    kwc: bestRealisation.kwc,
+    // Non-null : `bestRealisation` vient du pool filtré sur kwcNum != null ci-dessus.
+    kwc: bestRealisation.kwc!,
     production: bestRealisation.production,
   },
   '/professionnel': {
     photo: bestRealisation.photos[0].name,
     alt: bestRealisation.photos[0].alt,
     ville: bestRealisation.ville,
-    kwc: bestRealisation.kwc,
+    kwc: bestRealisation.kwc!,
     production: bestRealisation.production,
   },
 };

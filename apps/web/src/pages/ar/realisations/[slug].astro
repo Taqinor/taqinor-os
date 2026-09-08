@@ -18,6 +18,7 @@ import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import Picture from '../../../components/Picture.astro';
 import PhotoCaption from '../../../components/PhotoCaption.astro';
+import LiteVideo from '../../../components/LiteVideo.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../../lib/realisations';
@@ -73,7 +74,7 @@ const description = cs.description;
 const articleJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: `تركيب شمسي ${r.kwc} ${cityIntro} — المرجع ${r.ref}`,
+  headline: `تركيب شمسي${r.kwc ? ` ${r.kwc}` : ''} ${cityIntro} — المرجع ${r.ref}`,
   description: cs.resume,
   image: heroImg,
   about: { '@type': 'Thing', name: 'تركيب شمسي فوتوضوئي' },
@@ -105,7 +106,7 @@ const galleryPhotos = rest;
       items={[
         { label: 'الرئيسية', href: L('/') },
         { label: 'الإنجازات', href: L('/realisations') },
-        { label: `${r.ville} · ${r.kwc}` },
+        { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville },
       ]}
     />
 
@@ -119,7 +120,9 @@ const galleryPhotos = rest;
       <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">المرجع <span dir="ltr">{r.ref} · {r.ville} · {r.date}</span></p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
-          <span dir="ltr">{r.kwc}</span> من التركيب الشمسي {cityIntro}
+          {r.kwc
+            ? <><span dir="ltr">{r.kwc}</span> من التركيب الشمسي {cityIntro}</>
+            : <>التركيب الشمسي {cityIntro}</>}
         </h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{cs.resume}</p>
       </div>
@@ -128,11 +131,13 @@ const galleryPhotos = rest;
     <!-- الأرقام المفتاحية — فقط ما هو منشور -->
     <section class="border-y border-white/10 px-4 py-14 sm:py-16">
       <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          {/* W211 — whitespace-nowrap removed: wide production values can overflow at 320 px */}
-          <dd class="fig lum text-3xl sm:text-4xl" data-tally dir="ltr">{r.kwc}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">القدرة المُركَّبة</dt>
-        </div>
+        {r.kwc && (
+          <div class="v2-rise" style="--v2-i:0">
+            {/* W211 — whitespace-nowrap removed: wide production values can overflow at 320 px */}
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally dir="ltr">{r.kwc}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">القدرة المُركَّبة</dt>
+          </div>
+        )}
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum text-3xl sm:text-4xl" data-tally dir="ltr">{r.production}</dd>
@@ -141,10 +146,12 @@ const galleryPhotos = rest;
             </dt>
           </div>
         )}
-        <div class="v2-rise" style="--v2-i:2">
-          <dd class="font-display text-xl font-bold text-white" dir="ltr">{r.panneaux}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">الألواح المُركَّبة</dt>
-        </div>
+        {r.panneaux && (
+          <div class="v2-rise" style="--v2-i:2">
+            <dd class="font-display text-xl font-bold text-white" dir="ltr">{r.panneaux}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">الألواح المُركَّبة</dt>
+          </div>
+        )}
         <div class="v2-rise" style="--v2-i:3">
           <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
           <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
@@ -155,11 +162,34 @@ const galleryPhotos = rest;
     <!-- سرد الورش: الوضع، تحديد المقاس، النتيجة المقيسة -->
     <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
       <p class="tech-label v2-kicker rule-brass text-lune">الورش، مَرويّاً</p>
-      <h2 class="display v2-section-title mt-5 text-white">لماذا <span dir="ltr">{r.kwc}</span>، على هذا السطح</h2>
+      <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>لماذا <span dir="ltr">{r.kwc}</span>، على هذا السطح</> : 'ما الذي يُظهره هذا الورش'}</h2>
       <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
     </section>
+
+    <!-- (2026-09) فيديو الورش الخاص بهذه الدراسة — غائب لأي إنجاز بدون
+         `video` (السلوك التاريخي دون تغيير). -->
+    {r.video && (
+      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+        <div class="mx-auto max-w-3xl">
+          <p class="tech-label v2-kicker rule-brass text-lune">الورش مُصوَّراً</p>
+          <h2 class="display v2-section-title mt-5 text-white">شاهدوا الورش بالفيديو</h2>
+          <div class="mt-8 border border-brass-400/40">
+            <LiteVideo
+              id={`realisation-video-${r.slug}`}
+              src={r.video.src}
+              poster={r.video.poster}
+              alt={r.video.alt}
+              playLabel="تشغيل فيديو الورش"
+              aspectRatio="16/9"
+              posterWidth={1600}
+              posterHeight={900}
+            />
+          </div>
+        </div>
+      </section>
+    )}
 
     <!-- W309 — ثنائية قبل/أثناء/بعد (حين تتوفر البيانات) -->
     {hasDiptych && (
@@ -300,6 +330,12 @@ const galleryPhotos = rest;
         <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
           آخر إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span>
         </a>
+        {/* (2026-09) رابط متابعة الإنتاج الخاص بهذا الورش — فارغ إلى أن يُوفَّر. */}
+        {r.monitoringUrl && (
+          <a href={r.monitoringUrl} rel="noopener noreferrer" target="_blank" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+            متابعة إنتاج هذا الورش <span class="inline-block rtl:-scale-x-100">→</span>
+          </a>
+        )}
       </div>
     </section>
 

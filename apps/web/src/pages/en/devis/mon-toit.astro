@@ -2034,8 +2034,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // comma decimal, trailing zeros stripped — never the raw dot from `String(est.kwc)`.
   import { formatKwc } from '../../../lib/proposition';
   // W342 — "closest installation": client-side haversine over the dropped GPS
-  // pin (no network call).
-  import { nearestRealisation } from '../../../lib/realisations';
+  // pin (no network call). (2026-09) pool restricted to projects publishing a
+  // `kwc` — this card displays it, so never a real project without a
+  // published figure (e.g. Bouskoura).
+  import { nearestRealisation, REALISATIONS } from '../../../lib/realisations';
+  const REALISATIONS_WITH_KWC = REALISATIONS.filter((r) => r.kwc);
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ39 — the shared client libs (lib/lead.ts, lib/billRange.ts,
@@ -3848,7 +3851,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // stays hidden — never a city guessed from free text.
     const nearestEl = $('mt-nearest-install');
     if (nearestEl && capturePin) {
-      const near = nearestRealisation(capturePin.lat, capturePin.lng);
+      const near = nearestRealisation(capturePin.lat, capturePin.lng, 80, REALISATIONS_WITH_KWC);
       if (near) {
         const { realisation: r, distanceKm } = near;
         const textEl = $('mt-nearest-install-text');

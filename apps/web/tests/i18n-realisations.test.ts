@@ -222,9 +222,13 @@ describe('pages EN/AR créées — contrat SEO + i18n', () => {
 });
 
 describe('realisations.ts — non touché (faits intacts)', () => {
-  it('toujours 5 installations, total 43,48 kWc', () => {
-    expect(REALISATIONS).toHaveLength(5);
-    const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
+  it('toujours 6 installations (2026-09 : + Bouskoura, kwc non publié), total 43,48 kWc', () => {
+    // (2026-09) Bouskoura ajoutée — chantier réel, filmé, mais SANS kwc publié
+    // (voir la note d'intégrité en tête de realisations.ts) : `kwcNum` reste
+    // optionnel et est exclu de la somme (`?? 0`) plutôt que de faire planter
+    // le total en NaN — les 5 totaux ORIGINAUX, eux, restent bit à bit intacts.
+    expect(REALISATIONS).toHaveLength(6);
+    const total = REALISATIONS.reduce((s, r) => s + (r.kwcNum ?? 0), 0);
     expect(Number(total.toFixed(2))).toBe(43.48);
   });
 

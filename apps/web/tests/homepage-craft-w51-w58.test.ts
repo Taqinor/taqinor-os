@@ -42,18 +42,24 @@ describe('W54 — plus de double listing des installations', () => {
 
   it('la galerie photo reste la preuve : ville · kWc · production · matériel', () => {
     expect(index).toContain('gallery.map');
-    // La légende compose ville + kWc + production (si publiée) + type/matériel.
-    expect(index).toContain('{g.ville} · {g.kwc}');
-    expect(index).toContain('g.prod ?');
+    // (2026-09) La légende compose ville + kWc (si publié) + production (si
+    // publiée) + type/matériel — factorisée dans `g.caption` (fini les 3
+    // occurrences dupliquées du même ternaire) pour que `kwc` vide (chantier
+    // filmé avant tout relevé, ex. Bouskoura) omette proprement le segment
+    // plutôt que d'afficher un séparateur qui pend sur rien.
+    expect(index).toContain('caption: [ville, kwc, prod].filter(Boolean).join');
+    expect(index).toContain('{g.caption}');
     expect(index).toContain('{g.type}');
   });
 
-  it('les cinq installations restent présentes et NON décomptées', () => {
-    // 5 slugs distincts dans la galerie (El Jadida 17/6, Casablanca 11/6, Nouaceur 4).
+  it('les six installations restent présentes et NON décomptées (2026-09 : + Bouskoura)', () => {
+    // 6 slugs distincts dans la galerie (El Jadida 17/6, Casablanca 11/6,
+    // Nouaceur 4, Bouskoura — 2026-09, kwc non publié).
     const slugs = [...index.matchAll(/slug:\s*'([^']+)'/g)].map((m) => m[1]);
     const distinct = new Set(slugs);
-    expect(distinct.size).toBe(5);
+    expect(distinct.size).toBe(6);
     expect(distinct).toContain('nouaceur-4-kwc');
+    expect(distinct).toContain('bouskoura-villa-2026');
     // Aucun décompte trompeur (« N installations / projets »).
     expect(index).not.toMatch(/\b\d+\s+(installations|projets)\b/i);
   });
