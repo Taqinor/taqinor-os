@@ -4,13 +4,15 @@ Ordre fondateur du 08/09/2026. Avant : « posée en [mois] à [ville] », deux
 crochets à remplir à la main et aucun lien — la touche promettait une preuve
 qu'elle n'apportait jamais. Après : le serveur choisit dans le catalogue
 `parametres.Realisation` l'installation de la MÊME ville que le lead (sinon la
-plus proche), et remplit mois, ville et lien de sa page publique.
+plus proche, sinon — repli fondateur — la dernière de la société, avec SA vraie
+ville), et remplit mois, ville, puissance et lien de sa page publique.
 
 La garde qui compte : SANS réalisation, la phrase entière est OMISE (MRY13) et
 `placeholders_manquants` le dit. Jamais un crochet, jamais un blanc, jamais un
 chantier inventé.
 """
 import datetime
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -62,6 +64,7 @@ class AvecRealisationTests(_Base):
             company=self.company, titre='Villa à Casablanca',
             ville='Casablanca',
             mise_en_service=datetime.date(2026, 7, 1),
+            puissance_kwc=Decimal('11.44'),
             url_page='https://taqinor.ma/realisations/villa-casablanca/')
 
     def test_le_mois_la_ville_et_le_lien_sont_remplis(self):
@@ -75,12 +78,22 @@ class AvecRealisationTests(_Base):
     def test_aucun_placeholder_ne_reste_visible(self):
         message = self._rendu()['message']
         for jeton in ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
-                      '[mois]', '[ville]'):
+                      '{puissance_preuve}', '[mois]', '[ville]'):
             self.assertNotIn(jeton, message)
 
     def test_la_phrase_de_suivi_reste(self):
         self.assertIn('Le suivi de production est en temps réel',
                       self._rendu()['message'])
+
+    def test_la_puissance_est_dite_et_omise_seule_si_inconnue(self):
+        """« comparable » parle de la TAILLE : la puissance réelle est dite
+        (« 11,44 kWc ») ; inconnue, SA phrase tombe seule — la preuve reste."""
+        self.assertIn('11,44 kWc', self._rendu()['message'])
+        self.realisation.puissance_kwc = None
+        self.realisation.save(update_fields=['puissance_kwc'])
+        message = self._rendu()['message']
+        self.assertNotIn('Puissance installée', message)
+        self.assertIn('installation comparable', message)
 
     def test_une_realisation_d_une_ville_voisine_sert_aussi(self):
         """Mohammedia est à 24 km de Casablanca : dans le rayon."""
@@ -112,18 +125,19 @@ class SansRealisationTests(_Base):
         manquants = self._rendu()['placeholders_manquants']
         self.assertEqual(
             sorted(manquants),
-            ['lien_preuve', 'mois_preuve', 'ville_preuve'])
+            ['lien_preuve', 'mois_preuve', 'puissance_preuve', 'ville_preuve'])
 
-    def test_une_realisation_trop_loin_ne_sert_pas(self):
-        """Agadir est à 400 km de Casablanca : « comparable à la vôtre »
-        deviendrait faux."""
+    def test_une_realisation_lointaine_sert_en_repli(self):
+        """Agadir est à 400 km de Casablanca : repli fondateur (08/09/2026) —
+        plutôt qu'aucune preuve, la dernière installation, avec SA vraie
+        ville (« comparable » parle de la taille, jamais du lieu)."""
         Realisation.objects.create(
             company=self.company, titre='Villa à Agadir', ville='Agadir',
             mise_en_service=datetime.date(2026, 5, 1),
             url_page='https://taqinor.ma/realisations/villa-agadir/')
         rendu = self._rendu()
-        self.assertNotIn('Agadir', rendu['message'])
-        self.assertNotIn('installation comparable', rendu['message'])
+        self.assertIn('Agadir', rendu['message'])
+        self.assertIn('installation comparable', rendu['message'])
 
     def test_une_realisation_sans_mois_fait_tomber_la_phrase_entiere(self):
         """Zéro chiffre inventé : sans mois de mise en service, on n'écrit pas
@@ -140,9 +154,10 @@ class SansRealisationTests(_Base):
 class TexteSourceTests(TestCase):
     """Le défaut lui-même : trois placeholders, plus aucun crochet."""
 
-    def test_le_defaut_porte_les_trois_placeholders(self):
+    def test_le_defaut_porte_les_quatre_placeholders(self):
         texte = MESSAGE_TEMPLATE_DEFAULTS['j4_preuve']
-        for jeton in ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}'):
+        for jeton in ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
+                      '{puissance_preuve}'):
             self.assertIn(jeton, texte)
 
     def test_le_defaut_ne_porte_plus_aucun_crochet(self):
