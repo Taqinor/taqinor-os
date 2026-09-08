@@ -410,6 +410,10 @@ unmapped_ok:
   # auto-ordonne par ses propres @after (SOL1 -> SOL2 -> SOL3 -> ...), aucun
   # prerequis de vague plateforme.
   - SOL
+  # RLC — Relances : retour arriere, journal & etat client (Groupe RLC de
+  # PLAN.md, releves fondateur du 08/09/2026) : correctifs/complements du
+  # moteur de relances existant (apps/crm), aucun prerequis de vague plateforme.
+  - RLC
   # QJR — Reconstruction du parcours devis (Groupe QJR de PLAN2, audit L3 du
   # 29/08/2026) : auto-ordonné par ses propres chaînes @after et son plan de
   # merge M0→M6 (en-tête du groupe) ; aucun prérequis de vague plateforme.
