@@ -2054,11 +2054,16 @@ def lead_a_un_devis(lead):
     ).exclude(statut=Devis.Statut.BROUILLON).exists()
 
 
-def dernier_devis_relancable_du_lead(lead):
+def dernier_devis_relancable_du_lead(lead, brouillon_compris=False):
     """QJ-INVARIANT (fondateur 07/09/2026) — le devis le PLUS RÉCENT du lead
-    encore relançable (ni refusé ni expiré). Le BROUILLON compte : un devis
-    envoyé par WhatsApp hors ERP reste « brouillon » (cas AR du 07/09) — le
-    suivi de proposition doit démarrer quand même. ``None`` si aucun.
+    encore relançable (ni refusé, ni expiré, ni accepté). ``None`` si aucun.
+
+    RELANCE-SUITE (fondateur 08/09/2026, lead test1 aa) : par défaut seul un
+    devis ENVOYÉ compte — « je fais le devis, je l'envoie, PUIS les étapes de
+    suivi viennent ». Un BROUILLON n'est retenu que sur demande explicite
+    (``brouillon_compris``), quand l'humain vient de cocher l'étape « préparer
+    et envoyer le devis » : devis parti par WhatsApp hors ERP, statut resté
+    brouillon (cas AR du 07/09).
 
     Lecture cross-app pour ``apps.crm`` (le filet « jamais un lead actif sans
     prochaine étape » choisit entre plan après-devis et étape générique)."""
@@ -2068,10 +2073,12 @@ def dernier_devis_relancable_du_lead(lead):
     # M4 (revue Fable 07/09/2026) — ACCEPTE exclu aussi : relancer « alors,
     # cette proposition ? » un client qui a dit oui est exactement ce que
     # ``leads_avec_devis_accepte`` (placement) veut éviter.
+    exclus = [Devis.Statut.REFUSE, Devis.Statut.EXPIRE, Devis.Statut.ACCEPTE]
+    if not brouillon_compris:
+        exclus.append(Devis.Statut.BROUILLON)
     return (Devis.objects
             .filter(company_id=lead.company_id, lead=lead)
-            .exclude(statut__in=[Devis.Statut.REFUSE, Devis.Statut.EXPIRE,
-                                 Devis.Statut.ACCEPTE])
+            .exclude(statut__in=exclus)
             .order_by('-id').first())
 
 

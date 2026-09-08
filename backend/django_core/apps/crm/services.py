@@ -951,7 +951,17 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # étape générique). Ses gardes (signé/froid/perdu/archivé) décident
     # seules : la liste ne se termine que par Froid ou Signé.
     if _prochaine_touche_a_faire(lead) is None:
-        assurer_prochaine_etape_apres_succes(lead, user)
+        # RELANCE-SUITE (08/09/2026) — seul le fait de COCHER l'étape
+        # « préparer et envoyer le devis » vaut « devis parti » : elle seule
+        # démarre le suivi de proposition sur un devis resté brouillon (cas
+        # AR). Toute autre touche laissée sans suite reçoit une étape
+        # générique — le suivi de proposition, lui, démarre à l'ENVOI.
+        devis_parti = (
+            etape.cadence == 'generique' and not (outcome or '')
+            and (etape.libelle or '').strip()
+            in (FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN))
+        assurer_prochaine_etape_apres_succes(
+            lead, user, brouillon_compris=devis_parti)
     return etape
 
 
@@ -1041,7 +1051,18 @@ def cloturer_cadence(lead, user, cadence):
 #: disparaissait de toutes les vues de relance (incident du 07/09/2026 : onze
 #: touches barrées « joint », plus AUCUNE prochaine étape) — l'inverse exact
 #: de MRY11, qui ne parque au froid que les cadences épuisées SANS réponse.
-FILET_JOINT_LIBELLE = 'Prochaine étape — envoyer le devis ou fixer un rappel'
+#: RELANCE-SUITE (fondateur 08/09/2026, lead test1 aa) — l'ancien libellé,
+#: encore porté par les étapes posées avant le 08/09 : coché, il vaut « devis
+#: parti » exactement comme le nouveau.
+_FILET_JOINT_LIBELLE_ANCIEN = 'Prochaine étape — envoyer le devis ou fixer un rappel'
+FILET_JOINT_LIBELLE = 'Préparer et envoyer le devis (ou fixer un rappel)'
+
+#: RELANCE-SUITE — le client a RÉPONDU à un MESSAGE (WhatsApp, e-mail) : la
+#: suite est de L'APPELER, au prochain créneau d'appel — jamais le suivi de
+#: proposition avant qu'un devis soit parti (« je fais le devis, je l'envoie,
+#: PUIS vos étapes viennent »).
+FILET_APPEL_LIBELLE = 'Appeler le client — il a répondu au message'
+_KINDS_MESSAGE = frozenset({LeadActivity.Kind.WHATSAPP, LeadActivity.Kind.EMAIL})
 
 #: QJ-INVARIANT — libellé du filet après un REFUS (téléphonique ou de devis) :
 #: la suite d'un refus est une décision HUMAINE (MRY22), mais le dossier ne
@@ -1057,21 +1078,31 @@ FILET_JOINT_DELAI_JOURS = 1
 
 def assurer_prochaine_etape_apres_succes(lead, user,
                                          libelle=FILET_JOINT_LIBELLE,
-                                         avec_plan_devis=True):
+                                         avec_plan_devis=True,
+                                         brouillon_compris=False,
+                                         canal_touche=None):
     """QJ-INVARIANT (fondateur 07/09/2026) — un lead ACTIF ne reste JAMAIS
     sans prochaine étape : sa liste de relances ne se termine que par le
     parking Froid ou la signature.
 
     Appelée partout où un geste de relance peut laisser zéro touche ouverte
-    (issue « joint »/« intéressé », étape générique traitée, refus). Deux
-    suites possibles, dans cet ordre :
+    (issue « joint »/« intéressé », étape générique traitée, refus, reprise
+    d'un lead perdu). Suites possibles, dans cet ordre :
 
-    * le lead a un DEVIS relançable (brouillon compris — un devis parti par
-      WhatsApp hors ERP reste « brouillon », cas AR du 07/09) → le PLAN
-      APRÈS-DEVIS complet démarre, daté de maintenant (idempotent par devis,
-      ``initialiser_plan_relance``) ;
-    * sinon → UNE étape `generique` (``libelle``) à demain, au prochain
-      créneau de la société.
+    * le lead a un devis ENVOYÉ encore relançable → le PLAN APRÈS-DEVIS
+      démarre (idempotent par devis, ``initialiser_plan_relance``).
+      RELANCE-SUITE (fondateur 08/09/2026, lead test1 aa) : un BROUILLON ne
+      compte que si ``brouillon_compris`` — quand l'humain vient de cocher
+      l'étape « préparer et envoyer le devis » (devis parti par WhatsApp hors
+      ERP, statut resté brouillon : cas AR du 07/09). JAMAIS depuis une issue
+      « joint » : le suivi de proposition vient APRÈS l'envoi du devis, pas
+      après la première réponse du client (le 08/09, un brouillon jamais
+      envoyé faisait sauter l'appel ET l'envoi du devis) ;
+    * sinon, si la touche qui vient d'aboutir était un MESSAGE
+      (``canal_touche`` WhatsApp/e-mail) → UNE étape « appeler le client »
+      au prochain créneau d'appel : il a répondu, on l'appelle ;
+    * sinon → UNE étape `generique` (``libelle``, par défaut « préparer et
+      envoyer le devis ») à demain, au prochain créneau de la société.
 
     No-op dès qu'une prochaine étape existe déjà, ou que le lead est signé,
     au froid (le réveil s'en charge), perdu ou archivé. Renvoie l'étape
@@ -1096,7 +1127,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     # ``avec_plan_devis=False`` (refus) : relancer la PROPOSITION que le
     # client vient de refuser serait un contresens — étape de décision
     # générique seulement.
-    devis = (dernier_devis_relancable_du_lead(lead)
+    devis = (dernier_devis_relancable_du_lead(
+                 lead, brouillon_compris=brouillon_compris)
              if avec_plan_devis else None)
     if devis is not None:
         etapes = initialiser_plan_relance(
@@ -1106,7 +1138,13 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         if ouvertes:
             return ouvertes[0]
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
-    vise = timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS)
+    if canal_touche in _KINDS_MESSAGE:
+        # RELANCE-SUITE — message répondu : on l'appelle, dès le prochain
+        # créneau d'appel (maintenant si la fenêtre est ouverte).
+        libelle = FILET_APPEL_LIBELLE
+        vise = timezone.now()
+    else:
+        vise = timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS)
     quand = horaires.prochain_creneau_appel(vise, lead.company, canal='appel')
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,

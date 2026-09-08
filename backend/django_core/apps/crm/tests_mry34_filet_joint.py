@@ -11,6 +11,12 @@ Le filet : quand une issue de succès (« joint » / « intéressé ») laisse l
 lead sans AUCUNE touche ouverte, une étape `generique` « envoyer le devis ou
 fixer un rappel » est posée à demain. Si Meryem saisit une date de rappel en
 marquant la touche, `reporter_prochaine_touche` déplace ce filet sur SA date.
+
+RELANCE-SUITE (fondateur 08/09/2026, lead test1 aa) : la suite suit le CANAL
+de la touche aboutie — message répondu → « appeler le client » ; appel fait →
+« préparer et envoyer le devis » — et le plan après-devis ne démarre qu'à
+l'ENVOI du devis (un brouillon jamais envoyé faisait sauter l'appel et
+l'envoi : « je fais le devis, je l'envoie, PUIS vos étapes viennent »).
 """
 import datetime
 from decimal import Decimal
@@ -19,6 +25,7 @@ from io import StringIO
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -27,8 +34,8 @@ from authentication.models import Company
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.services import (
-    FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE, initialiser_plan_relance,
-    marquer_etape_relance)
+    FILET_APPEL_LIBELLE, FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE,
+    initialiser_plan_relance, marquer_etape_relance)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -145,6 +152,67 @@ class FiletJointTests(_Base):
         apres = self.lead.relance_etapes.filter(
             cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
         self.assertGreater(apres.count(), 0)
+
+    # ── RELANCE-SUITE (fondateur 08/09/2026) ───────────────────────────────
+    def _touche(self, canal):
+        return next(e for e in self.etapes if e.canal == canal)
+
+    def _brouillon(self, reference):
+        from apps.crm.models import Client as ClientCrm
+        from apps.ventes.models import Devis
+        client = ClientCrm.objects.create(
+            company=self.company, nom=reference,
+            email=f'{reference.lower()}@example.com')
+        return Devis.objects.create(
+            company=self.company, reference=reference, client=client,
+            lead=self.lead, taux_tva=Decimal('20'),
+            statut=Devis.Statut.BROUILLON)
+
+    def _ouvertes(self, **filtre):
+        return self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE, **filtre)
+
+    def test_joint_sur_un_message_pose_un_appel_jamais_le_suivi_de_proposition(self):
+        """Le client a RÉPONDU au WhatsApp d'identité (« appelez-moi ») alors
+        qu'un devis BROUILLON existe : la suite est de L'APPELER — jamais le
+        plan après-devis, jamais l'étape « envoyer le devis »."""
+        self._brouillon('DEV-MRY34-BR1')
+        resp = self._fait(
+            self._touche(RelanceEtape.Canal.WHATSAPP), outcome='joint')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(self._ouvertes(cadence='apres_devis').count(), 0)
+        ouvertes = list(self._ouvertes())
+        self.assertEqual(len(ouvertes), 1)
+        appel = ouvertes[0]
+        self.assertEqual(appel.libelle, FILET_APPEL_LIBELLE)
+        self.assertEqual(appel.canal, RelanceEtape.Canal.APPEL)
+        self.assertGreaterEqual(
+            appel.due_date,
+            timezone.now().astimezone(horaires.CASABLANCA).date())
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+        self.assertEqual(self.lead.relance_date, appel.due_date)
+
+    def test_joint_sur_un_appel_pose_preparer_le_devis_meme_avec_un_brouillon(self):
+        self._brouillon('DEV-MRY34-BR2')
+        self._fait(self._touche(RelanceEtape.Canal.APPEL), outcome='joint')
+        self.assertEqual(self._ouvertes(cadence='apres_devis').count(), 0)
+        self.assertEqual(self._filets().count(), 1)
+
+    def test_le_suivi_de_proposition_demarre_a_l_envoi_du_devis(self):
+        """Message répondu → appel ; appel fait → « préparer et envoyer le
+        devis » ; l'ENVOI du devis (acte explicite) démarre le plan
+        après-devis et ferme l'étape « préparer et envoyer » sans objet."""
+        devis = self._brouillon('DEV-MRY34-BR3')
+        self._fait(self._touche(RelanceEtape.Canal.WHATSAPP), outcome='joint')
+        appel = self._ouvertes(libelle=FILET_APPEL_LIBELLE).get()
+        marquer_etape_relance(appel, self.acteur, RelanceEtape.Statut.FAIT)
+        self.assertEqual(self._ouvertes(cadence='apres_devis').count(), 0)
+        self.assertEqual(self._filets().count(), 1)
+        from apps.ventes.services import mark_devis_sent
+        mark_devis_sent(devis=devis, user=self.acteur)
+        self.assertGreater(self._ouvertes(cadence='apres_devis').count(), 0)
+        self.assertEqual(self._filets().count(), 0)
 
     def test_refus_sur_la_DERNIERE_touche_ne_cloture_pas_en_injoignable(self):
         """B1 (revue Fable 07/09/2026) — le client a RÉPONDU : refus sur la
