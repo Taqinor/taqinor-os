@@ -93,14 +93,6 @@ class RenduTests(_Base):
             message_pour_etape(self._touche(), user=self.acteur)['message'],
             'Texte maison')
 
-    def test_le_conseiller_est_lutilisateur_courant(self):
-        MessageTemplate.objects.create(
-            company=self.company, cle='identite',
-            corps_fr='Je suis {conseiller}.')
-        self.assertEqual(
-            message_pour_etape(self._touche(), user=self.acteur)['message'],
-            'Je suis Meryem.')
-
 
 class AucunChiffreInventeTests(_Base):
     slug = 'mry13-omission'
@@ -380,3 +372,58 @@ class CiviliteTests(_Base):
         rendu = message_pour_etape(self._touche(), user=self.acteur)
         self.assertIn(f'Bonjour M. {self.lead.nom}', rendu['message'])
         self.assertNotIn('prenom', rendu['placeholders_manquants'])
+
+
+class ConseillerTests(_Base):
+    """Règle fondateur du 08/09/2026 : aucun prénom n'est codé en dur dans un
+    message client — {conseiller} vient du RESPONSABLE du lead, jamais de
+    l'utilisateur qui clique. Capture du bug : sur un lead dont le
+    responsable était Reda, la modale affichait « je suis Meryem » (le
+    prénom de l'utilisateur connecté)."""
+    slug = 'mry13-conseiller'
+
+    def test_le_conseiller_est_le_responsable_du_lead(self):
+        """Dans le fixture de base, `lead.owner` est déjà `self.acteur`
+        (« Meryem ») : ce test documente que {conseiller} vient bien du
+        RESPONSABLE, pas d'une coïncidence avec l'utilisateur courant — le
+        test suivant les distingue explicitement."""
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr='Je suis {conseiller}.')
+        self.assertEqual(
+            message_pour_etape(self._touche(), user=self.acteur)['message'],
+            'Je suis Meryem.')
+
+    def test_le_responsable_du_lead_prime_sur_lutilisateur_courant(self):
+        """LE bug capturé le 08/09/2026 : un autre utilisateur (Karim) qui
+        clique sur un lead dont le responsable est Salma ne doit JAMAIS
+        apparaître comme expéditeur — le message reste signé Salma."""
+        responsable = User.objects.create_user(
+            username=f'{self.slug}-responsable', password='x',
+            company=self.company, first_name='Salma')
+        self.lead.owner = responsable
+        self.lead.save(update_fields=['owner'])
+        utilisateur_qui_clique = User.objects.create_user(
+            username=f'{self.slug}-clic', password='x',
+            company=self.company, first_name='Karim')
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr='Je suis {conseiller}.')
+        rendu = message_pour_etape(
+            self._touche(), user=utilisateur_qui_clique)
+        self.assertEqual(rendu['message'], 'Je suis Salma.')
+
+    def test_sans_owner_ni_responsable_par_defaut_repli_sur_lutilisateur(self):
+        """Sans responsable de lead ET sans `responsable_defaut_leads`
+        configuré pour la société (le `CompanyProfile` du fixture en a un,
+        mais vide), le dernier repli reste l'utilisateur courant — jamais un
+        message sans expéditeur."""
+        self.lead.owner = None
+        self.lead.save(update_fields=['owner'])
+        profile = CompanyProfile.objects.get(company=self.company)
+        self.assertIsNone(profile.responsable_defaut_leads)
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr='Je suis {conseiller}.')
+        rendu = message_pour_etape(self._touche(), user=self.acteur)
+        self.assertEqual(rendu['message'], 'Je suis Meryem.')
