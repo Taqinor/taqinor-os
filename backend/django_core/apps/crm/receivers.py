@@ -143,8 +143,11 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
             pk=lead_id, company=getattr(devis, 'company', None)).first()
         if lead is None:
             return
+        # RELANCE-SUITE (08/09/2026) — l'envoi ferme aussi l'étape générique
+        # « préparer et envoyer le devis » / « appeler le client » devenue
+        # sans objet : le plan après-devis prend la suite.
         arreter_cadence(lead, user=user, motif='devis envoyé',
-                        cadences=['contact'])
+                        cadences=['contact', 'generique'])
         deja = lead.relance_etapes.filter(
             cadence='apres_devis', statut='a_faire').exclude(
                 devis_id=devis.pk).first()
@@ -512,7 +515,10 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
 
     * `joint` / `interesse` → arrête `contact` : le but de la prise de contact
       est atteint. La cadence APRÈS DEVIS, elle, continue — un client joint
-      reste à relancer sur sa proposition.
+      reste à relancer sur sa proposition. RELANCE-SUITE (fondateur
+      08/09/2026) : la suite posée par le filet suit le CANAL de la touche —
+      message répondu → « appeler le client » ; appel fait → « préparer et
+      envoyer le devis » ; le plan après-devis attend l'ENVOI du devis.
     * `refus` → arrête `contact` ET `apres_devis`, SANS marquer le lead perdu :
       « perdu » est une décision humaine qui exige un motif (MRY22), pas un
       effet de bord d'un appel.
@@ -549,7 +555,12 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
             if instance.lead.stage == stages.COLD:
                 avancer_stage_lead_vers(
                     instance.lead, instance.user, stages.CONTACTED)
-            assurer_prochaine_etape_apres_succes(instance.lead, instance.user)
+            # RELANCE-SUITE (08/09/2026) — la suite dépend du CANAL de la
+            # touche : message répondu → l'appeler ; appel fait → préparer
+            # et envoyer le devis. Le plan après-devis, lui, ne démarre qu'à
+            # l'ENVOI du devis (jamais sur un brouillon).
+            assurer_prochaine_etape_apres_succes(
+                instance.lead, instance.user, canal_touche=instance.kind)
         elif issue == 'refuse':
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,

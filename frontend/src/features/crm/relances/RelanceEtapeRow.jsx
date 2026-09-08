@@ -75,7 +75,7 @@ const QUESTIONS = {
     question: 'Résultat de la touche ?',
     reponses: [
       { outcome: 'joint', label: 'Client joint',
-        suite: 'La prise de contact s’arrête. S’il a un devis, le suivi de proposition démarre ; sinon une étape « envoyer le devis » est posée pour demain.' },
+        suite: 'La prise de contact s’arrête. Message répondu → prochaine étape : l’appeler (prochain créneau d’appel). Appel fait → « préparer et envoyer le devis » demain. Le suivi de proposition démarre à l’envoi du devis.' },
       { outcome: 'non_joint', label: 'Pas de réponse',
         suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
@@ -102,7 +102,7 @@ const QUESTIONS = {
     question: 'Où en est ce dossier ?',
     reponses: [
       { outcome: '', label: 'Fait — passer à la suite',
-        suite: 'S’il a un devis, le suivi de proposition démarre ; sinon une nouvelle étape est posée pour demain.' },
+        suite: 'Devis envoyé → le suivi de proposition démarre (pour l’étape « préparer et envoyer le devis », un devis parti hors ERP compte aussi) ; sinon la prochaine étape est posée pour demain.' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
         suite: 'L’étape est déplacée à la date choisie.' },
       { outcome: 'refuse', label: 'Client refuse',
@@ -114,7 +114,7 @@ QUESTIONS.reveil = {
   question: 'Résultat du réveil ?',
   reponses: [
     { outcome: 'joint', label: 'Client joint',
-      suite: 'Le dossier SORT du Froid ; le suivi redémarre (plan après-devis s’il a un devis, sinon prochaine étape demain). Les réveils restants sont annulés.' },
+      suite: 'Le dossier SORT du Froid ; prochaine étape : l’appeler (message répondu) ou préparer le devis (appel fait). Les réveils restants sont annulés.' },
     { outcome: 'non_joint', label: 'Pas de réponse',
       suite: 'Le réveil suivant reste programmé ; le dossier reste au Froid.' },
     { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
