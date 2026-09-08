@@ -1755,6 +1755,24 @@ def pick_round_robin_owner(company):
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
 
+def journaliser_whatsapp_ouvert(etape, user):
+    """RELANCE-WA (fondateur 08/09/2026) — ouvrir WhatsApp depuis une touche
+    n'AVANCE plus la touche. Le clic est INSCRIT dans l'historique du lead
+    (activité typée WhatsApp : comptée comme tentative MRY20 et comme premier
+    contact MRY19 par les récepteurs) et la touche reste À FAIRE jusqu'à la
+    réponse aux questions guidées (« Fait »). Avant, le clic marquait la
+    touche faite (décision D5 du 07/09) : une conversation ouverte n'est pas
+    une réponse du client. Aucune issue posée → aucune cadence arrêtée,
+    aucune avance d'étape."""
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    return LeadActivity.objects.create(
+        company=etape.company, lead=etape.lead, user=user,
+        kind=LeadActivity.Kind.WHATSAPP,
+        body=(f'WhatsApp ouvert — touche « {libelle} » (cadence '
+              f'{etape.cadence}) : message préparé ; la touche reste à faire '
+              "jusqu'à la réponse du client."))
+
+
 def marquer_premier_contact(lead, *, when=None) -> bool:
     """MRY19 — LA pose de ``first_contacted_at``. Une seule, partout.
 

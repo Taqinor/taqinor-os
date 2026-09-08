@@ -48,6 +48,7 @@ _CROCHETS = [
     (r'\[lien preuve\]', '{lien_preuve}'),
     (r'\[puissance preuve\]', '{puissance_preuve}'),
     (r'\[lien de la fiche TAQINOR\]', '{lien}'),
+    (r'\[lien de votre proposition\]', '{lien}'),
     (r'\[mois\]', '{mois_preuve}'),
     (r'\[ville\]', '{ville_preuve}'),
     (r'\[Conseiller\]', '{conseiller}'),

@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react'
 import { Send, TriangleAlert } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
+import { toast } from '../../../ui/confirm'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Spinner,
@@ -48,6 +49,10 @@ export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent 
     setSending(true)
     try {
       const r = await crmApi.whatsappRelanceEtape(etape.id)
+      // RELANCE-WA (fondateur 08/09/2026) — ouvrir WhatsApp n'avance plus la
+      // touche : le clic est journalisé, la touche reste à faire jusqu'à la
+      // réponse du client (questions « Fait »).
+      toast.success('WhatsApp ouvert — la touche reste à faire : marquez « Fait » après la réponse du client.')
       onSent?.(etape.id, r?.data)
       onOpenChange(false)
     } catch {

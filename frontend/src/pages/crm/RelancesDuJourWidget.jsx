@@ -141,7 +141,7 @@ export default function RelancesDuJourWidget() {
         etape={messageEtape}
         open={!!messageEtape}
         onOpenChange={(o) => { if (!o) setMessageEtape(null) }}
-        onSent={(id) => { retirer(id); setTimeout(() => { charger() }, 1000) }}
+        onSent={() => { charger() }}
       />
     </Card>
   )

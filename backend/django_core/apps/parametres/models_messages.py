@@ -84,7 +84,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     'j4_preuve':
         "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous montrer.",
     'j6_garanties':
-        "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive.",
+        "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : {lien}. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties",
     'j9_validite':
         "Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.",
     'j13_dernier':
