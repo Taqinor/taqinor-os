@@ -78,6 +78,15 @@ const parametresApi = {
     api.get('/parametres/cadence-relance/', { params: cadence ? { cadence } : {} }),
   updateCadenceRelanceEtape: (id, data) =>
     api.patch(`/parametres/cadence-relance/${id}/`, data),
+  // Catalogue « Réalisations » (08/09/2026) — installations RÉELLES de la
+  // société et leur page publique. Source de la preuve de la touche J4 :
+  // le serveur y choisit celle de la ville du lead. `company` n'est jamais
+  // envoyée (forcée côté serveur).
+  getRealisations: () => api.get('/parametres/realisations/'),
+  createRealisation: (data) => api.post('/parametres/realisations/', data),
+  updateRealisation: (id, data) =>
+    api.patch(`/parametres/realisations/${id}/`, data),
+  deleteRealisation: (id) => api.delete(`/parametres/realisations/${id}/`),
 }
 
 export default parametresApi

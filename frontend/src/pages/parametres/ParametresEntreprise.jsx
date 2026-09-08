@@ -58,6 +58,7 @@ import ConfidentialiteSection from './ConfidentialiteSection'
 import ApplicationsSection from './ApplicationsSection'
 import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
+import RealisationsSection from './RealisationsSection'
 import ChatRetentionSection from './ChatRetentionSection'
 import ModelesBrandesSection from './ModelesBrandesSection'
 import ExportsPlanifiesSection from './ExportsPlanifiesSection'
@@ -85,6 +86,11 @@ const MARKETPLACE_TAB = { key: 'marketplace', label: 'Marketplace', group: 'avan
 // WIR66 — onglet « Référentiels » (taux de TVA / conditions de paiement /
 // unités de mesure). Ajouté localement, même logique que N96/N94/XPLT23/ODX5.
 const REFERENTIELS_TAB = { key: 'referentiels', label: 'Référentiels', group: 'avance' }
+// Catalogue « Réalisations » (08/09/2026) — installations réelles + page
+// publique, source de la preuve envoyée par la touche J4 du suivi après devis.
+// Rangé dans « Ventes & Devis » : c'est un argument commercial, pas un réglage
+// technique. Ajouté localement, même logique que N96/N94/XPLT23/ODX5/WIR66.
+const REALISATIONS_TAB = { key: 'realisations', label: 'Réalisations', group: 'ventes' }
 // WIR157 — onglet « Rétention (Discuter) » (politique de rétention chat +
 // historique des purges, loi 09-08/CNDP). Ajouté localement, même logique
 // que N96/N94/XPLT23/ODX5/WIR159/WIR66.
@@ -128,7 +134,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -1029,6 +1035,8 @@ export default function ParametresEntreprise() {
           {tab === 'marketplace' && <MarketplaceSection />}
           {/* WIR66 — référentiels société : TVA / conditions / unités. */}
           {tab === 'referentiels' && <ReferentielsSection />}
+          {/* Catalogue des installations réelles (preuve de la touche J4). */}
+          {tab === 'realisations' && <RealisationsSection />}
           {/* WIR157 — rétention chat (Discuter) + historique des purges (autonome). */}
           {tab === 'chat_retention' && <ChatRetentionSection />}
           {/* PACT117 — modèles brandés PDF/email/WhatsApp + aperçu serveur. */}
