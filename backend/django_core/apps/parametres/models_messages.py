@@ -82,7 +82,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     'j1_pdf':
         "Le PDF s'ouvre bien ? Qu'est-ce qui vous a le plus parlé ?",
     'j4_preuve':
-        "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Le suivi de production est en temps réel, je peux vous montrer.",
+        "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous montrer.",
     'j6_garanties':
         "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive.",
     'j9_validite':
@@ -154,7 +154,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # commerciaux : ce sont les coordonnées d'un chantier existant que le client
 # peut aller voir. Sans réalisation, ils restent vides et la phrase est OMISE
 # (MRY13) — jamais un crochet à remplir à la main, jamais une preuve inventée.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}"]
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [

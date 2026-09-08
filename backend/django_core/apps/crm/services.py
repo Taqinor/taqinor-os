@@ -1177,12 +1177,13 @@ _PLACEHOLDERS_RENDUS = (
     'lien_rdv', 'date_validite', 'conseiller',
     # 08/09/2026 — la PREUVE de la touche `j4_preuve` (mois, ville et lien de
     # la page publique d'une `parametres.Realisation` réelle).
-    'mois_preuve', 'ville_preuve', 'lien_preuve')
+    'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
 #: `{lien_rdv}` : aucun travail, aucune requête, quand ce n'est pas demandé).
-_PLACEHOLDERS_PREUVE = ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}')
+_PLACEHOLDERS_PREUVE = ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
+                        '{puissance_preuve}')
 
 #: Noms de mois en français, pour « posée en juillet 2026 ». Codés ici plutôt
 #: que via une locale système : le rendu d'un message client ne doit pas
@@ -1205,16 +1206,30 @@ def _mois_francais(valeur):
         return ''
 
 
+def _kwc_francais(valeur):
+    """« 11,44 » / « 5 » à partir d'une puissance en kWc, ou '' si inconnue
+    (la phrase « Puissance installée » est alors omise SEULE, MRY13)."""
+    if valeur is None:
+        return ''
+    try:
+        texte = f'{float(valeur):.2f}'.rstrip('0').rstrip('.')
+    except (TypeError, ValueError):
+        return ''
+    return texte.replace('.', ',')
+
+
 def _contexte_preuve(lead):
     """MRY-PREUVE — mois / ville / lien d'une réalisation RÉELLE pour ce lead.
 
     Le catalogue et le choix vivent dans l'app FONDATION `parametres`
     (`selectors.realisation_pour_lead` : même ville d'abord, sinon la plus
-    proche dans le rayon) ; `crm` ne fait que consommer ce sélecteur. Aucune
+    proche dans le rayon, sinon la DERNIÈRE installation de la société —
+    repli fondateur 08/09/2026) ; `crm` ne fait que consommer ce sélecteur. Aucune
     réalisation utilisable → les trois valeurs restent VIDES et
     `_omettre_phrases_incompletes` retire la phrase entière : jamais un
     chantier inventé, jamais un crochet laissé au client."""
-    vide = {'mois_preuve': '', 'ville_preuve': '', 'lien_preuve': ''}
+    vide = {'mois_preuve': '', 'ville_preuve': '', 'lien_preuve': '',
+            'puissance_preuve': ''}
     try:
         from apps.parametres.selectors import realisation_pour_lead
         realisation = realisation_pour_lead(lead)
@@ -1228,6 +1243,7 @@ def _contexte_preuve(lead):
         'mois_preuve': _mois_francais(realisation.mise_en_service),
         'ville_preuve': (realisation.ville or '').strip(),
         'lien_preuve': (realisation.url_page or '').strip(),
+        'puissance_preuve': _kwc_francais(realisation.puissance_kwc),
     }
 
 

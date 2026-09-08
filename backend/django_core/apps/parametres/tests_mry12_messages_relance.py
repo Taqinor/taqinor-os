@@ -46,6 +46,7 @@ _CROCHETS = [
     # d'abord l'avalerait et rendrait `{lien}` (le lien du devis) à la place
     # du lien de la réalisation — deux liens différents dans le même message.
     (r'\[lien preuve\]', '{lien_preuve}'),
+    (r'\[puissance preuve\]', '{puissance_preuve}'),
     (r'\[lien de la fiche TAQINOR\]', '{lien}'),
     (r'\[mois\]', '{mois_preuve}'),
     (r'\[ville\]', '{ville_preuve}'),

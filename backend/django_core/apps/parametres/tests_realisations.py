@@ -8,13 +8,15 @@ reste vrai :
      CANONISÉE (« belksiri » → « Mechraa Bel Ksiri ») et un mois — jamais un
      jour inventé ;
   2. **le choix est géographique, pas décoratif** : même ville d'abord, sinon
-     la plus proche dans le rayon, sinon RIEN (une installation à 400 km n'est
-     pas « comparable à la vôtre ») ;
+     la plus proche dans le rayon, sinon (repli fondateur 08/09/2026) la
+     DERNIÈRE installation de la société, à puissance la plus proche du devis
+     — avec SA vraie ville ;
   3. **cloisonnement société** : le catalogue d'une société n'est ni lisible ni
      modifiable par une autre, et `company` n'est jamais lue du corps.
 """
 import datetime
 import itertools
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -25,7 +27,8 @@ from authentication.models import Company
 
 from apps.crm.models import Lead
 from apps.parametres.models_realisations import Realisation
-from apps.parametres.selectors import RAYON_PREUVE_KM, realisation_pour_lead
+from apps.parametres.selectors import (
+    RAYON_PREUVE_KM, _repli, realisation_pour_lead)
 
 User = get_user_model()
 
@@ -212,14 +215,29 @@ class SelecteurTests(TestCase):
         self.assertEqual(realisation_pour_lead(self._lead(ville='Casablanca')),
                          bouskoura)
 
-    def test_rien_au_dela_du_rayon(self):
-        """Settat est à 65 km de Casablanca (rayon = 60) : au-delà, « une
-        installation comparable à la vôtre » deviendrait faux — on préfère
-        n'envoyer aucune preuve."""
+    def test_au_dela_du_rayon_le_repli_montre_la_derniere(self):
+        """Settat (65 km) et Agadir (400 km) sont hors rayon (60) : plutôt
+        qu'aucune preuve, le repli fondateur (08/09/2026) montre la DERNIÈRE
+        installation — Agadir, plus récente — avec SA vraie ville."""
         self.assertEqual(RAYON_PREUVE_KM, 60)
-        _realisation(self.company, 'Settat')
-        _realisation(self.company, 'Agadir')
-        self.assertIsNone(realisation_pour_lead(self._lead(ville='Casablanca')))
+        _realisation(self.company, 'Settat',
+                     mise_en_service=datetime.date(2026, 5, 1))
+        agadir = _realisation(self.company, 'Agadir',
+                              mise_en_service=datetime.date(2026, 7, 1))
+        self.assertEqual(realisation_pour_lead(self._lead(ville='Casablanca')),
+                         agadir)
+
+    def test_le_repli_prefere_la_puissance_la_plus_proche_du_devis(self):
+        grande = Realisation(company=self.company, ville='Agadir',
+                             puissance_kwc=Decimal('11.44'),
+                             mise_en_service=datetime.date(2026, 7, 1),
+                             url_page='https://taqinor.ma/realisations/g/')
+        petite = Realisation(company=self.company, ville='Settat',
+                             puissance_kwc=Decimal('5'),
+                             mise_en_service=datetime.date(2025, 10, 1),
+                             url_page='https://taqinor.ma/realisations/p/')
+        self.assertEqual(_repli([grande, petite], 5.0), petite)
+        self.assertEqual(_repli([grande, petite], None), grande)
 
     def test_une_realisation_inactive_est_ignoree(self):
         _realisation(self.company, 'Casablanca', actif=False)
@@ -233,11 +251,11 @@ class SelecteurTests(TestCase):
         self.assertEqual(realisation_pour_lead(self._lead(ville='Casablanca')),
                          recente)
 
-    def test_un_lead_sans_ville_ne_recoit_aucune_preuve(self):
-        """« Comparable à la vôtre » est une affirmation géographique : sans
-        ville, on ne la fait pas au hasard."""
-        _realisation(self.company, 'Casablanca')
-        self.assertIsNone(realisation_pour_lead(self._lead()))
+    def test_un_lead_sans_ville_recoit_le_repli(self):
+        """Sans ville, pas de géographie possible : le repli (dernière
+        installation, vraie ville affichée) vaut mieux qu'aucune preuve."""
+        casa = _realisation(self.company, 'Casablanca')
+        self.assertEqual(realisation_pour_lead(self._lead()), casa)
 
     def test_le_catalogue_d_une_autre_societe_n_est_jamais_servi(self):
         _realisation(self.autre, 'Casablanca')

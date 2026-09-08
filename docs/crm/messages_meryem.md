@@ -3,20 +3,22 @@
 Source de vérité des gabarits `parametres.MessageTemplate` que MRY12 seed dans `MESSAGE_TEMPLATE_DEFAULTS`
 (`corps_fr` = colonne FR ; `corps_darija` = colonne darija, écriture arabe, revue native le 04/09/2026).
 Règles : aucun chiffre qui ne vienne du devis ou du lead ; placeholders autorisés `{civilite} {nom} {prenom} {ville}
-{reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve}` ; le crochet
+{reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve} {puissance_preuve}` ; le crochet
 `[…]` des textes ci-dessous devient le placeholder correspondant au seed (`M. [Prénom]` → `{prenom}`, `[date]` →
-`{date_validite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale),
+`{date_validite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`,
 `[lien …]` → `{lien}`, `[mois]` → `{mois_preuve}`, `[ville]` → `{ville_preuve}`, `[Conseiller]` → `{conseiller}`,
 `[المستشار]` → `{conseiller}`) ; ce qui n'a pas de placeholder (montant, raison réelle, jour/heure de rappel) reste à
 saisir par Meryem au moment de l'envoi — jamais un défaut. Une phrase dont le placeholder est vide est OMISE au rendu
 (MRY13).
 
-Ordre fondateur du 08/09/2026 (catalogue « Réalisations ») : les trois placeholders `{mois_preuve}`,
-`{ville_preuve}` et `{lien_preuve}` de la touche `j4_preuve` ne se saisissent plus à la main. Le serveur les remplit
-depuis `parametres.Realisation` via `parametres.selectors.realisation_pour_lead` : l'installation RÉELLE de la même
-ville que le lead (sinon la plus proche à moins de 60 km), son mois de mise en service et le lien de sa page
-publique. Sans réalisation utilisable, les trois restent vides et la phrase entière est omise — jamais une preuve
-inventée.
+Ordre fondateur du 08/09/2026 (catalogue « Réalisations ») : les placeholders `{mois_preuve}`, `{ville_preuve}`,
+`{lien_preuve}` et `{puissance_preuve}` de la touche `j4_preuve` ne se saisissent plus à la main. Le serveur les
+remplit depuis `parametres.Realisation` via `parametres.selectors.realisation_pour_lead` : l'installation RÉELLE de la
+même ville que le lead, sinon la plus proche à moins de 60 km, sinon — repli fondateur du 08/09/2026 — la DERNIÈRE
+installation de la société (puissance la plus proche du devis si connue) ; la ville affichée est toujours la sienne,
+vraie : « comparable » parle de la taille, jamais du lieu. Mois de mise en service, lien de la page publique et
+puissance viennent de la fiche ; une puissance inconnue fait tomber SA phrase seule. Sans aucune réalisation au
+catalogue, les placeholders restent vides et la phrase entière est omise — jamais une preuve inventée.
 
 Règle fondateur du 08/09/2026 : aucun prénom de personne (ex. Meryem, Reda) n'est codé en dur dans un texte qui
 atteint le client. L'expéditeur d'un message est désigné par `[Conseiller]`/`[المستشار]` → `{conseiller}`, rempli
@@ -76,7 +78,7 @@ DARIJA : واخا، فهمتكم، ما غاديش نعاود نعيط ليكم.
 FR : Le PDF s'ouvre bien ? Qu'est-ce qui vous a le plus parlé ?
 
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
-FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Le suivi de production est en temps réel, je peux vous montrer.
+FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer.
 
 ### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
 FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive.
