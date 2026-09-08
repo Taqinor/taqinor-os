@@ -15,9 +15,12 @@ const sitemapExcluded = (page: string) =>
   /type-test|media-test|variants-test|craft-|\/preview\//.test(page);
 
 describe('réalisations — intégrité des faits', () => {
-  it('5 installations réelles, total 43,48 kWc (= chiffre de l’accueil)', () => {
-    expect(REALISATIONS).toHaveLength(5);
-    const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
+  it('6 installations réelles (2026-09 : + Bouskoura, kwc non publié), total 43,48 kWc (= chiffre de l’accueil)', () => {
+    // (2026-09) Bouskoura ajoutée — chantier réel, filmé, mais SANS kwc publié :
+    // `kwcNum` optionnel, exclu de la somme (`?? 0`) plutôt qu'un NaN — les 5
+    // totaux ORIGINAUX restent bit à bit intacts.
+    expect(REALISATIONS).toHaveLength(6);
+    const total = REALISATIONS.reduce((s, r) => s + (r.kwcNum ?? 0), 0);
     expect(Number(total.toFixed(2))).toBe(43.48);
   });
 
