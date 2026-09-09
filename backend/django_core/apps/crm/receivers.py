@@ -30,6 +30,7 @@ from .services import (
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
+    avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
     generer_playbook_progress,
     initialiser_plan_relance,
@@ -506,6 +507,14 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     marquer_premier_contact(lead)
     if (instance.outcome or '').strip() in ('joint', 'interesse'):
         avancer_stage_new_vers_contacted(lead, instance.user)
+        # QJ-FUNNEL (fondateur 09/09/2026) — le cran suivant du funnel, même
+        # doctrine et MÊME périmètre de kinds qu'au-dessus (rien d'élargi) :
+        # une réponse « joint »/« intéressé » journalisée après l'envoi de la
+        # proposition passe le lead « Devis envoyé » → « Relance ». Gardes
+        # d'étape exactes dans le service (un lead à CONTACTED ne saute
+        # jamais d'étape ; jamais en arrière) — les deux appels sont
+        # mutuellement exclusifs par construction.
+        avancer_stage_sur_reponse_devis(lead, instance.user)
 
 
 @receiver(post_save, sender=LeadActivity,

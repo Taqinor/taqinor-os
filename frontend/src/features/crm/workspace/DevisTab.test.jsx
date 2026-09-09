@@ -334,8 +334,13 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
+    // QJ-FUNNEL (09/09/2026) — copier le lien = l'ENVOYER : le POST porte
+    // `envoi: true` (backend : devis « envoyé » + funnel « Devis envoyé »).
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, {
+        niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS,
+        envoi: true,
+      },
     ))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(
       'https://taqinor.ma/proposition/karim/tok-abc',
@@ -365,8 +370,12 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: 'WhatsApp' }))
+    // QJ-FUNNEL (09/09/2026) — WhatsApp = ENVOI : `envoi: true` au backend.
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, {
+        niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS,
+        envoi: true,
+      },
     ))
     await waitFor(() => expect(window.open).toHaveBeenCalledWith(
       'https://wa.me/212612345678?text='
@@ -503,7 +512,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     )
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -514,7 +523,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     await user.click(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ }))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: true, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'standard', otp_lecture: true, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -587,7 +596,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     // régénération) ; on le vérifie via les 2 appels reçus, identiques hors niveau.
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledTimes(2))
     expect(shareLinkDevis).toHaveBeenNthCalledWith(
-      1, 1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS })
+      1, 1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS })
     expect(shareLinkDevis).toHaveBeenNthCalledWith(
       2, 1, { niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS })
     const badge = await screen.findByTitle(/Le lien reste le même/)
@@ -667,7 +676,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await user.click(screen.getByRole('checkbox', { name: /^Calepinage 3D — page client de DEV-1/ }))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, roof3d: false },
     }))
   })
@@ -680,7 +689,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await user.click(screen.getByRole('checkbox', { name: /^Étude bancable — page client de DEV-1/ }))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, pdf: false, bankable: false },
     }))
   })
@@ -694,7 +703,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await user.click(box)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -830,7 +839,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     await user.click(radio('1'))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false, taille_max: false },
     }))
   })
@@ -842,7 +851,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     await user.click(radio('2'))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false },
     }))
   })
@@ -853,7 +862,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
   })
 

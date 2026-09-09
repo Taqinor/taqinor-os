@@ -316,6 +316,82 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     return True
 
 
+def avancer_stage_sur_reponse_devis(lead, user) -> bool:
+    """QJ-FUNNEL (fondateur 09/09/2026 — « le lead reste en Contacté et ne
+    bouge ni vers Devis envoyé ni vers Relance sur les réponses aux
+    touches ») — avance QUOTE_SENT → FOLLOW_UP quand le client RÉPOND après
+    l'envoi de sa proposition.
+
+    Symétrique EXACT de ``avancer_stage_new_vers_contacted`` juste au-dessus,
+    un cran plus loin dans le funnel, sous la MÊME doctrine 07/09/2026 : le
+    funnel ne bouge que sur une réponse CONFIRMÉE (« joint »/« intéressé »)
+    journalisée par un humain — jamais sur un comportement observé (YLEAD10
+    débranché) ni sur une touche sautée. Le déclencheur est le même récepteur
+    d'activité (receivers ``_avancer_stage_on_contact_activity``), donc il
+    couvre d'un seul mécanisme la clôture de touche de cadence
+    (``marquer_etape_relance``) ET l'appel journalisé à la main
+    (``log_interaction``).
+
+    Garde d'étape EXACTE (QUOTE_SENT seul) : un lead encore à CONTACTED dont
+    l'appel aboutit reste à CONTACTED (aucun devis envoyé — « Relance » vient
+    APRÈS « Devis envoyé » dans l'ordre canonique STAGES.py) ; un lead déjà à
+    FOLLOW_UP ou plus avancé ne bouge pas. Idempotent, jamais en arrière,
+    leads perdus ignorés."""
+    if lead.pk:
+        lead.refresh_from_db(fields=['stage', 'perdu'])
+    if lead.perdu:
+        return False
+    if lead.stage != stages.QUOTE_SENT:
+        return False
+    lead.stage = stages.FOLLOW_UP
+    lead.save(update_fields=['stage'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS[stages.QUOTE_SENT],
+        new_value=stages.STAGE_LABELS[stages.FOLLOW_UP],
+        body='auto — réponse du client après devis',
+    )
+    _emit_stage_changed(lead, stages.QUOTE_SENT, stages.FOLLOW_UP, user)
+    return True
+
+
+def avancer_stage_devis_envoye_sur_touche(lead, user) -> bool:
+    """QJ-FUNNEL (fondateur 09/09/2026 — « when I do Fait for quote sent, it
+    should be at quote sent ») — place le lead à QUOTE_SENT quand la touche
+    « Préparer et envoyer le devis » est cochée FAIT sans issue (le même
+    geste que RELANCE-SUITE lit déjà comme « devis parti » pour démarrer le
+    plan après-devis — appelé par ``marquer_etape_relance`` sur LA MÊME
+    détection, jamais une seconde règle de libellé).
+
+    Avance-seulement par RANG (``_rang_funnel``) : un lead COLD est RÉACTIVÉ
+    (rang -1 — même doctrine que les mouvements devis envoyé/accepté), un
+    lead déjà à QUOTE_SENT ou plus avancé ne bouge pas, un lead perdu est
+    ignoré. C'est un mouvement de la couche FUNNEL seule (règle #2) : le
+    STATUT document du devis, lui, ne bascule que par ``mark_devis_sent``
+    (envoi réel — email, WhatsApp, lien copié)."""
+    if lead.pk:
+        lead.refresh_from_db(fields=['stage', 'perdu'])
+    if lead.perdu:
+        return False
+    if _rang_funnel(lead.stage) >= _rang_funnel(stages.QUOTE_SENT):
+        return False
+    ancien = lead.stage
+    lead.stage = stages.QUOTE_SENT
+    lead.save(update_fields=['stage'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS[ancien],
+        new_value=stages.STAGE_LABELS[stages.QUOTE_SENT],
+        body='auto — touche « envoyer le devis » faite',
+    )
+    _emit_stage_changed(lead, ancien, stages.QUOTE_SENT, user)
+    return True
+
+
 # ── YLEAD11 — Réactivation d'un lead perdu/COLD sur nouvelle touche entrante ──
 
 def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
@@ -928,6 +1004,21 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         kind=kind, body=corps, outcome=(outcome or ''))
 
     lead = etape.lead
+    # RELANCE-SUITE (08/09/2026) — LA détection « devis parti » : la touche
+    # générique d'envoi du devis, sans issue. Hissée ici (une seule règle de
+    # libellé) car DEUX consommateurs la lisent désormais : le filet plus bas
+    # (démarrage du plan après-devis, comportement inchangé) et QJ-FUNNEL
+    # juste en dessous (l'étape du funnel).
+    touche_envoi_devis = (
+        etape.cadence == 'generique' and not (outcome or '')
+        and (etape.libelle or '').strip()
+        in (FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN))
+    # QJ-FUNNEL (fondateur 09/09/2026 — « when I do Fait for quote sent, it
+    # should be at quote sent ») — cocher FAIT la touche d'envoi place le
+    # lead à « Devis envoyé » sur-le-champ, quel que soit le reste du plan
+    # (une touche SAUTÉE ne vaut jamais un envoi).
+    if statut == RelanceEtape.Statut.FAIT and touche_envoi_devis:
+        avancer_stage_devis_envoye_sur_touche(lead, user)
     prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
@@ -956,12 +1047,9 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         # démarre le suivi de proposition sur un devis resté brouillon (cas
         # AR). Toute autre touche laissée sans suite reçoit une étape
         # générique — le suivi de proposition, lui, démarre à l'ENVOI.
-        devis_parti = (
-            etape.cadence == 'generique' and not (outcome or '')
-            and (etape.libelle or '').strip()
-            in (FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN))
+        # (Détection hissée en tête de fonction — `touche_envoi_devis`.)
         assurer_prochaine_etape_apres_succes(
-            lead, user, brouillon_compris=devis_parti)
+            lead, user, brouillon_compris=touche_envoi_devis)
     return etape
 
 

@@ -355,9 +355,17 @@ export default function DevisTab({
   // niveau/OTP actuellement choisis pour CE devis, et renvoie l'URL ABSOLUE
   // de la page client (chemin_proposition backend), MÊME lien que celui déjà
   // envoyé par email/WhatsApp/l'outil 3D.
-  const mintProposalUrl = async (d) => {
+  //
+  // QJ-FUNNEL (fondateur 09/09/2026) — `envoi: true` dit au backend que ce
+  // POST est un ENVOI au client (copier pour envoyer, WhatsApp par devis) :
+  // le devis passe brouillon → « envoyé » (mark_devis_sent, chemin unique
+  // U4/QJ14) et le funnel du lead avance vers « Devis envoyé ». Jamais posé
+  // par « Ouvrir » (regarder la page n'est pas envoyer), ni par l'aperçu
+  // interne, ni par les re-POSTs de réglage niveau/OTP/sections.
+  const mintProposalUrl = async (d, { envoi = false } = {}) => {
     const res = await ventesApi.shareLinkDevis(d.id, {
       niveau: getNiveau(d), otp_lecture: getOtp(d), sections: getSections(d),
+      ...(envoi ? { envoi: true } : {}),
     })
     setLinkMeta((cur) => ({
       ...cur,
@@ -464,12 +472,16 @@ export default function DevisTab({
     setLinkBusy(`l-${d.id}`)
     setActionMsg(null)
     try {
-      const url = await mintProposalUrl(d)
+      // QJ-FUNNEL — copier le lien = l'envoyer : le devis passe « envoyé »
+      // et le funnel du lead avance (backend). `refresh` recharge la fiche
+      // pour que la pastille de statut et l'étape le montrent tout de suite.
+      const url = await mintProposalUrl(d, { envoi: true })
       try {
         await navigator.clipboard?.writeText(url)
         setCopiedId(d.id)
         window.setTimeout(() => setCopiedId((cur) => (cur === d.id ? null : cur)), 2000)
       } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
+      onAction?.('refresh')
     } catch (err) {
       setActionMsg(errorMessageFrom(err, 'Lien de la page client indisponible.'))
     } finally {
@@ -498,10 +510,13 @@ export default function DevisTab({
     setLinkBusy(`w-${d.id}`)
     setActionMsg(null)
     try {
-      const url = await mintProposalUrl(d)
+      // QJ-FUNNEL — envoyer par WhatsApp = envoyer : devis « envoyé » +
+      // funnel « Devis envoyé » (backend), fiche rechargée pour le montrer.
+      const url = await mintProposalUrl(d, { envoi: true })
       const nom = `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim()
       const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(nom, url))
       if (waUrl) window.open(waUrl, '_blank', 'noopener')
+      onAction?.('refresh')
     } catch (err) {
       setActionMsg(errorMessageFrom(err, 'Lien WhatsApp indisponible.'))
     } finally {
