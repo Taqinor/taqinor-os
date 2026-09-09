@@ -227,6 +227,48 @@ def _resolve_share_link_by_token(token, *, select_related=()):
     return link, via_interne
 
 
+#: QJ-ROBOTS (fondateur 09/09/2026 — « quand Meryem ou moi cliquons le bouton
+#: WhatsApp, la notification “devis ouvert” part ») — User-Agents des ROBOTS
+#: D'APERÇU de lien. Dès que le commercial ouvre wa.me avec l'URL de la page
+#: client dans le texte, WhatsApp (l'app du téléphone OU les serveurs Meta,
+#: UA « WhatsApp/x.y » ou « facebookexternalhit ») PRÉ-CHARGE la page pour
+#: fabriquer la vignette d'aperçu — la page proposition étant rendue serveur
+#: (apps/web, prerender=false), ce pré-chargement atteignait le backend et
+#: comptait comme une VRAIE ouverture client : compteur, note chatter,
+#: notification au responsable. Même mécanique pour tous les messageries/
+#: réseaux (Telegram, iMessage/Applebot, Slack, LinkedIn…) et les moteurs.
+#: Jetons choisis SPÉCIFIQUES (jamais un mot d'un navigateur réel) ; « bot »
+#: seul n'est reconnu qu'en jeton isolé (délimité), jamais en sous-chaîne.
+#: NB : « bot(?![a-z]) » attrape la convention CamelCase des crawlers
+#: (SemrushBot/7, AhrefsBot, DotBot, Slackbot…) sans toucher un navigateur
+#: humain (aucun UA de navigateur réel ne contient « bot » en fin de jeton —
+#: les in-app browsers WhatsApp/Facebook/Instagram d'un VRAI client portent
+#: un UA Mozilla normal et restent comptés).
+_ROBOT_APERCU_RE = re.compile(
+    r'whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot'
+    r'|slack-imgproxy|linkedinbot|discordbot|skypeuripreview|viber|snapchat'
+    r'|pinterestbot|redditbot|vkshare|applebot|googlebot|bingbot|duckduckbot'
+    r'|yandexbot|baiduspider|petalbot|headlesschrome|python-requests'
+    r'|python-urllib|curl/|wget/|go-http-client|okhttp'
+    r'|crawler|spider|preview|bot(?![a-z])',
+    re.IGNORECASE)
+
+
+def _est_robot_apercu(request):
+    """QJ-ROBOTS — vrai si CE GET vient d'un robot d'aperçu/crawler, jamais
+    d'un humain : User-Agent de la liste ci-dessus, ou requête HEAD (les
+    crawlers sondent en HEAD ; aucun navigateur ne lit une proposition en
+    HEAD). Un User-Agent ABSENT n'est PAS un robot : le fetch SSR d'apps/web
+    d'avant ce chantier n'en transmettait aucun, et le client de test Django
+    n'en envoie pas — les deux doivent garder le comptage historique."""
+    if request is None:
+        return False
+    if getattr(request, 'method', 'GET') == 'HEAD':
+        return True
+    ua = (request.META.get('HTTP_USER_AGENT') or '') if hasattr(request, 'META') else ''
+    return bool(ua and _ROBOT_APERCU_RE.search(ua))
+
+
 def _stamp_view_si_public(link, via_interne, request=None):
     """L-INTPREV — même contrat que ``_stamp_view`` (renvoie True si première
     ouverture), mais SANS AUCUN effet de bord quand ``via_interne`` est vrai :
@@ -238,13 +280,18 @@ def _stamp_view_si_public(link, via_interne, request=None):
     résulte : pas de note chatter, pas d'avance de stage funnel (YLEAD10),
     pas de notification au owner.
 
+    QJ-ROBOTS (09/09/2026) — un robot d'aperçu de lien (WhatsApp qui
+    pré-charge la vignette au moment où le commercial COMPOSE le message,
+    crawler de moteur…) suit EXACTEMENT le même court-circuit que le jeton
+    interne : aucune écriture, aucune notification. Seul un humain compte.
+
     T-TRACE (25/08/2026) — le traçage anti-fraude suit EXACTEMENT la même
     règle : rien n'est enregistré via le jeton interne (``via_interne``
     court-circuite AVANT toute écriture). ``request`` est FACULTATIF (les
     appelants qui ne le passent pas gardent le comportement d'avant, sans
     trace de visite) et sert uniquement à lire l'IP / le navigateur CÔTÉ
     SERVEUR — jamais un corps de requête."""
-    if via_interne:
+    if via_interne or _est_robot_apercu(request):
         return False
     resultat = _stamp_view(link)
     _tracer_ouverture_publique(link, request)

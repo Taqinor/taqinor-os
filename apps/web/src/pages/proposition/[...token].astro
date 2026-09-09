@@ -295,6 +295,15 @@ if (!rl.allowed) {
 } else {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
+  // QJ-ROBOTS (fondateur 09/09/2026) — transmet aussi le User-Agent RÉEL du
+  // visiteur : dès que le commercial compose un message WhatsApp contenant ce
+  // lien, WhatsApp pré-charge la page pour l'aperçu (UA « WhatsApp/x » ou
+  // « facebookexternalhit ») ; comme ce rendu est serveur, le backend voyait
+  // un fetch anonyme identique à une vraie lecture et notifiait « devis
+  // ouvert ». Avec l'UA transmis, apps/ventes/public_views.py
+  // (_est_robot_apercu) écarte robots d'aperçu et crawlers du comptage/des
+  // notifications. Best-effort : UA absent = comportement d'avant (compté).
+  const visitorUa = Astro.request.headers.get('user-agent') || '';
   try {
     const res = await fetch(proposalEndpoint(API_BASE, token), {
       headers: {
@@ -306,6 +315,7 @@ if (!rl.allowed) {
         ...(visitorIp && visitorIp !== 'unknown'
           ? { 'X-Forwarded-For': visitorIp, 'CF-Connecting-IP': visitorIp }
           : {}),
+        ...(visitorUa ? { 'user-agent': visitorUa } : {}),
       },
       signal: controller.signal,
     });
