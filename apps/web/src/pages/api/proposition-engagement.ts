@@ -74,10 +74,22 @@ export const POST: APIRoute = async ({ request }) => {
   const upstreamBody: Record<string, unknown> = { section, seconds };
   if (visitId) upstreamBody.visit_id = visitId;
 
+  // QJ-EQUIPE (09/09/2026) — le beacon d'un appareil marqué « équipe »
+  // (cookie tq_equipe, posé par /equipe ou un Aperçu interne) est relayé avec
+  // le marqueur : le backend n'enregistre alors ni engagement ni note chatter
+  // « a commencé à lire en détail » — Reda/Meryem relisant le vrai lien ne
+  // sont pas une lecture client.
+  const equipeAppareil = /(?:^|;\s*)tq_equipe=1(?:;|$)/.test(
+    request.headers.get('cookie') ?? '');
+
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
+      },
       body: JSON.stringify(upstreamBody),
       // Le beacon ne doit jamais faire traîner la navigation : l'appel
       // amont a son propre budget best-effort.
