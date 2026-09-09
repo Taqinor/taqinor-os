@@ -659,6 +659,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'chantier_map': self._chantier_map(objects),
             'stage_since_map': self._stage_since_map(objects),
             'share_link_map': self._share_link_map(objects),
+            'lecture_map': self._lecture_map(objects),
         }
         if page is not None:
             serializer = self.get_serializer(
@@ -735,6 +736,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if not devis_ids:
             return {}
         return share_link_niveau_map(devis_ids)
+
+    @staticmethod
+    def _lecture_map(leads):
+        """QJ-VUES — {devis_id: {nombre_vues, premiere/derniere_consultation}}
+        pour TOUS les devis du lot en UNE requête (même garde N+1 que
+        ``_share_link_map`` juste au-dessus). Lecture cross-app par
+        ``apps.ventes.selectors`` uniquement."""
+        from apps.ventes.selectors import share_link_lecture_map
+        devis_ids = [d.id for lead in leads for d in lead.devis.all()]
+        if not devis_ids:
+            return {}
+        return share_link_lecture_map(devis_ids)
 
     @staticmethod
     def _stage_since_map(leads):

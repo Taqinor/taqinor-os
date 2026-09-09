@@ -2709,6 +2709,54 @@ def share_link_niveau_map(devis_ids):
     return out
 
 
+def share_link_lecture_map(devis_ids):
+    """QJ-VUES (fondateur 09/09/2026 — « un endroit où je vois combien de fois
+    le devis a été consulté, sur chaque fiche lead ») — statistiques de LECTURE
+    CLIENT par devis, agrégées sur TOUS ses ``ShareLink`` (expirés compris :
+    un lien re-minté après expiration ne remet jamais le compteur du devis à
+    zéro), en UNE requête.
+
+    Distinct de ``share_link_niveau_map`` (juste au-dessus) et PAS fusionné
+    dedans : le badge de niveau ne doit exister que si un lien VALIDE existe
+    (sa requête filtre les expirés), alors que le compteur de lectures est un
+    HISTORIQUE — les deux sémantiques divergent. Lecture seule pure ; sert à
+    ``apps.crm.serializers`` (fiche lead, onglet Devis). Un devis jamais
+    partagé est absent du dict (le front affiche alors « jamais ouvert »).
+
+    Les vues comptées ici sont celles de ``ShareLink.view_count`` — depuis
+    QJ-ROBOTS (public_views), les robots d'aperçu (WhatsApp qui pré-charge la
+    vignette du lien, crawlers) n'y entrent plus : le chiffre montré au
+    commercial est une lecture HUMAINE."""
+    from django.db.models import Max, Min, Sum
+
+    from .models import ShareLink
+    ids = [i for i in (devis_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (
+        ShareLink.objects
+        .filter(devis_id__in=ids)
+        .values('devis_id')
+        .annotate(
+            nombre_vues=Sum('view_count'),
+            premiere_consultation=Min('first_viewed_at'),
+            derniere_consultation=Max('last_viewed_at'),
+        )
+    )
+    out = {}
+    for row in rows:
+        premiere = row['premiere_consultation']
+        derniere = row['derniere_consultation']
+        out[row['devis_id']] = {
+            'nombre_vues': row['nombre_vues'] or 0,
+            'premiere_consultation': (
+                premiere.isoformat() if premiere else None),
+            'derniere_consultation': (
+                derniere.isoformat() if derniere else None),
+        }
+    return out
+
+
 # ── AUD112 — UN prédicat unique « ce devis est-il déjà facturé ? » ──────────
 # Les DEUX voies de facturation étaient totalement aveugles l'une à l'autre :
 # ``bon_commande.creer_facture`` ne gardait que

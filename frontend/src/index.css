@@ -7350,6 +7350,130 @@ textarea.form-control {
 .lw-context-devis-date {
   color: var(--muted-foreground);
 }
+/* QJ-VUES (fondateur 09/09/2026) — compteur de lectures client, toujours
+   visible sur chaque carte devis de la fiche lead. Discret tant que personne
+   n'a lu ; encre pleine dès la première lecture humaine. */
+.lw-context-devis-lectures {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+.lw-context-devis-lectures.is-lu {
+  color: var(--foreground);
+  font-weight: 500;
+}
+/* QJ-ARBRE (fondateur 09/09/2026) — Suivi commercial scindé : cadence à
+   gauche, arbre « Historique en un coup d'œil » à droite. auto-fit : les deux
+   colonnes s'empilent d'elles-mêmes sur panneau étroit, sans media query. */
+.lw-suivi-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  align-items: start;
+  margin-top: 0.25rem;
+}
+.lw-suivi-split-col {
+  min-width: 0;
+}
+/* L'arbre : rail vertical + une icône par type, une ligne par événement,
+   groupé par jour — le détail complet reste dans l'onglet Historique. */
+.lw-arbre {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  background: var(--card);
+}
+.lw-arbre-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+.lw-arbre-titre {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.lw-arbre-compte {
+  font-size: 0.7rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.lw-arbre-defile {
+  max-height: 22rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+.lw-arbre-jour-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+  margin: 0.5rem 0 0.2rem;
+}
+.lw-arbre-jour:first-child .lw-arbre-jour-label {
+  margin-top: 0;
+}
+.lw-arbre-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--border);
+}
+.lw-arbre-ligne {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0 0.18rem 0.55rem;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+.lw-arbre-ligne.is-jalon {
+  border-left-color: var(--primary);
+}
+.lw-arbre-ligne.is-gagne {
+  border-left-color: var(--success, #16a34a);
+}
+.lw-arbre-ligne.is-perdu {
+  border-left-color: var(--destructive);
+}
+.lw-arbre-puce {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.lw-arbre-ligne.is-jalon .lw-arbre-puce { color: var(--primary); }
+.lw-arbre-ligne.is-gagne .lw-arbre-puce { color: var(--success, #16a34a); }
+.lw-arbre-ligne.is-perdu .lw-arbre-puce { color: var(--destructive); }
+.lw-arbre-texte {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lw-arbre-corps {
+  color: var(--muted-foreground);
+}
+.lw-arbre-badge {
+  margin-left: 0.3rem;
+  font-size: 0.7rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.lw-arbre-heure {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
 .lw-context-devis-track {
   margin: 0.1rem 0;
 }

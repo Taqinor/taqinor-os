@@ -6,6 +6,7 @@ import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
   TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
+  lectureClientLabel,
 } from './DevisTab'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
@@ -1029,5 +1030,52 @@ describe('LANE E — logique pure du curseur 1/2/3 (co-localisée, testable sans
 
   it('les libellés des cases de tailles couvrent exactement les 2 clés serveur ajoutées', () => {
     expect(TAILLES_ENVOI.map((t) => t.key)).toEqual(['taille_eco', 'taille_max'])
+  })
+})
+
+describe('QJ-VUES — compteur de lectures client sur chaque carte devis', () => {
+  const devisBase = {
+    id: 1, reference: 'DEV-2026-001', statut: 'envoye', total_ttc: '15000',
+    date_creation: '2026-01-05', chantier: null,
+  }
+
+  it('lectureClientLabel : jamais envoyé / envoyé jamais ouvert / ouvert N fois', () => {
+    expect(lectureClientLabel(null)).toBe('Pas encore envoyé au client')
+    expect(lectureClientLabel(undefined)).toBe('Pas encore envoyé au client')
+    expect(lectureClientLabel({ nombre_vues: 0, derniere_consultation: null }))
+      .toBe('Jamais ouvert par le client')
+    const label = lectureClientLabel({
+      nombre_vues: 3, derniere_consultation: '2026-09-09T10:30:00+00:00',
+    })
+    expect(label).toMatch(/^Ouvert 3 fois par le client · dernière lecture /)
+    // Sans horodatage (théorique) : jamais de date inventée.
+    expect(lectureClientLabel({ nombre_vues: 2, derniere_consultation: null }))
+      .toBe('Ouvert 2 fois par le client')
+  })
+
+  it('carte devis : le compteur est TOUJOURS visible — ouvert 3 fois', () => {
+    renderTab({
+      state: leadState({
+        devis: [{
+          ...devisBase,
+          lecture: { nombre_vues: 3, derniere_consultation: '2026-09-08T18:00:00+00:00' },
+        }],
+      }),
+    })
+    expect(screen.getByText(/Ouvert 3 fois par le client/)).toBeInTheDocument()
+  })
+
+  it('carte devis sans lien : « Pas encore envoyé au client »', () => {
+    renderTab({ state: leadState({ devis: [{ ...devisBase, lecture: null }] }) })
+    expect(screen.getByText('Pas encore envoyé au client')).toBeInTheDocument()
+  })
+
+  it('carte devis lien envoyé jamais ouvert : « Jamais ouvert par le client »', () => {
+    renderTab({
+      state: leadState({
+        devis: [{ ...devisBase, lecture: { nombre_vues: 0, derniere_consultation: null } }],
+      }),
+    })
+    expect(screen.getByText('Jamais ouvert par le client')).toBeInTheDocument()
   })
 })

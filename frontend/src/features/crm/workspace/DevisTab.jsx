@@ -18,7 +18,7 @@ import { fetchAllPages } from '../../../utils/fetchAllPages'
 // équipements par taille) comme point d'entrée « Modifier les options » du
 // dialogue d'envoi — rien n'est réinventé.
 import DevisOffresTailles from '../../../pages/ventes/DevisOffresTailles'
-import { formatMAD, formatDate, normalizePhoneE164 } from '../../../lib/format'
+import { formatMAD, formatDate, formatDateTime, normalizePhoneE164 } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
 // L5 (fondateur 21/08/2026) — lien PAGE CLIENT + message WhatsApp, MÊME
 // FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
@@ -184,6 +184,26 @@ export function devisIntent(mode, kwcCible) {
   const cible = String(kwcCible ?? '').trim()
   if (!cible || mode === 'edit') return mode
   return { mode, targetKwc: cible }
+}
+
+// QJ-VUES (fondateur 09/09/2026 — « un endroit où je vois combien de fois le
+// devis a été consulté, sur chaque fiche lead ») — libellé du compteur de
+// lectures CLIENT, TOUJOURS affiché sur chaque carte devis. `lecture` vient de
+// la fiche lead (`Lead.devis[].lecture`, agrégé serveur sur TOUS les ShareLink
+// du devis — expirés compris, robots d'aperçu WhatsApp/crawlers exclus par
+// QJ-ROBOTS côté backend). Trois états, jamais de chiffre inventé :
+//   · null  → aucun lien client n'a jamais été créé (rien n'a été envoyé) ;
+//   · 0 vue → lien envoyé mais jamais ouvert ;
+//   · N vues → N lectures humaines + horodatage de la dernière.
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function lectureClientLabel(lecture) {
+  if (!lecture) return 'Pas encore envoyé au client'
+  const vues = Number(lecture.nombre_vues ?? 0)
+  if (!vues) return 'Jamais ouvert par le client'
+  const quand = lecture.derniere_consultation
+    ? ` · dernière lecture ${formatDateTime(lecture.derniere_consultation)}`
+    : ''
+  return `Ouvert ${vues} fois par le client${quand}`
 }
 
 // ROUND 5 — plus de saut maison : `jumpToField` DÉPLIE toujours la section
@@ -635,6 +655,18 @@ export default function DevisTab({
               <div className="lw-context-devis-card-body">
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
                 <span className="lw-context-devis-date">{formatDate(d.date_creation)}</span>
+              </div>
+              {/* QJ-VUES (fondateur 09/09/2026) — combien de fois le CLIENT a
+                  ouvert ce devis, TOUJOURS visible sur la carte (aucun clic,
+                  aucun dialogue). Chiffre serveur (`d.lecture`), lectures
+                  humaines uniquement : les pré-chargements d'aperçu WhatsApp
+                  et les crawlers n'y entrent plus (QJ-ROBOTS), et l'« Aperçu
+                  interne » n'y a jamais compté (L-INTPREV). */}
+              <div
+                className={`lw-context-devis-lectures${(Number(d.lecture?.nombre_vues ?? 0) > 0) ? ' is-lu' : ''}`}
+              >
+                <Eye size={13} aria-hidden="true" />
+                <span>{lectureClientLabel(d.lecture)}</span>
               </div>
               {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
                   (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour
