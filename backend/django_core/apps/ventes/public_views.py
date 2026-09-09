@@ -28,7 +28,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from core.throttling import IdentIpPartageeMixin
+from core.throttling import IdentIpPartageeMixin, ips_declarees_de_requete
 
 from .economies_periodes import construire_economies_periodes
 from .models import PaymentLink, ShareLink
@@ -283,17 +283,15 @@ _RESEAUX_ROBOTS = tuple(ipaddress.ip_network(c) for c in (
 
 
 def _ip_datacentre_robot(request):
-    """QJ-ROBOTS-2 — vrai si l'IP d'origine de la requête appartient à un
-    réseau de crawlers (`_RESEAUX_ROBOTS`). Candidats examinés, dans
-    l'ordre : premier saut X-Forwarded-For, CF-Connecting-IP, REMOTE_ADDR —
-    une valeur illisible est ignorée, jamais une exception."""
-    metas = getattr(request, 'META', None) or {}
-    xff_premier = (metas.get('HTTP_X_FORWARDED_FOR') or '').split(',')[0]
-    for brute in (xff_premier, metas.get('HTTP_CF_CONNECTING_IP') or '',
-                  metas.get('REMOTE_ADDR') or ''):
-        brute = brute.strip()
-        if not brute:
-            continue
+    """QJ-ROBOTS-2 — vrai si une des origines DÉCLARÉES de la requête
+    appartient à un réseau de crawlers (`_RESEAUX_ROBOTS`). Les candidats
+    viennent de la primitive de fondation
+    ``core.throttling.ips_declarees_de_requete`` (QJR416 : cette surface ne
+    lit plus AUCUN en-tête d'IP à la main — la primitive documente pourquoi
+    le premier saut, choisi par l'appelant, est légitime pour CE seul usage
+    de classification). Une valeur illisible est ignorée, jamais une
+    exception."""
+    for brute in ips_declarees_de_requete(request):
         try:
             ip = ipaddress.ip_address(brute)
         except ValueError:

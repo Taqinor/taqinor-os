@@ -108,6 +108,42 @@ def ip_de_requete(request) -> str:
         return ''
 
 
+def ips_declarees_de_requete(request):
+    """QJ-ROBOTS-2 (fondateur 09/09/2026, lead Mekapa) — les adresses que la
+    requête DÉCLARE comme origine : premier saut ``X-Forwarded-For``,
+    ``CF-Connecting-IP``, puis le dernier saut de confiance
+    (:func:`ip_de_requete`).
+
+    STRICTEMENT réservée à la CLASSIFICATION robot/analytics (garde
+    anti-aperçu QJ-ROBOTS, ``apps/ventes/public_views.py``) — JAMAIS une
+    preuve, un seau de limitation ni une identité : le premier saut est
+    CHOISI par l'appelant (c'est tout l'objet de QJR416 ci-dessus), et c'est
+    ASSUMÉ ici parce que se déclarer robot ne permet que de s'auto-exclure
+    d'un comptage de lectures (inoffensif). Pourquoi le premier saut est
+    indispensable à CE consommateur : sur la chaîne page publique, ces
+    en-têtes sont construits DE ZÉRO par notre Worker apps/web (le visiteur
+    ne peut rien y injecter) et le dernier saut de confiance n'y montre que
+    la sortie Cloudflare — le premier saut est donc le seul endroit où
+    l'origine réelle (la sonde Meta déguisée en navigateur, nginx
+    12:34:36Z) reste visible.
+
+    Renvoie un tuple de chaînes brutes non vides, éventuellement illisibles
+    — au consommateur de valider. Ne lève jamais."""
+    if request is None:
+        return ()
+    try:
+        meta = getattr(request, 'META', None) or {}
+        candidates = (
+            _texte_ip(str(meta.get('HTTP_X_FORWARDED_FOR') or '')
+                      .split(',')[0]),
+            _texte_ip(meta.get('HTTP_CF_CONNECTING_IP')),
+            ip_de_requete(request),
+        )
+        return tuple(c for c in candidates if c)
+    except Exception:  # noqa: BLE001 — défensif, comme ip_de_requete
+        return ()
+
+
 class IdentIpPartageeMixin:
     """QJR416 — ``get_ident`` assis sur :func:`ip_de_requete`.
 
