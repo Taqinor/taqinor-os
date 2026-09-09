@@ -82,10 +82,11 @@ export default defineConfig({
       // actuelle (diagnostic enrichi + schéma), exclue tant qu'elle n'est pas promue.
       // W245 — /devis/ (capture « Mon toit ») est devenue le CTA principal du
       // site : retirée de l'exclusion + noindex retiré des pages elles-mêmes.
-      // L'atelier interne Meriem (/internal/) et la proposition client
-      // tokenisée (/proposition/) restent des tunnels privés hors sitemap et
-      // noindex — jamais destinés à l'indexation.
-      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/internal\/|\/proposition\/|\/embed\//.test(page)
+      // L'atelier interne Meriem (/internal/), la proposition client
+      // tokenisée (/proposition/) et le marquage d'appareil équipe (/equipe —
+      // QJ-EQUIPE 09/09/2026, utilitaire SSR noindex) restent des tunnels
+      // privés hors sitemap — jamais destinés à l'indexation.
+      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/internal\/|\/proposition\/|\/embed\/|\/equipe\/?$/.test(page)
     }),
     workersDevRedirect()
   ]
