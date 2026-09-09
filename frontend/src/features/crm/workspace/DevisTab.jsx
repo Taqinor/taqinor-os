@@ -18,7 +18,7 @@ import { fetchAllPages } from '../../../utils/fetchAllPages'
 // équipements par taille) comme point d'entrée « Modifier les options » du
 // dialogue d'envoi — rien n'est réinventé.
 import DevisOffresTailles from '../../../pages/ventes/DevisOffresTailles'
-import { formatMAD, formatDate, normalizePhoneE164 } from '../../../lib/format'
+import { formatMAD, formatDate, formatDateTime, normalizePhoneE164 } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
 // L5 (fondateur 21/08/2026) — lien PAGE CLIENT + message WhatsApp, MÊME
 // FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
@@ -186,6 +186,26 @@ export function devisIntent(mode, kwcCible) {
   return { mode, targetKwc: cible }
 }
 
+// QJ-VUES (fondateur 09/09/2026 — « un endroit où je vois combien de fois le
+// devis a été consulté, sur chaque fiche lead ») — libellé du compteur de
+// lectures CLIENT, TOUJOURS affiché sur chaque carte devis. `lecture` vient de
+// la fiche lead (`Lead.devis[].lecture`, agrégé serveur sur TOUS les ShareLink
+// du devis — expirés compris, robots d'aperçu WhatsApp/crawlers exclus par
+// QJ-ROBOTS côté backend). Trois états, jamais de chiffre inventé :
+//   · null  → aucun lien client n'a jamais été créé (rien n'a été envoyé) ;
+//   · 0 vue → lien envoyé mais jamais ouvert ;
+//   · N vues → N lectures humaines + horodatage de la dernière.
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function lectureClientLabel(lecture) {
+  if (!lecture) return 'Pas encore envoyé au client'
+  const vues = Number(lecture.nombre_vues ?? 0)
+  if (!vues) return 'Jamais ouvert par le client'
+  const quand = lecture.derniere_consultation
+    ? ` · dernière lecture ${formatDateTime(lecture.derniere_consultation)}`
+    : ''
+  return `Ouvert ${vues} fois par le client${quand}`
+}
+
 // ROUND 5 — plus de saut maison : `jumpToField` DÉPLIE toujours la section
 // cible avant de scroller et de focaliser. Avant, ce chemin ne dépliait pas —
 // un champ dans une section repliée n'est pas dans le DOM, on retombait donc
@@ -335,9 +355,17 @@ export default function DevisTab({
   // niveau/OTP actuellement choisis pour CE devis, et renvoie l'URL ABSOLUE
   // de la page client (chemin_proposition backend), MÊME lien que celui déjà
   // envoyé par email/WhatsApp/l'outil 3D.
-  const mintProposalUrl = async (d) => {
+  //
+  // QJ-FUNNEL (fondateur 09/09/2026) — `envoi: true` dit au backend que ce
+  // POST est un ENVOI au client (copier pour envoyer, WhatsApp par devis) :
+  // le devis passe brouillon → « envoyé » (mark_devis_sent, chemin unique
+  // U4/QJ14) et le funnel du lead avance vers « Devis envoyé ». Jamais posé
+  // par « Ouvrir » (regarder la page n'est pas envoyer), ni par l'aperçu
+  // interne, ni par les re-POSTs de réglage niveau/OTP/sections.
+  const mintProposalUrl = async (d, { envoi = false } = {}) => {
     const res = await ventesApi.shareLinkDevis(d.id, {
       niveau: getNiveau(d), otp_lecture: getOtp(d), sections: getSections(d),
+      ...(envoi ? { envoi: true } : {}),
     })
     setLinkMeta((cur) => ({
       ...cur,
@@ -444,12 +472,16 @@ export default function DevisTab({
     setLinkBusy(`l-${d.id}`)
     setActionMsg(null)
     try {
-      const url = await mintProposalUrl(d)
+      // QJ-FUNNEL — copier le lien = l'envoyer : le devis passe « envoyé »
+      // et le funnel du lead avance (backend). `refresh` recharge la fiche
+      // pour que la pastille de statut et l'étape le montrent tout de suite.
+      const url = await mintProposalUrl(d, { envoi: true })
       try {
         await navigator.clipboard?.writeText(url)
         setCopiedId(d.id)
         window.setTimeout(() => setCopiedId((cur) => (cur === d.id ? null : cur)), 2000)
       } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
+      onAction?.('refresh')
     } catch (err) {
       setActionMsg(errorMessageFrom(err, 'Lien de la page client indisponible.'))
     } finally {
@@ -478,10 +510,13 @@ export default function DevisTab({
     setLinkBusy(`w-${d.id}`)
     setActionMsg(null)
     try {
-      const url = await mintProposalUrl(d)
+      // QJ-FUNNEL — envoyer par WhatsApp = envoyer : devis « envoyé » +
+      // funnel « Devis envoyé » (backend), fiche rechargée pour le montrer.
+      const url = await mintProposalUrl(d, { envoi: true })
       const nom = `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim()
       const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(nom, url))
       if (waUrl) window.open(waUrl, '_blank', 'noopener')
+      onAction?.('refresh')
     } catch (err) {
       setActionMsg(errorMessageFrom(err, 'Lien WhatsApp indisponible.'))
     } finally {
@@ -635,6 +670,18 @@ export default function DevisTab({
               <div className="lw-context-devis-card-body">
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
                 <span className="lw-context-devis-date">{formatDate(d.date_creation)}</span>
+              </div>
+              {/* QJ-VUES (fondateur 09/09/2026) — combien de fois le CLIENT a
+                  ouvert ce devis, TOUJOURS visible sur la carte (aucun clic,
+                  aucun dialogue). Chiffre serveur (`d.lecture`), lectures
+                  humaines uniquement : les pré-chargements d'aperçu WhatsApp
+                  et les crawlers n'y entrent plus (QJ-ROBOTS), et l'« Aperçu
+                  interne » n'y a jamais compté (L-INTPREV). */}
+              <div
+                className={`lw-context-devis-lectures${(Number(d.lecture?.nombre_vues ?? 0) > 0) ? ' is-lu' : ''}`}
+              >
+                <Eye size={13} aria-hidden="true" />
+                <span>{lectureClientLabel(d.lecture)}</span>
               </div>
               {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
                   (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour

@@ -1010,6 +1010,20 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         else:
             from apps.ventes.selectors import share_link_niveau_map
             niveau_map = share_link_niveau_map([d.id for d in rows])
+        # QJ-VUES (fondateur 09/09/2026) — lectures CLIENT du devis (compteur +
+        # dernière consultation), TOUJOURS présentes sur la fiche lead : le
+        # commercial voit d'un coup d'œil combien de fois chaque devis a été
+        # ouvert, sans ouvrir quoi que ce soit. Agrégé sur TOUS les ShareLink
+        # du devis (expirés compris — l'historique ne se remet pas à zéro),
+        # via `apps.ventes.selectors.share_link_lecture_map` (jamais les
+        # modèles ventes). Même garde N+1 que `share_link_map` : la LISTE
+        # précharge (`lecture_map` du contexte), le détail interroge pour ce
+        # lead seul. `None` = devis jamais partagé (le front dit « jamais
+        # envoyé/ouvert »).
+        lecture_map = self.context.get('lecture_map')
+        if lecture_map is None:
+            from apps.ventes.selectors import share_link_lecture_map
+            lecture_map = share_link_lecture_map([d.id for d in rows])
         return [
             {
                 'id': d.id,
@@ -1020,6 +1034,7 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
                 'option_acceptee': d.option_acceptee,
                 'chantier': chantiers.get(d.id),
                 'share_link': niveau_map.get(d.id),
+                'lecture': lecture_map.get(d.id),
             }
             for d in rows
         ]

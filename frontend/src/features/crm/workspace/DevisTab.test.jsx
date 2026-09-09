@@ -6,6 +6,7 @@ import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
   TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
+  lectureClientLabel,
 } from './DevisTab'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
@@ -333,8 +334,13 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
+    // QJ-FUNNEL (09/09/2026) — copier le lien = l'ENVOYER : le POST porte
+    // `envoi: true` (backend : devis « envoyé » + funnel « Devis envoyé »).
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, {
+        niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS,
+        envoi: true,
+      },
     ))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(
       'https://taqinor.ma/proposition/karim/tok-abc',
@@ -364,8 +370,12 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: 'WhatsApp' }))
+    // QJ-FUNNEL (09/09/2026) — WhatsApp = ENVOI : `envoi: true` au backend.
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, {
+        niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS,
+        envoi: true,
+      },
     ))
     await waitFor(() => expect(window.open).toHaveBeenCalledWith(
       'https://wa.me/212612345678?text='
@@ -502,7 +512,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     )
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -513,7 +523,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     await user.click(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ }))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: true, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'standard', otp_lecture: true, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -586,7 +596,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     // régénération) ; on le vérifie via les 2 appels reçus, identiques hors niveau.
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledTimes(2))
     expect(shareLinkDevis).toHaveBeenNthCalledWith(
-      1, 1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS })
+      1, 1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS })
     expect(shareLinkDevis).toHaveBeenNthCalledWith(
       2, 1, { niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS })
     const badge = await screen.findByTitle(/Le lien reste le même/)
@@ -666,7 +676,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await user.click(screen.getByRole('checkbox', { name: /^Calepinage 3D — page client de DEV-1/ }))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, roof3d: false },
     }))
   })
@@ -679,7 +689,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await user.click(screen.getByRole('checkbox', { name: /^Étude bancable — page client de DEV-1/ }))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, pdf: false, bankable: false },
     }))
   })
@@ -693,7 +703,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await user.click(box)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -829,7 +839,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     await user.click(radio('1'))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false, taille_max: false },
     }))
   })
@@ -841,7 +851,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     await user.click(radio('2'))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
-      niveau: 'standard', otp_lecture: false,
+      envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false },
     }))
   })
@@ -852,7 +862,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+      1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -1029,5 +1039,52 @@ describe('LANE E — logique pure du curseur 1/2/3 (co-localisée, testable sans
 
   it('les libellés des cases de tailles couvrent exactement les 2 clés serveur ajoutées', () => {
     expect(TAILLES_ENVOI.map((t) => t.key)).toEqual(['taille_eco', 'taille_max'])
+  })
+})
+
+describe('QJ-VUES — compteur de lectures client sur chaque carte devis', () => {
+  const devisBase = {
+    id: 1, reference: 'DEV-2026-001', statut: 'envoye', total_ttc: '15000',
+    date_creation: '2026-01-05', chantier: null,
+  }
+
+  it('lectureClientLabel : jamais envoyé / envoyé jamais ouvert / ouvert N fois', () => {
+    expect(lectureClientLabel(null)).toBe('Pas encore envoyé au client')
+    expect(lectureClientLabel(undefined)).toBe('Pas encore envoyé au client')
+    expect(lectureClientLabel({ nombre_vues: 0, derniere_consultation: null }))
+      .toBe('Jamais ouvert par le client')
+    const label = lectureClientLabel({
+      nombre_vues: 3, derniere_consultation: '2026-09-09T10:30:00+00:00',
+    })
+    expect(label).toMatch(/^Ouvert 3 fois par le client · dernière lecture /)
+    // Sans horodatage (théorique) : jamais de date inventée.
+    expect(lectureClientLabel({ nombre_vues: 2, derniere_consultation: null }))
+      .toBe('Ouvert 2 fois par le client')
+  })
+
+  it('carte devis : le compteur est TOUJOURS visible — ouvert 3 fois', () => {
+    renderTab({
+      state: leadState({
+        devis: [{
+          ...devisBase,
+          lecture: { nombre_vues: 3, derniere_consultation: '2026-09-08T18:00:00+00:00' },
+        }],
+      }),
+    })
+    expect(screen.getByText(/Ouvert 3 fois par le client/)).toBeInTheDocument()
+  })
+
+  it('carte devis sans lien : « Pas encore envoyé au client »', () => {
+    renderTab({ state: leadState({ devis: [{ ...devisBase, lecture: null }] }) })
+    expect(screen.getByText('Pas encore envoyé au client')).toBeInTheDocument()
+  })
+
+  it('carte devis lien envoyé jamais ouvert : « Jamais ouvert par le client »', () => {
+    renderTab({
+      state: leadState({
+        devis: [{ ...devisBase, lecture: { nombre_vues: 0, derniere_consultation: null } }],
+      }),
+    })
+    expect(screen.getByText('Jamais ouvert par le client')).toBeInTheDocument()
   })
 })

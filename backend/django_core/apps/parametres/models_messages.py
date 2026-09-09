@@ -79,8 +79,17 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
     'stop_contact':
         "Compris, je ne vous rappellerai plus. Je vous laisse simplement ce numéro si un jour le projet revient. Bonne journée.",
+    # 09/09/2026 — réchauffé sur ordre fondateur (« ce message whatsapp est un
+    # peu froid ») : c'était la SEULE touche du guide sans salutation ni
+    # prénom. Même voix que le reste (vouvoiement, chaleur sobre, zéro
+    # chiffre) ; le fichier source docs/crm/messages_meryem.md porte le même
+    # texte (tests_mry12 re-dérive et compare).
     'j1_pdf':
-        "Le PDF s'ouvre bien ? Qu'est-ce qui vous a le plus parlé ?",
+        "Bonjour M. {prenom}, j'espère que vous allez bien. Je vous ai "
+        "envoyé votre proposition solaire — est-ce que le PDF s'ouvre bien "
+        "de votre côté ? Prenez le temps de la regarder tranquillement, et "
+        "dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre "
+        "question.",
     'j4_preuve':
         "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous montrer.",
     'j6_garanties':

@@ -7,6 +7,9 @@ import useCanaux from '../../useCanaux'
 import { TYPE_INSTALLATION_LABELS, PRIORITE_LABELS } from '../../stages'
 import { getField, isSuggested } from '../draftCore'
 import CadenceFrise from './CadenceFrise'
+// QJ-ARBRE — l'historique condensé du client, colonne droite du Suivi
+// commercial (données déjà chargées par le shell — aucun appel réseau ici).
+import ArbreHistorique from './ArbreHistorique'
 
 // Les trois cadences nommées du gabarit (MRY4) — jamais un libellé inventé.
 const CADENCE_CHOICES = [
@@ -182,22 +185,36 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
               value={v('relance_date')} onChange={(e) => setField('relance_date', e.target.value)}
             />
           </FormField>
-          {state.mode === 'edit' && (
-            <>
-              <RelanceCadenceControls
-                leadId={state.leadId}
-                onChanged={() => setFriseReload((n) => n + 1)}
-              />
-              <div className="mt-1.5">
-                <CadenceFrise
-                  leadId={state.leadId} reloadToken={friseReload + relanceVersion}
-                  onChanged={onFriseChanged}
-                />
-              </div>
-            </>
-          )}
         </div>
       </div>
+      {/* QJ-ARBRE (fondateur 09/09/2026) — le Suivi commercial se scinde en
+          deux : à GAUCHE la cadence (contrôles + frise des touches, DOM
+          inchangé — mêmes composants, seul l'emplacement bouge), à DROITE
+          l'arbre « Historique en un coup d'œil » (ce qui s'est passé avec ce
+          client, condensé — recherche marché dans ArbreHistorique.jsx). Sur
+          panneau étroit les deux colonnes s'empilent (auto-fit). */}
+      {state.mode === 'edit' && (
+        <div className="lw-suivi-split">
+          <div className="lw-suivi-split-col">
+            <RelanceCadenceControls
+              leadId={state.leadId}
+              onChanged={() => setFriseReload((n) => n + 1)}
+            />
+            <div className="mt-1.5">
+              <CadenceFrise
+                leadId={state.leadId} reloadToken={friseReload + relanceVersion}
+                onChanged={onFriseChanged}
+              />
+            </div>
+          </div>
+          <div className="lw-suivi-split-col">
+            <ArbreHistorique
+              historique={refData.historique}
+              chatterRecent={state.server?.chatter_recent}
+            />
+          </div>
+        </div>
+      )}
       <div className="form-row">
         {/* XSAL7 — pipeline pondéré pré-devis. */}
         <FormField label="Montant estimé (MAD)" htmlFor="lf-montant-estime" error={errors.montant_estime}>

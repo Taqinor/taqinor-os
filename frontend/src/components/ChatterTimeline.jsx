@@ -58,7 +58,12 @@ function timeAgo(iso) {
 }
 
 // Libellé de groupe jour : « Aujourd'hui » / « Hier » / date FR complète.
-function dayLabel(iso) {
+// QJ-ARBRE (09/09/2026) — exporté : l'arbre « Historique en un coup d'œil »
+// (features/crm/workspace/sections/ArbreHistorique.jsx) groupe par jour avec
+// EXACTEMENT les mêmes libellés que le chatter — une seule source, jamais
+// deux calendriers qui divergent d'un rendu à l'autre.
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (testable)
+export function dayLabel(iso) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return 'Date inconnue'
   const startOf = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate())

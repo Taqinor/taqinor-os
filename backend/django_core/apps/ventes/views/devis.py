@@ -1276,12 +1276,29 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         L-SECT (24/08/2026) — ``sections`` (dict {clé: bool}) dit CE QUE le
         client reçoit sur sa page devis, choisi dans le dialogue « Envoyer au
-        client ». Mêmes garanties : optionnel, révocable, jeton inchangé."""
+        client ». Mêmes garanties : optionnel, révocable, jeton inchangé.
+
+        QJ-FUNNEL (fondateur 09/09/2026 — « le lead reste en Contacté, il ne
+        passe jamais à Devis envoyé ») — ``envoi: true`` (optionnel) dit que
+        CE POST est un ENVOI au client (copier le lien pour l'envoyer,
+        WhatsApp par devis) et non un aperçu interne ni un simple réglage
+        niveau/OTP/sections : le devis passe alors brouillon → « envoyé » via
+        ``mark_devis_sent`` — LE chemin unique U4/QJ14, déjà celui de l'email
+        et de la barre WhatsApp multi-devis — dont l'événement ``devis_sent``
+        avance le funnel du lead vers QUOTE_SENT et démarre la cadence
+        après-devis. Idempotent (un devis déjà envoyé/accepté ne bouge pas) ;
+        absent/false → comportement d'avant, byte-identique."""
         from ..models import ShareLink
         devis = self.get_object()
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
         # quand le vendeur le précise ; absent du corps → mode déjà posé.
         _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
+        # QJ-FUNNEL — AVANT le mint : si l'envoi est bloqué (approbation de
+        # remise en attente, NTCPQ7 via verifier_devis_envoyable), l'erreur
+        # nommée part au commercial et aucun lien ne sort de ce POST.
+        if request.data.get('envoi'):
+            from ..services import mark_devis_sent
+            mark_devis_sent(devis=devis, user=request.user)
         link = ShareLink.for_devis(devis)
         # L-NIV — ne touche jamais au jeton : simple mise à jour de champs sur
         # le lien déjà résolu (créé ou réutilisé) ci-dessus.
