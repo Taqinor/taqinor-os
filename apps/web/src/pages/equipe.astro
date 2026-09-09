@@ -1,0 +1,65 @@
+---
+/**
+ * /equipe — QJ-EQUIPE (fondateur 09/09/2026, « marque mon tel et celui de
+ * Meryem comme téléphone équipe »).
+ *
+ * Ouvrir cette page UNE FOIS sur un appareil pose le cookie `tq_equipe`
+ * (2 ans) : dès lors, les propositions ouvertes depuis cet appareil — MÊME
+ * par le vrai lien client — ne comptent plus jamais comme des lectures
+ * client (ni compteur, ni note chatter, ni notification, ni beacon
+ * d'engagement — apps/ventes/public_views.py::_appareil_equipe). L'ouverture
+ * d'un Aperçu interne pose le même cookie (ceinture).
+ *
+ * `?retirer=1` efface le marquage (un appareil prêté/vendu redevient normal).
+ * noindex : page utilitaire interne, jamais un contenu à référencer. Aucune
+ * donnée n'est collectée ici — le cookie ne porte que « 1 ».
+ */
+export const prerender = false;
+
+import Layout from '../layouts/Layout.astro';
+
+const retirer = Astro.url.searchParams.get('retirer') === '1';
+if (retirer) {
+  Astro.cookies.delete('tq_equipe', { path: '/' });
+} else {
+  Astro.cookies.set('tq_equipe', '1', {
+    maxAge: 730 * 24 * 3600, path: '/', secure: true, httpOnly: true,
+    sameSite: 'lax',
+  });
+}
+---
+
+<Layout
+  title="Appareil équipe — Taqinor"
+  description="Marquage interne d'un appareil de l'équipe Taqinor."
+  noindex={true}
+  skipVisitBeacon={true}
+>
+  <main class="mx-auto max-w-xl px-6 py-24 text-center">
+    {retirer ? (
+      <>
+        <h1 class="text-2xl font-semibold">Marquage retiré</h1>
+        <p class="mt-4 text-lune-soft">
+          Cet appareil est redevenu un appareil normal : ses ouvertures de
+          propositions comptent à nouveau comme des lectures client.
+        </p>
+      </>
+    ) : (
+      <>
+        <h1 class="text-2xl font-semibold">Appareil marqué « équipe » ✓</h1>
+        <p class="mt-4 text-lune-soft">
+          Les propositions ouvertes depuis <strong>cet appareil</strong> ne
+          compteront plus jamais comme des lectures client&nbsp;: aucun
+          compteur, aucune notification — même en ouvrant le vrai lien envoyé
+          au client.
+        </p>
+        <p class="mt-4 text-lune-soft">
+          À faire une fois sur <strong>chaque</strong> appareil de l'équipe
+          (téléphone et ordinateur, dans chaque navigateur utilisé). Pour
+          annuler&nbsp;: <a class="underline" href="/equipe?retirer=1">retirer
+          le marquage</a>.
+        </p>
+      </>
+    )}
+  </main>
+</Layout>

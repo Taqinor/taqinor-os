@@ -285,6 +285,13 @@ let isTimeout = false;
 // la même proposition plusieurs fois depuis le même foyer/NAT) : on écrête le
 // balayage automatisé, jamais une relecture humaine légitime.
 const visitorIp = clientIpFromRequest(Astro.request);
+// QJ-EQUIPE (fondateur 09/09/2026) — appareil marqué « équipe » (cookie posé
+// par /equipe, ou par toute ouverture d'un Aperçu interne) : le backend ne
+// compte NI ne notifie ses lectures, même sur le vrai lien client. Le
+// marqueur voyage en en-tête sur le fetch SSR — le backend ne voit jamais le
+// cookie taqinor.ma directement. Déclaré ICI (portée frontmatter entière) :
+// relu aussi par le bloc Aperçu interne plus bas.
+const equipeAppareil = Astro.cookies.get('tq_equipe')?.value === '1';
 const rl = rateLimit(`proposition-view:${visitorIp}`, { limit: 60, windowMs: 60_000 });
 if (!rl.allowed) {
   httpStatus = 429;
@@ -316,6 +323,7 @@ if (!rl.allowed) {
           ? { 'X-Forwarded-For': visitorIp, 'CF-Connecting-IP': visitorIp }
           : {}),
         ...(visitorUa ? { 'user-agent': visitorUa } : {}),
+        ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
       },
       signal: controller.signal,
     });
@@ -364,6 +372,15 @@ const ok = !!data;
 // `skipVisitBeacon` sur <Layout> plus bas). Rien ne change quand la clé est
 // absente/fausse — voir docs/api-contracts.md et public_views.py L-INTPREV.
 const apercuInterne = ok && data?.apercu_interne === true;
+// QJ-EQUIPE — ouvrir un Aperçu interne marque l'appareil « équipe » pour
+// 2 ans (ceinture en plus de la page /equipe) : les lectures suivantes de
+// CE navigateur, même sur le vrai lien client, ne comptent plus jamais.
+if (apercuInterne && !equipeAppareil) {
+  Astro.cookies.set('tq_equipe', '1', {
+    maxAge: 730 * 24 * 3600, path: '/', secure: true, httpOnly: true,
+    sameSite: 'lax',
+  });
+}
 const q = data?.quote;
 const twoOptions = ok ? hasTwoOptions(data!) : false;
 // LANE CHOIX-AVEC (fondateur, 25/08/2026) — INVARIANT DOCUMENTÉ, PAS RÉÉCRIT :

@@ -320,6 +320,31 @@ def _est_robot_apercu(request):
     return _ip_datacentre_robot(request)
 
 
+#: QJ-EQUIPE (fondateur 09/09/2026 — « marque mon tel et celui de Meryem
+#: comme téléphone équipe ») — un appareil de L'ÉQUIPE ne doit JAMAIS compter
+#: comme une lecture client, même en ouvrant le VRAI lien public (le piège
+#: permanent : Reda/Meryem vérifient un lien depuis leur téléphone →
+#: compteur + notification). Le marquage est un cookie `tq_equipe` posé sur
+#: taqinor.ma (page `/equipe`, ou toute ouverture d'un Aperçu interne) ; le
+#: SSR apps/web le traduit en en-tête `X-Equipe-Appareil: 1` sur ses fetchs
+#: (page ET beacon d'engagement). Forger l'en-tête/cookie ne permet que de
+#: s'auto-exclure du comptage — inoffensif, comme la garde robots.
+_COOKIE_EQUIPE = 'tq_equipe'
+
+
+def _appareil_equipe(request):
+    """QJ-EQUIPE — vrai si la requête vient d'un appareil marqué « équipe »
+    (en-tête posé par le SSR d'après le cookie taqinor.ma, ou cookie posé
+    directement sur ce domaine api). Jamais d'exception."""
+    if request is None:
+        return False
+    meta = getattr(request, 'META', None) or {}
+    if meta.get('HTTP_X_EQUIPE_APPAREIL') == '1':
+        return True
+    cookies = getattr(request, 'COOKIES', None) or {}
+    return cookies.get(_COOKIE_EQUIPE) == '1'
+
+
 def _stamp_view_si_public(link, via_interne, request=None):
     """L-INTPREV — même contrat que ``_stamp_view`` (renvoie True si première
     ouverture), mais SANS AUCUN effet de bord quand ``via_interne`` est vrai :
@@ -342,7 +367,7 @@ def _stamp_view_si_public(link, via_interne, request=None):
     appelants qui ne le passent pas gardent le comportement d'avant, sans
     trace de visite) et sert uniquement à lire l'IP / le navigateur CÔTÉ
     SERVEUR — jamais un corps de requête."""
-    if via_interne or _est_robot_apercu(request):
+    if via_interne or _appareil_equipe(request) or _est_robot_apercu(request):
         return False
     resultat = _stamp_view(link)
     _tracer_ouverture_publique(link, request)
@@ -3874,7 +3899,9 @@ def proposal_engagement(request, token):
     # en détail »/« relit une section » ci-dessous) — un aperçu commercial
     # n'est pas une lecture CLIENT à mesurer. 204 silencieux, même contrat que
     # le rejet d'un beacon invalide ci-dessous.
-    if link.via_interne:
+    # QJ-EQUIPE (09/09/2026) — même silence pour un appareil marqué équipe :
+    # Reda/Meryem relisant le VRAI lien ne sont pas une lecture client.
+    if link.via_interne or _appareil_equipe(request):
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
     section = str(request.data.get('section') or '').strip().lower()
