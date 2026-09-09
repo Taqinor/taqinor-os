@@ -86,6 +86,47 @@ class TestEstRobotApercu(TestCase):
         self.assertFalse(_est_robot_apercu(None))
 
 
+class TestRobotParReseauOrigine(TestCase):
+    """QJ-ROBOTS-2 (lead Mekapa, 09/09 12:34Z) — la sonde anti-cloaking de
+    Meta arrive avec un UA de VRAI navigateur (iPhone Safari, 2 s après le
+    fetch facebookexternalhit) : seul son RÉSEAU d'origine (AS32934) la
+    trahit. Un UA navigateur + IP datacenter Meta = robot ; le même UA depuis
+    une IP résidentielle marocaine = humain."""
+
+    def _req(self, ua=UA_ANDROID_INAPP, **meta):
+        from django.test import RequestFactory
+        return RequestFactory().get('/x', HTTP_USER_AGENT=ua, **meta)
+
+    def test_sonde_meta_ua_navigateur_xff(self):
+        # Chaîne page publique : le SSR pose la vraie IP en 1er saut XFF.
+        req = self._req(HTTP_X_FORWARDED_FOR='157.240.25.10, 172.68.103.143')
+        self.assertTrue(_est_robot_apercu(req))
+
+    def test_sonde_meta_cf_connecting_ip(self):
+        # Accès direct : Cloudflare pose CF-Connecting-IP.
+        req = self._req(HTTP_CF_CONNECTING_IP='173.252.70.5')
+        self.assertTrue(_est_robot_apercu(req))
+
+    def test_sonde_meta_ipv6(self):
+        req = self._req(HTTP_X_FORWARDED_FOR='2a03:2880:f003:c07:face:b00c::2')
+        self.assertTrue(_est_robot_apercu(req))
+
+    def test_client_residentiel_meme_ua_reste_humain(self):
+        req = self._req(HTTP_X_FORWARDED_FOR='196.75.10.20, 172.68.103.143')
+        self.assertFalse(_est_robot_apercu(req))
+
+    def test_ip_illisible_ignoree_sans_exception(self):
+        req = self._req(HTTP_X_FORWARDED_FOR='unknown, pas-une-ip')
+        self.assertFalse(_est_robot_apercu(req))
+
+    def test_meta_externalagent_reconnu_par_ua(self):
+        from django.test import RequestFactory
+        req = RequestFactory().get('/x', HTTP_USER_AGENT=(
+            'meta-externalagent/1.1 '
+            '(+https://developers.facebook.com/docs/sharing/webmasters/crawler)'))
+        self.assertTrue(_est_robot_apercu(req))
+
+
 class TestRobotNeStampeJamais(TestCase):
     """(a)/(b)/(c) — sur les endpoints publics réels."""
 
@@ -143,6 +184,26 @@ class TestRobotNeStampeJamais(TestCase):
         self._get_document(UA_CHROME, method='head')
         self.link.refresh_from_db()
         self.assertEqual(self.link.view_count, 0)
+
+    @_PATCH_GEN
+    @_PATCH_DL
+    def test_sonde_meta_ua_navigateur_pas_stampe(self, m_dl, m_gen):
+        """QJ-ROBOTS-2 — la sonde Meta déguisée en iPhone (UA navigateur,
+        IP datacenter AS32934 en 1er saut XFF) est servie mais jamais
+        comptée ; le même UA depuis une IP résidentielle compte."""
+        APIClient().get(
+            f'/api/django/public/document/{self.link.token}/',
+            HTTP_USER_AGENT=UA_ANDROID_INAPP,
+            HTTP_X_FORWARDED_FOR='157.240.25.10, 172.68.103.143')
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.view_count, 0)
+
+        APIClient().get(
+            f'/api/django/public/document/{self.link.token}/',
+            HTTP_USER_AGENT=UA_ANDROID_INAPP,
+            HTTP_X_FORWARDED_FOR='196.75.10.20, 172.68.103.143')
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.view_count, 1)
 
 
 class TestRobotNeNotifieJamais(TestCase):

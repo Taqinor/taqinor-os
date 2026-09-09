@@ -9,6 +9,7 @@ pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import datetime
+import ipaddress
 import logging
 import math
 import re
@@ -27,7 +28,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from core.throttling import IdentIpPartageeMixin
+from core.throttling import IdentIpPartageeMixin, ips_declarees_de_requete
 
 from .economies_periodes import construire_economies_periodes
 from .models import PaymentLink, ShareLink
@@ -245,7 +246,8 @@ def _resolve_share_link_by_token(token, *, select_related=()):
 #: les in-app browsers WhatsApp/Facebook/Instagram d'un VRAI client portent
 #: un UA Mozilla normal et restent comptés).
 _ROBOT_APERCU_RE = re.compile(
-    r'whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot'
+    r'whatsapp|facebookexternalhit|facebot|meta-externalagent|telegrambot'
+    r'|twitterbot|slackbot'
     r'|slack-imgproxy|linkedinbot|discordbot|skypeuripreview|viber|snapchat'
     r'|pinterestbot|redditbot|vkshare|applebot|googlebot|bingbot|duckduckbot'
     r'|yandexbot|baiduspider|petalbot|headlesschrome|python-requests'
@@ -254,19 +256,68 @@ _ROBOT_APERCU_RE = re.compile(
     re.IGNORECASE)
 
 
+#: QJ-ROBOTS-2 (fondateur 09/09/2026, lead Mekapa, nginx 12:34:34-36Z) — Meta
+#: crawle chaque lien WhatsApp en DEUX temps : d'abord
+#: « facebookexternalhit … Facebot Twitterbot » (attrapé par le filtre UA
+#: ci-dessus, prouvé : +1 vue et non +2), puis ~2 s plus tard une sonde
+#: anti-cloaking DÉGUISÉE EN VRAI NAVIGATEUR (« iPhone … Safari ») partie de
+#: ses datacenters — aucun filtre UA ne peut la voir. On classe donc robot
+#: toute requête dont l'IP D'ORIGINE appartient à l'AS32934 (plages IPv4/IPv6
+#: PUBLIÉES de Meta/Facebook/WhatsApp, stables depuis des années — la source
+#: de tous les allowlists de rate-limiting). L'IP d'origine est le PREMIER
+#: saut de X-Forwarded-For (posé par le SSR apps/web, qui lit
+#: cf-connecting-ip du visiteur réel) ou CF-Connecting-IP en accès direct
+#: (posé par Cloudflare, non forgeable à travers lui). Aucun humain ne
+#: navigue depuis un datacenter Meta ; forger ces en-têtes ne permet que de
+#: s'auto-exclure du comptage (inoffensif).
+_RESEAUX_ROBOTS = tuple(ipaddress.ip_network(c) for c in (
+    # AS32934 (Meta) — IPv4
+    '31.13.24.0/21', '31.13.64.0/18', '45.64.40.0/22', '66.220.144.0/20',
+    '69.63.176.0/20', '69.171.224.0/19', '74.119.76.0/22',
+    '102.132.96.0/20', '103.4.96.0/22', '129.134.0.0/16', '157.240.0.0/16',
+    '173.252.64.0/18', '179.60.192.0/22', '185.60.216.0/22',
+    '204.15.20.0/22',
+    # AS32934 — IPv6
+    '2a03:2880::/29', '2c0f:f248::/32', '2620:0:1c00::/40',
+))
+
+
+def _ip_datacentre_robot(request):
+    """QJ-ROBOTS-2 — vrai si une des origines DÉCLARÉES de la requête
+    appartient à un réseau de crawlers (`_RESEAUX_ROBOTS`). Les candidats
+    viennent de la primitive de fondation
+    ``core.throttling.ips_declarees_de_requete`` (QJR416 : cette surface ne
+    lit plus AUCUN en-tête d'IP à la main — la primitive documente pourquoi
+    le premier saut, choisi par l'appelant, est légitime pour CE seul usage
+    de classification). Une valeur illisible est ignorée, jamais une
+    exception."""
+    for brute in ips_declarees_de_requete(request):
+        try:
+            ip = ipaddress.ip_address(brute)
+        except ValueError:
+            continue
+        if any(ip in reseau for reseau in _RESEAUX_ROBOTS):
+            return True
+    return False
+
+
 def _est_robot_apercu(request):
     """QJ-ROBOTS — vrai si CE GET vient d'un robot d'aperçu/crawler, jamais
-    d'un humain : User-Agent de la liste ci-dessus, ou requête HEAD (les
+    d'un humain : User-Agent de la liste ci-dessus, requête HEAD (les
     crawlers sondent en HEAD ; aucun navigateur ne lit une proposition en
-    HEAD). Un User-Agent ABSENT n'est PAS un robot : le fetch SSR d'apps/web
-    d'avant ce chantier n'en transmettait aucun, et le client de test Django
-    n'en envoie pas — les deux doivent garder le comptage historique."""
+    HEAD), ou IP d'origine dans un datacenter de crawlers (QJ-ROBOTS-2 —
+    la sonde Meta déguisée en iPhone). Un User-Agent ABSENT n'est PAS un
+    robot : le fetch SSR d'apps/web d'avant ce chantier n'en transmettait
+    aucun, et le client de test Django n'en envoie pas — les deux doivent
+    garder le comptage historique."""
     if request is None:
         return False
     if getattr(request, 'method', 'GET') == 'HEAD':
         return True
     ua = (request.META.get('HTTP_USER_AGENT') or '') if hasattr(request, 'META') else ''
-    return bool(ua and _ROBOT_APERCU_RE.search(ua))
+    if ua and _ROBOT_APERCU_RE.search(ua):
+        return True
+    return _ip_datacentre_robot(request)
 
 
 def _stamp_view_si_public(link, via_interne, request=None):
