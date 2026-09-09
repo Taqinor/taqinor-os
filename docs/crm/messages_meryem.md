@@ -75,7 +75,7 @@ DARIJA : واخا، فهمتكم، ما غاديش نعاود نعيط ليكم.
 ## Cadence « après devis » (Guide v2.1, chapitre 7) et dimanche
 
 ### j1_pdf — J1, WhatsApp
-FR : Le PDF s'ouvre bien ? Qu'est-ce qui vous a le plus parlé ?
+FR : Bonjour M. [Prénom], j'espère que vous allez bien. Je vous ai envoyé votre proposition solaire — est-ce que le PDF s'ouvre bien de votre côté ? Prenez le temps de la regarder tranquillement, et dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre question.
 
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
 FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer.
