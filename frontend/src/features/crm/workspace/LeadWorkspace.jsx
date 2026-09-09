@@ -777,6 +777,12 @@ export default function LeadWorkspace({
               refData={{
                 users, tagOptions, motifOptions,
                 leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+                // QJ-ARBRE (09/09/2026) — l'arbre « Historique en un coup
+                // d'œil » (SectionPipeline, colonne droite du Suivi
+                // commercial) lit le MÊME historique que TimelineTab —
+                // aucun fetch supplémentaire, même précédence LW30/LW41
+                // (repli chatter_recent du GET lead dans le composant).
+                historique,
                 // F4 — voir la déclaration de relanceVersion plus haut.
                 relanceVersion,
                 // MRY32 — la frise de la fiche (CadenceFrise, via
