@@ -16,6 +16,11 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[3]
 # Tâches délibérément DÉCLENCHÉES À LA DEMANDE (jamais périodiques) OU
 # planifiées par une autre tâche/lane — chacune justifiée.
 ON_DEMAND_ALLOWLIST = {
+    # VT9 (10/09/2026) — assemblage des photos du toit d'une visite terrain :
+    # déclenché à la demande depuis l'action ``visites/{id}/assembler-photos/``
+    # (``.delay()`` dans le viewset ; jamais périodique — un assemblage
+    # n'existe que parce qu'un commercial vient de finir ses photos).
+    'crm.assembler_photos_toit',
     # AUTO-PIPELINE (26/08/2026) — devis automatique depuis un lead du tunnel :
     # déclenché à l'ARRIVÉE DU WEBHOOK (``apply_async`` dans
     # ``crm/webhooks.py`` via ``ventes.services.planifier_devis_automatique_

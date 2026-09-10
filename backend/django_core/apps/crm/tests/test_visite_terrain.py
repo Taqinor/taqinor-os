@@ -237,8 +237,10 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
                           {}, format='json').status_code, 200)
 
         detail = self.api.get(f'/api/django/crm/visites/{visite_id}/')
-        slot = detail.data['checklist'][1]['slots'][0]
-        self.assertEqual(slot['code'], 'toiture_obstacles')
+        # Le slot se trouve par son CODE, jamais par position : l'ordre des
+        # catégories vient de visite_checklist.py, pas de ce test.
+        slot = next(s for cat in detail.data['checklist']
+                    for s in cat['slots'] if s['code'] == 'toiture_obstacles')
         media_id = slot['photos'][0]['id']
 
         bureau = auth(self.bureau)
@@ -248,7 +250,9 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
             format='json')
         self.assertEqual(renvoi.status_code, 200, renvoi.data)
         self.assertEqual(renvoi.data['statut'], VisiteTerrain.Statut.A_REFAIRE)
-        renvoye = renvoi.data['checklist'][1]['slots'][0]
+        renvoye = next(s for cat in renvoi.data['checklist']
+                       for s in cat['slots']
+                       if s['code'] == 'toiture_obstacles')
         self.assertEqual(renvoye['etat'], 'a_refaire')
         self.assertEqual(renvoye['photos'][0]['motif_refaire'], 'Photo floue.')
 

@@ -148,6 +148,22 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   jamais un nombre tapé. (@after: VT6, VT7) Files: frontend/src/pages/crm/visites (@lane:
   frontend/crm-visite) (@model: sonnet)
 
+- [ ] VT12 — Câblage retour vers le CRM (fondateur 10/09 : « link this module properly to the
+  whole ERP ») : à la VALIDATION (feu vert), le serveur écrit en retour sur le lead —
+  `visite_effectuee=True`, `visite_notes` reçoit un récap court (date + mesures clés), déjà
+  chatterisé ; nouvel endpoint `GET /api/django/crm/leads/<pk>/photo-toit/` (selector
+  `texture_toit_pour_lead` : dernière visite VALIDÉE du lead → {visite_id, url, texture_calage},
+  valeurs nulles sinon — jamais une visite d'une autre société) pour que l'atelier 3D et la
+  carte lead lisent la texture SANS connaître le module visite. Tests. (@after: VT3) Files:
+  apps/crm/services.py, apps/crm/selectors.py, apps/crm/views_visite.py (@lane: backend/crm-visite) (@model: opus)
+- [ ] VT13 — La texture calée DANS l'atelier 3D/calepinage et sur la carte lead (pas à côté) :
+  ToitureDesign consomme `photo-toit` du lead et affiche l'image calée comme underlay du contour
+  du toit dans SA vue carte/plan de travail (couche image sous le tracé, transformation
+  perspective depuis les 4 coins — sans toucher au builder vendored) ; la carte de la fiche lead
+  (MapView) affiche le même overlay ; l'aperçu canvas de VT11 reste l'écran de calage. Mocks =
+  formes de VT12. Tests. (@after: VT12, VT11) Files: frontend/src/pages/ventes/ToitureDesign.jsx,
+  frontend/src/pages/crm/visites, frontend/src/features/crm (@lane: frontend/crm-visite) (@model: opus)
+
 #### DONE LOG — Groupe VT
 - 2026-09-10 — VT0 : contrat `apps/crm/contract_samples/visite_terrain.json` déposé (forme complète visite + checklist + complétude serveur + panneau client/devis), landé seul en tête de groupe (PACT10), PR #654.
 - 2026-09-10 — VT1-VT4+VT9 (lane backend, opus) : `crm.VisiteTerrain`/`crm.VisiteMedia` + `visite_checklist.py` (migration additive 0096), ViewSet company-scopé `crm/visites` (photos/slot, mesures avec erreurs nommant le champ, complétude SERVEUR, terminer refusé si incomplet), feu vert valider/renvoyer + notifications (2 EventType), panneau client+devis via `ventes/selectors.devis_lecture_seule_pour_lead` (M3, jamais prix_achat), tâche Celery assemblage photos toit (OpenCV Stitcher, échec honnête). NOUVELLE DÉPENDANCE GRATUITE : `opencv-python-headless==4.10.0.84` (Apache-2.0, aucun réseau). 2 fichiers de tests (~590 l., stitcher mocké).
