@@ -28,9 +28,13 @@ export default function SectionSite({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   return (
     <>
+      {/* VT13 — `leadId` (id serveur du lead, jamais un brouillon) laisse le
+          bloc demander au serveur la photo réelle du toit issue de la visite
+          terrain validée ; absent (création), rien ne change. */}
       <TraceToitClient
         contour={getField(state, 'roof_outline')}
         epingle={getField(state, 'roof_point')}
+        leadId={state?.server?.id ?? null}
       />
       <div className="form-row">
         <FormField label="Type de toiture" htmlFor="lf-type-toiture" error={errors.type_toiture}>

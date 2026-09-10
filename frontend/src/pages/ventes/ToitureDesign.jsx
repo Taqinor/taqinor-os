@@ -42,6 +42,8 @@ import { useConfirmDialog } from '../../ui/confirm'
 // la carte du calepinage 3D (voir ToitClientOverlay.jsx pour le pourquoi).
 import ToitClientOverlay from '../../features/ventes/ToitClientOverlay'
 import { contourExploitable } from '../../features/crm/workspace/traceToit'
+// VT13 — la photo réelle du toit calée en visite terrain (porte VT12).
+import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 import '../../styles/roofbuilder.css'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
@@ -315,6 +317,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
   const [contourMessage, setContourMessage] = useState('')
+  // VT13 — photo RÉELLE du toit du lead (visite terrain validée + calée), lue
+  // par la porte VT12 `crmApi.getLeadPhotoToit` : {visite_id, url,
+  // texture_calage}, les trois clés nulles quand il n'y a rien à montrer.
+  // Elle se drape en calque de fond du contour (ToitClientOverlay) ; la
+  // bascule « Photo réelle » la masque quand elle gêne la lecture du tracé.
+  const [photoToitCharge, setPhotoToitCharge] = useState(null)
+  const [photoToitVisible, setPhotoToitVisible] = useState(true)
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
@@ -580,6 +589,34 @@ export default function ToitureDesign({ mode = 'lead' }) {
     else boot()
     return () => { cancelled = true }
   }, [cibleId, devisId, leadId, affaireId, estDevis, estAo, reducedMotion])
+
+  // VT13 — la photo réelle du toit se demande sur le LEAD, jamais sur la
+  // visite : mode lead (l'id de l'URL) ou mode devis QUAND le devis porte un
+  // lead (`contexte.devis.lead`). Mode AO : aucun lead, aucun appel. L'échec
+  // est SILENCIEUX — sans photo, l'écran est byte-identique à avant VT13.
+  const leadPourPhoto = estDevis ? (contexte?.devis?.lead ?? null)
+    : (estAo ? null : (leadId || null))
+  // La texture est mémorisée AVEC l'id du lead : aucun `setState` synchrone
+  // dans le corps de l'effet (react-hooks v7) et jamais la photo d'un lead
+  // précédent — un id qui ne correspond plus n'est simplement pas lu.
+  useEffect(() => {
+    if (!leadPourPhoto) return undefined
+    let annule = false
+    crmApi.getLeadPhotoToit(leadPourPhoto)
+      .then((res) => {
+        if (!annule) {
+          setPhotoToitCharge({
+            leadId: leadPourPhoto, texture: normaliserTextureToit(res?.data),
+          })
+        }
+      })
+      .catch(() => {
+        if (!annule) setPhotoToitCharge({ leadId: leadPourPhoto, texture: null })
+      })
+    return () => { annule = true }
+  }, [leadPourPhoto])
+  const photoToit = photoToitCharge && photoToitCharge.leadId === leadPourPhoto
+    ? photoToitCharge.texture : null
 
   // L-MAP — la bascule (rp9-chip) pilote le calque GÉO-RÉFÉRENCÉ du builder,
   // pas seulement la légende React. O3 (revue adversariale 26/08) — sans
@@ -1200,7 +1237,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
                 <div id="rp9-compass-arrow" className="rp9-compass-arrow"><span>N</span><span>S</span></div>
               </div>
             </div>
-            <ToitClientOverlay contour={contourClientBrut} visible={toitClientVisible} />
+            {/* VT13 — la photo RÉELLE du toit (visite terrain validée + calée)
+                se drape en calque de FOND du contour, dans le même repère.
+                Le builder vendored n'est pas touché : ce calque flotte
+                au-dessus de sa carte, en `pointer-events: none`. */}
+            <ToitClientOverlay
+              contour={contourClientBrut}
+              visible={toitClientVisible}
+              photoToit={photoToit}
+              photoVisible={photoToitVisible}
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
@@ -1219,6 +1265,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
                 data-testid="rp9-toit-client-toggle"
               >
                 {toitClientVisible ? 'Toit dessiné : affiché' : 'Toit dessiné : masqué'}
+              </button>
+            )}
+            {/* VT13 — bascule de la photo réelle, seulement quand une visite
+                terrain validée en a calé une (rien à basculer sinon). */}
+            {photoToit && (
+              <button
+                type="button"
+                className={chipClass}
+                aria-pressed={photoToitVisible}
+                onClick={() => setPhotoToitVisible((v) => !v)}
+                data-testid="rp9-photo-toit-toggle"
+              >
+                {photoToitVisible ? 'Photo réelle : affichée' : 'Photo réelle : masquée'}
               </button>
             )}
             <p className="ml-auto text-sm text-lune-faint"><span>Surface&nbsp;: </span><span id="rp9-area-value" className="text-white">—</span></p>

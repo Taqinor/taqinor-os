@@ -20,7 +20,7 @@
    `null` et l'écran n'affiche rien — jamais un « 0 m² » ni une forme par
    défaut. */
 import {
-  ORDRE_LATLNG, aireM2, contourVersSommetsM, creerRepere,
+  ORDRE_LATLNG, aireM2, contourVersSommetsM, creerRepere, lngLatVersMetres,
 // Extension EXPLICITE : ce module est chargé tel quel par `node --test`
 // (`src/**/*.test.mjs`), qui ne résout pas les imports sans extension.
 } from '../../ao/toiture/repere.js'
@@ -89,8 +89,9 @@ export function dessinerContour(brut) {
   const points = normaliserContour(brut)
   if (points.length < 3) return null
   let sommets
+  let repere
   try {
-    const repere = creerRepere({ origine_lnglat: [points[0][1], points[0][0]] })
+    repere = creerRepere({ origine_lnglat: [points[0][1], points[0][0]] })
     sommets = contourVersSommetsM(repere, points, ORDRE_LATLNG)
   } catch {
     return null // coordonnées refusées par le repère : on n'affiche rien.
@@ -107,6 +108,21 @@ export function dessinerContour(brut) {
   if (!Number.isFinite(etendue) || etendue <= 0) return null
   const echelle = COTE_DESSIN / etendue
   return {
+    /* VT13 — projette UN point géographique dans le MÊME repère de dessin que
+       `points` ci-dessous (même origine, même échelle, nord en haut). C'est ce
+       qui permet à la photo réelle du toit (les 4 coins calés en visite
+       terrain) de se draper EXACTEMENT sous le contour, sans jamais recalculer
+       une seconde projection qui pourrait diverger de celle-ci. Renvoie
+       `null` pour un point que le repère refuse. */
+    projeter: (lat, lng) => {
+      try {
+        const { x, y } = lngLatVersMetres(repere, [lat, lng], ORDRE_LATLNG)
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+        return [(x - minX) * echelle, (maxY - y) * echelle]
+      } catch {
+        return null
+      }
+    },
     points: sommets
       .map((s) => `${((s.x - minX) * echelle).toFixed(1)},${((maxY - s.y) * echelle).toFixed(1)}`)
       .join(' '),

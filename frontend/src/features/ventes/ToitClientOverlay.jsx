@@ -43,25 +43,54 @@
    `dessinerContour` rend `null` et ce composant rend `null` — jamais un cadre
    vide, jamais un « 0 m² ». */
 import { useMemo } from 'react'
+import PhotoToitOverlay from '../crm/workspace/PhotoToitOverlay'
 import { dessinerContour, formaterSurface } from '../crm/workspace/traceToit'
 
-export default function ToitClientOverlay({ contour, visible = true }) {
+/* VT13 (fondateur 10/09/2026) — LA PHOTO RÉELLE DU TOIT, SOUS LE TRACÉ.
+   `photoToit` (déjà normalisée par `features/crm/workspace/photoToit.js`, forme
+   {visiteId, url, coins}) est l'image assemblée pendant la visite terrain et
+   CALÉE par ses 4 coins (VT9/VT11), servie sur le lead par la porte VT12.
+   Elle se drape ICI en calque de FOND, dans le repère de dessin du contour :
+   le commercial voit son vrai toit sous le tracé, pas un aperçu à côté. Le
+   builder vendored (@roofbuilder / MapLibre) n'est pas touché — ce calque
+   flotte au-dessus de sa carte, en `pointer-events: none` (roofbuilder.css).
+   Sans contour exploitable mais AVEC une photo calée, la carte s'affiche
+   quand même (la photo porte alors son propre cadre) : c'est justement le
+   lead pour qui la visite terrain compte le plus. */
+export default function ToitClientOverlay({
+  contour, visible = true, photoToit = null, photoVisible = true,
+}) {
   const dessin = useMemo(() => dessinerContour(contour), [contour])
-  if (!dessin || !visible) return null
+  const photo = photoToit && photoVisible ? photoToit : null
+  if ((!dessin && !photo) || !visible) return null
 
-  const surface = formaterSurface(dessin.aireM2)
-  const libelle = surface ? `Toit dessiné par le client · ${surface}` : 'Toit dessiné par le client'
+  const surface = dessin ? formaterSurface(dessin.aireM2) : null
+  let libelle
+  if (dessin) {
+    libelle = surface ? `Toit dessiné par le client · ${surface}` : 'Toit dessiné par le client'
+  } else {
+    libelle = 'Photo du toit (visite terrain)'
+  }
 
   return (
     <div className="rp9-toit-client" data-testid="rp9-toit-client" aria-hidden="true">
-      <svg
-        className="rp9-toit-client-forme"
-        viewBox={`-2 -2 ${dessin.largeur + 4} ${dessin.hauteur + 4}`}
-        preserveAspectRatio="xMidYMid meet"
-        focusable="false"
-      >
-        <polygon points={dessin.points} className="rp9-toit-client-polygone" />
-      </svg>
+      <div className="rp9-toit-client-boite">
+        <PhotoToitOverlay
+          dessin={dessin}
+          texture={photo}
+          className="rp9-photo-toit"
+        />
+        {dessin && (
+          <svg
+            className="rp9-toit-client-forme"
+            viewBox={`-2 -2 ${dessin.largeur + 4} ${dessin.hauteur + 4}`}
+            preserveAspectRatio="xMidYMid meet"
+            focusable="false"
+          >
+            <polygon points={dessin.points} className="rp9-toit-client-polygone" />
+          </svg>
+        )}
+      </div>
       <p className="rp9-toit-client-label">{libelle}</p>
     </div>
   )

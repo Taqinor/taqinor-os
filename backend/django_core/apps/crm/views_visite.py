@@ -25,9 +25,11 @@ from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes)
 from rest_framework.response import Response
 
+from authentication.permissions import HasPermissionOrLegacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services, visite_checklist as checklist
@@ -404,6 +406,33 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.texture_calage = {'coins': propres}
         visite.save(update_fields=['texture_calage'])
         return self._agregat(visite)
+
+
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('crm_voir')])
+def lead_photo_toit(request, lead_id):
+    """VT12 — ``GET /api/django/crm/leads/<pk>/photo-toit/``.
+
+    La porte par laquelle l'atelier 3D/calepinage et la carte de la fiche lead
+    lisent le toit réaliste SANS connaître le module visite : ils demandent la
+    texture d'un LEAD, le serveur choisit la dernière visite VALIDÉE.
+
+    JAMAIS 404 : sans visite validée, sans image, ou pour un lead qui n'est pas
+    de la société de l'appelant, la réponse porte les MÊMES clés à ``null``
+    (``{"visite_id": null, "url": null, "texture_calage": null}``). Une seule
+    forme à consommer côté écran, et aucune différence de réponse qui
+    laisserait deviner l'existence du lead d'une autre société.
+
+    Permission : ``crm_voir`` — la lecture CRM ordinaire, celle que portent
+    déjà le commercial ET l'atelier ; exiger ``crm_visite_voir`` fermerait la
+    porte aux écrans qui ne font que peindre le toit.
+    """
+    from . import selectors  # noqa: PLC0415 - import local (frontière app)
+    from .models import Lead  # noqa: PLC0415
+
+    lead = Lead.objects.filter(pk=lead_id,
+                               company=request.user.company).first()
+    return Response(selectors.texture_toit_pour_lead(lead))
 
 
 def _coordonnee(brute):
