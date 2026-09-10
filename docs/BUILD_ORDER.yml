@@ -414,6 +414,11 @@ unmapped_ok:
   # PLAN.md, releves fondateur du 08/09/2026) : correctifs/complements du
   # moteur de relances existant (apps/crm), aucun prerequis de vague plateforme.
   - RLC
+  # CKP — Cockpit CRM « suivre les etapes » (Groupe CKP de PLAN2, fondateur
+  # 2026-09-10) : verite des sautees + cadence reactive + KPI d'adherence,
+  # auto-ordonne par ses @after (CKP0 contrat d'abord) ; aucun prerequis de
+  # vague plateforme.
+  - CKP
   # VT/VTG — Visite technique terrain (Groupe VT de PLAN2, fondateur
   # 2026-09-09) : nouveau module apps/crm auto-ordonne par ses @after
   # (VT0 contrat d'abord -> lanes backend/frontend) ; aucun prerequis de
