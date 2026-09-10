@@ -914,11 +914,18 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # reprise MRY23, placement MRY30 — doit pouvoir les annuler et montrer ce
     # qui n'a pas eu lieu) PLUS la première encore à venir, et elle seule. La
     # suite naît de l'ISSUE, dans ``materialiser_touche_suivante``.
+    # EXCEPTION `reveil` : les deux réveils J30/J60 du PARKING (MRY11) ne sont
+    # pas un protocole de gestes qui s'enchaînent — ce sont les deux alarmes
+    # d'un dossier mis de côté, et la décision fondateur (3) vise les trois
+    # appels J0 de la prise de contact, pas elles. `cloturer_cadence` refuse
+    # d'ailleurs de clore une cadence `reveil` : elle n'a aucune mécanique de
+    # clôture pour faire naître la seconde. Elles restent posées ensemble.
     maintenant = timezone.now()
+    reactive = cadence != 'reveil'
     a_creer = []
     for rang, (gabarit, echeance) in enumerate(echeances):
         a_creer.append((rang, gabarit, echeance))
-        if echeance >= maintenant:
+        if reactive and echeance >= maintenant:
             break
     etapes = [
         RelanceEtape(
@@ -1047,6 +1054,17 @@ def materialiser_touche_suivante(etape_close, user=None):
             or getattr(lead, 'is_archived', False)):
         return None
 
+    # Les étapes du FILET (MRY34 / QJ-INVARIANT) portent la cadence
+    # `generique` mais ne sont PAS un barreau de protocole : ce sont des
+    # étapes posées à la main par `assurer_prochaine_etape_apres_succes`, dont
+    # la suite est décidée par le filet lui-même (plan après-devis si un devis
+    # est parti, sinon une nouvelle étape générique). Leur faire naître le
+    # « barreau 2 » du gabarit `generique` remplissait la file d'une touche
+    # sans objet ET — parce qu'une prochaine touche existait alors — empêchait
+    # le filet de démarrer le vrai suivi de proposition (cas AR du 07/09).
+    if (etape_close.libelle or '').strip() in _LIBELLES_FILET:
+        return None
+
     cadence = etape_close.cadence
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     if not gabarits:
@@ -1082,7 +1100,12 @@ def materialiser_touche_suivante(etape_close, user=None):
     for suivant in range(rang + 1, len(echeances)):
         gabarit, echeance = echeances[suivant]
         if gabarit.ordre in ordres_pris:
-            continue
+            # IDEMPOTENCE : le barreau qui suit celui qu'on vient de clore
+            # existe DÉJÀ (double appel, ou cadence rétrodatée dont plusieurs
+            # touches échues ont été matérialisées d'un coup). On s'arrête —
+            # SAUTER par-dessus pour en créer un plus loin ferait naître deux
+            # touches au lieu d'une et casserait l'ordre du protocole.
+            return None
         if (gabarit.delai_jours == 0
                 and not getattr(gabarit, 'dimanche_ok', False)
                 and getattr(gabarit, 'heure_cible', None) is None):
@@ -1356,6 +1379,15 @@ _KINDS_MESSAGE = frozenset({LeadActivity.Kind.WHATSAPP, LeadActivity.Kind.EMAIL}
 #: la suite d'un refus est une décision HUMAINE (MRY22), mais le dossier ne
 #: doit pas disparaître des files en attendant qu'elle soit prise.
 FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieure'
+
+#: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
+#: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
+#: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
+#: matérialisation réactive (`materialiser_touche_suivante` les ignore).
+_LIBELLES_FILET = frozenset({
+    FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN,
+    FILET_APPEL_LIBELLE, FILET_REFUS_LIBELLE,
+})
 
 #: Délai (jours) du filet : DEMAIN, recalé sur le prochain créneau d'appel de
 #: la société (fenêtres MRY4). Si Meryem donne une date de rappel en marquant
