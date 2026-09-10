@@ -109,6 +109,65 @@ def devis_for_lead(lead, ids):
         .order_by('id'))
 
 
+def devis_lecture_seule_pour_lead(lead):
+    """VT3 — les devis d'un lead, en LECTURE SEULE, pour un panneau externe.
+
+    Écrit pour le panneau « client + devis » de la visite technique terrain
+    (``apps/crm``) : c'est la SEULE porte par laquelle crm lit un devis — la
+    frontière M3 interdit d'importer ``ventes.models`` depuis une autre app
+    domaine.
+
+    CE QUI SORT, ET RIEN D'AUTRE : référence, statut, date, total TTC, et les
+    lignes PRODUIT comptées dans les totaux (désignation, quantité, prix
+    unitaire TTC, total TTC). ``prix_achat`` — et toute donnée de coût ou de
+    marge — ne franchit JAMAIS cette fonction : le panneau est montré au
+    commercial ET dérivé d'un document client.
+
+    Les montants TTC sont dérivés du HT de chaque ligne par son taux de TVA
+    EFFECTIF (celui de la ligne, sinon celui du devis) : aucune valeur
+    inventée, aucun taux par défaut codé ici.
+    """
+    from decimal import ROUND_HALF_UP, Decimal
+
+    from .models import Devis
+
+    cent = Decimal('0.01')
+    dossiers = []
+    devis_qs = (Devis.objects
+                .filter(lead=lead, company=lead.company)
+                .prefetch_related('lignes')
+                .order_by('-id'))
+    for devis in devis_qs:
+        lignes = []
+        for ligne in devis.lignes.all():
+            if not ligne.compte_dans_totaux:
+                continue
+            taux = Decimal(str(ligne.taux_tva_effectif or 0))
+            coefficient = Decimal('1') + (taux / Decimal('100'))
+            unitaire = Decimal(str(ligne.prix_unitaire or 0)) * coefficient
+            total = Decimal(str(ligne.total_ht)) * coefficient
+            lignes.append({
+                'designation': ligne.designation,
+                'quantite': str(Decimal(str(ligne.quantite or 0))),
+                'prix_unitaire_ttc': str(
+                    unitaire.quantize(cent, rounding=ROUND_HALF_UP)),
+                'total_ttc': str(
+                    total.quantize(cent, rounding=ROUND_HALF_UP)),
+            })
+        dossiers.append({
+            'id': devis.id,
+            'numero': devis.reference,
+            'statut': devis.statut,
+            'date': (devis.date_creation.date().isoformat()
+                     if devis.date_creation else None),
+            'total_ttc': str(
+                Decimal(str(devis.total_ttc)).quantize(
+                    cent, rounding=ROUND_HALF_UP)),
+            'lignes': lignes,
+        })
+    return dossiers
+
+
 def get_devis_by_pk(pk):
     """Devis par pk (ou None). Lecture seule, non scopé — l'appelant vérifie la
     société comme avant."""

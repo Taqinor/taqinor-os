@@ -80,6 +80,17 @@ ALL_PERMISSIONS = [
     'crm_supprimer',
     'crm_export',
     'crm_reassign',
+    # ── VT2 — Visite technique terrain (module CRM) ──────────────────────────
+    # Quatre actions DISJOINTES : consulter une visite, en créer une, la
+    # remplir (photos/mesures/terminer), et donner le FEU VERT calepinage.
+    # ``crm_visite_valider`` est délibérément séparé de ``crm_visite_modifier``
+    # : celui qui relève les mesures sur le toit n'est pas celui qui décide que
+    # le dossier est bon (même esprit que ``compta_saisir``/``compta_valider``).
+    # Préfixe ``crm_`` ⇒ le module propriétaire est déduit automatiquement.
+    'crm_visite_voir',
+    'crm_visite_creer',
+    'crm_visite_modifier',
+    'crm_visite_valider',
     'ventes_voir',
     'ventes_creer',
     'ventes_modifier',
@@ -490,6 +501,12 @@ RESPONSABLE_PERMISSIONS = [
     'crm_voir',
     'crm_creer',
     'crm_modifier',
+    # VT2 — le Responsable pilote les visites techniques ET porte le feu vert
+    # bureau d'études (c'est lui qui arbitre un dossier de calepinage).
+    'crm_visite_voir',
+    'crm_visite_creer',
+    'crm_visite_modifier',
+    'crm_visite_valider',
     'ventes_voir',
     'ventes_creer',
     'ventes_modifier',
@@ -614,6 +631,9 @@ ADMIN_PERMISSIONS = [
 COMMERCIAL_RESP_PERMISSIONS = [
     'crm_voir', 'crm_creer', 'crm_modifier', 'crm_supprimer', 'crm_export',
     'crm_reassign',
+    # VT2 — mène les visites ET arbitre le feu vert de son équipe.
+    'crm_visite_voir', 'crm_visite_creer', 'crm_visite_modifier',
+    'crm_visite_valider',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
     'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
@@ -650,6 +670,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
 # (pairs) ; pas de prix d'achat, pas de réassignation.
 COMMERCIAL_PERMISSIONS = [
     'crm_voir', 'crm_creer', 'crm_modifier', 'crm_export',
+    # VT2 — le commercial TERRAIN remplit la visite ; il ne se donne JAMAIS le
+    # feu vert à lui-même (`crm_visite_valider` absent, à dessein).
+    'crm_visite_voir', 'crm_visite_creer', 'crm_visite_modifier',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_valider',
     'ventes_pdf', 'ventes_export',
     'stock_voir', 'equipement_voir', 'sav_voir',

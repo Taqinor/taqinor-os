@@ -332,6 +332,16 @@ class EventType(models.TextChoices):
     VISITEUR_CONCURRENT_SUSPECTE = (
         'visiteur_concurrent_suspecte',
         'Appareil suivant plusieurs prospects (concurrent suspecté)')
+    # VT3 — les deux bords du FEU VERT de la visite technique terrain. Deux
+    # clés distinctes à dessein : « ta visite est validée » (bonne nouvelle,
+    # informationnelle) et « ta visite revient à refaire » (une ACTION t'est
+    # demandée, avec son motif) n'ont ni la même urgence ni la même suite —
+    # les fondre aurait obligé le commercial à ouvrir la fiche pour savoir
+    # laquelle des deux vient d'arriver.
+    VISITE_TERRAIN_VALIDEE = (
+        'visite_terrain_validee', 'Visite technique validée (feu vert)')
+    VISITE_TERRAIN_A_REFAIRE = (
+        'visite_terrain_a_refaire', 'Visite technique à refaire')
 
 
 class Channel(models.TextChoices):
