@@ -40,7 +40,7 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
     expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
   })
 
-  it('« Répondeur »/« Occupé » envoient leur propre outcome', async () => {
+  it('« Répondeur » envoie l’issue SERVEUR non_joint avec sa précision en note (réconciliation CKP2↔CKP4 : le serveur ne connaît que LeadActivity.OUTCOMES)', async () => {
     const onFait = vi.fn(() => Promise.resolve({}))
     render(
       <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
@@ -48,7 +48,8 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Répondeur' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, { outcome: 'repondeur' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { outcome: 'non_joint', note: 'Répondeur' }))
   })
 
   it('une réponse 400 {erreurs: {outcome}} s\'affiche SOUS le contrôle, jamais un toast générique', async () => {

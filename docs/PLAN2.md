@@ -212,7 +212,7 @@ useIsAdminOrResponsable, digest 08:30 + bilan lundi.*
   `apps/crm/contract_samples/mes_stats_relance.json` (formes des deux nouveaux agrégats, voir
   fichiers) — À LANDER sur `main` AVANT les moitiés CKP1-CKP6 (embarqué dans le batch VT en
   cours). Files: apps/crm/contract_samples (@lane: contrat-ckp) (@model: sonnet)
-- [ ] CKP1 — Vérité des sautées : nouveau statut `RelanceEtape.Statut.ANNULEE` (« annulée par le
+- [x] CKP1 — Vérité des sautées : nouveau statut `RelanceEtape.Statut.ANNULEE` (« annulée par le
   moteur », migration + backfill des historiques par les motifs fixes connus — 'joint', 'lead
   signé', 'devis accepté', 'reprise : déjà passée', 'passée avant le moteur', etc. → annulee ;
   un saut sans motif moteur reste sautee) ; `arreter_cadence` et les reprises MRY23/MRY30
@@ -222,7 +222,7 @@ useIsAdminOrResponsable, digest 08:30 + bilan lundi.*
   (tests_mry9_arrets, tests_mry11_fin_cadence, tests_mry23/30, tests_qj_funnel_devis_envoye,
   tests_mry13). (@after: CKP0) Files: apps/crm/models.py, apps/crm/services.py,
   apps/crm/receivers.py, apps/crm/migrations (@lane: backend/ckp) (@model: opus)
-- [ ] CKP2 — Cadence RÉACTIVE : `initialiser_plan_relance` ne matérialise que la PREMIÈRE touche
+- [x] CKP2 — Cadence RÉACTIVE : `initialiser_plan_relance` ne matérialise que la PREMIÈRE touche
   à faire (le gabarit complet reste la partition) ; `marquer_etape_relance` FAIT avec issue
   « pas de réponse »/« répondeur »/« occupé » OU SAUTEE humaine → matérialise la touche suivante
   du gabarit (J0 intra-jour : ancrée sur l'instant de l'issue ; J+N : ancrée sur le départ de
@@ -234,7 +234,7 @@ useIsAdminOrResponsable, digest 08:30 + bilan lundi.*
   l'issue »). L'aperçu MRY30 (calculer_echeances_cadence) reste la partition COMPLÈTE prévue —
   il annonce le plan, la matérialisation suit les issues. (@after: CKP1) Files:
   apps/crm/services.py, apps/crm/views.py (@lane: backend/ckp) (@model: opus)
-- [ ] CKP3 — KPI d'adhérence serveur (formules de la recherche, calculées sur RelanceEtape) :
+- [x] CKP3 — KPI d'adhérence serveur (formules de la recherche, calculées sur RelanceEtape) :
   endpoint `GET relance-etapes/kpi-adherence/?jours=` (contrat CKP0) — à-l'heure %
   (fait le jour dû), retards ouverts, sautées HUMAINES vs annulées moteur (séparées), drop-off
   par ordre de touche (le signal de coaching), vitesse premier contact (médiane h + tendance
@@ -243,7 +243,7 @@ useIsAdminOrResponsable, digest 08:30 + bilan lundi.*
   retards, mon à-l'heure 7 j, cadences complétées 14 j, série de jours sans retard ; les deux
   lisibles par TOUS les rôles (décision transparence) ; tests. (@after: CKP1) Files:
   apps/crm/selectors.py, apps/crm/views.py (@lane: backend/ckp) (@model: sonnet)
-- [ ] CKP4 — Écran Meryem (opérationnel, cockpit CRM remanié pour le rôle normal) : LA FILE
+- [x] CKP4 — Écran Meryem (opérationnel, cockpit CRM remanié pour le rôle normal) : LA FILE
   d'abord (RelancesDuJourWidget en tête, pleine largeur), issue OBLIGATOIRE au « Fait » d'un
   appel (choix Joint / Pas de réponse / Répondeur / Occupé — déclenche la programmation de la
   suite, message de confirmation « prochain appel programmé le … ») ; badges honnêtes :
@@ -251,20 +251,23 @@ useIsAdminOrResponsable, digest 08:30 + bilan lundi.*
   3 tuiles perso `mes-stats` (à faire maintenant / mon à-l'heure 7 j / série sans retard),
   jamais comparatives. (@after: CKP2, CKP3) Files: frontend/src/pages/crm,
   frontend/src/features/crm/relances (@lane: frontend/ckp) (@model: sonnet)
-- [ ] CKP5 — Vue adhérence (stratégique, visible par les DEUX — décision transparence ; mise en
+- [x] CKP5 — Vue adhérence (stratégique, visible par les DEUX — décision transparence ; mise en
   avant sur le cockpit admin/responsable, accessible à tous) : table drop-off par touche
   (ordre/canal/faites/à-l'heure %/sautées humaines/annulées), tendance hebdo à-l'heure % +
   vitesse premier contact, liste des leads sans touche due, conversion par étape appariée à
   l'adhérence (anti-Goodhart) ; aucun seuil rouge/vert inventé — valeurs + tendance ;
   réutilise KpiRelancesPanel comme socle. (@after: CKP3) Files: frontend/src/pages/crm
   (@lane: frontend/ckp) (@model: sonnet)
-- [ ] CKP6 — Tests frontend : mocks = contrats CKP0 exactement ; le Fait d'un appel sans issue
+- [x] CKP6 — Tests frontend : mocks = contrats CKP0 exactement ; le Fait d'un appel sans issue
   est bloqué avec le champ nommé ; badge annulée ≠ sautée (motif visible) ; les tuiles perso
   affichent null proprement (« pas encore de données », jamais 0 % inventé) ; la file reste
   la première chose visible sur mobile. (@after: CKP4, CKP5) Files: frontend/src/pages/crm,
   frontend/src/features/crm/relances (@lane: frontend/ckp) (@model: sonnet)
 
 #### DONE LOG — Groupe CKP
+- 2026-09-10 — CKP1-CKP3 (lane backend, opus) : statut `ANNULEE` (« Annulée (moteur) », traite_par NULL, migration 0097 + data migration réversible sur les 9 motifs moteur) ; cadence RÉACTIVE (une touche à la fois, `materialiser_touche_suivante` sur issue non-stop ou saut humain, `cadence_depart` migration 0098, issue OBLIGATOIRE pour clore un appel) ; KPI `kpi-adherence` + `mes-stats` (formes des contrats, annulées jamais comptées comme sautées, null si dénominateur nul) ; ~10 fichiers de tests épinglés réécrits + tests_ckp3_adherence (25 tests).
+- 2026-09-10 — CKP4-CKP6 (lane frontend, sonnet) : file en tête du cockpit pour tous, issue obligatoire au Fait d'un appel avec confirmation « prochain appel programmé le … » lue du serveur, badges « Sautée · qui · quand » vs « Annulée (moteur) · motif », 3 tuiles perso mes-stats, panneau AdherenceRelancesPanel (drop-off par touche, tendances, leads sans touche cliquables, conversion par étape) visible par tous ; 54 tests verts.
+- 2026-09-10 — Réconciliation de fold (leçon PACT11) : Répondeur/Occupé → issue serveur `non_joint` + précision en note (aucune nouvelle valeur d'énumération) ; `prochaine_touche {due_at, due_date, canal}` ajoutée à la réponse fait/sauter ; `?jours=` clampé au lieu de refusé.
 - 2026-09-10 — CKP0 : contrats `kpi_adherence.json` + `mes_stats_relance.json` déposés (adhérence transparente à tous les rôles, sautées humaines ≠ annulées moteur, null si dénominateur nul), embarqués dans le batch VT (PR #655) pour être sur `main` avant les moitiés CKP1-CKP6.
 
 ---

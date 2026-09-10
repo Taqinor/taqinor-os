@@ -2750,15 +2750,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         le cloisonnement, elle supprime le tableau caché."""
         from .selectors import kpi_adherence
 
+        # « Normaliser plutôt que refuser » (règle fondateur 08/09) : un
+        # ``jours`` illisible retombe sur 30, un excès est borné à 1-365 —
+        # un tableau de bord ne renvoie jamais une erreur pour un paramètre
+        # d'affichage.
         brut = (request.query_params.get('jours') or '').strip()
-        jours = 30
-        if brut:
-            if not brut.isdigit() or not (1 <= int(brut) <= 365):
-                return Response(
-                    {'erreurs': {'jours': 'Nombre de jours invalide '
-                                          '(1 à 365).'}},
-                    status=status.HTTP_400_BAD_REQUEST)
-            jours = int(brut)
+        jours = int(brut) if brut.isdigit() else 30
+        jours = min(max(jours, 1), 365)
         return Response(
             kpi_adherence(request.user.company, request.user, jours))
 
@@ -2833,7 +2831,24 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             body=body)
         if quand is not None:
             reporter_prochaine_touche(etape.lead, request.user, quand)
-        return Response(self.get_serializer(etape).data)
+        # CKP2/CKP4 — la réponse porte la PROCHAINE touche programmée de cette
+        # cadence : c'est elle (et jamais un calcul d'écran) qui alimente le
+        # message « prochain appel programmé le … ». Absente quand la cadence
+        # vient de s'arrêter ou qu'aucune touche n'a été matérialisée.
+        data = self.get_serializer(etape).data
+        suivante = (
+            RelanceEtape.objects
+            .filter(lead=etape.lead, cadence=etape.cadence,
+                    statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by('due_date', 'ordre')
+            .first())
+        data['prochaine_touche'] = (
+            {'due_at': (suivante.due_at.isoformat()
+                        if suivante.due_at else None),
+             'due_date': suivante.due_date.isoformat(),
+             'canal': suivante.canal}
+            if suivante is not None else None)
+        return Response(data)
 
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):

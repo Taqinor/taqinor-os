@@ -132,10 +132,15 @@ QUESTIONS.reveil = {
 // appels seulement, l'écran Meryem étant d'abord un écran d'appels. La suite
 // (cadence continue / dossier au Froid après la dernière touche) est celle
 // des règles d'arrêt MRY9 déjà en vigueur pour « Pas de réponse ».
+// Réconciliation de fold (CKP2↔CKP4) : le serveur ne connaît QUE les issues
+// de `LeadActivity.OUTCOMES` — Répondeur/Occupé s'envoient donc comme
+// `non_joint` (même règle de suite), la précision partant dans la `note`.
+// Aucune nouvelle valeur d'énumération côté serveur = aucun risque de
+// migration ; l'information reste tracée mot pour mot dans le chatter.
 const APPEL_REPONSES_SUPPLEMENTAIRES = [
-  { outcome: 'repondeur', label: 'Répondeur',
+  { outcome: 'non_joint', note: 'Répondeur', label: 'Répondeur',
     suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
-  { outcome: 'occupe', label: 'Occupé',
+  { outcome: 'non_joint', note: 'Occupé', label: 'Occupé',
     suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
 ]
 
@@ -261,6 +266,7 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.rappel && !rappelLe) return
     const payload = {}
     if (note.trim()) payload.note = note.trim()
+    else if (reponseChoisie.note) payload.note = reponseChoisie.note
     if (reponseChoisie.outcome) payload.outcome = reponseChoisie.outcome
     if (reponseChoisie.rappel && rappelLe) {
       payload.rappel_le = rappelLe
