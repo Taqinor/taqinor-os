@@ -414,3 +414,160 @@ class ChatterTests(VisiteTerrainBase):
         self.assertTrue(
             any('Tableau non photographié.' in note
                 for note in self._notes()))
+
+
+class CablageRetourLeadTests(VisiteTerrainBase):
+    """VT12 — ce que le feu vert REDESCEND sur la fiche lead, et la porte
+    ``photo-toit`` par laquelle le reste de l'ERP lit le toit réaliste.
+
+    Aucune horloge vive n'est asservie : la date du récap est comparée à la
+    date que le SERVEUR a lui-même posée sur la visite, jamais à
+    « aujourd'hui ».
+    """
+
+    URL = '/api/django/crm/leads/{}/photo-toit/'
+
+    def _valider(self, visite_id):
+        bureau = auth(self.bureau)
+        resp = bureau.post(f'/api/django/crm/visites/{visite_id}/valider/',
+                           {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return resp
+
+    # ── L'écriture en retour sur le lead ─────────────────────────────────────
+
+    def test_le_feu_vert_marque_la_visite_effectuee_sur_le_lead(self):
+        self.assertFalse(self.lead.visite_effectuee)
+        visite_id = self.creer_visite()
+        self.remplir(visite_id)
+        self.api.post(f'/api/django/crm/visites/{visite_id}/terminer/', {},
+                      format='json')
+        self._valider(visite_id)
+
+        self.lead.refresh_from_db()
+        self.assertTrue(self.lead.visite_effectuee)
+
+    def test_le_recap_ne_porte_que_des_mesures_reellement_saisies(self):
+        visite_id = self.creer_visite()
+        self.remplir(visite_id)
+        self.api.post(f'/api/django/crm/visites/{visite_id}/terminer/', {},
+                      format='json')
+        self._valider(visite_id)
+
+        self.lead.refresh_from_db()
+        notes = self.lead.visite_notes or ''
+        # Les valeurs saisies dans MESURES_COMPLETES, telles quelles.
+        self.assertIn('12.5 × 8 m', notes)
+        self.assertIn('pente 15°', notes)
+        self.assertIn('orientation sud', notes)
+        self.assertIn('disjoncteur 63 A', notes)
+        # La date vient du SERVEUR (posée au « terminer »), pas d'une horloge
+        # vive de test.
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertIn(visite.date_realisee.strftime('%d/%m/%Y'), notes)
+
+    def test_une_mesure_absente_est_omise_jamais_remplacee(self):
+        """Zéro chiffre inventé : sans mesure relevée, aucune n'est affirmée."""
+        visite_id = self.creer_visite()
+        self._valider(visite_id)
+
+        self.lead.refresh_from_db()
+        notes = self.lead.visite_notes or ''
+        self.assertIn('Visite technique validée', notes)
+        for interdit in ('zone utile', 'pente', 'orientation', 'disjoncteur'):
+            self.assertNotIn(interdit, notes, interdit)
+
+    def test_une_note_deja_ecrite_nest_pas_ecrasee_ni_dupliquee(self):
+        self.lead.visite_notes = 'Chien méchant dans la cour.'
+        self.lead.save(update_fields=['visite_notes'])
+        visite_id = self.creer_visite()
+        self._valider(visite_id)
+
+        self.lead.refresh_from_db()
+        premier = self.lead.visite_notes
+        self.assertIn('Chien méchant dans la cour.', premier)
+        self.assertIn('Visite technique validée', premier)
+
+        # Une re-validation (deuxième visite du même lead, aucune mesure de
+        # plus) ne duplique pas le même récap sur la fiche.
+        autre = self.creer_visite()
+        self._valider(autre)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.lead.visite_notes.count('Visite technique validée'), 1)
+
+    def test_le_chatter_du_feu_vert_nest_pas_double(self):
+        visite_id = self.creer_visite()
+        self._valider(visite_id)
+        feux = [note for note in LeadActivity.objects
+                .filter(lead=self.lead, kind=LeadActivity.Kind.NOTE)
+                .values_list('body', flat=True)
+                if 'feu vert' in note]
+        self.assertEqual(len(feux), 1, feux)
+
+    # ── La porte ``photo-toit`` du lead ──────────────────────────────────────
+
+    def _visite_avec_toit(self, statut=VisiteTerrain.Statut.VALIDEE,
+                          company=None, lead=None, key='toit-assemble.png'):
+        return VisiteTerrain.objects.create(
+            company=company or self.company, lead=lead or self.lead,
+            commercial=self.commercial, statut=statut, photo_toit_key=key,
+            texture_calage={'coins': [[33.57, -7.58], [33.57, -7.57],
+                                      [33.56, -7.57], [33.56, -7.58]]})
+
+    def test_sans_visite_validee_les_trois_cles_sortent_nulles(self):
+        resp = self.api.get(self.URL.format(self.lead.id))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(dict(resp.data), {
+            'visite_id': None, 'url': None, 'texture_calage': None})
+
+    def test_une_visite_validee_avec_toit_sert_url_et_calage(self):
+        visite = self._visite_avec_toit()
+        resp = self.api.get(self.URL.format(self.lead.id))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['visite_id'], visite.id)
+        self.assertEqual(resp.data['url'],
+                         f'/api/django/crm/visites/{visite.id}/photo-toit/')
+        self.assertEqual(len(resp.data['texture_calage']['coins']), 4)
+
+    def test_une_visite_non_validee_ne_peint_jamais_de_toit(self):
+        self._visite_avec_toit(statut=VisiteTerrain.Statut.TERMINEE)
+        resp = self.api.get(self.URL.format(self.lead.id))
+        self.assertIsNone(resp.data['visite_id'])
+        self.assertIsNone(resp.data['url'])
+
+    def test_une_visite_validee_sans_image_sort_nulle(self):
+        self._visite_avec_toit(key='')
+        resp = self.api.get(self.URL.format(self.lead.id))
+        self.assertIsNone(resp.data['visite_id'])
+        self.assertIsNone(resp.data['url'])
+
+    def test_la_derniere_visite_validee_gagne(self):
+        self._visite_avec_toit(key='ancien.png')
+        recente = self._visite_avec_toit(key='recent.png')
+        resp = self.api.get(self.URL.format(self.lead.id))
+        self.assertEqual(resp.data['visite_id'], recente.id)
+
+    def test_jamais_la_visite_dune_autre_societe(self):
+        """Deux VRAIS locataires : la texture ne traverse pas la frontière."""
+        self._visite_avec_toit(company=self.autre, lead=self.lead_etranger)
+        self._visite_avec_toit()
+
+        # (a) l'étranger ne voit pas le toit du lead de notre société — et
+        #     n'apprend même pas que ce lead existe (200 à valeurs nulles,
+        #     jamais un 404 distinctif).
+        intrus = auth(self.etranger)
+        resp = intrus.get(self.URL.format(self.lead.id))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(dict(resp.data), {
+            'visite_id': None, 'url': None, 'texture_calage': None})
+
+        # (b) et l'étranger voit bien SA propre texture (la porte fonctionne
+        #     des deux côtés — ce n'est pas un refus global).
+        sienne = intrus.get(self.URL.format(self.lead_etranger.id))
+        self.assertIsNotNone(sienne.data['visite_id'])
+
+    def test_un_lead_inexistant_ne_leve_jamais_404(self):
+        resp = self.api.get(self.URL.format(999999))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['visite_id'])

@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<int:pk>/photo-toit/",
+  "pourquoi": "VT12 (fondateur 10/09/2026, « link this module properly to the whole ERP ») : le CÂBLAGE RETOUR du module visite terrain vers le reste de l'ERP. L'atelier 3D/calepinage (frontend/src/pages/ventes/ToitureDesign.jsx) et la carte de la fiche lead veulent peindre le toit RÉEL du client sous leur tracé — sans rien savoir du module visite : ils demandent « la texture de CE lead », le serveur choisit tout seul la DERNIÈRE visite VALIDÉE (feu vert du bureau d'études — une visite en cours ou renvoyée ne peint jamais un toit) et renvoie l'URL proxy de l'image assemblée (VT9) + les 4 coins du calage (VT11). Source de vérité : apps/crm/selectors.py::texture_toit_pour_lead. JAMAIS 404 : aucune visite validée, aucune image assemblée, ou un lead d'une AUTRE société → les MÊMES clés à null, donc une seule forme à consommer côté écran et aucune différence de réponse qui laisserait deviner l'existence du lead d'un concurrent. Permission : crm_voir (la lecture CRM ordinaire — exiger crm_visite_voir fermerait la porte aux écrans qui ne font que peindre le toit). L'écriture en retour du feu vert (Lead.visite_effectuee=True + récap court dans Lead.visite_notes, uniquement des mesures RÉELLEMENT saisies) vit dans apps/crm/services.py::_ecrire_retour_lead_visite et ne double PAS le chatter existant.",
+  "exemple": {
+    "visite_id": 7,
+    "url": "/api/django/crm/visites/7/photo-toit/",
+    "texture_calage": {
+      "coins": [
+        [33.5731, -7.5898],
+        [33.5731, -7.5893],
+        [33.5727, -7.5893],
+        [33.5727, -7.5898]
+      ]
+    }
+  },
+  "exemple_vide": {
+    "pourquoi": "aucune visite VALIDÉE sur ce lead, ou une visite validée SANS image de toit assemblée, ou un lead d'une autre société — statut HTTP 200 dans les trois cas, mêmes clés, valeurs nulles. Jamais un 404, jamais un objet partiel.",
+    "visite_id": null,
+    "url": null,
+    "texture_calage": null
+  }
+}

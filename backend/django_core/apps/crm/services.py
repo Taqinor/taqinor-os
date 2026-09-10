@@ -6808,12 +6808,45 @@ def _notifier_commercial_visite(visite, event_type, titre, corps):
         return None
 
 
+def _ecrire_retour_lead_visite(visite):
+    """VT12 — le feu vert REDESCEND sur la fiche lead.
+
+    Le lead est la fiche que tout le monde ouvre : après le feu vert, il porte
+    lui-même ``visite_effectuee=True`` et un récap COURT dans ``visite_notes``
+    (uniquement des mesures RÉELLEMENT saisies — jamais un défaut inventé).
+
+    Deux prudences : le récap est APPENDU (une note déjà écrite à la main n'est
+    jamais écrasée) et il n'est écrit qu'une fois (une re-validation ne le
+    duplique pas). Rien de tout ceci ne double le chatter : la note
+    ``journaliser_visite(..., 'validee')`` reste l'unique trace d'historique.
+    """
+    from . import selectors
+
+    lead = visite.lead
+    if lead is None:
+        return None
+    recap = selectors.recap_visite_terrain(visite)
+    existantes = (lead.visite_notes or '').strip()
+    champs = []
+    if not lead.visite_effectuee:
+        lead.visite_effectuee = True
+        champs.append('visite_effectuee')
+    if recap not in existantes:
+        lead.visite_notes = f'{existantes}\n{recap}'.strip() if existantes \
+            else recap
+        champs.append('visite_notes')
+    if champs:
+        lead.save(update_fields=champs)
+    return lead
+
+
 def valider_visite(visite, user):
     """Feu vert calepinage : la visite passe VALIDÉE et devient lecture seule."""
     from .models import VisiteTerrain
 
     visite.statut = VisiteTerrain.Statut.VALIDEE
     visite.save(update_fields=['statut'])
+    _ecrire_retour_lead_visite(visite)
     journaliser_visite(visite, user, 'validee')
     _notifier_commercial_visite(
         visite, 'visite_terrain_validee',

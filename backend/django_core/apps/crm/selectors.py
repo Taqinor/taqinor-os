@@ -3977,6 +3977,105 @@ def contexte_visite_terrain(visite):
     }
 
 
+def texture_toit_pour_lead(lead):
+    """VT12 — la texture de toit CALÉE d'un lead, ou des valeurs nulles.
+
+    C'est la porte par laquelle le reste de l'ERP (atelier 3D/calepinage,
+    carte de la fiche lead) lit le toit réaliste SANS rien connaître du module
+    visite : il demande « la texture de ce lead », pas « la visite n° 7 ».
+
+    Règles :
+
+    * seule une visite **VALIDÉE** (feu vert du bureau d'études) compte — une
+      visite encore en cours ou renvoyée ne doit jamais peindre un toit ;
+    * la **dernière** validée gagne (``-id`` : déterministe, aucune horloge) ;
+    * la société vient du LEAD, jamais de la requête — une visite d'une autre
+      société ne peut structurellement pas sortir d'ici ;
+    * sans visite validée, ou sans image assemblée, les MÊMES clés sortent à
+      ``None`` — l'appelant n'a jamais à distinguer deux formes de réponse, et
+      rien n'est inventé pour combler le vide.
+    """
+    from .models import VisiteTerrain
+
+    vide = {'visite_id': None, 'url': None, 'texture_calage': None}
+    if lead is None:
+        return vide
+    visite = (VisiteTerrain.objects
+              .filter(lead=lead, company_id=lead.company_id,
+                      statut=VisiteTerrain.Statut.VALIDEE)
+              .exclude(photo_toit_key='')
+              .order_by('-id')
+              .first())
+    if visite is None or not visite.photo_toit_key:
+        return vide
+    return {
+        'visite_id': visite.id,
+        'url': f'/api/django/crm/visites/{visite.id}/photo-toit/',
+        'texture_calage': visite.texture_calage,
+    }
+
+
+def recap_visite_terrain(visite):
+    """VT12 — le récap COURT (FR) écrit en retour sur ``Lead.visite_notes``.
+
+    Ne contient QUE des valeurs réellement saisies : une mesure absente est
+    OMISE de la phrase, jamais remplacée par un défaut forfaitaire (règle
+    « zéro chiffre inventé »). Si rien n'a été relevé, seule la ligne de date
+    sort — et si même la date manque, la phrase la tait aussi.
+    """
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+
+    def valeur(categorie, code):
+        bloc = saisies.get(categorie) or {}
+        brute = bloc.get(code)
+        if brute is None or brute == '':
+            return None
+        return brute
+
+    def nombre(categorie, code):
+        brute = valeur(categorie, code)
+        if brute is None:
+            return None
+        try:
+            flottant = float(brute)
+        except (TypeError, ValueError):
+            return None
+        entier = int(flottant)
+        return str(entier) if flottant == entier else f'{flottant:g}'
+
+    morceaux = []
+    longueur = nombre('toiture', 'longueur_m')
+    largeur = nombre('toiture', 'largeur_m')
+    if longueur and largeur:
+        morceaux.append(f'zone utile {longueur} × {largeur} m')
+    if valeur('toiture', 'toit_plat') is True:
+        morceaux.append('toit plat')
+    else:
+        pente = nombre('toiture', 'pente_deg')
+        if pente:
+            morceaux.append(f'pente {pente}°')
+    orientation = valeur('toiture', 'orientation')
+    if orientation:
+        morceaux.append(f'orientation {orientation}')
+    couverture = valeur('toiture', 'type_couverture')
+    if couverture:
+        morceaux.append(f'couverture {couverture}')
+    calibre = nombre('tableau', 'calibre_disjoncteur_a')
+    if calibre:
+        morceaux.append(f'disjoncteur {calibre} A')
+    alimentation = valeur('tableau', 'type_alimentation')
+    if alimentation:
+        morceaux.append(f'alimentation {alimentation}')
+
+    moment = visite.date_realisee or visite.date_prevue
+    entete = 'Visite technique validée'
+    if moment is not None:
+        entete += f' — réalisée le {moment.strftime("%d/%m/%Y")}'
+    if not morceaux:
+        return entete + '.'
+    return entete + ' : ' + ', '.join(morceaux) + '.'
+
+
 def ligne_visite_terrain(visite):
     """UNE ligne de la liste ``GET /crm/visites/`` (badge de complétude)."""
     manquants = visite_terrain_manquants(visite)
