@@ -3914,8 +3914,19 @@ def _visite_client_panel(lead):
 
 
 def _visite_devis(lead):
-    """Devis du lead pour le panneau lecture seule — VT3 (frontière M3)."""
-    return []
+    """Devis du lead pour le panneau lecture seule — VT3.
+
+    Frontière M3 : la lecture passe par le SELECTOR de ``apps.ventes``, jamais
+    par un import de ses modèles. Cette porte ne laisse sortir aucun
+    ``prix_achat`` ni aucune donnée de marge (garde testée côté VT4).
+    """
+    from apps.ventes.selectors import devis_lecture_seule_pour_lead
+
+    try:
+        return devis_lecture_seule_pour_lead(lead)
+    except Exception:  # pragma: no cover - défensif : un devis illisible ne
+        # doit jamais empêcher le commercial d'ouvrir sa visite sur le terrain.
+        return []
 
 
 def visite_terrain_manquants(visite):

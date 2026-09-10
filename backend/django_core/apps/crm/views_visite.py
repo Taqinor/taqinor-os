@@ -32,7 +32,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services, visite_checklist as checklist
 from .models import VisiteMedia, VisiteTerrain
-from .serializers_visite import VisiteTerrainSerializer
+from .serializers_visite import VisiteRenvoiSerializer, VisiteTerrainSerializer
 
 #: Types MIME acceptés pour une photo de visite. ``records.storage`` valide
 #: déjà les octets magiques et la taille (10 Mo) ; on restreint en plus aux
@@ -293,6 +293,34 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.date_realisee = timezone.now()
         visite.save(update_fields=['statut', 'date_realisee'])
         services.journaliser_visite(visite, request.user, 'terminee')
+        return self._agregat(visite)
+
+    # ── VT3 — Feu vert du bureau d'études ────────────────────────────────────
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Feu vert calepinage — réservé au code ``crm_visite_valider``."""
+        visite = self.get_object()
+        if visite.statut == VisiteTerrain.Statut.VALIDEE:
+            return _erreur('statut', 'Cette visite est déjà validée.')
+        services.valider_visite(visite, request.user)
+        return self._agregat(visite)
+
+    @action(detail=True, methods=['post'], url_path='renvoyer')
+    def renvoyer(self, request, pk=None):
+        """Renvoie la visite au commercial, avec ce qu'il doit refaire."""
+        visite = self.get_object()
+        serializer = VisiteRenvoiSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'erreurs': serializer.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
+        donnees = serializer.validated_data
+        message = services.renvoyer_visite(
+            visite, request.user,
+            photos=donnees['photos'], mesures=donnees['mesures'],
+            motif=donnees['motif'])
+        if message:
+            return _erreur('photos', message)
         return self._agregat(visite)
 
 
