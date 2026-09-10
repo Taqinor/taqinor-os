@@ -1612,6 +1612,387 @@ def kpi_cadences(company, *, jours=30):
     }
 
 
+# ── CKP3 — ADHÉRENCE AU PROTOCOLE (cockpit CRM « suivre les étapes ») ────────
+#
+# Fondateur 2026-09-10 : « moi et Meryem on ne voit pas assez ce qu'elle fait
+# et si elle le fait bien — je parle du suivi des étapes ». TRANSPARENCE
+# TOTALE (décision actée) : les deux agrégats ci-dessous sont lisibles par
+# TOUS les rôles, seule la mise en page diffère à l'écran.
+#
+# Trois règles les rendent honnêtes, et aucune n'est négociable :
+#   * une ANNULATION MOTEUR (statut `annulee`, CKP1) n'est JAMAIS comptée
+#     comme un saut humain, ni au dénominateur de l'adhérence : une cadence
+#     arrêtée parce que le client a répondu n'est pas un manquement ;
+#   * dénominateur 0 → `null`, jamais un 0 % qui se lirait comme un échec là
+#     où il n'y a rien à mesurer ;
+#   * AUCUN seuil rouge/vert côté serveur : des valeurs et des tendances, le
+#     jugement reste humain (et le couple « à-l'heure % + conversion » est
+#     servi ensemble, anti-Goodhart).
+
+#: Le grain de l'« à-l'heure » est le JOUR, pas la minute : une touche due à
+#: 09:00 et faite à 17:00 le même jour A ÉTÉ FAITE. Mesurer à la minute
+#: transformerait un KPI de suivi en chronomètre de surveillance — exactement
+#: ce que la recherche (HBR) dit de ne pas faire.
+#: Le DÉNOMINATEUR de l'adhérence = les touches closes PAR UN HUMAIN sur la
+#: période (faites + sautées). Les annulations moteur en sont exclues.
+_STATUTS_CLOS_HUMAIN = ('fait', 'sautee')
+
+#: Plafond de la liste actionnable `leads_sans_touche` : au-delà, ce n'est
+#: plus une file de travail mais un export — et la page mettrait dix secondes.
+LEADS_SANS_TOUCHE_MAX = 100
+
+
+def _lundi(jour):
+    """Le lundi de la semaine de ``jour`` — la clé des tendances hebdo."""
+    return jour - datetime.timedelta(days=jour.weekday())
+
+
+def _pct(numerateur, denominateur):
+    """``null`` dès que le dénominateur est 0 — jamais un 0 % inventé."""
+    if not denominateur:
+        return None
+    return round(100.0 * numerateur / denominateur, 1)
+
+
+def _mediane_decimale(valeurs):
+    """Médiane DÉCIMALE — distincte du ``_mediane`` entier défini plus bas,
+    qui arrondit des minutes : la vitesse de premier contact se lit en heures
+    avec une décimale (3,4 h), et un arrondi à l'entier effacerait justement
+    l'écart que la tendance hebdo cherche à montrer."""
+    valeurs = sorted(valeurs)
+    if not valeurs:
+        return None
+    milieu = len(valeurs) // 2
+    if len(valeurs) % 2:
+        return valeurs[milieu]
+    return (valeurs[milieu - 1] + valeurs[milieu]) / 2.0
+
+
+def _a_lheure(etape):
+    """Une touche FAITE le jour où elle était due (heure locale Casablanca)."""
+    from . import horaires
+
+    if etape.statut != 'fait' or etape.traite_le is None:
+        return False
+    return (etape.traite_le.astimezone(horaires.CASABLANCA).date()
+            == etape.due_date)
+
+
+def kpi_adherence(company, user, jours=30):
+    """CKP3 — la vue ADHÉRENCE du cockpit CRM (forme `kpi_adherence`).
+
+    Les étapes du protocole sont-elles suivies, à l'heure, et OÙ décrochent-
+    elles ? Toutes les mesures portent sur ``RelanceEtape`` — la seule table
+    qui sache ce qui DEVAIT être fait et quand.
+
+    ``user`` sert la PORTÉE DE VISIBILITÉ (``scope_queryset`` via le lead),
+    jamais un filtre de rôle : la décision fondateur est la transparence
+    totale — Meryem voit exactement ce que Reda voit.
+    """
+    from django.utils import timezone
+
+    from authentication.scoping import scope_queryset
+
+    from core.dates import aujourd_hui_local
+
+    from . import horaires, stages
+    from .models import Lead, RelanceEtape
+
+    jours = max(1, int(jours))
+    maintenant = timezone.now()
+    depuis = maintenant - datetime.timedelta(days=jours)
+    today = aujourd_hui_local()
+
+    leads_visibles = scope_queryset(
+        Lead.objects.filter(company=company, is_archived=False), user,
+        ['owner'])
+
+    touches = list(
+        RelanceEtape.objects
+        .filter(company=company, traite_le__gte=depuis,
+                lead_id__in=leads_visibles.values('id'))
+        .only('statut', 'due_date', 'traite_le', 'ordre', 'canal', 'libelle'))
+
+    faites = [e for e in touches if e.statut == 'fait']
+    sautees = [e for e in touches if e.statut == 'sautee']
+    annulees = [e for e in touches if e.statut == 'annulee']
+    closes_humain = faites + sautees
+    a_lheure = [e for e in faites if _a_lheure(e)]
+
+    # ── Drop-off par touche : LE signal de coaching. On groupe sur (ordre,
+    # canal, libellé) — le libellé porte le sens pour un humain, l'ordre porte
+    # la place dans le protocole.
+    par_etape = {}
+    for etape in touches:
+        cle = (etape.ordre, etape.canal, (etape.libelle or '').strip())
+        ligne = par_etape.setdefault(cle, {
+            'ordre': etape.ordre, 'canal': etape.canal,
+            'libelle': (etape.libelle or '').strip(),
+            'faites': 0, '_a_lheure': 0, '_closes': 0,
+            'sautees_humaines': 0, 'annulees_moteur': 0})
+        if etape.statut == 'fait':
+            ligne['faites'] += 1
+            ligne['_closes'] += 1
+            if _a_lheure(etape):
+                ligne['_a_lheure'] += 1
+        elif etape.statut == 'sautee':
+            ligne['sautees_humaines'] += 1
+            ligne['_closes'] += 1
+        elif etape.statut == 'annulee':
+            ligne['annulees_moteur'] += 1
+    lignes_etape = []
+    for ligne in sorted(par_etape.values(),
+                        key=lambda x: (x['ordre'], x['canal'])):
+        lignes_etape.append({
+            'ordre': ligne['ordre'], 'canal': ligne['canal'],
+            'libelle': ligne['libelle'], 'faites': ligne['faites'],
+            'a_lheure_pct': _pct(ligne['_a_lheure'], ligne['_closes']),
+            'sautees_humaines': ligne['sautees_humaines'],
+            'annulees_moteur': ligne['annulees_moteur'],
+        })
+
+    # ── Tendance hebdo de l'à-l'heure : la comparaison est à SA PROPRE base,
+    # jamais à un seuil inventé.
+    semaines = {}
+    for etape in closes_humain:
+        cle = _lundi(etape.traite_le.astimezone(horaires.CASABLANCA).date())
+        bloc = semaines.setdefault(cle, [0, 0])
+        bloc[1] += 1
+        if _a_lheure(etape):
+            bloc[0] += 1
+    tendance_a_lheure = [
+        {'semaine': cle.isoformat(), 'a_lheure_pct': _pct(bloc[0], bloc[1])}
+        for cle, bloc in sorted(semaines.items())
+    ]
+
+    # ── Vitesse de premier contact : minutes OUVRÉES (un week-end n'est pas
+    # du temps perdu — même doctrine que `kpi_premier_contact`, MRY19), rendue
+    # en heures. Seuls les leads NATIFS comptent : le miroir Odoo n'est pas
+    # une file que Meryem doit rappeler.
+    delais = []
+    par_semaine = {}
+    for lead in leads_visibles.filter(
+            source=Lead.Source.OS_NATIVE, date_creation__gte=depuis,
+            first_contacted_at__isnull=False,
+    ).only('id', 'date_creation', 'first_contacted_at'):
+        heures = horaires.minutes_ouvrees_entre(
+            lead.date_creation, lead.first_contacted_at, company) / 60.0
+        delais.append(heures)
+        par_semaine.setdefault(
+            _lundi(lead.date_creation.astimezone(horaires.CASABLANCA).date()),
+            []).append(heures)
+    mediane = _mediane_decimale(delais)
+    vitesse = {
+        'mediane_heures': None if mediane is None else round(mediane, 1),
+        'tendance_hebdo': [
+            {'semaine': cle.isoformat(),
+             'mediane_heures': round(_mediane_decimale(valeurs), 1)}
+            for cle, valeurs in sorted(par_semaine.items())
+        ],
+    }
+
+    # ── Les dossiers qui décrochent MAINTENANT : une LISTE actionnable, pas
+    # un compte. Deux cas, tous deux « la touche due n'a pas été faite » :
+    # la touche ouverte est EN RETARD, ou il n'y a plus aucune touche ouverte
+    # sur un lead pourtant vivant (le dossier est tombé du protocole).
+    actifs = leads_visibles.exclude(
+        stage__in=[stages.SIGNED, stages.COLD]).filter(
+        perdu=False, ne_plus_contacter=False)
+    ouvertes = {}
+    for etape in RelanceEtape.objects.filter(
+            company=company, statut='a_faire',
+            lead_id__in=actifs.values('id')).order_by('due_date', 'ordre'):
+        ouvertes.setdefault(etape.lead_id, etape)
+    sans_touche = []
+    for lead in actifs.only('id', 'nom', 'prenom', 'ville')[:1000]:
+        etape = ouvertes.get(lead.pk)
+        if etape is not None and etape.due_date >= today:
+            continue                      # la prochaine touche est à venir
+        if etape is None:
+            retard = None
+            libelle = None
+        else:
+            reference = etape.due_at or datetime.datetime.combine(
+                etape.due_date, datetime.time(0, 0),
+                tzinfo=horaires.CASABLANCA)
+            retard = round(
+                (maintenant - reference).total_seconds() / 3600.0, 1)
+            libelle = (etape.libelle or '').strip() or etape.canal
+        sans_touche.append({
+            'lead_id': lead.pk,
+            'nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
+            'ville': lead.ville or '',
+            'en_retard_depuis_heures': retard,
+            'prochaine_touche': libelle,
+        })
+    sans_touche.sort(key=lambda r: (r['en_retard_depuis_heures'] is None,
+                                    -(r['en_retard_depuis_heures'] or 0)))
+    sans_touche = sans_touche[:LEADS_SANS_TOUCHE_MAX]
+
+    return {
+        'periode_jours': jours,
+        'a_lheure_pct': _pct(len(a_lheure), len(closes_humain)),
+        'touches_faites': len(faites),
+        'touches_en_retard_ouvertes': RelanceEtape.objects.filter(
+            company=company, statut='a_faire', due_date__lt=today,
+            lead__is_archived=False,
+            lead_id__in=leads_visibles.values('id')).count(),
+        'sautees_humaines': len(sautees),
+        'annulees_moteur': len(annulees),
+        'vitesse_premier_contact': vitesse,
+        'tendance_a_lheure': tendance_a_lheure,
+        'par_etape': lignes_etape,
+        'leads_sans_touche': sans_touche,
+        'conversion_par_stage': _conversion_par_stage(
+            company, leads_visibles, depuis),
+    }
+
+
+def _conversion_par_stage(company, leads_visibles, depuis):
+    """Le funnel APPARIÉ à l'adhérence (anti-Goodhart) — sur les clés de
+    ``STAGES.py``, jamais une liste en dur.
+
+    « Entré » dans une étape = le lead l'a ATTEINTE (son étape courante est à
+    ce rang ou au-delà, ou son historique porte le passage). L'historique
+    compte parce qu'un lead redescendu au Froid a bel et bien traversé le
+    funnel : ne lire que l'étape courante ferait disparaître tous les dossiers
+    parqués et gonflerait mécaniquement les taux.
+
+    ``COLD`` est un PARKING (rang hors échelle) : il n'entre pas dans
+    l'échelle de conversion — il n'y a pas de « suivant » après un parking.
+    """
+    from .models import LeadActivity
+    from . import stages
+
+    echelle = [s for s in stages.STAGES if s != stages.COLD]
+    rang = {cle: i for i, cle in enumerate(echelle)}
+    label_vers_cle = {stages.STAGE_LABELS[cle]: cle for cle in echelle}
+
+    leads = list(leads_visibles.filter(date_creation__gte=depuis)
+                 .values_list('id', 'stage'))
+    atteint = {pk: rang.get(stage, -1) for pk, stage in leads}
+    if atteint:
+        for lead_id, valeur in LeadActivity.objects.filter(
+                company=company, field='stage', lead_id__in=list(atteint),
+        ).values_list('lead_id', 'new_value'):
+            cle = label_vers_cle.get((valeur or '').strip())
+            if cle is not None:
+                atteint[lead_id] = max(atteint[lead_id], rang[cle])
+
+    lignes = []
+    for i, cle in enumerate(echelle):
+        entres = sum(1 for r in atteint.values() if r >= i)
+        passes = sum(1 for r in atteint.values() if r >= i + 1)
+        lignes.append({
+            'stage': cle,
+            'entres': entres,
+            'passes_au_suivant': passes,
+            'taux_pct': _pct(passes, entres),
+        })
+    return lignes
+
+
+def mes_stats_relance(company, user):
+    """CKP3 — les tuiles PERSONNELLES du commercial (forme
+    `mes_stats_relance`).
+
+    Actionnables, JAMAIS comparatives : un rep voit SA file et SES chiffres,
+    pas un classement (recherche CKP + doctrine anti-surveillance). Le manager
+    voit les mêmes données — décision fondateur de transparence — mais elles
+    ne sont jamais servies côte à côte comme un palmarès.
+
+    Le périmètre est celui des leads dont ``user`` est le RESPONSABLE, dans sa
+    portée de visibilité : ses tuiles parlent de son travail, pas de celui de
+    l'équipe.
+    """
+    from django.utils import timezone
+
+    from authentication.scoping import scope_queryset
+
+    from core.dates import aujourd_hui_local
+
+    from .models import Lead, RelanceEtape
+
+    maintenant = timezone.now()
+    today = aujourd_hui_local()
+    mes_leads = scope_queryset(
+        Lead.objects.filter(company=company, is_archived=False, owner=user),
+        user, ['owner'])
+    mes_touches = RelanceEtape.objects.filter(
+        company=company, lead_id__in=mes_leads.values('id'))
+
+    a_faire = mes_touches.filter(statut='a_faire', due_date__lte=today).count()
+    en_retard = mes_touches.filter(
+        statut='a_faire', due_date__lt=today).count()
+
+    # Mon à-l'heure sur 7 jours — même définition que l'adhérence globale
+    # (grain JOUR, annulations moteur exclues du dénominateur).
+    depuis_7j = maintenant - datetime.timedelta(days=7)
+    recentes = list(mes_touches.filter(
+        traite_le__gte=depuis_7j,
+        statut__in=_STATUTS_CLOS_HUMAIN,
+    ).only('statut', 'due_date', 'traite_le'))
+    a_lheure_7j = _pct(sum(1 for e in recentes if _a_lheure(e)),
+                       len(recentes))
+
+    # Cadences menées à leur terme sur 14 jours : des touches TRAITÉES sur la
+    # période et plus AUCUNE ouverte sur la même cadence — deux requêtes
+    # lisibles plutôt qu'une agrégation que personne ne peut vérifier.
+    depuis_14j = maintenant - datetime.timedelta(days=14)
+    traites = set(mes_touches.filter(
+        traite_le__gte=depuis_14j, statut='fait',
+    ).values_list('lead_id', 'cadence'))
+    encore = set(mes_touches.filter(
+        statut='a_faire').values_list('lead_id', 'cadence'))
+    cadences_completees = len(traites - encore)
+
+    return {
+        'a_faire_maintenant': a_faire,
+        'en_retard': en_retard,
+        'a_lheure_7j_pct': a_lheure_7j,
+        'cadences_completees_14j': cadences_completees,
+        'serie_jours_sans_retard': _serie_jours_sans_retard(
+            company, mes_touches, today),
+    }
+
+
+#: Profondeur maximale de la remontée de la série : au-delà, la « série » ne
+#: dit plus rien d'actionnable et la requête coûterait plus qu'elle ne vaut.
+SERIE_JOURS_MAX = 60
+
+
+def _serie_jours_sans_retard(company, mes_touches, today):
+    """Jours OUVRÉS consécutifs TERMINÉS sans laisser une touche en retard.
+
+    Un jour est « propre » si chaque touche qui y était due a été close ce
+    jour-là au plus tard. On repart du dernier jour ouvré TERMINÉ (jamais
+    d'aujourd'hui : la journée n'est pas finie, compter ses touches encore
+    ouvertes comme des retards serait faux) et on remonte.
+    """
+    from . import horaires
+
+    dues = {}
+    debut = today - datetime.timedelta(days=SERIE_JOURS_MAX)
+    for etape in mes_touches.filter(
+            due_date__gte=debut, due_date__lt=today,
+    ).only('due_date', 'statut', 'traite_le'):
+        propre = (etape.statut in ('fait', 'sautee', 'annulee')
+                  and etape.traite_le is not None
+                  and etape.traite_le.astimezone(horaires.CASABLANCA).date()
+                  <= etape.due_date)
+        dues.setdefault(etape.due_date, []).append(propre)
+
+    serie = 0
+    jour = today - datetime.timedelta(days=1)
+    while jour >= debut:
+        if horaires._jour_ouvre(jour, company):
+            if not all(dues.get(jour, [])):
+                break
+            serie += 1
+        jour -= datetime.timedelta(days=1)
+    return serie
+
+
 def _objectif_premier_contact(company):
     """Objectif de la société (défaut 5 minutes ouvrées, MRY8)."""
     try:

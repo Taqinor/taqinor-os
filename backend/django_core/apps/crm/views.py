@@ -2582,7 +2582,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # MRY30 — `suivi` est une LECTURE pure (la file PAR PÉRIODE, tous
         # statuts) : même garde que `list`, et listée ICI parce que
         # get_permissions() PRIME sur le `permission_classes` de l'@action.
-        if self.action in ('list', 'message', 'suivi'):
+        # CKP3 — `kpi_adherence` et `mes_stats` sont des LECTURES pures,
+        # ouvertes à TOUS les rôles : décision fondateur de TRANSPARENCE
+        # TOTALE (2026-09-10, « on voit la même chose moi et elle »). Elles
+        # sont listées ICI, nommément, parce que get_permissions() PRIME sur
+        # le `permission_classes` de l'@action (garde AUD421 / bug CI #25) :
+        # sans ces noms, la déclaration inline serait décorative et l'action
+        # retomberait sur `IsResponsableOrAdmin`.
+        if self.action in ('list', 'message', 'suivi',
+                           'kpi_adherence', 'mes_stats'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2709,6 +2717,73 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'resume': resume,
             'results': lignes,
         })
+
+    @extend_schema(responses=inline_serializer('CrmKpiAdherence', {
+        'periode_jours': serializers.IntegerField(),
+        'a_lheure_pct': serializers.FloatField(allow_null=True),
+        'touches_faites': serializers.IntegerField(),
+        'touches_en_retard_ouvertes': serializers.IntegerField(),
+        'sautees_humaines': serializers.IntegerField(),
+        'annulees_moteur': serializers.IntegerField(),
+        'vitesse_premier_contact': serializers.DictField(),
+        'tendance_a_lheure': serializers.ListField(
+            child=serializers.DictField()),
+        'par_etape': serializers.ListField(child=serializers.DictField()),
+        'leads_sans_touche': serializers.ListField(
+            child=serializers.DictField()),
+        'conversion_par_stage': serializers.ListField(
+            child=serializers.DictField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='kpi-adherence',
+            permission_classes=[IsAnyRole])
+    def kpi_adherence(self, request):
+        """CKP3 — la vue ADHÉRENCE du cockpit CRM (forme `kpi_adherence`).
+
+        ``?jours=`` (30 par défaut, 1-365). Les étapes du protocole sont-elles
+        suivies, à l'heure, et OÙ décrochent-elles ?
+
+        LECTURE OUVERTE À TOUS LES RÔLES — décision fondateur du 10/09/2026 :
+        transparence totale, Meryem voit exactement ce que Reda voit ; seule
+        la mise en page diffère à l'écran (elle = sa file, lui = la vue
+        stratégique). La portée de visibilité du demandeur s'applique quand
+        même (``scope_queryset`` via le lead) : la transparence ne perce pas
+        le cloisonnement, elle supprime le tableau caché."""
+        from .selectors import kpi_adherence
+
+        brut = (request.query_params.get('jours') or '').strip()
+        jours = 30
+        if brut:
+            if not brut.isdigit() or not (1 <= int(brut) <= 365):
+                return Response(
+                    {'erreurs': {'jours': 'Nombre de jours invalide '
+                                          '(1 à 365).'}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            jours = int(brut)
+        return Response(
+            kpi_adherence(request.user.company, request.user, jours))
+
+    @extend_schema(responses=inline_serializer('CrmMesStatsRelance', {
+        'a_faire_maintenant': serializers.IntegerField(),
+        'en_retard': serializers.IntegerField(),
+        'a_lheure_7j_pct': serializers.FloatField(allow_null=True),
+        'cadences_completees_14j': serializers.IntegerField(),
+        'serie_jours_sans_retard': serializers.IntegerField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='mes-stats',
+            permission_classes=[IsAnyRole])
+    def mes_stats(self, request):
+        """CKP3 — les tuiles PERSONNELLES du commercial (forme
+        `mes_stats_relance`).
+
+        Sa file du moment, ses retards, son à-l'heure 7 jours, ses cadences
+        menées à terme, sa série de jours sans retard. Actionnables, JAMAIS
+        comparatives : aucune donnée d'un autre commercial n'y entre, et rien
+        n'est servi sous forme de classement. Périmètre : les leads dont le
+        demandeur est le RESPONSABLE."""
+        from .selectors import mes_stats_relance
+
+        return Response(
+            mes_stats_relance(request.user.company, request.user))
 
     def _marquer(self, request, statut):
         etape = self.get_object()

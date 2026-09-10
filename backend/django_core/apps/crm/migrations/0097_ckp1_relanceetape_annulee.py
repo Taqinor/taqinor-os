@@ -45,15 +45,31 @@ MOTIFS_MOTEUR = (
 )
 
 
+#: Taille des lots d'écriture. La table des touches de relance grossit d'une
+#: dizaine de lignes par lead : un `.update()` global sur une base de
+#: production la verrouillerait le temps de tout réécrire. On écrit par
+#: tranches de pk, chacune en une transaction courte.
+LOT = 1000
+
+
+def _reecrire_par_lots(modele, filtres, valeurs):
+    """Applique ``valeurs`` aux lignes de ``filtres``, par tranches de pk."""
+    pks = list(modele.objects.filter(**filtres)
+               .values_list('pk', flat=True).iterator(chunk_size=LOT))
+    for debut in range(0, len(pks), LOT):
+        modele.objects.filter(pk__in=pks[debut:debut + LOT]).update(**valeurs)
+    return len(pks)
+
+
 def basculer_vers_annulee(apps, schema_editor):
     RelanceEtape = apps.get_model('crm', 'RelanceEtape')
     # `note` est un TextField : la comparaison se fait en base sur la valeur
-    # exacte (les motifs sont écrits tels quels par le code), et l'`iexact`
-    # est obtenu par un `__in` sur les variantes de casse utiles — pas de
+    # EXACTE (les motifs sont écrits tels quels par le code) — jamais un
     # `icontains`, qui ferait basculer un « pas joint » saisi à la main.
-    RelanceEtape.objects.filter(
-        statut='sautee', note__in=list(MOTIFS_MOTEUR),
-    ).update(statut='annulee', traite_par=None)
+    _reecrire_par_lots(
+        RelanceEtape,
+        {'statut': 'sautee', 'note__in': list(MOTIFS_MOTEUR)},
+        {'statut': 'annulee', 'traite_par': None})
 
 
 def revenir_a_sautee(apps, schema_editor):
@@ -62,7 +78,8 @@ def revenir_a_sautee(apps, schema_editor):
     ``traite_par`` reste NULL — l'acteur d'origine n'est plus connu, et il
     était de toute façon celui de l'ÉVÉNEMENT déclencheur, pas d'un saut."""
     RelanceEtape = apps.get_model('crm', 'RelanceEtape')
-    RelanceEtape.objects.filter(statut='annulee').update(statut='sautee')
+    _reecrire_par_lots(
+        RelanceEtape, {'statut': 'annulee'}, {'statut': 'sautee'})
 
 
 class Migration(migrations.Migration):
