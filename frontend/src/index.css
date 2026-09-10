@@ -11216,6 +11216,39 @@ textarea.form-control {
   font-weight: 600;
   letter-spacing: 0.01em;
 }
+/* VT13 — la photo réelle du toit (visite terrain validée) se drape SOUS le
+   contour, dans la même boîte et le même repère : le canvas et le SVG
+   partagent la taille et le centrage (`object-fit: contain` reproduit le
+   `preserveAspectRatio="xMidYMid meet"` du SVG). */
+.lw-trace-toit-boite {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  flex: 0 0 auto;
+}
+.lw-trace-toit-boite .lw-trace-toit-forme {
+  position: relative;
+  z-index: 1;
+}
+.lw-photo-toit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.lw-trace-toit-photo-bascule {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
 .lw-trace-toit-forme {
   width: 132px;
   height: 132px;

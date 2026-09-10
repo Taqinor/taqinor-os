@@ -42,6 +42,24 @@ vi.mock('../../api/aoApi', () => ({
     },
   },
 }))
+// VT13 — l'écran interroge désormais la porte VT12 `crmApi.getLeadPhotoToit`
+// (photo réelle du toit issue de la visite terrain validée). Défaut : la
+// réponse « rien à montrer » du contrat (les TROIS clés à null), donc tous les
+// tests écrits avant VT13 gardent exactement leur comportement.
+// Seul `getLeadPhotoToit` est stubé : `getRoofFootprint` reste le VRAI client
+// (les tests QJ25 pilotent son comportement par le mock d'`api/axios`).
+vi.mock('../../api/crmApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      getLeadPhotoToit: vi.fn(() => Promise.resolve({
+        data: { visite_id: null, url: null, texture_calage: null },
+      })),
+    },
+  }
+})
 vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
 // L2 — la confirmation « le calepinage diverge du devis » passe par le
 // provider racine, absent de ce harnais : on répond OUI d'office, le flux
@@ -72,6 +90,7 @@ import userEvent from '@testing-library/user-event'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import aoApi from '../../api/aoApi'
+import crmApi from '../../api/crmApi'
 import { toastInfo } from '../../lib/toast'
 import ToitureDesign from './ToitureDesign'
 
@@ -1216,5 +1235,75 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
     // Le bouton relit `opts.referenceContour` (le contour CLIENT) : sans lui il
     // serait inerte, donc il n'est pas proposé.
     expect(screen.queryByTestId('rp9-recommencer-trace-client')).toBeNull()
+  })
+})
+
+/* VT13 (fondateur 10/09/2026) — LA PHOTO RÉELLE DU TOIT DANS L'ATELIER.
+   L'atelier lit la porte VT12 (`crmApi.getLeadPhotoToit`) et drape l'image
+   calée en visite terrain SOUS le contour, dans SA vue de travail — pas dans
+   un aperçu à côté. Les mocks reproduisent EXACTEMENT la forme du serveur
+   (`apps/crm/contract_samples/lead_photo_toit.json`) : {visite_id, url,
+   texture_calage}, les trois clés à null quand il n'y a rien à montrer. */
+const CALAGE_TOIT = {
+  visite_id: 7,
+  url: '/api/django/crm/visites/7/photo-toit/',
+  texture_calage: { coins: CONTOUR_CLIENT },
+}
+
+describe('ToitureDesign — VT13 : la photo réelle du toit sous le tracé', () => {
+  function rendreLeadAvecContour() {
+    const lead = {
+      id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
+      telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
+      roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+    return render(
+      <MemoryRouter initialEntries={['/devis-design/88']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('drape la photo calée sous le contour, et la bascule la masque', async () => {
+    crmApi.getLeadPhotoToit.mockResolvedValue({ data: CALAGE_TOIT })
+    rendreLeadAvecContour()
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(crmApi.getLeadPhotoToit).toHaveBeenCalledWith('88')
+    const calque = await screen.findByTestId('photo-toit-overlay')
+    expect(calque.getAttribute('data-visite-id')).toBe('7')
+    // Le contour du client reste dessiné — la photo est SOUS lui, pas à sa place.
+    expect(screen.getByTestId('rp9-toit-client')
+      .querySelector('.rp9-toit-client-polygone')).toBeTruthy()
+
+    const bascule = screen.getByTestId('rp9-photo-toit-toggle')
+    expect(bascule).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(bascule)
+    expect(screen.queryByTestId('photo-toit-overlay')).toBeNull()
+    // Masquer la photo ne masque PAS le tracé (deux calques, deux bascules).
+    expect(screen.getByTestId('rp9-toit-client')).toBeInTheDocument()
+  })
+
+  it('sans visite validée (les trois clés nulles), ni photo ni bascule', async () => {
+    crmApi.getLeadPhotoToit.mockResolvedValue({
+      data: { visite_id: null, url: null, texture_calage: null },
+    })
+    rendreLeadAvecContour()
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    await waitFor(() => expect(crmApi.getLeadPhotoToit).toHaveBeenCalled())
+    expect(screen.queryByTestId('photo-toit-overlay')).toBeNull()
+    expect(screen.queryByTestId('rp9-photo-toit-toggle')).toBeNull()
+    // Le tracé du client, lui, reste affiché exactement comme avant VT13.
+    expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
   })
 })

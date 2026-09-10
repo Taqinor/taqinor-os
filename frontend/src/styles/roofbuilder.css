@@ -190,7 +190,26 @@
   background: rgb(7 11 29 / 0.78);
   border: 1px dashed var(--rp-brass-400);
 }
+/* VT13 — la photo réelle du toit (visite terrain validée, calée VT11) se drape
+   SOUS le contour, dans la MÊME boîte : le canvas et le SVG partagent la
+   taille et le centrage (`object-fit: contain` reproduit exactement le
+   `preserveAspectRatio="xMidYMid meet"` du SVG posé par-dessus). */
+.rp9-host .rp9-toit-client-boite {
+  position: relative;
+  width: 100%;
+  height: 84px;
+}
+.rp9-host .rp9-photo-toit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
 .rp9-host .rp9-toit-client-forme {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 84px;
 }

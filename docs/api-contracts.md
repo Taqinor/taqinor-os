@@ -292,6 +292,8 @@
     equipes:inconnu
 - frontend/src/api/crmApi.js :: getLeadJalonsDevis -> /api/django/crm/leads/<>/jalons-devis
     results:inconnu
+- frontend/src/api/crmApi.js :: getLeadPhotoToit -> /api/django/crm/leads/<>/photo-toit
+    texture_calage:inconnu, url:inconnu, visite_id:inconnu
 - frontend/src/api/crmApi.js :: getLeadPointsContact -> /api/django/crm/leads/<>/points-contact
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille

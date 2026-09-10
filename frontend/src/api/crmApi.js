@@ -61,6 +61,12 @@ const crmApi = {
   // (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie rien — jamais une
   // erreur bloquante, l'atelier toiture retombe sur le tracé manuel.
   getRoofFootprint: (id) => api.get(`/crm/leads/${id}/roof-footprint/`),
+  // VT12/VT13 — texture du toit CALÉE du lead (dernière visite terrain
+  // VALIDÉE) : {visite_id, url, texture_calage} — les TROIS clés à null quand
+  // il n'y a rien à montrer (jamais un 404). L'atelier 3D et la fiche lead
+  // peignent le toit réel sans rien connaître du module visite. Contrat :
+  // apps/crm/contract_samples/lead_photo_toit.json.
+  getLeadPhotoToit: (id) => api.get(`/crm/leads/${id}/photo-toit/`),
   // NTMOB4 — file de relance du jour (FG31/VX83, crm.selectors.relances_du_jour).
   // ?scope=overdue|today|week (défaut today). {count, results:[Lead]}.
   // `config` optionnel (NTMOB19) : permet à un widget d'arrière-plan de
