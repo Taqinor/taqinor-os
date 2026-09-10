@@ -69,7 +69,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   bloc `completude` serveur {complet: bool, manquants: [...]}, médias avec slot+GPS, panneau
   lecture seule client+devis). Vérifié par `check_api_shapes.py`. À LANDER SEUL sur `main` avant
   le reste du groupe. Files: apps/crm/contract_samples/visite_terrain.json (@lane: contrat-visite) (@model: sonnet)
-- [ ] VT1 — Modèle `crm.VisiteTerrain` : company, lead FK, commercial FK (User), statut
+- [x] VT1 — Modèle `crm.VisiteTerrain` : company, lead FK, commercial FK (User), statut
   (`brouillon/en_cours/terminee/validee/a_refaire` — layer interne, PAS le funnel), date_prevue,
   date_realisee, notes, `mesures` JSONField (structure typée du contrat VT0), `photo_toit_key`
   (clé MinIO de l'image assemblée, nullable), `assemblage_etat` (`aucun/en_cours/ok/echec` +
@@ -80,7 +80,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   slots, requis/min_photos, mesures obligatoires par catégorie — libellés FR) ; migration
   additive ; chatter auto (LeadActivity) à création/terminaison/validation/renvoi. (@after: VT0)
   Files: apps/crm/models.py, apps/crm/visite_checklist.py, apps/crm/migrations (@lane: backend/crm-visite) (@model: sonnet)
-- [ ] VT2 — API visite : ViewSet company-scopé CRUD + actions — upload photo vers un slot
+- [x] VT2 — API visite : ViewSet company-scopé CRUD + actions — upload photo vers un slot
   (MinIO erp-uploads via le service records, taille max, mime image/*), suppression média,
   saisie mesures par catégorie (validation champ par champ, erreurs nommant le champ),
   `completude` calculée SERVEUR (slots requis manquants + mesures obligatoires manquantes,
@@ -88,43 +88,43 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   (message = la liste des manquants).
   Permissions : nouveaux codes `crm_visite_voir/creer/modifier/valider` câblés dans roles.
   (@after: VT1) Files: apps/crm/views.py, apps/crm/serializers.py, apps/crm/urls.py (@lane: backend/crm-visite) (@model: sonnet)
-- [ ] VT3 — Feu vert bureau d'études : action `valider` (feu vert calepinage — réservée
+- [x] VT3 — Feu vert bureau d'études : action `valider` (feu vert calepinage — réservée
   `crm_visite_valider`) et action `renvoyer` avec marquage par-slot/par-mesure « à refaire +
   motif » → statut `a_refaire`, le commercial voit exactement quoi refaire ; notification au
   commercial (primitive notifications existante) au renvoi et à la validation ; à la validation,
   visite en lecture seule. Panneau lecture seule client+devis dans l'API visite : contact/adresse/
   GPS du lead + devis du lead (numéro, statut, lignes SANS prix_achat) via selectors ventes.
   (@after: VT2) Files: apps/crm/views.py, apps/crm/services.py, apps/ventes/selectors.py (@lane: backend/crm-visite) (@model: opus)
-- [ ] VT4 — Tests backend visite : scoping company, gate de complétude (terminer refusé avec
+- [x] VT4 — Tests backend visite : scoping company, gate de complétude (terminer refusé avec
   liste des manquants ; accepté quand tout y est), boucle renvoi→re-upload→re-terminer,
   permissions valider, aucun prix_achat dans le panneau devis, upload slot inconnu refusé,
   chatter auto présent. (@after: VT3) Files: apps/crm/tests/test_visite_terrain.py (@lane: backend/crm-visite) (@model: sonnet)
-- [ ] VT5 — Écrans commercial terrain (mobile-first) : route `/crm/visites` (mes visites,
+- [x] VT5 — Écrans commercial terrain (mobile-first) : route `/crm/visites` (mes visites,
   filtrées sur l'utilisateur assigné, badge complétude) + création depuis la fiche lead
   (pré-remplit `visite_prevue_le`) ; écran visite = wizard par catégorie (toiture → tableau →
   local onduleur → cheminement (optionnel) → général) avec tuiles photo par slot (état
   manquant/ok/à refaire + motif visible), CameraCapture PWA, texte-guide par slot (quoi cadrer),
   barre de progression = complétude serveur. (@after: VT2) Files: frontend/src/pages/crm/visites,
   frontend/src/features/crm (@lane: frontend/crm-visite) (@model: sonnet)
-- [ ] VT6 — Formulaires mesures par catégorie dans le wizard : tableau (calibre disjoncteur
+- [x] VT6 — Formulaires mesures par catégorie dans le wizard : tableau (calibre disjoncteur
   principal A, mono/tri, emplacements libres), local onduleur (largeur×hauteur mur libre cm,
   profondeur de dégagement cm, distance au tableau m, local abrité/ventilé), toiture (dimensions
   zone utile m, pente ° ou plat, orientation, type de couverture, état), cheminement (longueur
   estimée m — optionnel) ; `step="any"` + `noValidate`, normalisation d'unités évidentes,
   erreurs serveur affichées SOUS le champ fautif. (@after: VT5) Files:
   frontend/src/pages/crm/visites (@lane: frontend/crm-visite) (@model: sonnet)
-- [ ] VT7 — Panneau client+devis dans l'écran visite : identité/téléphone/WhatsApp/adresse/GPS
+- [x] VT7 — Panneau client+devis dans l'écran visite : identité/téléphone/WhatsApp/adresse/GPS
   (lien navigation), devis du lead en lecture seule (numéro, statut, total TTC, lignes) —
   consomme le panneau API VT3. (@after: VT3) Files: frontend/src/pages/crm/visites (@lane:
   frontend/crm-visite) (@model: sonnet)
-- [ ] VT8 — Écran revue bureau d'études : liste des visites `terminee` à revoir, viewer photos
+- [x] VT8 — Écran revue bureau d'études : liste des visites `terminee` à revoir, viewer photos
   par catégorie plein écran, mesures récapitulées, boutons Valider (feu vert) / Renvoyer avec
   sélection des slots/mesures à refaire + motif obligatoire ; après feu vert, bouton « Ouvrir
   l'atelier 3D » qui ouvre ToitureDesign pré-rempli des dimensions/pente/orientation mesurées
   (mêmes clés que `Lead.roof_outline`/params atelier existants — ne rien inventer si non mesuré).
   (@after: VT3) Files: frontend/src/pages/crm/visites, frontend/src/pages/ventes/ToitureDesign.jsx
   (@lane: frontend/crm-visite) (@model: opus)
-- [ ] VT9 — Assemblage serveur des photos du toit : action `assembler-photos` → tâche Celery qui
+- [x] VT9 — Assemblage serveur des photos du toit : action `assembler-photos` → tâche Celery qui
   assemble les photos du slot toiture en UNE image (OpenCV Stitcher, `opencv-python-headless` —
   nouvelle dépendance GRATUITE, à noter au DONE LOG), stockée dans MinIO (`photo_toit_key`),
   `assemblage_etat` en_cours→ok/echec avec message d'erreur HONNÊTE (le stitching échoue si les
@@ -134,7 +134,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   le toit d'un point haut avec fort recouvrement entre photos. (@after: VT2) Files:
   apps/crm/tasks.py, apps/crm/views.py, apps/crm/tests/test_visite_assemblage.py (@lane:
   backend/crm-visite) (@model: opus)
-- [ ] VT11 — Calage du toit réaliste sur la vue carte existante : écran de calage où l'image
+- [x] VT11 — Calage du toit réaliste sur la vue carte existante : écran de calage où l'image
   assemblée (ou une photo choisie si l'assemblage a échoué) est DRAPÉE sur le contour du toit
   par 4 poignées de coins déplaçables (transformation perspective canvas), sauvegarde
   `texture_calage` ; l'overlay calé s'affiche ensuite dans la vue carte du lead ET comme
@@ -142,14 +142,17 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   l'orthophoto floue) — le toit du client devient réaliste pour le calepinage. Jamais de
   reconstruction 3D. (@after: VT9) Files: frontend/src/pages/crm/visites,
   frontend/src/pages/ventes/ToitureDesign.jsx (@lane: frontend/crm-visite) (@model: opus)
-- [ ] VT10 — Tests frontend : wizard affiche les manquants exactement comme la complétude
+- [x] VT10 — Tests frontend : wizard affiche les manquants exactement comme la complétude
   serveur les liste, tuile « à refaire » montre le motif, terminer désactivé tant que incomplet
   avec la liste visible, panneau devis sans prix_achat, formulaire mesures n'avale/rejette
   jamais un nombre tapé. (@after: VT6, VT7) Files: frontend/src/pages/crm/visites (@lane:
   frontend/crm-visite) (@model: sonnet)
 
 #### DONE LOG — Groupe VT
-- 2026-09-10 — VT0 : contrat `apps/crm/contract_samples/visite_terrain.json` déposé (forme complète visite + checklist + complétude serveur + panneau client/devis), landé seul en tête de groupe (PACT10).
+- 2026-09-10 — VT0 : contrat `apps/crm/contract_samples/visite_terrain.json` déposé (forme complète visite + checklist + complétude serveur + panneau client/devis), landé seul en tête de groupe (PACT10), PR #654.
+- 2026-09-10 — VT1-VT4+VT9 (lane backend, opus) : `crm.VisiteTerrain`/`crm.VisiteMedia` + `visite_checklist.py` (migration additive 0096), ViewSet company-scopé `crm/visites` (photos/slot, mesures avec erreurs nommant le champ, complétude SERVEUR, terminer refusé si incomplet), feu vert valider/renvoyer + notifications (2 EventType), panneau client+devis via `ventes/selectors.devis_lecture_seule_pour_lead` (M3, jamais prix_achat), tâche Celery assemblage photos toit (OpenCV Stitcher, échec honnête). NOUVELLE DÉPENDANCE GRATUITE : `opencv-python-headless==4.10.0.84` (Apache-2.0, aucun réseau). 2 fichiers de tests (~590 l., stitcher mocké).
+- 2026-09-10 — VT5-VT8+VT11+VT10 (lane frontend, sonnet) : `/crm/visites` liste + wizard mobile par catégorie (tuiles slots, CameraCapture, progression = complétude serveur), formulaires mesures `noValidate`/`step="any"` erreurs sous champ, panneau client+devis, écran revue bureau d'études (valider/renvoyer motif obligatoire), calage 4 poignées + drapage canvas du toit assemblé sur la carte, bandeau mesures dans ToitureDesign ; 32 tests verts, eslint + vite build OK. NOTE : le builder 3D vendored n'expose pas d'API texture — aperçu drapé en canvas à côté, injection dans la scène three.js NON faite (documenté en commentaire).
+- 2026-09-10 — fix-ci embarqués : préfixe VT/VTG dans BUILD_ORDER.yml (SCA5) ; gel du `now` de tests_mry23_reprise (bug #29 : réveil J+30 lancé un jeudi → 3 départs fusionnés sur le même lundi par le recalage week-end).
 
 GATED (fondateur) :
 - [ ] VTG1 — **[GATED: décision fondateur coût/infra]** Photogrammétrie serveur phase 2
