@@ -4,7 +4,7 @@
 // au-dessus) : charge lui-même via `crmApi`, jamais un second appel réseau
 // pour les champs déjà posés sur le lead (`prochaine_touche_at` etc., MRY16).
 import { Fragment, useEffect, useState } from 'react'
-import { Check, SkipForward, Clock3 } from 'lucide-react'
+import { Check, SkipForward, Clock3, Ban } from 'lucide-react'
 import crmApi from '../../../../api/crmApi'
 import { Spinner } from '../../../../ui'
 import { formatDate } from '../../../../lib/format'
@@ -26,9 +26,13 @@ const CANAL_LABELS = {
   visite: 'Visite',
 }
 
+// CKP1/CKP4 — `annulee` (arrêt MOTEUR, `Ban`) reste une icône DISTINCTE de
+// `sautee` (action humaine, `SkipForward`) : la vérité des sautées ne se
+// limite pas au badge de `RelanceEtapeRow`, la frise a sa propre icône.
 const STATUT_ICON = {
   fait: Check,
   sautee: SkipForward,
+  annulee: Ban,
   a_faire: Clock3,
 }
 
@@ -85,12 +89,20 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   const traiter = async (id, action, payload) => {
     setBusyId(id)
     try {
-      if (action === 'fait') await crmApi.marquerRelanceEtapeFait(id, payload)
-      else if (action === 'sauter') await crmApi.marquerRelanceEtapeSautee(id, payload)
-      else if (action === 'reporter') await crmApi.reporterRelanceEtape(id, payload)
+      let res
+      if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
+      else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
+      else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
       onChanged?.()
-    } catch {
-      toastError('Action impossible pour le moment.')
+      return res?.data
+    } catch (err) {
+      // CKP4 — voir `RelancesDuJourWidget.jsx` : un canal APPEL sans issue
+      // (400 `{erreurs: {outcome}}`) s'affiche SOUS le contrôle, pas un toast.
+      const champOutcome = action === 'fait' && err?.response?.status === 400
+        ? err?.response?.data?.erreurs?.outcome : null
+      if (!champOutcome) toastError('Action impossible pour le moment.')
+      if (action === 'fait') throw err
+      return undefined
     } finally {
       setBusyId(null)
     }
@@ -147,6 +159,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
                 className={[
                   'flex flex-wrap items-center gap-1 text-xs',
                   etape.statut === 'sautee' ? 'text-muted-foreground line-through' : '',
+                  etape.statut === 'annulee' ? 'text-muted-foreground italic' : '',
                   estProchaine ? 'font-semibold text-foreground' : 'text-muted-foreground',
                 ].join(' ')}
               >
@@ -158,6 +171,17 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
                 <span>{etape.libelle}</span>
                 <span aria-hidden="true">·</span>
                 <span>{formatDate(etape.due_date)}{heureAt ? ` ${heureAt}` : ''}</span>
+                {/* CKP1/CKP4 — « vérité des sautées » : SAUTEE = action
+                    humaine (qui/quand), ANNULEE = arrêt MOTEUR (motif seul,
+                    jamais un auteur) — jamais confondues, ici comme dans le
+                    badge de `RelanceEtapeRow.jsx`. */}
+                {etape.statut === 'sautee' && (
+                  <span>
+                    Sautée{etape.traite_par_nom ? ` · ${etape.traite_par_nom}` : ''}
+                    {heureDueAt(etape.traite_le) ? ` · ${heureDueAt(etape.traite_le)}` : ''}
+                  </span>
+                )}
+                {etape.statut === 'annulee' && <span>Annulée (moteur)</span>}
                 {etape.note && <span className="text-muted-foreground">— {etape.note}</span>}
               </li>
               {/* MRY32 — Appeler/WhatsApp/Fait/Sauter/Reporter directement

@@ -6,10 +6,13 @@ import { ModuleHero } from '../../ui/module'
 import { Button } from '../../ui'
 import { fetchClients, fetchLeads } from '../../features/crm/store/crmSlice'
 import { formatNumber } from '../../lib/format'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import CrmInsightsPanel from './leads/CrmInsightsPanel'
 import DormantAccountsWidget from './DormantAccountsWidget'
 import PortfolioWidget from './dashboard/PortfolioWidget'
 import RelancesDuJourWidget from './RelancesDuJourWidget'
+import MesStatsRelanceTiles from './MesStatsRelanceTiles'
+import AdherenceRelancesPanel from './AdherenceRelancesPanel'
 import KpiRelancesPanel from './KpiRelancesPanel'
 import TerritoryCoverageWidget from './TerritoryCoverageWidget'
 import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
@@ -32,6 +35,10 @@ export default function CrmCockpit() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { clients, leads } = useSelector((s) => s.crm)
+  // CKP5 (fondateur 2026-09-10) — sert UNIQUEMENT à ordonner les blocs (la
+  // vue adhérence est mise en avant admin/responsable), JAMAIS à en cacher
+  // un : transparence totale, les deux voient les mêmes chiffres.
+  const isResponsableOuAdmin = useIsAdminOrResponsable()
 
   // VX55 — annule les requêtes en vol au démontage (même patron que
   // ClientList/LeadsPage) : une réponse tardive ne doit jamais écraser
@@ -95,8 +102,30 @@ export default function CrmCockpit() {
         <CrmInsightsPanel />
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      {/* CKP4 — tuiles PERSO (jamais comparatives) : à faire maintenant / mon
+          à-l'heure 7 j / série sans retard. Visibles à TOUS les rôles. */}
+      <div className="mt-4">
+        <MesStatsRelanceTiles />
+      </div>
+
+      {/* CKP4 — LA FILE d'abord, EN TÊTE et pleine largeur, pour TOUS les
+          rôles (« moi et Meryem on voit la même chose ») : c'est l'écran
+          opérationnel du jour, jamais relégué à une colonne parmi d'autres. */}
+      <div className="mt-4">
         <RelancesDuJourWidget />
+      </div>
+
+      {/* CKP5 — vue ADHÉRENCE (stratégique) : visible par TOUS les rôles
+          (décision transparence, jamais cachée) ; mise en avant PLEINE
+          LARGEUR juste après la file pour admin/responsable — un rôle normal
+          la retrouve plus bas, dans la grille, jamais masquée. */}
+      {isResponsableOuAdmin && (
+        <div className="mt-4">
+          <AdherenceRelancesPanel />
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <KpiRelancesPanel />
         {/* MRY33 — la carte se gate elle-même aux rôles responsable/admin
             (`useIsAdminOrResponsable`, `null` sinon) — même esprit que le
@@ -105,6 +134,7 @@ export default function CrmCockpit() {
         <DormantAccountsWidget />
         <PortfolioWidget />
         <TerritoryCoverageWidget />
+        {!isResponsableOuAdmin && <AdherenceRelancesPanel />}
       </div>
     </div>
   )

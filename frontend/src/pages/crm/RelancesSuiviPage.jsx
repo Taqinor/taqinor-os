@@ -144,12 +144,20 @@ export default function RelancesSuiviPage() {
   const traiter = async (id, action, payload) => {
     setBusyId(id)
     try {
-      if (action === 'fait') await crmApi.marquerRelanceEtapeFait(id, payload)
-      else if (action === 'sauter') await crmApi.marquerRelanceEtapeSautee(id, payload)
-      else if (action === 'reporter') await crmApi.reporterRelanceEtape(id, payload)
+      let res
+      if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
+      else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
+      else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
       charger()
-    } catch {
-      toastError('Action impossible pour le moment.')
+      return res?.data
+    } catch (err) {
+      // CKP4 — voir `RelancesDuJourWidget.jsx` : un canal APPEL sans issue
+      // (400 `{erreurs: {outcome}}`) s'affiche SOUS le contrôle, pas un toast.
+      const champOutcome = action === 'fait' && err?.response?.status === 400
+        ? err?.response?.data?.erreurs?.outcome : null
+      if (!champOutcome) toastError('Action impossible pour le moment.')
+      if (action === 'fait') throw err
+      return undefined
     } finally {
       setBusyId(null)
     }
@@ -171,7 +179,7 @@ export default function RelancesSuiviPage() {
   }, [donnees, onglet, today])
 
   const resume = donnees?.resume ?? {
-    a_faire: 0, en_retard: 0, fait: 0, sautee: 0,
+    a_faire: 0, en_retard: 0, fait: 0, sautee: 0, annulee: 0,
   }
 
   return (
@@ -197,6 +205,10 @@ export default function RelancesSuiviPage() {
           <Badge tone="danger">En retard : {resume.en_retard}</Badge>
           <Badge tone="success">Faites : {resume.fait}</Badge>
           <Badge tone="neutral">Sautées : {resume.sautee}</Badge>
+          {/* CKP1/CKP3 — colonne SÉPARÉE (jamais fondue avec « Sautées ») :
+              un arrêt du moteur (lead signé, devis accepté…) n'est jamais un
+              manquement humain. */}
+          <Badge tone="outline">Annulées (moteur) : {resume.annulee ?? 0}</Badge>
         </div>
         {isResponsableOuAdmin && (
           <Select value={ownerFiltre} onValueChange={setOwnerFiltre}>

@@ -233,6 +233,17 @@ const crmApi = {
   getKpiPremierContact: (params) =>
     api.get('/crm/leads/kpi-premier-contact/', { params }),
   getKpiCadences: (params) => api.get('/crm/leads/kpi-cadences/', { params }),
+  // CKP3/CKP4 — les tuiles PERSO du commercial (jamais comparatives). Forme
+  // `mes_stats_relance` (contrat CKP0/PACT10). Aucun paramètre — le serveur
+  // dérive le commercial de `request.user`.
+  getMesStatsRelance: () => api.get('/crm/relance-etapes/mes-stats/'),
+  // CKP3/CKP5 (fondateur 2026-09-10) — vue ADHÉRENCE : à-l'heure %, sautées
+  // HUMAINES vs annulées MOTEUR (jamais confondues), drop-off par touche,
+  // vitesse premier contact, leads sans touche due, conversion par étape.
+  // Forme `kpi_adherence` (contrat CKP0/PACT10). `?jours=` (défaut serveur
+  // 30). Lisible par TOUS les rôles (décision transparence) — aucun gate ici.
+  getKpiAdherence: (params) =>
+    api.get('/crm/relance-etapes/kpi-adherence/', { params }),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
   getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),
