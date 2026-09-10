@@ -16,10 +16,10 @@
     "check": "tsc -p tsconfig.check.json && node scripts/check-astro-types.mjs"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.7.0",
+    "@astrojs/cloudflare": "^14.3.1",
     "@astrojs/sitemap": "^3.7.3",
     "@tailwindcss/vite": "^4.3.0",
-    "astro": "^6.4.6",
+    "astro": "^7.3.2",
     "maplibre-gl": "^5.24.0",
     "tailwindcss": "^4.3.0",
     "three": "^0.184.0",
