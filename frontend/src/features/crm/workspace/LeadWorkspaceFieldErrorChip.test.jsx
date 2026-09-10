@@ -45,6 +45,9 @@ vi.mock('../../../api/crmApi', () => ({
     updateLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
+    // VT13 — SectionSite monte TraceToitClient, qui lit la photo-toit du lead.
+    getLeadPhotoToit: vi.fn(() => Promise.resolve({ data: { visite_id: null, url: null, texture_calage: null } })),
+    villeStatut: vi.fn(() => Promise.resolve({ data: { statut: 'connue' } })),
     initialiserRelance: vi.fn(() => Promise.resolve({ data: [{ id: 1 }] })),
   },
 }))

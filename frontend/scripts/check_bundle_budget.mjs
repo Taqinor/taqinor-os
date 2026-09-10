@@ -180,7 +180,10 @@ const PER_CHUNK_BUDGET_KB = 350
 // 2026-09-06 — 3520 -> 3560. Drain AUD/MRY batch 3 (~124 tâches, écrans neufs
 // réels : portefeuille GP, éditeur de cadences, panneau KPI relances, planches
 // AO, présents-chantier, dialogue NARSA — mesuré 3536,7 Ko ; marge ~23 Ko).
-const TOTAL_BUDGET_KB = 3560
+// 2026-09-10 — 3560 -> 3580. Groupe VT (module Visite technique terrain) :
+// 7 écrans/panneaux neufs code-splittés (liste, wizard, revue, calage…),
+// mesuré 3563.5 Ko au drain — cliquet monté au réel + marge courte.
+const TOTAL_BUDGET_KB = 3580
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -285,7 +288,8 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // (350) restent les vrais garde-fous de poids.
 // 2026-09-06 : 760 -> 770. Batch 3 AUD/MRY — 6 écrans/panneaux code-splittés
 // de plus (mesuré 763).
-export const MAX_CHUNK_COUNT = 770
+// 2026-09-10 : 770 -> 778. Groupe VT — écrans visite code-splittés (mesuré 773).
+export const MAX_CHUNK_COUNT = 778
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

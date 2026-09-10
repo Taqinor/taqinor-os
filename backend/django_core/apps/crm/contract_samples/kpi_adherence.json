@@ -1,0 +1,59 @@
+{
+  "endpoint": "GET /api/django/crm/relance-etapes/kpi-adherence/?jours=30",
+  "pourquoi": "Groupe CKP (fondateur 2026-09-10) : la vue ADHÉRENCE du cockpit CRM — est-ce que les étapes du protocole de relance sont suivies, à l'heure, et où décrochent-elles. TRANSPARENCE TOTALE (décision fondateur) : lisible par TOUS les rôles — Meryem voit exactement ce que Reda voit. Les sautées HUMAINES et les annulations MOTEUR (statut annulee, CKP1) sont des colonnes SÉPARÉES : une cadence arrêtée parce que le client a répondu n'est JAMAIS comptée comme un manquement. Dénominateur nul → valeur null, jamais un 0 % inventé. `leads_sans_touche` est une LISTE actionnable, pas un compte. Aucun seuil rouge/vert serveur : des valeurs et des tendances, le jugement reste humain. Source de vérité à construire : apps/crm/selectors.py::kpi_adherence.",
+  "exemple": {
+    "periode_jours": 30,
+    "a_lheure_pct": 84.2,
+    "touches_faites": 212,
+    "touches_en_retard_ouvertes": 6,
+    "sautees_humaines": 9,
+    "annulees_moteur": 41,
+    "vitesse_premier_contact": {
+      "mediane_heures": 3.4,
+      "tendance_hebdo": [
+        { "semaine": "2026-08-17", "mediane_heures": 5.1 },
+        { "semaine": "2026-08-24", "mediane_heures": 3.9 },
+        { "semaine": "2026-08-31", "mediane_heures": 3.4 }
+      ]
+    },
+    "tendance_a_lheure": [
+      { "semaine": "2026-08-17", "a_lheure_pct": 78.0 },
+      { "semaine": "2026-08-24", "a_lheure_pct": 81.5 },
+      { "semaine": "2026-08-31", "a_lheure_pct": 84.2 }
+    ],
+    "par_etape": [
+      {
+        "ordre": 1,
+        "canal": "whatsapp",
+        "libelle": "Message d'identité",
+        "faites": 58,
+        "a_lheure_pct": 96.0,
+        "sautees_humaines": 0,
+        "annulees_moteur": 2
+      },
+      {
+        "ordre": 2,
+        "canal": "appel",
+        "libelle": "Appel d'ouverture",
+        "faites": 55,
+        "a_lheure_pct": 88.0,
+        "sautees_humaines": 3,
+        "annulees_moteur": 4
+      }
+    ],
+    "leads_sans_touche": [
+      {
+        "lead_id": 431,
+        "nom": "Lead Démo",
+        "ville": "Bouskoura",
+        "en_retard_depuis_heures": 26.5,
+        "prochaine_touche": "Appel d'ouverture"
+      }
+    ],
+    "conversion_par_stage": [
+      { "stage": "NEW", "entres": 60, "passes_au_suivant": 48, "taux_pct": 80.0 },
+      { "stage": "CONTACTED", "entres": 48, "passes_au_suivant": 21, "taux_pct": 43.8 },
+      { "stage": "QUOTE_SENT", "entres": 21, "passes_au_suivant": 9, "taux_pct": null }
+    ]
+  }
+}

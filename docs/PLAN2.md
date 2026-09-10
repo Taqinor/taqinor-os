@@ -69,7 +69,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   bloc `completude` serveur {complet: bool, manquants: [...]}, médias avec slot+GPS, panneau
   lecture seule client+devis). Vérifié par `check_api_shapes.py`. À LANDER SEUL sur `main` avant
   le reste du groupe. Files: apps/crm/contract_samples/visite_terrain.json (@lane: contrat-visite) (@model: sonnet)
-- [ ] VT1 — Modèle `crm.VisiteTerrain` : company, lead FK, commercial FK (User), statut
+- [x] VT1 — Modèle `crm.VisiteTerrain` : company, lead FK, commercial FK (User), statut
   (`brouillon/en_cours/terminee/validee/a_refaire` — layer interne, PAS le funnel), date_prevue,
   date_realisee, notes, `mesures` JSONField (structure typée du contrat VT0), `photo_toit_key`
   (clé MinIO de l'image assemblée, nullable), `assemblage_etat` (`aucun/en_cours/ok/echec` +
@@ -80,7 +80,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   slots, requis/min_photos, mesures obligatoires par catégorie — libellés FR) ; migration
   additive ; chatter auto (LeadActivity) à création/terminaison/validation/renvoi. (@after: VT0)
   Files: apps/crm/models.py, apps/crm/visite_checklist.py, apps/crm/migrations (@lane: backend/crm-visite) (@model: sonnet)
-- [ ] VT2 — API visite : ViewSet company-scopé CRUD + actions — upload photo vers un slot
+- [x] VT2 — API visite : ViewSet company-scopé CRUD + actions — upload photo vers un slot
   (MinIO erp-uploads via le service records, taille max, mime image/*), suppression média,
   saisie mesures par catégorie (validation champ par champ, erreurs nommant le champ),
   `completude` calculée SERVEUR (slots requis manquants + mesures obligatoires manquantes,
@@ -88,43 +88,43 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   (message = la liste des manquants).
   Permissions : nouveaux codes `crm_visite_voir/creer/modifier/valider` câblés dans roles.
   (@after: VT1) Files: apps/crm/views.py, apps/crm/serializers.py, apps/crm/urls.py (@lane: backend/crm-visite) (@model: sonnet)
-- [ ] VT3 — Feu vert bureau d'études : action `valider` (feu vert calepinage — réservée
+- [x] VT3 — Feu vert bureau d'études : action `valider` (feu vert calepinage — réservée
   `crm_visite_valider`) et action `renvoyer` avec marquage par-slot/par-mesure « à refaire +
   motif » → statut `a_refaire`, le commercial voit exactement quoi refaire ; notification au
   commercial (primitive notifications existante) au renvoi et à la validation ; à la validation,
   visite en lecture seule. Panneau lecture seule client+devis dans l'API visite : contact/adresse/
   GPS du lead + devis du lead (numéro, statut, lignes SANS prix_achat) via selectors ventes.
   (@after: VT2) Files: apps/crm/views.py, apps/crm/services.py, apps/ventes/selectors.py (@lane: backend/crm-visite) (@model: opus)
-- [ ] VT4 — Tests backend visite : scoping company, gate de complétude (terminer refusé avec
+- [x] VT4 — Tests backend visite : scoping company, gate de complétude (terminer refusé avec
   liste des manquants ; accepté quand tout y est), boucle renvoi→re-upload→re-terminer,
   permissions valider, aucun prix_achat dans le panneau devis, upload slot inconnu refusé,
   chatter auto présent. (@after: VT3) Files: apps/crm/tests/test_visite_terrain.py (@lane: backend/crm-visite) (@model: sonnet)
-- [ ] VT5 — Écrans commercial terrain (mobile-first) : route `/crm/visites` (mes visites,
+- [x] VT5 — Écrans commercial terrain (mobile-first) : route `/crm/visites` (mes visites,
   filtrées sur l'utilisateur assigné, badge complétude) + création depuis la fiche lead
   (pré-remplit `visite_prevue_le`) ; écran visite = wizard par catégorie (toiture → tableau →
   local onduleur → cheminement (optionnel) → général) avec tuiles photo par slot (état
   manquant/ok/à refaire + motif visible), CameraCapture PWA, texte-guide par slot (quoi cadrer),
   barre de progression = complétude serveur. (@after: VT2) Files: frontend/src/pages/crm/visites,
   frontend/src/features/crm (@lane: frontend/crm-visite) (@model: sonnet)
-- [ ] VT6 — Formulaires mesures par catégorie dans le wizard : tableau (calibre disjoncteur
+- [x] VT6 — Formulaires mesures par catégorie dans le wizard : tableau (calibre disjoncteur
   principal A, mono/tri, emplacements libres), local onduleur (largeur×hauteur mur libre cm,
   profondeur de dégagement cm, distance au tableau m, local abrité/ventilé), toiture (dimensions
   zone utile m, pente ° ou plat, orientation, type de couverture, état), cheminement (longueur
   estimée m — optionnel) ; `step="any"` + `noValidate`, normalisation d'unités évidentes,
   erreurs serveur affichées SOUS le champ fautif. (@after: VT5) Files:
   frontend/src/pages/crm/visites (@lane: frontend/crm-visite) (@model: sonnet)
-- [ ] VT7 — Panneau client+devis dans l'écran visite : identité/téléphone/WhatsApp/adresse/GPS
+- [x] VT7 — Panneau client+devis dans l'écran visite : identité/téléphone/WhatsApp/adresse/GPS
   (lien navigation), devis du lead en lecture seule (numéro, statut, total TTC, lignes) —
   consomme le panneau API VT3. (@after: VT3) Files: frontend/src/pages/crm/visites (@lane:
   frontend/crm-visite) (@model: sonnet)
-- [ ] VT8 — Écran revue bureau d'études : liste des visites `terminee` à revoir, viewer photos
+- [x] VT8 — Écran revue bureau d'études : liste des visites `terminee` à revoir, viewer photos
   par catégorie plein écran, mesures récapitulées, boutons Valider (feu vert) / Renvoyer avec
   sélection des slots/mesures à refaire + motif obligatoire ; après feu vert, bouton « Ouvrir
   l'atelier 3D » qui ouvre ToitureDesign pré-rempli des dimensions/pente/orientation mesurées
   (mêmes clés que `Lead.roof_outline`/params atelier existants — ne rien inventer si non mesuré).
   (@after: VT3) Files: frontend/src/pages/crm/visites, frontend/src/pages/ventes/ToitureDesign.jsx
   (@lane: frontend/crm-visite) (@model: opus)
-- [ ] VT9 — Assemblage serveur des photos du toit : action `assembler-photos` → tâche Celery qui
+- [x] VT9 — Assemblage serveur des photos du toit : action `assembler-photos` → tâche Celery qui
   assemble les photos du slot toiture en UNE image (OpenCV Stitcher, `opencv-python-headless` —
   nouvelle dépendance GRATUITE, à noter au DONE LOG), stockée dans MinIO (`photo_toit_key`),
   `assemblage_etat` en_cours→ok/echec avec message d'erreur HONNÊTE (le stitching échoue si les
@@ -134,7 +134,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   le toit d'un point haut avec fort recouvrement entre photos. (@after: VT2) Files:
   apps/crm/tasks.py, apps/crm/views.py, apps/crm/tests/test_visite_assemblage.py (@lane:
   backend/crm-visite) (@model: opus)
-- [ ] VT11 — Calage du toit réaliste sur la vue carte existante : écran de calage où l'image
+- [x] VT11 — Calage du toit réaliste sur la vue carte existante : écran de calage où l'image
   assemblée (ou une photo choisie si l'assemblage a échoué) est DRAPÉE sur le contour du toit
   par 4 poignées de coins déplaçables (transformation perspective canvas), sauvegarde
   `texture_calage` ; l'overlay calé s'affiche ensuite dans la vue carte du lead ET comme
@@ -142,14 +142,34 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   l'orthophoto floue) — le toit du client devient réaliste pour le calepinage. Jamais de
   reconstruction 3D. (@after: VT9) Files: frontend/src/pages/crm/visites,
   frontend/src/pages/ventes/ToitureDesign.jsx (@lane: frontend/crm-visite) (@model: opus)
-- [ ] VT10 — Tests frontend : wizard affiche les manquants exactement comme la complétude
+- [x] VT10 — Tests frontend : wizard affiche les manquants exactement comme la complétude
   serveur les liste, tuile « à refaire » montre le motif, terminer désactivé tant que incomplet
   avec la liste visible, panneau devis sans prix_achat, formulaire mesures n'avale/rejette
   jamais un nombre tapé. (@after: VT6, VT7) Files: frontend/src/pages/crm/visites (@lane:
   frontend/crm-visite) (@model: sonnet)
 
+- [x] VT12 — Câblage retour vers le CRM (fondateur 10/09 : « link this module properly to the
+  whole ERP ») : à la VALIDATION (feu vert), le serveur écrit en retour sur le lead —
+  `visite_effectuee=True`, `visite_notes` reçoit un récap court (date + mesures clés), déjà
+  chatterisé ; nouvel endpoint `GET /api/django/crm/leads/<pk>/photo-toit/` (selector
+  `texture_toit_pour_lead` : dernière visite VALIDÉE du lead → {visite_id, url, texture_calage},
+  valeurs nulles sinon — jamais une visite d'une autre société) pour que l'atelier 3D et la
+  carte lead lisent la texture SANS connaître le module visite. Tests. (@after: VT3) Files:
+  apps/crm/services.py, apps/crm/selectors.py, apps/crm/views_visite.py (@lane: backend/crm-visite) (@model: opus)
+- [x] VT13 — La texture calée DANS l'atelier 3D/calepinage et sur la carte lead (pas à côté) :
+  ToitureDesign consomme `photo-toit` du lead et affiche l'image calée comme underlay du contour
+  du toit dans SA vue carte/plan de travail (couche image sous le tracé, transformation
+  perspective depuis les 4 coins — sans toucher au builder vendored) ; la carte de la fiche lead
+  (MapView) affiche le même overlay ; l'aperçu canvas de VT11 reste l'écran de calage. Mocks =
+  formes de VT12. Tests. (@after: VT12, VT11) Files: frontend/src/pages/ventes/ToitureDesign.jsx,
+  frontend/src/pages/crm/visites, frontend/src/features/crm (@lane: frontend/crm-visite) (@model: opus)
+
 #### DONE LOG — Groupe VT
-- 2026-09-10 — VT0 : contrat `apps/crm/contract_samples/visite_terrain.json` déposé (forme complète visite + checklist + complétude serveur + panneau client/devis), landé seul en tête de groupe (PACT10).
+- 2026-09-10 — VT0 : contrat `apps/crm/contract_samples/visite_terrain.json` déposé (forme complète visite + checklist + complétude serveur + panneau client/devis), landé seul en tête de groupe (PACT10), PR #654.
+- 2026-09-10 — VT1-VT4+VT9 (lane backend, opus) : `crm.VisiteTerrain`/`crm.VisiteMedia` + `visite_checklist.py` (migration additive 0096), ViewSet company-scopé `crm/visites` (photos/slot, mesures avec erreurs nommant le champ, complétude SERVEUR, terminer refusé si incomplet), feu vert valider/renvoyer + notifications (2 EventType), panneau client+devis via `ventes/selectors.devis_lecture_seule_pour_lead` (M3, jamais prix_achat), tâche Celery assemblage photos toit (OpenCV Stitcher, échec honnête). NOUVELLE DÉPENDANCE GRATUITE : `opencv-python-headless==4.10.0.84` (Apache-2.0, aucun réseau). 2 fichiers de tests (~590 l., stitcher mocké).
+- 2026-09-10 — VT5-VT8+VT11+VT10 (lane frontend, sonnet) : `/crm/visites` liste + wizard mobile par catégorie (tuiles slots, CameraCapture, progression = complétude serveur), formulaires mesures `noValidate`/`step="any"` erreurs sous champ, panneau client+devis, écran revue bureau d'études (valider/renvoyer motif obligatoire), calage 4 poignées + drapage canvas du toit assemblé sur la carte, bandeau mesures dans ToitureDesign ; 32 tests verts, eslint + vite build OK. NOTE : le builder 3D vendored n'expose pas d'API texture — aperçu drapé en canvas à côté, injection dans la scène three.js NON faite (documenté en commentaire).
+- 2026-09-10 — VT12+VT13 (lane câblage, opus) : au feu vert le serveur écrit en retour sur le lead (visite_effectuee + récap FR dans visite_notes, uniquement des valeurs saisies) ; endpoint `GET leads/<pk>/photo-toit/` (contrat lead_photo_toit.json, jamais 404, company-scopé) ; la photo réelle calée s'affiche SOUS le tracé dans l'atelier ToitureDesign (toggle « Photo réelle », builder vendored intact) et sur la fiche lead (TraceToitClient) ; 14 tests vitest + 13 tests backend écrits. Note : la « carte lead » = TraceToitClient (SVG) — la carte pipeline multi-leads reste un chantier séparé si souhaité.
+- 2026-09-10 — fix-ci embarqués : préfixe VT/VTG dans BUILD_ORDER.yml (SCA5) ; gel du `now` de tests_mry23_reprise (bug #29 : réveil J+30 lancé un jeudi → 3 départs fusionnés sur le même lundi par le recalage week-end).
 
 GATED (fondateur) :
 - [ ] VTG1 — **[GATED: décision fondateur coût/infra]** Photogrammétrie serveur phase 2
@@ -158,6 +178,94 @@ GATED (fondateur) :
   explicite : voie écartée par le pivot fondateur 2026-09-10 (pas de vraie 3D), lente sur CPU
   (dizaines de min à heures), sujette à échec opérateur — l'assemblage VT9 + calage VT11
   couvre le besoin. (@blocked: porte fondateur) (@lane: founder-verify)
+
+---
+
+### Groupe CKP — Cockpit CRM « suivre les étapes » : vérité des sautées, cadence réactive, adhérence à deux vues (CKP0-CKP6, fondateur 2026-09-10)
+
+*Commande fondateur 2026-09-10 : « moi et Meryem on ne voit pas assez ce qu'elle fait et si elle
+le fait bien — je parle du suivi des étapes ». TROIS DÉCISIONS FONDATEUR ACTÉES (ne pas
+re-demander) : (1) TRANSPARENCE TOTALE — « on voit la même chose moi et elle » : mêmes chiffres
+pour les deux, seule la mise en page diffère (elle = file opérationnelle, lui = vue stratégique),
+jamais un tableau caché sur elle ; (2) PLUS AUCUN SAUT AUTOMATIQUE affiché comme un saut humain —
+constat prouvé : `arreter_cadence` (services.py:1669-1673) SAUTEE en masse les étapes restantes en
+estampillant l'humain de l'événement déclencheur, les reprises MRY23/MRY30 SAUTEE sans acteur, et
+le badge UI « Sautée » nu (RelanceEtapeRow.jsx:166) ne distingue rien ; (3) CADENCE RÉACTIVE —
+fin des 3 appels J0 programmés d'avance (CADENCE_CONTACT_DEFAUT ordre 1-3 créés en bulk) : on ne
+programme QUE le prochain geste, et c'est l'issue saisie (« pas de réponse ») qui programme le
+suivant — valable pour tout utilisateur. Recherche 2 lanes (KPI d'adhérence : formules
+Salesloft/HubSpot/Revenue.io — à-l'heure %, complétion de cadence, drop-off par étape,
+speed-to-lead ; présentation : file unique ordonnée côté rep, funnel par étape côté manager,
+HBR anti-surveillance → transparence). Existant à RÉUTILISER : kpi_cadences 7 indicateurs
+(selectors.py:1505), endpoints `relance-etapes/?scope=` + `suivi/` (résumé serveur),
+RelancesDuJourWidget/KpiRelancesPanel/CadenceFrise/RelancesSuiviPage, hooks
+useIsAdminOrResponsable, digest 08:30 + bilan lundi.*
+
+> Contraintes (toutes tâches) : stages via STAGES.py (jamais une liste en dur) ; AUCUN seuil
+> RAG inventé — montrer les valeurs et la tendance vs sa propre base, pas un vert/rouge
+> arbitraire ; dénominateur 0 → null, jamais 0 % inventé ; jamais un compteur d'activité brut
+> comme cible seule (apparier à-l'heure % + conversion — anti-Goodhart) ; multi-tenant ;
+> migrations en 3 temps si contrainte (YDATA20) ; les KPI d'adhérence ne comptent JAMAIS une
+> annulation moteur comme un saut humain.
+
+- [x] CKP0 — CONTRAT D'ABORD (PACT10) : `apps/crm/contract_samples/kpi_adherence.json` +
+  `apps/crm/contract_samples/mes_stats_relance.json` (formes des deux nouveaux agrégats, voir
+  fichiers) — À LANDER sur `main` AVANT les moitiés CKP1-CKP6 (embarqué dans le batch VT en
+  cours). Files: apps/crm/contract_samples (@lane: contrat-ckp) (@model: sonnet)
+- [ ] CKP1 — Vérité des sautées : nouveau statut `RelanceEtape.Statut.ANNULEE` (« annulée par le
+  moteur », migration + backfill des historiques par les motifs fixes connus — 'joint', 'lead
+  signé', 'devis accepté', 'reprise : déjà passée', 'passée avant le moteur', etc. → annulee ;
+  un saut sans motif moteur reste sautee) ; `arreter_cadence` et les reprises MRY23/MRY30
+  écrivent ANNULEE (traite_par = null pour le moteur, motif conservé en note) ; SAUTEE devient
+  EXCLUSIVEMENT l'action humaine `sauter` ; le proxy KPI `note__icontains='joint'`
+  (selectors.py:1563) bascule sur le statut structuré ; mettre à jour les tests épinglés
+  (tests_mry9_arrets, tests_mry11_fin_cadence, tests_mry23/30, tests_qj_funnel_devis_envoye,
+  tests_mry13). (@after: CKP0) Files: apps/crm/models.py, apps/crm/services.py,
+  apps/crm/receivers.py, apps/crm/migrations (@lane: backend/ckp) (@model: opus)
+- [ ] CKP2 — Cadence RÉACTIVE : `initialiser_plan_relance` ne matérialise que la PREMIÈRE touche
+  à faire (le gabarit complet reste la partition) ; `marquer_etape_relance` FAIT avec issue
+  « pas de réponse »/« répondeur »/« occupé » OU SAUTEE humaine → matérialise la touche suivante
+  du gabarit (J0 intra-jour : ancrée sur l'instant de l'issue ; J+N : ancrée sur le départ de
+  cadence, recalage fenêtres inchangé) ; issue « joint »/« intéressé »/« refus » → les arrêts
+  MRY9 existants (qui écrivent désormais ANNULEE) ; l'issue devient OBLIGATOIRE pour clore une
+  touche APPEL (erreur nommant le champ sinon) ; l'invariant « jamais un lead sans prochaine
+  touche » (assurer_prochaine_etape_apres_succes) reste vert ; réécrire les tests d'échéancier
+  (tests_relance_foundation « 5 étapes d'un coup » → « une à la fois, la suite naît de
+  l'issue »). L'aperçu MRY30 (calculer_echeances_cadence) reste la partition COMPLÈTE prévue —
+  il annonce le plan, la matérialisation suit les issues. (@after: CKP1) Files:
+  apps/crm/services.py, apps/crm/views.py (@lane: backend/ckp) (@model: opus)
+- [ ] CKP3 — KPI d'adhérence serveur (formules de la recherche, calculées sur RelanceEtape) :
+  endpoint `GET relance-etapes/kpi-adherence/?jours=` (contrat CKP0) — à-l'heure %
+  (fait le jour dû), retards ouverts, sautées HUMAINES vs annulées moteur (séparées), drop-off
+  par ordre de touche (le signal de coaching), vitesse premier contact (médiane h + tendance
+  hebdo), leads sans touche due en LISTE (jamais un simple compte), conversion par étape du
+  funnel (STAGES.py) ; endpoint `GET relance-etapes/mes-stats/` (contrat CKP0) — file du moment,
+  retards, mon à-l'heure 7 j, cadences complétées 14 j, série de jours sans retard ; les deux
+  lisibles par TOUS les rôles (décision transparence) ; tests. (@after: CKP1) Files:
+  apps/crm/selectors.py, apps/crm/views.py (@lane: backend/ckp) (@model: sonnet)
+- [ ] CKP4 — Écran Meryem (opérationnel, cockpit CRM remanié pour le rôle normal) : LA FILE
+  d'abord (RelancesDuJourWidget en tête, pleine largeur), issue OBLIGATOIRE au « Fait » d'un
+  appel (choix Joint / Pas de réponse / Répondeur / Occupé — déclenche la programmation de la
+  suite, message de confirmation « prochain appel programmé le … ») ; badges honnêtes :
+  « Sautée · qui · quand » (traite_par_nom enfin rendu) vs « Annulée (moteur) · motif » ;
+  3 tuiles perso `mes-stats` (à faire maintenant / mon à-l'heure 7 j / série sans retard),
+  jamais comparatives. (@after: CKP2, CKP3) Files: frontend/src/pages/crm,
+  frontend/src/features/crm/relances (@lane: frontend/ckp) (@model: sonnet)
+- [ ] CKP5 — Vue adhérence (stratégique, visible par les DEUX — décision transparence ; mise en
+  avant sur le cockpit admin/responsable, accessible à tous) : table drop-off par touche
+  (ordre/canal/faites/à-l'heure %/sautées humaines/annulées), tendance hebdo à-l'heure % +
+  vitesse premier contact, liste des leads sans touche due, conversion par étape appariée à
+  l'adhérence (anti-Goodhart) ; aucun seuil rouge/vert inventé — valeurs + tendance ;
+  réutilise KpiRelancesPanel comme socle. (@after: CKP3) Files: frontend/src/pages/crm
+  (@lane: frontend/ckp) (@model: sonnet)
+- [ ] CKP6 — Tests frontend : mocks = contrats CKP0 exactement ; le Fait d'un appel sans issue
+  est bloqué avec le champ nommé ; badge annulée ≠ sautée (motif visible) ; les tuiles perso
+  affichent null proprement (« pas encore de données », jamais 0 % inventé) ; la file reste
+  la première chose visible sur mobile. (@after: CKP4, CKP5) Files: frontend/src/pages/crm,
+  frontend/src/features/crm/relances (@lane: frontend/ckp) (@model: sonnet)
+
+#### DONE LOG — Groupe CKP
+- 2026-09-10 — CKP0 : contrats `kpi_adherence.json` + `mes_stats_relance.json` déposés (adhérence transparente à tous les rôles, sautées humaines ≠ annulées moteur, null si dénominateur nul), embarqués dans le batch VT (PR #655) pour être sur `main` avant les moitiés CKP1-CKP6.
 
 ---
 

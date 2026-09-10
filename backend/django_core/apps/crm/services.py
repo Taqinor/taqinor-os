@@ -6746,3 +6746,168 @@ def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
     rapport['erreurs'] = erreurs
     rapport['restants'] = max(0, len(decisions) - applique - erreurs)
     return rapport
+
+
+# ── VT1 — CHATTER AUTOMATIQUE DE LA VISITE TECHNIQUE TERRAIN ─────────────────
+#
+# Le chatter du lead (``LeadActivity``) est le journal COMMUN de tout ce qui
+# arrive à un lead : la visite technique y écrit ses quatre moments — création,
+# terminaison, feu vert, renvoi — plutôt que d'ouvrir un second historique.
+# L'auteur et la société viennent TOUJOURS du serveur (jamais du corps de
+# requête), comme le reste du chatter.
+
+#: Moment de la visite → phrase FR posée au chatter.
+_VISITE_CHATTER = {
+    'creation': 'Visite technique créée.',
+    'terminee': 'Visite technique terminée par le commercial.',
+    'validee': "Visite technique validée par le bureau d'études (feu vert).",
+    'a_refaire': 'Visite technique renvoyée au commercial.',
+}
+
+
+def journaliser_visite(visite, user, moment, detail=''):
+    """Pose UNE note de chatter sur le lead pour ``moment``.
+
+    Best-effort : un chatter indisponible ne doit jamais faire échouer la
+    transition métier qui vient d'aboutir (même prudence qu'ailleurs dans ce
+    module). Renvoie l'activité créée, ou ``None``.
+    """
+    from . import activity
+
+    phrase = _VISITE_CHATTER.get(moment)
+    if phrase is None:
+        return None
+    corps = f'{phrase} {detail}'.strip() if detail else phrase
+    try:
+        return activity.log_note(visite.lead, user, corps)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        return None
+
+
+# ── VT3 — FEU VERT DU BUREAU D'ÉTUDES ────────────────────────────────────────
+#
+# Deux transitions, deux notifications au COMMERCIAL de la visite (primitive
+# ``apps.notifications`` existante — jamais un second système de messages) :
+# « validée » (feu vert, il peut passer au calepinage) et « à refaire » (une
+# action lui est demandée, avec le motif). Ces deux transitions ne portent
+# AUCUN jugement automatisé : c'est un humain qui décide, le code se contente
+# d'enregistrer sa décision et de la faire savoir.
+
+def _notifier_commercial_visite(visite, event_type, titre, corps):
+    """Notifie le commercial de la visite. Best-effort, jamais bloquant."""
+    destinataire = visite.commercial
+    if destinataire is None:
+        return None
+    try:
+        from apps.notifications.services import notify
+
+        return notify(
+            destinataire, event_type, titre, body=corps,
+            link=f'/crm/visites/{visite.pk}', company=visite.company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def _ecrire_retour_lead_visite(visite):
+    """VT12 — le feu vert REDESCEND sur la fiche lead.
+
+    Le lead est la fiche que tout le monde ouvre : après le feu vert, il porte
+    lui-même ``visite_effectuee=True`` et un récap COURT dans ``visite_notes``
+    (uniquement des mesures RÉELLEMENT saisies — jamais un défaut inventé).
+
+    Deux prudences : le récap est APPENDU (une note déjà écrite à la main n'est
+    jamais écrasée) et il n'est écrit qu'une fois (une re-validation ne le
+    duplique pas). Rien de tout ceci ne double le chatter : la note
+    ``journaliser_visite(..., 'validee')`` reste l'unique trace d'historique.
+    """
+    from . import selectors
+
+    lead = visite.lead
+    if lead is None:
+        return None
+    recap = selectors.recap_visite_terrain(visite)
+    existantes = (lead.visite_notes or '').strip()
+    champs = []
+    if not lead.visite_effectuee:
+        lead.visite_effectuee = True
+        champs.append('visite_effectuee')
+    if recap not in existantes:
+        lead.visite_notes = f'{existantes}\n{recap}'.strip() if existantes \
+            else recap
+        champs.append('visite_notes')
+    if champs:
+        lead.save(update_fields=champs)
+    return lead
+
+
+def valider_visite(visite, user):
+    """Feu vert calepinage : la visite passe VALIDÉE et devient lecture seule."""
+    from .models import VisiteTerrain
+
+    visite.statut = VisiteTerrain.Statut.VALIDEE
+    visite.save(update_fields=['statut'])
+    _ecrire_retour_lead_visite(visite)
+    journaliser_visite(visite, user, 'validee')
+    _notifier_commercial_visite(
+        visite, 'visite_terrain_validee',
+        'Visite technique validée',
+        f'La visite du lead « {visite.lead} » a reçu le feu vert du bureau '
+        "d'études.")
+    return visite
+
+
+def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
+    """Renvoie la visite au commercial avec le détail EXACT de ce qu'il refaire.
+
+    ``photos`` — ids de ``VisiteMedia`` à reprendre ; ``mesures`` — liste de
+    ``{'categorie': ..., 'code': ...}`` à re-relever. Le ``motif`` est
+    obligatoire (validé côté sérialiseur) et il est recopié sur CHAQUE élément
+    marqué, pour que la tuile porte elle-même son explication.
+
+    Renvoie un message d'erreur FR si un id de photo ne correspond à rien sur
+    cette visite (l'erreur NOMME ce qui cloche), sinon ``''``.
+    """
+    from . import visite_checklist as checklist
+    from .models import VisiteTerrain
+
+    ids = [int(pk) for pk in (photos or [])]
+    medias = list(visite.medias.filter(pk__in=ids)) if ids else []
+    if len(medias) != len(set(ids)):
+        connus = sorted(str(media.pk) for media in medias)
+        return ('Une ou plusieurs photos demandées n’appartiennent pas à cette '
+                'visite. Photos reconnues : '
+                + (', '.join(connus) if connus else 'aucune') + '.')
+
+    for media in medias:
+        media.a_refaire = True
+        media.motif_refaire = motif
+        media.save(update_fields=['a_refaire', 'motif_refaire'])
+
+    # Une mesure « à refaire » est une mesure à RE-RELEVER : on la vide, donc
+    # la complétude serveur la redemande d'elle-même — aucun second registre
+    # d'état à tenir synchrone.
+    stockees = dict(visite.mesures if isinstance(visite.mesures, dict) else {})
+    touchee = False
+    for demande in (mesures or []):
+        categorie = (demande or {}).get('categorie')
+        code = (demande or {}).get('code')
+        if checklist.mesure(categorie, code) is None:
+            continue
+        bloc = dict(stockees.get(categorie) or {})
+        if code in bloc:
+            bloc[code] = None
+            stockees[categorie] = bloc
+            touchee = True
+    if touchee:
+        visite.mesures = stockees
+
+    visite.statut = VisiteTerrain.Statut.A_REFAIRE
+    champs = ['statut', 'mesures'] if touchee else ['statut']
+    visite.save(update_fields=champs)
+    journaliser_visite(visite, user, 'a_refaire', detail=f'Motif : {motif}')
+    _notifier_commercial_visite(
+        visite, 'visite_terrain_a_refaire',
+        'Visite technique à refaire',
+        f'La visite du lead « {visite.lead} » revient à refaire. '
+        f'Motif : {motif}')
+    return ''

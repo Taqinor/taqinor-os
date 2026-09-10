@@ -61,6 +61,12 @@ const crmApi = {
   // (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie rien — jamais une
   // erreur bloquante, l'atelier toiture retombe sur le tracé manuel.
   getRoofFootprint: (id) => api.get(`/crm/leads/${id}/roof-footprint/`),
+  // VT12/VT13 — texture du toit CALÉE du lead (dernière visite terrain
+  // VALIDÉE) : {visite_id, url, texture_calage} — les TROIS clés à null quand
+  // il n'y a rien à montrer (jamais un 404). L'atelier 3D et la fiche lead
+  // peignent le toit réel sans rien connaître du module visite. Contrat :
+  // apps/crm/contract_samples/lead_photo_toit.json.
+  getLeadPhotoToit: (id) => api.get(`/crm/leads/${id}/photo-toit/`),
   // NTMOB4 — file de relance du jour (FG31/VX83, crm.selectors.relances_du_jour).
   // ?scope=overdue|today|week (défaut today). {count, results:[Lead]}.
   // `config` optionnel (NTMOB19) : permet à un widget d'arrière-plan de
@@ -352,6 +358,47 @@ const crmApi = {
   // `url_interne` est l'aperçu commercial sans notification.
   mintQuestionnaireLien: (leadId, payload) =>
     api.post(`/crm/leads/${leadId}/questionnaire-lien/`, payload ?? {}),
+
+  // Groupe VT — Visite technique terrain (fondateur 2026-09-09). Forme de
+  // l'agrégat committée dans `apps/crm/contract_samples/visite_terrain.json`
+  // (PACT10) : checklist par catégorie, `mesures`, `completude` calculée
+  // SERVEUR, `photo_toit`/`texture_calage`, panneau `client_panel`/`devis`
+  // (sans prix_achat). `params.mine=1` filtre sur le commercial connecté.
+  getVisites: (params, config) => api.get('/crm/visites/', { params, ...config }),
+  getVisite: (id) => api.get(`/crm/visites/${id}/`),
+  createVisite: (data) => api.post('/crm/visites/', data),
+  // `fichier` est un File (CameraCapture/FileUpload) ; `slotCode` = le code du
+  // slot ciblé (checklist[].slots[].code) — jamais un slot inventé côté écran.
+  uploadVisitePhoto: (id, { slotCode, fichier, gpsLat, gpsLng, commentaire }) => {
+    const form = new FormData()
+    form.append('slot_code', slotCode)
+    form.append('fichier', fichier)
+    if (gpsLat != null) form.append('gps_lat', gpsLat)
+    if (gpsLng != null) form.append('gps_lng', gpsLng)
+    if (commentaire) form.append('commentaire', commentaire)
+    return api.post(`/crm/visites/${id}/photos/`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  deleteVisitePhoto: (id, mediaId) => api.delete(`/crm/visites/${id}/photos/${mediaId}/`),
+  // `valeurs` : objet plat des champs de la catégorie (mêmes clés que
+  // `mesures.<categorie>` du contrat). 400 possible : `{erreurs:{champ:msg}}`.
+  patchVisiteMesures: (id, categorie, valeurs) =>
+    api.patch(`/crm/visites/${id}/mesures/`, { categorie, valeurs }),
+  // 400 possible : `{manquants:[...], message}` — le wizard affiche la liste
+  // du serveur, jamais une re-dérivation locale.
+  terminerVisite: (id) => api.post(`/crm/visites/${id}/terminer/`),
+  validerVisite: (id) => api.post(`/crm/visites/${id}/valider/`),
+  // `payload` : {photos:[slot_code,...], mesures:[{categorie,champ},...], motif}
+  // — `motif` OBLIGATOIRE côté serveur ET côté écran (VT8).
+  renvoyerVisite: (id, payload) => api.post(`/crm/visites/${id}/renvoyer/`, payload),
+  // VT9/VT11 — assemblage serveur (Celery) des photos du slot toiture ;
+  // `photo_toit.assemblage_etat` passe en_cours→ok/echec, à relire par polling
+  // (GET visite) — cet appel ne fait que déclencher la tâche.
+  assemblerPhotosVisite: (id) => api.post(`/crm/visites/${id}/assembler-photos/`),
+  // VT11 — sauvegarde du calage (4 coins [lat,lng] du drapage sur le contour).
+  patchVisiteCalage: (id, coins) =>
+    api.patch(`/crm/visites/${id}/calage/`, { texture_calage: { coins } }),
 }
 
 export default crmApi

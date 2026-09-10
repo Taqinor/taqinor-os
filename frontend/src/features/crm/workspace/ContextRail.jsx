@@ -7,6 +7,9 @@ import AttachmentsPanel from '../../../components/AttachmentsPanel'
 import recordsApi from '../../../api/recordsApi'
 import TimelineTab from './TimelineTab'
 import DevisTab from './DevisTab'
+// VT5 — visite technique terrain (fondateur 2026-09-09) : bouton de création
+// depuis la fiche lead + liste des visites déjà planifiées.
+import VisiteTab from './VisiteTab'
 // WIR14/NTCRM13 — checklist du playbook (progression auto-générée à chaque
 // changement de stage, apps/crm/receivers.py) : portée de l'ancien LeadForm
 // (section « Playbook », origin/main 2026-07-19) vers un onglet du rail.
@@ -171,6 +174,8 @@ export default function ContextRail({
           <TabsTrigger value="playbook">Playbook</TabsTrigger>
           <TabsTrigger value="activites">Activités{openActivites ? ` (${openActivites})` : ''}</TabsTrigger>
           <TabsTrigger value="pieces">Pièces{nbPieces ? ` (${nbPieces})` : ''}</TabsTrigger>
+          {/* VT5 — visite technique terrain. */}
+          <TabsTrigger value="visite">Visite</TabsTrigger>
         </TabsList>
 
         <TabsContent value="historique">
@@ -211,6 +216,11 @@ export default function ContextRail({
 
         <TabsContent value="pieces">
           <AttachmentsPanel model="crm.lead" id={leadId} onChange={loadCounts} />
+        </TabsContent>
+
+        {/* VT5 — visite technique terrain. */}
+        <TabsContent value="visite">
+          <VisiteTab leadId={leadId} />
         </TabsContent>
       </Tabs>
     </aside>

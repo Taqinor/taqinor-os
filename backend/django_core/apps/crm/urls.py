@@ -19,6 +19,8 @@ from .public_questionnaire_views import public_questionnaire
 from .public_visite_views import public_visite
 from .public_views import public_salle_vente, public_apporteur_mes_deals
 from .public_lead_ref_views import lead_ref_lookup
+# VT2 — API de la visite technique terrain (ViewSet dédié, hors views.py).
+from .views_visite import VisiteTerrainViewSet, lead_photo_toit
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
 # préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
 # routeur compta, qui reverse ``partenaire-list`` etc.).
@@ -86,6 +88,8 @@ router.register(r'apporteurs', ApporteurViewSet, basename='crm-apporteur')
 router.register(r'deals-enregistres', DealEnregistreViewSet, basename='deal-enregistre')
 # NTCRM23 — Défis et leaderboards d'équipe.
 router.register(r'defis', DefiViewSet, basename='crm-defi')
+# VT2 — Visites techniques terrain (checklist photos/mesures + feu vert).
+router.register(r'visites', VisiteTerrainViewSet, basename='crm-visite')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
@@ -110,6 +114,10 @@ urlpatterns = [
     path('rapports/attribution/', rapport_attribution, name='rapport-attribution'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
+    # VT12 — texture du toit CALÉE du lead (dernière visite validée), lue par
+    # l'atelier 3D et la carte de la fiche lead sans connaître le module visite.
+    path('leads/<int:lead_id>/photo-toit/', lead_photo_toit,
+         name='lead-photo-toit'),
     # XMKT37 — Livechat public tokenisé (voir public_chat_views.py)
     # headless: livechat du site public (apps/web), aucun ecran ERP en face
     path('public/chat/sessions/', open_chat_session, name='public-chat-open'),

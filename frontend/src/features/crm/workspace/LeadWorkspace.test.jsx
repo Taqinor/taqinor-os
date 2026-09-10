@@ -63,6 +63,9 @@ vi.mock('../../../api/crmApi', () => ({
     // MRY15 — SectionPipeline (rendu réel ici) monte CadenceFrise en mode
     // édition, qui se charge elle-même au montage.
     getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
+    // VT13 — SectionSite monte TraceToitClient, qui lit la photo-toit du lead.
+    getLeadPhotoToit: vi.fn(() => Promise.resolve({ data: { visite_id: null, url: null, texture_calage: null } })),
+    villeStatut: vi.fn(() => Promise.resolve({ data: { statut: 'connue' } })),
     // F4 — raccourci « ⋯ » du rail (onAction('relance-cadence')).
     initialiserRelance: vi.fn(() => Promise.resolve({ data: [{ id: 1 }] })),
   },
