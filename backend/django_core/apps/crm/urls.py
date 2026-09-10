@@ -19,6 +19,8 @@ from .public_questionnaire_views import public_questionnaire
 from .public_visite_views import public_visite
 from .public_views import public_salle_vente, public_apporteur_mes_deals
 from .public_lead_ref_views import lead_ref_lookup
+# VT2 — API de la visite technique terrain (ViewSet dédié, hors views.py).
+from .views_visite import VisiteTerrainViewSet
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
 # préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
 # routeur compta, qui reverse ``partenaire-list`` etc.).
@@ -86,6 +88,8 @@ router.register(r'apporteurs', ApporteurViewSet, basename='crm-apporteur')
 router.register(r'deals-enregistres', DealEnregistreViewSet, basename='deal-enregistre')
 # NTCRM23 — Défis et leaderboards d'équipe.
 router.register(r'defis', DefiViewSet, basename='crm-defi')
+# VT2 — Visites techniques terrain (checklist photos/mesures + feu vert).
+router.register(r'visites', VisiteTerrainViewSet, basename='crm-visite')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
