@@ -474,7 +474,12 @@ class ApiRelanceEtapeTests(TestCase):
             f'/api/django/crm/relance-etapes/?lead={self.lead.pk}')
         self.assertEqual(resp.status_code, 200)
         # La frise montre le PASSÉ autant que le futur : la touche faite y est.
-        self.assertEqual(resp.data['count'], len(etapes))
+        # CKP2 — elle montre AUSSI la touche que l'issue vient de faire naître
+        # (cadence réactive) : la frise rend TOUT ce que le lead porte, jamais
+        # un sous-ensemble.
+        self.assertEqual(resp.data['count'],
+                         self.lead.relance_etapes.count())
+        self.assertGreaterEqual(resp.data['count'], len(etapes))
         statuts = {r['statut'] for r in resp.data['results']}
         self.assertIn('fait', statuts)
 

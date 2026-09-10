@@ -247,7 +247,10 @@ class SuiviActionTests(_Base):
             role_legacy='responsable', company=self.company)
         self._touche(_jour(2026, 9, 9), lead=self._lead('Autre', owner=autre))
         resp = self._get(owner=str(self.acteur.pk))
-        self.assertEqual(resp.data['count'], 4)
+        # Les CINQ touches de la période appartiennent aux leads de `acteur`
+        # (dont l'annulation moteur ajoutée par CKP1) — celle de `autre` est
+        # bornée dehors, résumé compris.
+        self.assertEqual(resp.data['count'], 5)
         self.assertEqual(resp.data['resume']['a_faire'], 2)
 
     def test_une_borne_manquante_est_refusee(self):
@@ -369,7 +372,16 @@ class DecisionContactTests(_PlacementBase):
         rapport = self._placer()
         self.assertEqual(self._codes(rapport), {'contact_complete': 1})
         touches = lead.relance_etapes.filter(cadence='contact')
-        self.assertEqual(touches.count(), 11)
+        # CKP2 — cadence RÉACTIVE : le lead est placé sur la cadence COMPLÈTE
+        # (11 touches annoncées, c'est ce que l'aperçu MRY30 promet), mais
+        # seule la prochaine à faire est matérialisée ; la suite naît des
+        # issues saisies.
+        from apps.crm.services import calculer_echeances_cadence
+        depart = touches.first().cadence_depart
+        self.assertIsNotNone(depart)
+        self.assertEqual(
+            len(calculer_echeances_cadence(lead, 'contact', depart)), 11)
+        self.assertEqual(touches.count(), 1)
         self.assertEqual(
             set(touches.values_list('statut', flat=True)),
             {RelanceEtape.Statut.A_FAIRE})

@@ -124,11 +124,17 @@ class FormeDuContratTests(_Base):
             resp = self._api(simple).get(url)
             self.assertEqual(resp.status_code, 200, (url, resp.data))
 
-    def test_un_nombre_de_jours_invalide_est_refuse_en_nommant_le_champ(self):
-        for valeur in ('0', '400', 'trente'):
+    def test_un_nombre_de_jours_invalide_est_NORMALISE_jamais_refuse(self):
+        """« Normaliser plutôt que refuser quand l'intention est claire »
+        (règle fondateur 08/09) : ``jours`` est un paramètre d'AFFICHAGE — un
+        tableau de bord ne se casse pas dessus. Hors bornes, il est ramené
+        dans 1-365 ; illisible, il retombe sur la fenêtre par défaut. La
+        période effectivement calculée est TOUJOURS annoncée dans la réponse
+        (`periode_jours`), jamais laissée deviner."""
+        for valeur, attendu in (('0', 1), ('400', 365), ('trente', 30)):
             resp = self._api().get(ADHERENCE_URL, {'jours': valeur})
-            self.assertEqual(resp.status_code, 400, valeur)
-            self.assertIn('jours', resp.data['erreurs'])
+            self.assertEqual(resp.status_code, 200, valeur)
+            self.assertEqual(resp.data['periode_jours'], attendu, valeur)
 
 
 class FormulesTests(_Base):
