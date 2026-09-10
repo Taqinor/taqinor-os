@@ -323,6 +323,88 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return _erreur('photos', message)
         return self._agregat(visite)
 
+    # ── VT9 — Toit assemblé (panorama serveur) + VT11 calage ─────────────────
+
+    @action(detail=True, methods=['post'], url_path='assembler-photos')
+    def assembler_photos(self, request, pk=None):
+        """Lance l'assemblage des photos du toit (tâche Celery).
+
+        Réponse IMMÉDIATE avec ``photo_toit.assemblage_etat = 'en_cours'`` ;
+        l'écran suit l'avancement en relisant l'agrégat (le GET est le
+        polling — aucun second endpoint d'état à tenir synchrone).
+        """
+        visite = self.get_object()
+        refus = self._refus_si_gelee(visite)
+        if refus is not None:
+            return refus
+        visite.assemblage_etat = VisiteTerrain.Assemblage.EN_COURS
+        visite.assemblage_erreur = ''
+        visite.save(update_fields=['assemblage_etat', 'assemblage_erreur'])
+
+        from .tasks import assembler_photos_toit_task
+
+        try:
+            assembler_photos_toit_task.delay(visite.pk)
+        except Exception:  # pragma: no cover - courtier indisponible
+            # Sans courtier, on exécute en ligne plutôt que de laisser la
+            # visite bloquée « en cours » pour toujours.
+            assembler_photos_toit_task(visite.pk)
+        visite.refresh_from_db()
+        return self._agregat(visite)
+
+    @action(detail=True, methods=['get'], url_path='photo-toit')
+    def photo_toit(self, request, pk=None):
+        """Sert l'image assemblée par le proxy Django (jamais MinIO direct)."""
+        from django.http import HttpResponse
+
+        from apps.records.storage import fetch_attachment
+
+        visite = self.get_object()
+        if not visite.photo_toit_key:
+            return _erreur('photo_toit', "Aucune image de toit assemblée pour "
+                                         'cette visite.',
+                           status.HTTP_404_NOT_FOUND)
+        data, message = fetch_attachment(visite.photo_toit_key)
+        if message:
+            return _erreur('photo_toit', message, status.HTTP_404_NOT_FOUND)
+        return HttpResponse(data, content_type='image/png')
+
+    @action(detail=True, methods=['patch'], url_path='calage')
+    def calage(self, request, pk=None):
+        """VT11 — enregistre les 4 coins du drapage sur le contour du toit."""
+        visite = self.get_object()
+        refus = self._refus_si_gelee(visite)
+        if refus is not None:
+            return refus
+        calage = request.data.get('texture_calage')
+        if calage is None:
+            visite.texture_calage = None
+            visite.save(update_fields=['texture_calage'])
+            return self._agregat(visite)
+        coins = (calage or {}).get('coins') if isinstance(calage, dict) else None
+        if not isinstance(coins, list) or len(coins) != 4:
+            return _erreur(
+                'texture_calage',
+                'Le calage attend exactement 4 coins [latitude, longitude].')
+        propres = []
+        for coin in coins:
+            if not isinstance(coin, (list, tuple)) or len(coin) != 2:
+                return _erreur('texture_calage',
+                               'Chaque coin doit être une paire '
+                               '[latitude, longitude].')
+            lat, message = _coordonnee(coin[0])
+            if message or lat is None:
+                return _erreur('texture_calage',
+                               'Latitude de coin invalide.')
+            lng, message = _coordonnee(coin[1])
+            if message or lng is None:
+                return _erreur('texture_calage',
+                               'Longitude de coin invalide.')
+            propres.append([float(lat), float(lng)])
+        visite.texture_calage = {'coins': propres}
+        visite.save(update_fields=['texture_calage'])
+        return self._agregat(visite)
+
 
 def _coordonnee(brute):
     """(Decimal|None, message|None) — une coordonnée GPS optionnelle."""
