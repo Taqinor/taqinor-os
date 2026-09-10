@@ -21,6 +21,7 @@ import {
   trierCategories, progressionPhotos,
   ETAT_SLOT_LABEL, ETAT_SLOT_TONE, STATUT_VISITE_LABEL,
 } from './visiteHelpers'
+import VisiteMesuresForm from './VisiteMesuresForm'
 
 // Une tuile photo — état/motif/guide TOUJOURS tels que renvoyés par le
 // serveur, jamais reformulés ici (RÈGLE fondateur : erreurs/motifs = texte
@@ -194,6 +195,14 @@ export default function VisiteWizardPage() {
             {c.slots.map((slot) => (
               <SlotTile key={slot.code} visiteId={id} slot={slot} onChanged={recharger} />
             ))}
+            <VisiteMesuresForm
+              visiteId={id}
+              categorie={c.categorie}
+              libelle={c.libelle}
+              valeurs={visite.mesures?.[c.categorie]}
+              lectureSeule={lectureSeule}
+              onSaved={recharger}
+            />
           </TabsContent>
         ))}
       </Tabs>
