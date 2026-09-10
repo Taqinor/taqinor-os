@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
-  Handshake, Swords, Trophy, CalendarClock,
+  Handshake, Swords, Trophy, CalendarClock, ClipboardCheck,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -60,6 +60,10 @@ const DefisPage = lazy(() => import('../../pages/crm/defis/DefisPage'))
 // MRY31 — écran « Suivi des relances » : les touches de cadence par jour et
 // leur statut (au-delà de la file « aujourd'hui + retard » du Cockpit).
 const RelancesSuiviPage = lazy(() => import('../../pages/crm/RelancesSuiviPage'))
+// VT5 — visite technique terrain (fondateur 2026-09-09) : « mes visites »
+// (commercial) + l'écran wizard checklist photos/mesures d'une visite.
+const VisitesListPage = lazy(() => import('../../pages/crm/visites/VisitesListPage'))
+const VisiteWizardPage = lazy(() => import('../../pages/crm/visites/VisiteWizardPage'))
 
 const config = {
   key: 'crm',
@@ -105,6 +109,8 @@ const config = {
       // visible de toute l'équipe, le filtre Responsable se réserve lui-même
       // aux rôles responsable/admin à l'intérieur de l'écran.
       { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'] },
+      // VT5 — « mes visites » (checklist photos/mesures guidée terrain).
+      { to: '/crm/visites',          label: 'Visites terrain',  k: 'nav.visites_terrain', icon: navIcon(ClipboardCheck), roles: ['normal','responsable','admin'] },
     ],
   },
   routes: [
@@ -132,6 +138,9 @@ const config = {
     { path: '/crm/defis', component: DefisPage },
     // MRY31 — suivi des relances par jour.
     { path: '/crm/relances', component: RelancesSuiviPage },
+    // VT5 — visite technique terrain : « mes visites » + wizard d'une visite.
+    { path: '/crm/visites', component: VisitesListPage },
+    { path: '/crm/visites/:id', component: VisiteWizardPage },
   ],
 }
 
