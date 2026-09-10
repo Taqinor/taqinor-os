@@ -22,6 +22,7 @@ import {
   ETAT_SLOT_LABEL, ETAT_SLOT_TONE, STATUT_VISITE_LABEL,
 } from './visiteHelpers'
 import VisiteMesuresForm from './VisiteMesuresForm'
+import VisiteClientDevisPanel from './VisiteClientDevisPanel'
 
 // Une tuile photo — état/motif/guide TOUJOURS tels que renvoyés par le
 // serveur, jamais reformulés ici (RÈGLE fondateur : erreurs/motifs = texte
@@ -183,6 +184,8 @@ export default function VisiteWizardPage() {
       <div className="mb-3">
         <ChecklistProgress done={done} total={total} noun="photo" />
       </div>
+
+      <VisiteClientDevisPanel clientPanel={visite.client_panel} devis={visite.devis} />
 
       <Tabs value={categorieActive} onValueChange={setCategorieActive} className="mt-3">
         <TabsList className="flex-wrap">
