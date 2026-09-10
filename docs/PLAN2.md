@@ -180,6 +180,94 @@ GATED (fondateur) :
 
 ---
 
+### Groupe CKP — Cockpit CRM « suivre les étapes » : vérité des sautées, cadence réactive, adhérence à deux vues (CKP0-CKP6, fondateur 2026-09-10)
+
+*Commande fondateur 2026-09-10 : « moi et Meryem on ne voit pas assez ce qu'elle fait et si elle
+le fait bien — je parle du suivi des étapes ». TROIS DÉCISIONS FONDATEUR ACTÉES (ne pas
+re-demander) : (1) TRANSPARENCE TOTALE — « on voit la même chose moi et elle » : mêmes chiffres
+pour les deux, seule la mise en page diffère (elle = file opérationnelle, lui = vue stratégique),
+jamais un tableau caché sur elle ; (2) PLUS AUCUN SAUT AUTOMATIQUE affiché comme un saut humain —
+constat prouvé : `arreter_cadence` (services.py:1669-1673) SAUTEE en masse les étapes restantes en
+estampillant l'humain de l'événement déclencheur, les reprises MRY23/MRY30 SAUTEE sans acteur, et
+le badge UI « Sautée » nu (RelanceEtapeRow.jsx:166) ne distingue rien ; (3) CADENCE RÉACTIVE —
+fin des 3 appels J0 programmés d'avance (CADENCE_CONTACT_DEFAUT ordre 1-3 créés en bulk) : on ne
+programme QUE le prochain geste, et c'est l'issue saisie (« pas de réponse ») qui programme le
+suivant — valable pour tout utilisateur. Recherche 2 lanes (KPI d'adhérence : formules
+Salesloft/HubSpot/Revenue.io — à-l'heure %, complétion de cadence, drop-off par étape,
+speed-to-lead ; présentation : file unique ordonnée côté rep, funnel par étape côté manager,
+HBR anti-surveillance → transparence). Existant à RÉUTILISER : kpi_cadences 7 indicateurs
+(selectors.py:1505), endpoints `relance-etapes/?scope=` + `suivi/` (résumé serveur),
+RelancesDuJourWidget/KpiRelancesPanel/CadenceFrise/RelancesSuiviPage, hooks
+useIsAdminOrResponsable, digest 08:30 + bilan lundi.*
+
+> Contraintes (toutes tâches) : stages via STAGES.py (jamais une liste en dur) ; AUCUN seuil
+> RAG inventé — montrer les valeurs et la tendance vs sa propre base, pas un vert/rouge
+> arbitraire ; dénominateur 0 → null, jamais 0 % inventé ; jamais un compteur d'activité brut
+> comme cible seule (apparier à-l'heure % + conversion — anti-Goodhart) ; multi-tenant ;
+> migrations en 3 temps si contrainte (YDATA20) ; les KPI d'adhérence ne comptent JAMAIS une
+> annulation moteur comme un saut humain.
+
+- [x] CKP0 — CONTRAT D'ABORD (PACT10) : `apps/crm/contract_samples/kpi_adherence.json` +
+  `apps/crm/contract_samples/mes_stats_relance.json` (formes des deux nouveaux agrégats, voir
+  fichiers) — À LANDER sur `main` AVANT les moitiés CKP1-CKP6 (embarqué dans le batch VT en
+  cours). Files: apps/crm/contract_samples (@lane: contrat-ckp) (@model: sonnet)
+- [ ] CKP1 — Vérité des sautées : nouveau statut `RelanceEtape.Statut.ANNULEE` (« annulée par le
+  moteur », migration + backfill des historiques par les motifs fixes connus — 'joint', 'lead
+  signé', 'devis accepté', 'reprise : déjà passée', 'passée avant le moteur', etc. → annulee ;
+  un saut sans motif moteur reste sautee) ; `arreter_cadence` et les reprises MRY23/MRY30
+  écrivent ANNULEE (traite_par = null pour le moteur, motif conservé en note) ; SAUTEE devient
+  EXCLUSIVEMENT l'action humaine `sauter` ; le proxy KPI `note__icontains='joint'`
+  (selectors.py:1563) bascule sur le statut structuré ; mettre à jour les tests épinglés
+  (tests_mry9_arrets, tests_mry11_fin_cadence, tests_mry23/30, tests_qj_funnel_devis_envoye,
+  tests_mry13). (@after: CKP0) Files: apps/crm/models.py, apps/crm/services.py,
+  apps/crm/receivers.py, apps/crm/migrations (@lane: backend/ckp) (@model: opus)
+- [ ] CKP2 — Cadence RÉACTIVE : `initialiser_plan_relance` ne matérialise que la PREMIÈRE touche
+  à faire (le gabarit complet reste la partition) ; `marquer_etape_relance` FAIT avec issue
+  « pas de réponse »/« répondeur »/« occupé » OU SAUTEE humaine → matérialise la touche suivante
+  du gabarit (J0 intra-jour : ancrée sur l'instant de l'issue ; J+N : ancrée sur le départ de
+  cadence, recalage fenêtres inchangé) ; issue « joint »/« intéressé »/« refus » → les arrêts
+  MRY9 existants (qui écrivent désormais ANNULEE) ; l'issue devient OBLIGATOIRE pour clore une
+  touche APPEL (erreur nommant le champ sinon) ; l'invariant « jamais un lead sans prochaine
+  touche » (assurer_prochaine_etape_apres_succes) reste vert ; réécrire les tests d'échéancier
+  (tests_relance_foundation « 5 étapes d'un coup » → « une à la fois, la suite naît de
+  l'issue »). L'aperçu MRY30 (calculer_echeances_cadence) reste la partition COMPLÈTE prévue —
+  il annonce le plan, la matérialisation suit les issues. (@after: CKP1) Files:
+  apps/crm/services.py, apps/crm/views.py (@lane: backend/ckp) (@model: opus)
+- [ ] CKP3 — KPI d'adhérence serveur (formules de la recherche, calculées sur RelanceEtape) :
+  endpoint `GET relance-etapes/kpi-adherence/?jours=` (contrat CKP0) — à-l'heure %
+  (fait le jour dû), retards ouverts, sautées HUMAINES vs annulées moteur (séparées), drop-off
+  par ordre de touche (le signal de coaching), vitesse premier contact (médiane h + tendance
+  hebdo), leads sans touche due en LISTE (jamais un simple compte), conversion par étape du
+  funnel (STAGES.py) ; endpoint `GET relance-etapes/mes-stats/` (contrat CKP0) — file du moment,
+  retards, mon à-l'heure 7 j, cadences complétées 14 j, série de jours sans retard ; les deux
+  lisibles par TOUS les rôles (décision transparence) ; tests. (@after: CKP1) Files:
+  apps/crm/selectors.py, apps/crm/views.py (@lane: backend/ckp) (@model: sonnet)
+- [ ] CKP4 — Écran Meryem (opérationnel, cockpit CRM remanié pour le rôle normal) : LA FILE
+  d'abord (RelancesDuJourWidget en tête, pleine largeur), issue OBLIGATOIRE au « Fait » d'un
+  appel (choix Joint / Pas de réponse / Répondeur / Occupé — déclenche la programmation de la
+  suite, message de confirmation « prochain appel programmé le … ») ; badges honnêtes :
+  « Sautée · qui · quand » (traite_par_nom enfin rendu) vs « Annulée (moteur) · motif » ;
+  3 tuiles perso `mes-stats` (à faire maintenant / mon à-l'heure 7 j / série sans retard),
+  jamais comparatives. (@after: CKP2, CKP3) Files: frontend/src/pages/crm,
+  frontend/src/features/crm/relances (@lane: frontend/ckp) (@model: sonnet)
+- [ ] CKP5 — Vue adhérence (stratégique, visible par les DEUX — décision transparence ; mise en
+  avant sur le cockpit admin/responsable, accessible à tous) : table drop-off par touche
+  (ordre/canal/faites/à-l'heure %/sautées humaines/annulées), tendance hebdo à-l'heure % +
+  vitesse premier contact, liste des leads sans touche due, conversion par étape appariée à
+  l'adhérence (anti-Goodhart) ; aucun seuil rouge/vert inventé — valeurs + tendance ;
+  réutilise KpiRelancesPanel comme socle. (@after: CKP3) Files: frontend/src/pages/crm
+  (@lane: frontend/ckp) (@model: sonnet)
+- [ ] CKP6 — Tests frontend : mocks = contrats CKP0 exactement ; le Fait d'un appel sans issue
+  est bloqué avec le champ nommé ; badge annulée ≠ sautée (motif visible) ; les tuiles perso
+  affichent null proprement (« pas encore de données », jamais 0 % inventé) ; la file reste
+  la première chose visible sur mobile. (@after: CKP4, CKP5) Files: frontend/src/pages/crm,
+  frontend/src/features/crm/relances (@lane: frontend/ckp) (@model: sonnet)
+
+#### DONE LOG — Groupe CKP
+- 2026-09-10 — CKP0 : contrats `kpi_adherence.json` + `mes_stats_relance.json` déposés (adhérence transparente à tous les rôles, sautées humaines ≠ annulées moteur, null si dénominateur nul), embarqués dans le batch VT (PR #655) pour être sur `main` avant les moitiés CKP1-CKP6.
+
+---
+
 ### Groupe QX ROUND 7 — 4 MODÈLES DE DEVIS : split industriel/commercial, 4 renderers, moteur agricole FAO-56, injection 82-21 (QX43-QX52 + QXG6, fondateur 2026-07-16)
 
 *Commande fondateur 2026-07-16 : séparer industriel et commercial (4 modes réels avec

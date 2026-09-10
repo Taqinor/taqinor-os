@@ -1,0 +1,11 @@
+{
+  "endpoint": "GET /api/django/crm/relance-etapes/mes-stats/",
+  "pourquoi": "Groupe CKP (fondateur 2026-09-10) : les tuiles PERSONNELLES du commercial sur le cockpit CRM — actionnables, jamais comparatives (recherche : un rep voit SA file et SES chiffres, pas un classement). Mêmes données visibles par le manager (décision transparence). Dénominateur nul → null (« pas encore de données »), jamais 0 % inventé. `serie_jours_sans_retard` = jours OUVRÉS consécutifs terminés sans touche en retard. Source de vérité à construire : apps/crm/selectors.py::mes_stats_relance.",
+  "exemple": {
+    "a_faire_maintenant": 4,
+    "en_retard": 1,
+    "a_lheure_7j_pct": 91.7,
+    "cadences_completees_14j": 3,
+    "serie_jours_sans_retard": 5
+  }
+}
