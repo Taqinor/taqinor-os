@@ -239,8 +239,15 @@ class ReveilsEtalesTests(_Base):
         rafale depuis le même numéro."""
         for i in range(25):
             self._lead(f'Froid {i}', stage=stages.COLD)
+        # Bug CI #29 (récidive du 10/09/2026) — `now` est GELÉ sur un lundi :
+        # le réveil ordre 1 vaut J+30, donc lancé un JEUDI les trois départs
+        # étalés tombent Sam/Dim/Lun et le recalage week-end les fusionne TOUS
+        # sur le même lundi (len(jours) == 1). La propriété testée est
+        # l'étalement, pas le calendrier du jour de CI.
+        lundi = timezone.make_aware(
+            datetime.datetime(2026, 9, 7, 10, 0), datetime.timezone.utc)
         demarrer_cadences_existantes(
-            self.company, apply_changes=True, par_jour=10)
+            self.company, apply_changes=True, par_jour=10, now=lundi)
         premieres = RelanceEtape.objects.filter(
             company=self.company, cadence='reveil', ordre=1)
         self.assertEqual(premieres.count(), 25)
