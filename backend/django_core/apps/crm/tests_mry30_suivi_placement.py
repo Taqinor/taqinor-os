@@ -818,7 +818,12 @@ class CalculEcheancesTests(_Base):
             lead, 'contact', MERCREDI)]
         ecrites = [etape.due_at for etape in initialiser_plan_relance(
             lead, self.acteur, cadence='contact', depart=MERCREDI)]
-        self.assertEqual(ecrites, calcule)
+        # CKP2 — la matérialisation est désormais RÉACTIVE : ce qui est écrit
+        # est un PRÉFIXE de la partition (les touches déjà échues, plus la
+        # première à venir). La garde reste la même — ce qui est écrit ne
+        # diverge JAMAIS de ce que l'aperçu annonce.
+        self.assertTrue(ecrites)
+        self.assertEqual(ecrites, calcule[:len(ecrites)])
         self.assertGreater(len(calcule), 1)
 
     def test_la_touche_dominicale_est_datee_a_lidentique(self):
@@ -831,7 +836,8 @@ class CalculEcheancesTests(_Base):
             lead, 'apres_devis', MERCREDI)]
         ecrites = [etape.due_at for etape in initialiser_plan_relance(
             lead, self.acteur, cadence='apres_devis', depart=MERCREDI)]
-        self.assertEqual(ecrites, calcule)
+        self.assertTrue(ecrites)
+        self.assertEqual(ecrites, calcule[:len(ecrites)])
         self.assertTrue(
             any(echeance.astimezone(horaires.CASABLANCA).weekday() == 6
                 for echeance in calcule))

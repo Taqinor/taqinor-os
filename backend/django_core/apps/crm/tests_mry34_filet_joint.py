@@ -35,10 +35,55 @@ from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.services import (
     FILET_APPEL_LIBELLE, FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE,
-    initialiser_plan_relance, marquer_etape_relance)
+    marquer_etape_relance)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
+
+
+def _materialiser_tout(lead, user, *, cadence='contact', depart=None):
+    """CKP2 — matérialise la PARTITION ENTIÈRE d'une cadence, pour les tests.
+
+    Depuis la CADENCE RÉACTIVE (fondateur 2026-09-10),
+    ``initialiser_plan_relance`` ne crée que la première touche à faire : la
+    suite naît des issues saisies. Les tests de CE fichier ne pincent pas
+    cette mécanique-là — ils pincent le journal, le report, la fin de cadence,
+    le filet — et ont besoin d'un plan complet sous la main. On le reconstruit
+    depuis ``calculer_echeances_cadence`` (la partition, inchangée) en
+    reproduisant exactement ce que ``initialiser_plan_relance`` créait avant
+    CKP2, gabarits de réveil adaptés au rang compris. La mécanique réactive,
+    elle, est verrouillée dans ``tests_relance_foundation``.
+    """
+    from apps.crm import horaires as _h
+    from apps.crm.services import (
+        _adapter_gabarits_reveil, _normaliser_depart,
+        calculer_echeances_cadence,
+        initialiser_plan_relance as _initialiser)
+
+    etapes = _initialiser(
+        lead, user, cadence=cadence, depart=depart)
+    if not etapes:
+        return etapes
+    ancre = _normaliser_depart(depart)
+    pris = set(lead.relance_etapes.filter(cadence=cadence)
+               .values_list('ordre', flat=True))
+    for rang, (gabarit, echeance) in enumerate(
+            calculer_echeances_cadence(lead, cadence, ancre)):
+        if gabarit.ordre in pris:
+            continue
+        etape = RelanceEtape(
+            company=lead.company, lead=lead, cadence=cadence,
+            ordre=gabarit.ordre, due_at=echeance,
+            due_date=echeance.astimezone(_h.CASABLANCA).date(),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            cadence_depart=ancre)
+        if cadence == 'reveil':
+            _adapter_gabarits_reveil(lead, [etape], rang_initial=rang)
+        etape.save()
+    return list(lead.relance_etapes.filter(cadence=cadence)
+                .order_by('ordre', 'due_date'))
+
 
 LUNDI = datetime.datetime(2026, 9, 7, 9, 0, tzinfo=horaires.CASABLANCA)
 
@@ -81,7 +126,7 @@ class FiletJointTests(_Base):
 
     def setUp(self):
         super().setUp()
-        self.etapes = initialiser_plan_relance(
+        self.etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='contact')
 
     def test_joint_pose_le_filet_quand_plus_rien_nest_ouvert(self):
@@ -117,7 +162,7 @@ class FiletJointTests(_Base):
     def test_interesse_avec_apres_devis_ouvert_ne_pose_rien(self):
         """La cadence après devis continue (MRY9) : le lead A déjà une
         prochaine étape — le filet serait un doublon."""
-        initialiser_plan_relance(
+        _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='apres_devis')
         self._fait(self.etapes[2], outcome='interesse')
         self.assertEqual(self._filets().count(), 0)
@@ -240,7 +285,7 @@ class FiletJointTests(_Base):
         à CONTACTED et une prochaine étape existe."""
         self.lead.stage = stages.COLD
         self.lead.save(update_fields=['stage'])
-        reveils = initialiser_plan_relance(
+        reveils = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
         self.assertGreater(len(reveils), 1)
         self._fait(reveils[0], outcome='joint')
@@ -272,11 +317,21 @@ class FiletJointTests(_Base):
         marquer_etape_relance(
             filet, self.acteur, RelanceEtape.Statut.FAIT)
         devis.refresh_from_db()
-        derniere = (self.lead.relance_etapes
-                    .filter(cadence='apres_devis')
-                    .order_by('-due_date').first())
+        # CKP2 — la validité se lit sur la dernière échéance de la PARTITION,
+        # pas sur la dernière ligne matérialisée : depuis la cadence réactive
+        # celle-ci est la PREMIÈRE touche, et la proposition aurait expiré le
+        # jour même de son envoi.
+        from apps.crm.services import calculer_echeances_cadence
+        premiere_apres = (self.lead.relance_etapes
+                          .filter(cadence='apres_devis')
+                          .order_by('ordre').first())
+        self.assertIsNotNone(premiere_apres)
+        partition = calculer_echeances_cadence(
+            self.lead, 'apres_devis', premiere_apres.cadence_depart)
+        attendue = partition[-1][1].astimezone(horaires.CASABLANCA).date()
         self.assertIsNotNone(devis.date_validite)
-        self.assertEqual(devis.date_validite, derniere.due_date)
+        self.assertEqual(devis.date_validite, attendue)
+        self.assertGreater(attendue, premiere_apres.due_date)
 
     def test_etape_generique_traitee_sans_devis_en_repose_une(self):
         """QJ-INVARIANT : sans devis, cocher le filet en repose un — la
@@ -357,7 +412,7 @@ class RattrapageCommandeTests(_Base):
 
     def test_apply_ignore_les_leads_deja_pourvus(self):
         pourvu = self._lead_coince('Pourvu')
-        initialiser_plan_relance(
+        _materialiser_tout(
             pourvu, self.acteur, depart=LUNDI, cadence='contact')
         call_command(
             'assurer_prochaines_etapes', '--apply', stdout=StringIO())

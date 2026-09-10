@@ -1338,6 +1338,17 @@ class RelanceEtape(TenantModel):
         on_delete=models.SET_NULL,  # on_delete: étape orpheline si le devis disparaît
         null=True, blank=True, related_name='relance_etapes',
         verbose_name='Devis suivi')
+    # CKP2 — l'ANCRE de la cadence : l'instant de départ depuis lequel toutes
+    # les échéances du gabarit sont datées. Depuis que la cadence est RÉACTIVE
+    # (une seule touche matérialisée à la fois, la suivante naît de l'issue),
+    # il faut pouvoir REDATER la touche J+N des mois plus tard exactement
+    # comme l'aperçu l'avait annoncée. La déduire de la première touche
+    # existante dériverait (l'origine du jour même est recalée sur la fenêtre
+    # d'ouverture, le départ non) : elle est donc ÉCRITE. NULL sur les lignes
+    # d'avant CKP2 — c'est la vérité, et le repli lit alors la plus ancienne
+    # échéance de la cadence.
+    cadence_depart = models.DateTimeField(
+        null=True, blank=True, verbose_name='Départ de la cadence')
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
     note = models.TextField(blank=True, default='')

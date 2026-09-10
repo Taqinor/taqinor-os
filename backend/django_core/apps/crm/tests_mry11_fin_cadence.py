@@ -25,10 +25,55 @@ from authentication.models import Company
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.services import (
-    arreter_cadence, initialiser_plan_relance, marquer_etape_relance)
+    arreter_cadence, marquer_etape_relance)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
+
+
+def _materialiser_tout(lead, user, *, cadence='contact', depart=None):
+    """CKP2 — matérialise la PARTITION ENTIÈRE d'une cadence, pour les tests.
+
+    Depuis la CADENCE RÉACTIVE (fondateur 2026-09-10),
+    ``initialiser_plan_relance`` ne crée que la première touche à faire : la
+    suite naît des issues saisies. Les tests de CE fichier ne pincent pas
+    cette mécanique-là — ils pincent le journal, le report, la fin de cadence,
+    le filet — et ont besoin d'un plan complet sous la main. On le reconstruit
+    depuis ``calculer_echeances_cadence`` (la partition, inchangée) en
+    reproduisant exactement ce que ``initialiser_plan_relance`` créait avant
+    CKP2, gabarits de réveil adaptés au rang compris. La mécanique réactive,
+    elle, est verrouillée dans ``tests_relance_foundation``.
+    """
+    from apps.crm import horaires as _h
+    from apps.crm.services import (
+        _adapter_gabarits_reveil, _normaliser_depart,
+        calculer_echeances_cadence,
+        initialiser_plan_relance as _initialiser)
+
+    etapes = _initialiser(
+        lead, user, cadence=cadence, depart=depart)
+    if not etapes:
+        return etapes
+    ancre = _normaliser_depart(depart)
+    pris = set(lead.relance_etapes.filter(cadence=cadence)
+               .values_list('ordre', flat=True))
+    for rang, (gabarit, echeance) in enumerate(
+            calculer_echeances_cadence(lead, cadence, ancre)):
+        if gabarit.ordre in pris:
+            continue
+        etape = RelanceEtape(
+            company=lead.company, lead=lead, cadence=cadence,
+            ordre=gabarit.ordre, due_at=echeance,
+            due_date=echeance.astimezone(_h.CASABLANCA).date(),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            cadence_depart=ancre)
+        if cadence == 'reveil':
+            _adapter_gabarits_reveil(lead, [etape], rang_initial=rang)
+        etape.save()
+    return list(lead.relance_etapes.filter(cadence=cadence)
+                .order_by('ordre', 'due_date'))
+
 
 LUNDI = datetime.datetime(2026, 9, 7, 9, 0, tzinfo=horaires.CASABLANCA)
 
@@ -54,7 +99,7 @@ class _Base(TestCase):
 
     def _epuiser(self, cadence):
         """Traite TOUTES les touches d'une cadence, sans issue « joint »."""
-        etapes = initialiser_plan_relance(
+        etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence=cadence)
         for etape in etapes:
             marquer_etape_relance(
@@ -115,7 +160,7 @@ class NonRegressionTests(_Base):
         (voulu pour un parking MANUEL) : sans le plafond de MRY11, épuiser une
         cadence `contact` sur un lead qui a depuis SIGNÉ le ferait retomber au
         froid — un devis signé effacé par un rappel resté ouvert."""
-        etapes = initialiser_plan_relance(
+        etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='contact')
         self.lead.stage = stages.SIGNED
         self.lead.save(update_fields=['stage'])
@@ -130,7 +175,7 @@ class NonRegressionTests(_Base):
     def test_un_arret_MRY9_ne_declenche_PAS_la_cloture(self):
         """LE point du lot : on vient de JOINDRE le client — le mettre au
         froid et l'étiqueter « injoignable » serait l'inverse du bon geste."""
-        initialiser_plan_relance(
+        _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='contact')
         arreter_cadence(self.lead, user=self.acteur, motif='joint',
                         cadences=['contact'])
@@ -142,7 +187,7 @@ class NonRegressionTests(_Base):
     def test_une_cadence_reveil_epuisee_ne_se_reclot_pas(self):
         """Sinon un lead réveillé sans réponse entrerait dans une boucle de
         réveils infinie."""
-        etapes = initialiser_plan_relance(
+        etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
         for etape in etapes:
             marquer_etape_relance(
@@ -150,7 +195,7 @@ class NonRegressionTests(_Base):
         self.assertEqual(self._reveils().count(), len(etapes))
 
     def test_une_touche_restante_ne_declenche_rien(self):
-        etapes = initialiser_plan_relance(
+        etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='contact')
         marquer_etape_relance(
             etapes[0], self.acteur, RelanceEtape.Statut.FAIT)
@@ -179,7 +224,7 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
-        self.etapes = initialiser_plan_relance(
+        self.etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='contact')
 
     def _fait(self, etape, **corps):
@@ -271,12 +316,12 @@ class GabaritsReveilTests(_Base):
 
     def test_un_dormant_avec_devis_recoit_A1_puis_la_derniere_chance(self):
         self._devis('envoye')
-        initialiser_plan_relance(
+        _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
         self.assertEqual(self._cles_reveil(), ['reveil_a1', 'reveil_a3'])
 
     def test_un_brouillon_jamais_envoye_ne_compte_pas(self):
         self._devis('brouillon')
-        initialiser_plan_relance(
+        _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
         self.assertEqual(self._cles_reveil(), ['reveil_a2', 'reveil_a3'])

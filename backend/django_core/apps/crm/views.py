@@ -2721,6 +2721,25 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'outcome': 'Issue inconnue.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CKP2 — l'ISSUE est OBLIGATOIRE pour clore un APPEL « fait » : c'est
+        # elle, et elle seule, qui programme la suite du protocole (cadence
+        # réactive) et qui arrête la cadence quand le client a répondu. Un
+        # appel coché sans issue laissait le dossier sans prochain geste et
+        # sans trace de ce qui s'était dit. Les autres canaux
+        # (WhatsApp/e-mail/visite) gardent l'issue FACULTATIVE : envoyer un
+        # message n'a pas d'issue tant que personne n'a répondu.
+        # L'erreur NOMME le champ fautif (règle fondateur 08/09/2026) —
+        # jamais un « non enregistré » générique.
+        if (statut == RelanceEtape.Statut.FAIT
+                and etape.canal == RelanceEtape.Canal.APPEL
+                and not outcome):
+            return Response(
+                {'erreurs': {'outcome': "Issue de l'appel obligatoire : "
+                                        'Joint, Non joint, À rappeler, '
+                                        'Intéressé ou Refus. '
+                                        "C'est elle qui programme le "
+                                        'prochain geste.'}},
+                status=status.HTTP_400_BAD_REQUEST)
         # MRY10 — « rappelez-moi jeudi » saisi DEPUIS la touche : elle est
         # reportée, plutôt que marquée faite et oubliée.
         rappel_le = (request.data.get('rappel_le') or '').strip()
@@ -2747,12 +2766,23 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         Corps : ``{note?, outcome?, body?, rappel_le?, rappel_heure?}``.
         L'``outcome`` déclenche les règles d'arrêt de MRY9 (« joint » arrête
-        la prise de contact) ; ``rappel_le`` reporte la touche suivante."""
+        la prise de contact) ; ``rappel_le`` reporte la touche suivante.
+
+        CKP2 — ``outcome`` est OBLIGATOIRE sur une touche de canal ``appel``
+        (400 ``{"erreurs": {"outcome": …}}``) : c'est l'issue qui programme le
+        geste suivant du protocole. Facultatif sur WhatsApp / e-mail / visite.
+        Toute issue autre que « joint »/« intéressé »/« refus » fait naître la
+        touche suivante de la cadence — de même qu'un saut humain."""
         return self._marquer(request, RelanceEtape.Statut.FAIT)
 
     @action(detail=True, methods=['post'])
     def sauter(self, request, pk=None):
-        """Marque cette étape de relance SAUTÉE (note optionnelle)."""
+        """Marque cette étape de relance SAUTÉE (note optionnelle).
+
+        CKP2 — sauter une touche n'éteint PAS la cadence : la touche suivante
+        du protocole est matérialisée, exactement comme sur un « pas de
+        réponse ». Sans cela, sauter le message d'identité supprimait les dix
+        gestes qui suivent."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
 
     @action(detail=True, methods=['get'])
