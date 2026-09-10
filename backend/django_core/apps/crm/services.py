@@ -6746,3 +6746,39 @@ def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
     rapport['erreurs'] = erreurs
     rapport['restants'] = max(0, len(decisions) - applique - erreurs)
     return rapport
+
+
+# ── VT1 — CHATTER AUTOMATIQUE DE LA VISITE TECHNIQUE TERRAIN ─────────────────
+#
+# Le chatter du lead (``LeadActivity``) est le journal COMMUN de tout ce qui
+# arrive à un lead : la visite technique y écrit ses quatre moments — création,
+# terminaison, feu vert, renvoi — plutôt que d'ouvrir un second historique.
+# L'auteur et la société viennent TOUJOURS du serveur (jamais du corps de
+# requête), comme le reste du chatter.
+
+#: Moment de la visite → phrase FR posée au chatter.
+_VISITE_CHATTER = {
+    'creation': 'Visite technique créée.',
+    'terminee': 'Visite technique terminée par le commercial.',
+    'validee': "Visite technique validée par le bureau d'études (feu vert).",
+    'a_refaire': 'Visite technique renvoyée au commercial.',
+}
+
+
+def journaliser_visite(visite, user, moment, detail=''):
+    """Pose UNE note de chatter sur le lead pour ``moment``.
+
+    Best-effort : un chatter indisponible ne doit jamais faire échouer la
+    transition métier qui vient d'aboutir (même prudence qu'ailleurs dans ce
+    module). Renvoie l'activité créée, ou ``None``.
+    """
+    from . import activity
+
+    phrase = _VISITE_CHATTER.get(moment)
+    if phrase is None:
+        return None
+    corps = f'{phrase} {detail}'.strip() if detail else phrase
+    try:
+        return activity.log_note(visite.lead, user, corps)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        return None
