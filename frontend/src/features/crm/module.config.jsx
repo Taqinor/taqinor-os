@@ -66,6 +66,8 @@ const VisitesListPage = lazy(() => import('../../pages/crm/visites/VisitesListPa
 const VisiteWizardPage = lazy(() => import('../../pages/crm/visites/VisiteWizardPage'))
 // VT8 — revue bureau d'études (feu vert calepinage / renvoi).
 const VisiteBureauEtudesPage = lazy(() => import('../../pages/crm/visites/VisiteBureauEtudesPage'))
+// VT11 — calage du toit réaliste (4 poignées de coins, drapage canvas).
+const CalageToitPage = lazy(() => import('../../pages/crm/visites/CalageToitPage'))
 
 const config = {
   key: 'crm',
@@ -149,6 +151,11 @@ const config = {
     { path: '/crm/visites/:id', component: VisiteWizardPage },
     // VT8 — revue bureau d'études.
     { path: '/crm/visites-revue', component: VisiteBureauEtudesPage, roles: ['responsable', 'admin'] },
+    // VT11 — calage du toit réaliste : atteinte depuis le wizard (catégorie
+    // toiture), jamais depuis la nav — route dynamique, hors périmètre de la
+    // garde « zéro route orpheline » (module.config.test.jsx, comme
+    // `/crm/leads/:id`).
+    { path: '/crm/visites/:id/calage', component: CalageToitPage },
   ],
 }
 

@@ -206,6 +206,13 @@ export default function VisiteWizardPage() {
               lectureSeule={lectureSeule}
               onSaved={recharger}
             />
+            {/* VT11 — calage du toit réaliste : n'a de sens que sur la
+                catégorie toiture, une fois au moins une photo prise. */}
+            {c.categorie === 'toiture' && c.slots.some((s) => s.photos.length > 0) && (
+              <Button type="button" variant="outline" onClick={() => navigate(`/crm/visites/${id}/calage`)}>
+                Calage du toit
+              </Button>
+            )}
           </TabsContent>
         ))}
       </Tabs>
