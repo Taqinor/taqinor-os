@@ -1560,8 +1560,13 @@ def kpi_cadences(company, *, jours=30):
             statut=RelanceEtape.Statut.A_FAIRE,
             lead_id__in=traites).values_list('lead_id', flat=True))
     cadences_completes = len(traites - encore_ouverts)
+    # CKP1 — le proxy s'appuie désormais sur le STATUT structuré : seule une
+    # touche ANNULÉE (moteur) peut venir d'un arrêt de cadence. Avant, un
+    # commercial qui sautait une touche à la main en notant « pas joint »
+    # gonflait ce chiffre ; et la note reste filtrée parce que le moteur
+    # annule aussi pour « lead signé », « reprise : déjà passée », etc.
     cadences_arretees_joint = touches.filter(
-        statut=RelanceEtape.Statut.SAUTEE, note__icontains='joint').count()
+        statut=RelanceEtape.Statut.ANNULEE, note__icontains='joint').count()
 
     perdus = leads.filter(perdu=True)
     nb_perdus = perdus.count()
@@ -2125,7 +2130,9 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
 STATUT_EN_RETARD = 'en_retard'
 
 #: Les quatre valeurs acceptées par ``?statut=`` de l'action « suivi ».
-STATUTS_SUIVI = ('a_faire', 'fait', 'sautee', STATUT_EN_RETARD)
+#: CKP1 — ``annulee`` s'AJOUTE (aucune valeur retirée : les écrans qui
+#: envoient ``statut=sautee`` continuent de fonctionner à l'identique).
+STATUTS_SUIVI = ('a_faire', 'fait', 'sautee', 'annulee', STATUT_EN_RETARD)
 
 #: Écart MAXIMAL entre les deux bornes du suivi. Au-delà, la requête cesse
 #: d'être une « période de travail » et devient un export : 400 plutôt qu'une
@@ -2146,7 +2153,7 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
 
     Renvoie ``(etapes, resume)`` — un COUPLE, délibérément :
 
-      * ``resume`` = ``{a_faire, en_retard, fait, sautee}`` compté sur la
+      * ``resume`` = ``{a_faire, en_retard, fait, sautee, annulee}`` compté sur la
         période et le filtre ``owner`` mais **AVANT** le filtre ``statut``.
         L'écran affiche les quatre chiffres quel que soit l'onglet ouvert ;
         les compter après le filtre donnerait « fait : 12, sauté : 0 » sur
@@ -2184,6 +2191,11 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
         en_retard=Count('pk', filter=a_faire & Q(due_date__lt=today)),
         fait=Count('pk', filter=Q(statut=RelanceEtape.Statut.FAIT)),
         sautee=Count('pk', filter=Q(statut=RelanceEtape.Statut.SAUTEE)),
+        # CKP1 — colonne SÉPARÉE, ajoutée À CÔTÉ de `sautee` (jamais fondue
+        # dedans) : une cadence arrêtée par le moteur parce que le client a
+        # répondu n'est pas un manquement, et `sautee` reste ce qu'il était
+        # (compat : aucune clé retirée).
+        annulee=Count('pk', filter=Q(statut=RelanceEtape.Statut.ANNULEE)),
     )
 
     if statut == STATUT_EN_RETARD:

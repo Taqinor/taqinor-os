@@ -216,8 +216,10 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
         restantes = self.lead.relance_etapes.filter(
             cadence='contact').exclude(pk=self.etapes[2].pk)
         self.assertEqual(restantes.count(), 10)
+        # CKP1 — ANNULÉES par le moteur, pas « sautées » par un humain.
         self.assertEqual(
-            {e.statut for e in restantes}, {RelanceEtape.Statut.SAUTEE})
+            {e.statut for e in restantes}, {RelanceEtape.Statut.ANNULEE})
+        self.assertEqual({e.traite_par_id for e in restantes}, {None})
         self.etapes[2].refresh_from_db()
         self.assertEqual(self.etapes[2].statut, RelanceEtape.Statut.FAIT)
 

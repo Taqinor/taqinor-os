@@ -141,13 +141,16 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
         etapes = initialiser_plan_relance(
             lead, None, cadence='apres_devis',
             depart=devis.date_envoi, devis=devis)
-        # Les touches dont l'échéance est DÉJÀ passée sont sautées : les
-        # rejouer enverrait aujourd'hui le message du J+1 d'il y a dix jours.
+        # Les touches dont l'échéance est DÉJÀ passée sont retirées du plan :
+        # les rejouer enverrait aujourd'hui le message du J+1 d'il y a dix
+        # jours. CKP1 — ANNULÉES (moteur), jamais « sautées » : personne n'a
+        # décidé de les passer, elles n'ont jamais eu lieu d'être.
         RelanceEtape.objects.filter(
             pk__in=[e.pk for e in etapes], due_at__lt=maintenant,
             statut=RelanceEtape.Statut.A_FAIRE,
-        ).update(statut=RelanceEtape.Statut.SAUTEE,
-                 note='reprise : déjà passée', traite_le=maintenant)
+        ).update(statut=RelanceEtape.Statut.ANNULEE,
+                 note='reprise : déjà passée', traite_par=None,
+                 traite_le=maintenant)
 
     # ── 2. Leads neufs jamais contactés ─────────────────────────────────────
     depuis_lead = maintenant - datetime.timedelta(days=FENETRE_LEAD_JOURS)

@@ -1291,7 +1291,17 @@ class RelanceEtape(TenantModel):
     class Statut(models.TextChoices):
         A_FAIRE = 'a_faire', 'À faire'
         FAIT = 'fait', 'Fait'
+        # CKP1 — SAUTÉE est EXCLUSIVEMENT l'action HUMAINE « sauter » : un
+        # commercial a décidé de passer cette touche, et son nom reste dessus.
         SAUTEE = 'sautee', 'Sautée'
+        # CKP1 (fondateur 2026-09-10 : « plus aucun saut automatique affiché
+        # comme un saut humain ») — la touche que LE MOTEUR a retirée du plan
+        # parce que la cadence n'a plus lieu d'être (client joint, lead signé,
+        # devis accepté, reprise d'un plan rétrodaté…). ``traite_par`` reste
+        # NULL — le moteur n'est pas un humain ; le motif vit dans ``note``.
+        # Sans ce statut, une cadence ARRÊTÉE parce que le client a répondu se
+        # comptait comme neuf « manquements » dans les KPI d'adhérence.
+        ANNULEE = 'annulee', 'Annulée (moteur)'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant

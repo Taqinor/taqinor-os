@@ -1652,7 +1652,13 @@ def arreter_cadence(lead, *, user, motif, cadences=None):
     faute la plus visible qu'un CRM puisse commettre.
 
     Toutes les touches ``A_FAIRE`` (restreintes à ``cadences`` si fourni)
-    passent à ``SAUTEE`` en UNE requête, avec le motif, l'acteur et l'horodatage.
+    passent à ``ANNULEE`` en UNE requête, avec le motif et l'horodatage.
+    CKP1 (fondateur 2026-09-10) — ``traite_par`` est mis à NULL, délibérément :
+    ARRÊTER une cadence est un geste du MOTEUR, pas de l'humain qui a
+    déclenché l'événement. Estampiller son nom sur les neuf touches restantes
+    les affichait « Sautée par Meryem » et les comptait comme neuf
+    manquements dans les KPI d'adhérence — l'inverse exact de la vérité (le
+    client avait répondu). Le motif, lui, reste écrit dans ``note``.
     UNE note chatter. ``Lead.relance_date`` est recalculée sur la prochaine
     touche restante (ou vidée) et ``sync_relance_activity`` remise en phase.
 
@@ -1667,9 +1673,9 @@ def arreter_cadence(lead, *, user, motif, cadences=None):
     if not pks:
         return 0
     RelanceEtape.objects.filter(pk__in=pks).update(
-        statut=RelanceEtape.Statut.SAUTEE,
+        statut=RelanceEtape.Statut.ANNULEE,
         note=(motif or '')[:500],
-        traite_par=user,
+        traite_par=None,
         traite_le=timezone.now())
     quelles = ', '.join(cadences) if cadences else 'toutes cadences'
     # FG28/MRY19 — note SYSTÈME (``user=None``), jamais l'utilisateur qui a
@@ -6422,9 +6428,10 @@ def _placement_touches_creees(lead, cadence, devis=None):
 
 def _placer_cadence_positionnee(entree, *, user, maintenant):
     """Cadence `contact`/`apres_devis` datée depuis l'ancre (ou l'envoi du
-    devis), touches déjà échues SAUTÉES.
+    devis), touches déjà échues ANNULÉES (CKP1 — c'est le MOTEUR qui les
+    retire, pas un commercial : ``traite_par`` reste NULL).
 
-    Les touches passées sont sautées par un UPDATE direct, jamais par
+    Les touches passées sont annulées par un UPDATE direct, jamais par
     ``marquer_etape_relance`` : celui-ci journalise une ligne de chatter par
     touche (dix lignes « touche sautée » sur un dossier qu'on vient à peine de
     reprendre) et, sur la DERNIÈRE, déclencherait ``cloturer_cadence`` — le
@@ -6458,8 +6465,9 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     if passees:
         RelanceEtape.objects.filter(
             pk__in=passees, statut=RelanceEtape.Statut.A_FAIRE,
-        ).update(statut=RelanceEtape.Statut.SAUTEE,
-                 note=PLACEMENT_NOTE_PASSEE, traite_le=maintenant)
+        ).update(statut=RelanceEtape.Statut.ANNULEE,
+                 note=PLACEMENT_NOTE_PASSEE, traite_par=None,
+                 traite_le=maintenant)
     if len(passees) >= len(etapes):
         # Rien ne reste à faire : cette cadence ne relancerait personne. On
         # défait TOUT ce qu'on vient de créer — touches, note « Plan de

@@ -114,10 +114,23 @@ class KpiChiffresTests(TestCase):
         RelanceEtape.objects.create(
             company=self.company, lead=lead, ordre=1, canal='appel',
             due_date=timezone.localdate(), cadence='contact',
-            statut=RelanceEtape.Statut.SAUTEE, note='joint',
+            statut=RelanceEtape.Statut.ANNULEE, note='joint',
             traite_le=timezone.now())
         self.assertEqual(
             kpi_cadences(self.company)['cadences_arretees_joint'], 1)
+
+    def test_un_saut_HUMAIN_note_joint_ne_compte_pas_comme_un_arret(self):
+        """CKP1 — le proxy lit le STATUT, plus seulement la note : un
+        commercial qui saute une touche en écrivant « pas joint » ne doit pas
+        gonfler le compteur des cadences arrêtées par le moteur."""
+        lead = self._lead()
+        RelanceEtape.objects.create(
+            company=self.company, lead=lead, ordre=1, canal='appel',
+            due_date=timezone.localdate(), cadence='contact',
+            statut=RelanceEtape.Statut.SAUTEE, note='pas joint',
+            traite_par=self.acteur, traite_le=timezone.now())
+        self.assertEqual(
+            kpi_cadences(self.company)['cadences_arretees_joint'], 0)
 
     def test_signatures_lues_dans_le_chatter(self):
         lead = self._lead()

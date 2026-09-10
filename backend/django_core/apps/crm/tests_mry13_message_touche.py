@@ -294,8 +294,10 @@ class ApiTests(_Base):
         self.assertIn('WhatsApp ouvert', activite.body)
         self.assertEqual(activite.user, self.acteur)
         # Aucune issue posée : la cadence n'est ni arrêtée ni avancée.
+        # CKP1 — ni saut humain, ni annulation moteur.
         self.assertEqual(self.lead.relance_etapes.filter(
-            statut=RelanceEtape.Statut.SAUTEE).count(), 0)
+            statut__in=(RelanceEtape.Statut.SAUTEE,
+                        RelanceEtape.Statut.ANNULEE)).count(), 0)
 
     def test_la_reponse_du_POST_porte_letape_a_jour(self):
         touche = self._touche()

@@ -2632,7 +2632,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         tous statuts (forme `relance_etapes_suivi`).
 
         ``?date_debut=&date_fin=`` (AAAA-MM-JJ, OBLIGATOIRES, 62 jours d'écart
-        au plus) ``&owner=<id>&statut=a_faire|fait|sautee|en_retard``.
+        au plus) ``&owner=<id>&statut=a_faire|fait|sautee|annulee|en_retard``.
+
+        CKP1 — ``annulee`` (« Annulée (moteur) ») s'AJOUTE aux statuts filtrables
+        et au ``resume`` : une touche retirée du plan par le moteur (cadence
+        arrêtée parce que le client a répondu) n'est PAS un saut humain, et la
+        vue d'adhérence ne doit jamais la compter comme un manquement. Aucune
+        clé du ``resume`` n'est retirée — l'écran existant continue de lire
+        ``sautee`` à l'identique.
 
         Une action DISTINCTE de ``list`` — et non un paramètre de plus — parce
         que les deux répondent à deux questions opposées : ``list`` sert la
