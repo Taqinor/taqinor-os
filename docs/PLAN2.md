@@ -148,7 +148,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   jamais un nombre tapé. (@after: VT6, VT7) Files: frontend/src/pages/crm/visites (@lane:
   frontend/crm-visite) (@model: sonnet)
 
-- [ ] VT12 — Câblage retour vers le CRM (fondateur 10/09 : « link this module properly to the
+- [x] VT12 — Câblage retour vers le CRM (fondateur 10/09 : « link this module properly to the
   whole ERP ») : à la VALIDATION (feu vert), le serveur écrit en retour sur le lead —
   `visite_effectuee=True`, `visite_notes` reçoit un récap court (date + mesures clés), déjà
   chatterisé ; nouvel endpoint `GET /api/django/crm/leads/<pk>/photo-toit/` (selector
@@ -156,7 +156,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
   valeurs nulles sinon — jamais une visite d'une autre société) pour que l'atelier 3D et la
   carte lead lisent la texture SANS connaître le module visite. Tests. (@after: VT3) Files:
   apps/crm/services.py, apps/crm/selectors.py, apps/crm/views_visite.py (@lane: backend/crm-visite) (@model: opus)
-- [ ] VT13 — La texture calée DANS l'atelier 3D/calepinage et sur la carte lead (pas à côté) :
+- [x] VT13 — La texture calée DANS l'atelier 3D/calepinage et sur la carte lead (pas à côté) :
   ToitureDesign consomme `photo-toit` du lead et affiche l'image calée comme underlay du contour
   du toit dans SA vue carte/plan de travail (couche image sous le tracé, transformation
   perspective depuis les 4 coins — sans toucher au builder vendored) ; la carte de la fiche lead
@@ -168,6 +168,7 @@ l'orthophoto. Réutiliser l'existant : `records.Attachment` (MinIO erp-uploads),
 - 2026-09-10 — VT0 : contrat `apps/crm/contract_samples/visite_terrain.json` déposé (forme complète visite + checklist + complétude serveur + panneau client/devis), landé seul en tête de groupe (PACT10), PR #654.
 - 2026-09-10 — VT1-VT4+VT9 (lane backend, opus) : `crm.VisiteTerrain`/`crm.VisiteMedia` + `visite_checklist.py` (migration additive 0096), ViewSet company-scopé `crm/visites` (photos/slot, mesures avec erreurs nommant le champ, complétude SERVEUR, terminer refusé si incomplet), feu vert valider/renvoyer + notifications (2 EventType), panneau client+devis via `ventes/selectors.devis_lecture_seule_pour_lead` (M3, jamais prix_achat), tâche Celery assemblage photos toit (OpenCV Stitcher, échec honnête). NOUVELLE DÉPENDANCE GRATUITE : `opencv-python-headless==4.10.0.84` (Apache-2.0, aucun réseau). 2 fichiers de tests (~590 l., stitcher mocké).
 - 2026-09-10 — VT5-VT8+VT11+VT10 (lane frontend, sonnet) : `/crm/visites` liste + wizard mobile par catégorie (tuiles slots, CameraCapture, progression = complétude serveur), formulaires mesures `noValidate`/`step="any"` erreurs sous champ, panneau client+devis, écran revue bureau d'études (valider/renvoyer motif obligatoire), calage 4 poignées + drapage canvas du toit assemblé sur la carte, bandeau mesures dans ToitureDesign ; 32 tests verts, eslint + vite build OK. NOTE : le builder 3D vendored n'expose pas d'API texture — aperçu drapé en canvas à côté, injection dans la scène three.js NON faite (documenté en commentaire).
+- 2026-09-10 — VT12+VT13 (lane câblage, opus) : au feu vert le serveur écrit en retour sur le lead (visite_effectuee + récap FR dans visite_notes, uniquement des valeurs saisies) ; endpoint `GET leads/<pk>/photo-toit/` (contrat lead_photo_toit.json, jamais 404, company-scopé) ; la photo réelle calée s'affiche SOUS le tracé dans l'atelier ToitureDesign (toggle « Photo réelle », builder vendored intact) et sur la fiche lead (TraceToitClient) ; 14 tests vitest + 13 tests backend écrits. Note : la « carte lead » = TraceToitClient (SVG) — la carte pipeline multi-leads reste un chantier séparé si souhaité.
 - 2026-09-10 — fix-ci embarqués : préfixe VT/VTG dans BUILD_ORDER.yml (SCA5) ; gel du `now` de tests_mry23_reprise (bug #29 : réveil J+30 lancé un jeudi → 3 départs fusionnés sur le même lundi par le recalage week-end).
 
 GATED (fondateur) :
