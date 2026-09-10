@@ -7,6 +7,7 @@ import {
 } from '../../../ui'
 import ScoreBadge from '../ScoreBadge'
 import { PRIORITE_LABELS } from '../stages'
+import { toastInfo } from '../../../lib/toast'
 
 /* ============================================================================
    MRY31 — `RelanceEtapeRow` EXTRAIT de `pages/crm/RelancesDuJourWidget.jsx`
@@ -124,6 +125,39 @@ QUESTIONS.reveil = {
   ],
 }
 
+// CKP4 (fondateur 2026-09-10) — un canal APPEL clôturé « Fait » exige TOUJOURS
+// une issue : Joint/Pas de réponse restent les réponses existantes ci-dessus
+// (`joint`/`non_joint`, JAMAIS réinventées) ; Répondeur/Occupé s'y AJOUTENT
+// (jamais un remplacement — rappel/refus restent disponibles) pour les
+// appels seulement, l'écran Meryem étant d'abord un écran d'appels. La suite
+// (cadence continue / dossier au Froid après la dernière touche) est celle
+// des règles d'arrêt MRY9 déjà en vigueur pour « Pas de réponse ».
+const APPEL_REPONSES_SUPPLEMENTAIRES = [
+  { outcome: 'repondeur', label: 'Répondeur',
+    suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
+  { outcome: 'occupe', label: 'Occupé',
+    suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
+]
+
+/** Lit la PROCHAINE touche depuis la RÉPONSE serveur du « Fait » (jamais
+ *  calculée côté écran — un appel programmé à tort aurait pu fausser
+ *  l'agenda). `prochaine_touche` (contrat CKP2, à venir) : `{due_at, canal}`
+ *  ou absent tant que la matérialisation réactive n'a rien programmé
+ *  (dernière touche, cadence arrêtée…) — silence, jamais un message inventé. */
+function messageProchaineTouche(prochaine) {
+  if (!prochaine?.due_at) return null
+  const t = new Date(prochaine.due_at).getTime()
+  if (Number.isNaN(t)) return null
+  const quand = new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+    timeZone: 'Africa/Casablanca',
+  }).format(t)
+  const canal = CANAL_LABELS[prochaine.canal] ?? prochaine.canal
+  return canal
+    ? `Prochain${canal === 'Appel' ? ' appel' : ` ${canal.toLowerCase()}`} programmé le ${quand}.`
+    : `Prochaine touche programmée le ${quand}.`
+}
+
 /** `due_at` (ISO) → « HH:MM » heure Casablanca, ou « maintenant » si déjà
     passé. Repli sur `null` (pas d'heure connue) pour laisser l'appelant
     afficher la date seule. Fuseau EXPLICITE (comme `crm.horaires`, jamais
@@ -153,6 +187,11 @@ function heureTraite(iso) {
 
 // MRY31 — badge de statut de l'écran de suivi (tous statuts confondus,
 // jamais juste les étapes à faire du widget/de la frise).
+// CKP1/CKP4 (fondateur 2026-09-10, « vérité des sautées ») — SAUTEE reste
+// EXCLUSIVEMENT l'action humaine `sauter` (qui/quand affichés en clair) ;
+// ANNULEE est un arrêt du MOTEUR (`arreter_cadence`, reprises…) — jamais
+// confondue avec un saut humain, jamais d'auteur (traite_par = null côté
+// serveur), seulement le motif conservé en note.
 function StatutBadge({ etape }) {
   if (etape.statut === 'fait') {
     const heure = heureTraite(etape.traite_le)
@@ -163,7 +202,22 @@ function StatutBadge({ etape }) {
       </Badge>
     )
   }
-  if (etape.statut === 'sautee') return <Badge tone="neutral">Sautée</Badge>
+  if (etape.statut === 'sautee') {
+    const heure = heureTraite(etape.traite_le)
+    const qui = etape.traite_par_nom
+    return (
+      <Badge tone="neutral">
+        Sautée{qui ? ` · ${qui}` : ''}{heure ? ` · ${heure}` : ''}
+      </Badge>
+    )
+  }
+  if (etape.statut === 'annulee') {
+    return (
+      <Badge tone="outline">
+        Annulée (moteur){etape.note ? ` · ${etape.note}` : ''}
+      </Badge>
+    )
+  }
   if (etape.overdue) return <Badge tone="danger">En retard</Badge>
   return <Badge tone="outline">À faire</Badge>
 }
@@ -180,17 +234,27 @@ export default function RelanceEtapeRow({
   const [rappelHeure, setRappelHeure] = useState('')
   const [reportDate, setReportDate] = useState('')
   const [reportHeure, setReportHeure] = useState('')
+  // CKP4 — erreur DE CHAMP renvoyée par le serveur (400
+  // `{erreurs: {outcome: "…"}}` pour un canal APPEL clôturé sans issue) :
+  // s'affiche SOUS le contrôle concerné, jamais un toast générique qui
+  // masquerait le champ fautif (règle « le champ fautif, message exact »).
+  const [erreurOutcome, setErreurOutcome] = useState('')
   const busy = busyId === etape.id
 
   const fermer = () => {
     setPanel('')
     setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
-    setReportDate(''); setReportHeure('')
+    setReportDate(''); setReportHeure(''); setErreurOutcome('')
   }
 
   const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
+  // CKP4 — canal APPEL : Répondeur/Occupé s'ajoutent aux réponses de la
+  // cadence (jamais un remplacement, voir commentaire plus haut).
+  const reponsesDisponibles = etape.canal === 'appel'
+    ? [...questionsTouche.reponses, ...APPEL_REPONSES_SUPPLEMENTAIRES]
+    : questionsTouche.reponses
   const reponseChoisie = reponseIdx == null
-    ? null : questionsTouche.reponses[reponseIdx]
+    ? null : reponsesDisponibles[reponseIdx]
 
   const confirmerFait = () => {
     if (!reponseChoisie) return
@@ -202,7 +266,19 @@ export default function RelanceEtapeRow({
       payload.rappel_le = rappelLe
       if (rappelHeure) payload.rappel_heure = rappelHeure
     }
-    onFait(etape.id, payload)
+    setErreurOutcome('')
+    // CKP4 — `onFait` renvoie désormais une promesse (widget/frise/suivi) :
+    // succès → message de confirmation lu de LA RÉPONSE serveur uniquement
+    // (jamais calculé ici) ; 400 outcome → affiché SOUS le contrôle, la ligne
+    // reste ouverte (le parent ne l'a pas retirée sur un échec).
+    Promise.resolve(onFait(etape.id, payload)).then((data) => {
+      const message = messageProchaineTouche(data?.prochaine_touche)
+      if (message) toastInfo(message)
+    }).catch((err) => {
+      const champ = err?.response?.status === 400
+        ? err?.response?.data?.erreurs?.outcome : null
+      if (champ) setErreurOutcome(champ)
+    })
   }
 
   const confirmerReporter = () => {
@@ -308,11 +384,11 @@ export default function RelanceEtapeRow({
             <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>
           )}
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={questionsTouche.question}>
-            {questionsTouche.reponses.map((r, idx) => (
+            {reponsesDisponibles.map((r, idx) => (
               <Button
                 key={r.label} type="button" size="sm"
                 variant={reponseIdx === idx ? 'default' : 'outline'}
-                onClick={() => setReponseIdx((cur) => (cur === idx ? null : idx))}
+                onClick={() => { setReponseIdx((cur) => (cur === idx ? null : idx)); setErreurOutcome('') }}
               >
                 {r.label}
               </Button>
@@ -321,6 +397,11 @@ export default function RelanceEtapeRow({
           {reponseChoisie && (
             <p className="text-xs text-muted-foreground" data-testid="suite-reponse">
               {reponseChoisie.suite}
+            </p>
+          )}
+          {erreurOutcome && (
+            <p className="text-xs text-danger" role="alert" data-testid="erreur-outcome">
+              {erreurOutcome}
             </p>
           )}
           {reponseChoisie?.rappel && (

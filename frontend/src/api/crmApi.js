@@ -233,6 +233,10 @@ const crmApi = {
   getKpiPremierContact: (params) =>
     api.get('/crm/leads/kpi-premier-contact/', { params }),
   getKpiCadences: (params) => api.get('/crm/leads/kpi-cadences/', { params }),
+  // CKP3/CKP4 — les tuiles PERSO du commercial (jamais comparatives). Forme
+  // `mes_stats_relance` (contrat CKP0/PACT10). Aucun paramètre — le serveur
+  // dérive le commercial de `request.user`.
+  getMesStatsRelance: () => api.get('/crm/relance-etapes/mes-stats/'),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
   getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),

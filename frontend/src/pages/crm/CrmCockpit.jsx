@@ -10,6 +10,7 @@ import CrmInsightsPanel from './leads/CrmInsightsPanel'
 import DormantAccountsWidget from './DormantAccountsWidget'
 import PortfolioWidget from './dashboard/PortfolioWidget'
 import RelancesDuJourWidget from './RelancesDuJourWidget'
+import MesStatsRelanceTiles from './MesStatsRelanceTiles'
 import KpiRelancesPanel from './KpiRelancesPanel'
 import TerritoryCoverageWidget from './TerritoryCoverageWidget'
 import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
@@ -95,8 +96,20 @@ export default function CrmCockpit() {
         <CrmInsightsPanel />
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      {/* CKP4 — tuiles PERSO (jamais comparatives) : à faire maintenant / mon
+          à-l'heure 7 j / série sans retard. Visibles à TOUS les rôles. */}
+      <div className="mt-4">
+        <MesStatsRelanceTiles />
+      </div>
+
+      {/* CKP4 — LA FILE d'abord, EN TÊTE et pleine largeur, pour TOUS les
+          rôles (« moi et Meryem on voit la même chose ») : c'est l'écran
+          opérationnel du jour, jamais relégué à une colonne parmi d'autres. */}
+      <div className="mt-4">
         <RelancesDuJourWidget />
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <KpiRelancesPanel />
         {/* MRY33 — la carte se gate elle-même aux rôles responsable/admin
             (`useIsAdminOrResponsable`, `null` sinon) — même esprit que le
