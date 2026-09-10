@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9798, operations: 17493, components: 5133}
+counts: {paths: 9822, operations: 17525, components: 5139}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2663,6 +2663,7 @@ operations:
 - post /api/django/crm/leads/{id}/restaurer/ -> django_crm_leads_restaurer_create
 - get /api/django/crm/leads/{id}/salle-vente-analytics/ -> django_crm_leads_salle_vente_analytics_retrieve
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
+- get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_retrieve
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
 - get /api/django/crm/leads/{lead_id}/roof-footprint/ -> django_crm_leads_roof_footprint_retrieve
@@ -2794,6 +2795,21 @@ operations:
 - get /api/django/crm/tags/{id}/ -> django_crm_tags_retrieve
 - patch /api/django/crm/tags/{id}/ -> django_crm_tags_partial_update
 - put /api/django/crm/tags/{id}/ -> django_crm_tags_update
+- get /api/django/crm/visites/ -> django_crm_visites_list
+- post /api/django/crm/visites/ -> django_crm_visites_create
+- delete /api/django/crm/visites/{id}/ -> django_crm_visites_destroy
+- get /api/django/crm/visites/{id}/ -> django_crm_visites_retrieve
+- patch /api/django/crm/visites/{id}/ -> django_crm_visites_partial_update
+- put /api/django/crm/visites/{id}/ -> django_crm_visites_update
+- post /api/django/crm/visites/{id}/assembler-photos/ -> django_crm_visites_assembler_photos_create
+- patch /api/django/crm/visites/{id}/calage/ -> django_crm_visites_calage_partial_update
+- patch /api/django/crm/visites/{id}/mesures/ -> django_crm_visites_mesures_partial_update
+- get /api/django/crm/visites/{id}/photo-toit/ -> django_crm_visites_photo_toit_retrieve
+- post /api/django/crm/visites/{id}/photos/ -> django_crm_visites_photos_create
+- delete /api/django/crm/visites/{id}/photos/{media_id}/ -> django_crm_visites_photos_destroy
+- post /api/django/crm/visites/{id}/renvoyer/ -> django_crm_visites_renvoyer_create
+- post /api/django/crm/visites/{id}/terminer/ -> django_crm_visites_terminer_create
+- post /api/django/crm/visites/{id}/valider/ -> django_crm_visites_valider_create
 - get /api/django/crm/vues-enregistrees/ -> django_crm_vues_enregistrees_list
 - post /api/django/crm/vues-enregistrees/ -> django_crm_vues_enregistrees_create
 - post /api/django/crm/vues-enregistrees/reorder/ -> django_crm_vues_enregistrees_reorder_create
@@ -11447,6 +11463,7 @@ operations:
 - post /api/v1/crm/leads/{id}/restaurer/ -> v1_crm_leads_restaurer_create
 - get /api/v1/crm/leads/{id}/salle-vente-analytics/ -> v1_crm_leads_salle_vente_analytics_retrieve
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
+- get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_retrieve
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
 - get /api/v1/crm/leads/{lead_id}/roof-footprint/ -> v1_crm_leads_roof_footprint_retrieve
@@ -11578,6 +11595,21 @@ operations:
 - get /api/v1/crm/tags/{id}/ -> v1_crm_tags_retrieve
 - patch /api/v1/crm/tags/{id}/ -> v1_crm_tags_partial_update
 - put /api/v1/crm/tags/{id}/ -> v1_crm_tags_update
+- get /api/v1/crm/visites/ -> v1_crm_visites_list
+- post /api/v1/crm/visites/ -> v1_crm_visites_create
+- delete /api/v1/crm/visites/{id}/ -> v1_crm_visites_destroy
+- get /api/v1/crm/visites/{id}/ -> v1_crm_visites_retrieve
+- patch /api/v1/crm/visites/{id}/ -> v1_crm_visites_partial_update
+- put /api/v1/crm/visites/{id}/ -> v1_crm_visites_update
+- post /api/v1/crm/visites/{id}/assembler-photos/ -> v1_crm_visites_assembler_photos_create
+- patch /api/v1/crm/visites/{id}/calage/ -> v1_crm_visites_calage_partial_update
+- patch /api/v1/crm/visites/{id}/mesures/ -> v1_crm_visites_mesures_partial_update
+- get /api/v1/crm/visites/{id}/photo-toit/ -> v1_crm_visites_photo_toit_retrieve
+- post /api/v1/crm/visites/{id}/photos/ -> v1_crm_visites_photos_create
+- delete /api/v1/crm/visites/{id}/photos/{media_id}/ -> v1_crm_visites_photos_destroy
+- post /api/v1/crm/visites/{id}/renvoyer/ -> v1_crm_visites_renvoyer_create
+- post /api/v1/crm/visites/{id}/terminer/ -> v1_crm_visites_terminer_create
+- post /api/v1/crm/visites/{id}/valider/ -> v1_crm_visites_valider_create
 - get /api/v1/crm/vues-enregistrees/ -> v1_crm_vues_enregistrees_list
 - post /api/v1/crm/vues-enregistrees/ -> v1_crm_vues_enregistrees_create
 - post /api/v1/crm/vues-enregistrees/reorder/ -> v1_crm_vues_enregistrees_reorder_create
@@ -19026,6 +19058,7 @@ components:
 - LangueDocumentEnum
 - LanguePrefereeEnum
 - Lead
+- LeadPhotoToit
 - LeadRefLookupResponse
 - LeadRequest
 - LeadTag
@@ -20459,6 +20492,7 @@ components:
 - PaginatedVisaDocumentList
 - PaginatedVisiteMedicaleList
 - PaginatedVisiteTechniqueList
+- PaginatedVisiteTerrainList
 - PaginatedVoteIdeeList
 - PaginatedVueGedEnregistreeList
 - PaginatedVuePersonnaliseeList
@@ -21425,6 +21459,7 @@ components:
 - PatchedVisaDocumentRequest
 - PatchedVisiteMedicaleRequest
 - PatchedVisiteTechniqueRequest
+- PatchedVisiteTerrainRequest
 - PatchedVueGedEnregistreeRequest
 - PatchedVuePersonnaliseeRequest
 - PatchedWarrantyClaimRequest
@@ -22600,6 +22635,9 @@ components:
 - VisiteTechnique
 - VisiteTechniqueRequest
 - VisiteTechniqueResultatEnum
+- VisiteTerrain
+- VisiteTerrainRequest
+- VisiteTerrainStatutEnum
 - VoteIdee
 - VoteIdeeRequest
 - VueGedEnregistree

@@ -24,7 +24,9 @@ Deux règles de la maison sont câblées ici :
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
-from rest_framework import status
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer)
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     action, api_view, permission_classes)
 from rest_framework.response import Response
@@ -211,6 +213,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         _marquer_en_cours(visite)
         return self._agregat(visite)
 
+    @extend_schema(parameters=[OpenApiParameter(
+        'media_id', int, OpenApiParameter.PATH,
+        description='Identifiant du VisiteMedia à retirer.')])
     @action(detail=True, methods=['delete'],
             url_path=r'photos/(?P<media_id>[^/.]+)')
     def supprimer_photo(self, request, pk=None, media_id=None):
@@ -408,6 +413,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         return self._agregat(visite)
 
 
+@extend_schema(responses=inline_serializer(
+    name='LeadPhotoToit',
+    fields={
+        'visite_id': serializers.IntegerField(allow_null=True),
+        'url': serializers.CharField(allow_null=True),
+        'texture_calage': serializers.JSONField(allow_null=True),
+    }))
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('crm_voir')])
 def lead_photo_toit(request, lead_id):
