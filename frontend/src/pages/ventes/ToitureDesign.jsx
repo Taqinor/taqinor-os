@@ -241,6 +241,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const affaireId = estAo ? (idParam || '') : ''
   const cibleId = estDevis ? devisId : (estAo ? affaireId : leadId)
 
+  // VT8 — mesures de la visite terrain, transmises en query params optionnels
+  // par VisiteBureauEtudesPage.jsx (« Ouvrir l'atelier 3D »). `null` si
+  // absent — jamais une valeur par défaut inventée pour un champ non mesuré.
+  const mesuresVisiteTerrain = (!estDevis && !estAo && (
+    searchParams.get('pente') || searchParams.get('orientation')
+    || searchParams.get('longueur') || searchParams.get('largeur')
+  )) ? {
+    pente: searchParams.get('pente'),
+    orientation: searchParams.get('orientation'),
+    longueur: searchParams.get('longueur'),
+    largeur: searchParams.get('largeur'),
+  } : null
+
   const reducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -1049,6 +1062,29 @@ export default function ToitureDesign({ mode = 'lead' }) {
             >
               Relancer la détection du contour
             </button>
+          </div>
+        )}
+
+        {/* VT8 — « Ouvrir l'atelier 3D » depuis la revue bureau d'études
+            (VisiteBureauEtudesPage.jsx) porte les mesures RÉELLEMENT prises
+            pendant la visite terrain en query params optionnels (jamais
+            inventées pour un champ non mesuré — simplement omis). Le builder
+            vendored (`@roofbuilder`, jamais édité) n'expose pas d'API pour
+            piloter ses contrôles pente/orientation depuis l'extérieur : ce
+            bandeau les AFFICHE pour que le bureau d'études les reporte
+            manuellement dans l'outil, plutôt que d'inventer un pré-remplissage
+            qui ne serait pas fiable. */}
+        {!estDevis && !estAo && mesuresVisiteTerrain && (
+          <div className="mt-2 cine-card border border-brass-400/30 p-3 text-xs text-lune-soft" data-testid="pv-mesures-visite-terrain">
+            <p className="tech-label rule-brass text-brass-300">Mesures de la visite terrain</p>
+            <p className="mt-1">
+              {[
+                mesuresVisiteTerrain.longueur && mesuresVisiteTerrain.largeur
+                  ? `${mesuresVisiteTerrain.longueur} m × ${mesuresVisiteTerrain.largeur} m` : null,
+                mesuresVisiteTerrain.pente ? `pente ${mesuresVisiteTerrain.pente}°` : null,
+                mesuresVisiteTerrain.orientation ? `orientation ${mesuresVisiteTerrain.orientation}` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
           </div>
         )}
 

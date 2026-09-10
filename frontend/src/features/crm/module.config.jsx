@@ -64,6 +64,8 @@ const RelancesSuiviPage = lazy(() => import('../../pages/crm/RelancesSuiviPage')
 // (commercial) + l'écran wizard checklist photos/mesures d'une visite.
 const VisitesListPage = lazy(() => import('../../pages/crm/visites/VisitesListPage'))
 const VisiteWizardPage = lazy(() => import('../../pages/crm/visites/VisiteWizardPage'))
+// VT8 — revue bureau d'études (feu vert calepinage / renvoi).
+const VisiteBureauEtudesPage = lazy(() => import('../../pages/crm/visites/VisiteBureauEtudesPage'))
 
 const config = {
   key: 'crm',
@@ -111,6 +113,10 @@ const config = {
       { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'] },
       // VT5 — « mes visites » (checklist photos/mesures guidée terrain).
       { to: '/crm/visites',          label: 'Visites terrain',  k: 'nav.visites_terrain', icon: navIcon(ClipboardCheck), roles: ['normal','responsable','admin'] },
+      // VT8 — revue bureau d'études (feu vert calepinage) : réservée
+      // responsable/admin, comme Partenaires ci-dessus (action `valider`
+      // côté serveur porte déjà `crm_visite_valider`).
+      { to: '/crm/visites-revue',    label: 'Revue technique', k: 'nav.visites_revue', icon: navIcon(ClipboardCheck), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -141,6 +147,8 @@ const config = {
     // VT5 — visite technique terrain : « mes visites » + wizard d'une visite.
     { path: '/crm/visites', component: VisitesListPage },
     { path: '/crm/visites/:id', component: VisiteWizardPage },
+    // VT8 — revue bureau d'études.
+    { path: '/crm/visites-revue', component: VisiteBureauEtudesPage, roles: ['responsable', 'admin'] },
   ],
 }
 
