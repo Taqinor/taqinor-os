@@ -138,7 +138,14 @@ class SuiviActionTests(_Base):
             traite_par=self.acteur, traite_le=_jour(2026, 9, 8, 11, 30))
         self.a_faire = self._touche(_jour(2026, 9, 9))
         self.sautee = self._touche(
-            _jour(2026, 9, 10), statut=RelanceEtape.Statut.SAUTEE)
+            _jour(2026, 9, 10), statut=RelanceEtape.Statut.SAUTEE,
+            traite_par=self.acteur, traite_le=_jour(2026, 9, 10, 10, 0))
+        # CKP1 — la SIXIÈME colonne : une touche retirée du plan par le MOTEUR
+        # (cadence arrêtée parce que le client a répondu). Elle ne doit JAMAIS
+        # se confondre avec le saut humain ci-dessus : `traite_par` est NULL.
+        self.annulee = self._touche(
+            _jour(2026, 9, 11), statut=RelanceEtape.Statut.ANNULEE,
+            note='joint', traite_le=_jour(2026, 9, 11, 10, 0))
         self.hors = self._touche(_jour(2026, 9, 20))
 
     def _touche(self, quand, *, statut=RelanceEtape.Statut.A_FAIRE, lead=None,
@@ -165,13 +172,14 @@ class SuiviActionTests(_Base):
 
     def test_seules_les_touches_de_la_periode_sont_rendues(self):
         resp = self._get()
-        self.assertEqual(resp.data['count'], 4)
+        self.assertEqual(resp.data['count'], 5)
         self.assertNotIn(self.hors.pk, [ligne['id'] for ligne in resp.data['results']])
 
-    def test_le_resume_compte_les_quatre_colonnes(self):
+    def test_le_resume_compte_les_colonnes(self):
         resume = self._get().data['resume']
         self.assertEqual(
-            resume, {'a_faire': 2, 'en_retard': 1, 'fait': 1, 'sautee': 1})
+            resume, {'a_faire': 2, 'en_retard': 1, 'fait': 1, 'sautee': 1,
+                     'annulee': 1})
 
     def test_en_retard_est_un_sous_ensemble_de_a_faire(self):
         """Jamais une cinquième colonne qui s'ajouterait aux autres."""
@@ -185,7 +193,8 @@ class SuiviActionTests(_Base):
         self.assertEqual(resp.data['count'], 1)
         self.assertEqual(
             resp.data['resume'],
-            {'a_faire': 2, 'en_retard': 1, 'fait': 1, 'sautee': 1})
+            {'a_faire': 2, 'en_retard': 1, 'fait': 1, 'sautee': 1,
+             'annulee': 1})
 
     def test_le_filtre_en_retard_ne_rend_que_le_retard(self):
         resp = self._get(statut='en_retard')
@@ -200,13 +209,32 @@ class SuiviActionTests(_Base):
         self.assertEqual(
             [ligne['id'] for ligne in resp.data['results']],
             [self.en_retard.pk, self.faite.pk, self.a_faire.pk,
-             self.sautee.pk])
+             self.sautee.pk, self.annulee.pk])
 
     def test_traite_le_et_traite_par_nom_sont_servis(self):
         lignes = {ligne['id']: ligne for ligne in self._get().data['results']}
         self.assertEqual(lignes[self.faite.pk]['traite_par_nom'],
                          self.acteur.username)
         self.assertIsNotNone(lignes[self.faite.pk]['traite_le'])
+
+    def test_une_annulation_moteur_ne_porte_aucun_nom_humain(self):
+        """CKP1 — le badge doit pouvoir dire « Annulée (moteur) · motif » et
+        JAMAIS « Sautée par Meryem » : le serveur sert le libellé du statut, et
+        `traite_par_nom` reste vide sur une annulation."""
+        lignes = {ligne['id']: ligne for ligne in self._get().data['results']}
+        annulee = lignes[self.annulee.pk]
+        self.assertEqual(annulee['statut'], 'annulee')
+        self.assertEqual(annulee['statut_libelle'], 'Annulée (moteur)')
+        self.assertEqual(annulee['traite_par_nom'], '')
+        self.assertEqual(annulee['note'], 'joint')
+        sautee = lignes[self.sautee.pk]
+        self.assertEqual(sautee['statut'], 'sautee')
+        self.assertEqual(sautee['traite_par_nom'], self.acteur.username)
+
+    def test_le_filtre_annulee_ne_rend_que_les_annulations_moteur(self):
+        resp = self._get(statut='annulee')
+        self.assertEqual([ligne['id'] for ligne in resp.data['results']],
+                         [self.annulee.pk])
 
     def test_une_touche_a_faire_na_ni_acteur_ni_horodatage(self):
         lignes = {ligne['id']: ligne for ligne in self._get().data['results']}
@@ -247,7 +275,8 @@ class SuiviActionTests(_Base):
         self.assertEqual(resp.data['count'], 0)
         self.assertEqual(
             resp.data['resume'],
-            {'a_faire': 0, 'en_retard': 0, 'fait': 0, 'sautee': 0})
+            {'a_faire': 0, 'en_retard': 0, 'fait': 0, 'sautee': 0,
+             'annulee': 0})
 
     def test_la_lecture_est_ouverte_a_tout_role(self):
         simple = User.objects.create_user(
@@ -363,15 +392,22 @@ class DecisionContactTests(_PlacementBase):
         self.assertIn('contact', note.body)
         self.assertIn('moteur', note.body)
 
-    def test_un_lead_contacte_est_positionne_et_les_touches_passees_sautees(self):
+    def test_un_lead_contacte_est_positionne_et_les_touches_passees_annulees(self):
+        """CKP1 — les touches déjà échues d'une cadence rétrodatée sont
+        ANNULÉES par le moteur : les compter comme des sauts de Meryem
+        inventerait des manquements sur un plan qu'elle n'a jamais vu."""
         lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
         rapport = self._placer()
         self.assertEqual(self._codes(rapport), {'contact_positionne': 1})
         touches = lead.relance_etapes.filter(cadence='contact')
-        sautees = touches.filter(statut=RelanceEtape.Statut.SAUTEE)
-        self.assertGreater(sautees.count(), 0)
-        self.assertEqual(set(sautees.values_list('note', flat=True)),
+        annulees = touches.filter(statut=RelanceEtape.Statut.ANNULEE)
+        self.assertGreater(annulees.count(), 0)
+        self.assertEqual(set(annulees.values_list('note', flat=True)),
                          {PLACEMENT_NOTE_PASSEE})
+        self.assertEqual(set(annulees.values_list('traite_par_id', flat=True)),
+                         {None})
+        self.assertEqual(
+            touches.filter(statut=RelanceEtape.Statut.SAUTEE).count(), 0)
         self.assertGreater(
             touches.filter(statut=RelanceEtape.Statut.A_FAIRE).count(), 0)
 
@@ -407,7 +443,7 @@ class DecisionApresDevisTests(_PlacementBase):
         self.assertEqual(set(touches.values_list('devis_id', flat=True)),
                          {devis.pk})
         self.assertGreater(
-            touches.filter(statut=RelanceEtape.Statut.SAUTEE).count(), 0)
+            touches.filter(statut=RelanceEtape.Statut.ANNULEE).count(), 0)
         self.assertGreater(
             touches.filter(statut=RelanceEtape.Statut.A_FAIRE).count(), 0)
 
@@ -782,7 +818,12 @@ class CalculEcheancesTests(_Base):
             lead, 'contact', MERCREDI)]
         ecrites = [etape.due_at for etape in initialiser_plan_relance(
             lead, self.acteur, cadence='contact', depart=MERCREDI)]
-        self.assertEqual(ecrites, calcule)
+        # CKP2 — la matérialisation est désormais RÉACTIVE : ce qui est écrit
+        # est un PRÉFIXE de la partition (les touches déjà échues, plus la
+        # première à venir). La garde reste la même — ce qui est écrit ne
+        # diverge JAMAIS de ce que l'aperçu annonce.
+        self.assertTrue(ecrites)
+        self.assertEqual(ecrites, calcule[:len(ecrites)])
         self.assertGreater(len(calcule), 1)
 
     def test_la_touche_dominicale_est_datee_a_lidentique(self):
@@ -795,7 +836,8 @@ class CalculEcheancesTests(_Base):
             lead, 'apres_devis', MERCREDI)]
         ecrites = [etape.due_at for etape in initialiser_plan_relance(
             lead, self.acteur, cadence='apres_devis', depart=MERCREDI)]
-        self.assertEqual(ecrites, calcule)
+        self.assertTrue(ecrites)
+        self.assertEqual(ecrites, calcule[:len(ecrites)])
         self.assertTrue(
             any(echeance.astimezone(horaires.CASABLANCA).weekday() == 6
                 for echeance in calcule))

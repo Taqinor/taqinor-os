@@ -25,7 +25,7 @@
         "note": "",
         "overdue": false,
         "devis": null,
-        "devis_reference": ""
+        "devis_reference": "", "statut_libelle": "À faire"
       },
       {
         "id": 418,
@@ -48,7 +48,8 @@
         "note": "",
         "overdue": true,
         "devis": 903,
-        "devis_reference": "DEV-2609-0042"
+        "devis_reference": "DEV-2609-0042",
+        "statut_libelle": "À faire"
       }
     ]
   },
@@ -58,6 +59,7 @@
   },
   "notes": {
     "cadence": "contact | apres_devis | reveil | generique (enum `Cadence`, MRY4).",
+    "statut_libelle": "CKP1 — libellé français du statut, servi par le serveur (« À faire », « Fait », « Sautée », « Annulée (moteur) ») : le badge n'a plus à réinventer la table des libellés, et une annulation MOTEUR ne peut plus s'afficher comme un saut humain.",
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT de cadence, jamais `crm.Canal` (qui décrit la SOURCE du lead).",
     "statut": "a_faire | fait | sautee (statuts existants de `RelanceEtape`).",
     "pii": "lead_telephone / lead_whatsapp = chaîne vide (jamais null) quand la permission `client_pii_voir` manque."

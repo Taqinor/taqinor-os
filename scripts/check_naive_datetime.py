@@ -107,7 +107,13 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # MÊME champ, déclaration identique avant/après (vérifié contre e17ef026 :
     # `paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2511",  # CommissionPartenaire.paye_le
+    # Remappé 2511->2532 (lane CKP 10/09 : +21 lignes insérées AVANT
+    # CommissionPartenaire dans crm/models.py — statut ANNULEE de
+    # RelanceEtape (CKP1) et champ RelanceEtape.cadence_depart (CKP2)).
+    # MÊME champ, déclaration identique avant/après (vérifié contre
+    # e1226355 : `paye_le = models.DateField(null=True, blank=True,
+    # verbose_name='Payée le')`). Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2532",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

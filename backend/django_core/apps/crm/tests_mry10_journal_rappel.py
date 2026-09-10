@@ -26,10 +26,54 @@ from authentication.models import Company
 
 from apps.crm import horaires
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import initialiser_plan_relance
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
+
+
+def _materialiser_tout(lead, user, *, cadence='contact', depart=None):
+    """CKP2 — matérialise la PARTITION ENTIÈRE d'une cadence, pour les tests.
+
+    Depuis la CADENCE RÉACTIVE (fondateur 2026-09-10),
+    ``initialiser_plan_relance`` ne crée que la première touche à faire : la
+    suite naît des issues saisies. Les tests de CE fichier ne pincent pas
+    cette mécanique-là — ils pincent le journal, le report, la fin de cadence,
+    le filet — et ont besoin d'un plan complet sous la main. On le reconstruit
+    depuis ``calculer_echeances_cadence`` (la partition, inchangée) en
+    reproduisant exactement ce que ``initialiser_plan_relance`` créait avant
+    CKP2, gabarits de réveil adaptés au rang compris. La mécanique réactive,
+    elle, est verrouillée dans ``tests_relance_foundation``.
+    """
+    from apps.crm import horaires as _h
+    from apps.crm.services import (
+        _adapter_gabarits_reveil, _normaliser_depart,
+        calculer_echeances_cadence,
+        initialiser_plan_relance as _initialiser)
+
+    etapes = _initialiser(
+        lead, user, cadence=cadence, depart=depart)
+    if not etapes:
+        return etapes
+    ancre = _normaliser_depart(depart)
+    pris = set(lead.relance_etapes.filter(cadence=cadence)
+               .values_list('ordre', flat=True))
+    for rang, (gabarit, echeance) in enumerate(
+            calculer_echeances_cadence(lead, cadence, ancre)):
+        if gabarit.ordre in pris:
+            continue
+        etape = RelanceEtape(
+            company=lead.company, lead=lead, cadence=cadence,
+            ordre=gabarit.ordre, due_at=echeance,
+            due_date=echeance.astimezone(_h.CASABLANCA).date(),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            cadence_depart=ancre)
+        if cadence == 'reveil':
+            _adapter_gabarits_reveil(lead, [etape], rang_initial=rang)
+        etape.save()
+    return list(lead.relance_etapes.filter(cadence=cadence)
+                .order_by('ordre', 'due_date'))
+
 
 CASA = horaires.CASABLANCA
 LUNDI = datetime.datetime(2026, 9, 7, 9, 0, tzinfo=CASA)
@@ -52,7 +96,7 @@ class _Base(TestCase):
             role_legacy='responsable', company=self.company)
         self.lead = Lead.objects.create(
             company=self.company, nom='Prospect', owner=self.acteur)
-        self.etapes = initialiser_plan_relance(
+        self.etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='generique')
         self.api = APIClient()
         self.api.credentials(
@@ -206,7 +250,7 @@ class ReporterTests(_Base):
             username='mry10-autre-u', password='x', company=autre)
         lead_autre = Lead.objects.create(
             company=autre, nom='Voisin', owner=owner)
-        etapes = initialiser_plan_relance(lead_autre, owner, depart=LUNDI)
+        etapes = _materialiser_tout(lead_autre, owner, depart=LUNDI)
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{etapes[0].pk}/reporter/',
             {'due_at': LUNDI.isoformat()}, format='json')

@@ -1,27 +1,27 @@
 {
   "endpoint": "GET /api/django/crm/relance-etapes/suivi/?date_debut=2026-09-07&date_fin=2026-09-13&owner=&statut=",
-  "pourquoi": "MRY30/MRY31 (PACT10) — la file de relances PAR PÉRIODE et TOUS STATUTS, lue par l'écran « Suivi des relances » : Meryem et sa direction voient, jour par jour, ce qui est fait, sauté, à faire ou en retard (décision fondateur 06/09/2026). Une action DISTINCTE de la liste `relance-etapes/` (contrat `relance_etape_v2`, touches À FAIRE dues seulement) : ici toutes les touches dont `due_date` ∈ [date_debut, date_fin], tous statuts. Même ligne que `relance_etape_v2` + `traite_le` (ISO, null tant que la touche est à faire) et `traite_par_nom` ('' sinon). `resume` est compté SERVEUR sur le même périmètre — jamais recompté à l'écran ; `en_retard` = à faire ET `due_date` strictement avant aujourd'hui. Portée : `scope_queryset` via le lead (un lead hors portée n'apparaît jamais) ; `owner` filtre en plus sur le responsable du lead ; `statut` ∈ {a_faire, fait, sautee, en_retard} ou vide. Bornes obligatoires, 62 jours d'écart au plus (400 au-delà).",
+  "pourquoi": "MRY30/MRY31 (PACT10) — la file de relances PAR PÉRIODE et TOUS STATUTS, lue par l'écran « Suivi des relances » : Meryem et sa direction voient, jour par jour, ce qui est fait, sauté, à faire ou en retard (décision fondateur 06/09/2026). Une action DISTINCTE de la liste `relance-etapes/` (contrat `relance_etape_v2`, touches À FAIRE dues seulement) : ici toutes les touches dont `due_date` ∈ [date_debut, date_fin], tous statuts. Même ligne que `relance_etape_v2` + `traite_le` (ISO, null tant que la touche est à faire) et `traite_par_nom` ('' sinon). `resume` est compté SERVEUR sur le même périmètre — jamais recompté à l'écran ; `en_retard` = à faire ET `due_date` strictement avant aujourd'hui. Portée : `scope_queryset` via le lead (un lead hors portée n'apparaît jamais) ; `owner` filtre en plus sur le responsable du lead ; `statut` ∈ {a_faire, fait, sautee, annulee, en_retard} ou vide. CKP1 : `annulee` (« Annulée (moteur) ») est le statut des touches que LE MOTEUR a retirées du plan (cadence arrêtée : client joint, lead signé, reprise d'un plan rétrodaté…) — `traite_par_nom` y est TOUJOURS vide et le motif vit dans `note` ; `sautee` reste EXCLUSIVEMENT la décision humaine. `statut_libelle` sert le libellé français du statut pour le badge. Bornes obligatoires, 62 jours d'écart au plus (400 au-delà).",
   "exemple": {
     "count": 2,
     "date_debut": "2026-09-07",
     "date_fin": "2026-09-13",
-    "resume": {"a_faire": 1, "en_retard": 0, "fait": 1, "sautee": 0},
+    "resume": {"a_faire": 1, "en_retard": 0, "fait": 1, "sautee": 0, "annulee": 0},
     "results": [
-      {"id": 412, "lead": 1489, "lead_nom": "Aziz Benali", "lead_owner_nom": "meryem", "lead_telephone": "+212651971400", "lead_whatsapp": "+212651971400", "lead_langue": "fr", "lead_score": 68, "lead_priorite": "haute", "cadence": "contact", "ordre": 1, "due_date": "2026-09-07", "due_at": "2026-09-07T07:30:00Z", "canal": "whatsapp", "libelle": "Message d'identité", "template_cle": "identite", "statut": "fait", "note": "WhatsApp ouvert", "overdue": false, "devis": null, "devis_reference": "", "traite_le": "2026-09-07T07:32:10Z", "traite_par_nom": "meryem"},
-      {"id": 413, "lead": 1489, "lead_nom": "Aziz Benali", "lead_owner_nom": "meryem", "lead_telephone": "+212651971400", "lead_whatsapp": "+212651971400", "lead_langue": "fr", "lead_score": 68, "lead_priorite": "haute", "cadence": "contact", "ordre": 2, "due_date": "2026-09-07", "due_at": "2026-09-07T07:33:00Z", "canal": "appel", "libelle": "Appel d'ouverture", "template_cle": "appel_ouverture", "statut": "a_faire", "note": "", "overdue": false, "devis": null, "devis_reference": "", "traite_le": null, "traite_par_nom": ""}
+      {"id": 412, "lead": 1489, "lead_nom": "Aziz Benali", "lead_owner_nom": "meryem", "lead_telephone": "+212651971400", "lead_whatsapp": "+212651971400", "lead_langue": "fr", "lead_score": 68, "lead_priorite": "haute", "cadence": "contact", "ordre": 1, "due_date": "2026-09-07", "due_at": "2026-09-07T07:30:00Z", "canal": "whatsapp", "libelle": "Message d'identité", "template_cle": "identite", "statut": "fait", "note": "WhatsApp ouvert", "overdue": false, "devis": null, "devis_reference": "", "traite_le": "2026-09-07T07:32:10Z", "traite_par_nom": "meryem", "statut_libelle": "Fait"},
+      {"id": 413, "lead": 1489, "lead_nom": "Aziz Benali", "lead_owner_nom": "meryem", "lead_telephone": "+212651971400", "lead_whatsapp": "+212651971400", "lead_langue": "fr", "lead_score": 68, "lead_priorite": "haute", "cadence": "contact", "ordre": 2, "due_date": "2026-09-07", "due_at": "2026-09-07T07:33:00Z", "canal": "appel", "libelle": "Appel d'ouverture", "template_cle": "appel_ouverture", "statut": "a_faire", "note": "", "overdue": false, "devis": null, "devis_reference": "", "traite_le": null, "traite_par_nom": "", "statut_libelle": "À faire"}
     ]
   },
   "exemple_vide": {
     "count": 0,
     "date_debut": "2026-09-07",
     "date_fin": "2026-09-13",
-    "resume": {"a_faire": 0, "en_retard": 0, "fait": 0, "sautee": 0},
+    "resume": {"a_faire": 0, "en_retard": 0, "fait": 0, "sautee": 0, "annulee": 0},
     "results": []
   },
   "notes": {
     "count": "nombre de lignes de `results` (après filtres `owner`/`statut`).",
-    "resume": "compté sur la période et le filtre `owner`, AVANT le filtre `statut` — l'écran affiche les quatre chiffres quel que soit l'onglet ; `en_retard` est un sous-ensemble de `a_faire`.",
-    "results": "tri `due_date`, `due_at` (nulls en dernier), `ordre` ; une touche par ligne ; `statut` ∈ {a_faire, fait, sautee}.",
+    "resume": "compté sur la période et le filtre `owner`, AVANT le filtre `statut` — l'écran affiche les chiffres quel que soit l'onglet ; `en_retard` est un sous-ensemble de `a_faire` ; `annulee` (CKP1) est une colonne SÉPARÉE de `sautee`, jamais fondue dedans.",
+    "results": "tri `due_date`, `due_at` (nulls en dernier), `ordre` ; une touche par ligne ; `statut` ∈ {a_faire, fait, sautee, annulee}.",
     "traite_le": "horodatage ISO (UTC) du marquage fait/sautée, null tant que la touche est à faire.",
     "traite_par_nom": "username de l'acteur du marquage ; '' pour une touche à faire ou marquée par le système."
   }
