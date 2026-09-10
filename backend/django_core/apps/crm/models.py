@@ -1291,7 +1291,17 @@ class RelanceEtape(TenantModel):
     class Statut(models.TextChoices):
         A_FAIRE = 'a_faire', 'À faire'
         FAIT = 'fait', 'Fait'
+        # CKP1 — SAUTÉE est EXCLUSIVEMENT l'action HUMAINE « sauter » : un
+        # commercial a décidé de passer cette touche, et son nom reste dessus.
         SAUTEE = 'sautee', 'Sautée'
+        # CKP1 (fondateur 2026-09-10 : « plus aucun saut automatique affiché
+        # comme un saut humain ») — la touche que LE MOTEUR a retirée du plan
+        # parce que la cadence n'a plus lieu d'être (client joint, lead signé,
+        # devis accepté, reprise d'un plan rétrodaté…). ``traite_par`` reste
+        # NULL — le moteur n'est pas un humain ; le motif vit dans ``note``.
+        # Sans ce statut, une cadence ARRÊTÉE parce que le client a répondu se
+        # comptait comme neuf « manquements » dans les KPI d'adhérence.
+        ANNULEE = 'annulee', 'Annulée (moteur)'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
@@ -1328,6 +1338,17 @@ class RelanceEtape(TenantModel):
         on_delete=models.SET_NULL,  # on_delete: étape orpheline si le devis disparaît
         null=True, blank=True, related_name='relance_etapes',
         verbose_name='Devis suivi')
+    # CKP2 — l'ANCRE de la cadence : l'instant de départ depuis lequel toutes
+    # les échéances du gabarit sont datées. Depuis que la cadence est RÉACTIVE
+    # (une seule touche matérialisée à la fois, la suivante naît de l'issue),
+    # il faut pouvoir REDATER la touche J+N des mois plus tard exactement
+    # comme l'aperçu l'avait annoncée. La déduire de la première touche
+    # existante dériverait (l'origine du jour même est recalée sur la fenêtre
+    # d'ouverture, le départ non) : elle est donc ÉCRITE. NULL sur les lignes
+    # d'avant CKP2 — c'est la vérité, et le repli lit alors la plus ancienne
+    # échéance de la cadence.
+    cadence_depart = models.DateTimeField(
+        null=True, blank=True, verbose_name='Départ de la cadence')
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
     note = models.TextField(blank=True, default='')

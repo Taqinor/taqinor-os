@@ -102,17 +102,24 @@ class DevisRecentsTests(_Base):
         demarrer_cadences_existantes(self.company, apply_changes=True)
         self.assertGreater(self._touches(lead, 'apres_devis').count(), 0)
 
-    def test_les_touches_deja_passees_sont_SAUTEES(self):
+    def test_les_touches_deja_passees_sont_ANNULEES(self):
         """Les rejouer enverrait aujourd'hui le message du J+1 d'il y a dix
-        jours — un message hors sujet qui décrédibilise tout le reste."""
+        jours — un message hors sujet qui décrédibilise tout le reste.
+
+        CKP1 — elles sont ANNULÉES (moteur), pas « sautées » : personne n'a
+        décidé de les passer, et ``traite_par`` reste NULL."""
         lead = self._lead('Devis ancien')
         self._devis(lead, 'DEV-MRY23-0002', jours=10)
         demarrer_cadences_existantes(self.company, apply_changes=True)
-        sautees = self._touches(lead, 'apres_devis').filter(
-            statut=RelanceEtape.Statut.SAUTEE)
-        self.assertGreater(sautees.count(), 0)
-        for etape in sautees:
+        annulees = self._touches(lead, 'apres_devis').filter(
+            statut=RelanceEtape.Statut.ANNULEE)
+        self.assertGreater(annulees.count(), 0)
+        for etape in annulees:
             self.assertEqual(etape.note, 'reprise : déjà passée')
+            self.assertIsNone(etape.traite_par)
+        self.assertEqual(
+            self._touches(lead, 'apres_devis').filter(
+                statut=RelanceEtape.Statut.SAUTEE).count(), 0)
         # Et il reste des touches À FAIRE (sinon la reprise ne sert à rien).
         self.assertGreater(
             self._touches(lead, 'apres_devis').filter(

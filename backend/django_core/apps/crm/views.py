@@ -2582,7 +2582,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # MRY30 — `suivi` est une LECTURE pure (la file PAR PÉRIODE, tous
         # statuts) : même garde que `list`, et listée ICI parce que
         # get_permissions() PRIME sur le `permission_classes` de l'@action.
-        if self.action in ('list', 'message', 'suivi'):
+        # CKP3 — `kpi_adherence` et `mes_stats` sont des LECTURES pures,
+        # ouvertes à TOUS les rôles : décision fondateur de TRANSPARENCE
+        # TOTALE (2026-09-10, « on voit la même chose moi et elle »). Elles
+        # sont listées ICI, nommément, parce que get_permissions() PRIME sur
+        # le `permission_classes` de l'@action (garde AUD421 / bug CI #25) :
+        # sans ces noms, la déclaration inline serait décorative et l'action
+        # retomberait sur `IsResponsableOrAdmin`.
+        if self.action in ('list', 'message', 'suivi',
+                           'kpi_adherence', 'mes_stats'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2632,7 +2640,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         tous statuts (forme `relance_etapes_suivi`).
 
         ``?date_debut=&date_fin=`` (AAAA-MM-JJ, OBLIGATOIRES, 62 jours d'écart
-        au plus) ``&owner=<id>&statut=a_faire|fait|sautee|en_retard``.
+        au plus) ``&owner=<id>&statut=a_faire|fait|sautee|annulee|en_retard``.
+
+        CKP1 — ``annulee`` (« Annulée (moteur) ») s'AJOUTE aux statuts filtrables
+        et au ``resume`` : une touche retirée du plan par le moteur (cadence
+        arrêtée parce que le client a répondu) n'est PAS un saut humain, et la
+        vue d'adhérence ne doit jamais la compter comme un manquement. Aucune
+        clé du ``resume`` n'est retirée — l'écran existant continue de lire
+        ``sautee`` à l'identique.
 
         Une action DISTINCTE de ``list`` — et non un paramètre de plus — parce
         que les deux répondent à deux questions opposées : ``list`` sert la
@@ -2703,6 +2718,71 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'results': lignes,
         })
 
+    @extend_schema(responses=inline_serializer('CrmKpiAdherence', {
+        'periode_jours': serializers.IntegerField(),
+        'a_lheure_pct': serializers.FloatField(allow_null=True),
+        'touches_faites': serializers.IntegerField(),
+        'touches_en_retard_ouvertes': serializers.IntegerField(),
+        'sautees_humaines': serializers.IntegerField(),
+        'annulees_moteur': serializers.IntegerField(),
+        'vitesse_premier_contact': serializers.DictField(),
+        'tendance_a_lheure': serializers.ListField(
+            child=serializers.DictField()),
+        'par_etape': serializers.ListField(child=serializers.DictField()),
+        'leads_sans_touche': serializers.ListField(
+            child=serializers.DictField()),
+        'conversion_par_stage': serializers.ListField(
+            child=serializers.DictField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='kpi-adherence',
+            permission_classes=[IsAnyRole])
+    def kpi_adherence(self, request):
+        """CKP3 — la vue ADHÉRENCE du cockpit CRM (forme `kpi_adherence`).
+
+        ``?jours=`` (30 par défaut, 1-365). Les étapes du protocole sont-elles
+        suivies, à l'heure, et OÙ décrochent-elles ?
+
+        LECTURE OUVERTE À TOUS LES RÔLES — décision fondateur du 10/09/2026 :
+        transparence totale, Meryem voit exactement ce que Reda voit ; seule
+        la mise en page diffère à l'écran (elle = sa file, lui = la vue
+        stratégique). La portée de visibilité du demandeur s'applique quand
+        même (``scope_queryset`` via le lead) : la transparence ne perce pas
+        le cloisonnement, elle supprime le tableau caché."""
+        from .selectors import kpi_adherence
+
+        # « Normaliser plutôt que refuser » (règle fondateur 08/09) : un
+        # ``jours`` illisible retombe sur 30, un excès est borné à 1-365 —
+        # un tableau de bord ne renvoie jamais une erreur pour un paramètre
+        # d'affichage.
+        brut = (request.query_params.get('jours') or '').strip()
+        jours = int(brut) if brut.isdigit() else 30
+        jours = min(max(jours, 1), 365)
+        return Response(
+            kpi_adherence(request.user.company, request.user, jours))
+
+    @extend_schema(responses=inline_serializer('CrmMesStatsRelance', {
+        'a_faire_maintenant': serializers.IntegerField(),
+        'en_retard': serializers.IntegerField(),
+        'a_lheure_7j_pct': serializers.FloatField(allow_null=True),
+        'cadences_completees_14j': serializers.IntegerField(),
+        'serie_jours_sans_retard': serializers.IntegerField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='mes-stats',
+            permission_classes=[IsAnyRole])
+    def mes_stats(self, request):
+        """CKP3 — les tuiles PERSONNELLES du commercial (forme
+        `mes_stats_relance`).
+
+        Sa file du moment, ses retards, son à-l'heure 7 jours, ses cadences
+        menées à terme, sa série de jours sans retard. Actionnables, JAMAIS
+        comparatives : aucune donnée d'un autre commercial n'y entre, et rien
+        n'est servi sous forme de classement. Périmètre : les leads dont le
+        demandeur est le RESPONSABLE."""
+        from .selectors import mes_stats_relance
+
+        return Response(
+            mes_stats_relance(request.user.company, request.user))
+
     def _marquer(self, request, statut):
         etape = self.get_object()
         note = (request.data.get('note') or '').strip()
@@ -2713,6 +2793,25 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 k for k, _ in _LeadActivity.OUTCOMES}:
             return Response(
                 {'outcome': 'Issue inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # CKP2 — l'ISSUE est OBLIGATOIRE pour clore un APPEL « fait » : c'est
+        # elle, et elle seule, qui programme la suite du protocole (cadence
+        # réactive) et qui arrête la cadence quand le client a répondu. Un
+        # appel coché sans issue laissait le dossier sans prochain geste et
+        # sans trace de ce qui s'était dit. Les autres canaux
+        # (WhatsApp/e-mail/visite) gardent l'issue FACULTATIVE : envoyer un
+        # message n'a pas d'issue tant que personne n'a répondu.
+        # L'erreur NOMME le champ fautif (règle fondateur 08/09/2026) —
+        # jamais un « non enregistré » générique.
+        if (statut == RelanceEtape.Statut.FAIT
+                and etape.canal == RelanceEtape.Canal.APPEL
+                and not outcome):
+            return Response(
+                {'erreurs': {'outcome': "Issue de l'appel obligatoire : "
+                                        'Joint, Non joint, À rappeler, '
+                                        'Intéressé ou Refus. '
+                                        "C'est elle qui programme le "
+                                        'prochain geste.'}},
                 status=status.HTTP_400_BAD_REQUEST)
         # MRY10 — « rappelez-moi jeudi » saisi DEPUIS la touche : elle est
         # reportée, plutôt que marquée faite et oubliée.
@@ -2732,7 +2831,24 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             body=body)
         if quand is not None:
             reporter_prochaine_touche(etape.lead, request.user, quand)
-        return Response(self.get_serializer(etape).data)
+        # CKP2/CKP4 — la réponse porte la PROCHAINE touche programmée de cette
+        # cadence : c'est elle (et jamais un calcul d'écran) qui alimente le
+        # message « prochain appel programmé le … ». Absente quand la cadence
+        # vient de s'arrêter ou qu'aucune touche n'a été matérialisée.
+        data = self.get_serializer(etape).data
+        suivante = (
+            RelanceEtape.objects
+            .filter(lead=etape.lead, cadence=etape.cadence,
+                    statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by('due_date', 'ordre')
+            .first())
+        data['prochaine_touche'] = (
+            {'due_at': (suivante.due_at.isoformat()
+                        if suivante.due_at else None),
+             'due_date': suivante.due_date.isoformat(),
+             'canal': suivante.canal}
+            if suivante is not None else None)
+        return Response(data)
 
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
@@ -2740,12 +2856,23 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         Corps : ``{note?, outcome?, body?, rappel_le?, rappel_heure?}``.
         L'``outcome`` déclenche les règles d'arrêt de MRY9 (« joint » arrête
-        la prise de contact) ; ``rappel_le`` reporte la touche suivante."""
+        la prise de contact) ; ``rappel_le`` reporte la touche suivante.
+
+        CKP2 — ``outcome`` est OBLIGATOIRE sur une touche de canal ``appel``
+        (400 ``{"erreurs": {"outcome": …}}``) : c'est l'issue qui programme le
+        geste suivant du protocole. Facultatif sur WhatsApp / e-mail / visite.
+        Toute issue autre que « joint »/« intéressé »/« refus » fait naître la
+        touche suivante de la cadence — de même qu'un saut humain."""
         return self._marquer(request, RelanceEtape.Statut.FAIT)
 
     @action(detail=True, methods=['post'])
     def sauter(self, request, pk=None):
-        """Marque cette étape de relance SAUTÉE (note optionnelle)."""
+        """Marque cette étape de relance SAUTÉE (note optionnelle).
+
+        CKP2 — sauter une touche n'éteint PAS la cadence : la touche suivante
+        du protocole est matérialisée, exactement comme sur un « pas de
+        réponse ». Sans cela, sauter le message d'identité supprimait les dix
+        gestes qui suivent."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
 
     @action(detail=True, methods=['get'])

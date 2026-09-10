@@ -663,11 +663,17 @@ _REVEIL_GABARITS = {
 _REVEIL_CLES_SEEDEES = frozenset({'reveil_a1', 'reveil_a2'})
 
 
-def _adapter_gabarits_reveil(lead, etapes):
+def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
     """Réassigne, EN PLACE, les ``template_cle`` des touches « réveil » selon
     que le lead a déjà reçu une proposition ou non (lecture cross-app par le
     sélecteur ``ventes.lead_a_un_devis``). Best-effort : en cas d'erreur de
-    lecture, le gabarit seedé reste tel quel."""
+    lecture, le gabarit seedé reste tel quel.
+
+    CKP2 — l'affectation se fait par RANG dans la partition, plus par
+    consommation d'un itérateur sur la liste reçue : depuis que la cadence est
+    réactive, la touche J+60 est matérialisée SEULE, des semaines après la
+    J+30, et un itérateur reparti de zéro lui aurait redonné le message de la
+    PREMIÈRE relance. ``rang_initial`` est son rang réel dans le gabarit."""
     from apps.ventes.selectors import lead_a_un_devis
     try:
         avec_devis = bool(lead_a_un_devis(lead))
@@ -675,10 +681,11 @@ def _adapter_gabarits_reveil(lead, etapes):
         logger.warning('MRY11: lecture des devis du lead #%s impossible',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return
-    cles = iter(_REVEIL_GABARITS[avec_devis])
-    for etape in sorted(etapes, key=lambda e: e.ordre):
-        if etape.template_cle in _REVEIL_CLES_SEEDEES:
-            etape.template_cle = next(cles, etape.template_cle)
+    cles = _REVEIL_GABARITS[avec_devis]
+    for decalage, etape in enumerate(sorted(etapes, key=lambda e: e.ordre)):
+        rang = rang_initial + decalage
+        if etape.template_cle in _REVEIL_CLES_SEEDEES and rang < len(cles):
+            etape.template_cle = cles[rang]
 
 
 #: MRY4 — le gabarit « dimanche famille » du suivi après devis n'est PAS pour
@@ -687,6 +694,29 @@ def _adapter_gabarits_reveil(lead, etapes):
 #: dominical inapproprié à des prospects qui décident seuls.
 _TEMPLATE_DIMANCHE_FAMILLE = 'dimanche_famille'
 _TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
+
+
+def _normaliser_depart(depart):
+    """L'ANCRE de cadence, toujours un datetime AWARE (CKP2).
+
+    Extrait de ``calculer_echeances_cadence`` pour que l'ancre ÉCRITE dans
+    ``RelanceEtape.cadence_depart`` soit exactement celle depuis laquelle les
+    échéances ont été calculées — deux normalisations parallèles auraient
+    dérivé, et la touche J+5 matérialisée des semaines plus tard serait tombée
+    ailleurs que là où l'aperçu l'avait annoncée."""
+    from . import horaires
+
+    if depart is None:
+        return timezone.now()
+    if not isinstance(depart, datetime.datetime):
+        # Rétro-compat : un appelant historique passe une DATE. On la place à
+        # l'ouverture de la fenêtre plutôt qu'à minuit (qui serait aussitôt
+        # repoussé au lendemain par le recalage).
+        return datetime.datetime.combine(
+            depart, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+    if timezone.is_naive(depart):
+        return timezone.make_aware(depart, datetime.timezone.utc)
+    return depart
 
 
 def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
@@ -726,16 +756,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     if not gabarits:
         return []
 
-    if depart is None:
-        depart = timezone.now()
-    elif not isinstance(depart, datetime.datetime):
-        # Rétro-compat : un appelant historique passe une DATE. On la place à
-        # l'ouverture de la fenêtre plutôt qu'à minuit (qui serait aussitôt
-        # repoussé au lendemain par le recalage).
-        depart = datetime.datetime.combine(
-            depart, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
-    elif timezone.is_naive(depart):
-        depart = timezone.make_aware(depart, datetime.timezone.utc)
+    depart = _normaliser_depart(depart)
 
     # MRY5/MRY8 — l'ORIGINE des touches du jour même : le premier instant
     # réellement joignable à partir du départ. Sans elle, chaque touche J0
@@ -848,8 +869,19 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     matérialiser le résultat, si bien qu'aperçu et application ne peuvent pas
     dater deux choses différentes.
 
-    Retourne la liste des ``RelanceEtape`` de CETTE cadence (créées ou déjà
-    existantes)."""
+    CKP2 — MATÉRIALISATION RÉACTIVE (fondateur 2026-09-10) : cette fonction ne
+    crée plus la cadence entière. Elle crée les touches DÉJÀ ÉCHUES (une
+    cadence rétrodatée doit pouvoir montrer, et annuler, ce qui n'a pas eu
+    lieu) PLUS la première encore à venir — et elle seule. Les suivantes
+    naissent de l'ISSUE saisie, une par une
+    (``materialiser_touche_suivante``). ``calculer_echeances_cadence`` reste la
+    PARTITION complète : l'aperçu MRY30 annonce le plan entier, la
+    matérialisation le suit. Chaque touche créée porte l'ancre
+    ``cadence_depart`` pour que la J+5 tombe, des semaines plus tard, très
+    exactement là où l'aperçu l'avait annoncée.
+
+    Retourne la liste des ``RelanceEtape`` MATÉRIALISÉES de CETTE cadence
+    (créées ou déjà existantes)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import horaires
@@ -872,6 +904,29 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     if not gabarits:
         return []
 
+    ancre = _normaliser_depart(depart)
+    echeances = calculer_echeances_cadence(
+        lead, cadence, ancre, gabarits=gabarits)
+    # CKP2 (fondateur 2026-09-10, décision (3) « CADENCE RÉACTIVE ») — on ne
+    # programme QUE le prochain geste. Les trois appels J0 créés d'avance
+    # tombaient tous les trois dans la file même quand le premier avait suffi.
+    # Sont matérialisées : les touches DÉJÀ ÉCHUES (une cadence rétrodatée —
+    # reprise MRY23, placement MRY30 — doit pouvoir les annuler et montrer ce
+    # qui n'a pas eu lieu) PLUS la première encore à venir, et elle seule. La
+    # suite naît de l'ISSUE, dans ``materialiser_touche_suivante``.
+    # EXCEPTION `reveil` : les deux réveils J30/J60 du PARKING (MRY11) ne sont
+    # pas un protocole de gestes qui s'enchaînent — ce sont les deux alarmes
+    # d'un dossier mis de côté, et la décision fondateur (3) vise les trois
+    # appels J0 de la prise de contact, pas elles. `cloturer_cadence` refuse
+    # d'ailleurs de clore une cadence `reveil` : elle n'a aucune mécanique de
+    # clôture pour faire naître la seconde. Elles restent posées ensemble.
+    maintenant = timezone.now()
+    reactive = cadence != 'reveil'
+    a_creer = []
+    for rang, (gabarit, echeance) in enumerate(echeances):
+        a_creer.append((rang, gabarit, echeance))
+        if reactive and echeance >= maintenant:
+            break
     etapes = [
         RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
@@ -879,10 +934,9 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
             canal=gabarit.canal, libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
-            devis=devis,
+            devis=devis, cadence_depart=ancre,
         )
-        for gabarit, echeance in calculer_echeances_cadence(
-            lead, cadence, depart, gabarits=gabarits)
+        for _rang, gabarit, echeance in a_creer
     ]
     if not etapes:
         # Tous les barreaux de la cadence ont été écartés (cas limite : une
@@ -907,11 +961,15 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # comme un premier contact manuel et avançait NEW → CONTACTED (+ stampait
     # ``first_contacted_at``) dès la création — avant qu'un humain n'ait
     # réellement appelé/écrit. Même motif que ``_refus_cadence`` ci-dessus.
+    # CKP2 — la note annonce le PLAN COMPLET (la partition, `len(echeances)`),
+    # pas le nombre de lignes matérialisées : « 1 touche » sur un protocole de
+    # onze aurait fait croire à un plan tronqué. Le plan est annoncé, la
+    # matérialisation suit les issues.
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Plan de relance initialisé — cadence « {cadence} » '
-             f'({len(resultats)} touche(s), première le {quand}).')
+             f'({len(echeances)} touche(s) prévue(s), première le {quand}).')
 
     if not lead.relance_date or lead.relance_date > premiere.due_date:
         lead.relance_date = premiere.due_date
@@ -925,17 +983,151 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     if cadence == 'apres_devis' and devis is not None:
         try:
             from apps.ventes.services import poser_validite_devis
-            derniere = resultats[-1]
-            if poser_validite_devis(devis, derniere.due_date):
+            # CKP2 — la validité se lit sur la DERNIÈRE échéance de la
+            # PARTITION, jamais sur la dernière ligne matérialisée : depuis la
+            # cadence réactive, celle-ci est la PREMIÈRE touche, et la
+            # proposition aurait expiré le jour même de son envoi.
+            derniere = echeances[-1][1].astimezone(horaires.CASABLANCA).date()
+            if poser_validite_devis(devis, derniere):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
                     kind=LeadActivity.Kind.NOTE,
                     body=(f'Validité de la proposition posée au '
-                          f'{derniere.due_date:%d/%m/%Y} — fin du plan de '
+                          f'{derniere:%d/%m/%Y} — fin du plan de '
                           'suivi.'))
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             pass
     return resultats
+
+
+#: CKP2 — les issues qui ARRÊTENT la cadence (le récepteur MRY9
+#: ``_arreter_cadence_on_outcome`` s'en charge, en ANNULANT les touches
+#: restantes) et qui n'ont donc AUCUNE touche suivante à matérialiser : on a
+#: joint la personne, elle est intéressée, ou elle refuse. Toute autre issue —
+#: y compris l'absence d'issue sur un message ou un e-mail — fait naître le
+#: geste suivant du protocole.
+_OUTCOMES_ARRET_CADENCE = frozenset({'joint', 'interesse', 'refuse'})
+
+
+def materialiser_touche_suivante(etape_close, user=None):
+    """CKP2 — Fait naître LA touche suivante du gabarit, à partir d'une touche
+    qu'on vient de CLORE sans avoir joint le client.
+
+    C'est le cœur de la cadence RÉACTIVE (décision fondateur 2026-09-10) : on
+    ne programme que le prochain geste, et c'est l'issue saisie (« pas de
+    réponse ») qui programme celui d'après. Les trois appels J0 créés d'avance
+    encombraient la file de Meryem de rappels que le premier appel rendait
+    caducs.
+
+    ÉCHÉANCE, deux régimes — c'est là que tout se joue :
+
+      * gabarit ``delai_jours == 0`` (les touches du JOUR MÊME) → ancrée sur
+        l'INSTANT DE CLÔTURE, plus l'écart intra-journée que le protocole
+        prévoit entre les deux touches (``delai_minutes`` de la suivante moins
+        celui de la close). Ancrer sur le départ serait faux : un appel
+        d'ouverture passé à 15 h ne se rappelle pas « 2 h 30 après 08 h 30 »,
+        c'est-à-dire dans le passé.
+      * gabarit ``delai_jours > 0`` → ancrée sur le DÉPART DE CADENCE, comme
+        aujourd'hui : le J+5 du protocole est un J+5 depuis l'arrivée du lead,
+        pas depuis le dernier geste — sinon un dossier repris tardivement
+        décalerait tout son plan et l'aperçu MRY30 mentirait.
+
+    Dans les deux cas le recalage fenêtres/dimanche est celui des fonctions
+    existantes (``horaires.prochain_creneau_appel`` / ``prochain_dimanche``,
+    via ``calculer_echeances_cadence``) — aucune règle d'horaire n'est
+    réécrite ici.
+
+    IDEMPOTENTE : une touche déjà matérialisée pour cet ``ordre`` (et ce
+    devis) n'est jamais recréée. Ne touche NI ``Lead.relance_date`` NI le
+    chatter : c'est l'appelant (``marquer_etape_relance``) qui recale la file
+    en une fois, comme il le faisait déjà.
+
+    Rend la ``RelanceEtape`` créée, ou ``None`` (fin du gabarit, lead qu'on ne
+    relance plus, société sans gabarit, ancre introuvable)."""
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    lead = etape_close.lead
+    if (getattr(lead, 'ne_plus_contacter', False)
+            or getattr(lead, 'perdu', False)
+            or getattr(lead, 'is_archived', False)):
+        return None
+
+    # Les étapes du FILET (MRY34 / QJ-INVARIANT) portent la cadence
+    # `generique` mais ne sont PAS un barreau de protocole : ce sont des
+    # étapes posées à la main par `assurer_prochaine_etape_apres_succes`, dont
+    # la suite est décidée par le filet lui-même (plan après-devis si un devis
+    # est parti, sinon une nouvelle étape générique). Leur faire naître le
+    # « barreau 2 » du gabarit `generique` remplissait la file d'une touche
+    # sans objet ET — parce qu'une prochaine touche existait alors — empêchait
+    # le filet de démarrer le vrai suivi de proposition (cas AR du 07/09).
+    if (etape_close.libelle or '').strip() in _LIBELLES_FILET:
+        return None
+
+    cadence = etape_close.cadence
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if not gabarits:
+        # Cadence sans gabarit (« generique », posée à la main par le filet) :
+        # il n'y a pas de suite à faire naître — l'invariant « jamais un lead
+        # actif sans prochaine touche » reste tenu par le filet lui-même.
+        return None
+
+    ancre = etape_close.cadence_depart
+    if ancre is None:
+        # Lignes d'avant CKP2 : l'ancre n'a jamais été écrite. La plus
+        # ancienne échéance de la cadence en est la meilleure approximation
+        # connue — jamais une valeur inventée.
+        ancre = (lead.relance_etapes.filter(cadence=cadence)
+                 .exclude(due_at=None).order_by('due_at')
+                 .values_list('due_at', flat=True).first())
+    if ancre is None:
+        return None
+
+    echeances = calculer_echeances_cadence(
+        lead, cadence, ancre, gabarits=gabarits)
+    rang = next((i for i, (g, _e) in enumerate(echeances)
+                 if g.ordre == etape_close.ordre), None)
+    if rang is None:
+        return None
+    gabarit_close = echeances[rang][0]
+
+    deja = lead.relance_etapes.filter(cadence=cadence)
+    if etape_close.devis_id is not None:
+        deja = deja.filter(devis_id=etape_close.devis_id)
+    ordres_pris = set(deja.values_list('ordre', flat=True))
+
+    for suivant in range(rang + 1, len(echeances)):
+        gabarit, echeance = echeances[suivant]
+        if gabarit.ordre in ordres_pris:
+            # IDEMPOTENCE : le barreau qui suit celui qu'on vient de clore
+            # existe DÉJÀ (double appel, ou cadence rétrodatée dont plusieurs
+            # touches échues ont été matérialisées d'un coup). On s'arrête —
+            # SAUTER par-dessus pour en créer un plus loin ferait naître deux
+            # touches au lieu d'une et casserait l'ordre du protocole.
+            return None
+        if (gabarit.delai_jours == 0
+                and not getattr(gabarit, 'dimanche_ok', False)
+                and getattr(gabarit, 'heure_cible', None) is None):
+            ecart = ((getattr(gabarit, 'delai_minutes', 0) or 0)
+                     - (getattr(gabarit_close, 'delai_minutes', 0) or 0))
+            base = etape_close.traite_le or timezone.now()
+            echeance = horaires.prochain_creneau_appel(
+                base + datetime.timedelta(minutes=max(0, ecart)),
+                lead.company,
+                canal=getattr(gabarit, 'canal', None) or 'appel')
+        etape = RelanceEtape(
+            company=lead.company, lead=lead, cadence=cadence,
+            ordre=gabarit.ordre, due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            devis_id=etape_close.devis_id, cadence_depart=ancre)
+        if cadence == 'reveil':
+            _adapter_gabarits_reveil(lead, [etape], rang_initial=suivant)
+        etape.save()
+        return etape
+    return None
 
 
 #: MRY10 — canal de la touche → type d'activité du chatter. Une touche traitée
@@ -958,7 +1150,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
     prochaine étape ``a_faire`` de CE plan (ou la vide si le plan est
     terminé) — garde ``sync_relance_activity`` en phase, jamais un second
-    système de rappel concurrent."""
+    système de rappel concurrent.
+
+    CKP2 — c'est aussi ICI que naît la touche SUIVANTE du protocole
+    (``materialiser_touche_suivante``) quand la clôture n'est pas un succès :
+    la cadence est RÉACTIVE, une touche à la fois, et c'est l'issue saisie qui
+    programme le geste d'après."""
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
 
@@ -1019,6 +1216,25 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # (une touche SAUTÉE ne vaut jamais un envoi).
     if statut == RelanceEtape.Statut.FAIT and touche_envoi_devis:
         avancer_stage_devis_envoye_sur_touche(lead, user)
+    # CKP2 — LA CADENCE RÉACTIVE : la touche suivante du protocole naît ICI,
+    # de l'issue qu'on vient de saisir, et nulle part ailleurs.
+    #   * FAIT sans issue d'arrêt (« pas de réponse » sur un appel, ou aucune
+    #     issue sur un message/e-mail/visite) → le geste suivant est programmé.
+    #   * SAUTÉE par un humain → idem : passer une touche ne doit pas éteindre
+    #     la cadence, sinon sauter le message d'identité supprimait le reste du
+    #     protocole.
+    #   * « joint »/« intéressé »/« refus » → RIEN : le récepteur MRY9 vient
+    #     d'ANNULER les touches restantes et le filet
+    #     `assurer_prochaine_etape_apres_succes` pose la vraie suite.
+    suivante = None
+    if (statut == RelanceEtape.Statut.SAUTEE
+            or (outcome or '') not in _OUTCOMES_ARRET_CADENCE):
+        try:
+            suivante = materialiser_touche_suivante(etape, user)
+        except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
+            logger.warning(
+                'CKP2: touche suivante non matérialisée (étape #%s)',
+                getattr(etape, 'pk', '?'), exc_info=True)
     prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
@@ -1031,7 +1247,14 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     #     avant l'écriture, cf. `restantes_avant`) ;
     #   * son issue n'est pas une issue de SUCCÈS — joindre, intéresser ou
     #     convenir d'un rappel ne clôt jamais un dossier au froid.
-    if restantes_avant == 0 and (outcome or '') not in _OUTCOMES_SANS_CLOTURE:
+    # CKP2 — TROISIÈME condition, indispensable depuis la cadence réactive :
+    # `restantes_avant == 0` est désormais VRAI à chaque touche (il n'y en a
+    # jamais qu'une d'ouverte à la fois). Sans le `suivante is None`, le
+    # premier « pas de réponse » du protocole aurait envoyé le lead au parking
+    # étiqueté « Injoignable 6 appels » — après UN seul appel. La cadence n'est
+    # épuisée que si le gabarit n'a plus rien à faire naître.
+    if (restantes_avant == 0 and suivante is None
+            and (outcome or '') not in _OUTCOMES_SANS_CLOTURE):
         cloturer_cadence(lead, user, etape.cadence)
     # QJ-INVARIANT (fondateur 07/09/2026, « fix this relance once and for
     # all ») — aucun geste de relance ne laisse un lead ACTIF sans prochaine
@@ -1156,6 +1379,15 @@ _KINDS_MESSAGE = frozenset({LeadActivity.Kind.WHATSAPP, LeadActivity.Kind.EMAIL}
 #: la suite d'un refus est une décision HUMAINE (MRY22), mais le dossier ne
 #: doit pas disparaître des files en attendant qu'elle soit prise.
 FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieure'
+
+#: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
+#: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
+#: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
+#: matérialisation réactive (`materialiser_touche_suivante` les ignore).
+_LIBELLES_FILET = frozenset({
+    FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN,
+    FILET_APPEL_LIBELLE, FILET_REFUS_LIBELLE,
+})
 
 #: Délai (jours) du filet : DEMAIN, recalé sur le prochain créneau d'appel de
 #: la société (fenêtres MRY4). Si Meryem donne une date de rappel en marquant
@@ -1652,7 +1884,13 @@ def arreter_cadence(lead, *, user, motif, cadences=None):
     faute la plus visible qu'un CRM puisse commettre.
 
     Toutes les touches ``A_FAIRE`` (restreintes à ``cadences`` si fourni)
-    passent à ``SAUTEE`` en UNE requête, avec le motif, l'acteur et l'horodatage.
+    passent à ``ANNULEE`` en UNE requête, avec le motif et l'horodatage.
+    CKP1 (fondateur 2026-09-10) — ``traite_par`` est mis à NULL, délibérément :
+    ARRÊTER une cadence est un geste du MOTEUR, pas de l'humain qui a
+    déclenché l'événement. Estampiller son nom sur les neuf touches restantes
+    les affichait « Sautée par Meryem » et les comptait comme neuf
+    manquements dans les KPI d'adhérence — l'inverse exact de la vérité (le
+    client avait répondu). Le motif, lui, reste écrit dans ``note``.
     UNE note chatter. ``Lead.relance_date`` est recalculée sur la prochaine
     touche restante (ou vidée) et ``sync_relance_activity`` remise en phase.
 
@@ -1667,9 +1905,9 @@ def arreter_cadence(lead, *, user, motif, cadences=None):
     if not pks:
         return 0
     RelanceEtape.objects.filter(pk__in=pks).update(
-        statut=RelanceEtape.Statut.SAUTEE,
+        statut=RelanceEtape.Statut.ANNULEE,
         note=(motif or '')[:500],
-        traite_par=user,
+        traite_par=None,
         traite_le=timezone.now())
     quelles = ', '.join(cadences) if cadences else 'toutes cadences'
     # FG28/MRY19 — note SYSTÈME (``user=None``), jamais l'utilisateur qui a
@@ -6422,9 +6660,10 @@ def _placement_touches_creees(lead, cadence, devis=None):
 
 def _placer_cadence_positionnee(entree, *, user, maintenant):
     """Cadence `contact`/`apres_devis` datée depuis l'ancre (ou l'envoi du
-    devis), touches déjà échues SAUTÉES.
+    devis), touches déjà échues ANNULÉES (CKP1 — c'est le MOTEUR qui les
+    retire, pas un commercial : ``traite_par`` reste NULL).
 
-    Les touches passées sont sautées par un UPDATE direct, jamais par
+    Les touches passées sont annulées par un UPDATE direct, jamais par
     ``marquer_etape_relance`` : celui-ci journalise une ligne de chatter par
     touche (dix lignes « touche sautée » sur un dossier qu'on vient à peine de
     reprendre) et, sur la DERNIÈRE, déclencherait ``cloturer_cadence`` — le
@@ -6458,8 +6697,9 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     if passees:
         RelanceEtape.objects.filter(
             pk__in=passees, statut=RelanceEtape.Statut.A_FAIRE,
-        ).update(statut=RelanceEtape.Statut.SAUTEE,
-                 note=PLACEMENT_NOTE_PASSEE, traite_le=maintenant)
+        ).update(statut=RelanceEtape.Statut.ANNULEE,
+                 note=PLACEMENT_NOTE_PASSEE, traite_par=None,
+                 traite_le=maintenant)
     if len(passees) >= len(etapes):
         # Rien ne reste à faire : cette cadence ne relancerait personne. On
         # défait TOUT ce qu'on vient de créer — touches, note « Plan de

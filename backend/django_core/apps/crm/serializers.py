@@ -146,6 +146,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # écrite en base et invisible ne trace rien.
     traite_le = serializers.DateTimeField(read_only=True)
     traite_par_nom = serializers.SerializerMethodField()
+    # CKP1 — le LIBELLÉ du statut, servi par le serveur : le badge « Sautée »
+    # nu ne distinguait pas la décision HUMAINE de l'annulation MOTEUR, et
+    # l'écran n'avait aucun moyen de le faire sans réinventer la table des
+    # libellés. « Annulée (moteur) » vient donc du modèle, pas du front.
+    statut_libelle = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -160,6 +165,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'cadence', 'ordre', 'due_date', 'due_at', 'canal', 'libelle',
             'template_cle', 'statut', 'note', 'overdue', 'devis',
             'devis_reference', 'traite_le', 'traite_par_nom',
+            'statut_libelle',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -209,6 +215,9 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         # une requête par ligne. '' — jamais null — pour une touche à faire
         # ou marquée par le système (contrat `relance_etapes_suivi`).
         return getattr(obj.traite_par, 'username', '') or ''
+
+    def get_statut_libelle(self, obj) -> str:
+        return obj.get_statut_display()
 
 
 class _CurrentCompanyDefault:

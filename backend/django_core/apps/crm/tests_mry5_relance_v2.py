@@ -28,10 +28,37 @@ from apps.crm import horaires
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import (
     devis_a_cadence_active, prochaine_touche_par_lead, relance_etapes_dues)
-from apps.crm.services import initialiser_plan_relance, marquer_etape_relance
+from apps.crm.services import (
+    calculer_echeances_cadence, initialiser_plan_relance,
+    marquer_etape_relance)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
+
+
+def _plan_date(lead, cadence='contact', depart=None):
+    """CKP2 — la PARTITION datée du gabarit, sans rien matérialiser.
+
+    Depuis la CADENCE RÉACTIVE (fondateur 2026-09-10),
+    ``initialiser_plan_relance`` ne crée que la première touche à faire : ce
+    fichier, lui, pince le CALCUL des échéances (fenêtres d'appel, origine du
+    jour même, touche dominicale) — qui n'a pas bougé d'une minute et vit
+    dans ``calculer_echeances_cadence``, la partition que l'aperçu MRY30
+    annonce. On l'interroge donc directement, au lieu de lire des lignes dont
+    la matérialisation dépend désormais des issues saisies."""
+    from types import SimpleNamespace
+
+    return [
+        SimpleNamespace(
+            ordre=gabarit.ordre, canal=gabarit.canal,
+            libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date())
+        for gabarit, echeance in calculer_echeances_cadence(
+            lead, cadence, depart)
+    ]
+
 
 #: Vendredi 4 septembre 2026, 20:30 heure de Casablanca — après la fermeture.
 VENDREDI_SOIR = datetime.datetime(2026, 9, 4, 20, 30, tzinfo=horaires.CASABLANCA)
@@ -66,8 +93,7 @@ class CadenceContactTests(TestCase):
         tombait vendredi 20:30 — hors fenêtre d'appel. Elle reste à 08:30
         après le 07/09/2026 : c'est un MESSAGE (message d'identité), et les
         messages ouvrent à 08:30."""
-        etapes = initialiser_plan_relance(
-            self.lead, self.acteur, depart=VENDREDI_SOIR)
+        etapes = _plan_date(self.lead, depart=VENDREDI_SOIR)
         premiere = etapes[0]
         locale = premiere.due_at.astimezone(horaires.CASABLANCA)
         self.assertEqual(locale.date(), datetime.date(2026, 9, 7))
@@ -76,21 +102,18 @@ class CadenceContactTests(TestCase):
         self.assertEqual(premiere.due_date, datetime.date(2026, 9, 7))
 
     def test_la_deuxieme_touche_tombe_trois_minutes_apres(self):
-        etapes = initialiser_plan_relance(
-            self.lead, self.acteur, depart=LUNDI_MATIN)
+        etapes = _plan_date(self.lead, depart=LUNDI_MATIN)
         premiere, seconde = etapes[0], etapes[1]
         self.assertEqual(
             (seconde.due_at - premiere.due_at), datetime.timedelta(minutes=3))
 
     def test_le_gabarit_de_message_voyage_sur_la_touche(self):
-        etapes = initialiser_plan_relance(
-            self.lead, self.acteur, depart=LUNDI_MATIN)
+        etapes = _plan_date(self.lead, depart=LUNDI_MATIN)
         self.assertEqual(etapes[0].template_cle, 'identite')
         self.assertEqual(etapes[1].template_cle, 'appel_ouverture')
 
     def test_due_date_est_la_date_locale_de_due_at(self):
-        for etape in initialiser_plan_relance(
-                self.lead, self.acteur, depart=LUNDI_MATIN):
+        for etape in _plan_date(self.lead, depart=LUNDI_MATIN):
             self.assertEqual(
                 etape.due_date,
                 etape.due_at.astimezone(horaires.CASABLANCA).date())
@@ -121,8 +144,7 @@ class OrigineDesTouchesDuJourTests(TestCase):
     def _heures(self, depart):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect', owner=self.acteur)
-        etapes = initialiser_plan_relance(
-            lead, self.acteur, depart=depart, cadence='contact')
+        etapes = _plan_date(lead, cadence='contact', depart=depart)
         trois = sorted(etapes, key=lambda e: e.ordre)[:3]
         return [e.due_at.astimezone(horaires.CASABLANCA) for e in trois]
 
@@ -146,11 +168,10 @@ class OrigineDesTouchesDuJourTests(TestCase):
         message, lui, part bien avant."""
         lead = Lead.objects.create(
             company=self.company, nom='Nuit', owner=self.acteur)
-        etapes = initialiser_plan_relance(
-            lead, self.acteur,
+        etapes = _plan_date(
+            lead, cadence='contact',
             depart=datetime.datetime(2026, 9, 6, 23, 40,
-                                     tzinfo=horaires.CASABLANCA),
-            cadence='contact')
+                                     tzinfo=horaires.CASABLANCA))
         appels = [e for e in etapes if e.canal == 'appel'
                   and e.template_cle != 'appel_dimanche']
         self.assertTrue(appels)
@@ -204,8 +225,7 @@ class ToucheDominicaleTests(TestCase):
     def _touche_dominicale(self, depart):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect', owner=self.acteur)
-        etapes = initialiser_plan_relance(
-            lead, self.acteur, depart=depart, cadence='contact')
+        etapes = _plan_date(lead, cadence='contact', depart=depart)
         touche = next(e for e in etapes if e.template_cle == 'appel_dimanche')
         self.assertEqual(touche.ordre, 8)
         return touche
@@ -239,11 +259,10 @@ class ToucheDominicaleTests(TestCase):
         """Garde négative : seule la touche marquée `dimanche_ok` bouge."""
         lead = Lead.objects.create(
             company=self.company, nom='Autre', owner=self.acteur)
-        etapes = initialiser_plan_relance(
-            lead, self.acteur,
+        etapes = _plan_date(
+            lead, cadence='contact',
             depart=datetime.datetime(2026, 9, 2, 10, 0,
-                                     tzinfo=horaires.CASABLANCA),
-            cadence='contact')
+                                     tzinfo=horaires.CASABLANCA))
         for etape in etapes:
             if etape.template_cle == 'appel_dimanche':
                 continue
@@ -357,9 +376,12 @@ class ProchaineToucheTests(TestCase):
         ancienne = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, ordre=99,
             due_date=self.etapes[0].due_date, canal='appel', due_at=None)
+        # CKP2 — le `today` de référence est celui de la SEULE touche dont la
+        # matérialisation est garantie (la première) : depuis la cadence
+        # réactive, le nombre de lignes créées dépend des issues saisies.
         qs = relance_etapes_dues(
             self.company, self.acteur, scope='all',
-            today=self.etapes[1].due_date)
+            today=self.etapes[0].due_date)
         rangs = [e.pk for e in qs]
         self.assertIn(ancienne.pk, rangs)
         self.assertEqual(rangs[-1], ancienne.pk)
@@ -452,7 +474,12 @@ class ApiRelanceEtapeTests(TestCase):
             f'/api/django/crm/relance-etapes/?lead={self.lead.pk}')
         self.assertEqual(resp.status_code, 200)
         # La frise montre le PASSÉ autant que le futur : la touche faite y est.
-        self.assertEqual(resp.data['count'], len(etapes))
+        # CKP2 — elle montre AUSSI la touche que l'issue vient de faire naître
+        # (cadence réactive) : la frise rend TOUT ce que le lead porte, jamais
+        # un sous-ensemble.
+        self.assertEqual(resp.data['count'],
+                         self.lead.relance_etapes.count())
+        self.assertGreaterEqual(resp.data['count'], len(etapes))
         statuts = {r['statut'] for r in resp.data['results']}
         self.assertIn('fait', statuts)
 

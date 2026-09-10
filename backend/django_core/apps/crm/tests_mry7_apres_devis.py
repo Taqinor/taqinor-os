@@ -27,7 +27,8 @@ from core.events import devis_refused, devis_sent
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import devis_a_cadence_active
-from apps.crm.services import initialiser_plan_relance
+from apps.crm.services import (
+    calculer_echeances_cadence, initialiser_plan_relance)
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 
@@ -145,17 +146,30 @@ class DimancheFamilleTests(_Base):
         return self._touches('apres_devis').filter(
             template_cle='dimanche_famille')
 
+    def _partition(self):
+        """CKP2 — la cadence est RÉACTIVE : seules les touches déjà échues et
+        la première à venir sont MATÉRIALISÉES. Ce que MRY4 verrouille — quels
+        barreaux la société pose, et lesquels elle écarte — se lit donc sur la
+        PARTITION (le plan annoncé), pas sur le compte des lignes créées."""
+        return calculer_echeances_cadence(self.lead, 'apres_devis', ENVOI)
+
     def test_sans_letiquette_la_touche_nest_pas_posee(self):
         self._envoyer(self._devis('DEV-MRY7-0300'))
         self.assertEqual(self._dimanche_famille().count(), 0)
-        self.assertEqual(self._touches('apres_devis').count(), 9)
+        partition = self._partition()
+        self.assertEqual(len(partition), 9)
+        self.assertNotIn('dimanche_famille',
+                         [g.template_cle for g, _e in partition])
 
     def test_avec_letiquette_la_touche_est_posee(self):
         self.lead.tags = 'Décision à plusieurs'
         self.lead.save(update_fields=['tags'])
         self._envoyer(self._devis('DEV-MRY7-0301'))
         self.assertEqual(self._dimanche_famille().count(), 1)
-        self.assertEqual(self._touches('apres_devis').count(), 10)
+        partition = self._partition()
+        self.assertEqual(len(partition), 10)
+        self.assertIn('dimanche_famille',
+                      [g.template_cle for g, _e in partition])
 
     def test_letiquette_est_reconnue_sans_accent_ni_casse(self):
         """`Lead.tags` est un champ LIBRE saisi à la main : « decision a
@@ -179,10 +193,15 @@ class DimancheFamilleTests(_Base):
         """Les `ordre` viennent du gabarit de la société, jamais d'un
         compteur local : écarter un barreau ne renumérote pas les autres."""
         self._envoyer(self._devis('DEV-MRY7-0304'))
-        ordres = sorted(
-            self._touches('apres_devis').values_list('ordre', flat=True))
+        # CKP2 — la numérotation est celle de la PARTITION (le plan annoncé) :
+        # la matérialisation réactive n'en crée qu'un prélude, mais les `ordre`
+        # qu'elle porte sont ceux-là.
+        ordres = [g.ordre for g, _e in self._partition()]
         self.assertNotIn(3, ordres)
         self.assertEqual(ordres, [1, 2, 4, 5, 6, 7, 8, 9, 10])
+        materialises = set(
+            self._touches('apres_devis').values_list('ordre', flat=True))
+        self.assertTrue(materialises.issubset(set(ordres)))
 
 
 class RefusTests(_Base):

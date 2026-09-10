@@ -80,12 +80,22 @@ class ArreterCadenceTests(_Base):
         self.assertEqual(self._ouvertes('apres_devis'), len(self.apres))
 
     def test_le_motif_est_ecrit_sur_chaque_touche(self):
+        """CKP1 — les touches arrêtées sont ANNULÉES (moteur), jamais
+        « sautées » : le motif reste écrit, mais AUCUN nom d'humain n'y est
+        estampillé. Avant, l'utilisateur qui déclenchait l'événement se
+        retrouvait crédité de neuf sauts qu'il n'avait pas décidés."""
         arreter_cadence(self.lead, user=self.acteur, motif='ne plus contacter')
-        for etape in self.lead.relance_etapes.filter(
-                statut=RelanceEtape.Statut.SAUTEE):
+        annulees = self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.ANNULEE)
+        self.assertGreater(annulees.count(), 0)
+        for etape in annulees:
             self.assertEqual(etape.note, 'ne plus contacter')
-            self.assertEqual(etape.traite_par, self.acteur)
+            self.assertIsNone(etape.traite_par)
             self.assertIsNotNone(etape.traite_le)
+        # …et RIEN n'est compté comme un saut humain.
+        self.assertEqual(
+            self.lead.relance_etapes.filter(
+                statut=RelanceEtape.Statut.SAUTEE).count(), 0)
 
     def test_une_seule_note_chatter(self):
         avant = LeadActivity.objects.filter(lead=self.lead).count()
@@ -300,3 +310,61 @@ class ActionArreterRelanceTests(_Base):
             f'/api/django/crm/leads/{lead_autre.pk}/relance/arreter/',
             {'motif': 'test'}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+
+class BackfillAnnuleeTests(_Base):
+    """CKP1 — la data migration 0097 rétrodate l'historique.
+
+    Sans elle, la vue d'adhérence (CKP3) lirait des milliers de cadences que
+    le MOTEUR a arrêtées (client joint, lead signé…) comme autant de
+    manquements de Meryem. La fonction de migration ne reçoit qu'un ``apps``
+    dont elle appelle ``get_model`` : on lui passe le registre RÉEL.
+    """
+    slug = 'mry9-backfill'
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(
+            'apps.crm.migrations.0097_ckp1_relanceetape_annulee')
+
+    def _touche(self, note, statut, **kw):
+        return RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='contact',
+            ordre=90, due_date=LUNDI.date(), canal='appel',
+            libelle='Appel', statut=statut, note=note, **kw)
+
+    def test_un_motif_moteur_connu_bascule_en_annulee(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        cibles = [self._touche(motif, RelanceEtape.Statut.SAUTEE,
+                               traite_par=self.acteur)
+                  for motif in migration.MOTIFS_MOTEUR]
+        migration.basculer_vers_annulee(registre, None)
+        for etape in cibles:
+            etape.refresh_from_db()
+            self.assertEqual(etape.statut, RelanceEtape.Statut.ANNULEE,
+                             etape.note)
+            # Le nom estampillé à tort par l'ancien code est retiré.
+            self.assertIsNone(etape.traite_par)
+
+    def test_un_saut_humain_sans_motif_moteur_reste_sautee(self):
+        """Dans le doute, la décision reste au compte de l'HUMAIN — jamais
+        l'inverse : une note libre ne devient pas une annulation moteur."""
+        from django.apps import apps as registre
+        libre = self._touche('pas joint, je réessaie demain',
+                             RelanceEtape.Statut.SAUTEE,
+                             traite_par=self.acteur)
+        self._migration().basculer_vers_annulee(registre, None)
+        libre.refresh_from_db()
+        self.assertEqual(libre.statut, RelanceEtape.Statut.SAUTEE)
+        self.assertEqual(libre.traite_par, self.acteur)
+
+    def test_le_reverse_ramene_tout_a_sautee(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        etape = self._touche('lead signé', RelanceEtape.Statut.SAUTEE)
+        migration.basculer_vers_annulee(registre, None)
+        migration.revenir_a_sautee(registre, None)
+        etape.refresh_from_db()
+        self.assertEqual(etape.statut, RelanceEtape.Statut.SAUTEE)
+        self.assertEqual(etape.note, 'lead signé')

@@ -75,18 +75,28 @@ export default function RelancesDuJourWidget() {
   const traiter = async (id, action, payload) => {
     setBusyId(id)
     try {
-      if (action === 'fait') await crmApi.marquerRelanceEtapeFait(id, payload)
-      else if (action === 'sauter') await crmApi.marquerRelanceEtapeSautee(id, payload)
-      else if (action === 'reporter') await crmApi.reporterRelanceEtape(id, payload)
+      let res
+      if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
+      else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
+      else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
       retirer(id)
       // MRY9/MRY11 — une action peut faire naître une NOUVELLE touche due
       // (report, clôture de cadence…) : refetch silencieux, jamais bloquant.
       setTimeout(() => { charger() }, 1000)
-    } catch {
+      return res?.data
+    } catch (err) {
+      // CKP4 — un canal APPEL clôturé « Fait » sans issue renvoie 400
+      // `{erreurs: {outcome}}` : ce champ s'affiche SOUS le contrôle
+      // (`RelanceEtapeRow`, promesse rejetée ci-dessous), jamais un toast
+      // générique qui masquerait le champ fautif.
+      const champOutcome = action === 'fait' && err?.response?.status === 400
+        ? err?.response?.data?.erreurs?.outcome : null
       // F2 — l'échec n'est plus MUET : la ligne reste (retirer() jamais
       // appelé ici) et redevient cliquable (busyId remis à null ci-dessous),
       // mais l'agent doit être PRÉVENU que son geste n'a rien fait.
-      toastError('Action impossible pour le moment.')
+      if (!champOutcome) toastError('Action impossible pour le moment.')
+      if (action === 'fait') throw err
+      return undefined
     } finally {
       setBusyId(null)
     }

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9822, operations: 17525, components: 5139}
+counts: {paths: 9826, operations: 17529, components: 5141}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2753,6 +2753,8 @@ operations:
 - post /api/django/crm/public/visite/ -> django_crm_public_visite_create
 - get /api/django/crm/rapports/attribution/ -> django_crm_rapports_attribution_retrieve
 - get /api/django/crm/relance-etapes/ -> django_crm_relance_etapes_list
+- get /api/django/crm/relance-etapes/kpi-adherence/ -> django_crm_relance_etapes_kpi_adherence_retrieve
+- get /api/django/crm/relance-etapes/mes-stats/ -> django_crm_relance_etapes_mes_stats_retrieve
 - get /api/django/crm/relance-etapes/suivi/ -> django_crm_relance_etapes_suivi_retrieve
 - post /api/django/crm/relance-etapes/{id}/fait/ -> django_crm_relance_etapes_fait_create
 - get /api/django/crm/relance-etapes/{id}/message/ -> django_crm_relance_etapes_message_retrieve
@@ -11553,6 +11555,8 @@ operations:
 - post /api/v1/crm/public/visite/ -> v1_crm_public_visite_create
 - get /api/v1/crm/rapports/attribution/ -> v1_crm_rapports_attribution_retrieve
 - get /api/v1/crm/relance-etapes/ -> v1_crm_relance_etapes_list
+- get /api/v1/crm/relance-etapes/kpi-adherence/ -> v1_crm_relance_etapes_kpi_adherence_retrieve
+- get /api/v1/crm/relance-etapes/mes-stats/ -> v1_crm_relance_etapes_mes_stats_retrieve
 - get /api/v1/crm/relance-etapes/suivi/ -> v1_crm_relance_etapes_suivi_retrieve
 - post /api/v1/crm/relance-etapes/{id}/fait/ -> v1_crm_relance_etapes_fait_create
 - get /api/v1/crm/relance-etapes/{id}/message/ -> v1_crm_relance_etapes_message_retrieve
@@ -18284,8 +18288,10 @@ components:
 - CreneauEquipementEnum
 - CritereAudit
 - CritereAuditRequest
+- CrmKpiAdherence
 - CrmKpiCadences
 - CrmKpiPremierContact
+- CrmMesStatsRelance
 - CumulAnnuel
 - CustomFieldDef
 - CustomFieldDefRequest
