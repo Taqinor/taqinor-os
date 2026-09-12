@@ -74,3 +74,13 @@ def log_note(ticket: Ticket, user, body: str) -> TicketActivity:
         company=ticket.company, ticket=ticket, user=user,
         kind=TicketActivity.Kind.NOTE, body=body,
     )
+
+
+def log_email(ticket: Ticket, user, body: str) -> TicketActivity:
+    """NTSRV1 — journalise un e-mail (entrant ou sortant) comme interaction
+    TYPÉE du chatter (``kind='email'``), jamais comme note libre : l'inbox
+    omnicanale distingue ainsi un échange e-mail d'un commentaire interne."""
+    return TicketActivity.objects.create(
+        company=ticket.company, ticket=ticket, user=user,
+        kind=TicketActivity.Kind.EMAIL, body=body,
+    )

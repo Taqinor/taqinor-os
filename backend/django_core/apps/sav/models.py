@@ -816,6 +816,25 @@ class Ticket(models.Model):
                   '(déplacement). Vide = non renseigné (tickets anciens).',
     )
 
+    # ── NTSRV1 — Canal d'OUVERTURE du ticket (par où la demande est entrée) ──
+    # Distinct de `canal_resolution` (YSERV12 — par où elle a été RÉSOLUE).
+    # Défaut `manuel` : tous les tickets existants (saisis au back-office)
+    # gardent exactement leur sémantique actuelle. Posé côté serveur par le
+    # producteur (handler e-mail entrant, portail public, webhook WhatsApp),
+    # jamais lu du corps d'une requête back-office.
+    class CanalOuverture(models.TextChoices):
+        MANUEL = 'manuel', 'Manuel (back-office)'
+        EMAIL = 'email', 'E-mail'
+        PORTAIL = 'portail', 'Portail client'
+
+    canal_ouverture = models.CharField(
+        max_length=12, choices=CanalOuverture.choices,
+        default=CanalOuverture.MANUEL,
+        verbose_name="Canal d'ouverture",
+        help_text="Par quel canal la demande est arrivée (manuel, e-mail, "
+                  "portail client…).",
+    )
+
     class Meta:
         verbose_name = 'Ticket SAV'
         verbose_name_plural = 'Tickets SAV'
@@ -1044,6 +1063,10 @@ class TicketActivity(models.Model):
         CREATION = 'creation', 'Création'
         MODIFICATION = 'modification', 'Modification'
         NOTE = 'note', 'Note'
+        # NTSRV1 — un e-mail entrant/sortant rattaché au ticket est une
+        # interaction typée, pas une note libre (même patron que
+        # `crm.LeadActivity.Kind.EMAIL`).
+        EMAIL = 'email', 'E-mail'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -2184,3 +2207,75 @@ class TicketWorksheet(models.Model):
         self.complete_par = user
         self.complete_le = timezone.now()
         self.save(update_fields=['complete', 'complete_par', 'complete_le'])
+
+
+# ── NTSRV1 — Fil e-mail d'un ticket (threading RFC 5322) ─────────────────────
+
+class TicketEmailThread(models.Model):
+    """NTSRV1 — UN message e-mail (entrant ou sortant) rattaché à un ticket.
+
+    C'est la MÉMOIRE de threading : elle mémorise le ``message_id`` de chaque
+    message vu et le ``thread_root`` du fil (1er ``References``, sinon
+    ``In-Reply-To``, sinon le ``Message-ID`` lui-même — calculé par
+    ``core.email_intake.InboundMessage.thread_root``). Une réponse du client
+    retombe ainsi sur le MÊME ticket au lieu d'en créer un second.
+
+    ⚠ Aucune connexion IMAP ne vit dans ``apps.sav`` : la récupération et le
+    parsing sont faits par le REGISTRE générique ``core/email_intake.py``
+    (FG373), auquel ``apps/sav/apps.py ready()`` abonne simplement un handler.
+
+    ``message_id`` est unique PAR SOCIÉTÉ (deux tenants peuvent recevoir une
+    copie du même message) et sert de garde d'IDEMPOTENCE : un re-poll IMAP
+    ou une redélivrance ne crée jamais ni doublon de ligne ni second ticket.
+    """
+    class Direction(models.TextChoices):
+        ENTRANT = 'entrant', 'Entrant'
+        SORTANT = 'sortant', 'Sortant'
+
+    company = models.ForeignKey(
+        # on_delete: cascade de tenant standard — un fil e-mail n'existe pas
+        # hors de sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_email_threads')
+    ticket = models.ForeignKey(
+        # on_delete: le fil appartient au ticket ; sans lui il ne dit plus
+        # rien.
+        Ticket, on_delete=models.CASCADE, related_name='emails')
+    message_id = models.CharField(
+        max_length=255, verbose_name='Message-ID')
+    in_reply_to = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='In-Reply-To')
+    thread_root = models.CharField(
+        max_length=255, blank=True, default='', db_index=True,
+        verbose_name='Racine du fil')
+    expediteur = models.CharField(
+        max_length=254, blank=True, default='', verbose_name='Expéditeur')
+    destinataire = models.CharField(
+        max_length=254, blank=True, default='', verbose_name='Destinataire')
+    sujet = models.CharField(max_length=255, blank=True, default='')
+    corps_brut = models.TextField(blank=True, default='')
+    # Pièces jointes déposées dans le magasin MinIO existant
+    # (``records.Attachment``) : on ne garde ici que la LISTE de leurs ids —
+    # jamais un second magasin de fichiers.
+    pieces_jointes = models.JSONField(null=True, blank=True)
+    direction = models.CharField(
+        max_length=8, choices=Direction.choices,
+        default=Direction.ENTRANT)
+    date_reception = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = 'Message e-mail de ticket'
+        verbose_name_plural = 'Messages e-mail de ticket'
+        ordering = ['date_reception', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'message_id'],
+                name='sav_ticketemailthread_msgid_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'thread_root'],
+                         name='sav_email_thread_root_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.direction} {self.message_id} (ticket {self.ticket_id})'

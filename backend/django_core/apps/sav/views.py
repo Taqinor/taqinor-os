@@ -1318,6 +1318,51 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @action(detail=True, methods=['post'], url_path='repondre-email',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def repondre_email(self, request, pk=None):
+        """NTSRV1 — Répond au client par e-mail DEPUIS le ticket.
+
+        Le message sortant reprend les en-têtes de fil (``In-Reply-To`` /
+        ``References``) du dernier e-mail entrant : la réponse du client
+        revient sur le MÊME ticket. Sans clé fournisseur configurée, l'envoi
+        retombe sur le backend console (no-op réseau silencieux) — le fil est
+        journalisé dans tous les cas."""
+        ticket = self.get_object()
+        from .services import repondre_par_email
+
+        try:
+            ligne = repondre_par_email(
+                ticket,
+                corps=request.data.get('corps'),
+                sujet=(request.data.get('sujet') or '').strip(),
+                destinataire=(request.data.get('destinataire') or '').strip(),
+                user=request.user)
+        except ValueError as exc:
+            champ, _, detail = str(exc).partition(': ')
+            return Response({champ: detail or str(exc)}, status=400)
+        return Response({
+            'id': ligne.pk, 'message_id': ligne.message_id,
+            'thread_root': ligne.thread_root,
+            'destinataire': ligne.destinataire, 'sujet': ligne.sujet,
+        }, status=201)
+
+    @action(detail=True, methods=['get'], url_path='emails',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def emails(self, request, pk=None):
+        """NTSRV1 — Fil e-mail complet du ticket (entrants + sortants),
+        ordonné du plus ancien au plus récent. Aucun champ interne (coût,
+        prix d'achat) n'y figure."""
+        ticket = self.get_object()
+        lignes = ticket.emails.all().order_by('date_reception', 'id')
+        return Response([{
+            'id': ligne.pk, 'direction': ligne.direction,
+            'message_id': ligne.message_id, 'thread_root': ligne.thread_root,
+            'expediteur': ligne.expediteur, 'destinataire': ligne.destinataire,
+            'sujet': ligne.sujet, 'corps': ligne.corps_brut,
+            'date_reception': ligne.date_reception,
+        } for ligne in lignes])
+
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def rapport_pdf(self, request, pk=None):

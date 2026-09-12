@@ -1627,3 +1627,235 @@ def register_email_alias_handler():
     from core.email_intake import register_handler
 
     register_handler(creer_ticket_depuis_email_alias)
+
+
+# ── NTSRV1 — Threading e-mail entrant → ticket (handler du registre FG373) ───
+# AUCUNE connexion IMAP ici : la récupération + le parsing (Message-ID /
+# In-Reply-To / References) sont faits UNE FOIS par le registre générique
+# ``core/email_intake.py`` (FG373), gated par la même ``IntegrationConfig``
+# TYPE_EMAIL_IN société-scopée. ``apps.sav`` ne fait qu'ABONNER un handler
+# depuis son ``apps.py ready()`` — jamais un second poller.
+
+def _racines_fil(message):
+    """Identifiants qui rattachent ``message`` à un fil déjà connu."""
+    return {r for r in (getattr(message, 'thread_root', '') or '',
+                        getattr(message, 'in_reply_to', '') or '',
+                        getattr(message, 'message_id', '') or '') if r}
+
+
+def ticket_du_fil_email(company, message):
+    """NTSRV1 — ticket déjà rattaché au fil de ``message``, ou ``None``.
+
+    Un message est « du même fil » si sa racine (1er ``References``, sinon
+    ``In-Reply-To``, sinon son propre ``Message-ID``) correspond à la racine
+    OU au ``Message-ID`` d'un message déjà enregistré pour la société. C'est
+    ce qui garantit qu'une réponse du client revient sur le MÊME ticket au
+    lieu d'en ouvrir un second."""
+    from django.db.models import Q
+
+    from .models import TicketEmailThread
+
+    racines = _racines_fil(message)
+    if not racines:
+        return None
+    ligne = (TicketEmailThread.objects
+             .filter(company=company)
+             .filter(Q(thread_root__in=racines) | Q(message_id__in=racines))
+             .select_related('ticket')
+             .order_by('id')
+             .first())
+    return ligne.ticket if ligne is not None else None
+
+
+def _ticket_deja_cree_par_alias(company, message):
+    """ZMFG7 crée un ticket AVANT ce handler quand le message arrive sur
+    l'alias d'une catégorie d'équipement (il est enregistré en premier) et
+    marque sa description ``[email:<message_id>]``. On le RÉUTILISE au lieu
+    d'ouvrir un doublon — les deux handlers du registre coexistent."""
+    from .models import Ticket
+
+    message_id = getattr(message, 'message_id', '') or ''
+    if not message_id:
+        return None
+    return Ticket.objects.filter(
+        company=company,
+        description__startswith=f'[email:{message_id}]').first()
+
+
+def enregistrer_message_email(ticket, *, message_id, thread_root='',
+                              in_reply_to='', expediteur='', destinataire='',
+                              sujet='', corps='', direction=None,
+                              date_reception=None):
+    """NTSRV1 — enregistre UNE ligne de fil e-mail sur un ticket.
+
+    ``pieces_jointes`` reste ``None`` sur le chemin entrant : le registre
+    générique FG373 ne parse pas (encore) les pièces jointes — le champ est
+    prêt à recevoir les ids ``records.Attachment`` (magasin MinIO existant)
+    le jour où il les exposera, jamais un second magasin de fichiers."""
+    from .models import TicketEmailThread
+
+    direction = direction or TicketEmailThread.Direction.ENTRANT
+    return TicketEmailThread.objects.create(
+        company=ticket.company, ticket=ticket,
+        message_id=message_id, in_reply_to=in_reply_to or '',
+        thread_root=thread_root or message_id or '',
+        expediteur=(expediteur or '')[:254],
+        destinataire=(destinataire or '')[:254],
+        sujet=(sujet or '')[:255], corps_brut=corps or '',
+        direction=direction,
+        date_reception=date_reception or timezone.now())
+
+
+def handler_ticket_entrant(message, company):
+    """NTSRV1 — Handler enregistré sur le registre ``core.email_intake``
+    (FG373) : rattache un e-mail entrant au ticket de son FIL, ou ouvre un
+    ticket quand le fil est inconnu.
+
+    Précédence :
+      1. message déjà enregistré (même ``Message-ID``) → no-op (idempotent :
+         re-poll IMAP / redélivrance ne duplique jamais) ;
+      2. fil connu (``thread_root``/``In-Reply-To``) → on attache le message
+         au ticket existant, JAMAIS un second ticket ;
+      3. ticket tout juste créé par l'alias ZMFG7 pour ce même message → on
+         le réutilise ;
+      4. sinon, on ouvre un ticket ``canal_ouverture=email`` — à condition
+         que l'expéditeur corresponde à un client connu de la société (sinon
+         NO-OP : mieux vaut ne rien créer qu'un ticket orphelin, même règle
+         que ZMFG7).
+
+    Le corps du message est journalisé au chatter en interaction typée
+    ``TicketActivity`` ``kind='email'``. Ne lève jamais : un handler qui
+    échoue n'arrête pas les autres (``core.email_intake._dispatch``)."""
+    from . import activity
+    from .models import Ticket, TicketEmailThread
+
+    message_id = (getattr(message, 'message_id', '') or '').strip()
+    if message_id and TicketEmailThread.objects.filter(
+            company=company, message_id=message_id).exists():
+        return None  # déjà traité — idempotent.
+
+    ticket = ticket_du_fil_email(company, message)
+    if ticket is None:
+        ticket = _ticket_deja_cree_par_alias(company, message)
+
+    sujet = (getattr(message, 'subject', '') or '').strip()
+    corps = getattr(message, 'body', '') or ''
+    expediteur = (getattr(message, 'from_email', '') or '').strip()
+
+    if ticket is None:
+        from apps.crm.selectors import find_client_by_email
+        from apps.ventes.utils.references import create_with_reference
+
+        client = find_client_by_email(expediteur, company=company)
+        if client is None:
+            return None  # expéditeur inconnu → aucun ticket orphelin.
+
+        def _create(ref):
+            return Ticket.objects.create(
+                company=company, reference=ref, client=client,
+                type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+                canal_ouverture=Ticket.CanalOuverture.EMAIL,
+                date_ouverture=timezone.localdate(),
+                description=(f'{sujet or "Demande reçue par e-mail"}\n\n'
+                             f'{corps}')[:4000])
+        # AUD519 — même échéance SLA que le chemin manuel.
+        ticket = poser_sla_due_at(
+            create_with_reference(Ticket, 'SAV', company, _create))
+
+    enregistrer_message_email(
+        ticket, message_id=message_id,
+        thread_root=getattr(message, 'thread_root', '') or '',
+        in_reply_to=getattr(message, 'in_reply_to', '') or '',
+        expediteur=expediteur, sujet=sujet, corps=corps,
+        direction=TicketEmailThread.Direction.ENTRANT)
+    activity.log_email(
+        ticket, None,
+        f'E-mail reçu de {expediteur or "expéditeur inconnu"}'
+        + (f' — « {sujet} »' if sujet else '')
+        + (f'\n\n{corps}' if corps else ''))
+    return ticket
+
+
+def register_email_ticket_handler():
+    """NTSRV1 — Abonne ``handler_ticket_entrant`` au registre e-mail entrant.
+
+    Câblé depuis ``SavConfig.ready()`` APRÈS le handler d'alias ZMFG7 : le
+    routage par alias (catégorie d'équipement) garde la priorité, et ce
+    handler-ci récupère son ticket au lieu d'en ouvrir un second."""
+    from core.email_intake import register_handler
+
+    register_handler(handler_ticket_entrant)
+
+
+def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
+                       user=None):
+    """NTSRV1 — envoie une réponse e-mail depuis un ticket et logue le fil.
+
+    Le message sortant porte les en-têtes ``In-Reply-To``/``References`` du
+    dernier message ENTRANT du fil : la réponse du client reste dans le même
+    fil côté messagerie, et revient donc sur le même ticket.
+
+    Key-gated par construction : l'envoi passe par ``django.core.mail`` —
+    sans clé fournisseur configurée (``SENDGRID_API_KEY``…) le backend reste
+    la console, donc NO-OP réseau silencieux. ``fail_silently`` : un envoi
+    raté ne casse jamais le ticket. Renvoie la ligne ``TicketEmailThread``
+    créée.
+
+    Lève ``ValueError`` (message FR nommant le champ fautif) si le corps est
+    vide ou si aucun destinataire n'est résolvable."""
+    from email.utils import make_msgid
+
+    from django.conf import settings
+    from django.core.mail import EmailMessage
+
+    from . import activity
+    from .models import TicketEmailThread
+
+    corps = (corps or '').strip()
+    if not corps:
+        raise ValueError('corps: le corps du message est obligatoire.')
+
+    destinataire = (destinataire or '').strip()
+    if not destinataire:
+        destinataire = (getattr(ticket.client, 'email', '') or '').strip()
+    if not destinataire:
+        raise ValueError(
+            'destinataire: aucune adresse e-mail — le client de ce ticket '
+            "n'en a pas ; renseignez-la sur sa fiche ou saisissez-la ici.")
+
+    dernier = (TicketEmailThread.objects
+               .filter(ticket=ticket,
+                       direction=TicketEmailThread.Direction.ENTRANT)
+               .order_by('-date_reception', '-id')
+               .first())
+    if not sujet:
+        base = (dernier.sujet if dernier is not None else '') or ticket.reference
+        sujet = base if base.lower().startswith('re:') else f'Re: {base}'
+
+    message_id = make_msgid().strip('<> ')
+    thread_root = (dernier.thread_root or dernier.message_id) if dernier else message_id
+
+    email = EmailMessage(
+        subject=sujet, body=corps,
+        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+        to=[destinataire],
+        headers={'Message-ID': f'<{message_id}>'},
+    )
+    if dernier is not None and dernier.message_id:
+        email.extra_headers['In-Reply-To'] = f'<{dernier.message_id}>'
+        email.extra_headers['References'] = f'<{thread_root}>'
+    try:
+        email.send(fail_silently=True)
+    except Exception:  # noqa: BLE001 — un envoi raté ne casse jamais le ticket
+        logger.warning('NTSRV1: envoi e-mail sortant ticket %s échoué',
+                       getattr(ticket, 'pk', '?'), exc_info=True)
+
+    ligne = enregistrer_message_email(
+        ticket, message_id=message_id, thread_root=thread_root,
+        in_reply_to=(dernier.message_id if dernier is not None else ''),
+        expediteur=getattr(settings, 'DEFAULT_FROM_EMAIL', '') or '',
+        destinataire=destinataire, sujet=sujet, corps=corps,
+        direction=TicketEmailThread.Direction.SORTANT)
+    activity.log_email(
+        ticket, user, f'E-mail envoyé à {destinataire} — « {sujet} »\n\n{corps}')
+    return ligne
