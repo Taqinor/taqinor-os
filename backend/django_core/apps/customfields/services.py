@@ -144,6 +144,39 @@ def calculer_champs_formule(module: str, company, data: dict) -> dict:
     return {d.code: evaluer_champ_formule(d, data) for d in defs}
 
 
+def resoudre_objet_custom_lie(company, ref, target_model, target_id):
+    """NTEXT21 — résolveur enregistré auprès de
+    ``core.ui_extensions.register_onglet_resolver('objet_custom_lie', ...)``
+    (depuis ``CustomfieldsConfig.ready()``) : le contenu d'un onglet
+    ``objet_custom_lie`` (``ref`` = code du ``CustomObjectDef``) — les
+    ``CustomRecord`` liés à ``target_model``:``target_id`` via la clé de
+    liaison CONVENTIONNELLE ``'<nom_modele>_id'`` (ex. ``'devis_id'`` pour
+    ``'ventes.devis'`` — même convention que l'exemple ``cle_liaison`` du
+    champ ROLLUP, NTEXT28). Renvoie une liste de ``{id, data}`` — jamais une
+    exception (objet/clé absents ⇒ liste vide)."""
+    from .models import CustomObjectDef, CustomRecord
+
+    objet = CustomObjectDef.objects.filter(
+        company=company, code=ref, actif=True).first()
+    if objet is None:
+        return []
+    model_name = (target_model or '').rsplit('.', 1)[-1].lower()
+    if not model_name:
+        return []
+    cle_liaison = f'{model_name}_id'
+    resultat = []
+    for record in CustomRecord.objects.filter(
+            company=company, objet=objet).iterator():
+        valeur = (record.data or {}).get(cle_liaison)
+        try:
+            correspond = valeur is not None and int(valeur) == int(target_id)
+        except (TypeError, ValueError):
+            correspond = False
+        if correspond:
+            resultat.append({'id': record.pk, 'data': record.data})
+    return resultat
+
+
 def generate_ia_value(*, field_def, context: dict) -> IAFieldResult:
     """Génère la valeur d'un champ IA à partir de son prompt + du contexte de
     l'enregistrement (dict plat fourni par l'appelant — jamais de modèle

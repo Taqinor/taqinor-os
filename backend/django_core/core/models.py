@@ -2959,3 +2959,9 @@ from core.sharing import SharingRule  # noqa: E402,F401
 # ``core/field_permissions.py`` (même pattern d'éclatement), réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
 from core.field_permissions import FieldPermissionRule  # noqa: E402,F401
+
+# NTEXT20/NTEXT21 — Points d'extension UI (boutons + onglets custom) :
+# ``UiActionBouton``/``UiOngletCustom`` définis dans ``core/ui_extensions.py``
+# (même pattern d'éclatement), réexportés ici en tout dernier pour la
+# découverte Django (app_label 'core', migrations).
+from core.ui_extensions import UiActionBouton, UiOngletCustom  # noqa: E402,F401

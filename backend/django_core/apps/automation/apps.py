@@ -43,3 +43,9 @@ class AutomationConfig(AppConfig):
         from core.workflow import register_delegation_resolver
         from .models import ApprovalDelegation
         register_delegation_resolver(ApprovalDelegation.delegants_actifs_pour)
+        # NTEXT20 — un bouton UI custom (``core.UiActionBouton``) de type
+        # ``automation`` déclenche une RÈGLE réelle : même patron de registre
+        # que ci-dessus (``core`` ne connaît aucune app métier).
+        from core.ui_extensions import register_trigger_handler
+        from .services import declencher_bouton_ui
+        register_trigger_handler('automation', declencher_bouton_ui)

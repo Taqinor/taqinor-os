@@ -563,6 +563,19 @@ ignore_imports =
 # SEULE hop : toute arête DIRECTE `core.* -> apps.*` reste détectée, et aucune
 # autre source ne gagne le moindre droit.
     authentication.tasks -> apps.audit.recorder
+# NTEXT21 — l'onglet custom « objet_custom_lie » (points d'extension UI
+# déclaratifs, ``core.ui_extensions``) est une FONDATION pure : ``cible`` est
+# une CHAÎNE opaque, et le contenu réel est résolu par un gestionnaire
+# ENREGISTRÉ par l'app propriétaire (``apps.customfields`` se branche depuis
+# son propre ``ready()`` — même patron que ``core.workflow.
+# register_delegation_resolver``, déjà toléré ci-dessus). Le test, lui, monte
+# un VRAI Client/Devis/CustomRecord pour prouver le résolveur bout-en-bout —
+# même motif test→domaine que toutes les exceptions précédentes ; le code
+# PRODUCTION de core (`core/ui_extensions.py`, `core/ui_extensions_api.py`)
+# n'importe toujours aucune app métier.
+    core.tests.test_ntext21_ui_onglets -> apps.crm.models
+    core.tests.test_ntext21_ui_onglets -> apps.customfields.models
+    core.tests.test_ntext21_ui_onglets -> apps.ventes.models
 
 # AOF33 — `core.calepinage` est le MOTEUR de calepinage, partagé par DEUX
 # consommateurs qui ne peuvent pas s'importer l'un l'autre (`apps.ao` pour la

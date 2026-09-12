@@ -27,6 +27,7 @@ from .dashboard_partage import (
 )
 from .drill_api import DrillDownView
 from .formule_api import FormuleTestView
+from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
     ApiUsagePlanViewSet,
@@ -143,6 +144,11 @@ router.register(r'dashboards-partages-internes',
 # NTEXT16 — vues de liste personnalisées (?cible=crm.lead), partageables
 # prive/equipe/societe et toujours bornées à la société.
 router.register(r'vues', VuePersonnaliseeViewSet, basename='vue-personnalisee')
+# NTEXT20/NTEXT21 — points d'extension UI déclaratifs (?cible=crm.lead) :
+# boutons custom (déclenchent une automatisation/webhook/action serveur) et
+# onglets custom (objet personnalisé lié / rapport / HTML).
+router.register(r'ui-boutons', UiActionBoutonViewSet, basename='ui-bouton')
+router.register(r'ui-onglets', UiOngletCustomViewSet, basename='ui-onglet')
 
 urlpatterns = router.urls + [
     # XPLT10 — accès public lecture seule (aucune identité de confiance,
