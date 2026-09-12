@@ -448,6 +448,30 @@ ALL_PERMISSIONS = [
     'btp_visa_approuver',
     'btp_avenant_approuver',
     'btp_dgd_finaliser',
+    # NTUX31 — permissions FINES par rôle sur les vues sauvegardées et la
+    # corbeille transverse. Avant ce code, l'accès à `/parametres/corbeille`
+    # (NTUX7) et à `definir-par-defaut-role`/le partage d'équipe (NTUX1/2)
+    # dépendait UNIQUEMENT du palier grossier hérité (`IsAdminOrResponsableTier`
+    # / `IsResponsableOrAdmin`) — non administrable au cas par cas dans la
+    # matrice de rôles. Ces cinq codes s'ajoutent EN PLUS de ces gardes
+    # (jamais à leur place, même patron que NTCON26) : un compte HÉRITÉ sans
+    # rôle fin garde exactement son accès (repli légacy de
+    # `core.permissions._user_has_or_legacy`) ; un rôle FIN doit désormais
+    # porter le code pour que la case puisse être décochée dans l'éditeur de
+    # rôles sans toucher au code. Le plan écrit les clés en pointé
+    # (``ux.vue.partager_equipe``…) ; le registre du dépôt reste en souligné,
+    # correspondance 1:1 documentée dans ``apps/uxviews/permissions.py`` et
+    # ``apps/trash/permissions.py`` :
+    #   ux.vue.partager_equipe      -> ux_vue_partager_equipe
+    #   ux.vue.definir_defaut_role  -> ux_vue_definir_defaut_role
+    #   ux.corbeille.consulter      -> ux_corbeille_consulter
+    #   ux.corbeille.restaurer      -> ux_corbeille_restaurer
+    #   ux.edition_masse.executer   -> ux_edition_masse_executer
+    'ux_vue_partager_equipe',
+    'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter',
+    'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -641,6 +665,12 @@ RESPONSABLE_PERMISSIONS = [
     'btp_visa_approuver', 'btp_avenant_approuver', 'btp_dgd_finaliser',
     'assurances_voir', 'assurances_gerer',
     'douane_responsable', 'transport_responsable',
+    # NTUX31 — le Responsable passait déjà `IsAdminOrResponsableTier`/
+    # `IsResponsableOrAdmin` sur la corbeille, le partage d'équipe et
+    # `definir-par-defaut-role` : les cinq codes fins préservent cet accès.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -723,6 +753,11 @@ COMMERCIAL_RESP_PERMISSIONS = [
     # pour ce rôle (même exclusion que marge_voir/prix_achat_voir).
     'cpq_regles_gerer', 'cpq_prix_contractuels_gerer',
     'cpq_approbation_approuver',
+    # NTUX31 — palier « responsable » (porte `users_voir`, passe déjà
+    # `IsAdminOrResponsableTier`) : préserve l'accès corbeille/vues existant.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
     SCOPE_SUBTREE,
 ]
 
@@ -753,6 +788,14 @@ COMMERCIAL_PERMISSIONS = [
     # VAO12 — veille AO en LECTURE : un commercial doit voir passer les avis
     # (c'est le but du module) ; le réglage reste au palier responsable.
     'veille_ao_voir',
+    # NTUX31 — ce rôle a déjà des permissions d'écriture (crm_creer…), donc
+    # `is_responsable` (repli légacy de `IsResponsableOrAdmin`) est déjà vrai
+    # pour lui : sans ce code, `definir-par-defaut-role`/le partage d'équipe
+    # RÉGRESSERAIENT pour un rôle Commercial fin. PAS `ux_corbeille_*`/
+    # `ux_edition_masse_executer` : la corbeille et l'édition en masse restent
+    # au palier `IsAdminOrResponsableTier` (Responsable+), jamais ouvertes au
+    # Commercial de base — comportement inchangé.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     SCOPE_TEAM,
 ]
 
@@ -794,6 +837,11 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # finaliser un décompte général définitif) montent d'un cran et restent au
     # palier Responsable/direction — c'est précisément l'objet de NTCON26.
     'btp_reserve_creer', 'btp_reserve_lever', 'btp_rfi_repondre',
+    # NTUX31 — palier « responsable » (porte `users_voir`) : préserve l'accès
+    # corbeille/vues existant.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
     SCOPE_SUBTREE,
 ]
 
@@ -821,6 +869,10 @@ TECHNICIEN_PERMISSIONS = [
     # les réserves et le journal de chantier au palier « normal ». Jamais
     # ``btp_gerer`` pour ce rôle (RFI/visas/avenants/DGD restent responsable+).
     'btp_voir',
+    # NTUX31 — même motif que Commercial (base) : `is_responsable` est déjà
+    # vrai pour ce rôle via ses permissions d'écriture existantes. PAS
+    # `ux_corbeille_*`/`ux_edition_masse_executer` — restent Responsable+.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     SCOPE_TEAM,
 ]
 
@@ -842,6 +894,13 @@ VIEWER_PERMISSIONS = [
     'ged_voir',
     # ENG — accès en lecture seule (pas de gestion ni approbation).
     'adsengine_view',
+    # NTUX31 — délibérément ABSENT : les cinq codes fins ne sont ni `_voir` ni
+    # `records_scope_*`, les ajouter ferait basculer `is_responsable` à Vrai
+    # pour ce rôle STRICTEMENT lecture seule (cf. `_role_grants_write`) — un
+    # effet de bord qui ouvrirait tout endpoint gardé `IsResponsableOrAdmin`
+    # ailleurs dans le dépôt, bien au-delà du périmètre UX. Un Viewer n'avait de
+    # toute façon jamais accès à la corbeille/au partage d'équipe (palier
+    # normal).
     SCOPE_TEAM,
 ]
 

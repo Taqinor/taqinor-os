@@ -47,7 +47,7 @@ from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
-from .permissions import declared_action_permissions
+from .permissions import PeutExecuterEditionMasse, declared_action_permissions
 from .models import (
     ApiUsagePlan,
     BackupRun,
@@ -774,7 +774,11 @@ class BulkEditViewSet(viewsets.ViewSet):
             declarees = bulk_edit_infra.target_permissions(target)
             if declarees:
                 return declarees
-        return [IsAdminOrResponsableTier()]
+        # NTUX31 — `ux.edition_masse.executer` s'ajoute EN PLUS du palier par
+        # défaut (jamais à sa place) : administrable dans l'éditeur de rôles,
+        # sans retirer l'accès d'un compte hérité (repli légacy). Une cible
+        # qui déclare ses PROPRES permissions ci-dessus n'est pas concernée.
+        return [IsAdminOrResponsableTier(), PeutExecuterEditionMasse()]
 
     @action(detail=False, methods=['get'])
     def targets(self, request):

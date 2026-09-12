@@ -14,6 +14,7 @@ from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import FavoriUtilisateur, SavedView, UxParametres
+from .permissions import PeutDefinirVueDefautRole, PeutPartagerVueEquipe
 from .serializers import (
     FavoriUtilisateurSerializer, SavedViewSerializer, UxParametresSerializer,
 )
@@ -63,7 +64,13 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         # NTUX23/34 — les actions de gouvernance de l'écran `/parametres/vues`
         # (liste TOUTE la company, export xlsx, import CSV) sont réservées
         # Directeur/Admin, comme `definir_par_defaut_role` (NTUX2).
-        if self.action in ('definir_par_defaut_role', 'toutes_company', 'export_xlsx', 'importer'):
+        # NTUX31 — `definir_par_defaut_role` exige EN PLUS la permission fine
+        # `ux.vue.definir_defaut_role`, administrable dans l'éditeur de rôles
+        # (jamais à la place du palier existant — un compte hérité sans rôle
+        # fin garde son accès via le repli légacy de `_user_has_or_legacy`).
+        if self.action == 'definir_par_defaut_role':
+            return [IsResponsableOrAdmin(), PeutDefinirVueDefautRole()]
+        if self.action in ('toutes_company', 'export_xlsx', 'importer'):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
@@ -84,6 +91,14 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'visibilite': (
                 "Le partage de vues à l'équipe est désactivé pour votre société."
             )})
+        # NTUX31 — permission fine EN PLUS du réglage société ci-dessus (jamais
+        # à sa place) : un rôle fin doit porter `ux.vue.partager_equipe` pour
+        # partager une vue ; un compte hérité sans rôle fin garde son accès
+        # actuel via le repli légacy de `PeutPartagerVueEquipe`.
+        if not PeutPartagerVueEquipe().has_permission(self.request, self):
+            raise PermissionDenied(
+                "Permission « ux.vue.partager_equipe » requise pour partager "
+                "une vue à l'équipe.")
 
     def perform_create(self, serializer):
         self._verifier_partage_autorise(serializer)

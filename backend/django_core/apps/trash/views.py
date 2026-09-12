@@ -8,6 +8,7 @@ from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import ElementSupprime
+from .permissions import PeutConsulterCorbeille, PeutRestaurerCorbeille
 from .serializers import ElementSupprimeSerializer
 from .services import RestaurationImpossible, restaurer
 
@@ -36,7 +37,10 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        return [IsAdminOrResponsableTier()]
+        # NTUX31 — `ux.corbeille.consulter` s'ajoute EN PLUS du palier existant
+        # (jamais à sa place) : administrable dans l'éditeur de rôles, sans
+        # retirer l'accès d'un compte hérité (repli légacy).
+        return [IsAdminOrResponsableTier(), PeutConsulterCorbeille()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -72,7 +76,7 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         raise MethodNotAllowed('POST')
 
     @action(detail=True, methods=['post'], url_path='restaurer',
-            permission_classes=[IsAdminOrResponsableTier])
+            permission_classes=[IsAdminOrResponsableTier, PeutRestaurerCorbeille])
     def restaurer(self, request, pk=None):
         """Restaure la cible via le `services.py` de l'app cible (registre
         NTUX7), jamais par un accès direct à son modèle."""

@@ -93,3 +93,54 @@ class BulkEditViewSetTests(TestCase):
                             'changes': {'is_active': False}})
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data['modifies'], 1)
+
+
+class NTUX31EditionMasseFinePermissionTests(TestCase):
+    """NTUX31 — `ux.edition_masse.executer` s'ajoute EN PLUS du palier
+    responsable/admin (AUD816) sur le repli PAR DÉFAUT de `appliquer/`, sans
+    jamais retirer l'accès d'un compte SANS rôle fin (voir `BulkEditViewSetTests`,
+    inchangé — `role_legacy='admin'`)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.roles.models import Role
+
+        cls.company = Company.objects.create(nom='ACME NTUX31')
+        cls.role_sans_code = Role.objects.create(
+            company=cls.company, nom='Responsable maison', est_systeme=False,
+            permissions=['users_voir', 'crm_voir'],
+        )
+        cls.role_avec_code = Role.objects.create(
+            company=cls.company, nom='Responsable outillé', est_systeme=False,
+            permissions=['users_voir', 'crm_voir', 'ux_edition_masse_executer'],
+        )
+        cls.user_sans_code = User.objects.create_user(
+            username='ntux31-sans', password='x', company=cls.company,
+            role=cls.role_sans_code)
+        cls.user_avec_code = User.objects.create_user(
+            username='ntux31-avec', password='x', company=cls.company,
+            role=cls.role_avec_code)
+        cls.factory = APIRequestFactory()
+
+    def setUp(self):
+        bulk_edit.register_bulk_target(
+            'utilisateurs', 'Utilisateurs', ['is_active'], _users_target)
+
+    def _apply(self, user, body):
+        req = self.factory.post('/bulk-edit/appliquer/', body, format='json')
+        force_authenticate(req, user=user)
+        return BulkEditViewSet.as_view({'post': 'appliquer'})(req)
+
+    def test_refuse_sans_le_code_fin(self):
+        resp = self._apply(self.user_sans_code, {
+            'target': 'utilisateurs', 'ids': [self.user_sans_code.pk],
+            'changes': {'is_active': False},
+        })
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_autorise_avec_le_code_fin(self):
+        resp = self._apply(self.user_avec_code, {
+            'target': 'utilisateurs', 'ids': [self.user_avec_code.pk],
+            'changes': {'is_active': False},
+        })
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)

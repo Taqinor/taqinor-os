@@ -299,6 +299,82 @@ class SavedViewApiTests(TestCase):
         self.assertEqual(len(resp.data['erreurs']), 1)
 
 
+class NTUX31PermissionsFinesTests(TestCase):
+    """NTUX31 — les deux gardes fines s'ajoutent EN PLUS du palier hérité, sans
+    jamais retirer l'accès d'un compte SANS rôle fin (repli légacy)."""
+    BASE = '/api/django/uxviews/saved-views/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv31-a', 'A')
+        # Rôle fin « responsable » (porte des permissions d'écriture) SANS les
+        # deux codes NTUX31 : is_responsable/IsResponsableOrAdmin passerait
+        # côté legacy, mais la garde fine doit désormais refuser.
+        self.role_sans_code = Role.objects.create(
+            company=self.co_a, nom='Responsable maison', est_systeme=False,
+            permissions=['crm_voir', 'crm_creer', 'ventes_voir'],
+        )
+        self.role_avec_code = Role.objects.create(
+            company=self.co_a, nom='Responsable outillé', est_systeme=False,
+            permissions=[
+                'crm_voir', 'crm_creer', 'ventes_voir',
+                'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+            ],
+        )
+        self.user_sans_code = User.objects.create_user(
+            username='uxv31-sans', password='x', company=self.co_a,
+            role=self.role_sans_code)
+        self.user_avec_code = User.objects.create_user(
+            username='uxv31-avec', password='x', company=self.co_a,
+            role=self.role_avec_code)
+        self.role_cible = make_role(self.co_a, 'Commercial')
+
+    def test_partager_equipe_denied_without_fine_permission(self):
+        resp = auth(self.user_sans_code).post(
+            self.BASE,
+            {'ecran': 'crm.leads', 'nom': 'V équipe',
+             'visibilite': SavedView.Visibilite.EQUIPE},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertFalse(SavedView.objects.filter(nom='V équipe').exists())
+
+    def test_partager_equipe_allowed_with_fine_permission(self):
+        resp = auth(self.user_avec_code).post(
+            self.BASE,
+            {'ecran': 'crm.leads', 'nom': 'V équipe 2',
+             'visibilite': SavedView.Visibilite.EQUIPE},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_personal_view_unaffected_by_missing_permission(self):
+        # Le code ne garde QUE le partage d'équipe : une vue personnelle reste
+        # créable sans lui.
+        resp = auth(self.user_sans_code).post(
+            self.BASE, {'ecran': 'crm.leads', 'nom': 'V perso'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_definir_par_defaut_role_denied_without_fine_permission(self):
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.user_sans_code, ecran='crm.leads',
+            nom='Équipe', visibilite=SavedView.Visibilite.EQUIPE,
+            role=self.role_cible,
+        )
+        resp = auth(self.user_sans_code).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_definir_par_defaut_role_allowed_with_fine_permission(self):
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.user_avec_code, ecran='crm.leads',
+            nom='Équipe', visibilite=SavedView.Visibilite.EQUIPE,
+            role=self.role_cible,
+        )
+        resp = auth(self.user_avec_code).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+
 class FavoriUtilisateurApiTests(TestCase):
     """NTUX12 — favoris épinglés, STRICTEMENT personnels."""
 

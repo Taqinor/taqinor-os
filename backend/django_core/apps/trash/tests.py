@@ -22,6 +22,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Lead
+from apps.roles.models import Role
 from authentication.models import Company
 from core.events import record_soft_deleted
 
@@ -179,6 +180,57 @@ class CorbeilleApiTests(CorbeilleBase):
         element = ElementSupprime.objects.get()
         resp = auth(self.directeur_b).post(f'{self.BASE}{element.pk}/restaurer/')
         self.assertEqual(resp.status_code, 404)
+
+
+class NTUX31PermissionsFinesTests(CorbeilleBase):
+    """NTUX31 — `ux.corbeille.consulter`/`ux.corbeille.restaurer` s'ajoutent EN
+    PLUS du palier hérité `IsAdminOrResponsableTier`, sans jamais retirer
+    l'accès d'un compte SANS rôle fin (repli légacy, voir `CorbeilleBase`)."""
+
+    def setUp(self):
+        super().setUp()
+        # Rôle fin « responsable » (porte `users_voir` -> menu_tier=responsable,
+        # donc passerait déjà IsAdminOrResponsableTier côté legacy) SANS les
+        # deux codes NTUX31 : la garde fine doit désormais refuser.
+        self.role_sans_code = Role.objects.create(
+            company=self.co_a, nom='Responsable maison', est_systeme=False,
+            permissions=['users_voir', 'crm_voir'],
+        )
+        self.role_avec_code = Role.objects.create(
+            company=self.co_a, nom='Responsable outillé', est_systeme=False,
+            permissions=[
+                'users_voir', 'crm_voir',
+                'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+            ],
+        )
+        self.user_sans_code = User.objects.create_user(
+            username='trash31-sans', password='x', company=self.co_a,
+            role=self.role_sans_code)
+        self.user_avec_code = User.objects.create_user(
+            username='trash31-avec', password='x', company=self.co_a,
+            role=self.role_avec_code)
+
+    def test_liste_refusee_sans_le_code_fin(self):
+        archiver(self.lead)
+        resp = auth(self.user_sans_code).get(self.BASE)
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_liste_autorisee_avec_le_code_fin(self):
+        archiver(self.lead)
+        resp = auth(self.user_avec_code).get(self.BASE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_restaurer_refuse_sans_le_code_fin(self):
+        archiver(self.lead)
+        element = ElementSupprime.objects.get()
+        resp = auth(self.user_sans_code).post(f'{self.BASE}{element.pk}/restaurer/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_restaurer_autorise_avec_le_code_fin(self):
+        archiver(self.lead)
+        element = ElementSupprime.objects.get()
+        resp = auth(self.user_avec_code).post(f'{self.BASE}{element.pk}/restaurer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
 
 
 class RestaurationTests(CorbeilleBase):
