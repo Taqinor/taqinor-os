@@ -111,6 +111,11 @@ class ProductionReading(models.Model):
     # Identifiant fourni par le connecteur (idempotence de la synchro auto).
     external_id = models.CharField(max_length=120, blank=True, default='')
     note = models.TextField(blank=True, default='')
+    # NTNRG32 — motif de LIMITATION RÉSEAU (curtailment) sur ce relevé, saisi
+    # manuellement (champ STRUCTURÉ, jamais un tag texte libre dans `note`) :
+    # alimente `analytics.pertes_categorisees`. Vide = comportement historique
+    # inchangé (pas de curtailment sur ce relevé).
+    motif_limitation = models.CharField(max_length=200, blank=True, default='')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='production_readings')

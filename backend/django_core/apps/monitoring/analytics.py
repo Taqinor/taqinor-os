@@ -24,13 +24,13 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
 from core.analytics_db import analytics_queryset
 
-from .models import CleaningEvent, ProductionReading
+from .models import CleaningEvent, ProductionReading, UnderperformanceFlag
 from .services import _expected_recent_kwh, get_or_create_config
 
 # Fenêtre par défaut (jours) d'analyse O&M.
@@ -199,4 +199,72 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
         'days_since_cleaning': days_since_clean,
         'recommend_cleaning': recommend,
         'reasons': reasons,
+    }
+
+
+def _jours_panne_dans_fenetre(installation, since, today):
+    """NTNRG32 — nombre de jours COUVERTS par un ``UnderperformanceFlag``
+    ouvert (ou fermé après ``since``) dans la fenêtre ``[since, today]``.
+
+    Un flag toujours ouvert compte jusqu'à ``today`` ; un flag fermé compte
+    jusqu'à sa date de clôture (bornée à ``today``). Les flags antérieurs à
+    la fenêtre sont tronqués à ``since``. Un système sans flag renvoie 0
+    (jamais une exception)."""
+    jours = 0
+    flags = (UnderperformanceFlag.objects
+             .filter(installation=installation)
+             .filter(Q(date_cloture__isnull=True) | Q(date_cloture__date__gte=since)))
+    for flag in flags:
+        debut = max(flag.date_creation.date(), since)
+        fin = min(flag.date_cloture.date(), today) if flag.date_cloture else today
+        if fin >= debut:
+            jours += (fin - debut).days + 1
+    return jours
+
+
+def pertes_categorisees(installation, *, window_days=DEFAULT_WINDOW_DAYS,
+                        today=None):
+    """NTNRG32 — décompose les pertes de production PAR CATÉGORIE, au-delà
+    du seul soiling (FG283) :
+
+      * ``soiling_pct`` — perte estimée par salissure (``soiling_assessment``
+        déjà FG283, réutilisée telle quelle) ;
+      * ``ombrage_pct`` — proxy = chute de PR récurrente aux MÊMES heures
+        solaires. TOUJOURS ``None`` aujourd'hui : ce module ne stocke que des
+        relevés PÉRIODIQUES (``ProductionReading.period_days``), aucun relevé
+        INFRA-JOURNALIER — dès qu'une source horaire existera, ce calcul
+        pourra être ajouté SANS changer la forme du résultat ;
+      * ``panne_pct`` — part de jours couverts par un drapeau de
+        sous-performance OUVERT (N52) sur la fenêtre ;
+      * ``curtailment_pct`` — part de jours portant un
+        ``ProductionReading.motif_limitation`` renseigné (champ STRUCTURÉ,
+        jamais un grep sur `note` en texte libre).
+
+    Chaque catégorie SANS donnée exploitable renvoie ``None`` — jamais un 0
+    trompeur qui laisserait croire à une perte nulle certaine.
+    """
+    today = today or timezone.localdate()
+    since = today - timedelta(days=window_days)
+
+    soiling = soiling_assessment(installation, window_days=window_days, today=today)
+    soiling_pct = soiling['estimated_soiling_loss_pct']
+
+    jours_panne = _jours_panne_dans_fenetre(installation, since, today)
+    panne_pct = _q(Decimal(jours_panne) / Decimal(window_days) * Decimal('100'))
+
+    jours_curtailment = (
+        analytics_queryset(ProductionReading.objects)
+        .filter(installation=installation, date__gte=since, date__lte=today)
+        .exclude(motif_limitation='')
+        .values('date').distinct().count())
+    curtailment_pct = _q(
+        Decimal(jours_curtailment) / Decimal(window_days) * Decimal('100'))
+
+    return {
+        'installation': installation.id,
+        'window_days': window_days,
+        'soiling_pct': soiling_pct,
+        'ombrage_pct': None,
+        'panne_pct': panne_pct,
+        'curtailment_pct': curtailment_pct,
     }
