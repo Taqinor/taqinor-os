@@ -21,6 +21,11 @@ class StockConfig(AppConfig):
         # contourner d'éventuels cycles d'import au démarrage.
         from .agent_actions import register_stock_actions
         register_stock_actions()
+        # NTDATA3 — déclare les datasets BI stock/achats (produits, mouvements,
+        # bons de commande fournisseur) dans `core.data_explorer`. Les champs
+        # d'ACHAT y sont sous permission (`gated_fields`, AUD801).
+        from . import bi_datasets
+        bi_datasets.register_dataset()
         # SCA20 — enregistre le hook de seed catalogue « nouvelle société »
         # (le signup seede désormais le catalogue produit). Idempotent.
         from .signup_hooks import register_stock_signup_hooks
