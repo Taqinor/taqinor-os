@@ -4079,6 +4079,14 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
         periode.company, date(periode.annee, periode.mois, 1),
         contexte='Ordre de virement')
 
+    # NTPAY23 — sans compte explicite, repli sur le compte ÉMETTEUR réglé
+    # pour la société (``None`` tant qu'aucun n'est câblé : comportement
+    # historique). Le repli s'arrête ICI : les chemins de RÈGLEMENT
+    # (``payer_ordre_virement``/``payer_organismes``) continuent d'exiger un
+    # compte EXPLICITE — on ne choisit jamais tout seul le compte d'où part
+    # l'argent.
+    if compte_emetteur is None:
+        compte_emetteur = parametrage_paie(periode.company).compte_emetteur
     compte = _resoudre_compte_emetteur(periode.company, compte_emetteur)
 
     with transaction.atomic():
@@ -4192,10 +4200,6 @@ def _resoudre_compte_emetteur(company, compte_emetteur):
     (id inconnu / autre société = ignoré silencieusement, le repli texte
     s'applique).
     """
-    if compte_emetteur is None:
-        # NTPAY23 — repli sur le compte ÉMETTEUR réglé pour la société
-        # (``None`` tant qu'aucun n'est câblé : comportement historique).
-        compte_emetteur = parametrage_paie(company).compte_emetteur
     if compte_emetteur is None:
         return None
     # Instance déjà résolue : on vérifie seulement l'appartenance société.
