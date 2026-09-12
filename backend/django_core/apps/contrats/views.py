@@ -43,6 +43,8 @@ from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
 from .models import (
+    DELAI_RENOUVELLEMENT_DEFAUT,
+    DELAIS_RENOUVELLEMENT_SUGGERES,
     AbonnementAddOnLigne,
     AddOnAbonnement,
     AlerteContrat,
@@ -66,6 +68,7 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametreRenouvellement,
     ParametresAbonnement,
     ParametresLocation,
     PartieContrat,
@@ -127,6 +130,7 @@ from .serializers import (
     ObligationSerializer,
     OrdreLocationSerializer,
     PalierUsageSerializer,
+    ParametreRenouvellementSerializer,
     ParametresAbonnementSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
@@ -3594,6 +3598,41 @@ class ParametresAbonnementViewSet(_ContratsBaseViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ParametreRenouvellementViewSet(_ContratsBaseViewSet):
+    """Délai de prévenance d'échéance PAR type de contrat — NTDOC20.
+
+    CRUD scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR,
+    jamais lue du corps de requête. Une seule ligne par (société, type).
+
+    Un type de contrat SANS ligne garde le délai historique du semis
+    d'alertes : supprimer une ligne rend donc son comportement d'avant.
+    L'action ``suggestions/`` expose les délais RECOMMANDÉS par type
+    (maintenance 90 j, location 30 j…) pour préremplir l'écran Paramètres —
+    ce sont des propositions, jamais des valeurs déjà appliquées.
+    """
+    queryset = ParametreRenouvellement.objects.all()
+    serializer_class = ParametreRenouvellementSerializer
+
+    @extend_schema(responses=inline_serializer(
+        'ContratsDelaisRenouvellementSuggestions', {
+            'defaut': drf_serializers.IntegerField(),
+            'suggestions': drf_serializers.DictField(
+                child=drf_serializers.IntegerField()),
+        }))
+    @action(detail=False, methods=['get'], url_path='suggestions')
+    def suggestions(self, request):
+        """Délais RECOMMANDÉS par type de contrat (NTDOC20) — lecture seule.
+
+        ``defaut`` est le délai appliqué à tout type non réglé (celui du semis
+        historique). ``suggestions`` sert à préremplir l'écran ; rien n'est
+        écrit tant que l'utilisateur n'enregistre pas.
+        """
+        return Response({
+            'defaut': DELAI_RENOUVELLEMENT_DEFAUT,
+            'suggestions': dict(DELAIS_RENOUVELLEMENT_SUGGERES),
+        })
 
 
 # ---------------------------------------------------------------------------

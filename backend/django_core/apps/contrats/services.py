@@ -1277,6 +1277,15 @@ def semer_alertes_echeances(company, *, within_days=30, today=None,
     - ``selectors.contrats_a_renouveler`` → une alerte ``echeance`` datée à la
       fin du contrat (``date_fin``).
 
+    NTDOC20 — le délai de prévenance n'est plus une CONSTANTE UNIQUE : chaque
+    ``type_contrat`` peut porter le sien (``ParametreRenouvellement``, lu via
+    ``selectors.delais_renouvellement``). Un contrat de maintenance réglé à 90
+    jours est alerté 90 jours avant, une location réglée à 30 jours l'est à 30.
+    **Un type NON configuré garde ``within_days``** — donc une société qui n'a
+    rien réglé obtient exactement le semis d'avant (la fenêtre de balayage est
+    élargie au plus grand délai, puis chaque contrat est re-filtré sur SON
+    propre délai : sans configuration les deux bornes coïncident).
+
     IDEMPOTENT : on ne crée pas de doublon — pour un contrat donné, un type
     d'alerte donné et une date de déclenchement donnée, si une alerte
     NON-annulée existe déjà on la saute. La société est posée côté serveur
@@ -1292,6 +1301,16 @@ def semer_alertes_echeances(company, *, within_days=30, today=None,
 
     if today is None:
         today = timezone.localdate()
+
+    # NTDOC20 — délais par type. Dict VIDE = aucune configuration = fenêtre
+    # unique historique.
+    delais = selectors.delais_renouvellement(company)
+    fenetre_balayage = max([within_days] + list(delais.values()))
+
+    def _limite(contrat):
+        """Date-plafond propre à CE contrat (son type, sinon la fenêtre reçue)."""
+        jours = delais.get(contrat.type_contrat, within_days)
+        return today + timedelta(days=max(0, jours))
 
     creees = []
 
@@ -1314,16 +1333,17 @@ def semer_alertes_echeances(company, *, within_days=30, today=None,
         ))
 
     for contrat in selectors.contrats_a_preavis(
-            company, within_days=within_days, today=today):
-        _semer(
-            contrat, AlerteContrat.TypeAlerte.PREAVIS,
-            contrat.echeance_preavis())
+            company, within_days=fenetre_balayage, today=today):
+        echeance = contrat.echeance_preavis()
+        if echeance is None or echeance > _limite(contrat):
+            continue
+        _semer(contrat, AlerteContrat.TypeAlerte.PREAVIS, echeance)
 
     for contrat in selectors.contrats_a_renouveler(
-            company, within_days=within_days, today=today):
-        _semer(
-            contrat, AlerteContrat.TypeAlerte.ECHEANCE,
-            contrat.date_fin)
+            company, within_days=fenetre_balayage, today=today):
+        if contrat.date_fin is None or contrat.date_fin > _limite(contrat):
+            continue
+        _semer(contrat, AlerteContrat.TypeAlerte.ECHEANCE, contrat.date_fin)
 
     return {
         'company_id': company.id,

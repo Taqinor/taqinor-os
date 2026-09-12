@@ -4079,6 +4079,77 @@ class ParametresAbonnement(TenantModel):
         return f'Paramètres abonnement — société {self.company_id}'
 
 
+#: NTDOC20 — délai de prévenance appliqué à tout type de contrat NON réglé.
+#: C'est la valeur HISTORIQUE du semis d'alertes (``semer_alertes_echeances``
+#: ``within_days=30``) : la garder identique est ce qui rend la migration
+#: totalement neutre. Un test vérifie que les deux ne divergent jamais.
+DELAI_RENOUVELLEMENT_DEFAUT = 30
+
+#: NTDOC20 — délais de prévenance SUGGÉRÉS par type de contrat (jours). Ce
+#: sont des SUGGESTIONS d'écran (Paramètres), PAS des valeurs appliquées : tant
+#: qu'aucune ligne ``ParametreRenouvellement`` n'est créée, le semis d'alertes
+#: garde EXACTEMENT son délai historique. Aucun comportement ne change à la
+#: migration.
+DELAIS_RENOUVELLEMENT_SUGGERES = {
+    'maintenance': 90,
+    'om': 90,
+    'monitoring': 90,
+    'ppa': 120,
+    'sous_traitance': 30,
+    'fournisseur': 30,
+    'location': 30,
+    'nda': 30,
+}
+
+
+class ParametreRenouvellement(TenantModel):
+    """Délai de prévenance d'échéance PAR type de contrat — NTDOC20.
+
+    ``semer_alertes_echeances`` (CONTRAT22) semait ses ``AlerteContrat`` sur
+    une fenêtre UNIQUE (``within_days``, 30 jours) valable pour tous les
+    contrats : un contrat de maintenance qu'il faut anticiper 90 jours à
+    l'avance et une location qu'on traite à 30 jours étaient alertés au même
+    moment. Ce modèle règle ce délai par ``type_contrat``.
+
+    Une seule ligne par (société, type de contrat). **Un type SANS ligne garde
+    le délai historique** — la fenêtre passée à ``semer_alertes_echeances`` :
+    aucune société ne voit son comportement changer tant qu'elle n'a rien
+    configuré (``DELAIS_RENOUVELLEMENT_SUGGERES`` n'est qu'une suggestion
+    d'écran, jamais une valeur écrite d'office).
+
+    Multi-tenant : hérite de ``core.models.TenantModel`` (company + horodatage),
+    ``company`` posée côté serveur.
+    """
+
+    type_contrat = models.CharField(
+        max_length=20,
+        choices=Contrat.TypeContrat.choices,
+        verbose_name='Type de contrat',
+    )
+    delai_avant_echeance_jours = models.PositiveIntegerField(
+        default=DELAI_RENOUVELLEMENT_DEFAUT,
+        verbose_name="Délai de prévenance avant échéance (jours)",
+        help_text="Nombre de jours avant l'échéance à partir duquel une "
+                  'alerte est semée pour les contrats de ce type.',
+    )
+
+    class Meta:
+        verbose_name = 'Délai de renouvellement par type'
+        verbose_name_plural = 'Délais de renouvellement par type'
+        ordering = ['company_id', 'type_contrat']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'type_contrat'],
+                name='contrats_paramrenouv_uniq'),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.get_type_contrat_display()} — '
+            f'{self.delai_avant_echeance_jours} j'
+        )
+
+
 class CompteurUsageArchive(TenantModel):
     """Synthèse d'usage conservée APRÈS purge des relevés bruts — NTSUB26.
 

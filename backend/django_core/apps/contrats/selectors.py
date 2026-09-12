@@ -104,6 +104,24 @@ def contrats_a_renouveler(company, within_days=30, today=None):
     )
 
 
+def delais_renouvellement(company):
+    """Délais de prévenance CONFIGURÉS par type de contrat (NTDOC20).
+
+    Renvoie ``{type_contrat: jours}`` pour les seuls types que la société a
+    RÉELLEMENT réglés. Un dict VIDE (cas de toute société qui n'a jamais
+    ouvert l'écran Paramètres) laisse ``semer_alertes_echeances`` sur sa
+    fenêtre historique — comportement strictement inchangé.
+    """
+    from .models import ParametreRenouvellement
+
+    return {
+        row['type_contrat']: row['delai_avant_echeance_jours']
+        for row in ParametreRenouvellement.objects
+        .filter(company=company)
+        .values('type_contrat', 'delai_avant_echeance_jours')
+    }
+
+
 def versions_contrat(contrat):
     """Versions IMMUABLES d'un contrat (QuerySet scopé société, ordonné).
 

@@ -35,6 +35,7 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametreRenouvellement,
     ParametresAbonnement,
     ParametresLocation,
     PartieContrat,
@@ -2063,4 +2064,37 @@ class ParametresAbonnementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Seuil d'alerte d'usage : saisissez un pourcentage entre 0 "
                 'et 100.')
+        return valeur
+
+
+class ParametreRenouvellementSerializer(serializers.ModelSerializer):
+    """Délai de prévenance d'échéance par type de contrat — NTDOC20.
+
+    ``company`` n'est JAMAIS exposée ni acceptée du corps : elle est posée
+    côté serveur (``perform_create``). Une seule ligne par (société, type) :
+    un doublon est refusé en français plutôt qu'en ``IntegrityError``.
+    """
+    type_contrat_display = serializers.CharField(
+        source='get_type_contrat_display', read_only=True)
+
+    class Meta:
+        model = ParametreRenouvellement
+        fields = [
+            'id', 'type_contrat', 'type_contrat_display',
+            'delai_avant_echeance_jours', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_type_contrat(self, valeur):
+        request = self.context.get('request')
+        if request is None:
+            return valeur
+        existant = ParametreRenouvellement.objects.filter(
+            company=request.user.company, type_contrat=valeur)
+        if self.instance is not None:
+            existant = existant.exclude(pk=self.instance.pk)
+        if existant.exists():
+            raise serializers.ValidationError(
+                'Un délai est déjà réglé pour ce type de contrat : modifiez '
+                'la ligne existante plutôt que d\'en créer une seconde.')
         return valeur
