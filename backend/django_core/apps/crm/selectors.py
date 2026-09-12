@@ -4518,3 +4518,31 @@ def client_ids_par_identifiant(company, identifiant):
             pk for pk, tel in qs.values_list('id', 'telephone')
             if normalize_phone(tel) == phone)
     return sorted(ids)
+
+
+def lead_ids_par_identifiant(company, identifiant):
+    """NTGRC8 — ids des ``Lead`` de la société correspondant à une PERSONNE.
+
+    Pendant de :func:`client_ids_par_identifiant` pour les leads, utilisé par
+    la mise sous séquestre transverse (``grc``) : elle doit pouvoir désigner
+    « tous les leads de cette personne » SANS importer ``apps.crm.models``.
+    Le téléphone passe par la colonne NORMALISÉE indexée (QW10) — jamais un
+    scan Python de toute la table des leads.
+    """
+    from .models import Lead
+    from .services import normalize_email, normalize_phone
+
+    if company is None or not (identifiant or '').strip():
+        return []
+
+    email = normalize_email(identifiant)
+    phone = normalize_phone(identifiant)
+    qs = Lead.objects.filter(company=company)
+
+    ids = set()
+    if email:
+        ids.update(qs.filter(email__iexact=email).values_list('id', flat=True))
+    if phone:
+        ids.update(
+            qs.filter(phone_normalise=phone).values_list('id', flat=True))
+    return sorted(ids)

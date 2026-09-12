@@ -39,14 +39,23 @@ def sweep_objets(now, apply_):
     """Balaye les leads/clients échus selon les politiques GRC actives.
 
     Renvoie le nombre d'objets échus (dry-run) ou réellement traités.
+
+    NTGRC8 — un objet couvert par une mise sous séquestre ACTIVE est SAUTÉ :
+    purger un dossier gelé pour contentieux détruirait une preuve. Le
+    séquestre prime sur toute politique de rétention.
     """
     from apps.grc.selectors import politiques_retention_actives
+    from apps.grc.services import ids_geles
 
     from .dsr_provider import anonymiser_client, anonymiser_lead
 
     total = 0
     for politique in politiques_retention_actives(TYPES):
         qs = _echus(politique, now)
+        company = politique['company']
+        geles = ids_geles(company, politique['type_objet'])
+        if geles:
+            qs = qs.exclude(pk__in=geles)
         if not apply_:
             total += qs.count()
             continue
@@ -55,7 +64,6 @@ def sweep_objets(now, apply_):
             # ne touche à RIEN.
             total += qs.count()
             continue
-        company = politique['company']
         est_lead = politique['type_objet'] == 'crm_lead'
         for objet in qs.iterator(chunk_size=200):
             if est_lead:

@@ -53,6 +53,100 @@ def politiques_retention_de_societe(company):
             .order_by('type_objet', 'id'))
 
 
+def holds_actifs(company, aujourdhui=None):
+    """NTGRC8 — mises sous séquestre ACTIVES de la société (liste)."""
+    from .models import LegalHold
+
+    qs = LegalHold.objects.filter(
+        company=company, statut=LegalHold.STATUT_ACTIF).order_by('id')
+    return [h for h in qs if h.est_actif(aujourdhui)]
+
+
+def _resoudre_filtre(company, type_objet, filtre):
+    """Ids couverts par UN filtre de périmètre, via les selectors des apps.
+
+    Deux formes reconnues, volontairement explicites (jamais un mini-langage
+    de requête qui laisserait un séquestre « couvrir » on ne sait quoi) :
+      * ``{"ids": [1, 2]}`` — désignation directe ;
+      * ``{"identifiant": "a@b.ma"}`` — la personne, résolue par le
+        ``selectors.py`` de l'app cible (aucun import de ses modèles).
+    Un type d'objet ou un filtre inconnu ne couvre RIEN (ensemble vide) — un
+    séquestre mal saisi ne doit jamais geler tout le tenant par accident.
+    """
+    filtre = filtre or {}
+    ids = set()
+
+    brut = filtre.get('ids')
+    if isinstance(brut, (list, tuple)):
+        for valeur in brut:
+            try:
+                ids.add(int(valeur))
+            except (TypeError, ValueError):
+                continue
+
+    identifiant = (filtre.get('identifiant') or '').strip()
+    if identifiant:
+        if type_objet == 'crm_client':
+            from apps.crm.selectors import client_ids_par_identifiant
+            ids.update(client_ids_par_identifiant(company, identifiant))
+        elif type_objet == 'crm_lead':
+            from apps.crm.selectors import lead_ids_par_identifiant
+            ids.update(lead_ids_par_identifiant(company, identifiant))
+    return ids
+
+
+def _documents_ged_sous_hold(company):
+    """Ids des documents déjà gelés côté GED (GED24) — COMPOSITION.
+
+    Le séquestre transverse n'ignore pas celui de la GED et ne le duplique pas
+    non plus : il le LIT par son selector. Best-effort — si la GED est
+    indisponible, le reste du périmètre reste résolu.
+    """
+    try:
+        from apps.ged.selectors import legal_holds_for_company
+        return {
+            hold.document_id
+            for hold in legal_holds_for_company(company).filter(actif=True)
+        }
+    except Exception:  # noqa: BLE001 - GED absente/indisponible
+        return set()
+
+
+def objets_sous_hold(company, aujourdhui=None):
+    """NTGRC8 — ensemble des objets gelés de la société.
+
+    Renvoie ``{type_objet: set(ids)}`` : le périmètre des séquestres
+    transverses ACTIFS, PLUS les documents déjà gelés par ``ged.LegalHold``
+    (sous la clé ``ged_document``).
+    """
+    couverture = {}
+    for hold in holds_actifs(company, aujourdhui):
+        for entree in (hold.perimetre or []):
+            if not isinstance(entree, dict):
+                continue
+            type_objet = (entree.get('type_objet') or '').strip()
+            if not type_objet:
+                continue
+            ids = _resoudre_filtre(company, type_objet, entree.get('filtre'))
+            if ids:
+                couverture.setdefault(type_objet, set()).update(ids)
+
+    documents = _documents_ged_sous_hold(company)
+    if documents:
+        couverture.setdefault('ged_document', set()).update(documents)
+    return couverture
+
+
+def est_sous_hold(company, type_objet, objet_id, aujourdhui=None):
+    """Cet objet précis est-il gelé ? (raccourci de ``objets_sous_hold``)."""
+    try:
+        objet_id = int(objet_id)
+    except (TypeError, ValueError):
+        return False
+    return objet_id in objets_sous_hold(company, aujourdhui).get(
+        type_objet, set())
+
+
 def violations_echeance_72h_depassee(company, now=None):
     """NTGRC6 — violations dont le délai légal de notification est DÉPASSÉ.
 

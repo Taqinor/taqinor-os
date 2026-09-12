@@ -10,8 +10,8 @@ from rest_framework.routers import DefaultRouter
 
 from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
-    JournalDestructionViewSet, PolitiqueRetentionObjetViewSet,
-    ViolationDonneesViewSet,
+    JournalDestructionViewSet, LegalHoldViewSet,
+    PolitiqueRetentionObjetViewSet, ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -25,6 +25,8 @@ router.register(r'journal-destruction', JournalDestructionViewSet,
 # NTGRC6 — registre des violations de données + délai légal de 72 h.
 router.register(r'violations-donnees', ViolationDonneesViewSet,
                 basename='grc-violation-donnees')
+# NTGRC8 — mises sous séquestre transverses (legal hold), au-delà de la GED.
+router.register(r'legal-holds', LegalHoldViewSet, basename='grc-legal-hold')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

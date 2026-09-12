@@ -295,3 +295,100 @@ class ViolationDonnees(TenantModel):
 
     def __str__(self):
         return f'{self.reference or "VD"} — {self.get_gravite_display()}'
+
+
+# NTGRC8 — legal hold TRANSVERSE.
+#
+# Message levé quand une purge ou une anonymisation viserait un objet gelé.
+# Même contrat que ``ged.LEGAL_HOLD_MESSAGE`` (GED24), élargi au-delà du seul
+# Document : les vues le traduisent en 409 (conflit d'état), jamais en 500.
+LEGAL_HOLD_TRANSVERSE_MESSAGE = (
+    "Objet sous mise sous séquestre (legal hold) : sa purge et son "
+    "anonymisation sont gelées tant qu'un séquestre actif le couvre."
+)
+
+
+class LegalHoldTransverseError(Exception):
+    """NTGRC8 — levée quand une purge/anonymisation vise un objet gelé.
+
+    Hérite d'``Exception`` (même contrat que ``ged.LegalHoldError``) pour
+    rester explicitement reconnaissable ; traduite en 409 côté vue.
+    """
+
+
+class LegalHold(TenantModel):
+    """NTGRC8 — mise sous séquestre TRANSVERSE (au-delà du seul document).
+
+    ``ged.LegalHold`` (GED24) gèle UN document. Un contentieux, lui, ne
+    s'arrête pas à la GED : il faut aussi geler le client, ses leads, ses
+    tickets. Ce modèle porte le séquestre au niveau du DOSSIER — il ne
+    remplace pas celui de la GED, il le COMPOSE : ``objets_sous_hold``
+    additionne les deux périmètres (les documents déjà gelés côté GED y
+    apparaissent, sans duplication de modèle).
+
+    Le ``perimetre`` est une liste JSON de ``{type_objet, filtre}``. Les
+    filtres sont résolus par les ``selectors.py`` des apps cibles — jamais par
+    un import de leurs modèles.
+    """
+
+    MOTIF_LITIGE = 'litige'
+    MOTIF_ENQUETE = 'enquete'
+    MOTIF_REGLEMENTAIRE = 'reglementaire'
+    MOTIF_CHOICES = [
+        (MOTIF_LITIGE, 'Contentieux / litige'),
+        (MOTIF_ENQUETE, 'Enquête interne'),
+        (MOTIF_REGLEMENTAIRE, 'Demande réglementaire'),
+    ]
+
+    STATUT_ACTIF = 'actif'
+    STATUT_LEVE = 'leve'
+    STATUT_CHOICES = [
+        (STATUT_ACTIF, 'Actif'),
+        (STATUT_LEVE, 'Levé'),
+    ]
+
+    nom = models.CharField('Nom', max_length=160)
+    motif = models.CharField(
+        'Motif', max_length=15, choices=MOTIF_CHOICES, default=MOTIF_LITIGE)
+    perimetre = models.JSONField(
+        'Périmètre', default=list, blank=True,
+        help_text='Liste de {type_objet, filtre} — ex. '
+                  '[{"type_objet": "crm_client", '
+                  '"filtre": {"identifiant": "a@b.ma"}}].')
+    date_debut = models.DateField('Date de début', null=True, blank=True)
+    date_fin = models.DateField('Date de fin', null=True, blank=True)
+    statut = models.CharField(
+        'Statut', max_length=8, choices=STATUT_CHOICES, default=STATUT_ACTIF)
+    demandeur = models.CharField(
+        'Demandeur', max_length=160, blank=True, default='',
+        help_text='Qui demande le séquestre (avocat, autorité, direction).')
+    base_juridique = models.TextField(
+        'Base juridique', blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Mise sous séquestre (legal hold)'
+        verbose_name_plural = 'Mises sous séquestre (legal holds)'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_legalhold_co_statut_idx'),
+        ]
+
+    def est_actif(self, aujourdhui=None):
+        """Le séquestre couvre-t-il l'instant présent ?
+
+        ``statut`` fait foi ; les dates, quand elles sont renseignées, bornent
+        en plus la fenêtre (un séquestre daté du futur ne gèle rien encore, un
+        séquestre échu ne gèle plus).
+        """
+        if self.statut != self.STATUT_ACTIF:
+            return False
+        jour = aujourdhui or timezone.now().date()
+        if self.date_debut and jour < self.date_debut:
+            return False
+        if self.date_fin and jour > self.date_fin:
+            return False
+        return True
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_statut_display()})'

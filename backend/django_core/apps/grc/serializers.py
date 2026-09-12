@@ -6,7 +6,7 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    JournalDestruction, PolitiqueRetentionObjet, ViolationDonnees,
+    JournalDestruction, LegalHold, PolitiqueRetentionObjet, ViolationDonnees,
 )
 
 
@@ -113,4 +113,52 @@ class ViolationDonneesSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'date_incident': "L'incident ne peut pas être postérieur à sa "
                                  'détection.'})
+        return attrs
+
+
+class LegalHoldSerializer(serializers.ModelSerializer):
+    """NTGRC8 — mise sous séquestre transverse (legal hold)."""
+
+    motif_libelle = serializers.CharField(
+        source='get_motif_display', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = LegalHold
+        fields = [
+            'id', 'nom', 'motif', 'motif_libelle', 'perimetre',
+            'date_debut', 'date_fin', 'statut', 'statut_libelle',
+            'demandeur', 'base_juridique', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'statut', 'created_at', 'updated_at']
+
+    def validate_perimetre(self, valeur):
+        """Le périmètre est une LISTE de ``{type_objet, filtre}``.
+
+        Un périmètre mal formé est refusé à la saisie plutôt que d'être
+        silencieusement ignoré à la résolution : un séquestre qui ne gèle rien
+        sans le dire est pire que pas de séquestre du tout.
+        """
+        if valeur in (None, ''):
+            return []
+        if not isinstance(valeur, list):
+            raise serializers.ValidationError(
+                'Le périmètre doit être une liste de {type_objet, filtre}.')
+        for entree in valeur:
+            if not isinstance(entree, dict) or not (
+                    entree.get('type_objet') or '').strip():
+                raise serializers.ValidationError(
+                    'Chaque entrée du périmètre doit porter un '
+                    '« type_objet » non vide.')
+        return valeur
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut',
+                          getattr(self.instance, 'date_debut', None))
+        fin = attrs.get('date_fin', getattr(self.instance, 'date_fin', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError({
+                'date_fin': 'La date de fin ne peut pas précéder la date de '
+                            'début.'})
         return attrs

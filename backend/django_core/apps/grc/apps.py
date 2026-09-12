@@ -28,3 +28,11 @@ class GrcConfig(AppConfig):
                         'rétention et journal de destruction.'),
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # NTGRC8 — garde d'effacement : un dossier sous séquestre (legal hold)
+        # ne s'anonymise pas, même sur demande légale, tant que le séquestre
+        # est actif. `core.dsr` la consulte AVANT tout effacement ; `core` ne
+        # connaît que le nom et le callable (il reste fondation).
+        from .services import register_erasure_guard
+        register_erasure_guard()

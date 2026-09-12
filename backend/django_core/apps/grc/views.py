@@ -11,11 +11,11 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    JournalDestruction, PolitiqueRetentionObjet, ViolationDonnees,
+    JournalDestruction, LegalHold, PolitiqueRetentionObjet, ViolationDonnees,
 )
 from .serializers import (
-    JournalDestructionSerializer, PolitiqueRetentionObjetSerializer,
-    ViolationDonneesSerializer,
+    JournalDestructionSerializer, LegalHoldSerializer,
+    PolitiqueRetentionObjetSerializer, ViolationDonneesSerializer,
 )
 
 
@@ -158,3 +158,39 @@ class ViolationDonneesViewSet(CompanyScopedModelViewSet):
         except TransitionViolationInterdite as exc:
             return Response({'statut': str(exc)}, status=400)
         return Response(self.get_serializer(violation).data)
+
+
+class LegalHoldViewSet(CompanyScopedModelViewSet):
+    """NTGRC8 — mises sous séquestre transverses (legal hold).
+
+    Un séquestre ne se supprime pas : on le LÈVE (l'historique d'un gel est
+    lui-même une pièce du dossier). ``statut`` bouge donc par l'action
+    ``lever/``, jamais par une écriture de champ.
+    """
+
+    queryset = LegalHold.objects.all()
+    serializer_class = LegalHoldSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
+
+    @action(detail=True, methods=['post'])
+    def lever(self, request, pk=None):
+        """Lève le séquestre (les objets redeviennent purgeables)."""
+        hold = self.get_object()
+        if hold.statut == LegalHold.STATUT_LEVE:
+            return Response(
+                {'statut': 'Ce séquestre est déjà levé.'}, status=400)
+        hold.statut = LegalHold.STATUT_LEVE
+        hold.save(update_fields=['statut', 'updated_at'])
+        return Response(self.get_serializer(hold).data)
+
+    @action(detail=False, methods=['get'], url_path='objets-sous-hold')
+    def objets_sous_hold(self, request):
+        """Objets actuellement gelés, par type (GED comprise)."""
+        from .selectors import objets_sous_hold as _couverture
+
+        couverture = _couverture(request.user.company)
+        return Response({
+            type_objet: sorted(ids)
+            for type_objet, ids in sorted(couverture.items())
+        })

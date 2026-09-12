@@ -20,6 +20,63 @@ from django.utils import timezone
 # Registre en mémoire : { name: {export: fn|None, erase: fn|None} }.
 _PROVIDERS: dict[str, dict] = {}
 
+# NTGRC8 — GARDES D'EFFACEMENT (registre en mémoire, même idiome que les
+# fournisseurs). Une app peut refuser un effacement AVANT qu'il ne commence —
+# typiquement une mise sous séquestre (legal hold) : anonymiser un dossier
+# gelé pour contentieux détruirait une preuve. La garde est consultée UNE
+# fois, avant tout appel de fournisseur : un effacement à moitié fait serait
+# pire que pas d'effacement du tout.
+# ``core`` reste fondation : il ne connaît que le NOM et le CALLABLE.
+_ERASURE_GUARDS: dict[str, object] = {}
+
+
+class EffacementBloque(Exception):
+    """Un effacement est refusé par une garde (ex. legal hold).
+
+    Traduite en 409 (conflit d'état) par la vue — jamais en 500, et jamais en
+    échec silencieux : le demandeur doit savoir POURQUOI sa demande n'a pas
+    été exécutée.
+    """
+
+
+def register_erasure_guard(name, fn):
+    """Enregistre une garde d'effacement (idempotent, appelée en ``ready()``).
+
+    ``fn(company, subject_identifier)`` renvoie un MOTIF (str) pour bloquer,
+    ou une valeur fausse pour laisser passer.
+    """
+    if not name or fn is None:
+        raise ValueError("Garde d'effacement : nom + callable requis.")
+    _ERASURE_GUARDS[name] = fn
+
+
+def unregister_erasure_guard(name):
+    """Retire une garde (surtout utile en test pour isoler le registre)."""
+    _ERASURE_GUARDS.pop(name, None)
+
+
+def list_erasure_guards():
+    """Noms des gardes d'effacement enregistrées (rendu stable)."""
+    return sorted(_ERASURE_GUARDS.keys())
+
+
+def verifier_gardes_effacement(company, subject_identifier):
+    """Lève ``EffacementBloque`` si UNE garde refuse l'effacement.
+
+    Une garde qui lève une exception technique n'est PAS interprétée comme un
+    refus (on ne bloque pas un droit légal sur un bug) : elle est ignorée,
+    comme le registre isole déjà chaque fournisseur.
+    """
+    for name in sorted(_ERASURE_GUARDS.keys()):
+        try:
+            motif = _ERASURE_GUARDS[name](company, subject_identifier)
+        except EffacementBloque:
+            raise
+        except Exception:  # noqa: BLE001 - une garde en échec ne bloque pas
+            continue
+        if motif:
+            raise EffacementBloque(str(motif))
+
 
 def register_dsr_provider(name, *, export=None, erase=None):
     """Enregistre un fournisseur DSR pour une app (idempotent).
@@ -188,6 +245,10 @@ def traiter_demande(request):
     if request.kind == DataSubjectRequest.KIND_ACCESS:
         request.resultat = exporter(company, subject)
     elif request.kind == DataSubjectRequest.KIND_ERASURE:
+        # NTGRC8 — les gardes passent AVANT le premier fournisseur : un
+        # effacement à moitié fait (CRM anonymisé, stock refusé) serait pire
+        # que pas d'effacement du tout. Rien n'est modifié si une garde refuse.
+        verifier_gardes_effacement(company, subject)
         request.resultat = effacer(company, subject)
     else:
         # XPLT23 — rectification : workflow MANUEL. On n'exécute aucune

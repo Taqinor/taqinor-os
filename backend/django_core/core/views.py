@@ -832,6 +832,10 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             # NTGRC3 — transition illégale ⇒ 400 explicite (jamais 500), le
             # message nomme le statut courant et le statut visé.
             return Response({'statut': str(exc)}, status=400)
+        except dsr.EffacementBloque as exc:
+            # NTGRC8 — une garde (mise sous séquestre) refuse l'effacement :
+            # 409 (conflit d'état) avec le motif, jamais un échec silencieux.
+            return Response({'detail': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
 
     @action(detail=True, methods=['post'], url_path='prendre-en-charge')

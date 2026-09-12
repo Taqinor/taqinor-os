@@ -405,3 +405,52 @@ def generer_dossier_notification(violation, now=None):
         html=_html_dossier_notification(contexte),
         company=violation.company, header=True, footer=True)
     return pdf, contexte
+
+
+# ── NTGRC8 — legal hold transverse : garde d'effacement + garde de purge ────
+
+def motif_hold_pour_personne(company, subject_identifier):
+    """Motif de blocage si CETTE personne est couverte par un séquestre actif.
+
+    Renvoie une chaîne (le motif, qui devient le corps du 409) ou ``''``.
+    Consultée par ``core.dsr`` AVANT tout effacement — un dossier gelé pour
+    contentieux ne s'anonymise pas, même sur demande légale : la preuve prime
+    tant que le séquestre est actif (il faut le lever d'abord).
+    """
+    from .models import LEGAL_HOLD_TRANSVERSE_MESSAGE
+    from .selectors import objets_sous_hold
+
+    if company is None or not (subject_identifier or '').strip():
+        return ''
+    couverture = objets_sous_hold(company)
+    if not couverture:
+        return ''
+
+    from apps.crm.selectors import (
+        client_ids_par_identifiant, lead_ids_par_identifiant,
+    )
+
+    cibles = {
+        'crm_client': set(client_ids_par_identifiant(
+            company, subject_identifier)),
+        'crm_lead': set(lead_ids_par_identifiant(
+            company, subject_identifier)),
+    }
+    for type_objet, ids in cibles.items():
+        if ids & couverture.get(type_objet, set()):
+            return LEGAL_HOLD_TRANSVERSE_MESSAGE
+    return ''
+
+
+def ids_geles(company, type_objet):
+    """Ids gelés pour ce type d'objet (raccourci pour les balayages)."""
+    from .selectors import objets_sous_hold
+
+    return objets_sous_hold(company).get(type_objet, set())
+
+
+def register_erasure_guard():
+    """Branche la garde de séquestre sur ``core.dsr`` (idempotent, ready())."""
+    from core import dsr
+
+    dsr.register_erasure_guard('grc_legal_hold', motif_hold_pour_personne)
