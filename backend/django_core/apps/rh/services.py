@@ -949,6 +949,86 @@ def resoudre_acteur_tache(dossier, acteur_type, *, createur=None):
     return cible
 
 
+# ── NTHCM25 — notification des tâches d'on/offboarding assignées ──────────
+#
+# TYPES D'ÉVÉNEMENT. On réutilise des clés EXISTANTES du référentiel
+# ``apps.notifications`` plutôt que d'en créer : cette app n'écrit jamais dans
+# les modèles du voisin, la frontière se traverse par son service public
+# ``notify``.
+#
+# POURQUOI CELLES-CI, ET PAS ``chantier_assigne``. La clé « assigné » la plus
+# évidente est GATÉE sur le module ``installations``
+# (``notifications.module_gating.EVENT_MODULE``) : une société qui coupe ce
+# module perdrait SILENCIEUSEMENT ses notifications d'onboarding — un défaut
+# invisible. Les clés ``annonce_*`` ne sont gatées par aucun module et portent
+# exactement la bonne sémantique interne (« une obligation vous concerne » /
+# « on vous la relance »).
+EVENT_TACHE_ASSIGNEE = 'annonce_published'
+EVENT_TACHE_RAPPEL = 'annonce_read_reminder'
+
+
+def lien_tache_onboarding(tache):
+    """Lien STABLE d'une tâche d'intégration — clé de déduplication."""
+    return f'/rh/employes/{tache.employe_id}?tache_integration={tache.id}'
+
+
+def lien_tache_offboarding(tache):
+    """Lien STABLE d'une tâche de sortie — clé de déduplication."""
+    return f'/rh/employes/{tache.employe_id}?tache_sortie={tache.id}'
+
+
+def notifier_tache_assignee(tache, *, lien, titre, corps='',
+                            event_type=EVENT_TACHE_ASSIGNEE,
+                            aujourdhui=None):
+    """NTHCM25 — notifie l'acteur d'une tâche, UNE fois par jour et par tâche.
+
+    BEST-EFFORT ABSOLU : une notification qui échoue ne remonte jamais — elle
+    ne doit pas annuler une embauche ni une sortie déjà actées. No-op si la
+    tâche n'est assignée à personne (une tâche IT sans contact configuré, par
+    exemple : elle reste un signal visible, pas un e-mail dans le vide).
+
+    Déduplication : ``notify`` ne déduplique pas lui-même, on vérifie donc
+    qu'aucune ``Notification`` du même ``event_type`` et du même ``link``
+    n'existe déjà AUJOURD'HUI pour ce destinataire — patron YHIRE8.
+    Renvoie ``True`` si une notification a bien été émise.
+    """
+    if tache.assigne_a_id is None:
+        return False
+    try:
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify
+
+        jour = aujourdhui or timezone.localdate()
+        deja = Notification.objects.filter(
+            event_type=event_type, link=lien,
+            recipient_id=tache.assigne_a_id,
+            created_at__date=jour).exists()
+        if deja:
+            return False
+        notify(
+            tache.assigne_a, event_type, titre[:255], body=corps,
+            link=lien, company=tache.company)
+        return True
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        return False
+
+
+def notifier_taches_integration_assignees(taches, *, aujourdhui=None):
+    """NTHCM25 — notifie en lot les tâches d'intégration fraîchement assignées."""
+    emises = 0
+    for tache in taches:
+        titre = f'Tâche d’intégration : {tache.libelle}'
+        corps = (
+            f'Employé : {tache.employe.matricule}. '
+            + (f'Échéance : {tache.echeance.isoformat()}.'
+               if tache.echeance else 'Sans échéance.'))
+        if notifier_tache_assignee(
+                tache, lien=lien_tache_onboarding(tache),
+                titre=titre, corps=corps, aujourdhui=aujourdhui):
+            emises += 1
+    return emises
+
+
 def echeance_tache_integration(dossier, delai_jours, *, aujourdhui=None):
     """NTHCM23 — échéance ABSOLUE d'une tâche (embauche + ``delai_jours``).
 
@@ -1019,7 +1099,11 @@ def instancier_integration(dossier, modele=None, createur=None):
 
     if not lignes:
         return []
-    return ElementIntegrationEmploye.objects.bulk_create(lignes)
+    creees = ElementIntegrationEmploye.objects.bulk_create(lignes)
+    # NTHCM25 — chaque acteur RÉSOLU est prévenu une fois, tout de suite.
+    # Best-effort : l'échec d'une notification n'annule jamais l'onboarding.
+    notifier_taches_integration_assignees(creees)
+    return creees
 
 
 def _modele_evaluation_applicable(campagne, employe):

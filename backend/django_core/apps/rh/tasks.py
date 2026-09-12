@@ -449,3 +449,24 @@ def rappels_parcours_formation():
         return {'ok': False}
     logger.info('rh.rappels_parcours_formation: balayage terminé')
     return {'ok': True}
+
+
+@shared_task(name='rh.notifier_taches_integration_sortie')
+def notifier_taches_integration_sortie():
+    """NTHCM25 — rappel quotidien des tâches d'on/offboarding en retard.
+
+    Fine enveloppe planifiable de la commande du même nom : la déduplication
+    « un rappel par jour et par tâche » vit là-bas, testée là-bas. Non
+    destructif (elle n'écrit qu'une notification) : appliqué directement.
+    """
+    from django.core.management import call_command
+
+    try:
+        call_command('notifier_taches_integration_sortie', verbosity=0)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'rh.notifier_taches_integration_sortie: échec du balayage',
+            exc_info=True)
+        return {'ok': False}
+    logger.info('rh.notifier_taches_integration_sortie: balayage terminé')
+    return {'ok': True}

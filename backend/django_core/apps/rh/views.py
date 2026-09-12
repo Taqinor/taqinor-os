@@ -1195,8 +1195,14 @@ class ElementSortieViewSet(_RhBaseViewSet):
             assigne = services.resoudre_acteur_tache(
                 employe, donnees.get('acteur_type') or ActeurTache.RH,
                 createur=self.request.user)
-        serializer.save(
+        tache = serializer.save(
             company=self.request.user.company, assigne_a=assigne)
+        # NTHCM25 — l'acteur résolu est prévenu une fois, tout de suite
+        # (best-effort : jamais bloquant pour la création de la ligne).
+        services.notifier_tache_assignee(
+            tache, lien=services.lien_tache_offboarding(tache),
+            titre=f'Tâche de sortie : {tache.libelle}',
+            corps=f'Employé : {tache.employe.matricule}.')
 
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):
