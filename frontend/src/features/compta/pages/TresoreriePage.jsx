@@ -183,7 +183,13 @@ function QualiteRapprochementsCard() {
 
   useEffect(() => {
     let vivant = true
-    comptaApi.etats.qualiteRapprochements()
+    // L'appel est différé dans un `.then()` (jamais lancé nu) : un appelant
+    // dont l'API ne connaît pas encore cette route lève alors une exception
+    // ASYNCHRONE que le `.catch()` encaisse, au lieu d'une exception
+    // SYNCHRONE dans l'effet qui ferait tomber tout l'arbre React — cette
+    // carte est un indicateur optionnel, jamais bloquant pour l'écran.
+    Promise.resolve()
+      .then(() => comptaApi.etats.qualiteRapprochements())
       .then((res) => { if (vivant) setData(res.data) })
       .catch(() => { if (vivant) setData(null) })
     return () => { vivant = false }
