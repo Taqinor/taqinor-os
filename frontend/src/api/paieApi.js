@@ -19,10 +19,15 @@ const paieApi = {
   deletePeriode: (id) => api.delete(`/paie/periodes/${id}/`),
   changerStatutPeriode: (id, statut) =>
     api.post(`/paie/periodes/${id}/changer-statut/`, { statut }),
-  cloturerPeriode: (id, validerBrouillons = true) =>
+  // NTPAY22 — `motifAcquittement` est EXIGÉ par le serveur dès qu'un point de
+  // la checklist de clôture est en ⚠️ (jamais un simple clic).
+  cloturerPeriode: (id, validerBrouillons = true, motifAcquittement = '') =>
     api.post(`/paie/periodes/${id}/cloturer/`, {
       valider_brouillons: validerBrouillons,
+      motif_acquittement: motifAcquittement,
     }),
+  checklistCloture: (id) =>
+    api.get(`/paie/periodes/${id}/checklist-cloture/`),
   importerElementsRh: (id) =>
     api.post(`/paie/periodes/${id}/importer-elements-rh/`),
   // Calcul (sans persister) du bulletin d'un profil : ?profil=&personnes_a_charge=

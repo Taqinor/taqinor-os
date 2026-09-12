@@ -6375,6 +6375,185 @@ def etat_charges(periode):
     }
 
 
+# ── NTPAY22 — Checklist de clôture d'une période (wizard guidé) ────────────
+
+def checklist_cloture(periode, *, today=None):
+    """Contrôles à passer AVANT de clôturer une période (NTPAY22).
+
+    La clôture existait déjà (``cloturer_periode_paie``) mais sans la moindre
+    liste de contrôle : on fermait un mois sans savoir qu'une avance n'avait
+    pas été retenue, qu'un écart M/M-1 n'avait été regardé par personne, qu'une
+    échéance déclarative était en retard ou que le virement n'avait pas été
+    généré.
+
+    Renvoie une liste ORDONNÉE de dicts
+    ``{'code', 'libelle', 'statut': 'ok'|'alerte', 'detail', 'items'}``.
+    Lecture seule — aucune écriture, aucune clôture. ``today`` est injectable
+    (tests déterministes).
+    """
+    from django.utils import timezone as dj_timezone
+
+    from .models import (
+        AvanceSalarie, BulletinPaie, EcheanceDeclarative, OrdreVirement,
+        ProfilPaie, SaisieArret,
+    )
+
+    if today is None:
+        today = dj_timezone.localdate()
+    company = periode.company
+
+    profils_payes = set(
+        BulletinPaie.objects
+        .filter(company=company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .values_list('profil_id', flat=True)
+    )
+
+    # 1. Avances en cours dont la retenue du mois n'a PAS été jouée (le profil
+    #    n'a aucun bulletin validé sur la période).
+    avances_en_attente = [
+        {'id': avance.id, 'profil_id': avance.profil_id,
+         'libelle': avance.libelle or avance.get_type_display()}
+        for avance in AvanceSalarie.objects
+        .filter(company=company, actif=True)
+        .select_related('profil')
+        if avance.solde_restant > 0 and avance.profil_id not in profils_payes
+    ]
+
+    # 2. Saisies-arrêt EN COURS dans le même cas.
+    saisies_en_attente = [
+        {'id': saisie.id, 'profil_id': saisie.profil_id,
+         'creancier': saisie.creancier or saisie.get_type_display()}
+        for saisie in SaisieArret.objects
+        .filter(company=company, actif=True,
+                statut=SaisieArret.STATUT_EN_COURS)
+        if saisie.profil_id not in profils_payes
+    ]
+
+    # 3. Écarts M/M-1 (XPAI15) — toute anomalie détectée est à acquitter.
+    #    SAUF au tout premier run : sans mois précédent COMPARABLE, « salarié
+    #    nouveau » est vrai de tout le monde et ne dit rien. On ne transforme
+    #    pas un premier mois de paie en mur d'alertes.
+    ecarts = controle_ecarts(periode)
+    precedente = _periode_precedente(periode)
+    comparable = precedente is not None and BulletinPaie.objects.filter(
+        company=company, periode=precedente,
+        statut=BulletinPaie.STATUT_VALIDE).exists()
+    anomalies_ecarts = (
+        len(ecarts['salaries_manquants']) + len(ecarts['salaries_nouveaux'])
+        + len(ecarts['variations_net']) + len(ecarts['hs_anormales'])
+    ) if comparable else 0
+
+    # 4. Échéances déclaratives de la période en retard (NTPAY16).
+    echeances_en_retard = [
+        {'id': e.id, 'type': e.type_echeance,
+         'libelle': e.get_type_echeance_display(),
+         'date_limite': e.date_limite}
+        for e in EcheanceDeclarative.objects
+        .filter(company=company, periode=periode, date_limite__lt=today)
+        .exclude(statut__in=[EcheanceDeclarative.STATUT_DEPOSEE,
+                             EcheanceDeclarative.STATUT_PAYEE])
+    ]
+
+    # 5. Ordre de virement : exigé SEULEMENT s'il y a quelque chose à virer.
+    a_virer = BulletinPaie.objects.filter(
+        company=company, periode=periode,
+        statut=BulletinPaie.STATUT_VALIDE,
+        profil__mode_paiement=ProfilPaie.MODE_PAIEMENT_VIREMENT,
+    ).exclude(net_a_payer__lte=0).exists()
+    ordre = OrdreVirement.objects.filter(
+        company=company, periode=periode).first()
+    virement_ok = (not a_virer) or (
+        ordre is not None and ordre.nombre_lignes > 0)
+
+    return [
+        {
+            'code': 'avances_traitees',
+            'libelle': 'Avances du mois retenues',
+            'statut': 'alerte' if avances_en_attente else 'ok',
+            'detail': (
+                f'{len(avances_en_attente)} avance(s) en cours sans bulletin '
+                'validé sur la période.'
+                if avances_en_attente
+                else 'Toutes les avances en cours ont été retenues.'),
+            'items': avances_en_attente,
+        },
+        {
+            'code': 'saisies_traitees',
+            'libelle': 'Saisies-arrêt du mois retenues',
+            'statut': 'alerte' if saisies_en_attente else 'ok',
+            'detail': (
+                f'{len(saisies_en_attente)} saisie(s) en cours sans bulletin '
+                'validé sur la période.'
+                if saisies_en_attente
+                else 'Toutes les saisies en cours ont été retenues.'),
+            'items': saisies_en_attente,
+        },
+        {
+            'code': 'ecarts_acquittes',
+            'libelle': 'Écarts M/M-1 sans anomalie',
+            'statut': 'alerte' if anomalies_ecarts else 'ok',
+            'detail': (
+                f'{anomalies_ecarts} anomalie(s) d’écart détectée(s) : '
+                'salariés manquants/nouveaux, variations de net ou heures '
+                'supplémentaires anormales.'
+                if anomalies_ecarts
+                else ('Aucun écart anormal par rapport au mois précédent.'
+                      if comparable
+                      else 'Aucun mois précédent comparable.')),
+            'items': ecarts,
+        },
+        {
+            'code': 'echeances_a_jour',
+            'libelle': 'Échéances déclaratives du mois',
+            'statut': 'alerte' if echeances_en_retard else 'ok',
+            'detail': (
+                f'{len(echeances_en_retard)} échéance(s) dépassée(s) sans '
+                'dépôt.'
+                if echeances_en_retard
+                else 'Aucune échéance déclarative en retard.'),
+            'items': echeances_en_retard,
+        },
+        {
+            'code': 'virement_genere',
+            'libelle': 'Ordre de virement généré',
+            'statut': 'ok' if virement_ok else 'alerte',
+            'detail': (
+                'Aucun net à virer sur cette période.' if not a_virer
+                else ('Ordre de virement généré.' if virement_ok
+                      else 'Aucun ordre de virement pour cette période.')),
+            'items': ([] if ordre is None else [{
+                'id': ordre.id, 'statut': ordre.statut,
+                'nombre_lignes': ordre.nombre_lignes}]),
+        },
+    ]
+
+
+def verifier_cloture_autorisee(periode, *, motif_acquittement='',
+                               today=None):
+    """Garde de clôture GUIDÉE (NTPAY22) — l'acquittement est explicite.
+
+    Rejoue ``checklist_cloture`` : s'il reste au moins un point en ⚠️, la
+    clôture n'est autorisée QUE si un ``motif_acquittement`` non vide est
+    fourni — jamais un simple clic. Lève une ``ValidationError`` en FRANÇAIS
+    qui NOMME les points en attente.
+
+    Renvoie la liste des points en alerte (vide quand tout est vert). N'écrit
+    rien : la clôture elle-même reste ``cloturer_periode_paie``, inchangée
+    pour ses appelants programmatiques.
+    """
+    from django.core.exceptions import ValidationError
+
+    items = checklist_cloture(periode, today=today)
+    alertes = [item for item in items if item['statut'] == 'alerte']
+    if alertes and not (motif_acquittement or '').strip():
+        libelles = ', '.join(item['libelle'] for item in alertes)
+        raise ValidationError({'motif_acquittement': [
+            f'Points de contrôle non acquittés ({libelles}) : saisissez un '
+            'motif d’acquittement pour clôturer malgré tout.']})
+    return alertes
+
+
 # ── NTPAY19 — Rapport « Masse salariale » (délégué au sélecteur) ───────────
 
 def rapport_masse_salariale(company, periode_debut, periode_fin, *,

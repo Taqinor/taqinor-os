@@ -89,6 +89,7 @@ from .services import (
     avertissements_periode,
     calculer_bulletin,
     changer_statut,
+    checklist_cloture,
     cloturer_periode_paie,
     commit_reprise_cumuls,
     controle_completude,
@@ -158,6 +159,7 @@ from .services import (
     simuler_cout_embauche,
     synchroniser_salaire,
     valider_bulletin,
+    verifier_cloture_autorisee,
 )
 
 
@@ -1331,6 +1333,15 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """
         periode = self.get_object()
         valider = request.data.get('valider_brouillons', True)
+        # NTPAY22 — checklist guidée : un point en ⚠️ exige un motif
+        # d'acquittement EXPLICITE, jamais un simple clic.
+        try:
+            verifier_cloture_autorisee(
+                periode,
+                motif_acquittement=request.data.get(
+                    'motif_acquittement', ''))
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.message_dict)
         try:
             cloturer_periode_paie(
                 periode, valider_brouillons=bool(valider))
@@ -1339,6 +1350,26 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(periode).data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses=inline_serializer(
+        'PaieChecklistCloture', many=True, fields={
+            'code': serializers.CharField(),
+            'libelle': serializers.CharField(),
+            'statut': serializers.CharField(),
+            'detail': serializers.CharField(),
+        }))
+    @action(detail=True, methods=['get'], url_path='checklist-cloture')
+    def checklist_cloture_action(self, request, pk=None):
+        """Points de contrôle avant clôture de la période (NTPAY22).
+
+        Avances et saisies-arrêt du mois retenues, écarts M/M-1 sans anomalie,
+        échéances déclaratives à jour, ordre de virement généré. Chaque point
+        ressort ``ok`` ou ``alerte`` ; un point en alerte n'est franchissable
+        qu'avec un ``motif_acquittement`` à la clôture. Lecture seule.
+        """
+        periode = self.get_object()
+        return Response(
+            checklist_cloture(periode), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='run-gratification')
     def run_gratification(self, request, pk=None):

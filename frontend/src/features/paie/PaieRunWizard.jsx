@@ -5,8 +5,8 @@ import {
   ListChecks,
 } from 'lucide-react'
 import {
-  Button, Card, Input, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, EmptyState, Badge, HelpTip, Spinner, toast,
+  Button, Card, Input, Label, Select, SelectTrigger, SelectValue,
+  SelectContent, SelectItem, EmptyState, Badge, HelpTip, Spinner, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../ui'
 import { DataTable } from '../../ui'
@@ -203,17 +203,22 @@ export default function PaieRunWizard() {
     } finally { setBusy('') }
   }
 
-  const cloturer = async () => {
+  const cloturer = async (motifAcquittement = '') => {
     if (!periode) return
     setBusy('cloturer')
     try {
-      const { data } = await paieApi.cloturerPeriode(periode.id, true)
+      const { data } = await paieApi.cloturerPeriode(
+        periode.id, true, motifAcquittement)
       setPeriode(data)
       setPeriodes((l) => l.map((p) => (p.id === data.id ? data : p)))
       await loadBulletins(periode)
       toast.success('Période clôturée et verrouillée.')
     } catch (e) {
-      toast.error(errMsg(e, 'Clôture impossible.'))
+      // NTPAY22 — le refus serveur NOMME les points non acquittés.
+      toast.error(
+        e?.response?.data?.motif_acquittement?.[0]
+        || errMsg(e, 'Clôture impossible.'),
+      )
     } finally { setBusy('') }
   }
 
@@ -813,10 +818,30 @@ function StepValider({ gate, bulletins, anomalies, onValider, busy }) {
   )
 }
 
-/* ── Étape 5 : clôturer ── */
+/* ── Étape 5 : clôturer (NTPAY22 — checklist de contrôle guidée) ── */
 function StepCloturer({ gate, periode, onCloturer, busy }) {
-  if (!gate.unlocked) return <Locked reason={gate.reason} />
+  const [checklist, setChecklist] = useState([])
+  const [motif, setMotif] = useState('')
+  const periodeId = periode?.id
   const cloturee = periode?.statut === PERIODE_STATUTS.CLOTUREE
+
+  const chargerChecklist = (id) =>
+    Promise.resolve()
+      .then(() => paieApi.checklistCloture(id))
+      .then((r) => setChecklist(listOf(r.data)))
+      .catch(() => setChecklist([]))
+
+  useEffect(() => {
+    if (!periodeId || cloturee) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    chargerChecklist(periodeId)
+  }, [periodeId, cloturee])
+
+  if (!gate.unlocked) return <Locked reason={gate.reason} />
+
+  const alertes = checklist.filter((item) => item.statut === 'alerte')
+  const bloque = alertes.length > 0 && !motif.trim()
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -833,11 +858,40 @@ function StepCloturer({ gate, periode, onCloturer, busy }) {
           <Lock size={14} aria-hidden="true" /> Période clôturée
         </Badge>
       ) : (
-        <div>
-          <Button variant="destructive" onClick={onCloturer} loading={busy}>
-            <Lock size={16} aria-hidden="true" /> Clôturer et verrouiller
-          </Button>
-        </div>
+        <>
+          {checklist.length > 0 && (
+            <ul className="flex flex-col gap-1.5 text-sm">
+              {checklist.map((item) => (
+                <li key={item.code} className="flex items-start gap-2">
+                  <Badge tone={item.statut === 'ok' ? 'success' : 'warning'}>
+                    {item.statut === 'ok' ? 'OK' : 'À vérifier'}
+                  </Badge>
+                  <span>
+                    <span className="font-medium">{item.libelle}</span>
+                    {' — '}
+                    <span className="text-muted-foreground">{item.detail}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {alertes.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cloture-motif" required>
+                Motif d’acquittement ({alertes.length} point(s) à vérifier)
+              </Label>
+              <Input id="cloture-motif" value={motif}
+                onChange={(e) => setMotif(e.target.value)}
+                placeholder="Pourquoi clôturer malgré ces points ?" />
+            </div>
+          )}
+          <div>
+            <Button variant="destructive" disabled={bloque}
+              onClick={() => onCloturer(motif)} loading={busy}>
+              <Lock size={16} aria-hidden="true" /> Clôturer et verrouiller
+            </Button>
+          </div>
+        </>
       )}
     </div>
   )
