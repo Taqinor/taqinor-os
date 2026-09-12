@@ -2857,6 +2857,43 @@ def chantier_ville(company, chantier_id):
     return (getattr(chantier, 'site_ville', '') or '').strip() or None
 
 
+# ── NTPRT9 — Prochain jalon de chantier (tableau de bord portail client) ────
+
+def prochain_jalon_client_portail(company, client_id):
+    """NTPRT9 — Prochain jalon de chantier NON ATTEINT d'un client, pour la
+    carte « Prochain jalon » du tableau de bord portail
+    (``apps.portail.views_client``). ``None`` si le client n'a aucun chantier
+    actif ou si tous ses jalons publiés sont déjà atteints — jamais un
+    jalon fabriqué pour remplir la carte.
+
+    Lit la timeline PORTAIL déjà synchronisée automatiquement (CHT11,
+    ``apps.portail.selectors.jalons_du_chantier`` — jamais un import de
+    ``apps.portail.models`` depuis installations, même patron que
+    ``apps.installations.services.synchroniser_jalon_portail``), chantier le
+    plus récent (non annulé) en premier."""
+    from apps.portail.selectors import jalons_du_chantier
+
+    from .models import Installation
+
+    if company is None or not client_id:
+        return None
+    chantiers = (Installation.objects
+                 .filter(company=company, client_id=client_id, annule=False)
+                 .order_by('-date_creation')
+                 .values_list('id', 'reference'))
+    for chantier_id, reference in chantiers:
+        jalon = jalons_du_chantier(company, chantier_id).filter(
+            atteint=False).first()
+        if jalon is not None:
+            return {
+                'chantier_id': chantier_id,
+                'chantier_reference': reference,
+                'libelle': jalon.libelle,
+                'date_jalon': jalon.date_jalon,
+            }
+    return None
+
+
 def produits_recemment_demandes(company, user_id, *, limite=5):
     """NTP2P22 — ids des derniers produits demandés PAR CET employé.
 

@@ -19,6 +19,11 @@ const portailApi = {
   // société est résolue côté serveur par l'en-tête Host — on n'envoie AUCUN
   // identifiant de société (ce serait un énumérateur de tenants).
   themePublic: () => api.get('/public/portail/theme/'),
+  // NTPRT9 — cartes résumé du tableau de bord CLIENT (devis en attente,
+  // factures impayées + échéance la plus proche, tickets SAV ouverts,
+  // prochain jalon chantier). Aucun id envoyé : le scope vient du compte
+  // portail connecté, côté serveur.
+  tableauDeBord: () => api.get('/portail/client/tableau-de-bord/'),
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),

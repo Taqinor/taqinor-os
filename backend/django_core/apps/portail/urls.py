@@ -30,6 +30,7 @@ from .views_client import (
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
+    tableau_de_bord_client,
 )
 from .views_externes import (
     candidature_fournisseur,
@@ -71,6 +72,10 @@ router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
                 basename='portail-mes-demandes-sav')
 
 urlpatterns = [
+    # NTPRT9 — tableau de bord du portail CLIENT (garde de portée EXACTE,
+    # symétrique de NTPRT20/NTPRT27 ci-dessous).
+    path('client/tableau-de-bord/', tableau_de_bord_client,
+         name='portail-client-tableau-de-bord'),
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et
     # PARTENAIRE (gardes de portée EXACTE, symétriques du portail client).
     path('fournisseur/tableau-de-bord/', tableau_de_bord_fournisseur,

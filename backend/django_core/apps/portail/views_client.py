@@ -1,4 +1,5 @@
-"""NTPRT10/NTPRT11 — Surface self-service AUTHENTIFIÉE du portail CLIENT.
+"""NTPRT9/NTPRT10/NTPRT11 — Surface self-service AUTHENTIFIÉE du portail
+CLIENT.
 
 Ces deux ViewSets sont la version « compte réel » (NTPRT1/2/5) de ce que le
 client obtenait jusqu'ici par lien tokenisé. Ils n'ajoutent AUCUNE logique
@@ -32,7 +33,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import serializers, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.roles.permissions import IsPortalClientUser, portal_scope_id
@@ -82,6 +83,33 @@ def _ip(request):
     tokenisé (``ventes/public_views.py``). Jamais une seconde primitive."""
     from core.throttling import ip_de_requete
     return ip_de_requete(request)
+
+
+@api_view(['GET'])
+@permission_classes([IsPortalClientUser])
+def tableau_de_bord_client(request):
+    """NTPRT9 — Cartes résumé du tableau de bord du CLIENT connecté (devis en
+    attente, factures impayées + échéance la plus proche, tickets SAV
+    ouverts, prochain jalon chantier).
+
+    Symétrique de ``tableau_de_bord_fournisseur``/``tableau_de_bord_partenaire``
+    (``apps.portail.views_externes``) : société ET client viennent
+    EXCLUSIVEMENT du compte portail connecté (``_scope``), jamais d'un
+    paramètre de requête. Chaque carte lit le sélecteur PROPRIÉTAIRE de son
+    domaine (``ventes``/``sav``/``installations``) — jamais un import direct
+    de leurs modèles depuis ``portail`` (frontière cross-app CLAUDE.md) — donc
+    les compteurs matchent, par construction, ce que l'écran interne montre
+    pour ce même client."""
+    from apps.installations.selectors import prochain_jalon_client_portail
+    from apps.sav.selectors import tickets_ouverts_client
+    from apps.ventes.selectors import resume_portail_client
+
+    company, client_id = _scope(request)
+    resume = resume_portail_client(company, client_id)
+    resume['tickets_ouverts'] = tickets_ouverts_client(company, client_id)
+    resume['prochain_jalon'] = prochain_jalon_client_portail(
+        company, client_id)
+    return Response(resume)
 
 
 class MesDevisPortailViewSet(viewsets.ViewSet):
