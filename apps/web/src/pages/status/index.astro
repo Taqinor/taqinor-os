@@ -89,6 +89,20 @@ interface DegradedModeEntry {
 const dependances = (await fetchJson<DegradedModeEntry[]>('/api/django/core/degraded-mode-status/')) ?? [];
 const dependancesEnPanne = dependances.filter((d) => d.statut === 'down' || d.statut === 'degraded');
 
+// NTOBS14 — frise d'uptime 90 jours (agrégats pré-calculés, jamais un
+// recalcul de logs bruts à chaque affichage).
+interface UptimeJour { date: string; statut: string; pct: number }
+const uptimeParComposant = (await fetchJson<Record<string, UptimeJour[]>>(
+  '/api/django/statuspage/public/uptime-90j/',
+)) ?? {};
+
+const UPTIME_COULEUR: Record<string, string> = {
+  operational: 'bg-ok-600',
+  degraded: 'bg-brass-600',
+  partial_outage: 'bg-alert-300',
+  major_outage: 'bg-alert-600',
+};
+
 const STATUT_LABEL: Record<string, string> = {
   operational: 'Opérationnel',
   degraded: 'Dégradé',
@@ -159,6 +173,25 @@ function formatDate(iso: string | null): string {
         <p class="mt-3 text-xs text-encre-faint">
           Dernière vérification : {formatDate(statusData.generated_at)}
         </p>
+
+        {Object.keys(uptimeParComposant).length > 0 && (
+          <div class="mt-8 space-y-4">
+            {Object.entries(uptimeParComposant).map(([composant, jours]) => (
+              <div>
+                <p class="text-sm font-medium text-encre">{composant}</p>
+                <div class="mt-1 flex gap-px" title={`${jours.length} jours`}>
+                  {jours.map((j) => (
+                    <span
+                      class={`h-6 w-1 rounded-sm ${UPTIME_COULEUR[j.statut] ?? 'bg-lune'}`}
+                      title={`${j.date} — ${j.statut} (${j.pct}% disponible)`}
+                    ></span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <p class="text-xs text-encre-faint">90 derniers jours</p>
+          </div>
+        )}
       </>
     )}
 

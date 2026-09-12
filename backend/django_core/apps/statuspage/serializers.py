@@ -6,7 +6,7 @@ explicitement, jamais un simple ``OpenApiTypes.OBJECT`` opaque côté OpenAPI.
 """
 from rest_framework import serializers
 
-from .models import ComponentStatus, IncidentPublic, IncidentUpdate
+from .models import ComponentStatus, IncidentPublic, IncidentUpdate, UptimeDayBucket
 
 
 class ComponentStatusPublicSerializer(serializers.ModelSerializer):
@@ -41,3 +41,9 @@ class IncidentPublicSerializer(serializers.ModelSerializer):
         if obj.postmortem_publie_le:
             return obj.postmortem_markdown
         return ''
+
+
+class UptimeDayBucketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UptimeDayBucket
+        fields = ['composant', 'date', 'statut_pire_du_jour', 'pct_disponible_jour']

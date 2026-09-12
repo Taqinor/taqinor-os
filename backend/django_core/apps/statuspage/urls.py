@@ -2,7 +2,7 @@ from django.urls import path
 
 from .views import (
     PublicIncidentDetailView, PublicIncidentsView, public_status,
-    publier_postmortem,
+    public_uptime_90j, publier_postmortem,
 )
 
 urlpatterns = [
@@ -17,4 +17,7 @@ urlpatterns = [
     # NTOBS2 — action interne (Directeur/Administrateur), authentifiée.
     path('incidents/<int:pk>/publier-postmortem/', publier_postmortem,
          name='statuspage-publier-postmortem'),
+    # NTOBS14 — frise d'uptime 90 jours (agrégats pré-calculés).
+    path('public/uptime-90j/', public_uptime_90j,
+         name='statuspage-public-uptime-90j'),
 ]

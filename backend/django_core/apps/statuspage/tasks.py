@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from core.health import STATUS_DEGRADED, STATUS_DOWN, STATUS_OK, check_services
 
-from .models import ComponentStatus
+from .models import ComponentStatus, UptimeDayBucket
 
 # Composants PUBLICS vendus au client (jamais les noms de sonde internes bruts
 # tels que « database »/« broker », qui exposeraient l'architecture). Chaque
@@ -48,6 +48,34 @@ def _pire_statut_public(statuts):
         if _ORDRE_GRAVITE.index(statut) > _ORDRE_GRAVITE.index(pire):
             pire = statut
     return pire
+
+
+def _accumuler_uptime_jour(nom, region, statut, now):
+    """NTOBS14 — accumule le tick courant dans le bucket du JOUR (créé au
+    premier tick du jour, mis à jour à chaque tick suivant). ``ComponentStatus``
+    n'étant qu'un état COURANT (pas un historique), ce bucket EST la seule
+    trace exploitable de la journée — jamais une exception remontée
+    (best-effort, un échec d'agrégation n'affecte jamais le statut public)."""
+    try:
+        bucket, _created = UptimeDayBucket.objects.get_or_create(
+            company=None, composant=nom, region=region, date=now.date(),
+            defaults={'statut_pire_du_jour': statut},
+        )
+        if _ORDRE_GRAVITE.index(statut) > _ORDRE_GRAVITE.index(
+                bucket.statut_pire_du_jour):
+            bucket.statut_pire_du_jour = statut
+        bucket.echantillons_total += 1
+        if statut == ComponentStatus.Statut.OPERATIONAL:
+            bucket.echantillons_operationnels += 1
+        bucket.pct_disponible_jour = round(
+            100.0 * bucket.echantillons_operationnels / bucket.echantillons_total,
+            2)
+        bucket.save(update_fields=[
+            'statut_pire_du_jour', 'echantillons_total',
+            'echantillons_operationnels', 'pct_disponible_jour', 'updated_at',
+        ])
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
 
 
 def _statut_ia_public():
@@ -98,16 +126,17 @@ def rafraichir_composants():
             maj += 1
         except Exception:  # noqa: BLE001 — un composant en échec n'affecte pas les autres
             continue
+        _accumuler_uptime_jour(nom, PUBLIC_REGION_DEFAUT, statut, now)
 
+    statut_ia = _statut_ia_public()
     try:
         ComponentStatus.objects.update_or_create(
             nom='IA', region=PUBLIC_REGION_DEFAUT, company=None,
-            defaults={
-                'statut': _statut_ia_public(), 'derniere_verification': now,
-            },
+            defaults={'statut': statut_ia, 'derniere_verification': now},
         )
         maj += 1
     except Exception:  # noqa: BLE001
         pass
+    _accumuler_uptime_jour('IA', PUBLIC_REGION_DEFAUT, statut_ia, now)
 
     return maj

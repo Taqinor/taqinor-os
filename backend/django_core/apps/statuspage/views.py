@@ -17,8 +17,11 @@ from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from .models import ComponentStatus, IncidentPublic
-from .serializers import ComponentStatusPublicSerializer, IncidentPublicSerializer
+from .models import ComponentStatus, IncidentPublic, UptimeDayBucket
+from .serializers import (
+    ComponentStatusPublicSerializer, IncidentPublicSerializer,
+    UptimeDayBucketSerializer,
+)
 
 PUBLIC_STATUS_CACHE_KEY = 'statuspage:public:status'
 PUBLIC_STATUS_CACHE_SECONDS = 60
@@ -153,3 +156,29 @@ def publier_postmortem(request, pk):
     incident.postmortem_publie_le = timezone.now()
     incident.save(update_fields=['postmortem_publie_le', 'updated_at'])
     return Response(IncidentPublicSerializer(incident).data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([StatuspagePublicThrottle])
+def public_uptime_90j(request):
+    """GET /api/django/statuspage/public/uptime-90j/ — frise 90 jours.
+
+    Système uniquement (``company=None``), agrégats PRÉ-CALCULÉS (jamais un
+    recalcul depuis des logs bruts à chaque requête) : renvoie
+    ``{composant: [{date, statut, pct}, ...]}``."""
+    depuis = timezone.now().date() - timedelta(days=UPTIME_HISTORY_DAYS)
+    buckets = (
+        UptimeDayBucket.objects
+        .filter(company__isnull=True, date__gte=depuis)
+        .order_by('composant', 'date')
+    )
+    data = UptimeDayBucketSerializer(buckets, many=True).data
+    par_composant = {}
+    for row in data:
+        par_composant.setdefault(row['composant'], []).append({
+            'date': row['date'],
+            'statut': row['statut_pire_du_jour'],
+            'pct': row['pct_disponible_jour'],
+        })
+    return Response(par_composant)

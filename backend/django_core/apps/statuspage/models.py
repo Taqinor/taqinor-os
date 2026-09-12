@@ -148,3 +148,53 @@ class IncidentUpdate(TimestampedModel):
 
     def __str__(self):
         return f'Update {self.incident_id} @ {self.horodatage}'
+
+
+class UptimeDayBucket(TimestampedModel):
+    """NTOBS14 — agrégat quotidien PRÉ-CALCULÉ d'un composant (frise 90 jours).
+
+    Peuplé de façon INCRÉMENTALE par le même job beat 5 min que
+    ``ComponentStatus`` (``tasks.rafraichir_composants`` — ``ComponentStatus``
+    n'étant qu'un état COURANT, pas un historique, il n'existe pas de « log
+    de la journée » à rejouer : chaque tick de 5 min met à jour DIRECTEMENT
+    le bucket du jour, ce qui reste une vraie « agrégation quotidienne »
+    sans jamais recalculer 90 jours de logs à l'affichage). ``pct_disponible_
+    jour`` est un pourcentage MESURÉ par échantillonnage (288 ticks/jour au
+    maximum), jamais un chiffre inventé."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='statuspage_uptime_buckets',
+        verbose_name='Société',
+        help_text='NULL = composant système, partagé entre tous les tenants.')
+    composant = models.CharField('Composant', max_length=120)
+    region = models.CharField('Région', max_length=60, blank=True, default='')
+    date = models.DateField('Date')
+    statut_pire_du_jour = models.CharField(
+        'Pire statut du jour', max_length=20,
+        choices=ComponentStatus.Statut.choices,
+        default=ComponentStatus.Statut.OPERATIONAL)
+    echantillons_total = models.PositiveIntegerField(
+        'Échantillons observés', default=0)
+    echantillons_operationnels = models.PositiveIntegerField(
+        'Échantillons opérationnels', default=0)
+    pct_disponible_jour = models.DecimalField(
+        'Disponibilité mesurée (%)', max_digits=5, decimal_places=2,
+        default=100)
+
+    class Meta:
+        verbose_name = 'Bucket de disponibilité (jour)'
+        verbose_name_plural = 'Buckets de disponibilité (jour)'
+        ordering = ['-date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'composant', 'region', 'date'],
+                name='statuspage_uptimebucket_jour'),
+        ]
+        indexes = [
+            models.Index(fields=['composant', '-date'],
+                         name='statuspage_uptime_cd_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.composant} — {self.date} ({self.statut_pire_du_jour})'
