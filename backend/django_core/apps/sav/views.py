@@ -2938,6 +2938,57 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         })
 
 
+def _bornes_periode(request):
+    """Bornes ``?date_debut=`` / ``?date_fin=`` (AAAA-MM-JJ), optionnelles.
+
+    Une date mal formée est REFUSÉE en NOMMANT le champ fautif — jamais
+    ignorée en silence (un rapport calculé sur une autre période que celle
+    demandée est pire qu'une erreur)."""
+    bornes = {}
+    for champ in ('date_debut', 'date_fin'):
+        brut = (request.query_params.get(champ) or '').strip()
+        if not brut:
+            bornes[champ] = None
+            continue
+        try:
+            bornes[champ] = _date.fromisoformat(brut)
+        except ValueError:
+            raise ValidationError(
+                {champ: 'Date invalide (format attendu : AAAA-MM-JJ).'})
+    return bornes
+
+
+def sav_fcr_insight(request):
+    """NTSRV24 — Taux de résolution au premier contact (FCR).
+
+    ``?date_debut=&date_fin=`` (bornes inclusives, optionnelles) et
+    ``?export=xlsx`` pour la liste ticket par ticket. Réservé au tier
+    responsable/admin (vérifié côté urls.py)."""
+    from .selectors import taux_resolution_premier_contact
+
+    bornes = _bornes_periode(request)
+    data = taux_resolution_premier_contact(
+        request.user.company,
+        date_debut=bornes['date_debut'], date_fin=bornes['date_fin'])
+
+    if (request.query_params.get('export') or '').lower() == 'xlsx':
+        from apps.records.xlsx import build_xlsx_response
+
+        entetes = ['Référence', 'Premier contact', 'Motif',
+                   'Réouvertures', 'Échanges client']
+        lignes = [[
+            ligne['reference'],
+            'Oui' if ligne['fcr'] else 'Non',
+            ligne['motif'],
+            ligne['reopen_count'],
+            ligne['nb_echanges_client'],
+        ] for ligne in data['tickets']]
+        return build_xlsx_response(
+            'sav-fcr.xlsx', entetes, lignes, sheet_title='FCR')
+
+    return Response(data)
+
+
 def sav_pareto_pannes(request):
     """XSAV14 — Pareto des pannes par modèle de produit (ou fournisseur).
 

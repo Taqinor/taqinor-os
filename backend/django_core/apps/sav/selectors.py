@@ -1620,3 +1620,110 @@ def tickets_candidats_probleme(company, fenetre_jours=30, *, seuil=3):
         resultats.append(groupe)
     resultats.sort(key=lambda g: (-g['nb_tickets'], g['produit_nom']))
     return resultats
+
+
+# ── NTSRV24 — Résolution au premier contact (FCR) ───────────────────────────
+
+#: Nombre d'échanges client TOLÉRÉS pour rester « premier contact ». UN
+#: aller-retour = le message du client + LA réponse de l'équipe, donc 2
+#: entrées de chatter. Au-delà, ce n'est plus un premier contact.
+FCR_ECHANGES_MAX = 2
+
+#: Genres d'activité qui comptent comme un ÉCHANGE AVEC LE CLIENT. Les notes
+#: internes et les lignes de modification de champ n'en sont pas : compter un
+#: changement de priorité comme un aller-retour fausserait le taux.
+FCR_KINDS_ECHANGE = (
+    TicketActivity.Kind.EMAIL,
+    TicketActivity.Kind.WHATSAPP,
+    TicketActivity.Kind.APPEL,
+)
+
+
+def taux_resolution_premier_contact(company, *, date_debut=None,
+                                    date_fin=None):
+    """NTSRV24 — taux de résolution au premier contact (FCR) de la société.
+
+    Un ticket compte en FCR s'il est CLÔTURÉ **et** :
+      * il n'est jamais repassé à un statut ouvert après une résolution —
+        mesuré par ``reopen_count`` (compteur XSAV11 posé CÔTÉ SERVEUR à
+        chaque transition résolu/clôturé → ouvert). On ne relit pas les
+        libellés du chatter pour ça : ce sont des textes d'affichage
+        traduits, donc un critère fragile ;
+      * il n'a pas eu plus d'UN aller-retour client, mesuré par le nombre
+        d'entrées de chatter e-mail/WhatsApp/appel (``FCR_ECHANGES_MAX``).
+
+    PÉRIODE : bornes inclusives sur ``date_creation`` (toujours renseignée,
+    contrairement à ``date_resolution``). Les tickets encore OUVERTS et les
+    tickets ANNULÉS de la période sont EXCLUS du dénominateur — un ticket en
+    cours n'a ni réussi ni raté son premier contact ; il est simplement pas
+    encore jugeable (c'est le critère d'acceptation de NTSRV24).
+
+    Renvoie ``taux_fcr=None`` (jamais une division par zéro) quand aucun
+    ticket clôturé n'existe sur la période.
+    """
+    from django.db.models import Count
+
+    qs = Ticket.objects.filter(company=company, annule=False)
+    if date_debut is not None:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+
+    clotures = list(qs.filter(statut=Ticket.Statut.CLOTURE)
+                    .only('id', 'reference', 'reopen_count',
+                          'technicien_responsable_id')
+                    .order_by('reference', 'id'))
+    nb_periode = qs.count()
+
+    echanges = dict(
+        TicketActivity.objects
+        .filter(ticket_id__in=[t.pk for t in clotures],
+                kind__in=FCR_KINDS_ECHANGE)
+        .values('ticket_id')
+        .annotate(nb=Count('id'))
+        .values_list('ticket_id', 'nb'))
+
+    lignes = []
+    nb_fcr = 0
+    exclusions = {'reouverture': 0, 'echanges_multiples': 0}
+    for ticket in clotures:
+        nb_echanges = echanges.get(ticket.pk, 0)
+        reouvert = (ticket.reopen_count or 0) > 0
+        trop_d_echanges = nb_echanges > FCR_ECHANGES_MAX
+        fcr = not reouvert and not trop_d_echanges
+        if fcr:
+            nb_fcr += 1
+            motif = ''
+        elif reouvert:
+            # Un ticket qui cumule les deux défauts n'est compté QUE dans la
+            # réouverture : sinon les motifs ne sommeraient plus au nombre
+            # d'exclusions.
+            exclusions['reouverture'] += 1
+            motif = 'Rouvert après résolution'
+        else:
+            exclusions['echanges_multiples'] += 1
+            motif = 'Plus d’un aller-retour client'
+        lignes.append({
+            'ticket_id': ticket.pk,
+            'reference': ticket.reference,
+            'fcr': fcr,
+            'motif': motif,
+            'reopen_count': ticket.reopen_count or 0,
+            'nb_echanges_client': nb_echanges,
+        })
+
+    nb_clotures = len(clotures)
+    taux = (round(100.0 * nb_fcr / nb_clotures, 1)
+            if nb_clotures else None)
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'nb_tickets_periode': nb_periode,
+        'nb_clotures': nb_clotures,
+        'nb_non_clotures_exclus': nb_periode - nb_clotures,
+        'nb_fcr': nb_fcr,
+        'taux_fcr': taux,
+        'echanges_max': FCR_ECHANGES_MAX,
+        'exclusions': exclusions,
+        'tickets': lignes,
+    }

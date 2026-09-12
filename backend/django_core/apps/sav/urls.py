@@ -14,6 +14,7 @@ from .views import (
     WorksheetMaintenanceModeleViewSet, ProblemeViewSet,
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
     sav_resume_par_equipe, sav_file_action, sav_file_attente,
+    sav_fcr_insight,
 )
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
@@ -76,6 +77,19 @@ def file_action_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
+def fcr_insight_view(request):
+    """NTSRV24 — Taux de résolution au premier contact. Responsable/admin.
+
+    Servi sous `sav/insights/` (comme `sav-pannes`, `sav-fiabilite`,
+    `sav-resume-equipe`, `sav-parts-forecast` déjà en place) et non sous
+    `reporting/insights/` : `apps/reporting` appartient à une autre lane, et
+    la famille `sav/insights/*` existe déjà ici — un seul registre, jamais
+    deux endroits où chercher un insight SAV."""
+    return sav_fcr_insight(request)
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
 def file_attente_view(request):
     """NTSRV8 — File d'attente par équipe + proposition de débordement.
     LECTURE PURE (aucune réaffectation). Responsable/admin."""
@@ -106,4 +120,6 @@ urlpatterns = [
          name='sav-fiabilite'),
     path('insights/sav-resume-equipe/', resume_par_equipe_view,
          name='sav-resume-equipe'),
+    # NTSRV24 — résolution au premier contact (JSON + ?export=xlsx).
+    path('insights/sav-fcr/', fcr_insight_view, name='sav-fcr'),
 ]
