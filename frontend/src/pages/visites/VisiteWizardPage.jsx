@@ -9,20 +9,22 @@
 // VT7 ajoute le panneau client+devis (VisiteClientDevisPanel).
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import crmApi from '../../../api/crmApi'
-import PageHeader from '../../../components/layout/PageHeader'
-import CameraCapture from '../../../features/pwa/CameraCapture'
+import visitesApi from '../../api/visitesApi'
+import { envoyerPhotoVisite } from '../../features/visites/visitesOffline'
+import PageHeader from '../../components/layout/PageHeader'
+import CameraCapture from '../../features/pwa/CameraCapture'
 import {
   Button, Card, Spinner, Badge, ChecklistProgress,
   Tabs, TabsList, TabsTrigger, TabsContent,
-} from '../../../ui'
-import { toast } from '../../../ui/confirm'
+} from '../../ui'
+import { toast } from '../../ui/confirm'
 import {
   trierCategories, progressionPhotos,
   ETAT_SLOT_LABEL, ETAT_SLOT_TONE, STATUT_VISITE_LABEL,
 } from './visiteHelpers'
 import VisiteMesuresForm from './VisiteMesuresForm'
 import VisiteClientDevisPanel from './VisiteClientDevisPanel'
+import VisiteHistoriquePanel from './VisiteHistoriquePanel'
 
 // Une tuile photo — état/motif/guide TOUJOURS tels que renvoyés par le
 // serveur, jamais reformulés ici (RÈGLE fondateur : erreurs/motifs = texte
@@ -31,18 +33,29 @@ function SlotTile({ visiteId, slot, onChanged }) {
   const [ouvert, setOuvert] = useState(false)
   const [envoi, setEnvoi] = useState(false)
 
+  // VTA10 — passe par le BRANCHEMENT offline de la plateforme : compression
+  // (VX77) puis envoi en ligne ; sur panne RÉSEAU la photo rejoint l'UNIQUE
+  // file binaire et l'utilisateur le voit (badge d'en-tête + message ici).
   const capturer = async (file, geo) => {
     setEnvoi(true)
     try {
-      await crmApi.uploadVisitePhoto(visiteId, {
+      const res = await envoyerPhotoVisite(visiteId, {
         slotCode: slot.code,
         fichier: file,
         gpsLat: geo?.latitude,
         gpsLng: geo?.longitude,
       })
-      onChanged()
-    } catch {
-      toast.error(`Envoi de la photo « ${slot.libelle} » impossible.`)
+      if (res.queued) {
+        toast.success(`Photo « ${slot.libelle} » mise en file — elle partira au retour du réseau.`)
+      } else {
+        onChanged()
+      }
+    } catch (err) {
+      // File pleine / stockage saturé : message SERVEUR-LIBRE mais explicite,
+      // jamais un échec muet (OutboxQuotaError porte déjà son texte français).
+      toast.error(err?.quota
+        ? err.message
+        : `Envoi de la photo « ${slot.libelle} » impossible.`)
     } finally {
       setEnvoi(false)
     }
@@ -50,7 +63,7 @@ function SlotTile({ visiteId, slot, onChanged }) {
 
   const supprimer = async (mediaId) => {
     try {
-      await crmApi.deleteVisitePhoto(visiteId, mediaId)
+      await visitesApi.deleteVisitePhoto(visiteId, mediaId)
       onChanged()
     } catch {
       toast.error('Suppression de la photo impossible.')
@@ -130,7 +143,7 @@ export default function VisiteWizardPage() {
   const [categorieActive, setCategorieActive] = useState(null)
 
   const recharger = useCallback(() => {
-    crmApi.getVisite(id)
+    visitesApi.getVisite(id)
       .then((res) => {
         setVisite(res.data)
         setCategorieActive((prev) => prev ?? trierCategories(res.data.checklist)[0]?.categorie)
@@ -144,7 +157,7 @@ export default function VisiteWizardPage() {
   const terminer = async () => {
     setTerminant(true)
     try {
-      const res = await crmApi.terminerVisite(id)
+      const res = await visitesApi.terminerVisite(id)
       setVisite(res.data)
       toast.success('Visite terminée — envoyée au bureau d’études.')
     } catch (err) {
@@ -172,7 +185,7 @@ export default function VisiteWizardPage() {
       <PageHeader
         title={visite.client_panel?.lead_nom ?? `Visite #${visite.id}`}
         subtitle={STATUT_VISITE_LABEL[visite.statut] ?? visite.statut}
-        actions={<Button type="button" variant="ghost" onClick={() => navigate('/crm/visites')}>Retour</Button>}
+        actions={<Button type="button" variant="ghost" onClick={() => navigate('/visites')}>Retour</Button>}
       />
 
       {lectureSeule && visite.raison_lecture_seule && (
@@ -186,6 +199,8 @@ export default function VisiteWizardPage() {
       </div>
 
       <VisiteClientDevisPanel clientPanel={visite.client_panel} devis={visite.devis} />
+      {/* VTA11 — ce que ce client a DÉJÀ eu comme visites, en lecture seule. */}
+      <VisiteHistoriquePanel leadId={visite.lead} visiteCouranteId={visite.id} />
 
       <Tabs value={categorieActive} onValueChange={setCategorieActive} className="mt-3">
         <TabsList className="flex-wrap">
@@ -209,7 +224,7 @@ export default function VisiteWizardPage() {
             {/* VT11 — calage du toit réaliste : n'a de sens que sur la
                 catégorie toiture, une fois au moins une photo prise. */}
             {c.categorie === 'toiture' && c.slots.some((s) => s.photos.length > 0) && (
-              <Button type="button" variant="outline" onClick={() => navigate(`/crm/visites/${id}/calage`)}>
+              <Button type="button" variant="outline" onClick={() => navigate(`/visites/${id}/calage`)}>
                 Calage du toit
               </Button>
             )}

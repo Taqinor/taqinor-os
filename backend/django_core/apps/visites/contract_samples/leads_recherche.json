@@ -1,0 +1,14 @@
+{
+  "endpoint": "GET /api/django/visites/leads-recherche/",
+  "pourquoi": "Groupe VTA : l'ecran « Planifier une visite » retrouve un lead par nom ou telephone SANS taper la liste CRM. La reponse est volontairement MINIMALE — {id, nom, ville, telephone} et rien d'autre (ni email, ni etape de pipeline, ni montant) : c'est la seule surface du fichier leads exposee a l'app Visites. La porte `visites_valider` est portee par l'ENDPOINT, pas par l'ecran. Source de verite : apps/crm/selectors.py::rechercher_leads_minimal, servie par apps/visites/views.py::LeadsRechercheView.",
+  "exemple": {
+    "results": [
+      {
+        "id": 42,
+        "nom": "Client Démo",
+        "ville": "Bouskoura",
+        "telephone": "0600000000"
+      }
+    ]
+  }
+}

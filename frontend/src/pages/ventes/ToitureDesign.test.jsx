@@ -1246,7 +1246,7 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
    texture_calage}, les trois clés à null quand il n'y a rien à montrer. */
 const CALAGE_TOIT = {
   visite_id: 7,
-  url: '/api/django/crm/visites/7/photo-toit/',
+  url: '/api/django/visites/visites/7/photo-toit/',
   texture_calage: { coins: CONTOUR_CLIENT },
 }
 

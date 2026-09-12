@@ -265,13 +265,19 @@ class KpiPremierContactTests(TestCase):
 class KpiApiTests(TestCase):
     def setUp(self):
         self.company = _company('mry19-api')
+        # VTA4 — les lectures CRM exigent le code fin ``crm_voir``.
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom='mry19-lecteur',
+            permissions=['crm_voir'])
         self.normal = User.objects.create_user(
-            username='mry19-api-u', password='x', company=self.company)
+            username='mry19-api-u', password='x', company=self.company,
+            role=role)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.normal)}')
 
-    def test_lecture_ouverte_a_tout_role(self):
+    def test_lecture_ouverte_a_tout_porteur_de_crm_voir(self):
         resp = self.api.get(KPI_URL)
         self.assertEqual(resp.status_code, 200, resp.data)
         for cle in ('objectif_minutes', 'nb_leads', 'nb_sous_objectif',

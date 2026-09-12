@@ -72,3 +72,34 @@ def h_lead_tag(company, user, payload):
 # clé dans le payload, rien ne change (garde opt-in, par op).
 register('crm.lead.noter', 'crm', h_lead_noter, resolveur=_lead_ou_none)
 register('crm.lead.tag', 'crm', h_lead_tag, resolveur=_lead_ou_none)
+
+
+# ── VTA10 — VISITES TERRAIN ─────────────────────────────────────────────────
+#
+# Le terrain saisit ses mesures dans une cave sans réseau : l'écran file l'op
+# `visite.mesures` (`frontend/src/features/visites/visitesOffline.js`) et c'est
+# ce handler qui la rejoue à la reconnexion. Il ne connaît AUCUN modèle de
+# `apps.visites` : tout passe par son `services.py`, qui refait lui-même les
+# trois gardes de la route en ligne (société, portée « mes visites », gel d'une
+# visite validée) — une file hors-ligne ne doit jamais être un raccourci de
+# permission.
+#
+# Idempotent par construction : la saisie POSE des valeurs (last-write-wins),
+# donc un rejeu du même lot laisse exactement le même état.
+
+def h_visite_mesures(company, user, payload):
+    """`visite.mesures` — mesures d'une catégorie saisies hors-ligne."""
+    from apps.visites import services as visites_services
+
+    categorie = (payload.get('categorie') or '').strip()
+    if not categorie:
+        raise OfflineOpError('Catégorie de mesures manquante.')
+    resultat, motif = visites_services.appliquer_mesures_hors_ligne(
+        company, user, payload.get('visite'), categorie,
+        payload.get('valeurs'))
+    if motif:
+        raise OfflineOpError(motif)
+    return resultat
+
+
+register('visite.mesures', 'visites', h_visite_mesures)

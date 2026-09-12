@@ -20,6 +20,13 @@ ON_DEMAND_ALLOWLIST = {
     # déclenché à la demande depuis l'action ``visites/{id}/assembler-photos/``
     # (``.delay()`` dans le viewset ; jamais périodique — un assemblage
     # n'existe que parce qu'un commercial vient de finir ses photos).
+    'visites.assembler_photos_toit',
+    # VTA3 (12/09/2026) — ANCIEN nom de la MÊME tâche, conservé comme ALIAS
+    # délégant dans ``apps/crm/tasks.py`` le temps d'une fenêtre de
+    # déploiement : des messages portant ce nom peuvent encore dormir dans
+    # Redis au moment de la bascule, et un worker neuf qui ne le connaîtrait
+    # plus les rejetterait en silence (la visite resterait « assemblage en
+    # cours » pour toujours). À retirer avec l'alias, au prochain groupe.
     'crm.assembler_photos_toit',
     # AUTO-PIPELINE (26/08/2026) — devis automatique depuis un lead du tunnel :
     # déclenché à l'ARRIVÉE DU WEBHOOK (``apply_async`` dans
