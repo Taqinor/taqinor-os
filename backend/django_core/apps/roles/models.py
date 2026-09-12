@@ -217,6 +217,16 @@ ALL_PERMISSIONS = [
     # ``get_queryset`` du ViewSet (NTJUR1).
     'juridique_voir',
     'juridique_gerer',
+    # ── NTDOC11 — Salles de données (apps/datarooms), même patron YRBAC3 :
+    #   * ``datarooms_voir``  — lecture des salles et de leur contenu ;
+    #   * ``datarooms_gerer`` — création/modification, ajout et retrait de
+    #     documents, invitation et révocation de viewers, fermeture.
+    # Module NEUF : comme ``juridique_*`` ci-dessus, il n'est mappé sur AUCUN
+    # rôle Responsable/Commercial/Technicien/Viewer — une due diligence reste à
+    # la direction, qui les porte par héritage d'``ALL_PERMISSIONS``. Aucun
+    # accès existant n'est retiré : l'app n'existait pas.
+    'datarooms_voir',
+    'datarooms_gerer',
     # NTJUR39 — ENGAGER UNE DÉPENSE n'est pas « écrire dans le module ».
     # ``juridique_gerer_mandats`` est REQUISE, EN PLUS de ``juridique_gerer``,
     # pour créer/modifier un ``MandatAvocat`` ou une ``NoteHonoraires``, et
@@ -496,6 +506,8 @@ PERMISSION_MODULE = {
     **{c: 'kb' for c in ALL_PERMISSIONS if c.startswith('kb_')},
     # NTJUR1 — clé de manifeste ``juridique`` (apps/juridique).
     **{c: 'juridique' for c in ALL_PERMISSIONS if c.startswith('juridique_')},
+    # NTDOC11 — clé de manifeste ``datarooms`` (apps/datarooms).
+    **{c: 'datarooms' for c in ALL_PERMISSIONS if c.startswith('datarooms_')},
     **{c: 'rh' for c in ALL_PERMISSIONS if c.startswith('rh_')},
     **{c: 'fpa' for c in ALL_PERMISSIONS if c.startswith('fpa_')},
     **{c: 'ged' for c in ALL_PERMISSIONS if c.startswith('ged_')},

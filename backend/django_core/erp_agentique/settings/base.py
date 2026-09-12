@@ -277,6 +277,11 @@ INSTALLED_APPS = [
     # budget et provisions PROPOSÉES. Distincte de `litiges` (réclamation
     # client) et de `contrats` (CLM) — string-FK uniquement vers elles.
     'apps.juridique',
+    # Groupe NTDOC (P2) — Salles de données sécurisées : collections
+    # thématiques de documents GED ouvertes à des viewers NOMMÉS (lien et
+    # expiration par personne, filigrane par viewer, journal de consultation).
+    # Ne duplique aucun document : string-FK vers `ged` uniquement.
+    'apps.datarooms',
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).

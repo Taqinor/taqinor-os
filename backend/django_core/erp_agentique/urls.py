@@ -117,6 +117,8 @@ _APP_URLS = [
     path('litiges/', include('apps.litiges.urls')),
     # Groupe NTJUR — Affaires juridiques (contentieux d'entreprise).
     path('juridique/', include('apps.juridique.urls')),
+    # Groupe NTDOC (P2) — Salles de données sécurisées (data rooms).
+    path('datarooms/', include('apps.datarooms.urls')),
     # Groupe NTESG — Reporting ESG/durabilité consolidé.
     path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
