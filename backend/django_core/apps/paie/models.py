@@ -2276,7 +2276,7 @@ class SchemaComptablePaie(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='paie_schemas_comptables',
         verbose_name='Société',
     )
@@ -2285,6 +2285,9 @@ class SchemaComptablePaie(models.Model):
         verbose_name='Poste système')
     rubrique = models.ForeignKey(
         Rubrique,
+        # on_delete: un mapping comptable n'a plus d'objet sans sa rubrique —
+        # il ne porte AUCUNE donnée de paie (jamais un montant, jamais une
+        # écriture), seulement un numéro de compte de destination.
         on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='schemas_comptables',

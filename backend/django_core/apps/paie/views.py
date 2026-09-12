@@ -42,6 +42,7 @@ from .models import (
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    SchemaComptablePaie,
     StructurePaie,
     ProvisionPaieMensuelle,
     TypeEntreePonctuelle,
@@ -63,6 +64,7 @@ from .serializers import (
     RubriqueEmployeSerializer,
     RubriqueSerializer,
     SaisieArretSerializer,
+    SchemaComptablePaieSerializer,
     StructurePaieSerializer,
     TypeEntreePonctuelleSerializer,
 )
@@ -99,6 +101,7 @@ from .services import (
     ensure_types_entree_ponctuelle_standard,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    ensure_schema_comptable_standard,
     ensure_structures_standard,
     etat_des_charges,
     expirer_regimes_echus,
@@ -135,6 +138,7 @@ from .services import (
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
     registre_conges,
+    reinitialiser_schema_comptable,
     reporter_elements_periode,
     rejeter_ligne_virement,
     saisies_arret_du_bulletin,
@@ -310,6 +314,40 @@ class RubriqueViewSet(_PaieBaseViewSet):
         """
         created = ensure_rubriques_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
+
+
+class SchemaComptablePaieViewSet(_PaieBaseViewSet):
+    """Plan comptable paie — schéma de ventilation éditable (NTPAY3).
+
+    Surface CRUD de ``SchemaComptablePaie`` (NTPAY2) : chaque ligne route un
+    poste système OU une rubrique vers ses comptes de débit/crédit et sa
+    section analytique. RBAC standard de la paie (``paie_voir`` lit,
+    ``paie_gerer`` écrit — cf. ``_PaieVoirOuGerer``).
+
+    * ``POST seed-standard/`` — sème (idempotent) le plan standard, qui
+      reproduit à l'identique les comptes historiques ;
+    * ``POST reinitialiser/`` — « Réinitialiser au plan standard » : rejoue le
+      seed après avoir effacé les lignes de POSTE SYSTÈME (les lignes par
+      rubrique, sans équivalent standard, sont conservées).
+    """
+    queryset = SchemaComptablePaie.objects.select_related('rubrique').all()
+    serializer_class = SchemaComptablePaieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code_systeme', 'rubrique__code', 'rubrique__libelle',
+                     'compte_debit', 'compte_credit']
+    ordering_fields = ['ordre', 'code_systeme', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-standard')
+    def seed_standard(self, request):
+        """Provisionne le plan comptable paie standard (idempotent)."""
+        created = ensure_schema_comptable_standard(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reinitialiser')
+    def reinitialiser(self, request):
+        """Réinitialise les postes système au plan standard (NTPAY3)."""
+        resultat = reinitialiser_schema_comptable(request.user.company)
+        return Response(resultat, status=status.HTTP_200_OK)
 
 
 class TypeEntreePonctuelleViewSet(_PaieBaseViewSet):

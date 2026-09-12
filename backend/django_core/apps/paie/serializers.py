@@ -28,6 +28,7 @@ from .models import (
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    SchemaComptablePaie,
     StructurePaie,
     StructurePaieRubrique,
     TrancheIR,
@@ -703,3 +704,60 @@ class CumulAnnuelSerializer(serializers.ModelSerializer):
             'nombre_bulletins', 'date_calcul', 'date_creation',
         ]
         read_only_fields = fields
+
+
+class SchemaComptablePaieSerializer(serializers.ModelSerializer):
+    """Ligne du plan comptable paie (NTPAY2/NTPAY3), company-scoped.
+
+    ``company`` posée côté serveur. Une ligne cible SOIT un poste système
+    (``code_systeme``) SOIT une ``rubrique`` du catalogue — la contrainte est
+    doublée ici pour rendre un 400 qui NOMME le champ fautif au lieu d'une
+    ``IntegrityError`` 500 sur la contrainte DB.
+    """
+    rubrique_code = serializers.CharField(
+        source='rubrique.code', read_only=True)
+    rubrique_libelle = serializers.CharField(
+        source='rubrique.libelle', read_only=True)
+
+    class Meta:
+        model = SchemaComptablePaie
+        fields = [
+            'id', 'code_systeme', 'rubrique', 'rubrique_code',
+            'rubrique_libelle', 'compte_debit', 'compte_credit',
+            'section_analytique_id', 'actif', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_rubrique(self, value):
+        return _meme_societe(self, value, 'Rubrique')
+
+    def validate(self, attrs):
+        instance = self.instance
+        code = attrs.get(
+            'code_systeme',
+            getattr(instance, 'code_systeme', '') if instance else '')
+        rubrique = attrs.get(
+            'rubrique',
+            getattr(instance, 'rubrique', None) if instance else None)
+        if bool(code) == bool(rubrique):
+            raise serializers.ValidationError({
+                'code_systeme': [
+                    'Renseignez SOIT un poste système, SOIT une rubrique — '
+                    'jamais les deux, jamais aucun des deux.'],
+            })
+        request = self.context.get('request')
+        if request is not None:
+            doublon = SchemaComptablePaie.objects.filter(
+                company=request.user.company_id)
+            doublon = (doublon.filter(rubrique=rubrique) if rubrique
+                       else doublon.filter(code_systeme=code,
+                                           rubrique__isnull=True))
+            if instance is not None:
+                doublon = doublon.exclude(pk=instance.pk)
+            if doublon.exists():
+                champ = 'rubrique' if rubrique else 'code_systeme'
+                raise serializers.ValidationError({
+                    champ: ['Une ligne de schéma existe déjà pour cette '
+                            'cible.'],
+                })
+        return attrs

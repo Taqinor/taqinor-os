@@ -19,6 +19,7 @@ from .views import (
     RubriqueEmployeViewSet,
     RubriqueViewSet,
     SaisieArretViewSet,
+    SchemaComptablePaieViewSet,
     StructurePaieViewSet,
     TypeEntreePonctuelleViewSet,
 )
@@ -42,6 +43,8 @@ router.register(r'saisies', SaisieArretViewSet)
 router.register(r'ordres-virement', OrdreVirementViewSet)
 router.register(r'lignes-virement', LigneVirementViewSet)
 router.register(r'echeances-declaratives', EcheanceDeclarativeViewSet)
+# NTPAY3 — plan comptable paie (schéma de ventilation éditable).
+router.register(r'schemas-comptables-paie', SchemaComptablePaieViewSet)
 router.register(r'mes-bulletins', CoffreFortBulletinViewSet,
                 basename='coffrefort-bulletin')
 
