@@ -18,7 +18,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0049_ntgrc2_dsr_preuve_token'),
+        ('core', '0055_ntgrc2_dsr_preuve_token'),
     ]
 
     operations = [

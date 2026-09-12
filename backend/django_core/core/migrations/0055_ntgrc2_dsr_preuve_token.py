@@ -23,7 +23,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0048_aud820_sharingrule_unique'),
+        ('core', '0054_ntwfl12_13_formulaires'),
     ]
 
     operations = [
