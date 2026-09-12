@@ -1583,6 +1583,35 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(rapport)
 
+    @action(detail=True, methods=['get'], url_path='matrice-obligations')
+    def matrice_obligations(self, request, pk=None):
+        """Matrice des obligations : redevable × statut (NTDOC18).
+
+        Lecture seule. Chaque ligne porte ses obligations sérialisées, avec le
+        drapeau ``preuve_manquante`` (obligation RÉALISÉE sans document GED
+        lié). Une obligation « faite » sans preuve RESTE valide : la matrice la
+        signale visuellement, elle ne la refuse jamais.
+        """
+        contrat = self.get_object()
+        matrice = selectors.matrice_obligations(contrat)
+        return Response({
+            'total': matrice['total'],
+            'preuves_manquantes': matrice['preuves_manquantes'],
+            'lignes': [
+                {
+                    'redevable': ligne['redevable'],
+                    'redevable_display': ligne['redevable_display'],
+                    'statut': ligne['statut'],
+                    'statut_display': ligne['statut_display'],
+                    'preuves_manquantes': ligne['preuves_manquantes'],
+                    'obligations': ObligationSerializer(
+                        ligne['obligations'], many=True,
+                        context={'request': request}).data,
+                }
+                for ligne in matrice['lignes']
+            ],
+        })
+
     @action(detail=True, methods=['get'], url_path='clauses-manquantes')
     def clauses_manquantes(self, request, pk=None):
         """Clauses OBLIGATOIRES du type de contrat encore absentes (NTDOC5).

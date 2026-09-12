@@ -1837,9 +1837,31 @@ class Obligation(models.Model):
     # à ``faite``). NULL tant que non réalisée.
     date_realisation = models.DateField(
         null=True, blank=True, verbose_name='Réalisée le')
+    # NTDOC18 — pièce justifiant la réalisation (PV de réception, rapport,
+    # attestation…). String-FK vers la GED — jamais un import de `ged.models`.
+    # OPTIONNELLE et NON BLOQUANTE : passer une obligation à `faite` sans
+    # preuve reste permis ; la matrice la signale, elle ne l'interdit pas.
+    preuve_document = models.ForeignKey(
+        # on_delete: la preuve disparaît avec le document, l'obligation SURVIT
+        # (perdre un justificatif n'efface jamais l'engagement lui-même).
+        'ged.Document',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='obligations_prouvees',
+        verbose_name='Document de preuve',
+    )
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
+
+    @property
+    def preuve_manquante(self):
+        """NTDOC18 — True si l'obligation est RÉALISÉE sans pièce jointe.
+
+        Purement DESCRIPTIF : l'obligation reste parfaitement valide, la
+        matrice se contente de l'afficher avec un badge distinct."""
+        return (self.statut == self.Statut.FAITE
+                and self.preuve_document_id is None)
 
     class Meta:
         verbose_name = 'Obligation contractuelle'

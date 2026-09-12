@@ -1100,18 +1100,40 @@ class ObligationSerializer(serializers.ModelSerializer):
         source='get_redevable_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # NTDOC18 — la matrice affiche un badge « preuve manquante » : le calcul
+    # vit sur le modèle, l'écran n'a aucune règle métier à deviner.
+    preuve_manquante = serializers.BooleanField(read_only=True)
+    preuve_document_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = Obligation
         fields = [
             'id', 'contrat', 'jalon', 'intitule', 'description', 'redevable',
             'redevable_display', 'date_echeance', 'statut', 'statut_display',
-            'date_realisation', 'ordre', 'date_creation',
+            'date_realisation', 'preuve_document', 'preuve_document_nom',
+            'preuve_manquante', 'ordre', 'date_creation',
         ]
         read_only_fields = [
             'date_realisation', 'redevable_display', 'statut_display',
-            'date_creation',
+            'preuve_manquante', 'preuve_document_nom', 'date_creation',
         ]
+
+    def get_preuve_document_nom(self, obj) -> str:
+        return getattr(obj.preuve_document, 'nom', '') or ''
+
+    def validate_preuve_document(self, document):
+        """NTDOC18 — la preuve doit appartenir à la société de l'appelant.
+
+        FK cross-app écrivable : sans cette garde, DRF accepterait la clé
+        primaire d'un document de la société VOISINE (AUD601)."""
+        if document is None:
+            return document
+        request = self.context.get('request')
+        if request is not None and document.company_id != getattr(
+                request.user, 'company_id', None):
+            raise serializers.ValidationError(
+                "Ce document n'appartient pas à votre société.")
+        return document
 
     def validate_contrat(self, contrat):
         """Le contrat rattaché doit appartenir à la société de l'utilisateur."""

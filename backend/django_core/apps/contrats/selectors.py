@@ -421,6 +421,42 @@ def liens_for_contrat(contrat):
         contrat=contrat, company=contrat.company).order_by('id')
 
 
+def matrice_obligations(contrat):
+    """NTDOC18 — Matrice des obligations d'un contrat : redevable × statut.
+
+    Lecture seule et purement DESCRIPTIVE : elle regroupe les ``Obligation``
+    existantes (CONTRAT26) par partie redevable puis par statut, et compte les
+    « preuves manquantes » (obligation RÉALISÉE sans ``preuve_document``). Une
+    obligation sans preuve reste parfaitement valide — la matrice la signale,
+    elle ne l'interdit jamais.
+
+    Renvoie ``{'lignes': [...], 'total': n, 'preuves_manquantes': n}`` où
+    chaque ligne est un couple (redevable, statut) avec ses obligations."""
+    obligations = list(obligations_contrat(contrat))
+    groupes = {}
+    for obligation in obligations:
+        cle = (obligation.redevable, obligation.statut)
+        groupe = groupes.setdefault(cle, {
+            'redevable': obligation.redevable,
+            'redevable_display': obligation.get_redevable_display(),
+            'statut': obligation.statut,
+            'statut_display': obligation.get_statut_display(),
+            'obligations': [],
+            'preuves_manquantes': 0,
+        })
+        groupe['obligations'].append(obligation)
+        if obligation.preuve_manquante:
+            groupe['preuves_manquantes'] += 1
+    lignes = sorted(groupes.values(),
+                    key=lambda g: (g['redevable'], g['statut']))
+    return {
+        'lignes': lignes,
+        'total': len(obligations),
+        'preuves_manquantes': sum(
+            1 for o in obligations if o.preuve_manquante),
+    }
+
+
 def contrat_card(contrat_id, company):
     """NTDOC15 — fiche-carte LECTURE SEULE d'un contrat, scopée société.
 
