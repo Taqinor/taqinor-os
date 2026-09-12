@@ -162,6 +162,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             visite.commercial = request.user
             visite.save(update_fields=['commercial'])
         services.journaliser_visite(visite, request.user, 'creation')
+        # VTA7 — l'assigne apprend tout de suite que sa journee a change.
+        services.notifier_assignation(visite, acteur=request.user)
         return Response(selectors.contexte_visite_terrain(visite),
                         status=status.HTTP_201_CREATED)
 
@@ -175,10 +177,20 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, *args, **kwargs):
-        refus = self._refus_si_gelee(self.get_object())
+        visite = self.get_object()
+        refus = self._refus_si_gelee(visite)
         if refus is not None:
             return refus
-        return super().update(request, *args, **kwargs)
+        # VTA7 — on releve l'assigne AVANT l'ecriture : une REASSIGNATION
+        # (changement reel d'assigne) previent le nouveau. Un PATCH qui ne
+        # touche pas `commercial` ne notifie personne -- sinon chaque
+        # correction de notes sonnerait la cloche.
+        avant = visite.commercial_id
+        reponse = super().update(request, *args, **kwargs)
+        visite.refresh_from_db()
+        if visite.commercial_id != avant:
+            services.notifier_assignation(visite, acteur=request.user)
+        return reponse
 
     # ── Photos par slot ──────────────────────────────────────────────────────
 

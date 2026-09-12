@@ -37,6 +37,39 @@ def _notifier_commercial_visite(visite, event_type, titre, corps):
         return None
 
 
+def notifier_assignation(visite, acteur=None):
+    """VTA7 — previent l'ASSIGNE qu'une visite l'attend.
+
+    Appele a la creation ET a la reassignation : sans ce message, un commercial
+    terrain ne decouvrait sa visite qu'en ouvrant l'app -- alors que sa journee
+    vient justement de changer. Le lien pointe l'ecran de la visite dans l'app
+    autonome (``/visites/<id>``).
+
+    Trois prudences :
+
+    * on ne notifie PAS l'acteur de sa propre assignation (s'assigner une
+      visite ne merite pas une cloche) ;
+    * pas de destinataire (visite non assignee) => rien a envoyer ;
+    * best-effort -- la visite est deja creee/reassignee quand on arrive ici,
+      une notification en echec ne doit pas defaire ce geste.
+
+    La cloche elle-meme est ouverte a TOUT role (``apps.notifications`` la sert
+    sous ``IsAnyRole``), donc un « Commercial terrain » -- qui n'a aucun droit
+    CRM -- la recoit normalement.
+    """
+    destinataire = visite.commercial
+    if destinataire is None:
+        return None
+    if acteur is not None and getattr(acteur, 'id', None) == destinataire.id:
+        return None
+    quand = ('' if visite.date_prevue is None
+             else f" du {visite.date_prevue.strftime('%d/%m/%Y')}")
+    return _notifier_commercial_visite(
+        visite, 'visite_terrain_assignee',
+        'Visite technique assignee',
+        f'La visite{quand} chez « {visite.lead} » vous est assignee.')
+
+
 def journaliser_visite(visite, user, moment, detail=''):
     """Pose la note de chatter du ``moment`` sur le LEAD de la visite.
 
