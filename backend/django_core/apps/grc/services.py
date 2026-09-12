@@ -55,10 +55,7 @@ def journaliser_destruction(company, *, type_objet, objet_ref, action,
     """
     if company is None:
         return None
-    try:
-        from .models import JournalDestruction
-    except ImportError:  # pragma: no cover - le modèle arrive avec NTGRC5
-        return None
+    from .models import JournalDestruction
     try:
         return JournalDestruction.objects.create(
             company=company,

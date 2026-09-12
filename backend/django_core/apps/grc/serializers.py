@@ -5,7 +5,7 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 """
 from rest_framework import serializers
 
-from .models import PolitiqueRetentionObjet
+from .models import JournalDestruction, PolitiqueRetentionObjet
 
 
 class PolitiqueRetentionObjetSerializer(serializers.ModelSerializer):
@@ -31,3 +31,23 @@ class PolitiqueRetentionObjetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La durée de conservation doit valoir au moins 1 mois.')
         return valeur
+
+
+class JournalDestructionSerializer(serializers.ModelSerializer):
+    """NTGRC5 — ligne IMMUABLE du journal de destruction.
+
+    Tout est en lecture seule sauf à la création : une ligne de journal ne se
+    réécrit pas. ``company`` est imposée côté serveur.
+    """
+
+    action_libelle = serializers.CharField(
+        source='get_action_display', read_only=True)
+
+    class Meta:
+        model = JournalDestruction
+        fields = [
+            'id', 'type_objet', 'objet_ref', 'action', 'action_libelle',
+            'politique_ref', 'demande_droit_ref', 'executee_par', 'motif',
+            'empreinte_avant', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'executee_par']
