@@ -20,6 +20,7 @@ import hashlib
 from datetime import date, datetime
 
 from django.template.loader import get_template
+from django.utils.html import escape
 
 from apps.ventes.utils.pdf import _company_context
 # XSTK18 — réutilise (lecture seule, aucune écriture) les utilitaires AR déjà
@@ -176,6 +177,73 @@ def _composants(chantier):
             'garantie': garantie or DEFAULT_GARANTIE,
         })
     return items
+
+
+def _equipements_poses(chantier):
+    """CHT24 — Matériel RÉELLEMENT posé sur le chantier (parc ``sav.Equipement``),
+    PAS les lignes du devis (l'intention commerciale, cf. `_composants` juste
+    au-dessus). ``ComponentSerial`` (F9, ``installations.models_field``)
+    alimente ce parc à la validation (``pousse_parc=True``) : ``sav.Equipement``
+    EST déjà la vue consolidée du matériel posé — related_name ``equipements``
+    vérifié sur ``Equipement.installation`` (sav/models.py) — donc aucune
+    requête distincte sur ``ComponentSerial`` n'est nécessaire ici.
+
+    GARDE-FOU ABSOLU : whitelist champ par champ. On ne lit QUE
+    ``numero_serie`` / ``produit.marque`` / ``produit.nom`` / les deux horloges
+    de garantie CALCULÉES (``date_fin_garantie``, ``date_fin_garantie_production``
+    — sav/models.py:321-322, jamais le texte libre ``Produit.garantie``).
+    Aucun ``model_to_dict``/serializer de ``Produit`` : ``prix_achat`` (et tout
+    montant d'achat) est structurellement inaccessible depuis cette fonction.
+    """
+    items = []
+    for eq in chantier.equipements.select_related('produit').order_by('id'):
+        produit = eq.produit
+        items.append({
+            'numero_serie': (eq.numero_serie or '').strip(),
+            'marque': (
+                (getattr(produit, 'marque', None) or '').strip()
+                if produit else ''),
+            'modele': (
+                (getattr(produit, 'nom', None) or '').strip()
+                if produit else ''),
+            'date_fin_garantie': _as_date(eq.date_fin_garantie),
+            'date_fin_garantie_production': _as_date(
+                eq.date_fin_garantie_production),
+        })
+    return items
+
+
+def _recette_summary(chantier):
+    """CHT24 — Résumé de recette (``installations.CommissioningRecord``) :
+    résultat de conformité + relevés I-V par string, SI la fiche existe.
+    Aucun montant : uniquement des mesures électriques et un libellé de
+    résultat. Lecture DÉFENSIVE : ``commissioning_record`` est un accesseur
+    inverse OneToOne qui lève une exception héritant d'``AttributeError``
+    quand la fiche n'existe pas encore — ``getattr(..., None)`` suffit (même
+    patron que ``_handover_pack_summary``)."""
+    record = getattr(chantier, 'commissioning_record', None)
+    if record is None:
+        return None
+    readings = [{
+        'string_label': r.string_label,
+        'voc_mesure_v': r.voc_mesure_v,
+        'isc_mesure_a': r.isc_mesure_a,
+        'pmax_mesure_w': r.pmax_mesure_w,
+        'defaut_detecte': bool(r.defaut_detecte),
+    } for r in record.iv_readings.all().order_by('id')]
+    return {'resultat': record.get_resultat_display(), 'readings': readings}
+
+
+def _photos_count(chantier):
+    """CHT24 — Nombre de photos du chantier, via le sélecteur cross-app déjà
+    existant (``installations.selectors.chantier_photos``, déjà utilisé par
+    PUB63/PUB73 — import fonction-local). Best-effort : une erreur de comptage
+    ne doit jamais bloquer la génération du dossier de remise."""
+    try:
+        from apps.installations.selectors import chantier_photos
+        return chantier_photos(chantier.company, chantier.id).count()
+    except Exception:
+        return 0
 
 
 def _checklist_summary(chantier):
@@ -353,6 +421,90 @@ def _handover_pack_summary(chantier):
     }
 
 
+def _equipements_poses_fragment(chantier):
+    """CHT24 — Fragment HTML « Équipements posés » (échappé champ par champ
+    via ``django.utils.html.escape``), injecté dans le PDF « dossier de
+    remise » à l'appui du parc RÉELLEMENT posé (au lieu des lignes du devis
+    déjà couvertes par `_composants`). Chaîne vide (donc AUCUN changement du
+    document) si le chantier n'a aucun équipement posé — même garantie de
+    non-régression que `_handover_pack_summary`/`pack_remise` juste au-dessus.
+
+    GARDE-FOU ABSOLU : construit exclusivement depuis les dicts déjà
+    whitelistés de `_equipements_poses`/`_recette_summary` — jamais un accès
+    direct à `Produit` ici, donc `prix_achat` ne peut structurellement pas
+    apparaître dans ce fragment.
+    """
+    equipements = _equipements_poses(chantier)
+    if not equipements:
+        return ''
+    rows = []
+    for eq in equipements:
+        garantie_bits = []
+        if eq['date_fin_garantie']:
+            garantie_bits.append(
+                'Matériel : ' + eq['date_fin_garantie'].strftime('%d/%m/%Y'))
+        if eq['date_fin_garantie_production']:
+            garantie_bits.append(
+                'Production : ' +
+                eq['date_fin_garantie_production'].strftime('%d/%m/%Y'))
+        rows.append(
+            '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
+                escape(eq['numero_serie'] or '—'),
+                escape(eq['marque'] or '—'),
+                escape(eq['modele'] or '—'),
+                escape(' — '.join(garantie_bits) or '—'),
+            ))
+    html = (
+        '<div class="section-title">Équipements posés</div>'
+        '<table><thead><tr>'
+        '<th>N° de série</th><th>Marque</th><th>Modèle</th>'
+        '<th>Garantie</th>'
+        '</tr></thead><tbody>' + ''.join(rows) + '</tbody></table>'
+    )
+    recette = _recette_summary(chantier)
+    if recette is not None:
+        html += (
+            '<div class="section-title">Recette de mise en service</div>'
+            '<p>Résultat : {}</p>'.format(escape(recette['resultat'] or '—'))
+        )
+        iv_rows = ''.join(
+            '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>'
+            .format(
+                escape(r['string_label'] or '—'),
+                r['voc_mesure_v'] if r['voc_mesure_v'] is not None else '—',
+                r['isc_mesure_a'] if r['isc_mesure_a'] is not None else '—',
+                r['pmax_mesure_w'] if r['pmax_mesure_w'] is not None else '—',
+                'Oui' if r['defaut_detecte'] else 'Non',
+            ) for r in recette['readings']
+        )
+        if iv_rows:
+            html += (
+                '<table><thead><tr>'
+                '<th>String</th><th>Voc (V)</th><th>Isc (A)</th>'
+                '<th>Pmax (W)</th><th>Défaut détecté</th>'
+                '</tr></thead><tbody>' + iv_rows + '</tbody></table>'
+            )
+    html += '<p>Photos du chantier au dossier : {}.</p>'.format(
+        _photos_count(chantier))
+    return html
+
+
+def _inject_before(html, marker, fragment):
+    """CHT24 — Insère `fragment` juste avant la première occurrence de
+    `marker` dans le HTML déjà rendu par le gabarit Jinja. `fragment` vide =
+    no-op strict (document byte-identique). Si `marker` venait à disparaître
+    (gabarit modifié ailleurs), l'ajout se fait avant la fermeture du
+    document plutôt que d'être silencieusement perdu."""
+    if not fragment:
+        return html
+    idx = html.find(marker)
+    if idx == -1:
+        idx = html.rfind('</body>')
+        if idx == -1:
+            return html + fragment
+    return html[:idx] + fragment + html[idx:]
+
+
 def generate_dossier_remise(chantier):
     """N23 — Dossier de remise (handover pack).
 
@@ -363,6 +515,13 @@ def generate_dossier_remise(chantier):
     (ni certificat de recette IEC 62446-1, ni dossier 82-21, ni accès
     monitoring). Un chantier SANS pack persisté garde un contexte
     strictement identique à avant cette tâche.
+
+    CHT24 — le PDF ajoute désormais le matériel RÉELLEMENT posé (parc
+    ``sav.Equipement``, PAS les lignes du devis) : n° de série, marque,
+    modèle, garanties calculées, résumé de recette (`CommissioningRecord`) et
+    compte de photos — injecté en HTML déjà échappé (`_equipements_poses_fragment`)
+    plutôt que via le contexte du gabarit. Un chantier SANS équipement posé
+    garde un document strictement identique à avant cette tâche.
     """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
@@ -371,6 +530,8 @@ def generate_dossier_remise(chantier):
     if pack is not None:
         ctx['pack_remise'] = pack
     html = get_template('document_dossier_remise.html').render(ctx)
+    html = _inject_before(
+        html, '<div class="footer">', _equipements_poses_fragment(chantier))
     return _html_to_pdf(html)
 
 
