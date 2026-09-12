@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
                 ('feature_key', models.CharField(blank=True, default='', help_text='Feature appelante (ex. « ai.rediger ») — texte libre posé par la couche appelante, jamais par le client.', max_length=120)),
                 ('prompt_tokens', models.PositiveIntegerField(default=0)),
                 ('completion_tokens', models.PositiveIntegerField(default=0)),
-                ('cost_estimated', models.DecimalField(decimal_places=6, default=0, help_text='Coût estimé en MAD — significatif UNIQUEMENT si « cout_tarife » est vrai.', max_digits=12)),
+                ('cost_estimated_micro_mad', models.PositiveBigIntegerField(default=0, help_text='Coût estimé en micro-MAD (10⁻⁶ MAD) — significatif UNIQUEMENT si « cout_tarife » est vrai.')),
                 ('cout_tarife', models.BooleanField(default=False, help_text="Un tarif était configuré pour ce fournisseur au moment de l'appel ; sinon le coût est inconnu (et non nul).")),
                 ('latency_ms', models.PositiveIntegerField(default=0)),
                 ('success', models.BooleanField(default=True)),

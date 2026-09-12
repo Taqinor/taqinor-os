@@ -28,6 +28,21 @@ USAGE_FENETRE_JOURS = 30
 # Puits — écrit une ligne par appel IA réel
 # ─────────────────────────────────────────────────────────────────────────────
 
+#: 1 MAD = 1 000 000 micro-MAD (unité de stockage EXACTE du coût — voir
+#: ``LlmUsageRecord.cost_estimated_micro_mad``).
+MICRO_PAR_MAD = Decimal('1000000')
+
+
+def en_micro_mad(montant) -> int:
+    """Convertit un montant MAD (Decimal) en micro-MAD entier."""
+    return int((Decimal(montant or 0) * MICRO_PAR_MAD).to_integral_value())
+
+
+def en_mad(micro) -> Decimal:
+    """Convertit des micro-MAD (entier) en MAD (Decimal, 6 décimales)."""
+    return (Decimal(micro or 0) / MICRO_PAR_MAD).quantize(Decimal('0.000001'))
+
+
 def enregistrer_usage(*, company_id, capability, provider, feature_key='',
                       prompt_tokens=0, completion_tokens=0,
                       cost_estimated=Decimal('0'), cout_tarife=False,
@@ -35,7 +50,8 @@ def enregistrer_usage(*, company_id, capability, provider, feature_key='',
     """Puits appelé par ``core.ai.usage.record_usage`` — best-effort.
 
     La société vient du CONTEXTE d'appel posé côté serveur ; une société
-    inconnue n'arrive jamais ici (core ne journalise pas sans elle)."""
+    inconnue n'arrive jamais ici (core ne journalise pas sans elle).
+    ``cost_estimated`` arrive en MAD et est stocké en micro-MAD entier."""
     from .models import LlmUsageRecord
 
     return LlmUsageRecord.objects.create(
@@ -45,7 +61,7 @@ def enregistrer_usage(*, company_id, capability, provider, feature_key='',
         feature_key=feature_key or '',
         prompt_tokens=prompt_tokens or 0,
         completion_tokens=completion_tokens or 0,
-        cost_estimated=cost_estimated or Decimal('0'),
+        cost_estimated_micro_mad=en_micro_mad(cost_estimated),
         cout_tarife=bool(cout_tarife),
         latency_ms=latency_ms or 0,
         success=bool(success),
@@ -83,7 +99,7 @@ def _bloc(agg: dict) -> dict:
         'echecs': agg.get('echecs') or 0,
         'prompt_tokens': agg.get('prompt_tokens') or 0,
         'completion_tokens': agg.get('completion_tokens') or 0,
-        'cout_mad': str(agg.get('cout') or Decimal('0')),
+        'cout_mad': str(en_mad(agg.get('cout') or 0)),
         # Nombre d'appels dont le coût est INCONNU (aucun tarif configuré) :
         # sans lui, un total de 0 MAD se lirait à tort comme « gratuit ».
         'appels_sans_tarif': agg.get('sans_tarif') or 0,
@@ -97,7 +113,7 @@ _AGREGATS = {
     'appels': Count('id'),
     'prompt_tokens': Sum('prompt_tokens'),
     'completion_tokens': Sum('completion_tokens'),
-    'cout': Sum('cost_estimated'),
+    'cout': Sum('cost_estimated_micro_mad'),
 }
 
 

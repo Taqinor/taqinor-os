@@ -52,10 +52,16 @@ class LlmUsageRecord(TenantModel):
                   'par la couche appelante, jamais par le client.')
     prompt_tokens = models.PositiveIntegerField(default=0)
     completion_tokens = models.PositiveIntegerField(default=0)
-    cost_estimated = models.DecimalField(
-        max_digits=12, decimal_places=6, default=Decimal('0'),
-        help_text='Coût estimé en MAD — significatif UNIQUEMENT si '
-                  '« cout_tarife » est vrai.')
+    #: UNITÉ : le micro-MAD (10⁻⁶ MAD), entier — PAS un DecimalField.
+    #: Un appel LLM coûte une FRACTION de centime : à 2 décimales (la règle
+    #: monétaire du dépôt, YDATA7) chaque ligne s'arrondirait à 0,00 et le
+    #: total mensuel afficherait « gratuit » — un chiffre faux, donc interdit.
+    #: L'entier est exact, se somme sans dérive, et la propriété
+    #: :attr:`cost_estimated` le rend en MAD pour l'affichage.
+    cost_estimated_micro_mad = models.PositiveBigIntegerField(
+        default=0,
+        help_text='Coût estimé en micro-MAD (10⁻⁶ MAD) — significatif '
+                  'UNIQUEMENT si « cout_tarife » est vrai.')
     cout_tarife = models.BooleanField(
         default=False,
         help_text='Un tarif était configuré pour ce fournisseur au moment de '
@@ -79,6 +85,12 @@ class LlmUsageRecord(TenantModel):
             models.Index(fields=['company', 'feature_key'],
                          name='ai_gov_usage_co_feat_idx'),
         ]
+
+    @property
+    def cost_estimated(self) -> Decimal:
+        """Coût estimé en MAD (dérivé de l'entier micro-MAD, sans perte)."""
+        return (Decimal(self.cost_estimated_micro_mad or 0)
+                / Decimal('1000000')).quantize(Decimal('0.000001'))
 
     def __str__(self):
         return f'{self.capability}/{self.provider} ({self.created_at:%Y-%m-%d})'

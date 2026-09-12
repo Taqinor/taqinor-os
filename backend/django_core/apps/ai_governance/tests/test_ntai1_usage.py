@@ -88,6 +88,9 @@ class Ntai1UsageRecordTests(TestCase):
         self.assertTrue(ligne.success)
         self.assertTrue(ligne.cout_tarife)
         # 120 × 1/1000 + 30 × 2/1000 = 0,18 MAD — calculé, jamais inventé.
+        # Stocké EXACTEMENT en micro-MAD (un arrondi au centime écraserait
+        # toute la facture IA à zéro).
+        self.assertEqual(ligne.cost_estimated_micro_mad, 180000)
         self.assertEqual(ligne.cost_estimated, Decimal('0.180000'))
 
     @override_settings(AI_PROVIDERS={}, AI_TOKEN_COSTS={})
@@ -115,7 +118,7 @@ class Ntai1UsageRecordTests(TestCase):
                      company_id=self.company.id, feature_key='ai.test')
         ligne = LlmUsageRecord.objects.get()
         self.assertFalse(ligne.cout_tarife)
-        self.assertEqual(ligne.cost_estimated, Decimal('0'))
+        self.assertEqual(ligne.cost_estimated_micro_mad, 0)
 
     @override_settings(AI_PROVIDERS={'llm': 'fake_ntai1'})
     def test_erreur_du_fournisseur_journalisee_puis_relancee(self):
@@ -141,6 +144,19 @@ class Ntai1UsageRecordTests(TestCase):
         self.assertFalse(ligne.success)
         self.assertIn('indisponible', ligne.message)
 
+    @override_settings(AI_TOKEN_COSTS={'micro_ntai1': {'prompt': '1.8',
+                                                       'completion': '0'}})
+    def test_cout_d_un_appel_minuscule_n_est_pas_ecrase_a_zero(self):
+        """Le piège que l'unité micro-MAD ferme : 100 appels à 0,0018 MAD
+        valent 0,18 MAD — pas 0,00 (ce que donnerait un arrondi au centime)."""
+        for _ in range(100):
+            record_usage(capability='llm', provider='micro_ntai1',
+                         prompt_tokens=1, completion_tokens=0,
+                         company_id=self.company.id)
+        total = sum(ligne.cost_estimated_micro_mad
+                    for ligne in LlmUsageRecord.objects.all())
+        self.assertEqual(total, 180000)
+
     def test_aucun_prompt_n_est_stocke(self):
         """Le journal ne porte QUE des métriques — jamais de contenu."""
         champs = {f.name for f in LlmUsageRecord._meta.get_fields()}
@@ -154,7 +170,7 @@ class Ntai1UsageRecordTests(TestCase):
             LlmUsageRecord.objects.create(
                 company=company, capability='llm', provider='fake_ntai1',
                 feature_key=feature, prompt_tokens=10, completion_tokens=5,
-                cost_estimated=Decimal('0.5') if tarife else Decimal('0'),
+                cost_estimated_micro_mad=500000 if tarife else 0,
                 cout_tarife=tarife, latency_ms=42, success=True)
 
     def test_endpoint_agrege_sans_fuite_cross_tenant(self):
