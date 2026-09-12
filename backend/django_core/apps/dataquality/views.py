@@ -20,7 +20,9 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.mixins import TenantMixin
 
 from . import selectors, services
-from .models import PropositionFusion, RegleQualite, ResultatQualite
+from .models import (
+    GoldenRecord, PropositionFusion, RegleQualite, ResultatQualite,
+)
 
 
 class RegleQualiteSerializer(serializers.ModelSerializer):
@@ -349,3 +351,76 @@ class PropositionFusionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             return Response({'survivant': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(proposition).data)
+
+
+# ── NTDATA24 — consultation & rafraîchissement des golden records ──────────
+
+class GoldenRecordSerializer(serializers.ModelSerializer):
+    entite_label = serializers.CharField(
+        source='get_entite_display', read_only=True)
+    nb_sources = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = GoldenRecord
+        fields = [
+            'id', 'entite', 'entite_label', 'cle_metier', 'source_ids',
+            'nb_sources', 'attributs', 'derniere_consolidation_le',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class GoldenRecordViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """NTDATA24 — la fiche consolidée : on la LIT, on la RECALCULE, jamais plus.
+
+    LECTURE SEULE par construction : un golden record est le RÉSULTAT d'un
+    calcul sur des fiches sources ; le modifier à la main produirait une
+    quatrième version de la vérité, exactement ce que la consolidation existe
+    pour supprimer.
+
+      * ``GET  …/golden-records/?entite=``      — les fiches consolidées ;
+      * ``POST …/golden-records/consolider/``   — recalcule MAINTENANT
+        (``?entite=`` pour n'en recalculer qu'une) au lieu d'attendre le job
+        hebdomadaire ``dataquality.consolider_golden_records``.
+
+    LA CONSOLIDATION NE MUTE AUCUNE SOURCE. Modifier un client puis
+    recalculer met à jour l'attribut golden ; la fiche client, elle, n'est pas
+    touchée d'un octet.
+    """
+
+    serializer_class = GoldenRecordSerializer
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = GoldenRecord.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        entite = self.request.query_params.get('entite')
+        if entite:
+            qs = qs.filter(entite=entite)
+        return qs
+
+    @extend_schema(
+        request=None,
+        responses=inline_serializer('ConsoliderGoldenReponse', {
+            'entites': serializers.JSONField(),
+            'consolides': serializers.IntegerField(),
+        }))
+    @action(detail=False, methods=['post'])
+    def consolider(self, request):
+        """Recalcule les golden records à la demande (aucune source mutée)."""
+        company = request.user.company
+        demandee = request.query_params.get('entite')
+        entites = ([demandee] if demandee
+                   else sorted(services.CONSOLIDATION))
+        total = 0
+        detail = []
+        for entite in entites:
+            try:
+                records = services.consolider_golden(
+                    company, entite, user=request.user)
+            except ValueError as exc:
+                return Response({'entite': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
+            total += len(records)
+            detail.append({'entite': entite, 'consolides': len(records)})
+        return Response({'entites': detail, 'consolides': total})

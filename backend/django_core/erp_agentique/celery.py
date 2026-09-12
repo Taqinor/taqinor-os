@@ -327,6 +327,15 @@ app.conf.beat_schedule = {
         'task': 'dataquality.evaluer_qualite_donnees',
         'schedule': crontab(hour=5, minute=45),
     },
+    # NTDATA24 — recalcule les golden records (fiches consolidées) de chaque
+    # société. HEBDOMADAIRE : la passe relit toutes les fiches des trois
+    # entités et rejoue la détection de doublons, et l'identité consolidée d'un
+    # client ne change pas d'un jour à l'autre. Dimanche très tôt (créneau
+    # creux, avant la semaine) ; aucune source n'est mutée — c'est une VUE.
+    'dataquality-consolider-golden-records': {
+        'task': 'dataquality.consolider_golden_records',
+        'schedule': crontab(hour=4, minute=15, day_of_week=0),
+    },
     # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
     # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
     'reporting-controle-integrite-hebdo': {
