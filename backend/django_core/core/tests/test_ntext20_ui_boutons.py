@@ -41,6 +41,18 @@ def _auth(user):
     return api
 
 
+def _libelles(res):
+    """Libellés de la page de résultats.
+
+    ``UiActionBoutonViewSet`` est un ``ModelViewSet`` standard : sa liste passe
+    donc par la pagination TRANSVERSE du projet (``core.pagination.
+    StandardPagination``, ``DEFAULT_PAGINATION_CLASS``) et rend l'enveloppe DRF
+    ``count/next/previous/results``. Lire ``res.data`` comme une liste nue
+    itérait sur les CLÉS de l'enveloppe (« string indices must be integers »).
+    """
+    return [b['libelle'] for b in res.data['results']]
+
+
 class BoutonsApplicablesTests(TestCase):
     def setUp(self):
         self.company = make_company()
@@ -53,8 +65,7 @@ class BoutonsApplicablesTests(TestCase):
             type_action=UiActionBouton.TypeAction.AUTOMATION, ref=1)
         res = _auth(self.commercial).get(f'{URL}?cible=crm.lead')
         self.assertEqual(res.status_code, 200, res.data)
-        libelles = [b['libelle'] for b in res.data]
-        self.assertIn('Relancer', libelles)
+        self.assertIn('Relancer', _libelles(res))
 
     def test_bouton_inactif_absent(self):
         UiActionBouton.objects.create(
@@ -62,8 +73,7 @@ class BoutonsApplicablesTests(TestCase):
             type_action=UiActionBouton.TypeAction.AUTOMATION, ref=1,
             actif=False)
         res = _auth(self.commercial).get(f'{URL}?cible=crm.lead')
-        self.assertNotIn(
-            'Désactivé', [b['libelle'] for b in res.data])
+        self.assertNotIn('Désactivé', _libelles(res))
 
     def test_bouton_reserve_a_un_palier_absent_pour_les_autres(self):
         UiActionBouton.objects.create(
@@ -71,17 +81,16 @@ class BoutonsApplicablesTests(TestCase):
             type_action=UiActionBouton.TypeAction.AUTOMATION, ref=1,
             role_tier='admin')
         res_commercial = _auth(self.commercial).get(f'{URL}?cible=crm.lead')
-        self.assertNotIn(
-            'Admin only', [b['libelle'] for b in res_commercial.data])
+        self.assertNotIn('Admin only', _libelles(res_commercial))
         res_admin = _auth(self.admin).get(f'{URL}?cible=crm.lead')
-        self.assertIn('Admin only', [b['libelle'] for b in res_admin.data])
+        self.assertIn('Admin only', _libelles(res_admin))
 
     def test_bouton_dune_autre_cible_absent(self):
         UiActionBouton.objects.create(
             company=self.company, cible='ventes.devis', libelle='Autre fiche',
             type_action=UiActionBouton.TypeAction.AUTOMATION, ref=1)
         res = _auth(self.commercial).get(f'{URL}?cible=crm.lead')
-        self.assertNotIn('Autre fiche', [b['libelle'] for b in res.data])
+        self.assertNotIn('Autre fiche', _libelles(res))
 
     def test_creation_reservee_a_l_admin(self):
         res = _auth(self.commercial).post(URL, {
@@ -141,3 +150,21 @@ class DeclencherBoutonTests(TestCase):
         res = _auth(self.user).post(
             f'{URL}{self.bouton.pk}/declencher/', {}, format='json')
         self.assertEqual(res.status_code, 400)
+
+    def test_bouton_reserve_a_un_autre_palier_refuse_403(self):
+        """Le bouton n'apparaît pas dans la liste d'un palier inférieur : il ne
+        doit pas non plus se déclencher en visant son id directement."""
+        self.bouton.role_tier = 'admin'
+        self.bouton.save()
+        res = _auth(self.user).post(
+            f'{URL}{self.bouton.pk}/declencher/',
+            {'target_model': 'crm.lead', 'target_id': 7}, format='json')
+        self.assertEqual(res.status_code, 403, res.data)
+
+    def test_bouton_desactive_refuse_403(self):
+        self.bouton.actif = False
+        self.bouton.save()
+        res = _auth(self.user).post(
+            f'{URL}{self.bouton.pk}/declencher/',
+            {'target_model': 'crm.lead', 'target_id': 7}, format='json')
+        self.assertEqual(res.status_code, 403, res.data)
