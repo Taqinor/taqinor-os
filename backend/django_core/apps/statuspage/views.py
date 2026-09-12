@@ -9,10 +9,11 @@ Throttlé par IP (best-effort, sans dépendance externe, même patron que
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -96,3 +97,59 @@ class PublicIncidentsView(generics.ListAPIView):
             .prefetch_related('updates', 'composants')
             .order_by('-debute_le')
         )
+
+
+class PublicIncidentDetailView(generics.RetrieveAPIView):
+    """NTOBS2 — GET /api/django/statuspage/public/incidents/<pk>/ : détail
+    d'UN incident système (utilisé par la page de détail/post-mortem)."""
+
+    serializer_class = IncidentPublicSerializer
+    permission_classes = [AllowAny]
+    throttle_classes = [StatuspagePublicThrottle]
+
+    def get_queryset(self):
+        return (
+            IncidentPublic.objects
+            .filter(company__isnull=True)
+            .prefetch_related('updates', 'composants')
+        )
+
+
+class IsDirecteurOrAdmin(BasePermission):
+    """NTOBS2 — action réservée Directeur/Administrateur (même patron que
+    ``apps.credit.views.IsDirecteurOrAdmin``, dupliqué localement : chaque
+    app définit sa propre garde, jamais un import cross-app d'une classe de
+    permission d'une autre app satellite)."""
+
+    def has_permission(self, request, view):
+        u = request.user
+        if not (u and u.is_authenticated):
+            return False
+        if getattr(u, 'is_superuser', False) or getattr(u, 'is_admin_role', False):
+            return True
+        role = getattr(u, 'role', None)
+        return bool(role and role.nom in ('Directeur', 'Administrateur'))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
+def publier_postmortem(request, pk):
+    """NTOBS2 — POST statuspage/incidents/<pk>/publier-postmortem/.
+
+    Publie le post-mortem d'un incident RÉSOLU (``statut=resolved``). Le
+    texte (``postmortem_markdown``) est rédigé par le fondateur — texte libre,
+    aucune génération automatique. Idempotent : republier ne fait
+    qu'actualiser ``postmortem_publie_le``.
+    """
+    incident = get_object_or_404(IncidentPublic, pk=pk)
+    if incident.statut != IncidentPublic.Statut.RESOLVED:
+        return Response(
+            {'detail': "L'incident doit être résolu avant de publier un post-mortem."},
+            status=status.HTTP_400_BAD_REQUEST)
+    if not incident.postmortem_markdown.strip():
+        return Response(
+            {'detail': 'Le contenu du post-mortem est vide.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    incident.postmortem_publie_le = timezone.now()
+    incident.save(update_fields=['postmortem_publie_le', 'updated_at'])
+    return Response(IncidentPublicSerializer(incident).data)
