@@ -152,6 +152,21 @@ const btpChantierApi = {
   penalitesParLot: (chantierId) =>
     api.get(`/btp-chantier/chantiers/${chantierId}/penalites-par-lot/`),
 
+  // ── NTCON16 — PPSPS de chantier (plan de prévention) ────────────────────
+  ppsps: {
+    // `params` : { chantier } — optionnel.
+    list: (params) => api.get('/btp-chantier/ppsps/', { params }),
+    // `data` : { chantier, titre?, document_ged_id?, lots_couverts? }.
+    create: (data) => api.post('/btp-chantier/ppsps/', data),
+    // Rend le plan opposable (`date_validation`/`valide_par` posés serveur).
+    valider: (id) => api.post(`/btp-chantier/ppsps/${id}/valider/`),
+    // Signature d'un sous-traitant (e-sign typée, loi 53-05).
+    signer: (id, sousTraitantId, signataireNom) =>
+      api.post(`/btp-chantier/ppsps/${id}/signer/`, {
+        sous_traitant: sousTraitantId, signataire_nom: signataireNom,
+      }),
+  },
+
   // ── PACT68 — Diffusion contrôlée de plans — NTCON12/13 ───────────────────
   diffusions: {
     // `params` : { chantier, document } — tous optionnels.

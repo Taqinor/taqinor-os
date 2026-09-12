@@ -650,6 +650,152 @@ def marquer_diffusion_lue(diffusion, *, cle_destinataire):
     return diffusion
 
 
+# ── Réglages BTP par société (consommés par les soft-guards) ───────────────
+
+#: Défauts du module quand la société n'a encore aucun réglage enregistré.
+#: NTCON25 pose le modèle ``ParametresBtpChantier`` (singleton par société) ;
+#: ``config_btp`` le consomme dès qu'il existe — ces valeurs restent le repli.
+CONFIG_BTP_DEFAUTS = {
+    'delai_reponse_rfi_defaut_jours': 5,
+    'delai_revue_visa_defaut_jours': 10,
+    'guard_ppsps_bloquant': True,
+    'guard_checklist_lot_bloquant': True,
+    'lots_types_defaut': [
+        'Gros-œuvre', 'Électricité', 'Plomberie', 'CVC', 'Finitions',
+    ],
+    'taux_penalite_retard_defaut_pmil': None,
+}
+
+
+def config_btp(company):
+    """Réglages BTP EFFECTIFS de ``company`` (dict), repli sur
+    ``CONFIG_BTP_DEFAUTS``.
+
+    Point d'accès UNIQUE des soft-guards du module (PPSPS NTCON16, checklist
+    de lot NTCON19) : changer un réglage change le comportement du guard
+    immédiatement, sans redéploiement. Résolution PARESSEUSE du modèle de
+    réglages (``apps.get_model``) : tant qu'il n'existe pas (ou qu'aucune ligne
+    n'est enregistrée pour cette société), les défauts s'appliquent.
+    """
+    from django.apps import apps as django_apps
+
+    valeurs = dict(CONFIG_BTP_DEFAUTS)
+    if company is None:
+        return valeurs
+    try:
+        Parametres = django_apps.get_model('btp_chantier', 'ParametresBtpChantier')
+    except LookupError:
+        return valeurs
+    reglages = Parametres.objects.filter(company=company).first()
+    if reglages is None:
+        return valeurs
+    for cle in valeurs:
+        valeur = getattr(reglages, cle, None)
+        if valeur not in (None, ''):
+            valeurs[cle] = valeur
+    return valeurs
+
+
+# ── NTCON16 — PPSPS : validation, signature sous-traitant, soft-guard ──────
+
+def valider_ppsps(ppsps, *, user):
+    """NTCON16 — rend le PPSPS opposable (pose ``date_validation``/
+    ``valide_par`` côté SERVEUR). Idempotent : revalider est refusé."""
+    if ppsps.date_validation:
+        raise TransitionInvalide(
+            f'PPSPS #{ppsps.pk} : déjà validé le {ppsps.date_validation}.')
+    ppsps.date_validation = timezone.localdate()
+    ppsps.valide_par = user
+    ppsps.save(update_fields=['date_validation', 'valide_par', 'updated_at'])
+    return ppsps
+
+
+def signer_ppsps(ppsps, *, sous_traitant, signataire_nom, ip_adresse='',
+                 user_agent=''):
+    """NTCON16 — enregistre la signature d'un sous-traitant sur le PPSPS
+    (e-sign typée loi 53-05 : nom dactylographié + IP/user-agent SERVEUR).
+
+    Refuse (``TransitionInvalide``) une seconde signature du même
+    sous-traitant sur le même PPSPS, et un sous-traitant d'une autre société.
+    """
+    from .models import PPSPSSignature
+
+    if getattr(sous_traitant, 'company_id', None) not in (
+            None, ppsps.company_id):
+        raise TransitionInvalide(
+            'sous_traitant : sous-traitant inconnu pour cette société.')
+    if PPSPSSignature.objects.filter(
+            ppsps=ppsps, sous_traitant=sous_traitant).exists():
+        raise TransitionInvalide(
+            f'PPSPS #{ppsps.pk} : ce sous-traitant a déjà signé.')
+    return PPSPSSignature.objects.create(
+        company=ppsps.company, ppsps=ppsps, sous_traitant=sous_traitant,
+        signataire_nom=signataire_nom, ip_adresse=ip_adresse,
+        user_agent=user_agent)
+
+
+def sous_traitant_a_signe_ppsps(chantier_id, sous_traitant_id):
+    """NTCON16 — le sous-traitant a-t-il signé un PPSPS VALIDÉ de ce chantier ?
+
+    Un PPSPS non encore validé (``date_validation`` vide) n'est pas opposable :
+    seule une signature sur un PPSPS validé compte.
+    """
+    from .models import PPSPSSignature
+
+    return PPSPSSignature.objects.filter(
+        ppsps__chantier_id=chantier_id,
+        ppsps__date_validation__isnull=False,
+        sous_traitant_id=sous_traitant_id,
+    ).exists()
+
+
+def chantier_a_un_ppsps(chantier_id):
+    """NTCON16 — ce chantier gère-t-il un PPSPS (au moins un VALIDÉ) ?
+
+    Le soft-guard ne s'applique QUE dans ce cas : un chantier sans PPSPS
+    validé n'a rien à faire signer — bloquer y rendrait l'ERP inutilisable
+    pour les chantiers hors périmètre PPSPS.
+    """
+    from .models import PPSPSChantier
+
+    return PPSPSChantier.objects.filter(
+        chantier_id=chantier_id, date_validation__isnull=False).exists()
+
+
+def verifier_ppsps_avant_demarrage(*, company, chantier_id, sous_traitant_id,
+                                   libelle_ordre=''):
+    """NTCON16 — soft-guard « PPSPS signé » avant le démarrage d'un ordre de
+    sous-traitance (FG305, ``installations.OrdreSousTraitance`` → ``en_cours``).
+
+    Motif (pattern ``qhse.services.exiger_document_unique``, QHSE22) :
+      * chantier sans PPSPS validé → rien à exiger, on laisse passer ;
+      * sous-traitant ayant signé → on laisse passer ;
+      * sinon, selon ``config_btp(company)['guard_ppsps_bloquant']`` :
+        ``True`` → ``PermissionDenied`` (403 côté API, message français),
+        ``False`` → simple AVERTISSEMENT journalisé (jamais bloquant).
+
+    Renvoie ``True`` si le démarrage est autorisé, ``False`` s'il n'est
+    qu'averti. Ne lève jamais pour une raison technique (chantier absent…).
+    """
+    from django.core.exceptions import PermissionDenied
+
+    if not chantier_id or not sous_traitant_id:
+        return True
+    if not chantier_a_un_ppsps(chantier_id):
+        return True
+    if sous_traitant_a_signe_ppsps(chantier_id, sous_traitant_id):
+        return True
+
+    message = (
+        f'PPSPS non signé : le sous-traitant de {libelle_ordre or "cet ordre"} '
+        "n'a pas signé le PPSPS validé du chantier — signature requise avant "
+        'le démarrage des travaux.')
+    if config_btp(company).get('guard_ppsps_bloquant', True):
+        raise PermissionDenied(message)
+    logger.warning('btp_chantier: %s (guard en mode avertissement)', message)
+    return False
+
+
 # ── NTCON14 — Rattachement des tâches existantes à un lot ──────────────────
 
 def taches_hors_societe(tache_ids, company):

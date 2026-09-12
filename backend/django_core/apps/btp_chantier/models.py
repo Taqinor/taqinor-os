@@ -881,3 +881,117 @@ class LotTache(TenantModel):
 
     def __str__(self):
         return f'Tâche {self.tache_id} → lot {self.lot_id}'
+
+
+# ── NTCON16 — PPSPS (plan de prévention) ↔ QHSE ─────────────────────────────
+
+class PPSPSChantier(TenantModel):
+    """Plan Particulier de Sécurité et de Protection de la Santé d'un chantier.
+
+    ``qhse.PermisTravail``/``EvaluationRisque`` couvrent déjà le niveau
+    chantier GÉNÉRIQUE : NTCON16 ajoute le document PPSPS lui-même, ses LOTS
+    couverts (NTCON14) et la SIGNATURE de chaque sous-traitant intervenant
+    (``PPSPSSignature``, e-sign typée loi 53-05 — même principe que
+    ``SignatureBtp``/``contrats.SignatureContrat``).
+
+    ``document_ged_id`` référence LÂCHEMENT le document GED du PPSPS (aucun FK
+    dur vers ``ged``), comme ``VisaDocument``/``DiffusionPlan``. ``qhse`` n'est
+    JAMAIS réécrit : le lien se fait par le chantier, en lecture seule.
+
+    Le PPSPS est « opposable » une fois ``date_validation`` posée : c'est ce
+    plan-là que les sous-traitants doivent signer avant de démarrer
+    (``services.sous_traitant_a_signe_ppsps``, soft-guard NTCON16).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_ppsps', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_ppsps', verbose_name='Chantier')
+    titre = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Titre')
+    document_ged_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du document GED du PPSPS')
+    date_validation = models.DateField(
+        null=True, blank=True, verbose_name='Validé le')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_ppsps_valides',
+        verbose_name='Validé par')
+    lots_couverts = models.ManyToManyField(
+        Lot, blank=True, related_name='ppsps',
+        verbose_name='Lots couverts')
+    # FK CHAÎNE vers le référentiel UNIFIÉ des sous-traitants (DC34) —
+    # la date de signature vit sur la table de liaison ``PPSPSSignature``.
+    sous_traitants_signataires = models.ManyToManyField(
+        'stock.Fournisseur', through='PPSPSSignature', blank=True,
+        related_name='btp_ppsps_signes',
+        verbose_name='Sous-traitants signataires')
+
+    class Meta:
+        verbose_name = 'PPSPS de chantier'
+        verbose_name_plural = 'PPSPS de chantier'
+        ordering = ['-date_validation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'chantier'],
+                         name='btp_ppsps_co_chantier'),
+        ]
+
+    def __str__(self):
+        return f'PPSPS #{self.pk} — chantier {self.chantier_id}'
+
+    @property
+    def est_valide(self):
+        return self.date_validation is not None
+
+
+class PPSPSSignature(TenantModel):
+    """NTCON16 — signature d'un sous-traitant sur le PPSPS d'un chantier.
+
+    Table de liaison du M2M ``PPSPSChantier.sous_traitants_signataires``, qui
+    porte la DATE de signature et la preuve e-sign (nom dactylographié + IP +
+    user-agent serveur — loi 53-05, même forme que ``SignatureBtp``). Un
+    sous-traitant ne signe qu'UNE fois un PPSPS donné (contrainte d'unicité).
+    """
+
+    class Methode(models.TextChoices):
+        TYPED = 'typed', 'Nom dactylographié'
+        DRAW = 'draw', 'Signature dessinée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_ppsps_signatures', verbose_name='Société')
+    ppsps = models.ForeignKey(
+        PPSPSChantier, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='signatures', verbose_name='PPSPS')
+    sous_traitant = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.CASCADE,
+        # on_delete: cascade — la signature n'a pas de sens sans son signataire.
+        related_name='btp_ppsps_signatures', verbose_name='Sous-traitant')
+    signataire_nom = models.CharField(
+        max_length=255, verbose_name='Nom du signataire')
+    methode = models.CharField(
+        max_length=20, choices=Methode.choices, default=Methode.TYPED,
+        verbose_name='Méthode de signature')
+    date_signature = models.DateTimeField(
+        auto_now_add=True, verbose_name='Signé le')
+    ip_adresse = models.CharField(max_length=45, blank=True, default='')
+    user_agent = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Signature de PPSPS'
+        verbose_name_plural = 'Signatures de PPSPS'
+        ordering = ['-date_signature', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ppsps', 'sous_traitant'],
+                name='btp_ppsps_signataire_uniq'),
+        ]
+
+    def __str__(self):
+        return f'PPSPS {self.ppsps_id} signé par {self.sous_traitant_id}'

@@ -18,14 +18,15 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier, Lot, RFI,
-    ReserveChantier, VisaDocument,
+    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier, Lot,
+    PPSPSChantier, PPSPSSignature, RFI, ReserveChantier, VisaDocument,
 )
 from .serializers import (
     AvenantChantierPublicSerializer, AvenantChantierSerializer,
     DecompteGeneralSerializer, DiffusionPlanSerializer,
-    JournalChantierSerializer, LotSerializer, ReserveChantierSerializer,
-    RFISerializer, SignatureBtpSerializer, VisaDocumentSerializer,
+    JournalChantierSerializer, LotSerializer, PPSPSChantierSerializer,
+    PPSPSSignatureSerializer, ReserveChantierSerializer, RFISerializer,
+    SignatureBtpSerializer, VisaDocumentSerializer,
 )
 
 
@@ -784,6 +785,73 @@ class LotViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
                 'id', 'libelle', 'statut', 'avancement_pct',
                 'date_debut_prevue', 'date_fin_prevue').order_by(
                     'ordre', 'id')))
+
+
+class PPSPSChantierViewSet(
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """PPSPS de chantier — NTCON16.
+
+    Filtres liste : ``?chantier=``. Actions ``valider/`` (rend le plan
+    opposable) et ``signer/`` (signature d'un sous-traitant, e-sign typée
+    loi 53-05 : ``{"sous_traitant": id, "signataire_nom": "…"}``).
+    """
+    queryset = PPSPSChantier.objects.select_related(
+        'chantier', 'valide_par').prefetch_related(
+            'lots_couverts', 'signatures__sous_traitant').all()
+    serializer_class = PPSPSChantierSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def valider(self, request, pk=None):
+        ppsps = self.get_object()
+        try:
+            services.valider_ppsps(ppsps, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        ppsps.refresh_from_db()
+        return Response(PPSPSChantierSerializer(ppsps).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def signer(self, request, pk=None):
+        """NTCON16 — signature d'un sous-traitant (loi 53-05)."""
+        ppsps = self.get_object()
+        signataire_nom = (request.data.get('signataire_nom') or '').strip()
+        if not signataire_nom:
+            return Response(
+                {'signataire_nom': 'signataire_nom est requis (loi 53-05).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # Modèle du sous-traitant résolu par la FK DÉJÀ déclarée — aucun
+        # import cross-app (même patron que ``_chantier_model``).
+        modele_st = PPSPSSignature._meta.get_field('sous_traitant').related_model
+        sous_traitant = modele_st.objects.filter(
+            pk=request.data.get('sous_traitant'),
+            company=request.user.company).first()
+        if sous_traitant is None:
+            return Response(
+                {'sous_traitant': 'Sous-traitant inconnu pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            signature = services.signer_ppsps(
+                ppsps, sous_traitant=sous_traitant,
+                signataire_nom=signataire_nom,
+                ip_adresse=_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''))
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(PPSPSSignatureSerializer(signature).data,
+                        status=status.HTTP_201_CREATED)
 
 
 class ChantierPenalitesParLotView(APIView):

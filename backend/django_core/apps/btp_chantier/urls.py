@@ -5,9 +5,9 @@ from .views import (
     AvenantChantierViewSet, ChantierDebourseVsFactureView,
     ChantierPenalitesParLotView, ChantierPlanningLotsView,
     DecompteGeneralViewSet, DiffusionPlanViewSet,
-    JournalChantierViewSet, LotViewSet, ReserveChantierViewSet, RFIViewSet,
-    VisaDocumentViewSet, avenant_public_approuver, avenant_public_detail,
-    diffusion_public_ouvrir,
+    JournalChantierViewSet, LotViewSet, PPSPSChantierViewSet,
+    ReserveChantierViewSet, RFIViewSet, VisaDocumentViewSet,
+    avenant_public_approuver, avenant_public_detail, diffusion_public_ouvrir,
 )
 
 router = DefaultRouter()
@@ -25,6 +25,7 @@ router.register(
 router.register(
     r'diffusions-plan', DiffusionPlanViewSet, basename='btp-diffusion')
 router.register(r'lots', LotViewSet, basename='btp-lot')
+router.register(r'ppsps', PPSPSChantierViewSet, basename='btp-ppsps')
 
 urlpatterns = [
     path(

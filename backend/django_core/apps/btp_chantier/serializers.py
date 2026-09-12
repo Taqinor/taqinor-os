@@ -7,7 +7,7 @@ from rest_framework import serializers
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
     AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier,
-    Lot, SignatureBtp, VisaDocument,
+    Lot, PPSPSChantier, PPSPSSignature, SignatureBtp, VisaDocument,
 )
 
 
@@ -339,4 +339,65 @@ class LotSerializer(serializers.ModelSerializer):
                     'Un lot confié à un sous-traitant ne peut pas être marqué '
                     '« exécuté en interne » — décochez la case.'),
             })
+        return attrs
+
+
+# ── NTCON16 — PPSPS de chantier + signatures sous-traitant ─────────────────
+
+class PPSPSSignatureSerializer(serializers.ModelSerializer):
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.nom', read_only=True, default='')
+
+    class Meta:
+        model = PPSPSSignature
+        fields = [
+            'id', 'sous_traitant', 'sous_traitant_nom', 'signataire_nom',
+            'methode', 'date_signature',
+        ]
+        read_only_fields = fields
+
+
+class PPSPSChantierSerializer(serializers.ModelSerializer):
+    signatures = PPSPSSignatureSerializer(many=True, read_only=True)
+    est_valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PPSPSChantier
+        fields = [
+            'id', 'chantier', 'titre', 'document_ged_id', 'date_validation',
+            'valide_par', 'lots_couverts', 'signatures', 'est_valide',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'date_validation', 'valide_par', 'signatures', 'est_valide',
+            'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+    def validate_lots_couverts(self, value):
+        """Les lots couverts appartiennent à la société de l'utilisateur —
+        l'erreur NOMME le champ fautif (``lots_couverts``)."""
+        request = self.context.get('request')
+        company_id = getattr(
+            getattr(request, 'user', None), 'company_id', None)
+        for lot in value or []:
+            if company_id and lot.company_id != company_id:
+                raise serializers.ValidationError('Lot inconnu.')
+        return value
+
+    def validate(self, attrs):
+        chantier = attrs.get('chantier') or getattr(
+            self.instance, 'chantier', None)
+        lots = attrs.get('lots_couverts')
+        if chantier is not None and lots:
+            etrangers = [
+                lot.nom for lot in lots if lot.chantier_id != chantier.pk]
+            if etrangers:
+                raise serializers.ValidationError({
+                    'lots_couverts': (
+                        'Ces lots ne sont pas ceux de ce chantier : '
+                        f'{", ".join(etrangers)}.'),
+                })
         return attrs
