@@ -204,6 +204,29 @@ def bon_commande_cree_receiver(sender, instance, company, **kwargs):
             'notify BON_COMMANDE_CREE failed (bc %s)', instance.pk)
 
 
+# ── Étape BPM activée → APPROVAL_REQUESTED (NTWFL5, comble YEVNT8 pour FG366) ─
+# S'abonne à ``core.events.workflow_etape_activee`` (émis par
+# ``core.workflow.avancer`` quand une ``WorkflowStepInstance`` devient la
+# nouvelle étape active). ``core`` n'a aucune notion d'assignation par
+# utilisateur (seulement ``step_def.role_requis``, un libellé libre sans
+# lien vers un compte réel) : on notifie les MANAGERS de la société, même
+# repli que ``automation_approval_post_save`` ci-dessus.
+def workflow_etape_activee_receiver(sender, step, company, **kwargs):
+    try:
+        from .sweeps import _managers
+        title = "Approbation demandée"
+        body = (f'L\'étape « {step.step_def.nom} » attend une décision '
+                '(processus BPM).')
+        link = '/approbations?source=workflow'
+        for approver in _managers(company):
+            notify(
+                approver, EventType.APPROVAL_REQUESTED, title, body=body,
+                link=link, company=company, reason='manager')
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify APPROVAL_REQUESTED failed (workflow step %s)', step.pk)
+
+
 # ── Ticket SAV résolu → SAV_TICKET_RESOLU (ARC37) ───────────────────────────
 # S'abonne à ``core.events.ticket_resolu`` (nouveau signal, sav devient
 # émetteur du bus). Notifie le technicien assigné, repli managers.
@@ -594,6 +617,7 @@ def connect():
     from core.events import (
         bon_commande_cree, contrat_signe, devis_expired, equipement_remplace,
         facture_payee, projet_status_change, ticket_resolu,
+        workflow_etape_activee,
     )
 
     pre_save.connect(lead_pre_save, sender=Lead,
@@ -611,6 +635,10 @@ def connect():
                           dispatch_uid='notifications_facture_payee')
     bon_commande_cree.connect(bon_commande_cree_receiver,
                               dispatch_uid='notifications_bon_commande_cree')
+    # NTWFL5 — comble YEVNT8 pour FG366 (moteur BPM core.workflow).
+    workflow_etape_activee.connect(
+        workflow_etape_activee_receiver,
+        dispatch_uid='notifications_workflow_etape_activee')
     contrat_signe.connect(contrat_signe_receiver,
                           dispatch_uid='notifications_contrat_signe')
     ticket_resolu.connect(ticket_resolu_receiver,

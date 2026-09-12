@@ -1182,6 +1182,48 @@ def sweep_approval_reminders(company, *, today=None):
 
 
 # =============================================================================
+# NTWFL5 — Relance à mi-SLA des étapes BPM (core.WorkflowStepInstance, FG366).
+# Distinct de YEVNT9 ci-dessus (seuils en JOURS depuis la création) : ici le
+# rappel se calcule au POURCENTAGE du SLA propre à l'étape (started_le de
+# l'instance -> sla_echeance de l'étape), avec son propre marqueur anti-
+# double-envoi (``dernier_rappel_le``, jamais ``ApprovalReminderState``).
+# =============================================================================
+
+def sweep_workflow_step_reminders(company, *, now=None):
+    """Relance UNE FOIS les étapes BPM en attente ayant dépassé 50% de leur
+    délai SLA (NTWFL5). Idempotent (``core.workflow.marquer_rappel_envoye``
+    empêche tout second rappel) ; best-effort par étape. Renvoie le nombre
+    de rappels effectivement émis."""
+    from core import workflow as core_workflow
+    moment = now or timezone.now()
+    count = 0
+    try:
+        etapes = core_workflow.etapes_a_mi_sla(company, moment)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('sweep_workflow_step_reminders: sélecteur échoué : %s', exc)
+        return 0
+
+    for step in etapes:
+        try:
+            from .sweeps import _managers
+            title = "Relance d'approbation"
+            body = (f'L\'étape « {step.step_def.nom} » attend toujours une '
+                    'décision (plus de la moitié du délai SLA écoulé).')
+            link = '/approbations?source=workflow'
+            for approver in _managers(company):
+                notify(
+                    approver, EventType.APPROVAL_REMINDER, title, body=body,
+                    link=link, company=company, reason='manager')
+            core_workflow.marquer_rappel_envoye(step, now=moment)
+            count += 1
+        except Exception:  # pragma: no cover - défensif
+            logger.warning(
+                'sweep_workflow_step_reminders: étape %s échouée',
+                step.pk, exc_info=True)
+    return count
+
+
+# =============================================================================
 # VX210(b) — snooze GÉNÉRIQUE d'un item d'approbation (SnoozedItem).
 # Écriture EXCLUSIVEMENT via ces deux fonctions — jamais un import direct de
 # `SnoozedItem` par un appelant cross-app (ex. `apps.records.views`).

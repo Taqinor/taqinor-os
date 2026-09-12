@@ -77,6 +77,112 @@ def get_company_object(model_or_queryset, pk, user, extra_scope=None,
 EMAIL_SIGNATURE_CODE = 'signature'
 
 
+# ── NTWFL1 — Matrice d'approbation d'entreprise unifiée ─────────────────────
+
+def matrices_approbation(company, type_objet=None):
+    """Lignes ACTIVES de ``MatriceApprobation`` d'une société (QuerySet).
+
+    Lecture seule, scopée société. ``type_objet`` filtre optionnellement (les
+    appelants connaissent toujours le type qu'ils résolvent)."""
+    from core.models import MatriceApprobation
+    qs = MatriceApprobation.objects.filter(company=company, actif=True)
+    if type_objet is not None:
+        qs = qs.filter(type_objet=type_objet)
+    return qs.order_by('type_objet', 'departement', 'id')
+
+
+def resoudre_matrice(company, type_objet, montant=None, departement=None):
+    """Résout la ligne de ``MatriceApprobation`` la plus SPÉCIFIQUE (NTWFL1).
+
+    Parcourt les lignes actives de ``company`` pour ``type_objet`` qui
+    couvrent (``montant``, ``departement``) via ``MatriceApprobation.couvre``
+    et renvoie la plus spécifique : la règle la plus spécifique gagne dans
+    l'ordre — département+montant > département seul > montant seul > défaut.
+    Renvoie ``None`` si aucune ligne active ne s'applique (l'appelant retombe
+    alors sur son comportement legacy — AUCUNE donnée existante perdue).
+    """
+    if company is None or not type_objet:
+        return None
+    candidats = [
+        m for m in matrices_approbation(company, type_objet=type_objet)
+        if m.couvre(montant, departement)
+    ]
+    if not candidats:
+        return None
+
+    def _cle(matrice):
+        departement_specifique = 1 if matrice.departement else 0
+        largeur = matrice.largeur_intervalle()
+        intervalle_borne = 1 if largeur is not None else 0
+        largeur_tri = -largeur if largeur is not None else None
+        return (
+            departement_specifique,
+            intervalle_borne,
+            largeur_tri if largeur_tri is not None else 0,
+            matrice.id,
+        )
+
+    candidats.sort(key=_cle, reverse=True)
+    return candidats[0]
+
+
+# ── NTWFL3 — délégation de vacances (XKB3) appliquée aux étapes BPM ─────────
+
+def delegants_actifs_pour(suppleant, company, at=None):
+    """NTWFL3 — adaptateur mince : IDs des délégants pour lesquels
+    ``suppleant`` détient une délégation ACTIVE, pour affichage/décision
+    « au nom de » des étapes ``core.WorkflowStepInstance``.
+
+    ``core`` reste fondation : délègue à ``core.workflow.delegants_actifs_pour``
+    (registre branché par ``apps.automation``, jamais un import direct de
+    cette app depuis ``core``). Liste vide si aucune délégation active."""
+    from core.workflow import delegants_actifs_pour as _resoudre
+    return _resoudre(suppleant, company, at=at)
+
+
+# ── NTWFL13 — bibliothèque de champs de formulaire réutilisables ────────────
+
+def resoudre_champs_formulaire(schema, company):
+    """NTWFL13 — développe les entrées ``{"ref": <id>}`` d'un ``schema`` de
+    ``FormulaireDefinition`` en fusionnant les attributs LUS EN DIRECT sur
+    ``FormulaireChampReutilisable`` (``nom``/``type``/``options``).
+
+    C'est ce qui garantit « un champ réutilisable modifié met à jour son
+    libellé PARTOUT où il est référencé, sans dupliquer sa définition » —
+    aucune copie n'est jamais stockée dans ``schema``, seule la référence
+    (``ref``) l'est ; la résolution se fait à CHAQUE lecture. Une entrée
+    sans ``ref`` (champ inline classique) est renvoyée telle quelle. Une
+    ``ref`` qui ne résout à rien (champ réutilisable supprimé, hors société)
+    est renvoyée telle quelle aussi — jamais d'exception, jamais un schéma
+    tronqué. Les attributs PROPRES à l'entrée (``requis``, ``repetable``)
+    priment toujours sur ceux du champ référencé."""
+    from core.models import FormulaireChampReutilisable
+
+    if not schema:
+        return []
+    resultat = []
+    for entree in schema:
+        if not isinstance(entree, dict) or not entree.get('ref'):
+            resultat.append(entree)
+            continue
+        champ = FormulaireChampReutilisable.objects.filter(
+            pk=entree['ref'], company=company).first()
+        if champ is None:
+            resultat.append(entree)
+            continue
+        # nom/type/options sont INTRINSÈQUES au champ source — ils suivent
+        # TOUJOURS sa dernière valeur (jamais figés dans le schéma). Seuls
+        # les attributs D'USAGE (requis, repetable...) restent propres à
+        # CETTE entrée (un même champ peut être requis dans un formulaire,
+        # optionnel dans un autre).
+        fusion = dict(entree)
+        fusion['nom'] = champ.nom
+        fusion['type'] = champ.type
+        fusion['options'] = champ.options
+        resultat.append(fusion)
+    return resultat
+
+
 def resolve_email_signature(company, nom_societe='', **context) -> str:
     """Signature à apposer au bas d'un email transactionnel d'une société.
 

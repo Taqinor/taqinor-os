@@ -600,6 +600,19 @@ def _sweep_approval_reminders(company):
         return 0
 
 
+def _sweep_workflow_step_reminders(company):
+    """NTWFL5 — relance à mi-SLA des étapes BPM (core.WorkflowStepInstance),
+    distinct de YEVNT9 ci-dessus (seuils en jours depuis la création)."""
+    try:
+        from .services import sweep_workflow_step_reminders
+        return sweep_workflow_step_reminders(company)
+    except Exception:  # pragma: no cover
+        logger.warning(
+            'sweeps: workflow_step_reminders société %s échouée',
+            getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── QX31be — escalade speed-to-lead des leads chauds non contactés ───────────
 # Seuils défensifs (surchargables via settings).
 HOT_LEAD_SCORE_THRESHOLD = 70   # score ≥ ce seuil = lead « chaud »
@@ -764,8 +777,9 @@ def sweep_daily():
     tickets SAV en rupture de délai, chantiers à venir, factures en retard
     (YEVNT3), annonces programmées à publier (XKB5), relances de lecture
     obligatoire en retard (XKB6), relances/escalades d'approbations en
-    attente (YEVNT9), demandes d'achat soumises non décidées (VX213),
-    activités SAV à échéance et lots bientôt périmés (VX209(d)).
+    attente (YEVNT9), relances à mi-SLA des étapes BPM (NTWFL5), demandes
+    d'achat soumises non décidées (VX213), activités SAV à échéance et lots
+    bientôt périmés (VX209(d)).
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
@@ -778,6 +792,7 @@ def sweep_daily():
             total += _sweep_annonces_due(company)
             total += _sweep_annonce_reminders(company)
             total += _sweep_approval_reminders(company)
+            total += _sweep_workflow_step_reminders(company)
             total += _sweep_da_soumise_stale(company)
             total += _sweep_sav_activite_due(company)
             total += _sweep_stock_expiration_soon(company)

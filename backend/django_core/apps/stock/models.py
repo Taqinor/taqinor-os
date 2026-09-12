@@ -2729,3 +2729,34 @@ from apps.achats.models import (  # noqa: E402,F401
     ReceptionFournisseur,
     RetourFournisseur,
 )
+
+
+# ── NTWFL2 — pont matrice d'approbation (NTWFL1) → moteur BPM (core.workflow) ─
+# Câblage additif du bon de commande fournisseur sur la matrice d'entreprise
+# unifiée : SANS aucune ``core.MatriceApprobation`` (type_objet
+# ``'purchase_order'``) configurée pour la société, cette fonction ne crée
+# RIEN et renvoie ``None`` — comportement strictement inchangé (l'appelant
+# retombe alors sur son propre gate historique, ex. FG312/YPROC4). Avec une
+# matrice couvrante, un ``WorkflowInstance`` traçable démarre/est réutilisé.
+# Générique par duck-typing (``bon_commande.total_achat`` /
+# ``bon_commande.company``) : aucun import cross-app supplémentaire au-delà
+# de ``core.workflow`` (couche de fondation).
+def demarrer_approbation_bcf_depuis_matrice(
+        bon_commande, *, departement='achats', user=None, now=None):
+    """Démarre (ou renvoie l'instance ``en_cours`` existante) le workflow
+    d'approbation matriciel NTWFL1/NTWFL2 pour un ``BonCommandeFournisseur``.
+
+    ``departement`` par défaut ``'achats'`` — un bon de commande fournisseur
+    appartient par nature au département Achats, aligné sur l'exemple
+    canonique de la matrice (« Bon de commande × Achats × >50 000 MAD »).
+    Renvoie ``None`` si aucune matrice ne couvre le montant du bon de
+    commande (aucun effet de bord)."""
+    from core import workflow as core_workflow
+
+    instance = core_workflow.instance_en_cours_pour(
+        bon_commande, bon_commande.company)
+    if instance is not None:
+        return instance
+    return core_workflow.demarrer_depuis_matrice(
+        bon_commande, 'purchase_order', bon_commande.total_achat,
+        bon_commande.company, departement=departement, user=user, now=now)

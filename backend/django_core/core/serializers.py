@@ -54,6 +54,9 @@ from .models import (
     Dashboard,
     DataSubjectRequest,
     DeletionRecord,
+    FormulaireChampReutilisable,
+    FormulaireDefinition,
+    MatriceApprobation,
     ModuleToggle,
     OutboxEvent,
     PaymentTransaction,
@@ -255,6 +258,8 @@ class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'definition', 'ordre', 'nom', 'type_approbation',
             'sla_heures', 'role_requis', 'escalade_vers',
+            'calendrier_ouvre', 'condition_transition',
+            'etape_alternative_si_echec', 'groupe_parallele', 'formulaire',
         ]
         read_only_fields = ['id']
         extra_kwargs = {'definition': {'required': False}}
@@ -309,6 +314,25 @@ class WorkflowDefinitionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'code', 'created_at', 'updated_at']
 
+    def validate(self, attrs):
+        """NTWFL9 — au moins une étape, pas de boucle infinie via
+        ``etape_alternative_si_echec``, chaque étape manuelle a un rôle
+        requis. Validé SEULEMENT quand ``steps`` est RÉELLEMENT fourni
+        (remplacement des étapes) — une mise à jour qui n'y touche pas (ex.
+        renommer la définition) ne revalide pas des étapes inchangées, cf.
+        ``_sync_steps``/``WorkflowsScreen.jsx`` (PACT124). Une CRÉATION sans
+        ``steps`` du tout est traitée comme « 0 étape » (toujours rejetée)."""
+        from core import workflow as core_workflow
+        if 'steps' in attrs:
+            erreurs = core_workflow.valider_definition_steps(attrs['steps'])
+            if erreurs:
+                raise serializers.ValidationError({'steps': erreurs})
+        elif self.instance is None:
+            raise serializers.ValidationError({'steps': [
+                'Une définition de workflow doit comporter au moins une '
+                'étape.']})
+        return attrs
+
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
         validated_data['code'] = self._derive_code(
@@ -349,6 +373,114 @@ class WorkflowDefinitionSerializer(serializers.ModelSerializer):
             code = ('%s_%d' % (base, n))[:64]
             n += 1
         return code
+
+
+class MatriceApprobationSerializer(serializers.ModelSerializer):
+    """NTWFL1 — matrice d'approbation d'entreprise unifiée.
+
+    ``company`` imposée côté serveur (``TenantMixin``). ``chaine_paliers`` est
+    validée en forme (liste de dicts avec ``palier``/``role_requis``) — le
+    contenu métier (rôle réellement habilité) reste déclaratif, sans contrôle
+    cross-app depuis ``core``."""
+
+    class Meta:
+        model = MatriceApprobation
+        fields = [
+            'id', 'type_objet', 'departement', 'montant_min', 'montant_max',
+            'chaine_paliers', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_type_objet(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le champ « Type d\'objet » est requis.')
+        return value
+
+    def validate_chaine_paliers(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Le champ « Chaîne de paliers » doit être une liste.')
+        for i, palier in enumerate(value, start=1):
+            if not isinstance(palier, dict):
+                raise serializers.ValidationError(
+                    f'Palier {i} : doit être un objet '
+                    '{palier, nombre_approbateurs_requis, role_requis}.')
+        return value
+
+    def validate(self, attrs):
+        montant_min = attrs.get(
+            'montant_min',
+            getattr(self.instance, 'montant_min', None))
+        montant_max = attrs.get(
+            'montant_max',
+            getattr(self.instance, 'montant_max', None))
+        if (montant_min is not None and montant_max is not None
+                and montant_min > montant_max):
+            raise serializers.ValidationError({
+                'montant_min': (
+                    'Le montant minimum ne peut pas dépasser le montant '
+                    'maximum.'),
+            })
+        return attrs
+
+
+class FormulaireDefinitionSerializer(serializers.ModelSerializer):
+    """NTWFL12 — formulaire dynamique rattachable à une étape de workflow.
+
+    ``company`` imposée côté serveur (``TenantMixin``). ``schema``/
+    ``champs_conditionnels`` restent des JSON opaques pour ``core`` (le
+    frontend — ``FormBuilder.jsx``/``DynamicForm.jsx`` — porte la
+    validation de FORME détaillée ; ici, une vérification minimale de
+    structure suffit à éviter un schéma manifestement cassé)."""
+
+    class Meta:
+        model = FormulaireDefinition
+        fields = [
+            'id', 'code', 'nom', 'schema', 'champs_conditionnels', 'actif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_schema(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Le champ « Schéma » doit être une liste de champs.')
+        for i, champ in enumerate(value, start=1):
+            # NTWFL13 — une entrée « ref » (champ réutilisable, bibliothèque
+            # partagée) n'a pas son propre « nom » : il est résolu EN DIRECT
+            # depuis FormulaireChampReutilisable (voir
+            # core.selectors.resoudre_champs_formulaire), jamais dupliqué ici.
+            if not isinstance(champ, dict) or not (champ.get('nom') or champ.get('ref')):
+                raise serializers.ValidationError(
+                    f"Champ {i} : doit être un objet avec au moins « nom » "
+                    "ou « ref ».")
+        return value
+
+    def to_representation(self, instance):
+        """NTWFL13 — développe les entrées ``{"ref": id}`` du schéma stocké
+        en lisant EN DIRECT ``FormulaireChampReutilisable`` (jamais une copie
+        figée) : modifier un champ réutilisable met à jour son libellé
+        PARTOUT où il est référencé, sans réécrire aucun ``FormulaireDefinition``."""
+        data = super().to_representation(instance)
+        from core.selectors import resoudre_champs_formulaire
+        data['schema'] = resoudre_champs_formulaire(
+            instance.schema, instance.company)
+        return data
+
+
+class FormulaireChampReutilisableSerializer(serializers.ModelSerializer):
+    """NTWFL13 — champ de bibliothèque réutilisable entre formulaires."""
+
+    class Meta:
+        model = FormulaireChampReutilisable
+        fields = ['id', 'nom', 'type', 'options', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class DashboardSerializer(serializers.ModelSerializer):
