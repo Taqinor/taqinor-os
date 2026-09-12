@@ -67,10 +67,12 @@ export const DropdownMenuCheckboxItem = forwardRef(function DropdownMenuCheckbox
     <DropdownMenuPrimitive.CheckboxItem
       ref={ref}
       checked={checked}
-      className={cn(menuItem, 'relative pl-7', className)}
+      // NTI18N2 — `ps-7`/`start-2` (inline-start) plutôt que `pl-7`/`left-2` :
+      // l'indicateur (coche/puce) doit migrer au bord DROIT en RTL.
+      className={cn(menuItem, 'relative ps-7', className)}
       {...props}
     >
-      <span className="absolute left-2 flex size-3.5 items-center justify-center">
+      <span className="absolute start-2 flex size-3.5 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
           <Check className="size-3.5" />
         </DropdownMenuPrimitive.ItemIndicator>
@@ -87,10 +89,12 @@ export const DropdownMenuRadioItem = forwardRef(function DropdownMenuRadioItem(
   return (
     <DropdownMenuPrimitive.RadioItem
       ref={ref}
-      className={cn(menuItem, 'relative pl-7', className)}
+      // NTI18N2 — `ps-7`/`start-2` (inline-start) plutôt que `pl-7`/`left-2` :
+      // l'indicateur (coche/puce) doit migrer au bord DROIT en RTL.
+      className={cn(menuItem, 'relative ps-7', className)}
       {...props}
     >
-      <span className="absolute left-2 flex size-3.5 items-center justify-center">
+      <span className="absolute start-2 flex size-3.5 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
           <Circle className="size-2 fill-current" />
         </DropdownMenuPrimitive.ItemIndicator>
@@ -111,7 +115,10 @@ export const DropdownMenuSubTrigger = forwardRef(function DropdownMenuSubTrigger
       {...props}
     >
       {children}
-      <ChevronRight className="ml-auto size-4 shrink-0" />
+      {/* NTI18N2 — `ms-auto` (inline-start côté texte) + miroir conditionnel
+          `rtl:` : le sous-menu s'ouvre vers la GAUCHE en RTL, le chevron doit
+          pointer dans ce sens plutôt que rester figé vers la droite. */}
+      <ChevronRight className="ms-auto size-4 shrink-0 rtl:-scale-x-100" />
     </DropdownMenuPrimitive.SubTrigger>
   )
 })
@@ -137,7 +144,7 @@ export const DropdownMenuShortcut = forwardRef(function DropdownMenuShortcut({ c
   return (
     <span
       ref={ref}
-      className={cn('ml-auto pl-3 text-xs tracking-widest text-muted-foreground', className)}
+      className={cn('ms-auto ps-3 text-xs tracking-widest text-muted-foreground', className)}
       {...props}
     />
   )
