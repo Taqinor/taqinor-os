@@ -289,3 +289,90 @@ class GoldenRecord(TenantModel):
     def nb_sources(self):
         """Nombre de fiches ayant contribué à cette consolidation."""
         return len(self.source_ids or [])
+
+
+# ── NTDATA23 — SURVIVORSHIP : qui gagne, champ par champ ───────────────────
+#
+# Quand deux fiches se contredisent (« Atlas Energie » / « ATLAS ENERGIE
+# SARL »), consolider EXIGE une règle de décision. Sans elle, l'ordre de
+# lecture déciderait en silence — et le golden record dirait un jour une chose,
+# le lendemain une autre, sans que personne ne puisse dire pourquoi.
+#
+# Une règle par (entité, champ). Aucune règle ⇒ le DÉFAUT déclaré
+# (``dataquality.services.STRATEGIE_DEFAUT``) s'applique, et le golden record
+# NOMME la stratégie qui a réellement tranché chaque champ.
+
+class RegleSurvivorship(TenantModel):
+    """La stratégie qui désigne la valeur GAGNANTE d'un champ consolidé.
+
+    Les quatre stratégies, et ce qu'elles supposent :
+
+    * ``plus_recent`` — la valeur de la fiche modifiée le plus récemment.
+      EXIGE un signal de fraîcheur dans les lignes lues. Quand l'entité n'en
+      porte aucun (``crm.Client`` n'a pas de date de modification), la
+      consolidation retombe sur le DÉFAUT et l'inscrit dans le golden record :
+      jamais une fraîcheur devinée ;
+    * ``plus_complet`` — la valeur de la fiche la PLUS renseignée (celle qui
+      porte le plus de champs non vides). Raisonnement : une saisie soignée
+      l'est en général sur toute la fiche ;
+    * ``source_prioritaire`` — la première valeur non vide dans l'ordre de
+      lecture (la fiche d'ORIGINE fait foi), ou celle de la fiche désignée par
+      ``parametres = {"source_id": <id>}`` ;
+    * ``plus_frequent`` — la valeur qui revient le plus souvent parmi les
+      fiches ; à égalité, celle de la fiche la plus ancienne.
+
+    Une valeur VIDE ne gagne JAMAIS contre une valeur renseignée : consolider
+    ne doit pas EFFACER une information que l'une des fiches portait.
+    """
+
+    class Strategie(models.TextChoices):
+        PLUS_RECENT = 'plus_recent', 'La fiche la plus récemment modifiée'
+        PLUS_COMPLET = 'plus_complet', 'La fiche la plus renseignée'
+        SOURCE_PRIORITAIRE = 'source_prioritaire', 'La fiche prioritaire'
+        PLUS_FREQUENT = 'plus_frequent', 'La valeur la plus fréquente'
+
+    entite = models.CharField(
+        max_length=20, choices=GoldenRecord.Entite.choices,
+        verbose_name='Entité')
+    champ = models.CharField(max_length=120, verbose_name='Champ')
+    strategie = models.CharField(
+        max_length=25, choices=Strategie.choices,
+        default=Strategie.SOURCE_PRIORITAIRE, verbose_name='Stratégie')
+    parametres = models.JSONField(
+        default=dict, blank=True, verbose_name='Paramètres',
+        help_text='{"source_id": <id>} pour « fiche prioritaire ».')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+
+    class Meta:
+        verbose_name = 'Règle de survivorship'
+        verbose_name_plural = 'Règles de survivorship'
+        ordering = ['entite', 'champ', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'entite', 'champ'],
+                name='uniq_survivorship_co_entite_champ'),
+        ]
+
+    def __str__(self):
+        return '%s.%s → %s' % (self.entite, self.champ,
+                               self.get_strategie_display())
+
+    def clean(self):
+        """Refuse un paramétrage incohérent, EN NOMMANT le champ fautif."""
+        erreurs = {}
+        if not (self.champ or '').strip():
+            erreurs['champ'] = 'Le champ à consolider est obligatoire.'
+        parametres = (self.parametres
+                      if isinstance(self.parametres, dict) else None)
+        if parametres is None:
+            erreurs['parametres'] = (
+                'Les paramètres doivent être un objet JSON.')
+        elif self.strategie == self.Strategie.SOURCE_PRIORITAIRE \
+                and parametres.get('source_id') is not None:
+            try:
+                int(parametres['source_id'])
+            except (TypeError, ValueError):
+                erreurs['parametres'] = (
+                    '« source_id » doit être un identifiant de fiche.')
+        if erreurs:
+            raise ValidationError(erreurs)
