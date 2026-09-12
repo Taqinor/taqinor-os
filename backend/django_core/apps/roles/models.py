@@ -429,6 +429,25 @@ ALL_PERMISSIONS = [
     'assurances_gerer',
     'douane_responsable',
     'transport_responsable',
+    # NTCON26 — permissions FINES par geste engageant du vertical BTP/EPC.
+    # ``btp_gerer`` ouvre TOUT en écriture : lever une réserve, approuver un
+    # visa, approuver un avenant qui engage le budget et finaliser un décompte
+    # général définitif relevaient du même code, alors que sur un chantier réel
+    # ces gestes appartiennent à des personnes différentes (conducteur de
+    # travaux / MOE / direction). Ces six codes sont exigés EN PLUS de
+    # ``btp_gerer`` sur l'action correspondante (cf.
+    # ``apps/btp_chantier/permissions.py``) — le repli légacy des comptes SANS
+    # rôle fin reste intact, aucun accès existant n'est retiré.
+    # Les clés sont écrites en pointé dans le plan (``btp.reserve.creer``…) ;
+    # le registre du dépôt est en souligné sans exception, on garde la
+    # convention du dépôt (correspondance 1:1 documentée dans
+    # ``apps/btp_chantier/permissions.py``).
+    'btp_reserve_creer',
+    'btp_reserve_lever',
+    'btp_rfi_repondre',
+    'btp_visa_approuver',
+    'btp_avenant_approuver',
+    'btp_dgd_finaliser',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -485,8 +504,10 @@ PERMISSION_MODULE = {
     **{c: 'veille_ao' for c in ALL_PERMISSIONS if c.startswith('veille_ao_')},
     **{c: 'cpq' for c in ALL_PERMISSIONS if c.startswith('cpq_')},
     **{c: 'scm' for c in ALL_PERMISSIONS if c.startswith('scm_')},
-    'btp_voir': 'btp_chantier',
-    'btp_gerer': 'btp_chantier',
+    # NTCON26 — tous les codes `btp_*` appartiennent au module `btp_chantier`
+    # (le préfixe diffère de la clé de module : d'où cette dérivation explicite
+    # plutôt qu'une entrée par code).
+    **{c: 'btp_chantier' for c in ALL_PERMISSIONS if c.startswith('btp_')},
     **{c: 'assurances' for c in ALL_PERMISSIONS if c.startswith('assurances_')},
     'douane_responsable': 'douane',
     'transport_responsable': 'transport',
@@ -614,6 +635,10 @@ RESPONSABLE_PERMISSIONS = [
     # BTP/assurances et les deux réglages douane/transport, dont les viewsets
     # annoncent explicitement ce palier.
     'btp_voir', 'btp_gerer',
+    # NTCON26 — le Responsable porte les six gestes engageants du chantier
+    # (c'est le palier que les viewsets BTP annoncent depuis NTCON1).
+    'btp_reserve_creer', 'btp_reserve_lever', 'btp_rfi_repondre',
+    'btp_visa_approuver', 'btp_avenant_approuver', 'btp_dgd_finaliser',
     'assurances_voir', 'assurances_gerer',
     'douane_responsable', 'transport_responsable',
 ]
@@ -763,6 +788,12 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # écriture (palier « responsable » du module.config BTP). Les assurances
     # restent hors de sa portée (gouvernance).
     'btp_voir', 'btp_gerer',
+    # NTCON26 — séparation des tâches : le conducteur de travaux pose et lève
+    # les réserves et répond aux RFI (son métier quotidien) ; les trois gestes
+    # ENGAGEANTS (approuver un visa, approuver un avenant qui touche le budget,
+    # finaliser un décompte général définitif) montent d'un cran et restent au
+    # palier Responsable/direction — c'est précisément l'objet de NTCON26.
+    'btp_reserve_creer', 'btp_reserve_lever', 'btp_rfi_repondre',
     SCOPE_SUBTREE,
 ]
 

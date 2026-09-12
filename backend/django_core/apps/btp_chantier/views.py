@@ -17,6 +17,10 @@ from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
+from .permissions import (
+    PeutApprouverAvenant, PeutApprouverVisa, PeutCreerReserve,
+    PeutFinaliserDgd, PeutLeverReserve, PeutRepondreRfi,
+)
 from .models import (
     AbonnementRapportPhoto, AvenantChantier, DecompteGeneral, DiffusionPlan,
     JournalChantier, Lot, ParametresBtpChantier, PPSPSChantier, PPSPSSignature,
@@ -104,6 +108,18 @@ class ReserveChantierViewSet(
     read_permission = 'btp_voir'
     write_permission = 'btp_gerer'
 
+    def get_permissions(self):
+        # NTCON26 — la CRÉATION d'une réserve exige le code fin en plus de la
+        # garde d'écriture ``btp_gerer``. ``create`` n'est pas une ``@action``
+        # (pas de ``permission_classes=`` possible sur le décorateur) : c'est
+        # le seul endroit où poser la garde. Toute autre action retombe sur
+        # ``super()`` — patron « REPLI DRF » exigé par
+        # ``scripts/check_action_permission_override.py`` : la déclaration des
+        # ``@action`` (``lever``/``contester``) reste honorée.
+        if self.action == 'create':
+            return [ScopedPermission(), PeutCreerReserve()]
+        return super().get_permissions()
+
     def get_queryset(self):
         qs = super().get_queryset()
         p = self.request.query_params
@@ -165,7 +181,7 @@ class ReserveChantierViewSet(
             AttachmentSerializer(_photos_pour(reserve), many=True).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutLeverReserve])
     def lever(self, request, pk=None):
         """NTCON2 — lève la réserve. Requiert une photo « après » existante
         (400 sinon) et un ``signataire_nom`` (loi 53-05, 400 sinon)."""
@@ -196,7 +212,7 @@ class ReserveChantierViewSet(
         })
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutLeverReserve])
     def contester(self, request, pk=None):
         """NTCON2 — réouvre une réserve levée (statut → contestee + motif)."""
         reserve = self.get_object()
@@ -251,7 +267,7 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
         serializer.instance = rfi
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutRepondreRfi])
     def repondre(self, request, pk=None):
         rfi = self.get_object()
         texte = (request.data.get('texte') or '').strip()
@@ -268,7 +284,7 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
         return Response(RFISerializer(rfi).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutRepondreRfi])
     def clore(self, request, pk=None):
         rfi = self.get_object()
         try:
@@ -339,7 +355,7 @@ class VisaDocumentViewSet(
         return Response(VisaDocumentSerializer(visa).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverVisa])
     def approuver(self, request, pk=None):
         visa = self.get_object()
         avec_observations = bool(request.data.get('avec_observations'))
@@ -356,7 +372,7 @@ class VisaDocumentViewSet(
         return Response(VisaDocumentSerializer(visa).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverVisa])
     def refuser(self, request, pk=None):
         visa = self.get_object()
         observations = (request.data.get('observations') or '').strip()
@@ -512,7 +528,7 @@ class AvenantChantierViewSet(
         })
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverAvenant])
     def approuver(self, request, pk=None):
         """Décision INTERNE (sans lien public) — même service que NTCON8."""
         avenant = self.get_object()
@@ -525,7 +541,7 @@ class AvenantChantierViewSet(
         return Response(AvenantChantierSerializer(avenant).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverAvenant])
     def refuser(self, request, pk=None):
         avenant = self.get_object()
         motif = (request.data.get('motif') or '').strip()
@@ -678,7 +694,7 @@ class DecompteGeneralViewSet(
         return Response(DecompteGeneralSerializer(dgd).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutFinaliserDgd])
     def finaliser(self, request, pk=None):
         dgd = self.get_object()
         try:
