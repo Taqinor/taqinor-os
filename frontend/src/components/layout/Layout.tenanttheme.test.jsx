@@ -19,7 +19,12 @@ vi.mock('react-router-dom', async (orig) => ({
 
 const getCourant = vi.fn()
 vi.mock('../../api/coreApi', () => ({
-  default: { theme: { getCourant: (...args) => getCourant(...args) } },
+  default: {
+    theme: { getCourant: (...args) => getCourant(...args) },
+    // NTOBS9 — Layout rend désormais MaintenanceBanner, qui lit ce endpoint ;
+    // repli neutre (aucune fenêtre) hors de portée de ce test SCA24.
+    maintenanceWindows: { actives: () => Promise.resolve({ data: [] }) },
+  },
 }))
 
 import Layout from './Layout'
