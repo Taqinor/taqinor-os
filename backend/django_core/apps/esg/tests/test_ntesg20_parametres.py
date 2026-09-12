@@ -11,6 +11,7 @@ Ce que le test PROUVE :
   * l'écriture est réservée aux administrateurs ; la société vient de
     l'utilisateur, jamais du corps.
 """
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -143,9 +144,12 @@ class ParametresESGTests(TestCase):
         from apps.esg.models import PeriodeReportingESG
         ParametresESG.objects.create(
             company=self.co, seuil_alerte_derive_pct=42)
+        # Vraies dates (pas des chaînes) : `objects.create` ne recharge pas
+        # l'instance, donc un `date_fin='2026-12-31'` resterait une `str` en
+        # mémoire et le service casserait sur `.year`.
         periode = PeriodeReportingESG.objects.create(
-            company=self.co, libelle='2026', date_debut='2026-01-01',
-            date_fin='2026-12-31')
+            company=self.co, libelle='2026', date_debut=date(2026, 1, 1),
+            date_fin=date(2026, 12, 31))
         # Aucun objectif : l'alerte ne part pas, mais elle a bien LU le seuil
         # de la société (pas d'exception, pas de défaut fixe imposé).
         self.assertEqual(services.alerter_derive_trajectoire(periode), [])
