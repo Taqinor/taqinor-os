@@ -23,6 +23,7 @@ implémentation. ``format`` (expression régulière), ``unicite`` et
 d'opérateur regex, et les deux derniers raisonnent sur la POPULATION entière,
 pas sur une ligne. Ils sont donc évalués ici, au-dessus, et c'est dit.
 """
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -376,3 +377,98 @@ class RegleSurvivorship(TenantModel):
                     '« source_id » doit être un identifiant de fiche.')
         if erreurs:
             raise ValidationError(erreurs)
+
+
+# ── NTDATA20 — FILE DE REVUE : aucune fusion automatique, jamais ────────────
+#
+# Les détecteurs (NTDATA17/19) PROPOSENT ; la fusion (NTDATA18/19) neutralise
+# les doublons et repointe tout ce qui les référençait. Entre les deux il
+# manquait une FILE : un endroit où un humain voit la proposition, la compare,
+# et tranche.
+#
+# Deux clients au même téléphone peuvent être un père et son fils. C'est
+# exactement pourquoi rien ne se fusionne tout seul ici.
+#
+# POURQUOI UNE EMPREINTE. « Une proposition ignorée ne réapparaît pas au
+# prochain scan » exige une identité STABLE du groupe, indépendante de l'ordre
+# de détection : c'est la liste TRIÉE de ses identifiants. Si le groupe gagne
+# ou perd une fiche, son empreinte change — et c'est une AUTRE proposition,
+# parce que l'information n'est plus la même.
+
+class PropositionFusion(TenantModel):
+    """Un groupe de doublons SOUMIS à décision humaine.
+
+    ``statut`` : ``en_attente`` (par défaut), ``fusionne`` (l'humain a tranché
+    et la fusion a eu lieu), ``ignore`` (l'humain dit que ce ne sont PAS des
+    doublons). Les deux statuts de décision sont DÉFINITIFS pour ce groupe :
+    le scan suivant ne le repropose pas.
+
+    ``score`` et ``motifs`` viennent du détecteur et sont recopiés tels quels —
+    le score est la confiance du DÉTECTEUR, jamais une mesure métier.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente de décision'
+        FUSIONNE = 'fusionne', 'Fusionné'
+        IGNORE = 'ignore', 'Ignoré (pas des doublons)'
+
+    entite = models.CharField(max_length=20, verbose_name='Entité')
+    ids_groupe = models.JSONField(
+        default=list, verbose_name='Fiches du groupe',
+        help_text='Identifiants des fiches rapprochées.')
+    empreinte = models.CharField(
+        max_length=64, verbose_name='Empreinte du groupe',
+        help_text='Identité stable du groupe (ses identifiants triés) — ce '
+                  "qui permet de ne pas reproposer un groupe déjà tranché.")
+    score = models.DecimalField(
+        max_digits=4, decimal_places=2, default=0,
+        verbose_name='Score du détecteur',
+        help_text='Confiance du DÉTECTEUR (poids du critère le plus fort), '
+                  'jamais une mesure métier.')
+    motifs = models.JSONField(
+        default=list, blank=True, verbose_name='Critères concordants')
+    libelles = models.JSONField(
+        default=list, blank=True, verbose_name='Libellés des fiches')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    # SET_NULL : désactiver un utilisateur ne doit jamais effacer la trace
+    # qu'une décision a été prise sur ce groupe.
+    decideur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='propositions_fusion_decidees',
+        verbose_name='Décideur')
+    decide_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidé le')
+    detail_decision = models.JSONField(
+        default=dict, blank=True, verbose_name='Détail de la décision',
+        help_text='Ce que la fusion a réellement repointé/absorbé.')
+
+    class Meta:
+        verbose_name = 'Proposition de fusion'
+        verbose_name_plural = 'Propositions de fusion'
+        ordering = ['statut', '-score', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'entite', 'empreinte'],
+                name='uniq_propositionfusion_co_ent_emp'),
+        ]
+
+    def __str__(self):
+        return '%s · %s fiches · %s' % (
+            self.entite, len(self.ids_groupe or []), self.statut)
+
+    @staticmethod
+    def empreinte_de(ids):
+        """L'identité STABLE d'un groupe : ses identifiants triés.
+
+        Indépendante de l'ordre de détection — deux scans successifs rendent la
+        même empreinte pour le même groupe, ce qui est toute la condition pour
+        qu'une décision tienne dans le temps.
+        """
+        return '-'.join(str(i) for i in sorted(ids or []))[:64]
+
+    @property
+    def est_tranchee(self):
+        """True si un humain a déjà décidé (fusionné ou ignoré)."""
+        return self.statut != self.Statut.EN_ATTENTE

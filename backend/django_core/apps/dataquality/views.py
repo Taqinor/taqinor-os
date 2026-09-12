@@ -12,6 +12,7 @@ non conformes.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -19,7 +20,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.mixins import TenantMixin
 
 from . import selectors, services
-from .models import RegleQualite, ResultatQualite
+from .models import PropositionFusion, RegleQualite, ResultatQualite
 
 
 class RegleQualiteSerializer(serializers.ModelSerializer):
@@ -204,3 +205,121 @@ class DoublonsView(APIView):
             'repointes': rapport['repointes'],
             'non_repointes': rapport['non_repointes'],
         })
+
+
+# ── NTDATA20 — file de revue des doublons ──────────────────────────────────
+
+class PropositionFusionSerializer(serializers.ModelSerializer):
+    statut_label = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    decideur_username = serializers.CharField(
+        source='decideur.username', read_only=True, default='')
+
+    class Meta:
+        model = PropositionFusion
+        fields = [
+            'id', 'entite', 'ids_groupe', 'empreinte', 'score', 'motifs',
+            'libelles', 'statut', 'statut_label', 'decideur',
+            'decideur_username', 'decide_le', 'detail_decision',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class PropositionFusionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """NTDATA20 — la file de revue : on consulte, puis on TRANCHE.
+
+    LECTURE SEULE côté CRUD : une proposition est produite par le détecteur,
+    jamais saisie à la main. Trois actions, et trois seulement :
+
+      * ``POST …/fusions/scanner/``           — (re)peuple la file depuis les
+        détecteurs (``?entite=`` pour n'en scanner qu'une) ;
+      * ``POST …/fusions/{id}/ignorer/``      — « ce ne sont pas des
+        doublons » : décision DÉFINITIVE, le groupe n'est plus reproposé ;
+      * ``POST …/fusions/{id}/fusionner/``    — applique la fusion supervisée
+        existante (NTDATA18/19) vers le survivant choisi.
+
+    Le ``statut`` n'est écrit que par ces actions : aucun PATCH brut ne peut
+    faire passer une proposition en « fusionné » sans qu'une fusion ait eu
+    lieu.
+    """
+
+    serializer_class = PropositionFusionSerializer
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = PropositionFusion.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('decideur')
+        entite = self.request.query_params.get('entite')
+        if entite:
+            qs = qs.filter(entite=entite)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @extend_schema(
+        request=None,
+        responses=inline_serializer('ScanFusionsReponse', {
+            'entites': serializers.JSONField(),
+            'nouvelles': serializers.IntegerField(),
+            'en_attente': serializers.IntegerField(),
+        }))
+    @action(detail=False, methods=['post'])
+    def scanner(self, request):
+        """Repeuple la file depuis les détecteurs (jamais de fusion)."""
+        company = request.user.company
+        demandee = request.query_params.get('entite')
+        entites = ([demandee] if demandee
+                   else sorted(services.CONSOLIDATION))
+        nouvelles = 0
+        scannees = []
+        for entite in entites:
+            try:
+                creees = services.scanner_propositions(
+                    company, entite, request.user)
+            except ValueError as exc:
+                return Response({'entite': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
+            nouvelles += len(creees)
+            scannees.append({'entite': entite, 'nouvelles': len(creees)})
+        return Response({
+            'entites': scannees,
+            'nouvelles': nouvelles,
+            'en_attente': services.propositions_en_attente(company).count(),
+        })
+
+    @extend_schema(
+        request=None,
+        responses=PropositionFusionSerializer)
+    @action(detail=True, methods=['post'])
+    def ignorer(self, request, pk=None):
+        """« Ce ne sont pas des doublons » — rien n'est modifié dans les fiches."""
+        proposition = self.get_object()
+        try:
+            services.ignorer_proposition(proposition, request.user)
+        except ValueError as exc:
+            return Response({'statut': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(proposition).data)
+
+    @extend_schema(
+        request=inline_serializer('FusionnerPropositionRequete', {
+            'survivant': serializers.IntegerField(),
+        }),
+        responses=PropositionFusionSerializer)
+    @action(detail=True, methods=['post'])
+    def fusionner(self, request, pk=None):
+        """Applique la fusion supervisée vers la fiche à CONSERVER."""
+        proposition = self.get_object()
+        survivant = (request.data or {}).get('survivant')
+        if not survivant:
+            return Response({'survivant': 'Indiquez la fiche à conserver.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.fusionner_proposition(
+                proposition, request.user, int(survivant))
+        except (TypeError, ValueError) as exc:
+            return Response({'survivant': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(proposition).data)

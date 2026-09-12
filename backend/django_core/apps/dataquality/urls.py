@@ -3,11 +3,15 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CompletudeView, DoublonsView, RapportQualiteView, RegleQualiteViewSet,
+    CompletudeView, DoublonsView, PropositionFusionViewSet,
+    RapportQualiteView, RegleQualiteViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'regles', RegleQualiteViewSet, basename='regle-qualite')
+# NTDATA20 — file de revue des doublons (scanner / ignorer / fusionner).
+router.register(r'fusions', PropositionFusionViewSet,
+                basename='proposition-fusion')
 
 urlpatterns = [
     # NTDATA15 — taux de conformité par règle (?entite= / ?evaluer=1).

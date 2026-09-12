@@ -28,7 +28,8 @@ from __future__ import annotations
 import re
 
 from .models import (
-    GoldenRecord, RegleQualite, RegleSurvivorship, ResultatQualite,
+    GoldenRecord, PropositionFusion, RegleQualite, RegleSurvivorship,
+    ResultatQualite,
 )
 
 
@@ -412,6 +413,164 @@ def fusionner_clients(company, user, survivant_id, doublons_ids):
         raise ValueError(
             'Aucun des doublons indiqués n\'existe dans cette société.')
     return merge_clients(survivant, absorbes, user)
+
+
+# ── NTDATA20 — FILE DE REVUE DES DOUBLONS (jamais de fusion silencieuse) ───
+#
+# `scanner_propositions` transforme les GROUPES du détecteur en PROPOSITIONS
+# soumises à un humain. Rien n'est fusionné ici. Deux décisions sont possibles
+# et elles sont DÉFINITIVES pour ce groupe :
+#
+#   * `ignorer`   — « ce ne sont pas des doublons ». Le groupe ne sera plus
+#     jamais reproposé tant que sa composition ne change pas (c'est le critère
+#     d'acceptation de la tâche) ;
+#   * `fusionner` — la fusion supervisée EXISTANTE (NTDATA18/19) est appelée,
+#     et son rapport est journalisé SUR la proposition.
+#
+# L'IDENTITÉ D'UN GROUPE EST SON EMPREINTE (ses ids triés). Un groupe qui gagne
+# une fiche devient une AUTRE proposition : l'information n'est plus la même,
+# et une décision prise sur deux fiches ne vaut pas décision sur trois.
+
+
+def _detecteur_de(entite):
+    """Le détecteur NTDATA17/19 de cette entité, ou ``None``."""
+    nom = _DETECTEURS_ENTITE.get(entite)
+    return globals().get(nom) if nom else None
+
+
+def scanner_propositions(company, entite, user=None, *, groupes=None):
+    """Crée les propositions MANQUANTES pour ``entite``. Renvoie les nouvelles.
+
+    Un groupe DÉJÀ TRANCHÉ (fusionné ou ignoré) n'est jamais recréé : la
+    contrainte d'unicité ``(company, entite, empreinte)`` le garantit au
+    niveau base, et la lecture préalable évite l'écriture inutile.
+
+    Une proposition ``en_attente`` existante est RAFRAÎCHIE (score, motifs,
+    libellés) plutôt que dupliquée — le détecteur peut avoir gagné en
+    précision entre deux scans.
+    """
+    if entite not in CONSOLIDATION:
+        raise ValueError(
+            'Entité inconnue pour la file de fusion : « %s » (attendu : %s).'
+            % (entite, ', '.join(sorted(CONSOLIDATION))))
+    if groupes is None:
+        detecteur = _detecteur_de(entite)
+        groupes = detecteur(company, user) if detecteur else []
+
+    connues = {
+        p.empreinte: p
+        for p in PropositionFusion.objects.filter(company=company,
+                                                  entite=entite)
+    }
+    nouvelles = []
+    for groupe in groupes:
+        ids = list(groupe.get('ids') or [])
+        if len(ids) < 2:
+            continue
+        empreinte = PropositionFusion.empreinte_de(ids)
+        existante = connues.get(empreinte)
+        if existante is not None:
+            if existante.est_tranchee:
+                continue  # décision humaine : on ne repropose JAMAIS.
+            existante.ids_groupe = sorted(ids)
+            existante.score = groupe.get('score') or 0
+            existante.motifs = list(groupe.get('motifs') or [])
+            existante.libelles = list(groupe.get('libelles') or [])
+            existante.save(update_fields=['ids_groupe', 'score', 'motifs',
+                                          'libelles', 'updated_at'])
+            continue
+        nouvelles.append(PropositionFusion.objects.create(
+            company=company,
+            entite=entite,
+            ids_groupe=sorted(ids),
+            empreinte=empreinte,
+            score=groupe.get('score') or 0,
+            motifs=list(groupe.get('motifs') or []),
+            libelles=list(groupe.get('libelles') or []),
+        ))
+    return nouvelles
+
+
+def propositions_en_attente(company, entite=None):
+    """Les propositions qui attendent encore une décision humaine."""
+    qs = PropositionFusion.objects.filter(
+        company=company, statut=PropositionFusion.Statut.EN_ATTENTE)
+    if entite:
+        qs = qs.filter(entite=entite)
+    return qs.order_by('-score', 'id')
+
+
+def ignorer_proposition(proposition, user, *, now=None):
+    """« Ce ne sont pas des doublons » — décision DÉFINITIVE pour ce groupe.
+
+    Rien n'est modifié dans les fiches : ignorer, c'est justement ne rien
+    faire. Le groupe ne sera plus reproposé tant que sa composition ne change
+    pas.
+    """
+    from django.utils import timezone
+
+    if proposition.est_tranchee:
+        raise ValueError(
+            'Cette proposition a déjà été tranchée (%s).'
+            % proposition.get_statut_display())
+    proposition.statut = PropositionFusion.Statut.IGNORE
+    proposition.decideur = user
+    proposition.decide_le = now or timezone.now()
+    proposition.save(update_fields=['statut', 'decideur', 'decide_le',
+                                    'updated_at'])
+    return proposition
+
+
+#: Entité de la file → fonction de fusion supervisée (NTDATA18/19).
+_FUSIONS_ENTITE = {
+    GoldenRecord.Entite.CLIENT: 'fusionner_clients',
+    GoldenRecord.Entite.FOURNISSEUR: 'fusionner_fournisseurs',
+    GoldenRecord.Entite.PRODUIT: 'fusionner_produits',
+}
+
+
+def fusionner_proposition(proposition, user, survivant_id, *, now=None):
+    """Applique la fusion supervisée EXISTANTE et journalise la décision.
+
+    AUCUNE logique de fusion ici : tout se passe dans l'app propriétaire des
+    données (``crm.services.merge_clients`` / ``stock.services.merge_*``). La
+    file ne fait que porter la décision humaine jusqu'à elle.
+
+    ``survivant_id`` doit appartenir au groupe : fusionner vers une fiche que
+    l'humain n'a pas vue dans la proposition serait une décision qu'il n'a pas
+    prise.
+    """
+    from django.utils import timezone
+
+    if proposition.est_tranchee:
+        raise ValueError(
+            'Cette proposition a déjà été tranchée (%s).'
+            % proposition.get_statut_display())
+    ids = list(proposition.ids_groupe or [])
+    if survivant_id not in ids:
+        raise ValueError(
+            'La fiche à conserver (#%s) ne fait pas partie de cette '
+            'proposition.' % survivant_id)
+    fusion = globals().get(_FUSIONS_ENTITE.get(proposition.entite) or '')
+    if fusion is None:
+        raise ValueError(
+            "Aucune fusion supervisée pour l'entité « %s »."
+            % proposition.entite)
+    doublons = [i for i in ids if i != survivant_id]
+    rapport = fusion(proposition.company, user, survivant_id, doublons)
+
+    proposition.statut = PropositionFusion.Statut.FUSIONNE
+    proposition.decideur = user
+    proposition.decide_le = now or timezone.now()
+    proposition.detail_decision = {
+        'survivant': rapport['survivant'].pk,
+        'absorbes': rapport['absorbes'],
+        'repointes': rapport['repointes'],
+        'non_repointes': rapport['non_repointes'],
+    }
+    proposition.save(update_fields=['statut', 'decideur', 'decide_le',
+                                    'detail_decision', 'updated_at'])
+    return proposition, rapport
 
 
 # ── NTDATA23 — SURVIVORSHIP & CONSOLIDATION DES GOLDEN RECORDS ─────────────
