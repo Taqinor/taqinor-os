@@ -252,6 +252,12 @@ ALL_DASHBOARD_CARDS = [
     # WIR100 — KPI fédérés (ARC40) : tuiles agrégées des providers
     # `kpi_providers` des modules actifs (GET /reporting/reports/kpi-federes/).
     'kpi_federes',
+    # NTDATA21 — « Santé des données » : complétude globale, règles BLOQUANTES
+    # en violation, doublons en attente de décision
+    # (GET /dataquality/sante/). La carte se MASQUE d'elle-même tant que la
+    # société n'a déclaré aucune règle de qualité (`disponible=false`) : trois
+    # zéros ressembleraient à un bon bulletin.
+    'sante_donnees',
 ]
 
 # Ensembles de cartes par défaut selon le palier de rôle (menu_tier).

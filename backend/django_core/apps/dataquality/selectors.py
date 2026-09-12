@@ -129,3 +129,69 @@ def completude_module(company, user=None):
         'score_global': (round(sum(scores) / len(scores), 1)
                          if scores else None),
     }
+
+
+# ── NTDATA21 — CARTE « SANTÉ DES DONNÉES » (3 indicateurs, tous réels) ─────
+#
+# Trois chiffres, et rien d'autre : est-ce REMPLI (complétude), est-ce JUSTE
+# (règles bloquantes en violation), est-ce UNIQUE (doublons en attente de
+# décision). Chacun vient de la couche qui le mesure déjà — aucune quatrième
+# définition n'apparaît ici.
+#
+# CE QUI N'EST PAS MESURABLE EST OMIS, JAMAIS REMPLACÉ PAR ZÉRO. Un score de
+# complétude VIDE (aucune fiche du tout) reste vide : afficher 0 % dirait
+# « tout est à refaire » et afficher 100 % dirait « tout va bien » — les deux
+# seraient faux. De même, une règle bloquante JAMAIS ÉVALUÉE n'est pas comptée
+# comme conforme : elle est comptée à part (`bloquantes_non_evaluees`), pour
+# que « 0 violation » ne veuille pas dire « 0 mesure ».
+
+def sante_donnees(company, user=None):
+    """Les 3 indicateurs de la carte « Santé des données ».
+
+    Rend ``{'disponible', 'completude_globale_pct', 'regles_bloquantes_en_
+    violation', 'bloquantes_non_evaluees', 'doublons_en_attente'}``.
+
+    ``disponible`` est FAUX tant que la société n'a déclaré AUCUNE règle de
+    qualité : la carte se masque alors côté écran, plutôt que d'afficher trois
+    zéros qui ressembleraient à un bon bulletin.
+    """
+    from .models import PropositionFusion, RegleQualite, ResultatQualite
+
+    regles = RegleQualite.objects.filter(company=company)
+    if not regles.exists():
+        return {
+            'disponible': False,
+            'completude_globale_pct': None,
+            'regles_bloquantes_en_violation': None,
+            'bloquantes_non_evaluees': None,
+            'doublons_en_attente': None,
+        }
+
+    bloquantes = list(
+        regles.filter(actif=True,
+                      severite=RegleQualite.Severite.BLOQUANT)
+        .values_list('id', flat=True))
+
+    # Le DERNIER résultat de chaque règle bloquante (une seule requête).
+    dernier = {}
+    for resultat in (ResultatQualite.objects
+                     .filter(company=company, regle__in=bloquantes)
+                     .order_by('regle_id', '-evalue_le', '-id')):
+        dernier.setdefault(resultat.regle_id, resultat)
+
+    en_violation = sum(1 for identifiant in bloquantes
+                       if (dernier.get(identifiant) is not None
+                           and dernier[identifiant].nb_violations > 0))
+    non_evaluees = sum(1 for identifiant in bloquantes
+                       if dernier.get(identifiant) is None)
+
+    return {
+        'disponible': True,
+        'completude_globale_pct': completude_module(
+            company, user)['score_global'],
+        'regles_bloquantes_en_violation': en_violation,
+        'bloquantes_non_evaluees': non_evaluees,
+        'doublons_en_attente': PropositionFusion.objects.filter(
+            company=company,
+            statut=PropositionFusion.Statut.EN_ATTENTE).count(),
+    }

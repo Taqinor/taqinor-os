@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CompletudeView, DoublonsView, PropositionFusionViewSet,
-    RapportQualiteView, RegleQualiteViewSet,
+    RapportQualiteView, RegleQualiteViewSet, SanteDonneesView,
 )
 
 router = DefaultRouter()
@@ -18,6 +18,8 @@ urlpatterns = [
     path('rapport/', RapportQualiteView.as_view(), name='qualite-rapport'),
     # NTDATA16 — complétude des champs critiques, par entité métier.
     path('completude/', CompletudeView.as_view(), name='qualite-completude'),
+    # NTDATA21 — carte « Santé des données » du tableau de bord (3 indicateurs).
+    path('sante/', SanteDonneesView.as_view(), name='qualite-sante'),
     # NTDATA17/19 — groupes de doublons candidats (clients / fournisseurs /
     # produits). LECTURE SEULE : rien n'est jamais fusionné ici.
     path('doublons/<str:entite>/', DoublonsView.as_view(),

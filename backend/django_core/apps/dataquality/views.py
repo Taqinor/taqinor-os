@@ -116,6 +116,32 @@ class CompletudeView(APIView):
             request.user.company, request.user))
 
 
+class SanteDonneesView(APIView):
+    """NTDATA21 — la carte « Santé des données » : 3 indicateurs, tous réels.
+
+    ``GET /dataquality/sante/`` rend le taux de complétude global, le nombre
+    de règles BLOQUANTES en violation et le nombre de doublons en attente de
+    décision. ``disponible=false`` (société sans aucune règle de qualité) =
+    carte MASQUÉE côté écran : trois zéros ressembleraient à un bon bulletin.
+    """
+
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(
+        responses=inline_serializer('SanteDonneesReponse', {
+            'disponible': serializers.BooleanField(),
+            'completude_globale_pct': serializers.FloatField(allow_null=True),
+            'regles_bloquantes_en_violation': serializers.IntegerField(
+                allow_null=True),
+            'bloquantes_non_evaluees': serializers.IntegerField(
+                allow_null=True),
+            'doublons_en_attente': serializers.IntegerField(allow_null=True),
+        }))
+    def get(self, request):
+        return Response(selectors.sante_donnees(request.user.company,
+                                                request.user))
+
+
 class DoublonsView(APIView):
     """NTDATA17/19 — groupes de fiches qui désignent probablement la même
     entité (``/dataquality/doublons/<entite>/``).
