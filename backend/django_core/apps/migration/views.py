@@ -116,7 +116,7 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='reconcilier-soldes', permission_classes=[IsDirecteurOuAdmin])
     def reconcilier_soldes(self, request, pk=None):
         """NTMIG37 — solde client SOURCE (balance âgée) vs solde recalculé
-        TAQINOR, client par client migré par CE projet.
+        côté ERP, client par client migré par CE projet.
 
         Corps attendu : ``{"balance": {"<external_id_client>": <montant>, …}}``.
         LECTURE SEULE — ne conditionne ni un chargement ni une clôture.

@@ -16,7 +16,7 @@ paquet.
 Numérotation via ``core.numbering.create_with_reference`` (jamais
 ``count()+1`` — une migration de 100 devis crée 100 références GAP-FREE), le
 statut d'origine étant PRÉSERVÉ via une table de correspondance statut
-source→statut TAQINOR plutôt que forcé à ``brouillon``.
+source→statut côté ERP plutôt que forcé à ``brouillon``.
 
 Retournent des TRIPLETS ``(statut, message, instance_ou_none)`` — et non les
 doublets ``(statut, message)`` des autres importateurs XFLT22 (véhicules,
