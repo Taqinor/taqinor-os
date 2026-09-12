@@ -10,11 +10,11 @@ from rest_framework.routers import DefaultRouter
 
 from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
-    ControleInterneViewSet, DeficienceControleViewSet,
-    JournalDestructionViewSet, LegalHoldViewSet, PlanTraitementRisqueViewSet,
-    PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
-    RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
-    ViolationDonneesViewSet,
+    AttestationPolitiqueViewSet, ControleInterneViewSet,
+    DeficienceControleViewSet, JournalDestructionViewSet, LegalHoldViewSet,
+    PlanTraitementRisqueViewSet, PolitiqueInterneViewSet,
+    PolitiqueRetentionObjetViewSet, RevueRisqueViewSet,
+    RisqueEntrepriseViewSet, TestControleViewSet, ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -51,6 +51,9 @@ router.register(r'deficiences-controle', DeficienceControleViewSet,
 # NTGRC19 — référentiel des politiques internes versionnées.
 router.register(r'politiques-internes', PolitiqueInterneViewSet,
                 basename='grc-politique-interne')
+# NTGRC20 — attestations de lecture des politiques (preuve loi 53-05).
+router.register(r'attestations-politique', AttestationPolitiqueViewSet,
+                basename='grc-attestation-politique')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

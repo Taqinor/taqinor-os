@@ -5,22 +5,25 @@ queryset filtré sur ``request.user.company`` et ``company`` imposée côté
 serveur dans ``perform_create``/``perform_update``, jamais lue du corps.
 """
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ControleInterne, DeficienceControle, JournalDestruction, LegalHold,
-    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
-    RevueRisque, RisqueEntreprise, TestControle, ViolationDonnees,
+    AttestationPolitique, ControleInterne, DeficienceControle,
+    JournalDestruction, LegalHold, PlanTraitementRisque, PolitiqueInterne,
+    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, TestControle,
+    ViolationDonnees,
 )
 from .serializers import (
-    ControleInterneSerializer, DeficienceControleSerializer,
-    JournalDestructionSerializer, LegalHoldSerializer,
-    PlanTraitementRisqueSerializer, PolitiqueInterneSerializer,
-    PolitiqueRetentionObjetSerializer, PolitiqueVersionSerializer,
-    RevueRisqueSerializer, RisqueEntrepriseSerializer, TestControleSerializer,
+    AttestationPolitiqueSerializer, ControleInterneSerializer,
+    DeficienceControleSerializer, JournalDestructionSerializer,
+    LegalHoldSerializer, PlanTraitementRisqueSerializer,
+    PolitiqueInterneSerializer, PolitiqueRetentionObjetSerializer,
+    PolitiqueVersionSerializer, RevueRisqueSerializer,
+    RisqueEntrepriseSerializer, TestControleSerializer,
     ViolationDonneesSerializer,
 )
 
@@ -400,3 +403,106 @@ class PolitiqueInterneViewSet(CompanyScopedModelViewSet):
         politique = self.get_object()
         return Response({'results': PolitiqueVersionSerializer(
             politique.versions.all(), many=True).data})
+
+    @action(detail=True, methods=['get'], url_path='taux-attestation')
+    def taux_attestation(self, request, pk=None):
+        """NTGRC20 — taux d'attestation de la version publiée en cours."""
+        from .selectors import taux_attestation as _taux
+
+        politique = self.get_object()
+        return Response(_taux(request.user.company, politique))
+
+
+class AttestationPolitiqueViewSet(CompanyScopedModelViewSet):
+    """NTGRC20 — registre des attestations de lecture des politiques.
+
+    Journal : on AJOUTE une attestation, on ne réécrit jamais celle de
+    quelqu'un d'autre (ni PUT, ni PATCH, ni DELETE). Le registre se consulte
+    au palier admin/responsable comme les autres registres de conformité,
+    MAIS l'action ``attester/`` est ouverte à tout utilisateur authentifié :
+    c'est l'employé lui-même qui atteste, pas son responsable à sa place.
+    """
+
+    queryset = AttestationPolitique.objects.select_related('politique').all()
+    serializer_class = AttestationPolitiqueSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        politique = (self.request.query_params.get('politique') or '').strip()
+        if politique.isdigit():
+            qs = qs.filter(politique_id=int(politique))
+        employe = (self.request.query_params.get('employe_ref') or '').strip()
+        if employe:
+            qs = qs.filter(employe_ref=employe)
+        return qs
+
+    def perform_create(self, serializer):
+        """Saisie pour un tiers (attestation papier) — preuve côté serveur."""
+        from .services import AttestationImpossible, attester_politique
+
+        donnees = dict(serializer.validated_data)
+        donnees.pop('company', None)
+        politique = donnees.pop('politique')
+        try:
+            attestation, _ = attester_politique(
+                self.request.user.company, politique,
+                employe_ref=donnees.get('employe_ref', ''),
+                nom_saisi=donnees.get('nom_saisi', ''),
+                attestant_nom=donnees.get('attestant_nom', ''),
+                preuve=self._preuve())
+        except AttestationImpossible as exc:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError({exc.champ: str(exc)})
+        serializer.instance = attestation
+
+    def _preuve(self):
+        from .services import preuve_requete
+
+        return preuve_requete(self.request)
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[IsAuthenticated])
+    def attester(self, request):
+        """Attestation par l'utilisateur CONNECTÉ (``{politique, nom_saisi}``).
+
+        Le dossier employé est résolu SERVEUR depuis le compte appelant (via
+        ``rh.selectors``) : personne n'atteste au nom d'un autre par ce
+        chemin. Ré-attester la même version renvoie 200 et la ligne existante
+        — idempotent, un double clic ne crée pas deux preuves.
+        """
+        from apps.rh.selectors import dossier_employe_for_user
+
+        from .services import AttestationImpossible, attester_politique
+
+        company = request.user.company
+        brut = (request.data.get('politique')
+                if request.data else None)
+        try:
+            politique_id = int(brut)
+        except (TypeError, ValueError):
+            return Response(
+                {'politique': 'Indiquez la politique à attester.'}, status=400)
+        politique = PolitiqueInterne.objects.filter(
+            company=company, pk=politique_id).first()
+        if politique is None:
+            return Response(
+                {'politique': "Cette politique n'existe pas pour votre "
+                              'société.'}, status=404)
+
+        dossier = dossier_employe_for_user(company, request.user.pk)
+        nom = (getattr(request.user, 'get_full_name', lambda: '')()
+               or getattr(request.user, 'username', '') or '')
+        try:
+            attestation, creee = attester_politique(
+                company, politique,
+                employe_ref=str(dossier.pk) if dossier is not None else '',
+                nom_saisi=(request.data.get('nom_saisi') or ''),
+                attestant_nom=nom,
+                preuve=self._preuve())
+        except AttestationImpossible as exc:
+            return Response({exc.champ: str(exc)}, status=400)
+        return Response(self.get_serializer(attestation).data,
+                        status=201 if creee else 200)

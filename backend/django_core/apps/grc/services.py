@@ -597,3 +597,87 @@ def publier_politique(politique, auteur=''):
         politique.save(update_fields=[
             'version', 'statut', 'date_publication', 'updated_at'])
     return version
+
+
+# ── NTGRC20 — attestation de lecture d'une politique ────────────────────────
+
+class AttestationImpossible(ValueError):
+    """Attestation refusée (politique non publiée, nom manquant…).
+
+    Traduite en 400 par la vue — jamais 500 — et le message NOMME le champ
+    fautif, comme partout ailleurs dans le dépôt.
+    """
+
+    def __init__(self, message, champ='detail'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def preuve_requete(request):
+    """Preuve technique d'un geste (IP + user-agent), posée CÔTÉ SERVEUR.
+
+    Jamais lue du corps de la requête : une preuve que l'appelant fournit
+    lui-même ne prouve rien. Best-effort — un en-tête manquant donne une
+    chaîne vide, jamais une exception.
+    """
+    if request is None:
+        return {}
+    meta = getattr(request, 'META', {}) or {}
+    transmis = meta.get('HTTP_X_FORWARDED_FOR', '')
+    if transmis:
+        ip = transmis.split(',')[0].strip()[:45]
+    else:
+        ip = (meta.get('REMOTE_ADDR') or '')[:45]
+    return {
+        'ip': ip,
+        'user_agent': (meta.get('HTTP_USER_AGENT') or '')[:512],
+        'atteste_le': timezone.now().isoformat(),
+    }
+
+
+def attester_politique(company, politique, *, employe_ref='', nom_saisi='',
+                       attestant_nom='', preuve=None):
+    """Enregistre l'attestation de lecture de la VERSION COURANTE.
+
+    Renvoie ``(attestation, creee)``. IDEMPOTENT : ré-attester la même version
+    renvoie la ligne existante sans en créer une seconde (un double clic ne
+    doit pas gonfler le taux d'attestation — c'est le genre d'écart qu'un
+    auditeur repère immédiatement).
+
+    Refus explicites, chacun nommant son champ :
+      * politique non publiée (``version`` = 0) — on n'atteste pas un
+        brouillon, qui peut encore changer sous les yeux du lecteur ;
+      * ``nom_saisi`` vide — c'est le geste de signature (loi 53-05) ; sans
+        lui il n'y a qu'un clic anonyme.
+    """
+    from .models import AttestationPolitique, PolitiqueInterne
+
+    version = int(getattr(politique, 'version', 0) or 0)
+    if politique.statut != PolitiqueInterne.STATUT_PUBLIEE or version < 1:
+        raise AttestationImpossible(
+            'Cette politique n\'est pas publiée : il n\'y a pas encore de '
+            'version figée à attester.', champ='politique')
+    nom_saisi = (nom_saisi or '').strip()
+    if not nom_saisi:
+        raise AttestationImpossible(
+            'Saisissez votre nom pour attester avoir lu cette politique '
+            '(loi 53-05).', champ='nom_saisi')
+
+    employe_ref = str(employe_ref or '').strip()[:64]
+    if employe_ref:
+        existante = AttestationPolitique.objects.filter(
+            company=company, politique=politique, version_attestee=version,
+            employe_ref=employe_ref).first()
+        if existante is not None:
+            return existante, False
+
+    attestation = AttestationPolitique.objects.create(
+        company=company,
+        politique=politique,
+        version_attestee=version,
+        employe_ref=employe_ref,
+        attestant_nom=(attestant_nom or nom_saisi)[:160],
+        nom_saisi=nom_saisi[:160],
+        preuve=preuve or {},
+    )
+    return attestation, True

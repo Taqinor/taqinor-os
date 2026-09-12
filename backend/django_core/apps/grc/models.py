@@ -1017,3 +1017,85 @@ class PolitiqueVersion(TenantModel):
 
     def __str__(self):
         return f'{self.politique_id} v{self.numero}'
+
+
+class AttestationPolitique(TenantModel):
+    """NTGRC20 — attestation de LECTURE d'une politique, par un employé.
+
+    Une politique publiée que personne n'a lue ne protège de rien : c'est
+    l'attestation qui transforme un document en obligation opposable. Elle
+    porte donc le NUMÉRO DE VERSION attesté — « j'ai lu la charte » ne veut
+    rien dire, « j'ai lu la v3 du 12/09 » en veut un, parce que la v3 est
+    figée (``PolitiqueVersion``, NTGRC19) et ne peut plus bouger.
+
+    Loi 53-05 (échange électronique de données juridiques, Maroc) : la preuve
+    d'un engagement électronique simple repose sur l'identification de son
+    auteur et l'intégrité de l'acte. On conserve donc, CÔTÉ SERVEUR
+    uniquement : le NOM SAISI par l'attestant (son geste de signature), un
+    instantané de son nom d'affichage, l'horodatage serveur, et l'IP/le
+    user-agent du poste. Rien de tout cela n'est lu du corps de la requête —
+    une preuve qu'on peut s'envoyer à soi-même n'est pas une preuve.
+
+    L'employé est désigné par un identifiant TEXTE (``employe_ref``, l'id du
+    ``rh.DossierEmploye``) : ``grc`` n'importe jamais les modèles de ``rh``,
+    et l'attestation survit à la clôture du dossier — c'est précisément ce
+    qu'un auditeur vient vérifier trois ans plus tard.
+    """
+
+    politique = models.ForeignKey(
+        PolitiqueInterne,
+        # on_delete: une attestation n'existe que pour SA politique ; la
+        # politique supprimée, l'attestation n'atteste plus de rien.
+        on_delete=models.CASCADE,
+        related_name='attestations', verbose_name='Politique')
+    version_attestee = models.PositiveIntegerField(
+        'Version attestée',
+        help_text='Numéro de la version FIGÉE que la personne déclare avoir '
+                  'lue (jamais 0 : une politique non publiée ne s\'atteste '
+                  'pas).')
+    employe_ref = models.CharField(
+        'Dossier employé', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du rh.DossierEmploye (string-FK).')
+    attestant_nom = models.CharField(
+        'Attestant', max_length=160, blank=True, default='',
+        help_text="Instantané du nom d'affichage (survit au départ).")
+    nom_saisi = models.CharField(
+        'Nom saisi (loi 53-05)', max_length=160, blank=True, default='',
+        help_text='Nom tapé par la personne au moment d\'attester — son '
+                  'geste de signature électronique simple.')
+    date_attestation = models.DateTimeField(
+        'Date d\'attestation', null=True, blank=True,
+        help_text='Horodatage SERVEUR, posé à la création.')
+    preuve = models.JSONField(
+        'Preuve', default=dict, blank=True,
+        help_text='IP et user-agent du poste attestant, posés côté serveur.')
+
+    class Meta:
+        verbose_name = 'Attestation de politique'
+        verbose_name_plural = 'Attestations de politique'
+        ordering = ['-date_attestation', '-id']
+        constraints = [
+            # Une personne n'atteste qu'UNE FOIS une version donnée : sans
+            # cette unicité, un double clic gonflerait le taux d'attestation
+            # au-dessus de 100 %. La condition écarte les lignes sans dossier
+            # employé (attestation saisie pour un tiers non salarié), que
+            # Postgres ne doit pas agréger sur la chaîne vide.
+            models.UniqueConstraint(
+                fields=['politique', 'version_attestee', 'employe_ref'],
+                condition=~models.Q(employe_ref=''),
+                name='grc_attestation_pol_ver_emp'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'politique'],
+                         name='grc_attestation_co_pol_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Horodate CÔTÉ SERVEUR à la création (jamais une date du client)."""
+        if self.date_attestation is None:
+            self.date_attestation = timezone.now()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (f'{self.attestant_nom or self.employe_ref or "?"} — '
+                f'politique {self.politique_id} v{self.version_attestee}')

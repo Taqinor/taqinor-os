@@ -6,10 +6,10 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    ControleInterne, DeficienceControle, JournalDestruction, LegalHold,
-    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
-    PolitiqueVersion, RevueRisque, RisqueEntreprise, TestControle,
-    ViolationDonnees,
+    AttestationPolitique, ControleInterne, DeficienceControle,
+    JournalDestruction, LegalHold, PlanTraitementRisque, PolitiqueInterne,
+    PolitiqueRetentionObjet, PolitiqueVersion, RevueRisque, RisqueEntreprise,
+    TestControle, ViolationDonnees,
 )
 
 
@@ -507,3 +507,62 @@ class PolitiqueInterneSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'cible_valeur': 'Précisez le rôle ou le département visé.'})
         return attrs
+
+
+class AttestationPolitiqueSerializer(serializers.ModelSerializer):
+    """NTGRC20 — attestation de lecture d'une politique publiée.
+
+    ``version_attestee``, ``date_attestation`` et ``preuve`` sont en LECTURE
+    SEULE : ils sont posés côté serveur. Une preuve que l'appelant peut écrire
+    lui-même n'atteste de rien.
+    """
+
+    politique_titre = serializers.CharField(
+        source='politique.titre', read_only=True)
+
+    class Meta:
+        model = AttestationPolitique
+        fields = [
+            'id', 'politique', 'politique_titre', 'version_attestee',
+            'employe_ref', 'attestant_nom', 'nom_saisi', 'date_attestation',
+            'preuve', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'version_attestee', 'date_attestation', 'preuve',
+            'created_at', 'updated_at',
+        ]
+
+    def get_fields(self):
+        fields = super().get_fields()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if company is not None and 'politique' in fields:
+            fields['politique'].queryset = PolitiqueInterne.objects.filter(
+                company=company)
+        return fields
+
+    def validate_nom_saisi(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                'Saisissez le nom de la personne qui atteste (loi 53-05).')
+        return valeur
+
+    def validate_employe_ref(self, valeur):
+        """Le dossier employé doit appartenir à la société de l'appelant."""
+        valeur = str(valeur or '').strip()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if not valeur or company is None:
+            return valeur
+        from apps.rh.selectors import dossier_appartient_societe
+
+        try:
+            employe_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence employé doit être un identifiant numérique.')
+        if not dossier_appartient_societe(company, employe_id):
+            raise serializers.ValidationError(
+                "Ce dossier employé n'existe pas pour votre société.")
+        return valeur

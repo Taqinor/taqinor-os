@@ -298,3 +298,106 @@ def violations_echeance_72h_depassee(company, now=None):
             .exclude(statut__in=[ViolationDonnees.STATUT_NOTIFIEE,
                                  ViolationDonnees.STATUT_CLOTUREE])
             .order_by('date_echeance_72h', 'id'))
+
+
+# ── NTGRC20 — attestations de lecture des politiques ────────────────────────
+
+def employes_cibles(company, politique):
+    """Ids des dossiers employés VISÉS par une politique (via ``rh.selectors``).
+
+    Le dénominateur d'un taux d'attestation est la POPULATION CIBLE, pas le
+    nombre de personnes qui ont déjà cliqué. La cible est lue chez ``rh`` par
+    son ``selectors.py`` — jamais un import de ``rh.models``.
+
+    * ``tous`` → tous les dossiers ACTIFS de la société ;
+    * ``departement`` → ceux dont le département correspond (par nom, sans
+      tenir compte de la casse, ou par identifiant) ;
+    * ``role`` → les dossiers reliés à un compte portant le rôle visé.
+
+    Une cible que l'on ne sait pas résoudre renvoie un ensemble VIDE : mieux
+    vaut un taux affiché « sans cible » qu'un taux calculé sur une population
+    inventée.
+    """
+    from apps.rh.selectors import dossiers_actifs
+
+    from .models import PolitiqueInterne
+
+    if company is None or politique is None:
+        return set()
+
+    ids = set(dossiers_actifs(company).values_list('id', flat=True))
+    cible = getattr(politique, 'cible', None)
+    valeur = (getattr(politique, 'cible_valeur', '') or '').strip()
+
+    if cible == PolitiqueInterne.CIBLE_TOUS:
+        return ids
+    if not valeur:
+        return set()
+
+    if cible == PolitiqueInterne.CIBLE_DEPARTEMENT:
+        from apps.rh.selectors import departements_par_employe
+
+        mapping = departements_par_employe(company, ids)
+        cherche = valeur.casefold()
+        return {
+            employe_id
+            for employe_id, info in mapping.items()
+            if (info.get('departement_nom') or '').casefold() == cherche
+            or str(info.get('departement_id') or '') == valeur
+        }
+
+    if cible == PolitiqueInterne.CIBLE_ROLE:
+        from django.contrib.auth import get_user_model
+
+        from apps.rh.selectors import dossier_employe_for_user
+
+        cibles = set()
+        utilisateurs = get_user_model().objects.filter(
+            company=company, is_active=True, role_legacy=valeur)
+        for user_id in utilisateurs.values_list('id', flat=True):
+            dossier = dossier_employe_for_user(company, user_id)
+            if dossier is not None and dossier.pk in ids:
+                cibles.add(dossier.pk)
+        return cibles
+
+    return set()
+
+
+def taux_attestation(company, politique):
+    """NTGRC20 — taux d'attestation de la VERSION COURANTE d'une politique.
+
+    Renvoie ``{'version', 'cible', 'attestants', 'taux_pct', 'manquants'}``.
+
+    Le taux porte sur la version PUBLIÉE en cours : une attestation de la v2
+    ne vaut pas pour la v3 (c'est tout l'intérêt de versionner). Une politique
+    jamais publiée (``version`` = 0) renvoie 0 attestant et un taux de 0 — pas
+    une division par zéro, et surtout pas un « 100 % » flatteur sur une
+    politique que personne n'a jamais pu lire.
+    """
+    from .models import AttestationPolitique
+
+    version = int(getattr(politique, 'version', 0) or 0)
+    cibles = employes_cibles(company, politique) if version else set()
+    attestants = set()
+    if version:
+        lignes = (AttestationPolitique.objects
+                  .filter(company=company, politique=politique,
+                          version_attestee=version)
+                  .exclude(employe_ref='')
+                  .values_list('employe_ref', flat=True))
+        for ref in lignes:
+            try:
+                attestants.add(int(ref))
+            except (TypeError, ValueError):
+                continue
+
+    dedans = cibles & attestants
+    total = len(cibles)
+    taux = round(100.0 * len(dedans) / total, 1) if total else 0.0
+    return {
+        'version': version,
+        'cible': total,
+        'attestants': len(dedans),
+        'taux_pct': taux,
+        'manquants': sorted(cibles - attestants),
+    }
