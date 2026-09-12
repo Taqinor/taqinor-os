@@ -403,6 +403,14 @@ class PPSPSSignatureSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def validate_sous_traitant(self, value):
+        """Défense en profondeur : ce sérialiseur est entièrement en LECTURE
+        (``read_only_fields = fields`` — la signature est posée par
+        ``services.signer_ppsps``), mais la garde même-société est déclarée
+        explicitement pour qu'un futur passage en écriture ne puisse JAMAIS
+        accepter un sous-traitant d'une autre société (``check_fk_scoping``)."""
+        return _meme_societe(self, value, 'Sous-traitant')
+
 
 class PPSPSChantierSerializer(serializers.ModelSerializer):
     signatures = PPSPSSignatureSerializer(many=True, read_only=True)
