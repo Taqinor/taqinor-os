@@ -75,14 +75,16 @@ class BalayageCrmTests(TestCase):
         Lead.objects.create(
             company=self.company, nom='Recent', email='recent@exemple.ma')
         self._politique()
-        self.assertEqual(sweep_objets(timezone.now(), False), 0)
+        maintenant = timezone.now()
+        self.assertEqual(sweep_objets(maintenant, False), 0)
 
     def test_politique_inactive_ne_balaie_rien(self):
         from apps.crm.retention import sweep_objets
 
         self._vieux_lead()
         self._politique(actif=False)
-        self.assertEqual(sweep_objets(timezone.now(), False), 0)
+        maintenant = timezone.now()
+        self.assertEqual(sweep_objets(maintenant, False), 0)
 
     def test_action_signaler_ne_modifie_rien_meme_en_commit(self):
         from apps.crm.retention import sweep_objets
@@ -90,7 +92,8 @@ class BalayageCrmTests(TestCase):
         lead = self._vieux_lead()
         self._politique(
             action_echeance=PolitiqueRetentionObjet.ACTION_SIGNALER)
-        self.assertEqual(sweep_objets(timezone.now(), True), 1)
+        maintenant = timezone.now()
+        self.assertEqual(sweep_objets(maintenant, True), 1)
         lead.refresh_from_db()
         self.assertEqual(lead.email, 'ancien@exemple.ma')
 
@@ -112,9 +115,10 @@ class BalayageCrmTests(TestCase):
         Client.objects.filter(pk=client.pk).update(date_creation=vieux)
         self._politique(
             type_objet=PolitiqueRetentionObjet.TYPE_CRM_CLIENT)
-        self.assertEqual(sweep_objets(timezone.now(), True), 1)
+        maintenant = timezone.now()
+        self.assertEqual(sweep_objets(maintenant, True), 1)
         # Second passage : le client porte désormais `is_anonymized`.
-        self.assertEqual(sweep_objets(timezone.now(), True), 0)
+        self.assertEqual(sweep_objets(maintenant, True), 0)
 
 
 class JournalisationRetentionRunTests(TestCase):
