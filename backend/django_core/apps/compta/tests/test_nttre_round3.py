@@ -372,3 +372,94 @@ class SituationEffetsTests(TestCase):
             '/api/django/compta/etats/situation-effets/?date=pas-une-date')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('date', resp.data['detail'])
+
+
+class CertificatPouvoirBancaireTests(TestCase):
+    """NTTRE23 — certificat PDF d'un pouvoir bancaire (mention « révoqué »)."""
+
+    def setUp(self):
+        self.co = make_company('nttre23', 'NTTRE23 Co')
+        services.seed_plan_comptable(self.co)
+        self.banque = CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE Agdal', banque='BMCE Bank',
+            rib='011780000012345678901234',
+            compte_comptable=services.get_compte(self.co, '5141'))
+        self.user = User.objects.create_user(
+            username='nttre23-user', password='x', company=self.co,
+            role_legacy='responsable')
+        self.api = auth(self.user)
+
+    def _pouvoir(self, **kwargs):
+        from apps.compta.models import PouvoirBancaire
+
+        defaults = {
+            'company': self.co, 'compte_tresorerie': self.banque,
+            'titulaire_nom': 'Titulaire A', 'titulaire_cin': 'AB12345',
+            'plafond_signature_seul': Decimal('100000'),
+            'plafond_signature_conjointe': Decimal('500000'),
+            'date_debut': date(2026, 1, 1), 'date_fin': date(2026, 12, 31),
+        }
+        defaults.update(kwargs)
+        return PouvoirBancaire.objects.create(**defaults)
+
+    def _html(self, pouvoir):
+        from apps.compta.models import PouvoirBancaire
+        from apps.compta.pdf_etats import render_certificat_pouvoir_html
+
+        return render_certificat_pouvoir_html({
+            'titulaire_nom': pouvoir.titulaire_nom,
+            'titulaire_cin': pouvoir.titulaire_cin,
+            'compte_libelle': pouvoir.compte_tresorerie.libelle,
+            'compte_banque': pouvoir.compte_tresorerie.banque,
+            'compte_rib': pouvoir.compte_tresorerie.rib,
+            'plafond_signature_seul': pouvoir.plafond_signature_seul,
+            'plafond_signature_conjointe': pouvoir.plafond_signature_conjointe,
+            'date_debut': pouvoir.date_debut,
+            'date_fin': pouvoir.date_fin,
+            'statut': pouvoir.statut,
+            'statut_libelle': pouvoir.get_statut_display(),
+            'revoque': pouvoir.statut == PouvoirBancaire.Statut.REVOQUE,
+        }, None, today=date(2026, 6, 1))
+
+    def test_certificat_reprend_tous_les_champs_du_pouvoir_actif(self):
+        html = self._html(self._pouvoir())
+        self.assertIn('Certificat de pouvoir bancaire', html)
+        self.assertIn('Titulaire A', html)
+        self.assertIn('AB12345', html)
+        self.assertIn('BMCE Agdal', html)
+        self.assertIn('011780000012345678901234', html)
+        self.assertIn('100 000,00', html)
+        self.assertIn('500 000,00', html)
+        self.assertIn('2026-01-01', html)
+        self.assertIn('2026-12-31', html)
+        self.assertNotIn('POUVOIR RÉVOQUÉ', html)
+
+    def test_pouvoir_revoque_sort_barre_avec_la_mention(self):
+        from apps.compta.models import PouvoirBancaire
+
+        html = self._html(self._pouvoir(
+            statut=PouvoirBancaire.Statut.REVOQUE))
+        self.assertIn('POUVOIR RÉVOQUÉ', html)
+        self.assertIn('line-through', html)
+        self.assertIn('class="revoque"', html)
+
+    def test_endpoint_pdf_ou_503(self):
+        pouvoir = self._pouvoir()
+        resp = self.api.get(
+            f'/api/django/compta/pouvoirs-bancaires/{pouvoir.pk}/certificat/')
+        self.assertIn(resp.status_code, (200, 503))
+        if resp.status_code == 200:
+            self.assertEqual(resp['Content-Type'], 'application/pdf')
+
+    def test_pouvoir_d_une_autre_societe_introuvable(self):
+        autre = make_company('nttre23-b', 'NTTRE23 B')
+        services.seed_plan_comptable(autre)
+        banque_b = CompteTresorerie.objects.create(
+            company=autre, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='Autre', compte_comptable=services.get_compte(autre, '5141'))
+        pouvoir_b = self._pouvoir(company=autre, compte_tresorerie=banque_b,
+                                  titulaire_nom='Titulaire B')
+        resp = self.api.get(
+            f'/api/django/compta/pouvoirs-bancaires/{pouvoir_b.pk}/certificat/')
+        self.assertEqual(resp.status_code, 404)

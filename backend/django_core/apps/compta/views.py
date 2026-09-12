@@ -3992,6 +3992,52 @@ class PouvoirBancaireViewSet(_ComptaBaseViewSet):
             return [HasPermissionOrLegacy('compta_gerer_pouvoirs_bancaires')()]
         return super().get_permissions()
 
+    @action(detail=True, methods=['get'])
+    def certificat(self, request, pk=None):
+        """NTTRE23 — Certificat PDF d'un pouvoir bancaire (pour la banque).
+
+        Document remis à la banque lors d'un changement de signataire :
+        identité du titulaire, compte couvert, plafonds seul/conjoint et
+        période de validité. Un pouvoir ``revoque`` sort BARRÉ, avec la
+        mention « POUVOIR RÉVOQUÉ » — il ne peut jamais passer pour valide.
+        Rendu WeasyPrint (document INTERNE/bancaire : le moteur de devis
+        premium n'est pas concerné), 503 explicite si WeasyPrint est absent.
+        Scopé société par ``TenantMixin`` (404 hors société).
+        """
+        pouvoir = self.get_object()
+        compte = pouvoir.compte_tresorerie
+        data = {
+            'titulaire_nom': pouvoir.titulaire_nom,
+            'titulaire_cin': pouvoir.titulaire_cin,
+            'compte_libelle': getattr(compte, 'libelle', ''),
+            'compte_banque': getattr(compte, 'banque', ''),
+            'compte_rib': getattr(compte, 'rib', ''),
+            'plafond_signature_seul': pouvoir.plafond_signature_seul,
+            'plafond_signature_conjointe': pouvoir.plafond_signature_conjointe,
+            'date_debut': pouvoir.date_debut,
+            'date_fin': pouvoir.date_fin,
+            'statut': pouvoir.statut,
+            'statut_libelle': pouvoir.get_statut_display(),
+            'revoque': pouvoir.statut == PouvoirBancaire.Statut.REVOQUE,
+        }
+        # Entête société (facultative) : même repli tolérant qu'ailleurs.
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            profile = None
+        from .pdf_etats import render_certificat_pouvoir_pdf
+        try:
+            pdf = render_certificat_pouvoir_pdf(data, profile)
+        except RuntimeError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"certificat_pouvoir_{pouvoir.pk}.pdf"')
+        return resp
+
     @action(detail=True, methods=['post'])
     def revoquer(self, request, pk=None):
         """NTTRE6/42 — Révoque un pouvoir bancaire (statut → révoqué, audité)."""
