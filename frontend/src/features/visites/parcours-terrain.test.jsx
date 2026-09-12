@@ -23,6 +23,8 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
+import { reponseContrat } from '../../test/fixtures/contractSamples'
+
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
     globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
@@ -63,24 +65,9 @@ const TERRAIN = {
   user: null,
 }
 
-const JOURNEE = {
-  date: '2026-09-14',
-  en_retard_count: 0,
-  visites: [{
-    id: 7,
-    lead_nom: 'Client Démo',
-    ville: 'Bouskoura',
-    adresse: 'Quartier Démo',
-    gps_lat: 33.4589,
-    gps_lng: -7.6528,
-    date_prevue: '2026-09-14',
-    statut: 'en_cours',
-    en_route_le: '2026-09-14T08:12:00Z',
-    arrivee_le: '2026-09-14T08:41:00Z',
-    complet: false,
-    manquants_count: 1,
-  }],
-}
+// La journée vient du contrat COMMITTÉ `visites/ma_journee.json` (PACT10) :
+// une charge recopiée ici serait une DEUXIÈME source de vérité — exactement ce
+// qui a laissé passer l'écran AO mort du 03/08/2026 (test vert, écran vide).
 
 const slot = (code, libelle, etat) => ({
   code, libelle, guide: '', requis: true, min_photos: 1, etat, photos: [],
@@ -155,7 +142,7 @@ describe('VTA15 — parcours du Commercial terrain', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
-    getMaJournee.mockResolvedValue({ data: JOURNEE })
+    getMaJournee.mockResolvedValue(reponseContrat('visites', 'ma_journee'))
     getVisites.mockResolvedValue({ data: [] })
     getVisite.mockResolvedValue({ data: VISITE_INCOMPLETE })
   })
