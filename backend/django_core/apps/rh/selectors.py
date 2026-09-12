@@ -3544,6 +3544,28 @@ def rollup_okr_entreprise(company, periode=None, objectif_id=None):
     return lignes
 
 
+def _okrs_pour_tableau(queryset):
+    """NTHCM9 — forme d'affichage d'un OKR dans le tableau de bord.
+
+    Fonction à part (et non une closure) pour que la forme d'une LIGNE ne se
+    confonde jamais avec celle de l'ENVELOPPE renvoyée par
+    ``tableau_okr_employe`` — ni pour un lecteur, ni pour la garde
+    ``check_api_shapes`` qui dérive le contrat du code.
+    """
+    return [
+        {
+            'id': okr.id,
+            'titre': okr.titre,
+            'periode': okr.periode,
+            'employe_id': okr.employe_id,
+            'employe': f'{okr.employe.nom} {okr.employe.prenom}',
+            'objectif_parent_id': okr.objectif_parent_id,
+            'progression_pct': okr.progression_pct,
+        }
+        for okr in queryset
+    ]
+
+
 def tableau_okr_employe(company, employe, periode=None):
     """NTHCM9 — MES OKR, ceux de MON ÉQUIPE, et le rollup entreprise.
 
@@ -3559,17 +3581,6 @@ def tableau_okr_employe(company, employe, periode=None):
     """
     from .models import OkrIndividuel
 
-    def _serialiser(okr):
-        return {
-            'id': okr.id,
-            'titre': okr.titre,
-            'periode': okr.periode,
-            'employe_id': okr.employe_id,
-            'employe': f'{okr.employe.nom} {okr.employe.prenom}',
-            'objectif_parent_id': okr.objectif_parent_id,
-            'progression_pct': okr.progression_pct,
-        }
-
     base = OkrIndividuel.objects.filter(company=company).select_related(
         'employe').prefetch_related('key_results')
     if periode:
@@ -3578,10 +3589,8 @@ def tableau_okr_employe(company, employe, periode=None):
     if employe is None:
         mes_okr, equipe = [], []
     else:
-        mes_okr = [_serialiser(okr)
-                   for okr in base.filter(employe=employe)]
-        equipe = [_serialiser(okr)
-                  for okr in base.filter(employe__manager=employe)]
+        mes_okr = _okrs_pour_tableau(base.filter(employe=employe))
+        equipe = _okrs_pour_tableau(base.filter(employe__manager=employe))
 
     return {
         'mes_okr': mes_okr,

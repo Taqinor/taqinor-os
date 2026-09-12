@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
@@ -6584,6 +6585,17 @@ class OkrIndividuelViewSet(_RhBaseViewSet):
                 checkin, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    # PACT7 — SANS cette déclaration, le schéma OpenAPI publierait cet AGRÉGAT
+    # avec l'``OkrIndividuelSerializer`` (le ``serializer_class`` du ViewSet)
+    # alors qu'il renvoie {mes_okr, equipe, entreprise, periode, est_manager} :
+    # un schéma qui MENT est pire qu'un schéma vide.
+    @extend_schema(responses=inline_serializer('RhOkrTableauDeBord', {
+        'mes_okr': serializers.ListField(child=serializers.DictField()),
+        'equipe': serializers.ListField(child=serializers.DictField()),
+        'entreprise': serializers.ListField(child=serializers.DictField()),
+        'periode': serializers.CharField(),
+        'est_manager': serializers.BooleanField(),
+    }))
     @action(detail=False, methods=['get'], url_path='tableau-de-bord')
     def tableau_de_bord(self, request):
         """NTHCM9 — MES OKR, ceux de MON ÉQUIPE, et le rollup entreprise.
