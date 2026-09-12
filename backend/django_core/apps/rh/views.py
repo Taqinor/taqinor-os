@@ -493,6 +493,21 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             DossierEmployeSerializer(
                 directs, many=True, context={'request': request}).data)
 
+    @action(detail=False, methods=['get'], url_path='organigramme')
+    def organigramme(self, request):
+        """NTHCM2 — organigramme imbriqué (``?racine=``, ``?q=``).
+
+        Lecture pure, scopée société. ``?q=`` marque les nœuds trouvés
+        (``correspond``) et TOUS leurs ancêtres (``sur_chemin``) : c'est ce
+        drapeau qui permet à l'écran de déplier jusqu'au nœud, sans deviner.
+        Cycle-safe et borné en profondeur (un nœud coupé porte ``tronque``).
+        """
+        return Response(
+            selectors.arbre_hierarchique(
+                request.user.company,
+                racine_id=request.query_params.get('racine'),
+                q=request.query_params.get('q')))
+
     @action(detail=False, methods=['get'], url_path='equipe-terrain')
     def equipe_terrain(self, request):
         """NTFSM26 — équipe terrain : compétences, habilitations et zone.

@@ -577,6 +577,10 @@ const rhApi = {
   getSubordonnes: (employeId) =>
     api.get(`/rh/employes/${employeId}/subordonnes/`),
 
+  // ── NTHCM2 — organigramme imbriqué (lecture) ──
+  getOrganigramme: (params) =>
+    api.get('/rh/employes/organigramme/', { params }),
+
   // ── NTHCM4 — postes budgétés vs pourvus (headcount) ──
   getEffectifPoste: (posteId) =>
     api.get(`/rh/postes/${posteId}/effectif/`),

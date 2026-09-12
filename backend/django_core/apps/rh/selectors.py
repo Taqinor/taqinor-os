@@ -3488,6 +3488,113 @@ def zones_intervention(company):
     return sorted(set(valeurs))
 
 
+#: NTHCM2 — profondeur MAXIMALE d'un organigramme rendu. Garde anti-boucle
+#: DOUBLE avec le suivi des ancêtres : ``DossierEmploye.clean()`` (NTHCM1)
+#: refuse un cycle à la saisie, mais des données LEGACY importées peuvent en
+#: porter un — l'écran ne doit jamais partir en boucle infinie pour autant.
+PROFONDEUR_MAX_ORGANIGRAMME = 12
+
+
+def arbre_hierarchique(company, racine_id=None, q=None):
+    """NTHCM2 — organigramme imbriqué de la société (lecture pure).
+
+    Part des employés SANS manager (les racines réelles), ou d'une ``racine_id``
+    donnée. Chaque nœud porte l'identité d'affichage (nom, poste, département,
+    photo présignée quand le compte en a une), son nombre de rapports directs
+    et ses ``subordonnes`` imbriqués.
+
+    CYCLE-SAFE PAR CONSTRUCTION. Deux gardes indépendantes : le suivi des
+    ancêtres du chemin courant (un employé déjà rencontré en remontant n'est
+    jamais redescendu) ET ``PROFONDEUR_MAX_ORGANIGRAMME``. Un nœud coupé porte
+    ``tronque=True`` — visible dans l'UI, jamais un silence.
+
+    RECHERCHE (``q``). Le nœud qui correspond porte ``correspond=True`` ; tout
+    ANCÊTRE d'une correspondance porte ``sur_chemin=True`` — c'est ce drapeau
+    qui permet à l'écran de déplier jusqu'au nœud trouvé sans deviner.
+
+    Les employés SORTIS sont exclus (un organigramme montre l'organisation
+    d'aujourd'hui) ; un employé dont le manager est hors périmètre (sorti, ou
+    d'une autre société) devient une racine plutôt que de disparaître.
+    """
+    from authentication.avatars import presign_avatar
+
+    employes = list(
+        DossierEmploye.objects
+        .filter(company=company)
+        .exclude(statut=DossierEmploye.Statut.SORTI)
+        .select_related('poste_ref', 'departement', 'user')
+        .order_by('nom', 'prenom', 'id'))
+    index = {employe.id: employe for employe in employes}
+    enfants_de = {}
+    for employe in employes:
+        if employe.manager_id in index:
+            enfants_de.setdefault(employe.manager_id, []).append(employe)
+
+    if racine_id:
+        try:
+            racine = index.get(int(racine_id))
+        except (TypeError, ValueError):
+            racine = None
+        racines = [racine] if racine is not None else []
+    else:
+        racines = [employe for employe in employes
+                   if employe.manager_id not in index]
+
+    terme = (q or '').strip().lower()
+
+    def _photo(employe):
+        utilisateur = employe.user
+        cle = getattr(utilisateur, 'avatar_key', '') if utilisateur else ''
+        if not cle:
+            return ''
+        try:
+            return presign_avatar(cle) or ''
+        except Exception:  # pragma: no cover - défensif (stockage indisponible)
+            return ''
+
+    def _noeud(employe, profondeur, ancetres):
+        directs = enfants_de.get(employe.id, [])
+        tronque = (
+            profondeur >= PROFONDEUR_MAX_ORGANIGRAMME
+            or employe.id in ancetres)
+        subordonnes = []
+        if not tronque:
+            chemin = ancetres | {employe.id}
+            subordonnes = [
+                _noeud(enfant, profondeur + 1, chemin) for enfant in directs]
+
+        correspond = bool(terme) and terme in ' '.join(filter(None, [
+            employe.nom, employe.prenom, employe.matricule,
+            employe.poste_ref.intitule if employe.poste_ref_id else '',
+            employe.poste,
+        ])).lower()
+        sur_chemin = correspond or any(
+            enfant['sur_chemin'] for enfant in subordonnes)
+
+        return {
+            'id': employe.id,
+            'employe': f'{employe.nom} {employe.prenom}'.strip(),
+            'matricule': employe.matricule,
+            'poste': (employe.poste_ref.intitule if employe.poste_ref_id
+                      else employe.poste or ''),
+            'departement': (employe.departement.nom
+                            if employe.departement_id else ''),
+            'photo': _photo(employe),
+            'nb_rapports_directs': len(directs),
+            'tronque': tronque,
+            'correspond': correspond,
+            'sur_chemin': sur_chemin,
+            'subordonnes': subordonnes,
+        }
+
+    return {
+        'racines': [_noeud(racine, 0, frozenset()) for racine in racines],
+        'effectif': len(employes),
+        'profondeur_max': PROFONDEUR_MAX_ORGANIGRAMME,
+        'recherche': terme,
+    }
+
+
 #: NTHCM27 — seuil d'anonymat : un segment de moins de 5 personnes n'est
 #: JAMAIS chiffré (même règle que le pulse XRH32/eNPS et les enquêtes
 #: NTHCM15). En dessous, l'effectif d'une petite équipe permettrait de
