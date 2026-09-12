@@ -203,6 +203,14 @@ class EventType(models.TextChoices):
     # gestionnaires paie que le run peut passer à la génération de l'ordre de
     # virement / la clôture.
     PAIE_RUN_PRET = 'paie_run_pret', 'Run de paie prêt (validé)'
+    # NTPAY25 — même cas que PAIE_RIB_DIVERGENCE (ARC39) : la tâche de rappel
+    # des échéances déclaratives appelait déjà ``notify_many(...,
+    # 'paie_echeance_rappel', ...)`` sans que le type soit enregistré, donc
+    # ``notify()`` journalisait « type d'événement inconnu » et ne persistait
+    # AUCUNE notification in-app. Enregistrement de l'événement existant ;
+    # aucun changement de comportement de l'appelant.
+    PAIE_ECHEANCE_RAPPEL = (
+        'paie_echeance_rappel', 'Échéance déclarative paie à déposer')
     # VX213 — handoffs AVAL (exécution) longtemps muets. (a) un chantier est
     # créé depuis un devis accepté et assigné à un technicien ; (b) un chantier
     # est réassigné à un NOUVEAU technicien : dans les deux cas l'installateur
