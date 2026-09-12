@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Coins } from 'lucide-react'
+import { Coins, Landmark } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
-import { Badge, DefinitionList, EmptyState, Spinner } from '../../ui'
+import { Badge, Button, DefinitionList, EmptyState, Spinner } from '../../ui'
 import { formatMAD, formatDate } from '../../lib/format'
 import juridiqueApi from '../../api/juridiqueApi'
 import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import {
   StatutDossierPill, ConfidentialitePill, StatutMandatPill, StatutNotePill,
-  StatutAudiencePill, NATURE_MAP, PROCEDURE_MAP, POSITION_MAP,
+  StatutAudiencePill, NATURE_MAP, PROCEDURE_MAP, POSITION_MAP, estClos,
 } from './juridiqueStatus'
 import ProvisionPanel from './ProvisionPanel'
+import WizardClotureDossier from './WizardClotureDossier'
 
 /* ============================================================================
    NTJUR22 — Détail d'un dossier juridique (onglets).
@@ -42,6 +43,9 @@ export default function DossierDetailPage({ dossierId, onBack, onChanged }) {
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(null)
+  // NTJUR32 — le wizard n'écrit RIEN tant qu'il n'est pas confirmé : l'ouvrir
+  // puis le refermer laisse le dossier exactement dans son statut précédent.
+  const [clotureOuverte, setClotureOuverte] = useState(false)
 
   const estAdmin = useIsAdmin()
   const peutEngager = useHasPermission('juridique_gerer_mandats')
@@ -313,7 +317,20 @@ export default function DossierDetailPage({ dossierId, onBack, onChanged }) {
     />
   )
 
-  const actions = <ConfidentialitePill status={dossier.confidentialite} />
+  const actions = (
+    <>
+      <ConfidentialitePill status={dossier.confidentialite} />
+      {!estClos(dossier.statut) && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setClotureOuverte(true)}
+        >
+          <Landmark /> Clôturer le dossier
+        </Button>
+      )}
+    </>
+  )
 
   return (
     <div className="page flex flex-col gap-4">
@@ -353,6 +370,18 @@ export default function DossierDetailPage({ dossierId, onBack, onChanged }) {
           },
         ]}
       />
+      {clotureOuverte && (
+        <WizardClotureDossier
+          dossier={dossier}
+          onAnnuler={() => setClotureOuverte(false)}
+          onClos={(maj) => {
+            setClotureOuverte(false)
+            if (maj) setDossier(maj)
+            charger()
+            onChanged?.()
+          }}
+        />
+      )}
     </div>
   )
 }
