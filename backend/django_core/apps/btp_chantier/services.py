@@ -381,6 +381,24 @@ def soumettre_client_avenant(avenant, *, user, validite_jours=30):
     return avenant
 
 
+# CHT6 — raisons de NON-résolution du budget projet. Sans elles, l'utilisateur
+# qui coche « impact budget » obtenait un ``budget_projet_id=None``
+# indiscernable du cas normal : rien à l'écran, rien dans les journaux.
+BUDGET_AUCUN_PROJET = 'aucun_projet_rattache'
+BUDGET_AUCUN_BUDGET = 'aucun_budget'
+BUDGET_ERREUR = 'erreur'
+
+_BUDGET_RAISON_LIBELLE = {
+    BUDGET_AUCUN_PROJET: (
+        "aucun projet de gestion de projet n'est rattaché à ce chantier"),
+    BUDGET_AUCUN_BUDGET: (
+        'le projet rattaché à ce chantier ne porte aucun budget'),
+    BUDGET_ERREUR: (
+        'la résolution du budget a échoué (erreur technique — voir les '
+        'journaux serveur)'),
+}
+
+
 def _resoudre_budget_projet_id(chantier):
     """NTCON7 — best-effort, LECTURE SEULE : résout l'ID du ``BudgetProjet``
     actif du projet auquel ce ``chantier`` est rattaché.
@@ -390,8 +408,15 @@ def _resoudre_budget_projet_id(chantier):
     sanctionnée cross-app). Aucune fonction de SERVICE n'existe côté
     ``gestion_projet`` pour MUTER un budget depuis une autre app — l'impact
     se traduit donc par cette référence lâche, jamais une écriture directe
-    (frontière cross-app, CLAUDE.md). Ne lève JAMAIS (best-effort) : renvoie
-    ``None`` si rien n'est trouvé, n'empêche jamais l'approbation.
+    (frontière cross-app, CLAUDE.md). Ne lève JAMAIS (best-effort) :
+    n'empêche jamais l'approbation.
+
+    CHT6 — renvoie le couple ``(budget_id, raison)`` : ``raison`` est vide
+    quand le budget est résolu, sinon ``BUDGET_AUCUN_PROJET`` /
+    ``BUDGET_AUCUN_BUDGET`` / ``BUDGET_ERREUR``. Le ``try/except`` reste (il
+    protège la transaction atomique de l'approbation) mais n'avale plus le
+    diagnostic : il le JOURNALISE (``logger.warning(..., exc_info=True)``) et
+    le remonte à l'appelant, qui le rend visible sur l'avenant.
     """
     from django.apps import apps as django_apps
 
@@ -406,12 +431,44 @@ def _resoudre_budget_projet_id(chantier):
             chantier_id=chantier.pk,
             company=chantier.company).select_related('projet').first()
         if pc is None:
-            return None
+            return None, BUDGET_AUCUN_PROJET
         from apps.gestion_projet.selectors import budget_effectif
         budget = budget_effectif(pc.projet)
-        return budget.id if budget else None
+        if budget is None:
+            return None, BUDGET_AUCUN_BUDGET
+        return budget.id, ''
+    except Exception:
+        logger.warning(
+            'CHT6 — budget projet non résolu pour le chantier %s : erreur '
+            'technique, l\'avenant est approuvé sans impact budget.',
+            getattr(chantier, 'pk', None), exc_info=True)
+        return None, BUDGET_ERREUR
+
+
+def _noter_budget_non_resolu(avenant, user, raison):
+    """CHT6 — trace VISIBLE (note de chatter) quand « impact budget » est
+    coché mais qu'aucun budget n'a pu être rattaché.
+
+    ``records`` est une app de FONDATION : son ``log_note`` générique est le
+    point d'écriture du chatter transverse (import fonction-local, patron
+    ``ao.scheduled``). Best-effort dans un POINT DE SAUVEGARDE dédié : une
+    note qui échoue ne doit jamais casser la transaction d'approbation ni
+    empêcher l'approbation elle-même.
+    """
+    libelle = _BUDGET_RAISON_LIBELLE.get(
+        raison, _BUDGET_RAISON_LIBELLE[BUDGET_ERREUR])
+    corps = (
+        f"Impact budget demandé, mais aucun budget projet n'a pu être "
+        f'rattaché : {libelle}. L\'avenant est approuvé ; le budget doit '
+        f'être mis à jour manuellement.')
+    try:
+        with transaction.atomic():
+            from apps.records.services import log_note
+            log_note(avenant, user, corps, company=avenant.company)
     except Exception:  # pragma: no cover - défensif, best-effort
-        return None
+        logger.warning(
+            'CHT6 — note de chatter impossible sur l\'avenant %s.',
+            getattr(avenant, 'pk', None), exc_info=True)
 
 
 @transaction.atomic
@@ -433,7 +490,13 @@ def approuver_avenant(avenant, *, user=None):
             f'Avenant {avenant.reference} : déjà décidé ({avenant.statut}).')
 
     if avenant.impact_budget:
-        avenant.budget_projet_id = _resoudre_budget_projet_id(avenant.chantier)
+        # CHT6 — le best-effort reste best-effort (il n'empêche JAMAIS
+        # l'approbation), mais il n'est plus SILENCIEUX : la raison remonte et
+        # devient une note visible sur l'avenant.
+        avenant.budget_projet_id, raison_budget = _resoudre_budget_projet_id(
+            avenant.chantier)
+        if avenant.budget_projet_id is None:
+            _noter_budget_non_resolu(avenant, user, raison_budget)
     else:
         if not avenant.chantier.client_id:
             raise TransitionInvalide(
