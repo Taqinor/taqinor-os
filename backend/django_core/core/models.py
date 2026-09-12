@@ -480,6 +480,25 @@ class WorkflowStepDefinition(TimestampedModel):
         'Échéance en jours ouvrés', default=False,
         help_text="Active, l'échéance SLA saute les jours non ouvrés/fériés "
                   'de la société au lieu de compter en heures brutes.')
+    # NTWFL7 — garde de transition (branche simple, pas de gateway parallèle
+    # complet). Format IDENTIQUE à ``core.rules.evaluate_condition_group``
+    # (FG367, AUCUN nouveau moteur de conditions). ``None``/vide = pas de
+    # garde (comportement inchangé : une étape ``auto`` s'auto-approuve
+    # toujours). Évaluée par ``core.workflow.avancer`` contre le contexte de
+    # la cible sérialisée AVANT d'auto-approuver une étape ``auto``.
+    condition_transition = models.JSONField(
+        'Condition de transition', null=True, blank=True, default=None,
+        help_text="Garde évaluée contre la cible (format core.rules) avant "
+                  "qu'une étape automatique ne s'auto-approuve. Vide = "
+                  'toujours franchie.')
+    # NTWFL7 — ``ordre`` (au sein de la MÊME définition) de l'étape vers
+    # laquelle router si ``condition_transition`` échoue. Vide = sans garde
+    # échouée valide, l'étape reste simplement EN ATTENTE (comme une étape
+    # manuelle bloquée) plutôt que de planter ou de sauter au hasard.
+    etape_alternative_si_echec = models.PositiveIntegerField(
+        'Étape alternative si échec', null=True, blank=True,
+        help_text="Ordre (dans la même définition) de l'étape vers "
+                  "laquelle router si la garde ci-dessus échoue.")
 
     class Meta:
         verbose_name = 'Étape de workflow (modèle)'
@@ -568,11 +587,19 @@ class WorkflowStepInstance(TimestampedModel):
     STATUT_APPROUVE = 'approuve'
     STATUT_REJETE = 'rejete'
     STATUT_ESCALADE = 'escalade'
+    # NTWFL7 — branche NON empruntée (garde de transition échouée ET une
+    # étape alternative valide a été empruntée à sa place). Une étape
+    # ``ignoree`` n'apparaît JAMAIS dans les listes « en attente »
+    # (``pending_steps_for_company``/``etapes_sla_depassees`` filtrent déjà
+    # sur ``STATUT_EN_ATTENTE``) — comportement additif, aucun code existant
+    # à adapter.
+    STATUT_IGNOREE = 'ignoree'
     STATUT_CHOICES = [
         (STATUT_EN_ATTENTE, 'En attente'),
         (STATUT_APPROUVE, 'Approuvé'),
         (STATUT_REJETE, 'Rejeté'),
         (STATUT_ESCALADE, 'Escaladé'),
+        (STATUT_IGNOREE, 'Ignorée (branche non empruntée)'),
     ]
 
     company = models.ForeignKey(

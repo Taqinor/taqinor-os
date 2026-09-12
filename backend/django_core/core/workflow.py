@@ -224,6 +224,57 @@ def etape_courante_de(instance):
     )
 
 
+def _contexte_cible(instance):
+    """NTWFL7 — sérialise superficiellement ``instance.target`` (la cible
+    générique via contenttypes) en un ``dict`` PLAT ``{champ: valeur}`` pour
+    ``core.rules.evaluate_condition_group``. Générique : introspecte les
+    champs CONCRETS du modèle cible sans jamais importer son type (``core``
+    reste fondation). ``{}`` si la cible est absente/introspection
+    impossible — une garde sans contexte disponible échoue prudemment
+    (feuilles ``core.rules`` : champ absent ⇒ ``False``)."""
+    target = getattr(instance, 'target', None)
+    if target is None:
+        return {}
+    try:
+        return {f.name: getattr(target, f.name, None)
+                for f in target._meta.fields}
+    except Exception:  # pragma: no cover - défensif
+        return {}
+
+
+def _garde_transition_ok(step, instance):
+    """NTWFL7 — ``True`` si la garde ``condition_transition`` de l'étape est
+    vérifiée (ou absente — comportement inchangé : toujours franchie)."""
+    condition = step.step_def.condition_transition
+    if not condition:
+        return True
+    from core.rules import evaluate_condition_group
+    return evaluate_condition_group(condition, _contexte_cible(instance))
+
+
+def _router_vers_alternative(step, instance, moment):
+    """NTWFL7 — route vers ``step.step_def.etape_alternative_si_echec`` (un
+    ``ordre`` de la MÊME définition) quand la garde échoue : l'étape
+    courante est marquée ``ignoree`` (branche non empruntée) et le pointeur
+    saute directement à l'étape alternative. Renvoie ``True`` si une route a
+    été prise, ``False`` sinon (pas d'alternative configurée, ou ``ordre``
+    introuvable — traité comme « pas d'alternative » plutôt que de planter)."""
+    ordre_alt = step.step_def.etape_alternative_si_echec
+    if not ordre_alt:
+        return False
+    cible = (
+        instance.step_instances.filter(ordre=ordre_alt).order_by('id').first()
+    )
+    if cible is None:
+        return False
+    step.statut = WorkflowStepInstance.STATUT_IGNOREE
+    step.decided_le = moment
+    step.save(update_fields=['statut', 'decided_le', 'updated_at'])
+    instance.etape_courante = ordre_alt
+    instance.save(update_fields=['etape_courante', 'updated_at'])
+    return True
+
+
 def _emit_etape_activee(step, company):
     """NTWFL5 — émet ``core.events.workflow_etape_activee`` (best-effort,
     jamais bloquant : une notification cassée ne doit jamais empêcher le
@@ -279,6 +330,15 @@ def avancer(instance, now=None, _from_start=False):
 
         if step.step_def.type_approbation == \
                 step.step_def.APPROBATION_AUTO:
+            # NTWFL7 — garde de transition AVANT l'auto-approbation.
+            if not _garde_transition_ok(step, instance):
+                route_prise = _router_vers_alternative(step, instance, moment)
+                if route_prise:
+                    continue
+                # Pas d'alternative valide : reste EN ATTENTE (comme une
+                # étape manuelle bloquée) plutôt que de forcer l'avancement.
+                _emit_etape_activee(step, instance.company)
+                return instance
             step.statut = WorkflowStepInstance.STATUT_APPROUVE
             step.decided_le = moment
             step.save(update_fields=['statut', 'decided_le', 'updated_at'])
