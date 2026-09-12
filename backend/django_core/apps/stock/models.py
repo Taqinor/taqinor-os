@@ -516,6 +516,45 @@ class AchatsParametres(models.Model):
                   'exige une approbation. 0 = désactivé.')
 
 
+class ToleranceRapprochementCategorie(models.Model):
+    """NTP2P9 — override PAR CATÉGORIE produit des tolérances par défaut du
+    rapprochement 3 voies (``AchatsParametres.tolerance_prix_pct``/
+    ``tolerance_prix_absolu_mad``, XPUR10).
+
+    Consultée par ``stock.services.evaluer_tolerance_ecart`` AVANT le défaut
+    société : une catégorie SANS ligne ici retombe sur le défaut société
+    (comportement historique inchangé). ``tolerance_prix_pct``/
+    ``tolerance_prix_absolu_mad`` sont indépendants — l'un ou l'autre (ou les
+    deux) peuvent être renseignés ; ``None`` = pas d'override sur cet axe pour
+    cette catégorie (retombe alors sur le défaut société pour CET axe précis).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='tolerances_rapprochement_categorie')
+    categorie = models.ForeignKey(
+        Categorie, on_delete=models.CASCADE,
+        related_name='tolerances_rapprochement')
+    tolerance_prix_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Écart %% toléré pour cette catégorie. Vide = retombe sur '
+                  'le défaut société (AchatsParametres.tolerance_prix_pct).')
+    tolerance_prix_absolu_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Écart MAD absolu toléré pour cette catégorie. Vide = '
+                  'retombe sur le défaut société.')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Tolérance de rapprochement par catégorie'
+        verbose_name_plural = 'Tolérances de rapprochement par catégorie'
+        unique_together = [('company', 'categorie')]
+        ordering = ['categorie__nom']
+
+    def __str__(self):
+        return f'Tolérance {self.categorie_id} · {self.tolerance_prix_pct}%'
+
+
 class DocumentConformiteFournisseur(models.Model):
     """XPUR1 — pièce de conformité fiscale/administrative d'un FOURNISSEUR
     (matériel ET service — DC34 a fondu les deux populations dans le même

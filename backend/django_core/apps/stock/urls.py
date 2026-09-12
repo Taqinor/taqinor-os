@@ -10,6 +10,7 @@ from .views import (
     InventaireSessionViewSet, KitProduitViewSet,
     FicheTechniqueViewSet,
     DocumentConformiteFournisseurViewSet, AchatsParametresViewSet,
+    ToleranceRapprochementCategorieViewSet,
     ContactFournisseurViewSet, CategorieFournisseurViewSet,
     AcompteFournisseurViewSet, AvoirFournisseurViewSet,
     LotEntrepotViewSet, InventaireAnnuelViewSet, RevalorisationStockViewSet,
@@ -34,6 +35,7 @@ from .views import (
     IncidentQualiteFournisseurViewSet, DepotConsignationViewSet,
     AccordRFAFournisseurViewSet, catalogue_b2b_view, stock_embarque_view,
     parametres_negoce_view, ProfilSaisonnierViewSet,
+    tableau_bord_achats_view,
 )
 
 router = DefaultRouter()
@@ -58,6 +60,10 @@ router.register(
 router.register(
     r'achats-parametres', AchatsParametresViewSet,
     basename='achats-parametres')
+# NTP2P9 — grille éditable des tolérances de rapprochement par catégorie.
+router.register(
+    r'tolerances-rapprochement-categorie',
+    ToleranceRapprochementCategorieViewSet)
 router.register(r'contacts-fournisseur', ContactFournisseurViewSet)
 router.register(r'categories-fournisseur', CategorieFournisseurViewSet)
 router.register(r'acomptes-fournisseur', AcompteFournisseurViewSet)
@@ -166,5 +172,9 @@ urlpatterns = [
     # NTWMS41 - mode « Retour fournisseur » du poste scanner (pre-remplissage).
     path('scanner/retour-fournisseur/', scanner_retour_fournisseur_view,
          name='stock-scanner-retour-fournisseur'),
+    # NTP2P17 - dashboard spend management (budgets/top fournisseurs/delais/
+    # exceptions 3 voies/notes de frais en attente), lecture seule.
+    path('tableau-bord-achats/', tableau_bord_achats_view,
+         name='stock-tableau-bord-achats'),
     path('', include(router.urls)),
 ]

@@ -227,6 +227,45 @@ def notifier_documents_conformite_expirants_task():
     return result
 
 
+@shared_task(name='stock.notifier_documents_fournisseur_expirants')
+def notifier_documents_fournisseur_expirants_task():
+    """NTP2P20 — pour CHAQUE société active, notifie les responsables/admins
+    des pièces d'onboarding fournisseur (NTP2P7, ``DocumentFournisseur``)
+    expirant sous 30 jours (réutilise
+    ``services.notify_expiring_documents_fournisseur`` — jamais de logique
+    dupliquée). Distinct de ``stock.notifier_documents_conformite_expirants``
+    (XPUR1, ``DocumentConformiteFournisseur``, registre sans fichier).
+
+    Idempotence PAR LIEN (``_deja_notifie_aujourdhui``, pas
+    ``_deja_notifie_aujourdhui_societe``) : les deux sweeps partagent le même
+    ``EventType.SUPPLIER_DOC_EXPIRING`` (sémantique identique) mais un lien
+    DISTINCT — sinon celui qui tourne en premier « consommerait » le
+    guard-par-société (sans lien) de l'autre pour le reste de la journée, un
+    faux négatif qui ferait manquer des expirations sur une couche différente
+    de documents. Renvoie {company_id: nb_documents_notifies}."""
+    from authentication.selectors import active_companies
+    from apps.notifications.models import EventType
+    from .services import notify_expiring_documents_fournisseur
+
+    today = timezone.localdate()
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        link = (f'stock-doc-fournisseur-expirant-{company.id}-'
+                f'{today.isoformat()}')
+        if _deja_notifie_aujourdhui(EventType.SUPPLIER_DOC_EXPIRING, link):
+            result[company.id] = 0
+            continue
+        try:
+            result[company.id] = notify_expiring_documents_fournisseur(
+                company, jours=30, link=link)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+            logger.warning(
+                'stock.notifier_documents_fournisseur_expirants: échec '
+                'société %s', company.id, exc_info=True)
+            result[company.id] = 0
+    return result
+
+
 @shared_task(name='stock.notifier_bcf_en_retard_buyer')
 def notifier_bcf_en_retard_buyer_task():
     """XPUR7 (AUDV04/DRAFT165-116) — pour CHAQUE société active, notifie les

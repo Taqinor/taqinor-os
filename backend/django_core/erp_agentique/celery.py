@@ -518,6 +518,13 @@ app.conf.beat_schedule = {
         'task': 'stock.notifier_bcf_en_retard_buyer',
         'schedule': crontab(hour=6, minute=40),
     },
+    # NTP2P20 — pieces d'onboarding fournisseur (NTP2P7, DocumentFournisseur)
+    # expirant sous 30 jours ; distincte du sweep XPUR1 juste au-dessus
+    # (DocumentConformiteFournisseur, registre sans fichier).
+    'stock-notifier-documents-fournisseur-expirants': {
+        'task': 'stock.notifier_documents_fournisseur_expirants',
+        'schedule': crontab(hour=6, minute=37),
+    },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
         'task': 'core.dump_database',

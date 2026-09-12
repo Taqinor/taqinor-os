@@ -76,7 +76,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('onboarding', 'score_risque',
-                             'export_conformite'):
+                             'export_conformite', 'documents_expirants'):
             # NTP2P7 — dossier d'entrée en relation : LECTURE (mêmes gardes
             # que `performance`/`vue_360` — get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite).
@@ -401,6 +401,18 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         return build_xlsx_response(
             'conformite-fournisseurs.xlsx', entetes, corps,
             sheet_title='Conformité fournisseurs')
+
+    @action(detail=False, methods=['get'], url_path='documents-expirants')
+    def documents_expirants(self, request):
+        """NTP2P20 — pièces d'onboarding (NTP2P7) expirant dans
+        ``?within=N`` jours (30 par défaut). Réutilise le pattern
+        ``rh.selectors.echeances_rh`` (moteur d'alerte d'expiration unifié) :
+        sélecteur pur, aucune mutation."""
+        from .. import selectors as stock_selectors
+
+        within = request.query_params.get('within', 30)
+        return Response(stock_selectors.documents_fournisseur_expirant(
+            request.user.company, within_days=within))
 
     @action(detail=True, methods=['get'], url_path='score-risque')
     def score_risque(self, request, *args, **kwargs):

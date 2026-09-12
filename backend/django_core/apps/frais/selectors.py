@@ -18,6 +18,7 @@ __all__ = [
     'analyse_notes_frais',
     'indemnites_chantier_remboursables_par_paie',
     'note_frais_par_id',
+    'notes_frais_en_attente',
 ]
 
 
@@ -31,3 +32,24 @@ def note_frais_par_id(company, note_id):
         return None
     from apps.frais.models import NoteFrais
     return NoteFrais.objects.filter(company=company, id=note_id).first()
+
+
+def notes_frais_en_attente(company):
+    """NTP2P17 — ``{'count', 'montant_total'}`` des ``NoteFrais`` SOUMISES
+    (en attente d'approbation) de la société. Point d'entrée en LECTURE pour
+    le dashboard spend management (``apps.stock.selectors.
+    tableau_bord_achats``) — jamais un import direct de ``NoteFrais`` hors de
+    ce module."""
+    from decimal import Decimal
+    from django.db.models import Count, Sum
+    from apps.frais.models import NoteFrais
+
+    if company is None:
+        return {'count': 0, 'montant_total': Decimal('0')}
+    agg = NoteFrais.objects.filter(
+        company=company, statut=NoteFrais.Statut.SOUMISE
+    ).aggregate(count=Count('id'), montant_total=Sum('montant'))
+    return {
+        'count': agg['count'] or 0,
+        'montant_total': agg['montant_total'] or Decimal('0'),
+    }
