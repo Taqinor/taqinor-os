@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import {
   Plus, CheckCircle2, XCircle, Send, TrendingDown, Landmark, Download,
-  ArrowRightLeft, Unlock,
+  ArrowRightLeft, Unlock, Wand2,
 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, toast } from '../../../ui'
@@ -10,6 +10,10 @@ import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// NTTRE25 — assistant guidé « Créer une campagne de paiement ».
+import CampagnePaiementWizard from '../components/CampagnePaiementWizard.jsx'
+// NTTRE26 — assistant guidé « Endossement / protêt » d'un effet.
+import EffetActionWizard from '../components/EffetActionWizard.jsx'
 
 /* ============================================================================
    FG127/128/129/133/134 — Effets à recevoir/payer, bordereaux de remise,
@@ -84,6 +88,10 @@ const money = (v) => formatMAD(v)
 export default function EffetsPage() {
   const [tab, setTab] = useTabParam('effets')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
+  // NTTRE25 — assistant guidé « Créer une campagne de paiement ».
+  const [campagneWizard, setCampagneWizard] = useState(false)
+  // NTTRE26 — assistant guidé « Endossement / protêt » d'un effet.
+  const [effetAction, setEffetAction] = useState(null)
 
   const fetcher = useMemo(() => ({
     effets: comptaApi.effets.list,
@@ -122,12 +130,10 @@ export default function EffetsPage() {
       'Effet remis à l’escompte.')
   }
 
-  // XACC34 — endossement à un tiers bénéficiaire.
-  const endosserPrompt = (row) => {
-    const beneficiaire = window.prompt('Bénéficiaire de l’endossement :')
-    if (!beneficiaire) return
-    act(() => comptaApi.effets.endosser(row.id, { beneficiaire }), 'Effet endossé.')
-  }
+  // NTTRE26 — l'endossement (XACC34) et le protêt (NTTRE7) passent désormais
+  // par l'assistant guidé : champs contextualisés selon l'action, et action
+  // invalide GRISÉE avec l'explication du blocage (au lieu d'un `prompt` nu
+  // qui laissait tenter un enchaînement refusé ensuite par le serveur).
 
   const columns = useMemo(() => {
     switch (tab) {
@@ -180,9 +186,14 @@ export default function EffetsPage() {
           onClick: () => act(() => comptaApi.effets.encaisser(row.id, {}), 'Effet encaissé.') })
         acts.push({ id: 'escompter', label: 'Escompter', icon: TrendingDown,
           onClick: () => escompterPrompt(row) })
-        acts.push({ id: 'endosser', label: 'Endosser', icon: ArrowRightLeft,
-          onClick: () => endosserPrompt(row) })
       }
+      // NTTRE26 — toujours proposé sur un effet : l'assistant montre les deux
+      // actions et grise celle qui est impossible, avec sa raison.
+      acts.push({
+        id: 'endossement-protet', label: 'Endossement / protêt',
+        icon: ArrowRightLeft,
+        onClick: () => setEffetAction(row),
+      })
       if (row.statut === 'portefeuille' && row.sens === 'payer') {
         acts.push({ id: 'payer', label: 'Payer', icon: Send,
           onClick: () => act(() => comptaApi.effets.payer(row.id, {}), 'Effet payé.') })
@@ -237,17 +248,39 @@ export default function EffetsPage() {
   const canCreate = tab === 'effets'
   const submit = (payload) => comptaApi.effets.create(payload)
 
+  // NTTRE22 — état imprimable « Situation des effets en portefeuille » :
+  // par statut/sens et par tranche d'échéance, avec le total par tranche.
+  const exporterSituation = async () => {
+    try {
+      const res = await comptaApi.etats.situationEffetsPdf()
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, 'situation-effets.pdf')
+    } catch {
+      toast.error('Situation des effets indisponible.')
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header">
         <h2>Effets & règlements fournisseurs</h2>
-        {canCreate && (
-          <div className="page-header-actions">
+        <div className="page-header-actions">
+          <Button variant="outline" onClick={exporterSituation}>
+            <Download /> Situation du portefeuille (PDF)
+          </Button>
+          {/* NTTRE25 — sélection guidée des dettes + impact sur le solde du
+              compte payeur avant de créer la campagne en brouillon. */}
+          {tab === 'paymentRuns' && (
+            <Button onClick={() => setCampagneWizard(true)}>
+              <Wand2 /> Assistant : nouvelle campagne
+            </Button>
+          )}
+          {canCreate && (
             <Button onClick={() => setDialog({ row: null })}>
               <Plus /> Nouvel effet
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="mb-3">
@@ -277,6 +310,25 @@ export default function EffetsPage() {
           initial={dialog.row}
           onSubmit={submit}
           onSaved={list.reload}
+        />
+      )}
+
+      {/* NTTRE25 — filtre → aperçu chiffré → alerte de seuil bloquante →
+          création de la campagne en brouillon. */}
+      {campagneWizard && (
+        <CampagnePaiementWizard
+          onClose={() => { setCampagneWizard(false); list.reload() }}
+          onCreated={list.reload}
+        />
+      )}
+
+      {/* NTTRE26 — endosser OU constater un protêt, l'action impossible
+          grisée avec l'explication du blocage. */}
+      {effetAction && (
+        <EffetActionWizard
+          effet={effetAction}
+          onClose={() => setEffetAction(null)}
+          onDone={list.reload}
         />
       )}
     </div>

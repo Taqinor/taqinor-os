@@ -1289,6 +1289,17 @@ CELERY_TASK_ROUTES = {
     'rh.planifier_appreciations': {'queue': 'scheduled'},
     'qhse.relancer_derogations': {'queue': 'scheduled'},
     'qhse.relancer_audits_planifies_en_retard': {'queue': 'scheduled'},
+    # Vague 1 drain NT (2026-09-12) — 4 tâches ajoutées au beat_schedule sans
+    # route explicite (garde core/tests/test_celery_task_routes.py) :
+    # rapport photo hebdomadaire de chantier BTP ; NTSUB27 précalcul nocturne
+    # des métriques SaaS ; NTSUB26 purge mensuelle des compteurs d'usage
+    # facturés ; NTDOC32 purge des dépôts contrepartie archivés. Toutes des
+    # balayages/recalculs planifiés, aucun déclenché par un événement
+    # synchrone utilisateur.
+    'btp_chantier.rapport_photo_hebdo': {'queue': 'scheduled'},
+    'contrats.recalculer_metriques_saas_cache_daily': {'queue': 'scheduled'},
+    'contrats.purger_compteurs_usage_factures_monthly': {'queue': 'scheduled'},
+    'contrats.purger_contreparties_archivees': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

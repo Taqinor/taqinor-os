@@ -16,18 +16,21 @@ from .models import (
     BaremeIR,
     BulletinPaie,
     CumulAnnuel,
+    DepotDeclaratif,
     EcheanceDeclarative,
     ElementVariable,
     LigneBulletin,
     LigneVirement,
     OrdreVirement,
     ParametrePaie,
+    PaysPaie,
     PeriodePaie,
     ProfilPaie,
     RegimeMutuelle,
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    SchemaComptablePaie,
     StructurePaie,
     StructurePaieRubrique,
     TrancheIR,
@@ -45,10 +48,16 @@ def _meme_societe(serializer, value, label):
 
 
 class ParametrePaieSerializer(serializers.ModelSerializer):
+    """Jeu de constantes sociales versionné (PAIE2).
+
+    NTPAY8 — ``pays`` (facultatif, un ``PaysPaie`` de la société) étiquette le
+    jeu. Vide = jeu marocain historique, servi aux profils sans pays comme aux
+    profils MA.
+    """
     class Meta:
         model = ParametrePaie
         fields = [
-            'id', 'date_effet', 'smig', 'smag', 'plafond_cnss',
+            'id', 'pays', 'date_effet', 'smig', 'smag', 'plafond_cnss',
             'taux_cnss_salarial', 'taux_cnss_patronal', 'taux_amo_salarial',
             'taux_amo_patronal', 'taux_allocations_familiales',
             'taux_formation_pro',
@@ -60,6 +69,9 @@ class ParametrePaieSerializer(serializers.ModelSerializer):
             'actif', 'valide_par_fondateur', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_pays(self, value):
+        return _meme_societe(self, value, 'Pays de paie')
 
 
 class RubriqueSerializer(serializers.ModelSerializer):
@@ -145,10 +157,14 @@ class BaremeIRSerializer(serializers.ModelSerializer):
     class Meta:
         model = BaremeIR
         fields = [
-            'id', 'libelle', 'date_effet', 'actif', 'valide_par_fondateur',
-            'tranches', 'date_creation',
+            'id', 'pays', 'libelle', 'date_effet', 'actif',
+            'valide_par_fondateur', 'tranches', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_pays(self, value):
+        # NTPAY8 — ``pays`` vide = barème marocain historique.
+        return _meme_societe(self, value, 'Pays de paie')
 
     def create(self, validated_data):
         tranches = validated_data.pop('tranches', [])
@@ -184,7 +200,8 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProfilPaie
         fields = [
-            'id', 'employe', 'employe_nom', 'type_remuneration', 'salaire_base',
+            'id', 'employe', 'employe_nom', 'pays',
+            'type_remuneration', 'salaire_base',
             'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
@@ -254,6 +271,29 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
 
     def validate_structure(self, value):
         return _meme_societe(self, value, 'Structure de paie')
+
+    def validate_pays(self, value):
+        """NTPAY12 — pays de la société, ACTIF, et au moteur réellement livré.
+
+        Un pays désactivé ou dont le pack de calcul n'est pas livré ne peut
+        pas être posé sur un profil : le refus arrive ICI, en nommant le champ
+        et le pays, plutôt qu'au moment du calcul de paie.
+        """
+        from .services import MOTEURS_PAYS
+
+        value = _meme_societe(self, value, 'Pays de paie')
+        if value is None:
+            return value
+        if not value.actif:
+            raise serializers.ValidationError(
+                f'Pays « {value.libelle or value.code_iso} » désactivé : '
+                'activez-le dans l’écran « Pays de paie » avant de l’affecter.')
+        cle = (value.moteur or value.code_iso or '').upper()
+        if cle not in MOTEURS_PAYS:
+            raise serializers.ValidationError(
+                f'Aucun moteur de paie livré pour « {cle} » : ce pack pays '
+                'n’est pas disponible.')
+        return value
 
 
 class StructurePaieRubriqueSerializer(serializers.ModelSerializer):
@@ -557,11 +597,18 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
     l'action ``valider`` — pas d'écriture directe des montants.
     """
     lignes = LigneBulletinSerializer(many=True, read_only=True)
+    # NTPAY12 — badge PAYS sur la liste des bulletins. Vide pour un profil sans
+    # pays (cas mono-pays marocain) : l'écran n'affiche alors aucun badge,
+    # comme avant.
+    pays_code = serializers.CharField(
+        source='profil.pays.code_iso', read_only=True, default='')
+    pays_devise = serializers.CharField(
+        source='profil.pays.devise', read_only=True, default='')
 
     class Meta:
         model = BulletinPaie
         fields = [
-            'id', 'periode', 'profil', 'statut',
+            'id', 'periode', 'profil', 'pays_code', 'pays_devise', 'statut',
             'type_bulletin', 'rectifie', 'motif', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
@@ -703,3 +750,128 @@ class CumulAnnuelSerializer(serializers.ModelSerializer):
             'nombre_bulletins', 'date_calcul', 'date_creation',
         ]
         read_only_fields = fields
+
+
+class DepotDeclaratifSerializer(serializers.ModelSerializer):
+    """Preuve de dépôt d'une déclaration (NTPAY5) — LECTURE SEULE côté API.
+
+    Un dépôt ne se saisit JAMAIS en CRUD direct : il s'enregistre par l'action
+    ``echeances-declaratives/<id>/depots/`` (qui recopie type/période depuis
+    l'échéance et fait basculer son statut), jamais champ par champ.
+    """
+    # SCA4 — le socle ``TenantModel`` horodate en ``created_at`` ; l'API paie
+    # expose ``date_creation`` (convention de l'app), jamais deux noms.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = DepotDeclaratif
+        fields = [
+            'id', 'echeance', 'type_declaration', 'annee', 'mois',
+            'reference_depot', 'date_depot', 'fichier_key',
+            'montant_declare', 'statut', 'motif_rejet', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class PaysPaieSerializer(serializers.ModelSerializer):
+    """Pays de paie d'une société (NTPAY7/NTPAY12), company-scoped.
+
+    ``company`` posée côté serveur. ``moteur_disponible`` dit si un pack de
+    calcul est RÉELLEMENT livré pour ce pays : l'écran n'offre jamais un pays
+    qui ne saurait produire aucun bulletin.
+    """
+    moteur_disponible = serializers.SerializerMethodField(read_only=True)
+    # SCA4 — cf. ``DepotDeclaratifSerializer``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = PaysPaie
+        fields = [
+            'id', 'code_iso', 'libelle', 'devise', 'moteur', 'actif',
+            'moteur_disponible', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_moteur_disponible(self, obj):
+        from .services import MOTEURS_PAYS
+
+        cle = (obj.moteur or obj.code_iso or '').upper()
+        return cle in MOTEURS_PAYS
+
+    def validate_code_iso(self, value):
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = PaysPaie.objects.filter(
+            company=request.user.company_id, code_iso=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Ce pays est déjà déclaré pour votre société.')
+        return value
+
+
+class SchemaComptablePaieSerializer(serializers.ModelSerializer):
+    """Ligne du plan comptable paie (NTPAY2/NTPAY3), company-scoped.
+
+    ``company`` posée côté serveur. Une ligne cible SOIT un poste système
+    (``code_systeme``) SOIT une ``rubrique`` du catalogue — la contrainte est
+    doublée ici pour rendre un 400 qui NOMME le champ fautif au lieu d'une
+    ``IntegrityError`` 500 sur la contrainte DB.
+    """
+    # ``default=''`` garde la CLÉ présente pour une ligne de POSTE SYSTÈME
+    # (sans rubrique) : sans lui, DRF omet purement le champ et la forme de la
+    # réponse changerait d'une ligne à l'autre.
+    rubrique_code = serializers.CharField(
+        source='rubrique.code', read_only=True, default='')
+    rubrique_libelle = serializers.CharField(
+        source='rubrique.libelle', read_only=True, default='')
+    # SCA4 — cf. ``DepotDeclaratifSerializer``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = SchemaComptablePaie
+        fields = [
+            'id', 'code_systeme', 'rubrique', 'rubrique_code',
+            'rubrique_libelle', 'compte_debit', 'compte_credit',
+            'section_analytique_id', 'actif', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_rubrique(self, value):
+        return _meme_societe(self, value, 'Rubrique')
+
+    def validate(self, attrs):
+        instance = self.instance
+        code = attrs.get(
+            'code_systeme',
+            getattr(instance, 'code_systeme', '') if instance else '')
+        rubrique = attrs.get(
+            'rubrique',
+            getattr(instance, 'rubrique', None) if instance else None)
+        if bool(code) == bool(rubrique):
+            raise serializers.ValidationError({
+                'code_systeme': [
+                    'Renseignez SOIT un poste système, SOIT une rubrique — '
+                    'jamais les deux, jamais aucun des deux.'],
+            })
+        request = self.context.get('request')
+        if request is not None:
+            doublon = SchemaComptablePaie.objects.filter(
+                company=request.user.company_id)
+            doublon = (doublon.filter(rubrique=rubrique) if rubrique
+                       else doublon.filter(code_systeme=code,
+                                           rubrique__isnull=True))
+            if instance is not None:
+                doublon = doublon.exclude(pk=instance.pk)
+            if doublon.exists():
+                champ = 'rubrique' if rubrique else 'code_systeme'
+                raise serializers.ValidationError({
+                    champ: ['Une ligne de schéma existe déjà pour cette '
+                            'cible.'],
+                })
+        return attrs

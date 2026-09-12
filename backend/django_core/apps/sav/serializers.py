@@ -125,16 +125,25 @@ class EquipementSerializer(serializers.ModelSerializer):
 
 class TicketActivitySerializer(serializers.ModelSerializer):
     user_nom = serializers.SerializerMethodField()
+    # NTSRV5 — libellé FR de l'issue d'appel ('' pour toute autre entrée).
+    outcome_label = serializers.SerializerMethodField()
 
     class Meta:
         model = TicketActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
             'body', 'user_nom', 'created_at',
+            # NTSRV5 — trace structurée d'un appel (vide sur toutes les
+            # entrées non-appel : comportement inchangé côté UI).
+            'outcome', 'outcome_label', 'duree_minutes',
         ]
+        read_only_fields = ['outcome', 'duree_minutes']
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+    def get_outcome_label(self, obj):
+        return dict(TicketActivity.OUTCOMES).get(obj.outcome, '') or ''
 
 
 # ── ZSAV3 — Activités planifiées à échéance sur le ticket ────────────────────
@@ -374,6 +383,13 @@ class TicketSerializer(serializers.ModelSerializer):
             # AUD529 — le lien vers la réclamation est posé par l'action
             # `escalader-reclamation` (frontière litiges), jamais du corps.
             'reclamation_id_ext',
+            # NTSRV1/2/3/5 — le CANAL D'OUVERTURE est posé par le producteur
+            # côté serveur (handler e-mail, portail public, webhook WhatsApp,
+            # saisie back-office = `manuel`), jamais depuis le corps.
+            'canal_ouverture',
+            # NTSRV12 — mémoire d'idempotence des paliers d'escalade, écrite
+            # par le balayage SLA uniquement.
+            'sla_escalade_paliers_notifies',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -452,7 +468,11 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'id', 'sla_response_days', 'sla_resolution_days',
             'sla_par_priorite', 'sla_breach_enabled',
             'notifications_client_sav', 'sla_jours_ouvres',
+            # NTSRV11 — fenêtre horaire ouvrée (OFF par défaut).
+            'horaires_ouvres', 'sla_heures_ouvrees_actif',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
+            # NTSRV7 — affectation auto restreinte aux techniciens qualifiés.
+            'affectation_par_competence',
             'auto_cloture_jours', 'recidive_fenetre_jours',
             # YSERV5 — génération automatique planifiée des visites.
             'generation_auto_visites', 'visites_avance_jours',
@@ -573,8 +593,33 @@ class RemedeDefaillanceSerializer(serializers.ModelSerializer):
 class CategorieTicketSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategorieTicket
-        fields = ['id', 'libelle', 'ordre', 'actif']
+        fields = [
+            'id', 'libelle', 'ordre', 'actif',
+            # NTSRV6 — exigences de compétence (vide = comportement actuel).
+            'competences_requises', 'niveau_competence_min',
+        ]
         read_only_fields = ['id']
+
+    def validate_competences_requises(self, value):
+        """NTSRV6 — une compétence d'une AUTRE société est refusée (garde
+        multi-tenant : la société vient toujours de l'utilisateur, jamais du
+        corps)."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return value
+        etrangeres = [c for c in value
+                      if getattr(c, 'company_id', None) != company.id]
+        if etrangeres:
+            raise serializers.ValidationError(
+                'Compétence inconnue (elle appartient à une autre société).')
+        return value
+
+    def validate_niveau_competence_min(self, value):
+        if value > 4:
+            raise serializers.ValidationError(
+                'Niveau invalide : 0 (non acquis) à 4 (expert).')
+        return value
 
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
@@ -588,7 +633,10 @@ class EquipeMaintenanceSerializer(serializers.ModelSerializer):
         model = EquipeMaintenance
         fields = [
             'id', 'nom', 'membres', 'membres_count', 'responsable',
-            'responsable_nom', 'actif', 'date_creation',
+            'responsable_nom', 'actif',
+            # NTSRV8 — capacité (vide = aucune limite, aucun débordement).
+            'capacite_max_tickets_ouverts',
+            'date_creation',
         ]
         read_only_fields = ['id', 'date_creation']
 
@@ -743,3 +791,29 @@ class TicketWorksheetSerializer(serializers.ModelSerializer):
 
     def get_champs_requis_manquants(self, obj):
         return obj.champs_requis_manquants()
+
+
+# ── NTSRV2 — Formulaire portail client → ticket SAV (entrée PUBLIQUE) ────────
+
+class PortailTicketCreateSerializer(serializers.Serializer):
+    """NTSRV2 — validation du corps du formulaire portail public.
+
+    Le jeton, lui, est validé À PART (404 sans fuite d'info) : il ne doit
+    jamais produire un message de validation qui distingue « jeton inconnu »
+    de « jeton révoqué ». Les erreurs des autres champs NOMMENT le champ
+    fautif, en français."""
+    sujet = serializers.CharField(
+        max_length=200, allow_blank=False,
+        error_messages={
+            'blank': 'Merci d’indiquer l’objet de votre demande.',
+            'required': 'Merci d’indiquer l’objet de votre demande.',
+        })
+    description = serializers.CharField(
+        max_length=4000, allow_blank=True, required=False, default='')
+    priorite = serializers.ChoiceField(
+        choices=Ticket.Priorite.choices, required=False,
+        default=Ticket.Priorite.NORMALE,
+        error_messages={
+            'invalid_choice': 'Priorité inconnue (basse, normale, haute ou '
+                              'urgente).',
+        })

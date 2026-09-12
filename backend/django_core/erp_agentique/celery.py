@@ -358,6 +358,28 @@ app.conf.beat_schedule = {
         'task': 'contrats.cloturer_contrats_impayes_daily',
         'schedule': crontab(hour=8, minute=20),
     },
+    # NTDOC32 — purge des dépôts « contrepartie » ARCHIVÉS dont la durée de
+    # rétention configurée (politique GED de la société) est dépassée.
+    # Quotidien, heure creuse. Sans politique applicable, la tâche ne purge
+    # RIEN (jamais de durée codée en dur).
+    'contrats-purger-contreparties-archivees': {
+        'task': 'contrats.purger_contreparties_archivees',
+        'schedule': crontab(hour=2, minute=45),
+    },
+    # NTSUB27 — précalcul NOCTURNE des métriques SaaS du cockpit (ARR bridge /
+    # Quick Ratio / Rule of 40). Le cockpit retombe seul sur le calcul à la
+    # volée si ce job n'a pas tourné : aucune dépendance dure.
+    'contrats-recalculer-metriques-saas-cache-daily': {
+        'task': 'contrats.recalculer_metriques_saas_cache_daily',
+        'schedule': crontab(hour=1, minute=50),
+    },
+    # NTSUB26 — purge MENSUELLE des relevés d'usage bruts d'une période DÉJÀ
+    # FACTURÉE et vieille de plus de 24 mois (agrégés d'abord en une ligne de
+    # synthèse). Le 1er du mois, heure creuse.
+    'contrats-purger-compteurs-usage-factures-monthly': {
+        'task': 'contrats.purger_compteurs_usage_factures_monthly',
+        'schedule': crontab(hour=3, minute=40, day_of_month=1),
+    },
     # XKB27 — envoie les messages chat programmés dus + notifie les rappels
     # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
     # qu'un message programmé parte proche de l'heure choisie, sans surcharger
@@ -1151,6 +1173,12 @@ app.conf.beat_schedule = {
     'btp-chantier-alertes-rfi-retard': {
         'task': 'btp_chantier.alertes_rfi_retard',
         'schedule': crontab(hour=7, minute=28),
+    },
+    # NTCON18 — photo-rapport hebdomadaire d'avancement (lundi matin), envoyé
+    # aux seuls chantiers ABONNÉS (opt-in strict) ; no-op propre sans clé email.
+    'btp-chantier-rapport-photo-hebdo': {
+        'task': 'btp_chantier.rapport_photo_hebdo',
+        'schedule': crontab(day_of_week=1, hour=7, minute=35),
     },
 }
 

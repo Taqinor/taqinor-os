@@ -31,6 +31,8 @@ idempotent — jamais deux tickets pour un même drapeau ouvert.
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 # FG282 — garantie de production (modèle additif en module dédié, re-exporté ici
 # pour que `monitoring.models.ProductionWarranty` reste l'import canonique).
 from .models_warranty import ProductionWarranty  # noqa: F401
@@ -111,6 +113,11 @@ class ProductionReading(models.Model):
     # Identifiant fourni par le connecteur (idempotence de la synchro auto).
     external_id = models.CharField(max_length=120, blank=True, default='')
     note = models.TextField(blank=True, default='')
+    # NTNRG32 — motif de LIMITATION RÉSEAU (curtailment) sur ce relevé, saisi
+    # manuellement (champ STRUCTURÉ, jamais un tag texte libre dans `note`) :
+    # alimente `analytics.pertes_categorisees`. Vide = comportement historique
+    # inchangé (pas de curtailment sur ce relevé).
+    motif_limitation = models.CharField(max_length=200, blank=True, default='')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='production_readings')
@@ -241,6 +248,137 @@ class UnderperformanceFlag(models.Model):
 
     def __str__(self):
         return f'Flag #{self.installation_id} ({"ouvert" if self.is_open else "fermé"})'
+
+
+# ── NTNRG14 — Disponibilité contractuelle vs mesurée (SLA de disponibilité) ─
+# `monitoring.analytics.om_metrics` calcule déjà une disponibilité PROXY
+# (jours avec relevé / jours fenêtre). Ce modèle ajoute le SEUIL contractuel
+# par système (même patron que `ProductionWarranty`) : un site sous sa
+# disponibilité garantie expose l'écart + une pénalité chiffrée en DH
+# (`selectors.disponibilite_vs_garantie`). STRICTEMENT ADDITIF : sans ligne
+# `SlaDisponibilite`, rien ne change (no-op gracieux `has_sla=False`).
+
+class SlaDisponibilite(TenantModel):
+    """Engagement de DISPONIBILITÉ garanti d'UN système installé (NTNRG14).
+
+    `disponibilite_garantie_pct` = seuil contractuel (ex. 98 %).
+    `compensation_mad_par_jour_indispo` = tarif de compensation (MAD) par
+    jour d'indisponibilité EXCÉDENTAIRE (au-delà du seuil garanti) sur la
+    fenêtre observée. Défaut 0 = aucune compensation chiffrée (seul l'écart
+    est exposé)."""
+
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``
+    # (FK company + created_at/updated_at) : la nullabilité et le
+    # related_name PRÉ-EXISTANTS de ce champ sont conservés à l'identique,
+    # donc redéclarés ici (le socle pose ``company`` obligatoire).
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='sla_disponibilites')
+    installation = models.OneToOneField(
+        'installations.Installation', on_delete=models.CASCADE,
+        related_name='sla_disponibilite')
+    disponibilite_garantie_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=98)
+    compensation_mad_par_jour_indispo = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+    note = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'SLA de disponibilité'
+        verbose_name_plural = 'SLA de disponibilité'
+        ordering = ['-updated_at']
+        # Nom EXPLICITE (≤ 30 car.) pour éviter toute divergence entre le nom
+        # haché déterministe de Django et celui de la migration (écrite à la
+        # main — voir CLAUDE.md, WOW « model↔migration drift »).
+        indexes = [models.Index(
+            fields=['company', 'installation'], name='monitoring_sla_dispo_idx')]
+
+    def __str__(self):
+        return f'SLA dispo #{self.installation_id} ({self.disponibilite_garantie_pct} %)'
+
+
+# ── NTNRG27 — Registre des certificats carbone émis ─────────────────────────
+# Traçabilité / anti-double-comptage : chaque attestation carbone PDF émise
+# (NTNRG26) PEUT être enregistrée ici pour empêcher un doublon EXACT (même
+# cible + même période). Cible = UN système (`installation_id`, string-ref)
+# OU un client consolidé (`client_id`, string-ref) — jamais les deux, jamais
+# aucun (XOR, comme `ProfilSaisonnier.produit`/`categorie`). Jamais d'import
+# cross-app : les deux références sont des ids nus.
+
+class CertificatCarbone(TenantModel):
+    """Un certificat carbone ÉMIS (registre), pour une cible et une période.
+
+    `reference` est posée par `emettre_certificat_carbone` (numérotation
+    race-safe `core.numbering`, jamais un `count()+1`). `fichier_key`
+    (optionnel) pointe le PDF déposé en MinIO (`apps.records.storage`) si
+    l'appelant en dépose un — le registre reste utile même sans fichier
+    (traçabilité pure).
+    """
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel`` : la
+    # nullabilité et le related_name PRÉ-EXISTANTS sont conservés (redéclarés
+    # ici, le socle pose ``company`` obligatoire).
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='certificats_carbone')
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Id de l'installation (certificat PAR SITE). XOR client_id.")
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Id du client (certificat CONSOLIDÉ multi-sites). '
+                  'XOR installation_id.')
+    periode_debut = models.DateField()
+    periode_fin = models.DateField()
+    tco2_evitees = models.DecimalField(max_digits=12, decimal_places=3)
+    reference = models.CharField(max_length=50)
+    fichier_key = models.CharField(max_length=500, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Certificat carbone'
+        verbose_name_plural = 'Certificats carbone'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'installation_id'],
+                name='monitoring_certifco2_site_idx'),
+            models.Index(
+                fields=['company', 'client_id'],
+                name='monitoring_certifco2_cli_idx'),
+        ]
+        constraints = [
+            # XOR : exactement une cible (site OU client), jamais les deux ni
+            # aucune — même patron que `ProfilSaisonnier` (produit/catégorie).
+            models.CheckConstraint(
+                check=(
+                    models.Q(installation_id__isnull=False, client_id__isnull=True)
+                    | models.Q(installation_id__isnull=True, client_id__isnull=False)
+                ),
+                name='monitoring_certifco2_xor_cible'),
+            # Doublon EXACT refusé au niveau base (même cible + même période),
+            # en complément du contrôle applicatif de `services.py` — NULL
+            # n'égalant jamais NULL en SQL, chaque branche du XOR a sa propre
+            # contrainte conditionnelle (sinon deux certificats CLIENT
+            # partageant `installation_id=NULL` ne collisionneraient jamais).
+            models.UniqueConstraint(
+                fields=['company', 'installation_id', 'periode_debut', 'periode_fin'],
+                condition=models.Q(installation_id__isnull=False),
+                name='monitoring_certifco2_site_uniq'),
+            models.UniqueConstraint(
+                fields=['company', 'client_id', 'periode_debut', 'periode_fin'],
+                condition=models.Q(client_id__isnull=False),
+                name='monitoring_certifco2_cli_uniq'),
+            # Référence race-safe (`core.numbering`) — unique par société,
+            # même patron que `AppelOffre`/`Devis` : c'est CETTE contrainte
+            # que `create_with_reference` détecte pour réessayer sur course.
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='monitoring_certifco2_reference_uniq'),
+        ]
+
+    def __str__(self):
+        cible = f'site#{self.installation_id}' if self.installation_id \
+            else f'client#{self.client_id}'
+        return f'{self.reference} ({cible}, {self.periode_debut}→{self.periode_fin})'
 
 
 # ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────

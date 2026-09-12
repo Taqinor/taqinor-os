@@ -115,7 +115,7 @@ TRANCHES_IR_2026 = [
 ]
 
 
-def ensure_defaults(company):
+def ensure_defaults(company, pays=None):
     """Provisionne (idempotent) les valeurs légales 2026 pour ``company``.
 
     Crée, si absents, le ``ParametrePaie`` et le ``BaremeIR`` (+ ses
@@ -125,12 +125,19 @@ def ensure_defaults(company):
 
         {'parametre': 0|1, 'bareme': 0|1, 'tranches': N}
 
+    NTPAY8 — ``pays`` (optionnel, un ``PaysPaie``) étiquette le jeu semé. Omis
+    (cas historique), le jeu reste SANS pays : c'est le jeu marocain servi aux
+    profils sans pays comme aux profils ``MA``. Les valeurs semées ci-dessous
+    sont MAROCAINES : ne jamais appeler cette fonction avec un pays étranger
+    (chaque pack pays livre son propre semis).
+
     Réutilisable comme helper depuis d'autres modules de paie.
     """
     created = {'parametre': 0, 'bareme': 0, 'tranches': 0}
 
     _, param_new = ParametrePaie.objects.get_or_create(
         company=company,
+        pays=pays,
         date_effet=DATE_EFFET_2026,
         defaults={**PARAMETRES_DEFAUT_2026, 'valide_par_fondateur': False},
     )
@@ -139,6 +146,7 @@ def ensure_defaults(company):
 
     bareme, bareme_new = BaremeIR.objects.get_or_create(
         company=company,
+        pays=pays,
         date_effet=DATE_EFFET_2026,
         defaults={
             'libelle': 'Barème IR 2026',
@@ -1840,11 +1848,43 @@ def _q(montant):
     return Decimal(montant).quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
-def parametre_en_vigueur(company, le_jour):
-    """``ParametrePaie`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
+def _filtrer_par_pays(queryset, pays):
+    """Restreint un jeu versionné (paramètre/barème) au PAYS voulu (NTPAY8).
+
+    Règle de résolution, pensée pour ne RIEN casser :
+
+    * ``pays`` absent (appel historique) ⇒ jeux SANS pays **ou** jeux du pays
+      marocain — exactement ce que servait la résolution d'avant, et jamais un
+      jeu étranger publié depuis ;
+    * ``pays`` marocain ⇒ jeux ``MA`` **ou** sans pays (les jeux existants sont
+      marocains, ils ne sont simplement pas étiquetés) ;
+    * tout autre pays ⇒ STRICTEMENT ses propres jeux. Un pays sans barème ne
+      retombe JAMAIS sur le barème marocain : mieux vaut aucun barème (le
+      moteur le signale) qu'un IR calculé au barème d'un autre pays.
+    """
+    from django.db.models import Q
+
+    from .models import PaysPaie
+
+    if pays is None:
+        return queryset.filter(
+            Q(pays__isnull=True) | Q(pays__code_iso=PaysPaie.CODE_MA))
+    if pays.code_iso == PaysPaie.CODE_MA:
+        return queryset.filter(Q(pays=pays) | Q(pays__isnull=True))
+    return queryset.filter(pays=pays)
+
+
+def parametre_en_vigueur(company, le_jour, *, pays=None):
+    """``ParametrePaie`` en vigueur pour ``company`` au ``le_jour`` (ou None).
+
+    NTPAY8 — la résolution filtre aussi sur le ``pays`` (cf.
+    ``_filtrer_par_pays``) ; omis, le comportement est celui d'avant.
+    """
     return (
-        ParametrePaie.objects
-        .filter(company=company, date_effet__lte=le_jour)
+        _filtrer_par_pays(
+            ParametrePaie.objects.filter(
+                company=company, date_effet__lte=le_jour),
+            pays)
         .order_by('-date_effet')
         .first()
     )
@@ -1896,11 +1936,16 @@ def avertissements_parametre_paie(company, le_jour, *, contexte='',
     return [message]
 
 
-def bareme_en_vigueur(company, le_jour):
-    """``BaremeIR`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
+def bareme_en_vigueur(company, le_jour, *, pays=None):
+    """``BaremeIR`` en vigueur pour ``company`` au ``le_jour`` (ou None).
+
+    NTPAY8 — même règle de résolution par pays que ``parametre_en_vigueur``.
+    """
     return (
-        BaremeIR.objects
-        .filter(company=company, date_effet__lte=le_jour)
+        _filtrer_par_pays(
+            BaremeIR.objects.filter(
+                company=company, date_effet__lte=le_jour),
+            pays)
         .order_by('-date_effet')
         .first()
     )
@@ -2190,8 +2235,13 @@ def montant_rubrique_employe(rubrique_employe, salaire_base):
     return Decimal('0.00')
 
 
-def calculer_bulletin(profil, periode, personnes_a_charge=0):
-    """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
+def calculer_bulletin_ma(profil, periode, personnes_a_charge=0):
+    """Calcule le bulletin de paie MAROCAIN d'un employé (PAIE12).
+
+    NTPAY7 — ce moteur portait le nom générique ``calculer_bulletin`` ; il est
+    désormais le moteur DU PAYS ``MA``, sélectionné par le dispatcher
+    ``calculer_bulletin`` (registre ``MOTEURS_PAYS``). Son calcul n'a pas
+    changé d'un centime : seul son nom a bougé.
 
     Moteur de calcul conforme au cadre marocain (additif, sans effet de bord —
     ne crée aucun objet, renvoie un dict) :
@@ -2222,8 +2272,11 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     Donnée SENSIBLE (salaires) — usage interne paie uniquement.
     """
     le_jour = date(periode.annee, periode.mois, 1)
-    parametre = parametre_en_vigueur(profil.company, le_jour)
-    bareme = bareme_en_vigueur(profil.company, le_jour)
+    # NTPAY8 — le jeu en vigueur est résolu POUR LE PAYS du profil (sans pays,
+    # la résolution est celle d'avant : jeux marocains / non étiquetés).
+    parametre = parametre_en_vigueur(
+        profil.company, le_jour, pays=profil.pays)
+    bareme = bareme_en_vigueur(profil.company, le_jour, pays=profil.pays)
 
     elements = list(
         ElementVariable.objects.filter(periode=periode, profil=profil)
@@ -2597,6 +2650,82 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
         'net_avant_saisie': net_avant_saisie,
     }
+
+
+# ── NTPAY7 — Registre des moteurs de paie PAR PAYS + dispatcher ────────────
+
+# Clé de moteur → fonction de calcul. Le registre est VOLONTAIREMENT explicite
+# (jamais un import dynamique) : un pack pays livré mais non enregistré ici ne
+# calcule aucune paie réelle. Les packs FR/SN/CI sont gatés fondateur et
+# n'apparaissent pas tant qu'ils ne sont pas livrés ET activés.
+MOTEURS_PAYS = {
+    'MA': calculer_bulletin_ma,
+}
+
+# Pays par défaut quand un profil n'en porte aucun (rétro-compatibilité : tous
+# les profils existants ont ``pays = NULL`` et doivent rester calculés par le
+# moteur marocain, au centime près).
+CODE_PAYS_DEFAUT = 'MA'
+
+
+def moteur_du_profil(profil):
+    """Moteur de calcul du pays d'un profil (NTPAY7).
+
+    ``profil.pays`` vide (cas de TOUS les profils d'avant NTPAY7) ⇒ moteur
+    ``MA`` — comportement historique strictement inchangé. Sinon, le moteur
+    est cherché par la clé ``PaysPaie.moteur`` (à défaut son ``code_iso``).
+    Un pays INACTIF ou sans moteur enregistré lève une ``ValidationError`` qui
+    NOMME le pays : mieux vaut refuser que calculer une paie étrangère avec
+    des règles marocaines.
+    """
+    from django.core.exceptions import ValidationError
+
+    pays = getattr(profil, 'pays', None)
+    if pays is None:
+        return MOTEURS_PAYS[CODE_PAYS_DEFAUT]
+    if not pays.actif:
+        raise ValidationError({'pays': [
+            f'Pays de paie « {pays.libelle or pays.code_iso} » désactivé : '
+            'réactivez-le ou changez le pays du profil avant de calculer.']})
+    cle = (pays.moteur or pays.code_iso or '').upper()
+    moteur = MOTEURS_PAYS.get(cle)
+    if moteur is None:
+        raise ValidationError({'pays': [
+            f'Aucun moteur de paie livré pour « {cle} » : le pack pays '
+            "correspondant n'est pas disponible."]})
+    return moteur
+
+
+def calculer_bulletin(profil, periode, personnes_a_charge=0):
+    """Calcule le bulletin de paie d'un employé — DISPATCHER pays (NTPAY7).
+
+    Point d'entrée unique et inchangé du calcul : il DÉLÈGUE au moteur du pays
+    du profil (``MOTEURS_PAYS``). Un profil sans pays — c'est-à-dire tous ceux
+    d'avant NTPAY7 — comme un profil ``pays = MA`` passe par
+    ``calculer_bulletin_ma``, à l'identique. Renvoie le même dict qu'avant.
+    """
+    return moteur_du_profil(profil)(profil, periode, personnes_a_charge)
+
+
+def ensure_pays_paie_standard(company):
+    """Provisionne (idempotent) le pays de paie MAROC d'une société (NTPAY7).
+
+    Seul le pays ``MA`` est semé : les packs FR/SN/CI sont gatés fondateur et
+    ne sont jamais activés d'office. Ne touche jamais une ligne existante
+    (libellé/devise édités survivent à un re-seed). Renvoie ``{'pays': 0|1}``.
+    """
+    from .models import PaysPaie
+
+    _pays, cree = PaysPaie.objects.get_or_create(
+        company=company, code_iso=PaysPaie.CODE_MA,
+        defaults={
+            'libelle': 'Maroc',
+            'devise': 'MAD',
+            'moteur': PaysPaie.CODE_MA,
+            'actif': True,
+        },
+    )
+    return {'pays': 1 if cree else 0}
 
 
 # ── XPAI16 — Simulateur de bulletin + calcul net→brut ──────────────────────
@@ -3300,6 +3429,70 @@ def notifier_echeances_en_retard(company):
 
 
 # ── ZPAI12 — Alerte de clôture de paie en retard (tâche planifiée) ─────────
+
+# ── NTPAY5 — Registre des dépôts déclaratifs & accusés ────────────────────
+
+def enregistrer_depot_declaratif(echeance, *, date_depot=None,
+                                 reference_depot='', fichier_key='',
+                                 montant_declare=None, statut=None,
+                                 motif_rejet=''):
+    """Enregistre la PREUVE de dépôt d'une déclaration (NTPAY5).
+
+    Crée un ``DepotDeclaratif`` rattaché à ``echeance`` (type et période
+    RECOPIÉS de l'échéance — jamais saisis à part, sans quoi la preuve pourrait
+    désigner une autre déclaration que celle qu'elle justifie) et fait
+    basculer l'échéance en « déposée ».
+
+    Un dépôt ``rejete`` n'avance JAMAIS l'échéance (la déclaration reste due)
+    et exige un ``motif_rejet`` — refusé sinon par une ``ValidationError`` qui
+    NOMME le champ. Le statut de l'échéance ne redescend jamais : une échéance
+    déjà « payée » reste payée.
+
+    Opération atomique. Renvoie le ``DepotDeclaratif`` créé.
+    """
+    from django.core.exceptions import ValidationError
+
+    from .models import DepotDeclaratif
+
+    statut = statut or DepotDeclaratif.STATUT_DEPOSE
+    valides = {code for code, _ in DepotDeclaratif.STATUT_CHOICES}
+    if statut not in valides:
+        raise ValidationError({'statut': [
+            f'Statut inconnu : attendu {", ".join(sorted(valides))}.']})
+    if statut == DepotDeclaratif.STATUT_REJETE and not (motif_rejet or '').strip():
+        raise ValidationError({'motif_rejet': [
+            'Motif du rejet requis : un dépôt rejeté sans motif ne prouve '
+            'rien.']})
+
+    periode = echeance.periode
+    if date_depot is None:
+        date_depot = timezone.localdate()
+    if montant_declare is None:
+        montant_declare = Decimal('0')
+
+    with transaction.atomic():
+        depot = DepotDeclaratif.objects.create(
+            company=echeance.company,
+            echeance=echeance,
+            type_declaration=echeance.type_echeance,
+            annee=periode.annee,
+            # L'état 9421 est ANNUEL : pas de mois sur sa preuve de dépôt.
+            mois=(None if echeance.type_echeance == DepotDeclaratif.TYPE_9421
+                  else periode.mois),
+            reference_depot=(reference_depot or '')[:80],
+            date_depot=date_depot,
+            fichier_key=(fichier_key or '')[:255],
+            montant_declare=_q(montant_declare),
+            statut=statut,
+            motif_rejet=(motif_rejet or '')[:300],
+        )
+        if statut != DepotDeclaratif.STATUT_REJETE and echeance.statut in (
+                EcheanceDeclarative.STATUT_A_GENERER,
+                EcheanceDeclarative.STATUT_GENEREE):
+            echeance.statut = EcheanceDeclarative.STATUT_DEPOSEE
+            echeance.save(update_fields=['statut'])
+    return depot
+
 
 def periodes_cloture_en_retard(company):
     """``PeriodePaie`` en ``brouillon``/``calculee`` dont le mois est écoulé (ZPAI12).
@@ -5157,6 +5350,232 @@ _COMPTE_CIMR = '4443'
 _COMPTE_NET = '4432'
 
 
+# ── NTPAY2 — Schéma comptable paramétrable (rubrique × section analytique) ──
+
+# Le plan STANDARD : chaque poste système et le compte CGNC qu'il portait en
+# dur dans ``journal_de_paie``, plus le SENS (« debit »/« credit ») de ce
+# poste dans l'écriture. C'est l'unique source du seed idempotent — un schéma
+# semé reproduit donc l'écriture historique à l'identique.
+SCHEMA_COMPTABLE_STANDARD = [
+    ('brut', 'debit', _COMPTE_REMUNERATION),
+    ('charges_patronales', 'debit', _COMPTE_CHARGES_SOCIALES),
+    ('cnss_organismes', 'credit', _COMPTE_CNSS),
+    ('ir', 'credit', _COMPTE_IR),
+    ('cimr', 'credit', _COMPTE_CIMR),
+    ('net', 'credit', _COMPTE_NET),
+]
+
+# Comptes par défaut par poste système (repli quand aucun schéma n'est défini
+# ou quand la ligne de schéma laisse le compte vide).
+COMPTES_SYSTEME_DEFAUT = {
+    code: compte for code, _sens, compte in SCHEMA_COMPTABLE_STANDARD
+}
+
+
+def ensure_schema_comptable_standard(company):
+    """Sème (idempotent) le plan comptable paie standard (NTPAY2).
+
+    Crée la ligne manquante de chaque poste système avec le compte CGNC que
+    ``journal_de_paie`` utilisait en dur — donc sans changer un centime de
+    l'écriture produite. Ne touche JAMAIS une ligne déjà présente (un compte
+    édité par le cabinet survit à un re-seed). Renvoie
+    ``{'lignes': N}`` (nombre de lignes CRÉÉES).
+    """
+    from .models import SchemaComptablePaie
+
+    created = 0
+    for ordre, (code, sens, compte) in enumerate(
+            SCHEMA_COMPTABLE_STANDARD, start=1):
+        defaults = {
+            'ordre': ordre,
+            'actif': True,
+            'compte_debit': compte if sens == 'debit' else '',
+            'compte_credit': compte if sens == 'credit' else '',
+        }
+        _, cree = SchemaComptablePaie.objects.get_or_create(
+            company=company, code_systeme=code, rubrique=None,
+            defaults=defaults)
+        if cree:
+            created += 1
+    return {'lignes': created}
+
+
+def reinitialiser_schema_comptable(company):
+    """Réinitialise le plan comptable paie au standard (NTPAY2).
+
+    Supprime les lignes de POSTE SYSTÈME de la société puis rejoue le seed :
+    l'écran « Plan comptable paie » offre ainsi un vrai bouton « Réinitialiser
+    au plan standard ». Les lignes par RUBRIQUE sont CONSERVÉES (elles n'ont
+    pas d'équivalent standard — les effacer détruirait un paramétrage que le
+    standard ne sait pas reconstruire). Renvoie ``{'supprimees', 'lignes'}``.
+    """
+    from .models import SchemaComptablePaie
+
+    with transaction.atomic():
+        supprimees, _ = (
+            SchemaComptablePaie.objects
+            .filter(company=company, rubrique__isnull=True)
+            .delete()
+        )
+        resultat = ensure_schema_comptable_standard(company)
+    return {'supprimees': supprimees, 'lignes': resultat['lignes']}
+
+
+def resoudre_schema_comptable(company):
+    """Résout le schéma comptable ACTIF d'une société (NTPAY2), lecture seule.
+
+    Renvoie ``{'defini': bool, 'systeme': {code: ligne}, 'rubriques':
+    {code_rubrique: ligne}}`` où ``ligne`` est un dict
+    ``{'compte_debit', 'compte_credit', 'section_analytique_id'}``.
+
+    ``defini`` est faux quand la société n'a AUCUNE ligne active : les
+    appelants retombent alors intégralement sur les comptes codés en dur
+    (rétro-compatibilité stricte — l'écriture est identique au centime).
+    """
+    from .models import SchemaComptablePaie
+
+    lignes = list(
+        SchemaComptablePaie.objects
+        .filter(company=company, actif=True)
+        .select_related('rubrique')
+        .order_by('ordre', 'id')
+    )
+    systeme = {}
+    rubriques = {}
+    for ligne in lignes:
+        valeur = {
+            'compte_debit': (ligne.compte_debit or '').strip(),
+            'compte_credit': (ligne.compte_credit or '').strip(),
+            'section_analytique_id': ligne.section_analytique_id,
+        }
+        if ligne.rubrique_id:
+            rubriques[ligne.rubrique.code] = valeur
+        elif ligne.code_systeme:
+            systeme[ligne.code_systeme] = valeur
+    return {
+        'defini': bool(lignes),
+        'systeme': systeme,
+        'rubriques': rubriques,
+    }
+
+
+def _compte_schema(schema, code_systeme, sens):
+    """Numéro de compte du poste ``code_systeme`` (schéma sinon défaut)."""
+    ligne = schema['systeme'].get(code_systeme) or {}
+    numero = ligne.get(f'compte_{sens}') or ''
+    return numero or COMPTES_SYSTEME_DEFAUT[code_systeme]
+
+
+def _section_schema(schema, code_systeme):
+    """Section analytique du poste ``code_systeme`` (ou ``None``)."""
+    return (schema['systeme'].get(code_systeme) or {}).get(
+        'section_analytique_id')
+
+
+def _resolveur_compte(company, compta_services):
+    """Fabrique le résolveur « numéro de compte → instance » (NTPAY2).
+
+    Un numéro ABSENT du plan comptable lève une ``ValidationError`` qui NOMME
+    le compte fautif : un schéma qui route une rubrique vers un compte
+    inexistant doit dire lequel, jamais planter en 500 sur un ``None`` passé à
+    l'écriture.
+    """
+    from django.core.exceptions import ValidationError
+
+    def compte(numero):
+        instance = compta_services.get_compte(company, numero)
+        if instance is None:
+            raise ValidationError(
+                f'Plan comptable paie — compte « {numero} » introuvable au '
+                'plan comptable de la société : créez-le en comptabilité ou '
+                'corrigez la ligne de schéma qui le référence.')
+        return instance
+
+    return compte
+
+
+def _resolveur_section(company, compta_services):
+    """Convertit ``centre_cout_id`` en instance ``CentreCout`` (NTPAY2).
+
+    ``LigneEcriture.centre_cout`` est une FK : l'id brut ne suffit pas. Une
+    section inconnue est simplement ignorée (aucune ventilation) — jamais un
+    blocage de l'écriture de paie.
+    """
+    def section(ligne):
+        centre_id = ligne.pop('centre_cout_id', None)
+        if centre_id:
+            centre = compta_services.get_centre_cout(company, centre_id)
+            if centre is not None:
+                ligne['centre_cout'] = centre
+        return ligne
+
+    return section
+
+
+def totaux_lignes_rubriques_periode(periode, codes):
+    """Total des lignes de GAIN par code de rubrique (NTPAY2), lecture seule.
+
+    Somme, sur les bulletins VALIDÉS de la ``periode``, les ``LigneBulletin``
+    de type GAIN dont le ``code`` figure dans ``codes``. Sert à ÉCLATER le
+    débit du brut par rubrique quand un schéma comptable route une rubrique
+    vers son propre compte. Renvoie ``{code: Decimal}`` (codes absents omis).
+    """
+    from django.db.models import Sum
+
+    from .models import BulletinPaie, LigneBulletin
+
+    if not codes:
+        return {}
+    agrege = (
+        LigneBulletin.objects
+        .filter(company=periode.company, bulletin__periode=periode,
+                bulletin__statut=BulletinPaie.STATUT_VALIDE,
+                type=Rubrique.TYPE_GAIN, code__in=list(codes))
+        .values('code')
+        .annotate(total=Sum('montant'))
+    )
+    return {row['code']: _q(row['total'] or 0) for row in agrege}
+
+
+def _lignes_debit_brut(periode, schema, brut, compte_resolveur):
+    """Lignes de DÉBIT du brut, éclatées par rubrique si le schéma le demande.
+
+    Le total débité reste STRICTEMENT égal à ``brut`` : la part routée vers
+    les comptes de rubrique est PLAFONNÉE au brut (une rubrique dont les
+    lignes de bulletin ne rejoignent pas le brut — remboursement de frais,
+    entrée hors bases — ne peut donc jamais déséquilibrer l'écriture), et le
+    reliquat reste sur le compte du poste ``brut``.
+    """
+    compte_brut = _compte_schema(schema, 'brut', 'debit')
+    section_brut = _section_schema(schema, 'brut')
+    lignes = []
+    reste = brut
+    if schema['rubriques'] and brut > 0:
+        totaux = totaux_lignes_rubriques_periode(
+            periode, schema['rubriques'].keys())
+        for code, montant in sorted(totaux.items()):
+            conf = schema['rubriques'][code]
+            numero = conf['compte_debit'] or compte_brut
+            montant = _q(min(Decimal(montant), reste))
+            if montant <= 0:
+                continue
+            reste = _q(reste - montant)
+            lignes.append({
+                'compte': compte_resolveur(numero),
+                'libelle': f'Rémunérations — {code}',
+                'debit': montant, 'credit': 0,
+                'centre_cout_id': conf['section_analytique_id'],
+            })
+    if reste > 0 or not lignes:
+        lignes.insert(0, {
+            'compte': compte_resolveur(compte_brut),
+            'libelle': 'Rémunérations du personnel',
+            'debit': _q(reste), 'credit': 0,
+            'centre_cout_id': section_brut,
+        })
+    return lignes
+
+
 def livre_de_paie(periode):
     """Livre de paie d'une période (PAIE33) — registre récapitulatif.
 
@@ -5308,16 +5727,20 @@ def journal_de_paie(periode, *, created_by=None):
     _refuser_journal_deja_poste(periode)
 
     company = periode.company
+    # NTPAY2 — schéma comptable paramétrable : s'il existe des lignes ACTIVES,
+    # elles PRIMENT sur les comptes codés en dur ; sinon on retombe exactement
+    # sur le comportement historique.
+    schema = resoudre_schema_comptable(company)
     # Sème le plan comptable si un compte requis manque (idempotent).
     requis = [
-        _COMPTE_REMUNERATION, _COMPTE_CHARGES_SOCIALES, _COMPTE_CNSS,
-        _COMPTE_IR, _COMPTE_CIMR, _COMPTE_NET,
+        _compte_schema(schema, code, sens)
+        for code, sens, _defaut in SCHEMA_COMPTABLE_STANDARD
     ]
     if any(compta_services.get_compte(company, num) is None for num in requis):
         compta_services.seed_plan_comptable(company)
 
-    def compte(numero):
-        return compta_services.get_compte(company, numero)
+    compte = _resolveur_compte(company, compta_services)
+    section = _resolveur_section(company, compta_services)
 
     brut = totaux['brut']
     charges_pat = totaux['charges_patronales']
@@ -5325,27 +5748,30 @@ def journal_de_paie(periode, *, created_by=None):
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
-    lignes = [
-        {'compte': compte(_COMPTE_REMUNERATION),
-         'libelle': 'Rémunérations du personnel', 'debit': brut, 'credit': 0},
-    ]
+    lignes = _lignes_debit_brut(periode, schema, brut, compte)
     if charges_pat > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CHARGES_SOCIALES),
+            'compte': compte(
+                _compte_schema(schema, 'charges_patronales', 'debit')),
             'libelle': 'Charges sociales patronales',
-            'debit': charges_pat, 'credit': 0})
+            'debit': charges_pat, 'credit': 0,
+            'centre_cout_id': _section_schema(schema, 'charges_patronales')})
     if cnss_amo > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CNSS),
-            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
+            'compte': compte(
+                _compte_schema(schema, 'cnss_organismes', 'credit')),
+            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo,
+            'centre_cout_id': _section_schema(schema, 'cnss_organismes')})
     if ir > 0:
         lignes.append({
-            'compte': compte(_COMPTE_IR),
-            'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir})
+            'compte': compte(_compte_schema(schema, 'ir', 'credit')),
+            'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir,
+            'centre_cout_id': _section_schema(schema, 'ir')})
     if cimr > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CIMR),
-            'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr})
+            'compte': compte(_compte_schema(schema, 'cimr', 'credit')),
+            'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr,
+            'centre_cout_id': _section_schema(schema, 'cimr')})
     # Net à payer = solde équilibrant (brut + charges pat − cotisations − IR
     # − CIMR). On le calcule pour garantir l'équilibre exact même en cas
     # d'arrondis.
@@ -5357,9 +5783,11 @@ def journal_de_paie(periode, *, created_by=None):
     )
     net_equilibrant = _q(total_debit - total_credit_hors_net)
     lignes.append({
-        'compte': compte(_COMPTE_NET),
+        'compte': compte(_compte_schema(schema, 'net', 'credit')),
         'libelle': 'Rémunérations dues au personnel (net)',
-        'debit': 0, 'credit': net_equilibrant})
+        'debit': 0, 'credit': net_equilibrant,
+        'centre_cout_id': _section_schema(schema, 'net')})
+    lignes = [section(ligne) for ligne in lignes]
 
     # Date de l'écriture = dernier jour du mois de paie (proxy : 28, toujours
     # valide). Le détail jour exact n'a pas d'incidence comptable mensuelle.
@@ -5439,6 +5867,164 @@ def etat_des_charges(periode):
         'mois': periode.mois,
         'organismes': organismes,
         'total_general': _q(total_general),
+    }
+
+
+# ── NTPAY4 — Télépaiement CNSS : bordereau + fichier de règlement ───────────
+
+# Jour LIMITE de règlement des cotisations CNSS (cadre marocain : avant le 10
+# du mois suivant, comme la date limite de la BDS — cf.
+# ``echeances_attendues``/``etat_des_charges``).
+JOUR_LIMITE_PAIEMENT_CNSS = 10
+
+# Organismes du bordereau de PAIEMENT (distinct du bordereau DÉCLARATIF
+# DAMANCOM) : chacun avec les champs du livre de paie qui l'alimentent, côté
+# salarial puis patronal. Allocations familiales et taxe de formation
+# professionnelle sont 100 % patronales (aucune part salariale) — elles sont
+# recouvrées par la CNSS mais restent des lignes DISTINCTES sur le bordereau,
+# comme sur l'avis de la caisse.
+ORGANISMES_PAIEMENT_CNSS = [
+    ('cnss', 'CNSS — prestations sociales',
+     ['cnss_salariale'], ['cnss_patronale']),
+    ('amo', 'AMO — assurance maladie obligatoire',
+     ['amo_salariale'], ['amo_patronale']),
+    ('allocations_familiales', 'Allocations familiales',
+     [], ['allocations_familiales']),
+    ('formation_professionnelle', 'Taxe de formation professionnelle',
+     [], ['formation_professionnelle']),
+]
+
+# Gabarit du fichier de TÉLÉPAIEMENT (longueurs fixes, même patron que le
+# fichier SIMT XPAI8 : (champ, longueur, remplissage 'L'/'R')). Le gabarit
+# EXACT dépend de l'organisme/de la banque du fondateur — ce format livre le
+# mécanisme et une structure usuelle, jamais un format prétendu officiel.
+GABARIT_TELEPAIEMENT_CNSS_ENTETE = [
+    ('type_enregistrement', 1, 'L'),   # 'E' = en-tête
+    ('numero_affiliation', 12, 'L'),
+    ('raison_sociale', 40, 'L'),
+    ('periode', 6, 'L'),               # AAAAMM
+    ('date_limite', 8, 'L'),           # AAAAMMJJ
+    ('nombre_organismes', 3, 'R'),
+    ('total_centimes', 15, 'R'),
+]
+
+GABARIT_TELEPAIEMENT_CNSS_LIGNE = [
+    ('type_enregistrement', 1, 'L'),   # 'D' = détail organisme
+    ('code_organisme', 26, 'L'),
+    ('salarial_centimes', 15, 'R'),
+    ('patronal_centimes', 15, 'R'),
+    ('total_centimes', 15, 'R'),
+]
+
+
+def bordereau_paiement_cnss(periode):
+    """Bordereau de PAIEMENT des cotisations CNSS d'une période (NTPAY4).
+
+    Le fichier DÉCLARATIF DAMANCOM (``fichier_damancom_cnss``/``_strict``)
+    dit QUI est déclaré ; il ne disait pas COMBIEN régler ni à quelle date.
+    Ce bordereau agrège, sur les bulletins VALIDÉS de la ``periode`` (via
+    ``livre_de_paie`` — donc TOUS les bulletins validés, pas seulement les
+    profils affiliés CNSS), le montant dû par organisme (CNSS, AMO,
+    allocations familiales, taxe de formation professionnelle), parts
+    salariale ET patronale, et rappelle la référence du dépôt BDS lié ainsi
+    que la date limite (le 10 du mois suivant).
+
+    Lecture seule — aucune écriture, aucun effet de bord. Renvoie ::
+
+        {'annee', 'mois', 'nombre_salaries', 'organismes': [...],
+         'total_general', 'date_limite', 'reference_bds', 'date_depot_bds',
+         'avertissements'}
+    """
+    from .models import DepotBDS
+
+    registre = livre_de_paie(periode)
+    totaux = registre['totaux']
+
+    organismes = []
+    total_general = Decimal('0')
+    for code, libelle, champs_sal, champs_pat in ORGANISMES_PAIEMENT_CNSS:
+        salarial = sum(
+            (Decimal(totaux[champ] or 0) for champ in champs_sal),
+            Decimal('0'))
+        patronal = sum(
+            (Decimal(totaux[champ] or 0) for champ in champs_pat),
+            Decimal('0'))
+        total = salarial + patronal
+        total_general += total
+        organismes.append({
+            'code': code, 'libelle': libelle,
+            'salarial': _q(salarial), 'patronal': _q(patronal),
+            'total': _q(total),
+        })
+
+    annee, mois = _mois_suivant(periode.annee, periode.mois)
+    date_limite = date(annee, mois, JOUR_LIMITE_PAIEMENT_CNSS)
+
+    depot = (
+        DepotBDS.objects
+        .filter(company=periode.company, periode=periode,
+                type_depot=DepotBDS.TYPE_PRINCIPAL)
+        .order_by('-date_depot')
+        .first()
+    )
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'nombre_salaries': registre['nombre_salaries'],
+        'organismes': organismes,
+        'total_general': _q(total_general),
+        'date_limite': date_limite,
+        # Référence du dépôt DÉCLARATIF lié — vide tant que la BDS n'a pas été
+        # déposée (on n'invente jamais une référence).
+        'reference_bds': f'BDS-{depot.id}' if depot is not None else '',
+        'date_depot_bds': depot.date_depot if depot is not None else None,
+        'avertissements': avertissements_parametre_paie(
+            periode.company, le_jour, contexte='Bordereau de paiement CNSS'),
+    }
+
+
+def fichier_telepaiement_cnss(periode, *, bordereau=None):
+    """Fichier de TÉLÉPAIEMENT des cotisations CNSS (NTPAY4).
+
+    Format à LONGUEURS FIXES (gabarits ``GABARIT_TELEPAIEMENT_CNSS_*``,
+    montants en CENTIMES) construit sur ``bordereau_paiement_cnss`` : un
+    enregistrement d'en-tête société puis un enregistrement par organisme.
+    Même patron que le fichier de virement SIMT (XPAI8) — le gabarit exact
+    reste à confirmer auprès de l'organisme. Renvoie ``{'lignes': [str, …],
+    'total', 'nb_lignes', 'date_limite'}``. Lecture seule.
+    """
+    if bordereau is None:
+        bordereau = bordereau_paiement_cnss(periode)
+    company = periode.company
+    total_centimes = int(_q(bordereau['total_general']) * 100)
+    entete = _formater_enregistrement_simt({
+        'type_enregistrement': 'E',
+        'numero_affiliation': getattr(
+            company, 'numero_cnss_employeur', '') or '',
+        'raison_sociale': getattr(company, 'nom', '') or '',
+        'periode': f'{periode.annee}{periode.mois:02d}',
+        'date_limite': bordereau['date_limite'].strftime('%Y%m%d'),
+        'nombre_organismes': len(bordereau['organismes']),
+        'total_centimes': total_centimes,
+    }, GABARIT_TELEPAIEMENT_CNSS_ENTETE)
+
+    lignes = [entete]
+    for organisme in bordereau['organismes']:
+        lignes.append(_formater_enregistrement_simt({
+            'type_enregistrement': 'D',
+            'code_organisme': organisme['code'],
+            'salarial_centimes': int(_q(organisme['salarial']) * 100),
+            'patronal_centimes': int(_q(organisme['patronal']) * 100),
+            'total_centimes': int(_q(organisme['total']) * 100),
+        }, GABARIT_TELEPAIEMENT_CNSS_LIGNE))
+
+    return {
+        'lignes': lignes,
+        'total': bordereau['total_general'],
+        'nb_lignes': len(bordereau['organismes']),
+        'date_limite': bordereau['date_limite'],
     }
 
 
@@ -6761,15 +7347,19 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     _refuser_journal_deja_poste(periode)
 
     company = periode.company
+    # NTPAY2 — même schéma comptable paramétrable que ``journal_de_paie`` pour
+    # les POSTES SYSTÈME (sans quoi les deux représentations du même run
+    # utiliseraient des comptes différents). La ventilation par centre de coût
+    # de cette variante reste, elle, pilotée par XPAI17.
+    schema = resoudre_schema_comptable(company)
     requis = [
-        _COMPTE_REMUNERATION, _COMPTE_CHARGES_SOCIALES, _COMPTE_CNSS,
-        _COMPTE_IR, _COMPTE_CIMR, _COMPTE_NET,
+        _compte_schema(schema, code, sens)
+        for code, sens, _defaut in SCHEMA_COMPTABLE_STANDARD
     ]
     if any(compta_services.get_compte(company, num) is None for num in requis):
         compta_services.seed_plan_comptable(company)
 
-    def compte(numero):
-        return compta_services.get_compte(company, numero)
+    compte = _resolveur_compte(company, compta_services)
 
     # Ventile le coût employeur (rémunération + charges patronales) par
     # centre de coût, agrégé sur TOUS les bulletins de la période.
@@ -6796,21 +7386,22 @@ def journal_de_paie_ventile(periode, *, created_by=None):
         # ``CentreCout`` (jamais l'id brut) — résolue en lecture seule via
         # ``compta_services.get_centre_cout``.
         lignes.append({
-            'compte': compte(_COMPTE_REMUNERATION),
+            'compte': compte(_compte_schema(schema, 'brut', 'debit')),
             'libelle': libelle, 'debit': montant, 'credit': 0,
             'centre_cout': compta_services.get_centre_cout(company, centre_id),
         })
     if cnss_amo > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CNSS),
+            'compte': compte(
+                _compte_schema(schema, 'cnss_organismes', 'credit')),
             'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
     if ir > 0:
         lignes.append({
-            'compte': compte(_COMPTE_IR),
+            'compte': compte(_compte_schema(schema, 'ir', 'credit')),
             'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir})
     if cimr > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CIMR),
+            'compte': compte(_compte_schema(schema, 'cimr', 'credit')),
             'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr})
 
     total_debit = sum((Decimal(lig['debit']) for lig in lignes), Decimal('0'))
@@ -6818,7 +7409,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
         (Decimal(lig['credit']) for lig in lignes), Decimal('0'))
     net_equilibrant = _q(total_debit - total_credit_hors_net)
     lignes.append({
-        'compte': compte(_COMPTE_NET),
+        'compte': compte(_compte_schema(schema, 'net', 'credit')),
         'libelle': 'Rémunérations dues au personnel (net)',
         'debit': 0, 'credit': net_equilibrant})
 
@@ -7293,4 +7884,237 @@ def historique_carriere(profil):
         'type_contrat': identite['type_contrat'],
         'date_embauche': identite['date_embauche'],
         'annees': annees,
+    }
+
+
+# ── NTPAY1 — Re-calcul RÉTROACTIF d'un barème/paramètre versionné ──────────
+
+# Champs de snapshot portés en ÉCART sur le bulletin de rappel rétroactif.
+# Volontairement PLUS ÉTROIT que ``BulletinPaie.SNAPSHOT_FIELDS`` :
+#   * ``personnes_a_charge`` n'est pas un montant (recopié tel quel) ;
+#   * ``provision_conges`` est un engagement social calculé sur le SOLDE DE
+#     CONGÉS COURANT (``provision_conges_payes``), pas sur le barème : rejouer
+#     un mois ancien aujourd'hui produirait un faux écart de provision, qui
+#     polluerait les comptes de provision sans qu'aucun barème n'ait bougé.
+CHAMPS_ECART_RAPPEL_RETRO = [
+    'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
+    'amo_salariale', 'amo_patronale', 'allocations_familiales',
+    'formation_professionnelle', 'cimr_salariale', 'frais_professionnels',
+    'net_imposable', 'ir', 'montant_exonere_regime', 'retenues',
+    'prime_anciennete', 'charges_patronales', 'net_a_payer',
+]
+
+CODE_LIGNE_RAPPEL_RETRO = 'RAPPEL-RETRO'
+
+
+def detecter_periodes_impactees(company, *, parametre=None, bareme=None):
+    """Périodes VALIDÉES/CLÔTURÉES rendues périmées par une publication (NTPAY1).
+
+    ``ParametrePaie`` et ``BaremeIR`` sont versionnés par ``date_effet``, mais
+    publier un jeu à une date d'effet ANTÉRIEURE à des périodes déjà validées
+    ne rejouait rien : les bulletins de ces mois restaient calculés sur le jeu
+    périmé, sans le moindre signal. Cette fonction liste — en LECTURE SEULE —
+    les ``PeriodePaie`` de ``company`` dont le mois est couvert par le nouveau
+    jeu ET qui sont déjà figées (validée ou clôturée).
+
+    Exactement UN des deux arguments ``parametre``/``bareme`` est attendu ; le
+    critère est le même dans les deux cas : la période est impactée quand le
+    jeu DÉSORMAIS en vigueur à son 1ᵉʳ du mois est précisément celui qu'on
+    vient de publier (les périodes antérieures à la ``date_effet``, ou déjà
+    couvertes par un jeu PLUS RÉCENT, ne le sont pas).
+
+    Renvoie une liste de ``PeriodePaie`` triée du plus ancien mois au plus
+    récent. Aucune écriture.
+    """
+    if (parametre is None) == (bareme is None):
+        raise ValueError(
+            'Fournissez exactement un « parametre » OU un « bareme ».')
+    nouveau = parametre if parametre is not None else bareme
+    company_id = getattr(company, 'id', company)
+    if company is None or getattr(nouveau, 'company_id', None) != company_id:
+        raise ValueError("Le jeu publié appartient à une autre société.")
+
+    date_effet = nouveau.date_effet
+    resolveur = parametre_en_vigueur if parametre is not None \
+        else bareme_en_vigueur
+    # NTPAY8 — la comparaison se fait DANS le pays du jeu publié : un barème
+    # étranger ne doit pas être confronté au jeu marocain en vigueur.
+    pays = getattr(nouveau, 'pays', None)
+
+    impactees = []
+    periodes = (
+        PeriodePaie.objects
+        .filter(company=company,
+                statut__in=[PeriodePaie.STATUT_VALIDEE,
+                            PeriodePaie.STATUT_CLOTUREE])
+        .order_by('annee', 'mois', 'id')
+    )
+    for periode in periodes:
+        le_jour = date(periode.annee, periode.mois, 1)
+        if le_jour < date_effet:
+            continue
+        en_vigueur = resolveur(company, le_jour, pays=pays)
+        if en_vigueur is not None and en_vigueur.pk == nouveau.pk:
+            impactees.append(periode)
+    return impactees
+
+
+def _ecart_bulletin_retroactif(bulletin):
+    """Écart (nouveau − retenu) d'un bulletin figé, recalculé EN MÉMOIRE.
+
+    Rejoue ``calculer_bulletin`` sur la période D'ORIGINE du bulletin — le
+    moteur résout lui-même le jeu en vigueur à ce mois, donc le NOUVEAU depuis
+    la publication — et renvoie ``{champ: Decimal}`` pour
+    ``CHAMPS_ECART_RAPPEL_RETRO``. AUCUNE écriture : le bulletin d'origine
+    reste intact (il est de toute façon figé par ``BulletinPaie.save``).
+    """
+    resultat = calculer_bulletin(
+        bulletin.profil, bulletin.periode, bulletin.personnes_a_charge)
+    return {
+        champ: _q(Decimal(resultat[champ]) - Decimal(
+            getattr(bulletin, champ) or 0))
+        for champ in CHAMPS_ECART_RAPPEL_RETRO
+    }
+
+
+def appliquer_rappel_retroactif(periode_cible, periodes_impactees, *,
+                                motif=''):
+    """Porte les écarts rétroactifs en bulletins de RAPPEL (NTPAY1).
+
+    Pour chaque salarié ayant au moins un bulletin VALIDÉ dans
+    ``periodes_impactees``, recalcule ces bulletins EN MÉMOIRE au jeu
+    désormais en vigueur, somme les écarts (IR, cotisations, net…) et
+    matérialise UN bulletin de type ``rappel`` sur ``periode_cible``, portant
+    une ligne ``RAPPEL-RETRO`` par mois régularisé. Les bulletins d'origine ne
+    sont JAMAIS mutés — ils restent le snapshot de ce qui a été versé.
+
+    Un écart NÉGATIF (trop-perçu) est porté tel quel : le bulletin de rappel
+    a des montants négatifs, ce qui laisse le ``CumulAnnuel`` et l'état 9421
+    cohérents (ils somment les bulletins validés de l'année).
+
+    Garde de cohérence : ``periode_cible`` doit appartenir à la même société,
+    ne pas être clôturée et ne pas figurer parmi les périodes impactées. Comme
+    un couple ``(periode, profil)`` n'accepte qu'UN bulletin, la fonction
+    REFUSE (message nommant les salariés concernés) si un bulletin existe déjà
+    sur la période cible — on porte alors le rappel sur un run hors-cycle.
+
+    Renvoie ``{'periode_cible', 'periodes', 'bulletins', 'nombre_salaries',
+    'total_ecart_ir', 'total_ecart_net'}``. Atomique.
+    """
+    from django.core.exceptions import ValidationError
+
+    from .models import BulletinPaie, LigneBulletin
+
+    periodes_impactees = list(periodes_impactees or [])
+    if not periodes_impactees:
+        raise ValidationError('Aucune période impactée : rien à régulariser.')
+    for periode in periodes_impactees:
+        if periode.company_id != periode_cible.company_id:
+            raise ValidationError(
+                "Période impactée d'une autre société : régularisation "
+                'refusée.')
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValidationError(
+            'Période cible clôturée : choisissez une période ouverte pour '
+            'porter le rappel rétroactif.')
+    ids_impactees = {p.pk for p in periodes_impactees}
+    if periode_cible.pk in ids_impactees:
+        raise ValidationError(
+            'La période cible ne peut pas être elle-même régularisée.')
+
+    company = periode_cible.company
+    bulletins_origine = list(
+        BulletinPaie.objects
+        .filter(company=company, periode__in=periodes_impactees,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe', 'periode')
+        .order_by('profil_id', 'periode__annee', 'periode__mois')
+    )
+    if not bulletins_origine:
+        raise ValidationError(
+            'Aucun bulletin validé sur les périodes impactées : rien à '
+            'régulariser.')
+
+    # Refus AVANT toute écriture : le couple (période, profil) est unique.
+    profils_cibles = {b.profil_id: b.profil for b in bulletins_origine}
+    deja = list(
+        BulletinPaie.objects
+        .filter(company=company, periode=periode_cible,
+                profil_id__in=profils_cibles)
+        .select_related('profil', 'profil__employe')
+    )
+    if deja:
+        noms = ', '.join(sorted(
+            f'{b.profil.employe.nom} {b.profil.employe.prenom}'.strip()
+            if b.profil.employe_id else f'profil #{b.profil_id}'
+            for b in deja))
+        raise ValidationError(
+            'Période cible — ces salariés y ont déjà un bulletin : '
+            f'{noms}. Un seul bulletin par salarié et par période : portez le '
+            'rappel rétroactif sur un run hors-cycle.')
+
+    ecarts_par_profil = {}
+    lignes_par_profil = {}
+    for bulletin in bulletins_origine:
+        ecart = _ecart_bulletin_retroactif(bulletin)
+        cumul = ecarts_par_profil.setdefault(
+            bulletin.profil_id,
+            {champ: Decimal('0') for champ in CHAMPS_ECART_RAPPEL_RETRO})
+        for champ, valeur in ecart.items():
+            cumul[champ] += valeur
+        if ecart['net_a_payer'] == 0 and ecart['ir'] == 0:
+            continue
+        lignes_par_profil.setdefault(bulletin.profil_id, []).append({
+            'periode': bulletin.periode,
+            'ecart_net': ecart['net_a_payer'],
+            'ecart_ir': ecart['ir'],
+        })
+
+    bulletins = []
+    total_ir = Decimal('0')
+    total_net = Decimal('0')
+    with transaction.atomic():
+        for profil_id, cumul in sorted(ecarts_par_profil.items()):
+            lignes = lignes_par_profil.get(profil_id, [])
+            if not lignes:
+                # Aucun écart réel pour ce salarié — on ne fabrique pas un
+                # bulletin de rappel à zéro.
+                continue
+            profil = profils_cibles[profil_id]
+            bulletin = BulletinPaie(
+                company=company, periode=periode_cible, profil=profil,
+                statut=BulletinPaie.STATUT_BROUILLON,
+                type_bulletin=BulletinPaie.TYPE_RAPPEL,
+                personnes_a_charge=0,
+                motif=(motif or 'Rappel rétroactif de barème')[:200],
+            )
+            for champ, valeur in cumul.items():
+                setattr(bulletin, champ, _q(valeur))
+            bulletin.save()
+            for ordre, ligne in enumerate(lignes, start=1):
+                periode_src = ligne['periode']
+                montant = ligne['ecart_net']
+                LigneBulletin.objects.create(
+                    company=company, bulletin=bulletin,
+                    code=CODE_LIGNE_RAPPEL_RETRO,
+                    libelle=(
+                        f'Rappel rétroactif {periode_src.mois:02d}/'
+                        f'{periode_src.annee} (écart IR '
+                        f'{ligne["ecart_ir"]})'),
+                    type=(Rubrique.TYPE_GAIN if montant >= 0
+                          else Rubrique.TYPE_RETENUE),
+                    montant=abs(montant),
+                    ordre=ordre,
+                )
+            bulletins.append(bulletin)
+            total_ir += cumul['ir']
+            total_net += cumul['net_a_payer']
+
+    return {
+        'periode_cible': periode_cible,
+        'periodes': periodes_impactees,
+        'bulletins': bulletins,
+        'nombre_salaries': len(bulletins),
+        'total_ecart_ir': _q(total_ir),
+        'total_ecart_net': _q(total_net),
     }

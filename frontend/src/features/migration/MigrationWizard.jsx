@@ -9,6 +9,11 @@ import migrationApi from '../../api/migrationApi'
 import {
   ENTITES, STATUTS_LOT, STATUTS_PROJET, errMessage, labelSource,
 } from './constants'
+// NTMIG18 — le montant MAD passe par le helper PARTAGÉ (`fr-FR` +
+// `Intl.NumberFormat`, séparateur de milliers « espace fine »), jamais par
+// l'ancien `formatMAD` local de `./constants` (`fr-MA` + `toLocaleString`
+// brut) qui rendait « 15.000,00 » (point) au lieu de « 15 000,00 ».
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    NTMIG17 — Assistant de migration pas-à-pas (4 étapes par lot).
@@ -341,12 +346,31 @@ function LotCard({ lot, onChanged }) {
             {' '}mis à jour {rapport.nb_cible_existants} ·
             {' '}erreurs {rapport.nb_erreurs}
           </p>
+          {(rapport.total_financier_source != null
+            || rapport.total_financier_cible != null) && (
+            <p className="mt-1 text-muted-foreground">
+              Total HT source {formatMAD(rapport.total_financier_source)}
+              {' '}· cible {formatMAD(rapport.total_financier_cible)}
+              {' '}· écart {formatMAD(rapport.ecart_financier)}
+            </p>
+          )}
           {rapport.ecarts?.length > 0 && (
             <ul className="mt-1 list-disc pl-5 text-muted-foreground">
               {rapport.ecarts.map((e, i) => (
                 <li key={i}>{e.detail || e.type}</li>
               ))}
             </ul>
+          )}
+          {rapport.nb_erreurs > 0 && lot.import_job && (
+            <a
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'mt-2')}
+              href={migrationApi.erreursCsvUrl(lot.import_job)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <FileDown className="size-4" aria-hidden="true" />
+              {' '}Télécharger le CSV des lignes en erreur
+            </a>
           )}
           {!rapport.conforme && !lot.derogation_reconcile && (
             motif === null ? (

@@ -74,3 +74,34 @@ def log_note(ticket: Ticket, user, body: str) -> TicketActivity:
         company=ticket.company, ticket=ticket, user=user,
         kind=TicketActivity.Kind.NOTE, body=body,
     )
+
+
+def log_appel(ticket: Ticket, user, body: str, *, outcome='',
+              duree_minutes=None) -> TicketActivity:
+    """NTSRV5 — journalise un APPEL SAV (durée + issue) comme interaction
+    typée du chatter (``kind='appel'``). Trace MANUELLE structurée : aucune
+    intégration PBX (elle exigerait un fournisseur tiers — GATED)."""
+    return TicketActivity.objects.create(
+        company=ticket.company, ticket=ticket, user=user,
+        kind=TicketActivity.Kind.APPEL, body=body,
+        outcome=outcome or '', duree_minutes=duree_minutes,
+    )
+
+
+def log_whatsapp(ticket: Ticket, user, body: str) -> TicketActivity:
+    """NTSRV3 — journalise un message WhatsApp (canal SAV) comme interaction
+    TYPÉE du chatter (``kind='whatsapp'``)."""
+    return TicketActivity.objects.create(
+        company=ticket.company, ticket=ticket, user=user,
+        kind=TicketActivity.Kind.WHATSAPP, body=body,
+    )
+
+
+def log_email(ticket: Ticket, user, body: str) -> TicketActivity:
+    """NTSRV1 — journalise un e-mail (entrant ou sortant) comme interaction
+    TYPÉE du chatter (``kind='email'``), jamais comme note libre : l'inbox
+    omnicanale distingue ainsi un échange e-mail d'un commentaire interne."""
+    return TicketActivity.objects.create(
+        company=ticket.company, ticket=ticket, user=user,
+        kind=TicketActivity.Kind.EMAIL, body=body,
+    )

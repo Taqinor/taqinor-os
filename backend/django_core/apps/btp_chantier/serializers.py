@@ -1,11 +1,14 @@
 """Sérialiseurs du vertical BTP/EPC (Groupe NTCON)."""
+import re
+
 from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
     AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier,
-    SignatureBtp, VisaDocument,
+    AbonnementRapportPhoto, Lot, LotChecklistItem, ParametresBtpChantier,
+    PPSPSChantier, PPSPSSignature, SignatureBtp, VisaDocument,
 )
 
 
@@ -264,3 +267,220 @@ class DiffusionPlanSerializer(serializers.ModelSerializer):
 
     def validate_chantier(self, value):
         return _meme_societe(self, value, 'Chantier')
+
+
+# ── NTCON14 — Lots (planning TCE multi-lots) ────────────────────────────────
+
+_HEX_COULEUR = re.compile(r'^#[0-9A-Fa-f]{6}$')
+
+
+class LotSerializer(serializers.ModelSerializer):
+    """NTCON14 — un lot du planning tous-corps-d'état.
+
+    Les erreurs NOMMENT le champ fautif (règle fondateur « erreurs → le champ
+    fautif ») : incohérence de dates → ``date_fin_prevue``, entreprise
+    manquante → ``sous_traitant``, couleur invalide → ``couleur``.
+    """
+    taches = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.nom', read_only=True, default='')
+
+    class Meta:
+        model = Lot
+        fields = [
+            'id', 'chantier', 'nom', 'ordre', 'couleur', 'interne',
+            'sous_traitant', 'sous_traitant_nom', 'date_debut_prevue',
+            'date_fin_prevue', 'date_fin_reelle', 'jalon_contractuel',
+            'montant_ht', 'taux_penalite_retard_pmil', 'plafond_penalite_pct',
+            'statut', 'taches', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'sous_traitant_nom', 'taches', 'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+    def validate_sous_traitant(self, value):
+        return _meme_societe(self, value, 'Sous-traitant')
+
+    def validate_couleur(self, value):
+        if value and not _HEX_COULEUR.match(value):
+            raise serializers.ValidationError(
+                'Couleur invalide : attendu un code hexadécimal #RRGGBB '
+                '(exemple : #2563EB).')
+        return value
+
+    def _valeur(self, attrs, champ):
+        """Valeur effective d'un champ (PATCH partiel inclus)."""
+        if champ in attrs:
+            return attrs[champ]
+        return getattr(self.instance, champ, None)
+
+    def validate(self, attrs):
+        debut = self._valeur(attrs, 'date_debut_prevue')
+        fin = self._valeur(attrs, 'date_fin_prevue')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError({
+                'date_fin_prevue': (
+                    'La fin prévue ne peut pas précéder le début prévu '
+                    f'({debut}).'),
+            })
+        interne = self._valeur(attrs, 'interne')
+        sous_traitant = self._valeur(attrs, 'sous_traitant')
+        if interne is False and sous_traitant is None:
+            raise serializers.ValidationError({
+                'sous_traitant': (
+                    "Lot non exécuté en interne : l'entreprise "
+                    '(sous-traitant) est obligatoire.'),
+            })
+        if interne and sous_traitant is not None:
+            raise serializers.ValidationError({
+                'interne': (
+                    'Un lot confié à un sous-traitant ne peut pas être marqué '
+                    '« exécuté en interne » — décochez la case.'),
+            })
+        return attrs
+
+
+# ── NTCON25 — Réglages BTP par société ─────────────────────────────────────
+
+class ParametresBtpChantierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParametresBtpChantier
+        fields = [
+            'id', 'delai_reponse_rfi_defaut_jours',
+            'delai_revue_visa_defaut_jours', 'guard_ppsps_bloquant',
+            'guard_checklist_lot_bloquant', 'lots_types_defaut',
+            'taux_penalite_retard_defaut_pmil', 'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
+
+    def validate_lots_types_defaut(self, value):
+        """Liste de noms de lots — l'erreur NOMME l'entrée fautive."""
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'lots_types_defaut doit être une liste de noms de lots.')
+        for nom in value:
+            if not isinstance(nom, str) or not nom.strip():
+                raise serializers.ValidationError(
+                    f'Nom de lot invalide : « {nom} ».')
+        return [nom.strip() for nom in value]
+
+    def validate_taux_penalite_retard_defaut_pmil(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le taux de pénalité ne peut pas être négatif.')
+        return value
+
+
+# ── NTCON19 — Checklist de réception de lot ────────────────────────────────
+
+class LotChecklistItemSerializer(serializers.ModelSerializer):
+    fait_par_nom = serializers.CharField(
+        source='fait_par.username', read_only=True, default='')
+
+    class Meta:
+        model = LotChecklistItem
+        fields = [
+            'id', 'cle', 'libelle', 'ordre', 'obligatoire', 'fait',
+            'fait_par', 'fait_par_nom', 'fait_le',
+        ]
+        read_only_fields = fields
+
+
+# ── NTCON16 — PPSPS de chantier + signatures sous-traitant ─────────────────
+
+class PPSPSSignatureSerializer(serializers.ModelSerializer):
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.nom', read_only=True, default='')
+
+    class Meta:
+        model = PPSPSSignature
+        fields = [
+            'id', 'sous_traitant', 'sous_traitant_nom', 'signataire_nom',
+            'methode', 'date_signature',
+        ]
+        read_only_fields = fields
+
+    def validate_sous_traitant(self, value):
+        """Défense en profondeur : ce sérialiseur est entièrement en LECTURE
+        (``read_only_fields = fields`` — la signature est posée par
+        ``services.signer_ppsps``), mais la garde même-société est déclarée
+        explicitement pour qu'un futur passage en écriture ne puisse JAMAIS
+        accepter un sous-traitant d'une autre société (``check_fk_scoping``)."""
+        return _meme_societe(self, value, 'Sous-traitant')
+
+
+class PPSPSChantierSerializer(serializers.ModelSerializer):
+    signatures = PPSPSSignatureSerializer(many=True, read_only=True)
+    est_valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PPSPSChantier
+        fields = [
+            'id', 'chantier', 'titre', 'document_ged_id', 'date_validation',
+            'valide_par', 'lots_couverts', 'signatures', 'est_valide',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'date_validation', 'valide_par', 'signatures', 'est_valide',
+            'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+    def validate_lots_couverts(self, value):
+        """Les lots couverts appartiennent à la société de l'utilisateur —
+        l'erreur NOMME le champ fautif (``lots_couverts``)."""
+        request = self.context.get('request')
+        company_id = getattr(
+            getattr(request, 'user', None), 'company_id', None)
+        for lot in value or []:
+            if company_id and lot.company_id != company_id:
+                raise serializers.ValidationError('Lot inconnu.')
+        return value
+
+    def validate(self, attrs):
+        chantier = attrs.get('chantier') or getattr(
+            self.instance, 'chantier', None)
+        lots = attrs.get('lots_couverts')
+        if chantier is not None and lots:
+            etrangers = [
+                lot.nom for lot in lots if lot.chantier_id != chantier.pk]
+            if etrangers:
+                raise serializers.ValidationError({
+                    'lots_couverts': (
+                        'Ces lots ne sont pas ceux de ce chantier : '
+                        f'{", ".join(etrangers)}.'),
+                })
+        return attrs
+
+
+# ── NTCON18 — Abonnement au photo-rapport hebdomadaire ─────────────────────
+
+class AbonnementRapportPhotoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AbonnementRapportPhoto
+        fields = [
+            'id', 'chantier', 'actif', 'destinataires', 'dernier_envoi',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'dernier_envoi', 'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+    def validate_destinataires(self, value):
+        """Liste d'adresses email — l'erreur NOMME l'adresse fautive."""
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "destinataires doit être une liste d'adresses email.")
+        for adresse in value:
+            if not isinstance(adresse, str) or '@' not in adresse:
+                raise serializers.ValidationError(
+                    f'Adresse email invalide : « {adresse} ».')
+        return value

@@ -366,6 +366,39 @@ def _est_main_oeuvre(designation):
     return any(mot in d for mot in _MOTS_CLES_MO)
 
 
+def paiements_des_factures(facture_ids, *, debut=None, fin=None):
+    """NTSUB20 — Paiements ENCAISSÉS sur un ensemble de factures, période bornée.
+
+    Thin selector cross-app (``apps.contrats`` l'appelle pour le relevé
+    d'abonnement) : jamais un import de ``ventes``/``facturation.models``
+    depuis l'extérieur. Les paiements REJETÉS (YLEDG5) sont exclus — ils ne
+    représentent aucun encaissement réel.
+
+    Renvoie une liste de dicts ``{'id', 'facture_id', 'date_paiement',
+    'montant', 'mode', 'mode_libelle', 'reference'}``, du plus ancien au plus
+    récent. Lecture seule.
+    """
+    from .models import Paiement
+
+    if not facture_ids:
+        return []
+    qs = Paiement.objects.filter(
+        facture_id__in=list(facture_ids), statut=Paiement.Statut.ENCAISSE)
+    if debut:
+        qs = qs.filter(date_paiement__gte=debut)
+    if fin:
+        qs = qs.filter(date_paiement__lte=fin)
+    return [{
+        'id': p.id,
+        'facture_id': p.facture_id,
+        'date_paiement': p.date_paiement,
+        'montant': p.montant,
+        'mode': p.mode,
+        'mode_libelle': p.get_mode_display(),
+        'reference': p.reference or '',
+    } for p in qs.order_by('date_paiement', 'id')]
+
+
 def paiements_totaux_par_mode(facture_ids):
     """Totaux + nombre de ``Paiement`` groupés par mode, pour un ensemble de
     factures (thin selector pour apps.pos — rapport Z de session XPOS4)."""

@@ -19,6 +19,7 @@ from decimal import Decimal
 from django.db import models
 
 from core.crypto_fields import EncryptedCharField
+from core.models import TenantModel
 
 
 # ── PAIE2 — Paramètres sociaux versionnés ──────────────────────────────────
@@ -36,6 +37,16 @@ class ParametrePaie(models.Model):
         on_delete=models.CASCADE,
         related_name='paie_parametres',
         verbose_name='Société',
+    )
+    # NTPAY8 — Pays du jeu de constantes. NULL (défaut, et valeur de TOUS les
+    # jeux existants) = jeu MAROCAIN historique : la résolution le sert aux
+    # profils sans pays ET aux profils MA, à l'identique.
+    pays = models.ForeignKey(
+        'paie.PaysPaie',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='parametres',
+        verbose_name='Pays de paie',
     )
     date_effet = models.DateField(verbose_name="Date d'effet")
     smig = models.DecimalField(
@@ -158,7 +169,20 @@ class ParametrePaie(models.Model):
         verbose_name = 'Paramètre de paie'
         verbose_name_plural = 'Paramètres de paie'
         ordering = ['-date_effet']
-        unique_together = [('company', 'date_effet')]
+        # NTPAY8 — l'unicité devient (société, PAYS, date d'effet) : deux pays
+        # actifs ont chacun leur jeu au 1ᵉʳ janvier. Comme Postgres considère
+        # deux NULL comme distincts, la garantie historique « un seul jeu
+        # marocain par date » est reprise par une contrainte PARTIELLE sur les
+        # lignes sans pays — elle est donc aussi forte qu'avant.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'pays', 'date_effet'],
+                name='uniq_parametre_paie_pays_date'),
+            models.UniqueConstraint(
+                fields=['company', 'date_effet'],
+                condition=models.Q(pays__isnull=True),
+                name='uniq_parametre_paie_date_sans_pays'),
+        ]
 
     def __str__(self):
         return f'Paramètres paie {self.date_effet}'
@@ -179,6 +203,15 @@ class BaremeIR(models.Model):
         related_name='paie_baremes_ir',
         verbose_name='Société',
     )
+    # NTPAY8 — Pays du barème. NULL (défaut, et valeur de TOUS les barèmes
+    # existants) = barème MAROCAIN historique.
+    pays = models.ForeignKey(
+        'paie.PaysPaie',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='baremes_ir',
+        verbose_name='Pays de paie',
+    )
     libelle = models.CharField(
         max_length=120, default='Barème IR', verbose_name='Libellé')
     date_effet = models.DateField(verbose_name="Date d'effet")
@@ -194,7 +227,18 @@ class BaremeIR(models.Model):
         verbose_name = 'Barème IR'
         verbose_name_plural = 'Barèmes IR'
         ordering = ['-date_effet']
-        unique_together = [('company', 'date_effet')]
+        # NTPAY8 — cf. ``ParametrePaie.Meta`` : unicité par (société, pays,
+        # date d'effet) + contrainte PARTIELLE reprenant la garantie
+        # historique sur les barèmes sans pays (marocains).
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'pays', 'date_effet'],
+                name='uniq_bareme_ir_pays_date'),
+            models.UniqueConstraint(
+                fields=['company', 'date_effet'],
+                condition=models.Q(pays__isnull=True),
+                name='uniq_bareme_ir_date_sans_pays'),
+        ]
 
     def __str__(self):
         return f'{self.libelle} {self.date_effet}'
@@ -388,6 +432,58 @@ class TrancheIR(models.Model):
         return f'{self.borne_min}–{self.borne_max} @ {self.taux}%'
 
 
+# ── NTPAY7 — Pays de paie (moteur multi-pays) ──────────────────────────────
+
+class PaysPaie(TenantModel):
+    """Pays de paie d'une société (NTPAY7), scopé société.
+
+    Le moteur de paie était 100 % marocain EN DUR (CNSS/AMO/IR MA). Ce modèle
+    introduit le PAYS comme donnée : ``code_iso`` (MA/FR/SN/CI…), ``devise``,
+    et surtout ``moteur`` — la clé de règle qui sélectionne la fonction de
+    calcul dans ``services.MOTEURS_PAYS``.
+
+    RÉTRO-COMPATIBILITÉ STRICTE : ``ProfilPaie.pays`` est NULLABLE et vaut
+    ``None`` pour tous les profils existants ⇒ moteur marocain, au centime
+    près. Seul le pays ``MA`` est semé (``services.ensure_pays_paie_standard``)
+    — les packs FR/SN/CI restent gatés fondateur et ne s'activent jamais
+    d'office.
+    """
+    CODE_MA = 'MA'
+    CODE_FR = 'FR'
+    CODE_SN = 'SN'
+    CODE_CI = 'CI'
+    CODE_ISO_CHOICES = [
+        (CODE_MA, 'Maroc'),
+        (CODE_FR, 'France'),
+        (CODE_SN, 'Sénégal'),
+        (CODE_CI, "Côte d'Ivoire"),
+    ]
+
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``
+    # (FK ``company`` + ``created_at``/``updated_at``) : aucun nouveau modèle
+    # ne re-déclare cette paire à la main.
+    code_iso = models.CharField(
+        max_length=2, choices=CODE_ISO_CHOICES, verbose_name='Code ISO')
+    libelle = models.CharField(max_length=80, verbose_name='Libellé')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    # Clé de règle du registre ``services.MOTEURS_PAYS``. Vide ⇒ le
+    # ``code_iso`` fait office de clé (cas courant).
+    moteur = models.CharField(
+        max_length=12, blank=True, default='',
+        verbose_name='Moteur de calcul')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Pays de paie'
+        verbose_name_plural = 'Pays de paie'
+        ordering = ['code_iso']
+        unique_together = [('company', 'code_iso')]
+
+    def __str__(self):
+        return f'{self.code_iso} — {self.libelle}'
+
+
 # ── PAIE8 — Profil de paie de l'employé ────────────────────────────────────
 
 class ProfilPaie(models.Model):
@@ -427,6 +523,17 @@ class ProfilPaie(models.Model):
         on_delete=models.CASCADE,
         related_name='profil_paie',
         verbose_name='Dossier employé',
+    )
+    # NTPAY7 — Pays de paie du profil. NULL (défaut, et valeur de TOUS les
+    # profils existants) ⇒ moteur marocain, strictement inchangé. PROTECT : un
+    # pays utilisé par des profils ne se supprime pas sous leurs pieds — on le
+    # DÉSACTIVE (``PaysPaie.actif``).
+    pays = models.ForeignKey(
+        PaysPaie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='profils',
+        verbose_name='Pays de paie',
     )
     type_remuneration = models.CharField(
         max_length=12, choices=TYPE_REMUNERATION_CHOICES, default=TYPE_MENSUEL,
@@ -2234,3 +2341,183 @@ class TypeEntreePonctuelle(models.Model):
 
     def __str__(self):
         return f'{self.code} — {self.libelle}'
+
+
+# ── NTPAY2 — Interface comptable paramétrable (rubrique × analytique) ───────
+
+class SchemaComptablePaie(TenantModel):
+    """Ligne de mapping comptable de la paie (NTPAY2), scopée société.
+
+    ``services.journal_de_paie`` codait EN DUR les comptes CGNC de l'écriture
+    de paie (6171 brut, 6174 charges patronales, 4441 organismes sociaux, 4452
+    IR, 4443 CIMR, 4432 net) : aucun cabinet ne pouvait router une rubrique sur
+    son propre compte. Chaque ligne de ce modèle redirige UNE cible :
+
+    * soit un **code système** (``CODE_BRUT``/``CODE_CHARGES_PATRONALES``/… —
+      les six postes de l'écriture historique) ;
+    * soit une **rubrique** du catalogue (``Rubrique``) — la part du brut
+      portée par cette rubrique est alors débitée sur SON compte, le reste
+      restant sur le compte du poste ``brut``.
+
+    ``section_analytique_id`` référence ``compta.CentreCout`` en STRING-FK
+    (jamais un import de ``compta.models``), comme
+    ``VentilationAnalytiquePaie``.
+
+    RÉTRO-COMPATIBILITÉ STRICTE : sans AUCUNE ligne active, ``journal_de_paie``
+    produit exactement l'écriture d'avant (mêmes comptes, au centime).
+    """
+    CODE_BRUT = 'brut'
+    CODE_CHARGES_PATRONALES = 'charges_patronales'
+    CODE_CNSS_ORGANISMES = 'cnss_organismes'
+    CODE_IR = 'ir'
+    CODE_CIMR = 'cimr'
+    CODE_NET = 'net'
+    CODE_SYSTEME_CHOICES = [
+        (CODE_BRUT, 'Brut (rémunérations)'),
+        (CODE_CHARGES_PATRONALES, 'Charges sociales patronales'),
+        (CODE_CNSS_ORGANISMES, 'Organismes sociaux (CNSS/AMO/AF/TFP)'),
+        (CODE_IR, 'IR retenu à la source'),
+        (CODE_CIMR, 'CIMR'),
+        (CODE_NET, 'Net à payer (dû au personnel)'),
+    ]
+
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``.
+    code_systeme = models.CharField(
+        max_length=24, choices=CODE_SYSTEME_CHOICES, blank=True, default='',
+        verbose_name='Poste système')
+    rubrique = models.ForeignKey(
+        Rubrique,
+        # on_delete: un mapping comptable n'a plus d'objet sans sa rubrique —
+        # il ne porte AUCUNE donnée de paie (jamais un montant, jamais une
+        # écriture), seulement un numéro de compte de destination.
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='schemas_comptables',
+        verbose_name='Rubrique',
+    )
+    compte_debit = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Compte de débit')
+    compte_credit = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Compte de crédit')
+    # STRING-FK cross-app vers compta.CentreCout — jamais compta.models direct.
+    section_analytique_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Section analytique (ID, compta.CentreCout)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Ligne de plan comptable paie'
+        verbose_name_plural = 'Plan comptable paie'
+        ordering = ['ordre', 'code_systeme', 'id']
+        constraints = [
+            # Une ligne cible SOIT un poste système, SOIT une rubrique —
+            # jamais les deux, jamais aucun des deux (sans quoi la résolution
+            # n'a pas de clé).
+            models.CheckConstraint(
+                check=(
+                    models.Q(rubrique__isnull=True) & ~models.Q(code_systeme='')
+                ) | (
+                    models.Q(rubrique__isnull=False) & models.Q(code_systeme='')
+                ),
+                name='schema_paie_systeme_xor_rubrique',
+            ),
+            models.UniqueConstraint(
+                fields=['company', 'code_systeme'],
+                condition=models.Q(rubrique__isnull=True),
+                name='uniq_schema_paie_code_systeme',
+            ),
+            models.UniqueConstraint(
+                fields=['company', 'rubrique'],
+                condition=models.Q(rubrique__isnull=False),
+                name='uniq_schema_paie_rubrique',
+            ),
+        ]
+
+    def __str__(self):
+        cible = self.code_systeme or (
+            self.rubrique.code if self.rubrique_id else '?')
+        return (f'{cible} → D{self.compte_debit or "—"} / '
+                f'C{self.compte_credit or "—"}')
+
+
+# ── NTPAY5 — Registre des dépôts déclaratifs & accusés (preuve) ────────────
+
+class DepotDeclaratif(TenantModel):
+    """PREUVE de dépôt d'une déclaration de paie (NTPAY5), scopé société.
+
+    ``EcheanceDeclarative`` (XPAI6) suit le CALENDRIER des déclarations dues ;
+    rien ne conservait la PREUVE qu'une déclaration a réellement été déposée
+    (référence du dépôt, récépissé de l'organisme, montant déclaré, rejet
+    éventuel). Ce modèle rattache ce dossier de preuve à l'échéance :
+
+    * ``reference_depot`` — référence rendue par l'organisme (Damancom, SIMPL,
+      e-CIMR…) ;
+    * ``fichier_key`` — clé MinIO de l'accusé/récépissé téléversé ;
+    * ``montant_declare`` — montant porté sur la déclaration déposée ;
+    * ``statut`` — ``depose`` (remis), ``accepte`` (validé par l'organisme) ou
+      ``rejete``, auquel cas ``motif_rejet`` est OBLIGATOIRE et conservé.
+
+    Un dépôt ``depose``/``accepte`` fait basculer son échéance en « déposée »
+    (``services.enregistrer_depot_declaratif``) ; un dépôt REJETÉ ne l'avance
+    jamais — la déclaration reste due.
+    """
+    TYPE_BDS = 'bds'
+    TYPE_IR_MENSUEL = 'ir_mensuel'
+    TYPE_9421 = 'etat_9421'
+    TYPE_CIMR = 'cimr'
+    TYPE_CHOICES = [
+        (TYPE_BDS, 'BDS (CNSS)'),
+        (TYPE_IR_MENSUEL, 'IR mensuel'),
+        (TYPE_9421, 'État 9421 (annuel)'),
+        (TYPE_CIMR, 'CIMR'),
+    ]
+
+    STATUT_DEPOSE = 'depose'
+    STATUT_ACCEPTE = 'accepte'
+    STATUT_REJETE = 'rejete'
+    STATUT_CHOICES = [
+        (STATUT_DEPOSE, 'Déposé'),
+        (STATUT_ACCEPTE, 'Accepté'),
+        (STATUT_REJETE, 'Rejeté'),
+    ]
+
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``.
+    echeance = models.ForeignKey(
+        EcheanceDeclarative,
+        # on_delete: le dossier de preuve n'a plus d'objet sans l'échéance
+        # qu'il justifie (l'échéance elle-même suit sa période).
+        on_delete=models.CASCADE,
+        related_name='depots',
+        verbose_name='Échéance déclarative',
+    )
+    type_declaration = models.CharField(
+        max_length=12, choices=TYPE_CHOICES, verbose_name='Type')
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    # Mois de la déclaration — vide pour une déclaration ANNUELLE (état 9421).
+    mois = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Mois')
+    reference_depot = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Référence de dépôt')
+    date_depot = models.DateField(verbose_name='Date de dépôt')
+    fichier_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name="Clé de l'accusé (MinIO)")
+    montant_declare = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déclaré')
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_DEPOSE,
+        verbose_name='Statut')
+    motif_rejet = models.CharField(
+        max_length=300, blank=True, default='', verbose_name='Motif du rejet')
+
+    class Meta:
+        verbose_name = 'Dépôt déclaratif'
+        verbose_name_plural = 'Dépôts déclaratifs'
+        ordering = ['-date_depot', '-id']
+
+    def __str__(self):
+        return (f'{self.get_type_declaration_display()} '
+                f'{self.annee} — {self.get_statut_display()}')

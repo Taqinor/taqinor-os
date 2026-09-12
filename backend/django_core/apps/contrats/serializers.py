@@ -14,17 +14,20 @@ from .models import (
     Caution,
     Clause,
     ClauseContrat,
+    CommentaireRedline,
     CompteurUsage,
     Contrat,
     ContratActivity,
     ContratLien,
     CycleFacturationLog,
+    DocumentContrepartie,
     EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
     EtapeDunning,
     IndexationPrix,
     JalonContrat,
+    LienDepotContrepartie,
     LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
@@ -32,6 +35,7 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametresAbonnement,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -484,9 +488,27 @@ class ClauseSerializer(serializers.ModelSerializer):
             "corps_localise",
             "ordre",
             "actif",
+            # NTDOC5 — types de contrat pour lesquels la clause est EXIGÉE.
+            "obligatoire_pour_types",
             "date_creation",
         ]
         read_only_fields = ["date_creation"]
+
+    def validate_obligatoire_pour_types(self, value):
+        """NTDOC5 — liste de codes ``Contrat.TypeContrat`` valides, ou vide."""
+        if value in (None, ''):
+            return []
+        if not isinstance(value, (list, tuple)):
+            raise serializers.ValidationError(
+                'Le champ « obligatoire_pour_types » doit être une liste de '
+                'types de contrat.')
+        connus = {code for code, _ in Contrat.TypeContrat.choices}
+        inconnus = [str(v) for v in value if str(v) not in connus]
+        if inconnus:
+            raise serializers.ValidationError(
+                f'Le champ « obligatoire_pour_types » contient des types de '
+                f'contrat inconnus : {", ".join(inconnus)}.')
+        return [str(v) for v in value]
 
     def _target_locale(self):
         request = self.context.get('request')
@@ -1788,3 +1810,217 @@ class ChangerPlanSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Ce plan d'abonnement n'appartient pas à votre société.")
         return plan
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Dépôt de la version « contrepartie »
+# ---------------------------------------------------------------------------
+
+
+class DocumentContrepartieSerializer(serializers.ModelSerializer):
+    """Version renvoyée par la contrepartie, rattachée à un contrat (NTDOC1).
+
+    Tout ce qui engage la traçabilité est en LECTURE SEULE : la société, le
+    contrat, la clé de stockage, l'horodatage et le déposant sont posés CÔTÉ
+    SERVEUR (jamais lus du corps de requête). Seuls ``statut`` et
+    ``commentaire`` restent éditables (revue interne du redline).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    depose_par_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentContrepartie
+        fields = [
+            'id', 'contrat', 'lien', 'fichier_key', 'nom_fichier', 'mime',
+            'taille', 'depose_par_nom', 'depose_par_email', 'depose_par',
+            'depose_par_username', 'date_depot', 'statut', 'statut_display',
+            'archive', 'date_archivage', 'commentaire',
+        ]
+        read_only_fields = [
+            'id', 'contrat', 'lien', 'fichier_key', 'nom_fichier', 'mime',
+            'taille', 'depose_par_nom', 'depose_par_email', 'depose_par',
+            'depose_par_username', 'date_depot', 'statut_display', 'archive',
+            'date_archivage',
+        ]
+
+    def get_depose_par_username(self, obj):
+        return getattr(obj.depose_par, 'username', None)
+
+
+class LienDepotContrepartieSerializer(serializers.ModelSerializer):
+    """Lien tokenisé de dépôt pour la contrepartie externe (NTDOC1).
+
+    Le ``token`` est exposé en LECTURE SEULE (il est généré côté serveur) —
+    c'est l'UNIQUE secret d'accès, il n'est jamais accepté en écriture.
+    """
+    accessible = serializers.BooleanField(
+        source='is_accessible', read_only=True)
+
+    class Meta:
+        model = LienDepotContrepartie
+        fields = [
+            'id', 'contrat', 'token', 'destinataire_nom',
+            'destinataire_email', 'expires_at', 'actif', 'accessible',
+            'created_at',
+        ]
+        read_only_fields = [
+            'id', 'contrat', 'token', 'accessible', 'created_at',
+        ]
+
+
+class DeposerContrepartieSerializer(serializers.Serializer):
+    """Corps de l'action ``contreparties`` (POST) — NTDOC1.
+
+    ``fichier`` (upload multipart) OU ``fichier_key`` (objet déjà stocké) ;
+    ``nom_fichier`` est obligatoire quand seule une clé est fournie.
+    """
+    fichier = serializers.FileField(required=False)
+    fichier_key = serializers.CharField(
+        required=False, allow_blank=True, max_length=512)
+    nom_fichier = serializers.CharField(
+        required=False, allow_blank=True, max_length=255)
+    depose_par_nom = serializers.CharField(
+        required=False, allow_blank=True, max_length=200)
+    depose_par_email = serializers.EmailField(
+        required=False, allow_blank=True)
+    commentaire = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        fichier = attrs.get('fichier')
+        nom = (attrs.get('nom_fichier') or '').strip()
+        if fichier is None and not (attrs.get('fichier_key') or '').strip():
+            raise serializers.ValidationError({
+                'fichier': 'Déposez un fichier (ou fournissez une clé de '
+                           'stockage « fichier_key »).',
+            })
+        if fichier is None and not nom:
+            raise serializers.ValidationError({
+                'nom_fichier': 'Le nom du fichier est obligatoire quand seule '
+                               'une clé de stockage est fournie.',
+            })
+        return attrs
+
+
+class CreerLienDepotContrepartieSerializer(serializers.Serializer):
+    """Corps de l'action ``creer-lien-depot`` — NTDOC1."""
+    destinataire_nom = serializers.CharField(
+        required=False, allow_blank=True, max_length=200)
+    destinataire_email = serializers.EmailField(
+        required=False, allow_blank=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+# ---------------------------------------------------------------------------
+# NTDOC3 — Commentaires de redline
+# ---------------------------------------------------------------------------
+
+
+class CommentaireRedlineSerializer(serializers.ModelSerializer):
+    """Commentaire ancré sur le diff de négociation (NTDOC3).
+
+    ``auteur``, ``resolu``, ``resolu_par`` et ``date_resolution`` sont en
+    LECTURE SEULE : ils sont posés CÔTÉ SERVEUR (l'utilisateur courant, la
+    date serveur) — jamais lus du corps de requête. La résolution passe par
+    l'action ``resoudre``.
+    """
+    auteur_nom = serializers.SerializerMethodField()
+    resolu_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommentaireRedline
+        fields = [
+            'id', 'contrat', 'document_contrepartie', 'clause',
+            'ligne_reference', 'extrait_ligne', 'contenu', 'auteur',
+            'auteur_nom', 'resolu', 'resolu_par', 'resolu_par_nom',
+            'date_resolution', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'contrat', 'auteur', 'auteur_nom', 'resolu', 'resolu_par',
+            'resolu_par_nom', 'date_resolution', 'created_at',
+        ]
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', None)
+
+    def get_resolu_par_nom(self, obj):
+        return getattr(obj.resolu_par, 'username', None)
+
+
+class CreerCommentaireRedlineSerializer(serializers.Serializer):
+    """Corps de création d'un commentaire de redline — NTDOC3."""
+    contenu = serializers.CharField()
+    document_contrepartie = serializers.IntegerField(
+        required=False, allow_null=True)
+    clause = serializers.IntegerField(required=False, allow_null=True)
+    ligne_reference = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0)
+    extrait_ligne = serializers.CharField(
+        required=False, allow_blank=True, max_length=500)
+
+    def validate_contenu(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le commentaire ne peut pas être vide.')
+        return value
+
+
+class AjouterClausesManquantesSerializer(serializers.Serializer):
+    """Corps du wizard « Résoudre les clauses manquantes » — NTDOC44.
+
+    ``clauses`` (optionnel) restreint l'ajout à une sélection ; omis, le
+    wizard ajoute TOUTES les clauses obligatoires manquantes en un seul appel.
+    """
+    clauses = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False, allow_empty=True)
+
+
+class ModifierCommentaireRedlineSerializer(serializers.Serializer):
+    """Corps d'édition d'un commentaire de redline — NTDOC3 (contenu seul)."""
+    contenu = serializers.CharField()
+    extrait_ligne = serializers.CharField(
+        required=False, allow_blank=True, max_length=500)
+
+    def validate_contenu(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le commentaire ne peut pas être vide.')
+        return value
+
+
+class ParametresAbonnementSerializer(serializers.ModelSerializer):
+    """Réglages « Facturation récurrente » de la société — NTSUB24.
+
+    ``company`` n'est JAMAIS exposée ni acceptée du corps : le singleton est
+    résolu côté serveur depuis l'utilisateur. ``sequence_dunning_defaut`` est
+    validée comme appartenant à la même société (``validate_*`` ci-dessous —
+    même app, donc hors périmètre de la garde cross-app, mais l'isolation
+    multi-tenant vaut aussi entre sociétés d'une même app).
+    """
+
+    class Meta:
+        model = ParametresAbonnement
+        fields = [
+            'id', 'jours_alerte_fin_essai', 'jours_alerte_expiration_carte',
+            'seuil_alerte_usage_pct_defaut', 'sequence_dunning_defaut',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_sequence_dunning_defaut(self, sequence):
+        request = self.context.get('request')
+        if (sequence is not None and request is not None
+                and sequence.company_id != request.user.company_id):
+            raise serializers.ValidationError(
+                "Séquence de dunning : elle n'appartient pas à votre société.")
+        return sequence
+
+    def validate_seuil_alerte_usage_pct_defaut(self, valeur):
+        if valeur > 100:
+            raise serializers.ValidationError(
+                "Seuil d'alerte d'usage : saisissez un pourcentage entre 0 "
+                'et 100.')
+        return valeur

@@ -3428,3 +3428,22 @@ def kpi_projets_par_statut(company):
          'valeur': row['n'], 'unite': 'projets'}
         for row in rows
     ]
+
+
+def projets_en_production(company):
+    """NTPRJ3 — Projets susceptibles de porter une régularisation de cut-off.
+
+    Thin selector cross-app : la compta a besoin d'ÉNUMÉRER les projets d'une
+    société pour la régularisation WIP/PCA de fin de période, sans jamais
+    importer ``gestion_projet.models``. Retient les projets encore en
+    production ou en pause (un projet brouillon n'a rien produit ; un projet
+    annulé ne doit plus rien régulariser ; un projet terminé se solde par sa
+    facturation finale, pas par un cut-off). Lecture seule, scopé société.
+    """
+    from .models import Projet
+
+    return list(
+        Projet.objects
+        .filter(company=company,
+                statut__in=[Projet.Statut.EN_COURS, Projet.Statut.EN_PAUSE])
+        .order_by('id'))

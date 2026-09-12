@@ -6,7 +6,7 @@ import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
-  Ship, Route, Layers,
+  Ship, Route, Layers, Repeat,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -158,6 +158,9 @@ const PiecesJointesPage = lazy(() => import('../../pages/parametres/PiecesJointe
 // WIR282/XSAL6 — plans de commission (moitié front de WIR281). Contrat
 // partagé : apps/ventes/contract_samples/plan_commission.json.
 const PlansCommissionPage = lazy(() => import('../../pages/parametres/PlansCommissionPage'))
+// NTSUB24 — réglages « Facturation récurrente » par société (seuils du
+// groupe NTSUB : fin d'essai, expiration de carte, seuil d'usage).
+const AbonnementsParametresPage = lazy(() => import('../../pages/parametres/AbonnementsParametresPage'))
 const CustomObjectRecordsPage = lazy(() => import('../customobjects/CustomObjectRecordsPage'))
 
 const config = {
@@ -209,6 +212,8 @@ const config = {
       { to: '/parametres/pieces-jointes', label: 'Pièces jointes', icon: <Paperclip size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // WIR282 — plans de commission (XSAL6), gatés responsable/admin.
       { to: '/parametres/plans-commission', label: 'Plans de commission', icon: <BadgePercent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTSUB24 — nav ET route ensemble (un écran non atteignable est un écran mort).
+      { to: '/parametres/abonnements', label: 'Facturation récurrente', icon: <Repeat size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -230,6 +235,7 @@ const config = {
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/abonnements', component: AbonnementsParametresPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés

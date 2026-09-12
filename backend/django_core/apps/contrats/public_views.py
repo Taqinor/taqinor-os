@@ -18,10 +18,13 @@ Protections : X-Robots-Tag noindex sur chaque réponse publique ; throttle
 cache-based par IP (30 req/min), même patron que ``sav.public_views`` /
 ``ventes.public_views``.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    api_view, parser_classes, permission_classes, throttle_classes,
 )
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -140,6 +143,101 @@ def portail_demande_contrat(request, token, contrat_id):
         services.demander_action_portail(
             contrat, type_demande=type_demande, message=message)
     except services.DemandePortailError as exc:
+        return _noindex(Response(
+            {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+
+    return _noindex(Response({'ok': True}, status=status.HTTP_201_CREATED))
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Dépôt PUBLIC de la version contrepartie (lien tokenisé)
+# ---------------------------------------------------------------------------
+
+
+def _lien_introuvable():
+    return _noindex(Response(
+        {'detail': "Ce lien de dépôt est invalide, révoqué ou expiré."},
+        status=status.HTTP_404_NOT_FOUND,
+    ))
+
+
+@extend_schema(methods=['GET'], responses=inline_serializer(
+    'DepotContrepartieContexteReponse', {
+        'contrat_reference': drf_serializers.CharField(),
+        'contrat_objet': drf_serializers.CharField(),
+        'destinataire_nom': drf_serializers.CharField(),
+        'formats_acceptes': drf_serializers.ListField(
+            child=drf_serializers.CharField()),
+    }))
+@extend_schema(methods=['POST'], request=inline_serializer('DepotContrepartieRequete', {
+    'fichier': drf_serializers.FileField(),
+    'nom_fichier': drf_serializers.CharField(required=False),
+    'depose_par_nom': drf_serializers.CharField(required=False),
+    'depose_par_email': drf_serializers.CharField(required=False),
+    'commentaire': drf_serializers.CharField(required=False),
+}), responses=inline_serializer(
+    'DepotContrepartieReponse', {'ok': drf_serializers.BooleanField()}))
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([ContratsPortailThrottle])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def depot_contrepartie_public(request, token):
+    """NTDOC1 — Dépôt de sa version par la CONTREPARTIE, sans compte ERP.
+
+    ``GET  /api/django/public/contrats/depot/<token>/`` — contexte minimal du
+    dépôt (référence + objet du contrat, nom attendu). AUCUNE donnée interne
+    (montant, confidentialité, responsable, prix d'achat) n'est exposée.
+
+    ``POST /api/django/public/contrats/depot/<token>/`` — dépose le fichier.
+
+    La société et le contrat sont résolus DEPUIS LE JETON (jamais lus du corps
+    de requête) ; un lien révoqué/expiré renvoie 404 sans fuite d'existence.
+    """
+    lien = selectors.lien_depot_par_token(token)
+    if lien is None:
+        return _lien_introuvable()
+
+    if request.method == 'GET':
+        return _noindex(Response({
+            'contrat_reference': lien.contrat.reference,
+            'contrat_objet': lien.contrat.objet,
+            'destinataire_nom': lien.destinataire_nom,
+            'formats_acceptes': list(services.EXTENSIONS_CONTREPARTIE),
+        }))
+
+    fichier = request.data.get('fichier')
+    nom_fichier = (request.data.get('nom_fichier') or '').strip()
+    if fichier is None:
+        return _noindex(Response(
+            {'detail': 'Le champ « fichier » est obligatoire : joignez votre '
+                       'version du contrat.'},
+            status=status.HTTP_400_BAD_REQUEST))
+    if not nom_fichier:
+        nom_fichier = getattr(fichier, 'name', '') or ''
+
+    try:
+        contenu = fichier.read()
+    except Exception:  # pragma: no cover - défensif (fichier illisible)
+        return _noindex(Response(
+            {'detail': 'Le champ « fichier » n\'a pas pu être lu.'},
+            status=status.HTTP_400_BAD_REQUEST))
+
+    try:
+        services.deposer_document_contrepartie(
+            lien.contrat,
+            nom_fichier=nom_fichier,
+            contenu=contenu,
+            depose_par_nom=(
+                (request.data.get('depose_par_nom') or '').strip()
+                or lien.destinataire_nom),
+            depose_par_email=(
+                (request.data.get('depose_par_email') or '').strip()
+                or lien.destinataire_email),
+            depose_par=None,
+            lien=lien,
+            commentaire=(request.data.get('commentaire') or ''),
+        )
+    except services.DepotContrepartieError as exc:
         return _noindex(Response(
             {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
 

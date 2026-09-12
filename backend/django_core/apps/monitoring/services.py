@@ -421,3 +421,53 @@ def _create_underperf_ticket(installation, flag, user):
             'Sous-performance détectée par la supervision : production '
             f'à {ratio} % de l\'attendu sur 12 mois. Vérification requise.'),
         created_by=user)
+
+
+# ── NTNRG27 — Registre des certificats carbone émis ─────────────────────────
+
+PREFIXE_REFERENCE_CERTIFICAT_CO2 = 'CERT-CO2'
+
+
+def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
+                               periode_debut, periode_fin, tco2_evitees,
+                               fichier_key=''):
+    """NTNRG27 — Émet un certificat carbone (registre, anti-double-comptage).
+
+    Exactement UNE cible : `installation_id` (certificat PAR SITE) OU
+    `client_id` (certificat CONSOLIDÉ multi-sites) — jamais les deux, jamais
+    aucune. Un certificat EXACTEMENT identique (même société + même cible +
+    même période) est REFUSÉ (``ValueError``) — jamais un doublon silencieux
+    qui compterait deux fois le même CO₂ évité.
+
+    La référence (``CERT-CO2-YYYYMM-NNNN``) est posée côté serveur, race-safe
+    (``core.numbering`` — plus-haut-utilisé+1 par société/mois, jamais un
+    ``count()+1``).
+    """
+    from .models import CertificatCarbone
+
+    if bool(installation_id) == bool(client_id):
+        raise ValueError(
+            'Indiquez soit un système (installation_id), soit un client '
+            '(client_id), jamais les deux ni aucun.')
+    if periode_fin < periode_debut:
+        raise ValueError('periode_fin doit être postérieure ou égale à periode_debut.')
+
+    deja_emis = CertificatCarbone.objects.filter(
+        company=company, installation_id=installation_id, client_id=client_id,
+        periode_debut=periode_debut, periode_fin=periode_fin).exists()
+    if deja_emis:
+        raise ValueError(
+            'Un certificat carbone existe déjà pour cette cible et cette '
+            'période exacte (anti-double-comptage).')
+
+    from core.numbering import create_with_reference
+
+    def _creer(reference):
+        return CertificatCarbone.objects.create(
+            company=company, installation_id=installation_id,
+            client_id=client_id, periode_debut=periode_debut,
+            periode_fin=periode_fin, tco2_evitees=tco2_evitees,
+            reference=reference, fichier_key=fichier_key or '')
+
+    return create_with_reference(
+        CertificatCarbone, PREFIXE_REFERENCE_CERTIFICAT_CO2, company, _creer)

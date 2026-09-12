@@ -1989,6 +1989,38 @@ def ecarts_competences(employe):
     return ecarts
 
 
+def employes_avec_competence(company, competence_ids, niveau_min=1):
+    """NTSRV7 — ids des COMPTES UTILISATEUR dont le dossier RH atteint
+    ``niveau_min`` sur TOUTES les compétences demandées.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.sav`` s'en sert pour
+    n'affecter un ticket qu'à un technicien qualifié) — l'appelant n'importe
+    jamais ``apps.rh.models``. Renvoie un ``set`` d'ids utilisateur ; les
+    dossiers sans compte utilisateur relié sont naturellement absents.
+
+    ``competence_ids`` vide → ``set()`` : l'appelant doit alors garder son
+    comportement d'origine (aucune exigence = aucun filtre), jamais
+    interpréter ce vide comme « personne n'est qualifié ».
+    """
+    from .models import CompetenceEmploye
+
+    ids = [c for c in (competence_ids or []) if c]
+    if company is None or not ids:
+        return set()
+
+    lignes = (CompetenceEmploye.objects
+              .filter(company=company, competence_id__in=ids,
+                      niveau__gte=niveau_min,
+                      employe__user_id__isnull=False)
+              .values_list('employe__user_id', 'competence_id'))
+    par_user = {}
+    for user_id, competence_id in lignes:
+        par_user.setdefault(user_id, set()).add(competence_id)
+    requises = set(ids)
+    return {user_id for user_id, couvertes in par_user.items()
+            if requises.issubset(couvertes)}
+
+
 def candidats_internes(company, poste_id):
     """XRH15 — classe les employés d'un poste par COUVERTURE de son profil
     requis (décroissante). Couverture = proportion (0..1) des compétences
@@ -2966,3 +2998,491 @@ def kpi_effectifs_absences(company):
         {'id': 'rh_absences_en_cours', 'label': 'Absences en cours (validées)',
          'valeur': absences_en_cours, 'unite': 'employés'},
     ]
+
+
+# ── NTHCM4 — postes budgétés vs pourvus (headcount planning) ────────────────
+
+def effectif_poste(company, poste_id):
+    """NTHCM4 — comparatif budgété / pourvu / ouvert d'UN poste.
+
+    Renvoie ``{poste_id, poste_intitule, budgete, pourvus, ouverts,
+    depassement}`` où :
+
+    * ``budgete`` — ``Poste.effectif_budgete`` (``0`` = AUCUNE limite posée) ;
+    * ``pourvus`` — nombre de ``DossierEmploye`` ACTIFS pointant ce poste ;
+    * ``ouverts`` — nombre d'``OuverturePoste`` encore ACTIVES sur ce poste
+      (statuts ``ouvert``/``en_approbation`` ; brouillon/pourvu/clos/annulé ne
+      comptent pas) ;
+    * ``depassement`` — ``True`` UNIQUEMENT quand une limite est posée
+      (``budgete > 0``) ET que ``pourvus`` la dépasse. Un poste à ``0``
+      budgété reste NEUTRE (jamais signalé) — c'est la valeur historique de
+      tous les postes existants.
+
+    Renvoie ``None`` si le poste n'existe pas dans CETTE société (isolation).
+    Lecture seule, scopée société.
+    """
+    from .models import OuverturePoste
+
+    poste = Poste.objects.filter(company=company, id=poste_id).first()
+    if poste is None:
+        return None
+
+    pourvus = DossierEmploye.objects.filter(
+        company=company, poste_ref=poste,
+        statut=DossierEmploye.Statut.ACTIF).count()
+    ouverts = OuverturePoste.objects.filter(
+        company=company, poste_ref=poste,
+        statut__in=[OuverturePoste.Statut.OUVERT,
+                    OuverturePoste.Statut.EN_APPROBATION]).count()
+    budgete = poste.effectif_budgete or 0
+    return {
+        'poste_id': poste.id,
+        'poste_intitule': poste.intitule,
+        'budgete': budgete,
+        'pourvus': pourvus,
+        'ouverts': ouverts,
+        'depassement': bool(budgete) and pourvus > budgete,
+    }
+
+
+def effectifs_postes(company):
+    """NTHCM4 — comparatif budgété/pourvu de TOUS les postes de la société.
+
+    Même forme que :func:`effectif_poste`, triée par intitulé — sert la
+    colonne « Budgété / Pourvu » et l'alerte de dépassement côté écran.
+    """
+    postes = Poste.objects.filter(company=company).order_by('intitule')
+    return [effectif_poste(company, poste.id) for poste in postes]
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+def grille_neuf_box(company, campagne_id=None, departement_id=None):
+    """NTHCM10 — répartition des employés positionnés, par case 1-9.
+
+    Renvoie ``{campagne_id, total, cases: [ {case, axe_performance,
+    axe_potentiel, libelle_performance, libelle_potentiel, nombre, employes:
+    [{employe_id, nom, prenom, poste, departement}]}, ... ]}`` — TOUJOURS les
+    9 cases (une case vide vaut ``nombre=0``), pour que l'écran matriciel
+    n'ait rien à inventer.
+
+    Un employé SANS positionnement est simplement ABSENT de la grille : ce
+    n'est pas une erreur, juste une case de moins. Lecture seule, scopée
+    société.
+    """
+    from .models import EvaluationNeufBox
+
+    positions = (
+        EvaluationNeufBox.objects
+        .filter(company=company)
+        .select_related('employe', 'employe__poste_ref',
+                        'employe__departement'))
+    if campagne_id:
+        positions = positions.filter(campagne_id=campagne_id)
+    if departement_id:
+        positions = positions.filter(employe__departement_id=departement_id)
+
+    par_case = {numero: [] for numero in range(1, 10)}
+    total = 0
+    for position in positions:
+        employe = position.employe
+        par_case.setdefault(position.case_calculee, []).append({
+            'employe_id': employe.id,
+            'nom': employe.nom,
+            'prenom': employe.prenom,
+            'poste': (employe.poste_ref.intitule if employe.poste_ref_id
+                      else employe.poste),
+            'departement': (employe.departement.nom
+                            if employe.departement_id else ''),
+            'evaluation_id': position.id,
+            'axe_performance': position.axe_performance,
+            'axe_potentiel': position.axe_potentiel,
+        })
+        total += 1
+
+    libelles_performance = dict(EvaluationNeufBox.Performance.choices)
+    libelles_potentiel = dict(EvaluationNeufBox.Potentiel.choices)
+    cases = []
+    for numero in range(1, 10):
+        performance = ((numero - 1) % 3) + 1
+        potentiel = ((numero - 1) // 3) + 1
+        employes = par_case.get(numero, [])
+        cases.append({
+            'case': numero,
+            'axe_performance': performance,
+            'axe_potentiel': potentiel,
+            'libelle_performance': libelles_performance.get(performance, ''),
+            'libelle_potentiel': libelles_potentiel.get(potentiel, ''),
+            'nombre': len(employes),
+            'employes': employes,
+        })
+    return {
+        'campagne_id': int(campagne_id) if campagne_id else None,
+        'total': total,
+        'cases': cases,
+    }
+
+
+# ── NTHCM12 — couverture des postes-clés (succession) ───────────────────────
+
+def couverture_poste_cle(company, poste_cle_id):
+    """NTHCM12 — couverture de succession d'UN poste-clé.
+
+    Renvoie ``{poste_cle_id, poste_id, poste_intitule, criticite,
+    nombre_successeurs, prets_immediat, orphelin, successeurs: [...]}``.
+    ``orphelin=True`` quand AUCUN successeur n'est identifié — c'est le
+    signalement attendu par le cockpit RH. ``None`` si le poste-clé n'existe
+    pas dans cette société (isolation). Lecture seule.
+    """
+    from .models import PlanSuccession, PosteCle
+
+    poste_cle = (
+        PosteCle.objects
+        .filter(company=company, id=poste_cle_id)
+        .select_related('poste')
+        .first())
+    if poste_cle is None:
+        return None
+
+    plans = (
+        PlanSuccession.objects
+        .filter(company=company, poste_cle=poste_cle)
+        .select_related('successeur')
+        .order_by('rang'))
+    successeurs = [{
+        'plan_id': plan.id,
+        'successeur_id': plan.successeur_id,
+        'successeur_nom': f'{plan.successeur.nom} {plan.successeur.prenom}',
+        'rang': plan.rang,
+        'readiness': plan.readiness,
+    } for plan in plans]
+    prets = [s for s in successeurs
+             if s['readiness'] == PlanSuccession.Readiness.PRET_IMMEDIAT]
+    return {
+        'poste_cle_id': poste_cle.id,
+        'poste_id': poste_cle.poste_id,
+        'poste_intitule': poste_cle.poste.intitule,
+        'criticite': poste_cle.criticite,
+        'nombre_successeurs': len(successeurs),
+        'prets_immediat': len(prets),
+        'orphelin': not successeurs,
+        'successeurs': successeurs,
+    }
+
+
+def couverture_postes_cles(company):
+    """NTHCM12 — couverture de TOUS les postes-clés, orphelins en tête.
+
+    Même forme que :func:`couverture_poste_cle` par ligne. L'ordre met les
+    postes SANS successeur d'abord : c'est l'information actionnable.
+    """
+    from .models import PosteCle
+
+    postes_cles = PosteCle.objects.filter(company=company).order_by(
+        'poste__intitule')
+    lignes = [couverture_poste_cle(company, poste_cle.id)
+              for poste_cle in postes_cles]
+    lignes = [ligne for ligne in lignes if ligne is not None]
+    lignes.sort(key=lambda ligne: (not ligne['orphelin'],
+                                   ligne['poste_intitule']))
+    return lignes
+
+
+# ── NTHCM13 — croisement criticité du poste × flight-risk du titulaire ──────
+
+#: Seuil de repli quand la société n'a pas encore de ``ReglageRH``.
+SEUIL_RISQUE_SUCCESSION_DEFAUT = 60
+
+#: Ordre de gravité des criticités — sert au TRI, jamais à un filtre.
+_ORDRE_CRITICITE = {'critique': 0, 'haute': 1, 'moyenne': 2, 'faible': 3}
+
+
+def seuil_risque_succession(company):
+    """NTHCM13 — seuil configuré (Paramètres RH) ou 60 par défaut."""
+    from .models import ReglageRH
+
+    reglage = ReglageRH.objects.filter(company=company).first()
+    if reglage is None or reglage.seuil_risque_succession is None:
+        return SEUIL_RISQUE_SUCCESSION_DEFAUT
+    return reglage.seuil_risque_succession
+
+
+def risque_succession(company, *, seuil=None, today=None):
+    """NTHCM13 — postes-clés à RISQUE DE VACANCE, les plus exposés en tête.
+
+    Croise deux lectures existantes SANS rien recalculer ni modifier : la
+    criticité du poste (``PosteCle``, NTHCM12) et le score d'attrition PUR du
+    titulaire (``risque_attrition_employe``, XRH31 — le scorer n'est pas
+    touché). Un poste remonte en ``risque_vacance=True`` quand, ET
+    SEULEMENT quand, les DEUX conditions sont réunies :
+
+    * au moins un titulaire actuel (``DossierEmploye`` ACTIF sur ce poste) a
+      un score d'attrition ``>= seuil`` (Paramètres RH,
+      :func:`seuil_risque_succession`, défaut 60) ;
+    * aucun successeur ``pret_immediat`` n'est identifié.
+
+    Un poste couvert par un successeur prêt n'apparaît donc JAMAIS en risque,
+    même si son titulaire est très exposé ; un poste sans titulaire non plus
+    (il n'y a personne à perdre — son absence de couverture reste signalée
+    par :func:`couverture_postes_cles`). Lecture seule, scopée société.
+    """
+    from .models import PlanSuccession, PosteCle
+
+    seuil_effectif = (int(seuil) if seuil not in (None, '')
+                      else seuil_risque_succession(company))
+
+    lignes = []
+    postes_cles = (
+        PosteCle.objects
+        .filter(company=company)
+        .select_related('poste')
+        .order_by('poste__intitule'))
+    for poste_cle in postes_cles:
+        titulaires = DossierEmploye.objects.filter(
+            company=company, poste_ref_id=poste_cle.poste_id,
+            statut=DossierEmploye.Statut.ACTIF)
+        titulaires_a_risque = []
+        score_max = 0.0
+        for titulaire in titulaires:
+            resultat = risque_attrition_employe(titulaire, today=today)
+            if resultat['score'] > score_max:
+                score_max = resultat['score']
+            if resultat['score'] >= seuil_effectif:
+                titulaires_a_risque.append({
+                    'employe_id': titulaire.id,
+                    'employe_nom': f'{titulaire.nom} {titulaire.prenom}',
+                    'score': resultat['score'],
+                    'band': resultat['band'],
+                })
+
+        prets = PlanSuccession.objects.filter(
+            company=company, poste_cle=poste_cle,
+            readiness=PlanSuccession.Readiness.PRET_IMMEDIAT).count()
+        lignes.append({
+            'poste_cle_id': poste_cle.id,
+            'poste_id': poste_cle.poste_id,
+            'poste_intitule': poste_cle.poste.intitule,
+            'criticite': poste_cle.criticite,
+            'seuil': seuil_effectif,
+            'score_max_titulaires': score_max,
+            'titulaires_a_risque': titulaires_a_risque,
+            'successeurs_prets_immediat': prets,
+            'risque_vacance': bool(titulaires_a_risque) and prets == 0,
+        })
+
+    lignes.sort(key=lambda ligne: (
+        not ligne['risque_vacance'],
+        _ORDRE_CRITICITE.get(ligne['criticite'], 9),
+        -ligne['score_max_titulaires'],
+        ligne['poste_intitule'],
+    ))
+    return lignes
+
+
+# ── NTHCM15 — résultats d'enquête par catégorie ─────────────────────────────
+
+#: Seuil minimal de réponses avant d'afficher un résultat d'enquête ANONYME
+#: — même protection que ``PULSE_SEUIL_ANONYMAT`` (XRH32) : sous ce nombre,
+#: une poignée de réponses redeviendrait identifiable.
+ENQUETE_SEUIL_ANONYMAT = 5
+
+
+def _valeur_note(brut):
+    """Note 1-5 exploitable, ou ``None`` (vide, texte, hors bornes)."""
+    try:
+        valeur = int(brut)
+    except (TypeError, ValueError):
+        return None
+    return valeur if 1 <= valeur <= 5 else None
+
+
+def resultats_enquete(company, enquete_id):
+    """NTHCM15 — moyenne et distribution PAR CATÉGORIE de question.
+
+    Renvoie ``{enquete_id, titre, anonyme, nb_reponses, masque, seuil,
+    categories: [{categorie, nb_questions, nb_notes, moyenne, distribution}]}``.
+
+    * seules les questions de type ``note1_5`` alimentent moyenne et
+      distribution (une réponse en texte libre n'a pas de moyenne) ;
+    * ``masque=True`` (et ``categories=[]``) quand l'enquête est ANONYME et
+      compte MOINS de :data:`ENQUETE_SEUIL_ANONYMAT` réponses — même
+      protection que le pulse XRH32. Une enquête NOMINATIVE n'est jamais
+      masquée : l'auteur y est assumé.
+
+    ``None`` si l'enquête n'existe pas dans cette société (isolation).
+    Lecture seule.
+    """
+    from .models import EnqueteEngagement
+
+    enquete = EnqueteEngagement.objects.filter(
+        company=company, id=enquete_id).first()
+    if enquete is None:
+        return None
+
+    reponses = list(enquete.reponses.all())
+    nb_reponses = len(reponses)
+    masque = enquete.anonyme and nb_reponses < ENQUETE_SEUIL_ANONYMAT
+    base = {
+        'enquete_id': enquete.id,
+        'titre': enquete.titre,
+        'anonyme': enquete.anonyme,
+        'nb_reponses': nb_reponses,
+        'seuil': ENQUETE_SEUIL_ANONYMAT,
+        'masque': masque,
+    }
+    if masque:
+        return {**base, 'categories': []}
+
+    questions = enquete.questions if isinstance(enquete.questions, list) \
+        else []
+    # index de question → catégorie, pour les seules questions notées.
+    categories_par_index = {}
+    nb_questions_par_categorie = {}
+    for index, question in enumerate(questions):
+        if not isinstance(question, dict):
+            continue
+        categorie = str(question.get('categorie') or 'sans_categorie')
+        nb_questions_par_categorie[categorie] = (
+            nb_questions_par_categorie.get(categorie, 0) + 1)
+        if question.get('type') == 'note1_5':
+            categories_par_index[index] = categorie
+
+    agregats = {categorie: {'somme': 0, 'nb': 0,
+                            'distribution': {n: 0 for n in range(1, 6)}}
+                for categorie in nb_questions_par_categorie}
+    for reponse in reponses:
+        valeurs = reponse.reponses if isinstance(reponse.reponses, dict) \
+            else {}
+        for cle, brut in valeurs.items():
+            try:
+                index = int(cle)
+            except (TypeError, ValueError):
+                continue
+            categorie = categories_par_index.get(index)
+            if categorie is None:
+                continue
+            note = _valeur_note(brut)
+            if note is None:
+                continue
+            agregat = agregats[categorie]
+            agregat['somme'] += note
+            agregat['nb'] += 1
+            agregat['distribution'][note] += 1
+
+    categories = []
+    for categorie in sorted(nb_questions_par_categorie):
+        agregat = agregats[categorie]
+        moyenne = (round(agregat['somme'] / agregat['nb'], 2)
+                   if agregat['nb'] else None)
+        categories.append({
+            'categorie': categorie,
+            'nb_questions': nb_questions_par_categorie[categorie],
+            'nb_notes': agregat['nb'],
+            'moyenne': moyenne,
+            'distribution': agregat['distribution'],
+        })
+    return {**base, 'categories': categories}
+
+
+# ── NTFSM26 — équipe terrain & compétences par zone géographique ────────────
+
+def equipe_terrain(company, zone=None, competence_code=None):
+    """NTFSM26 — techniciens ACTIFS avec compétences, habilitations et zone.
+
+    Alimente l'écran dispatch ``/dispatch/equipe`` : pour affecter vite une
+    intervention dans une région, il faut voir d'un coup QUI est dans la zone,
+    ce qu'il sait faire (FG172) et ce qu'il a le droit de faire (FG173).
+
+    * ``zone`` — filtre EXACT insensible à la casse sur
+      ``DossierEmploye.zone_intervention``. Une zone vide/absente ne filtre
+      rien (toute l'équipe). Un employé SANS zone déclarée n'apparaît jamais
+      dans un filtre par zone : il n'est rattaché à aucune région, et le
+      supposer disponible partout serait une donnée inventée.
+    * ``competence_code`` — filtre complémentaire optionnel sur le code d'une
+      compétence acquise (niveau > 0).
+    * ``habilitations`` — seuls les titres VALIDES (actifs et non expirés,
+      propriété ``Habilitation.valide``) sont listés : un titre périmé ne
+      donne aucun droit sur un chantier.
+
+    Lecture seule, scopée société.
+    """
+    from .models import CompetenceEmploye, Habilitation
+
+    employes = (
+        DossierEmploye.objects
+        .filter(company=company, statut=DossierEmploye.Statut.ACTIF)
+        .select_related('poste_ref', 'departement')
+        .order_by('nom', 'prenom'))
+    zone_nettoyee = (zone or '').strip()
+    if zone_nettoyee:
+        employes = employes.filter(zone_intervention__iexact=zone_nettoyee)
+    employes = list(employes)
+    if not employes:
+        return []
+
+    ids = [employe.id for employe in employes]
+    competences_par_employe = {employe_id: [] for employe_id in ids}
+    lignes_competence = (
+        CompetenceEmploye.objects
+        .filter(company=company, employe_id__in=ids, niveau__gt=0)
+        .select_related('competence')
+        .order_by('competence__libelle'))
+    for ligne in lignes_competence:
+        competences_par_employe[ligne.employe_id].append({
+            'competence_id': ligne.competence_id,
+            'code': ligne.competence.code,
+            'libelle': ligne.competence.libelle,
+            'domaine': ligne.competence.domaine,
+            'niveau': ligne.niveau,
+            'niveau_display': ligne.get_niveau_display(),
+        })
+
+    habilitations_par_employe = {employe_id: [] for employe_id in ids}
+    for habilitation in Habilitation.objects.filter(
+            company=company, employe_id__in=ids).order_by(
+                'type_habilitation'):
+        if not habilitation.valide:
+            continue
+        habilitations_par_employe[habilitation.employe_id].append({
+            'habilitation_id': habilitation.id,
+            'type_habilitation': habilitation.type_habilitation,
+            'libelle': habilitation.get_type_habilitation_display(),
+            'date_validite': habilitation.date_validite,
+        })
+
+    lignes = []
+    for employe in employes:
+        competences = competences_par_employe[employe.id]
+        if competence_code and not any(
+                c['code'] == competence_code for c in competences):
+            continue
+        lignes.append({
+            'employe_id': employe.id,
+            'matricule': employe.matricule,
+            'nom': employe.nom,
+            'prenom': employe.prenom,
+            'telephone': employe.telephone,
+            'zone_intervention': employe.zone_intervention,
+            'poste': (employe.poste_ref.intitule if employe.poste_ref_id
+                      else employe.poste),
+            'departement': (employe.departement.nom
+                            if employe.departement_id else ''),
+            'competences': competences,
+            'habilitations': habilitations_par_employe[employe.id],
+        })
+    return lignes
+
+
+def zones_intervention(company):
+    """NTFSM26 — zones DÉCLARÉES de la société, triées (pour le filtre).
+
+    Aucune zone n'est inventée : la liste est exactement ce que les dossiers
+    portent, sans les vides.
+    """
+    valeurs = (
+        DossierEmploye.objects
+        .filter(company=company)
+        .exclude(zone_intervention='')
+        .values_list('zone_intervention', flat=True)
+        .distinct())
+    return sorted(set(valeurs))

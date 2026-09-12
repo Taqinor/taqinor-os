@@ -20,7 +20,7 @@ from apps.ventes.utils.references import create_with_reference
 
 from . import activity
 from .models import (
-    Equipement, Ticket, PieceConsommee,
+    Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
@@ -751,8 +751,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
             sla = SavSlaSettings.get(company)
             if sla.affectation_auto_sav:
                 from .services import assign_technicien_auto
+                # NTSRV7 — le ticket est passé pour que le filtrage par
+                # COMPÉTENCE (flag `affectation_par_competence`, OFF par
+                # défaut) puisse lire sa catégorie. Sans le flag, le ticket
+                # est ignoré : comportement XSAV9 inchangé.
                 technicien = assign_technicien_auto(
-                    company=company, jour=date_ouverture)
+                    company=company, jour=date_ouverture, ticket=inst)
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])
@@ -1317,6 +1321,128 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 f'Première réponse enregistrée le {at.strftime("%d/%m/%Y %H:%M")}')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='reaffecter-equipe',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def reaffecter_equipe(self, request, pk=None):
+        """NTSRV8 — Réaffecte le ticket à une autre équipe de maintenance.
+
+        SEUL chemin d'écriture du débordement : la file d'attente
+        (``sav/file-attente/``) ne fait que PROPOSER — elle ne réaffecte
+        jamais en silence. ``equipe: null`` détache le ticket de son équipe."""
+        ticket = self.get_object()
+        from .services import reaffecter_equipe as _reaffecter
+
+        equipe_id = request.data.get('equipe', request.data.get('equipe_id'))
+        equipe = None
+        if equipe_id not in (None, ''):
+            equipe = EquipeMaintenance.objects.filter(
+                pk=equipe_id, company=request.user.company).first()
+            if equipe is None:
+                return Response({'equipe': 'Équipe inconnue.'}, status=400)
+        try:
+            _reaffecter(ticket, equipe, user=request.user)
+        except ValueError as exc:
+            champ, _, detail = str(exc).partition(': ')
+            return Response({champ: detail or str(exc)}, status=400)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='log-appel',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def log_appel(self, request, pk=None):
+        """NTSRV5 — Enregistre un APPEL SAV au chatter (durée, notes, issue).
+
+        Trace MANUELLE structurée — aucune intégration PBX dans ce lot (elle
+        exigerait un fournisseur tiers, GATED). La liste d'issues est celle
+        de ``crm.LeadActivity`` (joint / non joint / à rappeler / refus /
+        intéressé). Erreurs en français, nommant le champ fautif."""
+        ticket = self.get_object()
+
+        issue = (request.data.get('issue')
+                 or request.data.get('outcome') or '').strip()
+        issues_valides = {code for code, _ in TicketActivity.OUTCOMES}
+        if issue not in issues_valides:
+            return Response(
+                {'issue': 'Issue inconnue (joint, non_joint, rappel, refuse, '
+                          'interesse, ou vide).'}, status=400)
+
+        duree_brute = request.data.get('duree_minutes',
+                                       request.data.get('duree'))
+        duree = None
+        if duree_brute not in (None, ''):
+            try:
+                duree = int(duree_brute)
+            except (TypeError, ValueError):
+                duree = -1
+            if duree < 0:
+                return Response(
+                    {'duree_minutes': 'Durée invalide : un nombre de minutes '
+                                      '(entier positif) est attendu.'},
+                    status=400)
+
+        notes = (request.data.get('notes') or '').strip()[:4000]
+        libelle = dict(TicketActivity.OUTCOMES).get(issue, issue)
+        corps = 'Appel téléphonique'
+        if duree is not None:
+            corps += f' — {duree} min'
+        if issue:
+            corps += f' — issue : {libelle}'
+        if notes:
+            corps += f'\n\n{notes}'
+
+        entree = activity.log_appel(
+            ticket, request.user, corps, outcome=issue, duree_minutes=duree)
+        return Response({
+            'id': entree.pk, 'kind': entree.kind, 'body': entree.body,
+            'issue': entree.outcome, 'duree_minutes': entree.duree_minutes,
+            'created_at': entree.created_at,
+        }, status=201)
+
+    @action(detail=True, methods=['post'], url_path='repondre-email',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def repondre_email(self, request, pk=None):
+        """NTSRV1 — Répond au client par e-mail DEPUIS le ticket.
+
+        Le message sortant reprend les en-têtes de fil (``In-Reply-To`` /
+        ``References``) du dernier e-mail entrant : la réponse du client
+        revient sur le MÊME ticket. Sans clé fournisseur configurée, l'envoi
+        retombe sur le backend console (no-op réseau silencieux) — le fil est
+        journalisé dans tous les cas."""
+        ticket = self.get_object()
+        from .services import repondre_par_email
+
+        try:
+            ligne = repondre_par_email(
+                ticket,
+                corps=request.data.get('corps'),
+                sujet=(request.data.get('sujet') or '').strip(),
+                destinataire=(request.data.get('destinataire') or '').strip(),
+                user=request.user)
+        except ValueError as exc:
+            champ, _, detail = str(exc).partition(': ')
+            return Response({champ: detail or str(exc)}, status=400)
+        return Response({
+            'id': ligne.pk, 'message_id': ligne.message_id,
+            'thread_root': ligne.thread_root,
+            'destinataire': ligne.destinataire, 'sujet': ligne.sujet,
+        }, status=201)
+
+    @action(detail=True, methods=['get'], url_path='emails',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def emails(self, request, pk=None):
+        """NTSRV1 — Fil e-mail complet du ticket (entrants + sortants),
+        ordonné du plus ancien au plus récent. Aucun champ interne (coût,
+        prix d'achat) n'y figure."""
+        ticket = self.get_object()
+        lignes = ticket.emails.all().order_by('date_reception', 'id')
+        return Response([{
+            'id': ligne.pk, 'direction': ligne.direction,
+            'message_id': ligne.message_id, 'thread_root': ligne.thread_root,
+            'expediteur': ligne.expediteur, 'destinataire': ligne.destinataire,
+            'sujet': ligne.sujet, 'corps': ligne.corps_brut,
+            'date_reception': ligne.date_reception,
+        } for ligne in lignes])
 
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -2627,6 +2753,46 @@ def sav_resume_par_equipe(request):
     return Response({'results': data})
 
 
+# ── NTSRV8 — File d'attente par équipe + PROPOSITION de débordement ─────────
+
+def sav_file_attente(request):
+    """NTSRV8 — File d'attente par équipe de maintenance et, quand une équipe
+    dépasse sa capacité déclarée, la PROPOSITION de transfert associée.
+
+    LECTURE PURE : aucune réaffectation n'est jamais exécutée ici. Le
+    transfert passe par l'action explicite
+    ``tickets/{id}/reaffecter-equipe/``. Réservé au tier responsable/admin
+    (vérifié côté urls.py)."""
+    from .selectors import charges_equipes, file_attente_equipe
+    from .services import debordement_equipe
+
+    company = request.user.company
+    charges = charges_equipes(company)
+    equipes = (EquipeMaintenance.objects
+               .filter(company=company, actif=True)
+               .order_by('nom'))
+    resultats = []
+    for equipe in equipes:
+        file_attente = list(file_attente_equipe(equipe))
+        proposition = debordement_equipe(equipe)
+        resultats.append({
+            'equipe_id': equipe.pk,
+            'equipe_nom': equipe.nom,
+            'capacite': equipe.capacite_max_tickets_ouverts,
+            'charge': charges.get(equipe.pk, 0),
+            'file_attente': [{
+                'id': t.pk, 'reference': t.reference,
+                'client': getattr(t.client, 'nom', '') or '',
+                'statut': t.statut, 'priorite': t.priorite,
+                'date_ouverture': t.date_ouverture,
+                'sla_due_at': t.sla_due_at,
+            } for t in file_attente],
+            # Toujours présent : `excedent=0` = rien à proposer.
+            'debordement': proposition,
+        })
+    return Response({'results': resultats})
+
+
 # ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────
 
 def sav_file_action(request):
@@ -2743,6 +2909,93 @@ def scan_sla_breaches():
     return updated
 
 
+# ── NTSRV12 — Paliers d'escalade SLA configurables (étend XSAV6) ────────────
+
+def _paliers_escalade_par_company(company_ids):
+    """NTSRV12 — ``{company_id: [EscaladeSlaNiveau ordonnés]}`` en UNE requête.
+
+    Dict VIDE pour toute société sans palier configuré : l'appelant garde
+    alors le comportement XSAV6 binaire, strictement inchangé."""
+    from .models import EscaladeSlaNiveau
+
+    ids = {cid for cid in company_ids if cid is not None}
+    if not ids:
+        return {}
+    par_company = {}
+    for palier in (EscaladeSlaNiveau.objects
+                   .filter(company_id__in=ids, actif=True)
+                   .select_related('notifier_utilisateur')
+                   .order_by('ordre', 'seuil_jours_apres_echeance', 'id')):
+        par_company.setdefault(palier.company_id, []).append(palier)
+    return par_company
+
+
+def _destinataires_palier(palier, company):
+    """NTSRV12 — destinataires d'un palier : l'utilisateur désigné, sinon les
+    comptes actifs du rôle visé, sinon les destinataires par défaut de
+    l'événement (``resolve_recipients``, mute-aware via ``notify()``)."""
+    from apps.notifications.models import EventType
+    from apps.notifications.services import resolve_recipients
+
+    if palier.notifier_utilisateur_id:
+        return [palier.notifier_utilisateur]
+    role = (palier.notifier_role or '').strip().lower()
+    if role:
+        from authentication.models import CustomUser
+        vises = [
+            u for u in CustomUser.objects.filter(
+                company=company, is_active=True)
+            if (getattr(u, 'role_tier', None) or '').lower() == role
+            or (role == 'admin' and getattr(u, 'is_admin_role', False))
+        ]
+        if vises:
+            return vises
+    return list(resolve_recipients(company, EventType.SAV_TICKET_BREACHING))
+
+
+def _notifier_paliers(ticket, paliers, due_effectif, today):
+    """NTSRV12 — notifie les paliers ÉCHUS et pas encore notifiés pour ce
+    ticket. Renvoie le nombre de paliers déclenchés (0 le plus souvent).
+
+    Un palier ``seuil_jours_apres_echeance=N`` se déclenche à partir de
+    ``échéance + N jours`` — JAMAIS avant. IDEMPOTENT : l'id du palier est
+    mémorisé sur le ticket (``sla_escalade_paliers_notifies``), donc le
+    balayage du lendemain ne le rejoue pas."""
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    if due_effectif is None:
+        return 0
+    deja = ticket.sla_escalade_paliers_notifies or []
+    if not isinstance(deja, list):
+        deja = []
+    declenches = 0
+    for palier in paliers:
+        if palier.pk in deja:
+            continue
+        seuil = due_effectif + timedelta(days=palier.seuil_jours_apres_echeance)
+        if today < seuil:
+            continue  # « jamais avant » — garantie du critère d'acceptation.
+        libelle = palier.libelle or f'J+{palier.seuil_jours_apres_echeance}'
+        for user in _destinataires_palier(palier, ticket.company):
+            notify(
+                user=user,
+                event_type=EventType.SAV_TICKET_BREACHING,
+                title=f'Escalade SLA ({libelle}) — {ticket.reference}',
+                body=(f'Le ticket {ticket.reference} a atteint le palier '
+                      f'{libelle} après son échéance SLA '
+                      f'({due_effectif.strftime("%d/%m/%Y")}).'),
+                link=f'/sav/tickets/{ticket.pk}',
+                company=ticket.company,
+            )
+        deja.append(palier.pk)
+        declenches += 1
+    if declenches:
+        ticket.sla_escalade_paliers_notifies = deja
+        ticket.save(update_fields=['sla_escalade_paliers_notifies'])
+    return declenches
+
+
 # ── XSAV6 — Pré-alerte SLA (J-x) + escalade à la violation ────────────────────
 
 def scan_sla_pre_alerts_and_escalations():
@@ -2759,6 +3012,12 @@ def scan_sla_pre_alerts_and_escalations():
     escalade) ne l'est plus les jours suivants — flag posé sur le ticket.
     OFF par défaut (``sla_warning_days=0`` et ``escalade_activee=False``) :
     aucun effet, aucune notification supplémentaire.
+
+    NTSRV12 — quand une société configure des ``EscaladeSlaNiveau``, ces
+    PALIERS remplacent pour elle l'escalade binaire ci-dessus (plusieurs
+    notifications ordonnées, ex. J+0 → responsable, J+1 → direction), chacune
+    idempotente via ``Ticket.sla_escalade_paliers_notifies``. AUCUN palier
+    configuré = comportement XSAV6 strictement inchangé.
     """
     from apps.notifications.services import notify, resolve_recipients
     from apps.notifications.models import EventType
@@ -2771,6 +3030,14 @@ def scan_sla_pre_alerts_and_escalations():
     ).select_related('company', 'technicien_responsable'))
     # AUD521 — réglages chargés UNE fois par société.
     reglage_pour = _reglages_sla_par_ticket(qs)
+
+    # NTSRV12 — paliers d'escalade chargés UNE fois par société (jamais une
+    # requête par ticket).
+    paliers_par_company = _paliers_escalade_par_company(
+        {t.company_id for t in qs})
+
+    def paliers_pour(company_id):
+        return paliers_par_company.get(company_id, [])
 
     pre_alerts = 0
     escalations = 0
@@ -2798,6 +3065,15 @@ def scan_sla_pre_alerts_and_escalations():
                 ticket.sla_pre_alert_notifiee = True
                 ticket.save(update_fields=['sla_pre_alert_notifiee'])
                 pre_alerts += 1
+
+        # ── NTSRV12 — Paliers d'escalade configurables (remplacent le
+        # binaire XSAV6 POUR LA SOCIÉTÉ QUI EN CONFIGURE). Aucun palier =
+        # aucun changement : on retombe sur le bloc XSAV6 ci-dessous.
+        paliers = paliers_pour(ticket.company_id)
+        if paliers:
+            escalations += _notifier_paliers(ticket, paliers, due_effectif,
+                                             today)
+            continue
 
         # ── Escalade au tier responsable/direction à la violation ──
         if (sla.escalade_activee

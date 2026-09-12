@@ -99,6 +99,22 @@ const stockApi = {
   getTransferts: (params) => api.get('/stock/transferts/', { params }),
   createTransfert: (data) => api.post('/stock/transferts/', data),
 
+  // NTFSM19 — réappro automatique van-stock (étend FG62).
+  getVanStockAReapprovisionner: () =>
+    api.get('/stock/emplacements/van-stock/a-reapprovisionner/'),
+  creerTransfertVanStock: (produitId, emplacementId) =>
+    api.post('/stock/emplacements/van-stock/creer-transfert/', {
+      produit_id: produitId, emplacement_id: emplacementId,
+    }),
+  // NTFSM20 — écran mobile van-stock du technicien connecté (sa camionnette
+  // uniquement, résolue côté serveur).
+  getMonStockCamionnette: () =>
+    api.get('/stock/emplacements/van-stock/mon-stock/'),
+  signalerManquantVanStock: (produitId) =>
+    api.post('/stock/emplacements/van-stock/signaler-manquant/', {
+      produit_id: produitId,
+    }),
+
   // N17 — listes de prix multi-fournisseurs par SKU (INTERNE, jamais client).
   getProduitPrixFournisseurs: (id) =>
     api.get(`/stock/produits/${id}/prix-fournisseurs/`),

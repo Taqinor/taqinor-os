@@ -178,6 +178,18 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         window = min(int(request.query_params.get('window_days', 365)), 1825)
         return Response(fleet_overview(company, window_days=window))
 
+    @action(detail=False, methods=['get'], url_path='benchmark',
+            permission_classes=[IsAnyRole])
+    def benchmark(self, request):
+        """NTNRG33 — classement RELATIF du parc par PR (percentile), jamais
+        un seuil absolu. ?window_days=365 (défaut)."""
+        from .selectors import benchmark_parc
+        company = request.user.company
+        if company is None:
+            return Response({'systems_ranked': 0, 'systems': []})
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(benchmark_parc(company, window_days=window))
+
     @action(detail=True, methods=['get'], url_path='om-metrics',
             permission_classes=[IsAnyRole])
     def om_metrics(self, request, pk=None):
@@ -266,6 +278,72 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         sent = email_om_report(
             config.installation, period=period, recipient=recipient)
         return Response({'sent': sent})
+
+    @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
+            permission_classes=[IsAnyRole])
+    def rapport_garantie_pdf(self, request, pk=None):
+        """NTNRG11 — rapport CONTRACTUEL mensuel de garantie de performance
+        (PDF), distinct du rapport O&M générique ci-dessus : mention légale
+        de la clause de garantie + tableau mensuel écart/pénalité cumulée sur
+        l'année contractuelle. ?annee=YYYY (défaut année courante). 404
+        propre si aucune garantie de production n'est configurée."""
+        from .report_warranty import (
+            build_warranty_report_data, render_warranty_report_pdf,
+        )
+        config = self.get_object()
+        annee = request.query_params.get('annee')
+        annee = int(annee) if annee else None
+        data = build_warranty_report_data(config.installation, year=annee)
+        if not data.get('has_warranty'):
+            return Response(
+                {'detail': 'Aucune garantie de production configurée pour '
+                           'ce système.'},
+                status=status.HTTP_404_NOT_FOUND)
+        pdf = render_warranty_report_pdf(config.installation, year=annee)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        ref = config.installation.reference or config.installation_id
+        resp['Content-Disposition'] = (
+            f'attachment; filename="rapport-garantie-{ref}.pdf"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='attestation-carbone-pdf',
+            permission_classes=[IsAnyRole])
+    def attestation_carbone_pdf(self, request, pk=None):
+        """NTNRG26 — attestation carbone PDF certifiable de CE système
+        (au-delà du portail JSON FG286/288) : méthodologie affichée, distincte
+        du certificat RE générique FG287 (``apps.ventes``). ?since=&until=
+        (YYYY-MM-DD, optionnels). Sans relevé sur la période : message propre
+        dans le PDF, jamais une erreur."""
+        from .report_carbon import render_carbon_report_pdf_site
+        config = self.get_object()
+        since = request.query_params.get('since') or None
+        until = request.query_params.get('until') or None
+        pdf = render_carbon_report_pdf_site(
+            config.installation, since=since, until=until)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        ref = config.installation.reference or config.installation_id
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation-carbone-{ref}.pdf"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='attestation-carbone-client-pdf',
+            permission_classes=[IsAnyRole])
+    def attestation_carbone_client_pdf(self, request):
+        """NTNRG26 — attestation carbone CONSOLIDÉE (multi-sites) pour un
+        client (FG288). ?client=ID requis. Sans relevé sur la période :
+        message propre dans le PDF, jamais une erreur."""
+        from .report_carbon import render_carbon_report_pdf_client
+        company = request.user.company
+        client_id = request.query_params.get('client')
+        if company is None or not client_id:
+            return Response(
+                {'detail': 'client requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        pdf = render_carbon_report_pdf_client(company, client_id)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation-carbone-client-{client_id}.pdf"')
+        return resp
 
 
 class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):

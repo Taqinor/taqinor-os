@@ -34,3 +34,7 @@ backend/django_core/authentication/views.py::LogoutView
 # 2026-09-06.
 backend/django_core/core/views.py::ChangelogViewSet
 backend/django_core/core/views.py::OutboxEventViewSet
+# NTMIG20 — gabarit CSV STATIQUE par (source, entite) : contenu 100% code
+# (kits), aucune donnee tenant lue ; permission IsDirecteurOuAdmin.
+# Reviewed safe 2026-09-12 (fold vague 1 drain NT).
+backend/django_core/apps/migration/views.py::GabaritKitView

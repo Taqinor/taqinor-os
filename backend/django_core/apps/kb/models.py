@@ -144,6 +144,23 @@ class KbArticle(models.Model):
     # alors que KbLecture est un « lu/pas lu » idempotent par utilisateur.
     # Posé côté serveur (jamais du corps de requête) via l'action de détail.
     vues = models.PositiveIntegerField(default=0, verbose_name='Vues')
+    # NTSRV20 — Score d'utilité KCS (Knowledge-Centered Service) : deux
+    # compteurs ADDITIFS, distincts de `vues` (qui compte TOUTE consultation)
+    # — ceux-ci ne comptent que le signal KCS utile pour repérer les articles
+    # à fort impact vs orphelins :
+    #   * `nb_vues_depuis_ticket` — incrémenté quand un article est ouvert
+    #     depuis une suggestion NTSRV18 (contexte ticket) ;
+    #   * `nb_resolutions_attribuees` — incrémenté quand un agent coche
+    #     « cet article a résolu le ticket » avant clôture (NTFSM/NTSRV,
+    #     câblage côté ``apps.sav``, hors périmètre de ce module).
+    # Non bloquant, défauts à 0 : AUCUNE valeur par défaut ne change le
+    # comportement actuel (aucun article existant n'est affecté). Incrémentés
+    # via `incrementer_vue_depuis_ticket`/`incrementer_resolution`
+    # (``F()`` — jamais un `+= 1` non atomique en Python).
+    nb_vues_depuis_ticket = models.PositiveIntegerField(
+        default=0, verbose_name='Vues depuis un ticket')
+    nb_resolutions_attribuees = models.PositiveIntegerField(
+        default=0, verbose_name='Résolutions attribuées')
     # XSAV22 — un article publié peut être proposé sur le formulaire du
     # portail client (déflection avant l'ouverture d'un ticket SAV). Défaut
     # FAUX = comportement historique inchangé (aucun article n'apparaît sur
@@ -226,6 +243,28 @@ class KbArticle(models.Model):
     def __str__(self):
         return self.titre
 
+    def incrementer_vue_depuis_ticket(self):
+        """NTSRV20 — incrémente `nb_vues_depuis_ticket` (atomique, ``F()``).
+
+        Appelé quand cet article est ouvert depuis une suggestion NTSRV18
+        (panneau « Articles suggérés » du ticket). Renvoie la nouvelle
+        valeur ; l'instance en mémoire est rafraîchie."""
+        type(self).objects.filter(pk=self.pk).update(
+            nb_vues_depuis_ticket=models.F('nb_vues_depuis_ticket') + 1)
+        self.refresh_from_db(fields=['nb_vues_depuis_ticket'])
+        return self.nb_vues_depuis_ticket
+
+    def incrementer_resolution(self):
+        """NTSRV20 — incrémente `nb_resolutions_attribuees` (atomique, ``F()``).
+
+        Appelé quand un agent coche « cet article a résolu le ticket » avant
+        clôture. Renvoie la nouvelle valeur ; l'instance en mémoire est
+        rafraîchie."""
+        type(self).objects.filter(pk=self.pk).update(
+            nb_resolutions_attribuees=models.F('nb_resolutions_attribuees') + 1)
+        self.refresh_from_db(fields=['nb_resolutions_attribuees'])
+        return self.nb_resolutions_attribuees
+
 
 class KbArticleVersion(models.Model):
     """Instantané versionné du contenu d'un :class:`KbArticle`.
@@ -302,6 +341,12 @@ class KbArticleLien(models.Model):
         # même société, validée côté serializer). ``cible_id`` porte alors le
         # PK d'un autre KbArticle plutôt qu'un objet d'une autre app.
         ARTICLE = 'article', 'Article'
+        # NTSRV19 — provenance : article de connaissance créé DEPUIS un
+        # ticket SAV résolu (``cible_id`` = id du ticket, string-ref — jamais
+        # un import de ``apps.sav.models``). Sert uniquement à tracer d'où
+        # vient le brouillon ; aucun enrichisseur dédié (dégrade au libellé
+        # stocké, comme ``equipement``/``type_intervention``).
+        TICKET = 'ticket', 'Ticket'
 
     company = models.ForeignKey(
         'authentication.Company',

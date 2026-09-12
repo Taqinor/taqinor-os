@@ -190,7 +190,41 @@ def _technicien_indisponible(company, user, jour):
         return False
 
 
-def assign_technicien_auto(*, company, jour=None):
+def competences_exigees_ticket(ticket):
+    """NTSRV7 — ``(ids de compétences, niveau_min)`` exigés par la CATÉGORIE
+    du ticket, ou ``([], 0)`` quand aucune exigence n'est configurée.
+
+    ``([], 0)`` est le cas normal (aucune catégorie, ou catégorie sans
+    compétence) : l'appelant doit alors garder EXACTEMENT le comportement
+    XSAV9 (aucun filtre)."""
+    categorie = getattr(ticket, 'categorie', None) if ticket is not None else None
+    if categorie is None:
+        return ([], 0)
+    ids = categorie.competences_requises_ids()
+    if not ids:
+        return ([], 0)
+    return (ids, categorie.niveau_competence_min or 0)
+
+
+def techniciens_qualifies(company, ticket):
+    """NTSRV7 — ids des utilisateurs qualifiés pour ``ticket``, ou ``None``
+    quand aucune exigence n'existe (``None`` = « ne filtre rien », à ne JAMAIS
+    confondre avec ``set()`` = « personne n'est qualifié »).
+
+    Lecture cross-app par le sélecteur de l'app cible
+    (``apps.rh.selectors.employes_avec_competence``) — jamais un import de
+    ``apps.rh.models``."""
+    ids, niveau_min = competences_exigees_ticket(ticket)
+    if not ids:
+        return None
+    try:
+        from apps.rh.selectors import employes_avec_competence
+    except Exception:  # noqa: BLE001 — RH absent/désactivé : aucun filtre.
+        return None
+    return employes_avec_competence(company, ids, niveau_min)
+
+
+def assign_technicien_auto(*, company, jour=None, ticket=None):
     """XSAV9 — Choisit le technicien actif le MOINS chargé (nb de tickets
     ouverts assignés) pour une affectation automatique, en excluant les
     indisponibilités RH (lues via les selectors rh — jamais un import direct
@@ -201,10 +235,18 @@ def assign_technicien_auto(*, company, jour=None):
     Un technicien = tout utilisateur ACTIF de la société ayant déjà été
     assigné à au moins un ticket (participe au pool de charge) — ce périmètre
     évite d'affecter un compte administratif jamais destiné au terrain.
+
+    NTSRV7 — quand ``SavSlaSettings.affectation_par_competence`` est ON ET
+    que la catégorie de ``ticket`` exige des compétences (NTSRV6), le pool
+    est d'abord RESTREINT aux techniciens qualifiés
+    (``rh.selectors.employes_avec_competence``) ; le moins chargé de ce
+    sous-groupe est choisi. Si le sous-groupe filtré est VIDE, on retombe sur
+    le comportement XSAV9 d'origine (jamais de ticket laissé sans
+    affectation à cause du filtre). Flag OFF (défaut) = XSAV9 byte-identique.
     """
     from django.contrib.auth import get_user_model
     from django.db.models import Count, Q
-    from .models import Ticket
+    from .models import SavSlaSettings, Ticket
 
     User = get_user_model()
     jour = jour or timezone.localdate()
@@ -223,6 +265,21 @@ def assign_technicien_auto(*, company, jour=None):
             ),
         )
         .order_by('nb_ouverts', 'id'))
+
+    # NTSRV7 — sous-groupe QUALIFIÉ d'abord ; repli XSAV9 SEULEMENT si ce
+    # sous-groupe est VIDE (aucun technicien de la société ne possède les
+    # compétences exigées). Tant qu'au moins un qualifié existe, un
+    # technicien NON qualifié n'est jamais choisi — même si le qualifié est
+    # indisponible ce jour-là (le ticket reste alors à affecter à la main).
+    if ticket is not None and SavSlaSettings.get(company).affectation_par_competence:
+        qualifies = techniciens_qualifies(company, ticket)
+        if qualifies is not None:
+            filtres = [u for u in candidats if u.pk in qualifies]
+            if filtres:
+                for user in filtres:
+                    if not _technicien_indisponible(company, user, jour):
+                        return user
+                return None
 
     for user in candidats:
         if not _technicien_indisponible(company, user, jour):
@@ -254,11 +311,18 @@ def resolution_days_pour(company, client, priorite):
     return resolution_days
 
 
-def compute_sla_due_at(company, client, priorite, date_ouverture):
+def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
     """FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
     activé ``sla_breach_enabled``. Logique extraite telle quelle de
     ``TicketViewSet._compute_sla_due_at`` (jours ouvrés si ``sla_jours_ouvres``,
-    calendaires sinon)."""
+    calendaires sinon).
+
+    NTSRV11 — quand la société a activé ``sla_heures_ouvrees_actif`` ET que la
+    priorité porte un SLA en HEURES (``sla_par_priorite[<priorité>]
+    ['resolution_heures']``), l'échéance est calculée en heures OUVRÉES
+    (fenêtre intra-journée incluse) et la DATE obtenue est renvoyée. Aucune
+    configuration existante ne porte cette clé : sans elle, le calcul en
+    jours est strictement inchangé."""
     from datetime import timedelta
 
     from .models import SavSlaSettings
@@ -266,11 +330,36 @@ def compute_sla_due_at(company, client, priorite, date_ouverture):
     sla = SavSlaSettings.get(company)
     if not sla.sla_breach_enabled:
         return None
+
+    # NTSRV11 — chemin HEURES ouvrées (opt-in double : flag + clé de priorité).
+    if sla.sla_heures_ouvrees_actif:
+        heures = sla.heures_for(priorite)
+        if heures is not None:
+            from .selectors import echeance_sla_heures_ouvrees
+            echeance = echeance_sla_heures_ouvrees(
+                company, depart or _depart_sla(date_ouverture, sla), heures)
+            if echeance is not None:
+                return echeance.date()
+
     resolution_days = resolution_days_pour(company, client, priorite)
     if sla.sla_jours_ouvres:
         from core.calendar import add_working_days
         return add_working_days(date_ouverture, resolution_days)
     return date_ouverture + timedelta(days=resolution_days)
+
+
+def _depart_sla(date_ouverture, sla):
+    """NTSRV11 — instant de DÉPART du décompte, en heure MURALE locale :
+    l'heure courante quand le ticket est ouvert aujourd'hui, sinon
+    l'ouverture de la fenêtre ce jour-là (une date seule ne porte pas
+    d'heure)."""
+    from .selectors import combiner_heure_locale
+
+    maintenant = timezone.localtime()
+    if date_ouverture == maintenant.date():
+        return maintenant.replace(tzinfo=None)
+    return combiner_heure_locale(
+        date_ouverture, sla.horaires_effectifs()['debut'])
 
 
 def poser_sla_due_at(ticket, *, persister=True):
@@ -1627,3 +1716,447 @@ def register_email_alias_handler():
     from core.email_intake import register_handler
 
     register_handler(creer_ticket_depuis_email_alias)
+
+
+# ── NTSRV1 — Threading e-mail entrant → ticket (handler du registre FG373) ───
+# AUCUNE connexion IMAP ici : la récupération + le parsing (Message-ID /
+# In-Reply-To / References) sont faits UNE FOIS par le registre générique
+# ``core/email_intake.py`` (FG373), gated par la même ``IntegrationConfig``
+# TYPE_EMAIL_IN société-scopée. ``apps.sav`` ne fait qu'ABONNER un handler
+# depuis son ``apps.py ready()`` — jamais un second poller.
+
+def _racines_fil(message):
+    """Identifiants qui rattachent ``message`` à un fil déjà connu."""
+    return {r for r in (getattr(message, 'thread_root', '') or '',
+                        getattr(message, 'in_reply_to', '') or '',
+                        getattr(message, 'message_id', '') or '') if r}
+
+
+def ticket_du_fil_email(company, message):
+    """NTSRV1 — ticket déjà rattaché au fil de ``message``, ou ``None``.
+
+    Un message est « du même fil » si sa racine (1er ``References``, sinon
+    ``In-Reply-To``, sinon son propre ``Message-ID``) correspond à la racine
+    OU au ``Message-ID`` d'un message déjà enregistré pour la société. C'est
+    ce qui garantit qu'une réponse du client revient sur le MÊME ticket au
+    lieu d'en ouvrir un second."""
+    from django.db.models import Q
+
+    from .models import TicketEmailThread
+
+    racines = _racines_fil(message)
+    if not racines:
+        return None
+    ligne = (TicketEmailThread.objects
+             .filter(company=company)
+             .filter(Q(thread_root__in=racines) | Q(message_id__in=racines))
+             .select_related('ticket')
+             .order_by('id')
+             .first())
+    return ligne.ticket if ligne is not None else None
+
+
+def _ticket_deja_cree_par_alias(company, message):
+    """ZMFG7 crée un ticket AVANT ce handler quand le message arrive sur
+    l'alias d'une catégorie d'équipement (il est enregistré en premier) et
+    marque sa description ``[email:<message_id>]``. On le RÉUTILISE au lieu
+    d'ouvrir un doublon — les deux handlers du registre coexistent."""
+    from .models import Ticket
+
+    message_id = getattr(message, 'message_id', '') or ''
+    if not message_id:
+        return None
+    return Ticket.objects.filter(
+        company=company,
+        description__startswith=f'[email:{message_id}]').first()
+
+
+def enregistrer_message_email(ticket, *, message_id, thread_root='',
+                              in_reply_to='', expediteur='', destinataire='',
+                              sujet='', corps='', direction=None,
+                              date_reception=None):
+    """NTSRV1 — enregistre UNE ligne de fil e-mail sur un ticket.
+
+    ``pieces_jointes`` reste ``None`` sur le chemin entrant : le registre
+    générique FG373 ne parse pas (encore) les pièces jointes — le champ est
+    prêt à recevoir les ids ``records.Attachment`` (magasin MinIO existant)
+    le jour où il les exposera, jamais un second magasin de fichiers."""
+    from .models import TicketEmailThread
+
+    direction = direction or TicketEmailThread.Direction.ENTRANT
+    return TicketEmailThread.objects.create(
+        company=ticket.company, ticket=ticket,
+        message_id=message_id, in_reply_to=in_reply_to or '',
+        thread_root=thread_root or message_id or '',
+        expediteur=(expediteur or '')[:254],
+        destinataire=(destinataire or '')[:254],
+        sujet=(sujet or '')[:255], corps_brut=corps or '',
+        direction=direction,
+        date_reception=date_reception or timezone.now())
+
+
+def handler_ticket_entrant(message, company):
+    """NTSRV1 — Handler enregistré sur le registre ``core.email_intake``
+    (FG373) : rattache un e-mail entrant au ticket de son FIL, ou ouvre un
+    ticket quand le fil est inconnu.
+
+    Précédence :
+      1. message déjà enregistré (même ``Message-ID``) → no-op (idempotent :
+         re-poll IMAP / redélivrance ne duplique jamais) ;
+      2. fil connu (``thread_root``/``In-Reply-To``) → on attache le message
+         au ticket existant, JAMAIS un second ticket ;
+      3. ticket tout juste créé par l'alias ZMFG7 pour ce même message → on
+         le réutilise ;
+      4. sinon, on ouvre un ticket ``canal_ouverture=email`` — à condition
+         que l'expéditeur corresponde à un client connu de la société (sinon
+         NO-OP : mieux vaut ne rien créer qu'un ticket orphelin, même règle
+         que ZMFG7).
+
+    Le corps du message est journalisé au chatter en interaction typée
+    ``TicketActivity`` ``kind='email'``. Ne lève jamais : un handler qui
+    échoue n'arrête pas les autres (``core.email_intake._dispatch``)."""
+    from . import activity
+    from .models import Ticket, TicketEmailThread
+
+    message_id = (getattr(message, 'message_id', '') or '').strip()
+    if message_id and TicketEmailThread.objects.filter(
+            company=company, message_id=message_id).exists():
+        return None  # déjà traité — idempotent.
+
+    ticket = ticket_du_fil_email(company, message)
+    if ticket is None:
+        ticket = _ticket_deja_cree_par_alias(company, message)
+
+    sujet = (getattr(message, 'subject', '') or '').strip()
+    corps = getattr(message, 'body', '') or ''
+    expediteur = (getattr(message, 'from_email', '') or '').strip()
+
+    if ticket is None:
+        from apps.crm.selectors import find_client_by_email
+        from apps.ventes.utils.references import create_with_reference
+
+        client = find_client_by_email(expediteur, company=company)
+        if client is None:
+            return None  # expéditeur inconnu → aucun ticket orphelin.
+
+        def _create(ref):
+            return Ticket.objects.create(
+                company=company, reference=ref, client=client,
+                type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+                canal_ouverture=Ticket.CanalOuverture.EMAIL,
+                date_ouverture=timezone.localdate(),
+                description=(f'{sujet or "Demande reçue par e-mail"}\n\n'
+                             f'{corps}')[:4000])
+        # AUD519 — même échéance SLA que le chemin manuel.
+        ticket = poser_sla_due_at(
+            create_with_reference(Ticket, 'SAV', company, _create))
+
+    enregistrer_message_email(
+        ticket, message_id=message_id,
+        thread_root=getattr(message, 'thread_root', '') or '',
+        in_reply_to=getattr(message, 'in_reply_to', '') or '',
+        expediteur=expediteur, sujet=sujet, corps=corps,
+        direction=TicketEmailThread.Direction.ENTRANT)
+    activity.log_email(
+        ticket, None,
+        f'E-mail reçu de {expediteur or "expéditeur inconnu"}'
+        + (f' — « {sujet} »' if sujet else '')
+        + (f'\n\n{corps}' if corps else ''))
+    return ticket
+
+
+def register_email_ticket_handler():
+    """NTSRV1 — Abonne ``handler_ticket_entrant`` au registre e-mail entrant.
+
+    Câblé depuis ``SavConfig.ready()`` APRÈS le handler d'alias ZMFG7 : le
+    routage par alias (catégorie d'équipement) garde la priorité, et ce
+    handler-ci récupère son ticket au lieu d'en ouvrir un second."""
+    from core.email_intake import register_handler
+
+    register_handler(handler_ticket_entrant)
+
+
+# ── NTSRV8 — Débordement d'équipe : une PROPOSITION, jamais une action ──────
+
+def debordement_equipe(equipe):
+    """NTSRV8 — PROPOSE le transfert des tickets excédentaires d'une équipe
+    saturée vers l'équipe active la MOINS chargée. **N'ÉCRIT RIEN.**
+
+    Renvoie toujours un dict lisible :
+    ``{'equipe_id', 'equipe_nom', 'capacite', 'charge', 'excedent',
+    'equipe_cible_id', 'equipe_cible_nom', 'tickets_proposes': [...]}``.
+
+    ``excedent = 0`` (et ``tickets_proposes = []``) quand l'équipe n'a
+    déclaré AUCUNE capacité (``capacite_max_tickets_ouverts`` NULL) ou qu'elle
+    est sous sa capacité — c'est le comportement par défaut de tout le parc
+    existant. La réaffectation réelle passe par une ACTION explicite
+    (``tickets/{id}/reaffecter-equipe/``) : jamais un effet de bord de cette
+    lecture (critère d'acceptation NTSRV8).
+    """
+    from .models import EquipeMaintenance
+    from .selectors import charge_equipe, charges_equipes, file_attente_equipe
+
+    base = {
+        'equipe_id': getattr(equipe, 'pk', None),
+        'equipe_nom': getattr(equipe, 'nom', ''),
+        'capacite': getattr(equipe, 'capacite_max_tickets_ouverts', None),
+        'charge': 0,
+        'excedent': 0,
+        'equipe_cible_id': None,
+        'equipe_cible_nom': '',
+        'tickets_proposes': [],
+    }
+    if equipe is None:
+        return base
+
+    base['charge'] = charge_equipe(equipe)
+    capacite = equipe.capacite_max_tickets_ouverts
+    if not capacite:
+        return base  # aucune capacité déclarée → aucun débordement.
+
+    excedent = base['charge'] - capacite
+    if excedent <= 0:
+        return base
+
+    # Équipe cible = l'équipe ACTIVE la moins chargée (hors elle-même) qui
+    # n'est pas elle-même déjà saturée.
+    charges = charges_equipes(equipe.company)
+    charges.pop(equipe.pk, None)
+    cible = None
+    if charges:
+        autres = {e.pk: e for e in EquipeMaintenance.objects.filter(
+            pk__in=list(charges.keys()))}
+        candidates = []
+        for equipe_id, charge in charges.items():
+            autre = autres.get(equipe_id)
+            if autre is None:
+                continue
+            plafond = autre.capacite_max_tickets_ouverts
+            if plafond and charge >= plafond:
+                continue  # déjà saturée : on ne déplace pas le problème.
+            candidates.append((charge, equipe_id, autre))
+        if candidates:
+            candidates.sort(key=lambda item: (item[0], item[1]))
+            cible = candidates[0][2]
+
+    # Les tickets proposés sont les PLUS RÉCENTS de la file d'attente : les
+    # plus anciens restent où ils sont (leur SLA court déjà).
+    file_attente = list(file_attente_equipe(equipe))
+    proposes = list(reversed(file_attente))[:excedent]
+
+    base['excedent'] = excedent
+    if cible is not None:
+        base['equipe_cible_id'] = cible.pk
+        base['equipe_cible_nom'] = cible.nom
+    base['tickets_proposes'] = [{
+        'id': t.pk, 'reference': t.reference,
+        'client': getattr(t.client, 'nom', '') or '',
+        'date_ouverture': t.date_ouverture,
+        'sla_due_at': t.sla_due_at,
+    } for t in proposes]
+    return base
+
+
+def reaffecter_equipe(ticket, equipe, user=None):
+    """NTSRV8 — ACTION explicite : change l'équipe d'un ticket et le trace au
+    chatter. C'est le SEUL chemin d'écriture du débordement — la proposition
+    (``debordement_equipe``) n'écrit jamais.
+
+    Lève ``ValueError`` (message FR nommant le champ) si l'équipe cible
+    appartient à une autre société."""
+    from . import activity
+
+    if equipe is not None and equipe.company_id != ticket.company_id:
+        raise ValueError('equipe: équipe inconnue.')
+
+    ancienne = ticket.equipe
+    if ancienne is not None and equipe is not None and ancienne.pk == equipe.pk:
+        return ticket  # idempotent : déjà sur cette équipe.
+
+    ticket.equipe = equipe
+    ticket.save(update_fields=['equipe'])
+    activity.log_note(
+        ticket, user,
+        'Équipe réaffectée : '
+        f'{getattr(ancienne, "nom", "—")} → {getattr(equipe, "nom", "—")}')
+    return ticket
+
+
+# ── NTSRV3 — Canal WhatsApp entrant (GATED par clé, no-op sans clé) ─────────
+
+def whatsapp_api_key():
+    """NTSRV3 — clé WhatsApp Business configurée, ou chaîne vide.
+
+    Précédence : ``settings.WHATSAPP_BUSINESS_API_KEY`` (posé par
+    ``override_settings`` en test / par l'env en prod) puis la variable
+    d'environnement du même nom. Vide = intégration ÉTEINTE : le webhook
+    répond 404 et AUCUN appel sortant n'est jamais tenté."""
+    import os
+
+    from django.conf import settings
+
+    valeur = getattr(settings, 'WHATSAPP_BUSINESS_API_KEY', None)
+    if valeur is None:
+        valeur = os.environ.get('WHATSAPP_BUSINESS_API_KEY', '')
+    return (valeur or '').strip()
+
+
+def extraire_message_whatsapp(payload):
+    """NTSRV3 — ``(message_id, telephone, texte)`` d'une charge utile WhatsApp
+    Cloud API, ou ``(None, None, None)`` si elle n'en contient aucun.
+
+    Accepte la forme officielle Meta
+    (``entry[].changes[].value.messages[]``) ET une forme plate
+    ``{'message_id', 'from', 'text'}`` (relais interne / rejeu manuel).
+    Purement défensive : jamais d'exception sur une charge inattendue."""
+    if not isinstance(payload, dict):
+        return (None, None, None)
+
+    for entry in (payload.get('entry') or []):
+        if not isinstance(entry, dict):
+            continue
+        for change in (entry.get('changes') or []):
+            valeur = (change or {}).get('value') or {}
+            for message in (valeur.get('messages') or []):
+                if not isinstance(message, dict):
+                    continue
+                texte = ((message.get('text') or {}).get('body')
+                         if isinstance(message.get('text'), dict)
+                         else message.get('text'))
+                return (str(message.get('id') or '').strip(),
+                        str(message.get('from') or '').strip(),
+                        (texte or '').strip())
+
+    telephone = str(payload.get('from') or payload.get('telephone') or '').strip()
+    if telephone:
+        texte = payload.get('text')
+        if isinstance(texte, dict):
+            texte = texte.get('body')
+        return (str(payload.get('message_id') or payload.get('id') or '').strip(),
+                telephone, (texte or '').strip())
+    return (None, None, None)
+
+
+def ticket_whatsapp_ouvert(company, client):
+    """NTSRV3 — ticket OUVERT le plus récent de ce client déjà ouvert par
+    WhatsApp, ou ``None`` (on ne rattache jamais un message WhatsApp à un
+    ticket ouvert par un AUTRE canal : cela mélangerait deux conversations)."""
+    from .models import Ticket
+
+    return (Ticket.objects
+            .filter(company=company, client=client, annule=False,
+                    statut__in=Ticket.OPEN_STATUTS,
+                    canal_ouverture=Ticket.CanalOuverture.WHATSAPP)
+            .order_by('-date_creation', '-id')
+            .first())
+
+
+def traiter_message_whatsapp(company, *, message_id, telephone, texte):
+    """NTSRV3 — rattache un message WhatsApp entrant au ticket ouvert du
+    client (matché par NUMÉRO via ``crm.selectors.find_client_by_phone``), ou
+    en ouvre un nouveau. Renvoie ``(ticket, cree)`` ou ``(None, False)``
+    quand le numéro ne correspond à aucun client (aucun ticket orphelin —
+    même règle que les canaux e-mail)."""
+    from apps.crm.selectors import find_client_by_phone
+    from apps.ventes.utils.references import create_with_reference
+
+    from . import activity
+    from .models import Ticket
+
+    client = find_client_by_phone(company, telephone)
+    if client is None:
+        return (None, False)
+
+    ticket = ticket_whatsapp_ouvert(company, client)
+    cree = False
+    if ticket is None:
+        def _create(ref):
+            return Ticket.objects.create(
+                company=company, reference=ref, client=client,
+                type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+                canal_ouverture=Ticket.CanalOuverture.WHATSAPP,
+                date_ouverture=timezone.localdate(),
+                description=(texte or 'Message WhatsApp reçu')[:4000])
+        # AUD519 — même échéance SLA que le chemin manuel.
+        ticket = poser_sla_due_at(
+            create_with_reference(Ticket, 'SAV', company, _create))
+        cree = True
+
+    activity.log_whatsapp(
+        ticket, None,
+        f'WhatsApp reçu de {telephone}' + (f'\n\n{texte}' if texte else ''))
+    return (ticket, cree)
+
+
+def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
+                       user=None):
+    """NTSRV1 — envoie une réponse e-mail depuis un ticket et logue le fil.
+
+    Le message sortant porte les en-têtes ``In-Reply-To``/``References`` du
+    dernier message ENTRANT du fil : la réponse du client reste dans le même
+    fil côté messagerie, et revient donc sur le même ticket.
+
+    Key-gated par construction : l'envoi passe par ``django.core.mail`` —
+    sans clé fournisseur configurée (``SENDGRID_API_KEY``…) le backend reste
+    la console, donc NO-OP réseau silencieux. ``fail_silently`` : un envoi
+    raté ne casse jamais le ticket. Renvoie la ligne ``TicketEmailThread``
+    créée.
+
+    Lève ``ValueError`` (message FR nommant le champ fautif) si le corps est
+    vide ou si aucun destinataire n'est résolvable."""
+    from email.utils import make_msgid
+
+    from django.conf import settings
+    from django.core.mail import EmailMessage
+
+    from . import activity
+    from .models import TicketEmailThread
+
+    corps = (corps or '').strip()
+    if not corps:
+        raise ValueError('corps: le corps du message est obligatoire.')
+
+    destinataire = (destinataire or '').strip()
+    if not destinataire:
+        destinataire = (getattr(ticket.client, 'email', '') or '').strip()
+    if not destinataire:
+        raise ValueError(
+            'destinataire: aucune adresse e-mail — le client de ce ticket '
+            "n'en a pas ; renseignez-la sur sa fiche ou saisissez-la ici.")
+
+    dernier = (TicketEmailThread.objects
+               .filter(ticket=ticket,
+                       direction=TicketEmailThread.Direction.ENTRANT)
+               .order_by('-date_reception', '-id')
+               .first())
+    if not sujet:
+        base = (dernier.sujet if dernier is not None else '') or ticket.reference
+        sujet = base if base.lower().startswith('re:') else f'Re: {base}'
+
+    message_id = make_msgid().strip('<> ')
+    thread_root = (dernier.thread_root or dernier.message_id) if dernier else message_id
+
+    email = EmailMessage(
+        subject=sujet, body=corps,
+        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+        to=[destinataire],
+        headers={'Message-ID': f'<{message_id}>'},
+    )
+    if dernier is not None and dernier.message_id:
+        email.extra_headers['In-Reply-To'] = f'<{dernier.message_id}>'
+        email.extra_headers['References'] = f'<{thread_root}>'
+    try:
+        email.send(fail_silently=True)
+    except Exception:  # noqa: BLE001 — un envoi raté ne casse jamais le ticket
+        logger.warning('NTSRV1: envoi e-mail sortant ticket %s échoué',
+                       getattr(ticket, 'pk', '?'), exc_info=True)
+
+    ligne = enregistrer_message_email(
+        ticket, message_id=message_id, thread_root=thread_root,
+        in_reply_to=(dernier.message_id if dernier is not None else ''),
+        expediteur=getattr(settings, 'DEFAULT_FROM_EMAIL', '') or '',
+        destinataire=destinataire, sujet=sujet, corps=corps,
+        direction=TicketEmailThread.Direction.SORTANT)
+    activity.log_email(
+        ticket, user, f'E-mail envoyé à {destinataire} — « {sujet} »\n\n{corps}')
+    return ligne

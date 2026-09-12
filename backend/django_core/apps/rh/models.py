@@ -20,6 +20,7 @@ from django.conf import settings
 from django.db import models
 
 from core.crypto_fields import EncryptedCharField
+from core.models import TenantModel
 
 
 class Departement(models.Model):
@@ -109,6 +110,12 @@ class Poste(models.Model):
         related_name='postes',
         verbose_name='Département',
     )
+    # NTHCM4 — effectif BUDGÉTÉ (headcount planning). ``0`` = AUCUNE limite
+    # posée (valeur historique de tous les postes existants) : le poste reste
+    # alors neutre, jamais « en dépassement ». Le comparatif budgété/pourvu
+    # vit dans ``selectors.effectif_poste``.
+    effectif_budgete = models.PositiveIntegerField(
+        default=0, verbose_name='Effectif budgété')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -272,6 +279,25 @@ class DossierEmploye(models.Model):
         related_name='employes',
         verbose_name='Département',
     )
+    # NTFSM26 — zone géographique d'intervention (ville/région desservie),
+    # CHAMP LIBRE volontairement : il n'existe aucun référentiel de villes
+    # dans ce dépôt, et en inventer un pour ce seul besoin figerait un
+    # vocabulaire que le terrain n'a pas. Vide = aucune zone déclarée (valeur
+    # de tous les dossiers existants). Sert le filtre de l'écran dispatch.
+    zone_intervention = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Zone d'intervention")
+    # NTHCM1 — LIGNE HIÉRARCHIQUE réelle (« qui évalue/approuve »). Nullable :
+    # aucun défaut n'est inventé au backfill (la direction n'a pas de manager,
+    # et l'existant reste `manager=None` tant que le RH ne l'a pas renseigné).
+    # ``clean()`` rejette le cycle managérial ET le manager d'une AUTRE société.
+    manager = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='subordonnes',
+        verbose_name='Manager (hiérarchique)',
+    )
     # XRH8 — horaire de travail assigné (nullable : le seuil HS par défaut
     # 8 h/j s'applique tant qu'aucun horaire n'est assigné, cf.
     # ``selectors.horaire_actif``).
@@ -402,6 +428,40 @@ class DossierEmploye(models.Model):
                 name='rh_dossier_code_pointage_uniq',
             ),
         ]
+
+    def clean(self):
+        """NTHCM1 — garde-fous de la ligne hiérarchique ``manager``.
+
+        Même patron que ``Departement.clean()`` (XRH27) : on remonte TOUTE la
+        chaîne de managers, pas seulement le lien direct, pour qu'un cycle
+        A→B→A (ou plus long) soit rejeté. On refuse en plus un manager
+        appartenant à une AUTRE société (fuite de rattachement cross-tenant).
+        """
+        from django.core.exceptions import ValidationError
+
+        if self.manager_id is None:
+            return
+        if self.pk is not None and self.manager_id == self.pk:
+            raise ValidationError(
+                'Un employé ne peut pas être son propre manager.')
+
+        manager = self.manager
+        if (manager is not None and self.company_id is not None
+                and manager.company_id != self.company_id):
+            raise ValidationError(
+                'Le manager choisi appartient à une autre société.')
+
+        vus = set()
+        courant = manager
+        while courant is not None:
+            if self.pk is not None and courant.pk == self.pk:
+                raise ValidationError(
+                    'Cycle de hiérarchie détecté : cet employé est déjà un '
+                    'responsable du manager choisi.')
+            if courant.pk in vus:
+                break  # cycle préexistant ailleurs — n'empêche pas CE save
+            vus.add(courant.pk)
+            courant = courant.manager
 
     def __str__(self):
         return f'{self.matricule} — {self.nom} {self.prenom}'
@@ -4790,6 +4850,11 @@ class ReglageRH(models.Model):
     pointage_auto_depart_apres_h = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Clôture auto pointage après (heures)')
+    # NTHCM13 — seuil de risque d'attrition (score XRH31, 0-100) au-delà
+    # duquel le titulaire d'un poste-clé SANS successeur prêt remonte en
+    # « risque de vacance critique ». Défaut 60.
+    seuil_risque_succession = models.PositiveSmallIntegerField(
+        default=60, verbose_name='Seuil de risque succession (0-100)')
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 
@@ -6262,3 +6327,817 @@ class PlanAppreciation(models.Model):
 
     def __str__(self):
         return self.libelle
+
+
+# ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
+
+class CycleRevisionSalariale(TenantModel):
+    """NTHCM5 — CAMPAGNE de révision salariale d'une période.
+
+    ``GrilleSalariale`` (XRH16) définit les BANDES, mais rien ne pilotait la
+    campagne elle-même : qui propose quoi, dans quelle enveloppe, et quand
+    c'est figé. Un cycle porte la période (« 2027 »), une enveloppe globale
+    indicative (``enveloppe_totale_pct``, optionnelle) et un ``statut`` qui
+    suit le déroulé brouillon → ouvert → calibration → clos.
+
+    Donnée paie SENSIBLE : toutes ses vues sont gatées ``salaires_voir``.
+    Multi-société : ``company`` posée CÔTÉ SERVEUR — héritée du socle
+    ``core.models.TenantModel`` (SCA4), aucun accesseur historique à
+    préserver (modèle neuf).
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        OUVERT = 'ouvert', 'Ouvert'
+        CALIBRATION = 'calibration', 'Calibration'
+        CLOS = 'clos', 'Clos'
+
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    periode = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Période')
+    enveloppe_totale_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Enveloppe totale (%)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    # NTHCM7 — date d'effet des nouvelles ``Remuneration`` créées à
+    # l'application du cycle. Nullable : à défaut, l'application retombe sur
+    # ``date_fin`` puis, en dernier ressort, sur le jour de l'application
+    # (aucune date inventée dans le futur).
+    date_effet = models.DateField(
+        null=True, blank=True, verbose_name="Date d'effet des révisions")
+
+    class Meta:
+        verbose_name = 'Cycle de révision salariale'
+        verbose_name_plural = 'Cycles de révision salariale'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_cyclerev_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.periode})' if self.periode \
+            else self.libelle
+
+
+class EnveloppeManager(TenantModel):
+    """NTHCM5 — enveloppe d'augmentation allouée à UN manager sur un cycle.
+
+    ``enveloppe_pct`` est le total de points de pourcentage que le manager
+    peut distribuer entre ses subordonnés DIRECTS (``DossierEmploye.manager``,
+    NTHCM1) sur ce cycle : la somme des ``augmentation_pct_proposee`` de ses
+    ``PropositionRevision`` ne peut pas le dépasser (garde bloquante dans
+    ``services.proposer_revision``).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    cycle = models.ForeignKey(
+        CycleRevisionSalariale,
+        on_delete=models.CASCADE,  # on_delete: composition — une enveloppe n'existe QUE dans son cycle, supprimer le cycle supprime ses enveloppes
+        related_name='enveloppes',
+        verbose_name='Cycle',
+    )
+    manager = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: l'allocation n'a plus d'objet sans son manager ; aucune pièce à valeur légale ici (le dossier employé lui-même est protégé par AUD721)
+        related_name='enveloppes_revision',
+        verbose_name='Manager',
+    )
+    enveloppe_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Enveloppe allouée (%)')
+
+    class Meta:
+        verbose_name = 'Enveloppe manager'
+        verbose_name_plural = 'Enveloppes manager'
+        ordering = ['manager__nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'manager'],
+                name='rh_envmgr_cycle_manager_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.manager} — {self.enveloppe_pct} %'
+
+
+class PropositionRevision(TenantModel):
+    """NTHCM5 — proposition d'augmentation d'UN employé sur un cycle.
+
+    ``salaire_actuel`` est un SNAPSHOT posé à la création (dernière
+    ``Remuneration`` connue) : la proposition reste lisible même si le salaire
+    bouge ensuite. ``augmentation_montant_proposee`` est CALCULÉ côté serveur
+    (``salaire_actuel × pct / 100``), jamais lu du corps de requête, et
+    ``propose_par`` est toujours l'utilisateur de la requête.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    class Statut(models.TextChoices):
+        PROPOSEE = 'proposee', 'Proposée'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REJETEE = 'rejetee', 'Rejetée'
+
+    cycle = models.ForeignKey(
+        CycleRevisionSalariale,
+        on_delete=models.CASCADE,  # on_delete: composition — une proposition n'existe QUE dans son cycle ; la trace durable d'une révision APPLIQUÉE vit dans `Remuneration` (NTHCM7), jamais ici
+        related_name='propositions',
+        verbose_name='Cycle',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: la proposition n'a plus d'objet sans son employé ; le dossier employé porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='propositions_revision',
+        verbose_name='Employé',
+    )
+    salaire_actuel = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Salaire actuel (snapshot)')
+    augmentation_pct_proposee = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Augmentation proposée (%)')
+    augmentation_montant_proposee = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Augmentation proposée (montant)')
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PROPOSEE, verbose_name='Statut')
+    propose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='propositions_revision_proposees',
+        verbose_name='Proposé par',
+    )
+    # NTHCM7 — marqueur d'IDEMPOTENCE de l'application du cycle : une
+    # proposition déjà appliquée ne recrée JAMAIS de ligne ``Remuneration``.
+    appliquee = models.BooleanField(
+        default=False, verbose_name='Appliquée')
+    date_application = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'application")
+
+    class Meta:
+        verbose_name = 'Proposition de révision'
+        verbose_name_plural = 'Propositions de révision'
+        ordering = ['employe__nom', 'employe__prenom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'employe'],
+                name='rh_proprev_cycle_employe_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'cycle'],
+                name='rh_proprev_comp_cycle_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} — +{self.augmentation_pct_proposee} %'
+
+
+# ── NTHCM8 — OKR d'entreprise (cascade OPTIONNELLE, cycle trimestriel) ──────
+
+def progression_key_result(valeur_actuelle, valeur_cible):
+    """NTHCM8 — progression d'un key result en %, BORNÉE à ``[0, 100]``.
+
+    Cible nulle/absente ⇒ ``0`` (aucune progression calculable, jamais une
+    division par zéro ni un 100 % inventé). Une valeur actuelle négative est
+    ramenée à 0, une valeur au-delà de la cible est plafonnée à 100.
+    """
+    cible = valeur_cible or Decimal('0')
+    if cible <= 0:
+        return Decimal('0.00')
+    actuelle = valeur_actuelle or Decimal('0')
+    pct = (actuelle / cible) * Decimal('100')
+    if pct < 0:
+        pct = Decimal('0')
+    elif pct > 100:
+        pct = Decimal('100')
+    return pct.quantize(Decimal('0.01'))
+
+
+class ObjectifEntreprise(TenantModel):
+    """NTHCM8 — objectif d'ENTREPRISE d'une période (cycle OKR trimestriel).
+
+    Distinct de ``ObjectifIndividuel`` (FG190), qui est un objectif posé à
+    l'ENTRETIEN annuel : ici on modélise le cycle OKR continu (Workday/
+    Lattice), avec ses ``KeyResult`` mesurables et des ``OkrIndividuel``
+    éventuellement rattachés (cascade TOUJOURS optionnelle).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    periode = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Période')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    proprietaire = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='objectifs_entreprise',
+        verbose_name='Propriétaire',
+    )
+
+    class Meta:
+        verbose_name = "Objectif d'entreprise"
+        verbose_name_plural = "Objectifs d'entreprise"
+        ordering = ['-periode', 'titre']
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='rh_objent_comp_per_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.periode})' if self.periode else self.titre
+
+
+class KeyResult(TenantModel):
+    """NTHCM8 — résultat clé mesurable d'un ``ObjectifEntreprise``.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    objectif = models.ForeignKey(
+        ObjectifEntreprise,
+        on_delete=models.CASCADE,  # on_delete: composition — un key result n'existe QUE dans son objectif
+        related_name='key_results',
+        verbose_name='Objectif',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    valeur_cible = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur cible')
+    valeur_actuelle = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur actuelle')
+    unite = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Unité')
+
+    class Meta:
+        verbose_name = 'Résultat clé'
+        verbose_name_plural = 'Résultats clés'
+        ordering = ['objectif', 'libelle']
+
+    @property
+    def progression_pct(self):
+        """Progression bornée 0-100 (lecture — jamais stockée ici)."""
+        return progression_key_result(self.valeur_actuelle, self.valeur_cible)
+
+    def __str__(self):
+        return self.libelle
+
+
+class OkrIndividuel(TenantModel):
+    """NTHCM8 — OKR d'un employé sur une période.
+
+    ``objectif_parent`` est NULLABLE : la cascade vers un objectif
+    d'entreprise est TOUJOURS optionnelle (un OKR purement individuel reste
+    parfaitement valide). Rattaché, l'OKR alimentera le rollup de son parent
+    (NTHCM9).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: l'OKR n'a plus d'objet sans son employé ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='okr_individuels',
+        verbose_name='Employé',
+    )
+    periode = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Période')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    objectif_parent = models.ForeignKey(
+        ObjectifEntreprise,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='okr_rattaches',
+        verbose_name="Objectif d'entreprise (optionnel)",
+    )
+
+    class Meta:
+        verbose_name = 'OKR individuel'
+        verbose_name_plural = 'OKR individuels'
+        ordering = ['-periode', 'titre']
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='rh_okrind_comp_per_idx'),
+        ]
+
+    @property
+    def progression_pct(self):
+        """Moyenne (bornée 0-100) des progressions de ses key results ;
+        ``0`` quand l'OKR n'en porte aucun."""
+        lignes = list(self.key_results.all())
+        if not lignes:
+            return Decimal('0.00')
+        total = sum(
+            (ligne.progression_pct for ligne in lignes), Decimal('0'))
+        return (total / Decimal(len(lignes))).quantize(Decimal('0.01'))
+
+    def __str__(self):
+        return f'{self.titre} — {self.employe}'
+
+
+class KeyResultIndividuel(TenantModel):
+    """NTHCM8 — résultat clé mesurable d'un ``OkrIndividuel``.
+
+    ``progression_pct`` est CALCULÉE côté serveur à chaque sauvegarde
+    (``valeur_actuelle / valeur_cible``, bornée 0-100) et stockée pour rester
+    filtrable/agrégeable — jamais lue du corps de requête.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    okr = models.ForeignKey(
+        OkrIndividuel,
+        on_delete=models.CASCADE,  # on_delete: composition — un key result n'existe QUE dans son OKR
+        related_name='key_results',
+        verbose_name='OKR',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    valeur_cible = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur cible')
+    valeur_actuelle = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur actuelle')
+    unite = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Unité')
+    progression_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Progression (%)')
+
+    class Meta:
+        verbose_name = 'Résultat clé individuel'
+        verbose_name_plural = 'Résultats clés individuels'
+        ordering = ['okr', 'libelle']
+
+    def save(self, *args, **kwargs):
+        """Recalcule TOUJOURS ``progression_pct`` côté serveur."""
+        self.progression_pct = progression_key_result(
+            self.valeur_actuelle, self.valeur_cible)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            champs = set(update_fields)
+            champs.add('progression_pct')
+            kwargs['update_fields'] = sorted(champs)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.libelle
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+def case_neuf_box(axe_performance, axe_potentiel):
+    """NTHCM10 — case 1-9 d'une grille 9-box à partir des DEUX axes.
+
+    Convention (documentée une fois, appliquée partout) : la case est
+    ``(potentiel - 1) × 3 + performance``, donc la ligne du bas (potentiel
+    limité) porte les cases 1-3 et la ligne du haut (potentiel élevé) les
+    cases 7-9 ; dans chaque ligne, la performance croît de gauche à droite.
+    Case 1 = performance faible + potentiel limité, case 9 = performance
+    forte + potentiel élevé.
+    """
+    perf = int(axe_performance or 0)
+    pot = int(axe_potentiel or 0)
+    perf = min(max(perf, 1), 3)
+    pot = min(max(pot, 1), 3)
+    return (pot - 1) * 3 + perf
+
+
+class EvaluationNeufBox(TenantModel):
+    """NTHCM10 — positionnement d'un employé sur la grille 9-box.
+
+    Croise la PERFORMANCE (dérivable de ``EvaluationEmploye.note_globale``
+    mais saisissable à la main) et le POTENTIEL (jugement du manager/RH, non
+    dérivable). ``case_calculee`` est posée CÔTÉ SERVEUR depuis les deux axes
+    (:func:`case_neuf_box`) et ``evalue_par`` vient toujours de la requête.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    class Performance(models.IntegerChoices):
+        FAIBLE = 1, 'Faible'
+        SOLIDE = 2, 'Solide'
+        FORT = 3, 'Fort'
+
+    class Potentiel(models.IntegerChoices):
+        LIMITE = 1, 'Limité'
+        MODERE = 2, 'Modéré'
+        ELEVE = 3, 'Élevé'
+
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: le positionnement n'a plus d'objet sans son employé ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='evaluations_neuf_box',
+        verbose_name='Employé',
+    )
+    campagne = models.ForeignKey(
+        'CampagneEvaluation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evaluations_neuf_box',
+        verbose_name="Campagne d'évaluation",
+    )
+    axe_performance = models.PositiveSmallIntegerField(
+        choices=Performance.choices, default=Performance.SOLIDE,
+        verbose_name='Axe performance')
+    axe_potentiel = models.PositiveSmallIntegerField(
+        choices=Potentiel.choices, default=Potentiel.MODERE,
+        verbose_name='Axe potentiel')
+    case_calculee = models.PositiveSmallIntegerField(
+        default=5, verbose_name='Case (1-9)')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    evalue_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evaluations_neuf_box',
+        verbose_name='Évalué par',
+    )
+
+    class Meta:
+        verbose_name = 'Évaluation 9-box'
+        verbose_name_plural = 'Évaluations 9-box'
+        ordering = ['employe__nom', 'employe__prenom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employe', 'campagne'],
+                name='rh_neufbox_employe_campagne_uniq'),
+            # PostgreSQL considère deux NULL comme DISTINCTS : sans cette
+            # contrainte partielle, un employé pourrait porter N
+            # positionnements HORS campagne. Une seule ligne « hors
+            # campagne » par employé.
+            models.UniqueConstraint(
+                fields=['employe'],
+                condition=models.Q(campagne__isnull=True),
+                name='rh_neufbox_employe_sans_camp_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'campagne'],
+                name='rh_neufbox_comp_camp_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Recalcule TOUJOURS ``case_calculee`` depuis les deux axes."""
+        self.case_calculee = case_neuf_box(
+            self.axe_performance, self.axe_potentiel)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            champs = set(update_fields)
+            champs.add('case_calculee')
+            kwargs['update_fields'] = sorted(champs)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.employe} — case {self.case_calculee}'
+
+
+# ── NTHCM12 — plans de succession par poste-clé ─────────────────────────────
+
+class PosteCle(TenantModel):
+    """NTHCM12 — poste marqué CRITIQUE par le RH (jamais automatiquement).
+
+    La criticité d'un poste est un JUGEMENT (perte de savoir-faire, unicité
+    de l'habilitation, exposition client) : elle est saisie explicitement,
+    jamais déduite d'un effectif ou d'un salaire. Un poste non marqué n'est
+    tout simplement pas un poste-clé.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    class Criticite(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        HAUTE = 'haute', 'Haute'
+        CRITIQUE = 'critique', 'Critique'
+
+    poste = models.ForeignKey(
+        Poste,
+        on_delete=models.CASCADE,  # on_delete: le marquage n'a plus d'objet sans le poste de référence qu'il qualifie
+        related_name='marquages_cles',
+        verbose_name='Poste',
+    )
+    criticite = models.CharField(
+        max_length=10, choices=Criticite.choices,
+        default=Criticite.MOYENNE, verbose_name='Criticité')
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+
+    class Meta:
+        verbose_name = 'Poste-clé'
+        verbose_name_plural = 'Postes-clés'
+        ordering = ['poste__intitule']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'poste'],
+                name='rh_postecle_comp_poste_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.poste} — {self.get_criticite_display()}'
+
+
+class PlanSuccession(TenantModel):
+    """NTHCM12 — successeur identifié pour un poste-clé, avec sa readiness.
+
+    ``readiness`` dit QUAND le successeur serait opérationnel
+    (``pret_immediat`` / ``pret_1an`` / ``pret_3ans``) — c'est la donnée que
+    NTHCM13 croise avec le risque d'attrition du titulaire. Un poste-clé sans
+    aucune ligne est un « poste orphelin » signalé par la couverture.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    class Rang(models.TextChoices):
+        PREMIER = 'premier', '1er choix'
+        SECOND = 'second', '2e choix'
+        BACKUP = 'backup', 'Backup'
+
+    class Readiness(models.TextChoices):
+        PRET_IMMEDIAT = 'pret_immediat', 'Prêt immédiatement'
+        PRET_1AN = 'pret_1an', 'Prêt sous 1 an'
+        PRET_3ANS = 'pret_3ans', 'Prêt sous 3 ans'
+
+    poste_cle = models.ForeignKey(
+        PosteCle,
+        on_delete=models.CASCADE,  # on_delete: composition — un plan de succession n'existe QUE pour son poste-clé
+        related_name='plans_succession',
+        verbose_name='Poste-clé',
+    )
+    successeur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: le plan n'a plus d'objet sans son successeur ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='plans_succession',
+        verbose_name='Successeur',
+    )
+    rang = models.CharField(
+        max_length=10, choices=Rang.choices,
+        default=Rang.PREMIER, verbose_name='Rang')
+    readiness = models.CharField(
+        max_length=14, choices=Readiness.choices,
+        default=Readiness.PRET_1AN, verbose_name='Readiness')
+    plan_developpement = models.TextField(
+        blank=True, default='', verbose_name='Plan de développement')
+
+    class Meta:
+        verbose_name = 'Plan de succession'
+        verbose_name_plural = 'Plans de succession'
+        ordering = ['poste_cle', 'rang']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['poste_cle', 'successeur'],
+                name='rh_plansucc_postecle_succ_uniq'),
+        ]
+
+    def __str__(self):
+        return (f'{self.poste_cle} ← {self.successeur} '
+                f'({self.get_rang_display()})')
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+def hash_participation_enquete(user_id, enquete_id):
+    """NTHCM14 — empreinte « qui a déjà répondu » à une enquête.
+
+    Même construction que :func:`hash_participation_token` (XRH32), avec un
+    ESPACE DE NOMS distinct (``enquete:``) pour qu'une empreinte de pulse et
+    une empreinte d'enquête ne puissent jamais coïncider. Stockée à part
+    (``ParticipationEnquete``), JAMAIS jointe à ``ReponseEnquete``.
+    """
+    raw = f'enquete:{user_id}:{enquete_id}'
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+class EnqueteEngagement(TenantModel):
+    """NTHCM14 — enquête d'engagement MULTI-questions, par catégorie.
+
+    ``CampagnePulse`` (XRH32) ne porte qu'UNE question eNPS. Ici, ``questions``
+    est une liste typée ``[{libelle, type, categorie}]`` où ``type`` ∈
+    ``note1_5`` / ``choix`` / ``texte_libre`` et ``categorie`` regroupe les
+    questions (reconnaissance, charge_travail, management, perspectives…) pour
+    l'agrégat par catégorie (NTHCM15).
+
+    ``anonyme`` (défaut ``True``) décide du MODE : anonyme ⇒ la réponse ne peut
+    structurellement pas être reliée au votant (voir ``ReponseEnquete``) ;
+    nominatif ⇒ la FK ``employe`` est autorisée (sondage RH ciblé assumé).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    #: Types de question acceptés (le vocabulaire est fermé côté serveur).
+    TYPES_QUESTION = ('note1_5', 'choix', 'texte_libre')
+
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    questions = models.JSONField(
+        blank=True, default=list, verbose_name='Questions')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    anonyme = models.BooleanField(
+        default=True, verbose_name='Anonyme')
+
+    class Meta:
+        verbose_name = "Enquête d'engagement"
+        verbose_name_plural = "Enquêtes d'engagement"
+        ordering = ['-created_at']
+
+    def clean(self):
+        """Vocabulaire FERMÉ : chaque question porte un ``type`` connu.
+
+        Sans ce contrôle, une question de type inventé passerait en base et
+        casserait silencieusement l'agrégat par catégorie (NTHCM15).
+        """
+        from django.core.exceptions import ValidationError
+
+        if not isinstance(self.questions, list):
+            raise ValidationError(
+                'Les questions doivent être une liste.')
+        for index, question in enumerate(self.questions, start=1):
+            if not isinstance(question, dict):
+                raise ValidationError(
+                    f'Question {index} : chaque question doit être un objet '
+                    '{libelle, type, categorie}.')
+            if not str(question.get('libelle', '') or '').strip():
+                raise ValidationError(
+                    f'Question {index} : le libellé est obligatoire.')
+            type_question = question.get('type')
+            if type_question not in self.TYPES_QUESTION:
+                raise ValidationError(
+                    f'Question {index} : type inconnu « {type_question} ». '
+                    f'Types acceptés : {", ".join(self.TYPES_QUESTION)}.')
+
+    def __str__(self):
+        return self.titre
+
+
+class ReponseEnquete(TenantModel):
+    """NTHCM14 — réponse à une enquête d'engagement.
+
+    GARDE-FOU D'ANONYMAT, deux étages :
+
+    1. **AUCUNE FK ``user``**, jamais — comme ``ReponsePulse`` (XRH32), la
+       réponse ne peut pas être reliée au COMPTE qui a répondu (testable par
+       inspection du schéma) ;
+    2. le drapeau ``anonyme`` est RECOPIÉ ici à l'écriture et une
+       ``CheckConstraint`` en BASE interdit qu'une réponse anonyme porte un
+       ``employe``. La garantie ne dépend donc pas d'un service discipliné :
+       elle est structurelle, même pour une écriture directe en base.
+
+    Une enquête NOMINATIVE (``anonyme=False``) garde, elle, la FK ``employe``
+    classique — c'est le mode sondage RH ciblé, assumé.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    enquete = models.ForeignKey(
+        EnqueteEngagement,
+        on_delete=models.CASCADE,  # on_delete: composition — une réponse n'existe QUE dans son enquête
+        related_name='reponses',
+        verbose_name='Enquête',
+    )
+    # Recopié depuis l'enquête à l'écriture : c'est CE champ que la contrainte
+    # de base lit (une contrainte ne peut pas interroger la table parente).
+    anonyme = models.BooleanField(default=True, verbose_name='Anonyme')
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: la réponse nominative n'a plus d'objet sans son employé ; une réponse anonyme n'en porte jamais
+        null=True, blank=True,
+        related_name='reponses_enquete',
+        verbose_name='Employé (enquête nominative)',
+    )
+    reponses = models.JSONField(
+        blank=True, default=dict, verbose_name='Réponses')
+
+    class Meta:
+        verbose_name = "Réponse d'enquête"
+        verbose_name_plural = "Réponses d'enquête"
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(anonyme=False) | models.Q(
+                    employe__isnull=True),
+                name='rh_repenq_anonyme_sans_employe'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'enquete'],
+                name='rh_repenq_comp_enq_idx'),
+        ]
+
+    def __str__(self):
+        return f"Réponse — enquête {self.enquete_id}"
+
+
+class ParticipationEnquete(TenantModel):
+    """NTHCM14 — jeton de participation à une enquête (anti double-réponse).
+
+    Une ligne par (``enquete``, ``user``) — l'unicité EST le mécanisme, dans
+    les DEUX modes (anonyme ET nominatif). Ce modèle n'a AUCUN lien vers
+    ``ReponseEnquete`` : on sait QUI a répondu, jamais CE QU'IL A RÉPONDU.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    enquete = models.ForeignKey(
+        EnqueteEngagement,
+        on_delete=models.CASCADE,  # on_delete: composition — le jeton n'existe QUE pour son enquête
+        related_name='participations',
+        verbose_name='Enquête',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: le jeton ne sert qu'à empêcher ce compte de répondre deux fois ; il n'a plus d'objet sans lui
+        related_name='participations_enquete',
+        verbose_name='Utilisateur',
+    )
+    token_hash = models.CharField(
+        max_length=64, verbose_name='Jeton (empreinte)')
+
+    class Meta:
+        verbose_name = 'Participation enquête'
+        verbose_name_plural = 'Participations enquête'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['enquete', 'user'],
+                name='rh_partenq_enquete_user_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Participation — enquête {self.enquete_id}'
+
+
+# ── NTHCM15 — plans d'action issus d'une enquête d'engagement ───────────────
+
+class PlanActionEngagement(TenantModel):
+    """NTHCM15 — action de suivi ASSIGNÉE, née d'un score faible.
+
+    Transforme un résultat d'enquête (``categorie_ciblee``) en engagement
+    concret : une action, un responsable, une échéance et un statut. C'est
+    ce qui empêche l'enquête de rester un tableau de bord sans suite.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    class Statut(models.TextChoices):
+        PROPOSE = 'propose', 'Proposé'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    enquete = models.ForeignKey(
+        EnqueteEngagement,
+        on_delete=models.CASCADE,  # on_delete: composition — le plan d'action est le prolongement direct de son enquête
+        related_name='plans_action',
+        verbose_name='Enquête',
+    )
+    categorie_ciblee = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Catégorie ciblée')
+    action = models.TextField(verbose_name='Action')
+    responsable = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — un SET_NULL sur un champ d'identité (responsable) dé-scoperait silencieusement la ligne (garde `check_on_delete`). Un dossier n'est supprimable que s'il ne porte AUCUNE pièce légale (AUD721), c'est-à-dire une saisie erronée : son assignation part avec lui. Nullable = plan pas encore assigné.
+        null=True, blank=True,
+        related_name='plans_action_engagement',
+        verbose_name='Responsable',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PROPOSE, verbose_name='Statut')
+
+    class Meta:
+        verbose_name = "Plan d'action engagement"
+        verbose_name_plural = "Plans d'action engagement"
+        ordering = ['echeance', 'created_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'enquete'],
+                name='rh_planacteng_comp_enq_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.categorie_ciblee or "Action"} — {self.get_statut_display()}'

@@ -30,3 +30,9 @@ class SavConfig(AppConfig):
         # d'équipement vers un ticket correctif pré-catégorisé.
         from .services import register_email_alias_handler
         register_email_alias_handler()
+        # NTSRV1 — abonne le handler de THREADING e-mail au MÊME registre
+        # (core.email_intake, FG373) — jamais un 2ᵉ poller IMAP. Enregistré
+        # APRÈS l'alias ZMFG7 : le routage par alias garde la priorité, et ce
+        # handler-ci rattache le message au ticket du fil (ou en ouvre un).
+        from .services import register_email_ticket_handler
+        register_email_ticket_handler()

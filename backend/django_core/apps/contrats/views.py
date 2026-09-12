@@ -25,6 +25,7 @@ Action ``/instancier/`` crée un ``Contrat`` pré-rempli depuis le gabarit.
 from django.http import HttpResponse
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -63,6 +64,7 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametresAbonnement,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -77,6 +79,7 @@ from .models import (
 from .serializers import (
     AbonnementAddOnLigneSerializer,
     AddOnAbonnementSerializer,
+    AjouterClausesManquantesSerializer,
     AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
     AvenantSerializer,
@@ -89,14 +92,19 @@ from .serializers import (
     EcourterOrdreLocationSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
+    CommentaireRedlineSerializer,
     ContratActivitySerializer,
     ContratLienSerializer,
     CampagneRevisionSerializer,
     ContratSerializer,
     CreerAvenantSerializer,
+    CreerCommentaireRedlineSerializer,
+    CreerLienDepotContrepartieSerializer,
     CycleFacturationLogSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
+    DeposerContrepartieSerializer,
+    DocumentContrepartieSerializer,
     EcheancierContratSerializer,
     EngagementSLASerializer,
     EtapeApprobationSerializer,
@@ -105,8 +113,10 @@ from .serializers import (
     IndexationPrixSerializer,
     LigneEcheanceSerializer,
     MarquerPieceFournieSerializer,
+    ModifierCommentaireRedlineSerializer,
     InstancierContratSerializer,
     JalonContratSerializer,
+    LienDepotContrepartieSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
     MotifResiliationSerializer,
@@ -114,6 +124,7 @@ from .serializers import (
     ObligationSerializer,
     OrdreLocationSerializer,
     PalierUsageSerializer,
+    ParametresAbonnementSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
@@ -501,7 +512,12 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
 
         Filtres ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : mois courant).
         Lecture seule, scopée société. Div-by-zéro gardée (Quick Ratio /
-        croissance ARR renvoient ``null`` si indéfinis)."""
+        croissance ARR renvoient ``null`` si indéfinis).
+
+        NTSUB27 — sur la plage « mois calendaire » (le défaut du tableau de
+        bord), la réponse est servie depuis le CACHE nocturne s'il a moins de
+        24 h (``depuis_cache: true``). Un cache absent ou périmé ne bloque
+        JAMAIS : on recalcule à la volée, exactement comme avant."""
         from datetime import date as _date
 
         from django.utils import timezone as _tz
@@ -523,24 +539,9 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 status=status.HTTP_400_BAD_REQUEST)
 
         company = request.user.company
-        bridge = selectors.arr_bridge(company, debut, fin)
-        qr = selectors.quick_ratio(company, debut, fin)
-        ro40 = selectors.rule_of_40(company, debut, fin)
-        return Response({
-            'arr_bridge': {k: _money(v) for k, v in bridge.items()},
-            'quick_ratio': str(qr) if qr is not None else None,
-            'rule_of_40': {
-                'croissance_arr_pct': (
-                    str(ro40['croissance_arr_pct'])
-                    if ro40['croissance_arr_pct'] is not None else None),
-                'marge_pct': (
-                    str(ro40['marge_pct'])
-                    if ro40['marge_pct'] is not None else None),
-                'rule_of_40': (
-                    str(ro40['rule_of_40'])
-                    if ro40['rule_of_40'] is not None else None),
-            },
-        })
+        payload, depuis_cache = selectors.metriques_saas_avec_cache(
+            company, debut, fin)
+        return Response({**payload, 'depuis_cache': depuis_cache})
 
     @action(detail=False, methods=['get'], url_path='cohortes-retention')
     def cohortes_retention(self, request):
@@ -775,6 +776,89 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
 
+    @action(detail=True, methods=['post'], url_path='rattacher-plan')
+    def rattacher_plan(self, request, pk=None):
+        """NTSUB23 — Rattache rétroactivement le contrat à un plan catalogue.
+
+        Corps : ``{"plan": <id>, "appliquer_prix": false}``. Par DÉFAUT
+        (``appliquer_prix`` absent ou faux) seule la FK est posée, à titre de
+        CLASSIFICATION : aucun montant existant n'est modifié, aucun avenant
+        n'est créé. Cocher ``appliquer_prix`` applique le prix du plan en
+        créant un ``Avenant`` (XCTR6, prorata). La société est garantie par
+        ``get_object`` et le plan est validé comme appartenant à cette société.
+        """
+        contrat = self.get_object()
+        plan_id = request.data.get('plan')
+        if not plan_id:
+            return Response(
+                {'plan': "Plan d'abonnement : champ obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        plan = PlanAbonnement.objects.filter(
+            company=request.user.company, pk=plan_id).first()
+        if plan is None:
+            return Response(
+                {'plan': "Plan d'abonnement introuvable pour cette société."},
+                status=status.HTTP_404_NOT_FOUND)
+        appliquer = request.data.get('appliquer_prix') in (
+            True, 'true', 'True', '1', 1, 'oui')
+        try:
+            resultat = services.rattacher_plan_retroactif(
+                contrat, plan, appliquer, auteur=request.user)
+        except (services.ChangementPlanError, services.AvenantError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'contrat': resultat['contrat'].id,
+            'plan': plan.id,
+            'plan_code': plan.code,
+            'ancien_montant': resultat['ancien_montant'],
+            'nouveau_montant': resultat['nouveau_montant'],
+            'delta': resultat['delta'],
+            'prix_applique': resultat['prix_applique'],
+            'avenant': getattr(resultat['avenant'], 'id', None),
+            'prorata': resultat['prorata'],
+        })
+
+    @action(detail=True, methods=['get'], url_path='releve-pdf')
+    def releve_pdf(self, request, pk=None):
+        """NTSUB20 — Relevé d'abonnement imprimable (état RÉCAPITULATIF).
+
+        Query ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (les deux optionnels).
+        Liste les échéances de la période, les add-ons facturés (NTSUB2), les
+        compteurs d'usage relevés (NTSUB4) et les paiements reçus (lus via
+        ``apps.ventes.selectors``). C'est un état des lieux pour un client
+        B2B : NI un devis NI une facture, aucun statut modifié, aucune écriture
+        — le moteur de devis premium ``/proposal`` (rule #4) n'est donc pas
+        concerné et cette route ne s'y substitue jamais. Rendu WeasyPrint
+        générique ; 503 explicite si WeasyPrint est indisponible.
+
+        La société est garantie par ``get_object`` (queryset scopé société).
+        """
+        from .pdf_location import generate_releve_abonnement_pdf
+
+        contrat = self.get_object()
+        params = request.query_params
+        try:
+            releve = selectors.releve_abonnement(
+                contrat, params.get('debut') or None,
+                params.get('fin') or None)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': "Période invalide : « debut » et « fin » doivent "
+                           'être au format AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            pdf_bytes = generate_releve_abonnement_pdf(contrat, releve)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        filename = (
+            f"releve-{contrat.reference or contrat.id}.pdf".replace('/', '-'))
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response
+
     @action(detail=True, methods=['post'], url_path='changer-statut')
     def changer_statut(self, request, pk=None):
         """Applique une transition de statut GARDÉE (CONTRAT12).
@@ -825,6 +909,29 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
         # à ANNULEE). Sans ce refus, la porte générique la rendrait accessible
         # à un simple POST — et le contrat redeviendrait actif en laissant sa
         # résiliation vivante.
+        # NTDOC4 — les DEUX bornes du round de négociation ont leur porte
+        # dédiée : l'ouverture exige un dépôt de contrepartie non traité, la
+        # clôture exige que TOUS les commentaires de redline soient résolus.
+        # La porte générique les refuse, sinon un simple POST contournerait ces
+        # gardes métier (même patron qu'AUD501 ci-dessus).
+        if cible == _Statut.EN_NEGOCIATION and cible != ancien:
+            return Response(
+                {'detail': (
+                    'Le statut « en_negociation » ne se pose pas par cette '
+                    'action : une version de la contrepartie doit être '
+                    'déposée et en attente de traitement. Utilisez l\'action '
+                    '« demarrer-negociation ».'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+        if (ancien == _Statut.EN_NEGOCIATION
+                and cible == _Statut.EN_APPROBATION):
+            return Response(
+                {'detail': (
+                    'Une négociation ne se clôture pas par cette action : '
+                    'tous les commentaires de redline doivent être résolus. '
+                    'Utilisez l\'action « cloturer-negociation ».'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         if cible == _Statut.ACTIF and ancien == _Statut.RESILIE:
             return Response(
                 {'detail': (
@@ -1091,6 +1198,405 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 version, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    # ── NTDOC1 — dépôts « contrepartie » (négociation par redlines) ─────────
+
+    @action(detail=True, methods=['get', 'post'], url_path='contreparties',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def contreparties(self, request, pk=None):
+        """Versions renvoyées par la CONTREPARTIE d'un contrat (NTDOC1).
+
+        - ``GET`` : liste les dépôts non archivés (``?archives=1`` les inclut),
+          le plus récent en tête.
+        - ``POST`` (multipart) : dépose un fichier .pdf/.docx/.doc/.odt/.rtf.
+          La société, l'horodatage et l'utilisateur déposant sont posés CÔTÉ
+          SERVEUR ; la clé de stockage est préfixée société. Le dépôt n'écrase
+          JAMAIS le contenu figé d'une ``VersionContrat`` (CONTRAT18).
+        """
+        contrat = self.get_object()
+        if request.method == 'GET':
+            inclure = request.query_params.get('archives') in ('1', 'true')
+            docs = selectors.documents_contrepartie(
+                contrat, inclure_archives=inclure)
+            return Response(
+                DocumentContrepartieSerializer(
+                    docs, many=True, context={'request': request}).data)
+
+        body = DeposerContrepartieSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        fichier = data.get('fichier')
+        contenu = fichier.read() if fichier is not None else None
+        nom_fichier = (data.get('nom_fichier') or '').strip()
+        if fichier is not None and not nom_fichier:
+            nom_fichier = getattr(fichier, 'name', '') or ''
+        try:
+            document = services.deposer_document_contrepartie(
+                contrat,
+                nom_fichier=nom_fichier,
+                contenu=contenu,
+                fichier_key=(data.get('fichier_key') or '').strip(),
+                depose_par_nom=(
+                    data.get('depose_par_nom')
+                    or getattr(request.user, 'username', '') or ''),
+                depose_par_email=data.get('depose_par_email', ''),
+                depose_par=request.user,
+                commentaire=data.get('commentaire', ''),
+                auteur=request.user,
+            )
+        except services.DepotContrepartieError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DocumentContrepartieSerializer(
+                document, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'],
+            url_path=r'contreparties/(?P<cid>[^/.]+)/archiver')
+    def archiver_contrepartie(self, request, pk=None, cid=None):
+        """Archive (soft) un dépôt contrepartie — NTDOC1.
+
+        JAMAIS de suppression physique : le dépôt sort des listes de travail
+        mais reste en base (pièce juridique). 404 si le dépôt n'appartient pas
+        à ce contrat (donc à cette société).
+        """
+        contrat = self.get_object()
+        document = contrat.documents_contrepartie.filter(id=cid).first()
+        if document is None:
+            return Response(
+                {'detail': 'Dépôt contrepartie introuvable pour ce contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        services.archiver_document_contrepartie(
+            document, auteur=request.user)
+        return Response(
+            DocumentContrepartieSerializer(
+                document, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'],
+            url_path=r'contreparties/(?P<cid>[^/.]+)/comparer')
+    def comparer_contrepartie(self, request, pk=None, cid=None):
+        """Diff dernier rendu interne ↔ version contrepartie (NTDOC2).
+
+        Lecture seule. Un format binaire non comparable renvoie 200 avec
+        ``comparable=false`` et un message FRANÇAIS explicite — jamais une
+        erreur serveur. 404 si le dépôt n'appartient pas à ce contrat.
+        """
+        contrat = self.get_object()
+        document = contrat.documents_contrepartie.filter(id=cid).first()
+        if document is None:
+            return Response(
+                {'detail': 'Dépôt contrepartie introuvable pour ce contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(services.comparer_contrepartie(contrat, document))
+
+    @action(detail=True, methods=['post'], url_path='creer-lien-depot')
+    def creer_lien_depot(self, request, pk=None):
+        """Crée un lien tokenisé de dépôt pour la contrepartie externe (NTDOC1).
+
+        Patron ``PartageGed``/XGED7 : le jeton renvoyé est l'UNIQUE secret
+        d'accès au formulaire public de dépôt. Société et contrat sont posés
+        côté serveur.
+        """
+        contrat = self.get_object()
+        body = CreerLienDepotContrepartieSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        lien = services.creer_lien_depot_contrepartie(
+            contrat,
+            destinataire_nom=body.validated_data.get('destinataire_nom', ''),
+            destinataire_email=body.validated_data.get(
+                'destinataire_email', ''),
+            expires_at=body.validated_data.get('expires_at'),
+            created_by=request.user,
+        )
+        return Response(
+            LienDepotContrepartieSerializer(
+                lien, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ── NTDOC4 — cycle de négociation (ouverture / clôture) ────────────────
+
+    @action(detail=True, methods=['post'], url_path='demarrer-negociation')
+    def demarrer_negociation(self, request, pk=None):
+        """Ouvre le round de négociation du contrat (NTDOC4).
+
+        Ouverte tant qu'il existe un dépôt de contrepartie (NTDOC1) non
+        archivé et pas encore ``traite``. La transition passe par la MACHINE
+        D'ÉTATS (CONTRAT12) — jamais une écriture directe du statut — et est
+        journalisée au chatter (CONTRAT15).
+        """
+        contrat = self.get_object()
+        try:
+            services.demarrer_negociation(contrat, user=request.user)
+        except services.NegociationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ContratSerializer(contrat, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer-negociation')
+    def cloturer_negociation(self, request, pk=None):
+        """Clôture la négociation et pousse le contrat en approbation (NTDOC4).
+
+        EXIGE que TOUS les ``CommentaireRedline`` du contrat soient résolus —
+        sinon 400 avec le nombre de points ouverts. La transition passe par la
+        MACHINE D'ÉTATS (qui porte aussi la garde « au moins deux parties »).
+        """
+        contrat = self.get_object()
+        try:
+            services.cloturer_negociation(contrat, user=request.user)
+        except services.NegociationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ContratSerializer(contrat, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'],
+            url_path='wizard-negociation/etapes')
+    def wizard_negociation_etapes(self, request, pk=None):
+        """Wizard guidé « Ouvrir une négociation » — 3 étapes fixes (NTDOC26).
+
+        Pure AGRÉGATION en lecture des objets NTDOC1-4 existants : aucun
+        nouveau modèle, aucun statut caché en base. Les 3 étapes sont toujours
+        renvoyées, leur statut est RECALCULÉ à chaque requête.
+        """
+        contrat = self.get_object()
+        etapes = selectors.etapes_wizard_negociation(contrat)
+        return Response({
+            'contrat': contrat.id,
+            'statut': contrat.statut,
+            'etapes': etapes,
+        })
+
+    @action(detail=True, methods=['get'], url_path='clauses-manquantes')
+    def clauses_manquantes(self, request, pk=None):
+        """Clauses OBLIGATOIRES du type de contrat encore absentes (NTDOC5).
+
+        Lecture seule : compare la bibliothèque (``Clause.
+        obligatoire_pour_types``) aux ``ClauseContrat`` réellement présentes.
+        Un contrat complet renvoie une liste vide. Ne crée et ne renomme
+        AUCUNE clause.
+        """
+        contrat = self.get_object()
+        manquantes = selectors.clauses_obligatoires_manquantes(contrat)
+        return Response({
+            'type_contrat': contrat.type_contrat,
+            'count': len(manquantes),
+            'results': ClauseSerializer(
+                manquantes, many=True, context={'request': request}).data,
+        })
+
+    @action(detail=True, methods=['get', 'post'],
+            url_path='wizard-clauses-manquantes')
+    def wizard_clauses_manquantes(self, request, pk=None):
+        """Wizard « Résoudre les clauses manquantes » (NTDOC44).
+
+        - ``GET`` : pour chaque clause obligatoire manquante (NTDOC5),
+          propose le texte gabarit de la bibliothèque (``Clause.titre`` /
+          ``Clause.corps``) et l'ordre d'insertion suggéré.
+        - ``POST`` : les ajoute EN MASSE au contrat en un seul appel
+          (``clauses`` restreint à une sélection ; omis = toutes). La création
+          passe par ``ClauseContratSerializer`` — la MÊME logique que
+          l'endpoint ``clauses-contrat/``, aucune duplication.
+        """
+        contrat = self.get_object()
+        manquantes = selectors.clauses_obligatoires_manquantes(contrat)
+        ordre_depart = (
+            max((c.ordre for c in contrat.clauses_resolues.all()), default=0)
+            + 1)
+
+        if request.method == 'GET':
+            return Response({
+                'type_contrat': contrat.type_contrat,
+                'count': len(manquantes),
+                'results': [
+                    {
+                        'clause': clause.id,
+                        'titre': clause.titre,
+                        'corps': clause.corps,
+                        'categorie': clause.categorie,
+                        'type_clause': clause.type_clause,
+                        'ordre_propose': ordre_depart + rang,
+                    }
+                    for rang, clause in enumerate(manquantes)
+                ],
+            })
+
+        body = AjouterClausesManquantesSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        selection = body.validated_data.get('clauses')
+        if selection:
+            voulues = set(selection)
+            a_ajouter = [c for c in manquantes if c.id in voulues]
+            inconnues = voulues - {c.id for c in a_ajouter}
+            if inconnues:
+                return Response(
+                    {'detail': (
+                        'Le champ « clauses » désigne des clauses qui ne sont '
+                        'pas manquantes sur ce contrat : '
+                        f'{", ".join(str(i) for i in sorted(inconnues))}.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            a_ajouter = manquantes
+
+        creees = []
+        for rang, clause in enumerate(a_ajouter):
+            ligne = ClauseContratSerializer(
+                data={
+                    'contrat': contrat.id,
+                    'clause': clause.id,
+                    'ordre': ordre_depart + rang,
+                },
+                context={'request': request})
+            ligne.is_valid(raise_exception=True)
+            creees.append(ligne.save(company=contrat.company))
+
+        restantes = selectors.clauses_obligatoires_manquantes(contrat)
+        return Response(
+            {
+                'ajoutees': len(creees),
+                'results': ClauseContratSerializer(
+                    creees, many=True, context={'request': request}).data,
+                'restantes': len(restantes),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ── NTDOC3 — commentaires de redline (CRUD + résolution) ───────────────
+
+    @action(detail=True, methods=['get', 'post'],
+            url_path='commentaires-redline')
+    def commentaires_redline(self, request, pk=None):
+        """Commentaires ancrés sur le diff de négociation (NTDOC3).
+
+        - ``GET`` : liste (``?resolu=0|1`` filtre), non résolus en tête.
+        - ``POST`` : pose un commentaire. L'auteur et la société sont posés
+          CÔTÉ SERVEUR ; le commentaire naît NON RÉSOLU (il bloque alors la
+          clôture de la négociation — NTDOC4).
+        """
+        contrat = self.get_object()
+        if request.method == 'GET':
+            brut = request.query_params.get('resolu')
+            resolu = None
+            if brut in ('0', 'false'):
+                resolu = False
+            elif brut in ('1', 'true'):
+                resolu = True
+            items = selectors.commentaires_redline(contrat, resolu=resolu)
+            return Response(
+                CommentaireRedlineSerializer(
+                    items, many=True, context={'request': request}).data)
+
+        body = CreerCommentaireRedlineSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        depot = None
+        if data.get('document_contrepartie'):
+            depot = contrat.documents_contrepartie.filter(
+                id=data['document_contrepartie']).first()
+            if depot is None:
+                return Response(
+                    {'detail': 'Le champ « document_contrepartie » désigne '
+                               'un dépôt introuvable pour ce contrat.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        clause = None
+        if data.get('clause'):
+            clause = Clause.objects.filter(
+                id=data['clause'], company=contrat.company).first()
+            if clause is None:
+                return Response(
+                    {'detail': 'Le champ « clause » désigne une clause '
+                               'introuvable pour votre société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            commentaire = services.creer_commentaire_redline(
+                contrat,
+                contenu=data['contenu'],
+                document_contrepartie=depot,
+                clause=clause,
+                ligne_reference=data.get('ligne_reference'),
+                extrait_ligne=data.get('extrait_ligne', ''),
+                auteur=request.user,
+            )
+        except services.CommentaireRedlineError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['patch', 'delete'],
+            url_path=r'commentaires-redline/(?P<cid>[^/.]+)')
+    def commentaire_redline_detail(self, request, pk=None, cid=None):
+        """Édite (PATCH) ou supprime (DELETE) un commentaire de redline (NTDOC3).
+
+        404 si le commentaire n'appartient pas à ce contrat (donc à cette
+        société).
+        """
+        contrat = self.get_object()
+        commentaire = contrat.commentaires_redline.filter(id=cid).first()
+        if commentaire is None:
+            return Response(
+                {'detail': 'Commentaire de redline introuvable pour ce '
+                           'contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        if request.method == 'DELETE':
+            commentaire.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        body = ModifierCommentaireRedlineSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        commentaire.contenu = body.validated_data['contenu']
+        champs = ['contenu']
+        if 'extrait_ligne' in body.validated_data:
+            commentaire.extrait_ligne = (
+                body.validated_data['extrait_ligne'] or '')[:500]
+            champs.append('extrait_ligne')
+        commentaire.save(update_fields=champs)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'commentaires-redline/(?P<cid>[^/.]+)/resoudre')
+    def resoudre_commentaire_redline(self, request, pk=None, cid=None):
+        """Marque un commentaire de redline RÉSOLU (NTDOC3).
+
+        Trace QUI et QUAND côté serveur. Idempotent : la première résolution
+        fait foi.
+        """
+        contrat = self.get_object()
+        commentaire = contrat.commentaires_redline.filter(id=cid).first()
+        if commentaire is None:
+            return Response(
+                {'detail': 'Commentaire de redline introuvable pour ce '
+                           'contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        services.resoudre_commentaire_redline(commentaire, user=request.user)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'commentaires-redline/(?P<cid>[^/.]+)/rouvrir')
+    def rouvrir_commentaire_redline(self, request, pk=None, cid=None):
+        """Rouvre un commentaire résolu (NTDOC3) — la négociation rebloque."""
+        contrat = self.get_object()
+        commentaire = contrat.commentaires_redline.filter(id=cid).first()
+        if commentaire is None:
+            return Response(
+                {'detail': 'Commentaire de redline introuvable pour ce '
+                           'contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        services.rouvrir_commentaire_redline(commentaire, user=request.user)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='avenants')
     def avenants(self, request, pk=None):
@@ -2855,6 +3361,34 @@ class ParametresLocationViewSet(_ContratsBaseViewSet):
                 ParametresLocationSerializer(parametres).data)
         serializer = ParametresLocationSerializer(
             parametres, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ParametresAbonnementViewSet(_ContratsBaseViewSet):
+    """Réglages « Facturation récurrente », SINGLETON par société — NTSUB24.
+
+    ``GET/PATCH /parametres-abonnement/courant/`` lit/modifie la ligne unique
+    de la société, CRÉÉE PARESSEUSEMENT au premier accès avec les valeurs par
+    défaut — qui sont exactement les constantes historiques (J-3 fin d'essai,
+    30 jours carte, 80 % d'usage). Une société qui n'ouvre jamais cet écran
+    garde donc le comportement actuel à l'identique.
+
+    ``company`` est posée CÔTÉ SERVEUR, jamais lue du corps de requête.
+    """
+    queryset = ParametresAbonnement.objects.all()
+    serializer_class = ParametresAbonnementSerializer
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres = services.get_parametres_abonnement(request.user.company)
+        if request.method == 'GET':
+            return Response(ParametresAbonnementSerializer(
+                parametres, context={'request': request}).data)
+        serializer = ParametresAbonnementSerializer(
+            parametres, data=request.data, partial=True,
+            context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

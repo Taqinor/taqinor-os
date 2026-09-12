@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AnnuairePartenairesCertifiesView, DeploiementPartenaireViewSet,
-    LotMigrationViewSet, ParcoursCertificationPartenaireViewSet,
+    GabaritKitView, LotMigrationViewSet, ParcoursCertificationPartenaireViewSet,
     PlaybookInstanceViewSet, ProjetMigrationViewSet, ScoreCertificationView)
 
 router = DefaultRouter()
@@ -25,6 +25,9 @@ router.register(
     basename='migration-parcours-certification-partenaire')
 
 urlpatterns = [
+    # NTMIG20 — gabarit (CSV vide + exemple) attendu par un kit source×entité.
+    path('kits/<str:source>/<str:entite>/gabarit/',
+         GabaritKitView.as_view(), name='migration-kit-gabarit'),
     # NTMIG27 — score PROPOSÉ de certification d'un partenaire (lecture seule ;
     # l'attribution du niveau reste un PATCH admin sur la fiche partenaire).
     path('certification/<int:partenaire_id>/score/',

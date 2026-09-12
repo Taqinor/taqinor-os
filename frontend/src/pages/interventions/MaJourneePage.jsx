@@ -47,6 +47,8 @@ import MeteoTerrainCard from '../../features/installations/MeteoTerrainCard'
 import { readCache } from '../../features/offlinesync/readCache'
 import DonneesHorsLigneBanner from '../../features/offlinesync/DonneesHorsLigneBanner'
 import OnboardingTerrain from '../../features/offlinesync/OnboardingTerrain'
+// NTFSM20 — onglet « Mon stock camionnette ».
+import MonStockCamionnetteTab from '../../features/stock/MonStockCamionnetteTab'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -376,6 +378,15 @@ export default function MaJourneePage() {
           complète (pas de doublon, ni de second appel à `ma-tournee`). */}
       <AFaireAujourdhui exclure={['intervention']} />
 
+      {/* NTFSM20 — onglet « Mon stock camionnette » à côté des interventions
+          du jour. Onglet indépendant de la fiche intervention (Sheet), qui
+          reste rendue plus bas hors de ces onglets. */}
+      <Tabs defaultValue="interventions" className="flex flex-col gap-3">
+        <TabsList>
+          <TabsTrigger value="interventions">Interventions</TabsTrigger>
+          <TabsTrigger value="stock">Mon stock camionnette</TabsTrigger>
+        </TabsList>
+        <TabsContent value="interventions" className="flex flex-col gap-3">
       {loading ? (
         showSpinner && (
           <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
@@ -475,6 +486,11 @@ export default function MaJourneePage() {
         </ol>
         </>
       )}
+        </TabsContent>
+        <TabsContent value="stock">
+          <MonStockCamionnetteTab />
+        </TabsContent>
+      </Tabs>
 
       {/* ERR103 — dériver la fiche de l'état VIVANT (rows), pas du snapshot
           capturé au tap : les changements de statut/photos faits dans la fiche

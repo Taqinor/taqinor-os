@@ -14,6 +14,10 @@ const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsA
 // WIR59). `PremiersPasWidget` est la source de vérité serveur (company+user
 // scopée, les 6 items du catalogue réel).
 const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
+// NTTRE17 — carte compacte « Cash aujourd'hui » (solde consolidé, delta vs
+// hier, 3 prochaines échéances). Autonome : UNE requête vers
+// `etats/position-tresorerie/` (FG122), rend `null` sans droits ni données.
+const CashAujourdhuiCard = lazy(() => import('../features/compta/CashAujourdhuiCard'))
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
@@ -900,6 +904,15 @@ export function Component() {
       <div className="mb-4 sm:mb-5">
         <Suspense fallback={null}>
           <ApprobationsAttentionCard />
+        </Suspense>
+      </div>
+
+      {/* NTTRE17 — « Cash aujourd'hui » : carte compacte, autonome, qui se
+          masque d'elle-même sans données ni droits (états de trésorerie
+          réservés Admin/Responsable). */}
+      <div className="mb-4 sm:mb-5">
+        <Suspense fallback={null}>
+          <CashAujourdhuiCard />
         </Suspense>
       </div>
 

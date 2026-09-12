@@ -4613,7 +4613,38 @@ def _factures_reservees_par_un_run_ouvert(company):
         .values_list('facture_fournisseur_id', flat=True))
 
 
-def proposer_lignes_payment_run(run, *, date_limite=None):
+def dettes_eligibles_campagne(company, *, date_limite=None,
+                              fournisseur_id=None, montant_max=None):
+    """NTTRE25 — Échéances fournisseur ÉLIGIBLES à une campagne de règlement.
+
+    UNE SEULE définition de « éligible », partagée par l'aperçu de l'assistant
+    (lecture seule) et par ``proposer_lignes_payment_run`` (écriture) : les
+    factures fournisseur ouvertes (``stock.selectors`` — jamais un import de
+    ses modèles) qui ne sont pas déjà réservées par une campagne ENCORE
+    OUVERTE, filtrées par ``date_limite`` (échéance max), ``fournisseur_id`` et
+    ``montant_max`` (plafond par échéance). Lecture seule : n'écrit rien.
+    """
+    from apps.stock import selectors as stock_selectors
+
+    deja_references = _factures_reservees_par_un_run_ouvert(company)
+    candidates = stock_selectors.factures_fournisseur_ouvertes(
+        company, date_limite=date_limite)
+    plafond = Decimal(str(montant_max)) if montant_max not in (None, '') else None
+    eligibles = []
+    for candidate in candidates:
+        if candidate['facture_id'] in deja_references:
+            continue
+        if (fournisseur_id is not None
+                and str(candidate['fournisseur_id']) != str(fournisseur_id)):
+            continue
+        if plafond is not None and Decimal(candidate['montant'] or 0) > plafond:
+            continue
+        eligibles.append(candidate)
+    return eligibles
+
+
+def proposer_lignes_payment_run(run, *, date_limite=None, fournisseur_id=None,
+                                montant_max=None):
     """YLEDG8 — Remplit une campagne BROUILLON depuis les échéances
     fournisseur dues (``stock.selectors.factures_fournisseur_ouvertes`` —
     jamais un import de ses modèles), triées par date d'échéance. N'ajoute
@@ -4621,19 +4652,20 @@ def proposer_lignes_payment_run(run, *, date_limite=None):
     ENCORE OUVERTE — la sienne (idempotence) comme celle d'un collègue
     (AUD172 : la déduplication ne regardait que la campagne courante, si bien
     que deux campagnes brouillon proposaient la MÊME facture et la réglaient
-    deux fois). Renvoie la liste des lignes ajoutées."""
-    from apps.stock import selectors as stock_selectors
+    deux fois). Renvoie la liste des lignes ajoutées.
 
+    NTTRE25 — ``fournisseur_id`` et ``montant_max`` sont des filtres OPTIONNELS
+    (assistant guidé) ; sans eux le comportement est strictement inchangé. La
+    sélection elle-même vit dans ``dettes_eligibles_campagne``, partagée avec
+    l'aperçu — jamais deux copies de la même règle."""
     if run.statut != PaymentRun.Statut.BROUILLON:
         raise ValidationError(
             "Une campagne figée ou postée ne peut plus être modifiée.")
-    deja_references = _factures_reservees_par_un_run_ouvert(run.company)
-    candidates = stock_selectors.factures_fournisseur_ouvertes(
-        run.company, date_limite=date_limite)
+    candidates = dettes_eligibles_campagne(
+        run.company, date_limite=date_limite, fournisseur_id=fournisseur_id,
+        montant_max=montant_max)
     ajoutees = []
     for candidate in candidates:
-        if candidate['facture_id'] in deja_references:
-            continue
         ligne = PaymentRunLine.objects.create(
             company=run.company, payment_run=run,
             tiers_type='fournisseur', tiers_id=candidate['fournisseur_id'],
@@ -14957,3 +14989,267 @@ def export_simpl_is(company, exercice, *, is_reference=None,
         '  </Acomptes>\n'
         '</DeclarationIS>\n'
     )
+
+
+# ── NTPRJ3 — Régularisation WIP/PCA auto-alimentée depuis les projets ──────
+
+def _dernier_jour_du_mois(annee, mois):
+    """Dernier jour calendaire du mois (sans dépendance externe)."""
+    import calendar
+    from datetime import date as _date
+
+    return _date(annee, mois, calendar.monthrange(annee, mois)[1])
+
+
+def _periode_projet(periode):
+    """Normalise ``'AAAA-MM'`` en ``(date_arrete, libelle)``. ValueError sinon."""
+    texte = str(periode or '').strip()
+    try:
+        annee_txt, mois_txt = texte.split('-')
+        annee, mois = int(annee_txt), int(mois_txt)
+        if not 1 <= mois <= 12:
+            raise ValueError
+    except (AttributeError, TypeError, ValueError):
+        raise ValueError(
+            "Période invalide : format attendu AAAA-MM (ex. 2026-03).")
+    return _dernier_jour_du_mois(annee, mois), f'{annee:04d}-{mois:02d}'
+
+
+def generer_regularisation_wip_projet(projet, periode, *, poster=True,
+                                      user=None):
+    """NTPRJ3 — Régularisation de cut-off DÉDUITE de l'avancement d'un projet.
+
+    Croise deux lectures cross-app de ``apps.gestion_projet.selectors``
+    (jamais un import de ses ``models``) :
+
+      * ``pnl_projet`` — pour le CA RÉELLEMENT émis (devis/factures rattachés
+        au projet) ;
+      * ``avancement_vs_facture`` — qui publie ``montant_avancement`` (revenu
+        constaté à l'avancement) et, à défaut de facture réelle,
+        ``montant_facture`` (projection « % jalons atteints × budget »).
+
+    L'écart ``revenu à l'avancement − facturé cumulé`` donne la nature :
+
+      * écart > 0 — on a PRODUIT plus qu'on n'a facturé → ``WIP`` (travaux en
+        cours portés à l'actif) ;
+      * écart < 0 — on a FACTURÉ en avance de la production → ``PCA``
+        (produits constatés d'avance) ;
+      * écart nul — rien à régulariser, aucune ligne créée.
+
+    La ligne est un ``TravauxEnCours`` (le modèle FG147, « Régularisation
+    (PCA / WIP) ») arrêté au DERNIER JOUR de ``periode`` ; le verrou de période
+    est respecté par ``constater_regularisation`` → ``creer_ecriture_od``, qui
+    REFUSE une écriture dans une période verrouillée.
+
+    IDEMPOTENT : ``chantier_ref`` porte la clé ``PROJ-<id>`` et une
+    régularisation existante pour ce projet ET cette date d'arrêté fait
+    renvoyer ``None`` — ré-exécuter la commande ne double jamais l'écriture.
+
+    Renvoie la régularisation créée, ou ``None`` (rien à régulariser / déjà
+    passée).
+    """
+    from apps.gestion_projet import selectors as projet_selectors
+
+    company = projet.company
+    date_arrete, libelle_periode = _periode_projet(periode)
+    chantier_ref = f'PROJ-{projet.pk}'
+
+    # Idempotence : une seule régularisation par projet + période.
+    if TravauxEnCours.objects.filter(
+            company=company, chantier_ref=chantier_ref,
+            date_arrete=date_arrete).exists():
+        return None
+
+    # Lectures CROSS-APP par sélecteurs (jamais les models de l'app projet).
+    pnl = projet_selectors.pnl_projet(company, projet)
+    avancement = projet_selectors.avancement_vs_facture(projet)
+
+    produit = avancement.get('montant_avancement') or Decimal('0')
+    # Le FACTURÉ de référence est le CA RÉELLEMENT émis quand le projet porte
+    # des devis/factures rattachés (``pnl_projet['revenu']``) ; à défaut on
+    # retombe sur la projection « % des jalons atteints × budget »
+    # (``avancement_vs_facture``). Un cut-off se compare à ce qui est
+    # réellement parti chez le client, pas à un pourcentage théorique.
+    facture_reel = pnl.get('revenu') or Decimal('0')
+    facture = (facture_reel if facture_reel > 0
+               else (avancement.get('montant_facture') or Decimal('0')))
+
+    ecart = produit - facture
+    if ecart == 0:
+        return None
+
+    nature = (TravauxEnCours.Nature.WIP if ecart > 0
+              else TravauxEnCours.Nature.PCA)
+    return constater_regularisation(
+        company, nature=nature, montant=abs(ecart), date_arrete=date_arrete,
+        libelle=(f'{projet.code or projet.nom} — régularisation '
+                 f'{libelle_periode} (avancement vs facturé)')[:200],
+        chantier_ref=chantier_ref, poster=poster, user=user)
+
+
+# ── NTTRE37 — Import CSV des plafonds de pouvoirs bancaires (en masse) ─────
+
+#: Un plafond à 0 signifie « aucune signature autorisée à ce titre », donc un
+#: champ NON RENSEIGNÉ au sens du garde-fou d'import : le passer de 0 à une
+#: valeur est un REMPLISSAGE, pas un écrasement (cf. ``_est_vide``).
+_PLAFONDS_VIDES = (Decimal('0'), Decimal('0.00'), 0)
+
+
+def _lire_lignes_plafonds_csv(company, file_bytes, filename):
+    """NTTRE37 — lit le CSV/XLSX des plafonds et rapproche chaque titulaire.
+
+    Colonnes attendues (en-têtes normalisés) : ``cin`` (ou ``titulaire_cin``)
+    OU ``titulaire`` (nom), et au moins un de ``plafond_signature_seul`` /
+    ``plafond_signature_conjointe``. JAMAIS de création : un titulaire absent
+    du référentiel des pouvoirs met sa ligne en ERREUR sans bloquer le lot.
+    Renvoie ``(total_lignes, resultats, erreurs)``.
+    """
+    from apps.dataimport.parsing import iter_rows, normalize_header
+
+    from .models import PouvoirBancaire
+
+    _headers, rows = iter_rows(file_bytes, filename)
+    resultats = []
+    erreurs = []
+    for idx, row in enumerate(rows, start=1):
+        norm = {normalize_header(k): v for k, v in row.items()}
+        cin = str(norm.get('cin') or norm.get('titulaire_cin') or '').strip()
+        nom = str(norm.get('titulaire')
+                  or norm.get('titulaire_nom') or '').strip()
+        if not cin and not nom:
+            erreurs.append({
+                'ligne': idx,
+                'motif': 'Titulaire : renseignez la CIN ou le nom du '
+                         'titulaire.'})
+            continue
+
+        qs = PouvoirBancaire.objects.filter(company=company)
+        pouvoir = None
+        if cin:
+            pouvoir = qs.filter(titulaire_cin__iexact=cin).first()
+        if pouvoir is None and nom:
+            pouvoir = qs.filter(titulaire_nom__iexact=nom).first()
+        if pouvoir is None:
+            erreurs.append({
+                'ligne': idx,
+                'motif': f'Titulaire introuvable dans le référentiel des '
+                         f'pouvoirs bancaires : {(cin or nom)!r} — aucun '
+                         'pouvoir n\'est créé par cet import.'})
+            continue
+
+        fields = {}
+        invalide = None
+        for colonne, champ in (
+                ('plafond_signature_seul', 'plafond_signature_seul'),
+                ('plafond_seul', 'plafond_signature_seul'),
+                ('plafond_signature_conjointe', 'plafond_signature_conjointe'),
+                ('plafond_conjoint', 'plafond_signature_conjointe')):
+            brut = str(norm.get(colonne) or '').strip()
+            if not brut or champ in fields:
+                continue
+            try:
+                montant = Decimal(brut.replace(' ', '').replace(',', '.'))
+            except (ArithmeticError, ValueError):
+                invalide = (colonne, brut)
+                break
+            if montant < 0:
+                invalide = (colonne, brut)
+                break
+            fields[champ] = quantize_mad(montant)
+        if invalide is not None:
+            erreurs.append({
+                'ligne': idx,
+                'motif': f'{invalide[0]} : montant invalide '
+                         f'({invalide[1]!r}) — attendu un nombre positif.'})
+            continue
+        if not fields:
+            erreurs.append({
+                'ligne': idx,
+                'motif': 'Plafonds : renseignez au moins '
+                         '« plafond_signature_seul » ou '
+                         '« plafond_signature_conjointe ».'})
+            continue
+
+        resultats.append({
+            'ligne': idx, 'pouvoir': pouvoir, 'fields': fields, 'row': row})
+    return len(rows), resultats, erreurs
+
+
+def importer_plafonds_pouvoirs_csv(company, file_bytes, filename, *, user=None,
+                                   apercu=False, ecraser=False):
+    """NTTRE37 — mise à jour en MASSE des plafonds de pouvoirs bancaires.
+
+    Réutilise le moteur d'import PLATEFORME ``apps.dataimport`` (parseur
+    ``parsing.iter_rows``, garde-fou ``diff_import``/``appliquer_maj_import``,
+    journal ``ImportJob``/``ImportJobRow`` via ``enregistrer_job``) — jamais un
+    diff ni un journal maison.
+
+    ADDITIF PAR CONSTRUCTION : seuls ``plafond_signature_seul`` et
+    ``plafond_signature_conjointe`` d'un pouvoir DÉJÀ EXISTANT peuvent être
+    écrits. Aucun ``PouvoirBancaire`` n'est créé, aucun autre champ (titulaire,
+    compte, statut, validité) n'est touché ; un titulaire absent du référentiel
+    est rejeté en ligne d'erreur dans le rapport, sans bloquer le lot.
+
+    ``apercu=True`` rejoue le même rapprochement et le même diff SANS rien
+    écrire. ``ecraser=False`` (défaut) = remplissage seul : un plafond déjà
+    NON NUL n'est pas remplacé, la valeur entrante repart dans ``refuses``.
+    """
+    from apps.dataimport.services import (
+        appliquer_maj_import, diff_import, enregistrer_job)
+
+    total_lignes, resultats, erreurs = _lire_lignes_plafonds_csv(
+        company, file_bytes, filename)
+
+    if apercu:
+        conflits = []
+        for r in resultats:
+            ecrasements, remplissages = diff_import(
+                r['pouvoir'], r['fields'], valeurs_vides=_PLAFONDS_VIDES)
+            if ecrasements or remplissages:
+                conflits.append({
+                    'ligne': r['ligne'],
+                    'pouvoir_id': r['pouvoir'].pk,
+                    'titulaire': r['pouvoir'].titulaire_nom,
+                    'ecrasements': ecrasements,
+                    'remplissages': [rp['champ'] for rp in remplissages],
+                })
+        return {
+            'apercu': True, 'ecraser': bool(ecraser),
+            'total_lignes': total_lignes, 'crees': 0,
+            'maj': len(resultats), 'erreurs': erreurs, 'conflits': conflits,
+        }
+
+    maj = 0
+    ecrasements = []
+    refuses = []
+    lignes_job = [{'ligne': e['ligne'], 'statut': 'erreur',
+                   'motif': e['motif']} for e in erreurs]
+    for r in resultats:
+        pouvoir = r['pouvoir']
+        maj += 1
+        _changed, modifications, row_refuses = appliquer_maj_import(
+            pouvoir, r['fields'], company, user=user, filename=filename,
+            skip_keys=('company', 'compte_tresorerie', 'titulaire_nom',
+                       'titulaire_cin', 'statut'),
+            ecraser=ecraser, valeurs_vides=_PLAFONDS_VIDES)
+        for m in modifications:
+            if m['ecrasement']:
+                ecrasements.append(dict(m, ligne=r['ligne'],
+                                        pouvoir_id=pouvoir.pk))
+        for ref in row_refuses:
+            refuses.append(dict(ref, ligne=r['ligne'], pouvoir_id=pouvoir.pk))
+        lignes_job.append({
+            'ligne': r['ligne'], 'statut': 'ok',
+            'cible': 'compta.pouvoirbancaire', 'cible_id': pouvoir.pk,
+            'modifications': modifications, 'refuses': row_refuses,
+        })
+
+    job = enregistrer_job(
+        company, 'plafonds_pouvoirs_bancaires', filename, user=user,
+        mode='maj', ecraser=ecraser, total_lignes=total_lignes, created=0,
+        updated=maj, lignes=lignes_job)
+
+    return {
+        'crees': 0, 'maj': maj, 'erreurs': erreurs, 'ecraser': bool(ecraser),
+        'ecrasements': ecrasements, 'refuses': refuses, 'job_id': job.pk,
+    }

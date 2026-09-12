@@ -20,6 +20,18 @@ from .views import (
     CauserieSecuriteViewSet,
     CockpitRhViewSet,
     CertificationViewSet,
+    CycleRevisionSalarialeViewSet,
+    EnqueteEngagementViewSet,
+    EnveloppeManagerViewSet,
+    EvaluationNeufBoxViewSet,
+    KeyResultIndividuelViewSet,
+    KeyResultViewSet,
+    ObjectifEntrepriseViewSet,
+    OkrIndividuelViewSet,
+    PlanActionEngagementViewSet,
+    PlanSuccessionViewSet,
+    PosteCleViewSet,
+    PropositionRevisionViewSet,
     CompetenceEmployeViewSet,
     CompetenceRequiseViewSet,
     CompetenceViewSet,
@@ -170,6 +182,24 @@ router.register(
 router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
 router.register(r'badges-reconnaissance', BadgeReconnaissanceViewSet)
 router.register(r'attributions-badge', AttributionBadgeViewSet)
+# NTHCM5 — cycles de révision salariale (gatés ``salaires_voir``).
+router.register(r'cycles-revision', CycleRevisionSalarialeViewSet)
+router.register(r'enveloppes-manager', EnveloppeManagerViewSet)
+router.register(r'propositions-revision', PropositionRevisionViewSet)
+# NTHCM8 — OKR d'entreprise + OKR individuels (cascade OPTIONNELLE).
+router.register(r'objectifs-entreprise', ObjectifEntrepriseViewSet)
+router.register(r'key-results', KeyResultViewSet)
+router.register(r'okr-individuels', OkrIndividuelViewSet)
+router.register(r'key-results-individuels', KeyResultIndividuelViewSet)
+# NTHCM10 — grille 9-box (performance × potentiel).
+router.register(r'evaluations-neuf-box', EvaluationNeufBoxViewSet)
+# NTHCM12 — postes-clés & plans de succession.
+router.register(r'postes-cles', PosteCleViewSet)
+router.register(r'plans-succession', PlanSuccessionViewSet)
+# NTHCM14 — enquêtes d'engagement multi-questions.
+router.register(r'enquetes-engagement', EnqueteEngagementViewSet)
+# NTHCM15 — plans d'action issus d'une enquête.
+router.register(r'plans-action-engagement', PlanActionEngagementViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

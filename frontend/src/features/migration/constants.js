@@ -24,7 +24,10 @@ export const STATUTS_LOT = {
   echoue: 'Échoué',
 }
 
-/* Entités migrables — miroir des cibles d'import du moteur dataimport. */
+/* Entités migrables — miroir des cibles d'import du moteur dataimport.
+   NTMIG3 — l'ordre de déclaration ici ne fait plus foi : le serveur retrie
+   topologiquement (clients/produits avant devis/factures) à chaque création
+   de lot, voir ``apps.migration.dependances.ordonner_lots``. */
 export const ENTITES = [
   { value: 'clients', label: 'Clients' },
   { value: 'leads', label: 'Prospects (leads)' },
@@ -32,6 +35,10 @@ export const ENTITES = [
   { value: 'fournisseurs', label: 'Fournisseurs' },
   { value: 'equipements', label: 'Équipements' },
   { value: 'vehicules', label: 'Véhicules' },
+  // NTMIG10 — en-têtes seulement (les lignes se rattachent via NTMIG11, un
+  // second fichier téléversé après le premier chargement).
+  { value: 'devis', label: 'Devis (en-têtes)' },
+  { value: 'factures', label: 'Factures (en-têtes)' },
 ]
 
 export function labelSource(value) {

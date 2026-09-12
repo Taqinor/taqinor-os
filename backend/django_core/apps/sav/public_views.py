@@ -10,6 +10,8 @@ Protections : X-Robots-Tag noindex sur chaque réponse publique ; throttle
 cache-based par IP (30 req/min) sans dépendance externe.
 """
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
@@ -19,6 +21,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from .models import Equipement, Ticket, TicketSatisfaction
+
+MAX_PIECES_JOINTES_PORTAIL = 5
 
 
 # ── Throttle ─────────────────────────────────────────────────────────────────
@@ -242,3 +246,205 @@ def equipement_public_signaler(request, token):
 
     return _noindex(Response(
         {'reference': ticket.reference}, status=status.HTTP_201_CREATED))
+
+
+# ── NTSRV2 — Formulaire portail client → ticket SAV (public, tokenisé) ───────
+
+@extend_schema(request=inline_serializer('PortailTicketRequete', {
+    'sujet': drf_serializers.CharField(),
+    'description': drf_serializers.CharField(required=False),
+    'chantier': drf_serializers.IntegerField(required=False),
+}), responses=inline_serializer('PortailCreerTicketReponse', {
+    'reference': drf_serializers.CharField(),
+    'numero_suivi': drf_serializers.CharField(required=False),
+    'suivi_token': drf_serializers.CharField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+}))
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([SavPublicThrottle])
+def portail_creer_ticket(request):
+    """NTSRV2 — Crée un ticket SAV depuis le formulaire du portail client.
+
+    Le client est résolu CÔTÉ SERVEUR par le jeton d'accès de son compte
+    portail (``portail.ComptePortailClient.token_acces``, lu via
+    ``apps.portail.selectors`` — jamais un import de ses modèles, jamais une
+    2ᵉ table cliente) : la société n'est donc JAMAIS lue du corps. Un jeton
+    inconnu, vide ou révoqué renvoie 404 sans fuite d'information (aucune
+    distinction entre « inexistant » et « révoqué »).
+
+    Renvoie un numéro de suivi : la ``reference`` du ticket + le jeton public
+    de suivi (``share_token``, FG86) pour que le client suive l'avancement
+    sans compte.
+
+    Anti-spam : honeypot ``site_web`` (201 factice, rien créé) + throttle DRF
+    (30 req/min/IP, même limite que les autres endpoints publics SAV).
+    """
+    from apps.portail.selectors import client_par_token_acces
+
+    token = (request.data.get('token') or '').strip()
+    resolu = client_par_token_acces(token)
+    if resolu is None:
+        return _not_found()
+    company_id, client_id = resolu
+    if not client_id:
+        return _not_found()
+
+    # Honeypot : réponse 201 factice, aucune trace du piège pour l'appelant.
+    if (request.data.get('site_web') or '').strip():
+        return _noindex(Response(
+            {'reference': '', 'detail': 'Demande enregistrée.'},
+            status=status.HTTP_201_CREATED))
+
+    from .serializers import PortailTicketCreateSerializer
+
+    serializer = PortailTicketCreateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return _noindex(Response(serializer.errors,
+                                 status=status.HTTP_400_BAD_REQUEST))
+    donnees = serializer.validated_data
+
+    from apps.crm.models import Client
+    from apps.ventes.utils.references import create_with_reference
+    from authentication.models import Company
+
+    company = Company.objects.filter(pk=company_id).first()
+    client = Client.objects.filter(pk=client_id, company_id=company_id).first()
+    if company is None or client is None:
+        return _not_found()
+
+    sujet = donnees['sujet'].strip()
+    description = (donnees.get('description') or '').strip()
+    priorite = donnees.get('priorite') or Ticket.Priorite.NORMALE
+    corps = f'{sujet}\n\n{description}' if description else sujet
+
+    def _create(ref):
+        return Ticket.objects.create(
+            company=company, reference=ref, client=client,
+            type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+            priorite=priorite,
+            canal_ouverture=Ticket.CanalOuverture.PORTAIL,
+            date_ouverture=timezone.localdate(),
+            description=corps[:4000])
+
+    from .services import poser_sla_due_at
+
+    ticket = poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
+
+    # Note initiale au chatter (acteur = None : la demande vient du client).
+    from . import activity
+
+    libelle_priorite = dict(Ticket.Priorite.choices).get(priorite, priorite)
+    activity.log_note(
+        ticket, None,
+        f'Demande déposée depuis le portail client — « {sujet} »'
+        + (f'\n\n{description}' if description else '')
+        + f'\n\nPriorité déclarée par le client : {libelle_priorite}')
+
+    # Pièces jointes optionnelles — magasin MinIO existant (apps.records).
+    fichiers = list(request.FILES.getlist('pieces_jointes') or [])
+    photo = request.FILES.get('photo')
+    if photo is not None:
+        fichiers.append(photo)
+    if fichiers:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import store_attachment
+
+        for fichier in fichiers[:MAX_PIECES_JOINTES_PORTAIL]:
+            data, _err = store_attachment(fichier)
+            if data is not None:
+                Attachment.objects.create(
+                    company=company,
+                    content_type=ContentType.objects.get_for_model(Ticket),
+                    object_id=ticket.pk, **data)
+
+    return _noindex(Response({
+        'reference': ticket.reference,
+        'numero_suivi': ticket.reference,
+        'suivi_token': ticket.ensure_share_token(),
+    }, status=status.HTTP_201_CREATED))
+
+
+# ── NTSRV3 — Webhook WhatsApp entrant (GATED, 404 sans clé) ─────────────────
+
+@extend_schema(request=inline_serializer('WhatsappInboundRequete', {
+    'entry': drf_serializers.ListField(required=False),
+}), responses=inline_serializer('WhatsappInboundReponse', {
+    'reference': drf_serializers.CharField(required=False),
+    'cree': drf_serializers.BooleanField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+}))
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([SavPublicThrottle])
+def whatsapp_inbound_webhook(request):
+    """NTSRV3 — Récepteur des messages WhatsApp Business entrants (canal SAV).
+
+    GATED : sans ``WHATSAPP_BUSINESS_API_KEY`` configurée, l'endpoint répond
+    404 — comme s'il n'existait pas — et AUCUN appel sortant n'est jamais
+    tenté. Aucun crash au démarrage : la clé est lue à l'appel, jamais à
+    l'import.
+
+    Tenant résolu CÔTÉ SERVEUR (``SAV_WHATSAPP_COMPANY_ID``, sinon la
+    première société) — RIEN ne vient du corps, exactement comme le récepteur
+    de leads du site (``crm.webhooks``).
+
+    Le message est rattaché au ticket WhatsApp OUVERT du client (matché par
+    NUMÉRO via ``crm.selectors.find_client_by_phone``), sinon un ticket est
+    ouvert. Un numéro inconnu ne crée jamais de ticket orphelin. Idempotent
+    par identifiant de message (``core.idempotency.dedupe_event``) : une
+    redélivrance Meta ne duplique rien.
+
+    Ce canal ne remplace PAS le WhatsApp manuel (liens wa.me) utilisé pour
+    les devis/factures : il est réservé au SAV.
+    """
+    import os
+
+    from django.conf import settings
+
+    from .services import (
+        extraire_message_whatsapp, traiter_message_whatsapp, whatsapp_api_key,
+    )
+
+    if not whatsapp_api_key():
+        return _not_found()
+
+    message_id, telephone, texte = extraire_message_whatsapp(request.data)
+    if not telephone:
+        return _noindex(Response(
+            {'detail': 'Aucun message exploitable dans la charge utile.'},
+            status=status.HTTP_400_BAD_REQUEST))
+
+    from authentication.models import Company
+
+    company_id = (getattr(settings, 'SAV_WHATSAPP_COMPANY_ID', None)
+                  or os.environ.get('SAV_WHATSAPP_COMPANY_ID') or '')
+    company = None
+    try:
+        company = Company.objects.filter(pk=int(str(company_id).strip())).first()
+    except (TypeError, ValueError):
+        company = None
+    if company is None:
+        company = Company.objects.order_by('id').first()
+    if company is None:
+        return _not_found()
+
+    if message_id:
+        from core.idempotency import dedupe_event
+        if not dedupe_event(company=company, source='sav_whatsapp_inbound',
+                            event_id=message_id):
+            return _noindex(Response({'detail': 'Déjà traité.'},
+                                     status=status.HTTP_200_OK))
+
+    ticket, cree = traiter_message_whatsapp(
+        company, message_id=message_id, telephone=telephone, texte=texte)
+    if ticket is None:
+        # Numéro inconnu : accusé de réception (Meta ne doit pas rejouer),
+        # aucun ticket orphelin créé.
+        return _noindex(Response({'detail': 'Message ignoré.'},
+                                 status=status.HTTP_200_OK))
+    return _noindex(Response(
+        {'reference': ticket.reference, 'cree': cree},
+        status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK))

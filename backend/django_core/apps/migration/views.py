@@ -7,6 +7,8 @@ est posé côté serveur en création, jamais lu du corps de requête.
 """
 import logging
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -113,6 +115,23 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
         projet = self.get_object()
         return Response(services.estimer_effort(projet))
 
+    @action(detail=True, methods=['post'], url_path='reconcilier-soldes', permission_classes=[IsDirecteurOuAdmin])
+    def reconcilier_soldes(self, request, pk=None):
+        """NTMIG37 — solde client SOURCE (balance âgée) vs solde recalculé
+        côté ERP, client par client migré par CE projet.
+
+        Corps attendu : ``{"balance": {"<external_id_client>": <montant>, …}}``.
+        LECTURE SEULE — ne conditionne ni un chargement ni une clôture.
+        """
+        projet = self.get_object()
+        balance = request.data.get('balance')
+        if not isinstance(balance, dict):
+            raise ValidationError({'balance': (
+                'Attendu : un objet {external_id_client: montant}.')})
+        divergences = services.reconcilier_soldes(projet, balance)
+        return Response({
+            'divergences': divergences, 'nb_divergences': len(divergences)})
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company,
@@ -181,13 +200,36 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        from . import dependances
+
         projet = serializer.validated_data['projet']
         # Le projet cité doit appartenir à la société de l'appelant : sans ce
         # contrôle, un lot d'une société pourrait se greffer sur le projet
         # d'une autre (le queryset scopé ne protège que la lecture).
         if projet.company_id != self.request.user.company_id:
             raise ValidationError({'projet': 'Projet introuvable.'})
-        serializer.save(company=self.request.user.company)
+        entite = serializer.validated_data.get('entite')
+        # NTMIG3 — refuse un lot dont la dépendance n'a pas ENCORE de lot dans
+        # CE projet, AVANT tout chargement (ex. « factures » sans « clients »).
+        entites_existantes = set(
+            LotMigration.objects.filter(
+                company_id=self.request.user.company_id, projet=projet)
+            .values_list('entite', flat=True))
+        manquantes = dependances.dependances_manquantes(
+            entite, entites_existantes)
+        if manquantes:
+            raise ValidationError({'entite': (
+                f"Dépendance manquante pour « {entite} » : ajoutez d'abord "
+                f"le(s) lot(s) {', '.join(manquantes)}.")})
+        lot = serializer.save(company=self.request.user.company)
+        # NTMIG3 — retrie topologiquement TOUS les lots du projet (celui-ci
+        # compris) pour que leur ``ordre`` reflète le graphe de dépendances,
+        # jamais l'ordre d'arrivée côté écran.
+        try:
+            dependances.ordonner_lots(projet)
+        except dependances.CycleDependances:  # pragma: no cover - DAG figé
+            pass
+        lot.refresh_from_db()
 
     def perform_destroy(self, instance):
         """Un lot qui a réellement chargé des données n'est pas supprimable.
@@ -216,7 +258,8 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         try:
             apercu = services.analyser_lot(
                 lot, file_bytes, filename,
-                mapping_name=request.data.get('mapping_name') or None)
+                mapping_name=request.data.get('mapping_name') or None,
+                kit_cle=request.data.get('kit') or None, user=request.user)
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(apercu)
@@ -249,10 +292,17 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         REMPLISSAGE SEUL : l'API n'expose délibérément aucun interrupteur
         d'écrasement — une migration n'efface jamais une valeur déjà saisie.
         """
+        from . import dependances
+
         lot = self.get_object()
         file_bytes, filename = _fichier_de(request)
         exclues = []
         try:
+            # NTMIG2/3 — un lot d'ordre inférieur pas encore réconcilié
+            # bloque celui-ci ; appliqué ICI (l'action interactive), jamais
+            # dans ``services.charger_lot`` (réutilisé sans cette garde par
+            # la migration à blanc NTMIG33 et la reprise NTMIG38).
+            dependances.verifier_ordre_pret(lot)
             if _drapeau(request.data.get('ignorer_lignes_invalides')):
                 # NTMIG32 — on RE-valide côté serveur au lieu de croire une
                 # liste de numéros envoyée par le client : le fichier chargé
@@ -274,6 +324,7 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
                 # n'est jamais accepté depuis une requête.
                 mode=request.data.get('mode') or None,
                 mapping_name=request.data.get('mapping_name') or None,
+                kit_cle=request.data.get('kit') or None,
                 user=request.user)
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
@@ -296,11 +347,14 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         (NTMIG35) ; 400 explicite s'il a été purgé ou s'il n'y a rien à
         reprendre.
         """
+        from . import dependances
+
         lot = self.get_object()
         file_bytes, filename = None, None
         if request.FILES.get('fichier') or request.FILES.get('file'):
             file_bytes, filename = _fichier_de(request)
         try:
+            dependances.verifier_ordre_pret(lot)
             rapport = services.reprendre_lot(
                 lot, file_bytes, filename,
                 mapping_name=request.data.get('mapping_name') or None,
@@ -313,6 +367,23 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         return Response({
             'lot': LotMigrationSerializer(lot).data, 'reprise': rapport})
 
+    @action(detail=True, methods=['post'], url_path='ajouter-lignes', permission_classes=[IsDirecteurOuAdmin])
+    def ajouter_lignes(self, request, pk=None):
+        """NTMIG11 — charge un second fichier « lignes » rattaché aux
+        en-têtes (devis/factures) déjà importés par ce lot.
+
+        Une ligne dont le document parent est introuvable (« orpheline »)
+        part en erreur ligne — jamais un crash de tout le fichier.
+        """
+        lot = self.get_object()
+        file_bytes, filename = _fichier_de(request)
+        try:
+            resultat = services.charger_lignes_document(
+                lot, file_bytes, filename, user=request.user)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(resultat)
+
     @action(detail=True, methods=['post'], url_path='charger-odoo', permission_classes=[IsDirecteurOuAdmin])
     def charger_odoo(self, request, pk=None):
         """NTMIG9 — chargement via le connecteur Odoo JSON-2 (gated).
@@ -321,8 +392,11 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         Le connecteur, quand il existe, est appelé en LECTURE SEULE ; aucune
         écriture n'est jamais faite côté Odoo (règle #1).
         """
+        from . import dependances
+
         lot = self.get_object()
         try:
+            dependances.verifier_ordre_pret(lot)
             services.charger_depuis_odoo_api(
                 lot, params=request.data, user=request.user)
         except services.ConnecteurNonConfigure as exc:
@@ -331,6 +405,24 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(LotMigrationSerializer(lot).data)
+
+    @action(detail=True, methods=['post'], url_path='annuler', permission_classes=[IsDirecteurOuAdmin])
+    def annuler(self, request, pk=None):
+        """NTMIG6 — annule (archive) exactement ce que CE lot a créé.
+
+        Jamais un enregistrement pré-existant modifié en mode ``maj``/
+        ``upsert`` ; refuse (400) si l'entité n'a pas de mécanisme
+        d'archivage existant côté app cible (jamais un hard-delete de repli,
+        voir ``services.RollbackImpossible``).
+        """
+        lot = self.get_object()
+        try:
+            resultat = services.annuler_lot(lot, user=request.user)
+        except services.RollbackImpossible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'lot': LotMigrationSerializer(lot).data, 'annulation': resultat})
 
     @action(detail=True, methods=['post'], url_path='reconcilier', permission_classes=[IsDirecteurOuAdmin])
     def reconcilier(self, request, pk=None):
@@ -516,6 +608,33 @@ class DeploiementPartenaireViewSet(CompanyScopedModelViewSet):
             crm_services.poser_compteur_deploiements(
                 partenaire_id, company,
                 services.compter_deploiements_reussis(partenaire_id, company))
+
+
+class GabaritKitView(GenericAPIView):
+    """NTMIG20 — modèle de fichier source téléchargeable pour un kit.
+
+    Renvoie un CSV avec exactement les colonnes SOURCE attendues par le kit
+    ``(source, entite)`` + une ligne d'exemple COMMENTÉE (``# exemple — …``,
+    jamais prise pour une vraie ligne de données par un tableur qui
+    l'ouvrirait sans redemander). ``404`` si aucun kit ne couvre ce couple
+    (source générique NTMIG13, ou entité non couverte).
+    """
+
+    permission_classes = [IsDirecteurOuAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def get(self, request, source, entite):
+        from django.http import HttpResponse
+
+        try:
+            contenu = services.gabarit_kit_csv(source, entite)
+        except services.GabaritIndisponible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        resp = HttpResponse(contenu, content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="gabarit-{source}-{entite}.csv"')
+        return resp
 
 
 class ScoreCertificationView(GenericAPIView):

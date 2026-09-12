@@ -12,6 +12,7 @@ porte un FK ``company`` posé côté serveur (jamais lu du corps de requête).
 Référence au client en lien lâche (``client_id``) — jamais un import cross-app
 du modèle ``crm.Client``. Ce module est entièrement additif.
 """
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
@@ -62,6 +63,11 @@ class Contrat(SoftDeleteModel):
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
+        # NTDOC4 — cycle de négociation par redlines : le contrat part en
+        # discussion avec la contrepartie AVANT d'être soumis à approbation
+        # puis à signature. Statut DOCUMENTAIRE du contrat (CONTRAT12), jamais
+        # une étape du funnel commercial STAGES.py (rule #2).
+        EN_NEGOCIATION = 'en_negociation', 'En négociation'
         EN_APPROBATION = 'en_approbation', 'En approbation'
         SIGNE = 'signe', 'Signé'
         ACTIF = 'actif', 'Actif'
@@ -534,6 +540,15 @@ class Clause(models.Model):
     corps = models.TextField(verbose_name="Corps de la clause")
     ordre = models.PositiveIntegerField(default=0, verbose_name="Ordre")
     actif = models.BooleanField(default=True, verbose_name="Actif")
+    # NTDOC5 — bibliothèque de clauses OBLIGATOIRES par type de contrat.
+    # Liste (JSON) de codes ``Contrat.TypeContrat`` pour lesquels cette clause
+    # est EXIGÉE. Liste vide (défaut) = clause facultative — comportement
+    # strictement inchangé pour toutes les clauses existantes. Aucune clause
+    # n'est renommée : le champ est purement additif.
+    obligatoire_pour_types = models.JSONField(
+        default=list, blank=True,
+        verbose_name="Obligatoire pour les types de contrat",
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name="Créé le"
     )
@@ -3713,3 +3728,424 @@ class EtapeDunningLog(TenantModel):
 
     def __str__(self):
         return f'contrat {self.contrat_id} / étape {self.etape_id}'
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Négociation par redlines : version « contrepartie » d'un contrat
+# ---------------------------------------------------------------------------
+#
+# Jusqu'ici, un contrat ne pouvait recevoir QUE des rendus INTERNES figés
+# (``VersionContrat``, CONTRAT18). Quand la partie adverse renvoyait le contrat
+# annoté/modifié (le « redline » du monde CLM), il n'existait AUCUN endroit où
+# le ranger : soit on écrasait un rendu interne (destruction d'une pièce
+# immuable), soit le fichier vivait dans une boîte mail. ``DocumentContrepartie``
+# est ce dépôt manquant — strictement ADDITIF, il ne touche JAMAIS le contenu
+# figé d'une ``VersionContrat``.
+
+
+def _default_depot_contrepartie_token():
+    """Jeton de dépôt long, imprévisible et URL-safe (pattern ``PartageGed``).
+
+    Même générateur que ``ged.PartageGed`` / ``ventes.ShareLink``
+    (``secrets.token_urlsafe(32)`` → ~43 caractères) : cryptographiquement
+    fort, impossible à deviner ou à énumérer. C'est le SEUL secret qui
+    authentifie un dépôt externe (la contrepartie n'a pas de compte ERP).
+    """
+    return secrets.token_urlsafe(32)
+
+
+class LienDepotContrepartie(TenantModel):
+    """Lien tokenisé permettant à la CONTREPARTIE de déposer sa version — NTDOC1.
+
+    Reprend le PATRON ``PartageGed``/XGED7 (jeton long imprévisible +
+    expiration optionnelle + kill-switch ``actif``) sans importer le modèle
+    d'une autre app : le lien est résolu UNIQUEMENT par son jeton, donc la
+    société et le contrat sont implicites — jamais lus du corps de requête.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+    """
+
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,  # on_delete: un lien de dépôt n'a plus d'objet sans son contrat
+        related_name='liens_depot_contrepartie',
+        verbose_name='Contrat',
+    )
+    token = models.CharField(
+        max_length=64, unique=True,
+        default=_default_depot_contrepartie_token, editable=False,
+        verbose_name='Jeton de dépôt')
+    # Identité ATTENDUE du déposant (pré-remplit ``depose_par_nom``/``_email``
+    # du dépôt). Purement informatif : le jeton reste l'unique clé d'accès.
+    destinataire_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Nom de la contrepartie')
+    destinataire_email = models.EmailField(
+        blank=True, default='', verbose_name='Email de la contrepartie')
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_liens_depot_crees',
+        verbose_name='Créé par',
+    )
+
+    class Meta:
+        verbose_name = 'Lien de dépôt contrepartie'
+        verbose_name_plural = 'Liens de dépôt contrepartie'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'contrat'],
+                name='contrats_liendepot_co_ct'),
+        ]
+
+    def __str__(self):
+        return f'Dépôt {self.token[:8]}… → contrat {self.contrat_id}'
+
+    @property
+    def is_expired(self):
+        """``True`` si le lien porte une expiration déjà dépassée."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_accessible(self):
+        """``True`` si le lien accepte encore un dépôt (actif ET non expiré)."""
+        return self.actif and not self.is_expired
+
+
+class DocumentContrepartie(TenantModel):
+    """Version renvoyée par la CONTREPARTIE, rattachée à un contrat — NTDOC1.
+
+    Le fichier binaire vit dans le stockage objet (MinIO) et n'est référencé
+    ici que par sa CLÉ (``fichier_key``) — jamais un ``FileField``, exactement
+    comme ``VersionContrat.fichier_key`` (CONTRAT18) et la GED.
+
+    Déposant : soit un compte interne (``depose_par`` non NULL), soit un
+    contact externe passé par un ``LienDepotContrepartie`` (``lien`` non NULL,
+    ``depose_par`` NULL) — dans les deux cas ``depose_par_nom`` /
+    ``depose_par_email`` gardent une trace lisible du déposant.
+
+    JAMAIS DE SUPPRESSION PHYSIQUE : ``archive=True`` retire le document des
+    listes de travail sans l'effacer (une pièce de négociation est une pièce
+    juridique). Rien ici n'écrase ni ne modifie une ``VersionContrat`` : les
+    deux familles cohabitent, la version interne reste immuable.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    class Statut(models.TextChoices):
+        NOUVEAU = 'nouveau', 'Nouveau'
+        EN_REVUE = 'en_revue', 'En revue'
+        TRAITE = 'traite', 'Traité'
+
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,  # on_delete: la pièce de négociation suit son contrat
+        related_name='documents_contrepartie',
+        verbose_name='Contrat',
+    )
+    # Lien tokenisé d'origine quand le dépôt vient de l'EXTÉRIEUR (NULL pour un
+    # dépôt fait par un compte interne). SET_NULL : révoquer/supprimer le lien
+    # n'efface jamais la pièce déposée.
+    lien = models.ForeignKey(
+        'LienDepotContrepartie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='depots',
+        verbose_name='Lien de dépôt',
+    )
+    # Clé de l'objet stocké (MinIO) — borne large mais finie (leçon FG136).
+    fichier_key = models.CharField(
+        max_length=512, blank=True, default='',
+        verbose_name='Clé du fichier')
+    nom_fichier = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Nom du fichier')
+    mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
+    taille = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    depose_par_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Déposé par (nom)')
+    depose_par_email = models.EmailField(
+        blank=True, default='', verbose_name='Déposé par (email)')
+    # Utilisateur interne agissant (NULL pour un dépôt externe tokenisé).
+    depose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_depots_contrepartie',
+        verbose_name='Déposé par (compte)',
+    )
+    # Horodatage SERVEUR du dépôt (``DateTimeField`` — jamais un ``DateField``
+    # pour un tampon horaire, YDATA11).
+    date_depot = models.DateTimeField(
+        auto_now_add=True, verbose_name='Déposé le')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.NOUVEAU,
+        verbose_name='Statut')
+    # Soft-archive : JAMAIS de suppression physique depuis l'API.
+    archive = models.BooleanField(default=False, verbose_name='Archivé')
+    date_archivage = models.DateTimeField(
+        null=True, blank=True, verbose_name='Archivé le')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+
+    class Meta:
+        verbose_name = 'Document contrepartie'
+        verbose_name_plural = 'Documents contrepartie'
+        ordering = ['-date_depot', '-id']
+        indexes = [
+            models.Index(
+                fields=['contrat', '-date_depot'],
+                name='contrats_dcp_ct_date'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_dcp_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'Contrat {self.contrat_id} — {self.nom_fichier or "dépôt"}'
+
+    def archiver(self):
+        """Archive (soft) le dépôt — jamais d'effacement physique."""
+        if not self.archive:
+            self.archive = True
+            self.date_archivage = timezone.now()
+            self.save(update_fields=['archive', 'date_archivage'])
+        return self
+
+
+class CommentaireRedline(TenantModel):
+    """Commentaire ancré sur une ligne du diff de négociation — NTDOC3.
+
+    Un commentaire de redline s'ancre soit sur une LIGNE du diff produit par
+    ``services.comparer_contrepartie`` (NTDOC2 — ``ligne_reference`` +
+    ``extrait_ligne``, l'extrait gardant le commentaire lisible même si le
+    diff est recalculé), soit sur une ``Clause`` de la bibliothèque
+    (``clause``), soit sur rien (commentaire général du round).
+
+    Tant que ``resolu`` est faux, le commentaire reste VISIBLE : c'est lui qui
+    bloque la clôture de la négociation (NTDOC4). La résolution trace QUI
+    (``resolu_par``) et QUAND (``date_resolution``) — jamais depuis le corps de
+    requête.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    ``contrat``/``document_contrepartie``/``clause`` sont des références
+    internes à l'app `contrats` (FK dur autorisé).
+    """
+
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,  # on_delete: un commentaire de redline n'existe pas sans son contrat
+        related_name='commentaires_redline',
+        verbose_name='Contrat',
+    )
+    # Dépôt contrepartie commenté (NULL = commentaire général du contrat).
+    # SET_NULL : archiver/délier un dépôt n'efface jamais un commentaire.
+    document_contrepartie = models.ForeignKey(
+        'DocumentContrepartie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='commentaires_redline',
+        verbose_name='Dépôt contrepartie',
+    )
+    # Clause de la bibliothèque visée (optionnelle).
+    clause = models.ForeignKey(
+        'Clause',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='commentaires_redline',
+        verbose_name='Clause visée',
+    )
+    # Index (0-based) de la ligne du diff NTDOC2 sur laquelle le commentaire
+    # est ancré. NULL = commentaire non ancré à une ligne précise.
+    ligne_reference = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Ligne du diff')
+    # Copie de la ligne commentée : garde le commentaire compréhensible même
+    # si le diff est recalculé après un nouveau dépôt (borne, leçon FG136).
+    extrait_ligne = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Extrait de la ligne')
+    contenu = models.TextField(verbose_name='Commentaire')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_commentaires_redline',
+        verbose_name='Auteur',
+    )
+    resolu = models.BooleanField(default=False, verbose_name='Résolu')
+    resolu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_commentaires_redline_resolus',
+        verbose_name='Résolu par',
+    )
+    date_resolution = models.DateTimeField(
+        null=True, blank=True, verbose_name='Résolu le')
+
+    class Meta:
+        verbose_name = 'Commentaire de redline'
+        verbose_name_plural = 'Commentaires de redline'
+        ordering = ['contrat_id', 'resolu', 'ligne_reference', 'id']
+        indexes = [
+            models.Index(
+                fields=['contrat', 'resolu'],
+                name='contrats_cred_ct_resolu'),
+            models.Index(
+                fields=['company', 'resolu'],
+                name='contrats_cred_co_resolu'),
+        ]
+
+    def __str__(self):
+        etat = 'résolu' if self.resolu else 'ouvert'
+        return f'Contrat {self.contrat_id} — commentaire {etat}'
+
+
+class ParametresAbonnement(TenantModel):
+    """Réglages « Facturation récurrente » d'une société — NTSUB24.
+
+    Les seuils et délais du groupe NTSUB étaient des CONSTANTES codées en dur,
+    tâche par tâche : J-3 avant fin d'essai (NTSUB5), 30 jours avant expiration
+    de carte (NTSUB9), 80 % d'un quota d'usage (NTSUB18). Une société ne
+    pouvait donc rien régler.
+
+    Singleton par société (contrainte d'unicité sur ``company``, accès
+    ``services.get_parametres_abonnement`` en get-or-create). Les VALEURS PAR
+    DÉFAUT sont EXACTEMENT les constantes historiques : une société qui n'a
+    jamais ouvert l'écran garde le comportement actuel à l'identique — aucune
+    régression. Hérite de ``core.models.TenantModel`` (company + horodatage).
+    """
+
+    jours_alerte_fin_essai = models.PositiveIntegerField(
+        default=3, verbose_name="Alerte avant fin d'essai (jours)",
+        help_text="NTSUB5 — nombre de jours avant la fin d'essai auquel le "
+                  'responsable est prévenu (défaut historique : 3).')
+    jours_alerte_expiration_carte = models.PositiveIntegerField(
+        default=30, verbose_name="Alerte avant expiration de carte (jours)",
+        help_text='NTSUB9 — délai de prévenance avant expiration du moyen de '
+                  'paiement (défaut historique : 30).')
+    seuil_alerte_usage_pct_defaut = models.PositiveIntegerField(
+        default=80, verbose_name="Seuil d'alerte d'usage par défaut (%)",
+        help_text="NTSUB18 — pourcentage du quota d'usage à partir duquel "
+                  'une alerte est levée (défaut historique : 80).')
+    sequence_dunning_defaut = models.ForeignKey(
+        'SequenceDunning',
+        # on_delete: SET_NULL — supprimer une séquence ne doit jamais effacer
+        # le réglage de la société ; elle repasse simplement « sans défaut ».
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parametres_par_defaut',
+        verbose_name='Séquence de dunning par défaut',
+    )
+
+    class Meta:
+        verbose_name = 'Paramètres abonnement'
+        verbose_name_plural = 'Paramètres abonnement'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='contrats_parametresabo_uniq_co'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres abonnement — société {self.company_id}'
+
+
+class CompteurUsageArchive(TenantModel):
+    """Synthèse d'usage conservée APRÈS purge des relevés bruts — NTSUB26.
+
+    Les ``CompteurUsage`` ingérés s'accumulent ligne à ligne et indéfiniment ;
+    une société à fort volume (télémétrie, API) sature la table au fil des
+    années. La purge mensuelle
+    (``scheduled.purger_compteurs_usage_factures``) agrège en UNE ligne par
+    ``(company, code_compteur, periode)`` les relevés d'une période DÉJÀ
+    FACTURÉE et vieille de plus de 24 mois, puis supprime le détail brut. Une
+    période non facturée ou récente n'est JAMAIS touchée.
+
+    ``periode`` est le mois de rattachement au format ``AAAA-MM`` (déduit du
+    début de période du relevé). ``nb_lignes`` conserve le nombre de relevés
+    fondus dans l'agrégat : c'est ce qui rend la purge vérifiable a posteriori.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    code_compteur = models.CharField(
+        max_length=100, verbose_name='Code du compteur')
+    periode = models.CharField(
+        max_length=7, verbose_name='Période (AAAA-MM)')
+    quantite_totale = models.DecimalField(
+        max_digits=18, decimal_places=4, default=Decimal('0'),
+        verbose_name='Quantité totale')
+    nb_lignes = models.PositiveIntegerField(
+        default=0, verbose_name='Relevés fondus dans l’agrégat')
+
+    class Meta:
+        verbose_name = "Archive de compteur d'usage"
+        verbose_name_plural = "Archives de compteurs d'usage"
+        ordering = ['-periode', 'code_compteur', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code_compteur', 'periode'],
+                name='contrats_compteurarch_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='contrats_compteurarch_co_pe'),
+        ]
+
+    def __str__(self):
+        return (f'{self.code_compteur} [{self.periode}] = '
+                f'{self.quantite_totale} ({self.nb_lignes} relevé(s))')
+
+
+class MetriquesSaasCache(TenantModel):
+    """Agrégats SaaS PRÉCALCULÉS pour le tableau de bord — NTSUB27.
+
+    NTSUB12 (ARR bridge, Quick Ratio, Rule of 40) recalcule TOUT à la volée à
+    chaque ouverture du cockpit : coûteux sur un historique de plusieurs
+    années. Un job nocturne remplit cette table une fois par société et par
+    ``periode`` (mois, ``AAAA-MM``) ; l'endpoint lit le cache s'il a moins de
+    24 h et RETOMBE SILENCIEUSEMENT sur le calcul à la volée sinon — un cache
+    absent, périmé ou incomplet ne bloque JAMAIS le tableau de bord.
+
+    ``prevision_mrr`` est prévu pour NTSUB13 (prévision de MRR) et reste NULL
+    tant que ce scorer n'est pas branché : le cache ne fabrique aucun chiffre.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    periode = models.CharField(
+        max_length=7, verbose_name='Période (AAAA-MM)')
+    arr_bridge = models.JSONField(
+        default=dict, blank=True, verbose_name='ARR bridge')
+    quick_ratio = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        verbose_name='Quick Ratio')
+    rule_of_40 = models.JSONField(
+        default=dict, blank=True, verbose_name='Rule of 40')
+    prevision_mrr = models.JSONField(
+        null=True, blank=True, verbose_name='Prévision de MRR (NTSUB13)')
+    calcule_le = models.DateTimeField(verbose_name='Calculé le')
+
+    class Meta:
+        verbose_name = 'Cache de métriques SaaS'
+        verbose_name_plural = 'Caches de métriques SaaS'
+        ordering = ['-periode', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode'],
+                name='contrats_metriquessaas_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Métriques SaaS {self.periode} — société {self.company_id}'

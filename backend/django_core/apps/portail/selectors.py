@@ -59,6 +59,24 @@ def compte_portail_client_actif(company_id, client_id):
 
 # ── XSAV22 — Déflection KB sur le portail client ────────────────────────────
 
+def client_par_token_acces(token):
+    """NTSRV2 — ``(company_id, client_id)`` du compte portail ACTIF portant ce
+    jeton d'accès, ou ``None``.
+
+    Point d'entrée cross-app LECTURE SEULE pour ``apps.sav`` (formulaire
+    portail public → ticket SAV) : la société n'est JAMAIS lue du corps de la
+    requête, elle est déduite du jeton. Un jeton inconnu, vide ou dont le
+    compte a été révoqué (``actif=False``) renvoie ``None`` — l'appelant
+    répond alors 404 sans fuite d'information."""
+    token = (token or '').strip()
+    if not token:
+        return None
+    return (ComptePortailClient.objects
+            .filter(token_acces=token, actif=True)
+            .values_list('company_id', 'client_id')
+            .first())
+
+
 def demandes_ticket_count(company):
     """XSAV22 — Nombre total de demandes de ticket SAV soumises via le
     portail pour ``company``. Point d'entrée cross-app pour

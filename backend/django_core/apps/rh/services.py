@@ -2893,3 +2893,285 @@ def creer_dossier_employe_import(company, ligne):
         return 'erreur', str(exc)
 
     return 'cree', None
+
+
+# ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
+
+class HorsPerimetreManagerError(Exception):
+    """NTHCM5 — l'auteur n'est pas le manager DIRECT de l'employé visé (403)."""
+
+
+class EnveloppeDepasseeError(Exception):
+    """NTHCM5 — la proposition ferait dépasser l'enveloppe du manager (400)."""
+
+
+def salaire_actuel_employe(employe):
+    """NTHCM5 — dernier montant de ``Remuneration`` connu (``0`` si aucun).
+
+    Snapshot posé à la création d'une proposition : la proposition reste
+    lisible même si le salaire change ensuite.
+    """
+    from .models import Remuneration
+
+    remuneration = (
+        Remuneration.objects
+        .filter(company=employe.company, employe=employe)
+        .order_by('-date_effet', '-date_creation')
+        .first())
+    return remuneration.montant if remuneration else Decimal('0')
+
+
+def enveloppe_consommee(cycle, manager):
+    """NTHCM5 — total des points de % DÉJÀ proposés par ce manager sur ce
+    cycle (toutes ses propositions non rejetées).
+
+    Les propositions REJETÉES ne consomment rien : leur enveloppe est rendue.
+    """
+    from .models import DossierEmploye, PropositionRevision
+
+    subordonnes = DossierEmploye.objects.filter(
+        company=cycle.company, manager=manager)
+    total = Decimal('0')
+    propositions = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle, employe__in=subordonnes).exclude(
+            statut=PropositionRevision.Statut.REJETEE)
+    for proposition in propositions:
+        total += proposition.augmentation_pct_proposee or Decimal('0')
+    return total
+
+
+@transaction.atomic
+def proposer_revision(cycle, employe, *, auteur_dossier, user,
+                      augmentation_pct, justification=''):
+    """NTHCM5 — crée (ou met à jour) la proposition d'un manager pour UN de
+    ses subordonnés DIRECTS, dans la limite de son enveloppe.
+
+    * ``auteur_dossier`` DOIT être le ``manager`` direct de ``employe``,
+      sinon :class:`HorsPerimetreManagerError` (403 côté vue) ;
+    * la somme des points de % proposés par ce manager sur ce cycle ne peut
+      pas dépasser son ``EnveloppeManager.enveloppe_pct`` (absente ⇒ 0), sinon
+      :class:`EnveloppeDepasseeError` (400, message FR explicite) ;
+    * ``salaire_actuel`` (snapshot), ``augmentation_montant_proposee`` et
+      ``propose_par`` sont posés CÔTÉ SERVEUR.
+    """
+    from .models import EnveloppeManager, PropositionRevision
+
+    if auteur_dossier is None or employe.manager_id != auteur_dossier.id:
+        raise HorsPerimetreManagerError(
+            "Vous ne pouvez proposer une révision que pour vos subordonnés "
+            "directs.")
+
+    pct = Decimal(str(augmentation_pct or '0'))
+    if pct < 0:
+        raise EnveloppeDepasseeError(
+            "L'augmentation proposée ne peut pas être négative.")
+
+    enveloppe = EnveloppeManager.objects.filter(
+        company=cycle.company, cycle=cycle, manager=auteur_dossier).first()
+    plafond = enveloppe.enveloppe_pct if enveloppe else Decimal('0')
+
+    existante = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle, employe=employe).first()
+    deja = enveloppe_consommee(cycle, auteur_dossier)
+    if existante is not None \
+            and existante.statut != PropositionRevision.Statut.REJETEE:
+        deja -= existante.augmentation_pct_proposee or Decimal('0')
+
+    if deja + pct > plafond:
+        raise EnveloppeDepasseeError(
+            f"Enveloppe dépassée : {deja + pct} % proposés au total pour un "
+            f"plafond de {plafond} % alloué sur ce cycle.")
+
+    salaire = salaire_actuel_employe(employe)
+    montant = (salaire * pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    if existante is None:
+        return PropositionRevision.objects.create(
+            company=cycle.company,
+            cycle=cycle,
+            employe=employe,
+            salaire_actuel=salaire,
+            augmentation_pct_proposee=pct,
+            augmentation_montant_proposee=montant,
+            justification=justification or '',
+            propose_par=user,
+        )
+
+    existante.salaire_actuel = salaire
+    existante.augmentation_pct_proposee = pct
+    existante.augmentation_montant_proposee = montant
+    if justification:
+        existante.justification = justification
+    existante.statut = PropositionRevision.Statut.PROPOSEE
+    existante.propose_par = user
+    existante.save(update_fields=[
+        'salaire_actuel', 'augmentation_pct_proposee',
+        'augmentation_montant_proposee', 'justification', 'statut',
+        'propose_par'])
+    return existante
+
+
+# ── NTHCM7 — application d'un cycle clos → nouvelles ``Remuneration`` ───────
+
+class CycleNonClosError(Exception):
+    """NTHCM7 — un cycle non CLOS ne peut pas être appliqué (400)."""
+
+
+def _notifier_revision_appliquee(proposition):
+    """NTHCM7 — prévient l'employé que sa révision est appliquée.
+
+    Best-effort (aucune exception ne remonte) et SANS AUCUN MONTANT dans le
+    corps — exactement le patron XRH26 ``augmentation_proposee`` : le montant
+    vit dans ``Remuneration``, gatée ``salaires_voir``, jamais dans une
+    notification.
+    """
+    user = getattr(proposition.employe, 'user', None)
+    if user is None:
+        return
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        notify(
+            user,
+            EventType.APPROVAL_REQUESTED,
+            title='Révision salariale appliquée',
+            body=("Votre révision salariale a été appliquée. Le détail est "
+                  "consultable auprès des Ressources humaines."),
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        pass
+
+
+@transaction.atomic
+def appliquer_cycle_revision(cycle, user=None, *, today=None):
+    """NTHCM7 — matérialise les propositions APPROUVÉES d'un cycle CLOS.
+
+    Pour chaque ``PropositionRevision`` au statut ``approuvee`` et pas encore
+    appliquée :
+
+    * une NOUVELLE ligne ``Remuneration`` est créée (montant = snapshot +
+      augmentation proposée), datée de la ``date_effet`` du cycle (à défaut
+      ``date_fin``, à défaut le jour de l'application — aucune date
+      inventée) ; devise et périodicité héritent de la dernière ligne connue ;
+    * la proposition est marquée ``appliquee=True`` + ``date_application`` —
+      c'est le garde-fou d'IDEMPOTENCE : ré-appliquer ne recrée rien ;
+    * une entrée ``DossierActivity`` (XRH6, ``type=log``) trace la révision.
+      Elle porte le POURCENTAGE, JAMAIS les montants : le chatter du dossier
+      est gaté ``rh_voir`` alors que les salaires relèvent de
+      ``salaires_voir`` — y écrire un montant contournerait le palier ;
+    * l'employé est notifié SANS montant (patron XRH26).
+
+    Les propositions ``rejetee``/``proposee`` ne créent RIEN. Renvoie
+    ``{appliquees, ignorees}``.
+    """
+    from datetime import date as _date
+
+    from .models import (
+        CycleRevisionSalariale, DossierActivity, PropositionRevision,
+        Remuneration,
+    )
+
+    if cycle.statut != CycleRevisionSalariale.Statut.CLOS:
+        raise CycleNonClosError(
+            "Le cycle doit être clos (calibration validée) avant de pouvoir "
+            "être appliqué.")
+
+    jour = today or _date.today()
+    date_effet = cycle.date_effet or cycle.date_fin or jour
+
+    propositions = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle,
+        statut=PropositionRevision.Statut.APPROUVEE, appliquee=False)
+
+    appliquees = 0
+    for proposition in propositions.select_related('employe'):
+        employe = proposition.employe
+        derniere = (
+            Remuneration.objects
+            .filter(company=cycle.company, employe=employe)
+            .order_by('-date_effet', '-date_creation')
+            .first())
+        ancien = proposition.salaire_actuel or Decimal('0')
+        nouveau = (
+            ancien + (proposition.augmentation_montant_proposee
+                      or Decimal('0')))
+        Remuneration.objects.create(
+            company=cycle.company,
+            employe=employe,
+            montant=nouveau,
+            devise=derniere.devise if derniere else 'MAD',
+            periodicite=(derniere.periodicite if derniere
+                         else Remuneration.Periodicite.MENSUEL),
+            date_effet=date_effet,
+            motif=f'Révision salariale — {cycle.libelle}'[:200],
+        )
+        DossierActivity.objects.create(
+            company=cycle.company, employe=employe, auteur=user,
+            type=DossierActivity.Kind.LOG,
+            field='remuneration',
+            old_value='Avant révision',
+            new_value=(f'Révision {cycle.libelle} appliquée '
+                       f'(+{proposition.augmentation_pct_proposee} %)'),
+        )
+        proposition.appliquee = True
+        proposition.date_application = timezone.now()
+        proposition.save(update_fields=['appliquee', 'date_application'])
+        _notifier_revision_appliquee(proposition)
+        appliquees += 1
+
+    ignorees = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle).exclude(
+            statut=PropositionRevision.Statut.APPROUVEE).count()
+    return {'appliquees': appliquees, 'ignorees': ignorees}
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+class DejaRepondueError(Exception):
+    """NTHCM14 — l'utilisateur a déjà répondu à cette enquête (409)."""
+
+
+@transaction.atomic
+def repondre_enquete(enquete, user, *, reponses):
+    """NTHCM14 — enregistre UNE réponse à une enquête d'engagement.
+
+    Deux écritures dans LA MÊME transaction, JAMAIS reliées entre elles —
+    exactement le patron ``repondre_pulse`` (XRH32) :
+
+      1. ``ParticipationEnquete(enquete, user)`` — l'unicité EST le garde-fou
+         anti double-réponse, dans les DEUX modes (anonyme ET nominatif) ; si
+         elle existe déjà, :class:`DejaRepondueError` est levée AVANT toute
+         écriture de réponse ;
+      2. ``ReponseEnquete`` — ``anonyme`` recopié de l'enquête. En mode
+         ANONYME, ``employe`` reste ``None`` (et la ``CheckConstraint`` de
+         base l'impose, même hors de ce service) ; en mode NOMINATIF, le
+         dossier de l'auteur est résolu CÔTÉ SERVEUR, jamais lu du corps.
+
+    Renvoie la ``ReponseEnquete`` créée.
+    """
+    from . import selectors
+    from .models import (
+        ParticipationEnquete, ReponseEnquete, hash_participation_enquete,
+    )
+
+    if ParticipationEnquete.objects.filter(
+            enquete=enquete, user=user).exists():
+        raise DejaRepondueError('Vous avez déjà répondu à cette enquête.')
+
+    ParticipationEnquete.objects.create(
+        company=enquete.company, enquete=enquete, user=user,
+        token_hash=hash_participation_enquete(user.id, enquete.id))
+
+    employe = None
+    if not enquete.anonyme:
+        employe = selectors.dossier_employe_for_user(
+            enquete.company, user.id)
+
+    return ReponseEnquete.objects.create(
+        company=enquete.company,
+        enquete=enquete,
+        anonyme=enquete.anonyme,
+        employe=employe,
+        reponses=reponses or {},
+    )

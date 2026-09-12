@@ -12,11 +12,14 @@ from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
+from django.utils.dateparse import parse_date
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import (
+    FormParser, JSONParser, MultiPartParser,
+)
 from rest_framework.response import Response
 
 from . import builders
@@ -36,12 +39,14 @@ from .models import (
     LigneVirement,
     OrdreVirement,
     ParametrePaie,
+    PaysPaie,
     PeriodePaie,
     ProfilPaie,
     RegimeMutuelle,
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    SchemaComptablePaie,
     StructurePaie,
     ProvisionPaieMensuelle,
     TypeEntreePonctuelle,
@@ -52,10 +57,12 @@ from .serializers import (
     BaremeIRSerializer,
     BulletinPaieSerializer,
     CumulAnnuelSerializer,
+    DepotDeclaratifSerializer,
     EcheanceDeclarativeSerializer,
     ElementVariableSerializer,
     LigneVirementSerializer,
     ParametrePaieSerializer,
+    PaysPaieSerializer,
     PeriodePaieSerializer,
     OrdreVirementSerializer,
     ProfilPaieSerializer,
@@ -63,16 +70,19 @@ from .serializers import (
     RubriqueEmployeSerializer,
     RubriqueSerializer,
     SaisieArretSerializer,
+    SchemaComptablePaieSerializer,
     StructurePaieSerializer,
     TypeEntreePonctuelleSerializer,
 )
 from .services import (
     TransitionPeriodeInterdite,
     annuler_saisie_arret,
+    appliquer_rappel_retroactif,
     appliquer_regularisation_ir,
     appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
+    bordereau_paiement_cnss,
     brut_pour_net_cible,
     avertissements_parametre_paie,
     avertissements_periode,
@@ -89,14 +99,18 @@ from .services import (
     creer_saisies_arret_lot,
     declaration_cimr,
     declaration_cnss,
+    detecter_periodes_impactees,
     deposer_bds_complementaire,
     deposer_bds_principal,
     dry_run_reprise_cumuls,
     emettre_ordre_virement,
+    enregistrer_depot_declaratif,
     ensure_defaults,
+    ensure_pays_paie_standard,
     ensure_types_entree_ponctuelle_standard,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    ensure_schema_comptable_standard,
     ensure_structures_standard,
     etat_des_charges,
     expirer_regimes_echus,
@@ -106,6 +120,7 @@ from .services import (
     fichier_cimr,
     fichier_damancom_cnss,
     fichier_damancom_strict,
+    fichier_telepaiement_cnss,
     fichier_virement_paie,
     fichier_virement_paie_simt,
     generer_bulletin,
@@ -133,6 +148,7 @@ from .services import (
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
     registre_conges,
+    reinitialiser_schema_comptable,
     reporter_elements_periode,
     rejeter_ligne_virement,
     saisies_arret_du_bulletin,
@@ -178,7 +194,72 @@ class _PaieBaseViewSet(_PaieVoirOuGerer, TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
 
 
-class ParametrePaieViewSet(_PaieBaseViewSet):
+class _RappelRetroactifMixin:
+    """NTPAY1 — actions de rétroactivité d'un jeu versionné (paramètre/barème).
+
+    Partagé par ``ParametrePaieViewSet`` et ``BaremeIRViewSet`` : la seule
+    différence est le mot-clé passé aux services (``parametre=`` vs
+    ``bareme=``), porté par ``_KWARG_RETRO``.
+
+    * ``GET  <ressource>/<id>/periodes-impactees/`` — lecture seule, liste les
+      périodes VALIDÉES/CLÔTURÉES que la publication rend périmées ;
+    * ``POST <ressource>/<id>/rappel-retroactif/`` — corps
+      ``{"periode_cible": <id>, "motif": "…"}`` : matérialise les bulletins de
+      rappel sur la période cible. Les bulletins d'origine restent figés.
+    """
+    _KWARG_RETRO = 'parametre'
+
+    def _periodes_impactees(self, request):
+        objet = self.get_object()
+        return detecter_periodes_impactees(
+            request.user.company, **{self._KWARG_RETRO: objet})
+
+    @action(detail=True, methods=['get'], url_path='periodes-impactees')
+    def periodes_impactees(self, request, pk=None):
+        """Périodes déjà figées que ce jeu versionné rend périmées (NTPAY1)."""
+        periodes = self._periodes_impactees(request)
+        return Response({
+            'periodes': [
+                {'id': p.id, 'annee': p.annee, 'mois': p.mois,
+                 'statut': p.statut, 'type_run': p.type_run}
+                for p in periodes
+            ],
+            'nombre': len(periodes),
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='rappel-retroactif')
+    def rappel_retroactif(self, request, pk=None):
+        """Génère les bulletins de rappel rétroactif (NTPAY1)."""
+        periode_id = request.data.get('periode_cible')
+        if not periode_id:
+            raise DRFValidationError({
+                'periode_cible': [
+                    'Champ requis : indiquez la période OUVERTE qui portera '
+                    'le rappel rétroactif.']})
+        try:
+            periode_cible = PeriodePaie.objects.get(
+                company=request.user.company, pk=periode_id)
+        except (PeriodePaie.DoesNotExist, ValueError, TypeError):
+            raise DRFValidationError({
+                'periode_cible': ['Période introuvable dans votre société.']})
+        periodes = self._periodes_impactees(request)
+        try:
+            resultat = appliquer_rappel_retroactif(
+                periode_cible, periodes,
+                motif=(request.data.get('motif') or ''))
+        except DjangoValidationError as exc:
+            raise DRFValidationError({'periode_cible': exc.messages})
+        return Response({
+            'periode_cible': periode_cible.id,
+            'periodes_regularisees': [p.id for p in resultat['periodes']],
+            'bulletins': [b.id for b in resultat['bulletins']],
+            'nombre_salaries': resultat['nombre_salaries'],
+            'total_ecart_ir': str(resultat['total_ecart_ir']),
+            'total_ecart_net': str(resultat['total_ecart_net']),
+        }, status=status.HTTP_201_CREATED)
+
+
+class ParametrePaieViewSet(_RappelRetroactifMixin, _PaieBaseViewSet):
     """Paramètres sociaux versionnés (PAIE2).
 
     PAIE3 — l'action ``seed-defaults`` provisionne (idempotent) les valeurs
@@ -199,8 +280,14 @@ class ParametrePaieViewSet(_PaieBaseViewSet):
         return Response(created, status=status.HTTP_200_OK)
 
 
-class BaremeIRViewSet(_PaieBaseViewSet):
-    """Barèmes IR versionnés et leurs tranches (PAIE4)."""
+class BaremeIRViewSet(_RappelRetroactifMixin, _PaieBaseViewSet):
+    """Barèmes IR versionnés et leurs tranches (PAIE4).
+
+    NTPAY1 — ``periodes-impactees`` / ``rappel-retroactif`` (cf.
+    ``_RappelRetroactifMixin``) rejouent les périodes déjà figées qu'un barème
+    publié rétroactivement rend périmées.
+    """
+    _KWARG_RETRO = 'bareme'
     queryset = BaremeIR.objects.prefetch_related('tranches').all()
     serializer_class = BaremeIRSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -237,6 +324,62 @@ class RubriqueViewSet(_PaieBaseViewSet):
         """
         created = ensure_rubriques_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
+
+
+class PaysPaieViewSet(_PaieBaseViewSet):
+    """Pays de paie de la société (NTPAY7/NTPAY12) — activation & moteur.
+
+    Société scopée, RBAC paie standard (``paie_voir`` lit, ``paie_gerer``
+    édite). ``seed-standard`` provisionne le pays MAROC (idempotent) ; les
+    packs FR/SN/CI restent gatés fondateur — un pays déclaré dont le moteur
+    n'est pas livré est signalé par ``moteur_disponible: false`` et refusé à
+    l'affectation d'un profil.
+    """
+    queryset = PaysPaie.objects.all()
+    serializer_class = PaysPaieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code_iso', 'libelle']
+    ordering_fields = ['code_iso', 'libelle', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-standard')
+    def seed_standard(self, request):
+        """Provisionne le pays de paie MAROC (idempotent)."""
+        created = ensure_pays_paie_standard(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
+
+
+class SchemaComptablePaieViewSet(_PaieBaseViewSet):
+    """Plan comptable paie — schéma de ventilation éditable (NTPAY3).
+
+    Surface CRUD de ``SchemaComptablePaie`` (NTPAY2) : chaque ligne route un
+    poste système OU une rubrique vers ses comptes de débit/crédit et sa
+    section analytique. RBAC standard de la paie (``paie_voir`` lit,
+    ``paie_gerer`` écrit — cf. ``_PaieVoirOuGerer``).
+
+    * ``POST seed-standard/`` — sème (idempotent) le plan standard, qui
+      reproduit à l'identique les comptes historiques ;
+    * ``POST reinitialiser/`` — « Réinitialiser au plan standard » : rejoue le
+      seed après avoir effacé les lignes de POSTE SYSTÈME (les lignes par
+      rubrique, sans équivalent standard, sont conservées).
+    """
+    queryset = SchemaComptablePaie.objects.select_related('rubrique').all()
+    serializer_class = SchemaComptablePaieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code_systeme', 'rubrique__code', 'rubrique__libelle',
+                     'compte_debit', 'compte_credit']
+    ordering_fields = ['ordre', 'code_systeme', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-standard')
+    def seed_standard(self, request):
+        """Provisionne le plan comptable paie standard (idempotent)."""
+        created = ensure_schema_comptable_standard(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reinitialiser')
+    def reinitialiser(self, request):
+        """Réinitialise les postes système au plan standard (NTPAY3)."""
+        resultat = reinitialiser_schema_comptable(request.user.company)
+        return Response(resultat, status=status.HTTP_200_OK)
 
 
 class TypeEntreePonctuelleViewSet(_PaieBaseViewSet):
@@ -403,6 +546,40 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             BulletinPaieSerializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='certificat-travail')
+    def certificat_travail(self, request, pk=None):
+        """Certificat de travail de sortie, art. 72 (NTPAY6) — PDF.
+
+        Pièce de sortie de l'assistant STC (XPAI1), distincte de
+        l'attestation de travail générique (PAIE34) : elle porte les DATES
+        EXACTES d'entrée/sortie, le(s) emploi(s) occupé(s) et la mention
+        « libre de tout engagement ». Dates et poste sont lus via
+        ``rh.selectors`` (jamais ``rh.models``). Sans date de sortie sur la
+        fiche RH, l'édition est refusée en 400 en nommant ce qui manque.
+        """
+        from apps.rh import selectors as rh_selectors  # cross-app, lecture
+
+        profil = self.get_object()
+        identite = rh_selectors.fiche_identite_employe(
+            request.user.company, profil.employe_id) or {}
+        date_sortie, _motif = rh_selectors.sortie_employe(
+            request.user.company, profil.employe_id)
+        emplois = [identite.get('poste')] if identite.get('poste') else []
+        try:
+            pdf = builders.render_certificat_travail_pdf(
+                profil,
+                date_entree=identite.get('date_embauche'),
+                date_sortie=date_sortie or identite.get('date_sortie'),
+                emplois=emplois)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return _pdf_response(pdf, f'certificat_travail_{profil.id}.pdf')
 
     @action(detail=True, methods=['get'], url_path='stc-pdf')
     def stc_pdf(self, request, pk=None):
@@ -800,6 +977,35 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         contenu = request.data.get('contenu', '')
         rapport = rapprocher_affebds(request.user.company, contenu)
         return Response(rapport, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='bordereau-cnss')
+    def bordereau_cnss(self, request, pk=None):
+        """Bordereau de PAIEMENT des cotisations CNSS de la période (NTPAY4).
+
+        JSON par défaut (montants par organisme, total, date limite, dépôt BDS
+        lié). ``?export=pdf`` renvoie le bordereau imprimable,
+        ``?export=fichier`` le fichier de télépaiement à longueurs fixes.
+        Lecture seule — ne déclare ni ne règle rien.
+        """
+        periode = self.get_object()
+        bordereau = bordereau_paiement_cnss(periode)
+        export = (request.query_params.get('export') or '').lower()
+        if export == 'pdf':
+            try:
+                pdf = builders.render_bordereau_cnss_pdf(
+                    periode, bordereau=bordereau)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(
+                pdf,
+                f'bordereau_cnss_{periode.annee}_{periode.mois:02d}.pdf')
+        if export == 'fichier':
+            return Response(
+                fichier_telepaiement_cnss(periode, bordereau=bordereau),
+                status=status.HTTP_200_OK)
+        return Response(bordereau, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='fichier-damancom')
     def fichier_damancom(self, request, pk=None):
@@ -1927,3 +2133,70 @@ class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
                 'ecriture_id': ecriture.id if ecriture else None,
             },
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get', 'post'], url_path='depots',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def depots(self, request, pk=None):
+        """Registre des dépôts déclaratifs de cette échéance (NTPAY5).
+
+        ``GET`` liste les dépôts (preuves) déjà enregistrés.
+
+        ``POST`` enregistre un dépôt et bascule l'échéance en « déposée » :
+        ``reference_depot``, ``date_depot`` (défaut aujourd'hui),
+        ``montant_declare``, ``statut`` (``depose``/``accepte``/``rejete``),
+        ``motif_rejet`` (REQUIS si rejeté), et l'accusé lui-même soit en
+        multipart (champ ``fichier``, PDF/PNG/JPEG/WebP), soit par une clé
+        déjà stockée (``fichier_key``). Un dépôt REJETÉ n'avance jamais
+        l'échéance.
+        """
+        echeance = self.get_object()
+        if request.method == 'GET':
+            return Response(
+                DepotDeclaratifSerializer(
+                    echeance.depots.all(), many=True).data,
+                status=status.HTTP_200_OK)
+
+        fichier_key = request.data.get('fichier_key') or ''
+        fichier = request.FILES.get('fichier')
+        if fichier is not None:
+            from apps.records.storage import store_attachment  # app socle
+
+            stocke, erreur = store_attachment(
+                fichier, company=request.user.company)
+            if erreur:
+                raise DRFValidationError({'fichier': [erreur]})
+            fichier_key = stocke['file_key']
+
+        date_depot = request.data.get('date_depot') or None
+        if date_depot:
+            date_depot = parse_date(str(date_depot))
+            if date_depot is None:
+                raise DRFValidationError({'date_depot': [
+                    'Date invalide : attendu AAAA-MM-JJ.']})
+        montant = request.data.get('montant_declare')
+        try:
+            montant = Decimal(str(montant)) if montant not in (None, '') \
+                else None
+        except (InvalidOperation, ValueError):
+            raise DRFValidationError({'montant_declare': [
+                'Montant invalide.']})
+
+        try:
+            depot = enregistrer_depot_declaratif(
+                echeance,
+                date_depot=date_depot,
+                reference_depot=request.data.get('reference_depot') or '',
+                fichier_key=fichier_key,
+                montant_declare=montant,
+                statut=request.data.get('statut') or None,
+                motif_rejet=request.data.get('motif_rejet') or '',
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(
+                exc.message_dict if hasattr(exc, 'message_dict')
+                else {'detail': exc.messages})
+        echeance.refresh_from_db()
+        return Response({
+            'depot': DepotDeclaratifSerializer(depot).data,
+            'echeance': self.get_serializer(echeance).data,
+        }, status=status.HTTP_201_CREATED)

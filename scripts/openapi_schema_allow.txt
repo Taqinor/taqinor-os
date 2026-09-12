@@ -1016,3 +1016,14 @@ Warning|VisiteTechniqueViewSet > VisiteTechniqueSerializer|unable to resolve typ
 Warning|VoteIdeeViewSet > VoteIdeeSerializer|unable to resolve type hint for function "get_votant_nom". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|VueGedEnregistreeViewSet > VueGedEnregistreeSerializer|unable to resolve type hint for function "get_est_a_moi". Consider using a type hint or @extend_schema_field. Defaulting
 Warning|WorkingHoursConfigViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|<global>|operationId "django_rh_postes_cles_couverture_retrieve" has collisions [('/api/django/rh/postes-cles/{id}/couverture/',
+Warning|<global>|operationId "v#_rh_postes_cles_couverture_retrieve" has collisions [('/api/v#/rh/postes-cles/{id}/couverture/', 'get'),
+Warning|ContratViewSet|could not derive type of path parameter "cid" because model "apps.contrats.models.Contrat" contained no such field. Cons
+Warning|EnqueteEngagementViewSet > EnqueteEngagementSerializer|unable to resolve type hint for function "get_nombre_reponses". Consider using a type hint or @extend_schema_field. Defa
+Warning|EnveloppeManagerViewSet > EnveloppeManagerSerializer|unable to resolve type hint for function "get_manager_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|EvaluationNeufBoxViewSet > EvaluationNeufBoxSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|OkrIndividuelViewSet > OkrIndividuelSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|PaysPaieViewSet > PaysPaieSerializer|unable to resolve type hint for function "get_moteur_disponible". Consider using a type hint or @extend_schema_field. De
+Warning|PlanActionEngagementViewSet > PlanActionEngagementSerializer|unable to resolve type hint for function "get_responsable_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|PlanSuccessionViewSet > PlanSuccessionSerializer|unable to resolve type hint for function "get_successeur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|PropositionRevisionViewSet > PropositionRevisionSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
