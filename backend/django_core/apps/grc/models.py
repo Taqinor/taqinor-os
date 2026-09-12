@@ -1689,3 +1689,68 @@ class ExigenceCadre(TenantModel):
 
     def __str__(self):
         return f'{self.code_exigence} — {self.intitule[:60]}'
+
+
+class SousTraitantRGPD(TenantModel):
+    """NTGRC35 — sous-traitant au sens de l'art. 28 RGPD / loi 09-08.
+
+    Un « fournisseur » et un « sous-traitant de données » ne sont pas la même
+    chose : le loueur de nacelles n'est pas sous-traitant, l'hébergeur et le
+    cabinet de paie le sont. D'où une table dédiée plutôt qu'un drapeau sur la
+    fiche fournisseur : la liste des sous-traitants est un DOCUMENT que l'on
+    produit à l'autorité, avec ses finalités, sa localisation de données et
+    ses clauses.
+
+    Deux références TEXTE, toutes deux facultatives : le fournisseur
+    (``stock.Fournisseur`` — tous les sous-traitants ne sont pas des
+    fournisseurs référencés) et le questionnaire de conformité
+    (``grc.QuestionnaireFournisseur``, NTGRC22) qui porte la diligence faite.
+    """
+
+    RISQUE_FAIBLE = 'faible'
+    RISQUE_MOYEN = 'moyen'
+    RISQUE_ELEVE = 'eleve'
+    RISQUE_CHOICES = [
+        (RISQUE_FAIBLE, 'Faible'),
+        (RISQUE_MOYEN, 'Moyen'),
+        (RISQUE_ELEVE, 'Élevé'),
+    ]
+
+    nom = models.CharField('Nom', max_length=200)
+    fournisseur_ref = models.CharField(
+        'Fournisseur', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du stock.Fournisseur (string-FK), '
+                  'quand le sous-traitant est aussi un fournisseur référencé.')
+    finalites = models.JSONField(
+        'Finalités', default=list, blank=True,
+        help_text='Ce pour quoi il traite les données POUR NOUS — ex. '
+                  '["hébergement", "paie"].')
+    categories_donnees = models.JSONField(
+        'Catégories de données', default=list, blank=True)
+    localisation_donnees = models.CharField(
+        'Localisation des données', max_length=200, blank=True, default='',
+        help_text='Pays/région où les données sont effectivement stockées.')
+    clause_signee = models.BooleanField(
+        'Clause de sous-traitance signée', default=False)
+    date_clause = models.DateField(
+        'Date de la clause', null=True, blank=True)
+    questionnaire_ref = models.CharField(
+        'Questionnaire de conformité', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du grc.QuestionnaireFournisseur '
+                  '(string-FK).')
+    niveau_risque = models.CharField(
+        'Niveau de risque', max_length=8, choices=RISQUE_CHOICES,
+        default=RISQUE_MOYEN)
+
+    class Meta:
+        verbose_name = 'Sous-traitant (RGPD)'
+        verbose_name_plural = 'Sous-traitants (RGPD / art. 28)'
+        ordering = ['nom', 'id']
+        indexes = [
+            models.Index(fields=['company', 'clause_signee'],
+                         name='grc_soustraitant_co_cla_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'clause signée' if self.clause_signee else 'SANS clause'
+        return f'{self.nom} ({etat})'

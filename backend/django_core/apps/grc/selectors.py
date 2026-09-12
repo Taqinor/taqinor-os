@@ -974,3 +974,30 @@ def taux_couverture(company, cadre):
         'taux_avec_partiel_pct': round(
             100.0 * (couvert + 0.5 * partiel) / total, 1),
     }
+
+
+# ── NTGRC35 — sous-traitants & clauses (art. 28) ────────────────────────────
+
+def sous_traitants_sans_clause(company):
+    """NTGRC35 — sous-traitants SANS clause de sous-traitance signée.
+
+    C'est le manquement le plus banal et le plus sanctionné : confier des
+    données personnelles à un tiers sans contrat qui l'encadre. Les plus
+    risqués remontent EN PREMIER — la file de travail se lit de haut en bas.
+
+    Une ``date_clause`` renseignée mais ``clause_signee`` à ``False`` reste
+    dans la liste : c'est la SIGNATURE qui engage, pas la date qu'on a notée.
+    """
+    from django.db.models import Case, IntegerField, Value, When
+
+    from .models import SousTraitantRGPD
+
+    if company is None:
+        return SousTraitantRGPD.objects.none()
+    return (SousTraitantRGPD.objects
+            .filter(company=company, clause_signee=False)
+            .annotate(poids_risque=Case(
+                When(niveau_risque=SousTraitantRGPD.RISQUE_ELEVE, then=Value(0)),
+                When(niveau_risque=SousTraitantRGPD.RISQUE_MOYEN, then=Value(1)),
+                default=Value(2), output_field=IntegerField()))
+            .order_by('poids_risque', 'nom', 'id'))

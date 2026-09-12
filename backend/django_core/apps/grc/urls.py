@@ -21,7 +21,8 @@ from .views import (
     PlanTraitementRisqueViewSet,
     PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
     QuestionnaireFournisseurViewSet, ReponseQuestionnaireViewSet,
-    RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
+    RevueRisqueViewSet, RisqueEntrepriseViewSet, SousTraitantRGPDViewSet,
+    TestControleViewSet,
     ViolationDonneesViewSet, dossier_conformite, e_discovery,
     score_conformite, tableau_bord_dpo,
 )
@@ -85,6 +86,9 @@ router.register(r'cadres-conformite', CadreConformiteViewSet,
                 basename='grc-cadre-conformite')
 router.register(r'exigences-cadre', ExigenceCadreViewSet,
                 basename='grc-exigence-cadre')
+# NTGRC35 — sous-traitants RGPD (art. 28) + suivi des clauses.
+router.register(r'sous-traitants-rgpd', SousTraitantRGPDViewSet,
+                basename='grc-sous-traitant-rgpd')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

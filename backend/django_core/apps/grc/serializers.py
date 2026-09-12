@@ -12,7 +12,8 @@ from .models import (
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
     PolitiqueVersion, QuestionnaireFournisseur, ReponseQuestionnaire,
-    RevueRisque, RisqueEntreprise, TestControle, ViolationDonnees,
+    RevueRisque, RisqueEntreprise, SousTraitantRGPD, TestControle,
+    ViolationDonnees,
 )
 
 
@@ -822,6 +823,82 @@ class AnalyseImpactDPIASerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'avis_dpo': 'Justifiez pourquoi aucune analyse d\'impact '
                             'n\'est nécessaire.'})
+        return attrs
+
+
+class SousTraitantRGPDSerializer(serializers.ModelSerializer):
+    """NTGRC35 — sous-traitant au sens de l'art. 28 RGPD / loi 09-08."""
+
+    niveau_risque_libelle = serializers.CharField(
+        source='get_niveau_risque_display', read_only=True)
+
+    class Meta:
+        model = SousTraitantRGPD
+        fields = [
+            'id', 'nom', 'fournisseur_ref', 'finalites',
+            'categories_donnees', 'localisation_donnees', 'clause_signee',
+            'date_clause', 'questionnaire_ref', 'niveau_risque',
+            'niveau_risque_libelle', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def _company(self):
+        requete = self.context.get('request')
+        return getattr(getattr(requete, 'user', None), 'company', None)
+
+    def validate_nom(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                'Le nom du sous-traitant est obligatoire.')
+        return valeur
+
+    def validate_fournisseur_ref(self, valeur):
+        """Vérifié via le SELECTOR de ``stock`` — aucun import de modèle."""
+        valeur = str(valeur or '').strip()
+        company = self._company()
+        if not valeur or company is None:
+            return valeur
+        from apps.stock.selectors import get_fournisseur_by_id
+
+        try:
+            fournisseur_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence fournisseur doit être un identifiant '
+                'numérique.')
+        if get_fournisseur_by_id(company, fournisseur_id) is None:
+            raise serializers.ValidationError(
+                "Ce fournisseur n'existe pas pour votre société.")
+        return valeur
+
+    def validate_questionnaire_ref(self, valeur):
+        """Le questionnaire lié doit appartenir à la société de l'appelant."""
+        valeur = str(valeur or '').strip()
+        company = self._company()
+        if not valeur or company is None:
+            return valeur
+        try:
+            questionnaire_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence du questionnaire doit être un identifiant '
+                'numérique.')
+        if not QuestionnaireFournisseur.objects.filter(
+                company=company, pk=questionnaire_id).exists():
+            raise serializers.ValidationError(
+                "Ce questionnaire n'existe pas pour votre société.")
+        return valeur
+
+    def validate(self, attrs):
+        """Une clause déclarée SIGNÉE doit dire QUAND."""
+        signee = attrs.get(
+            'clause_signee', getattr(self.instance, 'clause_signee', False))
+        date_clause = attrs.get(
+            'date_clause', getattr(self.instance, 'date_clause', None))
+        if signee and date_clause is None:
+            raise serializers.ValidationError({
+                'date_clause': 'Indiquez la date de signature de la clause.'})
         return attrs
 
 

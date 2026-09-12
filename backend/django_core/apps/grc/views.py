@@ -20,7 +20,7 @@ from .models import (
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
     QuestionnaireFournisseur, ReponseQuestionnaire, RevueRisque,
-    RisqueEntreprise, TestControle, ViolationDonnees,
+    RisqueEntreprise, SousTraitantRGPD, TestControle, ViolationDonnees,
 )
 from .serializers import (
     AnalyseImpactDPIASerializer,
@@ -35,7 +35,8 @@ from .serializers import (
     PolitiqueInterneSerializer, PolitiqueRetentionObjetSerializer,
     PolitiqueVersionSerializer, QuestionnaireFournisseurSerializer,
     ReponseQuestionnaireSerializer, RevueRisqueSerializer,
-    RisqueEntrepriseSerializer, TestControleSerializer,
+    RisqueEntrepriseSerializer, SousTraitantRGPDSerializer,
+    TestControleSerializer,
     ViolationDonneesSerializer,
 )
 
@@ -850,6 +851,35 @@ class AnalyseImpactDPIAViewSet(CompanyScopedModelViewSet):
             }
             for entree in manquants
         ]})
+
+
+class SousTraitantRGPDViewSet(CompanyScopedModelViewSet):
+    """NTGRC35 — sous-traitants au sens de l'art. 28 RGPD / loi 09-08."""
+
+    queryset = SousTraitantRGPD.objects.all()
+    serializer_class = SousTraitantRGPDSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        risque = (params.get('niveau_risque') or '').strip()
+        if risque:
+            qs = qs.filter(niveau_risque=risque)
+        clause = (params.get('clause_signee') or '').strip()
+        if clause in ('1', 'true', 'True', 'oui'):
+            qs = qs.filter(clause_signee=True)
+        elif clause in ('0', 'false', 'False', 'non'):
+            qs = qs.filter(clause_signee=False)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='sans-clause')
+    def sans_clause(self, request):
+        """Sous-traitants sans clause signée — les plus risqués d'abord."""
+        from .selectors import sous_traitants_sans_clause
+
+        qs = sous_traitants_sans_clause(request.user.company)
+        return Response({'results': self.get_serializer(qs, many=True).data})
 
 
 class CadreConformiteViewSet(CompanyScopedModelViewSet):
