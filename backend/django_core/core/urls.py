@@ -38,6 +38,7 @@ from .views import (
     ConsentRecordViewSet,
     DashboardViewSet,
     DataExplorerDatasetsView,
+    DataExplorerRunView,
     DataSubjectRequestViewSet,
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
@@ -161,4 +162,8 @@ urlpatterns = router.urls + [
     path('data-explorer/datasets/<str:name>/',
          DataExplorerDatasetsView.as_view(),
          name='data-explorer-dataset-detail'),
+    # NTDATA6 — exécution self-service d'une requête ad-hoc (liste blanche +
+    # scoping société + plafond de lignes ; jamais de SQL brut).
+    path('data-explorer/run/', DataExplorerRunView.as_view(),
+         name='data-explorer-run'),
 ]
