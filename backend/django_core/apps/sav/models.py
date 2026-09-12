@@ -1932,6 +1932,18 @@ class ReponseType(models.Model):
         max_length=12, blank=True, default='',
         help_text='Statut optionnel appliqué au ticket à l\'insertion.')
     archived = models.BooleanField(default=False)
+    # ── NTSRV34 — Canaux autorisés pour cette macro ─────────────────────────
+    # Le plan décrit « un ManyToMany optionnel vers un choix simple » : il n'y
+    # a PAS de modèle cible à référencer (les quatre canaux sont un ENUM figé,
+    # pas des données de société), donc la liste est stockée telle quelle —
+    # une table de jointure pour quatre codes constants serait du poids mort.
+    # VIDE ou NULL = tous les canaux, EXACTEMENT le comportement d'aujourd'hui
+    # (aucune macro existante n'est restreinte par cette migration).
+    canaux_autorises = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Canaux autorisés',
+        help_text="Liste de canaux ('email', 'whatsapp', 'portail', "
+                  "'interne'). Vide = macro proposée sur TOUS les canaux.")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1945,6 +1957,47 @@ class ReponseType(models.Model):
 
     # Placeholders whitelistés — tout autre `{...}` reste tel quel.
     PLACEHOLDERS = ('client', 'reference', 'technicien', 'date')
+
+    # ── NTSRV34 — canaux de réponse (whitelist figée) ───────────────────────
+    #: Les quatre canaux sur lesquels une macro peut être proposée. `interne`
+    #: couvre tout ce qui n'est pas une conversation client entrante
+    #: (saisie back-office `manuel`, appel `telephone`).
+    CANAUX = ('email', 'whatsapp', 'portail', 'interne')
+
+    #: Canal d'OUVERTURE du ticket (``Ticket.CanalOuverture``) -> canal de
+    #: réponse. Tout canal non listé retombe sur `interne`.
+    CANAL_PAR_OUVERTURE = {
+        'email': 'email',
+        'whatsapp': 'whatsapp',
+        'portail': 'portail',
+        'manuel': 'interne',
+        'telephone': 'interne',
+    }
+
+    @classmethod
+    def canal_de_ticket(cls, ticket):
+        """NTSRV34 — canal de RÉPONSE déduit du canal d'ouverture du ticket."""
+        ouverture = getattr(ticket, 'canal_ouverture', '') or 'manuel'
+        return cls.CANAL_PAR_OUVERTURE.get(ouverture, 'interne')
+
+    def canaux_normalises(self):
+        """Liste de canaux valides déclarée sur cette macro (jamais None).
+
+        Tolère une valeur héritée mal formée (chaîne, dict, code inconnu) :
+        elle se lit comme « aucune restriction », jamais comme une erreur qui
+        ferait disparaître la macro de tous les sélecteurs."""
+        valeur = self.canaux_autorises
+        if not isinstance(valeur, (list, tuple)):
+            return []
+        return [c for c in valeur if c in self.CANAUX]
+
+    def autorise_canal(self, canal):
+        """True si la macro est proposable sur ``canal``.
+
+        Une macro SANS restriction (liste vide/NULL) est autorisée partout —
+        c'est le comportement historique, préservé tel quel."""
+        canaux = self.canaux_normalises()
+        return not canaux or canal in canaux
 
     def rendu(self, *, client='', reference='', technicien='', date=''):
         """Rend le corps avec les placeholders whitelistés substitués.

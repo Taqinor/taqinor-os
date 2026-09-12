@@ -1226,6 +1226,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
             except (ReponseType.DoesNotExist, ValueError):
                 return Response(
                     {'detail': 'Réponse type introuvable.'}, status=400)
+            # NTSRV34 — une macro restreinte à d'autres canaux n'est pas
+            # seulement masquée du sélecteur : elle est refusée côté serveur
+            # (une macro SANS restriction reste acceptée partout — défaut).
+            canal_ticket = ReponseType.canal_de_ticket(ticket)
+            if not macro.autorise_canal(canal_ticket):
+                return Response(
+                    {'detail': 'Cette réponse type n\'est pas autorisée sur '
+                               'le canal de ce ticket.'}, status=400)
             body = macro.rendu(
                 client=str(ticket.client) if ticket.client_id else '',
                 reference=ticket.reference,
@@ -2672,7 +2680,42 @@ class ReponseTypeViewSet(CompanyScopedModelViewSet):
         if self.action == 'list' and self.request.query_params.get(
                 'archived') != '1':
             qs = qs.filter(archived=False)
+        if self.action == 'list':
+            qs = self._filtrer_par_canal(qs)
         return qs
+
+    def _filtrer_par_canal(self, qs):
+        """NTSRV34 — restreint la liste au canal demandé (sélecteur de macro).
+
+        Deux façons de le demander, l'une ou l'autre :
+        ``?canal=whatsapp`` (canal de réponse direct) ou ``?ticket=<id>``
+        (le canal est alors DÉDUIT du ``canal_ouverture`` du ticket, jamais
+        lu du corps de la requête). Sans paramètre : liste complète, donc le
+        comportement XSAV23 est strictement inchangé pour tout appelant
+        existant.
+
+        Le filtre est appliqué en Python sur les ids (les macros d'une société
+        se comptent en dizaines) : une macro sans restriction reste visible
+        partout, et une valeur héritée mal formée ne fait jamais disparaître
+        une macro."""
+        params = self.request.query_params
+        canal = (params.get('canal') or '').strip().lower()
+        ticket_id = (params.get('ticket') or '').strip()
+        if not canal and ticket_id:
+            ticket = Ticket.objects.filter(
+                pk=ticket_id,
+                company=self.request.user.company).first() \
+                if ticket_id.isdigit() else None
+            if ticket is None:
+                return qs
+            canal = ReponseType.canal_de_ticket(ticket)
+        if not canal:
+            return qs
+        if canal not in ReponseType.CANAUX:
+            # Canal inconnu : on ne devine pas, on ne masque rien.
+            return qs
+        autorisees = [m.pk for m in qs if m.autorise_canal(canal)]
+        return qs.filter(pk__in=autorisees)
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

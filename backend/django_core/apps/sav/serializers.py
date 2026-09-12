@@ -740,9 +740,34 @@ class ReponseTypeSerializer(serializers.ModelSerializer):
         model = ReponseType
         fields = [
             'id', 'titre', 'corps', 'nouveau_statut', 'archived',
+            # NTSRV34 — canaux autorisés (vide = tous, comportement d'origine).
+            'canaux_autorises',
             'date_creation',
         ]
         read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_canaux_autorises(self, value):
+        """NTSRV34 — refuse un canal inconnu au lieu de l'avaler en silence.
+
+        ``None`` et ``[]`` restent acceptés tels quels : ils veulent dire
+        « aucune restriction » (comportement XSAV23 inchangé)."""
+        if value in (None, ''):
+            return None
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Attendu : une liste de canaux.')
+        inconnus = sorted({c for c in value if c not in ReponseType.CANAUX})
+        if inconnus:
+            raise serializers.ValidationError(
+                f'Canal inconnu : {", ".join(inconnus)}. Valeurs possibles : '
+                f'{", ".join(ReponseType.CANAUX)}.')
+        # Dédoublonne en conservant l'ordre de saisie.
+        vus, sortie = set(), []
+        for canal in value:
+            if canal not in vus:
+                vus.add(canal)
+                sortie.append(canal)
+        return sortie
 
 
 # ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
