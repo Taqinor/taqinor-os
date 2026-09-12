@@ -74,6 +74,9 @@ vi.mock('../../api/crmApi', () => ({
 vi.mock('../../api/ventesApi', () => ({
   default: {
     getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
+    // CHT20 — le bloc réglementaire de l'Aperçu charge le dossier lié :
+    // le mock DOIT couvrir tout ce que le composant appelle au montage.
+    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
   },
 }))
 

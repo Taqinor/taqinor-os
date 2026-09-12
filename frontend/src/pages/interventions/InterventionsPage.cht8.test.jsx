@@ -60,7 +60,10 @@ describe('InterventionsPage — CHT8 deep-link ?id=', () => {
     )
 
     // La liste charge d'abord (deux interventions).
-    await waitFor(() => expect(screen.getByText('Client Deux Cent Deux')).toBeInTheDocument())
+    // Le nom du client apparaît sur la carte kanban ET dans la fiche ouverte
+  // par le deep-link : getAllByText, jamais getByText (strict-mode RTL).
+  await waitFor(() => expect(
+    screen.getAllByText('Client Deux Cent Deux').length).toBeGreaterThanOrEqual(1))
 
     // La fiche (Sheet) s'ouvre SANS clic, sur l'intervention #202 désignée par
     // ?id= — jamais sur #101 (première de la liste).

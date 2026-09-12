@@ -289,7 +289,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // 2026-09-06 : 760 -> 770. Batch 3 AUD/MRY — 6 écrans/panneaux code-splittés
 // de plus (mesuré 763).
 // 2026-09-10 : 770 -> 778. Groupe VT — écrans visite code-splittés (mesuré 773).
-export const MAX_CHUNK_COUNT = 778
+// 2026-09-12 : 778 -> 786. Lot CHT + NTPRT (PR #668) : écrans lazy neufs —
+// Pilotage chantiers, portail client Chantiers, file de travail réglementaire
+// (mesuré 781 en CI). Croissance une-route-un-chunk, pas une prolifération de
+// structure ; le budget gzip + PER_CHUNK_BUDGET_KB (350) restent les vrais
+// garde-fous de poids.
+export const MAX_CHUNK_COUNT = 786
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

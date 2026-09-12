@@ -36,21 +36,25 @@ beforeAll(() => {
 // PACT10 — l'exemple committé, lu depuis le fichier réel (jamais recopié).
 const INDEMNITE_CHANTIER_EXEMPLE = exempleContrat('compta', 'indemnite_chantier')
 
-const mocks = vi.hoisted(() => ({
-  indemnitesChantierList: vi.fn(),
-  indemnitesChantierCreate: vi.fn(() => Promise.resolve({ data: { id: 900 } })),
-}))
-
-const empty = () => Promise.resolve({ data: [] })
-const res = () => ({ list: empty, create: empty, update: empty })
-
+// vi.mock est HISSÉ au-dessus des déclarations du module : tout helper que
+// ses fabriques referment doit vivre dans vi.hoisted (classe CI #98 voisine —
+// « Cannot access before initialization » sinon).
+const mocks = vi.hoisted(() => {
+  const empty = () => Promise.resolve({ data: [] })
+  return {
+    indemnitesChantierList: vi.fn(),
+    indemnitesChantierCreate: vi.fn(() => Promise.resolve({ data: { id: 900 } })),
+    empty,
+    res: () => ({ list: empty, create: empty, update: empty }),
+  }
+})
 vi.mock('../../../api/comptaApi', () => ({
   default: {
     downloadBlob: vi.fn(),
-    notesFrais: res(),
-    rapportsNotesFrais: res(),
-    plafondsNotesFrais: res(),
-    baremesIndemnite: res(),
+    notesFrais: mocks.res(),
+    rapportsNotesFrais: mocks.res(),
+    plafondsNotesFrais: mocks.res(),
+    baremesIndemnite: mocks.res(),
     indemnitesChantier: {
       list: (...args) => mocks.indemnitesChantierList(...args),
       create: (...args) => mocks.indemnitesChantierCreate(...args),
