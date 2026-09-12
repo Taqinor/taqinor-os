@@ -25,6 +25,11 @@ from apps.stock.models import Produit
 
 User = get_user_model()
 
+#: Sentinelle « argument non fourni » — distingue « prends la cause par
+#: défaut » de « ce ticket n'a AUCUNE cause » (None est une valeur métier
+#: significative ici).
+_DEFAUT = object()
+
 
 def auth(user):
     api = APIClient()
@@ -54,7 +59,11 @@ class NTSRV17CandidatsProblemeTest(TestCase):
             company=self.company, nom='Usure normale')
         self.compteur = 0
 
-    def _ticket(self, produit=None, cause=None, statut=None):
+    def _ticket(self, produit=None, cause=_DEFAUT, statut=None):
+        # `cause=None` doit vouloir dire « ticket SANS cause codifiée » (le cas
+        # d'exclusion que NTSRV17 verrouille) — d'où le sentinelle : un simple
+        # `cause or self.cause` retomberait sur la cause par défaut et le test
+        # d'exclusion ne testerait plus rien.
         self.compteur += 1
         equipement = Equipement.objects.create(
             company=self.company, produit=produit or self.produit,
@@ -62,7 +71,7 @@ class NTSRV17CandidatsProblemeTest(TestCase):
         return Ticket.objects.create(
             company=self.company, reference=f'SAV-NTSRV17-{self.compteur}',
             client=self.client_obj, equipement=equipement,
-            cause=cause if cause is not None else self.cause,
+            cause=self.cause if cause is _DEFAUT else cause,
             statut=statut or Ticket.Statut.EN_COURS,
             date_ouverture=timezone.localdate())
 

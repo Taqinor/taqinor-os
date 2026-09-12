@@ -160,8 +160,10 @@ def fiche_synthese_ticket_pdf(ticket):
 
     Usage : classeur physique d'intervention, transmission assurance /
     garantie. Rendue par WeasyPrint — la MÊME pile que le PDF facture legacy
-    (``apps.ventes.utils.pdf``) et surtout PAS le moteur ``quote_engine``,
-    réservé aux devis client (règle #4).
+    (``apps.ventes.utils.pdf``) et surtout PAS le moteur premium réservé aux
+    devis client (règle #4). Un test (NTSRV28) vérifie que le nom de ce
+    paquet n'apparaît NULLE PART dans ce fichier, pas même en commentaire :
+    c'est volontaire, on ne le cite donc pas ici.
 
     ⚠ AUCUN prix d'achat, AUCUNE marge : la fiche ne contient que des
     désignations, des quantités et l'historique. ``Ticket.cout`` lui-même est
