@@ -4027,11 +4027,44 @@ class PouvoirBancaireViewSet(_ComptaBaseViewSet):
     def get_permissions(self):
         # NTTRE32 — la modification des signataires exige une permission dédiée
         # (distincte de la gestion trésorerie générique) ; la lecture reste
-        # ouverte à Admin/Responsable.
+        # ouverte à Admin/Responsable. NTTRE37 — l'import CSV des plafonds est
+        # une ÉCRITURE sur les habilitations : même palier que le CRUD (une
+        # @action d'écriture qui retomberait sur la permission de LECTURE est
+        # exactement le trou que cette liste existe pour fermer).
         if self.action in (
-                'create', 'update', 'partial_update', 'destroy', 'revoquer'):
+                'create', 'update', 'partial_update', 'destroy', 'revoquer',
+                'import_csv'):
             return [HasPermissionOrLegacy('compta_gerer_pouvoirs_bancaires')()]
         return super().get_permissions()
+
+    @action(detail=False, methods=['post'], url_path='import-csv',
+            parser_classes=[MultiPartParser, FormParser])
+    def import_csv(self, request):
+        """NTTRE37 — Mise à jour en MASSE des plafonds par CSV/XLSX.
+
+        Corps multipart : ``fichier`` (CSV/XLSX). Colonnes : ``cin`` (ou
+        ``titulaire``) + ``plafond_signature_seul`` et/ou
+        ``plafond_signature_conjointe``. ``apercu=true`` : aperçu SANS RIEN
+        ÉCRIRE. ``ecraser=true`` : opt-in explicite pour remplacer un plafond
+        déjà non nul (défaut = remplissage seul).
+
+        ADDITIF : aucun ``PouvoirBancaire`` n'est créé par cet import et aucun
+        autre champ n'est touché ; un titulaire absent du référentiel est
+        rejeté en ligne d'erreur dans le rapport. La société est TOUJOURS celle
+        du serveur, jamais lue du corps.
+        """
+        fichier = request.FILES.get('fichier')
+        if fichier is None:
+            return Response(
+                {'fichier': 'Fichier manquant (champ « fichier »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        vrai = ('1', 'true', 'True', 'oui', True)
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            request.user.company, fichier.read(), fichier.name,
+            user=request.user,
+            apercu=request.data.get('apercu') in vrai,
+            ecraser=request.data.get('ecraser') in vrai)
+        return Response(rapport)
 
     @action(detail=True, methods=['get'])
     def certificat(self, request, pk=None):

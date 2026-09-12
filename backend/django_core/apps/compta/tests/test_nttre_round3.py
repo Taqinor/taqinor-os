@@ -573,3 +573,155 @@ class ApercuCampagnePaiementTests(TestCase):
         resp_b = auth(user_b).get('/api/django/compta/payment-runs/apercu/')
         self.assertEqual(resp_b.status_code, 200)
         self.assertEqual(resp_b.data['nb_dettes'], 0)
+
+
+class ImportPlafondsPouvoirsTests(TestCase):
+    """NTTRE37 — import CSV des plafonds : additif, jamais de création."""
+
+    def setUp(self):
+        self.co = make_company('nttre37', 'NTTRE37 Co')
+        services.seed_plan_comptable(self.co)
+        self.banque = CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE', compte_comptable=services.get_compte(self.co, '5141'))
+        self.user = User.objects.create_user(
+            username='nttre37-user', password='x', company=self.co,
+            role_legacy='responsable')
+        self.api = auth(self.user)
+
+    def _pouvoir(self, nom, cin, seul=Decimal('0'), conjoint=Decimal('0')):
+        from apps.compta.models import PouvoirBancaire
+
+        return PouvoirBancaire.objects.create(
+            company=self.co, compte_tresorerie=self.banque,
+            titulaire_nom=nom, titulaire_cin=cin,
+            plafond_signature_seul=seul,
+            plafond_signature_conjointe=conjoint)
+
+    @staticmethod
+    def _csv(lignes):
+        entete = 'cin;plafond_signature_seul;plafond_signature_conjointe'
+        return ('\n'.join([entete] + lignes)).encode('utf-8')
+
+    def test_cinquante_lignes_mettent_a_jour_les_plafonds(self):
+        pouvoirs = [self._pouvoir(f'Titulaire {i}', f'CIN{i:03d}')
+                    for i in range(50)]
+        contenu = self._csv([f'CIN{i:03d};{1000 + i};{5000 + i}'
+                             for i in range(50)])
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            self.co, contenu, 'plafonds.csv', user=self.user)
+        self.assertEqual(rapport['maj'], 50)
+        self.assertEqual(rapport['crees'], 0)
+        self.assertEqual(rapport['erreurs'], [])
+        pouvoirs[0].refresh_from_db()
+        self.assertEqual(pouvoirs[0].plafond_signature_seul, Decimal('1000.00'))
+        self.assertEqual(
+            pouvoirs[0].plafond_signature_conjointe, Decimal('5000.00'))
+        pouvoirs[49].refresh_from_db()
+        self.assertEqual(pouvoirs[49].plafond_signature_seul, Decimal('1049.00'))
+
+    def test_cin_inconnue_rejetee_explicitement_sans_creation(self):
+        from apps.compta.models import PouvoirBancaire
+
+        self._pouvoir('Titulaire A', 'CIN001')
+        contenu = self._csv(['CIN001;2000;8000', 'CIN999;3000;9000'])
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            self.co, contenu, 'plafonds.csv', user=self.user)
+        self.assertEqual(rapport['maj'], 1)
+        self.assertEqual(len(rapport['erreurs']), 1)
+        self.assertEqual(rapport['erreurs'][0]['ligne'], 2)
+        self.assertIn('CIN999', rapport['erreurs'][0]['motif'])
+        self.assertIn('introuvable', rapport['erreurs'][0]['motif'])
+        # Aucun pouvoir créé par l'import.
+        self.assertEqual(
+            PouvoirBancaire.objects.filter(company=self.co).count(), 1)
+
+    def test_remplissage_seul_par_defaut_ecrasement_sur_option(self):
+        pouvoir = self._pouvoir(
+            'Titulaire B', 'CIN002', seul=Decimal('100000'))
+        contenu = self._csv(['CIN002;250000;'])
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            self.co, contenu, 'plafonds.csv', user=self.user)
+        pouvoir.refresh_from_db()
+        # Plafond DÉJÀ non nul : non remplacé sans opt-in explicite.
+        self.assertEqual(pouvoir.plafond_signature_seul, Decimal('100000.00'))
+        self.assertEqual(len(rapport['refuses']), 1)
+
+        rapport2 = services.importer_plafonds_pouvoirs_csv(
+            self.co, contenu, 'plafonds.csv', user=self.user, ecraser=True)
+        pouvoir.refresh_from_db()
+        self.assertEqual(pouvoir.plafond_signature_seul, Decimal('250000.00'))
+        self.assertEqual(len(rapport2['ecrasements']), 1)
+
+    def test_montant_invalide_met_la_ligne_en_erreur(self):
+        self._pouvoir('Titulaire C', 'CIN003')
+        contenu = self._csv(['CIN003;beaucoup;1000'])
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            self.co, contenu, 'plafonds.csv', user=self.user)
+        self.assertEqual(rapport['maj'], 0)
+        self.assertEqual(len(rapport['erreurs']), 1)
+        self.assertIn('plafond_signature_seul', rapport['erreurs'][0]['motif'])
+
+    def test_apercu_n_ecrit_rien(self):
+        pouvoir = self._pouvoir('Titulaire D', 'CIN004')
+        contenu = self._csv(['CIN004;7000;9000'])
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            self.co, contenu, 'plafonds.csv', user=self.user, apercu=True)
+        self.assertTrue(rapport['apercu'])
+        self.assertEqual(rapport['maj'], 1)
+        pouvoir.refresh_from_db()
+        self.assertEqual(pouvoir.plafond_signature_seul, Decimal('0.00'))
+
+    def test_le_lot_est_journalise_dans_importjob(self):
+        from apps.dataimport.models import ImportJob
+
+        self._pouvoir('Titulaire E', 'CIN005')
+        contenu = self._csv(['CIN005;1500;2500', 'CIN888;1;2'])
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            self.co, contenu, 'plafonds.csv', user=self.user)
+        job = ImportJob.objects.get(pk=rapport['job_id'])
+        self.assertEqual(job.company_id, self.co.id)
+        self.assertEqual(job.target, 'plafonds_pouvoirs_bancaires')
+        self.assertEqual(job.updated_count, 1)
+        self.assertEqual(job.created_count, 0)
+        self.assertEqual(job.error_count, 1)
+
+    def test_endpoint_import_csv(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        pouvoir = self._pouvoir('Titulaire F', 'CIN006')
+        fichier = SimpleUploadedFile(
+            'plafonds.csv', self._csv(['CIN006;4200;']),
+            content_type='text/csv')
+        resp = self.api.post(
+            '/api/django/compta/pouvoirs-bancaires/import-csv/',
+            {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['maj'], 1)
+        pouvoir.refresh_from_db()
+        self.assertEqual(pouvoir.plafond_signature_seul, Decimal('4200.00'))
+
+    def test_endpoint_refuse_un_fichier_manquant_en_nommant_le_champ(self):
+        resp = self.api.post(
+            '/api/django/compta/pouvoirs-bancaires/import-csv/',
+            {}, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('fichier', resp.data)
+
+    def test_import_ne_voit_pas_les_pouvoirs_d_une_autre_societe(self):
+        autre = make_company('nttre37-b', 'NTTRE37 B')
+        services.seed_plan_comptable(autre)
+        banque_b = CompteTresorerie.objects.create(
+            company=autre, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='Autre', compte_comptable=services.get_compte(autre, '5141'))
+        from apps.compta.models import PouvoirBancaire
+        pouvoir_b = PouvoirBancaire.objects.create(
+            company=autre, compte_tresorerie=banque_b,
+            titulaire_nom='Titulaire B', titulaire_cin='CIN007')
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            self.co, self._csv(['CIN007;9999;']), 'plafonds.csv',
+            user=self.user)
+        self.assertEqual(rapport['maj'], 0)
+        self.assertEqual(len(rapport['erreurs']), 1)
+        pouvoir_b.refresh_from_db()
+        self.assertEqual(pouvoir_b.plafond_signature_seul, Decimal('0.00'))

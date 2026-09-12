@@ -14982,3 +14982,171 @@ def export_simpl_is(company, exercice, *, is_reference=None,
         '  </Acomptes>\n'
         '</DeclarationIS>\n'
     )
+
+
+# ── NTTRE37 — Import CSV des plafonds de pouvoirs bancaires (en masse) ─────
+
+#: Un plafond à 0 signifie « aucune signature autorisée à ce titre », donc un
+#: champ NON RENSEIGNÉ au sens du garde-fou d'import : le passer de 0 à une
+#: valeur est un REMPLISSAGE, pas un écrasement (cf. ``_est_vide``).
+_PLAFONDS_VIDES = (Decimal('0'), Decimal('0.00'), 0)
+
+
+def _lire_lignes_plafonds_csv(company, file_bytes, filename):
+    """NTTRE37 — lit le CSV/XLSX des plafonds et rapproche chaque titulaire.
+
+    Colonnes attendues (en-têtes normalisés) : ``cin`` (ou ``titulaire_cin``)
+    OU ``titulaire`` (nom), et au moins un de ``plafond_signature_seul`` /
+    ``plafond_signature_conjointe``. JAMAIS de création : un titulaire absent
+    du référentiel des pouvoirs met sa ligne en ERREUR sans bloquer le lot.
+    Renvoie ``(total_lignes, resultats, erreurs)``.
+    """
+    from apps.dataimport.parsing import iter_rows, normalize_header
+
+    from .models import PouvoirBancaire
+
+    _headers, rows = iter_rows(file_bytes, filename)
+    resultats = []
+    erreurs = []
+    for idx, row in enumerate(rows, start=1):
+        norm = {normalize_header(k): v for k, v in row.items()}
+        cin = str(norm.get('cin') or norm.get('titulaire_cin') or '').strip()
+        nom = str(norm.get('titulaire')
+                  or norm.get('titulaire_nom') or '').strip()
+        if not cin and not nom:
+            erreurs.append({
+                'ligne': idx,
+                'motif': 'Titulaire : renseignez la CIN ou le nom du '
+                         'titulaire.'})
+            continue
+
+        qs = PouvoirBancaire.objects.filter(company=company)
+        pouvoir = None
+        if cin:
+            pouvoir = qs.filter(titulaire_cin__iexact=cin).first()
+        if pouvoir is None and nom:
+            pouvoir = qs.filter(titulaire_nom__iexact=nom).first()
+        if pouvoir is None:
+            erreurs.append({
+                'ligne': idx,
+                'motif': f'Titulaire introuvable dans le référentiel des '
+                         f'pouvoirs bancaires : {(cin or nom)!r} — aucun '
+                         'pouvoir n\'est créé par cet import.'})
+            continue
+
+        fields = {}
+        invalide = None
+        for colonne, champ in (
+                ('plafond_signature_seul', 'plafond_signature_seul'),
+                ('plafond_seul', 'plafond_signature_seul'),
+                ('plafond_signature_conjointe', 'plafond_signature_conjointe'),
+                ('plafond_conjoint', 'plafond_signature_conjointe')):
+            brut = str(norm.get(colonne) or '').strip()
+            if not brut or champ in fields:
+                continue
+            try:
+                montant = Decimal(brut.replace(' ', '').replace(',', '.'))
+            except (ArithmeticError, ValueError):
+                invalide = (colonne, brut)
+                break
+            if montant < 0:
+                invalide = (colonne, brut)
+                break
+            fields[champ] = montant.quantize(Decimal('0.01'))
+        if invalide is not None:
+            erreurs.append({
+                'ligne': idx,
+                'motif': f'{invalide[0]} : montant invalide '
+                         f'({invalide[1]!r}) — attendu un nombre positif.'})
+            continue
+        if not fields:
+            erreurs.append({
+                'ligne': idx,
+                'motif': 'Plafonds : renseignez au moins '
+                         '« plafond_signature_seul » ou '
+                         '« plafond_signature_conjointe ».'})
+            continue
+
+        resultats.append({
+            'ligne': idx, 'pouvoir': pouvoir, 'fields': fields, 'row': row})
+    return len(rows), resultats, erreurs
+
+
+def importer_plafonds_pouvoirs_csv(company, file_bytes, filename, *, user=None,
+                                   apercu=False, ecraser=False):
+    """NTTRE37 — mise à jour en MASSE des plafonds de pouvoirs bancaires.
+
+    Réutilise le moteur d'import PLATEFORME ``apps.dataimport`` (parseur
+    ``parsing.iter_rows``, garde-fou ``diff_import``/``appliquer_maj_import``,
+    journal ``ImportJob``/``ImportJobRow`` via ``enregistrer_job``) — jamais un
+    diff ni un journal maison.
+
+    ADDITIF PAR CONSTRUCTION : seuls ``plafond_signature_seul`` et
+    ``plafond_signature_conjointe`` d'un pouvoir DÉJÀ EXISTANT peuvent être
+    écrits. Aucun ``PouvoirBancaire`` n'est créé, aucun autre champ (titulaire,
+    compte, statut, validité) n'est touché ; un titulaire absent du référentiel
+    est rejeté en ligne d'erreur dans le rapport, sans bloquer le lot.
+
+    ``apercu=True`` rejoue le même rapprochement et le même diff SANS rien
+    écrire. ``ecraser=False`` (défaut) = remplissage seul : un plafond déjà
+    NON NUL n'est pas remplacé, la valeur entrante repart dans ``refuses``.
+    """
+    from apps.dataimport.services import (
+        appliquer_maj_import, diff_import, enregistrer_job)
+
+    total_lignes, resultats, erreurs = _lire_lignes_plafonds_csv(
+        company, file_bytes, filename)
+
+    if apercu:
+        conflits = []
+        for r in resultats:
+            ecrasements, remplissages = diff_import(
+                r['pouvoir'], r['fields'], valeurs_vides=_PLAFONDS_VIDES)
+            if ecrasements or remplissages:
+                conflits.append({
+                    'ligne': r['ligne'],
+                    'pouvoir_id': r['pouvoir'].pk,
+                    'titulaire': r['pouvoir'].titulaire_nom,
+                    'ecrasements': ecrasements,
+                    'remplissages': [rp['champ'] for rp in remplissages],
+                })
+        return {
+            'apercu': True, 'ecraser': bool(ecraser),
+            'total_lignes': total_lignes, 'crees': 0,
+            'maj': len(resultats), 'erreurs': erreurs, 'conflits': conflits,
+        }
+
+    maj = 0
+    ecrasements = []
+    refuses = []
+    lignes_job = [{'ligne': e['ligne'], 'statut': 'erreur',
+                   'motif': e['motif']} for e in erreurs]
+    for r in resultats:
+        pouvoir = r['pouvoir']
+        maj += 1
+        _changed, modifications, row_refuses = appliquer_maj_import(
+            pouvoir, r['fields'], company, user=user, filename=filename,
+            skip_keys=('company', 'compte_tresorerie', 'titulaire_nom',
+                       'titulaire_cin', 'statut'),
+            ecraser=ecraser, valeurs_vides=_PLAFONDS_VIDES)
+        for m in modifications:
+            if m['ecrasement']:
+                ecrasements.append(dict(m, ligne=r['ligne'],
+                                        pouvoir_id=pouvoir.pk))
+        for ref in row_refuses:
+            refuses.append(dict(ref, ligne=r['ligne'], pouvoir_id=pouvoir.pk))
+        lignes_job.append({
+            'ligne': r['ligne'], 'statut': 'ok',
+            'cible': 'compta.pouvoirbancaire', 'cible_id': pouvoir.pk,
+            'modifications': modifications, 'refuses': row_refuses,
+        })
+
+    job = enregistrer_job(
+        company, 'plafonds_pouvoirs_bancaires', filename, user=user,
+        mode='maj', ecraser=ecraser, total_lignes=total_lignes, created=0,
+        updated=maj, lignes=lignes_job)
+
+    return {
+        'crees': 0, 'maj': maj, 'erreurs': erreurs, 'ecraser': bool(ecraser),
+        'ecrasements': ecrasements, 'refuses': refuses, 'job_id': job.pk,
+    }
