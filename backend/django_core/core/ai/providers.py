@@ -51,22 +51,85 @@ class AIResult:
         return cls(ok=False, configured=False, data={}, error=None, provider=provider)
 
 
-def _instrumenter(methode):
-    """Enveloppe une méthode de capacité : mesure + journal d'usage (NTAI1).
+#: Arguments TEXTE susceptibles de porter des données personnelles, par
+#: méthode de capacité (NTAI3). ``extract`` reçoit des OCTETS (une image, un
+#: PDF) qu'on ne peut pas masquer par regex — seul son ``hint`` est du texte.
+ARGS_TEXTE_A_MASQUER = {
+    'complete': ('prompt', 'system'),
+    'extract': ('hint',),
+}
+
+
+def _masquer_kwargs(nom_methode, kwargs):
+    """Masque les arguments texte avant l'appel. Renvoie ``(kwargs, mapping)``.
+
+    Le mapping CUMULE les substitutions de tous les arguments, pour que la
+    réponse puisse être re-substituée en une passe."""
+    from core.ai.redaction import redact_pii
+
+    champs = ARGS_TEXTE_A_MASQUER.get(nom_methode, ())
+    mapping = {}
+    nouveaux = dict(kwargs)
+    for champ in champs:
+        valeur = nouveaux.get(champ)
+        if not valeur or not isinstance(valeur, str):
+            continue
+        masque, partiel = redact_pii(valeur)
+        if partiel:
+            nouveaux[champ] = masque
+            mapping.update(partiel)
+    return (nouveaux if mapping else kwargs), mapping
+
+
+def _demasquer_resultat(resultat, mapping):
+    """Re-substitue les valeurs d'origine dans les chaînes de ``data``."""
+    from core.ai.redaction import unredact
+
+    data = getattr(resultat, 'data', None)
+    if not isinstance(data, dict):
+        return resultat
+    resultat.data = {
+        cle: (unredact(valeur, mapping) if isinstance(valeur, str) else valeur)
+        for cle, valeur in data.items()
+    }
+    return resultat
+
+
+def _instrumenter(methode, nom_methode):
+    """Enveloppe une méthode de capacité : masquage PII + mesure d'usage.
 
     Le chemin NO-OP (``key == 'noop'``) est laissé STRICTEMENT intact : aucun
-    chronomètre, aucun journal — un fournisseur qui ne fait rien ne consomme
-    rien. Pour un fournisseur RÉEL, l'appel est chronométré et une ligne
-    best-effort est écrite (voir :mod:`core.ai.usage`) ; le journal ne peut ni
-    modifier le résultat ni faire échouer l'appel.
+    chronomètre, aucun journal, aucune regex — un fournisseur qui ne fait rien
+    ne consomme rien. Pour un fournisseur RÉEL :
+
+      * NTAI3 — les arguments texte partent MASQUÉS et la réponse est
+        re-substituée (débrayable par ``settings.AI_PII_REDACTION``) ;
+      * NTAI1 — l'appel est chronométré et une ligne best-effort est écrite
+        (voir :mod:`core.ai.usage`).
+
+    Ni le masquage ni le journal ne peuvent faire échouer l'appel.
     """
 
     @functools.wraps(methode)
     def _enveloppe(self, *args, **kwargs):
-        if getattr(self, 'key', 'noop') == 'noop':
+        cle = getattr(self, 'key', 'noop')
+        if cle == 'noop':
             return methode(self, *args, **kwargs)
 
         from core.ai.usage import record_usage, tokens_from_result
+
+        mapping = {}
+        try:
+            from core.ai.redaction import redaction_enabled
+
+            if redaction_enabled(cle):
+                kwargs, mapping = _masquer_kwargs(nom_methode, kwargs)
+        except Exception:  # noqa: BLE001 — un masquage en panne ne doit pas
+            # laisser filer la donnée : on refuse plutôt de transformer, et on
+            # le dit dans les logs (le prompt d'origine part alors tel quel,
+            # comme avant NTAI3 — jamais de perte de service silencieuse).
+            logger.warning('core.ai: masquage PII indisponible', exc_info=True)
+            mapping = {}
 
         debut = time.monotonic()
         try:
@@ -81,6 +144,13 @@ def _instrumenter(methode):
             except Exception:  # noqa: BLE001 — le journal ne masque rien
                 logger.warning('core.ai: usage non journalisé', exc_info=True)
             raise
+
+        if mapping:
+            try:
+                resultat = _demasquer_resultat(resultat, mapping)
+            except Exception:  # noqa: BLE001 — jetons visibles > texte perdu
+                logger.warning('core.ai: re-substitution PII impossible',
+                               exc_info=True)
 
         try:
             prompt_tokens, completion_tokens = tokens_from_result(resultat)
@@ -121,7 +191,7 @@ class _BaseProvider:
                 continue
             if getattr(methode, '__ai_instrumente__', False):
                 continue  # déjà enveloppée (héritage d'une classe instrumentée)
-            setattr(cls, nom, _instrumenter(methode))
+            setattr(cls, nom, _instrumenter(methode, nom))
 
     def is_configured(self) -> bool:
         """Un fournisseur n'est ACTIF que s'il est configuré.
