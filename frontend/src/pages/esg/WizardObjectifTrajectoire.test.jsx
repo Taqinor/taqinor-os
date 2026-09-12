@@ -31,8 +31,8 @@ vi.mock('react-router-dom', async () => {
   return { ...reel, useNavigate: () => navigate }
 })
 
-import WizardObjectifTrajectoire, { trajectoireLineaire }
-  from './WizardObjectifTrajectoire'
+import WizardObjectifTrajectoire from './WizardObjectifTrajectoire'
+import { trajectoireLineaire } from './trajectoireLineaire'
 
 const CODES = [
   {
