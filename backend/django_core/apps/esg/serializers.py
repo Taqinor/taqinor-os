@@ -7,10 +7,12 @@ change que via l'action ``figer`` (machine à états à sens unique, NTESG1).
 """
 from rest_framework import serializers
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from .models import (
     CatalogueIndicateurESG, DocumentPolitiqueESG, FacteurEmissionReference,
-    ObjectifESGTrajectoire, PartiePrenanteESG, PeriodeReportingESG,
-    SnapshotESG,
+    ObjectifESGTrajectoire, ParametresESG, PartiePrenanteESG,
+    PeriodeReportingESG, SnapshotESG,
 )
 
 
@@ -171,3 +173,51 @@ class FacteurEmissionReferenceSerializer(serializers.ModelSerializer):
         # `services.creer_version_facteur` (jamais un écrasement silencieux
         # côté client) — voir `FacteurEmissionReferenceViewSet.perform_create`.
         read_only_fields = ['version', 'actif', 'created_at', 'updated_at']
+
+
+class ParametresESGSerializer(serializers.ModelSerializer):
+    """NTESG20 — réglages ESG de la société (singleton par tenant)."""
+
+    frequence_reporting_display = serializers.CharField(
+        source='get_frequence_reporting_display', read_only=True)
+    pilote_esg_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ParametresESG
+        fields = [
+            'id', 'seuil_alerte_derive_pct', 'pilote_esg', 'pilote_esg_nom',
+            'frequence_reporting', 'frequence_reporting_display',
+            'ponderation_badge_maturite', 'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
+
+    def get_pilote_esg_nom(self, obj):
+        pilote = obj.pilote_esg
+        if pilote is None:
+            return ''
+        complet = (getattr(pilote, 'get_full_name', lambda: '')() or '').strip()
+        return complet or getattr(pilote, 'username', '')
+
+    def validate_pilote_esg(self, value):
+        """Le pilote appartient à la MÊME société (jamais un compte voisin)."""
+        if value is None:
+            return value
+        company = getattr(self.instance, 'company', None)
+        if company is not None and getattr(value, 'company_id', None) != company.id:
+            raise serializers.ValidationError(
+                "Le pilote ESG doit appartenir à votre société.")
+        return value
+
+    def validate_ponderation_badge_maturite(self, value):
+        """Rejoue la validation du MODÈLE — un seul jeu de règles, ici traduit
+        en 400 au lieu d'une 500, et le message NOMME la composante fautive."""
+        sonde = ParametresESG(
+            company=getattr(self.instance, 'company', None),
+            ponderation_badge_maturite=value)
+        try:
+            sonde.clean()
+        except DjangoValidationError as exc:
+            messages = exc.message_dict.get(
+                'ponderation_badge_maturite', exc.messages)
+            raise serializers.ValidationError(messages)
+        return value

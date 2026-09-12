@@ -162,6 +162,23 @@ def _compute_taux_service_scm(company):
     return Decimal(str(taux)) if taux is not None else None
 
 
+def _kpis_btp(company):
+    """NTCON34 — les quatre KPI BTP en UN seul appel au sélecteur de
+    ``apps.btp_chantier`` (import paresseux — ``reporting`` reste un
+    satellite, aucun import de modèle métier)."""
+    from apps.btp_chantier.selectors import kpis_btp
+    return kpis_btp(company)
+
+
+def _compute_btp(company, cle):
+    """Extrait UNE des quatre valeurs. ``None`` (KPI ignoré, jamais un 0
+    trompeur) quand la société n'a aucun objet BTP de ce type."""
+    valeur = _kpis_btp(company).get(cle)
+    if valeur is None:
+        return None
+    return Decimal(str(valeur))
+
+
 def _kpis_juridiques(company, user):
     """NTJUR48 — les quatre KPI juridiques en UN seul appel au sélecteur de
     ``apps.juridique`` (import paresseux — ``reporting`` reste un satellite,
@@ -196,6 +213,12 @@ KPI_MODULE = {
     KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: 'juridique',
     KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: 'juridique',
     KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: 'juridique',
+    # NTCON34 — module `btp_chantier` éteint pour la société ⇒ dégradation
+    # propre (valeur None, aucune notification, tuile masquée).
+    KpiAlerte.Kpi.BTP_RESERVES_OUVERTES: 'btp_chantier',
+    KpiAlerte.Kpi.BTP_RFI_EN_RETARD: 'btp_chantier',
+    KpiAlerte.Kpi.BTP_VISAS_EN_ATTENTE: 'btp_chantier',
+    KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: 'btp_chantier',
 }
 
 
@@ -240,6 +263,17 @@ _KPI_COMPUTERS = {
     KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: lambda company, user:
         _compute_juridique(company, user,
                            'juridique_delai_moyen_resolution'),
+    # NTCON34 — les quatre KPI BTP (aucun ne dépend du `user` : ce sont des
+    # agrégats d'exécution de chantier, pas des données à confidentialité
+    # variable comme le juridique).
+    KpiAlerte.Kpi.BTP_RESERVES_OUVERTES: lambda company, user:
+        _compute_btp(company, 'btp_reserves_ouvertes'),
+    KpiAlerte.Kpi.BTP_RFI_EN_RETARD: lambda company, user:
+        _compute_btp(company, 'btp_rfi_en_retard'),
+    KpiAlerte.Kpi.BTP_VISAS_EN_ATTENTE: lambda company, user:
+        _compute_btp(company, 'btp_visas_en_attente'),
+    KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: lambda company, user:
+        _compute_btp(company, 'btp_penalites_cumulees_periode'),
 }
 
 

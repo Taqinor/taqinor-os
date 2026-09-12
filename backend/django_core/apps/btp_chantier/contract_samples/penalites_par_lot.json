@@ -1,0 +1,37 @@
+{
+  "endpoint": "GET /api/django/btp-chantier/chantiers/<id>/penalites-par-lot/",
+  "pourquoi": "NTCON28 — le cockpit BTP (NTCON21) relançait le calcul NTCON15 (`selectors.penalites_retard_par_lot`) à CHAQUE GET. Le balayage quotidien `recalculer_penalites_lots` fige désormais le résultat sur `Lot.penalite_calculee_cache`/`penalite_calculee_le` et l'écran LIT ce cache. PACT10 : la forme est déclarée ICI, une seule fois, avant que serveur et écran ne l'inventent chacun de leur côté.",
+  "avertissement_forme": "`source` dit d'où vient le chiffre : `cache` = photo figée par le balayage (avec `calcule_le`), `calcul` = recalcul synchrone parce que le cache est absent ou vieux de plus de 36 h. L'écran DOIT afficher cette provenance — jamais un montant d'âge inconnu. `POST` force un recalcul immédiat et renvoie la même forme. `?frais=1` sur le GET ignore le cache (diagnostic). Tous les montants sont des CHAÎNES décimales (jamais des `float` : une exposition financière ne perd pas de centimes). Donnée strictement INTERNE — une pénalité n'apparaît dans AUCUNE sortie client (garde `btp_gerer` exigée même en lecture).",
+  "exemple": {
+    "chantier_id": 7,
+    "date_reference": "2026-09-12",
+    "lots": [
+      {
+        "lot_id": 3,
+        "lot": "Gros œuvre",
+        "applicable": true,
+        "jours_depassement": 12,
+        "taux_penalite_retard_pmil": "1.000",
+        "montant_ht": "250000.00",
+        "plafond_penalite_pct": "5.00",
+        "exposition_brute": "3000.00",
+        "plafond_montant": "12500.00",
+        "exposition": "3000.00",
+        "plafonnee": false,
+        "decompte_definitif_a_etablir": true,
+        "date_reference": "2026-09-12"
+      }
+    ],
+    "total_exposition": "3000.00",
+    "source": "cache",
+    "calcule_le": "2026-09-12T04:10:00Z"
+  },
+  "exemple_vide": {
+    "chantier_id": 7,
+    "date_reference": "2026-09-12",
+    "lots": [],
+    "total_exposition": "0",
+    "source": "calcul",
+    "calcule_le": "2026-09-12T09:31:00Z"
+  }
+}

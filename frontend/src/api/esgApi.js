@@ -32,6 +32,17 @@ const esgApi = {
     // Rapport PDF GRI-lite (NTESG4) — téléchargement binaire.
     rapportPdf: (id) =>
       api.get(`/esg/periodes-esg/${id}/rapport-pdf/`, { responseType: 'blob' }),
+    // NTESG18 — MÊME rendu, servi `inline` pour l'aperçu de l'étape 3 de
+    // l'assistant de clôture (jamais une seconde génération : l'aperçu ne
+    // peut donc pas diverger du document définitif).
+    apercuRapportPdf: (id) =>
+      api.get(`/esg/periodes-esg/${id}/rapport-pdf/`, {
+        params: { apercu: 1 }, responseType: 'blob',
+      }),
+    // NTESG18 — prérequis de clôture : couverture (NTESG3), diff vs période
+    // précédente (NTESG11), bloquants RÉELS vs simples avertissements.
+    prerequisCloture: (id) =>
+      api.get(`/esg/periodes-esg/${id}/prerequis-cloture/`),
     // Export xlsx multi-feuilles (NTESG5) — téléchargement binaire.
     exportXlsx: (id) =>
       api.get(`/esg/periodes-esg/${id}/export/`, {
@@ -51,6 +62,9 @@ const esgApi = {
   // ── Objectifs de trajectoire ESG (NTESG7) ──
   objectifs: {
     list: (params) => api.get('/esg/objectifs-esg/', { params }),
+    // NTESG19 — codes d'indicateurs RÉELS de la société (+ années cibles déjà
+    // prises) : l'assistant ne propose jamais de saisie libre.
+    codesDisponibles: () => api.get('/esg/objectifs-esg/codes-disponibles/'),
     get: (id) => api.get(`/esg/objectifs-esg/${id}/`),
     create: (data) => api.post('/esg/objectifs-esg/', data),
     update: (id, data) => api.patch(`/esg/objectifs-esg/${id}/`, data),
@@ -88,6 +102,15 @@ const esgApi = {
       api.get('/esg/facteurs-emission/historique/', {
         params: { categorie, unite },
       }),
+  },
+
+  // ── Réglages ESG de la société (NTESG20) — singleton par tenant ──
+  // La ligne est créée à la demande côté serveur : `get()` renvoie toujours
+  // les réglages EFFECTIFS (défauts du module inclus), jamais un 404.
+  parametres: {
+    get: () => api.get('/esg/parametres-esg/'),
+    // PATCH partiel — écriture réservée aux administrateurs (403 sinon).
+    update: (data) => api.patch('/esg/parametres-esg/', data),
   },
 }
 

@@ -6,7 +6,8 @@
 import { lazy } from 'react'
 import {
   Calculator, ClipboardCheck, Construction, FileEdit, FileQuestion, Layers,
-  LayoutDashboard, MapPin, NotebookPen, Settings2, Share2, Stamp, Wand2,
+  LayoutDashboard, MapPin, NotebookPen, Settings2, Share2, Smartphone, Stamp,
+  Wand2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -50,6 +51,10 @@ const ClotureChantierBtpWizardPage = lazy(
   () => import('./ClotureChantierBtpWizard'))
 // NTCON25 — réglages BTP de la société (admin).
 const ParametresBtpPage = lazy(() => import('./ParametresBtp'))
+// NTCON36 — capture terrain rapide (mobile-first, tolérante au réseau).
+// L'écran vit sous `pages/btp/` (même convention que `pages/esg/`) ; la
+// route et l'entrée de nav sont déclarées ICI, surface append-only.
+const TerrainCapturePage = lazy(() => import('../../pages/btp/TerrainCapture'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -130,6 +135,12 @@ const config = {
         roles: ['responsable', 'admin'],
       },
       {
+        to: '/btp-chantier/terrain',
+        label: 'Capture terrain',
+        icon: <Smartphone size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
         to: '/btp-chantier/parametres',
         label: 'Réglages BTP',
         icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />,
@@ -149,6 +160,7 @@ const config = {
     ['/btp-chantier/cockpit', 'Tableau de bord BTP du chantier'],
     ['/btp-chantier/nouveau', 'Créer un chantier BTP'],
     ['/btp-chantier/cloture', 'Clôture de chantier BTP'],
+    ['/btp-chantier/terrain', 'Capture terrain'],
     ['/btp-chantier/parametres', 'Réglages BTP'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
@@ -165,6 +177,7 @@ const config = {
     { path: '/btp-chantier/cockpit/:chantierId', component: ChantierBtpCockpitPage, roles: ROLES },
     { path: '/btp-chantier/nouveau', component: NouveauChantierBtpWizardPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/cloture', component: ClotureChantierBtpWizardPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/terrain', component: TerrainCapturePage, roles: ROLES },
     { path: '/btp-chantier/parametres', component: ParametresBtpPage, roles: ['admin'] },
   ],
 }

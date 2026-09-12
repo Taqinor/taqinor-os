@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Leaf, Users, Landmark, FileText, FileSpreadsheet, Lock, Award, Plus,
   GitCompare, FileDown,
@@ -23,8 +24,11 @@ import DocumentsPolitiqueSection from './DocumentsPolitiqueSection'
      vide explicite plutôt qu'une valeur inventée (checked-facts-only).
    • Liste des périodes de reporting (NTESG1) : statut, bouton « Figer la
      période » (irréversible) et « Télécharger » (PDF/xlsx, NTESG4/5).
-   Lecture seule côté cockpit : la création d'une période se fait via l'API
-   (wizard de clôture guidé = NTESG18, hors périmètre de ce lane).
+   NTESG18 — la clôture passe désormais par l'ASSISTANT en 4 étapes
+   (`/esg/periodes/:id/cloture`) : couverture, écarts vs période précédente,
+   aperçu du PDF, confirmation explicite. Le figeage DIRECT reste offert à
+   côté (et l'API `figer/` reste appelable pour l'automatisation) — c'est
+   l'écran qui impose le parcours, jamais le serveur.
    ========================================================================== */
 
 const PILIER_META = {
@@ -47,6 +51,7 @@ const STATUT_TONE = {
 
 export default function EsgCockpit() {
   const [couverture, setCouverture] = useState(null)
+  const navigate = useNavigate()
   const [periodes, setPeriodes] = useState([])
   const [badge, setBadge] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -350,13 +355,29 @@ export default function EsgCockpit() {
                       <td className="px-3 py-2">
                         <div className="flex justify-end gap-2">
                           {p.statut === 'brouillon' && (
-                            <Button
-                              variant="outline" size="sm"
-                              disabled={busyId === p.id}
-                              onClick={() => figerPeriode(p.id)}
-                            >
-                              <Lock /> Figer la période
-                            </Button>
+                            <>
+                              {/* NTESG18 — le chemin NORMAL de clôture passe
+                                  par l'assistant en 4 étapes (couverture,
+                                  écarts, aperçu du PDF, confirmation) : le
+                                  figeage direct ci-dessous reste disponible
+                                  pour un opérateur qui sait ce qu'il fait,
+                                  mais ce n'est plus le geste par défaut. */}
+                              <Button
+                                variant="default" size="sm"
+                                data-testid={`esg-cloture-guidee-${p.id}`}
+                                onClick={() => navigate(
+                                  `/esg/periodes/${p.id}/cloture`)}
+                              >
+                                <Lock /> Clôturer (assistant)
+                              </Button>
+                              <Button
+                                variant="outline" size="sm"
+                                disabled={busyId === p.id}
+                                onClick={() => figerPeriode(p.id)}
+                              >
+                                <Lock /> Figer directement
+                              </Button>
+                            </>
                           )}
                           <Button
                             variant="outline" size="sm"

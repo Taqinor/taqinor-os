@@ -11,6 +11,7 @@ from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -20,6 +21,10 @@ from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
+from .permissions import (
+    PeutApprouverAvenant, PeutApprouverVisa, PeutCreerReserve,
+    PeutFinaliserDgd, PeutLeverReserve, PeutRepondreRfi,
+)
 from .models import (
     AbonnementRapportPhoto, AvenantChantier, DecompteGeneral, DiffusionPlan,
     JournalChantier, Lot, ParametresBtpChantier, PPSPSChantier, PPSPSSignature,
@@ -79,6 +84,39 @@ def _client_ip(request):
     return ip[:45]
 
 
+def _reponse_export(request, nom_base, headers, rows):
+    """NTCON30 — rend ``(headers, rows)`` en CSV ou XLSX selon ``?format=``.
+
+    CSV par défaut (le format qu'un MOE ouvre partout) ; ``?format=xlsx``
+    passe par le builder PARTAGÉ ``records.xlsx.build_xlsx_response`` — qui
+    neutralise déjà les cellules commençant par ``= + - @`` (ERR11 : un export
+    téléchargé n'exécute jamais de formule à l'ouverture).
+    """
+    import csv
+    import io
+
+    from django.http import HttpResponse
+
+    demande = (request.query_params.get('format') or 'csv').lower()
+    if demande in ('xlsx', 'excel'):
+        from apps.records.xlsx import build_xlsx_response
+        return build_xlsx_response(
+            f'{nom_base}.xlsx', headers, rows, sheet_title=nom_base[:31])
+
+    tampon = io.StringIO()
+    graveur = csv.writer(tampon, delimiter=';')
+    graveur.writerow(headers)
+    for ligne in rows:
+        graveur.writerow(ligne)
+    reponse = HttpResponse(
+        # BOM utf-8 : sans lui Excel (Windows) affiche « RÃ©serve ».
+        '﻿' + tampon.getvalue(),
+        content_type='text/csv; charset=utf-8')
+    reponse['Content-Disposition'] = (
+        f'attachment; filename="{nom_base}.csv"')
+    return reponse
+
+
 def _photos_pour(instance, phase=None):
     """Pièces jointes ``records.Attachment`` ciblant ``instance`` (app de
     fondation — import direct autorisé, pas de frontière cross-app)."""
@@ -93,8 +131,50 @@ def _photos_pour(instance, phase=None):
     return qs
 
 
+class ChatterBtpMixin:
+    """NTCON32 — ``historique/`` (timeline) + ``noter/`` (note manuelle).
+
+    Branché sur le CHATTER GÉNÉRIQUE du dépôt (``records.Activity`` via
+    ``records.services``, ARC8) — jamais une table de commentaires propre à
+    ``btp_chantier``. Le même composant frontend (``ChatterTimeline``) lit
+    cette timeline et celle des autres modules, parce que la forme servie est
+    ``records.serializers.ChatterActivitySerializer``.
+
+    Auteur ET société sont posés CÔTÉ SERVEUR : ``noter/`` ne lit du corps de
+    requête que le texte.
+    """
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def historique(self, request, pk=None):
+        """Timeline chatter (changements de statut automatiques + notes)."""
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+
+        cible = self.get_object()
+        qs = chatter_qs(cible, company=request.user.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def noter(self, request, pk=None):
+        """Note manuelle horodatée (auteur + société côté serveur)."""
+        from apps.records.serializers import ChatterActivitySerializer
+
+        cible = self.get_object()
+        try:
+            note = services.noter(
+                cible, user=request.user,
+                texte=request.data.get('body') or request.data.get('texte'))
+        except services.TransitionInvalide as exc:
+            return Response({'body': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(ChatterActivitySerializer(note).data,
+                        status=status.HTTP_201_CREATED)
+
+
 class ReserveChantierViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Réserves de chantier (punch-list géo-localisée sur plan) — NTCON1/2.
 
     Filtres liste : ``?lot=&statut=&gravite=&chantier=``. Actions
@@ -107,12 +187,27 @@ class ReserveChantierViewSet(
     read_permission = 'btp_voir'
     write_permission = 'btp_gerer'
 
+    def get_permissions(self):
+        # NTCON26 — la CRÉATION d'une réserve exige le code fin en plus de la
+        # garde d'écriture ``btp_gerer``. ``create`` n'est pas une ``@action``
+        # (pas de ``permission_classes=`` possible sur le décorateur) : c'est
+        # le seul endroit où poser la garde. Toute autre action retombe sur
+        # ``super()`` — patron « REPLI DRF » exigé par
+        # ``scripts/check_action_permission_override.py`` : la déclaration des
+        # ``@action`` (``lever``/``contester``) reste honorée.
+        if self.action == 'create':
+            return [ScopedPermission(), PeutCreerReserve()]
+        return super().get_permissions()
+
     def get_queryset(self):
         qs = super().get_queryset()
         p = self.request.query_params
         return selectors.reserves_filtrees(
             qs, lot=p.get('lot'), statut=p.get('statut'),
-            gravite=p.get('gravite'), chantier_id=p.get('chantier'))
+            gravite=p.get('gravite'), chantier_id=p.get('chantier'),
+            # NTCON27 — les archivées sortent des listes par défaut ; elles
+            # restent atteignables par ``?archivee=1`` (ou ``all``).
+            archivee=p.get('archivee'))
 
     def perform_create(self, serializer):
         serializer.save(
@@ -158,6 +253,22 @@ class ReserveChantierViewSet(
         return Response(
             ReserveChantierSerializer(qs, many=True).data)
 
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission])
+    def export(self, request):
+        """NTCON30 — export CSV/XLSX des réserves (reporting externe MOE).
+
+        ``?chantier=&statut=&gravite=&lot=&archivee=&format=csv|xlsx``. Les
+        mêmes filtres que la liste (``get_queryset``), donc l'export contient
+        EXACTEMENT ce que l'écran affiche. Colonnes : numéro, chantier, lot,
+        description, gravité, statut, responsable, date limite, date de levée.
+
+        AUCUN coût interne : pas de déboursé, pas d'exposition aux pénalités,
+        pas de ``prix_achat`` — ce fichier part chez le MOE ou le client.
+        """
+        headers, rows = selectors.export_reserves(self.get_queryset())
+        return _reponse_export(request, 'reserves-chantier', headers, rows)
+
     @action(detail=True, methods=['get'],
             permission_classes=[ScopedPermission])
     def photos(self, request, pk=None):
@@ -168,7 +279,7 @@ class ReserveChantierViewSet(
             AttachmentSerializer(_photos_pour(reserve), many=True).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutLeverReserve])
     def lever(self, request, pk=None):
         """NTCON2 — lève la réserve. Requiert une photo « après » existante
         (400 sinon) et un ``signataire_nom`` (loi 53-05, 400 sinon)."""
@@ -199,7 +310,7 @@ class ReserveChantierViewSet(
         })
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutLeverReserve])
     def contester(self, request, pk=None):
         """NTCON2 — réouvre une réserve levée (statut → contestee + motif)."""
         reserve = self.get_object()
@@ -217,7 +328,8 @@ class ReserveChantierViewSet(
         return Response(ReserveChantierSerializer(reserve).data)
 
 
-class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+class RFIViewSet(ChatterBtpMixin, WriteScopedPermissionMixin,
+                 CompanyScopedModelViewSet):
     """RFI (Request For Information) — NTCON3.
 
     Filtres liste : ``?chantier=&statut=``. Triée par échéance dépassée en
@@ -253,8 +365,23 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
         )
         serializer.instance = rfi
 
-    @action(detail=True, methods=['post'],
+    @action(detail=False, methods=['get'], url_path='export',
             permission_classes=[ScopedPermission])
+    def export(self, request):
+        """NTCON30 — export CSV/XLSX des RFI (reporting externe MOE/client).
+
+        ``?chantier=&statut=&format=csv|xlsx`` — mêmes filtres que la liste.
+        Colonnes : numéro, chantier, question, priorité (DÉRIVÉE des impacts
+        coût/délai déclarés — jamais un niveau inventé), statut, destinataire,
+        date limite de réponse, date de la première réponse.
+
+        AUCUN coût interne dans l'export (règle produit).
+        """
+        headers, rows = selectors.export_rfi(self.get_queryset())
+        return _reponse_export(request, 'rfi', headers, rows)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission, PeutRepondreRfi])
     def repondre(self, request, pk=None):
         rfi = self.get_object()
         texte = (request.data.get('texte') or '').strip()
@@ -271,7 +398,7 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
         return Response(RFISerializer(rfi).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutRepondreRfi])
     def clore(self, request, pk=None):
         rfi = self.get_object()
         try:
@@ -284,7 +411,7 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
 
 
 class VisaDocumentViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Visas de documents techniques — NTCON5 (soumission→observations→
     approbation, state machine stricte)."""
     queryset = VisaDocument.objects.select_related(
@@ -342,7 +469,7 @@ class VisaDocumentViewSet(
         return Response(VisaDocumentSerializer(visa).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverVisa])
     def approuver(self, request, pk=None):
         visa = self.get_object()
         avec_observations = bool(request.data.get('avec_observations'))
@@ -359,7 +486,7 @@ class VisaDocumentViewSet(
         return Response(VisaDocumentSerializer(visa).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverVisa])
     def refuser(self, request, pk=None):
         visa = self.get_object()
         observations = (request.data.get('observations') or '').strip()
@@ -443,7 +570,7 @@ class JournalChantierViewSet(
 # ── NTCON7/NTCON8 — Avenant de chantier ─────────────────────────────────────
 
 class AvenantChantierViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Avenants de chantier (chiffrage + approbation) — NTCON7/NTCON8.
 
     Filtres liste : ``?chantier=&statut=``. Actions ``faire-approuver/``
@@ -515,7 +642,7 @@ class AvenantChantierViewSet(
         })
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverAvenant])
     def approuver(self, request, pk=None):
         """Décision INTERNE (sans lien public) — même service que NTCON8."""
         avenant = self.get_object()
@@ -528,7 +655,7 @@ class AvenantChantierViewSet(
         return Response(AvenantChantierSerializer(avenant).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutApprouverAvenant])
     def refuser(self, request, pk=None):
         avenant = self.get_object()
         motif = (request.data.get('motif') or '').strip()
@@ -602,7 +729,7 @@ def avenant_public_approuver(request, token):
 # ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
 
 class DecompteGeneralViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """DGD (Décompte Général et Définitif) — NTCON9/NTCON10.
 
     Un DGD ``definitif`` est VERROUILLÉ (403 sur toute écriture) sauf via
@@ -681,7 +808,7 @@ class DecompteGeneralViewSet(
         return Response(DecompteGeneralSerializer(dgd).data)
 
     @action(detail=True, methods=['post'],
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission, PeutFinaliserDgd])
     def finaliser(self, request, pk=None):
         dgd = self.get_object()
         try:
@@ -779,6 +906,46 @@ class LotViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
             except services.TransitionInvalide as exc:
                 raise ValidationError({'statut': str(exc)})
         super().perform_update(serializer)
+
+    @action(detail=False, methods=['post'], url_path='import',
+            permission_classes=[ScopedPermission],
+            parser_classes=[MultiPartParser])
+    def importer(self, request):
+        """NTCON29 — import CSV/XLSX en masse des lots d'UN chantier.
+
+        Corps ``multipart`` : ``file`` (CSV ou XLSX) + ``chantier`` (id).
+        Réutilise ``apps.dataimport`` (parseur + journal ``ImportJob``) —
+        jamais un 2ᵉ mécanisme d'import.
+
+        FORME DÉCLARÉE (``contract_samples/lots_import.json``) :
+        ``{job_id, total_lignes, crees, erreurs, lignes: [{ligne, motif}]}``.
+        ``lignes`` ne liste QUE les lignes refusées, avec un motif qui NOMME la
+        cause (sous-traitant introuvable, dates incohérentes…) : une ligne
+        invalide ne bloque JAMAIS les lignes valides.
+        """
+        fichier = request.FILES.get('file')
+        if fichier is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni (champ « file »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        chantier_id = request.data.get('chantier')
+        if not chantier_id:
+            return Response(
+                {'detail': 'Le chantier de destination est requis '
+                           '(champ « chantier »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id,
+            company=request.user.company)
+        try:
+            resultat = services.importer_lots(
+                company=request.user.company, chantier=chantier,
+                fichier_octets=fichier.read(), nom_fichier=fichier.name,
+                user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get', 'post'],
             permission_classes=[ScopedPermission])
@@ -1159,11 +1326,21 @@ class ChantierIntervenantsView(APIView):
 
 
 class ChantierPenalitesParLotView(APIView):
-    """NTCON15 — ``chantiers/<id>/penalites-par-lot/``.
+    """NTCON15/NTCON28 — ``chantiers/<id>/penalites-par-lot/``.
 
     Données INTERNES de pilotage (exposition financière) : ``btp_gerer``
     exigé même en LECTURE — jamais une pénalité dans une sortie client
     (même garde que ``ChantierDebourseVsFactureView``, NTCON11).
+
+    FORME DÉCLARÉE de la réponse (``contract_samples/penalites_par_lot.json``) :
+    ``{chantier_id, date_reference, lots[], total_exposition, source,
+    calcule_le}`` — ``source`` vaut ``'cache'`` (photo figée par le balayage
+    quotidien NTCON28) ou ``'calcul'`` (recalcul synchrone parce que le cache
+    est absent ou vieux de plus de 36 h). L'écran AFFICHE d'où vient le
+    chiffre au lieu de montrer une valeur d'âge inconnu.
+
+    ``POST`` (NTCON28) force un recalcul immédiat de ce chantier et renvoie la
+    même forme, ``source='calcul'``.
     """
     permission_classes = [ScopedPermission]
     read_permission = 'btp_gerer'
@@ -1179,7 +1356,22 @@ class ChantierPenalitesParLotView(APIView):
     def get(self, request, chantier_id):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
-        return Response(selectors.penalites_retard_par_lot(chantier))
+        # NTCON28 — ``?frais=1`` ignore le cache (diagnostic/comparaison).
+        if request.query_params.get('frais') in ('1', 'true', 'oui'):
+            paye = selectors.penalites_retard_par_lot(chantier)
+            paye['source'] = 'calcul'
+            paye['calcule_le'] = timezone.now()
+            return Response(paye)
+        return Response(
+            selectors.penalites_par_lot_cache_ou_calcul(chantier))
+
+    def post(self, request, chantier_id):
+        """NTCON28 — recalcul manuel forcé (bouton « Recalculer »)."""
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        services.recalculer_penalites_lots(chantier=chantier)
+        return Response(
+            selectors.penalites_par_lot_cache_ou_calcul(chantier))
 
 
 class ChantierPlanningLotsView(APIView):

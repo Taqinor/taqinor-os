@@ -397,6 +397,21 @@ class KpiAlerte(models.Model):
         JURIDIQUE_DELAI_MOYEN_RESOLUTION = (
             'juridique_delai_moyen_resolution',
             'Juridique — délai moyen de résolution (jours)')
+        # NTCON34 — KPI du vertical BTP/EPC (``apps.btp_chantier.selectors.
+        # kpis_btp``, lu SANS importer aucun modèle de cette app). Chaque
+        # valeur réutilise un sélecteur EXISTANT (NTCON1/2 réserves, NTCON3/4
+        # RFI en retard, NTCON5 visas, NTCON15 pénalités par lot) — aucune
+        # seconde formule. Une société sans objet BTP renvoie ``None`` (KPI
+        # ignoré) plutôt qu'un 0 qui affirmerait « rien en retard ».
+        BTP_RESERVES_OUVERTES = (
+            'btp_reserves_ouvertes', 'BTP — réserves ouvertes')
+        BTP_RFI_EN_RETARD = (
+            'btp_rfi_en_retard', 'BTP — RFI en retard de réponse')
+        BTP_VISAS_EN_ATTENTE = (
+            'btp_visas_en_attente', 'BTP — visas en attente de revue')
+        BTP_PENALITES_CUMULEES_PERIODE = (
+            'btp_penalites_cumulees_periode',
+            'BTP — exposition cumulée aux pénalités de retard (MAD)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'

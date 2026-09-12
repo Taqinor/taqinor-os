@@ -12,6 +12,13 @@ PLATFORM = {
         'btp_chantier.reservechantier',
         'btp_chantier.journalchantier',
         'btp_chantier.rfireponse',
+        # NTCON32 — cibles du CHATTER GÉNÉRIQUE (``records.Activity``, ARC8) :
+        # journal automatique ancien→nouveau statut + notes manuelles. Jamais
+        # un 2ᵉ mécanisme de commentaires propre à l'app.
+        'btp_chantier.rfi',
+        'btp_chantier.visadocument',
+        'btp_chantier.avenantchantier',
+        'btp_chantier.decomptegeneral',
     ],
     'searchable_models': [],
     'customfield_models': [],

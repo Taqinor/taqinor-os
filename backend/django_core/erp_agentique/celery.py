@@ -1210,6 +1210,26 @@ app.conf.beat_schedule = {
     'paie-recalculer-cumuls-annuels': {
         'task': 'paie.recalculer_cumuls_annuels',
         'schedule': crontab(day_of_month=2, hour=2, minute=20),
+    # NTCON27 — archivage MENSUEL (1er du mois) des réserves levées depuis
+    # plus de N mois (réglage par société, défaut 24). Drapeau, jamais une
+    # suppression : la signature de levée reste une preuve opposable.
+    'btp-chantier-archiver-reserves-levees': {
+        'task': 'btp_chantier.archiver_reserves_levees',
+        'schedule': crontab(day_of_month=1, hour=3, minute=40),
+    },
+    # NTCON28 — recalcul QUOTIDIEN du cache d'exposition aux pénalités par lot
+    # (le cockpit NTCON21 lit ce cache au lieu de relancer le calcul NTCON15 à
+    # chaque GET). Tôt le matin, avant les alertes RFI.
+    'btp-chantier-recalculer-penalites-lots': {
+        'task': 'btp_chantier.recalculer_penalites_lots',
+        'schedule': crontab(hour=4, minute=10),
+    },
+    # NTCON37 — relance QUOTIDIENNE des visas en attente de revue dont
+    # l'échéance est dépassée (revuseur + son manager). Juste après les
+    # alertes RFI, même schéma qu'NTCON4.
+    'btp-chantier-alertes-visas-en-attente': {
+        'task': 'btp_chantier.alertes_visas_en_attente',
+        'schedule': crontab(hour=7, minute=31),
     },
 }
 
