@@ -960,6 +960,25 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             date_debut=request.query_params.get('date_debut') or None,
             nb_semaines=max(1, min(nb_semaines, 52)),
             scenario=request.query_params.get('scenario') or None)
+        if request.query_params.get('export') == 'xlsx':
+            # NTTRE19 — classeur « prévisionnel banquier » : une COLONNE par
+            # semaine de l'horizon (13 par défaut) et une ligne par agrégat,
+            # dont la ligne « Solde projeté ». Aucun recalcul : les cellules
+            # reprennent telles quelles les chiffres déjà servis à l'écran.
+            from apps.records.xlsx import build_xlsx_response
+            semaines = data['semaines']
+            headers = ['Ligne'] + [
+                f"S{s['index']} — {s['date_debut'].strftime('%d/%m/%Y')}"
+                for s in semaines]
+            rows = [
+                ['Encaissements'] + [s['entrees'] for s in semaines],
+                ['Décaissements'] + [s['sorties'] for s in semaines],
+                ['Flux net'] + [s['flux_net'] for s in semaines],
+                ['Solde projeté'] + [s['solde_fin'] for s in semaines],
+            ]
+            return build_xlsx_response(
+                'previsionnel-tresorerie.xlsx', headers, rows,
+                sheet_title='Prévisionnel')
         return Response(data)
 
     @action(detail=False, methods=['get'], url_path='balance-agee-fournisseurs')

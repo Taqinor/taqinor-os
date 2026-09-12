@@ -3,19 +3,24 @@
 NTTRE17 : bloc « Cash aujourd'hui » publié DANS ``etats/position-tresorerie/``
 (solde consolidé du jour, delta vs la veille, 3 prochaines échéances) — la
 carte du cockpit n'émet aucune requête supplémentaire.
+NTTRE19 : export .xlsx du prévisionnel 13 semaines (colonnes semaine + ligne
+« Solde projeté »), identique aux chiffres de l'écran.
 """
+import io
 from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
 from apps.compta import selectors, services
-from apps.compta.models import CompteTresorerie, Effet, PaymentRun
+from apps.compta.models import (
+    CompteTresorerie, Effet, LignePrevisionnelTresorerie, PaymentRun)
 
 User = get_user_model()
 
@@ -133,3 +138,67 @@ class CashAujourdhuiTests(TestCase):
         for cle in ('total', 'total_veille', 'delta_veille',
                     'prochaines_echeances'):
             self.assertIn(cle, bloc)
+
+
+class PrevisionnelXlsxTests(TestCase):
+    """NTTRE19 — classeur banquier : 13 colonnes semaine + solde projeté."""
+
+    def setUp(self):
+        self.co = make_company('nttre19', 'NTTRE19 Co')
+        services.seed_plan_comptable(self.co)
+        services.seed_journaux(self.co)
+        CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE', solde_initial=Decimal('1000'),
+            compte_comptable=services.get_compte(self.co, '5141'))
+        self.user = User.objects.create_user(
+            username='nttre19-user', password='x', company=self.co,
+            role_legacy='responsable')
+        self.api = auth(self.user)
+
+    def _feuille(self, contenu):
+        from openpyxl import load_workbook
+        return load_workbook(io.BytesIO(contenu)).active
+
+    def test_treize_colonnes_semaine_et_ligne_solde_projete(self):
+        resp = self.api.get(
+            '/api/django/compta/etats/previsionnel-tresorerie/?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('spreadsheet', resp['Content-Type'])
+        ws = self._feuille(resp.content)
+        # 1 colonne de libellé + 13 colonnes semaine.
+        self.assertEqual(ws.max_column, 14)
+        libelles = [ws.cell(row=r, column=1).value
+                    for r in range(2, ws.max_row + 1)]
+        self.assertIn('Solde projeté', libelles)
+
+    def test_chiffres_identiques_a_ceux_de_l_ecran(self):
+        # Le prévisionnel démarre au LUNDI de la semaine courante : on cale la
+        # ligne prévue sur cette même semaine (aucune horloge figée requise).
+        aujourdhui = timezone.localdate()
+        lundi = aujourdhui - timedelta(days=aujourdhui.weekday())
+        LignePrevisionnelTresorerie.objects.create(
+            company=self.co, libelle='Subvention',
+            date_prevue=lundi + timedelta(days=2), montant=Decimal('750'))
+        ecran = self.api.get(
+            '/api/django/compta/etats/previsionnel-tresorerie/')
+        classeur = self.api.get(
+            '/api/django/compta/etats/previsionnel-tresorerie/?export=xlsx')
+        self.assertEqual(ecran.status_code, 200)
+        self.assertEqual(classeur.status_code, 200)
+        ws = self._feuille(classeur.content)
+        lignes = {ws.cell(row=r, column=1).value: [
+            ws.cell(row=r, column=c).value
+            for c in range(2, ws.max_column + 1)]
+            for r in range(2, ws.max_row + 1)}
+        soldes_ecran = [float(s['solde_fin'])
+                        for s in ecran.data['semaines']]
+        self.assertEqual(lignes['Solde projeté'], soldes_ecran)
+        self.assertEqual(lignes['Encaissements'][0], 750.0)
+
+    def test_nb_semaines_personnalise_change_le_nombre_de_colonnes(self):
+        resp = self.api.get(
+            '/api/django/compta/etats/previsionnel-tresorerie/'
+            '?export=xlsx&nb_semaines=4')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._feuille(resp.content).max_column, 5)

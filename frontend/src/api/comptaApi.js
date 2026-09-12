@@ -73,6 +73,11 @@ const comptaApi = {
       api.get('/compta/etats/position-tresorerie/', { params }),
     previsionnelTresorerie: (params) =>
       api.get('/compta/etats/previsionnel-tresorerie/', { params }),
+    // NTTRE19 — le même état, en classeur .xlsx pour le banquier (13 colonnes
+    // semaine + ligne « Solde projeté »). Fichier → `responseType: 'blob'`.
+    previsionnelTresorerieXlsx: (params) =>
+      api.get('/compta/etats/previsionnel-tresorerie/',
+        { params: { export: 'xlsx', ...params }, responseType: 'blob' }),
     balanceAgeeFournisseurs: (params) =>
       api.get('/compta/etats/balance-agee-fournisseurs/', { params }),
     releveFournisseur: (tiersId, params) =>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
-import { Plus, Pencil, RefreshCw, BookOpen, Send, Landmark } from 'lucide-react'
+import { Plus, Pencil, RefreshCw, BookOpen, Send, Landmark, Download } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Segmented, Card, EmptyState, toast,
@@ -190,6 +190,17 @@ function PositionPanel() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => load(), [load])
 
+  // NTTRE19 — export du prévisionnel 13 semaines en classeur pour le banquier.
+  const exporterXlsx = async () => {
+    try {
+      const res = await comptaApi.etats.previsionnelTresorerieXlsx()
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, 'previsionnel-tresorerie.xlsx')
+    } catch {
+      toast.error('Export du prévisionnel indisponible.')
+    }
+  }
+
   if (loading) {
     return <p className="py-8 text-center text-sm text-muted-foreground">Chargement…</p>
   }
@@ -236,7 +247,14 @@ function PositionPanel() {
       </Card>
 
       <Card className="p-4 sm:p-5">
-        <h3 className="mb-3 font-display text-base font-semibold">Prévisionnel roulant (13 semaines)</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="font-display text-base font-semibold">Prévisionnel roulant (13 semaines)</h3>
+          {/* NTTRE19 — classeur .xlsx pour le banquier : une colonne par
+              semaine + la ligne « Solde projeté », mêmes chiffres qu'ici. */}
+          <Button variant="outline" size="sm" onClick={exporterXlsx}>
+            <Download className="size-4" /> Exporter (xlsx)
+          </Button>
+        </div>
         {/* WIR182 — NTTRE18 : bandeau d'alerte quand le solde projeté passe
             sous zéro (`date_rupture_estimee`, apps/compta/selectors.py). */}
         {previsionnel?.date_rupture_estimee && (
