@@ -75,6 +75,8 @@ const coreApi = {
   // dans le corps ; `code` dérivé du nom côté serveur).
   workflowDefinitions: {
     list: () => api.get('/core/workflow-definitions/'),
+    // NTWFL6 — chargement d'UNE définition (designer visuel canvas).
+    get: (id) => api.get(`/core/workflow-definitions/${id}/`),
     create: (payload) => api.post('/core/workflow-definitions/', payload),
     update: (id, payload) =>
       api.put(`/core/workflow-definitions/${id}/`, payload),

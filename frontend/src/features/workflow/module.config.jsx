@@ -26,6 +26,10 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 
 const TachesPlanifieesScreen = lazy(() => import('./TachesPlanifieesScreen'))
 const WorkflowsScreen = lazy(() => import('./WorkflowsScreen'))
+// NTWFL6 -- designer visuel (canvas), complement graphique de l'editeur
+// liste XPLT8 sur la MEME donnee (WIR51). Route dediee /workflow/:id/designer
+// (pas de nav.items -- accessible depuis le bouton "Designer" de la liste).
+const WorkflowDesigner = lazy(() => import('./WorkflowDesigner'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -56,6 +60,12 @@ const config = {
     ],
   },
   // routes.meta — du plus spécifique au plus général (le préfixe /workflow en dernier).
+  // NTWFL6 — `/workflow/:id/designer` n'a PAS sa propre entrée ici :
+  // `titleFor` (routes.meta.js) résout par simple PRÉFIXE littéral
+  // (`pathname.startsWith(entry[0])`), incompatible avec un segment
+  // dynamique (`:id`) — même convention que `/publicite/ad/:id`
+  // (adsengine/module.config.jsx), sans entrée dédiée : retombe sur le
+  // préfixe général `/workflow` ci-dessous (titre « Workflows »).
   titles: [
     ['/workflow/taches-planifiees', 'Tâches planifiées'],
     ['/workflow', 'Workflows'],
@@ -63,6 +73,8 @@ const config = {
   sectionLabels: { workflow: 'Workflow' },
   routes: [
     { path: '/workflow/taches-planifiees', component: TachesPlanifieesScreen, roles: ROLES },
+    // NTWFL6 -- doit précéder `/workflow` (plus spécifique en premier).
+    { path: '/workflow/:id/designer', component: WorkflowDesigner, roles: ROLES },
     { path: '/workflow', component: WorkflowsScreen, roles: ROLES },
   ],
 }
