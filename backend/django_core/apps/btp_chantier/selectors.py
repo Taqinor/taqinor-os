@@ -668,6 +668,65 @@ def penalites_retard_par_lot(chantier, date_reference=None):
     }
 
 
+def kpis_btp(company):
+    """NTCON34 — les quatre KPI BTP du reporting transverse, en UN appel.
+
+    Chaque valeur réutilise un sélecteur EXISTANT du module — aucune seconde
+    formule :
+
+    * ``btp_reserves_ouvertes``      — réserves actives (ouverte/en cours/
+      contestée) non archivées (NTCON1/2/27) ;
+    * ``btp_rfi_en_retard``          — ``rfi_en_retard`` (NTCON3/4) ;
+    * ``btp_visas_en_attente``       — visas soumis ou en revue (NTCON5) ;
+    * ``btp_penalites_cumulees_periode`` — Σ des expositions par lot
+      (``penalites_retard_par_lot``, NTCON15) sur les chantiers de la société.
+
+    ``None`` plutôt que ``0`` quand la société n'a AUCUN objet de ce type :
+    un 0 affirmerait « rien en retard » là où la vraie réponse est « ce module
+    n'est pas utilisé ici » (règle : jamais un chiffre trompeur).
+    """
+    from decimal import Decimal
+
+    from .models import VisaDocument
+
+    reserves_qs = ReserveChantier.objects.filter(company=company)
+    rfi_qs = RFI.objects.filter(company=company)
+    visas_qs = VisaDocument.objects.filter(company=company)
+    lots_qs = Lot.objects.filter(company=company)
+
+    reserves_ouvertes = (
+        reserves_qs.filter(
+            archivee=False,
+            statut__in=[ReserveChantier.Statut.OUVERTE,
+                        ReserveChantier.Statut.EN_COURS,
+                        ReserveChantier.Statut.CONTESTEE]).count()
+        if reserves_qs.exists() else None)
+
+    rfi_retard = (rfi_en_retard(company).count()
+                  if rfi_qs.exists() else None)
+
+    visas_attente = (
+        visas_qs.filter(
+            statut__in=[VisaDocument.Statut.SOUMIS,
+                        VisaDocument.Statut.EN_REVUE]).count()
+        if visas_qs.exists() else None)
+
+    penalites = None
+    if lots_qs.exists():
+        penalites = Decimal('0')
+        Chantier = Lot._meta.get_field('chantier').related_model
+        ids = lots_qs.values_list('chantier_id', flat=True).distinct()
+        for site in Chantier.objects.filter(pk__in=ids):
+            penalites += penalites_retard_par_lot(site)['total_exposition']
+
+    return {
+        'btp_reserves_ouvertes': reserves_ouvertes,
+        'btp_rfi_en_retard': rfi_retard,
+        'btp_visas_en_attente': visas_attente,
+        'btp_penalites_cumulees_periode': penalites,
+    }
+
+
 def chantiers_avec_lot_en_retard(company=None, *, date_reference=None):
     """NTCON28 — chantiers portant AU MOINS un lot en retard ACTIF.
 
