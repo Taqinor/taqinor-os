@@ -480,6 +480,125 @@ function SlaAutomationSection() {
   )
 }
 
+// ── NTSRV33 — Service client : les réglages du groupe NTSRV rassemblés en UN
+// endroit au lieu d'être dispersés. Aucun modèle de réglages parallèle : ce
+// panneau lit et écrit le MÊME enregistrement `SavSlaSettings` (même endpoint
+// `/sav/sla-settings/`, upsert partiel côté serveur) que l'onglet
+// « SLA / Automatisation » et que la fonctionnalité derrière chaque drapeau.
+// C'est le critère d'acceptation : pas de doublon de state.
+//
+// Deux drapeaux nommés au plan n'existent DÉLIBÉRÉMENT pas ici :
+//   * l'e-mail entrant (NTSRV1) n'a pas de drapeau `SavSlaSettings` — il est
+//     piloté par l'intégration `core.IntegrationConfig` (type e-mail entrant,
+//     `actif`), la source unique du canal. En recopier un second ici serait
+//     exactement le doublon de state que ce panneau existe pour éviter.
+//   * `nps_actif` arrive avec le NPS transactionnel (NTSRV14), pas encore bâti.
+const SERVICE_CLIENT_TOGGLES = [
+  {
+    key: 'affectation_par_competence',
+    label: 'Affecter uniquement des techniciens qualifiés',
+    aide: "N'affecte automatiquement un ticket qu'aux techniciens portant les "
+      + 'compétences exigées par sa catégorie (repli sur la charge seule si '
+      + "aucun technicien qualifié). Sans effet tant que l'affectation "
+      + "automatique n'est pas activée dans SLA / Automatisation.",
+  },
+  {
+    key: 'sla_heures_ouvrees_actif',
+    label: 'Décompter le SLA en heures ouvrées',
+    aide: 'Exclut aussi les HEURES hors plage de travail du décompte, pas '
+      + 'seulement les jours : une demande reçue vendredi 17 h avec 4 h de '
+      + 'délai est due lundi 11 h. Par défaut lun-ven 8 h-18 h.',
+  },
+  {
+    key: 'csat_detaille_actif',
+    label: 'Enquête de satisfaction détaillée',
+    aide: 'Ajoute au formulaire public trois sous-notes optionnelles '
+      + '(rapidité, courtoisie, résolution). Désactivé : le formulaire reste '
+      + "celui d'aujourd'hui, une seule note globale.",
+  },
+]
+
+function ServiceClientSection() {
+  const [form, setForm] = useState({
+    affectation_par_competence: false,
+    sla_heures_ouvrees_actif: false,
+    csat_detaille_actif: false,
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.get('/sav/sla-settings/')
+      .then((r) => setForm((f) => {
+        const recu = r.data ?? {}
+        const suivant = { ...f }
+        SERVICE_CLIENT_TOGGLES.forEach((t) => {
+          if (recu[t.key] !== undefined) suivant[t.key] = !!recu[t.key]
+        })
+        return suivant
+      }))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const setField = (key) => (value) => setForm((f) => ({ ...f, [key]: !!value }))
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      // Envoi PARTIEL (upsert côté serveur) : ce panneau n'écrase jamais les
+      // réglages de l'onglet SLA / Automatisation.
+      const r = await api.post('/sav/sla-settings/', form)
+      const recu = r.data ?? {}
+      setForm((f) => {
+        const suivant = { ...f }
+        SERVICE_CLIENT_TOGGLES.forEach((t) => {
+          if (recu[t.key] !== undefined) suivant[t.key] = !!recu[t.key]
+        })
+        return suivant
+      })
+      toast.success('Réglages service client enregistrés')
+    } catch {
+      toast.error("Échec de l'enregistrement des réglages service client.")
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <Skeleton className="h-32 w-full" />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Les options du service client omnicanal, par société. Chacune reste
+        désactivée (comportement actuel inchangé) tant qu'elle n'est pas
+        activée ici.
+      </p>
+      <Card className="flex flex-col gap-4 p-4">
+        <div className="flex flex-col gap-2">
+          {SERVICE_CLIENT_TOGGLES.map((t) => (
+            <div key={t.key}
+                 className="flex items-start justify-between gap-3 rounded-lg border border-border p-2.5 text-sm text-foreground">
+              <span className="flex flex-col gap-0.5">
+                <span>{t.label}</span>
+                <span className="text-xs text-muted-foreground">{t.aide}</span>
+              </span>
+              <Switch aria-label={t.label} checked={!!form[t.key]}
+                      onCheckedChange={setField(t.key)} />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Le canal e-mail entrant s'active dans Paramètres → Intégrations
+          (boîte e-mail entrante) : c'est la source unique du canal, elle n'est
+          pas recopiée ici.
+        </p>
+        <Button type="button" size="sm" className="self-start" loading={saving} onClick={save}>
+          Enregistrer
+        </Button>
+      </Card>
+    </div>
+  )
+}
+
 // ── WIR119/ZMFG6 — Modèles de feuille de maintenance (worksheets). CRUD du
 // modèle (nom, type applicable, actif) + de ses champs typés (JSON `champs`).
 const WS_TYPE_APPLICABLE = [
@@ -643,6 +762,7 @@ export default function SavParametresPage() {
             <TabsTrigger value="feuilles-maintenance">Feuilles de maintenance</TabsTrigger>
             <TabsTrigger value="compatibilites-piece">Pièces compatibles</TabsTrigger>
             <TabsTrigger value="sla-automatisation">SLA / Automatisation</TabsTrigger>
+            <TabsTrigger value="service-client">Service client</TabsTrigger>
           </TabsList>
 
           <TabsContent value="categories-ticket">
@@ -710,6 +830,10 @@ export default function SavParametresPage() {
 
           <TabsContent value="sla-automatisation">
             <SlaAutomationSection />
+          </TabsContent>
+
+          <TabsContent value="service-client">
+            <ServiceClientSection />
           </TabsContent>
         </Tabs>
       </div>

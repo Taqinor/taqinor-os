@@ -131,6 +131,47 @@ describe('SavParametresPage', () => {
     })
   })
 
+  describe('NTSRV33 — onglet Service client', () => {
+    it('rassemble les trois réglages du groupe NTSRV', async () => {
+      const user = userEvent.setup()
+      render(<SavParametresPage />)
+      await user.click(screen.getByRole('tab', { name: 'Service client' }))
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/sav/sla-settings/'))
+      expect(await screen.findByRole('switch',
+        { name: 'Affecter uniquement des techniciens qualifiés' })).toBeInTheDocument()
+      expect(screen.getByRole('switch',
+        { name: 'Décompter le SLA en heures ouvrées' })).toBeInTheDocument()
+      expect(screen.getByRole('switch',
+        { name: 'Enquête de satisfaction détaillée' })).toBeInTheDocument()
+    })
+
+    it('écrit le MÊME enregistrement SavSlaSettings (aucun doublon de state)', async () => {
+      const user = userEvent.setup()
+      render(<SavParametresPage />)
+      await user.click(screen.getByRole('tab', { name: 'Service client' }))
+      const toggle = await screen.findByRole('switch',
+        { name: 'Enquête de satisfaction détaillée' })
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      await user.click(toggle)
+      await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+        '/sav/sla-settings/', expect.objectContaining({ csat_detaille_actif: true })))
+    })
+
+    it("n'envoie QUE ses propres drapeaux (jamais ceux de l'onglet SLA)", async () => {
+      const user = userEvent.setup()
+      render(<SavParametresPage />)
+      await user.click(screen.getByRole('tab', { name: 'Service client' }))
+      await user.click(await screen.findByRole('button', { name: 'Enregistrer' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalled())
+      const envoye = api.post.mock.calls[0][1]
+      expect(Object.keys(envoye).sort()).toEqual([
+        'affectation_par_competence', 'csat_detaille_actif',
+        'sla_heures_ouvrees_actif',
+      ])
+    })
+  })
+
   describe('WIR119 — onglet Feuilles de maintenance', () => {
     it('crée un modèle de feuille de maintenance', async () => {
       const user = userEvent.setup()

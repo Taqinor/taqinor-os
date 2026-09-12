@@ -17,12 +17,52 @@ Multi-tenant : boucle par société active, OFF par défaut = no-op total. Une
 société qui échoue n'empêche jamais les suivantes (best-effort, journalisé).
 """
 import logging
+from contextlib import contextmanager
 
 from celery import shared_task
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
 _EVENT_TYPE = 'sav_visites_auto_generees'
+
+# ── NTSRV38 — verrou d'exclusion des balayages SLA ──────────────────────────
+# Les deux balayages SLA tournent au quart d'heure (beat). Une exécution qui
+# déborde (beat qui retire, worker relancé, exécution manuelle en parallèle)
+# ne doit JAMAIS notifier deux fois le même palier du même ticket : c'est une
+# course entre deux lectures de `Ticket.sla_escalade_paliers_notifies` avant
+# que l'une n'écrive. Le verrou la ferme.
+#
+# C'est un VERROU (posé puis RELÂCHÉ), pas une clé d'idempotence à durée fixe
+# (`core.idempotent_task`) : un appel SÉQUENTIEL suivant doit pouvoir tourner
+# normalement — seul un appel CONCURRENT est court-circuité. Le TTL n'est
+# qu'un filet si le processus meurt en cours de balayage.
+_VERROU_TTL = 600  # secondes
+
+
+@contextmanager
+def _verrou_scan(nom):
+    """Verrou best-effort nommé. Cède ``True`` si CET appel l'a obtenu.
+
+    Cache indisponible (Redis coupé) → on cède ``True`` sans verrou : un
+    balayage SLA qui ne tourne plus du tout serait pire que le risque de
+    double notification, déjà atténué par l'idempotence sur le ticket.
+    """
+    cle = f'sav-sla-scan:{nom}'
+    try:
+        obtenu = bool(cache.add(cle, 1, _VERROU_TTL))
+    except Exception:  # pragma: no cover - cache KO → on n'empêche pas le scan
+        logger.warning('sav: verrou %s indisponible (cache KO)', nom)
+        yield True
+        return
+    try:
+        yield obtenu
+    finally:
+        if obtenu:
+            try:
+                cache.delete(cle)
+            except Exception:  # pragma: no cover - défensif
+                logger.warning('sav: libération du verrou %s KO', nom)
 
 
 def _responsables(company):
@@ -102,7 +142,7 @@ def generer_visites_dues_quotidien():
     return {'societes': total_societes, 'visites_generees': total_generes}
 
 
-# ── WIR30 — Beat quotidien pour XSAV6 (pré-alerte SLA + escalade) ───────────
+# ── WIR30 — Beat pour XSAV6 (pré-alerte SLA + escalade) ─────────────────────
 
 @shared_task(name='sav.scan_sla_pre_alerts_and_escalations_quotidien')
 def scan_sla_pre_alerts_and_escalations_quotidien():
@@ -111,6 +151,42 @@ def scan_sla_pre_alerts_and_escalations_quotidien():
     jusqu'ici. DISTINCT de ``scan_sla_breaches`` (planifiée séparément par
     NTSRV38, ne pas dupliquer ici). OFF par défaut par société
     (``sla_warning_days=0``, ``escalade_activee=False``) : aucun effet tant
-    qu'une société n'active pas explicitement l'un des deux réglages."""
-    from apps.sav.views import scan_sla_pre_alerts_and_escalations
-    return scan_sla_pre_alerts_and_escalations()
+    qu'une société n'active pas explicitement l'un des deux réglages.
+
+    NTSRV38 — c'est ICI que vivent les PALIERS d'escalade multi-niveaux
+    (NTSRV12, ``_notifier_paliers``), donc c'est cette tâche que le beat
+    rappelle toutes les 15 minutes (le nom ``…_quotidien`` est hérité de
+    WIR30 et conservé : il est référencé par ``beat_schedule`` et
+    ``CELERY_TASK_ROUTES``). Deux exécutions CONCURRENTES sont exclues par le
+    verrou ; une exécution séquentielle suivante tourne normalement."""
+    with _verrou_scan('pre-alerts') as obtenu:
+        if not obtenu:
+            logger.info(
+                'sav.scan_sla_pre_alerts_and_escalations: exécution '
+                'concurrente ignorée (verrou tenu)')
+            return {'skipped': True}
+        from apps.sav.views import scan_sla_pre_alerts_and_escalations
+        return scan_sla_pre_alerts_and_escalations()
+
+
+# ── NTSRV38 — Beat au quart d'heure pour FG81 (violation SLA) ───────────────
+
+@shared_task(name='sav.scan_sla_breaches_quart_heure')
+def scan_sla_breaches_quart_heure():
+    """NTSRV38 — Planifie ``apps.sav.views.scan_sla_breaches`` (FG81), qui
+    n'avait AUCUNE entrée beat : elle ne tournait qu'à la demande (commande
+    de gestion / appel manuel), donc un dépassement de SLA n'était notifié
+    que si quelqu'un lançait le balayage.
+
+    Cadence : toutes les 15 minutes, sous le MÊME type de verrou que la
+    tâche de pré-alerte/escalade — deux exécutions simultanées n'écrivent
+    jamais deux fois ``sla_breach`` ni n'émettent deux notifications pour le
+    même ticket. OFF par société tant que ``sla_breach_enabled`` est False
+    (défaut) : le balayage ne modifie alors rien."""
+    with _verrou_scan('breaches') as obtenu:
+        if not obtenu:
+            logger.info('sav.scan_sla_breaches: exécution concurrente '
+                        'ignorée (verrou tenu)')
+            return {'skipped': True}
+        from apps.sav.views import scan_sla_breaches
+        return {'skipped': False, 'tickets': scan_sla_breaches()}

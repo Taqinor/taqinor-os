@@ -2021,6 +2021,34 @@ def employes_avec_competence(company, competence_ids, niveau_min=1):
             if requises.issubset(couvertes)}
 
 
+def competences_par_code(company, codes):
+    """NTSRV43 — résout des CODES de compétence en ids, scopé société.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.sav`` importe en masse les
+    compétences exigées par catégorie de ticket depuis un tableur, où l'humain
+    saisit un CODE, pas un id) — l'appelant n'importe jamais
+    ``apps.rh.models``.
+
+    Renvoie ``{code normalisé (minuscules, sans espaces) : id}``. Un code
+    absent du référentiel est simplement ABSENT du dictionnaire : c'est à
+    l'appelant de rapporter la ligne fautive, jamais à ce sélecteur de créer
+    une compétence au passage.
+    """
+    from .models import Competence
+
+    voulus = {str(c).strip().lower() for c in (codes or []) if str(c).strip()}
+    if company is None or not voulus:
+        return {}
+    resolus = {}
+    for code, pk in (Competence.objects
+                     .filter(company=company)
+                     .values_list('code', 'id')):
+        normalise = (code or '').strip().lower()
+        if normalise in voulus:
+            resolus[normalise] = pk
+    return resolus
+
+
 def candidats_internes(company, poste_id):
     """XRH15 — classe les employés d'un poste par COUVERTURE de son profil
     requis (décroissante). Couverture = proportion (0..1) des compétences

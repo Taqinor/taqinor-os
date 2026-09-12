@@ -1226,6 +1226,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
             except (ReponseType.DoesNotExist, ValueError):
                 return Response(
                     {'detail': 'Réponse type introuvable.'}, status=400)
+            # NTSRV34 — une macro restreinte à d'autres canaux n'est pas
+            # seulement masquée du sélecteur : elle est refusée côté serveur
+            # (une macro SANS restriction reste acceptée partout — défaut).
+            canal_ticket = ReponseType.canal_de_ticket(ticket)
+            if not macro.autorise_canal(canal_ticket):
+                return Response(
+                    {'detail': 'Cette réponse type n\'est pas autorisée sur '
+                               'le canal de ce ticket.'}, status=400)
             body = macro.rendu(
                 client=str(ticket.client) if ticket.client_id else '',
                 reference=ticket.reference,
@@ -1402,9 +1410,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
         }, status=201)
 
     @action(detail=True, methods=['post'], url_path='repondre-email',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[
+                HasPermissionOrLegacy('sav_repondre_client_externe')])
     def repondre_email(self, request, pk=None):
         """NTSRV1 — Répond au client par e-mail DEPUIS le ticket.
+
+        NTSRV40 — écrire AU CLIENT est un geste distinct de « travailler le
+        ticket » : la garde est ``sav_repondre_client_externe``, pas
+        ``sav_gerer``. Un agent en formation garde l'assignation et les notes
+        INTERNES (``noter``) mais ne peut rien envoyer à l'extérieur. Le code
+        est accordé par défaut à tous les rôles système qui portaient déjà
+        ``sav_gerer`` : aucun accès existant n'est retiré. Le futur envoi
+        WhatsApp (NTSRV3) devra porter la MÊME garde.
 
         Le message sortant reprend les en-têtes de fil (``In-Reply-To`` /
         ``References``) du dernier e-mail entrant : la réponse du client
@@ -2594,6 +2611,47 @@ class CategorieTicketViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(
+        responses=inline_serializer('SavImportCategorieCompetence', {
+            'cible': drf_serializers.CharField(),
+            'total_lignes': drf_serializers.IntegerField(),
+            'valides': drf_serializers.IntegerField(),
+            'rejetees': drf_serializers.IntegerField(),
+            'appliquees': drf_serializers.IntegerField(),
+            'lignes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        }))
+    @action(detail=False, methods=['post'],
+            url_path='importer-competences')
+    def importer_competences(self, request):
+        """NTSRV43 — Import CSV/XLSX des compétences requises par catégorie.
+
+        ``file`` (multipart, même nom de champ que l'import générique
+        ``apps/dataimport``) + ``apercu=1`` pour un APERÇU qui ne touche
+        jamais la base. Sans ``apercu``, les lignes VALIDES sont appliquées et
+        les lignes fautives rapportées une par une avec leur motif — jamais un
+        échec global silencieux (critère d'acceptation NTSRV43).
+
+        Écriture = permission d'écriture du référentiel (``get_permissions``
+        du viewset : responsable/admin), aucune garde déclarée sur l'action
+        pour ne pas court-circuiter cet override."""
+        from .imports import importer, previsualiser
+
+        fichier = request.FILES.get('file')
+        if fichier is None:
+            return Response(
+                {'file': 'Aucun fichier reçu (champ « file », CSV ou XLSX).'},
+                status=400)
+        octets = fichier.read()
+        apercu = str(request.query_params.get('apercu')
+                     or request.data.get('apercu') or '') in ('1', 'true')
+        fonction = previsualiser if apercu else importer
+        try:
+            recap = fonction(request.user.company, octets, fichier.name)
+        except ValueError as exc:
+            return Response({'file': str(exc)}, status=400)
+        return Response(recap)
+
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
 
@@ -2672,7 +2730,42 @@ class ReponseTypeViewSet(CompanyScopedModelViewSet):
         if self.action == 'list' and self.request.query_params.get(
                 'archived') != '1':
             qs = qs.filter(archived=False)
+        if self.action == 'list':
+            qs = self._filtrer_par_canal(qs)
         return qs
+
+    def _filtrer_par_canal(self, qs):
+        """NTSRV34 — restreint la liste au canal demandé (sélecteur de macro).
+
+        Deux façons de le demander, l'une ou l'autre :
+        ``?canal=whatsapp`` (canal de réponse direct) ou ``?ticket=<id>``
+        (le canal est alors DÉDUIT du ``canal_ouverture`` du ticket, jamais
+        lu du corps de la requête). Sans paramètre : liste complète, donc le
+        comportement XSAV23 est strictement inchangé pour tout appelant
+        existant.
+
+        Le filtre est appliqué en Python sur les ids (les macros d'une société
+        se comptent en dizaines) : une macro sans restriction reste visible
+        partout, et une valeur héritée mal formée ne fait jamais disparaître
+        une macro."""
+        params = self.request.query_params
+        canal = (params.get('canal') or '').strip().lower()
+        ticket_id = (params.get('ticket') or '').strip()
+        if not canal and ticket_id:
+            ticket = Ticket.objects.filter(
+                pk=ticket_id,
+                company=self.request.user.company).first() \
+                if ticket_id.isdigit() else None
+            if ticket is None:
+                return qs
+            canal = ReponseType.canal_de_ticket(ticket)
+        if not canal:
+            return qs
+        if canal not in ReponseType.CANAUX:
+            # Canal inconnu : on ne devine pas, on ne masque rien.
+            return qs
+        autorisees = [m.pk for m in qs if m.autorise_canal(canal)]
+        return qs.filter(pk__in=autorisees)
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
@@ -2739,7 +2832,12 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             return declared
         if self.action in READ_ACTIONS:
             return [HasPermissionOrLegacy('sav_voir')()]
-        return [HasPermissionOrLegacy('sav_gerer')()]
+        # NTSRV39 — l'ÉCRITURE d'un problème est un geste de responsable,
+        # distinct de `sav_gerer` (traiter ses tickets). Un technicien de base
+        # lit les problèmes (`sav_voir`) mais n'en crée/modifie aucun. Les
+        # comptes hérités SANS rôle fin gardent le comportement historique
+        # (repli `is_responsable` de HasPermissionOrLegacy).
+        return [HasPermissionOrLegacy('sav_probleme_gerer')()]
 
     def get_queryset(self):
         from django.db.models import Case, Count, IntegerField, Value, When
@@ -2811,7 +2909,7 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             'nb_tickets': drf_serializers.IntegerField(),
         }))
     @action(detail=True, methods=['post'], url_path='lier-ticket',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_probleme_gerer')])
     def lier_ticket(self, request, pk=None):
         """Rattache UN ticket au problème. Idempotent : un second appel
         renvoie le lien existant sans doublon (contrainte unique en base).
@@ -2858,7 +2956,7 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             'nb_tickets': drf_serializers.IntegerField(),
         }))
     @action(detail=True, methods=['post'], url_path='delier-ticket',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_probleme_gerer')])
     def delier_ticket(self, request, pk=None):
         """Détache un ticket du problème : supprime la LIGNE DE LIAISON,
         jamais le ticket. Idempotent (détacher deux fois ne casse rien)."""
@@ -2972,7 +3070,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         }))
     @action(detail=False, methods=['post'],
             url_path='creer-depuis-regroupement',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[
+                HasPermissionOrLegacy('sav_probleme_gerer')])  # NTSRV39
     def creer_depuis_regroupement(self, request):
         """NTSRV31 — crée le problème ET rattache les tickets COCHÉS en UN
         SEUL appel transactionnel.
