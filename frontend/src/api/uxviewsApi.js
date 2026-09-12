@@ -27,6 +27,13 @@ const uxviewsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // NTUX12 — favoris épinglés par utilisateur. `modele` = '<app_label>.<model>'
+  // (ex. 'crm.lead'), jamais l'id numérique de ContentType (cf. serializer).
+  listFavoris: () => api.get('/uxviews/favoris/'),
+  createFavori: (modele, objectId) => api.post('/uxviews/favoris/', { modele, object_id: objectId }),
+  deleteFavori: (id) => api.delete(`/uxviews/favoris/${id}/`),
+  // NTUX21 — réordonnancement drag-and-drop : `ordre` = position cible (0 = tête).
+  reordonnerFavori: (id, ordre) => api.post(`/uxviews/favoris/${id}/reordonner/`, { ordre }),
 }
 
 export default uxviewsApi
