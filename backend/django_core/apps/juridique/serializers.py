@@ -168,8 +168,8 @@ class EtapeApprobationJuridiqueSerializer(serializers.ModelSerializer):
         model = EtapeApprobationJuridique
         fields = [
             'id', 'mandat', 'regle', 'niveau', 'niveau_approbation',
-            'approbateur', 'approbateur_nom', 'statut', 'decision_le',
-            'commentaire', 'created_at',
+            'approbateur_designe', 'approbateur', 'approbateur_nom', 'statut',
+            'decision_le', 'commentaire', 'created_at',
         ]
         read_only_fields = fields
 

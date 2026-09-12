@@ -6,11 +6,21 @@ sur ``request.user.company`` + ``company`` forcée côté serveur dans
 dossier ``confidentiel`` est simplement ABSENT du queryset d'un utilisateur
 sans le palier requis — un accès direct par id renvoie donc 404 (jamais 403,
 qui révélerait l'existence du dossier).
+
+NTJUR40 — les DEUX actions de décision du workflow d'approbation
+(``approuver-etape`` / ``rejeter-etape``) exigent, EN PLUS de l'écriture
+``juridique_gerer``, la permission fine ``juridique_approuver_engagement``.
+Être nommé approbateur d'une étape ne suffit donc jamais : retirer la
+permission au rôle d'un approbateur désigné bloque son bouton « Approuver »
+côté API immédiatement, sans toucher aux étapes en cours.
 """
+from django.contrib.auth import get_user_model
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from authentication.permissions import HasPermissionOrLegacy
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
@@ -123,8 +133,22 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
         mandat, erreur = self._mandat_du_dossier(request, dossier)
         if erreur is not None:
             return erreur
+        # NTJUR40 — désignation optionnelle des approbateurs, dans l'ordre des
+        # étapes. Bornée à la société (jamais un utilisateur d'une autre).
+        designes = []
+        modele_utilisateur = get_user_model()
+        for user_id in (request.data.get('approbateurs') or []):
+            user = modele_utilisateur.objects.filter(
+                pk=user_id, company=request.user.company).first()
+            if user is None:
+                return Response(
+                    {'approbateurs': "Un approbateur désigné n'appartient pas "
+                                     "à votre société."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            designes.append(user)
         try:
-            etapes = services.lancer_approbation_mandat(mandat)
+            etapes = services.lancer_approbation_mandat(
+                mandat, approbateurs=designes)
         except services.ApprobationError as exc:
             return Response({'mandat': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -132,37 +156,50 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
             EtapeApprobationJuridiqueSerializer(etapes, many=True).data,
             status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='approuver-etape')
-    def approuver_etape(self, request, pk=None):
-        """Approuve l'étape en attente d'un mandat. Corps : ``{"etape": <id>}``."""
+    def _decider(self, request, decideur):
+        """Corps commun des deux actions de décision (NTJUR19/NTJUR40)."""
         dossier = self.get_object()
         etape, erreur = self._etape_du_dossier(request, dossier)
         if erreur is not None:
             return erreur
         try:
-            etape = services.approuver_etape(
+            etape = decideur(
                 etape, approbateur=request.user,
                 commentaire=(request.data.get('commentaire') or '').strip())
+        except services.ApprobationInterditeError as exc:
+            # NTJUR40 — l'acteur n'a pas le droit (403), la transition ELLE
+            # serait légale : jamais un 400 qui ferait croire à une saisie
+            # fautive.
+            return Response({'etape': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         except services.ApprobationError as exc:
             return Response({'etape': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(EtapeApprobationJuridiqueSerializer(etape).data)
 
-    @action(detail=True, methods=['post'], url_path='rejeter-etape')
+    @action(detail=True, methods=['post'], url_path='approuver-etape',
+            permission_classes=[
+                ScopedPermission,
+                HasPermissionOrLegacy('juridique_approuver_engagement')])
+    def approuver_etape(self, request, pk=None):
+        """Approuve l'étape en attente d'un mandat. Corps : ``{"etape": <id>}``.
+
+        NTJUR40 — exige ``juridique_approuver_engagement`` en plus de
+        l'écriture du module : être nommé dans l'étape ne suffit pas.
+        """
+        return self._decider(request, services.approuver_etape)
+
+    @action(detail=True, methods=['post'], url_path='rejeter-etape',
+            permission_classes=[
+                ScopedPermission,
+                HasPermissionOrLegacy('juridique_approuver_engagement')])
     def rejeter_etape(self, request, pk=None):
-        """Rejette une étape : le mandat retombe en ``brouillon``."""
-        dossier = self.get_object()
-        etape, erreur = self._etape_du_dossier(request, dossier)
-        if erreur is not None:
-            return erreur
-        try:
-            etape = services.rejeter_etape(
-                etape, approbateur=request.user,
-                commentaire=(request.data.get('commentaire') or '').strip())
-        except services.ApprobationError as exc:
-            return Response({'etape': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        return Response(EtapeApprobationJuridiqueSerializer(etape).data)
+        """Rejette une étape : le mandat retombe en ``brouillon``.
+
+        Même garde que l'approbation (NTJUR40) : rejeter un engagement est une
+        décision d'approbation, pas une simple écriture.
+        """
+        return self._decider(request, services.rejeter_etape)
 
     @action(detail=True, methods=['get'], url_path='etapes-approbation')
     def etapes_approbation(self, request, pk=None):

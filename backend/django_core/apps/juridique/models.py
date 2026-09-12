@@ -396,6 +396,18 @@ class EtapeApprobationJuridique(TenantModel):
         choices=RegleApprobationJuridique.NiveauApprobation.choices,
         default=RegleApprobationJuridique.NiveauApprobation.RESPONSABLE,
         verbose_name="Niveau d'approbation requis")
+    # NTJUR40 — approbateur DÉSIGNÉ à l'instanciation du workflow (optionnel).
+    # Être nommé ici ne suffit JAMAIS : l'utilisateur doit AUSSI porter la
+    # permission de rôle ``juridique_approuver_engagement`` (défense en
+    # profondeur). NULL = l'étape est ouverte à tout porteur de la permission.
+    approbateur_designe = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: la désignation disparaît, l'étape et son historique non.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='juridique_etapes_designees',
+        verbose_name='Approbateur désigné',
+    )
     approbateur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         # on_delete: on garde la trace de l'étape même si le compte part.

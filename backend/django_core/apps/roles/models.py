@@ -217,6 +217,17 @@ ALL_PERMISSIONS = [
     # ``get_queryset`` du ViewSet (NTJUR1).
     'juridique_voir',
     'juridique_gerer',
+    # NTJUR40 — DÉFENSE EN PROFONDEUR sur le workflow d'approbation des
+    # engagements juridiques (NTJUR19) : ``juridique_approuver_engagement``
+    # est REQUISE, EN PLUS de ``juridique_gerer``, pour décider une étape.
+    # Être NOMMÉ approbateur d'une étape ne suffit donc jamais : retirer la
+    # permission au rôle d'un approbateur désigné bloque IMMÉDIATEMENT son
+    # bouton « Approuver » côté API, sans toucher aux étapes en cours. Même
+    # esprit que ``cpq_approbation_approuver`` (NTCPQ36). Non mappée sur un
+    # rôle non-direction : seuls Directeur/Administrateur la portent par
+    # héritage d'``ALL_PERMISSIONS``, un admin peut l'octroyer à un rôle
+    # comptable/juridique dédié.
+    'juridique_approuver_engagement',
     # ── WIR172 — Ressources humaines (apps/rh), même patron YRBAC3. Le module
     # RH n'avait AUCUNE permission fine : ``_RhBaseViewSet`` était gardé par le
     # grossier ``IsResponsableOrAdmin``, qui passe dès qu'un rôle accorde UNE

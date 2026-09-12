@@ -16,6 +16,14 @@ class ApprobationError(Exception):
     """Transition d'approbation refusée (message FR destiné à l'utilisateur)."""
 
 
+class ApprobationInterditeError(ApprobationError):
+    """NTJUR40 — l'appelant n'a pas le DROIT de décider cette étape (403).
+
+    Distincte d'``ApprobationError`` (règle métier → 400) : ici la transition
+    serait légale, c'est l'ACTEUR qui n'est pas le bon.
+    """
+
+
 def creer_dossier(company, *, user=None, **champs):
     """Crée un ``DossierJuridique`` avec une référence anti-collision.
 
@@ -146,7 +154,7 @@ def workflow_complet(mandat):
 
 
 @transaction.atomic
-def lancer_approbation_mandat(mandat):
+def lancer_approbation_mandat(mandat, *, approbateurs=None):
     """Instancie le workflow d'approbation d'un mandat (NTJUR19).
 
     Crée une ``EtapeApprobationJuridique`` par approbateur requis par la règle
@@ -154,6 +162,10 @@ def lancer_approbation_mandat(mandat):
     ``en_approbation``. Refuse si aucune règle ne couvre le montant engagé
     (rien à approuver), si le mandat est déjà actif/clos, ou si un workflow est
     déjà en cours. Renvoie la liste ordonnée des étapes.
+
+    ``approbateurs`` (NTJUR40, optionnel) : liste ORDONNÉE d'utilisateurs
+    désignés, un par étape. Être désigné ne donne AUCUN droit par soi-même —
+    l'utilisateur doit aussi porter ``juridique_approuver_engagement``.
     """
     from .models import EtapeApprobationJuridique, MandatAvocat
 
@@ -170,10 +182,13 @@ def lancer_approbation_mandat(mandat):
             "Aucune règle d'approbation ne couvre le montant engagé de ce "
             "mandat : il peut être activé directement.")
     nombre = max(1, regle.nombre_approbateurs)
+    designes = list(approbateurs or [])
     EtapeApprobationJuridique.objects.bulk_create([
         EtapeApprobationJuridique(
             company=mandat.company, mandat=mandat, regle=regle, niveau=rang,
             niveau_approbation=regle.niveau_approbation,
+            approbateur_designe=(
+                designes[rang - 1] if rang <= len(designes) else None),
             statut=EtapeApprobationJuridique.Statut.EN_ATTENTE)
         for rang in range(1, nombre + 1)
     ])
@@ -188,6 +203,14 @@ def _decider_etape(etape, *, statut_cible, approbateur=None, commentaire=''):
 
     if etape.statut != EtapeApprobationJuridique.Statut.EN_ATTENTE:
         raise ApprobationError("Cette étape d'approbation a déjà été décidée.")
+    # NTJUR40 — une étape NOMMÉE n'est décidable que par son désigné (en plus
+    # de la permission de rôle, vérifiée côté vue avant d'arriver ici).
+    if (etape.approbateur_designe_id
+            and approbateur is not None
+            and etape.approbateur_designe_id != getattr(
+                approbateur, 'pk', None)):
+        raise ApprobationInterditeError(
+            "Cette étape est réservée à son approbateur désigné.")
     premiere = _premiere_etape_en_attente(etape.mandat)
     if premiere is not None and premiere.pk != etape.pk:
         raise ApprobationError(
