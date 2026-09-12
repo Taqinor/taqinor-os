@@ -327,6 +327,24 @@ app.conf.beat_schedule = {
         'task': 'dataquality.evaluer_qualite_donnees',
         'schedule': crontab(hour=5, minute=45),
     },
+    # NTDATA42 — signale les points aberrants des séries de métriques nommées
+    # (z-score sur `core.anomaly` → `core.AnomalyFlag`). HEBDOMADAIRE : les
+    # séries sont MENSUELLES, un balayage quotidien re-scorerait les mêmes
+    # points douze fois par mois pour rien. Aucun seuil à configurer, aucune
+    # notification — un AnomalyFlag se consulte.
+    'semantic-detecter-anomalies-metriques': {
+        'task': 'semantic.detecter_anomalies_metriques',
+        'schedule': crontab(hour=4, minute=45, day_of_week=1),
+    },
+    # NTDATA24 — recalcule les golden records (fiches consolidées) de chaque
+    # société. HEBDOMADAIRE : la passe relit toutes les fiches des trois
+    # entités et rejoue la détection de doublons, et l'identité consolidée d'un
+    # client ne change pas d'un jour à l'autre. Dimanche très tôt (créneau
+    # creux, avant la semaine) ; aucune source n'est mutée — c'est une VUE.
+    'dataquality-consolider-golden-records': {
+        'task': 'dataquality.consolider_golden_records',
+        'schedule': crontab(hour=4, minute=15, day_of_week=0),
+    },
     # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
     # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
     'reporting-controle-integrite-hebdo': {
@@ -1024,6 +1042,15 @@ app.conf.beat_schedule = {
     'core-escalate-workflow-sla': {
         'task': 'core.escalate_workflow_sla',
         'schedule': crontab(minute=20),
+    },
+    # NTDATA26 — exécute les extraits planifiés DUS (`ScheduledExport.cron`).
+    # HORAIRE : le grain de planification des extraits EST l'heure (le champ
+    # minute du cron est accepté puis ignoré, comme pour les abonnements de
+    # rapport). Idempotent : un extrait déjà passé dans l'heure courante n'est
+    # jamais renvoyé. Destination non configurée = no-op propre horodaté.
+    'core-executer-exports-planifies': {
+        'task': 'core.executer_exports_planifies',
+        'schedule': crontab(minute=35),
     },
     # WIR25 (XACC8) — génère les écritures dues des abonnements récurrents
     # (loyers/abonnements) en brouillon, quotidien, heure creuse. Idempotent

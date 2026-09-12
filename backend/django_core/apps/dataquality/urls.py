@@ -3,17 +3,27 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CompletudeView, DoublonsView, RapportQualiteView, RegleQualiteViewSet,
+    CompletudeView, DoublonsView, GoldenRecordViewSet,
+    PropositionFusionViewSet, RapportQualiteView, RegleQualiteViewSet,
+    SanteDonneesView,
 )
 
 router = DefaultRouter()
 router.register(r'regles', RegleQualiteViewSet, basename='regle-qualite')
+# NTDATA20 — file de revue des doublons (scanner / ignorer / fusionner).
+router.register(r'fusions', PropositionFusionViewSet,
+                basename='proposition-fusion')
+# NTDATA22/24 — fiches consolidées (lecture + recalcul à la demande).
+router.register(r'golden-records', GoldenRecordViewSet,
+                basename='golden-record')
 
 urlpatterns = [
     # NTDATA15 — taux de conformité par règle (?entite= / ?evaluer=1).
     path('rapport/', RapportQualiteView.as_view(), name='qualite-rapport'),
     # NTDATA16 — complétude des champs critiques, par entité métier.
     path('completude/', CompletudeView.as_view(), name='qualite-completude'),
+    # NTDATA21 — carte « Santé des données » du tableau de bord (3 indicateurs).
+    path('sante/', SanteDonneesView.as_view(), name='qualite-sante'),
     # NTDATA17/19 — groupes de doublons candidats (clients / fournisseurs /
     # produits). LECTURE SEULE : rien n'est jamais fusionné ici.
     path('doublons/<str:entite>/', DoublonsView.as_view(),

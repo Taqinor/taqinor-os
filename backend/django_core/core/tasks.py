@@ -198,4 +198,27 @@ def escalate_workflow_sla_task():
 
     call_command('escalate_workflow_sla')
     logger.info('core.escalate_workflow_sla: balayage terminé.')
+
+
+@shared_task(name='core.executer_exports_planifies')
+def executer_exports_planifies_task():
+    """NTDATA26 — exécute les extraits planifiés DUS (beat HORAIRE).
+
+    ``ScheduledExport.cron`` portait déjà la cadence, mais rien ne la LISAIT :
+    un extrait « quotidien » ne partait que si quelqu'un cliquait « exécuter ».
+    Ce job ferme le trou.
+
+    SOCIÉTÉS ACTIVES UNIQUEMENT (SCA19) : un extrait part vers une destination
+    EXTERNE (entrepôt, SFTP, S3, Snowflake) — un tenant suspendu ou en
+    fermeture ne doit plus rien émettre. Une destination non configurée reste
+    un no-op propre, horodaté ``dernier_statut='non_configure'``."""
+    from authentication.selectors import active_companies
+
+    from . import scheduled_export
+
+    recap = scheduled_export.executer_exports_dus(
+        companies=list(active_companies()))
+    logger.info('core.executer_exports_planifies: %s extrait(s) exécuté(s).',
+                len(recap))
+    return recap
     return {'ok': True}

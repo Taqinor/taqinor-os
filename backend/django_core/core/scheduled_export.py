@@ -606,3 +606,122 @@ def executer(export, now=None):
 
     export.save(update_fields=champs)
     return export
+
+
+# ---------------------------------------------------------------------------
+# NTDATA26 — PLANIFICATION : quels extraits sont DUS, et comment on les passe.
+#
+# `ScheduledExport.cron` portait déjà la cadence, mais rien ne la LISAIT : un
+# extrait « quotidien » ne partait que si quelqu'un cliquait « exécuter ». Le
+# job `core.executer_exports_planifies` (beat horaire) ferme ce trou.
+#
+# GRAIN DE PLANIFICATION = L'HEURE, exactement comme
+# `reporting.rapport_abonnements` : le beat passe à chaque heure pile, donc le
+# champ MINUTE du cron est accepté puis IGNORÉ (« 0 2 * * * » et « 30 2 * * * »
+# sont tous deux dus entre 2 h et 3 h). Les quatre autres champs sont respectés
+# à la lettre.
+#
+# L'EXPANSION DES CHAMPS EST CELLE DE CELERY (`crontab_parser`), pas un parseur
+# maison : une expression que Beat accepterait et que nous refuserions — ou
+# l'inverse — serait un piège silencieux.
+#
+# UNE EXPRESSION VIDE OU ILLISIBLE N'EST JAMAIS DUE. Un extrait part vers une
+# destination EXTERNE : en cas de doute sur la cadence, on ne l'envoie pas.
+
+
+def _champ_cron(champ, borne_max, borne_min=0):
+    """Ensemble des valeurs couvertes par UN champ cron, ou ``None`` si illisible."""
+    from celery.schedules import crontab_parser
+
+    champ = (champ or '').strip()
+    if not champ:
+        return None
+    try:
+        return crontab_parser(borne_max + 1 - borne_min, borne_min).parse(champ)
+    except Exception:  # noqa: BLE001 — une expression fautive n'est jamais due
+        return None
+
+
+def cron_du(expression, now) -> bool:
+    """L'expression cron 5 champs est-elle DUE à ``now`` (grain = heure) ?
+
+    Champs : ``minute heure jour_du_mois mois jour_de_semaine``. ``0`` =
+    dimanche côté jour de semaine (convention cron ET Celery).
+    """
+    champs = (expression or '').split()
+    if len(champs) != 5:
+        return False
+    _minute, heure, jour_mois, mois, jour_semaine = champs
+    heures = _champ_cron(heure, 23)
+    jours_mois = _champ_cron(jour_mois, 31, 1)
+    moiss = _champ_cron(mois, 12, 1)
+    jours_semaine = _champ_cron(jour_semaine, 6)
+    if None in (heures, jours_mois, moiss, jours_semaine):
+        return False
+    return (now.hour in heures
+            and now.day in jours_mois
+            and now.month in moiss
+            and (now.isoweekday() % 7) in jours_semaine)
+
+
+def _deja_execute_cette_heure(export, now) -> bool:
+    """Idempotence : l'extrait a-t-il déjà tourné dans l'HEURE courante ?
+
+    ``acks_late`` peut rejouer une tâche après un crash worker ; sans cette
+    garde, le même extrait partirait deux fois vers la destination externe.
+    """
+    dernier = export.derniere_execution_le
+    if dernier is None:
+        return False
+    if timezone.is_aware(dernier):
+        fuseau = (now.tzinfo if timezone.is_aware(now)
+                  else timezone.get_current_timezone())
+        dernier = dernier.astimezone(fuseau)
+    return (dernier.year, dernier.month, dernier.day, dernier.hour) == (
+        now.year, now.month, now.day, now.hour)
+
+
+def est_du(export, now) -> bool:
+    """L'extrait doit-il partir maintenant ? (actif + cron dû + pas déjà fait)"""
+    if not export.actif:
+        return False
+    if not cron_du(export.cron, now):
+        return False
+    return not _deja_execute_cette_heure(export, now)
+
+
+def exports_dus(now, *, companies=None):
+    """Les extraits ACTIFS dus à ``now``, bornés aux sociétés balayables.
+
+    ``companies`` — itérable de sociétés (le job passe les sociétés ACTIVES,
+    jamais un tenant suspendu : un extrait qui part vers un entrepôt externe
+    est un effet visible hors du produit).
+    """
+    from .models import ScheduledExport
+
+    qs = ScheduledExport.objects.filter(actif=True).exclude(cron='')
+    if companies is not None:
+        qs = qs.filter(company__in=list(companies))
+    return [export for export in qs.order_by('id') if est_du(export, now)]
+
+
+def executer_exports_dus(now=None, *, companies=None):
+    """Exécute les extraits DUS. Renvoie un récapitulatif par extrait.
+
+    Chaque extrait est ISOLÉ : une destination en erreur n'interrompt jamais
+    les suivants. Une destination NON CONFIGURÉE reste un no-op propre —
+    `executer` horodate alors ``dernier_statut='non_configure'``, le marqueur
+    de no-op tracé du dépôt (même vocabulaire que `core.backup`, et ce que
+    `core.health.recent_incidents` remonte déjà comme incident d'infra).
+    """
+    now = now or timezone.now()
+    recap = []
+    for export in exports_dus(now, companies=companies):
+        try:
+            executer(export, now=now)
+        except Exception:  # noqa: BLE001 — un extrait ne bloque pas les autres
+            logger.warning('extraits planifiés : extrait %s en échec',
+                           getattr(export, 'pk', None), exc_info=True)
+            continue
+        recap.append({'export': export.pk, 'statut': export.dernier_statut})
+    return recap

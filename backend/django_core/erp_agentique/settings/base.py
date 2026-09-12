@@ -1100,6 +1100,10 @@ CELERY_TASK_ROUTES = {
     'reporting.controle_integrite': {'queue': 'scheduled'},
     # NTDATA15 — évaluation quotidienne des règles de qualité de données.
     'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
+    # NTDATA24 — consolidation hebdomadaire des golden records.
+    'dataquality.consolider_golden_records': {'queue': 'scheduled'},
+    # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
+    'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
     'core.dispatch_outbox': {'queue': 'scheduled'},
@@ -1136,6 +1140,8 @@ CELERY_TASK_ROUTES = {
     # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées.
     'authentication.purger_societes_demo_expirees': {'queue': 'scheduled'},
     'core.escalate_workflow_sla': {'queue': 'scheduled'},
+    # NTDATA26 — exécution horaire des extraits planifiés dus.
+    'core.executer_exports_planifies': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     # ASG2 / AGEN8 — Assumption Engine : oubli hebdo des posteriors + auto-pause
     # « rayon d'explosion » des créas générées (beat) → queue planifiée.

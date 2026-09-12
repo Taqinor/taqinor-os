@@ -27,7 +27,10 @@ from __future__ import annotations
 
 import re
 
-from .models import RegleQualite, ResultatQualite
+from .models import (
+    GoldenRecord, PropositionFusion, RegleQualite, RegleSurvivorship,
+    ResultatQualite,
+)
 
 
 def _est_vide(valeur):
@@ -410,6 +413,459 @@ def fusionner_clients(company, user, survivant_id, doublons_ids):
         raise ValueError(
             'Aucun des doublons indiqués n\'existe dans cette société.')
     return merge_clients(survivant, absorbes, user)
+
+
+# ── NTDATA20 — FILE DE REVUE DES DOUBLONS (jamais de fusion silencieuse) ───
+#
+# `scanner_propositions` transforme les GROUPES du détecteur en PROPOSITIONS
+# soumises à un humain. Rien n'est fusionné ici. Deux décisions sont possibles
+# et elles sont DÉFINITIVES pour ce groupe :
+#
+#   * `ignorer`   — « ce ne sont pas des doublons ». Le groupe ne sera plus
+#     jamais reproposé tant que sa composition ne change pas (c'est le critère
+#     d'acceptation de la tâche) ;
+#   * `fusionner` — la fusion supervisée EXISTANTE (NTDATA18/19) est appelée,
+#     et son rapport est journalisé SUR la proposition.
+#
+# L'IDENTITÉ D'UN GROUPE EST SON EMPREINTE (ses ids triés). Un groupe qui gagne
+# une fiche devient une AUTRE proposition : l'information n'est plus la même,
+# et une décision prise sur deux fiches ne vaut pas décision sur trois.
+
+
+def _detecteur_de(entite):
+    """Le détecteur NTDATA17/19 de cette entité, ou ``None``."""
+    nom = _DETECTEURS_ENTITE.get(entite)
+    return globals().get(nom) if nom else None
+
+
+def scanner_propositions(company, entite, user=None, *, groupes=None):
+    """Crée les propositions MANQUANTES pour ``entite``. Renvoie les nouvelles.
+
+    Un groupe DÉJÀ TRANCHÉ (fusionné ou ignoré) n'est jamais recréé : la
+    contrainte d'unicité ``(company, entite, empreinte)`` le garantit au
+    niveau base, et la lecture préalable évite l'écriture inutile.
+
+    Une proposition ``en_attente`` existante est RAFRAÎCHIE (score, motifs,
+    libellés) plutôt que dupliquée — le détecteur peut avoir gagné en
+    précision entre deux scans.
+    """
+    if entite not in CONSOLIDATION:
+        raise ValueError(
+            'Entité inconnue pour la file de fusion : « %s » (attendu : %s).'
+            % (entite, ', '.join(sorted(CONSOLIDATION))))
+    if groupes is None:
+        detecteur = _detecteur_de(entite)
+        groupes = detecteur(company, user) if detecteur else []
+
+    connues = {
+        p.empreinte: p
+        for p in PropositionFusion.objects.filter(company=company,
+                                                  entite=entite)
+    }
+    nouvelles = []
+    for groupe in groupes:
+        ids = list(groupe.get('ids') or [])
+        if len(ids) < 2:
+            continue
+        empreinte = PropositionFusion.empreinte_de(ids)
+        existante = connues.get(empreinte)
+        if existante is not None:
+            if existante.est_tranchee:
+                continue  # décision humaine : on ne repropose JAMAIS.
+            existante.ids_groupe = sorted(ids)
+            existante.score = groupe.get('score') or 0
+            existante.motifs = list(groupe.get('motifs') or [])
+            existante.libelles = list(groupe.get('libelles') or [])
+            existante.save(update_fields=['ids_groupe', 'score', 'motifs',
+                                          'libelles', 'updated_at'])
+            continue
+        nouvelles.append(PropositionFusion.objects.create(
+            company=company,
+            entite=entite,
+            ids_groupe=sorted(ids),
+            empreinte=empreinte,
+            score=groupe.get('score') or 0,
+            motifs=list(groupe.get('motifs') or []),
+            libelles=list(groupe.get('libelles') or []),
+        ))
+    return nouvelles
+
+
+def propositions_en_attente(company, entite=None):
+    """Les propositions qui attendent encore une décision humaine."""
+    qs = PropositionFusion.objects.filter(
+        company=company, statut=PropositionFusion.Statut.EN_ATTENTE)
+    if entite:
+        qs = qs.filter(entite=entite)
+    return qs.order_by('-score', 'id')
+
+
+def ignorer_proposition(proposition, user, *, now=None):
+    """« Ce ne sont pas des doublons » — décision DÉFINITIVE pour ce groupe.
+
+    Rien n'est modifié dans les fiches : ignorer, c'est justement ne rien
+    faire. Le groupe ne sera plus reproposé tant que sa composition ne change
+    pas.
+    """
+    from django.utils import timezone
+
+    if proposition.est_tranchee:
+        raise ValueError(
+            'Cette proposition a déjà été tranchée (%s).'
+            % proposition.get_statut_display())
+    proposition.statut = PropositionFusion.Statut.IGNORE
+    proposition.decideur = user
+    proposition.decide_le = now or timezone.now()
+    proposition.save(update_fields=['statut', 'decideur', 'decide_le',
+                                    'updated_at'])
+    return proposition
+
+
+#: Entité de la file → fonction de fusion supervisée (NTDATA18/19).
+_FUSIONS_ENTITE = {
+    GoldenRecord.Entite.CLIENT: 'fusionner_clients',
+    GoldenRecord.Entite.FOURNISSEUR: 'fusionner_fournisseurs',
+    GoldenRecord.Entite.PRODUIT: 'fusionner_produits',
+}
+
+
+def fusionner_proposition(proposition, user, survivant_id, *, now=None):
+    """Applique la fusion supervisée EXISTANTE et journalise la décision.
+
+    AUCUNE logique de fusion ici : tout se passe dans l'app propriétaire des
+    données (``crm.services.merge_clients`` / ``stock.services.merge_*``). La
+    file ne fait que porter la décision humaine jusqu'à elle.
+
+    ``survivant_id`` doit appartenir au groupe : fusionner vers une fiche que
+    l'humain n'a pas vue dans la proposition serait une décision qu'il n'a pas
+    prise.
+    """
+    from django.utils import timezone
+
+    if proposition.est_tranchee:
+        raise ValueError(
+            'Cette proposition a déjà été tranchée (%s).'
+            % proposition.get_statut_display())
+    ids = list(proposition.ids_groupe or [])
+    if survivant_id not in ids:
+        raise ValueError(
+            'La fiche à conserver (#%s) ne fait pas partie de cette '
+            'proposition.' % survivant_id)
+    fusion = globals().get(_FUSIONS_ENTITE.get(proposition.entite) or '')
+    if fusion is None:
+        raise ValueError(
+            "Aucune fusion supervisée pour l'entité « %s »."
+            % proposition.entite)
+    doublons = [i for i in ids if i != survivant_id]
+    rapport = fusion(proposition.company, user, survivant_id, doublons)
+
+    proposition.statut = PropositionFusion.Statut.FUSIONNE
+    proposition.decideur = user
+    proposition.decide_le = now or timezone.now()
+    proposition.detail_decision = {
+        'survivant': rapport['survivant'].pk,
+        'absorbes': rapport['absorbes'],
+        'repointes': rapport['repointes'],
+        'non_repointes': rapport['non_repointes'],
+    }
+    proposition.save(update_fields=['statut', 'decideur', 'decide_le',
+                                    'detail_decision', 'updated_at'])
+    return proposition, rapport
+
+
+# ── NTDATA23 — SURVIVORSHIP & CONSOLIDATION DES GOLDEN RECORDS ─────────────
+#
+# `consolider_golden(company, entite)` prend les GROUPES de doublons détectés
+# (NTDATA17/19), en tire une CLÉ MÉTIER stable, puis calcule champ par champ la
+# valeur gagnante selon les `RegleSurvivorship` de la société.
+#
+# TROIS GARANTIES, et elles ne se négocient pas :
+#
+#  1. AUCUNE MUTATION DES SOURCES. Le golden record est une VUE. Le recalculer
+#     ne touche pas une seule fiche ; le supprimer ne perd rien d'original.
+#  2. UNE VALEUR VIDE NE GAGNE JAMAIS contre une valeur renseignée. Consolider
+#     ne doit pas EFFACER ce qu'une des fiches portait.
+#  3. LA STRATÉGIE QUI A TRANCHÉ EST NOMMÉE, champ par champ, dans
+#     `attributs[champ]['strategie']`. En particulier, `plus_recent` sur une
+#     entité SANS signal de fraîcheur retombe sur le défaut et l'ÉCRIT —
+#     jamais une fraîcheur devinée qui ferait passer un arbitraire pour une
+#     mesure. C'est le cas des trois entités aujourd'hui : `crm.Client` porte
+#     bien une `date_modification`, mais le dataset `crm_clients` (la lecture
+#     cross-app sanctionnée) ne la publie pas, et les sélecteurs
+#     `stock.selectors` de dédoublonnage ne rendent que l'identité — d'où
+#     `champ_fraicheur=None` ci-dessous, qui est un FAIT du contrat de lecture
+#     et pas un oubli.
+
+#: Stratégie appliquée quand aucune `RegleSurvivorship` ne couvre le champ :
+#: la première valeur NON VIDE dans l'ordre de lecture — la fiche d'origine
+#: fait foi, et rien n'est perdu.
+STRATEGIE_DEFAUT = RegleSurvivorship.Strategie.SOURCE_PRIORITAIRE
+
+#: Entité → (champs consolidés, critères de clé métier par ordre de sûreté,
+#: champ portant la fraîcheur s'il en existe un). ``champ_fraicheur=None``
+#: signifie « le contrat de lecture cross-app de cette entité ne publie aucune
+#: date de modification » — `plus_recent` le DIT au lieu de deviner. Le jour où
+#: l'app propriétaire publie son horodatage, il suffit de le nommer ici.
+#
+# LE NOM N'EST JAMAIS UNE CLÉ MÉTIER. Deux « Atlas Energie » peuvent être deux
+# entreprises : ranger leurs fiches sous un golden record commun créerait
+# exactement le doublon que ce module existe pour réduire. Seuls des
+# IDENTIFIANTS entrent dans ``cles`` (ICE, téléphone, email, référence
+# catalogue) ; un groupe qui n'en partage aucun n'est PAS consolidé.
+CONSOLIDATION = {
+    GoldenRecord.Entite.CLIENT: {
+        'champs': ['nom', 'telephone', 'email', 'ice', 'adresse', 'ville'],
+        'cles': ['ice', 'telephone', 'email'],
+        'champ_fraicheur': None,
+    },
+    GoldenRecord.Entite.FOURNISSEUR: {
+        'champs': ['nom', 'ice', 'email', 'telephone'],
+        'cles': ['ice', 'telephone', 'email'],
+        'champ_fraicheur': None,
+    },
+    GoldenRecord.Entite.PRODUIT: {
+        'champs': ['nom', 'sku', 'marque'],
+        'cles': ['sku'],
+        'champ_fraicheur': None,
+    },
+}
+
+#: Détecteur de doublons par entité (NTDATA17/19) — réutilisé tel quel, jamais
+#: un second regroupement qui dériverait du premier.
+_DETECTEURS_ENTITE = {
+    GoldenRecord.Entite.CLIENT: 'doublons_clients',
+    GoldenRecord.Entite.FOURNISSEUR: 'doublons_fournisseurs',
+    GoldenRecord.Entite.PRODUIT: 'doublons_produits',
+}
+
+
+def _lignes_entite(company, user, entite):
+    """Les fiches d'une entité, à plat, par les MÊMES lecteurs que la détection.
+
+    Clients : le dataset `crm_clients` (déjà scopé société par le CRM).
+    Fournisseurs / produits : les points d'entrée `stock.selectors`. Aucun
+    import de modèle d'app métier, aucun prix d'achat.
+    """
+    if entite == GoldenRecord.Entite.CLIENT:
+        from core import data_explorer
+        try:
+            return data_explorer.run_query(
+                'crm_clients', company, user,
+                {'select': ['id', 'nom', 'telephone', 'email', 'ice',
+                            'adresse', 'ville'],
+                 'limit': LIMITE_LECTURE})
+        except data_explorer.DatasetInconnu:
+            return []
+    if entite == GoldenRecord.Entite.FOURNISSEUR:
+        from apps.stock.selectors import fournisseurs_pour_dedoublonnage
+        return list(fournisseurs_pour_dedoublonnage(company))
+    if entite == GoldenRecord.Entite.PRODUIT:
+        from apps.stock.selectors import produits_pour_dedoublonnage
+        return list(produits_pour_dedoublonnage(company))
+    return []
+
+
+def _normaliseur_de_cle(critere):
+    """Le normaliseur du CRM pour ce critère (jamais réécrit ici)."""
+    from apps.crm.selectors import (
+        normalize_email_key, normalize_name_key, normalize_phone_key,
+    )
+
+    if critere in ('ice', 'sku', 'reference'):
+        return lambda v: (str(v or '').strip().lower() or None)
+    if critere == 'telephone':
+        return normalize_phone_key
+    if critere == 'email':
+        return normalize_email_key
+    return lambda v: normalize_name_key(v)
+
+
+def cle_metier(entite, sources):
+    """La clé STABLE qui identifie ce groupe, ou ``None`` s'il n'en a aucune.
+
+    On prend l'identifiant le plus SÛR effectivement partagé par le groupe
+    (ICE ou référence avant téléphone, téléphone avant email) — le même ordre
+    de confiance que la détection (``POIDS_CRITERES``). Aucun identifiant
+    partagé ⇒ ``None`` : le groupe n'est PAS consolidé plutôt que d'être rangé
+    sous une clé fabriquée.
+    """
+    declaration = CONSOLIDATION.get(entite)
+    if not declaration or not sources:
+        return None
+    for critere in declaration['cles']:
+        normaliseur = _normaliseur_de_cle(critere)
+        valeurs = {normaliseur(s.get(critere)) for s in sources}
+        valeurs.discard(None)
+        if len(valeurs) == 1:
+            return str(next(iter(valeurs)))[:120]
+    return None
+
+
+def _nb_renseignes(source, champs):
+    """Nombre de champs NON VIDES d'une fiche (mesure de complétude)."""
+    return sum(1 for champ in champs if not _est_vide(source.get(champ)))
+
+
+def _candidats(champ, sources):
+    """Les fiches qui portent réellement une valeur pour ``champ``.
+
+    Une valeur VIDE n'est jamais candidate : consolider ne doit pas effacer.
+    """
+    return [s for s in sources if not _est_vide(s.get(champ))]
+
+
+def valeur_gagnante(champ, sources, strategie, *, champs=None,
+                    champ_fraicheur=None, parametres=None):
+    """La valeur retenue pour ``champ`` + la stratégie qui a RÉELLEMENT tranché.
+
+    ``sources`` — fiches du groupe, dans l'ordre de lecture (la plus ancienne
+    d'abord). Renvoie ``(valeur, strategie_effective)``. Aucune fiche ne porte
+    de valeur ⇒ ``(None, '')`` : un champ vide partout reste vide, jamais
+    rempli d'un défaut.
+    """
+    candidats = _candidats(champ, sources)
+    if not candidats:
+        return None, ''
+    champs = list(champs or [])
+    parametres = parametres if isinstance(parametres, dict) else {}
+    effective = strategie
+
+    if strategie == RegleSurvivorship.Strategie.PLUS_RECENT:
+        if champ_fraicheur and any(
+                c.get(champ_fraicheur) is not None for c in candidats):
+            avec = [c for c in candidats
+                    if c.get(champ_fraicheur) is not None]
+            gagnant = max(avec, key=lambda c: c[champ_fraicheur])
+            return gagnant.get(champ), strategie
+        # Aucun signal de fraîcheur : on NE DEVINE PAS. On retombe sur le
+        # défaut et on l'écrit, pour qu'un lecteur du golden record sache que
+        # « le plus récent » n'a pas pu être mesuré.
+        effective = '%s (repli : %s)' % (strategie, STRATEGIE_DEFAUT)
+        strategie = STRATEGIE_DEFAUT
+
+    if strategie == RegleSurvivorship.Strategie.PLUS_COMPLET:
+        gagnant = max(candidats,
+                      key=lambda c: (_nb_renseignes(c, champs),
+                                     -_rang(c)))
+        return gagnant.get(champ), effective
+
+    if strategie == RegleSurvivorship.Strategie.PLUS_FREQUENT:
+        comptes = {}
+        for index, source in enumerate(candidats):
+            valeur = source.get(champ)
+            cle = str(valeur)
+            if cle not in comptes:
+                comptes[cle] = [0, index, valeur]
+            comptes[cle][0] += 1
+        meilleur = min(comptes.values(), key=lambda t: (-t[0], t[1]))
+        return meilleur[2], effective
+
+    # SOURCE_PRIORITAIRE (et le défaut) : la fiche désignée si elle porte une
+    # valeur, sinon la PREMIÈRE fiche non vide dans l'ordre de lecture.
+    source_id = parametres.get('source_id')
+    if source_id is not None:
+        for source in candidats:
+            if source.get('id') == source_id:
+                return source.get(champ), effective
+    return candidats[0].get(champ), effective
+
+
+def _rang(source):
+    """Rang de lecture d'une fiche (son id — les ids sont monotones)."""
+    identifiant = source.get('id')
+    return identifiant if isinstance(identifiant, int) else 0
+
+
+def regles_survivorship(company, entite):
+    """``{champ: RegleSurvivorship}`` actives de cette société pour l'entité."""
+    return {
+        regle.champ: regle
+        for regle in RegleSurvivorship.objects.filter(
+            company=company, entite=entite, actif=True).order_by('champ', 'id')
+    }
+
+
+def consolider_groupe(company, entite, sources, *, regles=None):
+    """Les attributs consolidés d'UN groupe de fiches (calcul pur, sans écriture).
+
+    Renvoie ``{champ: {'valeur': …, 'strategie': …, 'sources': [ids]}}`` — le
+    champ, ce qui a gagné, et POURQUOI. Un champ vide partout est ABSENT du
+    résultat plutôt que présent à ``null`` : « personne ne l'a renseigné » se
+    lit dans l'absence, pas dans une case vide qui ressemble à une donnée.
+    """
+    declaration = CONSOLIDATION.get(entite)
+    if not declaration:
+        return {}
+    regles = regles if regles is not None else regles_survivorship(
+        company, entite)
+    champs = declaration['champs']
+    attributs = {}
+    for champ in champs:
+        regle = regles.get(champ)
+        strategie = regle.strategie if regle else STRATEGIE_DEFAUT
+        parametres = regle.parametres if regle else None
+        valeur, effective = valeur_gagnante(
+            champ, sources, strategie, champs=champs,
+            champ_fraicheur=declaration['champ_fraicheur'],
+            parametres=parametres)
+        if valeur is None:
+            continue
+        attributs[champ] = {
+            'valeur': valeur,
+            'strategie': effective,
+            'sources': [s.get('id') for s in _candidats(champ, sources)],
+        }
+    return attributs
+
+
+def consolider_golden(company, entite, *, user=None, lignes=None,
+                      groupes=None, now=None):
+    """NTDATA23 — (re)calcule les golden records d'une entité. Renvoie la liste.
+
+    ``lignes``/``groupes`` peuvent être injectés (tests, recalcul ciblé) ;
+    sinon les fiches sont lues par les mêmes lecteurs que la détection et les
+    groupes viennent du détecteur de l'entité (NTDATA17/19).
+
+    Un groupe sans clé métier stable est IGNORÉ (jamais rangé sous une clé
+    fabriquée). Un golden record existant est mis à jour EN PLACE : la clé
+    métier est son identité, pas son numéro de ligne.
+    """
+    from django.utils import timezone
+
+    if entite not in CONSOLIDATION:
+        raise ValueError(
+            'Entité inconnue pour la consolidation : « %s » (attendu : %s).'
+            % (entite, ', '.join(sorted(CONSOLIDATION))))
+    if lignes is None:
+        lignes = _lignes_entite(company, user, entite)
+    if groupes is None:
+        detecteur = globals().get(_DETECTEURS_ENTITE[entite])
+        groupes = detecteur(company, user) if detecteur else []
+
+    par_id = {ligne.get('id'): ligne for ligne in lignes}
+    regles = regles_survivorship(company, entite)
+    horodatage = now or timezone.now()
+
+    consolides = []
+    for groupe in groupes:
+        sources = [par_id[i] for i in (groupe.get('ids') or [])
+                   if i in par_id]
+        if len(sources) < 2:
+            continue  # une fiche seule n'a rien à consolider.
+        cle = cle_metier(entite, sources)
+        if not cle:
+            continue
+        attributs = consolider_groupe(company, entite, sources, regles=regles)
+        golden, _cree = GoldenRecord.objects.update_or_create(
+            company=company, entite=entite, cle_metier=cle,
+            defaults={
+                'source_ids': [s.get('id') for s in sources],
+                'attributs': attributs,
+                'derniere_consolidation_le': horodatage,
+            },
+        )
+        consolides.append(golden)
+    return consolides
 
 
 def rapport_qualite(company, entite=None):
