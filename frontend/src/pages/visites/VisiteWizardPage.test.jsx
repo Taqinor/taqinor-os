@@ -82,7 +82,7 @@ const { getVisite, terminerVisite } = vi.hoisted(() => ({
   terminerVisite: vi.fn(),
 }))
 
-vi.mock('../../../api/crmApi', () => ({
+vi.mock('../../api/visitesApi', () => ({
   default: {
     getVisite: (...a) => getVisite(...a),
     terminerVisite: (...a) => terminerVisite(...a),
@@ -96,9 +96,9 @@ import VisiteWizardPage from './VisiteWizardPage'
 
 function withProviders() {
   return render(
-    <MemoryRouter initialEntries={['/crm/visites/7']}>
+    <MemoryRouter initialEntries={['/visites/7']}>
       <Routes>
-        <Route path="/crm/visites/:id" element={<VisiteWizardPage />} />
+        <Route path="/visites/:id" element={<VisiteWizardPage />} />
       </Routes>
     </MemoryRouter>,
   )

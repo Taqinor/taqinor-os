@@ -5,9 +5,9 @@
 // (`PATCH .../mesures/` → 400 `{erreurs:{champ:message}}`), affichées SOUS le
 // champ fautif — jamais une validation client qui pourrait diverger.
 import { useState } from 'react'
-import crmApi from '../../../api/crmApi'
-import { Button, Card, Input, Label, Checkbox, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../ui'
-import { toast } from '../../../ui/confirm'
+import visitesApi from '../../api/visitesApi'
+import { Button, Card, Input, Label, Checkbox, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../ui'
+import { toast } from '../../ui/confirm'
 import { MESURES_SCHEMA } from './visiteHelpers'
 
 const toForm = (schema, valeurs) => {
@@ -46,7 +46,7 @@ export default function VisiteMesuresForm({ visiteId, categorie, libelle, valeur
     setSaving(true)
     setErreurs({})
     try {
-      const res = await crmApi.patchVisiteMesures(visiteId, categorie, toPayload(schema, form))
+      const res = await visitesApi.patchVisiteMesures(visiteId, categorie, toPayload(schema, form))
       onSaved?.(res.data)
       toast.success('Mesures enregistrées.')
     } catch (err) {

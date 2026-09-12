@@ -9,14 +9,14 @@
 // VT7 ajoute le panneau client+devis (VisiteClientDevisPanel).
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import crmApi from '../../../api/crmApi'
-import PageHeader from '../../../components/layout/PageHeader'
-import CameraCapture from '../../../features/pwa/CameraCapture'
+import visitesApi from '../../api/visitesApi'
+import PageHeader from '../../components/layout/PageHeader'
+import CameraCapture from '../../features/pwa/CameraCapture'
 import {
   Button, Card, Spinner, Badge, ChecklistProgress,
   Tabs, TabsList, TabsTrigger, TabsContent,
-} from '../../../ui'
-import { toast } from '../../../ui/confirm'
+} from '../../ui'
+import { toast } from '../../ui/confirm'
 import {
   trierCategories, progressionPhotos,
   ETAT_SLOT_LABEL, ETAT_SLOT_TONE, STATUT_VISITE_LABEL,
@@ -34,7 +34,7 @@ function SlotTile({ visiteId, slot, onChanged }) {
   const capturer = async (file, geo) => {
     setEnvoi(true)
     try {
-      await crmApi.uploadVisitePhoto(visiteId, {
+      await visitesApi.uploadVisitePhoto(visiteId, {
         slotCode: slot.code,
         fichier: file,
         gpsLat: geo?.latitude,
@@ -50,7 +50,7 @@ function SlotTile({ visiteId, slot, onChanged }) {
 
   const supprimer = async (mediaId) => {
     try {
-      await crmApi.deleteVisitePhoto(visiteId, mediaId)
+      await visitesApi.deleteVisitePhoto(visiteId, mediaId)
       onChanged()
     } catch {
       toast.error('Suppression de la photo impossible.')
@@ -130,7 +130,7 @@ export default function VisiteWizardPage() {
   const [categorieActive, setCategorieActive] = useState(null)
 
   const recharger = useCallback(() => {
-    crmApi.getVisite(id)
+    visitesApi.getVisite(id)
       .then((res) => {
         setVisite(res.data)
         setCategorieActive((prev) => prev ?? trierCategories(res.data.checklist)[0]?.categorie)
@@ -144,7 +144,7 @@ export default function VisiteWizardPage() {
   const terminer = async () => {
     setTerminant(true)
     try {
-      const res = await crmApi.terminerVisite(id)
+      const res = await visitesApi.terminerVisite(id)
       setVisite(res.data)
       toast.success('Visite terminée — envoyée au bureau d’études.')
     } catch (err) {
@@ -172,7 +172,7 @@ export default function VisiteWizardPage() {
       <PageHeader
         title={visite.client_panel?.lead_nom ?? `Visite #${visite.id}`}
         subtitle={STATUT_VISITE_LABEL[visite.statut] ?? visite.statut}
-        actions={<Button type="button" variant="ghost" onClick={() => navigate('/crm/visites')}>Retour</Button>}
+        actions={<Button type="button" variant="ghost" onClick={() => navigate('/visites')}>Retour</Button>}
       />
 
       {lectureSeule && visite.raison_lecture_seule && (
@@ -209,7 +209,7 @@ export default function VisiteWizardPage() {
             {/* VT11 — calage du toit réaliste : n'a de sens que sur la
                 catégorie toiture, une fois au moins une photo prise. */}
             {c.categorie === 'toiture' && c.slots.some((s) => s.photos.length > 0) && (
-              <Button type="button" variant="outline" onClick={() => navigate(`/crm/visites/${id}/calage`)}>
+              <Button type="button" variant="outline" onClick={() => navigate(`/visites/${id}/calage`)}>
                 Calage du toit
               </Button>
             )}
