@@ -18,15 +18,17 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier, Lot,
-    PPSPSChantier, PPSPSSignature, RFI, ReserveChantier, VisaDocument,
+    AbonnementRapportPhoto, AvenantChantier, DecompteGeneral, DiffusionPlan,
+    JournalChantier, Lot, PPSPSChantier, PPSPSSignature, RFI, ReserveChantier,
+    VisaDocument,
 )
 from .serializers import (
-    AvenantChantierPublicSerializer, AvenantChantierSerializer,
-    DecompteGeneralSerializer, DiffusionPlanSerializer,
-    JournalChantierSerializer, LotSerializer, PPSPSChantierSerializer,
-    PPSPSSignatureSerializer, ReserveChantierSerializer, RFISerializer,
-    SignatureBtpSerializer, VisaDocumentSerializer,
+    AbonnementRapportPhotoSerializer, AvenantChantierPublicSerializer,
+    AvenantChantierSerializer, DecompteGeneralSerializer,
+    DiffusionPlanSerializer, JournalChantierSerializer, LotSerializer,
+    PPSPSChantierSerializer, PPSPSSignatureSerializer,
+    ReserveChantierSerializer, RFISerializer, SignatureBtpSerializer,
+    VisaDocumentSerializer,
 )
 
 
@@ -852,6 +854,26 @@ class PPSPSChantierViewSet(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(PPSPSSignatureSerializer(signature).data,
                         status=status.HTTP_201_CREATED)
+
+
+class AbonnementRapportPhotoViewSet(
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """Opt-in d'un chantier au photo-rapport hebdomadaire — NTCON18.
+
+    Filtres liste : ``?chantier=``. Tant qu'aucune ligne n'existe pour un
+    chantier, AUCUN envoi n'a lieu (opt-in strict, côté sweep).
+    """
+    queryset = AbonnementRapportPhoto.objects.select_related('chantier').all()
+    serializer_class = AbonnementRapportPhotoSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
 
 
 class ChantierIntervenantsView(APIView):

@@ -152,6 +152,17 @@ const btpChantierApi = {
   penalitesParLot: (chantierId) =>
     api.get(`/btp-chantier/chantiers/${chantierId}/penalites-par-lot/`),
 
+  // ── NTCON18 — Opt-in au photo-rapport hebdomadaire (par chantier) ───────
+  // Aucun envoi tant qu'aucune ligne `actif` n'existe pour le chantier.
+  abonnementsRapportPhoto: {
+    list: (params) =>
+      api.get('/btp-chantier/abonnements-rapport-photo/', { params }),
+    // `data` : { chantier, actif?, destinataires? (emails client/MOE) }.
+    create: (data) => api.post('/btp-chantier/abonnements-rapport-photo/', data),
+    update: (id, data) =>
+      api.patch(`/btp-chantier/abonnements-rapport-photo/${id}/`, data),
+  },
+
   // NTCON17 — registre des intervenants (coordination SPS/CISSCT) : lecture
   // seule, agrège sous-traitants actifs + attestations + PPSPS + effectifs.
   intervenants: (chantierId) =>

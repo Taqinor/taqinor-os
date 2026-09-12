@@ -2,7 +2,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    AvenantChantierViewSet, ChantierDebourseVsFactureView,
+    AbonnementRapportPhotoViewSet, AvenantChantierViewSet,
+    ChantierDebourseVsFactureView,
     ChantierIntervenantsView, ChantierPenalitesParLotView,
     ChantierPlanningLotsView,
     DecompteGeneralViewSet, DiffusionPlanViewSet,
@@ -27,6 +28,9 @@ router.register(
     r'diffusions-plan', DiffusionPlanViewSet, basename='btp-diffusion')
 router.register(r'lots', LotViewSet, basename='btp-lot')
 router.register(r'ppsps', PPSPSChantierViewSet, basename='btp-ppsps')
+router.register(
+    r'abonnements-rapport-photo', AbonnementRapportPhotoViewSet,
+    basename='btp-abonnement-rapport-photo')
 
 urlpatterns = [
     path(

@@ -28,3 +28,17 @@ def alertes_rfi_retard_task():
         logger.warning('btp_chantier.alertes_rfi_retard: échec du balayage',
                        exc_info=True)
         return 0
+
+
+@shared_task(name='btp_chantier.rapport_photo_hebdo')
+def rapport_photo_hebdo_task():
+    """NTCON18 — envoie le photo-rapport hebdomadaire aux chantiers ABONNÉS
+    (opt-in strict). Key-gated : sans clé email configurée, no-op propre.
+    Renvoie le nombre de rapports envoyés."""
+    from .services import envoyer_rapports_photo_hebdo
+    try:
+        return envoyer_rapports_photo_hebdo()['envoyes']
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('btp_chantier.rapport_photo_hebdo: échec du balayage',
+                       exc_info=True)
+        return 0

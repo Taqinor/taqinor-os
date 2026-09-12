@@ -796,6 +796,168 @@ def verifier_ppsps_avant_demarrage(*, company, chantier_id, sous_traitant_id,
     return False
 
 
+# ── NTCON18 — Photo-rapport hebdomadaire (opt-in par chantier) ─────────────
+
+#: Plafond de photos embarquées dans un photo-rapport (PDF raisonnable).
+MAX_PHOTOS_RAPPORT = 60
+
+
+def email_sortant_configure():
+    """NTCON18 — l'envoi d'email réel est-il configuré (clé API présente) ?
+
+    Lecture de ``settings.ANYMAIL`` UNIQUEMENT (aucune dépendance cross-app) :
+    sans clé, la commande est un NO-OP PROPRE (elle produit le PDF mais
+    n'envoie rien et le dit) — jamais une erreur.
+    """
+    from django.conf import settings as dj_settings
+
+    anymail = getattr(dj_settings, 'ANYMAIL', None) or {}
+    return bool(
+        anymail.get('SENDINBLUE_API_KEY') or anymail.get('SENDGRID_API_KEY'))
+
+
+def collecter_photos_periode(chantier, du, au):
+    """NTCON18 — photos ``records.Attachment`` du chantier sur ``[du, au]``.
+
+    Trois sources, toutes rattachées au MÊME chantier : le chantier lui-même,
+    ses réserves (NTCON1) et ses entrées de journal (NTCON6). ``records`` est
+    une app de FONDATION : import direct autorisé (aucune frontière cross-app).
+    Seules les images sont embarquées (``mime`` commençant par ``image/``) ;
+    les octets sont lus via ``records.storage.fetch_attachment`` et encodés en
+    ``data:`` URI. Renvoie une liste de dicts triés par date croissante.
+    """
+    import base64
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+
+    from .models import JournalChantier, ReserveChantier
+
+    cibles = [
+        ('Chantier', ContentType.objects.get_for_model(chantier.__class__),
+         [chantier.pk]),
+        ('Réserve', ContentType.objects.get_for_model(ReserveChantier),
+         list(ReserveChantier.objects.filter(
+             chantier=chantier).values_list('id', flat=True))),
+        ('Journal', ContentType.objects.get_for_model(JournalChantier),
+         list(JournalChantier.objects.filter(
+             chantier=chantier).values_list('id', flat=True))),
+    ]
+
+    lignes = []
+    for libelle, content_type, ids in cibles:
+        if not ids:
+            continue
+        qs = Attachment.objects.filter(
+            company=chantier.company, content_type=content_type,
+            object_id__in=ids, created_at__date__gte=du,
+            created_at__date__lte=au).order_by('created_at', 'id')
+        for att in qs:
+            lignes.append({
+                'source': libelle,
+                'date': att.created_at.date().isoformat(),
+                'phase': att.phase or '',
+                'filename': att.filename,
+                'mime': att.mime or '',
+                'file_key': att.file_key,
+            })
+
+    lignes.sort(key=lambda ligne: ligne['date'])
+    lignes = lignes[:MAX_PHOTOS_RAPPORT]
+
+    from apps.records.storage import fetch_attachment
+    for ligne in lignes:
+        ligne['data_uri'] = None
+        if not (ligne['mime'] or '').startswith('image/'):
+            continue
+        data, erreur = fetch_attachment(ligne['file_key'])
+        if erreur or not data:
+            continue
+        ligne['data_uri'] = (
+            f'data:{ligne["mime"]};base64,'
+            f'{base64.b64encode(data).decode("ascii")}')
+    return lignes
+
+
+def envoyer_rapports_photo_hebdo(*, du=None, au=None, chantier_id=None,
+                                 dry_run=False):
+    """NTCON18 — balaie les chantiers ABONNÉS et envoie leur photo-rapport.
+
+    Opt-in strict : seuls les ``AbonnementRapportPhoto`` ``actif=True`` sont
+    traités. Période par défaut : les 7 derniers jours (``au`` = aujourd'hui).
+    Sans clé email configurée (``email_sortant_configure``) ou en ``dry_run``,
+    le PDF est bien produit mais RIEN n'est envoyé — no-op propre.
+
+    Renvoie ``{'examines', 'envoyes', 'sans_photo', 'email_configure'}``.
+    """
+    from datetime import timedelta
+
+    from .models import AbonnementRapportPhoto
+    from .pdf import render_rapport_photo_pdf
+
+    au = au or timezone.localdate()
+    du = du or (au - timedelta(days=6))
+    envoi_possible = email_sortant_configure() and not dry_run
+
+    qs = AbonnementRapportPhoto.objects.filter(
+        actif=True).select_related('chantier', 'company')
+    if chantier_id:
+        qs = qs.filter(chantier_id=chantier_id)
+
+    examines = envoyes = sans_photo = 0
+    for abonnement in qs:
+        examines += 1
+        photos = collecter_photos_periode(abonnement.chantier, du, au)
+        if not photos:
+            sans_photo += 1
+            continue
+        try:
+            pdf_bytes = render_rapport_photo_pdf(
+                abonnement.chantier, du, au, photos)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant
+            logger.warning(
+                'btp_chantier: rendu du photo-rapport échoué pour le chantier '
+                '%s', abonnement.chantier_id, exc_info=True)
+            continue
+        destinataires = [
+            adresse for adresse in (abonnement.destinataires or []) if adresse]
+        if not (envoi_possible and destinataires):
+            continue
+        try:
+            from django.conf import settings as dj_settings
+            from django.core.mail import EmailMessage
+
+            message = EmailMessage(
+                subject=f'Avancement photo — {abonnement.chantier}',
+                body=(
+                    f'Bonjour,\n\nVeuillez trouver ci-joint le rapport '
+                    f"d'avancement photo du {du} au {au}.\n"),
+                from_email=getattr(
+                    dj_settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local'),
+                to=destinataires,
+            )
+            message.attach(
+                f'avancement-photo-{abonnement.chantier_id}-{au}.pdf',
+                pdf_bytes, 'application/pdf')
+            message.send(fail_silently=True)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            logger.warning(
+                'btp_chantier: envoi du photo-rapport échoué pour le chantier '
+                '%s', abonnement.chantier_id, exc_info=True)
+            continue
+        abonnement.dernier_envoi = au
+        abonnement.save(update_fields=['dernier_envoi', 'updated_at'])
+        envoyes += 1
+
+    return {
+        'examines': examines,
+        'envoyes': envoyes,
+        'sans_photo': sans_photo,
+        'email_configure': email_sortant_configure(),
+    }
+
+
 # ── NTCON14 — Rattachement des tâches existantes à un lot ──────────────────
 
 def taches_hors_societe(tache_ids, company):

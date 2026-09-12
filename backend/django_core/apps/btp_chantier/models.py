@@ -995,3 +995,43 @@ class PPSPSSignature(TenantModel):
 
     def __str__(self):
         return f'PPSPS {self.ppsps_id} signé par {self.sous_traitant_id}'
+
+
+# ── NTCON18 — Photo-rapport hebdomadaire (opt-in PAR CHANTIER) ─────────────
+
+class AbonnementRapportPhoto(TenantModel):
+    """NTCON18 — opt-in d'un chantier au photo-rapport hebdomadaire.
+
+    Le sweep ``manage.py rapport_photo_hebdo`` ne traite QUE les chantiers
+    ayant une ligne ``actif=True`` : aucun envoi n'est jamais déclenché par
+    défaut (opt-in strict). ``destinataires`` porte les emails client/MOE ;
+    le PDF produit est un document d'AVANCEMENT PHOTO — jamais un coût
+    interne, jamais un prix d'achat (règle CLAUDE.md).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_abonnements_rapport_photo', verbose_name='Société')
+    chantier = models.OneToOneField(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_abonnement_rapport_photo', verbose_name='Chantier')
+    actif = models.BooleanField(
+        default=True, verbose_name='Envoi hebdomadaire activé')
+    destinataires = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Destinataires (emails client/MOE)')
+    dernier_envoi = models.DateField(
+        null=True, blank=True, verbose_name='Dernier envoi')
+
+    class Meta:
+        verbose_name = 'Abonnement au photo-rapport hebdomadaire'
+        verbose_name_plural = 'Abonnements au photo-rapport hebdomadaire'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='btp_rapportphoto_co_actif'),
+        ]
+
+    def __str__(self):
+        return f'Photo-rapport chantier {self.chantier_id}'

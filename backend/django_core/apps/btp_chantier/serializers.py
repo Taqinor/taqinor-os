@@ -7,7 +7,8 @@ from rest_framework import serializers
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
     AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier,
-    Lot, PPSPSChantier, PPSPSSignature, SignatureBtp, VisaDocument,
+    AbonnementRapportPhoto, Lot, PPSPSChantier, PPSPSSignature, SignatureBtp,
+    VisaDocument,
 )
 
 
@@ -401,3 +402,31 @@ class PPSPSChantierSerializer(serializers.ModelSerializer):
                         f'{", ".join(etrangers)}.'),
                 })
         return attrs
+
+
+# ── NTCON18 — Abonnement au photo-rapport hebdomadaire ─────────────────────
+
+class AbonnementRapportPhotoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AbonnementRapportPhoto
+        fields = [
+            'id', 'chantier', 'actif', 'destinataires', 'dernier_envoi',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'dernier_envoi', 'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+    def validate_destinataires(self, value):
+        """Liste d'adresses email — l'erreur NOMME l'adresse fautive."""
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "destinataires doit être une liste d'adresses email.")
+        for adresse in value:
+            if not isinstance(adresse, str) or '@' not in adresse:
+                raise serializers.ValidationError(
+                    f'Adresse email invalide : « {adresse} ».')
+        return value

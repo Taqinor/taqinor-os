@@ -100,3 +100,50 @@ def render_dgd_pdf(dgd):
 </body>
 </html>'''
     return render_pdf(html=html)
+
+
+# ── NTCON18 — Photo-rapport hebdomadaire (avancement photo) ────────────────
+
+def render_rapport_photo_pdf(chantier, du, au, photos):
+    """PDF « avancement photo » d'une période (NTCON18).
+
+    ``photos`` est une liste de dicts ``{source, date, phase, filename,
+    data_uri}`` déjà constituée par ``services.collecter_photos_periode``
+    (les octets sont embarqués en ``data:`` URI — WeasyPrint ne joint jamais
+    MinIO lui-même). Document destiné au CLIENT/MOE : uniquement des photos
+    datées, JAMAIS un coût interne, jamais un prix d'achat (CLAUDE.md).
+    """
+    cartes = []
+    for photo in photos:
+        visuel = (
+            f'<img src="{photo["data_uri"]}" alt="{_esc(photo["filename"])}" />'
+            if photo.get('data_uri')
+            else '<div class="manquant">Aperçu indisponible</div>')
+        cartes.append(f'''
+      <div class="photo">
+        {visuel}
+        <div class="legende">
+          {_esc(photo.get('date') or '')} · {_esc(photo.get('source') or '')}
+          {(' · ' + _esc(photo['phase'])) if photo.get('phase') else ''}
+        </div>
+      </div>''')
+    corps = ''.join(cartes) or (
+        '<p>Aucune photo sur la période.</p>')
+
+    html = f'''<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><style>
+  body {{ font-family: sans-serif; font-size: 11px; }}
+  h1 {{ font-size: 16px; }}
+  .photo {{ display: inline-block; width: 46%; margin: 0 1% 12px; vertical-align: top; }}
+  .photo img {{ width: 100%; height: auto; border: 1px solid #ccc; }}
+  .legende {{ font-size: 9px; color: #444; margin-top: 2px; }}
+  .manquant {{ border: 1px dashed #ccc; padding: 18px; text-align: center; color: #888; }}
+</style></head>
+<body>
+  <h1>Avancement photo — {_esc(chantier)}</h1>
+  <p>Période du {_esc(du)} au {_esc(au)}</p>
+  {corps}
+</body>
+</html>'''
+    return render_pdf(html=html)

@@ -1152,6 +1152,12 @@ app.conf.beat_schedule = {
         'task': 'btp_chantier.alertes_rfi_retard',
         'schedule': crontab(hour=7, minute=28),
     },
+    # NTCON18 — photo-rapport hebdomadaire d'avancement (lundi matin), envoyé
+    # aux seuls chantiers ABONNÉS (opt-in strict) ; no-op propre sans clé email.
+    'btp-chantier-rapport-photo-hebdo': {
+        'task': 'btp_chantier.rapport_photo_hebdo',
+        'schedule': crontab(day_of_week=1, hour=7, minute=35),
+    },
 }
 
 
