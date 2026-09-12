@@ -703,6 +703,34 @@ class LangueInterfaceView(APIView):
         return Response({'langue_interface': request.user.langue_interface})
 
 
+class CalendrierHegirienView(APIView):
+    """PATCH /api/django/auth/me/calendrier-hegirien/ — NTI18N12.
+
+    Self-service : persiste la préférence d'affichage « calendrier hégirien »
+    de l'utilisateur COURANT uniquement — même patron que
+    ``LangueInterfaceView``/``MobileHomeRouteView`` ci-dessus, ouvert à
+    ``IsAuthenticated`` (pas ``IsAdminOrResponsableTier``) car un rôle limité
+    sans accès à Équipe & rôles doit pouvoir régler SA PROPRE préférence
+    depuis « profil utilisateur ». Le même champ reste aussi éditable via le
+    PATCH générique du profil (``UserViewSet``, Équipe & rôles — un
+    admin/responsable prépare le réglage d'un membre). Corps :
+    ``{"calendrier_hegirien": true|false}``. AFFICHAGE SEUL : ce réglage ne
+    calcule ni ne stocke aucune date hégirienne — la conversion vit
+    entièrement côté client (frontend/src/lib/hijriDate.js)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        valeur = request.data.get('calendrier_hegirien')
+        if not isinstance(valeur, bool):
+            return Response(
+                {'detail': 'calendrier_hegirien doit être un booléen.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        request.user.calendrier_hegirien = valeur
+        request.user.save(update_fields=['calendrier_hegirien'])
+        return Response({'calendrier_hegirien': request.user.calendrier_hegirien})
+
+
 # ── Logout securise ────────────────────────────────────────────
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]

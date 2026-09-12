@@ -8,6 +8,7 @@ from .views import (
     MeView,
     MobileHomeRouteView,
     LangueInterfaceView,
+    CalendrierHegirienView,
     LogoutView,
     CookieTokenRefreshView,
     TwoFactorSetupView,
@@ -46,6 +47,9 @@ urlpatterns = [
     # NTI18N3 — langue d'interface persistée serveur (retrouvée d'un autre poste).
     path('auth/me/langue/', LangueInterfaceView.as_view(),
          name='auth_me_langue'),
+    # NTI18N12 — préférence d'affichage « calendrier hégirien » (self-service).
+    path('auth/me/calendrier-hegirien/', CalendrierHegirienView.as_view(),
+         name='auth_me_calendrier_hegirien'),
     # XPLT19 — bascule de société active (utilisateur multi-sociétés).
     path('auth/switch-company/', SwitchCompanyView.as_view(),
          name='auth_switch_company'),

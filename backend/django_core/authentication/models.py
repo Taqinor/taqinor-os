@@ -311,6 +311,27 @@ class CustomUser(AbstractUser):
         verbose_name="Langue d'interface",
     )
 
+    # NTI18N12 — préférence d'AFFICHAGE : montrer la date hégirienne EN PLUS de
+    # la date grégorienne (jamais en remplacement, jamais stockée — calcul de
+    # conversion 100% côté client, `frontend/src/lib/hijriDate.js`). Additif,
+    # défaut False : aucun compte existant ne voit apparaître de date
+    # hégirienne tant qu'il ne l'active pas. N'a d'effet visuel QUE combinée à
+    # `langue_interface='ar'` (le frontend applique les DEUX conditions), mais
+    # le réglage lui-même reste indépendant (un admin peut le préparer pour un
+    # utilisateur avant qu'il ne bascule en arabe). Éditable via le PATCH
+    # générique du profil (Équipe & rôles, contrairement à `langue_interface`/
+    # `mobile_home_route` ci-dessus) ET via un endpoint self-service dédié
+    # (`PATCH /auth/me/calendrier-hegirien/`, profil utilisateur — un rôle
+    # limité sans accès à Équipe & rôles doit pouvoir régler SA PROPRE
+    # préférence d'affichage).
+    calendrier_hegirien = models.BooleanField(
+        default=False,
+        verbose_name='Afficher le calendrier hégirien',
+        help_text="Montre la date hégirienne à côté de la date grégorienne "
+                  "(affichage seul, jamais stocké) quand la langue d'interface "
+                  "est l'arabe.",
+    )
+
     # ── Double authentification (2FA TOTP) — strictement OPT-IN (N96) ──────
     # Le secret TOTP partagé (base32). Posé dès la phase de configuration mais
     # le 2FA n'est ACTIF qu'une fois ``totp_enabled`` passé à True (après

@@ -311,6 +311,11 @@ class UserSerializer(serializers.ModelSerializer):
             # NTI18N3 — lecture seule ici (voir read_only_fields ci-dessous) :
             # l'écriture passe UNIQUEMENT par LangueInterfaceView.
             'langue_interface',
+            # NTI18N12 — préférence d'affichage éditable ici (Équipe & rôles,
+            # un admin/responsable prépare le réglage d'un membre) ET via
+            # l'endpoint self-service dédié (profil utilisateur) — pas de
+            # read_only_fields pour ce champ, contrairement à langue_interface.
+            'calendrier_hegirien',
             'societes_operables', 'active_company_id',
             'is_active', 'is_superuser', 'is_protected',
             # Rotation forcée des identifiants (N96). ``must_change_password`` est
