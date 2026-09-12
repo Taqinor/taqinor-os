@@ -311,11 +311,18 @@ def resolution_days_pour(company, client, priorite):
     return resolution_days
 
 
-def compute_sla_due_at(company, client, priorite, date_ouverture):
+def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
     """FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
     activé ``sla_breach_enabled``. Logique extraite telle quelle de
     ``TicketViewSet._compute_sla_due_at`` (jours ouvrés si ``sla_jours_ouvres``,
-    calendaires sinon)."""
+    calendaires sinon).
+
+    NTSRV11 — quand la société a activé ``sla_heures_ouvrees_actif`` ET que la
+    priorité porte un SLA en HEURES (``sla_par_priorite[<priorité>]
+    ['resolution_heures']``), l'échéance est calculée en heures OUVRÉES
+    (fenêtre intra-journée incluse) et la DATE obtenue est renvoyée. Aucune
+    configuration existante ne porte cette clé : sans elle, le calcul en
+    jours est strictement inchangé."""
     from datetime import timedelta
 
     from .models import SavSlaSettings
@@ -323,11 +330,37 @@ def compute_sla_due_at(company, client, priorite, date_ouverture):
     sla = SavSlaSettings.get(company)
     if not sla.sla_breach_enabled:
         return None
+
+    # NTSRV11 — chemin HEURES ouvrées (opt-in double : flag + clé de priorité).
+    if sla.sla_heures_ouvrees_actif:
+        heures = sla.heures_for(priorite)
+        if heures is not None:
+            from .selectors import echeance_sla_heures_ouvrees
+            echeance = echeance_sla_heures_ouvrees(
+                company, depart or _depart_sla(date_ouverture, sla), heures)
+            if echeance is not None:
+                return echeance.date()
+
     resolution_days = resolution_days_pour(company, client, priorite)
     if sla.sla_jours_ouvres:
         from core.calendar import add_working_days
         return add_working_days(date_ouverture, resolution_days)
     return date_ouverture + timedelta(days=resolution_days)
+
+
+def _depart_sla(date_ouverture, sla):
+    """NTSRV11 — instant de DÉPART du décompte : l'heure courante quand le
+    ticket est ouvert aujourd'hui, sinon l'ouverture de la fenêtre ce
+    jour-là (une date seule ne porte pas d'heure)."""
+    from datetime import datetime
+
+    horaires = sla.horaires_effectifs()
+    maintenant = timezone.localtime()
+    if date_ouverture == maintenant.date():
+        return maintenant.replace(tzinfo=None)
+    heure, minute = (int(x) for x in horaires['debut'].split(':'))
+    return datetime(date_ouverture.year, date_ouverture.month,
+                    date_ouverture.day, heure, minute)
 
 
 def poser_sla_due_at(ticket, *, persister=True):

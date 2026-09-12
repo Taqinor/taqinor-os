@@ -461,6 +461,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'id', 'sla_response_days', 'sla_resolution_days',
             'sla_par_priorite', 'sla_breach_enabled',
             'notifications_client_sav', 'sla_jours_ouvres',
+            # NTSRV11 — fenêtre horaire ouvrée (OFF par défaut).
+            'horaires_ouvres', 'sla_heures_ouvrees_actif',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
             # NTSRV7 — affectation auto restreinte aux techniciens qualifiés.
             'affectation_par_competence',

@@ -67,6 +67,22 @@ class SavSlaSettings(models.Model):
     # OFF : comportement actuel (calendaire) inchangé tant que la société ne
     # l'active pas explicitement.
     sla_jours_ouvres = models.BooleanField(default=False)
+    # ── NTSRV11 — Fenêtre HORAIRE ouvrée (étend XSAV5) ──────────────────────
+    # XSAV5 n'exclut que les JOURS non ouvrés ; une échéance pouvait donc
+    # tomber à 21 h un vendredi. `horaires_ouvres` décrit la fenêtre
+    # intra-journée ({'jours': [0..6], 'debut': 'HH:MM', 'fin': 'HH:MM'},
+    # défaut lun-ven 8h-18h) et `sla_heures_ouvrees_actif` l'active. OFF par
+    # défaut : comportement actuel strictement inchangé.
+    horaires_ouvres = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Horaires ouvrés',
+        help_text="Fenêtre de travail : {'jours': [0=lundi … 6=dimanche], "
+                  "'debut': 'HH:MM', 'fin': 'HH:MM'}. Vide = lun-ven 8h-18h.")
+    sla_heures_ouvrees_actif = models.BooleanField(
+        default=False,
+        verbose_name='SLA en heures ouvrées',
+        help_text="Exclut aussi les HEURES hors plage du décompte SLA (pas "
+                  'seulement les jours). OFF = comportement actuel.')
     # ── XSAV6 — pré-alerte SLA (J-x) + escalade à la violation ──────────────
     # Nombre de jours AVANT sla_due_at où une pré-alerte est émise au
     # technicien assigné. 0 = pré-alerte désactivée (défaut : comportement
@@ -169,6 +185,63 @@ class SavSlaSettings(models.Model):
             p.get('response', self.sla_response_days),
             p.get('resolution', self.sla_resolution_days),
         )
+
+    # ── NTSRV11 — Fenêtre horaire ouvrée ────────────────────────────────────
+
+    #: Défaut reproduisant le calendrier ``core/calendar.py`` déjà utilisé
+    #: (semaine ouvrée marocaine), côté HEURES : lun-ven 8h-18h.
+    HORAIRES_OUVRES_DEFAUT = {
+        'jours': [0, 1, 2, 3, 4],  # 0 = lundi … 6 = dimanche (datetime.weekday)
+        'debut': '08:00',
+        'fin': '18:00',
+    }
+
+    def horaires_effectifs(self):
+        """NTSRV11 — fenêtre ouvrée NORMALISÉE de la société.
+
+        Toute clé absente ou invalide retombe sur le défaut (lun-ven 8h-18h) :
+        une configuration à moitié saisie ne casse jamais le calcul SLA."""
+        brut = self.horaires_ouvres if isinstance(self.horaires_ouvres, dict) else {}
+        defaut = self.HORAIRES_OUVRES_DEFAUT
+
+        jours = brut.get('jours')
+        if not isinstance(jours, (list, tuple)) or not jours:
+            jours = defaut['jours']
+        jours = sorted({int(j) for j in jours
+                        if isinstance(j, int) or str(j).isdigit()
+                        if 0 <= int(j) <= 6})
+        if not jours:
+            jours = list(defaut['jours'])
+
+        def _heure(cle):
+            valeur = brut.get(cle)
+            if isinstance(valeur, str) and ':' in valeur:
+                h, _, m = valeur.partition(':')
+                if h.strip().isdigit() and m.strip().isdigit():
+                    heures, minutes = int(h), int(m)
+                    if 0 <= heures <= 23 and 0 <= minutes <= 59:
+                        return f'{heures:02d}:{minutes:02d}'
+            return defaut[cle]
+
+        debut, fin = _heure('debut'), _heure('fin')
+        if debut >= fin:  # fenêtre vide/inversée → défaut (jamais un blocage).
+            debut, fin = defaut['debut'], defaut['fin']
+        return {'jours': jours, 'debut': debut, 'fin': fin}
+
+    def heures_for(self, priorite):
+        """NTSRV11 — SLA de résolution exprimé en HEURES pour cette priorité,
+        ou ``None`` (le SLA reste alors en JOURS — comportement actuel).
+
+        Clé optionnelle ``resolution_heures`` de ``sla_par_priorite`` : aucune
+        configuration existante ne la porte, donc rien ne change tant qu'une
+        société ne l'ajoute pas explicitement."""
+        par = self.sla_par_priorite or {}
+        valeur = (par.get(priorite) or {}).get('resolution_heures')
+        try:
+            heures = float(valeur)
+        except (TypeError, ValueError):
+            return None
+        return heures if heures > 0 else None
 
 
 # ── FG82 — Checklist de visite de maintenance ─────────────────────────────────

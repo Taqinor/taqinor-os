@@ -1362,6 +1362,93 @@ def affectations_pour(user):
     return items
 
 
+# ── NTSRV11 — Échéance SLA en HEURES ouvrées (étend XSAV5) ──────────────────
+
+def _bornes_du_jour(jour, horaires):
+    """``(début, fin)`` de la fenêtre ouvrée pour ``jour`` (datetimes naïfs
+    en heure locale)."""
+    from datetime import datetime
+
+    h_debut, m_debut = (int(x) for x in horaires['debut'].split(':'))
+    h_fin, m_fin = (int(x) for x in horaires['fin'].split(':'))
+    return (datetime(jour.year, jour.month, jour.day, h_debut, m_debut),
+            datetime(jour.year, jour.month, jour.day, h_fin, m_fin))
+
+
+def _jour_ouvre(jour, horaires, extra_holidays=None):
+    """Vrai si ``jour`` est ouvré : dans les jours de la fenêtre ET non férié
+    (``core.calendar`` — mêmes fériés marocains que XSAV5)."""
+    if jour.weekday() not in horaires['jours']:
+        return False
+    try:
+        from core.calendar import is_holiday
+        return not is_holiday(jour, extra_holidays)
+    except Exception:  # noqa: BLE001 — calendrier indisponible : jour ouvré.
+        return True
+
+
+def ajouter_heures_ouvrees(depart, heures, horaires, extra_holidays=None,
+                           max_jours=730):
+    """NTSRV11 — ajoute ``heures`` d'OUVERTURE à ``depart`` (datetime naïf,
+    heure locale) en ne consommant que le temps DANS la fenêtre ouvrée.
+
+    C'est ce que XSAV5 ne savait pas faire : il n'excluait que les JOURS
+    non ouvrés, si bien qu'un ticket ouvert un vendredi 17 h avec 4 h de SLA
+    échéait le vendredi à 21 h — hors horaires. Ici, le reliquat repart à
+    l'ouverture du jour ouvré suivant.
+
+    ``max_jours`` est un garde-fou (fenêtre pathologique) : au-delà, on rend
+    le curseur courant plutôt que de boucler indéfiniment."""
+    from datetime import timedelta
+
+    restant = timedelta(hours=float(heures or 0))
+    courant = depart
+    if restant <= timedelta(0):
+        return courant
+
+    jours_parcourus = 0
+    while jours_parcourus <= max_jours:
+        jour = courant.date()
+        if not _jour_ouvre(jour, horaires, extra_holidays):
+            suivant = jour + timedelta(days=1)
+            courant, _ = _bornes_du_jour(suivant, horaires)
+            jours_parcourus += 1
+            continue
+
+        debut, fin = _bornes_du_jour(jour, horaires)
+        if courant < debut:
+            courant = debut
+        if courant >= fin:
+            suivant = jour + timedelta(days=1)
+            courant, _ = _bornes_du_jour(suivant, horaires)
+            jours_parcourus += 1
+            continue
+
+        disponible = fin - courant
+        if disponible >= restant:
+            return courant + restant
+        restant -= disponible
+        suivant = jour + timedelta(days=1)
+        courant, _ = _bornes_du_jour(suivant, horaires)
+        jours_parcourus += 1
+    return courant
+
+
+def echeance_sla_heures_ouvrees(company, depart, heures):
+    """NTSRV11 — échéance SLA (datetime local naïf) en heures ouvrées, ou
+    ``None`` quand la société n'a pas activé ``sla_heures_ouvrees_actif``.
+
+    ``None`` = comportement actuel inchangé : l'appelant garde son calcul en
+    jours (XSAV5/FG81)."""
+    from .models import SavSlaSettings
+
+    reglage = SavSlaSettings.get(company)
+    if not reglage.sla_heures_ouvrees_actif:
+        return None
+    return ajouter_heures_ouvrees(
+        depart, heures, reglage.horaires_effectifs())
+
+
 # ── NTSRV8 — File d'attente par équipe + charge ─────────────────────────────
 
 def file_attente_equipe(equipe):
