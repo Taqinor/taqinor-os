@@ -27,6 +27,7 @@ from apps.paie.services import (
     simuler_cout_embauche,
 )
 from apps.rh.models import DossierEmploye
+from apps.roles.models import Role
 
 
 def make_company(slug):
@@ -181,13 +182,25 @@ class SimulationEmbaucheApiTests(TestCase):
     def setUp(self):
         self.co = make_company('ntpay14-api')
         ensure_defaults(self.co)
-        self.user = User.objects.create_user(
-            username='ntpay14-resp', password='x', company=self.co,
-            role_legacy='responsable')
-        self.api = APIClient()
-        self.api.credentials(
-            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.api = self._client(
+            ['paie_voir', 'paie_gerer', 'salaires_voir'], 'ntpay14-paye')
         self.url = '/api/django/paie/profils/simulation-embauche/'
+
+    def _client(self, permissions, username):
+        role = Role.objects.create(
+            company=self.co, nom=f'Role {username}', permissions=permissions)
+        user = User.objects.create_user(
+            username=username, password='x', company=self.co, role=role)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_sans_salaires_voir_est_403(self):
+        """AUD716 — le rôle Responsable livré n'a PAS ``salaires_voir``."""
+        api = self._client(['paie_voir', 'paie_gerer'], 'ntpay14-sans')
+        rep = api.get(f'{self.url}?brut=10000')
+        self.assertEqual(rep.status_code, 403)
 
     def test_endpoint_net_cible(self):
         rep = self.api.get(f'{self.url}?net_cible=8000&date=2026-06-01')

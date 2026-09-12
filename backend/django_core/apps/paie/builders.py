@@ -809,6 +809,135 @@ def render_certificat_travail_pdf(profil, *, date_entree, date_sortie,
         emplois=emplois, employeur=employeur, today=today))
 
 
+# ── NTPAY15 — Lettre d'offre / proposition d'embauche ──────────────────────
+
+#: Montants de la simulation NTPAY14 qui ne doivent JAMAIS atteindre le
+#: candidat : le coût interne de l'employeur (charges patronales, provisions,
+#: coût total chargé) est une donnée de gestion, exactement comme
+#: ``Produit.prix_achat`` l'est pour un devis client.
+CLES_COUT_INTERNE = (
+    'charges_patronales', 'cout_total_employeur', 'provisions',
+    'cnss_patronale', 'amo_patronale', 'allocations_familiales',
+    'formation_professionnelle', 'mutuelle_patronale',
+)
+
+MENTION_LEGALE_OFFRE = (
+    'La présente proposition est régie par le Code du travail marocain '
+    '(loi n° 65-99). Elle ne vaut pas contrat de travail : l’embauche ne sera '
+    'effective qu’à la signature du contrat et sous réserve des formalités '
+    'd’usage (visite médicale d’embauche, immatriculation CNSS).')
+
+
+def lettre_offre_context(simulation, *, poste, candidat='', avantages=None,
+                         periode_essai='', date_prise_poste=None,
+                         employeur=None, today=None):
+    """Contexte d'une lettre d'offre, DÉRIVÉ d'une simulation (NTPAY15).
+
+    ``simulation`` est le dict de ``services.simuler_cout_embauche``. Seuls le
+    BRUT et le NET proposés en sont repris : le coût employeur (charges
+    patronales, provisions, coût total chargé) reste STRICTEMENT interne et
+    n'apparaît nulle part dans le document remis au candidat.
+
+    Rien n'est inventé : un champ non renseigné (avantages, période d'essai,
+    date de prise de poste) est simplement ABSENT du document — jamais une
+    valeur par défaut plausible.
+    """
+    if today is None:
+        today = date.today()
+    avantages = [a for a in (avantages or []) if str(a).strip()]
+    return {
+        'candidat': escape(str(candidat or '').strip()),
+        'poste': escape(str(poste or '').strip()),
+        'brut': _fmt(simulation['brut']),
+        'net': _fmt(simulation['net_a_payer']),
+        'devise': escape(str(simulation.get('devise') or 'MAD')),
+        'avantages': [escape(str(a).strip()) for a in avantages],
+        'periode_essai': escape(str(periode_essai or '').strip()),
+        'date_prise_poste': escape(_date_fr(date_prise_poste))
+        if date_prise_poste else '',
+        'employeur': employeur or {'nom': '', 'adresse': '', 'mentions': []},
+        'today': escape(_date_fr(today)),
+    }
+
+
+def render_lettre_offre_html(simulation, *, poste, candidat='',
+                             avantages=None, periode_essai='',
+                             date_prise_poste=None, employeur=None,
+                             today=None):
+    """HTML de la lettre d'offre / proposition d'embauche (NTPAY15).
+
+    Document RH-facing remis au CANDIDAT : intitulé du poste, rémunération
+    brute ET nette proposée, avantages, période d'essai, mentions légales.
+    Le coût employeur n'y figure JAMAIS (cf. ``CLES_COUT_INTERNE``).
+    """
+    ctx = lettre_offre_context(
+        simulation, poste=poste, candidat=candidat, avantages=avantages,
+        periode_essai=periode_essai, date_prise_poste=date_prise_poste,
+        employeur=employeur, today=today)
+    if not ctx['poste']:
+        raise ValueError(
+            'Intitulé du poste requis : une lettre d’offre sans poste ne veut '
+            'rien dire.')
+    destinataire = (f"<p><strong>À l’attention de :</strong> "
+                    f"{ctx['candidat']}</p>") if ctx['candidat'] else ''
+    avantages_html = ''
+    if ctx['avantages']:
+        items = ''.join(f'<li>{a}</li>' for a in ctx['avantages'])
+        avantages_html = f'<h2>Avantages</h2><ul>{items}</ul>'
+    essai_html = (
+        f"<p><strong>Période d’essai :</strong> {ctx['periode_essai']}</p>"
+        if ctx['periode_essai'] else '')
+    prise_poste_html = (
+        f"<p><strong>Date de prise de poste envisagée :</strong> "
+        f"{ctx['date_prise_poste']}</p>"
+        if ctx['date_prise_poste'] else '')
+    entete = _entete_employeur_html(ctx['employeur'])
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 12px; color: #222; margin: 40px; }}
+  h1 {{ font-size: 18px; text-align: center; }}
+  h2 {{ font-size: 13px; margin: 16px 0 4px; }}
+  table {{ margin: 14px 0; border-collapse: collapse; }}
+  td {{ padding: 4px 12px 4px 0; }}
+  .remuneration td {{ font-size: 13px; }}
+  .mention {{ margin-top: 18px; font-size: 11px; color: #444; }}
+  .date {{ text-align: right; margin-top: 36px; }}
+</style></head><body>
+  {entete}
+  <h1>Proposition d’embauche</h1>
+  {destinataire}
+  <p>Nous avons le plaisir de vous proposer le poste de
+     <strong>{ctx['poste']}</strong> au sein de notre société.</p>
+  {prise_poste_html}
+  <h2>Rémunération proposée</h2>
+  <table class="remuneration">
+    <tr><td><strong>Salaire brut mensuel :</strong></td>
+        <td>{ctx['brut']} {ctx['devise']}</td></tr>
+    <tr><td><strong>Net à payer mensuel estimé :</strong></td>
+        <td>{ctx['net']} {ctx['devise']}</td></tr>
+  </table>
+  <p>Le net indiqué est une estimation calculée sur les barèmes sociaux et
+     fiscaux en vigueur ; il varie avec votre situation personnelle
+     (personnes à charge, affiliations).</p>
+  {avantages_html}
+  {essai_html}
+  <p class="mention">{escape(MENTION_LEGALE_OFFRE)}</p>
+  <p class="date">Fait le {ctx['today']}.</p>
+</body></html>"""
+
+
+def render_lettre_offre_pdf(simulation, *, poste, candidat='', avantages=None,
+                            periode_essai='', date_prise_poste=None,
+                            company=None, employeur=None, today=None):
+    """Lettre d'offre → octets PDF (NTPAY15)."""
+    if employeur is None:
+        employeur = employeur_context(company)
+    return _html_to_pdf(render_lettre_offre_html(
+        simulation, poste=poste, candidat=candidat, avantages=avantages,
+        periode_essai=periode_essai, date_prise_poste=date_prise_poste,
+        employeur=employeur, today=today))
+
+
 def render_bordereau_cnss_html(bordereau, employeur, *, today=None):
     """HTML du bordereau de PAIEMENT des cotisations CNSS (NTPAY4).
 

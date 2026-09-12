@@ -510,6 +510,18 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         ``paie_voir`` — AUD716) : la simulation EXPOSE un brut et un net.
         Aucune écriture en base.
         """
+        resultat, erreur = self._simulation_embauche_depuis_requete(request)
+        if erreur is not None:
+            return erreur
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    def _simulation_embauche_depuis_requete(self, request):
+        """NTPAY14 — simulation depuis les paramètres de requête.
+
+        Renvoie ``(resultat, None)`` ou ``(None, reponse_erreur)``. Partagé
+        par l'endpoint JSON et par la lettre d'offre NTPAY15, qui rejoue la
+        MÊME simulation — jamais une seconde lecture des paramètres.
+        """
         from authentication.permissions import HasPermission
 
         if not HasPermission('salaires_voir')().has_permission(request, self):
@@ -545,7 +557,7 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             jours = int(jours) if jours else None
             heures = int(heures) if heures else None
         except (InvalidOperation, ValueError, TypeError):
-            return Response(
+            return None, Response(
                 {'detail': 'Paramètre numérique invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
@@ -556,7 +568,7 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             pays = PaysPaie.objects.filter(
                 company=company, pk=params.get('pays')).first()
             if pays is None:
-                return Response(
+                return None, Response(
                     {'detail': 'Pays de paie inconnu pour cette société.'},
                     status=status.HTTP_404_NOT_FOUND)
 
@@ -565,7 +577,7 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             regime_mutuelle = RegimeMutuelle.objects.filter(
                 company=company, pk=params.get('regime_mutuelle')).first()
             if regime_mutuelle is None:
-                return Response(
+                return None, Response(
                     {'detail': 'Régime de mutuelle inconnu pour cette '
                      'société.'},
                     status=status.HTTP_404_NOT_FOUND)
@@ -582,9 +594,61 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
                 jours_travail_mensuel=jours, heures_travail_mensuel=heures,
                 anciennete_annees=anciennete)
         except ValueError as exc:
+            return None, Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return resultat, None
+
+    @action(detail=False, methods=['get'], url_path='lettre-offre')
+    def lettre_offre(self, request):
+        """Lettre d'offre / proposition d'embauche PDF (NTPAY15).
+
+        Rejoue la simulation NTPAY14 (mêmes paramètres de requête) puis en
+        tire un document RH-facing : intitulé du ``poste`` (requis),
+        ``candidat``, ``avantages`` (séparés par ``;``), ``periode_essai``,
+        ``date_prise_poste``. Le coût employeur (charges patronales,
+        provisions, coût chargé) n'y figure JAMAIS.
+
+        Gatée ``salaires_voir`` comme la simulation dont elle dérive.
+        """
+        from authentication.permissions import HasPermission
+
+        if not HasPermission('salaires_voir')().has_permission(request, self):
+            return Response(
+                {'detail': 'Permission "salaires_voir" requise.'},
+                status=status.HTTP_403_FORBIDDEN)
+
+        poste = (request.query_params.get('poste') or '').strip()
+        if not poste:
+            return Response(
+                {'detail': 'Paramètre "poste" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        simulation, erreur = self._simulation_embauche_depuis_requete(request)
+        if erreur is not None:
+            return erreur
+
+        avantages = [
+            a.strip()
+            for a in (request.query_params.get('avantages') or '').split(';')
+            if a.strip()
+        ]
+        try:
+            pdf = builders.render_lettre_offre_pdf(
+                simulation, poste=poste,
+                candidat=request.query_params.get('candidat', ''),
+                avantages=avantages,
+                periode_essai=request.query_params.get('periode_essai', ''),
+                date_prise_poste=parse_date(
+                    request.query_params.get('date_prise_poste') or ''),
+                company=request.user.company)
+        except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(resultat, status=status.HTTP_200_OK)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return _pdf_response(pdf, 'lettre_offre.pdf')
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):
