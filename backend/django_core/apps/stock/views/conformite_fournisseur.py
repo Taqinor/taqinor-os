@@ -3,9 +3,13 @@ from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from core.viewsets import CompanyScopedModelViewSet
-from ..models import DocumentConformiteFournisseur, AchatsParametres
+from ..models import (
+    DocumentConformiteFournisseur, AchatsParametres,
+    ToleranceRapprochementCategorie,
+)
 from ..serializers import (
     DocumentConformiteFournisseurSerializer, AchatsParametresSerializer,
+    ToleranceRapprochementCategorieSerializer,
 )
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
@@ -74,3 +78,21 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):
+    """NTP2P9 — grille éditable Paramètres → Achats : override par catégorie
+    des tolérances 3 voies (XPUR10). Lecture tout rôle ; écriture réservée à
+    ``stock_modifier`` (repli responsable/admin). Au plus une ligne par
+    (société, catégorie) — imposé par la contrainte ``unique_together``."""
+    queryset = ToleranceRapprochementCategorie.objects.select_related(
+        'categorie').all()
+    serializer_class = ToleranceRapprochementCategorieSerializer
+    ordering = ['categorie__nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [HasPermissionOrLegacy('stock_modifier')()]

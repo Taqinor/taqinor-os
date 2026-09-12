@@ -4889,17 +4889,57 @@ def rafraichir_rapprochement_3voies_auto(company, bon_commande_id, *,
         return None
 
 
+def _categorie_unique_du_bcf(bon_commande_id):
+    """NTP2P9 — catégorie produit COMMUNE aux lignes catalogue du BCF, ou
+    ``None`` si les lignes portent des catégories différentes (ou aucune
+    catégorie) — dans ce cas le défaut société s'applique (comportement
+    XPUR10 inchangé). Une ligne libre/service (``produit`` vide) est ignorée
+    pour cette détection."""
+    from .models import LigneBonCommandeFournisseur
+    categorie_ids = set(
+        LigneBonCommandeFournisseur.objects
+        .filter(bon_commande_id=bon_commande_id, produit__isnull=False,
+                produit__categorie__isnull=False)
+        .values_list('produit__categorie_id', flat=True).distinct())
+    if len(categorie_ids) == 1:
+        return next(iter(categorie_ids))
+    return None
+
+
+def evaluer_tolerance_ecart(company, bon_commande_id):
+    """NTP2P9 — tolérance de rapprochement 3 voies APPLICABLE à ce BCF :
+    la plus SPÉCIFIQUE (``ToleranceRapprochementCategorie`` de la catégorie
+    commune à ses lignes) prime sur le défaut société (XPUR10,
+    ``AchatsParametres.tolerance_prix_pct``).
+
+    Un BCF dont les lignes couvrent PLUSIEURS catégories (ou aucune catégorie
+    identifiable) retombe sur le défaut société — comportement historique
+    inchangé. Renvoie un ``Decimal`` (jamais ``None``)."""
+    from .models import AchatsParametres, ToleranceRapprochementCategorie
+    parametres = AchatsParametres.for_company(company)
+    defaut = parametres.tolerance_prix_pct or Decimal('0')
+    categorie_id = _categorie_unique_du_bcf(bon_commande_id)
+    if categorie_id is None:
+        return defaut
+    override = ToleranceRapprochementCategorie.objects.filter(
+        company=company, categorie_id=categorie_id).first()
+    if override is None or override.tolerance_prix_pct is None:
+        return defaut
+    return override.tolerance_prix_pct
+
+
 def evaluate_facture_exception(company, facture):
     """XPUR10 — compare l'écart du rapprochement 3 voies (FG131, lu via
     ``apps.compta.selectors`` — jamais d'import de modèles compta) du BCF
-    d'origine de ``facture`` aux tolérances par défaut de la société
-    (``AchatsParametres.tolerance_prix_pct``/``tolerance_prix_absolu_mad``).
+    d'origine de ``facture`` à la tolérance APPLICABLE (NTP2P9 —
+    ``evaluer_tolerance_ecart`` : catégorie du BCF si configurée, sinon le
+    défaut de la société, ``AchatsParametres.tolerance_prix_pct``).
 
     Hors tolérance → statut_controle=exception + motif_ecart(persistés).
     Dans la tolérance (ou pas de BCF/rapprochement encore évalué) → no-op,
     la facture reste 'normale' (comportement historique). Renvoie
     ``(en_exception: bool, ecart_pct: Decimal|None)``."""
-    from .models import AchatsParametres, FactureFournisseur
+    from .models import FactureFournisseur
     if not facture.bon_commande_id:
         return False, None
     try:
@@ -4915,13 +4955,13 @@ def evaluate_facture_exception(company, facture):
     ecart_pct = rapprochement_ecart_pct(company, facture.bon_commande_id)
     if ecart_pct is None:
         return False, None
-    parametres = AchatsParametres.for_company(company)
-    tolerance = parametres.tolerance_prix_pct or Decimal('0')
+    # NTP2P9 — tolérance la plus spécifique (catégorie > défaut société).
+    tolerance = evaluer_tolerance_ecart(company, facture.bon_commande_id)
     hors_tolerance = ecart_pct > tolerance
     if hors_tolerance:
         facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
         facture.motif_ecart = (
-            f'Écart de {ecart_pct:.2f} % (tolérance société : '
+            f'Écart de {ecart_pct:.2f} % (tolérance applicable : '
             f'{tolerance:.2f} %) sur le rapprochement 3 voies.')
         facture.save(update_fields=['statut_controle', 'motif_ecart'])
     return hors_tolerance, ecart_pct

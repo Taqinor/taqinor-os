@@ -25,6 +25,7 @@ from .kit import KitProduitViewSet
 from .fiche_technique import FicheTechniqueViewSet
 from .conformite_fournisseur import (
     DocumentConformiteFournisseurViewSet, AchatsParametresViewSet,
+    ToleranceRapprochementCategorieViewSet,
 )
 from .acompte_fournisseur import AcompteFournisseurViewSet
 from .profil_saisonnier import ProfilSaisonnierViewSet
@@ -100,6 +101,7 @@ __all__ = [
     'FicheTechniqueViewSet',
     'DocumentConformiteFournisseurViewSet',
     'AchatsParametresViewSet',
+    'ToleranceRapprochementCategorieViewSet',
     'ContactFournisseurViewSet',
     'CategorieFournisseurViewSet',
     'AcompteFournisseurViewSet',

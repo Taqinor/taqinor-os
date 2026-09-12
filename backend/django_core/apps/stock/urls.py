@@ -10,6 +10,7 @@ from .views import (
     InventaireSessionViewSet, KitProduitViewSet,
     FicheTechniqueViewSet,
     DocumentConformiteFournisseurViewSet, AchatsParametresViewSet,
+    ToleranceRapprochementCategorieViewSet,
     ContactFournisseurViewSet, CategorieFournisseurViewSet,
     AcompteFournisseurViewSet, AvoirFournisseurViewSet,
     LotEntrepotViewSet, InventaireAnnuelViewSet, RevalorisationStockViewSet,
@@ -58,6 +59,10 @@ router.register(
 router.register(
     r'achats-parametres', AchatsParametresViewSet,
     basename='achats-parametres')
+# NTP2P9 — grille éditable des tolérances de rapprochement par catégorie.
+router.register(
+    r'tolerances-rapprochement-categorie',
+    ToleranceRapprochementCategorieViewSet)
 router.register(r'contacts-fournisseur', ContactFournisseurViewSet)
 router.register(r'categories-fournisseur', CategorieFournisseurViewSet)
 router.register(r'acomptes-fournisseur', AcompteFournisseurViewSet)
