@@ -337,6 +337,12 @@ const comptaApi = {
       api.get(`/compta/rapprochements/${id}/suggestions-apprises/`, { params }),
     accepterSuggestions: (id) =>
       api.post(`/compta/rapprochements/${id}/accepter-suggestions/`),
+    // NTTRE1-3 / NTTRE24 — import d'un relevé au format normalisé. Le format
+    // (`cfonb120`/`mt940`/`camt053`) est DÉTECTÉ par l'assistant puis passé au
+    // serveur ; le corps est un multipart portant le fichier `releve`.
+    importReleve: (id, formData, format) =>
+      api.post(`/compta/rapprochements/${id}/import-releve/`, formData,
+        { params: { format } }),
     cloturer: (id) => api.post(`/compta/rapprochements/${id}/cloturer/`),
     // XACC30 — OCR d'un relevé (PDF/scan, gated) : extraction (multipart
     // { releve }) puis acceptation explicite ({ accepter: '1', lignes }).
