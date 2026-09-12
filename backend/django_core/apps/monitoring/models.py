@@ -288,6 +288,88 @@ class SlaDisponibilite(models.Model):
         return f'SLA dispo #{self.installation_id} ({self.disponibilite_garantie_pct} %)'
 
 
+# ── NTNRG27 — Registre des certificats carbone émis ─────────────────────────
+# Traçabilité / anti-double-comptage : chaque attestation carbone PDF émise
+# (NTNRG26) PEUT être enregistrée ici pour empêcher un doublon EXACT (même
+# cible + même période). Cible = UN système (`installation_id`, string-ref)
+# OU un client consolidé (`client_id`, string-ref) — jamais les deux, jamais
+# aucun (XOR, comme `ProfilSaisonnier.produit`/`categorie`). Jamais d'import
+# cross-app : les deux références sont des ids nus.
+
+class CertificatCarbone(models.Model):
+    """Un certificat carbone ÉMIS (registre), pour une cible et une période.
+
+    `reference` est posée par `emettre_certificat_carbone` (numérotation
+    race-safe `core.numbering`, jamais un `count()+1`). `fichier_key`
+    (optionnel) pointe le PDF déposé en MinIO (`apps.records.storage`) si
+    l'appelant en dépose un — le registre reste utile même sans fichier
+    (traçabilité pure).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='certificats_carbone')
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Id de l'installation (certificat PAR SITE). XOR client_id.")
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Id du client (certificat CONSOLIDÉ multi-sites). '
+                  'XOR installation_id.')
+    periode_debut = models.DateField()
+    periode_fin = models.DateField()
+    tco2_evitees = models.DecimalField(max_digits=12, decimal_places=3)
+    reference = models.CharField(max_length=50)
+    fichier_key = models.CharField(max_length=500, blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Certificat carbone'
+        verbose_name_plural = 'Certificats carbone'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'installation_id'],
+                name='monitoring_certifco2_site_idx'),
+            models.Index(
+                fields=['company', 'client_id'],
+                name='monitoring_certifco2_cli_idx'),
+        ]
+        constraints = [
+            # XOR : exactement une cible (site OU client), jamais les deux ni
+            # aucune — même patron que `ProfilSaisonnier` (produit/catégorie).
+            models.CheckConstraint(
+                check=(
+                    models.Q(installation_id__isnull=False, client_id__isnull=True)
+                    | models.Q(installation_id__isnull=True, client_id__isnull=False)
+                ),
+                name='monitoring_certifco2_xor_cible'),
+            # Doublon EXACT refusé au niveau base (même cible + même période),
+            # en complément du contrôle applicatif de `services.py` — NULL
+            # n'égalant jamais NULL en SQL, chaque branche du XOR a sa propre
+            # contrainte conditionnelle (sinon deux certificats CLIENT
+            # partageant `installation_id=NULL` ne collisionneraient jamais).
+            models.UniqueConstraint(
+                fields=['company', 'installation_id', 'periode_debut', 'periode_fin'],
+                condition=models.Q(installation_id__isnull=False),
+                name='monitoring_certifco2_site_uniq'),
+            models.UniqueConstraint(
+                fields=['company', 'client_id', 'periode_debut', 'periode_fin'],
+                condition=models.Q(client_id__isnull=False),
+                name='monitoring_certifco2_cli_uniq'),
+            # Référence race-safe (`core.numbering`) — unique par société,
+            # même patron que `AppelOffre`/`Devis` : c'est CETTE contrainte
+            # que `create_with_reference` détecte pour réessayer sur course.
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='monitoring_certifco2_reference_uniq'),
+        ]
+
+    def __str__(self):
+        cible = f'site#{self.installation_id}' if self.installation_id \
+            else f'client#{self.client_id}'
+        return f'{self.reference} ({cible}, {self.periode_debut}→{self.periode_fin})'
+
+
 # ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
 # ODX16 — relogé depuis ``apps.compta`` (défaut fondateur : monitoring, car le
 # modèle référence les configs de supervision ; facturation future via services
