@@ -36,3 +36,7 @@ class GrcConfig(AppConfig):
         # connaît que le nom et le callable (il reste fondation).
         from .services import register_erasure_guard
         register_erasure_guard()
+        # NTGRC9 — abonnements au bus `core.events` (M6) : alerte DPO quand une
+        # personne ayant RETIRÉ son consentement est de nouveau traitée
+        # (nouveau lead, devis accepté). `grc` n'importe ni crm ni ventes.
+        from . import receivers  # noqa: F401

@@ -495,6 +495,14 @@ meta_lead_captured = django.dispatch.Signal()
 # optionnel). Abonné dans ce repo : adsengine (apps/adsengine/receivers.py).
 lead_erased = django.dispatch.Signal()
 
+# NTGRC9 — Émis à la CRÉATION d'un lead CRM, quelle que soit la porte d'entrée
+# (saisie, webhook site, import). Arguments : lead (crm.Lead), company.
+# Émetteur dans ce repo : crm (apps/crm/receivers.py, post_save created=True).
+# Abonné dans ce repo : grc (alerte DPO quand la personne a retiré son
+# consentement) — ainsi `grc` n'importe jamais `apps.crm.models`, et `crm`
+# n'a aucune connaissance de `grc`.
+lead_created = django.dispatch.Signal()
+
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()

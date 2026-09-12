@@ -51,6 +51,10 @@ CATALOG = {
         'Un lead CRM est effacé (droit à l\'oubli CNDP) — propage '
         'l\'anonymisation aux miroirs qui le référencent par STRING.',
         ['company', 'crm_lead_id', 'phone_key']),
+    'lead_created': _e(
+        'Un lead CRM est CRÉÉ, quelle que soit la porte d\'entrée (saisie, '
+        'webhook site, import).',
+        ['lead', 'company']),
     'devis_accepted': _e(
         'Un devis passe à « accepté ».',
         ['devis', 'user', 'ancien_statut']),
