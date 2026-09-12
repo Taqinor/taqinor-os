@@ -9,10 +9,21 @@ d'import de ``ged.models`` — la lecture croisée passe par ``ged.selectors``).
 Multi-société : tout modèle hérite de ``core.models.TenantModel`` (FK
 ``company`` + horodatage, ARC1) ; la société est TOUJOURS posée côté serveur.
 """
+import secrets
+
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
+
+
+def _default_acces_token():
+    """NTDOC12 — Jeton d'accès viewer long, imprévisible et URL-safe.
+
+    Même générateur que ``ged.PartageGed.token`` (``secrets.token_urlsafe(32)``,
+    ~43 caractères) : c'est le SEUL secret qui authentifie un viewer."""
+    return secrets.token_urlsafe(32)
 
 
 class SalleDeDonnees(TenantModel):
@@ -113,3 +124,69 @@ class SalleDeDonneesDocument(TenantModel):
 
     def __str__(self):
         return f'{self.salle_id} → {self.document_id}'
+
+
+class AccesSalleDonnees(TenantModel):
+    """NTDOC12 — Accès d'un VIEWER NOMMÉ à une salle de données.
+
+    Chaque invité a son PROPRE lien (``token``) et sa PROPRE expiration,
+    distincte de l'expiration globale de la salle : révoquer ou laisser expirer
+    un viewer ne touche jamais les autres. C'est aussi ce qui rend le filigrane
+    (NTDOC13) et le journal (NTDOC14) attribuables à une personne précise.
+
+    Le jeton est l'UNIQUE secret d'accès : l'endpoint public ne fait JAMAIS
+    confiance à une identité/société venue de la requête — tout est résolu
+    DEPUIS le jeton.
+    """
+
+    salle = models.ForeignKey(
+        # on_delete: un accès n'existe que pour sa salle ; supprimer la salle
+        # ne doit laisser aucun lien viewer actif derrière elle.
+        SalleDeDonnees, on_delete=models.CASCADE, related_name='acces',
+        verbose_name='Salle')
+    nom = models.CharField(max_length=255, verbose_name='Nom du viewer')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    # `unique=True` crée déjà l'index nécessaire au lookup public par jeton.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_acces_token,
+        editable=False, verbose_name='Jeton')
+    # Expiration PAR VIEWER (NULL = pas d'expiration propre ; la salle peut
+    # néanmoins porter la sienne).
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    revoque = models.BooleanField(default=False, verbose_name='Révoqué')
+    derniere_consultation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière consultation')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='acces_salles_donnees_crees',
+        verbose_name='Invité par')
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Accès à une salle de données'
+        verbose_name_plural = 'Accès aux salles de données'
+        indexes = [
+            models.Index(fields=['company', 'salle'],
+                         name='dataroom_acces_co_salle_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} → salle #{self.salle_id}'
+
+    def est_expire(self, *, now=None):
+        """Expiration PROPRE du viewer, ou expiration globale de la salle.
+
+        Les deux sont évaluées à la LECTURE : rien n'est figé en base, donc
+        prolonger une date rouvre immédiatement l'accès."""
+        now = now or timezone.now()
+        if self.expires_at and self.expires_at <= now:
+            return True
+        salle_expire = getattr(self.salle, 'expires_at', None)
+        return bool(salle_expire and salle_expire <= now)
+
+    def est_actif(self, *, now=None):
+        """Accès servable : ni révoqué, ni expiré, et salle encore ouverte."""
+        if self.revoque or not self.salle.est_ouverte:
+            return False
+        return not self.est_expire(now=now)

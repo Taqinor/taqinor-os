@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .models import SalleDeDonnees, SalleDeDonneesDocument
+from .models import AccesSalleDonnees, SalleDeDonnees, SalleDeDonneesDocument
 
 
 class SalleDeDonneesDocumentSerializer(SameCompanyFKSerializerMixin,
@@ -80,3 +80,46 @@ class SalleDeDonneesSerializer(SameCompanyFKSerializerMixin,
 
     def get_nombre_documents(self, obj) -> int:
         return obj.documents.count()
+
+
+class AccesSalleDonneesSerializer(serializers.ModelSerializer):
+    """NTDOC12 — Accès d'un viewer nommé (côté GESTION, jamais public).
+
+    Le ``token`` est en lecture seule : il est généré côté serveur et sert à
+    composer le lien à envoyer au viewer. ``revoque`` ne se pose que par
+    l'action dédiée (``revoquer/``) pour que la révocation reste explicite."""
+
+    salle_nom = serializers.SerializerMethodField()
+    lien_public = serializers.SerializerMethodField()
+    actif = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AccesSalleDonnees
+        fields = [
+            'id', 'salle', 'salle_nom', 'nom', 'email', 'token',
+            'lien_public', 'expires_at', 'revoque', 'actif',
+            'derniere_consultation', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'token', 'revoque', 'derniere_consultation',
+            'created_at', 'updated_at',
+        ]
+
+    def get_salle_nom(self, obj) -> str:
+        return getattr(obj.salle, 'nom', '') or ''
+
+    def get_lien_public(self, obj) -> str:
+        from .services import lien_public_acces
+        return lien_public_acces(obj)
+
+    def get_actif(self, obj) -> bool:
+        return obj.est_actif()
+
+    def validate_salle(self, value):
+        """La salle doit appartenir à la société de l'appelant."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.pk:
+            raise serializers.ValidationError(
+                "Cette salle n'appartient pas à votre société.")
+        return value

@@ -7,13 +7,23 @@ le gatage 404 des modules désactivés vise donc le bon module sans entrée
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import SalleDeDonneesDocumentViewSet, SalleDeDonneesViewSet
+from .views import (
+    AccesSalleDonneesViewSet, SalleDeDonneesDocumentViewSet,
+    SalleDeDonneesViewSet, public_salle,
+)
 
 router = DefaultRouter()
 router.register(r'salles', SalleDeDonneesViewSet, basename='dataroom-salle')
 router.register(r'salle-documents', SalleDeDonneesDocumentViewSet,
                 basename='dataroom-salle-document')
+router.register(r'acces', AccesSalleDonneesViewSet, basename='dataroom-acces')
 
 urlpatterns = [
+    # NTDOC12 — accès PUBLIC (sans login) à une salle par jeton VIEWER.
+    # Déclaré AVANT le routeur pour ne jamais être capté par une route
+    # authentifiée (même précaution que `ged.urls` `public/<token>/`).
+    # AllowAny est posé sur la vue elle-même.
+    # headless: salle ouverte par un lien viewer tokenisé, hors ERP
+    path('public/<str:token>/', public_salle, name='dataroom-public-salle'),
     path('', include(router.urls)),
 ]
