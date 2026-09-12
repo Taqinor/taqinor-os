@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
+import { envoyerPhotoVisite } from '../../features/visites/visitesOffline'
 import PageHeader from '../../components/layout/PageHeader'
 import CameraCapture from '../../features/pwa/CameraCapture'
 import {
@@ -31,18 +32,29 @@ function SlotTile({ visiteId, slot, onChanged }) {
   const [ouvert, setOuvert] = useState(false)
   const [envoi, setEnvoi] = useState(false)
 
+  // VTA10 — passe par le BRANCHEMENT offline de la plateforme : compression
+  // (VX77) puis envoi en ligne ; sur panne RÉSEAU la photo rejoint l'UNIQUE
+  // file binaire et l'utilisateur le voit (badge d'en-tête + message ici).
   const capturer = async (file, geo) => {
     setEnvoi(true)
     try {
-      await visitesApi.uploadVisitePhoto(visiteId, {
+      const res = await envoyerPhotoVisite(visiteId, {
         slotCode: slot.code,
         fichier: file,
         gpsLat: geo?.latitude,
         gpsLng: geo?.longitude,
       })
-      onChanged()
-    } catch {
-      toast.error(`Envoi de la photo « ${slot.libelle} » impossible.`)
+      if (res.queued) {
+        toast.success(`Photo « ${slot.libelle} » mise en file — elle partira au retour du réseau.`)
+      } else {
+        onChanged()
+      }
+    } catch (err) {
+      // File pleine / stockage saturé : message SERVEUR-LIBRE mais explicite,
+      // jamais un échec muet (OutboxQuotaError porte déjà son texte français).
+      toast.error(err?.quota
+        ? err.message
+        : `Envoi de la photo « ${slot.libelle} » impossible.`)
     } finally {
       setEnvoi(false)
     }

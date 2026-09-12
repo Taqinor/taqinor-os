@@ -5,7 +5,7 @@
 // (`PATCH .../mesures/` → 400 `{erreurs:{champ:message}}`), affichées SOUS le
 // champ fautif — jamais une validation client qui pourrait diverger.
 import { useState } from 'react'
-import visitesApi from '../../api/visitesApi'
+import { enregistrerMesures } from '../../features/visites/visitesOffline'
 import { Button, Card, Input, Label, Checkbox, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { MESURES_SCHEMA } from './visiteHelpers'
@@ -46,9 +46,15 @@ export default function VisiteMesuresForm({ visiteId, categorie, libelle, valeur
     setSaving(true)
     setErreurs({})
     try {
-      const res = await visitesApi.patchVisiteMesures(visiteId, categorie, toPayload(schema, form))
-      onSaved?.(res.data)
-      toast.success('Mesures enregistrées.')
+      // VTA10 — même appel, mais via le branchement offline : hors réseau
+      // l'op part dans la file de module `visites` et on le DIT.
+      const res = await enregistrerMesures(visiteId, categorie, toPayload(schema, form))
+      if (res.queued) {
+        toast.success('Mesures mises en file — elles partiront au retour du réseau.')
+      } else {
+        onSaved?.(res.data?.data)
+        toast.success('Mesures enregistrées.')
+      }
     } catch (err) {
       const data = err?.response?.data
       if (data?.erreurs) setErreurs(data.erreurs)
