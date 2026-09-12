@@ -6,7 +6,7 @@ import { Input } from './Input'
    du générateur : ne jamais « snap »/rejeter un nombre saisi). L'unité n'est
    qu'un ornement visuel ; la valeur reste brute.
 
-   NTI18N6 — `dir="ltr"` EXPLICITE sur le champ natif : sans lui, un `<input>`
+   NTI18N6 — `dir="ltr"` EXPLICITE sur le champ natif : sans lui, le champ
    HÉRITE de la direction ambiante (`<html dir="rtl">` en arabe) et le
    navigateur applique l'algorithme bidi au CONTENU du champ — un montant
    comme « 1 234,50 MAD » peut alors se réordonner de façon imprévisible
