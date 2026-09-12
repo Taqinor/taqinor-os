@@ -4683,3 +4683,54 @@ def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
         # NTP2P4 — une demande refusée rend son enveloppe budgétaire.
         liberer_budget_demande_achat(demande)
     return etape
+
+
+# ── CHT17 — Camion en maintenance = indisponible au planning ────────────────
+# `flotte.changer_statut_vehicule` ignorait totalement le planning terrain :
+# un camion passé en MAINTENANCE restait « disponible » pour
+# `selectors.ressource_indisponible` (FG299-303) — rien n'empêchait de
+# programmer une intervention dessus. Câblé en MIROIR du précédent
+# `ventes/views/bon_commande.py` → `installations.services` (import
+# fonction-local depuis l'appelant, cross-app par service).
+
+_MOTIF_SYNC_MAINTENANCE = 'sync-auto-maintenance'
+
+
+def sync_indisponibilite_maintenance(company, emplacement_stock_id,
+                                     en_maintenance, user=None):
+    """CHT17 — synchronise l'indisponibilité planning d'une camionnette avec
+    son statut de maintenance (appelée depuis
+    ``flotte.services.changer_statut_vehicule``, seulement sur les
+    transitions ↔MAINTENANCE).
+
+    Entrée en maintenance : crée UNE ``IndisponibiliteRessource`` (ARRET,
+    marqueur ``motif='sync-auto-maintenance'``, un an de fenêtre) — SEULEMENT
+    si aucune n'est déjà ouverte pour ce marqueur (idempotent, jamais de
+    doublon). Sortie de maintenance : ramène ``date_fin`` à aujourd'hui SUR
+    LES INDISPONIBILITÉS PORTANT CE MARQUEUR UNIQUEMENT — une indisponibilité
+    saisie à la main (congé/formation/arrêt réel) n'est JAMAIS touchée.
+
+    No-op si la société ou l'emplacement de stock (camionnette) sont
+    inconnus. Le planning (FG299-303) lit déjà ``selectors.
+    ressource_indisponible`` : zéro changement côté sélecteurs."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import IndisponibiliteRessource
+
+    if company is None or not emplacement_stock_id:
+        return
+    today = timezone.localdate()
+    marquees = IndisponibiliteRessource.objects.filter(
+        company=company, camionnette_id=emplacement_stock_id,
+        motif=_MOTIF_SYNC_MAINTENANCE)
+    if en_maintenance:
+        if not marquees.filter(date_fin__gte=today).exists():
+            IndisponibiliteRessource.objects.create(
+                company=company, camionnette_id=emplacement_stock_id,
+                type_indispo=IndisponibiliteRessource.Type.ARRET,
+                motif=_MOTIF_SYNC_MAINTENANCE, date_debut=today,
+                date_fin=today + timedelta(days=365), created_by=user)
+    else:
+        marquees.filter(date_fin__gte=today).update(date_fin=today)
