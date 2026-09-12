@@ -8,7 +8,7 @@ from rest_framework import serializers
 from .models import (
     AnalyseImpactDPIA, AttestationPolitique, CadreConformite, ControleInterne,
     DeficienceControle, ExigenceCadre, FluxDonnees,
-    IncidentActivity, IncidentSecurite, JournalDestruction, LegalHold,
+    IncidentSecurite, JournalDestruction, LegalHold,
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
     PolitiqueVersion, QuestionnaireFournisseur, ReponseQuestionnaire,
@@ -1047,19 +1047,8 @@ class FluxDonneesSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class IncidentActivitySerializer(serializers.ModelSerializer):
-    """NTGRC26 — ligne de chronologie d'un incident (lecture seule).
-
-    Tout est en lecture seule : une ligne de chronologie s'AJOUTE (par
-    ``noter/`` ou par le service de transition), elle ne se réécrit pas — un
-    journal éditable ne prouve rien.
-    """
-
-    type_libelle = serializers.CharField(
-        source='get_type_display', read_only=True)
-
-    class Meta:
-        model = IncidentActivity
-        fields = ['id', 'incident', 'type', 'type_libelle', 'detail',
-                  'auteur', 'timestamp', 'created_at']
-        read_only_fields = fields
+# NTGRC26 — la chronologie d'incident est sérialisée par l'enveloppe
+# PLATEFORME ``records.serializers.ChatterActivitySerializer`` (ARC8/ARC9) :
+# le frontend lit TOUTES les timelines du produit avec un seul composant
+# (VX23 ChatterTimeline), et un sérialiseur maison de plus ferait diverger ce
+# contrat pour rien.

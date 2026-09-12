@@ -4,12 +4,15 @@ Tout viewset hérite de ``core.viewsets.CompanyScopedModelViewSet`` (ARC2) :
 queryset filtré sur ``request.user.company`` et ``company`` imposée côté
 serveur dans ``perform_create``/``perform_update``, jamais lue du corps.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import (
     action, api_view, permission_classes,
 )
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.records.views import ChatterViewSetMixin
 from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -28,7 +31,6 @@ from .serializers import (
     ControleInterneSerializer,
     DeficienceControleSerializer, ExigenceCadreSerializer,
     FluxDonneesSerializer,
-    IncidentActivitySerializer,
     IncidentSecuriteSerializer,
     JournalDestructionSerializer, LegalHoldSerializer,
     ModeleQuestionnaireSerializer, PlanTraitementRisqueSerializer,
@@ -693,8 +695,15 @@ class ModeleQuestionnaireViewSet(CompanyScopedModelViewSet):
             status=201)
 
 
-class IncidentSecuriteViewSet(CompanyScopedModelViewSet):
-    """NTGRC25 — registre des incidents de sécurité + escalade réglementaire."""
+class IncidentSecuriteViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
+    """NTGRC25/NTGRC26 — incidents de sécurité, escalade et chronologie.
+
+    ``ChatterViewSetMixin`` (ARC8) branche le chatter PLATEFORME sur les URL
+    génériques ``chatter/historique`` et ``chatter/noter`` ; les actions
+    ``historique``/``noter`` de NTGRC26 exposent la MÊME donnée sous les noms
+    attendus par l'écran GRC. Une seule source (``records.Activity``), deux
+    chemins — jamais deux journaux qui divergent.
+    """
 
     queryset = IncidentSecurite.objects.all()
     serializer_class = IncidentSecuriteSerializer
@@ -734,9 +743,7 @@ class IncidentSecuriteViewSet(CompanyScopedModelViewSet):
         incident = self.get_object()
         cible = (request.data.get('statut') or '').strip()
         try:
-            changer_statut_incident(
-                incident, cible,
-                acteur=getattr(request.user, 'username', '') or '')
+            changer_statut_incident(incident, cible, user=request.user)
         except TransitionIncidentInterdite as exc:
             return Response({'statut': str(exc)}, status=400)
         return Response(self.get_serializer(incident).data)
@@ -771,29 +778,41 @@ class IncidentSecuriteViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['get'])
     def historique(self, request, pk=None):
-        """NTGRC26 — chronologie de l'incident (plus récent d'abord)."""
+        """NTGRC26 — chronologie de l'incident (plus récent d'abord).
+
+        Lit le chatter PLATEFORME (``records.Activity``, ARC8) et le rend
+        dans l'enveloppe uniforme que le frontend consomme déjà pour toutes
+        les autres timelines du produit. ``chatter/historique/`` (fourni par
+        ``ChatterViewSetMixin``) sert la même donnée sous l'URL générique —
+        deux chemins, UNE source.
+        """
+        from apps.records.serializers import ChatterActivitySerializer
+
+        from .services import chronologie_incident
+
         incident = self.get_object()
-        return Response({'results': IncidentActivitySerializer(
-            incident.activites.all(), many=True).data})
+        return Response({'results': ChatterActivitySerializer(
+            chronologie_incident(incident), many=True).data})
 
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
         """NTGRC26 — ajoute une note manuelle (``{"detail": "..."}``).
 
-        L'acteur et la société sont posés CÔTÉ SERVEUR.
+        L'auteur et la société sont posés CÔTÉ SERVEUR.
         """
+        from apps.records.serializers import ChatterActivitySerializer
+
         from .services import noter_incident
 
         incident = self.get_object()
         try:
             activite = noter_incident(
-                incident, request.data.get('detail'),
-                acteur=getattr(request.user, 'username', '') or '')
+                incident, request.data.get('detail'), user=request.user)
         except ValueError:
             return Response(
                 {'detail': 'Écrivez la note avant de l\'enregistrer.'},
                 status=400)
-        return Response(IncidentActivitySerializer(activite).data, status=201)
+        return Response(ChatterActivitySerializer(activite).data, status=201)
 
 
 class AnalyseImpactDPIAViewSet(CompanyScopedModelViewSet):
@@ -968,6 +987,30 @@ class FluxDonneesViewSet(CompanyScopedModelViewSet):
         return Response({'results': self.get_serializer(qs, many=True).data})
 
 
+# PACT7 — un agrégat DOIT déclarer sa forme. Sans cette déclaration, le schéma
+# OpenAPI publierait cet endpoint « objet vide » : un schéma qui ment est pire
+# qu'un schéma absent, parce qu'un garde-fou qui s'y fie produit des rouges sur
+# du code correct. Les clés ci-dessous sont EXACTEMENT celles de
+# `selectors.tableau_bord_dpo` (et de contract_samples/tableau_bord_dpo.json).
+@extend_schema(responses=inline_serializer('GrcTableauBordDpo', {
+    'dsr_ouverts': serializers.IntegerField(),
+    'dsr_en_retard': serializers.IntegerField(),
+    'dsr_details': inline_serializer('GrcTableauBordDpoDsr', {
+        'type': serializers.CharField(),
+        'statut': serializers.CharField(),
+        'echeance': serializers.CharField(allow_null=True),
+        # Entier SIGNÉ : négatif = en retard (jamais écrêté à zéro).
+        'jours_restants': serializers.IntegerField(allow_null=True),
+    }, many=True),
+    'violations_72h': serializers.IntegerField(),
+    'violations_72h_depassees': serializers.IntegerField(),
+    'consentements_retires_mois': serializers.IntegerField(),
+    'politiques_non_attestees': serializers.IntegerField(),
+    'controles_a_tester': serializers.IntegerField(),
+    'risques_critiques': serializers.IntegerField(),
+    'traitements_sans_dpia': serializers.IntegerField(),
+    'calcule_le': serializers.CharField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def tableau_bord_dpo(request):

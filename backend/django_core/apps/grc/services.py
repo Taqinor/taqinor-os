@@ -1034,7 +1034,7 @@ def _transitions_incident(statut):
     return table.get(statut, set())
 
 
-def changer_statut_incident(incident, cible, acteur=''):
+def changer_statut_incident(incident, cible, user=None):
     """Fait avancer un incident de sécurité (garde de transition)."""
     from .models import IncidentSecurite
 
@@ -1050,32 +1050,37 @@ def changer_statut_incident(incident, cible, acteur=''):
     ancien = incident.statut
     incident.statut = cible
     incident.save(update_fields=['statut', 'updated_at'])
-    journaliser_transition_incident(incident, ancien, cible, acteur=acteur)
+    journaliser_transition_incident(incident, ancien, cible, user=user)
     return incident
 
 
-def journaliser_transition_incident(incident, ancien, nouveau, acteur=''):
-    """NTGRC26 — écrit la transition de statut dans la chronologie.
+def journaliser_transition_incident(incident, ancien, nouveau, user=None):
+    """NTGRC26 — écrit la transition de statut dans le chatter PLATEFORME.
 
     Appelée par le service de transition, de sorte qu'AUCUN changement de
     statut ne puisse échapper au journal — un chatter branché sur la vue rate
     toujours les changements faits par un autre chemin de code.
 
+    Écrit dans ``records.Activity`` via ``records.services.log_activity``
+    (ARC8), jamais dans un modèle de chronologie maison : ce dépôt en compte
+    déjà treize à converger, un quatorzième serait de la dette pure.
+
     Best-effort : une chronologie qui échoue ne doit pas faire échouer le
     traitement de l'incident lui-même.
     """
-    from .models import IncidentActivity, IncidentSecurite
+    from .models import IncidentSecurite
 
     libelles = dict(IncidentSecurite.STATUT_CHOICES)
     try:
-        return IncidentActivity.objects.create(
-            company=incident.company,
-            incident=incident,
-            type=IncidentActivity.TYPE_LOG,
-            detail=(f'Statut : {libelles.get(ancien, ancien)} → '
-                    f'{libelles.get(nouveau, nouveau)}'),
-            auteur=(acteur or '')[:150],
-        )
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+
+        return log_activity(
+            incident, Activity.Kind.MODIFICATION, user=user,
+            field='statut', field_label='Statut',
+            old_value=libelles.get(ancien, ancien),
+            new_value=libelles.get(nouveau, nouveau),
+            company=incident.company)
     except Exception:  # noqa: BLE001 — jamais bloquant pour l'incident
         logger.exception(
             'grc: chronologie d\'incident impossible (%s)',
@@ -1083,23 +1088,25 @@ def journaliser_transition_incident(incident, ancien, nouveau, acteur=''):
         return None
 
 
-def noter_incident(incident, detail, acteur=''):
+def noter_incident(incident, detail, user=None):
     """NTGRC26 — ajoute une NOTE manuelle à la chronologie d'un incident.
 
-    L'acteur et la société sont posés CÔTÉ SERVEUR, jamais lus du corps.
+    L'auteur et la société sont posés CÔTÉ SERVEUR par
+    ``records.services.log_note`` — jamais lus du corps de la requête.
     """
-    from .models import IncidentActivity
+    from apps.records.services import log_note
 
     detail = (detail or '').strip()
     if not detail:
         raise ValueError('La note est vide.')
-    return IncidentActivity.objects.create(
-        company=incident.company,
-        incident=incident,
-        type=IncidentActivity.TYPE_NOTE,
-        detail=detail,
-        auteur=(acteur or '')[:150],
-    )
+    return log_note(incident, user, detail, company=incident.company)
+
+
+def chronologie_incident(incident):
+    """NTGRC26 — timeline du chatter de l'incident (plus récent d'abord)."""
+    from apps.records.services import chatter_qs
+
+    return chatter_qs(incident, company=incident.company)
 
 
 def escalader_incident_en_violation(incident, **champs):

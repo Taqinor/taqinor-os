@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('authentication', '0030_aud704_identite_employeur'),
         ('core', '0059_ntgrc27_traitement_haut_risque'),
-        ('grc', '0017_ntgrc26_incident_activity'),
+        ('grc', '0016_ntgrc25_incident_securite'),
     ]
 
     operations = [
