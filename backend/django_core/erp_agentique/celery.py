@@ -358,6 +358,14 @@ app.conf.beat_schedule = {
         'task': 'contrats.cloturer_contrats_impayes_daily',
         'schedule': crontab(hour=8, minute=20),
     },
+    # NTDOC32 — purge des dépôts « contrepartie » ARCHIVÉS dont la durée de
+    # rétention configurée (politique GED de la société) est dépassée.
+    # Quotidien, heure creuse. Sans politique applicable, la tâche ne purge
+    # RIEN (jamais de durée codée en dur).
+    'contrats-purger-contreparties-archivees': {
+        'task': 'contrats.purger_contreparties_archivees',
+        'schedule': crontab(hour=2, minute=45),
+    },
     # XKB27 — envoie les messages chat programmés dus + notifie les rappels
     # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
     # qu'un message programmé parte proche de l'heure choisie, sans surcharger

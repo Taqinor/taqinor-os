@@ -23,6 +23,8 @@ function withProviders(ui) {
 describe('CONTRAT_STATUS map', () => {
   it('mappe chaque statut backend vers le bon ton', () => {
     expect(StatutContrat.toneOf('brouillon')).toBe('neutral')
+    // NTDOC4 — round de redlines avec la contrepartie.
+    expect(StatutContrat.toneOf('en_negociation')).toBe('warning')
     expect(StatutContrat.toneOf('en_approbation')).toBe('info')
     expect(StatutContrat.toneOf('signe')).toBe('info')
     expect(StatutContrat.toneOf('actif')).toBe('success')
@@ -31,9 +33,10 @@ describe('CONTRAT_STATUS map', () => {
     expect(StatutContrat.toneOf('expire')).toBe('warning')
   })
 
-  it('couvre exactement les 7 statuts canoniques dans l’ordre du cycle de vie', () => {
+  it('couvre exactement les 8 statuts canoniques dans l’ordre du cycle de vie', () => {
     expect(CONTRAT_STATUS_ORDER).toEqual([
-      'brouillon', 'en_approbation', 'signe', 'actif', 'suspendu', 'resilie', 'expire',
+      'brouillon', 'en_negociation', 'en_approbation', 'signe', 'actif',
+      'suspendu', 'resilie', 'expire',
     ])
     // Chaque clé de l'ordre existe dans la map (pas de statut inventé/oublié).
     for (const key of CONTRAT_STATUS_ORDER) {

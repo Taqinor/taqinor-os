@@ -740,6 +740,49 @@ def politique_applicable(document, *, politiques=None):
     return best
 
 
+def duree_retention_applicable(company, *, type_document=''):
+    """GED22 — Durée de conservation (en JOURS) applicable à une CATÉGORIE.
+
+    Point d'entrée cross-app LECTURE SEULE (NTDOC32) : une autre app qui
+    conserve ses propres pièces (ex. les dépôts de contrepartie de
+    ``contrats``) a besoin de la durée de rétention configurée par la société
+    SANS avoir de ``ged.Document`` à présenter — et surtout sans coder une
+    durée en dur.
+
+    Parmi les politiques ACTIVES de la société, ne retient que celles qui
+    peuvent s'appliquer hors arborescence GED : portée ``global`` (couvre
+    tout) et portée ``type`` dont la catégorie correspond à ``type_document``.
+    Les portées ``cabinet``/``dossier`` sont ignorées (elles n'ont de sens que
+    pour un document rangé dans l'arborescence). À spécificité égale, la durée
+    la PLUS COURTE gagne (la contrainte la plus stricte), puis le plus petit
+    id (déterministe).
+
+    Renvoie un entier de jours, ou ``None`` si aucune politique ne s'applique —
+    l'appelant NE DOIT alors rien purger (jamais de durée par défaut).
+    """
+    cible = (type_document or '').strip().lower()
+    best = None
+    for pol in politiques_retention_for_company(company, actif_only=True):
+        scope = pol.scope
+        if scope == 'type':
+            if not cible or pol.type_document.strip().lower() != cible:
+                continue
+        elif scope != 'global':
+            continue
+        if best is None:
+            best = pol
+            continue
+        if pol.scope_rank > best.scope_rank:
+            best = pol
+        elif pol.scope_rank == best.scope_rank:
+            if pol.duree_conservation_jours < best.duree_conservation_jours:
+                best = pol
+            elif (pol.duree_conservation_jours == best.duree_conservation_jours
+                  and pol.pk < best.pk):
+                best = pol
+    return best.duree_conservation_jours if best is not None else None
+
+
 def documents_echus(company, today=None):
     """GED22 — Documents ÉCHUS au regard de leur politique de rétention applicable.
 

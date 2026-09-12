@@ -5336,3 +5336,641 @@ def executer_dunning_company(company, *, today=None):
                 contrat.pk, company.pk, exc_info=True)
 
     return total
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Dépôt de la version « contrepartie » (négociation par redlines)
+# ---------------------------------------------------------------------------
+
+
+class DepotContrepartieError(Exception):
+    """Levée quand un dépôt de version contrepartie ne peut pas être accepté."""
+
+
+#: Extensions acceptées pour une version renvoyée par la contrepartie. Un
+#: redline arrive en Word (.docx/.doc) ou en PDF ; on refuse tout le reste
+#: explicitement plutôt que d'accepter un binaire arbitraire.
+EXTENSIONS_CONTREPARTIE = ('.pdf', '.docx', '.doc', '.odt', '.rtf')
+
+#: Taille maximale d'un dépôt (10 Mo — même ordre que ``records.storage``).
+TAILLE_MAX_CONTREPARTIE = 10 * 1024 * 1024
+
+
+def _extension_contrepartie(nom_fichier):
+    """Extension normalisée (minuscule, avec le point) d'un nom de fichier."""
+    nom = (nom_fichier or '').strip().lower()
+    if '.' not in nom:
+        return ''
+    return '.' + nom.rsplit('.', 1)[-1]
+
+
+def _mime_contrepartie(extension):
+    """Type MIME déduit de l'extension (jamais lu du corps de requête)."""
+    return {
+        '.pdf': 'application/pdf',
+        '.docx': ('application/vnd.openxmlformats-officedocument'
+                  '.wordprocessingml.document'),
+        '.doc': 'application/msword',
+        '.odt': 'application/vnd.oasis.opendocument.text',
+        '.rtf': 'application/rtf',
+    }.get(extension, 'application/octet-stream')
+
+
+def stocker_fichier_contrepartie(company, contenu, *, nom_fichier):
+    """Téléverse les octets d'une version contrepartie et renvoie sa clé objet.
+
+    Clé PRÉFIXÉE SOCIÉTÉ (``contrats/contreparties/{company_id}/{uuid}.ext``,
+    motif ERR75/SCA42) : l'isolation multi-tenant vit dans la clé elle-même.
+    Le binaire n'est JAMAIS stocké dans un ``FileField`` — seule la clé est
+    conservée en base, comme ``VersionContrat.fichier_key``.
+
+    Import PARESSEUX du client MinIO (import-safe en CI/dev sans MinIO).
+    """
+    import io
+    import uuid
+
+    from django.conf import settings
+
+    from apps.ventes.utils.minio_client import (
+        ensure_uploads_bucket, get_minio_client,
+    )
+
+    extension = _extension_contrepartie(nom_fichier) or '.bin'
+    mime = _mime_contrepartie(extension)
+    company_id = getattr(company, 'id', company)
+    key = (f'contrats/contreparties/{company_id}/'
+           f'{uuid.uuid4().hex}{extension}')
+    client = get_minio_client()
+    ensure_uploads_bucket()
+    client.upload_fileobj(
+        io.BytesIO(contenu), settings.MINIO_BUCKET_UPLOADS, key,
+        ExtraArgs={'ContentType': mime})
+    return key, mime
+
+
+def deposer_document_contrepartie(contrat, *, nom_fichier, contenu=None,
+                                  fichier_key='', mime='',
+                                  depose_par_nom='', depose_par_email='',
+                                  depose_par=None, lien=None, commentaire='',
+                                  auteur=None):
+    """NTDOC1 — Enregistre la version renvoyée par la contrepartie.
+
+    Le fichier est soit déjà stocké (``fichier_key``), soit téléversé ici à
+    partir de ses octets (``contenu``) via ``stocker_fichier_contrepartie``.
+    La société est TOUJOURS celle du contrat (posée côté serveur, jamais lue
+    d'un corps de requête), l'horodatage est serveur.
+
+    N'ÉCRIT JAMAIS dans une ``VersionContrat`` : le contenu figé des rendus
+    internes (CONTRAT18) reste intouché — les deux familles cohabitent.
+
+    Refuse (``DepotContrepartieError``) un nom de fichier vide, une extension
+    hors ``EXTENSIONS_CONTREPARTIE`` ou un fichier au-delà de la taille max.
+    Journalise le dépôt au chatter du contrat (CONTRAT15).
+    """
+    from .models import DocumentContrepartie
+
+    nom_fichier = (nom_fichier or '').strip()
+    if not nom_fichier:
+        raise DepotContrepartieError(
+            'Le champ « nom_fichier » est obligatoire : indiquez le nom du '
+            'fichier déposé.')
+    extension = _extension_contrepartie(nom_fichier)
+    if extension not in EXTENSIONS_CONTREPARTIE:
+        raise DepotContrepartieError(
+            f'Le champ « nom_fichier » porte un format non accepté '
+            f'(« {extension or "sans extension"} ») : formats acceptés '
+            f'{", ".join(EXTENSIONS_CONTREPARTIE)}.')
+
+    taille = 0
+    if contenu is not None:
+        taille = len(contenu)
+        if taille == 0:
+            raise DepotContrepartieError(
+                'Le champ « fichier » est vide : déposez un document non '
+                'vide.')
+        if taille > TAILLE_MAX_CONTREPARTIE:
+            raise DepotContrepartieError(
+                f'Le champ « fichier » dépasse la taille maximale '
+                f'({TAILLE_MAX_CONTREPARTIE // (1024 * 1024)} Mo).')
+        fichier_key, mime_detecte = stocker_fichier_contrepartie(
+            contrat.company, contenu, nom_fichier=nom_fichier)
+        mime = mime or mime_detecte
+    if not fichier_key:
+        raise DepotContrepartieError(
+            'Le champ « fichier » est obligatoire : aucun contenu ni clé de '
+            'stockage fournis.')
+
+    document = DocumentContrepartie.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        lien=lien,
+        fichier_key=fichier_key,
+        nom_fichier=nom_fichier,
+        mime=mime or _mime_contrepartie(extension),
+        taille=taille,
+        depose_par_nom=(depose_par_nom or '').strip()[:200],
+        depose_par_email=(depose_par_email or '').strip()[:254],
+        depose_par=depose_par,
+        commentaire=commentaire or '',
+    )
+    journaliser_transition(
+        contrat, field='contrepartie', old_value='',
+        new_value=f'dépôt « {nom_fichier} »',
+        message=(document.depose_par_nom or ''), auteur=auteur)
+    return document
+
+
+def archiver_document_contrepartie(document, *, auteur=None):
+    """NTDOC1 — Archive (soft) un dépôt contrepartie — jamais de suppression.
+
+    Une pièce de négociation est une pièce juridique : l'API ne l'efface
+    JAMAIS physiquement, elle la retire seulement des listes de travail.
+    """
+    deja = document.archive
+    document.archiver()
+    if not deja:
+        journaliser_transition(
+            document.contrat, field='contrepartie',
+            old_value=f'dépôt « {document.nom_fichier} » actif',
+            new_value=f'dépôt « {document.nom_fichier} » archivé',
+            auteur=auteur)
+    return document
+
+
+def creer_lien_depot_contrepartie(contrat, *, destinataire_nom='',
+                                  destinataire_email='', expires_at=None,
+                                  created_by=None):
+    """NTDOC1 — Crée un lien tokenisé de dépôt pour la contrepartie externe.
+
+    Patron ``PartageGed``/XGED7 : le jeton est l'UNIQUE secret d'accès, la
+    société et le contrat sont implicites (résolus DEPUIS le jeton, jamais lus
+    d'un corps de requête).
+    """
+    from .models import LienDepotContrepartie
+
+    return LienDepotContrepartie.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        destinataire_nom=(destinataire_nom or '').strip()[:200],
+        destinataire_email=(destinataire_email or '').strip()[:254],
+        expires_at=expires_at,
+        created_by=created_by,
+    )
+
+
+# ---------------------------------------------------------------------------
+# NTDOC2 — Diff entre la version contrepartie et la dernière VersionContrat
+# ---------------------------------------------------------------------------
+#
+# Même patron que XGED17 (``ged.selectors.comparer_versions``) : diff unifié
+# ligne à ligne avec la stdlib ``difflib``, et DÉGRADATION EXPLICITE (message
+# lisible, jamais une exception) quand un des deux côtés n'a pas de texte
+# exploitable. XGED17 compare deux VERSIONS INTERNES du même document ; ici on
+# compare un fichier EXTERNE déposé par la contrepartie au dernier rendu figé.
+
+#: Message unique de dégradation (jamais un plantage sur un format binaire).
+MESSAGE_COMPARAISON_INDISPONIBLE = 'Comparaison indisponible'
+
+
+def _texte_depuis_pdf(contenu):
+    """Texte d'un PDF natif via PyMuPDF (import PARESSEUX). '' si illisible."""
+    try:
+        import fitz  # PyMuPDF — déjà en production, jamais une seconde plomberie
+    except Exception:  # pragma: no cover - PyMuPDF absent
+        return ''
+    try:
+        with fitz.open(stream=contenu, filetype='pdf') as doc:
+            return '\n'.join(page.get_text() for page in doc).strip()
+    except Exception:  # pragma: no cover - PDF corrompu
+        return ''
+
+
+def _texte_depuis_docx(contenu):
+    """Texte d'un .docx — ``python-docx`` si présent, sinon stdlib (zip+XML).
+
+    ``python-docx`` n'est PAS une dépendance déclarée du dépôt : l'import est
+    paresseux et l'absence de la lib ne dégrade PAS la fonctionnalité (le
+    repli lit le même ``word/document.xml`` avec la seule bibliothèque
+    standard — aucune dépendance nouvelle n'est introduite ici).
+    """
+    import io
+
+    try:
+        import docx  # python-docx (optionnel)
+    except Exception:
+        docx = None
+
+    if docx is not None:  # pragma: no cover - dépend d'une lib optionnelle
+        try:
+            document = docx.Document(io.BytesIO(contenu))
+            return '\n'.join(p.text for p in document.paragraphs).strip()
+        except Exception:
+            return ''
+
+    # Repli stdlib : un .docx est un ZIP contenant word/document.xml.
+    import re as _re
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(contenu)) as zf:
+            xml = zf.read('word/document.xml').decode('utf-8', 'replace')
+    except Exception:
+        return ''
+    # Un saut de paragraphe/ligne devient un vrai saut de ligne, puis on
+    # retire toutes les balises restantes.
+    xml = _re.sub(r'</w:p>', '\n', xml)
+    xml = _re.sub(r'<w:br[^>]*/>', '\n', xml)
+    texte = _re.sub(r'<[^>]+>', '', xml)
+    return _html.unescape(texte).strip()
+
+
+def extraire_texte_contrepartie(document):
+    """NTDOC2 — Texte du fichier déposé par la contrepartie.
+
+    Renvoie ``(texte, raison)`` : ``raison`` vaut ``''`` quand le texte est
+    exploitable, sinon une phrase FRANÇAISE expliquant pourquoi la comparaison
+    est indisponible (format binaire non supporté, fichier introuvable, PDF
+    scanné sans OCR câblé…). Ne lève JAMAIS.
+
+    Chemin OCR : pour un PDF sans couche texte (scan), on repasse par le
+    service OCR de ``ged`` (frontière cross-app respectée : appel de
+    ``apps.ged.services``, jamais un import de ses modèles) — no-op sans clé,
+    on dégrade alors proprement.
+    """
+    from apps.records.storage import fetch_attachment
+
+    extension = _extension_contrepartie(document.nom_fichier)
+    contenu, erreur = fetch_attachment(document.fichier_key)
+    if contenu is None:
+        return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : '
+                    f'{erreur or "fichier introuvable dans le stockage"}.')
+
+    if extension == '.pdf':
+        texte = _texte_depuis_pdf(contenu)
+        if not texte:
+            texte = _texte_ocr_ged(contenu, mime='application/pdf')
+        if not texte:
+            return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : ce PDF ne '
+                        f'contient aucune couche texte (document scanné) et '
+                        f'l\'OCR n\'est pas disponible.')
+        return texte, ''
+    if extension == '.docx':
+        texte = _texte_depuis_docx(contenu)
+        if not texte:
+            return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : le fichier '
+                        f'.docx n\'a pas pu être lu.')
+        return texte, ''
+    if extension in ('.txt', '.rtf'):
+        try:
+            return contenu.decode('utf-8', 'replace').strip(), ''
+        except Exception:  # pragma: no cover - défensif
+            return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : fichier '
+                        f'illisible.')
+    return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : le format '
+                f'« {extension or "inconnu"} » n\'est pas comparable '
+                f'(formats comparables : .pdf, .docx, .txt).')
+
+
+def _texte_ocr_ged(contenu, *, mime=''):
+    """Texte OCR via le service de ``ged`` (no-op sans clé). '' si indisponible.
+
+    Frontière cross-app : on appelle le SERVICE de l'app cible, jamais ses
+    modèles. Import fonction-local (évite tout cycle) et best-effort.
+    """
+    try:
+        from apps.ged.services import ocr_enabled, ocr_extract_text
+    except Exception:  # pragma: no cover - app ged absente
+        return ''
+    try:
+        if not ocr_enabled():
+            return ''
+        return (ocr_extract_text(contenu, mime=mime) or '').strip()
+    except Exception:  # pragma: no cover - provider externe indisponible
+        return ''
+
+
+def _texte_version_interne(version):
+    """Texte du dernier rendu INTERNE figé. Renvoie ``(texte, raison)``."""
+    if version is None:
+        return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : aucune version '
+                    f'figée du contrat (créez-en une via « creer-version »).')
+    if version.contenu:
+        return version.contenu, ''
+    if version.fichier_key:
+        from apps.records.storage import fetch_attachment
+
+        contenu, _erreur = fetch_attachment(version.fichier_key)
+        if contenu:
+            texte = _texte_depuis_pdf(contenu)
+            if texte:
+                return texte, ''
+    return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : la version '
+                f'{version.version} du contrat ne porte aucun texte '
+                f'exploitable.')
+
+
+def comparer_contrepartie(contrat, document_contrepartie):
+    """NTDOC2 — Diff unifié dernier rendu interne ↔ version contrepartie.
+
+    Renvoie un dict :
+
+    - ``comparable`` : ``False`` (avec ``message`` explicite) quand un des
+      deux côtés n'a pas de texte exploitable — JAMAIS une exception ;
+    - ``diff_texte`` : les lignes du diff unifié (``difflib.unified_diff``,
+      même patron que XGED17) ;
+    - ``lignes_ajoutees`` / ``lignes_supprimees`` : compteurs de lignes ``+``
+      et ``-`` (hors en-têtes ``+++``/``---``).
+
+    Lecture seule : ne modifie NI le contrat, NI la ``VersionContrat``, NI le
+    dépôt contrepartie.
+    """
+    import difflib
+
+    from . import selectors as _selectors
+
+    version = _selectors.versions_contrat(contrat).first()
+    texte_interne, raison_interne = _texte_version_interne(version)
+    texte_externe, raison_externe = extraire_texte_contrepartie(
+        document_contrepartie)
+
+    entete = {
+        'contrepartie': {
+            'id': document_contrepartie.id,
+            'nom_fichier': document_contrepartie.nom_fichier,
+            'date_depot': document_contrepartie.date_depot,
+        },
+        'version_interne': (
+            {'id': version.id, 'version': version.version,
+             'motif': version.motif} if version is not None else None),
+    }
+
+    if raison_interne or raison_externe:
+        return {
+            **entete,
+            'comparable': False,
+            'message': raison_interne or raison_externe,
+            'diff_texte': [],
+            'lignes_ajoutees': 0,
+            'lignes_supprimees': 0,
+        }
+
+    lignes = list(difflib.unified_diff(
+        texte_interne.splitlines(), texte_externe.splitlines(),
+        fromfile=f'version {version.version} (interne)',
+        tofile=f'contrepartie — {document_contrepartie.nom_fichier}',
+        lineterm=''))
+    ajoutees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('+') and not ligne.startswith('+++'))
+    supprimees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('-') and not ligne.startswith('---'))
+    return {
+        **entete,
+        'comparable': True,
+        'message': '',
+        'diff_texte': lignes,
+        'lignes_ajoutees': ajoutees,
+        'lignes_supprimees': supprimees,
+    }
+
+
+# ---------------------------------------------------------------------------
+# NTDOC3 — Commentaires de redline (ancrés sur une ligne du diff / une clause)
+# ---------------------------------------------------------------------------
+
+
+class CommentaireRedlineError(Exception):
+    """Levée quand un commentaire de redline ne peut pas être écrit."""
+
+
+def creer_commentaire_redline(contrat, *, contenu, document_contrepartie=None,
+                              clause=None, ligne_reference=None,
+                              extrait_ligne='', auteur=None):
+    """NTDOC3 — Pose un commentaire sur le diff de négociation d'un contrat.
+
+    La société est celle du CONTRAT (posée côté serveur) et l'auteur est
+    l'utilisateur courant passé par la vue — ni l'une ni l'autre n'est lue du
+    corps de requête. Le commentaire naît toujours NON RÉSOLU : c'est lui qui
+    bloque la clôture de la négociation (NTDOC4).
+
+    Refuse (``CommentaireRedlineError``) un contenu vide, ou un dépôt/clause
+    d'un autre contrat ou d'une autre société (défense en profondeur).
+    """
+    from .models import CommentaireRedline
+
+    contenu = (contenu or '').strip()
+    if not contenu:
+        raise CommentaireRedlineError(
+            'Le champ « contenu » est obligatoire : un commentaire vide ne '
+            'peut pas être enregistré.')
+    if (document_contrepartie is not None
+            and document_contrepartie.contrat_id != contrat.id):
+        raise CommentaireRedlineError(
+            'Le champ « document_contrepartie » désigne un dépôt qui '
+            "n'appartient pas à ce contrat.")
+    if clause is not None and clause.company_id != contrat.company_id:
+        raise CommentaireRedlineError(
+            'Le champ « clause » désigne une clause qui n\'appartient pas à '
+            'votre société.')
+
+    commentaire = CommentaireRedline.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        document_contrepartie=document_contrepartie,
+        clause=clause,
+        ligne_reference=ligne_reference,
+        extrait_ligne=(extrait_ligne or '')[:500],
+        contenu=contenu,
+        auteur=auteur,
+    )
+    journaliser_transition(
+        contrat, field='redline', old_value='',
+        new_value='commentaire posé', message=contenu[:500], auteur=auteur)
+    return commentaire
+
+
+def resoudre_commentaire_redline(commentaire, *, user=None):
+    """NTDOC3 — Marque un commentaire de redline RÉSOLU (qui + quand, serveur).
+
+    Idempotent : re-résoudre un commentaire déjà résolu ne réécrit ni
+    ``resolu_par`` ni ``date_resolution`` (la première résolution fait foi).
+    """
+    if commentaire.resolu:
+        return commentaire
+    commentaire.resolu = True
+    commentaire.resolu_par = user
+    commentaire.date_resolution = timezone.now()
+    commentaire.save(
+        update_fields=['resolu', 'resolu_par', 'date_resolution'])
+    journaliser_transition(
+        commentaire.contrat, field='redline',
+        old_value='commentaire ouvert', new_value='commentaire résolu',
+        message=commentaire.contenu[:500], auteur=user)
+    return commentaire
+
+
+def rouvrir_commentaire_redline(commentaire, *, user=None):
+    """NTDOC3 — Rouvre un commentaire résolu (la négociation redevient bloquée)."""
+    if not commentaire.resolu:
+        return commentaire
+    commentaire.resolu = False
+    commentaire.resolu_par = None
+    commentaire.date_resolution = None
+    commentaire.save(
+        update_fields=['resolu', 'resolu_par', 'date_resolution'])
+    journaliser_transition(
+        commentaire.contrat, field='redline',
+        old_value='commentaire résolu', new_value='commentaire rouvert',
+        auteur=user)
+    return commentaire
+
+
+# ---------------------------------------------------------------------------
+# NTDOC32 — Purge des dépôts contrepartie ARCHIVÉS, selon la rétention GED
+# ---------------------------------------------------------------------------
+#
+# La durée n'est JAMAIS codée en dur : elle vient de la politique de rétention
+# configurée par la société (``ged.selectors.duree_retention_applicable`` —
+# frontière cross-app respectée, on appelle le SÉLECTEUR de l'app cible, jamais
+# ses modèles). Sans politique applicable, RIEN n'est purgé.
+
+#: Catégorie de rétention interrogée pour les pièces contractuelles.
+CATEGORIE_RETENTION_CONTRAT = 'contrat'
+
+
+# ---------------------------------------------------------------------------
+# NTDOC4 — Cycle de négociation (ouverture / clôture), piloté par la machine
+# ---------------------------------------------------------------------------
+#
+# AUCUNE écriture directe de ``Contrat.statut`` ici : les deux portes passent
+# par ``changer_statut`` (enveloppe ARC34 de ``machine_etats.changer_statut``,
+# CONTRAT12). Elles n'apportent que les GARDES MÉTIER propres à la négociation
+# et le journal (CONTRAT15).
+
+
+class NegociationError(Exception):
+    """Levée quand une étape du cycle de négociation ne peut pas être jouée."""
+
+
+def demarrer_negociation(contrat, *, user=None):
+    """NTDOC4 — Ouvre le round de négociation d'un contrat.
+
+    GARDE : il faut au moins un dépôt de contrepartie (NTDOC1) non archivé et
+    pas encore ``traite`` — on n'ouvre pas une négociation sans redline à
+    discuter.
+
+    La transition ``→ en_negociation`` est appliquée par la MACHINE D'ÉTATS
+    (jamais une écriture directe du champ) ; toute transition interdite est
+    reformulée en ``NegociationError``. L'étape est journalisée au chatter.
+    """
+    from . import selectors as _selectors
+    from .models import Contrat, DocumentContrepartie
+
+    if contrat.statut == Contrat.Statut.EN_NEGOCIATION:
+        raise NegociationError(
+            'Ce contrat est déjà en négociation.')
+    a_traiter = [
+        depot for depot in _selectors.documents_contrepartie(contrat)
+        if depot.statut != DocumentContrepartie.Statut.TRAITE
+    ]
+    if not a_traiter:
+        raise NegociationError(
+            "Aucune version de la contrepartie n'est en attente de "
+            'traitement : déposez d\'abord un document de contrepartie '
+            '(action « contreparties »).')
+
+    ancien = contrat.statut
+    try:
+        changer_statut(contrat, Contrat.Statut.EN_NEGOCIATION, user=user)
+    except TransitionInterdite as exc:
+        raise NegociationError(str(exc))
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut, message='ouverture de la négociation',
+        auteur=user)
+    return contrat
+
+
+def cloturer_negociation(contrat, *, user=None):
+    """NTDOC4 — Clôture la négociation et pousse le contrat en approbation.
+
+    GARDE : TOUS les ``CommentaireRedline`` du contrat doivent être ``resolu``
+    — il est impossible de clôturer avec un point ouvert.
+
+    Effets : les dépôts de contrepartie encore ouverts passent ``traite``,
+    puis la transition ``en_negociation → en_approbation`` est appliquée par la
+    MACHINE D'ÉTATS (qui porte en plus la garde « au moins deux parties »).
+    L'étape est journalisée au chatter.
+    """
+    from . import selectors as _selectors
+    from .models import Contrat, DocumentContrepartie
+
+    if contrat.statut != Contrat.Statut.EN_NEGOCIATION:
+        raise NegociationError(
+            'Ce contrat n\'est pas en négociation : ouvrez d\'abord la '
+            'négociation (action « demarrer-negociation »).')
+
+    ouverts = _selectors.commentaires_redline_ouverts(contrat).count()
+    if ouverts:
+        raise NegociationError(
+            f'Impossible de clôturer la négociation : {ouverts} '
+            f'commentaire(s) de redline ne sont pas résolus.')
+
+    ancien = contrat.statut
+    try:
+        changer_statut(contrat, Contrat.Statut.EN_APPROBATION, user=user)
+    except TransitionInterdite as exc:
+        raise NegociationError(str(exc))
+
+    DocumentContrepartie.objects.filter(
+        company=contrat.company, contrat=contrat, archive=False,
+    ).exclude(statut=DocumentContrepartie.Statut.TRAITE).update(
+        statut=DocumentContrepartie.Statut.TRAITE)
+
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut, message='clôture de la négociation',
+        auteur=user)
+    return contrat
+
+
+def duree_retention_contreparties(company):
+    """Durée (jours) de conservation des dépôts archivés, ou ``None``.
+
+    ``None`` = aucune politique de rétention applicable → l'appelant ne purge
+    RIEN (jamais de durée par défaut, jamais de constante en dur).
+    """
+    try:
+        from apps.ged.selectors import duree_retention_applicable
+    except Exception:  # pragma: no cover - app ged absente
+        return None
+    try:
+        return duree_retention_applicable(
+            company, type_document=CATEGORIE_RETENTION_CONTRAT)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def purger_contreparties_archivees(company, *, now=None):
+    """NTDOC32 — Supprime définitivement les dépôts ARCHIVÉS échus (une société).
+
+    Un dépôt n'est purgé que s'il est ``archive=True`` ET que son archivage
+    date de PLUS que la durée de rétention applicable. Un dépôt archivé
+    récemment est CONSERVÉ ; un dépôt non archivé n'est jamais touché.
+
+    Renvoie ``{'purges': n, 'duree_jours': d|None}``.
+    """
+    from .models import DocumentContrepartie
+
+    duree = duree_retention_contreparties(company)
+    if not duree:
+        return {'purges': 0, 'duree_jours': duree}
+
+    limite = (now or timezone.now()) - timedelta(days=int(duree))
+    echus = DocumentContrepartie.objects.filter(
+        company=company, archive=True, date_archivage__lt=limite)
+    purges = echus.count()
+    if purges:
+        echus.delete()
+    return {'purges': purges, 'duree_jours': int(duree)}

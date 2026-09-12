@@ -9,6 +9,13 @@ Le ``Contrat.statut`` suit un cycle de vie strict :
                                                   ▼
                                             resilie / expire
 
+NTDOC4 ajoute une dérivation AVANT l'approbation : ``brouillon →
+en_negociation → en_approbation`` (round de redlines avec la contrepartie).
+Le chemin direct ``brouillon → en_approbation`` reste inchangé, et
+``en_negociation → brouillon`` permet d'abandonner la négociation. Les deux
+portes dédiées ``demarrer-negociation`` / ``cloturer-negociation`` portent les
+gardes métier (une contrepartie non traitée / tous les commentaires résolus).
+
 Règles (gardes) :
 
 - Seules les transitions listées dans ``TRANSITIONS_AUTORISEES`` sont permises ;
@@ -45,7 +52,15 @@ def _transitions():
     """Graphe d'états : statut courant → ensemble des statuts cibles permis."""
     S = _statuts()
     return {
-        S.BROUILLON: {S.EN_APPROBATION, S.RESILIE},
+        # NTDOC4 — « brouillon → en_negociation » ouvre le round de redlines
+        # avec la contrepartie ; le chemin direct « brouillon → en_approbation »
+        # (sans négociation) reste inchangé.
+        S.BROUILLON: {S.EN_NEGOCIATION, S.EN_APPROBATION, S.RESILIE},
+        # NTDOC4 — la clôture de négociation pousse vers l'approbation
+        # (``cloturer-negociation``, qui EXIGE que tous les commentaires de
+        # redline soient résolus) ; le retour en brouillon reste possible si la
+        # négociation est abandonnée, et la résiliation garde sa porte dédiée.
+        S.EN_NEGOCIATION: {S.EN_APPROBATION, S.BROUILLON, S.RESILIE},
         S.EN_APPROBATION: {S.SIGNE, S.BROUILLON, S.RESILIE},
         S.SIGNE: {S.ACTIF, S.RESILIE},
         S.ACTIF: {S.SUSPENDU, S.RESILIE, S.EXPIRE},
@@ -99,6 +114,10 @@ def _transitions_gardees_parties():
     S = _statuts()
     return {
         (S.BROUILLON, S.EN_APPROBATION),
+        # NTDOC4 — la clôture de négociation est une FINALISATION : elle porte
+        # la même garde « au moins deux parties » que le passage direct en
+        # approbation (on ne soumet pas un contrat à une seule partie).
+        (S.EN_NEGOCIATION, S.EN_APPROBATION),
         (S.EN_APPROBATION, S.SIGNE),
     }
 
