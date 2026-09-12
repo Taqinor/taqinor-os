@@ -1420,13 +1420,22 @@ class DataSubjectRequest(TimestampedModel):
     ]
 
     STATUT_RECUE = 'recue'
+    # NTGRC3 — étape de VÉRIFICATION D'IDENTITÉ : on ne livre jamais les
+    # données d'une personne sans s'être assuré que le demandeur est bien
+    # elle. Couche de statut DOCUMENTAIRE, séparée et permanente, sans aucun
+    # rapport avec le funnel commercial de STAGES.py.
+    STATUT_EN_VERIFICATION = 'en_verification'
     STATUT_TRAITEE = 'traitee'
     STATUT_REFUSEE = 'refusee'
     STATUT_CHOICES = [
         (STATUT_RECUE, 'Reçue'),
+        (STATUT_EN_VERIFICATION, "En vérification d'identité"),
         (STATUT_TRAITEE, 'Traitée'),
         (STATUT_REFUSEE, 'Refusée'),
     ]
+
+    #: NTGRC3 — délai légal de réponse (loi 09-08), en jours.
+    DELAI_LEGAL_JOURS = 30
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -1437,7 +1446,7 @@ class DataSubjectRequest(TimestampedModel):
         help_text='Email ou téléphone de la personne concernée.')
     kind = models.CharField('Type', max_length=20, choices=KIND_CHOICES)
     statut = models.CharField(
-        'Statut', max_length=12, choices=STATUT_CHOICES, default=STATUT_RECUE)
+        'Statut', max_length=20, choices=STATUT_CHOICES, default=STATUT_RECUE)
     resultat = models.JSONField(
         'Résultat', default=dict, blank=True,
         help_text="Payload d'export (accès) ou compte-rendu d'effacement.")
@@ -1456,6 +1465,18 @@ class DataSubjectRequest(TimestampedModel):
     token_suivi = models.CharField(
         'Jeton de suivi', max_length=64, null=True, blank=True, unique=True,
         help_text='Jeton opaque de suivi public (jamais l\'identifiant réel).')
+    # ── NTGRC3 — échéance légale + pièces du dossier ─────────────────────────
+    # Posée À LA CRÉATION (= date de réception + 30 jours, loi 09-08) et jamais
+    # recalculée ensuite : une demande ne voit pas son délai légal reculer.
+    date_echeance = models.DateTimeField(
+        'Échéance légale', null=True, blank=True,
+        help_text='Date de réception + 30 jours (loi 09-08).')
+    # Pièces justificatives du dossier (clés de stockage + libellés) — jamais
+    # la pièce elle-même, jamais de donnée personnelle brute.
+    pieces = models.JSONField(
+        'Pièces du dossier', default=list, blank=True,
+        help_text='Liste de {libelle, cle} — références de pièces, jamais '
+                  'leur contenu.')
 
     class Meta:
         verbose_name = 'Demande de personne concernée'
@@ -1466,7 +1487,25 @@ class DataSubjectRequest(TimestampedModel):
                          name='core_dsr_co_statut_idx'),
             models.Index(fields=['company', 'subject_identifier'],
                          name='core_dsr_co_subj_idx'),
+            # NTGRC3 — balayage « demandes en retard » (échéance × statut).
+            models.Index(fields=['company', 'date_echeance'],
+                         name='core_dsr_co_echeance_idx'),
         ]
+
+    def save(self, *args, **kwargs):
+        """Pose l'échéance légale UNE FOIS, à la création.
+
+        ``created_at`` n'existe pas encore au moment où l'on écrit la ligne
+        (``auto_now_add`` est résolu pendant l'INSERT) : on prend donc
+        l'instant courant, qui est le même à la microseconde près. Une
+        échéance déjà posée n'est JAMAIS recalculée — sinon le délai légal
+        reculerait à chaque enregistrement.
+        """
+        if self.date_echeance is None:
+            base = self.created_at or timezone.now()
+            self.date_echeance = base + timezone.timedelta(
+                days=self.DELAI_LEGAL_JOURS)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f'DSR {self.kind} — {self.subject_identifier} ({self.statut})'

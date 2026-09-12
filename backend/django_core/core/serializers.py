@@ -579,10 +579,13 @@ class DataSubjectRequestSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'subject_identifier', 'kind', 'statut', 'resultat',
             'traitee_le', 'created_at', 'updated_at',
+            # NTGRC3 — échéance légale (posée serveur, jamais modifiable) et
+            # pièces du dossier (références seules, jamais leur contenu).
+            'date_echeance', 'pieces',
         ]
         read_only_fields = [
             'id', 'statut', 'resultat', 'traitee_le',
-            'created_at', 'updated_at',
+            'created_at', 'updated_at', 'date_echeance',
         ]
 
 

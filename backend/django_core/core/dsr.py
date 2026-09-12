@@ -71,6 +71,105 @@ def effacer(company, subject_identifier):
     return out
 
 
+# ===========================================================================
+# NTGRC3 — machine à états de la demande + échéance légale 30 jours.
+#
+# Le cycle de vie légal est : reçue → (vérification d'identité) → traitée ou
+# refusée. On ne livre jamais les données d'une personne sans s'être assuré
+# que le demandeur est bien elle ; et une demande CLOSE (traitée/refusée) ne
+# se rouvre pas — elle donnerait un second export sans nouvelle demande.
+# Couche de statut DOCUMENTAIRE permanente, sans aucun rapport avec le funnel
+# commercial de STAGES.py.
+# ===========================================================================
+
+
+class TransitionInterdite(ValueError):
+    """Transition de statut illégale sur une ``DataSubjectRequest``.
+
+    Traduite en 400 par la vue (jamais 500) : le message NOMME le statut
+    courant et le statut visé, en français.
+    """
+
+
+def transitions_autorisees(statut):
+    """Statuts atteignables depuis ``statut`` (jamais None)."""
+    from .models import DataSubjectRequest
+
+    table = {
+        DataSubjectRequest.STATUT_RECUE: {
+            DataSubjectRequest.STATUT_EN_VERIFICATION,
+            DataSubjectRequest.STATUT_TRAITEE,
+            DataSubjectRequest.STATUT_REFUSEE,
+        },
+        DataSubjectRequest.STATUT_EN_VERIFICATION: {
+            DataSubjectRequest.STATUT_TRAITEE,
+            DataSubjectRequest.STATUT_REFUSEE,
+        },
+        # Statuts TERMINAUX : une demande close ne se rouvre pas.
+        DataSubjectRequest.STATUT_TRAITEE: set(),
+        DataSubjectRequest.STATUT_REFUSEE: set(),
+    }
+    return table.get(statut, set())
+
+
+def verifier_transition(request, cible):
+    """Lève ``TransitionInterdite`` si ``request`` ne peut pas passer à
+    ``cible``. Ne modifie rien."""
+    from .models import DataSubjectRequest
+
+    libelles = dict(DataSubjectRequest.STATUT_CHOICES)
+    if cible not in libelles:
+        raise TransitionInterdite(
+            f'Statut « {cible} » inconnu pour une demande de droit.')
+    if cible not in transitions_autorisees(request.statut):
+        raise TransitionInterdite(
+            f'Transition impossible : une demande « '
+            f'{libelles.get(request.statut, request.statut)} » ne peut pas '
+            f'passer à « {libelles[cible]} ».')
+
+
+def prendre_en_charge(request):
+    """Passe la demande en VÉRIFICATION D'IDENTITÉ (reçue → en_verification).
+
+    Lève ``TransitionInterdite`` si la demande n'est plus au statut « reçue ».
+    """
+    from .models import DataSubjectRequest
+
+    verifier_transition(request, DataSubjectRequest.STATUT_EN_VERIFICATION)
+    request.statut = DataSubjectRequest.STATUT_EN_VERIFICATION
+    request.save(update_fields=['statut', 'updated_at'])
+    return request
+
+
+def refuser_demande(request, motif=''):
+    """Refuse la demande (motif obligatoire pour rester traçable)."""
+    from .models import DataSubjectRequest
+
+    verifier_transition(request, DataSubjectRequest.STATUT_REFUSEE)
+    request.statut = DataSubjectRequest.STATUT_REFUSEE
+    request.resultat = {'refus': True, 'motif': motif or ''}
+    request.traitee_le = timezone.now()
+    request.save(update_fields=['statut', 'resultat', 'traitee_le',
+                                'updated_at'])
+    return request
+
+
+def demandes_en_retard(company, now=None):
+    """Demandes de ``company`` dont l'échéance légale est DÉPASSÉE.
+
+    « En retard » = échéance passée ET demande encore ouverte (ni traitée ni
+    refusée). Bornée à la société — jamais de lecture cross-société.
+    """
+    from .models import DataSubjectRequest
+
+    now = now or timezone.now()
+    return (DataSubjectRequest.objects
+            .filter(company=company, date_echeance__lt=now)
+            .exclude(statut__in=[DataSubjectRequest.STATUT_TRAITEE,
+                                 DataSubjectRequest.STATUT_REFUSEE])
+            .order_by('date_echeance', 'id'))
+
+
 def traiter_demande(request):
     """Exécute une ``DataSubjectRequest`` (accès → export, effacement → erase).
 
@@ -78,6 +177,11 @@ def traiter_demande(request):
     société de la demande borne tous les fournisseurs.
     """
     from .models import DataSubjectRequest
+
+    # NTGRC3 — garde de transition : une demande déjà CLOSE (traitée/refusée)
+    # ne se re-traite pas ; sinon un second export partirait sans qu'aucune
+    # nouvelle demande n'ait été déposée.
+    verifier_transition(request, DataSubjectRequest.STATUT_TRAITEE)
 
     company = request.company
     subject = request.subject_identifier
