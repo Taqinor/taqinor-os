@@ -522,6 +522,40 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         return Response(
             BulletinPaieSerializer(bulletin).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='certificat-travail')
+    def certificat_travail(self, request, pk=None):
+        """Certificat de travail de sortie, art. 72 (NTPAY6) — PDF.
+
+        Pièce de sortie de l'assistant STC (XPAI1), distincte de
+        l'attestation de travail générique (PAIE34) : elle porte les DATES
+        EXACTES d'entrée/sortie, le(s) emploi(s) occupé(s) et la mention
+        « libre de tout engagement ». Dates et poste sont lus via
+        ``rh.selectors`` (jamais ``rh.models``). Sans date de sortie sur la
+        fiche RH, l'édition est refusée en 400 en nommant ce qui manque.
+        """
+        from apps.rh import selectors as rh_selectors  # cross-app, lecture
+
+        profil = self.get_object()
+        identite = rh_selectors.fiche_identite_employe(
+            request.user.company, profil.employe_id) or {}
+        date_sortie, _motif = rh_selectors.sortie_employe(
+            request.user.company, profil.employe_id)
+        emplois = [identite.get('poste')] if identite.get('poste') else []
+        try:
+            pdf = builders.render_certificat_travail_pdf(
+                profil,
+                date_entree=identite.get('date_embauche'),
+                date_sortie=date_sortie or identite.get('date_sortie'),
+                emplois=emplois)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return _pdf_response(pdf, f'certificat_travail_{profil.id}.pdf')
+
     @action(detail=True, methods=['get'], url_path='stc-pdf')
     def stc_pdf(self, request, pk=None):
         """Reçu pour solde de tout compte au format PDF (XPAI1).

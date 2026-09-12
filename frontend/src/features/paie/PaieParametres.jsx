@@ -1130,6 +1130,21 @@ function StcDialog({ profil, onClose }) {
     } finally { setBusy(false) }
   }
 
+  // NTPAY6 — pièce de sortie obligatoire (art. 72), distincte du reçu STC :
+  // dates exactes d'entrée/sortie + emploi(s) + « libre de tout engagement ».
+  const telechargerCertificat = async () => {
+    setBusy(true)
+    try {
+      const { data } = await paieApi.certificatTravail(profil.id)
+      openPdfBlob(data, `certificat_travail_${profil.id}.pdf`)
+    } catch (e) {
+      toast.error(
+        e?.response?.data?.detail
+        || 'Certificat de travail indisponible (moteur de rendu).',
+      )
+    } finally { setBusy(false) }
+  }
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
@@ -1176,6 +1191,10 @@ function StcDialog({ profil, onClose }) {
           )}
         </div>
         <DialogFooter>
+          <Button variant="outline" onClick={telechargerCertificat}
+            loading={busy}>
+            <Download size={16} aria-hidden="true" /> Certificat de travail
+          </Button>
           {bulletin && (
             <Button variant="outline" onClick={telechargerRecu} loading={busy}>
               <Download size={16} aria-hidden="true" /> Reçu PDF

@@ -726,6 +726,79 @@ def render_registre_conges_pdf(registre, *, today=None):
     return _html_to_pdf(render_registre_conges_html(registre, today=today))
 
 
+# ── NTPAY6 — Certificat de travail (art. 72 du Code du travail) ────────────
+
+# Mention légale de l'article 72 : le certificat libère le salarié de tout
+# engagement envers l'employeur. Distincte de l'attestation de travail
+# (PAIE34), qui ne constate qu'une appartenance en cours.
+MENTION_LIBRE_ENGAGEMENT = (
+    'L’intéressé(e) est libre de tout engagement envers notre société.')
+
+
+def render_certificat_travail_html(profil, *, date_entree, date_sortie,
+                                   emplois, employeur=None, today=None):
+    """HTML du CERTIFICAT DE TRAVAIL de sortie (NTPAY6, art. 72).
+
+    Le Code du travail marocain impose, À LA SORTIE, un certificat formel
+    portant les DATES EXACTES d'entrée et de sortie, le ou les emplois
+    occupés et la mention « libre de tout engagement » — ce que l'attestation
+    de travail générique (PAIE34) ne fait pas.
+
+    ``date_entree``/``date_sortie`` sont des ``date`` (lues côté appelant via
+    ``rh.selectors`` — la paie n'importe jamais ``rh.models``) ; ``emplois``
+    est une liste de libellés de postes. Rien n'est inventé : une date absente
+    s'imprime « — », et le certificat ne prétend alors pas à une date qu'il
+    n'a pas. Lève ``ValueError`` si aucune date de sortie n'est connue (un
+    certificat de travail SANS date de sortie n'est pas un document de
+    sortie).
+    """
+    if not date_sortie:
+        raise ValueError(
+            'Date de sortie inconnue : renseignez la sortie du salarié sur sa '
+            'fiche RH avant d’éditer le certificat de travail.')
+    if today is None:
+        today = date.today()
+    nom = escape(_nom_employe(profil))
+    emplois = [e for e in (emplois or []) if e]
+    emplois_txt = escape(', '.join(emplois)) if emplois else '—'
+    entree_txt = escape(_date_fr(date_entree)) if date_entree else '—'
+    sortie_txt = escape(_date_fr(date_sortie))
+    entete = _entete_employeur_html(employeur) if employeur else ''
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 12px; color: #222; margin: 40px; }}
+  h1 {{ font-size: 18px; text-align: center; }}
+  table {{ margin: 18px 0; border-collapse: collapse; }}
+  td {{ padding: 3px 10px 3px 0; }}
+  .mention {{ margin-top: 14px; font-weight: 700; }}
+  .date {{ text-align: right; margin-top: 40px; }}
+</style></head><body>
+  {entete}
+  <h1>Certificat de travail</h1>
+  <p>Nous soussignés, certifions que <strong>{nom}</strong> a fait partie de
+     notre personnel aux dates et dans le(s) emploi(s) suivants :</p>
+  <table>
+    <tr><td><strong>Date d’entrée :</strong></td><td>{entree_txt}</td></tr>
+    <tr><td><strong>Date de sortie :</strong></td><td>{sortie_txt}</td></tr>
+    <tr><td><strong>Emploi(s) occupé(s) :</strong></td><td>{emplois_txt}</td></tr>
+  </table>
+  <p class="mention">{escape(MENTION_LIBRE_ENGAGEMENT)}</p>
+  <p>Le présent certificat est délivré à l’intéressé(e) conformément à
+     l’article 72 du Code du travail, pour servir et valoir ce que de droit.</p>
+  <p class="date">Fait le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_certificat_travail_pdf(profil, *, date_entree, date_sortie,
+                                  emplois, employeur=None, today=None):
+    """Certificat de travail → octets PDF (NTPAY6)."""
+    if employeur is None:
+        employeur = employeur_context(getattr(profil, 'company', None))
+    return _html_to_pdf(render_certificat_travail_html(
+        profil, date_entree=date_entree, date_sortie=date_sortie,
+        emplois=emplois, employeur=employeur, today=today))
+
+
 def render_bordereau_cnss_html(bordereau, employeur, *, today=None):
     """HTML du bordereau de PAIEMENT des cotisations CNSS (NTPAY4).
 
