@@ -19,7 +19,7 @@
    aucune image approximative. Le builder 3D vendored n'est pas touché : ce
    calque flotte AU-DESSUS de sa carte, en `pointer-events: none`. */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { warpImageToQuad } from '../../../pages/crm/visites/roofTextureWarp'
+import { warpImageToQuad } from '../../../lib/roofTextureWarp'
 import { quadPhotoToit } from './photoToit'
 
 // Marge du viewBox du contour (`-2 -2 largeur+4 hauteur+4`, traceToit.js) :

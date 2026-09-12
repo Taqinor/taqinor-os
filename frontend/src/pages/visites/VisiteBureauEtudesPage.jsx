@@ -9,13 +9,13 @@
 // serveur, jamais une invention de paramètre de requête hors contrat.
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import crmApi from '../../../api/crmApi'
-import PageHeader from '../../../components/layout/PageHeader'
+import visitesApi from '../../api/visitesApi'
+import PageHeader from '../../components/layout/PageHeader'
 import {
   Button, Card, Spinner, EmptyState, Badge, Checkbox, Textarea, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '../../../ui'
-import { toast } from '../../../ui/confirm'
+} from '../../ui'
+import { toast } from '../../ui/confirm'
 import { MESURES_SCHEMA, trierCategories, STATUT_VISITE_LABEL } from './visiteHelpers'
 
 function MesuresRecap({ mesures, checklist }) {
@@ -102,7 +102,7 @@ function RenvoyerDialog({ open, onOpenChange, visite, onRenvoye }) {
   const envoyer = async () => {
     setEnvoi(true)
     try {
-      await crmApi.renvoyerVisite(visite.id, { photos, mesures, motif })
+      await visitesApi.renvoyerVisite(visite.id, { photos, mesures, motif })
       toast.success('Visite renvoyée au commercial.')
       onRenvoye?.()
       onOpenChange(false)
@@ -171,7 +171,7 @@ function DetailVisite({ visite, onRetour, onChanged }) {
   const valider = async () => {
     setValidant(true)
     try {
-      await crmApi.validerVisite(visite.id)
+      await visitesApi.validerVisite(visite.id)
       toast.success('Visite validée — feu vert calepinage.')
       onChanged()
     } catch {
@@ -235,7 +235,7 @@ export default function VisiteBureauEtudesPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    crmApi.getVisites({})
+    visitesApi.getVisites({})
       .then((res) => {
         const rows = res.data?.results ?? res.data ?? []
         setVisites(rows.filter((v) => v.statut === 'terminee'))
@@ -249,11 +249,11 @@ export default function VisiteBureauEtudesPage() {
 
   const ouvrir = (id) => {
     setDetailId(id)
-    crmApi.getVisite(id).then((res) => setDetail(res.data)).catch(() => toast.error('Visite introuvable.'))
+    visitesApi.getVisite(id).then((res) => setDetail(res.data)).catch(() => toast.error('Visite introuvable.'))
   }
 
   const surChangement = () => {
-    crmApi.getVisite(detailId).then((res) => setDetail(res.data))
+    visitesApi.getVisite(detailId).then((res) => setDetail(res.data))
     load()
   }
 

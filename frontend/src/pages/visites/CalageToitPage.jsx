@@ -17,11 +17,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import crmApi from '../../../api/crmApi'
-import PageHeader from '../../../components/layout/PageHeader'
-import { Button, Card, Spinner, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../ui'
-import { toast } from '../../../ui/confirm'
-import { warpImageToQuad, boundingBox } from './roofTextureWarp'
+import visitesApi from '../../api/visitesApi'
+import PageHeader from '../../components/layout/PageHeader'
+import { Button, Card, Spinner, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../ui'
+import { toast } from '../../ui/confirm'
+import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
 
 const DEFAULT_CENTER = [31.7917, -7.0926] // Maroc — repli si le lead n'a pas de GPS.
 const DELTA = 0.00012 // ≈13 m — écart initial des 4 poignées autour du centre.
@@ -52,7 +52,7 @@ export default function CalageToitPage() {
   const pollRef = useRef(null)
 
   const recharger = useCallback(() => {
-    crmApi.getVisite(id).then((res) => setVisite(res.data)).catch(() => setErreur('Visite introuvable.'))
+    visitesApi.getVisite(id).then((res) => setVisite(res.data)).catch(() => setErreur('Visite introuvable.'))
   }, [id])
 
   useEffect(() => { recharger() }, [recharger])
@@ -79,7 +79,7 @@ export default function CalageToitPage() {
   const lancerAssemblage = async () => {
     setAssemblage(true)
     try {
-      const res = await crmApi.assemblerPhotosVisite(id)
+      const res = await visitesApi.assemblerPhotosVisite(id)
       setVisite(res.data)
     } catch {
       toast.error('Lancement de l’assemblage impossible.')
@@ -154,7 +154,7 @@ export default function CalageToitPage() {
       return [ll.lat, ll.lng]
     })
     try {
-      const res = await crmApi.patchVisiteCalage(id, coins)
+      const res = await visitesApi.patchVisiteCalage(id, coins)
       setVisite(res.data)
       toast.success('Calage enregistré.')
     } catch {
@@ -172,7 +172,7 @@ export default function CalageToitPage() {
       <PageHeader
         title="Calage du toit"
         subtitle={visite.client_panel?.lead_nom}
-        actions={<Button type="button" variant="ghost" onClick={() => navigate(`/crm/visites/${id}`)}>Retour</Button>}
+        actions={<Button type="button" variant="ghost" onClick={() => navigate(`/visites/${id}`)}>Retour</Button>}
       />
 
       {assemblageEtat === 'en_cours' && (

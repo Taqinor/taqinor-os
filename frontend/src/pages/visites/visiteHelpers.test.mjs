@@ -2,7 +2,7 @@
 // ici copient EXACTEMENT la forme du contrat committé
 // `apps/crm/contract_samples/visite_terrain.json` (PACT10, garde
 // check_api_shapes.py) : mêmes clés, mêmes natures.
-//   node --test src/pages/crm/visites/visiteHelpers.test.mjs
+//   node --test src/pages/visites/visiteHelpers.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {

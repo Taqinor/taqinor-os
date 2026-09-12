@@ -6,7 +6,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const { patchVisiteMesures } = vi.hoisted(() => ({ patchVisiteMesures: vi.fn() }))
-vi.mock('../../../api/crmApi', () => ({
+vi.mock('../../api/visitesApi', () => ({
   default: { patchVisiteMesures: (...a) => patchVisiteMesures(...a) },
 }))
 

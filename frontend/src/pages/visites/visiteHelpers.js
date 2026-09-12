@@ -115,3 +115,23 @@ export function mapsUrl(lat, lng) {
   if (lat == null || lng == null) return null
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
 }
+
+// VTA9 — lien de navigation NATIF du téléphone (`geo:`) : Android ouvre le
+// sélecteur d'applis de navigation (Maps, Waze, OsmAnd…) au lieu d'imposer un
+// site web. Sans coordonnées exploitables → null (l'écran n'affiche alors
+// aucun lien, il n'en invente pas un sur l'adresse textuelle).
+export function geoUrl(lat, lng, libelle) {
+  if (lat == null || lng == null) return null
+  const q = libelle ? `?q=${lat},${lng}(${encodeURIComponent(libelle)})` : ''
+  return `geo:${lat},${lng}${q}`
+}
+
+// VTA9 — heure courte d'un horodatage SERVEUR (`en_route_le`/`arrivee_le`).
+// L'écran n'horodate JAMAIS localement : il réaffiche ce que le serveur a
+// écrit. Valeur absente/illisible → chaîne vide (aucune heure inventée).
+export function heureServeur(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+}
