@@ -5,8 +5,8 @@
    module.config.jsx`. */
 import { lazy } from 'react'
 import {
-  Calculator, Construction, FileEdit, FileQuestion, Layers, MapPin,
-  NotebookPen, Share2, Stamp,
+  Calculator, Construction, FileEdit, FileQuestion, Layers, LayoutDashboard,
+  MapPin, NotebookPen, Share2, Stamp,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -40,6 +40,8 @@ const DecompteGeneralPage = lazy(() => import('./DecompteGeneral'))
 const DiffusionPlansPage = lazy(() => import('./DiffusionPlans'))
 // NTCON14 — planning tous corps d'état groupé par lot.
 const PlanningLotsPage = lazy(() => import('./PlanningLots'))
+// NTCON21 — tableau de bord BTP par chantier (6 blocs, lecture seule).
+const ChantierBtpCockpitPage = lazy(() => import('./ChantierBtpCockpit'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -101,6 +103,12 @@ const config = {
         icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/cockpit',
+        label: 'Tableau de bord chantier',
+        icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   titles: [
@@ -112,6 +120,7 @@ const config = {
     ['/btp-chantier/dgd', 'Décompte général et définitif'],
     ['/btp-chantier/diffusion-plans', 'Diffusion contrôlée de plans'],
     ['/btp-chantier/planning-lots', "Planning tous corps d'état (par lot)"],
+    ['/btp-chantier/cockpit', 'Tableau de bord BTP du chantier'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -123,6 +132,8 @@ const config = {
     { path: '/btp-chantier/dgd', component: DecompteGeneralPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/diffusion-plans', component: DiffusionPlansPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/planning-lots', component: PlanningLotsPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/cockpit', component: ChantierBtpCockpitPage, roles: ROLES },
+    { path: '/btp-chantier/cockpit/:chantierId', component: ChantierBtpCockpitPage, roles: ROLES },
   ],
 }
 

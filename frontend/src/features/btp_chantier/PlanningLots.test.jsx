@@ -38,7 +38,8 @@ vi.mock('../../api/installationsApi', () => ({
   },
 }))
 
-import PlanningLots, { bornesPlanning, barre } from './PlanningLots'
+import PlanningLots from './PlanningLots'
+import { bornesPlanning, barre } from './planningLots.utils'
 
 beforeEach(() => {
   vi.clearAllMocks()
