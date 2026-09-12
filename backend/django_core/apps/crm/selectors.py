@@ -3642,6 +3642,48 @@ def soumissions_partenaire_portail(company, partenaire_id):
         company=company, partenaire_id=partenaire_id)]
 
 
+def partenaire_peut_soumettre(company, partenaire_id):
+    """NTPRT32 — le partenaire est-il AGRÉÉ pour enregistrer une affaire ?
+
+    Renvoie ``(autorise, motif)`` :
+
+    * ``(False, None)`` — aucun partenaire de cet id dans CETTE société.
+      L'appelant répond « introuvable » : on ne dit jamais qu'il existe
+      ailleurs ;
+    * ``(False, '<message français>')`` — le partenaire existe mais son
+      agrément ne l'autorise pas : le message lui EXPLIQUE pourquoi ;
+    * ``(True, '')`` — nominal.
+
+    Le statut d'agrément (FG237, ``Partenaire.statut_onboarding``) est la
+    SEULE autorité, avec le drapeau ``actif`` qui ferme la porte de la même
+    façon : c'est exactement ce que le critère d'acceptation NTPRT32 demande
+    de faire respecter par NTPRT28. Un partenaire encore ``prospect`` ou
+    ``en_cours`` d'agrément — comme un partenaire ``suspendu`` — n'enregistre
+    aucune affaire ; les soumissions DÉJÀ déposées restent consultables (on
+    ne ferme jamais rétroactivement l'historique du partenaire).
+    """
+    if company is None or not partenaire_id:
+        return False, None
+
+    from .models import Partenaire
+
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return False, None
+    if not partenaire.actif:
+        return False, ('Votre compte partenaire est désactivé. Contactez '
+                       'votre interlocuteur commercial.')
+    if partenaire.statut_onboarding == 'suspendu':
+        return False, ('Votre agrément est suspendu : vous ne pouvez pas '
+                       'enregistrer de nouvelle affaire pour le moment.')
+    if partenaire.statut_onboarding != 'agree':
+        return False, ("Votre agrément n'est pas encore finalisé : vous "
+                       "pourrez enregistrer vos affaires dès l'activation "
+                       'de votre partenariat.')
+    return True, ''
+
+
 def releve_commissions_partenaire(company, partenaire_id, debut=None,
                                   fin=None):
     """NTPRT30 — relevé des commissions DU partenaire, sur une période.

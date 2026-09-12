@@ -264,11 +264,27 @@ class MesSoumissionsPortailPartenaireViewSet(viewsets.ViewSet):
 
     @extend_schema(responses=MesSoumissionsPortailLigneSerializer)
     def create(self, request):
-        """Enregistre une affaire. Les erreurs NOMMENT le champ fautif."""
-        from apps.crm.selectors import soumissions_partenaire_portail
+        """Enregistre une affaire. Les erreurs NOMMENT le champ fautif.
+
+        NTPRT32 — l'AGRÉMENT (FG237) commande : un partenaire non agréé
+        (prospect, en cours, suspendu) ou désactivé ne dépose aucune affaire,
+        et le refus lui dit POURQUOI. Ses soumissions déjà déposées restent
+        consultables — on ne ferme jamais rétroactivement son historique.
+        """
+        from apps.crm.selectors import (
+            partenaire_peut_soumettre, soumissions_partenaire_portail,
+        )
         from apps.crm.services import soumettre_lead_partenaire
 
         company, partenaire_id = self._scope(request)
+
+        autorise, motif = partenaire_peut_soumettre(company, partenaire_id)
+        if not autorise:
+            if motif is None:
+                return Response({'detail': 'Introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': motif},
+                            status=status.HTTP_403_FORBIDDEN)
 
         nom = str(request.data.get('nom_prospect') or '').strip()
         if not nom:

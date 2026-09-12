@@ -43,6 +43,7 @@ export default function PortailPartenaireLeads() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(false)
+  const [agree, setAgree] = useState(true)
   const [form, setForm] = useState(VIDE)
   const [erreursChamps, setErreursChamps] = useState({})
   const [busy, setBusy] = useState(false)
@@ -61,6 +62,21 @@ export default function PortailPartenaireLeads() {
   useEffect(() => {
     // Différé d'un microtask (react-hooks/set-state-in-effect).
     Promise.resolve().then(charger)
+  }, [])
+
+  // NTPRT32 — l'AGRÉMENT commande le droit de déposer une affaire. Le serveur
+  // reste l'autorité (403 motivé) ; on lit ici le statut déjà publié par le
+  // tableau de bord pour ne pas faire remplir un formulaire pour rien. Une
+  // lecture qui échoue laisse le formulaire ouvert : c'est le serveur qui
+  // tranche, jamais un écran qui se ferme tout seul.
+  useEffect(() => {
+    let annule = false
+    portailApi.partenaire.tableauDeBord()
+      .then((r) => {
+        if (!annule) setAgree(r.data?.statut_onboarding === 'agree')
+      })
+      .catch(() => {})
+    return () => { annule = true }
   }, [])
 
   const set = (champ) => (e) => {
@@ -101,6 +117,14 @@ export default function PortailPartenaireLeads() {
         </h1>
       </div>
 
+      {!agree && (
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          Votre agrément n’est pas encore actif : vous pourrez enregistrer vos
+          affaires dès l’activation de votre partenariat. Vos affaires déjà
+          déposées restent consultables ci-dessous.
+        </p>
+      )}
+
       <Card className="p-4">
         <Form onSubmit={soumettre} className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
@@ -134,7 +158,7 @@ export default function PortailPartenaireLeads() {
             </p>
           ) : null}
           <div>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || !agree}>
               Enregistrer cette affaire
             </Button>
           </div>
