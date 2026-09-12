@@ -1965,6 +1965,17 @@ class CreerCommentaireRedlineSerializer(serializers.Serializer):
         return value
 
 
+class AjouterClausesManquantesSerializer(serializers.Serializer):
+    """Corps du wizard « Résoudre les clauses manquantes » — NTDOC44.
+
+    ``clauses`` (optionnel) restreint l'ajout à une sélection ; omis, le
+    wizard ajoute TOUTES les clauses obligatoires manquantes en un seul appel.
+    """
+    clauses = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False, allow_empty=True)
+
+
 class ModifierCommentaireRedlineSerializer(serializers.Serializer):
     """Corps d'édition d'un commentaire de redline — NTDOC3 (contenu seul)."""
     contenu = serializers.CharField()

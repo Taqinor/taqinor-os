@@ -78,6 +78,7 @@ from .models import (
 from .serializers import (
     AbonnementAddOnLigneSerializer,
     AddOnAbonnementSerializer,
+    AjouterClausesManquantesSerializer,
     AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
     AvenantSerializer,
@@ -1251,6 +1252,83 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             'results': ClauseSerializer(
                 manquantes, many=True, context={'request': request}).data,
         })
+
+    @action(detail=True, methods=['get', 'post'],
+            url_path='wizard-clauses-manquantes')
+    def wizard_clauses_manquantes(self, request, pk=None):
+        """Wizard « Résoudre les clauses manquantes » (NTDOC44).
+
+        - ``GET`` : pour chaque clause obligatoire manquante (NTDOC5),
+          propose le texte gabarit de la bibliothèque (``Clause.titre`` /
+          ``Clause.corps``) et l'ordre d'insertion suggéré.
+        - ``POST`` : les ajoute EN MASSE au contrat en un seul appel
+          (``clauses`` restreint à une sélection ; omis = toutes). La création
+          passe par ``ClauseContratSerializer`` — la MÊME logique que
+          l'endpoint ``clauses-contrat/``, aucune duplication.
+        """
+        contrat = self.get_object()
+        manquantes = selectors.clauses_obligatoires_manquantes(contrat)
+        ordre_depart = (
+            max((c.ordre for c in contrat.clauses_resolues.all()), default=0)
+            + 1)
+
+        if request.method == 'GET':
+            return Response({
+                'type_contrat': contrat.type_contrat,
+                'count': len(manquantes),
+                'results': [
+                    {
+                        'clause': clause.id,
+                        'titre': clause.titre,
+                        'corps': clause.corps,
+                        'categorie': clause.categorie,
+                        'type_clause': clause.type_clause,
+                        'ordre_propose': ordre_depart + rang,
+                    }
+                    for rang, clause in enumerate(manquantes)
+                ],
+            })
+
+        body = AjouterClausesManquantesSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        selection = body.validated_data.get('clauses')
+        if selection:
+            voulues = set(selection)
+            a_ajouter = [c for c in manquantes if c.id in voulues]
+            inconnues = voulues - {c.id for c in a_ajouter}
+            if inconnues:
+                return Response(
+                    {'detail': (
+                        'Le champ « clauses » désigne des clauses qui ne sont '
+                        'pas manquantes sur ce contrat : '
+                        f'{", ".join(str(i) for i in sorted(inconnues))}.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            a_ajouter = manquantes
+
+        creees = []
+        for rang, clause in enumerate(a_ajouter):
+            ligne = ClauseContratSerializer(
+                data={
+                    'contrat': contrat.id,
+                    'clause': clause.id,
+                    'ordre': ordre_depart + rang,
+                },
+                context={'request': request})
+            ligne.is_valid(raise_exception=True)
+            creees.append(ligne.save(company=contrat.company))
+
+        restantes = selectors.clauses_obligatoires_manquantes(contrat)
+        return Response(
+            {
+                'ajoutees': len(creees),
+                'results': ClauseContratSerializer(
+                    creees, many=True, context={'request': request}).data,
+                'restantes': len(restantes),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     # ── NTDOC3 — commentaires de redline (CRUD + résolution) ───────────────
 
