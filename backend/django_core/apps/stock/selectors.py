@@ -1193,6 +1193,67 @@ def resume_portail_fournisseur(company, fournisseur_id):
     }
 
 
+def bcf_portail_fournisseur(company, fournisseur_id):
+    """NTPRT21 — Bons de commande VISIBLES par un compte fournisseur portail.
+
+    Même contenu et même isolation que la liste déjà servie par le portail
+    tokenisé XPUR22 (``services.portail_fournisseur_documents``), mais bornée
+    au couple (société, fournisseur) du COMPTE connecté au lieu d'un jeton :
+    ``apps.portail`` n'importe jamais ``apps.stock.models``, il passe par ici.
+
+    Un ``fournisseur_id`` absent — ou d'une autre société — renvoie une liste
+    VIDE, jamais les commandes de la société entière. La charge utile ne porte
+    aucun prix d'achat ni aucune marge : à ce stade le fournisseur n'a besoin
+    que de savoir CE QU'ON LUI COMMANDE et QUAND il doit livrer.
+    """
+    if company is None or not fournisseur_id:
+        return []
+
+    from .models import BonCommandeFournisseur, Fournisseur
+
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return []
+
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company, fournisseur=fournisseur)
+          .exclude(statut=BonCommandeFournisseur.Statut.BROUILLON)
+          .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+          .prefetch_related('lignes__produit')
+          .order_by('-date_commande', '-id'))
+
+    lignes = []
+    for bc in qs:
+        lignes.append({
+            'id': bc.id,
+            'reference': bc.reference,
+            'statut': bc.statut,
+            'statut_display': bc.get_statut_display(),
+            'date_commande': bc.date_commande,
+            'date_livraison_prevue': bc.date_livraison_prevue,
+            'date_confirmee_fournisseur': bc.date_confirmee_fournisseur,
+            'numero_confirmation_fournisseur': (
+                bc.numero_confirmation_fournisseur or ''),
+            # « À confirmer » = envoyé au fournisseur et jamais accusé. C'est
+            # EXACTEMENT le compteur du tableau de bord NTPRT20, dérivé ici de
+            # la même condition — jamais une seconde définition.
+            'a_confirmer': (
+                bc.statut == BonCommandeFournisseur.Statut.ENVOYE
+                and bc.date_confirmee_fournisseur is None),
+            'lignes': [
+                {
+                    'produit_nom': (ligne.produit.nom if ligne.produit_id
+                                    else ligne.designation),
+                    'quantite': ligne.quantite,
+                    'quantite_recue': ligne.quantite_recue,
+                }
+                for ligne in bc.lignes.all()
+            ],
+        })
+    return lignes
+
+
 # ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
 # Point d'entrée cross-app LECTURE SEULE : le moteur de calepinage
 # (core.calepinage) et les autres apps lisent les caractéristiques d'un

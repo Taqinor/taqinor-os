@@ -32,6 +32,7 @@ from .views_client import (
     MesLivraisonsPortailViewSet,
 )
 from .views_externes import (
+    MesBcfPortailFournisseurViewSet,
     candidature_fournisseur,
     tableau_de_bord_fournisseur,
     tableau_de_bord_partenaire,
@@ -69,6 +70,11 @@ router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
 # n'était donc jamais exercée par un vrai client.
 router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
                 basename='portail-mes-demandes-sav')
+# NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
+# commande, et la confirmation de date d'arrivée (le même effet que le chemin
+# tokenisé XPUR22, simplement authentifié).
+router.register(r'mes-bons-commande', MesBcfPortailFournisseurViewSet,
+                basename='portail-mes-bons-commande')
 
 urlpatterns = [
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et

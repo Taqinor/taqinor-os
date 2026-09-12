@@ -67,6 +67,15 @@ const portailApi = {
   // rattachement du compte connecté.
   fournisseur: {
     tableauDeBord: () => api.get('/portail/fournisseur/tableau-de-bord/'),
+    // NTPRT21 — « Mes bons de commande » : le fournisseur est déduit du compte
+    // connecté côté serveur. `confirmer` produit le MÊME effet que l'ancien
+    // lien tokenisé XPUR22 (accusé posé, date demandée jamais écrasée).
+    bonsCommande: {
+      liste: () => api.get('/portail/mes-bons-commande/'),
+      detail: (id) => api.get(`/portail/mes-bons-commande/${id}/`),
+      confirmer: (id, payload) =>
+        api.post(`/portail/mes-bons-commande/${id}/confirmer/`, payload),
+    },
   },
   partenaire: {
     tableauDeBord: () => api.get('/portail/partenaire/tableau-de-bord/'),

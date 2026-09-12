@@ -15,9 +15,13 @@ jamais les chiffres de la société entière.
 Les lectures passent par ``stock.selectors`` / ``crm.selectors`` (jamais un
 import de leurs ``models`` depuis portail — frontière cross-app CLAUDE.md).
 """
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    action, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -44,6 +48,141 @@ def tableau_de_bord_partenaire(request):
     from apps.crm.selectors import resume_portail_partenaire
     return Response(resume_portail_partenaire(
         request.user.company, portal_scope_id(request.user)))
+
+
+#: ``MesBcfPortailFournisseurViewSet`` est un ``ViewSet`` nu (aucun queryset) :
+#: sans type explicite, drf-spectacular dégrade le ``{id}`` de ses routes de
+#: détail en "string" (garde YAPIC6). L'identifiant est la PK entière du BCF.
+_ID_BCF = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description='Identifiant du bon de commande du fournisseur connecté.',
+)
+
+
+class MesBcfPortailLigneArticleSerializer(serializers.Serializer):
+    """Un article commandé — vue FOURNISSEUR (jamais un prix, jamais une
+    marge : à ce stade il n'a besoin que du QUOI et du QUAND)."""
+    produit_nom = serializers.CharField()
+    quantite = serializers.FloatField()
+    quantite_recue = serializers.FloatField()
+
+
+class MesBcfPortailLigneSerializer(serializers.Serializer):
+    """Un bon de commande tel que le portail le montre au fournisseur.
+
+    Reflet EXACT de ``apps.stock.selectors.bcf_portail_fournisseur``. Déclaré
+    en classe (et non via ``inline_serializer``) pour que le composant OpenAPI
+    porte un nom stable (``MesBcfPortailLigne``).
+    """
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    date_commande = serializers.DateField(allow_null=True)
+    date_livraison_prevue = serializers.DateField(allow_null=True)
+    date_confirmee_fournisseur = serializers.DateField(allow_null=True)
+    numero_confirmation_fournisseur = serializers.CharField(allow_blank=True)
+    a_confirmer = serializers.BooleanField()
+    lignes = serializers.ListField(
+        child=MesBcfPortailLigneArticleSerializer())
+
+
+class MesBcfPortailFournisseurViewSet(viewsets.ViewSet):
+    """NTPRT21 — « Mes BCF à confirmer » du portail fournisseur AUTHENTIFIÉ.
+
+    Porte XPUR22 (portail public tokenisé) sur le COMPTE fournisseur réel : le
+    fournisseur est résolu depuis le compte connecté (``portal_scope_id``),
+    JAMAIS depuis un paramètre ni un corps de requête. Les deux opérations
+    passent par ``apps.stock`` (selector pour la lecture, service pour
+    l'écriture) — jamais un import de ses ``models``.
+
+    La confirmation réutilise le CŒUR commun
+    (``stock.services._appliquer_confirmation_bcf_fournisseur``) partagé avec
+    le chemin tokenisé : le comportement est identique bit à bit, seule
+    l'authentification change (critère d'acceptation NTPRT21). La date
+    DEMANDÉE d'origine n'est donc jamais écrasée.
+    """
+
+    permission_classes = [IsPortalFournisseurUser]
+    #: ``viewsets.ViewSet`` n'est pas une ``GenericAPIView`` : sans cet
+    #: attribut drf-spectacular ne peut pas deviner le sérialiseur (YAPIC6).
+    serializer_class = MesBcfPortailLigneSerializer
+
+    @extend_schema(responses=inline_serializer(
+        name='MesBcfPortail',
+        fields={
+            'results': serializers.ListField(
+                child=MesBcfPortailLigneSerializer()),
+        }))
+    def list(self, request):
+        from apps.stock.selectors import bcf_portail_fournisseur
+        return Response({'results': bcf_portail_fournisseur(
+            request.user.company, portal_scope_id(request.user))})
+
+    @extend_schema(parameters=[_ID_BCF], responses=MesBcfPortailLigneSerializer)
+    def retrieve(self, request, pk=None):
+        from apps.stock.selectors import bcf_portail_fournisseur
+        for ligne in bcf_portail_fournisseur(
+                request.user.company, portal_scope_id(request.user)):
+            if str(ligne['id']) == str(pk):
+                return Response(ligne)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    @extend_schema(parameters=[_ID_BCF], responses=inline_serializer(
+        name='MesBcfPortailConfirmation',
+        fields={
+            'id': serializers.IntegerField(),
+            'reference': serializers.CharField(),
+            'date_confirmee_fournisseur': serializers.DateField(),
+            'numero_confirmation_fournisseur': serializers.CharField(
+                allow_blank=True),
+            'detail': serializers.CharField(),
+        }))
+    @action(detail=True, methods=['post'], url_path='confirmer',
+            permission_classes=[IsPortalFournisseurUser])
+    def confirmer(self, request, pk=None):
+        """Confirme le BCF et propose une date d'arrivée.
+
+        Les erreurs NOMMENT le champ fautif (``date_confirmee``) : un
+        « Non enregistré » générique laisserait le fournisseur deviner.
+        """
+        from django.utils.dateparse import parse_date
+
+        from apps.stock.services import confirmer_bcf_compte_fournisseur
+
+        brute = str(request.data.get('date_confirmee') or '').strip()
+        if not brute:
+            return Response(
+                {'date_confirmee': "La date d'arrivée que vous confirmez est "
+                                   'obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        date_confirmee = parse_date(brute)
+        if date_confirmee is None:
+            return Response(
+                {'date_confirmee': "Date invalide : utilisez le format "
+                                   'AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        numero = str(request.data.get('numero_confirmation') or '')[:100]
+        try:
+            bc = confirmer_bcf_compte_fournisseur(
+                request.user.company, portal_scope_id(request.user), pk,
+                date_confirmee=date_confirmee, numero_confirmation=numero)
+        except ValueError:
+            # Le BCF d'un autre fournisseur est INTROUVABLE, jamais « trouvé
+            # puis refusé » : la réponse ne dit pas qu'il existe ailleurs.
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            'id': bc.id,
+            'reference': bc.reference,
+            'date_confirmee_fournisseur': bc.date_confirmee_fournisseur,
+            'numero_confirmation_fournisseur': (
+                bc.numero_confirmation_fournisseur or ''),
+            'detail': 'Merci, votre date de livraison a bien été enregistrée.',
+        })
 
 
 class CandidatureFournisseurThrottle(SimpleRateThrottle):

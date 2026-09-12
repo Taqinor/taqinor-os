@@ -111,6 +111,8 @@ const PortailClientMotDePasse = lazy(() => import('../features/portail/client/Po
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
 const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
 const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
+// NTPRT21 — « Mes bons de commande » du portail fournisseur (liste + accusé).
+const PortailFournisseurBcf = lazy(() => import('../features/portail/fournisseur/PortailFournisseurBcf'))
 // NTPRT27 — shell + tableau de bord du PORTAIL PARTENAIRE.
 const PortalPartenaireLayout = lazy(() => import('../features/portail/partenaire/PortalPartenaireLayout'))
 const PortailPartenaireAccueil = lazy(() => import('../features/portail/partenaire/PortailPartenaireAccueil'))
@@ -451,6 +453,13 @@ const router = createBrowserRouter([
     path: '/portail/fournisseur',
     loader: portalLoader(PORTEE_FOURNISSEUR),
     element: <WithPortal shell={PortalFournisseurLayout}><PortailFournisseurAccueil /></WithPortal>,
+  },
+  // NTPRT21 — « Mes bons de commande » : porte XPUR22 (lien tokenisé) sur le
+  // compte fournisseur réel, même garde de portée que le tableau de bord.
+  {
+    path: '/portail/fournisseur/commandes',
+    loader: portalLoader(PORTEE_FOURNISSEUR),
+    element: <WithPortal shell={PortalFournisseurLayout}><PortailFournisseurBcf /></WithPortal>,
   },
   // NTPRT27 — PORTAIL PARTENAIRE : garde symétrique (portée exacte
   // `portail_partenaire`), structure identique aux deux shells ci-dessus.
