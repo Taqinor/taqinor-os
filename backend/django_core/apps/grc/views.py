@@ -12,13 +12,15 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     ControleInterne, JournalDestruction, LegalHold, PlanTraitementRisque,
-    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, ViolationDonnees,
+    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, TestControle,
+    ViolationDonnees,
 )
 from .serializers import (
     ControleInterneSerializer, JournalDestructionSerializer,
     LegalHoldSerializer, PlanTraitementRisqueSerializer,
     PolitiqueRetentionObjetSerializer, RevueRisqueSerializer,
-    RisqueEntrepriseSerializer, ViolationDonneesSerializer,
+    RisqueEntrepriseSerializer, TestControleSerializer,
+    ViolationDonneesSerializer,
 )
 
 
@@ -298,3 +300,51 @@ class ControleInterneViewSet(CompanyScopedModelViewSet):
         elif actif in ('0', 'false', 'False', 'non'):
             qs = qs.filter(actif=False)
         return qs
+
+
+class TestControleViewSet(CompanyScopedModelViewSet):
+    """NTGRC17 — tests de contrôle planifiés + preuves.
+
+    Un test qui conclut « déficient » ouvre AUTOMATIQUEMENT un risque lié, via
+    le service (idempotent).
+    """
+
+    queryset = TestControle.objects.select_related('controle').all()
+    serializer_class = TestControleSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def perform_create(self, serializer):
+        from .services import enregistrer_test_controle
+
+        champs = dict(serializer.validated_data)
+        champs.pop('company', None)
+        controle = champs.pop('controle')
+        serializer.instance = enregistrer_test_controle(
+            self.request.user.company, controle, **champs)
+
+    def perform_update(self, serializer):
+        """Un test requalifié « déficient » ouvre aussi son risque."""
+        from .services import ouvrir_risque_sur_deficience
+
+        test = serializer.save(company=self.request.user.company)
+        ouvrir_risque_sur_deficience(test)
+
+    @action(detail=False, methods=['get'], url_path='controles-a-tester')
+    def controles_a_tester(self, request):
+        """Contrôles actifs dont le test est dû (``?within=<jours>``)."""
+        from .selectors import controles_a_tester as _dus
+
+        try:
+            within = int(request.query_params.get('within') or 0)
+        except (TypeError, ValueError):
+            within = 0
+        dus = _dus(request.user.company, within=within)
+        return Response({'results': [
+            {
+                'controle': ControleInterneSerializer(d['controle']).data,
+                'echeance': (d['echeance'].isoformat()
+                             if d['echeance'] else None),
+                'jamais_teste': d['dernier_test'] is None,
+            }
+            for d in dus
+        ]})

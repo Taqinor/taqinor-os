@@ -501,3 +501,49 @@ def enregistrer_revue(company, risque, **champs):
         if champs_maj:
             risque.save(update_fields=champs_maj + ['updated_at'])
     return revue
+
+
+# ── NTGRC17 — tests de contrôle : ouverture automatique d'un risque ─────────
+
+def ouvrir_risque_sur_deficience(test):
+    """Ouvre (une seule fois) un risque lié à un test de contrôle DÉFICIENT.
+
+    Une déficience sans risque tracé disparaît au prochain comité : le test
+    porte alors une preuve d'échec que personne ne suit. Idempotent — un test
+    déjà relié à un risque n'en ouvre pas un second (un opérateur qui corrige
+    la conclusion et ré-enregistre ne doit pas multiplier les risques).
+    """
+    from .models import RisqueEntreprise, TestControle
+
+    if test.resultat != TestControle.RESULTAT_DEFICIENT:
+        return None
+    if test.risque_ouvert_id:
+        return test.risque_ouvert
+
+    controle = test.controle
+    risque = creer_risque(
+        test.company,
+        titre=f'Contrôle {controle.code} déficient — {controle.intitule}',
+        categorie='conformite',
+        description=(test.conclusion or '').strip() or (
+            f'Le test du contrôle {controle.code} a conclu à une '
+            'déficience.'),
+        proprietaire=controle.proprietaire,
+        statut=RisqueEntreprise.STATUT_OUVERT,
+    )
+    test.risque_ouvert = risque
+    test.save(update_fields=['risque_ouvert', 'updated_at'])
+    return risque
+
+
+def enregistrer_test_controle(company, controle, **champs):
+    """Crée un ``TestControle`` et ouvre un risque si le résultat est déficient."""
+    from django.db import transaction
+
+    from .models import TestControle
+
+    with transaction.atomic():
+        test = TestControle.objects.create(
+            company=company, controle=controle, **champs)
+        ouvrir_risque_sur_deficience(test)
+    return test

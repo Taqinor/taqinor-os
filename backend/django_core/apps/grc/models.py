@@ -739,3 +739,79 @@ class ControleInterne(TenantModel):
 
     def __str__(self):
         return f'{self.code} — {self.intitule}'
+
+
+class TestControle(TenantModel):
+    """NTGRC17 — exécution planifiée d'un contrôle interne + sa preuve.
+
+    Un contrôle décrit ce qu'on vérifie (``ControleInterne``) ; un test dit
+    qu'on l'a VRAIMENT vérifié, quand, sur quel échantillon, avec quelle
+    conclusion et quelle pièce à l'appui. Sans cette table, un référentiel de
+    contrôles ne prouve rien à un auditeur.
+
+    La pièce de preuve est référencée par une CLÉ de stockage
+    (MinIO/GED) — jamais le fichier lui-même, et jamais une FK vers un
+    document d'une autre app.
+    """
+
+    RESULTAT_EFFICACE = 'efficace'
+    RESULTAT_DEFICIENT = 'deficient'
+    RESULTAT_NON_TESTE = 'non_teste'
+    RESULTAT_CHOICES = [
+        (RESULTAT_EFFICACE, 'Efficace'),
+        (RESULTAT_DEFICIENT, 'Déficient'),
+        (RESULTAT_NON_TESTE, 'Non testé'),
+    ]
+
+    STATUT_PLANIFIE = 'planifie'
+    STATUT_REALISE = 'realise'
+    STATUT_ANNULE = 'annule'
+    STATUT_CHOICES = [
+        (STATUT_PLANIFIE, 'Planifié'),
+        (STATUT_REALISE, 'Réalisé'),
+        (STATUT_ANNULE, 'Annulé'),
+    ]
+
+    controle = models.ForeignKey(
+        ControleInterne,
+        # on_delete: un test n'existe que pour SON contrôle.
+        on_delete=models.CASCADE,
+        related_name='tests', verbose_name='Contrôle')
+    date_prevue = models.DateField('Date prévue', null=True, blank=True)
+    date_realisee = models.DateField('Date de réalisation', null=True,
+                                     blank=True)
+    testeur = models.CharField(
+        'Testeur', max_length=160, blank=True, default='')
+    resultat = models.CharField(
+        'Résultat', max_length=10, choices=RESULTAT_CHOICES,
+        default=RESULTAT_NON_TESTE)
+    echantillon_taille = models.PositiveIntegerField(
+        "Taille de l'échantillon", default=0)
+    conclusion = models.TextField('Conclusion', blank=True, default='')
+    piece_preuve_key = models.CharField(
+        'Clé de la pièce de preuve', max_length=500, blank=True, default='',
+        help_text='Clé de stockage (MinIO/GED) — jamais le fichier lui-même.')
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_PLANIFIE)
+    # Risque ouvert automatiquement quand le test conclut « déficient ». Une
+    # déficience sans risque tracé disparaît au prochain comité.
+    risque_ouvert = models.ForeignKey(
+        RisqueEntreprise, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='tests_controle_a_lorigine',
+        verbose_name='Risque ouvert')
+
+    class Meta:
+        verbose_name = 'Test de contrôle'
+        verbose_name_plural = 'Tests de contrôle'
+        ordering = ['-date_prevue', '-id']
+        indexes = [
+            models.Index(fields=['company', 'resultat'],
+                         name='grc_testctrl_co_resultat_idx'),
+            models.Index(fields=['company', 'date_realisee'],
+                         name='grc_testctrl_co_date_idx'),
+        ]
+
+    def __str__(self):
+        return (f'Test {self.controle_id} — '
+                f'{self.get_resultat_display()}')

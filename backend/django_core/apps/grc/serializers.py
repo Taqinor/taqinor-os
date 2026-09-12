@@ -7,7 +7,8 @@ from rest_framework import serializers
 
 from .models import (
     ControleInterne, JournalDestruction, LegalHold, PlanTraitementRisque,
-    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, ViolationDonnees,
+    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, TestControle,
+    ViolationDonnees,
 )
 
 
@@ -321,3 +322,49 @@ class ControleInterneSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le code du contrôle est obligatoire.')
         return valeur
+
+
+class TestControleSerializer(serializers.ModelSerializer):
+    """NTGRC17 — exécution d'un contrôle interne + sa preuve.
+
+    ``risque_ouvert`` est en LECTURE SEULE : il est posé par le service quand
+    le test conclut à une déficience, jamais choisi par l'appelant.
+    """
+
+    resultat_libelle = serializers.CharField(
+        source='get_resultat_display', read_only=True)
+    controle_code = serializers.CharField(
+        source='controle.code', read_only=True)
+
+    class Meta:
+        model = TestControle
+        fields = [
+            'id', 'controle', 'controle_code', 'date_prevue', 'date_realisee',
+            'testeur', 'resultat', 'resultat_libelle', 'echantillon_taille',
+            'conclusion', 'piece_preuve_key', 'statut', 'risque_ouvert',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'risque_ouvert', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if company is not None and 'controle' in fields:
+            fields['controle'].queryset = ControleInterne.objects.filter(
+                company=company)
+        return fields
+
+    def validate(self, attrs):
+        """Un résultat exige la date à laquelle il a été constaté."""
+        resultat = attrs.get(
+            'resultat', getattr(self.instance, 'resultat', None))
+        realisee = attrs.get(
+            'date_realisee', getattr(self.instance, 'date_realisee', None))
+        if resultat in (TestControle.RESULTAT_EFFICACE,
+                        TestControle.RESULTAT_DEFICIENT) and not realisee:
+            raise serializers.ValidationError({
+                'date_realisee': 'Indiquez la date à laquelle le test a été '
+                                 'réalisé.'})
+        return attrs

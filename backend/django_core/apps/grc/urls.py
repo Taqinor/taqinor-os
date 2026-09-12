@@ -12,7 +12,8 @@ from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
     ControleInterneViewSet, JournalDestructionViewSet, LegalHoldViewSet,
     PlanTraitementRisqueViewSet, PolitiqueRetentionObjetViewSet,
-    RevueRisqueViewSet, RisqueEntrepriseViewSet, ViolationDonneesViewSet,
+    RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
+    ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -40,6 +41,9 @@ router.register(r'revues-risque', RevueRisqueViewSet,
 # NTGRC16 — bibliothèque des contrôles internes (SOX-lite).
 router.register(r'controles-internes', ControleInterneViewSet,
                 basename='grc-controle-interne')
+# NTGRC17 — tests de contrôle planifiés + preuves.
+router.register(r'tests-controle', TestControleViewSet,
+                basename='grc-test-controle')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

@@ -183,6 +183,60 @@ def matrice_risques(company, residuelle=False):
     return {'cases': cases, 'total': sum(c['nombre'] for c in cases)}
 
 
+def controles_a_tester(company, within=0, aujourdhui=None):
+    """NTGRC17 — contrôles ACTIFS dont le test est dû (ou le sera sous N j).
+
+    L'échéance d'un contrôle = date de son dernier test EFFICACE + la fenêtre
+    de sa fréquence (un mensuel : 30 jours). Un contrôle JAMAIS testé
+    efficacement est TOUJOURS dû — c'est le cas qui compte le plus, et un
+    « pas de test donc pas d'échéance » le rendrait invisible.
+
+    Un test DÉFICIENT ne remet pas le compteur à zéro : le contrôle reste dû
+    tant qu'on n'a pas démontré qu'il fonctionne.
+
+    Renvoie une liste de dicts ``{controle, echeance, dernier_test}`` triée
+    par échéance (la plus ancienne d'abord).
+    """
+    from django.utils import timezone
+
+    from .models import ControleInterne, TestControle
+
+    jour = aujourdhui or timezone.now().date()
+    limite = jour + timezone.timedelta(days=max(0, int(within or 0)))
+
+    controles = list(ControleInterne.objects.filter(
+        company=company, actif=True).order_by('code', 'id'))
+    if not controles:
+        return []
+
+    derniers = {}
+    for test in (TestControle.objects
+                 .filter(company=company,
+                         controle_id__in=[c.pk for c in controles],
+                         resultat=TestControle.RESULTAT_EFFICACE,
+                         date_realisee__isnull=False)
+                 .order_by('controle_id', 'date_realisee')):
+        derniers[test.controle_id] = test
+
+    dus = []
+    for controle in controles:
+        dernier = derniers.get(controle.pk)
+        if dernier is None:
+            echeance = None  # jamais testé : dû sans condition
+        else:
+            echeance = dernier.date_realisee + timezone.timedelta(
+                days=controle.fenetre_jours)
+            if echeance > limite:
+                continue
+        dus.append({
+            'controle': controle,
+            'echeance': echeance,
+            'dernier_test': dernier,
+        })
+    dus.sort(key=lambda d: (d['echeance'] is not None, d['echeance'] or jour))
+    return dus
+
+
 def risques_a_revoir(company, within=0, aujourdhui=None):
     """NTGRC15 — risques dont la revue est due (ou le sera sous ``within`` j).
 
