@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Link2, FileText, Package, Hammer, ClipboardList, Camera, Wrench, Zap,
   History, Send, ScrollText, Download, ExternalLink, WifiOff, TriangleAlert,
-  RotateCw, Milestone, Printer, PenLine,
+  RotateCw, Milestone, Printer, PenLine, Share2,
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
@@ -250,6 +250,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // facturation » de la section « Autour de ce chantier » (CHT20).
   const [projetChantierLie, setProjetChantierLie] = useState(null)
   const [creerProjetBusy, setCreerProjetBusy] = useState(false)
+  // CHT20 — RegulatoryDossier (ventes) lié au devis de ce chantier, s'il
+  // existe : distinct de la couche 82-21 posée directement sur le chantier
+  // (section « Dossier réglementaire » plus bas) — l'utilisateur doit savoir
+  // laquelle des deux couches fait foi.
+  const [dossierReglementaireLie, setDossierReglementaireLie] = useState(null)
 
   // Historique (chatter)
   const [historique, setHistorique] = useState([])
@@ -396,6 +401,18 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       })
       .catch(() => {})
   }
+  // CHT20 — lecture légère best-effort, endpoint EXISTANT (RegulatoryDossier,
+  // FG268) déjà filtrable par `?devis=` (aucun nouveau backend) : le premier
+  // dossier réglementaire du devis de ce chantier, s'il existe.
+  const loadDossierReglementaire = () => {
+    if (!installation.devis) return
+    ventesApi.getReglementaire('dossiers-reglementaires', { devis: installation.devis })
+      .then((r) => {
+        const rows = r.data?.results ?? r.data ?? []
+        setDossierReglementaireLie(rows[0] ?? null)
+      })
+      .catch(() => {})
+  }
 
   useEffect(() => {
     loadHistorique()
@@ -411,6 +428,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     loadProjetChantierLie()
+    loadDossierReglementaire()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -990,6 +1008,60 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   <Button size="sm" variant="outline" loading={creerProjetBusy}
                           onClick={creerProjetFacturation}>
                     Créer le projet de facturation
+                  </Button>
+                )}
+              </div>
+            </Section>
+            {/* ── CHT20 — la passerelle vers les satellites : fin du parcours
+                « re-sélectionner le même chantier dans 4 menus ». Chaque lien
+                est un deep-link RÉEL déjà lu par l'écran cible (CHT19,
+                ?chantier=<id>) — jamais une URL ad hoc. ── */}
+            <Section icon={Share2} title="Autour de ce chantier">
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/chantiers/suivi-projet?chantier=${current.id}`)}>
+                  Suivi projet
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/chantiers/sous-traitance?chantier=${current.id}`)}>
+                  Sous-traitance
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/reserves?chantier=${current.id}`)}>
+                  Réserves
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/rfi?chantier=${current.id}`)}>
+                  RFI
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/journal?chantier=${current.id}`)}>
+                  Journal
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/avenants?chantier=${current.id}`)}>
+                  Avenants
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/dgd?chantier=${current.id}`)}>
+                  DGD
+                </Button>
+                {/* Best-effort, lecture d'un endpoint EXISTANT (CHT18/CHT20) —
+                    absent tant que rien n'est rattaché. */}
+                {projetChantierLie && (
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate(`/projets/${projetChantierLie.projet}`)}>
+                    Projet de facturation ({projetChantierLie.projet_code})
+                  </Button>
+                )}
+                {/* Couche SÉPARÉE de la section « Dossier réglementaire »
+                    ci-dessous (celle-ci vit sur le chantier ; RegulatoryDossier
+                    vit sur le devis, côté ventes) — le lien évite toute
+                    confusion sur laquelle fait foi. */}
+                {dossierReglementaireLie && (
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate('/ventes/dossiers-reglementaires')}>
+                    Dossier réglementaire ({dossierReglementaireLie.statut_label})
                   </Button>
                 )}
               </div>
