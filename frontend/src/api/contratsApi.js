@@ -56,6 +56,17 @@ const contratsApi = {
   noter: (id, message) =>
     api.post(`/contrats/contrats/${id}/noter/`, { message }),
 
+  // NTSUB23 — rattachement RÉTROACTIF à un plan catalogue. `data` :
+  // { plan, appliquer_prix? }. Sans `appliquer_prix`, seule la FK est posée
+  // (classification) : aucun montant existant n'est modifié.
+  rattacherPlan: (id, data) =>
+    api.post(`/contrats/contrats/${id}/rattacher-plan/`, data),
+  // NTSUB20 — relevé d'abonnement imprimable (état RÉCAPITULATIF, jamais un
+  // devis ni une facture). `params` : { debut?, fin? }.
+  releveAbonnementPdf: (id, params) =>
+    api.get(`/contrats/contrats/${id}/releve-pdf/`,
+      { params, responseType: 'blob' }),
+
   // Rendu / liens.
   getLiens: (id) => api.get(`/contrats/contrats/${id}/liens/`),
   rendre: (id, gabarit) =>

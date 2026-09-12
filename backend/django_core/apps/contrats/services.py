@@ -4785,6 +4785,59 @@ def changer_plan_contrat(contrat, nouveau_plan, *, type_changement='immediat',
     return {'avenant': avenant, 'prorata': prorata}
 
 
+@transaction.atomic
+def rattacher_plan_retroactif(contrat, plan, appliquer_prix=False,
+                              *, auteur=None):
+    """NTSUB23 — Rattache RÉTROACTIVEMENT un contrat à un plan catalogue.
+
+    Les contrats créés AVANT NTSUB1 n'ont pas de ``plan_abonnement`` : ce
+    service les rattache SANS jamais toucher à l'argent par défaut.
+
+    * ``appliquer_prix=False`` (DÉFAUT) — pose UNIQUEMENT la FK
+      ``plan_abonnement``, à titre de CLASSIFICATION. Le ``montant`` du
+      contrat, son ``plan_recurrent``, ses échéances et son statut restent
+      strictement inchangés ; aucun avenant n'est créé.
+    * ``appliquer_prix=True`` (coche EXPLICITE de l'utilisateur) — délègue à
+      ``changer_plan_contrat`` (NTSUB7) : l'écart de prix devient un
+      ``Avenant`` (XCTR6) et, pour un upgrade immédiat, le prorata est appliqué
+      à la prochaine échéance non facturée. Une seule implémentation du
+      changement tarifant — jamais une seconde copie de la règle ici.
+
+    Renvoie ``{'contrat', 'plan', 'ancien_montant', 'nouveau_montant',
+    'delta', 'prix_applique', 'avenant', 'prorata'}``.
+    """
+    if plan is None:
+        raise ChangementPlanError("Le plan d'abonnement est obligatoire.")
+    if plan.company_id != contrat.company_id:
+        raise ChangementPlanError(
+            "Ce plan d'abonnement n'appartient pas à la société du contrat.")
+
+    ancien_montant = contrat.montant or Decimal('0')
+    delta = (plan.prix_base or Decimal('0')) - ancien_montant
+
+    if not appliquer_prix:
+        # CLASSIFICATION SEULE : on ne touche QUE la FK.
+        contrat.plan_abonnement = plan
+        contrat.save(update_fields=['plan_abonnement'])
+        return {
+            'contrat': contrat, 'plan': plan,
+            'ancien_montant': ancien_montant,
+            'nouveau_montant': ancien_montant,
+            'delta': delta, 'prix_applique': False,
+            'avenant': None, 'prorata': None,
+        }
+
+    resultat = changer_plan_contrat(contrat, plan, auteur=auteur)
+    contrat.refresh_from_db()
+    return {
+        'contrat': contrat, 'plan': plan,
+        'ancien_montant': ancien_montant,
+        'nouveau_montant': contrat.montant or Decimal('0'),
+        'delta': delta, 'prix_applique': True,
+        'avenant': resultat['avenant'], 'prorata': resultat['prorata'],
+    }
+
+
 # ---------------------------------------------------------------------------
 # NTSUB2 — Add-ons (options payantes) : montant facturable d'une période
 # ---------------------------------------------------------------------------

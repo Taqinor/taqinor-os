@@ -14,6 +14,8 @@ import StateMachine from './StateMachine'
 import SimpleTable from './SimpleTable'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+// NTSUB23 — rattachement rétroactif d'un contrat à un plan catalogue.
+import RattacherPlanDialog from './RattacherPlanDialog'
 
 const TYPES_CIBLE_LIEN = [
   { value: 'devis', label: 'Devis' },
@@ -317,7 +319,11 @@ export default function ContratDetail() {
 
   const avenantsTab = (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {/* NTSUB23 — migrer un contrat antérieur au catalogue vers un plan. */}
+        <Button size="sm" variant="outline" onClick={() => setDialog('rattacher-plan')}>
+          Rattacher à un plan
+        </Button>
         <Button size="sm" variant="outline" onClick={() => setDialog('avenant')}>Créer un avenant</Button>
       </div>
       <SimpleTable
@@ -516,6 +522,16 @@ export default function ContratDetail() {
       )}
       {dialog === 'devis-renouvellement' && (
         <DevisRenouvellementDialog id={id} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load() }} />
+      )}
+      {/* NTSUB23 — rattachement rétroactif à un plan catalogue : le delta de
+          prix est montré AVANT validation, et rien n'est appliqué tant que la
+          case « appliquer le prix » n'est pas cochée. */}
+      {dialog === 'rattacher-plan' && (
+        <RattacherPlanDialog
+          contrat={contrat}
+          onClose={() => setDialog(null)}
+          onDone={() => { setDialog(null); load() }}
+        />
       )}
     </>
   )

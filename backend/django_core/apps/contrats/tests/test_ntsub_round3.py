@@ -179,3 +179,103 @@ class ReleveAbonnementTests(TestCase):
             '?debut=pas-une-date')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('AAAA-MM-JJ', resp.data['detail'])
+
+
+class RattacherPlanRetroactifTests(TestCase):
+    """NTSUB23 — rattachement rétroactif : classement seul vs prix appliqué."""
+
+    def setUp(self):
+        from apps.contrats.models import PlanAbonnement
+
+        self.co = make_company('ntsub23', 'NTSUB23 Co')
+        self.user = User.objects.create_user(
+            username='ntsub23-user', password='x', company=self.co,
+            role_legacy='admin')
+        self.api = auth(self.user)
+        self.contrat = Contrat.objects.create(
+            company=self.co, reference='CTR-OLD-1',
+            objet='Contrat antérieur au catalogue', montant=Decimal('1000'),
+            type_contrat='om', statut='actif')
+        self.plan = PlanAbonnement.objects.create(
+            company=self.co, code='PREMIUM', nom='Offre Premium',
+            prix_base=Decimal('1500'))
+
+    def test_sans_appliquer_le_prix_aucun_montant_ne_bouge(self):
+        from apps.contrats import services
+        from apps.contrats.models import Avenant
+
+        resultat = services.rattacher_plan_retroactif(
+            self.contrat, self.plan, False, auteur=self.user)
+        self.contrat.refresh_from_db()
+        self.assertEqual(self.contrat.plan_abonnement_id, self.plan.id)
+        self.assertEqual(self.contrat.montant, Decimal('1000'))
+        self.assertFalse(resultat['prix_applique'])
+        self.assertIsNone(resultat['avenant'])
+        self.assertEqual(resultat['delta'], Decimal('500'))
+        self.assertFalse(
+            Avenant.objects.filter(contrat=self.contrat).exists())
+
+    def test_appliquer_le_prix_cree_un_avenant_et_change_le_montant(self):
+        from apps.contrats import services
+        from apps.contrats.models import Avenant
+
+        resultat = services.rattacher_plan_retroactif(
+            self.contrat, self.plan, True, auteur=self.user)
+        self.contrat.refresh_from_db()
+        self.assertTrue(resultat['prix_applique'])
+        self.assertEqual(self.contrat.montant, Decimal('1500'))
+        self.assertEqual(self.contrat.plan_abonnement_id, self.plan.id)
+        avenant = Avenant.objects.get(contrat=self.contrat)
+        self.assertEqual(avenant.montant_delta, Decimal('500'))
+
+    def test_plan_d_une_autre_societe_refuse(self):
+        from apps.contrats import services
+        from apps.contrats.models import PlanAbonnement
+
+        autre = make_company('ntsub23-b', 'NTSUB23 B')
+        plan_b = PlanAbonnement.objects.create(
+            company=autre, code='AUTRE', nom='Offre B',
+            prix_base=Decimal('900'))
+        with self.assertRaises(services.ChangementPlanError):
+            services.rattacher_plan_retroactif(self.contrat, plan_b, False)
+        self.contrat.refresh_from_db()
+        self.assertIsNone(self.contrat.plan_abonnement_id)
+
+    def test_endpoint_par_defaut_ne_touche_pas_au_montant(self):
+        resp = self.api.post(
+            f'/api/django/contrats/contrats/{self.contrat.id}/rattacher-plan/',
+            {'plan': self.plan.id}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['prix_applique'])
+        self.assertEqual(resp.data['delta'], Decimal('500'))
+        self.contrat.refresh_from_db()
+        self.assertEqual(self.contrat.montant, Decimal('1000'))
+
+    def test_endpoint_avec_appliquer_prix(self):
+        resp = self.api.post(
+            f'/api/django/contrats/contrats/{self.contrat.id}/rattacher-plan/',
+            {'plan': self.plan.id, 'appliquer_prix': True}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data['prix_applique'])
+        self.assertIsNotNone(resp.data['avenant'])
+        self.contrat.refresh_from_db()
+        self.assertEqual(self.contrat.montant, Decimal('1500'))
+
+    def test_endpoint_nomme_le_champ_manquant(self):
+        resp = self.api.post(
+            f'/api/django/contrats/contrats/{self.contrat.id}/rattacher-plan/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('plan', resp.data)
+
+    def test_endpoint_refuse_un_plan_hors_societe(self):
+        from apps.contrats.models import PlanAbonnement
+
+        autre = make_company('ntsub23-c', 'NTSUB23 C')
+        plan_c = PlanAbonnement.objects.create(
+            company=autre, code='HORS', nom='Offre hors société',
+            prix_base=Decimal('10'))
+        resp = self.api.post(
+            f'/api/django/contrats/contrats/{self.contrat.id}/rattacher-plan/',
+            {'plan': plan_c.id}, format='json')
+        self.assertEqual(resp.status_code, 404)

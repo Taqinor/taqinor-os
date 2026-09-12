@@ -775,6 +775,49 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
 
+    @action(detail=True, methods=['post'], url_path='rattacher-plan')
+    def rattacher_plan(self, request, pk=None):
+        """NTSUB23 — Rattache rétroactivement le contrat à un plan catalogue.
+
+        Corps : ``{"plan": <id>, "appliquer_prix": false}``. Par DÉFAUT
+        (``appliquer_prix`` absent ou faux) seule la FK est posée, à titre de
+        CLASSIFICATION : aucun montant existant n'est modifié, aucun avenant
+        n'est créé. Cocher ``appliquer_prix`` applique le prix du plan en
+        créant un ``Avenant`` (XCTR6, prorata). La société est garantie par
+        ``get_object`` et le plan est validé comme appartenant à cette société.
+        """
+        contrat = self.get_object()
+        plan_id = request.data.get('plan')
+        if not plan_id:
+            return Response(
+                {'plan': "Plan d'abonnement : champ obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        plan = PlanAbonnement.objects.filter(
+            company=request.user.company, pk=plan_id).first()
+        if plan is None:
+            return Response(
+                {'plan': "Plan d'abonnement introuvable pour cette société."},
+                status=status.HTTP_404_NOT_FOUND)
+        appliquer = request.data.get('appliquer_prix') in (
+            True, 'true', 'True', '1', 1, 'oui')
+        try:
+            resultat = services.rattacher_plan_retroactif(
+                contrat, plan, appliquer, auteur=request.user)
+        except (services.ChangementPlanError, services.AvenantError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'contrat': resultat['contrat'].id,
+            'plan': plan.id,
+            'plan_code': plan.code,
+            'ancien_montant': resultat['ancien_montant'],
+            'nouveau_montant': resultat['nouveau_montant'],
+            'delta': resultat['delta'],
+            'prix_applique': resultat['prix_applique'],
+            'avenant': getattr(resultat['avenant'], 'id', None),
+            'prorata': resultat['prorata'],
+        })
+
     @action(detail=True, methods=['get'], url_path='releve-pdf')
     def releve_pdf(self, request, pk=None):
         """NTSUB20 — Relevé d'abonnement imprimable (état RÉCAPITULATIF).
