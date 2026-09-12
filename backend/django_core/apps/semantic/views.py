@@ -4,7 +4,10 @@ Le CRUD des métriques (NTDATA10) est une tâche séparée : cette liste dit
 exactement ce qui est servi aujourd'hui.
 
   * ``GET semantic/metriques/<id>/versions/`` (NTDATA9) — l'historique figé
-    des définitions successives d'une métrique.
+    des définitions successives d'une métrique ;
+  * ``GET semantic/metriques/<cle>/lignage/`` (NTDATA43) — « d'où vient ce
+    chiffre » : dataset source, app propriétaire, filtres appliqués, nombre de
+    lignes agrégées et version de définition en vigueur.
 
 CHAQUE ROUTE A SA PROPRE CLASSE : deux routes branchées sur la MÊME vue
 produisent le même ``operationId`` dans le schéma OpenAPI, et la collision fait
@@ -20,7 +23,7 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsResponsableOrAdmin
 
-from . import services
+from . import selectors, services
 from .models import MetricDefinition
 
 
@@ -71,3 +74,40 @@ class MetriqueVersionsView(APIView):
             'nb_versions': len(versions),
             'versions': versions,
         })
+
+
+class MetriqueLignageView(APIView):
+    """NTDATA43 — « d'où vient ce chiffre » pour une métrique nommée.
+
+    ``GET /semantic/metriques/<cle>/lignage/`` rend l'arbre : métrique →
+    dataset source → app propriétaire → filtres appliqués → nombre de lignes
+    agrégées, plus la version de définition en vigueur (NTDATA9).
+
+    Le lecteur est transmis au moteur : un champ sous permission (AUD801)
+    qu'il ne peut pas voir ne lui est pas décrit non plus, et le nombre de
+    lignes agrégées rend alors VIDE plutôt que de divulguer.
+    """
+
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(
+        responses=inline_serializer('MetriqueLignageReponse', {
+            'metrique': serializers.CharField(),
+            'libelle': serializers.CharField(),
+            'description': serializers.CharField(),
+            'unite': serializers.CharField(),
+            'format': serializers.IntegerField(),
+            'calcul': serializers.JSONField(),
+            'sources': serializers.JSONField(),
+            'filtres': serializers.JSONField(),
+            'nb_lignes_agregees': serializers.IntegerField(allow_null=True),
+            'version': serializers.JSONField(allow_null=True),
+        }))
+    def get(self, request, cle=None):
+        try:
+            lignage = selectors.lineage(request.user.company, cle,
+                                        user=request.user)
+        except services.MetriqueInconnue as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(lignage)

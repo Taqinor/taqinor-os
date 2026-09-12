@@ -119,6 +119,152 @@ def periodes_completes(points, aujourdhui=None):
             if not _est_periode_courante(point['periode'], aujourdhui)]
 
 
+# ── NTDATA43 — LIGNAGE : « d'où vient ce chiffre » ─────────────────────────
+#
+# Une métrique gouvernée ne vaut que si un utilisateur métier peut vérifier
+# d'où sort son nombre SANS lire de code. Le lignage rend l'arbre complet :
+# la métrique → son ou ses datasets source → l'APP qui les possède → les
+# filtres réellement appliqués → le nombre de lignes agrégées → la version de
+# définition en vigueur (NTDATA9).
+#
+# TOUT Y EST DÉRIVÉ, RIEN N'Y EST DÉCLARÉ À LA MAIN. L'app propriétaire d'un
+# dataset se lit du MODULE qui a enregistré son fournisseur — aucune table de
+# correspondance à tenir à jour, donc aucune dérive possible entre le lignage
+# affiché et la réalité.
+#
+# CE QUI N'EST PAS EXPRIMABLE EST OMIS. Une métrique d'ADAPTATEUR (NTDATA11 :
+# le DSO du grand livre, le pipeline pondéré lead par lead) n'est pas une
+# requête : elle n'a ni dataset ni « nombre de lignes agrégées ». On rend alors
+# `None` et on NOMME l'adaptateur, plutôt que d'inventer un compte de lignes
+# qui ne correspondrait à rien.
+
+
+def _app_proprietaire(nom_dataset):
+    """L'app qui a ENREGISTRÉ ce dataset, déduite de son fournisseur.
+
+    ``apps.ventes.bi_datasets`` → ``ventes``. ``''`` si le dataset n'est pas
+    (ou plus) enregistré : un module désactivé ne doit pas faire échouer la
+    lecture du lignage.
+    """
+    from core import data_explorer
+
+    try:
+        dataset = data_explorer.get_dataset(nom_dataset)
+    except data_explorer.DatasetInconnu:
+        return ''
+    module = getattr(dataset.get('provider'), '__module__', '') or ''
+    morceaux = module.split('.')
+    if len(morceaux) >= 2 and morceaux[0] == 'apps':
+        return morceaux[1]
+    return morceaux[0] if morceaux else ''
+
+
+def _champs_du_calcul(definition):
+    """Les champs du dataset que la mesure LIT réellement (ordre stable)."""
+    mesure = definition.mesure if isinstance(definition.mesure, dict) else {}
+    champs = []
+    if mesure.get('formula'):
+        for agregat in (mesure.get('aggregates') or []):
+            champ = (agregat or {}).get('field')
+            if champ and champ not in champs:
+                champs.append(champ)
+    elif mesure.get('field'):
+        champs.append(mesure['field'])
+    for cle_filtre in sorted((definition.filtres or {}) or {}):
+        # Un filtre peut porter un suffixe de lookup (`mois__gte`) : la
+        # COLONNE lue est sa racine.
+        racine = str(cle_filtre).split('__')[0]
+        if racine and racine not in champs:
+            champs.append(racine)
+    return champs
+
+
+def _description_du_calcul(definition):
+    """Ce que la métrique CALCULE, en une structure lisible."""
+    mesure = definition.mesure if isinstance(definition.mesure, dict) else {}
+    if definition.est_adaptateur:
+        return {'type': 'adaptateur', 'adaptateur': mesure.get('adapter')}
+    if definition.est_formule:
+        return {
+            'type': 'formule',
+            'expression': mesure.get('formula'),
+            'agregats': [
+                {'alias': (a or {}).get('alias'),
+                 'fonction': (a or {}).get('fn'),
+                 'champ': (a or {}).get('field')}
+                for a in (mesure.get('aggregates') or [])
+            ],
+        }
+    return {'type': 'agregat_simple', 'fonction': mesure.get('agg'),
+            'champ': mesure.get('field')}
+
+
+def _nb_lignes_agregees(company, user, definition):
+    """Combien de lignes la métrique agrège, ou ``None`` si inexprimable.
+
+    ``None`` — et jamais 0 — quand la métrique passe par un adaptateur (ce
+    n'est pas une requête), quand son dataset n'est plus enregistré, ou quand
+    un champ de sa population n'est pas lisible par ce lecteur : « je ne sais
+    pas » n'est pas « aucune ligne ».
+    """
+    from core import data_explorer
+
+    if definition.est_adaptateur or not definition.dataset:
+        return None
+    try:
+        lignes = data_explorer.run_query(
+            definition.dataset, company, user,
+            {'filters': dict(definition.filtres or {}),
+             'aggregates': [{'alias': 'nb', 'fn': 'count', 'field': 'id'}]})
+    except Exception:  # noqa: BLE001 — le lignage ne doit jamais lever
+        return None
+    if not lignes:
+        return None
+    return lignes[0].get('nb')
+
+
+def lineage(company, cle, *, user=None):
+    """NTDATA43 — l'arbre complet « d'où vient ce chiffre » pour une métrique.
+
+    Lève ``services.MetriqueInconnue`` si aucune métrique ACTIVE ne porte cette
+    clé dans cette société — c'est un 404 côté HTTP, pas un arbre vide.
+    """
+    definition = services.get_metric(company, cle)
+    sources = []
+    if definition.dataset:
+        from core import data_explorer
+        try:
+            schema = data_explorer.describe_dataset(definition.dataset, user)
+            label = schema.get('label') or definition.dataset
+        except data_explorer.DatasetInconnu:
+            label = definition.dataset
+        sources.append({
+            'dataset': definition.dataset,
+            'label': label,
+            'app': _app_proprietaire(definition.dataset),
+            'champs_utilises': _champs_du_calcul(definition),
+        })
+
+    derniere = services.versions_metrique(definition).first()
+    return {
+        'metrique': definition.cle,
+        'libelle': definition.libelle,
+        'description': definition.description,
+        'unite': definition.unite,
+        'format': definition.format,
+        'calcul': _description_du_calcul(definition),
+        'sources': sources,
+        'filtres': dict(definition.filtres or {}),
+        'nb_lignes_agregees': _nb_lignes_agregees(company, user, definition),
+        'version': ({
+            'version': derniere.version,
+            'figee_le': derniere.date_creation.isoformat(),
+            'auteur': (getattr(derniere.auteur, 'username', '')
+                       if derniere.auteur_id else ''),
+        } if derniere is not None else None),
+    }
+
+
 def variation_pct(company, user, cle, *, aujourdhui=None, filters=None):
     """Δ % entre les DEUX DERNIÈRES périodes COMPLÈTES de la métrique.
 
