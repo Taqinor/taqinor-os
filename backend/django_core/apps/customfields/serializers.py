@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import CustomFieldDef, CustomObjectDef, CustomRecord
+from .models import (
+    CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
+)
 
 # XPLT15 — clés reconnues du JSON `conditions` (visible/requis/lecture seule).
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
@@ -23,6 +25,18 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         # ``verrouiller``/``deverrouiller`` (auditées) : un PATCH ordinaire ne
         # doit jamais pouvoir le retirer en passant.
         read_only_fields = ['verrouille']
+
+    def to_representation(self, instance):
+        # NTEXT9 — expose le niveau (masque/lecture/edition) applicable au
+        # DEMANDEUR courant, pour que le générateur de formulaire (frontend)
+        # désactive/masque le champ sans second appel. Absent de contexte
+        # (pas de request/user) ⇒ 'edition', comportement actuel inchangé.
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        tier = getattr(getattr(request, 'user', None), 'menu_tier', None)
+        from .services import niveau_pour_role
+        rep['niveau_role'] = niveau_pour_role(instance, tier)
+        return rep
 
     def validate_module(self, value):
         from .models import CustomFieldDef as _CFD
@@ -311,6 +325,27 @@ def _validate_fichier_value(field_def, val):
             raise ValidationError({field_def.code: error})
         return stored
     raise ValidationError({field_def.code: 'Fichier attendu.'})
+
+
+class FieldRolePermissionSerializer(serializers.ModelSerializer):
+    """NTEXT9 — permission de champ par palier de rôle (admin)."""
+
+    class Meta:
+        model = FieldRolePermission
+        fields = ['id', 'field_def', 'role_tier', 'niveau',
+                  'date_creation', 'date_modification']
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        field_def = attrs.get(
+            'field_def', getattr(self.instance, 'field_def', None))
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if field_def is not None and company is not None \
+                and field_def.company_id != company.id:
+            raise serializers.ValidationError(
+                {'field_def': 'Champ introuvable pour votre société.'})
+        return attrs
 
 
 # --- XPLT16 — objets personnalisés no-code ----------------------------------

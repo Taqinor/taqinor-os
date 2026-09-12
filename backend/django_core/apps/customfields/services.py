@@ -61,6 +61,32 @@ def render_prompt(template: str, context: dict) -> str:
     return (template or '').format_map(_SafeDict(context or {}))
 
 
+def niveau_pour_role(field_def, role_tier) -> str:
+    """NTEXT9 — niveau (masque/lecture/edition) d'UN champ pour un palier de
+    rôle. Sans ligne ``FieldRolePermission`` pour ce couple (champ, palier) :
+    ``EDITION`` — comportement ACTUEL inchangé (tout visible/éditable)."""
+    from .models import FieldRolePermission
+
+    if not role_tier:
+        return FieldRolePermission.Niveau.EDITION
+    row = FieldRolePermission.objects.filter(
+        field_def=field_def, role_tier=role_tier).first()
+    return row.niveau if row is not None else FieldRolePermission.Niveau.EDITION
+
+
+def masked_field_ids_for_tier(company, role_tier) -> set:
+    """NTEXT9 — ids des ``CustomFieldDef`` MASQUÉS pour ce palier, société
+    scopée. Vide (jamais d'exception) si ``role_tier`` est vide/None."""
+    from .models import FieldRolePermission
+
+    if not role_tier:
+        return set()
+    return set(FieldRolePermission.objects.filter(
+        company=company, role_tier=role_tier,
+        niveau=FieldRolePermission.Niveau.MASQUE
+    ).values_list('field_def_id', flat=True))
+
+
 def valider_formule_definition(formule: str, sibling_codes) -> tuple[bool, str]:
     """NTEXT1 — valide une formule de champ CALCULÉ à la DÉFINITION.
 

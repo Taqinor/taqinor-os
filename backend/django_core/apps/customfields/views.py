@@ -7,10 +7,12 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
 from apps.parametres.models import SettingsAuditLog
 from .audit_plateforme import AuditPlateformeMixin
-from .models import CustomFieldDef, CustomObjectDef, CustomRecord
+from .models import (
+    CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
+)
 from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
-    _module_model,
+    FieldRolePermissionSerializer, _module_model,
 )
 
 # NTEXT2 — largeur/formatage suggérés par type de champ pour la vue LISTE
@@ -51,13 +53,18 @@ def _colonne_liste(field_def):
     }
 
 
-def _champ_formulaire(field_def):
+def _champ_formulaire(field_def, niveau_role=None):
     """NTEXT3 — schéma d'un champ de formulaire pour un CustomFieldDef donné.
 
     Les conditions XPLT15 (visible_si/requis_si/lecture_seule_si) sont
     renvoyées TELLES QUELLES (arbres core.rules) pour évaluation front ;
     requis_si reste de toute façon RE-VALIDÉ côté serveur par
-    ``serializers.validate_custom_data`` — le front ne fait jamais foi seul."""
+    ``serializers.validate_custom_data`` — le front ne fait jamais foi seul.
+
+    NTEXT9 — ``niveau_role`` (masque/lecture/edition, résolu par l'appelant
+    pour le PALIER du demandeur) s'ajoute en ``lecture_seule_role`` : un
+    champ ``masque`` n'est de toute façon jamais transmis ici (filtré par
+    l'appelant AVANT construction du schéma)."""
     conditions = field_def.conditions or {}
     return {
         'code': field_def.code,
@@ -71,6 +78,7 @@ def _champ_formulaire(field_def):
         'visible_si': conditions.get('visible_si'),
         'requis_si': conditions.get('requis_si'),
         'lecture_seule_si': conditions.get('lecture_seule_si'),
+        'lecture_seule_role': niveau_role == 'lecture',
     }
 
 
@@ -87,6 +95,19 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
         module = self.request.query_params.get('module')
         if module:
             qs = qs.filter(module=module)
+        # NTEXT9 — un champ MASQUÉ pour le palier du demandeur n'apparaît
+        # JAMAIS dans la liste servant à construire son formulaire (retrieve
+        # reste non filtré : un admin qui gère le SCHÉMA doit pouvoir
+        # retrouver une définition par id même masquée pour son propre
+        # palier). Sans ligne pour ce couple = comportement actuel inchangé.
+        if self.action == 'list':
+            from .services import masked_field_ids_for_tier
+            user = self.request.user
+            tier = getattr(user, 'menu_tier', None)
+            masked = masked_field_ids_for_tier(
+                getattr(user, 'company', None), tier)
+            if masked:
+                qs = qs.exclude(pk__in=masked)
         return qs
 
     def get_permissions(self):
@@ -228,6 +249,27 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
                     old=old, new=result.text)
         return Response({'configured': True, 'ok': True, 'value': result.text,
                          'source': result.source})
+
+
+class FieldRolePermissionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTEXT9 — permissions de champ par palier de rôle. Lecture tout rôle
+    (le formulaire en a besoin — cf. ``CustomFieldDefSerializer.
+    to_representation``/``vue_formulaire``), écriture admin uniquement.
+    Filtrable par ``?field_def=<id>``."""
+    queryset = FieldRolePermission.objects.all()
+    serializer_class = FieldRolePermissionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        field_def = self.request.query_params.get('field_def')
+        if field_def:
+            qs = qs.filter(field_def_id=field_def)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsAdminRole()]
 
 
 def _object_permission_code(object_code, action_kind):
@@ -430,10 +472,24 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def vue_formulaire(self, request, *args, **kwargs):
         """NTEXT3 — schéma de formulaire auto-généré (tous les champs actifs
-        de l'objet, ordonnés) pour un rendu no-code du formulaire de saisie."""
+        de l'objet, ordonnés) pour un rendu no-code du formulaire de saisie.
+
+        NTEXT9 — un champ ``masque`` pour le palier du demandeur est retiré
+        du schéma ; un champ ``lecture`` reste présent avec
+        ``lecture_seule_role=true``. Sans ligne de permission, comportement
+        actuel inchangé (tout visible/éditable)."""
         objet = self._objet()
         self._check_object_permission('voir')
         champs = CustomFieldDef.objects.filter(
             company=request.user.company, module=objet.field_module,
             actif=True).order_by('ordre', 'libelle')
-        return Response({'champs': [_champ_formulaire(c) for c in champs]})
+        from .models import FieldRolePermission
+        from .services import niveau_pour_role
+        tier = getattr(request.user, 'menu_tier', None)
+        resultat = []
+        for c in champs:
+            niveau = niveau_pour_role(c, tier)
+            if niveau == FieldRolePermission.Niveau.MASQUE:
+                continue
+            resultat.append(_champ_formulaire(c, niveau))
+        return Response({'champs': resultat})

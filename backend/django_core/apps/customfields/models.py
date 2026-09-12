@@ -104,6 +104,55 @@ class CustomFieldDef(models.Model):
         return f'{self.module}.{self.code}'
 
 
+class FieldRolePermission(models.Model):
+    """NTEXT9 — visibilité/édition d'UN ``CustomFieldDef``, PAR PALIER de rôle.
+
+    ``role_tier`` reprend le même vocabulaire que ``core.VuePersonnalisee.
+    role_tier`` (« normal » / « responsable » / « admin » — source de vérité
+    ``authentication.role_tiers``, exposée par ``CustomUser.menu_tier``) :
+    aucune app de fondation n'importe l'app métier ``roles`` pour autant, le
+    palier reste une simple CHAÎNE opaque ici, comme partout ailleurs dans la
+    plateforme.
+
+    Défaut SANS LIGNE pour un (champ, palier) donné = comportement ACTUEL
+    inchangé : le champ reste visible ET éditable (voir
+    ``services.niveau_pour_role``, qui retombe sur ``EDITION`` en l'absence
+    de ligne)."""
+
+    class Niveau(models.TextChoices):
+        MASQUE = 'masque', 'Masqué'
+        LECTURE = 'lecture', 'Lecture seule'
+        EDITION = 'edition', 'Édition'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='field_role_permissions')
+    field_def = models.ForeignKey(
+        CustomFieldDef, on_delete=models.CASCADE,
+        related_name='role_permissions')
+    role_tier = models.CharField(
+        'Palier de rôle', max_length=40,
+        help_text="« normal », « responsable » ou « admin » "
+                  "(authentication.role_tiers).")
+    niveau = models.CharField(
+        max_length=10, choices=Niveau.choices, default=Niveau.EDITION)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Permission de champ par rôle'
+        verbose_name_plural = 'Permissions de champ par rôle'
+        unique_together = [('field_def', 'role_tier')]
+        indexes = [
+            models.Index(fields=['company', 'field_def', 'role_tier'],
+                         name='customfields_fieldrole_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.field_def_id}:{self.role_tier}={self.niveau}'
+
+
 class CustomObjectDef(models.Model):
     """XPLT16 — objet métier no-code créé par l'admin (registre de clés,
     visiteurs, matériel prêté…) sans écrire de code.
