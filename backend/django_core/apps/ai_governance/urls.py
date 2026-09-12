@@ -5,7 +5,8 @@ from rest_framework.routers import SimpleRouter
 from .views import (AnalyserContratView, AssistantConfigView,
                     CrInterventionView, DescriptionProduitView, ExtraireView,
                     ProchainesActionsView, RapportPeriodeView,
-                    RechercheGlobaleView, RedigerView, ResumeFicheView)
+                    RechercheGlobaleView, RedigerView, ResumeFicheView,
+                    ResumerDocumentView)
 from .viewsets import DocumentAiJobViewSet
 
 # SimpleRouter (et non DefaultRouter) : le préfixe `/api/django/ai/` ne doit
@@ -29,6 +30,9 @@ urlpatterns = [
     # NTAI12 — mémo vocal → compte rendu d'intervention structuré (SAV).
     path('cr-intervention/', CrInterventionView.as_view(),
          name='ai-cr-intervention'),
+    # NTAI20 — résumé d'un long document (map-reduce), repli sur l'aperçu.
+    path('resumer-document/', ResumerDocumentView.as_view(),
+         name='ai-resumer-document'),
     # NTAI19 — analyse d'un contrat : échéances + proposition d'alerte de
     # préavis (n'écrit qu'après confirmation explicite).
     path('analyser-contrat/', AnalyserContratView.as_view(),

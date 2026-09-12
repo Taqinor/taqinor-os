@@ -82,20 +82,13 @@ def lire_preavis_jours(valeur):
 
 
 def _document_scoped(company, document_id):
-    """Pièce GED de la société, via les ``selectors`` de la GED. ``None`` sinon."""
-    if not document_id:
-        return None
-    try:
-        from apps.ged import selectors as ged_selectors
-    except Exception:  # noqa: BLE001 — app absente (édition allégée)
-        return None
-    getter = getattr(ged_selectors, 'document_scoped', None)
-    if getter is not None:
-        try:
-            return getter(company, document_id)
-        except Exception:  # noqa: BLE001
-            return None
-    return None
+    """Pièce GED de la société — même résolution que l'extraction (NTAI15).
+
+    Une seule porte vers la GED dans cette app : ``documents_for_company``,
+    son SELECTOR (jamais ses modèles)."""
+    from .extraction import _document_scoped as resoudre
+
+    return resoudre(company, document_id)
 
 
 def analyser_contrat(*, company, contrat_id, document_id=None,

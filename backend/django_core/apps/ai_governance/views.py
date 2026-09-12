@@ -21,6 +21,7 @@ from .serializers import (AnalyseContratRequeteSerializer,
                           CapacitesRequeteSerializer, ExtraireRequeteSerializer,
                           FicheCibleSerializer,
                           RechercheGlobaleRequeteSerializer,
+                          ResumeDocumentRequeteSerializer,
                           UsageRequeteSerializer)
 from .services import AiCopiloteUnavailable
 
@@ -492,6 +493,54 @@ class AnalyserContratView(UsageContexteMixin, GenericAPIView):
                 document_id=request.data.get('document_id'),
                 confirmer=bool(request.data.get('confirmer')),
                 user=request.user)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class ResumerDocumentView(UsageContexteMixin, GenericAPIView):
+    """NTAI20 — ``POST /api/django/ai/resumer-document/``.
+
+    Body ``{"document_id": 12}``. Résume un LONG document fragment par
+    fragment (map) puis synthétise (reduce), en gardant chaque point clé
+    rattaché à son fragment — une citation vérifiable, pas un renvoi vague.
+
+    LECTURE SEULE. Sans clé LLM, renvoie l'aperçu plein-texte que la GED
+    expose déjà (``source: "apercu"``) — jamais une erreur, jamais un résumé
+    inventé.
+    """
+
+    feature_key = 'ai.resumer_document'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = ResumeDocumentRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant (périmètre explicite)."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiResumeDocument', {
+        'document_id': drf_serializers.IntegerField(),
+        'resume': drf_serializers.CharField(allow_blank=True),
+        'points_cles': drf_serializers.JSONField(),
+        'apercu': drf_serializers.CharField(allow_blank=True),
+        'fragments': drf_serializers.IntegerField(),
+        'tronque': drf_serializers.BooleanField(required=False),
+        'source': drf_serializers.CharField(),
+    }))
+    def post(self, request):
+        from .extraction import resumer_document
+
+        document_id = request.data.get('document_id')
+        if document_id in (None, ''):
+            return Response({'detail': 'document_id est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = resumer_document(
+                company=request.user.company, document_id=document_id)
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)

@@ -181,6 +181,12 @@ class FicheCibleSerializer(serializers.Serializer):
     object_id = serializers.CharField()
 
 
+class ResumeDocumentRequeteSerializer(serializers.Serializer):
+    """NTAI20 — corps de ``POST /api/django/ai/resumer-document/``."""
+
+    document_id = serializers.CharField()
+
+
 class AnalyseContratRequeteSerializer(serializers.Serializer):
     """NTAI19 — corps de ``POST /api/django/ai/analyser-contrat/``.
 

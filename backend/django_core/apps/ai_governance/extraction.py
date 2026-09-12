@@ -132,6 +132,137 @@ def extraire_document(*, company, file_bytes, schema, mime_hint='') -> dict:
     return reponse
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI20 — Résumé d'un long document (map-reduce), avec repli sur l'aperçu
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Un contrat de 40 pages ne tient pas dans un prompt. On résume donc FRAGMENT
+# par FRAGMENT (map), puis on résume les résumés (reduce) — et chaque point clé
+# reste RATTACHÉ à son fragment, pour qu'un lecteur puisse aller vérifier.
+#
+# Sans clé LLM, l'endpoint ne tombe pas : il rend l'aperçu plein-texte que la
+# GED expose déjà (GED14). L'utilisateur obtient toujours quelque chose.
+
+#: Nombre max de fragments résumés (borne le coût d'un document de 300 pages).
+RESUME_FRAGMENTS_MAX = 8
+
+#: Taille d'un fragment quand le document n'a pas encore été découpé par la GED.
+RESUME_TAILLE_FRAGMENT = 2000
+
+#: Longueur de l'aperçu plein-texte rendu en repli.
+RESUME_APERCU_CARACTERES = 1200
+
+
+def fragments_du_document(document) -> list:
+    """Fragments de texte du document, du premier au dernier.
+
+    Réutilise les ``DocumentChunk`` de la GED (FG352/GED12) quand ils existent ;
+    sinon découpe le texte OCR EN MÉMOIRE (aucune écriture, aucun index créé
+    ici — l'indexation reste le métier de la GED)."""
+    try:
+        chunks = list(document.chunks.order_by('chunk_index')
+                      .values_list('texte', flat=True))
+    except Exception:  # noqa: BLE001 — pas de fragments indexés
+        chunks = []
+    fragments = [t for t in chunks if (t or '').strip()]
+    if fragments:
+        return fragments
+
+    texte = str(getattr(document, 'texte_ocr', '') or '').strip()
+    if not texte:
+        return []
+    return [texte[i:i + RESUME_TAILLE_FRAGMENT]
+            for i in range(0, len(texte), RESUME_TAILLE_FRAGMENT)]
+
+
+def resumer_document(*, company, document_id, max_tokens=400) -> dict:
+    """NTAI20 — Résumé d'un long document + points clés cités. LECTURE SEULE.
+
+    Sans clé LLM : renvoie l'aperçu plein-texte existant (``source:
+    'apercu'``) — jamais une erreur, jamais un résumé inventé.
+    """
+    exiger_feature(company, 'ai.resumer_document')
+
+    from core.ai.registry import is_capability_configured as _configure
+    from core.ai.services import summarize_thread
+
+    document = _document_scoped(company, document_id)
+    if document is None:
+        raise AiCopiloteUnavailable('Document introuvable.')
+
+    fragments = fragments_du_document(document)
+    if not fragments:
+        raise AiCopiloteUnavailable(
+            "Ce document n'a pas de texte exploitable (pas encore océrisé ?).")
+
+    apercu = ' '.join(fragments)[:RESUME_APERCU_CARACTERES]
+    if not _configure('llm'):
+        return {
+            'document_id': getattr(document, 'pk', document_id),
+            'resume': '',
+            'points_cles': [],
+            'apercu': apercu,
+            'fragments': len(fragments),
+            'source': 'apercu',
+        }
+
+    retenus = fragments[:RESUME_FRAGMENTS_MAX]
+    points = []
+    for index, fragment in enumerate(retenus):
+        partiel = summarize_thread(
+            [{'texte': fragment}],
+            context='Fragment de document long — résume-le en 1 à 2 phrases.',
+            max_tokens=180)
+        if partiel.available:
+            points.append({
+                'fragment': index + 1,
+                'texte': partiel.summary,
+                # Citation VÉRIFIABLE : le numéro renvoie à un fragment réel.
+                'citation': f'[fragment {index + 1}]',
+            })
+
+    if not points:
+        return {
+            'document_id': getattr(document, 'pk', document_id),
+            'resume': '',
+            'points_cles': [],
+            'apercu': apercu,
+            'fragments': len(fragments),
+            'source': 'apercu',
+        }
+
+    global_ = summarize_thread(
+        [{'texte': p['texte']} for p in points],
+        context='Synthèse générale à partir des résumés de fragments.',
+        max_tokens=max_tokens)
+
+    return {
+        'document_id': getattr(document, 'pk', document_id),
+        'resume': global_.summary if global_.available else '',
+        'points_cles': points,
+        'apercu': apercu,
+        'fragments': len(fragments),
+        # Vrai quand le document dépasse la borne : le lecteur doit savoir que
+        # la fin n'a pas été lue, plutôt que de croire à un résumé complet.
+        'tronque': len(fragments) > len(retenus),
+        'source': 'llm',
+    }
+
+
+def _document_scoped(company, document_id):
+    """Document GED de la société, via le SELECTOR de la GED. ``None`` sinon."""
+    if not document_id:
+        return None
+    try:
+        from apps.ged.selectors import documents_for_company
+    except Exception:  # noqa: BLE001 — app absente (édition allégée)
+        return None
+    try:
+        return documents_for_company(company).filter(pk=document_id).first()
+    except (ValueError, TypeError):
+        return None
+
+
 def _catalogue_appariement(company) -> list:
     """Catalogue produit de la société, LU VIA LE SELECTOR de ``stock``.
 
