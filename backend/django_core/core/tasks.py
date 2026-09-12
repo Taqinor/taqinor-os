@@ -349,3 +349,14 @@ def notifier_fenetres_maintenance_task():
     n = maintenance_windows.notifier_fenetres_a_venir()
     logger.info('core.notifier_fenetres_maintenance: %d notification(s).', n)
     return {'notifies': n}
+
+
+@shared_task(name='core.notifier_seuils_usage')
+def notifier_seuils_usage_task():
+    """NTOBS13 — notifie chaque société franchissant 80%/100% d'un quota
+    mesuré (beat quotidien). Enveloppe fine de ``core.usage_limits``."""
+    from . import usage_limits
+
+    n = usage_limits.notifier_seuils_usage()
+    logger.info('core.notifier_seuils_usage: %d notification(s).', n)
+    return {'notifies': n}

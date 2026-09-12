@@ -365,6 +365,10 @@ class EventType(models.TextChoices):
     # approche (24h/1h avant) ou est annulée : notifie les admins concernés.
     MAINTENANCE_WINDOW_ANNOUNCED = (
         'maintenance_window_announced', 'Fenêtre de maintenance annoncée')
+    # NTOBS13 — une ressource mesurée (core.usage_limits) franchit 80% ou
+    # 100% de son quota : notifie les admins du tenant concerné.
+    USAGE_QUOTA_SEUIL_FRANCHI = (
+        'usage_quota_seuil_franchi', 'Seuil de quota atteint')
 
 
 class Channel(models.TextChoices):

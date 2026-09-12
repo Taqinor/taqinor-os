@@ -1251,6 +1251,11 @@ app.conf.beat_schedule = {
         'task': 'core.notifier_fenetres_maintenance',
         'schedule': crontab(minute='*/15'),
     },
+    # NTOBS13 — notifie chaque société franchissant 80%/100% d'un quota mesuré.
+    'core-notifier-seuils-usage': {
+        'task': 'core.notifier_seuils_usage',
+        'schedule': crontab(hour=7, minute=10),
+    },
 }
 
 

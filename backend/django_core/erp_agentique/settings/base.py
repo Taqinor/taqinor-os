@@ -1360,6 +1360,8 @@ CELERY_TASK_ROUTES = {
     'core.generer_sla_mensuel': {'queue': 'scheduled'},
     # NTOBS9 — notification 24h/1h avant une fenêtre de maintenance.
     'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
+    # NTOBS13 — notification de seuil de quota (80%/100%), beat quotidien.
+    'core.notifier_seuils_usage': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en

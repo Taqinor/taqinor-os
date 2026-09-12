@@ -161,3 +161,73 @@ def usage_summary(company):
 def usage_view(request):
     """GET /api/django/core/usage/ — scopé société de l'appelant."""
     return Response(usage_summary(request.user.company))
+
+
+# ── NTOBS13 — notification proactive avant qu'un quota ne soit atteint ────
+#
+# Réutilise ENTIÈREMENT le canal ``notifications.notify()`` existant (aucun
+# nouveau canal). Anti-spam : le dernier seuil notifié par (société,
+# ressource) est mémorisé en cache Django (TTL 24h) — franchir 80% notifie
+# une fois, franchir 100% notifie à nouveau (seuil différent), redescendre
+# sous 80% efface la mémoire pour permettre une notification future si le
+# seuil est refranchi (jamais un blocage permanent).
+
+QUOTA_ALERT_CACHE_TTL_SECONDS = 60 * 60 * 24
+QUOTA_ALERT_THRESHOLDS = (100, 80)  # ordre décroissant : le plus haut d'abord
+
+
+def _quota_alert_cache_key(company_id, ressource_nom):
+    return f'usage_quota_notified:{company_id}:{ressource_nom}'
+
+
+def _notifier_seuil_quota(company, ressource, seuil, pct):
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        from .maintenance_windows import admins_cibles
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return
+    titre = f"{ressource['nom']} atteint {int(pct)}% du quota"
+    for admin in admins_cibles(company):
+        try:
+            notify(
+                admin, EventType.USAGE_QUOTA_SEUIL_FRANCHI, titre,
+                body=f"Votre {ressource['nom'].lower()} atteint {int(pct)}% "
+                     'du quota.',
+                company=company,
+            )
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def notifier_seuils_usage(now=None):
+    """NTOBS13 — job beat quotidien : notifie chaque société active dont une
+    ressource mesurée franchit 80% ou 100% de sa limite."""
+    from django.core.cache import cache
+
+    from authentication.models import Company
+
+    notifies = 0
+    for company in Company.objects.filter(actif=True):
+        summary = usage_summary(company)
+        for ressource in summary['ressources']:
+            limite = ressource.get('limite')
+            utilise = ressource.get('utilise')
+            if not limite or utilise is None:
+                continue
+            pct = 100.0 * utilise / limite
+            key = _quota_alert_cache_key(company.id, ressource['nom'])
+            dernier_seuil = cache.get(key)
+
+            if pct < 80:
+                if dernier_seuil is not None:
+                    cache.delete(key)
+                continue
+
+            for seuil in QUOTA_ALERT_THRESHOLDS:
+                if pct >= seuil and dernier_seuil != seuil:
+                    _notifier_seuil_quota(company, ressource, seuil, pct)
+                    cache.set(key, seuil, QUOTA_ALERT_CACHE_TTL_SECONDS)
+                    notifies += 1
+                    break
+    return notifies
