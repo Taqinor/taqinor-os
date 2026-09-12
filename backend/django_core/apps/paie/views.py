@@ -39,6 +39,7 @@ from .models import (
     LigneVirement,
     OrdreVirement,
     ParametrePaie,
+    PaysPaie,
     PeriodePaie,
     ProfilPaie,
     RegimeMutuelle,
@@ -61,6 +62,7 @@ from .serializers import (
     ElementVariableSerializer,
     LigneVirementSerializer,
     ParametrePaieSerializer,
+    PaysPaieSerializer,
     PeriodePaieSerializer,
     OrdreVirementSerializer,
     ProfilPaieSerializer,
@@ -104,6 +106,7 @@ from .services import (
     emettre_ordre_virement,
     enregistrer_depot_declaratif,
     ensure_defaults,
+    ensure_pays_paie_standard,
     ensure_types_entree_ponctuelle_standard,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
@@ -320,6 +323,28 @@ class RubriqueViewSet(_PaieBaseViewSet):
         panier, ancienneté, CIMR…), sans écraser une rubrique déjà éditée.
         """
         created = ensure_rubriques_standard(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
+
+
+class PaysPaieViewSet(_PaieBaseViewSet):
+    """Pays de paie de la société (NTPAY7/NTPAY12) — activation & moteur.
+
+    Société scopée, RBAC paie standard (``paie_voir`` lit, ``paie_gerer``
+    édite). ``seed-standard`` provisionne le pays MAROC (idempotent) ; les
+    packs FR/SN/CI restent gatés fondateur — un pays déclaré dont le moteur
+    n'est pas livré est signalé par ``moteur_disponible: false`` et refusé à
+    l'affectation d'un profil.
+    """
+    queryset = PaysPaie.objects.all()
+    serializer_class = PaysPaieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code_iso', 'libelle']
+    ordering_fields = ['code_iso', 'libelle', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-standard')
+    def seed_standard(self, request):
+        """Provisionne le pays de paie MAROC (idempotent)."""
+        created = ensure_pays_paie_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
 
 

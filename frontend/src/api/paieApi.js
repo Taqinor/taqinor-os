@@ -159,6 +159,10 @@ const paieApi = {
   certificatTravail: (id) =>
     api.get(`/paie/profils/${id}/certificat-travail/`,
       { responseType: 'blob' }),
+  // NTPAY12 — pays de paie (moteur multi-pays NTPAY7). `moteur_disponible`
+  // est dit par le SERVEUR : un pays sans pack de calcul livré n'est jamais
+  // proposé à l'affectation d'un profil.
+  getPaysPaie: (params) => api.get('/paie/pays-paie/', { params }),
   simulationBulletin: (id, params) =>
     api.get(`/paie/profils/${id}/simulation/`, { params }),
   registreConges: (params) =>

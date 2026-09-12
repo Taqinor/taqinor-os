@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FileText, Download, XCircle, Printer } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
-  toast, Button, Select, SelectTrigger, SelectValue, SelectContent,
+  toast, Badge, Button, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
@@ -78,6 +78,14 @@ export default function BulletinList() {
       cell: (_v, r) => `Période ${r.periode}` },
     { id: 'profil', header: 'Profil', accessor: (r) => r.profil,
       cell: (_v, r) => `Profil #${r.profil}` },
+    // NTPAY12 — badge PAYS : vide pour un profil sans pays (mono-pays
+    // marocain), donc aucun badge n'apparaît tant que le multi-pays n'est pas
+    // utilisé.
+    { id: 'pays', header: 'Pays', width: 90,
+      accessor: (r) => r.pays_code || '',
+      cell: (_v, r) => (r.pays_code
+        ? <Badge tone="neutral">{r.pays_code}</Badge>
+        : <span className="text-muted-foreground">—</span>) },
     { id: 'brut', header: 'Brut', align: 'right',
       accessor: (r) => Number(r.brut) || 0, cell: (_v, r) => formatMAD(r.brut) },
     { id: 'net', header: 'Net à payer', align: 'right',

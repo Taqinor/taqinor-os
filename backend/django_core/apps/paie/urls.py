@@ -13,6 +13,7 @@ from .views import (
     LigneVirementViewSet,
     OrdreVirementViewSet,
     ParametrePaieViewSet,
+    PaysPaieViewSet,
     PeriodePaieViewSet,
     ProfilPaieViewSet,
     RegimeMutuelleViewSet,
@@ -43,6 +44,8 @@ router.register(r'saisies', SaisieArretViewSet)
 router.register(r'ordres-virement', OrdreVirementViewSet)
 router.register(r'lignes-virement', LigneVirementViewSet)
 router.register(r'echeances-declaratives', EcheanceDeclarativeViewSet)
+# NTPAY12 — pays de paie (activation + moteur de calcul).
+router.register(r'pays-paie', PaysPaieViewSet)
 # NTPAY3 — plan comptable paie (schéma de ventilation éditable).
 router.register(r'schemas-comptables-paie', SchemaComptablePaieViewSet)
 router.register(r'mes-bulletins', CoffreFortBulletinViewSet,

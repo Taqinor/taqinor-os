@@ -23,6 +23,7 @@ from .models import (
     LigneVirement,
     OrdreVirement,
     ParametrePaie,
+    PaysPaie,
     PeriodePaie,
     ProfilPaie,
     RegimeMutuelle,
@@ -199,7 +200,8 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProfilPaie
         fields = [
-            'id', 'employe', 'employe_nom', 'type_remuneration', 'salaire_base',
+            'id', 'employe', 'employe_nom', 'pays',
+            'type_remuneration', 'salaire_base',
             'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
@@ -269,6 +271,29 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
 
     def validate_structure(self, value):
         return _meme_societe(self, value, 'Structure de paie')
+
+    def validate_pays(self, value):
+        """NTPAY12 — pays de la société, ACTIF, et au moteur réellement livré.
+
+        Un pays désactivé ou dont le pack de calcul n'est pas livré ne peut
+        pas être posé sur un profil : le refus arrive ICI, en nommant le champ
+        et le pays, plutôt qu'au moment du calcul de paie.
+        """
+        from .services import MOTEURS_PAYS
+
+        value = _meme_societe(self, value, 'Pays de paie')
+        if value is None:
+            return value
+        if not value.actif:
+            raise serializers.ValidationError(
+                f'Pays « {value.libelle or value.code_iso} » désactivé : '
+                'activez-le dans l’écran « Pays de paie » avant de l’affecter.')
+        cle = (value.moteur or value.code_iso or '').upper()
+        if cle not in MOTEURS_PAYS:
+            raise serializers.ValidationError(
+                f'Aucun moteur de paie livré pour « {cle} » : ce pack pays '
+                'n’est pas disponible.')
+        return value
 
 
 class StructurePaieRubriqueSerializer(serializers.ModelSerializer):
@@ -572,11 +597,18 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
     l'action ``valider`` — pas d'écriture directe des montants.
     """
     lignes = LigneBulletinSerializer(many=True, read_only=True)
+    # NTPAY12 — badge PAYS sur la liste des bulletins. Vide pour un profil sans
+    # pays (cas mono-pays marocain) : l'écran n'affiche alors aucun badge,
+    # comme avant.
+    pays_code = serializers.CharField(
+        source='profil.pays.code_iso', read_only=True, default='')
+    pays_devise = serializers.CharField(
+        source='profil.pays.devise', read_only=True, default='')
 
     class Meta:
         model = BulletinPaie
         fields = [
-            'id', 'periode', 'profil', 'statut',
+            'id', 'periode', 'profil', 'pays_code', 'pays_devise', 'statut',
             'type_bulletin', 'rectifie', 'motif', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
@@ -735,6 +767,43 @@ class DepotDeclaratifSerializer(serializers.ModelSerializer):
             'montant_declare', 'statut', 'motif_rejet', 'date_creation',
         ]
         read_only_fields = fields
+
+
+class PaysPaieSerializer(serializers.ModelSerializer):
+    """Pays de paie d'une société (NTPAY7/NTPAY12), company-scoped.
+
+    ``company`` posée côté serveur. ``moteur_disponible`` dit si un pack de
+    calcul est RÉELLEMENT livré pour ce pays : l'écran n'offre jamais un pays
+    qui ne saurait produire aucun bulletin.
+    """
+    moteur_disponible = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = PaysPaie
+        fields = [
+            'id', 'code_iso', 'libelle', 'devise', 'moteur', 'actif',
+            'moteur_disponible', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_moteur_disponible(self, obj):
+        from .services import MOTEURS_PAYS
+
+        cle = (obj.moteur or obj.code_iso or '').upper()
+        return cle in MOTEURS_PAYS
+
+    def validate_code_iso(self, value):
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = PaysPaie.objects.filter(
+            company=request.user.company_id, code_iso=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Ce pays est déjà déclaré pour votre société.')
+        return value
 
 
 class SchemaComptablePaieSerializer(serializers.ModelSerializer):
