@@ -114,6 +114,13 @@ class NTSRV39GardeProblemeTest(TestCase):
             {'ticket': self.ticket.pk}, format='json')
         self.assertEqual(resp.status_code, 403, resp.content)
 
+    def test_technicien_403_sur_le_wizard_de_creation(self):
+        resp = auth(self.technicien).post(
+            f'{LISTE}creer-depuis-regroupement/',
+            {'titre': 'Tentative', 'ticket_ids': [self.ticket.pk]},
+            format='json')
+        self.assertEqual(resp.status_code, 403, resp.content)
+
     def test_technicien_200_sur_les_lectures_annexes(self):
         api = auth(self.technicien)
         self.assertEqual(

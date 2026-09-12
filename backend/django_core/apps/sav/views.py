@@ -1410,9 +1410,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
         }, status=201)
 
     @action(detail=True, methods=['post'], url_path='repondre-email',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[
+                HasPermissionOrLegacy('sav_repondre_client_externe')])
     def repondre_email(self, request, pk=None):
         """NTSRV1 — Répond au client par e-mail DEPUIS le ticket.
+
+        NTSRV40 — écrire AU CLIENT est un geste distinct de « travailler le
+        ticket » : la garde est ``sav_repondre_client_externe``, pas
+        ``sav_gerer``. Un agent en formation garde l'assignation et les notes
+        INTERNES (``noter``) mais ne peut rien envoyer à l'extérieur. Le code
+        est accordé par défaut à tous les rôles système qui portaient déjà
+        ``sav_gerer`` : aucun accès existant n'est retiré. Le futur envoi
+        WhatsApp (NTSRV3) devra porter la MÊME garde.
 
         Le message sortant reprend les en-têtes de fil (``In-Reply-To`` /
         ``References``) du dernier e-mail entrant : la réponse du client
@@ -3020,7 +3029,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         }))
     @action(detail=False, methods=['post'],
             url_path='creer-depuis-regroupement',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[
+                HasPermissionOrLegacy('sav_probleme_gerer')])  # NTSRV39
     def creer_depuis_regroupement(self, request):
         """NTSRV31 — crée le problème ET rattache les tickets COCHÉS en UN
         SEUL appel transactionnel.

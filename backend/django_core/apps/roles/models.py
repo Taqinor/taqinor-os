@@ -123,6 +123,14 @@ ALL_PERMISSIONS = [
     # ces tâches n'auront pas à rouvrir `apps/roles`.
     'sav_nps_voir',
     'sav_sentiment_ia_voir',
+    # NTSRV40 — envoyer une REPONSE EXTERNE au client depuis un ticket
+    # (e-mail NTSRV1, et le jour ou il existera l'envoi WhatsApp NTSRV3).
+    # Distinct de `sav_gerer` : un agent en formation travaille ses tickets
+    # (assignation, notes INTERNES) sans pouvoir ecrire au client.
+    # Accorde par defaut a TOUS les roles systeme qui portaient deja
+    # `sav_gerer` — aucun acces existant n'est retire ; un Administrateur le
+    # retire au role de l'agent en formation depuis Parametres -> Roles.
+    'sav_repondre_client_externe',
     'parametres_voir',
     'parametres_modifier',
     'users_voir',
@@ -595,6 +603,8 @@ RESPONSABLE_PERMISSIONS = [
     # lit NPS/sentiment. Comportement historique préservé (ce rôle avait déjà
     # l'accès complet au SAV).
     'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
     'parametres_voir',
     'users_voir',
     'reporting_voir',
@@ -715,6 +725,8 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
     'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
     'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
     'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
     # YRBAC3 — comportement historique préservé (accès complet via l'ancien
@@ -784,6 +796,8 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # problèmes (NTSRV16) et lit NPS/sentiment. Le Technicien de base ne les
     # porte PAS (il garde l'accès ticket standard `sav_voir`/`sav_gerer`).
     'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
     # QG4 — `stock_creer` retiré : la création de produits est réservée aux
     # rôles Directeur + Commercial responsable (décision Reda).
     'stock_voir', 'stock_modifier', 'stock_mouvement',
@@ -823,6 +837,10 @@ TECHNICIEN_RESP_PERMISSIONS = [
 TECHNICIEN_PERMISSIONS = [
     'installation_voir', 'installation_gerer', 'intervention_gerer',
     'equipement_voir', 'sav_voir', 'sav_gerer',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`) : aucun
+    # acces retire. C'est CE code qu'un Administrateur enleve au role d'un
+    # agent en formation pour le limiter aux notes internes.
+    'sav_repondre_client_externe',
     'stock_voir', 'stock_mouvement',
     'parametres_voir', 'reporting_voir',
     'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
