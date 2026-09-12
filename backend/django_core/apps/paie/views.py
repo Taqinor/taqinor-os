@@ -14,7 +14,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
 from django.utils.dateparse import parse_date
 
-from rest_framework import filters, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import (
@@ -153,6 +154,7 @@ from .services import (
     rejeter_ligne_virement,
     saisies_arret_du_bulletin,
     simuler_bulletin,
+    simuler_cout_embauche,
     synchroniser_salaire,
     valider_bulletin,
 )
@@ -456,6 +458,133 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         profil.refresh_from_db()
         return Response(
             self.get_serializer(profil).data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses=inline_serializer('PaieSimulationEmbauche', {
+        'brut': serializers.DecimalField(max_digits=16, decimal_places=2),
+        'net_a_payer': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'net_imposable': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'ir': serializers.DecimalField(max_digits=16, decimal_places=2),
+        'charges_patronales': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'cout_total_employeur': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'devise': serializers.CharField(),
+        'provisions': inline_serializer('PaieSimulationEmbaucheProvisions', {
+            'gratification': serializers.DecimalField(
+                max_digits=16, decimal_places=2),
+            'conges_payes': serializers.DecimalField(
+                max_digits=16, decimal_places=2),
+            'ifc': serializers.DecimalField(max_digits=16, decimal_places=2),
+            'total': serializers.DecimalField(
+                max_digits=16, decimal_places=2),
+        }),
+        'lignes': inline_serializer(
+            'PaieSimulationEmbaucheLigne', many=True, fields={
+                'code': serializers.CharField(),
+                'libelle': serializers.CharField(),
+                'type': serializers.CharField(),
+                'montant': serializers.DecimalField(
+                    max_digits=16, decimal_places=2),
+            }),
+        'avertissements': serializers.ListField(
+            child=serializers.CharField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='simulation-embauche')
+    def simulation_embauche(self, request):
+        """Coût complet d'une EMBAUCHE FUTURE, sans aucun profil (NTPAY14).
+
+        XPAI16 rejoue le moteur sur un profil EXISTANT ; ici rien n'existe
+        encore. Paramètres de requête : ``brut`` **ou** ``net_cible``
+        (exactement un des deux, requis), ``pays`` (id d'un ``PaysPaie`` de la
+        société, facultatif), ``personnes_a_charge``, ``affilie_cnss`` /
+        ``affilie_amo`` / ``affilie_cimr`` (booléens, défauts vrai/vrai/faux),
+        ``taux_cimr``, ``regime_mutuelle`` (id d'un ``RegimeMutuelle`` de la
+        société), ``regime_plafond_mensuel`` (plafond exonéré du régime
+        stagiaire/ANAPEC/TAHFIZ), ``jours_travail_mensuel`` /
+        ``heures_travail_mensuel``, ``anciennete_annees``, ``date`` (défaut
+        aujourd'hui — fixe les barèmes en vigueur).
+
+        Gatée EXPLICITEMENT ``salaires_voir`` (donnée sensible, au-delà de
+        ``paie_voir`` — AUD716) : la simulation EXPOSE un brut et un net.
+        Aucune écriture en base.
+        """
+        from authentication.permissions import HasPermission
+
+        if not HasPermission('salaires_voir')().has_permission(request, self):
+            return Response(
+                {'detail': 'Permission "salaires_voir" requise.'},
+                status=status.HTTP_403_FORBIDDEN)
+
+        company = request.user.company
+        params = request.query_params
+
+        def _bool_param(nom, defaut):
+            valeur = params.get(nom)
+            if valeur is None:
+                return defaut
+            return valeur.lower() in ('1', 'true', 'vrai')
+
+        def _decimal_param(nom, defaut=None):
+            valeur = params.get(nom)
+            if valeur in (None, ''):
+                return defaut
+            return Decimal(valeur)
+
+        try:
+            brut = _decimal_param('brut')
+            net_cible = _decimal_param('net_cible')
+            pac = int(params.get('personnes_a_charge', 0) or 0)
+            taux_cimr = _decimal_param('taux_cimr', Decimal('0'))
+            plafond_regime = _decimal_param(
+                'regime_plafond_mensuel', Decimal('0'))
+            anciennete = _decimal_param('anciennete_annees', Decimal('0'))
+            jours = params.get('jours_travail_mensuel') or None
+            heures = params.get('heures_travail_mensuel') or None
+            jours = int(jours) if jours else None
+            heures = int(heures) if heures else None
+        except (InvalidOperation, ValueError, TypeError):
+            return Response(
+                {'detail': 'Paramètre numérique invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        le_jour = parse_date(params.get('date') or '') or None
+
+        pays = None
+        if params.get('pays'):
+            pays = PaysPaie.objects.filter(
+                company=company, pk=params.get('pays')).first()
+            if pays is None:
+                return Response(
+                    {'detail': 'Pays de paie inconnu pour cette société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+
+        regime_mutuelle = None
+        if params.get('regime_mutuelle'):
+            regime_mutuelle = RegimeMutuelle.objects.filter(
+                company=company, pk=params.get('regime_mutuelle')).first()
+            if regime_mutuelle is None:
+                return Response(
+                    {'detail': 'Régime de mutuelle inconnu pour cette '
+                     'société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            resultat = simuler_cout_embauche(
+                company, brut=brut, net_cible=net_cible, le_jour=le_jour,
+                pays=pays, personnes_a_charge=pac,
+                affilie_cnss=_bool_param('affilie_cnss', True),
+                affilie_amo=_bool_param('affilie_amo', True),
+                affilie_cimr=_bool_param('affilie_cimr', False),
+                taux_cimr=taux_cimr, regime_mutuelle=regime_mutuelle,
+                regime_plafond_mensuel=plafond_regime,
+                jours_travail_mensuel=jours, heures_travail_mensuel=heures,
+                anciennete_annees=anciennete)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):

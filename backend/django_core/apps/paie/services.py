@@ -1966,16 +1966,10 @@ def mutuelle_du_profil(profil, brut):
     adhesion = getattr(profil, 'adhesion_mutuelle', None)
     if adhesion is None or not adhesion.actif:
         return Decimal('0.00'), Decimal('0.00'), False
-    regime = adhesion.regime
-    if regime is None or not regime.actif:
-        return Decimal('0.00'), Decimal('0.00'), False
-    if regime.mode == regime.MODE_POURCENTAGE:
-        salariale = Decimal(brut or 0) * Decimal(regime.part_salariale or 0) / Decimal('100')
-        patronale = Decimal(brut or 0) * Decimal(regime.part_patronale or 0) / Decimal('100')
-    else:
-        salariale = Decimal(regime.part_salariale or 0)
-        patronale = Decimal(regime.part_patronale or 0)
-    return _q(salariale), _q(patronale), bool(regime.deductible_net_imposable)
+    # NTPAY14 — le CALCUL lui-même vit dans ``cotisations_mutuelle_regime``
+    # (pur, sans profil) : le simulateur d'embauche et le bulletin partagent
+    # ainsi la même règle, jamais deux formules parallèles.
+    return cotisations_mutuelle_regime(adhesion.regime, brut)
 
 
 # ── XPAI18 — Régimes stagiaire / ANAPEC / TAHFIZ (exonération IR) ──────────
@@ -2891,6 +2885,285 @@ def brut_pour_net_cible(net_cible, *, parametre, bareme,
     resultat['iterations'] = max_iterations
     resultat['net_obtenu'] = resultat['net_a_payer']
     return resultat
+
+
+# ── NTPAY14 — Simulateur de COÛT D'EMBAUCHE (loaded cost, sans profil) ─────
+
+#: Norme mensuelle de jours/heures utilisée quand l'appelant n'en donne pas —
+#: STRICTEMENT les mêmes défauts que ``ProfilPaie`` (``taux_journalier_profil``
+#: / ``taux_horaire_base_profil``) : aucune valeur inventée ici.
+JOURS_TRAVAIL_MENSUEL_DEFAUT = 26
+HEURES_TRAVAIL_MENSUEL_DEFAUT = 191
+
+
+class _SansProfil:
+    """Porteur minimal de ``pays`` pour réutiliser ``devise_du_profil``.
+
+    NTPAY14 simule une embauche : il n'existe AUCUN ``ProfilPaie``. Plutôt que
+    de dupliquer la règle de devise (NTPAY13), on lui passe un porteur nu.
+    """
+
+    def __init__(self, pays):
+        self.pays = pays
+
+
+def cotisations_mutuelle_regime(regime, brut):
+    """Parts mutuelle salariale/patronale d'un RÉGIME pour un brut (XPAI3).
+
+    Cœur PUR (sans adhésion ni profil) de ``mutuelle_du_profil`` : pourcentage
+    du brut ou montant fixe selon ``regime.mode``. Renvoie
+    ``(salariale, patronale, deductible)``. ``(0, 0, False)`` si le régime est
+    absent ou inactif.
+    """
+    if regime is None or not regime.actif:
+        return Decimal('0.00'), Decimal('0.00'), False
+    if regime.mode == regime.MODE_POURCENTAGE:
+        salariale = Decimal(brut or 0) * Decimal(
+            regime.part_salariale or 0) / Decimal('100')
+        patronale = Decimal(brut or 0) * Decimal(
+            regime.part_patronale or 0) / Decimal('100')
+    else:
+        salariale = Decimal(regime.part_salariale or 0)
+        patronale = Decimal(regime.part_patronale or 0)
+    return _q(salariale), _q(patronale), bool(regime.deductible_net_imposable)
+
+
+def _net_embauche(brut, *, parametre, bareme, personnes_a_charge=0,
+                  affilie_cnss=True, affilie_amo=True, affilie_cimr=False,
+                  taux_cimr=Decimal('0'), regime_mutuelle=None,
+                  montant_exonere_plafond=Decimal('0')):
+    """Brut → net PUR d'une embauche simulée (NTPAY14), zéro accès en écriture.
+
+    Réplique EXACTEMENT l'enchaînement de ``calculer_bulletin_ma`` pour un brut
+    donné (CNSS / AMO / CIMR / mutuelle / frais professionnels / exonération de
+    régime / IR), sans proration ni élément variable. Renvoie un dict des
+    composantes salariales.
+    """
+    brut = _q(Decimal(brut or 0))
+    cnss = cnss_salariale(parametre, brut, affilie_cnss)
+    amo = amo_salariale(parametre, brut, affilie_amo)
+    cimr = cimr_salariale(brut, affilie_cimr, taux_cimr)
+    mutuelle_sal, mutuelle_pat, mutuelle_deductible = \
+        cotisations_mutuelle_regime(regime_mutuelle, brut)
+
+    frais_pro = Decimal('0')
+    if parametre:
+        if brut <= Decimal(parametre.seuil_frais_pro or 0):
+            frais_pro = brut * Decimal(
+                parametre.taux_frais_pro_bas) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_bas or 0)
+        else:
+            frais_pro = brut * Decimal(
+                parametre.taux_frais_pro_haut) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_haut or 0)
+        if plafond and frais_pro > plafond:
+            frais_pro = plafond
+    frais_pro = _q(frais_pro)
+
+    net_imposable = brut - cnss - amo - cimr - frais_pro
+    if mutuelle_deductible:
+        net_imposable -= mutuelle_sal
+    if net_imposable < 0:
+        net_imposable = Decimal('0')
+    net_imposable = _q(net_imposable)
+
+    # XPAI18 — la fraction du net imposable sous le plafond du régime sort de
+    # la base IR ; l'excédent reste imposable (même règle que le moteur).
+    plafond_regime = Decimal(montant_exonere_plafond or 0)
+    montant_exonere = _q(min(net_imposable, plafond_regime)) \
+        if plafond_regime > 0 else Decimal('0.00')
+    base_ir = net_imposable - montant_exonere
+    if base_ir < 0:
+        base_ir = Decimal('0')
+    ir = Decimal('0')
+    if bareme and parametre:
+        ir = compute_ir(base_ir, bareme, parametre, personnes_a_charge)
+    ir = _q(ir)
+
+    net_a_payer = _q(brut - cnss - amo - cimr - ir - mutuelle_sal)
+    return {
+        'brut': brut,
+        'cnss_salariale': cnss,
+        'amo_salariale': amo,
+        'cimr_salariale': cimr,
+        'mutuelle_salariale': mutuelle_sal,
+        'mutuelle_patronale': mutuelle_pat,
+        'frais_professionnels': frais_pro,
+        'net_imposable': net_imposable,
+        'montant_exonere_regime': montant_exonere,
+        'ir': ir,
+        'net_a_payer': net_a_payer,
+    }
+
+
+def simuler_cout_embauche(company, *, brut=None, net_cible=None, le_jour=None,
+                          pays=None, personnes_a_charge=0,
+                          affilie_cnss=True, affilie_amo=True,
+                          affilie_cimr=False, taux_cimr=Decimal('0'),
+                          regime_mutuelle=None,
+                          regime_plafond_mensuel=Decimal('0'),
+                          jours_travail_mensuel=None,
+                          heures_travail_mensuel=None,
+                          anciennete_annees=Decimal('0'),
+                          tolerance=Decimal('0.01')):
+    """Coût complet d'une EMBAUCHE FUTURE, sans aucun ``ProfilPaie`` (NTPAY14).
+
+    XPAI16 rejoue le moteur sur un profil EXISTANT ; ici, rien n'existe encore.
+    L'appelant donne un ``brut`` **ou** un ``net_cible`` (exactement un des
+    deux), les affiliations, le nombre de personnes à charge et le plafond
+    mensuel du régime d'exonération éventuel ; la fonction renvoie le net,
+    l'IR, les charges patronales, les provisions (gratification, congés payés,
+    IFC) et le COÛT TOTAL EMPLOYEUR, avec la ventilation ligne à ligne.
+
+    **Aucune écriture en base** : ni ``ProfilPaie``, ni ``BulletinPaie``, ni
+    ``ElementVariable``. Les barèmes/paramètres lus sont ceux RÉELLEMENT en
+    vigueur pour la société (et le ``pays`` fourni, NTPAY7/8) — jamais un taux
+    inventé : sans jeu en vigueur, les cotisations et l'IR ressortent à 0 et
+    l'avertissement de ``avertissements_parametre_paie`` est remonté.
+
+    L'IFC (indemnité de fin de carrière) vaut 0 à l'embauche : le barème
+    art. 53 est nul à ancienneté nulle. ``anciennete_annees`` permet de voir la
+    provision à une ancienneté projetée.
+
+    Renvoie ``{'brut', 'net_a_payer', 'ir', ..., 'charges_patronales',
+    'provisions': {...}, 'cout_total_employeur', 'lignes': [...],
+    'avertissements': [...]}``.
+    """
+    if (brut is None) == (net_cible is None):
+        raise ValueError(
+            'Fournir exactement un des deux : brut OU net_cible.')
+
+    if le_jour is None:
+        le_jour = timezone.localdate()
+    parametre = parametre_en_vigueur(company, le_jour, pays=pays)
+    bareme = bareme_en_vigueur(company, le_jour, pays=pays)
+
+    jours = Decimal(max(1, int(
+        jours_travail_mensuel or JOURS_TRAVAIL_MENSUEL_DEFAUT)))
+    heures = Decimal(max(1, int(
+        heures_travail_mensuel or HEURES_TRAVAIL_MENSUEL_DEFAUT)))
+
+    commun = dict(
+        parametre=parametre, bareme=bareme,
+        personnes_a_charge=personnes_a_charge,
+        affilie_cnss=affilie_cnss, affilie_amo=affilie_amo,
+        affilie_cimr=affilie_cimr, taux_cimr=taux_cimr,
+        regime_mutuelle=regime_mutuelle,
+        montant_exonere_plafond=regime_plafond_mensuel,
+    )
+
+    if net_cible is not None:
+        # Bissection sur le MÊME calcul que le brut direct (le net est une
+        # fonction croissante du brut) — aucune formule parallèle.
+        cible = Decimal(net_cible or 0)
+        if cible <= 0:
+            raise ValueError('net_cible doit être strictement positif.')
+        basse, haute = Decimal('0'), cible * Decimal('3')
+        for _ in range(10):
+            if _net_embauche(haute, **commun)['net_a_payer'] >= cible:
+                break
+            haute *= 2
+        resultat = _net_embauche(haute, **commun)
+        for _ in range(100):
+            milieu = _q((basse + haute) / 2)
+            resultat = _net_embauche(milieu, **commun)
+            ecart = resultat['net_a_payer'] - cible
+            if abs(ecart) <= tolerance:
+                break
+            if ecart < 0:
+                basse = milieu
+            else:
+                haute = milieu
+    else:
+        resultat = _net_embauche(brut, **commun)
+
+    brut_retenu = resultat['brut']
+
+    # Charges PATRONALES (jamais déduites du net du salarié).
+    cnss_pat = cnss_patronale(parametre, brut_retenu, affilie_cnss)
+    amo_pat = amo_patronale(parametre, brut_retenu, affilie_amo)
+    alloc_fam = allocations_familiales_patronale(
+        parametre, brut_retenu, affilie_cnss)
+    formation_pro = formation_professionnelle_patronale(
+        parametre, brut_retenu, affilie_cnss)
+    mutuelle_pat = resultat['mutuelle_patronale']
+    charges_patronales = _q(
+        cnss_pat + amo_pat + alloc_fam + formation_pro + mutuelle_pat)
+
+    # Provisions (engagements sociaux mensuels), mêmes règles que XPAI20/PAIE25.
+    taux_jour = _q(brut_retenu / jours)
+    taux_heure = (brut_retenu / heures).quantize(
+        Decimal('0.000001'), rounding=ROUND_HALF_UP)
+    provision_gratification = _q(brut_retenu / Decimal('12'))
+    provision_conges = _q(JOURS_CP_ACQUIS_PAR_MOIS * taux_jour)
+    provision_ifc = _q(
+        indemnite_licenciement_art53(anciennete_annees, taux_heure)
+        / Decimal('12'))
+    total_provisions = _q(
+        provision_gratification + provision_conges + provision_ifc)
+
+    cout_total = _q(brut_retenu + charges_patronales + total_provisions)
+
+    lignes = [
+        ('BRUT', 'Brut mensuel', 'gain', brut_retenu),
+        ('CNSS_SAL', 'CNSS (part salariale)', 'cotisation',
+         resultat['cnss_salariale']),
+        ('AMO_SAL', 'AMO (part salariale)', 'cotisation',
+         resultat['amo_salariale']),
+        ('CIMR_SAL', 'CIMR (part salariale)', 'cotisation',
+         resultat['cimr_salariale']),
+        ('MUTUELLE_SAL', 'Mutuelle (part salariale)', 'retenue',
+         resultat['mutuelle_salariale']),
+        ('IR', 'Impôt sur le revenu', 'retenue', resultat['ir']),
+        ('CNSS_PAT', 'CNSS (part patronale)', 'patronal', cnss_pat),
+        ('AMO_PAT', 'AMO (part patronale)', 'patronal', amo_pat),
+        ('ALLOC_FAM', 'Allocations familiales', 'patronal', alloc_fam),
+        ('FORMATION_PRO', 'Taxe de formation professionnelle', 'patronal',
+         formation_pro),
+        ('MUTUELLE_PAT', 'Mutuelle (part patronale)', 'patronal',
+         mutuelle_pat),
+        ('PROV_GRATIF', 'Provision gratification (13e mois)', 'provision',
+         provision_gratification),
+        ('PROV_CP', 'Provision congés payés', 'provision', provision_conges),
+        ('PROV_IFC', 'Provision indemnité de fin de carrière', 'provision',
+         provision_ifc),
+    ]
+
+    return {
+        'brut': brut_retenu,
+        'net_a_payer': resultat['net_a_payer'],
+        'net_imposable': resultat['net_imposable'],
+        'montant_exonere_regime': resultat['montant_exonere_regime'],
+        'ir': resultat['ir'],
+        'frais_professionnels': resultat['frais_professionnels'],
+        'cnss_salariale': resultat['cnss_salariale'],
+        'amo_salariale': resultat['amo_salariale'],
+        'cimr_salariale': resultat['cimr_salariale'],
+        'mutuelle_salariale': resultat['mutuelle_salariale'],
+        'cnss_patronale': cnss_pat,
+        'amo_patronale': amo_pat,
+        'allocations_familiales': alloc_fam,
+        'formation_professionnelle': formation_pro,
+        'mutuelle_patronale': mutuelle_pat,
+        'charges_patronales': charges_patronales,
+        'provisions': {
+            'gratification': provision_gratification,
+            'conges_payes': provision_conges,
+            'ifc': provision_ifc,
+            'total': total_provisions,
+        },
+        'cout_total_employeur': cout_total,
+        'devise': devise_du_profil(_SansProfil(pays)),
+        'lignes': [
+            {'code': code, 'libelle': libelle, 'type': type_ligne,
+             'montant': montant}
+            for code, libelle, type_ligne, montant in lignes
+            if montant != 0 or code == 'BRUT'
+        ],
+        'avertissements': avertissements_parametre_paie(
+            company, le_jour, contexte="Simulation d'embauche",
+            parametre=parametre),
+    }
 
 
 # ── PAIE17 — Bulletin de paie matérialisé (snapshot immuable une fois validé) ─
