@@ -84,4 +84,27 @@ describe('FavorisWidget (NTUX12)', () => {
     await waitFor(() => expect(listFavorisMock).toHaveBeenCalled())
     expect(container.firstChild).toBeNull()
   })
+
+  // ── NTUX21 — glisser-déposer (poignée) ──────────────────────────────────
+  it('un seul favori : aucune poignée de déplacement (rien à réordonner)', async () => {
+    listFavorisMock.mockResolvedValue({
+      data: [{ id: 1, modele: 'crm.lead', object_id: 3, libelle: 'Ali Ben', ordre: 0 }],
+    })
+    renderWidget()
+    await screen.findByText('Ali Ben')
+    expect(screen.queryByRole('button', { name: /^déplacer /i })).toBeNull()
+  })
+
+  it('plusieurs favoris : une poignée de déplacement accessible par favori', async () => {
+    listFavorisMock.mockResolvedValue({
+      data: [
+        { id: 1, modele: 'crm.lead', object_id: 3, libelle: 'Ali Ben', ordre: 0 },
+        { id: 2, modele: 'crm.lead', object_id: 4, libelle: 'Sara K', ordre: 1 },
+      ],
+    })
+    renderWidget()
+    await screen.findByText('Ali Ben')
+    expect(screen.getByRole('button', { name: 'Déplacer Ali Ben' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Déplacer Sara K' })).toBeInTheDocument()
+  })
 })
