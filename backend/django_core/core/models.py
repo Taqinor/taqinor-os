@@ -471,6 +471,15 @@ class WorkflowStepDefinition(TimestampedModel):
     escalade_vers = models.CharField(
         'Escalade vers', max_length=120, blank=True, default='',
         help_text='Destinataire/rôle visé si le SLA est dépassé (générique).')
+    # NTWFL4 — défaut FAUX = comportement inchangé (SLA en heures BRUTES,
+    # weekends/nuits comptent, comme aujourd'hui). Activé, l'échéance saute
+    # les jours NON OUVRÉS de la société (calendrier déjà construit dans
+    # apps.notifications.calendar_utils, jamais un second modèle calendrier
+    # — voir core.workflow._sla_echeance).
+    calendrier_ouvre = models.BooleanField(
+        'Échéance en jours ouvrés', default=False,
+        help_text="Active, l'échéance SLA saute les jours non ouvrés/fériés "
+                  'de la société au lieu de compter en heures brutes.')
 
     class Meta:
         verbose_name = 'Étape de workflow (modèle)'

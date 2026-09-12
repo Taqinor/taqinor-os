@@ -88,6 +88,7 @@ __all__ = [
     'decide_step',
     'register_delegation_resolver',
     'delegants_actifs_pour',
+    'register_business_day_advance',
 ]
 
 
@@ -99,10 +100,39 @@ def _resolve_now(now):
     return now if now is not None else timezone.now()
 
 
-def _sla_echeance(started, sla_heures):
-    """``started + sla_heures`` (datetime) ou ``None`` si pas de SLA."""
+# NTWFL4 — résolveur de calendrier ouvré, branché par
+# ``apps.notifications.apps.ready()`` (jamais un import direct de cette app
+# depuis ``core`` : contrat import-linter core-foundation-is-a-base-layer).
+# Signature : ``fn(started: datetime, sla_heures: int, company) -> datetime``.
+_business_day_advance_resolver = None
+
+
+def register_business_day_advance(fn):
+    """Enregistre le résolveur de calendrier ouvré (NTWFL4).
+
+    Appelé par ``apps.notifications.apps.ready()`` avec
+    ``calendar_utils.ajouter_heures_ouvrees``. Un second appel REMPLACE le
+    résolveur (utile aux tests qui veulent l'isoler)."""
+    global _business_day_advance_resolver
+    _business_day_advance_resolver = fn
+
+
+def _sla_echeance(started, sla_heures, *, calendrier_ouvre=False, company=None):
+    """``started + sla_heures`` (datetime) ou ``None`` si pas de SLA.
+
+    NTWFL4 — ``calendrier_ouvre=True`` (avec ``company``) délègue au
+    résolveur de calendrier ouvré enregistré (heures OUVRÉES : les jours non
+    ouvrés/fériés de la société sont sautés) ; ``calendrier_ouvre=False``
+    (défaut) ou sans résolveur enregistré garde le calcul HISTORIQUE en
+    heures brutes — comportement strictement inchangé."""
     if not sla_heures:
         return None
+    if (calendrier_ouvre and company is not None
+            and _business_day_advance_resolver is not None):
+        try:
+            return _business_day_advance_resolver(started, sla_heures, company)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant
+            pass
     return started + datetime.timedelta(hours=sla_heures)
 
 
@@ -140,7 +170,10 @@ def demarrer_workflow(definition, target, company, user=None, now=None):
             step_def=sd,
             ordre=sd.ordre,
             statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
-            sla_echeance=_sla_echeance(started, sd.sla_heures),
+            sla_echeance=_sla_echeance(
+                started, sd.sla_heures,
+                calendrier_ouvre=getattr(sd, 'calendrier_ouvre', False),
+                company=company),
         )
 
     if not step_defs:

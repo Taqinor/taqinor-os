@@ -256,6 +256,7 @@ class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'definition', 'ordre', 'nom', 'type_approbation',
             'sla_heures', 'role_requis', 'escalade_vers',
+            'calendrier_ouvre',
         ]
         read_only_fields = ['id']
         extra_kwargs = {'definition': {'required': False}}

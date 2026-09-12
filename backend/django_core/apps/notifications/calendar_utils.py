@@ -172,6 +172,52 @@ def ajouter_jours_ouvres(d: datetime.date, n: int, company) -> datetime.date:
     return current
 
 
+# ---------------------------------------------------------------------------
+# NTWFL4 — échéance SLA en heures OUVRÉES (core.workflow branché via registre)
+# ---------------------------------------------------------------------------
+
+def ajouter_heures_ouvrees(
+        started: datetime.datetime, sla_heures: int, company,
+) -> datetime.datetime:
+    """Échéance ``started + sla_heures`` (datetime) où les jours NON OUVRÉS
+    traversés sont SAUTÉS plutôt que comptés (calendrier de la société,
+    fériés inclus). Les heures INTRA-journée restent linéaires — pas de
+    découpage horaire fin (hors scope) : un jour est soit entièrement compté,
+    soit entièrement sauté.
+
+    Point fixe : après avoir décalé l'échéance brute du nombre de jours non
+    ouvrés déjà traversés, on recompte les jours NOUVELLEMENT couverts par ce
+    décalage et on répète jusqu'à stabilité (aucun jour supplémentaire
+    sauté) — c'est ainsi qu'une échéance de 48h démarrée un vendredi finit
+    par sauter tout le week-end plutôt qu'un seul jour. Bornée par
+    ``_MAX_ITERATIONS`` (garde-fou société sans aucun jour ouvré, comme les
+    autres helpers de ce module).
+
+    C'est le résolveur branché par ``apps.notifications.apps.ready()`` sur
+    ``core.workflow.register_business_day_advance`` (NTWFL4) — ``core`` reste
+    fondation et n'importe jamais ce module directement.
+    """
+    if not sla_heures:
+        return started
+    candidate = started + datetime.timedelta(hours=sla_heures)
+    dernier_jour_compte = started.date()
+    for _ in range(_MAX_ITERATIONS):
+        jours_sautes = 0
+        jour = dernier_jour_compte + datetime.timedelta(days=1)
+        while jour <= candidate.date():
+            if not is_jour_ouvre(jour, company):
+                jours_sautes += 1
+            jour += datetime.timedelta(days=1)
+        if jours_sautes == 0:
+            return candidate
+        dernier_jour_compte = candidate.date()
+        candidate = candidate + datetime.timedelta(days=jours_sautes)
+    logger.warning(
+        'ajouter_heures_ouvrees: pas de stabilisation après %d itérations.',
+        _MAX_ITERATIONS)
+    return candidate
+
+
 def feries_entre(
         company, date_debut: datetime.date,
         date_fin: datetime.date) -> list[datetime.date]:
