@@ -78,14 +78,22 @@ def verifier_gardes_effacement(company, subject_identifier):
             raise EffacementBloque(str(motif))
 
 
-def register_dsr_provider(name, *, export=None, erase=None):
+def register_dsr_provider(name, *, export=None, erase=None, erase_order=0):
     """Enregistre un fournisseur DSR pour une app (idempotent).
 
     Au moins un de ``export`` / ``erase`` doit être fourni.
+
+    ``erase_order`` (défaut 0) ordonne l'EFFACEMENT, jamais l'export. Un
+    fournisseur qui DÉTRUIT la clé de résolution des autres (l'app qui porte
+    l'identité de la personne : email, téléphone) doit passer EN DERNIER,
+    sinon les apps qui résolvent PAR ELLE ne trouvent plus rien à
+    pseudonymiser et l'effacement est silencieusement partiel. À ordre égal
+    l'ordre reste alphabétique (comportement historique).
     """
     if not name or (export is None and erase is None):
         raise ValueError('Fournisseur DSR : nom + export et/ou erase requis.')
-    _PROVIDERS[name] = {'export': export, 'erase': erase}
+    _PROVIDERS[name] = {
+        'export': export, 'erase': erase, 'erase_order': int(erase_order)}
 
 
 def list_dsr_providers():
@@ -115,9 +123,19 @@ def effacer(company, subject_identifier):
     """Déclenche l'effacement chez tous les fournisseurs pour une personne.
 
     Renvoie ``{provider_name: nb_traite}``. Un fournisseur qui lève est isolé.
+
+    ORDRE : ``erase_order`` puis le nom. L'app qui porte l'IDENTITÉ (le CRM :
+    email / téléphone) s'efface en DERNIER — les fournisseurs qui résolvent
+    leurs documents PAR cet identifiant (ventes → ``crm.selectors.
+    client_ids_par_identifiant``) doivent tourner tant que la clé existe
+    encore. C'est une DÉPENDANCE RÉELLE, pas une préférence : en ordre
+    alphabétique (``crm`` avant ``ventes``) l'effacement des Ventes ne
+    trouvait plus aucun devis et repartait à zéro, en silence.
     """
     out = {}
-    for name, prov in sorted(_PROVIDERS.items()):
+    for name, prov in sorted(
+            _PROVIDERS.items(),
+            key=lambda item: (item[1].get('erase_order', 0) or 0, item[0])):
         fn = prov.get('erase')
         if fn is None:
             continue

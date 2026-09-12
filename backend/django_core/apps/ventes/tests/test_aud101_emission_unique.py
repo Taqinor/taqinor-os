@@ -287,7 +287,19 @@ class TestPariteAucunEmetteurHorsService(TestCase):
         coupables = []
         for chemin in sorted(racine.rglob('*.py')):
             rel = chemin.relative_to(racine).as_posix()
-            if rel.startswith('tests/') or rel.startswith('migrations/'):
+            if rel.startswith('migrations/'):
+                continue
+            # Le code de TEST est exempt — il fabrique legitimement des
+            # fixtures dans n'importe quel etat (une facture DEJA emise,
+            # justement pour tester ce qu'on en lit). L'exemption visait le
+            # paquet `tests/`, mais tous les modules de test ne vivent pas
+            # dedans : `apps/ventes/tests_qj9_attribution_capi.py` et
+            # `apps/ventes/tests_ntdata1_bi_datasets.py` sont a la RACINE de
+            # l'app. On reconnait donc un module de test a son NOM, comme le
+            # fait deja `core/event_coverage.py:369` pour le meme besoin —
+            # c'est exactement le motif de decouverte de Django (`test*.py`).
+            # Aucun module de PRODUCTION de `apps/ventes` ne porte ce prefixe.
+            if rel.startswith('tests/') or chemin.name.startswith('test'):
                 continue
             if rel in self.ALLOWLIST:
                 continue
