@@ -1129,6 +1129,8 @@ CELERY_TASK_ROUTES = {
     # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées.
     'authentication.purger_societes_demo_expirees': {'queue': 'scheduled'},
     'core.escalate_workflow_sla': {'queue': 'scheduled'},
+    # NTDATA26 — exécution horaire des extraits planifiés dus.
+    'core.executer_exports_planifies': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     # ASG2 / AGEN8 — Assumption Engine : oubli hebdo des posteriors + auto-pause
     # « rayon d'explosion » des créas générées (beat) → queue planifiée.

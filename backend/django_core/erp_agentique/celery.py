@@ -1009,6 +1009,15 @@ app.conf.beat_schedule = {
         'task': 'core.escalate_workflow_sla',
         'schedule': crontab(minute=20),
     },
+    # NTDATA26 — exécute les extraits planifiés DUS (`ScheduledExport.cron`).
+    # HORAIRE : le grain de planification des extraits EST l'heure (le champ
+    # minute du cron est accepté puis ignoré, comme pour les abonnements de
+    # rapport). Idempotent : un extrait déjà passé dans l'heure courante n'est
+    # jamais renvoyé. Destination non configurée = no-op propre horodaté.
+    'core-executer-exports-planifies': {
+        'task': 'core.executer_exports_planifies',
+        'schedule': crontab(minute=35),
+    },
     # WIR25 (XACC8) — génère les écritures dues des abonnements récurrents
     # (loyers/abonnements) en brouillon, quotidien, heure creuse. Idempotent
     # par période (rejouer le même jour ne crée rien) ; no-op sans abonnement.
