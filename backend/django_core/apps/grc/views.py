@@ -11,15 +11,15 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ControleInterne, JournalDestruction, LegalHold, PlanTraitementRisque,
-    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, TestControle,
-    ViolationDonnees,
+    ControleInterne, DeficienceControle, JournalDestruction, LegalHold,
+    PlanTraitementRisque, PolitiqueRetentionObjet, RevueRisque,
+    RisqueEntreprise, TestControle, ViolationDonnees,
 )
 from .serializers import (
-    ControleInterneSerializer, JournalDestructionSerializer,
-    LegalHoldSerializer, PlanTraitementRisqueSerializer,
-    PolitiqueRetentionObjetSerializer, RevueRisqueSerializer,
-    RisqueEntrepriseSerializer, TestControleSerializer,
+    ControleInterneSerializer, DeficienceControleSerializer,
+    JournalDestructionSerializer, LegalHoldSerializer,
+    PlanTraitementRisqueSerializer, PolitiqueRetentionObjetSerializer,
+    RevueRisqueSerializer, RisqueEntrepriseSerializer, TestControleSerializer,
     ViolationDonneesSerializer,
 )
 
@@ -348,3 +348,22 @@ class TestControleViewSet(CompanyScopedModelViewSet):
             }
             for d in dus
         ]})
+
+
+class DeficienceControleViewSet(CompanyScopedModelViewSet):
+    """NTGRC18 — constats de déficience + liens risque / CAPA QHSE."""
+
+    queryset = DeficienceControle.objects.select_related(
+        'test_controle').all()
+    serializer_class = DeficienceControleSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        gravite = (self.request.query_params.get('gravite') or '').strip()
+        if gravite:
+            qs = qs.filter(gravite=gravite)
+        statut = (self.request.query_params.get('statut') or '').strip()
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs

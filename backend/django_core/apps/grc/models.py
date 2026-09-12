@@ -815,3 +815,74 @@ class TestControle(TenantModel):
     def __str__(self):
         return (f'Test {self.controle_id} — '
                 f'{self.get_resultat_display()}')
+
+
+class DeficienceControle(TenantModel):
+    """NTGRC18 — constat de déficience sur un test de contrôle.
+
+    Un test « déficient » dit QUE ça n'a pas marché ; la déficience dit QUOI,
+    À QUEL POINT c'est grave, QUI remédie et POUR QUAND. C'est le constat
+    qu'un auditeur lit, pas le résultat brut du test.
+
+    Les liens vers le registre des risques et vers un CAPA QHSE sont des
+    identifiants TEXTE (``*_ref``) : `grc` n'importe JAMAIS
+    ``apps.qhse.models`` (frontière cross-app), et la déficience survit à la
+    disparition de l'objet qu'elle référence.
+    """
+
+    GRAVITE_MINEURE = 'mineure'
+    GRAVITE_SIGNIFICATIVE = 'significative'
+    GRAVITE_MAJEURE = 'majeure'
+    GRAVITE_CHOICES = [
+        (GRAVITE_MINEURE, 'Mineure'),
+        (GRAVITE_SIGNIFICATIVE, 'Significative'),
+        (GRAVITE_MAJEURE, 'Majeure'),
+    ]
+
+    STATUT_OUVERTE = 'ouverte'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_CORRIGEE = 'corrigee'
+    STATUT_CHOICES = [
+        (STATUT_OUVERTE, 'Ouverte'),
+        (STATUT_EN_COURS, 'En cours de remédiation'),
+        (STATUT_CORRIGEE, 'Corrigée'),
+    ]
+
+    test_controle = models.ForeignKey(
+        TestControle,
+        # on_delete: un constat n'existe que pour SON test.
+        on_delete=models.CASCADE,
+        related_name='deficiences', verbose_name='Test de contrôle')
+    gravite = models.CharField(
+        'Gravité', max_length=14, choices=GRAVITE_CHOICES,
+        default=GRAVITE_MINEURE)
+    description = models.TextField('Description', blank=True, default='')
+    remediation = models.TextField('Remédiation', blank=True, default='')
+    responsable = models.CharField(
+        'Responsable', max_length=160, blank=True, default='')
+    echeance = models.DateField('Échéance', null=True, blank=True)
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_OUVERTE)
+    risque_entreprise_ref = models.CharField(
+        "Risque d'entreprise lié", max_length=64, blank=True, default='',
+        help_text='Identifiant de la `grc.RisqueEntreprise` liée.')
+    qhse_capa_ref = models.CharField(
+        'CAPA QHSE lié', max_length=64, blank=True, default='',
+        help_text='Identifiant de la `qhse.ActionCorrectivePreventive` — '
+                  'référence TEXTE, jamais une FK vers une autre app.')
+
+    class Meta:
+        verbose_name = 'Déficience de contrôle'
+        verbose_name_plural = 'Déficiences de contrôle'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_deficience_co_statut_idx'),
+            models.Index(fields=['company', 'gravite'],
+                         name='grc_deficience_co_grav_idx'),
+        ]
+
+    def __str__(self):
+        return (f'Déficience {self.get_gravite_display()} — '
+                f'{self.get_statut_display()}')

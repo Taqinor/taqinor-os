@@ -6,9 +6,9 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    ControleInterne, JournalDestruction, LegalHold, PlanTraitementRisque,
-    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, TestControle,
-    ViolationDonnees,
+    ControleInterne, DeficienceControle, JournalDestruction, LegalHold,
+    PlanTraitementRisque, PolitiqueRetentionObjet, RevueRisque,
+    RisqueEntreprise, TestControle, ViolationDonnees,
 )
 
 
@@ -367,4 +367,89 @@ class TestControleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'date_realisee': 'Indiquez la date à laquelle le test a été '
                                  'réalisé.'})
+        return attrs
+
+
+class DeficienceControleSerializer(serializers.ModelSerializer):
+    """NTGRC18 — constat de déficience + liens risque / CAPA QHSE.
+
+    ``qhse_capa_ref`` et ``risque_entreprise_ref`` sont des identifiants
+    TEXTE : `grc` n'importe jamais les modèles d'une autre app. Les deux sont
+    VÉRIFIÉS comme appartenant à la société de l'appelant avant d'être
+    acceptés — une référence texte non validée serait une porte inter-tenant.
+    """
+
+    gravite_libelle = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DeficienceControle
+        fields = [
+            'id', 'test_controle', 'gravite', 'gravite_libelle',
+            'description', 'remediation', 'responsable', 'echeance',
+            'statut', 'statut_libelle', 'risque_entreprise_ref',
+            'qhse_capa_ref', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if company is not None and 'test_controle' in fields:
+            fields['test_controle'].queryset = TestControle.objects.filter(
+                company=company)
+        return fields
+
+    def _company(self):
+        requete = self.context.get('request')
+        return getattr(getattr(requete, 'user', None), 'company', None)
+
+    def validate_risque_entreprise_ref(self, valeur):
+        valeur = (valeur or '').strip()
+        company = self._company()
+        if not valeur or company is None:
+            return valeur
+        try:
+            risque_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence du risque doit être un identifiant numérique.')
+        if not RisqueEntreprise.objects.filter(
+                company=company, pk=risque_id).exists():
+            raise serializers.ValidationError(
+                "Ce risque d'entreprise n'existe pas pour votre société.")
+        return valeur
+
+    def validate_qhse_capa_ref(self, valeur):
+        """Vérifie le CAPA via le SELECTOR de `qhse` — aucun import de modèle."""
+        valeur = (valeur or '').strip()
+        company = self._company()
+        if not valeur or company is None:
+            return valeur
+        from apps.qhse.selectors import capa_ids_de_societe
+
+        try:
+            capa_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence du CAPA doit être un identifiant numérique.')
+        if capa_id not in set(capa_ids_de_societe(company)):
+            raise serializers.ValidationError(
+                "Ce CAPA QHSE n'existe pas pour votre société.")
+        return valeur
+
+    def validate(self, attrs):
+        """Une déficience MAJEURE doit dire qui remédie et pour quand."""
+        gravite = attrs.get('gravite',
+                            getattr(self.instance, 'gravite', None))
+        if gravite == DeficienceControle.GRAVITE_MAJEURE:
+            responsable = attrs.get(
+                'responsable', getattr(self.instance, 'responsable', ''))
+            if not (responsable or '').strip():
+                raise serializers.ValidationError({
+                    'responsable': 'Une déficience majeure doit nommer un '
+                                   'responsable de la remédiation.'})
         return attrs

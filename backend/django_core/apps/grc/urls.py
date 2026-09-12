@@ -10,10 +10,10 @@ from rest_framework.routers import DefaultRouter
 
 from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
-    ControleInterneViewSet, JournalDestructionViewSet, LegalHoldViewSet,
-    PlanTraitementRisqueViewSet, PolitiqueRetentionObjetViewSet,
-    RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
-    ViolationDonneesViewSet,
+    ControleInterneViewSet, DeficienceControleViewSet,
+    JournalDestructionViewSet, LegalHoldViewSet, PlanTraitementRisqueViewSet,
+    PolitiqueRetentionObjetViewSet, RevueRisqueViewSet,
+    RisqueEntrepriseViewSet, TestControleViewSet, ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -44,6 +44,9 @@ router.register(r'controles-internes', ControleInterneViewSet,
 # NTGRC17 — tests de contrôle planifiés + preuves.
 router.register(r'tests-controle', TestControleViewSet,
                 basename='grc-test-controle')
+# NTGRC18 — constats de déficience + liens risque / CAPA QHSE.
+router.register(r'deficiences-controle', DeficienceControleViewSet,
+                basename='grc-deficience-controle')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit
