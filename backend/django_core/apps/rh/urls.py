@@ -56,6 +56,7 @@ from .views import (
     GrilleSalarialeViewSet,
     LigneParcoursViewSet,
     EvaluationEmployeViewSet,
+    FeedbackContinuViewSet,
     FeuilleTempsViewSet,
     HabilitationViewSet,
     HeuresSuppViewSet,
@@ -200,6 +201,8 @@ router.register(r'plans-succession', PlanSuccessionViewSet)
 router.register(r'enquetes-engagement', EnqueteEngagementViewSet)
 # NTHCM15 — plans d'action issus d'une enquête.
 router.register(r'plans-action-engagement', PlanActionEngagementViewSet)
+# NTHCM16 — feedback continu entre collègues (hors cycle formel).
+router.register(r'feedbacks-continus', FeedbackContinuViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

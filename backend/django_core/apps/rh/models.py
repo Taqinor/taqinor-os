@@ -7141,3 +7141,87 @@ class PlanActionEngagement(TenantModel):
 
     def __str__(self):
         return f'{self.categorie_ciblee or "Action"} — {self.get_statut_display()}'
+
+
+class FeedbackContinu(TenantModel):
+    """NTHCM16 — feedback court, adressé, HORS de tout cycle formel.
+
+    Distinct des deux voisins qui existent déjà :
+
+    * ``AttributionBadge`` (ZRH14) est LUDIQUE et public (un badge, pas un
+      message) ;
+    * ``RetourFeedback360`` (ZRH9) est le 360° FORMEL, rattaché à une
+      ``CampagneEvaluation``.
+
+    Ici : n'importe quel collaborateur écrit à tout moment un mot de
+    reconnaissance, un axe d'amélioration ou une note de coaching à un
+    collègue. Deux drapeaux gouvernent sa VISIBILITÉ, jamais élargie
+    implicitement :
+
+    * ``visible_par_pour`` (défaut ``True``) — le destinataire le lit dans
+      son historique ; à ``False`` le message reste une note de l'auteur ;
+    * ``partage_avec_manager`` (défaut ``False``) — le manager HIÉRARCHIQUE
+      du destinataire (``DossierEmploye.manager``, NTHCM1) le voit en plus.
+
+    ``de`` est posé CÔTÉ SERVEUR (dossier de l'appelant) : personne ne signe
+    au nom d'un autre. L'auto-adressage est refusé (``clean()``).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    class Type(models.TextChoices):
+        RECONNAISSANCE = 'reconnaissance', 'Reconnaissance'
+        AXE_AMELIORATION = 'axe_amelioration', "Axe d'amélioration"
+        COACHING = 'coaching', 'Coaching'
+
+    de = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — l'auteur est un champ d'IDENTITÉ (un feedback « de personne » n'a plus de sens, et un SET_NULL sur un champ d'identité est refusé par `check_on_delete`). Un dossier n'est supprimable que vierge de toute pièce légale (AUD721) : ses mots partent avec lui.
+        related_name='feedbacks_envoyes',
+        verbose_name='Auteur',
+    )
+    pour = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: composition — le feedback n'existe que pour son destinataire ; sans lui il n'a plus ni portée ni lecteur.
+        related_name='feedbacks_recus',
+        verbose_name='Destinataire',
+    )
+    type = models.CharField(
+        max_length=20, choices=Type.choices,
+        default=Type.RECONNAISSANCE, verbose_name='Type')
+    message = models.TextField(verbose_name='Message')
+    visible_par_pour = models.BooleanField(
+        default=True, verbose_name='Visible par le destinataire')
+    partage_avec_manager = models.BooleanField(
+        default=False, verbose_name='Partagé avec le manager')
+
+    class Meta:
+        verbose_name = 'Feedback continu'
+        verbose_name_plural = 'Feedbacks continus'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'pour'],
+                name='rh_feedcont_comp_pour_idx'),
+            models.Index(
+                fields=['company', 'de'],
+                name='rh_feedcont_comp_de_idx'),
+        ]
+
+    def clean(self):
+        """Auto-adressage refusé + les deux dossiers de la MÊME société."""
+        from django.core.exceptions import ValidationError
+
+        if self.de_id and self.pour_id and self.de_id == self.pour_id:
+            raise ValidationError(
+                "On ne peut pas s'adresser un feedback à soi-même.")
+        if self.company_id is None:
+            return
+        for champ, libelle in (('de', 'Auteur'), ('pour', 'Destinataire')):
+            dossier = getattr(self, champ, None)
+            if dossier is not None and dossier.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : ce dossier appartient à une autre société.')
+
+    def __str__(self):
+        return f'{self.get_type_display()} → {self.pour_id}'

@@ -70,6 +70,7 @@ from .models import (
     EmargementEpi,
     EvaluationEmploye,
     EpiCatalogue,
+    FeedbackContinu,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -3501,3 +3502,41 @@ class PlanActionEngagementSerializer(serializers.ModelSerializer):
 
     def validate_responsable(self, value):
         return _meme_societe(self, value, 'Responsable')
+
+
+class FeedbackContinuSerializer(serializers.ModelSerializer):
+    """NTHCM16 — feedback continu adressé à un collègue.
+
+    ``de`` (l'auteur) est LECTURE SEULE : il est résolu côté serveur depuis le
+    dossier de l'appelant, jamais lu du corps — sinon n'importe qui signerait
+    au nom d'un autre.
+    """
+    de_nom = serializers.SerializerMethodField()
+    pour_nom = serializers.SerializerMethodField()
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = FeedbackContinu
+        fields = [
+            'id', 'de', 'de_nom', 'pour', 'pour_nom',
+            'type', 'type_display', 'message',
+            'visible_par_pour', 'partage_avec_manager', 'date_creation',
+        ]
+        read_only_fields = ['de', 'date_creation']
+
+    def get_de_nom(self, obj) -> str:
+        if obj.de_id is None:
+            return ''
+        return f'{obj.de.nom} {obj.de.prenom}'
+
+    def get_pour_nom(self, obj) -> str:
+        if obj.pour_id is None:
+            return ''
+        return f'{obj.pour.nom} {obj.pour.prenom}'
+
+    def validate_pour(self, value):
+        return _meme_societe(self, value, 'Destinataire')

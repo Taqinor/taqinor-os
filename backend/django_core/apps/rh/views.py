@@ -29,7 +29,7 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
 )
-from core.permissions import WriteScopedPermissionMixin
+from core.permissions import WriteScopedPermissionMixin, _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import activity, selectors, services
@@ -93,6 +93,7 @@ from .models import (
     ElementsVariablesPaie,
     EpiCatalogue,
     EvaluationEmploye,
+    FeedbackContinu,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -188,6 +189,7 @@ from .serializers import (
     EmargerEpiSerializer,
     EvaluationEmployeSerializer,
     EpiCatalogueSerializer,
+    FeedbackContinuSerializer,
     FeuilleTempsSerializer,
     HabilitationSerializer,
     HeuresSuppSerializer,
@@ -6531,3 +6533,74 @@ class PlanActionEngagementViewSet(_RhBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+class FeedbackContinuViewSet(_RhBaseViewSet):
+    """NTHCM16 — feedback continu entre collègues (hors cycle formel).
+
+    OUVERT À TOUS LES RÔLES (``IsAnyRole``, patron XRH28/ZRH16 de l'annuaire) :
+    envoyer un mot de reconnaissance n'est pas un acte RH réservé. La
+    confidentialité n'est donc PAS portée par le gate mais par le
+    ``get_queryset`` :
+
+    * un porteur de ``rh_voir`` (RH/Direction) voit tout le périmètre société ;
+    * sinon, l'appelant voit ce qu'il a ÉCRIT, ce qu'il a REÇU quand
+      ``visible_par_pour``, et — s'il est le manager hiérarchique du
+      destinataire (``DossierEmploye.manager``, NTHCM1) — les feedbacks
+      explicitement marqués ``partage_avec_manager``.
+
+    ``de`` est posé serveur (``perform_create``) : impossible de signer au nom
+    d'un autre. Filtres : ``?pour=``, ``?type=``.
+    """
+    queryset = FeedbackContinu.objects.select_related(
+        'de', 'pour', 'pour__manager').all()
+    serializer_class = FeedbackContinuSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+
+    def get_permissions(self):
+        # Tous rôles : le périmètre visible est restreint par get_queryset,
+        # jamais par le gate — un employé sans `rh_voir` doit pouvoir écrire
+        # et lire SES feedbacks.
+        return [IsAnyRole()]
+
+    def _dossier_appelant(self):
+        return selectors.dossier_employe_for_user(
+            self.request.user.company, self.request.user.id)
+
+    def get_queryset(self):
+        from django.db.models import Q
+
+        qs = super().get_queryset()
+        params = self.request.query_params
+        pour = params.get('pour')
+        if pour:
+            qs = qs.filter(pour_id=pour)
+        type_feedback = params.get('type')
+        if type_feedback:
+            qs = qs.filter(type=type_feedback)
+
+        # Même sémantique OrLegacy que le gate de classe `_RhBaseViewSet`
+        # (`core.permissions._user_has_or_legacy`) : un compte RH/Direction
+        # garde sa vue complète, sans qu'on recopie la règle de repli ici.
+        if _user_has_or_legacy(self.request.user, 'rh_voir'):
+            return qs
+        moi = self._dossier_appelant()
+        if moi is None:
+            return qs.none()
+        return qs.filter(
+            Q(de=moi)
+            | Q(pour=moi, visible_par_pour=True)
+            | Q(pour__manager=moi, partage_avec_manager=True))
+
+    def perform_create(self, serializer):
+        moi = self._dossier_appelant()
+        if moi is None:
+            raise serializers.ValidationError(
+                {'detail': "Aucun dossier employé n'est relié à votre compte : "
+                           'impossible de signer un feedback.'})
+        destinataire = serializer.validated_data.get('pour')
+        if destinataire is not None and destinataire.pk == moi.pk:
+            raise serializers.ValidationError(
+                {'pour': "On ne peut pas s'adresser un feedback à soi-même."})
+        serializer.save(company=self.request.user.company, de=moi)
