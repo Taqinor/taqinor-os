@@ -115,7 +115,7 @@ TRANCHES_IR_2026 = [
 ]
 
 
-def ensure_defaults(company):
+def ensure_defaults(company, pays=None):
     """Provisionne (idempotent) les valeurs légales 2026 pour ``company``.
 
     Crée, si absents, le ``ParametrePaie`` et le ``BaremeIR`` (+ ses
@@ -125,12 +125,19 @@ def ensure_defaults(company):
 
         {'parametre': 0|1, 'bareme': 0|1, 'tranches': N}
 
+    NTPAY8 — ``pays`` (optionnel, un ``PaysPaie``) étiquette le jeu semé. Omis
+    (cas historique), le jeu reste SANS pays : c'est le jeu marocain servi aux
+    profils sans pays comme aux profils ``MA``. Les valeurs semées ci-dessous
+    sont MAROCAINES : ne jamais appeler cette fonction avec un pays étranger
+    (chaque pack pays livre son propre semis).
+
     Réutilisable comme helper depuis d'autres modules de paie.
     """
     created = {'parametre': 0, 'bareme': 0, 'tranches': 0}
 
     _, param_new = ParametrePaie.objects.get_or_create(
         company=company,
+        pays=pays,
         date_effet=DATE_EFFET_2026,
         defaults={**PARAMETRES_DEFAUT_2026, 'valide_par_fondateur': False},
     )
@@ -139,6 +146,7 @@ def ensure_defaults(company):
 
     bareme, bareme_new = BaremeIR.objects.get_or_create(
         company=company,
+        pays=pays,
         date_effet=DATE_EFFET_2026,
         defaults={
             'libelle': 'Barème IR 2026',
@@ -1840,11 +1848,43 @@ def _q(montant):
     return Decimal(montant).quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
-def parametre_en_vigueur(company, le_jour):
-    """``ParametrePaie`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
+def _filtrer_par_pays(queryset, pays):
+    """Restreint un jeu versionné (paramètre/barème) au PAYS voulu (NTPAY8).
+
+    Règle de résolution, pensée pour ne RIEN casser :
+
+    * ``pays`` absent (appel historique) ⇒ jeux SANS pays **ou** jeux du pays
+      marocain — exactement ce que servait la résolution d'avant, et jamais un
+      jeu étranger publié depuis ;
+    * ``pays`` marocain ⇒ jeux ``MA`` **ou** sans pays (les jeux existants sont
+      marocains, ils ne sont simplement pas étiquetés) ;
+    * tout autre pays ⇒ STRICTEMENT ses propres jeux. Un pays sans barème ne
+      retombe JAMAIS sur le barème marocain : mieux vaut aucun barème (le
+      moteur le signale) qu'un IR calculé au barème d'un autre pays.
+    """
+    from django.db.models import Q
+
+    from .models import PaysPaie
+
+    if pays is None:
+        return queryset.filter(
+            Q(pays__isnull=True) | Q(pays__code_iso=PaysPaie.CODE_MA))
+    if pays.code_iso == PaysPaie.CODE_MA:
+        return queryset.filter(Q(pays=pays) | Q(pays__isnull=True))
+    return queryset.filter(pays=pays)
+
+
+def parametre_en_vigueur(company, le_jour, *, pays=None):
+    """``ParametrePaie`` en vigueur pour ``company`` au ``le_jour`` (ou None).
+
+    NTPAY8 — la résolution filtre aussi sur le ``pays`` (cf.
+    ``_filtrer_par_pays``) ; omis, le comportement est celui d'avant.
+    """
     return (
-        ParametrePaie.objects
-        .filter(company=company, date_effet__lte=le_jour)
+        _filtrer_par_pays(
+            ParametrePaie.objects.filter(
+                company=company, date_effet__lte=le_jour),
+            pays)
         .order_by('-date_effet')
         .first()
     )
@@ -1896,11 +1936,16 @@ def avertissements_parametre_paie(company, le_jour, *, contexte='',
     return [message]
 
 
-def bareme_en_vigueur(company, le_jour):
-    """``BaremeIR`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
+def bareme_en_vigueur(company, le_jour, *, pays=None):
+    """``BaremeIR`` en vigueur pour ``company`` au ``le_jour`` (ou None).
+
+    NTPAY8 — même règle de résolution par pays que ``parametre_en_vigueur``.
+    """
     return (
-        BaremeIR.objects
-        .filter(company=company, date_effet__lte=le_jour)
+        _filtrer_par_pays(
+            BaremeIR.objects.filter(
+                company=company, date_effet__lte=le_jour),
+            pays)
         .order_by('-date_effet')
         .first()
     )
@@ -2227,8 +2272,11 @@ def calculer_bulletin_ma(profil, periode, personnes_a_charge=0):
     Donnée SENSIBLE (salaires) — usage interne paie uniquement.
     """
     le_jour = date(periode.annee, periode.mois, 1)
-    parametre = parametre_en_vigueur(profil.company, le_jour)
-    bareme = bareme_en_vigueur(profil.company, le_jour)
+    # NTPAY8 — le jeu en vigueur est résolu POUR LE PAYS du profil (sans pays,
+    # la résolution est celle d'avant : jeux marocains / non étiquetés).
+    parametre = parametre_en_vigueur(
+        profil.company, le_jour, pays=profil.pays)
+    bareme = bareme_en_vigueur(profil.company, le_jour, pays=profil.pays)
 
     elements = list(
         ElementVariable.objects.filter(periode=periode, profil=profil)
@@ -7889,6 +7937,9 @@ def detecter_periodes_impactees(company, *, parametre=None, bareme=None):
     date_effet = nouveau.date_effet
     resolveur = parametre_en_vigueur if parametre is not None \
         else bareme_en_vigueur
+    # NTPAY8 — la comparaison se fait DANS le pays du jeu publié : un barème
+    # étranger ne doit pas être confronté au jeu marocain en vigueur.
+    pays = getattr(nouveau, 'pays', None)
 
     impactees = []
     periodes = (
@@ -7902,7 +7953,7 @@ def detecter_periodes_impactees(company, *, parametre=None, bareme=None):
         le_jour = date(periode.annee, periode.mois, 1)
         if le_jour < date_effet:
             continue
-        en_vigueur = resolveur(company, le_jour)
+        en_vigueur = resolveur(company, le_jour, pays=pays)
         if en_vigueur is not None and en_vigueur.pk == nouveau.pk:
             impactees.append(periode)
     return impactees

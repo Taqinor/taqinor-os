@@ -47,10 +47,16 @@ def _meme_societe(serializer, value, label):
 
 
 class ParametrePaieSerializer(serializers.ModelSerializer):
+    """Jeu de constantes sociales versionné (PAIE2).
+
+    NTPAY8 — ``pays`` (facultatif, un ``PaysPaie`` de la société) étiquette le
+    jeu. Vide = jeu marocain historique, servi aux profils sans pays comme aux
+    profils MA.
+    """
     class Meta:
         model = ParametrePaie
         fields = [
-            'id', 'date_effet', 'smig', 'smag', 'plafond_cnss',
+            'id', 'pays', 'date_effet', 'smig', 'smag', 'plafond_cnss',
             'taux_cnss_salarial', 'taux_cnss_patronal', 'taux_amo_salarial',
             'taux_amo_patronal', 'taux_allocations_familiales',
             'taux_formation_pro',
@@ -62,6 +68,9 @@ class ParametrePaieSerializer(serializers.ModelSerializer):
             'actif', 'valide_par_fondateur', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_pays(self, value):
+        return _meme_societe(self, value, 'Pays de paie')
 
 
 class RubriqueSerializer(serializers.ModelSerializer):
@@ -147,10 +156,14 @@ class BaremeIRSerializer(serializers.ModelSerializer):
     class Meta:
         model = BaremeIR
         fields = [
-            'id', 'libelle', 'date_effet', 'actif', 'valide_par_fondateur',
-            'tranches', 'date_creation',
+            'id', 'pays', 'libelle', 'date_effet', 'actif',
+            'valide_par_fondateur', 'tranches', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_pays(self, value):
+        # NTPAY8 — ``pays`` vide = barème marocain historique.
+        return _meme_societe(self, value, 'Pays de paie')
 
     def create(self, validated_data):
         tranches = validated_data.pop('tranches', [])

@@ -37,6 +37,16 @@ class ParametrePaie(models.Model):
         related_name='paie_parametres',
         verbose_name='Société',
     )
+    # NTPAY8 — Pays du jeu de constantes. NULL (défaut, et valeur de TOUS les
+    # jeux existants) = jeu MAROCAIN historique : la résolution le sert aux
+    # profils sans pays ET aux profils MA, à l'identique.
+    pays = models.ForeignKey(
+        'paie.PaysPaie',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='parametres',
+        verbose_name='Pays de paie',
+    )
     date_effet = models.DateField(verbose_name="Date d'effet")
     smig = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
@@ -158,7 +168,20 @@ class ParametrePaie(models.Model):
         verbose_name = 'Paramètre de paie'
         verbose_name_plural = 'Paramètres de paie'
         ordering = ['-date_effet']
-        unique_together = [('company', 'date_effet')]
+        # NTPAY8 — l'unicité devient (société, PAYS, date d'effet) : deux pays
+        # actifs ont chacun leur jeu au 1ᵉʳ janvier. Comme Postgres considère
+        # deux NULL comme distincts, la garantie historique « un seul jeu
+        # marocain par date » est reprise par une contrainte PARTIELLE sur les
+        # lignes sans pays — elle est donc aussi forte qu'avant.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'pays', 'date_effet'],
+                name='uniq_parametre_paie_pays_date'),
+            models.UniqueConstraint(
+                fields=['company', 'date_effet'],
+                condition=models.Q(pays__isnull=True),
+                name='uniq_parametre_paie_date_sans_pays'),
+        ]
 
     def __str__(self):
         return f'Paramètres paie {self.date_effet}'
@@ -179,6 +202,15 @@ class BaremeIR(models.Model):
         related_name='paie_baremes_ir',
         verbose_name='Société',
     )
+    # NTPAY8 — Pays du barème. NULL (défaut, et valeur de TOUS les barèmes
+    # existants) = barème MAROCAIN historique.
+    pays = models.ForeignKey(
+        'paie.PaysPaie',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='baremes_ir',
+        verbose_name='Pays de paie',
+    )
     libelle = models.CharField(
         max_length=120, default='Barème IR', verbose_name='Libellé')
     date_effet = models.DateField(verbose_name="Date d'effet")
@@ -194,7 +226,18 @@ class BaremeIR(models.Model):
         verbose_name = 'Barème IR'
         verbose_name_plural = 'Barèmes IR'
         ordering = ['-date_effet']
-        unique_together = [('company', 'date_effet')]
+        # NTPAY8 — cf. ``ParametrePaie.Meta`` : unicité par (société, pays,
+        # date d'effet) + contrainte PARTIELLE reprenant la garantie
+        # historique sur les barèmes sans pays (marocains).
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'pays', 'date_effet'],
+                name='uniq_bareme_ir_pays_date'),
+            models.UniqueConstraint(
+                fields=['company', 'date_effet'],
+                condition=models.Q(pays__isnull=True),
+                name='uniq_bareme_ir_date_sans_pays'),
+        ]
 
     def __str__(self):
         return f'{self.libelle} {self.date_effet}'
