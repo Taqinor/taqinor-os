@@ -19,8 +19,11 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
+from apps.publicapi.auth import ApiKeyAuthentication
+from authentication.cookie_auth import CookieJWTAuthentication
 from authentication.permissions import HasPermissionOrLegacy
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
@@ -39,7 +42,82 @@ from .serializers import (
 )
 
 
-class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
+# ── NTJUR41 — accès par CLÉ D'API, lecture seule et scope-limité ────────────
+#
+# Une clé d'API est un acteur EXTERNE restreint (courtier d'assurance RC,
+# cabinet partenaire) : elle n'est jamais un utilisateur de session, jamais un
+# administrateur, et ne peut donc JAMAIS voir un dossier `confidentiel` — le
+# filtrage vit dans `get_queryset` et s'applique de la même façon aux deux
+# modes d'authentification.
+#
+# Actions ouvertes à une clé : la LISTE, le DÉTAIL et le BUDGET d'un dossier.
+# Tout le reste (timeline, tableau de bord, export, transitions, provisions,
+# approbations…) reste hors de portée d'une clé, même porteuse du scope.
+ACTIONS_OUVERTES_CLE_API = frozenset({'list', 'retrieve', 'budget'})
+
+
+def _cle_api(request):
+    """L'``ApiKey`` de la requête, ou ``None`` — détecté par CONTRAT (présence
+    de ``has_scope``), jamais par un import de ``apps.publicapi.models``."""
+    auth = getattr(request, 'auth', None)
+    if auth is not None and hasattr(auth, 'has_scope') and getattr(
+            auth, 'company_id', None):
+        return auth
+    return None
+
+
+class AccesJuridique(ScopedPermission):
+    """Accès interne (JWT) OU clé d'API en lecture seule porteuse du scope.
+
+    Une clé sans le scope ``juridique:read`` — ou qui vise une action non
+    ouverte, ou une écriture — reçoit 403 (pas 401 : elle est bien
+    authentifiée, c'est son droit qui manque).
+    """
+
+    message = "Cette clé API n'a pas le droit de lire les dossiers juridiques."
+
+    def has_permission(self, request, view):
+        cle = _cle_api(request)
+        if cle is None:
+            return super().has_permission(request, view)
+        from apps.publicapi.constants import SCOPE_READ_JURIDIQUE
+
+        if request.method not in SAFE_METHODS:
+            return False
+        if getattr(view, 'action', None) not in ACTIONS_OUVERTES_CLE_API:
+            return False
+        return bool(cle.has_scope(SCOPE_READ_JURIDIQUE))
+
+
+class RefuseCleApi(ScopedPermission):
+    """Surface juridique NON exposée à l'API publique : une clé y reçoit 403.
+
+    Sans cette garde, une clé tomberait sur un 401 trompeur (« identifiez-vous »)
+    alors que le vrai message est « cette surface n'est pas ouverte aux clés ».
+    """
+
+    message = ("Cette surface juridique n'est pas exposée à l'API par clé.")
+
+    def has_permission(self, request, view):
+        if _cle_api(request) is not None:
+            return False
+        return super().has_permission(request, view)
+
+
+class _JuridiqueScopedApiKeyViewSet(CompanyScopedModelViewSet):
+    """Base qui RECONNAÎT la clé d'API (pour répondre 403 et non 401).
+
+    ``ApiKeyAuthentication`` est ajoutée à la liste d'authentifications : c'est
+    ce qui permet à DRF de rendre un 403 explicite (« droit manquant ») au lieu
+    de dégrader en 401 (« identifiez-vous »), qui serait trompeur pour une clé
+    valide mais non habilitée.
+    """
+
+    authentication_classes = [CookieJWTAuthentication, ApiKeyAuthentication]
+    permission_classes = [RefuseCleApi]
+
+
+class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
     """CRUD des dossiers juridiques de la société (NTJUR1).
 
     Le contrôle d'accès suit le patron YRBAC3 des modules voisins
@@ -55,6 +133,10 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['id', 'date_ouverture', 'montant_en_jeu', 'statut']
     read_permission = 'juridique_voir'
     write_permission = 'juridique_gerer'
+    # NTJUR41 — SEULE surface juridique ouverte à une clé d'API, et seulement
+    # en LECTURE, seulement sur `list`/`retrieve`/`budget`, et seulement avec
+    # le scope `juridique:read`.
+    permission_classes = [AccesJuridique]
 
     def get_queryset(self):
         """Scope société (ARC2) + exclusion des dossiers confidentiels.
@@ -480,7 +562,7 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
             EtapeApprobationJuridiqueSerializer(etapes, many=True).data)
 
 
-class CabinetAvocatViewSet(CompanyScopedModelViewSet):
+class CabinetAvocatViewSet(_JuridiqueScopedApiKeyViewSet):
     """Registre des cabinets/avocats externes de la société (NTJUR9)."""
 
     queryset = CabinetAvocat.objects.all()
@@ -492,7 +574,7 @@ class CabinetAvocatViewSet(CompanyScopedModelViewSet):
     write_permission = 'juridique_gerer'
 
 
-class MandatAvocatViewSet(CompanyScopedModelViewSet):
+class MandatAvocatViewSet(_JuridiqueScopedApiKeyViewSet):
     """Mandats confiés aux cabinets, par dossier (NTJUR10/NTJUR19)."""
 
     queryset = MandatAvocat.objects.select_related(
@@ -533,7 +615,7 @@ class MandatAvocatViewSet(CompanyScopedModelViewSet):
         return Response(MandatAvocatSerializer(mandat).data)
 
 
-class _DossierScopedViewSet(CompanyScopedModelViewSet):
+class _DossierScopedViewSet(_JuridiqueScopedApiKeyViewSet):
     """Base des objets rattachés à un dossier : scope société + héritage de la
     CONFIDENTIALITÉ du dossier (ses pièces suivent le dossier) + ``?dossier=``.
     """
@@ -676,7 +758,7 @@ class NoteHonorairesViewSet(_DossierScopedViewSet):
         return self._changer_statut(request, NoteHonoraires.Statut.PAYEE)
 
 
-class RegleApprobationJuridiqueViewSet(CompanyScopedModelViewSet):
+class RegleApprobationJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
     """Règles d'approbation des engagements de dépenses juridiques (NTJUR19)."""
 
     queryset = RegleApprobationJuridique.objects.all()

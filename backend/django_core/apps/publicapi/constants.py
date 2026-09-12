@@ -22,6 +22,14 @@ SCOPE_READ_LICENCE = 'read:licence'
 # tableau de bord réappro consolidé, en LECTURE SEULE. Intégration externe
 # (TMS, connecteur planification tiers).
 SCOPE_READ_SCM = 'read:scm'
+# NTJUR41 — affaires juridiques (apps.juridique) en LECTURE SEULE : registre
+# des dossiers et budget d'un dossier, pour un usage externe RESTREINT
+# (courtier d'assurance RC, cabinet partenaire). Le filtrage de
+# CONFIDENTIALITÉ s'applique AUSSI à l'accès par clé : une clé n'est jamais un
+# administrateur, donc elle ne voit JAMAIS un dossier `confidentiel`.
+# Identifiant tel que nommé au plan (``juridique:read``) — il ne suit pas le
+# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici.
+SCOPE_READ_JURIDIQUE = 'juridique:read'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
@@ -38,6 +46,8 @@ SCOPE_CHOICES = [
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
     (SCOPE_READ_LICENCE, 'Lire le statut de licence (plan, modules, sièges)'),
     (SCOPE_READ_SCM, 'Lire la planification supply chain (prévisions, politiques de stock, réappro)'),
+    (SCOPE_READ_JURIDIQUE,
+     'Lire les dossiers juridiques non confidentiels et leur budget'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
 ]
