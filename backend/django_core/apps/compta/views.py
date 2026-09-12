@@ -4606,6 +4606,7 @@ class IndemniteChantierViewSet(_ComptaBaseViewSet):
                 aller_retour=vd.get('aller_retour', True),
                 nombre_jours=vd.get('nombre_jours', 1),
                 libelle_chantier=vd.get('libelle_chantier', '') or '',
+                installation_id=vd.get('installation_id'),
                 user=request.user)
         except DjangoValidationError as exc:
             return Response(

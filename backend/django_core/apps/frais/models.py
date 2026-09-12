@@ -578,6 +578,15 @@ class IndemniteChantier(models.Model):
     date_deplacement = models.DateField(verbose_name='Date du déplacement')
     libelle_chantier = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Chantier')
+    # CHT16 — le VRAI chantier : loose ref vers `installations.Installation`
+    # (JAMAIS une FK, jamais un import de `installations.models` depuis
+    # `frais` — frontière cross-app). Validé côté serializer (compta) via
+    # `installations.selectors.installation_scoped` ; le contre-exemple
+    # gestion_projet (loose ref jamais validée) ne doit pas être copié.
+    # `libelle_chantier` reste le repli/héritage pour les enregistrements
+    # antérieurs à CHT16.
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Chantier (id)')
     # ── Coordonnées GPS (départ + chantier) — distance auto par haversine ──
     depart_lat = models.FloatField(
         null=True, blank=True, verbose_name='Latitude départ')
