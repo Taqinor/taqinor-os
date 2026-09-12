@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ArrowLeft, Check, GripVertical, LayoutList, Plus, Rows3, Trash2,
+  ArrowLeft, Check, FlaskConical, GripVertical, LayoutList, Plus, Rows3,
+  Trash2,
 } from 'lucide-react'
 import {
   Button, Input, Textarea, Badge, Card, toast,
@@ -14,6 +15,7 @@ import coreApi from '../../api/coreApi'
 import {
   deplacerEtapeVersIndex, renumeroterEtapes, ajouterEtape, ajouterEtapeDeType,
   retirerEtape, swimlanesDe, validerEtapesDefinition, TYPES_ETAPE_PALETTE,
+  simulerWorkflow,
 } from './workflow'
 
 /* ============================================================================
@@ -161,6 +163,68 @@ function Palette({ onAjouter }) {
         </Button>
       ))}
     </Card>
+  )
+}
+
+/* ============================================================================
+   NTWFL11 -- Mode simulation / test a blanc : execute la definition EN
+   MEMOIRE (simulerWorkflow, workflow.js) sur un contexte saisi par l'admin.
+   JAMAIS persiste : aucun WorkflowInstance reel, aucun appel reseau.
+   ========================================================================== */
+function PanneauSimulation({ steps, onClose }) {
+  const [contexteTexte, setContexteTexte] = useState('{}')
+  const [erreurJson, setErreurJson] = useState('')
+  const [resultat, setResultat] = useState(null)
+
+  function executer() {
+    let contexte
+    try {
+      contexte = JSON.parse(contexteTexte || '{}')
+    } catch {
+      setErreurJson('JSON invalide.')
+      setResultat(null)
+      return
+    }
+    setErreurJson('')
+    setResultat(simulerWorkflow(steps, contexte))
+  }
+
+  return (
+    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+      <SheetContent side="right" className="flex flex-col gap-3 p-4" data-testid="wfd-simulation-panel">
+        <SheetTitle>Tester ce processus (simulation)</SheetTitle>
+        <p className="text-xs text-muted-foreground">
+          Aucune donnee n&apos;est enregistree -- ceci s&apos;execute UNIQUEMENT en memoire,
+          dans votre navigateur.
+        </p>
+        <Textarea
+          placeholder='Contexte de test, ex. {"montant": 150000}'
+          value={contexteTexte}
+          onChange={(e) => setContexteTexte(e.target.value)}
+          data-testid="wfd-simulation-contexte"
+        />
+        {erreurJson && <p className="text-sm text-destructive">{erreurJson}</p>}
+        <Button onClick={executer} data-testid="wfd-simulation-executer">
+          <FlaskConical /> Executer la simulation
+        </Button>
+
+        {resultat && (
+          <div className="rounded-md border p-3" data-testid="wfd-simulation-resultat">
+            <p className="text-sm">
+              Chemin emprunte : {resultat.chemin.map((o) => `Etape ${o}`).join(' -> ') || '(aucun)'}
+            </p>
+            <p className="text-sm">
+              Issue : {resultat.issue === 'termine' ? 'Terminee' : 'En attente (decision humaine)'}
+            </p>
+            {resultat.etapesIgnorees.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Etapes ignorees (garde echouee) : {resultat.etapesIgnorees.join(', ')}
+              </p>
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -316,6 +380,8 @@ export default function WorkflowDesigner() {
   // de core.workflow.valider_definition_steps ; le serveur reste le dernier
   // mot — voir enregistrer()).
   const [erreursValidation, setErreursValidation] = useState([])
+  // NTWFL11 — mode simulation (en mémoire, jamais persisté).
+  const [simulationOuverte, setSimulationOuverte] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -514,6 +580,15 @@ export default function WorkflowDesigner() {
         <Button onClick={enregistrer} disabled={saving} data-testid="wfd-save">
           <Check /> {saving ? 'Enregistrement...' : 'Enregistrer'}
         </Button>
+        {steps.length > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() => setSimulationOuverte(true)}
+            data-testid="wfd-simulation-ouvrir"
+          >
+            <FlaskConical /> Tester ce processus
+          </Button>
+        )}
       </div>
 
       {etapeSelectionnee && (
@@ -524,6 +599,10 @@ export default function WorkflowDesigner() {
           onClose={() => setSelection(null)}
           onSupprimer={supprimerSelection}
         />
+      )}
+
+      {simulationOuverte && (
+        <PanneauSimulation steps={steps} onClose={() => setSimulationOuverte(false)} />
       )}
     </div>
   )

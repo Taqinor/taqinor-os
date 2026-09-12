@@ -233,6 +233,65 @@ describe('WorkflowDesigner -- palette + validation (NTWFL9)', () => {
   })
 })
 
+describe('WorkflowDesigner -- simulation (NTWFL11)', () => {
+  const DEFINITION_GARDE = {
+    id: 11,
+    nom: 'Avec garde',
+    description: '',
+    steps: [
+      {
+        id: 1, ordre: 1, nom: 'Auto garde', type_approbation: 'auto',
+        condition_transition: { field: 'montant', operator: 'gt', value: 100000 },
+        etape_alternative_si_echec: 2,
+      },
+      { id: 2, ordre: 2, nom: 'Alternative', type_approbation: 'manuelle', role_requis: 'admin' },
+    ],
+  }
+
+  function monterGarde() {
+    return render(
+      <MemoryRouter initialEntries={['/workflow/11/designer']}>
+        <ThemeProvider>
+          <Routes>
+            <Route path="/workflow/:id/designer" element={<WorkflowDesigner />} />
+          </Routes>
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+  }
+
+  it('simule le chemin emprunte SANS appeler l\'API', async () => {
+    definitionsGet.mockResolvedValue({ data: DEFINITION_GARDE })
+    const user = userEvent.setup()
+    monterGarde()
+    await screen.findByTestId('wfd-node-1')
+
+    await user.click(screen.getByTestId('wfd-simulation-ouvrir'))
+    const contexte = screen.getByTestId('wfd-simulation-contexte')
+    fireEvent.change(contexte, { target: { value: '{"montant": 10}' } })
+    await user.click(screen.getByTestId('wfd-simulation-executer'))
+
+    const resultat = await screen.findByTestId('wfd-simulation-resultat')
+    expect(resultat).toHaveTextContent('Etape 2')
+    expect(definitionsUpdate).not.toHaveBeenCalled()
+    expect(definitionsGet).toHaveBeenCalledTimes(1) // seul le chargement initial
+  })
+
+  it('un JSON invalide affiche une erreur sans planter', async () => {
+    definitionsGet.mockResolvedValue({ data: DEFINITION_GARDE })
+    const user = userEvent.setup()
+    monterGarde()
+    await screen.findByTestId('wfd-node-1')
+
+    await user.click(screen.getByTestId('wfd-simulation-ouvrir'))
+    const contexte = screen.getByTestId('wfd-simulation-contexte')
+    fireEvent.change(contexte, { target: { value: '{invalide' } })
+    await user.click(screen.getByTestId('wfd-simulation-executer'))
+
+    expect(await screen.findByText('JSON invalide.')).toBeTruthy()
+  })
+})
+
 describe('WorkflowDesigner -- swimlanes par role (NTWFL8)', () => {
   const DEFINITION_ROLES = {
     id: 10,
