@@ -128,8 +128,50 @@ def _photos_pour(instance, phase=None):
     return qs
 
 
+class ChatterBtpMixin:
+    """NTCON32 — ``historique/`` (timeline) + ``noter/`` (note manuelle).
+
+    Branché sur le CHATTER GÉNÉRIQUE du dépôt (``records.Activity`` via
+    ``records.services``, ARC8) — jamais une table de commentaires propre à
+    ``btp_chantier``. Le même composant frontend (``ChatterTimeline``) lit
+    cette timeline et celle des autres modules, parce que la forme servie est
+    ``records.serializers.ChatterActivitySerializer``.
+
+    Auteur ET société sont posés CÔTÉ SERVEUR : ``noter/`` ne lit du corps de
+    requête que le texte.
+    """
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def historique(self, request, pk=None):
+        """Timeline chatter (changements de statut automatiques + notes)."""
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+
+        cible = self.get_object()
+        qs = chatter_qs(cible, company=request.user.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def noter(self, request, pk=None):
+        """Note manuelle horodatée (auteur + société côté serveur)."""
+        from apps.records.serializers import ChatterActivitySerializer
+
+        cible = self.get_object()
+        try:
+            note = services.noter(
+                cible, user=request.user,
+                texte=request.data.get('body') or request.data.get('texte'))
+        except services.TransitionInvalide as exc:
+            return Response({'body': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(ChatterActivitySerializer(note).data,
+                        status=status.HTTP_201_CREATED)
+
+
 class ReserveChantierViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Réserves de chantier (punch-list géo-localisée sur plan) — NTCON1/2.
 
     Filtres liste : ``?lot=&statut=&gravite=&chantier=``. Actions
@@ -283,7 +325,8 @@ class ReserveChantierViewSet(
         return Response(ReserveChantierSerializer(reserve).data)
 
 
-class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+class RFIViewSet(ChatterBtpMixin, WriteScopedPermissionMixin,
+                 CompanyScopedModelViewSet):
     """RFI (Request For Information) — NTCON3.
 
     Filtres liste : ``?chantier=&statut=``. Triée par échéance dépassée en
@@ -365,7 +408,7 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
 
 
 class VisaDocumentViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Visas de documents techniques — NTCON5 (soumission→observations→
     approbation, state machine stricte)."""
     queryset = VisaDocument.objects.select_related(
@@ -524,7 +567,7 @@ class JournalChantierViewSet(
 # ── NTCON7/NTCON8 — Avenant de chantier ─────────────────────────────────────
 
 class AvenantChantierViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Avenants de chantier (chiffrage + approbation) — NTCON7/NTCON8.
 
     Filtres liste : ``?chantier=&statut=``. Actions ``faire-approuver/``
@@ -683,7 +726,7 @@ def avenant_public_approuver(request, token):
 # ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
 
 class DecompteGeneralViewSet(
-        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+        ChatterBtpMixin, WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """DGD (Décompte Général et Définitif) — NTCON9/NTCON10.
 
     Un DGD ``definitif`` est VERROUILLÉ (403 sur toute écriture) sauf via

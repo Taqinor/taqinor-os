@@ -50,6 +50,88 @@ def _notifier_btp(user, event_type_name, titre, corps, *, company=None, link=Non
         return None
 
 
+def journaliser_transition(instance, *, ancien, nouveau, user=None, motif='',
+                           libelle='Statut'):
+    """NTCON32 — UNE transition de statut → chatter générique + AuditLog.
+
+    Deux traces, deux usages, aucun mécanisme maison :
+
+    * le CHATTER (``records.Activity`` via ``records.services.log_activity``,
+      ARC8 — le « mail.thread » du dépôt, celui que lit déjà le composant
+      frontend ``ChatterTimeline``) : ce que l'équipe voit sur la fiche ;
+    * l'AUDIT (``audit.AuditLog`` via ``audit.recorder.record``, le seul point
+      d'écriture autorisé depuis une autre app) : la piste opposable.
+
+    Auteur ET société sont posés CÔTÉ SERVEUR dans les deux cas. Best-effort :
+    une trace qui échoue ne fait jamais échouer la transition métier qui vient
+    de réussir (mais elle est journalisée en avertissement, jamais avalée en
+    silence).
+    """
+    if ancien == nouveau:
+        return
+    libelle_ancien = _libelle_statut(instance, ancien)
+    libelle_nouveau = _libelle_statut(instance, nouveau)
+    try:
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        corps = f'Motif : {motif}' if motif else ''
+        log_activity(
+            instance, Activity.Kind.MODIFICATION, user=user,
+            field='statut', field_label=libelle,
+            old_value=libelle_ancien, new_value=libelle_nouveau,
+            body=corps, company=getattr(instance, 'company', None))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('btp_chantier: chatter non écrit (%s #%s)',
+                       instance.__class__.__name__, instance.pk,
+                       exc_info=True)
+    try:
+        from apps.audit.models import AuditLog
+        from apps.audit.recorder import record
+        detail = f'{libelle} : {libelle_ancien or "—"} → {libelle_nouveau}'
+        if motif:
+            detail = f'{detail} (motif : {motif})'
+        record(
+            AuditLog.Action.UPDATE, instance=instance,
+            company=getattr(instance, 'company', None),
+            user=user if getattr(user, 'pk', None) else None,
+            detail=detail[:2000],
+            changes=[{'field': 'statut', 'old': ancien, 'new': nouveau}])
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('btp_chantier: AuditLog non écrit (%s #%s)',
+                       instance.__class__.__name__, instance.pk,
+                       exc_info=True)
+
+
+def _libelle_statut(instance, valeur):
+    """Libellé FR d'une valeur de ``statut`` (ou la valeur brute)."""
+    if not valeur:
+        return ''
+    try:
+        champ = instance._meta.get_field('statut')
+        for code, libelle in (champ.choices or ()):
+            if code == valeur:
+                return str(libelle)
+    except Exception:  # noqa: BLE001 — modèle sans champ `statut`
+        pass
+    return str(valeur)
+
+
+def noter(instance, *, user, texte):
+    """NTCON32 — note MANUELLE horodatée sur un objet BTP (chatter générique).
+
+    ``records.services.log_note`` est le SEUL point d'écriture : pas de table
+    de commentaires propre à ``btp_chantier``. L'auteur et la société viennent
+    du serveur.
+    """
+    from apps.records.services import log_note
+
+    texte = (texte or '').strip()
+    if not texte:
+        raise TransitionInvalide('Une note ne peut pas être vide.')
+    return log_note(instance, user, texte,
+                    company=getattr(instance, 'company', None))
+
+
 def _emettre(signal_nom, **kwargs):
     """NTCON31 — émet un événement du bus ``core.events`` (best-effort).
 
@@ -79,6 +161,11 @@ def _transitionner_reserve(reserve, nouveau_statut, *, auteur, motif=''):
         company=reserve.company, reserve=reserve,
         ancien_statut=ancien, nouveau_statut=nouveau_statut,
         motif=motif, auteur=auteur)
+    # NTCON32 — chatter generique + AuditLog, EN PLUS de l'historique local
+    # NTCON2 (qui reste la trace metier fine de la punch-list).
+    journaliser_transition(
+        reserve, ancien=ancien, nouveau=nouveau_statut, user=auteur,
+        motif=motif)
     return reserve
 
 
@@ -214,8 +301,11 @@ def repondre_rfi(rfi, *, auteur, texte):
     with transaction.atomic():
         reponse = RFIReponse.objects.create(
             company=rfi.company, rfi=rfi, texte=texte, auteur=auteur)
+        ancien_statut = rfi.statut
         rfi.statut = RFI.Statut.REPONDU
         rfi.save(update_fields=['statut'])
+    journaliser_transition(
+        rfi, ancien=ancien_statut, nouveau=RFI.Statut.REPONDU, user=auteur)
     if rfi.pose_par_id and rfi.pose_par_id != getattr(auteur, 'id', None):
         _notifier_btp(
             rfi.pose_par, 'APPROVAL_DECIDED', f'RFI #{rfi.numero} répondu',
@@ -232,8 +322,11 @@ def clore_rfi(rfi, *, user):
 
     if rfi.statut == RFI.Statut.CLOS:
         raise TransitionInvalide(f'RFI {rfi.pk} : déjà clos.')
+    ancien = rfi.statut
     rfi.statut = RFI.Statut.CLOS
     rfi.save(update_fields=['statut'])
+    journaliser_transition(
+        rfi, ancien=ancien, nouveau=RFI.Statut.CLOS, user=user)
     return rfi
 
 
@@ -272,12 +365,16 @@ def soumettre_observations_visa(visa, *, user, observations):
     if visa.statut in VisaDocument.STATUTS_DECIDES:
         raise TransitionInvalide(
             f'Visa {visa.reference} : déjà décidé ({visa.statut}).')
+    ancien = visa.statut
     visa.statut = VisaDocument.Statut.EN_REVUE
     visa.observations = observations
     visa.revu_par = user
     visa.date_revue = timezone.now()
     visa.save(update_fields=[
         'statut', 'observations', 'revu_par', 'date_revue'])
+    journaliser_transition(
+        visa, ancien=ancien, nouveau=VisaDocument.Statut.EN_REVUE, user=user,
+        motif=observations)
     if visa.soumis_par_id:
         _notifier_btp(
             visa.soumis_par, 'APPROVAL_REMINDER',
@@ -292,6 +389,7 @@ def _decider_visa(visa, *, user, nouveau_statut, observations=''):
     if visa.statut in VisaDocument.STATUTS_DECIDES:
         raise TransitionInvalide(
             f'Visa {visa.reference} : déjà décidé ({visa.statut}).')
+    ancien = visa.statut
     visa.statut = nouveau_statut
     if observations:
         visa.observations = observations
@@ -299,6 +397,9 @@ def _decider_visa(visa, *, user, nouveau_statut, observations=''):
     visa.date_revue = timezone.now()
     visa.save(update_fields=[
         'statut', 'observations', 'revu_par', 'date_revue'])
+    journaliser_transition(
+        visa, ancien=ancien, nouveau=nouveau_statut, user=user,
+        motif=observations)
     if visa.soumis_par_id:
         _notifier_btp(
             visa.soumis_par, 'APPROVAL_DECIDED',
@@ -406,11 +507,15 @@ def soumettre_client_avenant(avenant, *, user, validite_jours=30):
         raise TransitionInvalide(
             f'Avenant {avenant.reference} : seul un avenant brouillon peut '
             'être soumis au client.')
+    ancien = avenant.statut
     avenant.statut = AvenantChantier.Statut.SOUMIS_CLIENT
     avenant.token = _default_btp_token()
     avenant.token_expires_at = timezone.now() + timedelta(days=validite_jours)
     avenant.save(update_fields=[
         'statut', 'token', 'token_expires_at', 'updated_at'])
+    journaliser_transition(
+        avenant, ancien=ancien,
+        nouveau=AvenantChantier.Statut.SOUMIS_CLIENT, user=user)
     return avenant
 
 
@@ -474,12 +579,16 @@ def approuver_avenant(avenant, *, user=None):
             montant_periode_ht=avenant.montant_ht)
         avenant.facture_id = facture.id
 
+    ancien = avenant.statut
     avenant.statut = AvenantChantier.Statut.APPROUVE
     avenant.approuve_par = user
     avenant.date_approbation = timezone.now()
     avenant.save(update_fields=[
         'statut', 'approuve_par', 'date_approbation', 'budget_projet_id',
         'facture_id', 'updated_at'])
+    journaliser_transition(
+        avenant, ancien=ancien, nouveau=AvenantChantier.Statut.APPROUVE,
+        user=user)
     return avenant
 
 
@@ -491,9 +600,13 @@ def refuser_avenant(avenant, *, user, motif=''):
             AvenantChantier.Statut.APPROUVE, AvenantChantier.Statut.REFUSE):
         raise TransitionInvalide(
             f'Avenant {avenant.reference} : déjà décidé ({avenant.statut}).')
+    ancien = avenant.statut
     avenant.statut = AvenantChantier.Statut.REFUSE
     avenant.motif_refus = motif
     avenant.save(update_fields=['statut', 'motif_refus', 'updated_at'])
+    journaliser_transition(
+        avenant, ancien=ancien, nouveau=AvenantChantier.Statut.REFUSE,
+        user=user, motif=motif)
     return avenant
 
 
@@ -554,10 +667,13 @@ def notifier_dgd(dgd, *, user):
 
     if dgd.statut == DecompteGeneral.Statut.DEFINITIF:
         raise TransitionInvalide(f'DGD {dgd.reference} : déjà définitif.')
+    ancien = dgd.statut
     dgd = selectors.recalculer_et_enregistrer_dgd(dgd)
     dgd.statut = DecompteGeneral.Statut.NOTIFIE
     dgd.date_notification = timezone.now()
     dgd.save(update_fields=['statut', 'date_notification', 'updated_at'])
+    journaliser_transition(
+        dgd, ancien=ancien, nouveau=DecompteGeneral.Statut.NOTIFIE, user=user)
     return dgd
 
 
@@ -567,11 +683,15 @@ def contester_dgd(dgd, *, user, motif, montant_conteste=None):
 
     if dgd.statut == DecompteGeneral.Statut.DEFINITIF:
         raise TransitionInvalide(f'DGD {dgd.reference} : verrouillé (définitif).')
+    ancien = dgd.statut
     dgd.statut = DecompteGeneral.Statut.CONTESTE
     dgd.motif_contestation = motif
     dgd.montant_conteste = montant_conteste
     dgd.save(update_fields=[
         'statut', 'motif_contestation', 'montant_conteste', 'updated_at'])
+    journaliser_transition(
+        dgd, ancien=ancien, nouveau=DecompteGeneral.Statut.CONTESTE,
+        user=user, motif=motif)
     return dgd
 
 
@@ -585,11 +705,15 @@ def finaliser_dgd(dgd, *, user):
 
     if dgd.statut == DecompteGeneral.Statut.DEFINITIF:
         raise TransitionInvalide(f'DGD {dgd.reference} : déjà définitif.')
+    ancien = dgd.statut
     dgd.statut = DecompteGeneral.Statut.DEFINITIF
     dgd.date_finalisation = timezone.now()
     dgd.finalise_par = user
     dgd.save(update_fields=[
         'statut', 'date_finalisation', 'finalise_par', 'updated_at'])
+    journaliser_transition(
+        dgd, ancien=ancien, nouveau=DecompteGeneral.Statut.DEFINITIF,
+        user=user)
     # NTCON31 — `dgd.finalise` sur le bus (abonné : webhook publicapi).
     _emettre('btp_dgd_finalise', dgd=dgd, company=dgd.company, user=user)
     return dgd
@@ -602,6 +726,7 @@ def deverrouiller_dgd(dgd, *, user, motif):
 
     if dgd.statut != DecompteGeneral.Statut.DEFINITIF:
         raise TransitionInvalide(f'DGD {dgd.reference} : pas verrouillé.')
+    ancien = dgd.statut
     dgd.statut = DecompteGeneral.Statut.ACCEPTE
     dgd.historique_deverrouillage = list(dgd.historique_deverrouillage or []) + [{
         'date': timezone.now().isoformat(),
@@ -610,6 +735,9 @@ def deverrouiller_dgd(dgd, *, user, motif):
     }]
     dgd.save(update_fields=[
         'statut', 'historique_deverrouillage', 'updated_at'])
+    journaliser_transition(
+        dgd, ancien=ancien, nouveau=DecompteGeneral.Statut.ACCEPTE,
+        user=user, motif=motif)
     return dgd
 
 
