@@ -63,7 +63,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ao/services.py:739` | get_or_create | PresetCalepinage.objects | company, nom |
 | `backend/django_core/apps/assurances/services.py:340` | update_or_create | IndemnisationSinistre.objects | declaration |
 | `backend/django_core/apps/automation/templates.py:252` | get_or_create | AutomationRule.objects | company, nom |
-| `backend/django_core/apps/automation/views.py:513` | get_or_create | IncomingWebhookTrigger.objects | rule |
+| `backend/django_core/apps/automation/views.py:514` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/btp_chantier/offline_ops.py:117` | update_or_create | JournalChantier.objects | chantier, company, date |
 | `backend/django_core/apps/btp_chantier/services.py:1387` | update_or_create | LotChecklistItem.objects | cle, lot |
 | `backend/django_core/apps/btp_chantier/views.py:1164` | get_or_create | ParametresBtpChantier.objects | company |
@@ -173,7 +173,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/services.py:3947` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
 | `backend/django_core/apps/ged/services.py:4625` | get_or_create | DocumentTag.objects | company, slug |
 | `backend/django_core/apps/ged/services.py:5857` | get_or_create | Folder.objects | cabinet, company, nom, parent |
-| `backend/django_core/apps/ged/views.py:2012` | get_or_create | DocumentLien.objects | content_type, document, object_id |
+| `backend/django_core/apps/ged/views.py:2013` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/gestion_projet/services.py:584` | update_or_create | ClotureProjet.objects | projet |
 | `backend/django_core/apps/gestion_projet/services.py:886` | update_or_create | LigneSituation.objects | libelle, situation |
 | `backend/django_core/apps/gestion_projet/services.py:1020` | update_or_create | Indisponibilite.objects | company, motif, ressource |
@@ -326,7 +326,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/statuspage/tasks.py:60` | get_or_create | UptimeDayBucket.objects | company, composant, date, region |
 | `backend/django_core/apps/statuspage/tasks.py:122` | update_or_create | ComponentStatus.objects | company, nom, region |
 | `backend/django_core/apps/statuspage/tasks.py:133` | update_or_create | ComponentStatus.objects | company, nom, region |
-| `backend/django_core/apps/statuspage/views.py:240` | get_or_create | StatusSubscriber.objects | email |
+| `backend/django_core/apps/statuspage/views.py:267` | get_or_create | StatusSubscriber.objects | email |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:1569` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:1902` | get_or_create | Categorie.objects | company, nom |

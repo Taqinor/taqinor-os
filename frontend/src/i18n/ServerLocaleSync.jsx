@@ -58,7 +58,6 @@ export default function ServerLocaleSync() {
     if (locale === lastServerValue.current) return
     lastServerValue.current = locale
     patchLangueInterface(locale)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale, isAuthenticated])
 
   return null

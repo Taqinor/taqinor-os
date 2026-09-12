@@ -357,7 +357,7 @@ class SlaCreditDuSerializer(serializers.ModelSerializer):
             'credit_du_pct', 'credit_du_montant', 'credit_statut',
         ]
 
-    def get_company_nom(self, obj):
+    def get_company_nom(self, obj) -> str:
         return getattr(obj.company, 'nom', '')
 
 

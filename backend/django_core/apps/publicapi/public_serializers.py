@@ -225,9 +225,9 @@ class PublicFavoriSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_modele(self, obj):
+    def get_modele(self, obj) -> str:
         return obj.cle_modele
 
-    def get_libelle(self, obj):
+    def get_libelle(self, obj) -> str | None:
         cible = obj.cible
         return str(cible) if cible is not None else None

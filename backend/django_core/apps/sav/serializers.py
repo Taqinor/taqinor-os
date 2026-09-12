@@ -878,7 +878,7 @@ class ProblemeSerializer(serializers.ModelSerializer):
             'nb_tickets', 'anciennete_jours', 'impact',
         ]
 
-    def get_nb_tickets(self, obj):
+    def get_nb_tickets(self, obj) -> int:
         """Nombre de tickets rattachés — lit l'annotation de la vue liste
         quand elle est là (zéro requête par ligne), sinon compte."""
         annote = getattr(obj, 'nb_tickets_annote', None)
@@ -886,12 +886,12 @@ class ProblemeSerializer(serializers.ModelSerializer):
             return annote
         return obj.incidents.count()
 
-    def get_anciennete_jours(self, obj):
+    def get_anciennete_jours(self, obj) -> int:
         if not obj.created_at:
             return 0
         return max(0, (timezone.now() - obj.created_at).days)
 
-    def get_impact(self, obj):
+    def get_impact(self, obj) -> int:
         """NTSRV16 — score d'impact = nb de tickets × ancienneté (jours).
 
         Un problème d'un jour avec 10 tickets et un problème de 10 jours avec

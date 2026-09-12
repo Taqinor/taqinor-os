@@ -37,7 +37,7 @@ class IncidentPublicSerializer(serializers.ModelSerializer):
             'postmortem_markdown', 'postmortem_publie_le',
         ]
 
-    def get_postmortem_markdown(self, obj):
+    def get_postmortem_markdown(self, obj) -> str:
         if obj.postmortem_publie_le:
             return obj.postmortem_markdown
         return ''

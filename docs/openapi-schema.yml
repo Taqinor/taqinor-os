@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10748, operations: 19044, components: 5683}
+counts: {paths: 10748, operations: 19044, components: 5724}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2458,7 +2458,7 @@ operations:
 - post /api/django/core/data-explorer/drill/ -> django_core_data_explorer_drill_create
 - post /api/django/core/data-explorer/run/ -> django_core_data_explorer_run_create
 - get /api/django/core/db-stats/ -> django_core_db_stats_retrieve
-- get /api/django/core/degraded-mode-status/ -> django_core_degraded_mode_status_retrieve
+- get /api/django/core/degraded-mode-status/ -> django_core_degraded_mode_status_list
 - get /api/django/core/dsr-requests/ -> django_core_dsr_requests_list
 - post /api/django/core/dsr-requests/ -> django_core_dsr_requests_create
 - get /api/django/core/dsr-requests/en-retard/ -> django_core_dsr_requests_en_retard_retrieve
@@ -2491,7 +2491,7 @@ operations:
 - post /api/django/core/jobs/run/ -> django_core_jobs_run_create
 - get /api/django/core/maintenance-windows/ -> django_core_maintenance_windows_list
 - post /api/django/core/maintenance-windows/ -> django_core_maintenance_windows_create
-- get /api/django/core/maintenance-windows/actives/ -> django_core_maintenance_windows_actives_retrieve
+- get /api/django/core/maintenance-windows/actives/ -> django_core_maintenance_windows_actives_list
 - post /api/django/core/maintenance-windows/{id}/annuler/ -> django_core_maintenance_windows_annuler_create
 - get /api/django/core/maintenance/ -> django_core_maintenance_retrieve
 - post /api/django/core/maintenance/ -> django_core_maintenance_create
@@ -2557,7 +2557,7 @@ operations:
 - get /api/django/core/theme/courant/ -> django_core_theme_courant_retrieve
 - patch /api/django/core/theme/courant/ -> django_core_theme_courant_partial_update
 - put /api/django/core/theme/courant/ -> django_core_theme_courant_update
-- get /api/django/core/trust-center/ -> django_core_trust_center_retrieve
+- get /api/django/core/trust-center/ -> django_core_trust_center_list
 - get /api/django/core/ui-boutons/ -> django_core_ui_boutons_list
 - post /api/django/core/ui-boutons/ -> django_core_ui_boutons_create
 - delete /api/django/core/ui-boutons/{id}/ -> django_core_ui_boutons_destroy
@@ -12027,7 +12027,7 @@ operations:
 - post /api/v1/core/data-explorer/drill/ -> v1_core_data_explorer_drill_create
 - post /api/v1/core/data-explorer/run/ -> v1_core_data_explorer_run_create
 - get /api/v1/core/db-stats/ -> v1_core_db_stats_retrieve
-- get /api/v1/core/degraded-mode-status/ -> v1_core_degraded_mode_status_retrieve
+- get /api/v1/core/degraded-mode-status/ -> v1_core_degraded_mode_status_list
 - get /api/v1/core/dsr-requests/ -> v1_core_dsr_requests_list
 - post /api/v1/core/dsr-requests/ -> v1_core_dsr_requests_create
 - get /api/v1/core/dsr-requests/en-retard/ -> v1_core_dsr_requests_en_retard_retrieve
@@ -12060,7 +12060,7 @@ operations:
 - post /api/v1/core/jobs/run/ -> v1_core_jobs_run_create
 - get /api/v1/core/maintenance-windows/ -> v1_core_maintenance_windows_list
 - post /api/v1/core/maintenance-windows/ -> v1_core_maintenance_windows_create
-- get /api/v1/core/maintenance-windows/actives/ -> v1_core_maintenance_windows_actives_retrieve
+- get /api/v1/core/maintenance-windows/actives/ -> v1_core_maintenance_windows_actives_list
 - post /api/v1/core/maintenance-windows/{id}/annuler/ -> v1_core_maintenance_windows_annuler_create
 - get /api/v1/core/maintenance/ -> v1_core_maintenance_retrieve
 - post /api/v1/core/maintenance/ -> v1_core_maintenance_create
@@ -12126,7 +12126,7 @@ operations:
 - get /api/v1/core/theme/courant/ -> v1_core_theme_courant_retrieve
 - patch /api/v1/core/theme/courant/ -> v1_core_theme_courant_partial_update
 - put /api/v1/core/theme/courant/ -> v1_core_theme_courant_update
-- get /api/v1/core/trust-center/ -> v1_core_trust_center_retrieve
+- get /api/v1/core/trust-center/ -> v1_core_trust_center_list
 - get /api/v1/core/ui-boutons/ -> v1_core_ui_boutons_list
 - post /api/v1/core/ui-boutons/ -> v1_core_ui_boutons_create
 - delete /api/v1/core/ui-boutons/{id}/ -> v1_core_ui_boutons_destroy
@@ -19184,6 +19184,7 @@ components:
 - AnalyseNcr
 - AnalyseRisquesChantier
 - AnalyseRisquesChantierRequest
+- AnalyticsDiversiteReponse
 - AnneeScolaire
 - AnneeScolaireRequest
 - Annonce
@@ -19371,6 +19372,7 @@ components:
 - BackupRunKindEnum
 - BackupRunModeEnum
 - BackupRunRequest
+- BackupRunResume
 - BackupRunStatutEnum
 - BadgeReconnaissance
 - BadgeReconnaissanceRequest
@@ -19474,8 +19476,10 @@ components:
 - CadreConformite
 - CadreConformiteCodeEnum
 - CadreConformiteRequest
+- CadreCouverture
 - Caisse
 - CaisseRequest
+- CalendrierHegirienReponse
 - CalendrierProjet
 - CalendrierProjetRequest
 - CalqueDxf
@@ -19700,6 +19704,8 @@ components:
 - CompetitorPage
 - CompetitorPageRequest
 - CompletudeReponse
+- ComponentStatusPublic
+- ComponentStatusPublicStatutEnum
 - ComposantImmobilisation
 - ComposantImmobilisationMethodeEnum
 - ComposantImmobilisationRequest
@@ -19943,6 +19949,7 @@ components:
 - DeficienceControleGraviteEnum
 - DeficienceControleRequest
 - DeficienceControleStatutEnum
+- DegradedModeEntree
 - DelaiPrescription
 - DelaiPrescriptionRequest
 - DelaiPrescriptionStatutEnum
@@ -20120,6 +20127,8 @@ components:
 - DrillRequeteRequest
 - ECatalogue
 - ECatalogueRequest
+- EDiscoveryReponse
+- EDiscoveryRequeteRequest
 - EcartChange
 - EcheanceAO
 - EcheanceAORequest
@@ -20622,6 +20631,7 @@ components:
 - Installation
 - InstallationRegime8221Enum
 - InstallationRequest
+- InstallerModeleReponse
 - InstanceCloture
 - InstanceClotureRequest
 - InstanceClotureStatutEnum
@@ -20730,6 +20740,7 @@ components:
 - LanguageEnum
 - LangueB0bEnum
 - LangueDocumentEnum
+- LangueInterfaceReponse
 - LanguePrefereeEnum
 - Lead
 - LeadPhotoToit
@@ -20952,6 +20963,7 @@ components:
 - MesLivraisonsPortailArticle
 - MesLivraisonsPortailLigne
 - MesLivraisonsPortailPreuve
+- MesSauvegardesReponse
 - MesSoumissionsPortail
 - MesSoumissionsPortailLigne
 - MesSoumissionsPortailLigneRequest
@@ -21007,6 +21019,7 @@ components:
 - ModeleBonCommandeFournisseurLigne
 - ModeleBonCommandeFournisseurLigneRequest
 - ModeleBonCommandeFournisseurRequest
+- ModeleCatalogue
 - ModeleCloture
 - ModeleClotureRequest
 - ModeleContrat
@@ -21041,6 +21054,7 @@ components:
 - ModeleVehicule
 - ModeleVehiculeCategorieEnum
 - ModeleVehiculeRequest
+- ModelesCatalogueReponse
 - ModuleEnum
 - ModuleToggle
 - MonitoringConfig
@@ -22518,6 +22532,7 @@ components:
 - PatchedCadenceRelanceEtapeRequest
 - PatchedCadreConformiteRequest
 - PatchedCaisseRequest
+- PatchedCalendrierHegirienRequeteRequest
 - PatchedCalendrierProjetRequest
 - PatchedCampagneCulturaleRequest
 - PatchedCampagneEvaluationRequest
@@ -22886,6 +22901,7 @@ components:
 - PatchedKitRequest
 - PatchedKpiAlerteRequest
 - PatchedLandedCostLigneRequest
+- PatchedLangueInterfaceRequeteRequest
 - PatchedLeadRequest
 - PatchedLeadTagRequest
 - PatchedLegalHoldTransverseRequest
@@ -23705,11 +23721,17 @@ components:
 - ProvisionCreanceStatutEnum
 - ProvisionNatureEnum
 - ProvisionRequest
+- PublicAbonnerReponse
+- PublicAbonnerRequeteRequest
 - PublicApporteurDeal
 - PublicApporteurMesDeals
 - PublicChantier
+- PublicConfirmerAbonnementReponse
 - PublicDecompteGeneral
+- PublicDesabonnerReponse
 - PublicDevis
+- PublicDevisCreateReponse
+- PublicDevisCreateRequeteRequest
 - PublicErrorCatalog
 - PublicErrorCatalogEntry
 - PublicEventFeed
@@ -23730,14 +23752,21 @@ components:
 - PublicQuestionnaireReponseRequestRequest
 - PublicRFI
 - PublicReserveChantier
+- PublicSalleDocumentLigne
+- PublicSalleInfo
+- PublicSalleSommaire
 - PublicSalleVente
 - PublicSalleVenteAccesRequest
 - PublicSalleVenteItem
+- PublicSalleViewer
 - PublicSavedView
 - PublicSavedViewVisibiliteEnum
 - PublicScmTableauBordReappro
 - PublicScmTableauBordReapproLigne
+- PublicStatusReponse
 - PublicTailleDetail
+- PublicTicketCreateReponse
+- PublicTicketCreateRequeteRequest
 - PublicVisaDocument
 - PublicVisiteReponse
 - PublicVisiteRequestRequest
@@ -23762,6 +23791,9 @@ components:
 - QuestionnaireFournisseur
 - QuestionnaireFournisseurRequest
 - QuestionnaireFournisseurStatutEnum
+- QuestionnairePublicQuestion
+- QuestionnairePublicReponse
+- QuestionnairePublicRequeteRequest
 - QuizFormation
 - QuizFormationRequest
 - QuotaStockage
@@ -24167,6 +24199,8 @@ components:
 - ScmTableauBordExecutif
 - ScmTableauBordReapproLigne
 - ScoreCertification
+- ScoreConformiteCritere
+- ScoreConformiteReponse
 - ScoreMaturiteLead
 - Seance
 - SeanceRequest
@@ -24250,6 +24284,7 @@ components:
 - SituationTravauxRequest
 - SituationTravauxStatutEnum
 - SlaCreditDu
+- SlaCreditStatutRequeteRequest
 - SlaSnapshot
 - SodRule
 - SodRuleRequest
@@ -24420,6 +24455,7 @@ components:
 - TamponSocieteRequest
 - TargetKindEnum
 - TargetRoleEnum
+- TauxAbsenteismeReponse
 - TauxDevise
 - TauxDeviseRequest
 - TauxDeviseSourceEnum
@@ -24506,6 +24542,8 @@ components:
 - TravauxEnCoursRequest
 - TravauxEnCoursStatutEnum
 - TriggerTypeEnum
+- TrustCenterEntry
+- TrustCenterEntryCategorieEnum
 - TrustedDevice
 - Type079Enum
 - TypeAbsence
@@ -24646,6 +24684,8 @@ components:
 - UniteLogistiqueStatutEnum
 - UniteMesure
 - UniteMesureRequest
+- UsageRessource
+- UsageSummary
 - User
 - UserChatStatus
 - UserChatStatusRequest
@@ -24676,6 +24716,7 @@ components:
 - VenteComptoir
 - VenteComptoirRequest
 - VenteComptoirStatutEnum
+- VerifierCertificatReponse
 - VersionContrat
 - VersionDocument
 - VersionFormulaireIntake

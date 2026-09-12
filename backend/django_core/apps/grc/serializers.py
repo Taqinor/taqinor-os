@@ -637,10 +637,10 @@ class QuestionnaireFournisseurSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'statut', 'score', 'modele_ref', 'created_at', 'updated_at']
 
-    def get_nombre_questions(self, obj):
+    def get_nombre_questions(self, obj) -> int:
         return obj.reponses.count()
 
-    def get_nombre_reponses(self, obj):
+    def get_nombre_reponses(self, obj) -> int:
         return sum(1 for r in obj.reponses.all() if r.est_repondue)
 
     def validate_fournisseur_ref(self, valeur):

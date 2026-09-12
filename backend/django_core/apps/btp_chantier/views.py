@@ -1362,6 +1362,18 @@ class ChantierIntervenantsView(APIView):
         return Response(selectors.registre_intervenants(chantier))
 
 
+# UNE seule instance partagée par GET et POST : deux inline_serializer au même
+# nom créent deux composants « identiques mais distincts » et drf-spectacular
+# signale la collision de composant (YAPIC6).
+_PENALITES_PAR_LOT_REPONSE = inline_serializer('ChantierPenalitesParLotReponse', {
+    'chantier_id': drf_serializers.IntegerField(),
+    'date_reference': drf_serializers.DateField(),
+    'lots': drf_serializers.JSONField(),
+    'total_exposition': drf_serializers.DecimalField(
+        max_digits=14, decimal_places=2),
+})
+
+
 class ChantierPenalitesParLotView(APIView):
     """NTCON15/NTCON28 — ``chantiers/<id>/penalites-par-lot/``.
 
@@ -1383,13 +1395,7 @@ class ChantierPenalitesParLotView(APIView):
     read_permission = 'btp_gerer'
     write_permission = 'btp_gerer'
 
-    @extend_schema(responses=inline_serializer('ChantierPenalitesParLotReponse', {
-        'chantier_id': drf_serializers.IntegerField(),
-        'date_reference': drf_serializers.DateField(),
-        'lots': drf_serializers.JSONField(),
-        'total_exposition': drf_serializers.DecimalField(
-            max_digits=14, decimal_places=2),
-    }))
+    @extend_schema(responses=_PENALITES_PAR_LOT_REPONSE)
     def get(self, request, chantier_id):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
@@ -1402,15 +1408,7 @@ class ChantierPenalitesParLotView(APIView):
         return Response(
             selectors.penalites_par_lot_cache_ou_calcul(chantier))
 
-    @extend_schema(
-        request=None,
-        responses=inline_serializer('ChantierPenalitesParLotReponse', {
-            'chantier_id': drf_serializers.IntegerField(),
-            'date_reference': drf_serializers.DateField(),
-            'lots': drf_serializers.JSONField(),
-            'total_exposition': drf_serializers.DecimalField(
-                max_digits=14, decimal_places=2),
-        }))
+    @extend_schema(request=None, responses=_PENALITES_PAR_LOT_REPONSE)
     def post(self, request, chantier_id):
         """NTCON28 — recalcul manuel forcé (bouton « Recalculer »)."""
         chantier = get_object_or_404(
