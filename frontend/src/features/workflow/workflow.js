@@ -58,6 +58,25 @@ export function retirerEtape(steps, index) {
   return renumeroterEtapes(steps.filter((_, i) => i !== index))
 }
 
+/* NTWFL9 — palette de noeuds réutilisables : les 3 types déjà connus du
+ * backend (`WorkflowStepDefinition.APPROBATION_CHOICES`), jamais un 4e type
+ * inventé côté frontend. */
+export const TYPES_ETAPE_PALETTE = [
+  { type: 'manuelle', label: 'Manuelle' },
+  { type: 'auto', label: 'Automatique' },
+  { type: 'role', label: 'Par rôle' },
+]
+
+/** Ajoute une étape du `type` demandé (palette NTWFL9) à la fin, renumérotée.
+ * Type inconnu => repli sur 'manuelle' (jamais un type qui n'existe pas côté
+ * backend). */
+export function ajouterEtapeDeType(steps, type) {
+  const base = Array.isArray(steps) ? steps : []
+  const typeValide = TYPES_ETAPE_PALETTE.some((t) => t.type === type) ? type : 'manuelle'
+  const etape = { ...nouvelleEtape(base.length + 1), type_approbation: typeValide }
+  return renumeroterEtapes([...base, etape])
+}
+
 /** Validation minimale d'une définition avant "création" côté brouillon
  * local : nom non vide + au moins 1 étape + chaque étape a un nom. */
 export function validerDefinition(def) {

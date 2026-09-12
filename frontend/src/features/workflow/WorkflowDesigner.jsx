@@ -12,8 +12,8 @@ import {
 import PageHeader from '../../components/layout/PageHeader'
 import coreApi from '../../api/coreApi'
 import {
-  deplacerEtapeVersIndex, renumeroterEtapes, ajouterEtape, retirerEtape,
-  swimlanesDe,
+  deplacerEtapeVersIndex, renumeroterEtapes, ajouterEtape, ajouterEtapeDeType,
+  retirerEtape, swimlanesDe, validerEtapesDefinition, TYPES_ETAPE_PALETTE,
 } from './workflow'
 
 /* ============================================================================
@@ -138,6 +138,29 @@ function VueSwimlanes({
         </div>
       ))}
     </div>
+  )
+}
+
+/* ============================================================================
+   NTWFL9 -- Palette de noeuds reutilisables : ajoute une etape d'un type
+   connu du backend (WorkflowStepDefinition.APPROBATION_CHOICES) en un clic.
+   ========================================================================== */
+function Palette({ onAjouter }) {
+  return (
+    <Card className="flex shrink-0 flex-col gap-2 p-3" data-testid="wfd-palette">
+      <p className="text-xs font-medium text-muted-foreground">Palette</p>
+      {TYPES_ETAPE_PALETTE.map(({ type, label }) => (
+        <Button
+          key={type}
+          variant="secondary"
+          size="sm"
+          onClick={() => onAjouter(type)}
+          data-testid={`wfd-palette-${type}`}
+        >
+          <Plus /> {label}
+        </Button>
+      ))}
+    </Card>
   )
 }
 
@@ -289,6 +312,10 @@ export default function WorkflowDesigner() {
   const [, setDragIndex] = useState(null)
   // NTWFL8 — bascule séquence/swimlanes (aucune donnée nouvelle, pure vue).
   const [vueParRole, setVueParRole] = useState(false)
+  // NTWFL9 — erreurs de validation AFFICHÉES avant sauvegarde (miroir client
+  // de core.workflow.valider_definition_steps ; le serveur reste le dernier
+  // mot — voir enregistrer()).
+  const [erreursValidation, setErreursValidation] = useState([])
 
   useEffect(() => {
     let alive = true
@@ -337,6 +364,11 @@ export default function WorkflowDesigner() {
     setSteps((prev) => ajouterEtape(prev))
   }
 
+  // NTWFL9 — ajout depuis la palette (type choisi explicitement).
+  function ajouterDeType(type) {
+    setSteps((prev) => ajouterEtapeDeType(prev, type))
+  }
+
   function supprimerSelection() {
     if (selection == null) return
     setSteps((prev) => retirerEtape(prev, selection))
@@ -344,12 +376,22 @@ export default function WorkflowDesigner() {
   }
 
   async function enregistrer() {
+    // NTWFL9 — validation cote client AVANT tout appel reseau : bloque
+    // l'enregistrement avec une liste d'erreurs claire (le serveur revalide
+    // de toute facon, defense en profondeur, jamais la seule barriere).
+    const payloadSteps = steps.map((s, i) => ({ ...s, ordre: i + 1 }))
+    const erreurs = validerEtapesDefinition(payloadSteps)
+    setErreursValidation(erreurs)
+    if (erreurs.length > 0) {
+      toast.error(erreurs[0])
+      return
+    }
     setSaving(true)
     try {
       await coreApi.workflowDefinitions.update(id, {
         nom,
         description,
-        steps: steps.map((s, i) => ({ ...s, ordre: i + 1 })),
+        steps: payloadSteps,
       })
       toast.success('Definition enregistree.')
     } catch (err) {
@@ -388,64 +430,81 @@ export default function WorkflowDesigner() {
         onChange={(e) => setDescription(e.target.value)}
       />
 
-      {steps.length === 0 ? (
-        <EmptyState
-          title="Aucune etape"
-          description="Ajoutez une premiere etape pour commencer."
-          action={<Button onClick={ajouter}><Plus /> Ajouter une etape</Button>}
-        />
-      ) : (
-        <>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={vueParRole ? 'ghost' : 'secondary'}
-              size="sm"
-              onClick={() => setVueParRole(false)}
-              data-testid="wfd-vue-sequence"
-            >
-              <LayoutList /> Sequence
-            </Button>
-            <Button
-              variant={vueParRole ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setVueParRole(true)}
-              data-testid="wfd-vue-swimlanes"
-            >
-              <Rows3 /> Par role
-            </Button>
-          </div>
-          <Card className="overflow-x-auto p-4">
-            {vueParRole ? (
-              <VueSwimlanes
-                steps={steps}
-                selection={selection}
-                onSelect={setSelection}
-                onDragStart={onDragStart}
-                onDeplacerVersRole={onDeplacerVersRole}
-              />
-            ) : (
-              <div className="flex items-center gap-6" data-testid="wfd-canvas">
-                {steps.map((etape, index) => (
-                  <div key={etape.ordre} className="flex items-center gap-2">
-                    <EtapeNoeud
-                      etape={etape}
-                      index={index}
-                      total={steps.length}
-                      selectionnee={selection === index}
-                      onSelect={setSelection}
-                      onDragStart={onDragStart}
-                      onDragOver={onDragOver}
-                      onDrop={onDrop}
-                    />
-                    {index < steps.length - 1 && (
-                      <span aria-hidden="true" className="text-muted-foreground">&rarr;</span>
-                    )}
-                  </div>
-                ))}
+      <div className="flex items-start gap-3">
+        <Palette onAjouter={ajouterDeType} />
+        <div className="flex-1">
+          {steps.length === 0 ? (
+            <EmptyState
+              title="Aucune etape"
+              description="Ajoutez une premiere etape pour commencer (bouton ci-dessous ou palette)."
+              action={<Button onClick={ajouter}><Plus /> Ajouter une etape</Button>}
+            />
+          ) : (
+            <>
+              <div className="mb-2 flex items-center gap-2">
+                <Button
+                  variant={vueParRole ? 'ghost' : 'secondary'}
+                  size="sm"
+                  onClick={() => setVueParRole(false)}
+                  data-testid="wfd-vue-sequence"
+                >
+                  <LayoutList /> Sequence
+                </Button>
+                <Button
+                  variant={vueParRole ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setVueParRole(true)}
+                  data-testid="wfd-vue-swimlanes"
+                >
+                  <Rows3 /> Par role
+                </Button>
               </div>
-            )}
-          </Card>
-        </>
+              <Card className="overflow-x-auto p-4">
+                {vueParRole ? (
+                  <VueSwimlanes
+                    steps={steps}
+                    selection={selection}
+                    onSelect={setSelection}
+                    onDragStart={onDragStart}
+                    onDeplacerVersRole={onDeplacerVersRole}
+                  />
+                ) : (
+                  <div className="flex items-center gap-6" data-testid="wfd-canvas">
+                    {steps.map((etape, index) => (
+                      <div key={etape.ordre} className="flex items-center gap-2">
+                        <EtapeNoeud
+                          etape={etape}
+                          index={index}
+                          total={steps.length}
+                          selectionnee={selection === index}
+                          onSelect={setSelection}
+                          onDragStart={onDragStart}
+                          onDragOver={onDragOver}
+                          onDrop={onDrop}
+                        />
+                        {index < steps.length - 1 && (
+                          <span aria-hidden="true" className="text-muted-foreground">&rarr;</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </>
+          )}
+        </div>
+      </div>
+
+      {erreursValidation.length > 0 && (
+        <div
+          className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+          data-testid="wfd-erreurs-validation"
+        >
+          <p className="font-medium">Definition invalide :</p>
+          <ul className="ml-4 list-disc">
+            {erreursValidation.map((err) => <li key={err}>{err}</li>)}
+          </ul>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">

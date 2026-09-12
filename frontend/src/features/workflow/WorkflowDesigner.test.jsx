@@ -194,10 +194,42 @@ describe('WorkflowDesigner -- rendu (NTWFL6)', () => {
     monter()
     await screen.findByTestId('wfd-node-1')
     await user.click(screen.getByTestId('wfd-add-step'))
+    // NTWFL9 — la nouvelle etape (manuelle, sans role) doit etre completee
+    // avant enregistrement (garde de validation, voir describe dedie).
+    await user.click(screen.getByTestId('wfd-node-3'))
+    await user.type(screen.getByTestId('wfd-panel-role'), 'admin')
+    await user.click(screen.getByTestId('wfd-panel-fermer'))
     await user.click(screen.getByTestId('wfd-save'))
     await waitFor(() => expect(definitionsUpdate).toHaveBeenCalled())
     const [, payload] = definitionsUpdate.mock.calls[0]
     expect(payload.steps).toHaveLength(3)
+  })
+})
+
+describe('WorkflowDesigner -- palette + validation (NTWFL9)', () => {
+  it('la palette ajoute une etape du type choisi', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByTestId('wfd-node-1')
+    await user.click(screen.getByTestId('wfd-palette-auto'))
+    await user.click(screen.getByTestId('wfd-node-3'))
+    const selects = screen.getAllByRole('combobox')
+    expect(selects[0]).toHaveTextContent('Automatique')
+  })
+
+  it('enregistrer une definition invalide affiche les erreurs et NE sauvegarde PAS', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByTestId('wfd-node-1')
+    // Vide le role de l'etape 1 (manuelle) -> devient invalide.
+    await user.click(screen.getByTestId('wfd-node-1'))
+    await user.clear(screen.getByTestId('wfd-panel-role'))
+    await user.click(screen.getByTestId('wfd-panel-fermer'))
+
+    await user.click(screen.getByTestId('wfd-save'))
+
+    expect(await screen.findByTestId('wfd-erreurs-validation')).toBeTruthy()
+    expect(definitionsUpdate).not.toHaveBeenCalled()
   })
 })
 
