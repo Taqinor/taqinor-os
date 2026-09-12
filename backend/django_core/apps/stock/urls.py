@@ -35,6 +35,7 @@ from .views import (
     IncidentQualiteFournisseurViewSet, DepotConsignationViewSet,
     AccordRFAFournisseurViewSet, catalogue_b2b_view, stock_embarque_view,
     parametres_negoce_view, ProfilSaisonnierViewSet,
+    tableau_bord_achats_view,
 )
 
 router = DefaultRouter()
@@ -171,5 +172,9 @@ urlpatterns = [
     # NTWMS41 - mode « Retour fournisseur » du poste scanner (pre-remplissage).
     path('scanner/retour-fournisseur/', scanner_retour_fournisseur_view,
          name='stock-scanner-retour-fournisseur'),
+    # NTP2P17 - dashboard spend management (budgets/top fournisseurs/delais/
+    # exceptions 3 voies/notes de frais en attente), lecture seule.
+    path('tableau-bord-achats/', tableau_bord_achats_view,
+         name='stock-tableau-bord-achats'),
     path('', include(router.urls)),
 ]

@@ -2135,6 +2135,190 @@ def conformite_fournisseurs(company, *, debut=None, fin=None):
     return lignes
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P17 — Dashboard spend management (réutilise le pattern
+# ``litiges.selectors.tableau_bord_litiges`` : agrégation PURE, lecture seule,
+# scopée société, bornée ``debut``/``fin`` optionnels).
+# ══════════════════════════════════════════════════════════════════════════
+
+def _coerce_date_stock(value):
+    """date | 'YYYY-MM-DD' | None → date | None (chaîne invalide → None)."""
+    import datetime as _dt
+    if value is None or value == '':
+        return None
+    if isinstance(value, _dt.date) and not isinstance(value, _dt.datetime):
+        return value
+    if isinstance(value, _dt.datetime):
+        return value.date()
+    from django.utils.dateparse import parse_date
+    return parse_date(str(value))
+
+
+def _budgets_departement_du_mois(company, aujourdhui):
+    """Consommation budgétaire par département résolue pour le MOIS courant
+    (``resoudre_budget_departement``/``consommation_budget``, NTP2P4) —
+    uniquement les départements PORTEURS d'un budget (annuel ou mensuel).
+    Renvoie une liste triée par taux de consommation décroissant."""
+    from .models import BudgetDepartement
+
+    departement_ids = (
+        BudgetDepartement.objects
+        .filter(company=company, actif=True, annee=aujourdhui.year)
+        .values_list('departement_id', flat=True).distinct())
+    lignes = []
+    for departement_id in departement_ids:
+        budget = resoudre_budget_departement(
+            company, departement_id, aujourdhui)
+        detail = consommation_budget(budget)
+        if detail is None:
+            continue
+        lignes.append(detail)
+    lignes.sort(key=lambda d: d['taux_consommation_pct'], reverse=True)
+    return lignes
+
+
+def _top_fournisseurs_par_volume(company, *, debut=None, fin=None, limite=5):
+    """Fournisseurs classés par volume d'achat (Σ lignes BCF HT interne) sur
+    la période — jamais de ``prix_achat`` exposé côté client, cette agrégation
+    reste un rapport INTERNE (achats)."""
+    from decimal import Decimal
+    from django.db.models import DecimalField, F, Sum
+    from django.db.models.functions import Coalesce
+    from .models import LigneBonCommandeFournisseur
+
+    qs = LigneBonCommandeFournisseur.objects.filter(
+        bon_commande__company=company)
+    if debut:
+        qs = qs.filter(bon_commande__date_commande__gte=debut)
+    if fin:
+        qs = qs.filter(bon_commande__date_commande__lte=fin)
+    agreges = (
+        qs.values('bon_commande__fournisseur_id',
+                  'bon_commande__fournisseur__nom')
+        .annotate(volume=Coalesce(
+            Sum(F('quantite') * F('prix_achat_unitaire'),
+                output_field=DecimalField(max_digits=18, decimal_places=2)),
+            Decimal('0'),
+            output_field=DecimalField(max_digits=18, decimal_places=2)))
+        .order_by('-volume')[:limite])
+    return [
+        {'fournisseur_id': row['bon_commande__fournisseur_id'],
+         'fournisseur': row['bon_commande__fournisseur__nom'],
+         'volume': row['volume']}
+        for row in agreges
+    ]
+
+
+def _delais_demande_bcf_reception(company, *, debut=None, fin=None):
+    """Délai moyen demande→BCF (jours) et BCF→première réception CONFIRMÉE
+    (jours), sur les demandes converties dans la période. ``None`` quand
+    aucune donnée exploitable (jamais de division par zéro)."""
+    from .models import BonCommandeFournisseur, ReceptionFournisseur
+    from apps.installations.selectors import demandes_achat_converties
+
+    demandes = demandes_achat_converties(company, debut=debut, fin=fin)
+    ecarts_demande_bcf = []
+    bcf_ids = []
+    for demande_id, date_demande, bon_commande_id in demandes:
+        if not bon_commande_id or date_demande is None:
+            continue
+        bcf_ids.append(bon_commande_id)
+        try:
+            bcf = BonCommandeFournisseur.objects.filter(
+                id=bon_commande_id, company=company).first()
+        except Exception:  # pragma: no cover - défensif
+            bcf = None
+        if bcf is None or bcf.date_creation is None:
+            continue
+        jours = (bcf.date_creation.date() - date_demande).days
+        if jours >= 0:
+            ecarts_demande_bcf.append(jours)
+
+    ecarts_bcf_reception = []
+    if bcf_ids:
+        for bcf_id, bcf_date in (
+                BonCommandeFournisseur.objects
+                .filter(id__in=bcf_ids)
+                .values_list('id', 'date_creation')):
+            premiere_reception = (
+                ReceptionFournisseur.objects
+                .filter(bon_commande_id=bcf_id,
+                        statut=ReceptionFournisseur.Statut.CONFIRME)
+                .order_by('date_creation').values_list(
+                    'date_creation', flat=True).first())
+            if premiere_reception is None or bcf_date is None:
+                continue
+            jours = (premiere_reception.date() - bcf_date.date()).days
+            if jours >= 0:
+                ecarts_bcf_reception.append(jours)
+
+    def _moyenne(valeurs):
+        return round(sum(valeurs) / len(valeurs), 1) if valeurs else None
+
+    return _moyenne(ecarts_demande_bcf), _moyenne(ecarts_bcf_reception)
+
+
+def tableau_bord_achats(company, debut=None, fin=None):
+    """NTP2P17 — dashboard spend management (lecture seule).
+
+    Réunit en UN appel :
+      * ``budgets_departement`` — consommation par département (NTP2P4),
+        triée par taux décroissant (le % de consommation du mois en cours
+        se lit directement sur chaque ligne, ``taux_consommation_pct``) ;
+      * ``top_fournisseurs`` — 5 premiers fournisseurs par volume d'achat ;
+      * ``delai_demande_bcf_jours`` / ``delai_bcf_reception_jours`` — délais
+        moyens demande→BCF et BCF→réception ;
+      * ``exceptions_3voies`` — ``{en_cours, resolues, total}`` (XPUR10) ;
+      * ``notes_frais_en_attente`` — ``{count, montant_total}`` (lu via
+        ``apps.frais.selectors`` — jamais un import de ``apps.frais.models``).
+
+    ``debut``/``fin`` (date ou ISO) bornent les métriques temporelles ; les
+    budgets départementaux restent au MOIS COURANT (poste de pilotage
+    "aujourd'hui", indépendant de la période choisie pour le reste).
+    """
+    from django.utils import timezone
+    from .models import FactureFournisseur
+
+    d_debut = _coerce_date_stock(debut)
+    d_fin = _coerce_date_stock(fin)
+    aujourdhui = timezone.localdate()
+
+    exceptions_qs = FactureFournisseur.objects.filter(company=company)
+    if d_debut is not None:
+        exceptions_qs = exceptions_qs.filter(date_creation__date__gte=d_debut)
+    if d_fin is not None:
+        exceptions_qs = exceptions_qs.filter(date_creation__date__lte=d_fin)
+    en_cours = exceptions_qs.filter(
+        statut_controle=FactureFournisseur.StatutControle.EXCEPTION).count()
+    resolues = exceptions_qs.filter(
+        statut_controle=FactureFournisseur.StatutControle.RESOLUE).count()
+
+    try:
+        from apps.frais.selectors import notes_frais_en_attente
+        notes_attente = notes_frais_en_attente(company)
+    except Exception:  # pragma: no cover - défensif (frais indisponible)
+        notes_attente = {'count': 0, 'montant_total': 0}
+
+    delai_demande_bcf, delai_bcf_reception = _delais_demande_bcf_reception(
+        company, debut=d_debut, fin=d_fin)
+
+    return {
+        'debut': d_debut.isoformat() if d_debut else None,
+        'fin': d_fin.isoformat() if d_fin else None,
+        'budgets_departement': _budgets_departement_du_mois(
+            company, aujourdhui),
+        'top_fournisseurs': _top_fournisseurs_par_volume(
+            company, debut=d_debut, fin=d_fin),
+        'delai_demande_bcf_jours': delai_demande_bcf,
+        'delai_bcf_reception_jours': delai_bcf_reception,
+        'exceptions_3voies': {
+            'en_cours': en_cours, 'resolues': resolues,
+            'total': en_cours + resolues,
+        },
+        'notes_frais_en_attente': notes_attente,
+    }
+
+
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.

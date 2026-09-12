@@ -49,6 +49,29 @@ def demandes_achat_soumises_stale(company, cutoff):
             .select_related('chantier'))
 
 
+def demandes_achat_converties(company, *, debut=None, fin=None):
+    """NTP2P17 — ``(id, date_creation, bon_commande_id)`` de chaque
+    ``DemandeAchat`` CONVERTIE en bon de commande (``bon_commande`` posé,
+    YPROC5), optionnellement bornée sur ``date_creation`` de la demande.
+    Point d'entrée cross-app en LECTURE SEULE pour le dashboard spend
+    management (``apps.stock.selectors.tableau_bord_achats``) — jamais un
+    import direct de ``DemandeAchat`` hors de ce module."""
+    from .models import DemandeAchat
+
+    qs = DemandeAchat.objects.filter(
+        company=company, bon_commande__isnull=False)
+    if debut is not None:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_creation__date__lte=fin)
+    return [
+        (demande_id, date_creation.date() if date_creation else None,
+         bon_commande_id)
+        for demande_id, date_creation, bon_commande_id in qs.values_list(
+            'id', 'date_creation', 'bon_commande_id')
+    ]
+
+
 def installation_summaries_for_devis(devis_qs):
     """Map {devis_id: {id, reference, statut}} des chantiers liés à un lot de
     devis — une seule requête (évite un N+1 sur la fiche lead)."""

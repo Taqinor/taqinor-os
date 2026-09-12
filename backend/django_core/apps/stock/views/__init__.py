@@ -27,6 +27,7 @@ from .conformite_fournisseur import (
     DocumentConformiteFournisseurViewSet, AchatsParametresViewSet,
     ToleranceRapprochementCategorieViewSet,
 )
+from .achats_dashboard import tableau_bord_achats_view
 from .acompte_fournisseur import AcompteFournisseurViewSet
 from .profil_saisonnier import ProfilSaisonnierViewSet
 from .avoir_fournisseur import AvoirFournisseurViewSet
@@ -102,6 +103,7 @@ __all__ = [
     'DocumentConformiteFournisseurViewSet',
     'AchatsParametresViewSet',
     'ToleranceRapprochementCategorieViewSet',
+    'tableau_bord_achats_view',
     'ContactFournisseurViewSet',
     'CategorieFournisseurViewSet',
     'AcompteFournisseurViewSet',
