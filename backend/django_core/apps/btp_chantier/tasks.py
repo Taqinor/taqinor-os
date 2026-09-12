@@ -30,6 +30,22 @@ def alertes_rfi_retard_task():
         return 0
 
 
+@shared_task(name='btp_chantier.archiver_reserves_levees')
+def archiver_reserves_levees_task():
+    """NTCON27 — archive (drapeau, jamais suppression) les réserves levées
+    depuis plus de N mois (réglage par société, défaut 24). Idempotente :
+    une réserve déjà archivée est exclue du balayage. Renvoie le nombre de
+    réserves archivées."""
+    from .services import archiver_reserves_levees
+    try:
+        return archiver_reserves_levees()['archivees']
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'btp_chantier.archiver_reserves_levees: échec du balayage',
+            exc_info=True)
+        return 0
+
+
 @shared_task(name='btp_chantier.rapport_photo_hebdo')
 def rapport_photo_hebdo_task():
     """NTCON18 — envoie le photo-rapport hebdomadaire aux chantiers ABONNÉS

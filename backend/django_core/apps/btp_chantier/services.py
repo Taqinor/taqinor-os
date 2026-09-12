@@ -664,6 +664,8 @@ CONFIG_BTP_DEFAUTS = {
     'guard_checklist_lot_bloquant': True,
     'lots_types_defaut': list(LOTS_TYPES_DEFAUT),
     'taux_penalite_retard_defaut_pmil': None,
+    # NTCON27 — ancienneté d'archivage des réserves levées (mois).
+    'delai_archivage_reserves_levees_mois': 24,
 }
 
 
@@ -1423,3 +1425,43 @@ def alerter_rfi_en_retard():
             rfi.save(update_fields=['derniere_alerte_retard'])
         envoyees += 1
     return {'examines': examines, 'alertes_envoyees': envoyees}
+
+
+# ── NTCON27 — archivage des réserves levées anciennes ───────────────────────
+
+def archiver_reserves_levees(*, company=None, maintenant=None):
+    """NTCON27 — sort des listes actives les réserves LEVÉES trop anciennes.
+
+    JAMAIS une suppression physique : une réserve levée porte une signature
+    (``SignatureBtp``) et son historique de transitions — ce sont des PREUVES
+    de réception, opposables des années plus tard. On pose ``archivee=True`` +
+    ``archivee_le``, exactement dans l'esprit de la politique soft-delete du
+    dépôt (``core.SoftDeleteQuerySet``).
+
+    Le seuil est un RÉGLAGE PAR SOCIÉTÉ
+    (``ParametresBtpChantier.delai_archivage_reserves_levees_mois``, défaut
+    24 mois) : le balayage boucle donc par société plutôt que d'appliquer un
+    seuil global qui serait faux pour l'une d'elles.
+
+    IDEMPOTENT : le filtre exclut déjà ``archivee=True``, donc un second
+    passage n'écrit rien et renvoie ``archivees: 0``.
+
+    Renvoie ``{'examines': n, 'archivees': n}``.
+    """
+    from .models import ReserveChantier
+    from .selectors import reserves_archivables
+
+    examines = 0
+    archivees = 0
+    horodatage = maintenant or timezone.now()
+    par_societe = reserves_archivables(company, maintenant=horodatage)
+    for qs in par_societe.values():
+        ids = list(qs.values_list('pk', flat=True))
+        examines += len(ids)
+        if not ids:
+            continue
+        with transaction.atomic():
+            archivees += ReserveChantier.objects.filter(
+                pk__in=ids, archivee=False).update(
+                    archivee=True, archivee_le=horodatage)
+    return {'examines': examines, 'archivees': archivees}

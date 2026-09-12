@@ -15,11 +15,24 @@ from .models import RFI, Lot, ReserveChantier
 
 # ── NTCON1 — Réserves de chantier ───────────────────────────────────────────
 
-def reserves_filtrees(qs, *, lot=None, statut=None, gravite=None, chantier_id=None):
-    """Applique les filtres optionnels ``?lot=&statut=&gravite=&chantier=``.
+#: NTCON27 — valeurs de ``?archivee=`` interprétées comme « oui ».
+_VRAI = frozenset({'1', 'true', 'True', 'oui', 'yes', 'on'})
+#: …et comme « non » (permet de redemander explicitement les actives).
+_FAUX = frozenset({'0', 'false', 'False', 'non', 'no', 'off'})
+
+
+def reserves_filtrees(qs, *, lot=None, statut=None, gravite=None,
+                      chantier_id=None, archivee=None):
+    """Applique les filtres optionnels ``?lot=&statut=&gravite=&chantier=``
+    (+ ``?archivee=`` — NTCON27).
 
     ``qs`` est déjà scopé société par l'appelant (``TenantMixin``). Lecture
     seule, ne modifie jamais le queryset d'origine.
+
+    NTCON27 — les réserves ARCHIVÉES sortent des listes par défaut (``archivee``
+    absent ⇒ ``archivee=False``). Elles restent atteignables par un filtre
+    EXPLICITE ``?archivee=1`` (ou ``?archivee=all`` pour les deux) : rien n'est
+    supprimé, tout reste consultable.
     """
     if lot not in (None, ''):
         qs = qs.filter(lot__icontains=lot)
@@ -29,7 +42,66 @@ def reserves_filtrees(qs, *, lot=None, statut=None, gravite=None, chantier_id=No
         qs = qs.filter(gravite=gravite)
     if chantier_id not in (None, ''):
         qs = qs.filter(chantier_id=chantier_id)
+    if archivee in (None, ''):
+        qs = qs.filter(archivee=False)
+    elif isinstance(archivee, bool):
+        qs = qs.filter(archivee=archivee)
+    elif str(archivee) in _VRAI:
+        qs = qs.filter(archivee=True)
+    elif str(archivee) in _FAUX:
+        qs = qs.filter(archivee=False)
+    # Toute autre valeur (``all``, ``toutes``…) = aucun filtre : les deux.
     return qs
+
+
+def _q_levee_avant(seuil):
+    """``date_levee < seuil`` OU (``date_levee`` absente ET ``updated_at``
+    < seuil) — facteur commun de ``reserves_archivables``."""
+    from django.db.models import Q
+    return (Q(date_levee__lt=seuil)
+            | Q(date_levee__isnull=True, updated_at__lt=seuil))
+
+
+def reserves_archivables(company=None, *, maintenant=None):
+    """NTCON27 — réserves LEVÉES dont l'ancienneté dépasse le réglage société.
+
+    Le seuil est lu par société (``ParametresBtpChantier.
+    delai_archivage_reserves_levees_mois``, défaut 24 via
+    ``services.config_btp``) : la fonction renvoie un dictionnaire
+    ``{company_id: queryset}`` plutôt qu'un seul queryset, parce que deux
+    sociétés peuvent avoir deux seuils différents et qu'un seuil global serait
+    faux pour l'une des deux.
+
+    L'ancienneté est comptée depuis ``date_levee`` quand elle existe (la date
+    de la preuve), sinon depuis ``updated_at`` — une réserve marquée levée sans
+    passer par le service n'échappe pas au balayage.
+    """
+    from datetime import timedelta
+
+    from .services import config_btp
+
+    maintenant = maintenant or timezone.now()
+    base = ReserveChantier.objects.filter(
+        statut=ReserveChantier.Statut.LEVEE, archivee=False)
+    if company is not None:
+        base = base.filter(company=company)
+        companies = [company]
+    else:
+        Company = ReserveChantier._meta.get_field('company').related_model
+        companies = list(
+            Company.objects.filter(
+                pk__in=base.values_list('company_id', flat=True).distinct()))
+
+    resultat = {}
+    for societe in companies:
+        mois = config_btp(societe).get(
+            'delai_archivage_reserves_levees_mois') or 24
+        # 1 mois ≈ 30 jours : la règle est une politique de rétention, pas un
+        # calcul comptable — inutile d'introduire une dépendance calendaire.
+        seuil = maintenant - timedelta(days=30 * int(mois))
+        resultat[societe.pk] = base.filter(company=societe).filter(
+            _q_levee_avant(seuil))
+    return resultat
 
 
 def reserves_actives_bloquantes(company, chantier=None):

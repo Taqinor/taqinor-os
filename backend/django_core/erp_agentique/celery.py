@@ -1195,6 +1195,13 @@ app.conf.beat_schedule = {
         'task': 'btp_chantier.rapport_photo_hebdo',
         'schedule': crontab(day_of_week=1, hour=7, minute=35),
     },
+    # NTCON27 — archivage MENSUEL (1er du mois) des réserves levées depuis
+    # plus de N mois (réglage par société, défaut 24). Drapeau, jamais une
+    # suppression : la signature de levée reste une preuve opposable.
+    'btp-chantier-archiver-reserves-levees': {
+        'task': 'btp_chantier.archiver_reserves_levees',
+        'schedule': crontab(day_of_month=1, hour=3, minute=40),
+    },
 }
 
 

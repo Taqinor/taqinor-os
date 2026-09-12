@@ -125,7 +125,10 @@ class ReserveChantierViewSet(
         p = self.request.query_params
         return selectors.reserves_filtrees(
             qs, lot=p.get('lot'), statut=p.get('statut'),
-            gravite=p.get('gravite'), chantier_id=p.get('chantier'))
+            gravite=p.get('gravite'), chantier_id=p.get('chantier'),
+            # NTCON27 — les archivées sortent des listes par défaut ; elles
+            # restent atteignables par ``?archivee=1`` (ou ``all``).
+            archivee=p.get('archivee'))
 
     def perform_create(self, serializer):
         serializer.save(

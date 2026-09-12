@@ -1293,6 +1293,11 @@ CELERY_TASK_ROUTES = {
         'queue': 'scheduled'},                                     # XPRJ22
     'gestion_projet.rappels_timesheets': {'queue': 'scheduled'},   # XPRJ7
     'btp_chantier.alertes_rfi_retard': {'queue': 'scheduled'},     # NTCON4
+    # NTCON18/NTCON27 — les deux autres balayages BTP planifiés (le premier
+    # manquait : sans entrée il retombait sur `default`, qu'aucun worker
+    # `-Q scheduled` ne consomme).
+    'btp_chantier.rapport_photo_hebdo': {'queue': 'scheduled'},    # NTCON18
+    'btp_chantier.archiver_reserves_levees': {'queue': 'scheduled'},  # NTCON27
     # Batch AUDV/AOF/WIR (2026-09-06) — 10 tâches ajoutées au beat_schedule
     # sans route explicite (garde core/tests/test_celery_task_routes.py) :
     # chacune un balayage/relance planifié, aucune n'est déclenchée par un
