@@ -1,4 +1,6 @@
 from django.urls import path, include
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.routers import DefaultRouter
 from rest_framework.decorators import api_view, permission_classes
 
@@ -75,6 +77,28 @@ def file_action_view(request):
     return sav_file_action(request)
 
 
+@extend_schema(responses=inline_serializer('SavFcrInsight', {
+    'date_debut': drf_serializers.DateField(allow_null=True),
+    'date_fin': drf_serializers.DateField(allow_null=True),
+    'nb_tickets_periode': drf_serializers.IntegerField(),
+    'nb_clotures': drf_serializers.IntegerField(),
+    'nb_non_clotures_exclus': drf_serializers.IntegerField(),
+    'nb_fcr': drf_serializers.IntegerField(),
+    'taux_fcr': drf_serializers.FloatField(allow_null=True),
+    'echanges_max': drf_serializers.IntegerField(),
+    'exclusions': inline_serializer('SavFcrExclusions', {
+        'reouverture': drf_serializers.IntegerField(),
+        'echanges_multiples': drf_serializers.IntegerField(),
+    }),
+    'tickets': inline_serializer('SavFcrTicket', {
+        'ticket_id': drf_serializers.IntegerField(),
+        'reference': drf_serializers.CharField(),
+        'fcr': drf_serializers.BooleanField(),
+        'motif': drf_serializers.CharField(),
+        'reopen_count': drf_serializers.IntegerField(),
+        'nb_echanges_client': drf_serializers.IntegerField(),
+    }, many=True),
+}))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def fcr_insight_view(request):
@@ -88,6 +112,22 @@ def fcr_insight_view(request):
     return sav_fcr_insight(request)
 
 
+@extend_schema(responses=inline_serializer('SavPerformanceAgentInsight', {
+    'date_debut': drf_serializers.DateField(allow_null=True),
+    'date_fin': drf_serializers.DateField(allow_null=True),
+    'nb_tickets_traites': drf_serializers.IntegerField(),
+    'agents': inline_serializer('SavPerformanceAgentLigne', {
+        'agent_id': drf_serializers.IntegerField(allow_null=True),
+        'agent_nom': drf_serializers.CharField(),
+        'nb_tickets_traites': drf_serializers.IntegerField(),
+        'delai_resolution_moyen_jours': drf_serializers.FloatField(
+            allow_null=True),
+        'csat_moyen': drf_serializers.FloatField(allow_null=True),
+        'nb_csat': drf_serializers.IntegerField(),
+        'nb_tickets_avec_sla': drf_serializers.IntegerField(),
+        'taux_respect_sla': drf_serializers.FloatField(allow_null=True),
+    }, many=True),
+}))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def performance_agent_view(request):
