@@ -221,7 +221,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/marketing/services.py:283` | update_or_create | AbonnementListe.objects | destinataire, liste |
 | `backend/django_core/apps/marketing/services.py:1080` | get_or_create | ParametresMarketing.objects | company |
 | `backend/django_core/apps/marketing/services.py:1166` | get_or_create | ScoreMaturite.objects | company, lead_id |
-| `backend/django_core/apps/monitoring/models.py:202` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/monitoring/models.py:204` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/monitoring/services.py:44` | get_or_create | MonitoringConfig.objects | installation |
 | `backend/django_core/apps/monitoring/services.py:208` | get_or_create | UnderperformanceFlag.objects | installation, is_open |
 | `backend/django_core/apps/mrp/services.py:962` | get_or_create | ParametresMRP.objects | company |
@@ -295,8 +295,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/rh/services.py:2636` | update_or_create | CompetenceEmploye.objects | company, competence_id, employe |
 | `backend/django_core/apps/rh/services.py:2667` | get_or_create | CampagneEvaluation.objects | annee, company, intitule |
 | `backend/django_core/apps/rh/services.py:2778` | get_or_create | EvaluationEmploye.objects | campagne, company, employe |
-| `backend/django_core/apps/rh/views.py:2187` | get_or_create | ReglageRH.objects | company |
-| `backend/django_core/apps/rh/views.py:4423` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
+| `backend/django_core/apps/rh/views.py:2188` | get_or_create | ReglageRH.objects | company |
+| `backend/django_core/apps/rh/views.py:4424` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
 | `backend/django_core/apps/roles/management/commands/init_roles.py:87` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/sante/models.py:728` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:165` | get_or_create | cls.objects | company |

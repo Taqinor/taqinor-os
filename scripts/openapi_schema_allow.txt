@@ -1016,18 +1016,6 @@ Warning|VisiteTechniqueViewSet > VisiteTechniqueSerializer|unable to resolve typ
 Warning|VoteIdeeViewSet > VoteIdeeSerializer|unable to resolve type hint for function "get_votant_nom". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|VueGedEnregistreeViewSet > VueGedEnregistreeSerializer|unable to resolve type hint for function "get_est_a_moi". Consider using a type hint or @extend_schema_field. Defaulting
 Warning|WorkingHoursConfigViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Error|ChantierClotureBtpView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|ChantierExportDossierBtpView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|ChantierIntervenantsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|ChantierPenalitesParLotView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|ChantierPlanningLotsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|ChantierRapportAvancementView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|GabaritKitView|exception raised while getting serializer. Hint: Is get_serializer_class() returning None or is get_queryset() not worki
-Error|ParametresBtpView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|depot_contrepartie_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|file_attente_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|portail_creer_ticket|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|whatsapp_inbound_webhook|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Warning|<global>|operationId "django_rh_postes_cles_couverture_retrieve" has collisions [('/api/django/rh/postes-cles/{id}/couverture/',
 Warning|<global>|operationId "v#_rh_postes_cles_couverture_retrieve" has collisions [('/api/v#/rh/postes-cles/{id}/couverture/', 'get'),
 Warning|ContratViewSet|could not derive type of path parameter "cid" because model "apps.contrats.models.Contrat" contained no such field. Cons
