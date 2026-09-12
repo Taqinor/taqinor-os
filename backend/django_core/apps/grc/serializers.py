@@ -6,7 +6,8 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    JournalDestruction, LegalHold, PolitiqueRetentionObjet, ViolationDonnees,
+    JournalDestruction, LegalHold, PolitiqueRetentionObjet, RisqueEntreprise,
+    ViolationDonnees,
 )
 
 
@@ -161,4 +162,52 @@ class LegalHoldSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'date_fin': 'La date de fin ne peut pas précéder la date de '
                             'début.'})
+        return attrs
+
+
+class RisqueEntrepriseSerializer(serializers.ModelSerializer):
+    """NTGRC13 — risque d'entreprise (ERM), cotations inhérente et résiduelle.
+
+    Les deux criticités sont CALCULÉES côté serveur (probabilité × impact) :
+    exposées en lecture, jamais saisies — une criticité saisie à la main finit
+    toujours par contredire ses deux facteurs.
+    """
+
+    categorie_libelle = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RisqueEntreprise
+        fields = [
+            'id', 'reference', 'titre', 'categorie', 'categorie_libelle',
+            'description', 'proprietaire',
+            'probabilite', 'impact', 'criticite_inherente',
+            'reponse',
+            'probabilite_residuelle', 'impact_residuel',
+            'criticite_residuelle',
+            'statut', 'statut_libelle', 'date_revue_prevue',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'reference', 'criticite_inherente', 'criticite_residuelle',
+            'created_at', 'updated_at',
+        ]
+
+    def _borner(self, champ, valeur):
+        mini, maxi = RisqueEntreprise.ECHELLE_MIN, RisqueEntreprise.ECHELLE_MAX
+        if valeur is None:
+            return valeur
+        if not (mini <= int(valeur) <= maxi):
+            raise serializers.ValidationError({
+                champ: f'La cotation doit valoir entre {mini} et {maxi}.'})
+        return valeur
+
+    def validate(self, attrs):
+        """Les cotations restent dans la grille — le message nomme le champ."""
+        for champ in ('probabilite', 'impact', 'probabilite_residuelle',
+                      'impact_residuel'):
+            if champ in attrs:
+                self._borner(champ, attrs[champ])
         return attrs

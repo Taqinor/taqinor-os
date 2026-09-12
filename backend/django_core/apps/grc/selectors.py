@@ -147,6 +147,42 @@ def est_sous_hold(company, type_objet, objet_id, aujourdhui=None):
         type_objet, set())
 
 
+def matrice_risques(company, residuelle=False):
+    """NTGRC13 — grille 5×5 des risques, comptée par case.
+
+    Renvoie ``{'cases': [{probabilite, impact, criticite, nombre}],
+    'total': n}`` — les 25 cases sont TOUJOURS présentes (une case vide vaut
+    0), sinon la heatmap se déformerait selon les données. Les risques CLOS
+    sont exclus : une matrice de risques montre ce qui est encore ouvert.
+    """
+    from django.db.models import Count
+
+    from .models import RisqueEntreprise
+
+    champ_p = 'probabilite_residuelle' if residuelle else 'probabilite'
+    champ_i = 'impact_residuel' if residuelle else 'impact'
+    comptes = {
+        (ligne[champ_p], ligne[champ_i]): ligne['nombre']
+        for ligne in (RisqueEntreprise.objects
+                      .filter(company=company)
+                      .exclude(statut=RisqueEntreprise.STATUT_CLOS)
+                      .values(champ_p, champ_i)
+                      .annotate(nombre=Count('id')))
+    }
+    bornes = range(RisqueEntreprise.ECHELLE_MIN,
+                   RisqueEntreprise.ECHELLE_MAX + 1)
+    cases = [
+        {
+            'probabilite': p,
+            'impact': i,
+            'criticite': p * i,
+            'nombre': comptes.get((p, i), 0),
+        }
+        for p in bornes for i in bornes
+    ]
+    return {'cases': cases, 'total': sum(c['nombre'] for c in cases)}
+
+
 def violations_echeance_72h_depassee(company, now=None):
     """NTGRC6 — violations dont le délai légal de notification est DÉPASSÉ.
 

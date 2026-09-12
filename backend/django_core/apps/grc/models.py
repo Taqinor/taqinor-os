@@ -392,3 +392,135 @@ class LegalHold(TenantModel):
 
     def __str__(self):
         return f'{self.nom} ({self.get_statut_display()})'
+
+
+class RisqueEntreprise(TenantModel):
+    """NTGRC13 — registre des risques d'ENTREPRISE (ERM).
+
+    À ne pas confondre avec ``qhse.EvaluationRisque`` (DUERP : risques
+    santé/sécurité au poste de travail). Ici la maille est l'entreprise —
+    stratégie, finance, conformité, SI, réputation — et le risque porte DEUX
+    cotations : INHÉRENTE (avant traitement) et RÉSIDUELLE (après). L'écart
+    entre les deux est le seul chiffre qui dise si le traitement sert à
+    quelque chose.
+
+    Les criticités sont CALCULÉES (probabilité × impact) et recalculées à
+    chaque enregistrement : une criticité saisie à la main finit toujours par
+    contredire ses deux facteurs.
+    """
+
+    #: Préfixe des références (RQ-YYYYMM-0001), race-safe via `core.numbering`.
+    REFERENCE_PREFIX = 'RQ'
+
+    CATEGORIE_CHOICES = [
+        ('strategique', 'Stratégique'),
+        ('operationnel', 'Opérationnel'),
+        ('financier', 'Financier'),
+        ('conformite', 'Conformité'),
+        ('si', "Système d'information"),
+        ('reputation', 'Réputation'),
+        ('hse', 'HSE'),
+    ]
+
+    REPONSE_CHOICES = [
+        ('accepter', 'Accepter'),
+        ('reduire', 'Réduire'),
+        ('transferer', 'Transférer'),
+        ('eviter', 'Éviter'),
+    ]
+
+    STATUT_OUVERT = 'ouvert'
+    STATUT_TRAITE = 'traite'
+    STATUT_SURVEILLE = 'surveille'
+    STATUT_CLOS = 'clos'
+    STATUT_CHOICES = [
+        (STATUT_OUVERT, 'Ouvert'),
+        (STATUT_TRAITE, 'Traité'),
+        (STATUT_SURVEILLE, 'Sous surveillance'),
+        (STATUT_CLOS, 'Clos'),
+    ]
+
+    #: Bornes de l'échelle de cotation (grille 5×5, standard ISO 31000).
+    ECHELLE_MIN = 1
+    ECHELLE_MAX = 5
+
+    reference = models.CharField('Référence', max_length=40, blank=True,
+                                 default='')
+    titre = models.CharField('Titre', max_length=200)
+    categorie = models.CharField(
+        'Catégorie', max_length=15, choices=CATEGORIE_CHOICES,
+        default='operationnel')
+    description = models.TextField('Description', blank=True, default='')
+    proprietaire = models.CharField(
+        'Propriétaire', max_length=160, blank=True, default='')
+    probabilite = models.PositiveSmallIntegerField(
+        'Probabilité (1-5)', default=1)
+    impact = models.PositiveSmallIntegerField('Impact (1-5)', default=1)
+    criticite_inherente = models.PositiveSmallIntegerField(
+        'Criticité inhérente', default=1,
+        help_text='Calculée : probabilité × impact (jamais saisie).')
+    reponse = models.CharField(
+        'Réponse au risque', max_length=12, choices=REPONSE_CHOICES,
+        default='reduire')
+    probabilite_residuelle = models.PositiveSmallIntegerField(
+        'Probabilité résiduelle (1-5)', default=1)
+    impact_residuel = models.PositiveSmallIntegerField(
+        'Impact résiduel (1-5)', default=1)
+    criticite_residuelle = models.PositiveSmallIntegerField(
+        'Criticité résiduelle', default=1,
+        help_text='Calculée : probabilité résiduelle × impact résiduel.')
+    statut = models.CharField(
+        'Statut', max_length=12, choices=STATUT_CHOICES,
+        default=STATUT_OUVERT)
+    date_revue_prevue = models.DateField(
+        'Prochaine revue prévue', null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Risque d'entreprise"
+        verbose_name_plural = "Registre des risques d'entreprise"
+        ordering = ['-criticite_inherente', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='grc_risqueentreprise_co_ref'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_risque_co_statut_idx'),
+            models.Index(fields=['company', 'date_revue_prevue'],
+                         name='grc_risque_co_revue_idx'),
+        ]
+
+    @classmethod
+    def borner(cls, valeur):
+        """Ramène une cotation dans l'échelle 1-5 (jamais une exception).
+
+        Un formulaire qui envoie 0 ou 12 ne doit pas faire tomber le registre :
+        la valeur est bornée, et la criticité reste dans la grille 5×5.
+        """
+        try:
+            valeur = int(valeur)
+        except (TypeError, ValueError):
+            return cls.ECHELLE_MIN
+        return max(cls.ECHELLE_MIN, min(cls.ECHELLE_MAX, valeur))
+
+    def save(self, *args, **kwargs):
+        """Recalcule les DEUX criticités à chaque enregistrement."""
+        self.probabilite = self.borner(self.probabilite)
+        self.impact = self.borner(self.impact)
+        self.probabilite_residuelle = self.borner(self.probabilite_residuelle)
+        self.impact_residuel = self.borner(self.impact_residuel)
+        self.criticite_inherente = self.probabilite * self.impact
+        self.criticite_residuelle = (
+            self.probabilite_residuelle * self.impact_residuel)
+        if kwargs.get('update_fields') is not None:
+            champs = set(kwargs['update_fields'])
+            champs.update({
+                'probabilite', 'impact', 'criticite_inherente',
+                'probabilite_residuelle', 'impact_residuel',
+                'criticite_residuelle'})
+            kwargs['update_fields'] = sorted(champs)
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.reference or "RQ"} — {self.titre}'

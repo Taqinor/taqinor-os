@@ -11,11 +11,13 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    JournalDestruction, LegalHold, PolitiqueRetentionObjet, ViolationDonnees,
+    JournalDestruction, LegalHold, PolitiqueRetentionObjet, RisqueEntreprise,
+    ViolationDonnees,
 )
 from .serializers import (
     JournalDestructionSerializer, LegalHoldSerializer,
-    PolitiqueRetentionObjetSerializer, ViolationDonneesSerializer,
+    PolitiqueRetentionObjetSerializer, RisqueEntrepriseSerializer,
+    ViolationDonneesSerializer,
 )
 
 
@@ -194,3 +196,31 @@ class LegalHoldViewSet(CompanyScopedModelViewSet):
             type_objet: sorted(ids)
             for type_objet, ids in sorted(couverture.items())
         })
+
+
+class RisqueEntrepriseViewSet(CompanyScopedModelViewSet):
+    """NTGRC13 — registre des risques d'entreprise (ERM) + matrice 5×5."""
+
+    queryset = RisqueEntreprise.objects.all()
+    serializer_class = RisqueEntrepriseSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def perform_create(self, serializer):
+        """Référence RQ race-safe + société imposée côté serveur."""
+        from .services import creer_risque
+
+        champs = dict(serializer.validated_data)
+        champs.pop('company', None)
+        champs.pop('reference', None)
+        serializer.instance = creer_risque(self.request.user.company, **champs)
+
+    @action(detail=False, methods=['get'])
+    def matrice(self, request):
+        """Grille 5×5 comptée par case (``?residuelle=1`` pour l'après-
+        traitement). Les 25 cases sont toujours présentes."""
+        from .selectors import matrice_risques
+
+        residuelle = (request.query_params.get('residuelle') or '').strip() in (
+            '1', 'true', 'True', 'oui')
+        return Response(matrice_risques(request.user.company,
+                                        residuelle=residuelle))

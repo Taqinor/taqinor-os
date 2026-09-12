@@ -454,3 +454,19 @@ def register_erasure_guard():
     from core import dsr
 
     dsr.register_erasure_guard('grc_legal_hold', motif_hold_pour_personne)
+
+
+# ── NTGRC13 — registre des risques d'entreprise ─────────────────────────────
+
+def creer_risque(company, **champs):
+    """Crée un ``RisqueEntreprise`` avec sa référence RQ race-safe."""
+    from core.numbering import create_with_reference
+
+    from .models import RisqueEntreprise
+
+    def _save(reference):
+        return RisqueEntreprise.objects.create(
+            company=company, reference=reference, **champs)
+
+    return create_with_reference(
+        RisqueEntreprise, RisqueEntreprise.REFERENCE_PREFIX, company, _save)
