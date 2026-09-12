@@ -302,6 +302,12 @@ class KbArticleLien(models.Model):
         # même société, validée côté serializer). ``cible_id`` porte alors le
         # PK d'un autre KbArticle plutôt qu'un objet d'une autre app.
         ARTICLE = 'article', 'Article'
+        # NTSRV19 — provenance : article de connaissance créé DEPUIS un
+        # ticket SAV résolu (``cible_id`` = id du ticket, string-ref — jamais
+        # un import de ``apps.sav.models``). Sert uniquement à tracer d'où
+        # vient le brouillon ; aucun enrichisseur dédié (dégrade au libellé
+        # stocké, comme ``equipement``/``type_intervention``).
+        TICKET = 'ticket', 'Ticket'
 
     company = models.ForeignKey(
         'authentication.Company',
