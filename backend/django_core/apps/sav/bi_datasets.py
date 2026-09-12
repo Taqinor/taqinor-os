@@ -64,11 +64,68 @@ def sav_tickets_queryset(company, user):
     )
 
 
+# ── NTDATA4 — contrats de maintenance ───────────────────────────────────────
+CONTRATS_DATASET_NAME = 'sav_contrats'
+CONTRATS_FIELDS = [
+    'id', 'statut', 'actif', 'frequence', 'mois_renouvellement',
+    'valeur_annuelle', 'prix',
+]
+
+
+def sav_contrats_queryset(company, user):
+    """Queryset `sav.ContratMaintenance` DÉJÀ scopé société.
+
+    * `frequence` = `periodicite` (mensuel/trimestriel/semestriel/annuel) ;
+    * `statut` — le modèle n'a PAS de colonne `statut` : son état EST le
+      drapeau `actif`. On le TRADUIT en libellé ('actif' / 'inactif') pour
+      qu'un pivot soit lisible, et `actif` reste exposé tel quel ;
+    * `valeur_annuelle` = `prix × (12 / mois de la périodicité)`. `prix` est le
+      montant TTC d'UNE période (c'est exactement ce que
+      `ventes.domain.facturation_ops.creer_facture_contrat` facture à chaque
+      cycle) ; les mois par périodicité viennent de `ContratMaintenance.MONTHS`,
+      la table du modèle — aucune constante recopiée, aucun ratio inventé. Un
+      contrat sans prix rend une valeur VIDE, jamais zéro (zéro serait un
+      chiffre faux).
+    """
+    from decimal import Decimal
+
+    from django.db.models import (
+        Case, CharField, DecimalField, ExpressionWrapper, F, Value, When,
+    )
+    from django.db.models.functions import TruncMonth
+    from .models import ContratMaintenance
+
+    valeur_field = DecimalField(max_digits=14, decimal_places=2)
+    # Multiplicateur annuel par périodicité, DÉRIVÉ de la table du modèle.
+    facteur = Case(
+        *[When(periodicite=cle,
+               then=Value(Decimal(12) / Decimal(mois),
+                          output_field=valeur_field))
+          for cle, mois in ContratMaintenance.MONTHS.items()],
+        default=Value(None, output_field=valeur_field),
+        output_field=valeur_field,
+    )
+    return ContratMaintenance.objects.filter(company=company).annotate(
+        frequence=F('periodicite'),
+        mois_renouvellement=TruncMonth('date_renouvellement'),
+        statut=Case(
+            When(actif=True, then=Value('actif')),
+            default=Value('inactif'),
+            output_field=CharField(),
+        ),
+        valeur_annuelle=ExpressionWrapper(
+            F('prix') * facteur, output_field=valeur_field),
+    )
+
+
 def register_dataset():
-    """Enregistre `sav_tickets` dans `core.data_explorer` (idempotent :
-    `register_dataset` écrase l'entrée existante sans erreur — appelable
-    plusieurs fois, ex. tests, sans effet de bord)."""
+    """Enregistre `sav_tickets` et `sav_contrats` dans `core.data_explorer`
+    (idempotent : `register_dataset` écrase l'entrée existante sans erreur —
+    appelable plusieurs fois, ex. tests, sans effet de bord)."""
     from core import data_explorer
     data_explorer.register_dataset(
         DATASET_NAME, 'Tickets SAV', FIELDS, sav_tickets_queryset,
         gated_fields=GATED_FIELDS)
+    data_explorer.register_dataset(
+        CONTRATS_DATASET_NAME, 'Contrats de maintenance', CONTRATS_FIELDS,
+        sav_contrats_queryset)
