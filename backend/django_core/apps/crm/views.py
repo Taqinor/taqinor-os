@@ -215,6 +215,20 @@ class ClientViewSet(CompanyScopedModelViewSet):
             created_by=self.request.user,
         )
 
+    def perform_update(self, serializer):
+        # NTI18N49 — snapshot de la langue documentaire AVANT écriture, pour
+        # journaliser le changement dans le chatter (lead rattaché) une fois
+        # la sauvegarde faite. Aucun autre comportement de perform_update
+        # n'est touché (comportement DRF par défaut préservé).
+        old_langue = serializer.instance.langue_document
+        super().perform_update(serializer)
+        new_client = serializer.instance
+        if new_client.langue_document != old_langue:
+            activity.log_client_langue_document_change(
+                new_client, self.request.user,
+                old_value=old_langue, new_value=new_client.langue_document,
+            )
+
     def get_permissions(self):
         # QC1 — `search` est une LECTURE scopée société (autocomplete des
         # données propres) : ouverte à tout rôle authentifié, comme `list`.
