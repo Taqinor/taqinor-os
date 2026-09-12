@@ -13,8 +13,9 @@ from .public_views import (
 )
 from .views import (
     AnalyseImpactDPIAViewSet,
-    AttestationPolitiqueViewSet, ControleInterneViewSet,
-    DeficienceControleViewSet, FluxDonneesViewSet,
+    AttestationPolitiqueViewSet, CadreConformiteViewSet,
+    ControleInterneViewSet,
+    DeficienceControleViewSet, ExigenceCadreViewSet, FluxDonneesViewSet,
     JournalDestructionViewSet, LegalHoldViewSet,
     IncidentSecuriteViewSet, ModeleQuestionnaireViewSet,
     PlanTraitementRisqueViewSet,
@@ -79,6 +80,11 @@ router.register(r'analyses-dpia', AnalyseImpactDPIAViewSet,
 # NTGRC30 — cartographie des flux de données (+ transferts hors Maroc).
 router.register(r'flux-donnees', FluxDonneesViewSet,
                 basename='grc-flux-donnees')
+# NTGRC33 — cadres de conformité multi-référentiels + exigences mappées.
+router.register(r'cadres-conformite', CadreConformiteViewSet,
+                basename='grc-cadre-conformite')
+router.register(r'exigences-cadre', ExigenceCadreViewSet,
+                basename='grc-exigence-cadre')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

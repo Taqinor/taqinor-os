@@ -1596,3 +1596,96 @@ class FluxDonnees(TenantModel):
     def __str__(self):
         cible = self.destinataire or self.get_destination_display()
         return f'{self.source} → {cible}'
+
+
+class CadreConformite(TenantModel):
+    """NTGRC33 — référentiel de conformité suivi par la société.
+
+    Une même organisation répond rarement à un seul cadre : la loi 09-08 est
+    obligatoire au Maroc, l'ISO 27001 est demandée par les grands donneurs
+    d'ordre, le RGPD s'impose dès qu'un client est européen. Les EXIGENCES se
+    recouvrent largement — et c'est précisément le point : un contrôle interne
+    couvre souvent trois cadres à la fois, et c'est le mapping qui évite de
+    refaire trois fois le même travail.
+    """
+
+    CODE_ISO27001 = 'ISO27001'
+    CODE_LOI_09_08 = 'loi_09-08'
+    CODE_RGPD = 'RGPD'
+    CODE_SOX_LITE = 'SOX_lite'
+    CODE_ISO27701 = 'ISO27701'
+    CODE_CHOICES = [
+        (CODE_ISO27001, 'ISO/IEC 27001'),
+        (CODE_LOI_09_08, 'Loi 09-08 (Maroc)'),
+        (CODE_RGPD, 'RGPD (UE 2016/679)'),
+        (CODE_SOX_LITE, 'SOX allégé'),
+        (CODE_ISO27701, 'ISO/IEC 27701'),
+    ]
+
+    code = models.CharField(
+        'Code', max_length=20, choices=CODE_CHOICES)
+    intitule = models.CharField('Intitulé', max_length=200)
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Cadre de conformité'
+        verbose_name_plural = 'Cadres de conformité'
+        ordering = ['code', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='grc_cadreconformite_co_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_code_display()}'
+
+
+class ExigenceCadre(TenantModel):
+    """NTGRC33 — une exigence d'un cadre, et le contrôle qui la couvre.
+
+    ``statut_couverture`` a TROIS états voulus : couvert, PARTIEL, non
+    couvert. Le partiel n'est pas une coquetterie — c'est l'état réel de la
+    plupart des exigences, et le réduire à un booléen ferait afficher soit un
+    faux 100 %, soit un zéro décourageant.
+    """
+
+    COUVERTURE_COUVERT = 'couvert'
+    COUVERTURE_PARTIEL = 'partiel'
+    COUVERTURE_NON = 'non_couvert'
+    COUVERTURE_CHOICES = [
+        (COUVERTURE_COUVERT, 'Couvert'),
+        (COUVERTURE_PARTIEL, 'Partiellement couvert'),
+        (COUVERTURE_NON, 'Non couvert'),
+    ]
+
+    cadre = models.ForeignKey(
+        CadreConformite,
+        # on_delete: une exigence n'existe que dans SON cadre.
+        on_delete=models.CASCADE,
+        related_name='exigences', verbose_name='Cadre')
+    code_exigence = models.CharField('Code de l\'exigence', max_length=40)
+    intitule = models.CharField('Intitulé', max_length=300)
+    controle_ref = models.CharField(
+        'Contrôle couvrant', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du grc.ControleInterne (string-FK).')
+    statut_couverture = models.CharField(
+        'Couverture', max_length=12, choices=COUVERTURE_CHOICES,
+        default=COUVERTURE_NON)
+
+    class Meta:
+        verbose_name = 'Exigence de cadre'
+        verbose_name_plural = 'Exigences de cadre'
+        ordering = ['code_exigence', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cadre', 'code_exigence'],
+                name='grc_exigencecadre_cadre_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut_couverture'],
+                         name='grc_exigence_co_couv_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.code_exigence} — {self.intitule[:60]}'

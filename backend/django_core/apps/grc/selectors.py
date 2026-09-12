@@ -929,3 +929,48 @@ def rechercher_e_discovery(company, terme, apps=None, periode=None,
         'perimetres_omis': omis,
         'genere_le': maintenant.isoformat(),
     }
+
+
+# ── NTGRC33 — cadres de conformité & couverture ─────────────────────────────
+
+def taux_couverture(company, cadre):
+    """NTGRC33 — taux de couverture d'un cadre : COUVERTES / TOTAL.
+
+    ``taux_pct`` ne compte QUE les exigences pleinement couvertes — c'est la
+    seule lecture qu'un auditeur accepte : une exigence à moitié traitée n'est
+    pas traitée.
+
+    Le détail est renvoyé (``couvert`` / ``partiel`` / ``non_couvert``) et,
+    séparément, un ``taux_avec_partiel_pct`` qui crédite le partiel d'une
+    demi-exigence — utile pour mesurer l'AVANCEMENT interne, jamais pour
+    annoncer une conformité. Les deux chiffres portent des noms distincts
+    précisément pour qu'on ne puisse pas prendre l'un pour l'autre.
+    """
+    from .models import ExigenceCadre
+
+    vide = {'total': 0, 'couvert': 0, 'partiel': 0, 'non_couvert': 0,
+            'taux_pct': 0.0, 'taux_avec_partiel_pct': 0.0}
+    if company is None or cadre is None:
+        return vide
+
+    comptes = {statut: 0 for statut, _ in ExigenceCadre.COUVERTURE_CHOICES}
+    for statut in (ExigenceCadre.objects
+                   .filter(company=company, cadre=cadre)
+                   .values_list('statut_couverture', flat=True)):
+        if statut in comptes:
+            comptes[statut] += 1
+
+    total = sum(comptes.values())
+    if not total:
+        return vide
+    couvert = comptes[ExigenceCadre.COUVERTURE_COUVERT]
+    partiel = comptes[ExigenceCadre.COUVERTURE_PARTIEL]
+    return {
+        'total': total,
+        'couvert': couvert,
+        'partiel': partiel,
+        'non_couvert': comptes[ExigenceCadre.COUVERTURE_NON],
+        'taux_pct': round(100.0 * couvert / total, 1),
+        'taux_avec_partiel_pct': round(
+            100.0 * (couvert + 0.5 * partiel) / total, 1),
+    }

@@ -14,8 +14,8 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnalyseImpactDPIA, AttestationPolitique, ControleInterne,
-    DeficienceControle, FluxDonnees,
+    AnalyseImpactDPIA, AttestationPolitique, CadreConformite, ControleInterne,
+    DeficienceControle, ExigenceCadre, FluxDonnees,
     IncidentSecurite, JournalDestruction, LegalHold,
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
@@ -24,8 +24,10 @@ from .models import (
 )
 from .serializers import (
     AnalyseImpactDPIASerializer,
-    AttestationPolitiqueSerializer, ControleInterneSerializer,
-    DeficienceControleSerializer, FluxDonneesSerializer,
+    AttestationPolitiqueSerializer, CadreConformiteSerializer,
+    ControleInterneSerializer,
+    DeficienceControleSerializer, ExigenceCadreSerializer,
+    FluxDonneesSerializer,
     IncidentActivitySerializer,
     IncidentSecuriteSerializer,
     JournalDestructionSerializer, LegalHoldSerializer,
@@ -848,6 +850,60 @@ class AnalyseImpactDPIAViewSet(CompanyScopedModelViewSet):
             }
             for entree in manquants
         ]})
+
+
+class CadreConformiteViewSet(CompanyScopedModelViewSet):
+    """NTGRC33 — cadres de conformité suivis + taux de couverture."""
+
+    queryset = CadreConformite.objects.all()
+    serializer_class = CadreConformiteSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = (self.request.query_params.get('actif') or '').strip()
+        if actif in ('1', 'true', 'True', 'oui'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False', 'non'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    @action(detail=True, methods=['get'])
+    def couverture(self, request, pk=None):
+        """Taux de couverture du cadre (couvertes / total) + détail."""
+        from .selectors import taux_couverture
+
+        cadre = self.get_object()
+        return Response(taux_couverture(request.user.company, cadre))
+
+    @action(detail=True, methods=['get'])
+    def exigences(self, request, pk=None):
+        """Les exigences du cadre, dans l'ordre de leur code."""
+        cadre = self.get_object()
+        return Response({'results': ExigenceCadreSerializer(
+            cadre.exigences.all(), many=True).data})
+
+
+class ExigenceCadreViewSet(CompanyScopedModelViewSet):
+    """NTGRC33 — exigences d'un cadre et leur mapping vers les contrôles."""
+
+    queryset = ExigenceCadre.objects.select_related('cadre').all()
+    serializer_class = ExigenceCadreSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        cadre = (params.get('cadre') or '').strip()
+        if cadre.isdigit():
+            qs = qs.filter(cadre_id=int(cadre))
+        statut = (params.get('statut_couverture') or '').strip()
+        if statut:
+            qs = qs.filter(statut_couverture=statut)
+        controle = (params.get('controle_ref') or '').strip()
+        if controle:
+            qs = qs.filter(controle_ref=controle)
+        return qs
 
 
 class FluxDonneesViewSet(CompanyScopedModelViewSet):

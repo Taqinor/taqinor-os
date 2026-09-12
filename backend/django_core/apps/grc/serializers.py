@@ -6,8 +6,8 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    AnalyseImpactDPIA, AttestationPolitique, ControleInterne,
-    DeficienceControle, FluxDonnees,
+    AnalyseImpactDPIA, AttestationPolitique, CadreConformite, ControleInterne,
+    DeficienceControle, ExigenceCadre, FluxDonnees,
     IncidentActivity, IncidentSecurite, JournalDestruction, LegalHold,
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
@@ -822,6 +822,82 @@ class AnalyseImpactDPIASerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'avis_dpo': 'Justifiez pourquoi aucune analyse d\'impact '
                             'n\'est nécessaire.'})
+        return attrs
+
+
+class CadreConformiteSerializer(serializers.ModelSerializer):
+    """NTGRC33 — référentiel de conformité suivi par la société."""
+
+    code_libelle = serializers.CharField(
+        source='get_code_display', read_only=True)
+    couverture = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CadreConformite
+        fields = ['id', 'code', 'code_libelle', 'intitule', 'actif',
+                  'couverture', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_couverture(self, obj):
+        from .selectors import taux_couverture
+
+        return taux_couverture(obj.company, obj)
+
+
+class ExigenceCadreSerializer(serializers.ModelSerializer):
+    """NTGRC33 — exigence d'un cadre et le contrôle interne qui la couvre."""
+
+    statut_couverture_libelle = serializers.CharField(
+        source='get_statut_couverture_display', read_only=True)
+    cadre_code = serializers.CharField(source='cadre.code', read_only=True)
+
+    class Meta:
+        model = ExigenceCadre
+        fields = ['id', 'cadre', 'cadre_code', 'code_exigence', 'intitule',
+                  'controle_ref', 'statut_couverture',
+                  'statut_couverture_libelle', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if company is not None and 'cadre' in fields:
+            fields['cadre'].queryset = CadreConformite.objects.filter(
+                company=company)
+        return fields
+
+    def validate_controle_ref(self, valeur):
+        """Le contrôle référencé doit exister DANS la société de l'appelant."""
+        valeur = str(valeur or '').strip()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if not valeur or company is None:
+            return valeur
+        try:
+            controle_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence du contrôle doit être un identifiant '
+                'numérique.')
+        if not ControleInterne.objects.filter(
+                company=company, pk=controle_id).exists():
+            raise serializers.ValidationError(
+                "Ce contrôle interne n'existe pas pour votre société.")
+        return valeur
+
+    def validate(self, attrs):
+        """Une exigence déclarée COUVERTE doit dire PAR QUOI."""
+        statut = attrs.get(
+            'statut_couverture',
+            getattr(self.instance, 'statut_couverture', None))
+        controle = attrs.get(
+            'controle_ref', getattr(self.instance, 'controle_ref', ''))
+        if statut == ExigenceCadre.COUVERTURE_COUVERT and not (
+                controle or '').strip():
+            raise serializers.ValidationError({
+                'controle_ref': 'Indiquez le contrôle interne qui couvre '
+                                'cette exigence.'})
         return attrs
 
 
