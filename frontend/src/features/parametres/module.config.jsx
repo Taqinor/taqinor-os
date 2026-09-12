@@ -7,7 +7,7 @@ import {
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
   Ship, Route, Layers, Repeat, Trash2,
-  Leaf, DatabaseBackup, HardDriveDownload,
+  Leaf, DatabaseBackup, HardDriveDownload, Gauge,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -112,6 +112,9 @@ const SauvegardesPage = lazy(() => import('../../pages/parametres/SauvegardesPag
 // NTOBS7 — Paramètres → Fiabilité → Export de réversibilité (complète NTOBS6).
 // Nav ET route ensemble (motif PACT150).
 const ExportReversibilitePage = lazy(() => import('../../pages/parametres/ExportReversibilitePage'))
+// NTOBS8 — Paramètres → Fiabilité → Limites & usage. Nav ET route ensemble
+// (motif PACT150).
+const LimitesUsagePage = lazy(() => import('../../pages/parametres/LimitesUsagePage'))
 // WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
 // société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
@@ -249,6 +252,8 @@ const config = {
       { to: '/parametres/sauvegardes', label: 'Sauvegardes', icon: <DatabaseBackup size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTOBS7 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/export-reversibilite', label: 'Export de réversibilité', icon: <HardDriveDownload size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS8 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/limites-usage', label: 'Limites & usage', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -277,6 +282,7 @@ const config = {
     { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sauvegardes', component: SauvegardesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/export-reversibilite', component: ExportReversibilitePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés

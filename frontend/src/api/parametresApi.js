@@ -97,6 +97,8 @@ const parametresApi = {
     api.post('/core/export-reversibilite/', datasets ? { datasets } : {}),
   getHistoriqueExportReversibilite: () =>
     api.get('/core/export-reversibilite/historique/'),
+  // NTOBS8 — page « Limites & usage » unifiée (lecture seule, scopé société).
+  getUsageLimites: () => api.get('/core/usage-limites/'),
 }
 
 export default parametresApi

@@ -40,6 +40,7 @@ from .sla import (
     sla_export_pdf,
 )
 from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
+from .usage_limits import usage_view
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
     ApiUsagePlanViewSet,
@@ -234,4 +235,10 @@ urlpatterns = router.urls + [
     path('export-reversibilite/historique/',
          ExportReversibiliteHistoriqueView.as_view(),
          name='export-reversibilite-historique'),
+    # NTOBS8 — page « Limites & usage » unifiée (lecture seule, scopé société).
+    # NOTE : `usage/` est DÉJÀ pris par `TenantUsageSnapshotViewSet` (NTPLT6,
+    # router ci-dessus, SUPERUSER only, sémantique différente — metering
+    # d'exploitation, pas le quota self-service du tenant) ; ce endpoint
+    # prend donc `usage-limites/` pour ne rien casser côté NTPLT6.
+    path('usage-limites/', usage_view, name='usage-limites-summary'),
 ]
