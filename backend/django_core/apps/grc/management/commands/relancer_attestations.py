@@ -39,7 +39,7 @@ def relancer_societe(company, *, aujourdhui=None, envoyer=True):
     from apps.notifications.services import notify
     from apps.rh.selectors import dossiers_actifs
 
-    from ..selectors import attestations_manquantes
+    from apps.grc.selectors import attestations_manquantes
 
     jour = aujourdhui or timezone.now().date()
     dus = attestations_manquantes(company)

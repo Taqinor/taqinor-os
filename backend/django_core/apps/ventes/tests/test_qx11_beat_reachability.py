@@ -98,6 +98,12 @@ ON_DEMAND_ALLOWLIST = {
     # ``conversation_ai.viewsets``), jamais périodique — un appel n'existe que
     # si quelqu'un a déposé son audio.
     'conversation_ai.transcrire_appel',
+    # NTOBS6/NTOBS7 — export de RÉVERSIBILITÉ d'un tenant (ZIP complet, CSV
+    # par dataset) : déclenché À LA DEMANDE par le POST direction de
+    # ``core.export_registry`` (``.delay()`` puis 202 Accepted, suivi par un
+    # ``ExportReversibiliteRun``). Jamais périodique — personne ne veut
+    # reconstruire chaque nuit l'archive complète de chaque société.
+    'core.export_reversibilite_tenant',
 }
 
 

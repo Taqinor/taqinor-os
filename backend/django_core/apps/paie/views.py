@@ -780,8 +780,12 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         from authentication.permissions import HasPermission
 
         if not HasPermission('salaires_voir')().has_permission(request, self):
-            return Response(
-                {'detail': 'Permission "salaires_voir" requise.'},
+            # Contrat de la fonction : TOUJOURS un couple
+            # ``(resultat, reponse_erreur)``. Un ``Response`` nu ici serait
+            # depaquete par l'appelant (``resultat, erreur = ...``) et
+            # remonterait en 500 au lieu du 403 attendu.
+            return None, Response(
+                {'detail': 'Permission « salaires_voir » requise.'},
                 status=status.HTTP_403_FORBIDDEN)
 
         company = request.user.company

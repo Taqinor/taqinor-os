@@ -12,7 +12,7 @@ from apps.audit.models import AuditLog
 from apps.audit.selectors import rechercher_journal
 from apps.crm.models import Client, Lead
 from apps.grc.models import LegalHold
-from apps.grc.selectors import APPS_E_DISCOVERY, rechercher_e_discovery
+from apps.grc.ediscovery import APPS_E_DISCOVERY, rechercher_e_discovery
 from apps.grc.services import placer_resultats_sous_hold
 from authentication.models import Company
 from testkit.base import TenantAPITestCase

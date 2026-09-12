@@ -867,10 +867,17 @@ class UxParametresApiTests(TestCase):
     def test_roles_autorises_restreint_qui_pose_le_defaut(self):
         from apps.roles.models import Role
 
+        # NTUX31 — les DEUX rôles portent la permission fine
+        # `ux_vue_definir_defaut_role` : ce test vise la liste
+        # `roles_autorises_definir_defaut`, pas la garde fine. Sans elle, le
+        # 403 attendu de `refuse` ne prouverait plus rien (il viendrait de la
+        # permission manquante) et `permis` serait refusé lui aussi.
         role_autorise = Role.objects.create(
-            company=self.co_a, nom='Directeur commercial', permissions=['crm_gerer'])
+            company=self.co_a, nom='Directeur commercial',
+            permissions=['crm_gerer', 'ux_vue_definir_defaut_role'])
         role_autre = Role.objects.create(
-            company=self.co_a, nom='Chef de projet', permissions=['crm_gerer'])
+            company=self.co_a, nom='Chef de projet',
+            permissions=['crm_gerer', 'ux_vue_definir_defaut_role'])
         parametres = UxParametres.get_or_default(self.co_a)
         parametres.roles_autorises_definir_defaut.set([role_autorise])
 

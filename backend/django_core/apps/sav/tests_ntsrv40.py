@@ -80,9 +80,17 @@ class NTSRV40GardeReponseExterneTest(TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client', prenom='NTSRV40',
             email='client-ntsrv40@example.test')
+        # Portée de visibilité (Feature F) : `TECHNICIEN_PERMISSIONS` porte
+        # `records_scope_equipe`, donc `TicketViewSet.get_queryset` ne montre
+        # à un technicien que les tickets dont il est le responsable OU le
+        # créateur. Un ticket SANS propriétaire serait invisible (404) des
+        # deux agents — ce que NTSRV40 ne teste pas. On rattache donc chaque
+        # agent par un bout : le fil reste visible des deux, seule la garde
+        # `sav_repondre_client_externe` les distingue.
         self.ticket = Ticket.objects.create(
             company=self.company, reference='SAV-NTSRV40-1',
-            client=self.client_obj, statut=Ticket.Statut.EN_COURS)
+            client=self.client_obj, statut=Ticket.Statut.EN_COURS,
+            technicien_responsable=self.confirme, created_by=self.formation)
 
     def _repondre(self, user):
         return auth(user).post(

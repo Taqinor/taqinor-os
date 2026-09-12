@@ -240,16 +240,25 @@ def generer_interventions_recurrentes_task():
     return total
 
 
-def _deja_notifie_aujourdhui(event_type, link):
-    """Vrai si une notification portant CE lien a déjà été créée aujourd'hui
-    — même patron que ``stock.tasks._deja_notifie_aujourdhui`` (idempotence
-    par lien stable, pas par destinataire)."""
+def _deja_notifie_aujourdhui(event_type, titre, recipient=None):
+    """Vrai si CETTE notification (même événement, même titre, même
+    destinataire) a déjà été créée aujourd'hui.
+
+    ``stock.tasks._deja_notifie_aujourdhui`` clé sur le ``link`` parce que
+    là-bas le lien EST une clé de dédoublonnage stable, passée telle quelle à
+    ``notify_many``. Ici le lien posé est la ROUTE RÉELLE de l'écran (WIR176 —
+    ``/chantiers/consultations``), donc identique pour toutes les relances et
+    jamais égal à la clé calculée : la garde ne trouvait rien et chaque passage
+    re-notifiait. Le TITRE, lui, nomme la RFQ ET le fournisseur — c'est-à-dire
+    exactement la consultation relancée."""
     from apps.notifications.models import Notification
     today = casablanca_today()
     try:
-        return Notification.objects.filter(
-            event_type=event_type, link=link,
-            created_at__date=today).exists()
+        qs = Notification.objects.filter(
+            event_type=event_type, title=titre, created_at__date=today)
+        if recipient is not None:
+            qs = qs.filter(recipient=recipient)
+        return qs.exists()
     except Exception:  # pragma: no cover - défensif
         return False
 
@@ -296,23 +305,26 @@ def relancer_rfq_en_attente_task():
             continue
         count = 0
         for consultation in consultations:
-            link = (f'installations-rfq-relance-{consultation.pk}-'
-                    f'{today.isoformat()}')
-            if _deja_notifie_aujourdhui('bcf_relance_proposee', link):
-                continue
             acheteur = consultation.rfq.created_by
             if acheteur is None:
                 continue
             fournisseur_nom = (
                 consultation.fournisseur.nom
                 if consultation.fournisseur_id else '')
+            titre = (f'RFQ {consultation.rfq.reference} — '
+                     f'{fournisseur_nom} n\'a pas répondu')
+            # Idempotence du jour : la clé est le TITRE (RFQ + fournisseur =
+            # la consultation), pas le lien — celui-ci est la route réelle de
+            # l'écran, la même pour toutes les relances (cf. la garde).
+            if _deja_notifie_aujourdhui(
+                    'bcf_relance_proposee', titre, recipient=acheteur):
+                continue
             try:
                 from apps.notifications.models import EventType
                 from apps.notifications.services import notify
                 notify(
                     acheteur, EventType.BCF_RELANCE_PROPOSEE,
-                    title=(f'RFQ {consultation.rfq.reference} — '
-                           f'{fournisseur_nom} n\'a pas répondu'),
+                    title=titre,
                     body=(f'La date limite de réponse de la RFQ '
                           f'{consultation.rfq.reference} approche (J-2) et '
                           f'{fournisseur_nom or "ce fournisseur"} n\'a pas '

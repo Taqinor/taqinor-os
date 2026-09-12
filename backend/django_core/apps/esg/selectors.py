@@ -674,15 +674,20 @@ def prerequis_cloture_esg(periode):
             f'précède le début ({periode.date_debut}).')
 
     couverture = couverture_catalogue(company)
+    piliers = couverture.get('piliers') or {}
     avertissements = []
-    for pilier, bloc in (couverture.get('piliers') or {}).items():
+    for pilier, bloc in piliers.items():
         if bloc.get('total') and bloc.get('pct', 0) < \
                 SEUIL_AVERTISSEMENT_COUVERTURE_PCT:
             avertissements.append(
                 f'Couverture du pilier « {pilier} » : {bloc["pct"]} % '
                 f'({bloc["couverts"]}/{bloc["total"]} indicateurs du '
                 'catalogue renseignés).')
-    if not (couverture.get('piliers') or {}):
+    # « Aucun catalogue » = AUCUN indicateur catalogué, pas un dictionnaire
+    # vide : ``couverture_catalogue`` renvoie TOUJOURS une entrée par pilier
+    # (à zéro) dès qu'une société est fournie — tester le dictionnaire lui-même
+    # ne détectait donc jamais le cas réel et l'avertissement ne partait pas.
+    if not any((bloc.get('total') or 0) for bloc in piliers.values()):
         avertissements.append(
             'Aucun catalogue GRI-lite n’est seedé pour cette société : la '
             'couverture ne peut pas être évaluée.')

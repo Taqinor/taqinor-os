@@ -8,6 +8,7 @@ surtout PAS par le moteur ``quote_engine``, réservé aux devis client
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_ntsrv28 -v 2
 """
+import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -30,6 +31,22 @@ User = get_user_model()
 #: n'est pas une coïncidence (garde anti-fuite sur le RENDU, pas sur un
 #: chiffre nu banal).
 PRIX_ACHAT_TEMOIN = '987654.32'
+
+#: Blocs `<style>` : la feuille de style porte des dizaines de
+#: ``margin: 0`` — « marge » y est une PROPRIÉTÉ CSS, jamais une donnée
+#: affichée. Les scanner reviendrait à rendre la garde toujours rouge.
+_STYLE = re.compile(r'<style\b[^>]*>.*?</style>', re.S | re.I)
+#: Pied de page : « Ne contient aucun prix d'achat ni aucune marge » est la
+#: PROMESSE imprimée sur la fiche, pas une fuite. Elle est vérifiée à part
+#: (``test_aucun_prix_achat_ni_marge`` exige qu'elle soit bien présente).
+_PIED = re.compile(r'<div class="footer">.*?</div>', re.S | re.I)
+#: « marge » / « marges » comme MOT — pas la sous-chaîne de « margin ».
+_MOT_MARGE = re.compile(r'\bmarges?\b', re.I)
+
+
+def _corps_visible(html):
+    """Rendu de la fiche sans sa feuille de style ni son pied de page."""
+    return _PIED.sub('', _STYLE.sub('', html))
 
 
 @patch('apps.ventes.utils.pdf._download', return_value=None)
@@ -100,7 +117,17 @@ class NTSRV28FicheTicketPdfTest(TestCase):
         self.assertNotIn('prix_achat', html)
         self.assertNotIn(PRIX_ACHAT_TEMOIN, html)
         self.assertNotIn('987 654', html)
-        self.assertNotIn('marge', html.lower())
+        # Le MOT « marge » ne doit apparaître nulle part dans le corps rendu
+        # (libellé de colonne, cellule, section…). On exclut la feuille de
+        # style (``margin:``) et le pied de page, dont la mention est la
+        # promesse elle-même — exigée juste après.
+        fuite = _MOT_MARGE.search(_corps_visible(html))
+        self.assertIsNone(
+            fuite,
+            f'Le mot « marge » apparaît dans le corps de la fiche : '
+            f'{fuite.group(0) if fuite else ""}')
+        self.assertIn(
+            "Ne contient aucun prix d'achat ni aucune marge", html)
 
     def test_aucun_cout_interne_du_ticket(self, _dl):
         self.assertNotIn('4321', self._html())

@@ -37,8 +37,17 @@ def make_budget(company, projet):
 
 
 def notes(avenant):
+    """Corps des NOTES du chatter — jamais les journaux de changement.
+
+    ``chatter_qs`` renvoie TOUTE la timeline : depuis NTCON32 l'approbation
+    écrit aussi une entrée ``modification`` (statut brouillon → approuvé, au
+    corps vide). CHT6 ne parle que des notes, on filtre donc sur ``kind``
+    plutôt que de compter une timeline devenue plus riche.
+    """
+    from apps.records.models import Activity
     from apps.records.services import chatter_qs
-    return [a.body for a in chatter_qs(avenant, avenant.company)]
+    return [a.body for a in chatter_qs(avenant, avenant.company)
+            if a.kind == Activity.Kind.NOTE]
 
 
 class AvenantBudgetNonResoluTests(TestCase):

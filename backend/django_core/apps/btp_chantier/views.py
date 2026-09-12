@@ -11,6 +11,7 @@ from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -82,6 +83,26 @@ def _client_ip(request):
     else:
         ip = request.META.get('REMOTE_ADDR', '') or ''
     return ip[:45]
+
+
+class _ExportFormatContentNegotiation(DefaultContentNegotiation):
+    """NTCON30 — sur ``export`` le paramètre ``?format=`` désigne le format
+    D'EXPORT (csv/xlsx), PAS le renderer DRF.
+
+    Sans cette surcharge, DRF traite ``?format=xlsx`` comme un override de
+    renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne porte
+    ce format, donc ``DefaultContentNegotiation.filter_renderers`` lève un
+    ``Http404`` (« Pas trouvé ») AVANT même d'exécuter la vue — motif
+    ``apps.douane.views._ExportFormatContentNegotiation`` (NTLOG47). La vue
+    renvoie une ``HttpResponse``/``build_xlsx_response`` manuelle, jamais via
+    ce renderer.
+    """
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
 
 
 def _reponse_export(request, nom_base, headers, rows):
@@ -201,6 +222,15 @@ class ReserveChantierViewSet(
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # NTCON27 — les filtres d'AFFICHAGE (dont le masquage par défaut des
+        # archivées) ne valent que pour les routes de LISTE. Sur une route de
+        # détail (`retrieve`, `photos/`, `lever/`, `contester/`,
+        # `historique/`…) `get_object()` part du même queryset : les appliquer
+        # rendrait une réserve archivée introuvable (404) alors que rien n'est
+        # supprimé — sa fiche doit rester consultable. Le scope société vient
+        # de `super()` et n'est jamais relâché ici.
+        if getattr(self, 'detail', False):
+            return qs
         p = self.request.query_params
         return selectors.reserves_filtrees(
             qs, lot=p.get('lot'), statut=p.get('statut'),
@@ -254,7 +284,8 @@ class ReserveChantierViewSet(
             ReserveChantierSerializer(qs, many=True).data)
 
     @action(detail=False, methods=['get'], url_path='export',
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission],
+            content_negotiation_class=_ExportFormatContentNegotiation)
     def export(self, request):
         """NTCON30 — export CSV/XLSX des réserves (reporting externe MOE).
 
@@ -366,7 +397,8 @@ class RFIViewSet(ChatterBtpMixin, WriteScopedPermissionMixin,
         serializer.instance = rfi
 
     @action(detail=False, methods=['get'], url_path='export',
-            permission_classes=[ScopedPermission])
+            permission_classes=[ScopedPermission],
+            content_negotiation_class=_ExportFormatContentNegotiation)
     def export(self, request):
         """NTCON30 — export CSV/XLSX des RFI (reporting externe MOE/client).
 

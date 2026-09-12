@@ -19,6 +19,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.compta import services as compta_services
 from apps.frais.models import NoteFrais, PlafondNoteFrais
@@ -47,6 +48,9 @@ def make_note(company, employe, *, montant):
     return NoteFrais.objects.create(
         company=company, employe=employe,
         reference=f'NDF-NTP2P45-{next(_seq):04d}',
+        # `date_frais` est OBLIGATOIRE en base (DateField sans défaut) :
+        # l'omettre lève une NotNullViolation avant même le code testé.
+        date_frais=timezone.localdate(),
         montant=Decimal(montant), motif='Test NTP2P45',
         categorie=NoteFrais.Categorie.AUTRE)
 
