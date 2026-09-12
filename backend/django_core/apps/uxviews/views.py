@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.db.models import Q
 from rest_framework import generics, permissions
@@ -10,6 +11,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.events import saved_view_shared
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -18,6 +20,8 @@ from .permissions import PeutDefinirVueDefautRole, PeutPartagerVueEquipe
 from .serializers import (
     FavoriUtilisateurSerializer, SavedViewSerializer, UxParametresSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _is_valid_configuration(configuration):
@@ -103,7 +107,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         self._verifier_partage_autorise(serializer)
         self._verifier_limite_vues()
-        serializer.save(company=self.request.user.company, owner=self.request.user)
+        instance = serializer.save(
+            company=self.request.user.company, owner=self.request.user)
+        if instance.visibilite == SavedView.Visibilite.EQUIPE:
+            self._emettre_saved_view_shared(instance, 'partagee')
 
     def _verifier_limite_vues(self):
         """NTUX28 — refuse la création au-delà de `max_vues_par_utilisateur`
@@ -142,7 +149,22 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             )
         if instance.owner_id != self.request.user.id and not instance.est_defaut_role:
             raise PermissionDenied("Vous ne pouvez supprimer que vos propres vues.")
+        etait_equipe = instance.visibilite == SavedView.Visibilite.EQUIPE
         instance.delete()
+        if etait_equipe:
+            self._emettre_saved_view_shared(instance, 'suppression')
+
+    def _emettre_saved_view_shared(self, instance, action):
+        """NTUX32 — webhook sortant (voir
+        ``apps/publicapi/uxviews_event_receivers.py``). Best-effort : un
+        abonné qui casse ne doit jamais faire échouer la requête d'origine."""
+        try:
+            saved_view_shared.send(
+                sender=SavedView, view=instance, company=self.request.user.company,
+                user=self.request.user, action=action)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.exception('saved_view_shared: envoi du signal échoué (%s)',
+                             instance.pk)
 
     @action(detail=True, methods=['post'], url_path='definir-par-defaut-role')
     def definir_par_defaut_role(self, request, pk=None):

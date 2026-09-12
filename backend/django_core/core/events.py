@@ -1120,3 +1120,25 @@ btp_visa_approuve = django.dispatch.Signal()
 # la MOE et la comptabilité du client attendent. Arguments : ``dgd``,
 # ``company``, ``user`` (peut être ``None``).
 btp_dgd_finalise = django.dispatch.Signal()
+
+# ── NTUX32 — Événements des objets UX (apps.uxviews / apps.trash) ───────────
+# Émis par les apps NTUX (le SEUL point d'écriture de leur état), abonnés par
+# ``apps.publicapi`` (webhook sortant, voir
+# ``apps/publicapi/uxviews_event_receivers.py``) — jamais un import direct
+# ``uxviews``/``trash`` → ``publicapi`` : l'app émet sur le bus, sans savoir
+# qui écoute (même patron que ``btp_reserve_levee`` ci-dessus).
+
+# Émis EXACTEMENT quand une ``SavedView`` (NTUX1) est CRÉÉE ou SUPPRIMÉE avec
+# ``visibilite=EQUIPE`` (jamais sur une simple modification de filtres — ça,
+# c'est NTUX39/notifications). Arguments : ``view`` (l'instance ``SavedView``
+# — peut être un objet déjà supprimé de la base, ne lire que ses attributs
+# scalaires), ``company``, ``user`` (peut être ``None``),
+# ``action`` (``'partagee'`` ou ``'suppression'``).
+saved_view_shared = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand ``apps.trash.services.restaurer`` restaure avec succès
+# la cible d'une entrée de corbeille (NTUX7) — jamais sur une restauration
+# refusée/déjà faite. Arguments : ``element`` (l'``ElementSupprime`` fermé),
+# ``obj`` (l'objet métier restauré, peut être ``None`` si la cible avait
+# disparu), ``company``, ``user`` (peut être ``None``).
+record_restored = django.dispatch.Signal()

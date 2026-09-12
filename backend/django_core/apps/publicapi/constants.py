@@ -129,6 +129,12 @@ EVENT_BTP_RESERVE_LEVEE = 'reserve.levee'
 EVENT_BTP_RFI_REPONDU = 'rfi.repondu'
 EVENT_BTP_VISA_APPROUVE = 'visa.approuve'
 EVENT_BTP_DGD_FINALISE = 'dgd.finalise'
+# NTUX32 — évènements des objets UX (apps.uxviews / apps.trash), consommés
+# depuis `core.events` par `apps/publicapi/uxviews_event_receivers.py` (jamais
+# un import direct `uxviews`/`trash` -> `publicapi`). Clés SOULIGNÉES (pas
+# pointées) : littéralement celles nommées par le plan NTUX32.
+EVENT_SAVED_VIEW_SHARED = 'saved_view_shared'
+EVENT_RECORD_RESTORED = 'record_restored'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -153,6 +159,8 @@ EVENT_CHOICES = [
     (EVENT_BTP_RFI_REPONDU, 'BTP — RFI répondu'),
     (EVENT_BTP_VISA_APPROUVE, 'BTP — visa approuvé'),
     (EVENT_BTP_DGD_FINALISE, 'BTP — décompte général finalisé'),
+    (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
+    (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 
