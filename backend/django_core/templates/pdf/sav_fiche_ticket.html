@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  {#
+    NTSRV28 — Fiche de synthèse INTERNE d'un ticket SAV.
+
+    Usage : classeur physique d'intervention, transmission assurance/garantie.
+    Rendue par WeasyPrint (même pile que la facture legacy) — JAMAIS le moteur
+    quote_engine, réservé aux devis client (règle #4).
+
+    ⚠ AUCUN prix d'achat, AUCUNE marge, AUCUN coût interne ne doit apparaître
+    ici. Les pièces n'affichent que désignation / marque / quantité.
+  #}
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 36px 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 64px; max-width: 190px; object-fit: contain; }
+    .doc-title { font-size: 23px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 13px; color: #666; }
+    .interne { display: inline-block; margin-top: 6px; padding: 2px 8px; border: 1px solid #b91c1c; border-radius: 4px; color: #b91c1c; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 16px; }
+    .partie-block { background: #f8fafc; border-radius: 6px; padding: 12px 14px; width: 48%; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 5px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; margin-bottom: 4px; color: #1e293b; }
+    .partie-detail { font-size: 11px; color: #555; line-height: 1.5; }
+    .meta-row { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .meta-item { background: #f0fdf4; border-radius: 4px; padding: 7px 12px; min-width: 95px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+    .section { margin-bottom: 18px; }
+    .section-title { font-size: 13px; font-weight: bold; color: {{ couleur_principale }}; border-bottom: 2px solid {{ couleur_principale }}; padding-bottom: 4px; margin-bottom: 8px; }
+    .section-body { font-size: 12px; line-height: 1.6; color: #444; white-space: pre-wrap; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 7px 10px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; vertical-align: top; }
+    td.date { white-space: nowrap; width: 108px; }
+    td.genre { white-space: nowrap; width: 90px; }
+    td.auteur { white-space: nowrap; width: 96px; }
+    .muted { color: #999; font-style: italic; }
+    .signature-block { margin-top: 8px; }
+    .signature-box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; display: inline-block; }
+    .signature-box img { max-height: 90px; max-width: 260px; }
+    .signature-name { margin-top: 6px; font-size: 11px; color: #555; }
+    .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">FICHE DE SYNTHÈSE TICKET</div>
+      <div class="doc-ref">{{ ticket.reference }}</div>
+      <div class="interne">Document interne</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="parties">
+    <div class="partie-block">
+      <div class="partie-label">Prestataire</div>
+      <div class="partie-nom">{{ entreprise_nom }}</div>
+      <div class="partie-detail">{% if entreprise_adresse %}{{ entreprise_adresse }}{% endif %}</div>
+    </div>
+    <div class="partie-block">
+      <div class="partie-label">Client</div>
+      <div class="partie-nom">{{ client_nom }}</div>
+      <div class="partie-detail">
+        {% if client and client.telephone %}{{ client.telephone }}<br />{% endif %}
+        {% if client and client.email %}{{ client.email }}<br />{% endif %}
+        {% if installation_reference %}Chantier : {{ installation_reference }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Statut</strong>
+      <span>{{ statut_label }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Priorité</strong>
+      <span>{{ priorite_label }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Ouvert le</strong>
+      <span>{{ ticket.date_ouverture.strftime('%d/%m/%Y') if ticket.date_ouverture else '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Résolu le</strong>
+      <span>{{ ticket.date_resolution.strftime('%d/%m/%Y') if ticket.date_resolution else '—' }}</span>
+    </div>
+    {% if categorie_nom %}
+    <div class="meta-item">
+      <strong>Catégorie</strong>
+      <span>{{ categorie_nom }}</span>
+    </div>
+    {% endif %}
+    <div class="meta-item">
+      <strong>Technicien</strong>
+      <span>{{ ticket.technicien_responsable.username if ticket.technicien_responsable else '—' }}</span>
+    </div>
+  </div>
+
+  {% if equipement %}
+  <div class="section">
+    <div class="section-title">Équipement concerné</div>
+    <div class="section-body">{{ equipement.produit.nom if equipement.produit else '' }}{% if equipement.numero_serie %} — N° série : {{ equipement.numero_serie }}{% endif %}</div>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <div class="section-title">Panne signalée</div>
+    <div class="section-body">{{ ticket.description or 'Aucune description fournie.' }}</div>
+  </div>
+
+  {% if cause_nom or remede_nom %}
+  <div class="section">
+    <div class="section-title">Cause &amp; remède</div>
+    <div class="section-body">Cause : {{ cause_nom or '—' }}
+Remède : {{ remede_nom or '—' }}</div>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <div class="section-title">Diagnostic &amp; travail réalisé</div>
+    {% if interventions %}
+    {% for itv in interventions %}
+    <div class="section-body" style="margin-bottom:8px;">
+      <strong>{{ itv.type }}</strong>{% if itv.date %} — {{ itv.date.strftime('%d/%m/%Y') }}{% endif %}{% if itv.technicien %} — {{ itv.technicien }}{% endif %}
+{{ itv.compte_rendu or 'Aucun compte rendu saisi.' }}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="section-body muted">Aucune intervention rattachée.</div>
+    {% endif %}
+  </div>
+
+  {% if worksheet %}
+  <div class="section">
+    <div class="section-title">Feuille de maintenance — {{ worksheet.modele_nom }}</div>
+    <table>
+      <thead><tr><th>Champ</th><th>Valeur</th></tr></thead>
+      <tbody>
+      {% for champ in worksheet.champs %}
+        <tr>
+          <td>{{ champ.libelle }}</td>
+          <td>{{ champ.valeur if champ.valeur is not none else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if pieces %}
+  <div class="section">
+    <div class="section-title">Pièces utilisées</div>
+    <table>
+      <thead><tr><th>Désignation</th><th>Marque</th><th>Quantité</th></tr></thead>
+      <tbody>
+      {% for piece in pieces %}
+        <tr>
+          <td>{{ piece.designation }}</td>
+          <td>{{ piece.marque or '—' }}</td>
+          <td>{{ piece.quantite if piece.quantite is not none else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <div class="section-title">Historique complet</div>
+    {% if chatter %}
+    <table>
+      <thead><tr><th>Date</th><th>Genre</th><th>Auteur</th><th>Détail</th></tr></thead>
+      <tbody>
+      {% for entree in chatter %}
+        <tr>
+          <td class="date">{{ entree.date.strftime('%d/%m/%Y %H:%M') if entree.date else '—' }}</td>
+          <td class="genre">{{ entree.genre }}</td>
+          <td class="auteur">{{ entree.auteur }}</td>
+          <td>{{ entree.texte }}{% if entree.issue %} — {{ entree.issue }}{% endif %}{% if entree.duree_minutes %} ({{ entree.duree_minutes }} min){% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="section-body muted">Aucune entrée d'historique.</div>
+    {% endif %}
+  </div>
+
+  {% if signature %}
+  <div class="section">
+    <div class="section-title">Signature client</div>
+    <div class="signature-block">
+      <div class="signature-box"><img src="{{ signature.image }}" alt="Signature client" /></div>
+      <div class="signature-name">
+        {{ signature.nom or '—' }}{% if signature.signe_le %} — {{ signature.signe_le.strftime('%d/%m/%Y %H:%M') }}{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="footer">
+    Fiche interne — {{ entreprise_nom }}. Ne contient aucun prix d'achat ni aucune marge.
+  </div>
+
+</div>
+</body>
+</html>

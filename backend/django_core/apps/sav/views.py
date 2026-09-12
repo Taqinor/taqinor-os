@@ -6,6 +6,7 @@ from django.db import transaction, IntegrityError
 from django.db.models import F, Q
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
@@ -31,7 +32,7 @@ from .models import (
     WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
 )
 from .services import add_months
-from .pdf import rapport_intervention_pdf
+from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
     PieceConsommeeSerializer, PieceRetireeSerializer, PretEquipementSerializer,
@@ -1456,6 +1457,24 @@ class TicketViewSet(CompanyScopedModelViewSet):
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
             f'attachment; filename="rapport-intervention-{ticket.reference}.pdf"')
+        return resp
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=True, methods=['get'], url_path='fiche-pdf',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def fiche_pdf(self, request, pk=None):
+        """NTSRV28 — Fiche de synthèse INTERNE du ticket (PDF WeasyPrint).
+
+        Historique complet (chatter), feuille de maintenance, cause/remède,
+        pièces utilisées et signature client si présente. Destinée au
+        classeur d'intervention et à la transmission assurance/garantie —
+        JAMAIS un document commercial : aucun prix d'achat, aucune marge,
+        aucun coût interne n'y figure (verrouillé par un test)."""
+        ticket = self.get_object()
+        pdf_bytes = fiche_synthese_ticket_pdf(ticket)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="fiche-ticket-{ticket.reference}.pdf"')
         return resp
 
     @action(detail=True, methods=['get', 'post'], url_path='pieces',
