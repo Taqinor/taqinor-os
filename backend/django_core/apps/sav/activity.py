@@ -76,6 +76,15 @@ def log_note(ticket: Ticket, user, body: str) -> TicketActivity:
     )
 
 
+def log_whatsapp(ticket: Ticket, user, body: str) -> TicketActivity:
+    """NTSRV3 — journalise un message WhatsApp (canal SAV) comme interaction
+    TYPÉE du chatter (``kind='whatsapp'``)."""
+    return TicketActivity.objects.create(
+        company=ticket.company, ticket=ticket, user=user,
+        kind=TicketActivity.Kind.WHATSAPP, body=body,
+    )
+
+
 def log_email(ticket: Ticket, user, body: str) -> TicketActivity:
     """NTSRV1 — journalise un e-mail (entrant ou sortant) comme interaction
     TYPÉE du chatter (``kind='email'``), jamais comme note libre : l'inbox

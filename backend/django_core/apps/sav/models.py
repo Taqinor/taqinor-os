@@ -826,6 +826,10 @@ class Ticket(models.Model):
         MANUEL = 'manuel', 'Manuel (back-office)'
         EMAIL = 'email', 'E-mail'
         PORTAIL = 'portail', 'Portail client'
+        # NTSRV3 — canal SAV uniquement (webhook WhatsApp Business entrant,
+        # gated par clé). Ne remplace PAS le WhatsApp manuel wa.me utilisé
+        # pour les devis/factures.
+        WHATSAPP = 'whatsapp', 'WhatsApp'
 
     canal_ouverture = models.CharField(
         max_length=12, choices=CanalOuverture.choices,
@@ -1067,6 +1071,8 @@ class TicketActivity(models.Model):
         # interaction typée, pas une note libre (même patron que
         # `crm.LeadActivity.Kind.EMAIL`).
         EMAIL = 'email', 'E-mail'
+        # NTSRV3 — message WhatsApp entrant (canal SAV), même raison d'être.
+        WHATSAPP = 'whatsapp', 'WhatsApp'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,

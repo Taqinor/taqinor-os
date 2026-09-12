@@ -353,3 +353,79 @@ def portail_creer_ticket(request):
         'numero_suivi': ticket.reference,
         'suivi_token': ticket.ensure_share_token(),
     }, status=status.HTTP_201_CREATED))
+
+
+# ── NTSRV3 — Webhook WhatsApp entrant (GATED, 404 sans clé) ─────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([SavPublicThrottle])
+def whatsapp_inbound_webhook(request):
+    """NTSRV3 — Récepteur des messages WhatsApp Business entrants (canal SAV).
+
+    GATED : sans ``WHATSAPP_BUSINESS_API_KEY`` configurée, l'endpoint répond
+    404 — comme s'il n'existait pas — et AUCUN appel sortant n'est jamais
+    tenté. Aucun crash au démarrage : la clé est lue à l'appel, jamais à
+    l'import.
+
+    Tenant résolu CÔTÉ SERVEUR (``SAV_WHATSAPP_COMPANY_ID``, sinon la
+    première société) — RIEN ne vient du corps, exactement comme le récepteur
+    de leads du site (``crm.webhooks``).
+
+    Le message est rattaché au ticket WhatsApp OUVERT du client (matché par
+    NUMÉRO via ``crm.selectors.find_client_by_phone``), sinon un ticket est
+    ouvert. Un numéro inconnu ne crée jamais de ticket orphelin. Idempotent
+    par identifiant de message (``core.idempotency.dedupe_event``) : une
+    redélivrance Meta ne duplique rien.
+
+    Ce canal ne remplace PAS le WhatsApp manuel (liens wa.me) utilisé pour
+    les devis/factures : il est réservé au SAV.
+    """
+    import os
+
+    from django.conf import settings
+
+    from .services import (
+        extraire_message_whatsapp, traiter_message_whatsapp, whatsapp_api_key,
+    )
+
+    if not whatsapp_api_key():
+        return _not_found()
+
+    message_id, telephone, texte = extraire_message_whatsapp(request.data)
+    if not telephone:
+        return _noindex(Response(
+            {'detail': 'Aucun message exploitable dans la charge utile.'},
+            status=status.HTTP_400_BAD_REQUEST))
+
+    from authentication.models import Company
+
+    company_id = (getattr(settings, 'SAV_WHATSAPP_COMPANY_ID', None)
+                  or os.environ.get('SAV_WHATSAPP_COMPANY_ID') or '')
+    company = None
+    try:
+        company = Company.objects.filter(pk=int(str(company_id).strip())).first()
+    except (TypeError, ValueError):
+        company = None
+    if company is None:
+        company = Company.objects.order_by('id').first()
+    if company is None:
+        return _not_found()
+
+    if message_id:
+        from core.idempotency import dedupe_event
+        if not dedupe_event(company=company, source='sav_whatsapp_inbound',
+                            event_id=message_id):
+            return _noindex(Response({'detail': 'Déjà traité.'},
+                                     status=status.HTTP_200_OK))
+
+    ticket, cree = traiter_message_whatsapp(
+        company, message_id=message_id, telephone=telephone, texte=texte)
+    if ticket is None:
+        # Numéro inconnu : accusé de réception (Meta ne doit pas rejouer),
+        # aucun ticket orphelin créé.
+        return _noindex(Response({'detail': 'Message ignoré.'},
+                                 status=status.HTTP_200_OK))
+    return _noindex(Response(
+        {'reference': ticket.reference, 'cree': cree},
+        status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK))

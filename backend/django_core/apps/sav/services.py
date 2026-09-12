@@ -1787,6 +1787,112 @@ def register_email_ticket_handler():
     register_handler(handler_ticket_entrant)
 
 
+# ── NTSRV3 — Canal WhatsApp entrant (GATED par clé, no-op sans clé) ─────────
+
+def whatsapp_api_key():
+    """NTSRV3 — clé WhatsApp Business configurée, ou chaîne vide.
+
+    Précédence : ``settings.WHATSAPP_BUSINESS_API_KEY`` (posé par
+    ``override_settings`` en test / par l'env en prod) puis la variable
+    d'environnement du même nom. Vide = intégration ÉTEINTE : le webhook
+    répond 404 et AUCUN appel sortant n'est jamais tenté."""
+    import os
+
+    from django.conf import settings
+
+    valeur = getattr(settings, 'WHATSAPP_BUSINESS_API_KEY', None)
+    if valeur is None:
+        valeur = os.environ.get('WHATSAPP_BUSINESS_API_KEY', '')
+    return (valeur or '').strip()
+
+
+def extraire_message_whatsapp(payload):
+    """NTSRV3 — ``(message_id, telephone, texte)`` d'une charge utile WhatsApp
+    Cloud API, ou ``(None, None, None)`` si elle n'en contient aucun.
+
+    Accepte la forme officielle Meta
+    (``entry[].changes[].value.messages[]``) ET une forme plate
+    ``{'message_id', 'from', 'text'}`` (relais interne / rejeu manuel).
+    Purement défensive : jamais d'exception sur une charge inattendue."""
+    if not isinstance(payload, dict):
+        return (None, None, None)
+
+    for entry in (payload.get('entry') or []):
+        if not isinstance(entry, dict):
+            continue
+        for change in (entry.get('changes') or []):
+            valeur = (change or {}).get('value') or {}
+            for message in (valeur.get('messages') or []):
+                if not isinstance(message, dict):
+                    continue
+                texte = ((message.get('text') or {}).get('body')
+                         if isinstance(message.get('text'), dict)
+                         else message.get('text'))
+                return (str(message.get('id') or '').strip(),
+                        str(message.get('from') or '').strip(),
+                        (texte or '').strip())
+
+    telephone = str(payload.get('from') or payload.get('telephone') or '').strip()
+    if telephone:
+        texte = payload.get('text')
+        if isinstance(texte, dict):
+            texte = texte.get('body')
+        return (str(payload.get('message_id') or payload.get('id') or '').strip(),
+                telephone, (texte or '').strip())
+    return (None, None, None)
+
+
+def ticket_whatsapp_ouvert(company, client):
+    """NTSRV3 — ticket OUVERT le plus récent de ce client déjà ouvert par
+    WhatsApp, ou ``None`` (on ne rattache jamais un message WhatsApp à un
+    ticket ouvert par un AUTRE canal : cela mélangerait deux conversations)."""
+    from .models import Ticket
+
+    return (Ticket.objects
+            .filter(company=company, client=client, annule=False,
+                    statut__in=Ticket.OPEN_STATUTS,
+                    canal_ouverture=Ticket.CanalOuverture.WHATSAPP)
+            .order_by('-date_creation', '-id')
+            .first())
+
+
+def traiter_message_whatsapp(company, *, message_id, telephone, texte):
+    """NTSRV3 — rattache un message WhatsApp entrant au ticket ouvert du
+    client (matché par NUMÉRO via ``crm.selectors.find_client_by_phone``), ou
+    en ouvre un nouveau. Renvoie ``(ticket, cree)`` ou ``(None, False)``
+    quand le numéro ne correspond à aucun client (aucun ticket orphelin —
+    même règle que les canaux e-mail)."""
+    from apps.crm.selectors import find_client_by_phone
+    from apps.ventes.utils.references import create_with_reference
+
+    from . import activity
+    from .models import Ticket
+
+    client = find_client_by_phone(company, telephone)
+    if client is None:
+        return (None, False)
+
+    ticket = ticket_whatsapp_ouvert(company, client)
+    cree = False
+    if ticket is None:
+        def _create(ref):
+            return Ticket.objects.create(
+                company=company, reference=ref, client=client,
+                type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+                canal_ouverture=Ticket.CanalOuverture.WHATSAPP,
+                date_ouverture=timezone.localdate(),
+                description=(texte or 'Message WhatsApp reçu')[:4000])
+        # AUD519 — même échéance SLA que le chemin manuel.
+        ticket = poser_sla_due_at(
+            create_with_reference(Ticket, 'SAV', company, _create))
+        cree = True
+
+    activity.log_whatsapp(
+        ticket, None,
+        f'WhatsApp reçu de {telephone}' + (f'\n\n{texte}' if texte else ''))
+    return (ticket, cree)
+
+
 def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
                        user=None):
     """NTSRV1 — envoie une réponse e-mail depuis un ticket et logue le fil.

@@ -15,7 +15,7 @@ from .views import (
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
     sav_resume_par_equipe, sav_file_action,
 )
-from .public_views import portail_creer_ticket
+from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
 
 router = DefaultRouter()
@@ -81,6 +81,10 @@ urlpatterns = [
     # du compte portail ; AllowAny + throttle déclarés sur la vue elle-même).
     path('portail/tickets/', portail_creer_ticket,
          name='sav-portail-creer-ticket'),
+    # NTSRV3 — Webhook WhatsApp entrant (canal SAV). GATED : 404 tant que
+    # WHATSAPP_BUSINESS_API_KEY n'est pas configurée.
+    path('webhooks/whatsapp-inbound/', whatsapp_inbound_webhook,
+         name='sav-whatsapp-inbound'),
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),
