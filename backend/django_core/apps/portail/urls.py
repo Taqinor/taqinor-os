@@ -33,6 +33,7 @@ from .views_client import (
 )
 from .views_externes import (
     MesBcfPortailFournisseurViewSet,
+    MesCommissionsPortailPartenaireViewSet,
     MesSoumissionsPortailPartenaireViewSet,
     candidature_fournisseur,
     tableau_de_bord_fournisseur,
@@ -80,6 +81,9 @@ router.register(r'mes-bons-commande', MesBcfPortailFournisseurViewSet,
 # (anti-doublon 30 jours) et suit leur avancement.
 router.register(r'mes-soumissions', MesSoumissionsPortailPartenaireViewSet,
                 basename='portail-mes-soumissions')
+# NTPRT30 — « Mes commissions » : relevé (écran) + export PDF, lecture seule.
+router.register(r'mes-commissions', MesCommissionsPortailPartenaireViewSet,
+                basename='portail-mes-commissions')
 
 urlpatterns = [
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et

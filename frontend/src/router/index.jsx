@@ -118,6 +118,8 @@ const PortalPartenaireLayout = lazy(() => import('../features/portail/partenaire
 const PortailPartenaireAccueil = lazy(() => import('../features/portail/partenaire/PortailPartenaireAccueil'))
 // NTPRT28 — deal registration : enregistrer une affaire + suivi des soumissions.
 const PortailPartenaireLeads = lazy(() => import('../features/portail/partenaire/PortailPartenaireLeads'))
+// NTPRT30 — relevé de commissions du partenaire (écran + export PDF).
+const PortailPartenaireCommissions = lazy(() => import('../features/portail/partenaire/PortailPartenaireCommissions'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -476,6 +478,12 @@ const router = createBrowserRouter([
     path: '/portail/partenaire/affaires',
     loader: portalLoader(PORTEE_PARTENAIRE),
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireLeads /></WithPortal>,
+  },
+  // NTPRT30 — « Mes commissions » : relevé + PDF, lecture seule.
+  {
+    path: '/portail/partenaire/commissions',
+    loader: portalLoader(PORTEE_PARTENAIRE),
+    element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireCommissions /></WithPortal>,
   },
 
   // ODY2 — Menu d'accueil : la grille de MES apps. `/dashboard` reste une route

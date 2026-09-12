@@ -86,6 +86,15 @@ const portailApi = {
       detail: (id) => api.get(`/portail/mes-soumissions/${id}/`),
       creer: (payload) => api.post('/portail/mes-soumissions/', payload),
     },
+    // NTPRT30 — relevé de commissions (lecture seule) + son PDF. Le PDF est
+    // un FICHIER : `responseType: 'blob'`. Il porte le MÊME total que l'écran
+    // (le serveur ne calcule le relevé qu'une fois).
+    commissions: {
+      releve: (params) => api.get('/portail/mes-commissions/', { params }),
+      pdf: (params) => api.get('/portail/mes-commissions/pdf/', {
+        params, responseType: 'blob',
+      }),
+    },
   },
   // PACT96-101 — administration ERP du portail (ComptePortailClient et son
   // provisioning, preuve d'acceptation de devis, rapprochement des paiements,

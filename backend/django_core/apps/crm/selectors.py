@@ -3642,6 +3642,92 @@ def soumissions_partenaire_portail(company, partenaire_id):
         company=company, partenaire_id=partenaire_id)]
 
 
+def releve_commissions_partenaire(company, partenaire_id, debut=None,
+                                  fin=None):
+    """NTPRT30 — relevé des commissions DU partenaire, sur une période.
+
+    Point d'entrée cross-app LECTURE SEULE de ``apps.portail`` (jamais un
+    import de ``apps.crm.models`` depuis portail). Borné au couple (société,
+    partenaire) : un partenaire absent de CETTE société renvoie un relevé VIDE,
+    jamais les commissions d'un autre.
+
+    ``debut``/``fin`` sont des ``date`` INCLUSIVES appliquées à la date de
+    création de la commission ; omises, le relevé couvre tout l'historique.
+
+    Le TOTAL est, par construction, la somme des montants des lignes RENDUES —
+    jamais un agrégat calculé sur un autre périmètre que celui affiché (c'est
+    exactement le critère d'acceptation NTPRT30). ``due``/``payee``/``annulee``
+    en sont les trois sous-sommes : elles s'additionnent au total, à l'unité
+    près.
+    """
+    from decimal import Decimal
+
+    vide = {
+        'partenaire_nom': '',
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+        'lignes': [],
+        'totaux': {'due': '0', 'payee': '0', 'annulee': '0', 'total': '0'},
+    }
+    if company is None or not partenaire_id:
+        return vide
+
+    from .models import CommissionPartenaire, Partenaire
+
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return vide
+
+    qs = CommissionPartenaire.objects.filter(
+        company=company, partenaire=partenaire)
+    if debut is not None:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_creation__date__lte=fin)
+
+    lignes = []
+    sous_totaux = {
+        CommissionPartenaire.Statut.DUE: Decimal('0'),
+        CommissionPartenaire.Statut.PAYEE: Decimal('0'),
+        CommissionPartenaire.Statut.ANNULEE: Decimal('0'),
+    }
+    total = Decimal('0')
+    for c in qs.order_by('-date_creation', '-id'):
+        montant = c.montant or Decimal('0')
+        total += montant
+        if c.statut in sous_totaux:
+            sous_totaux[c.statut] += montant
+        lignes.append({
+            'id': c.id,
+            'date_creation': (c.date_creation.isoformat()
+                              if c.date_creation else None),
+            # Références opaques : le partenaire sait SUR QUOI porte sa
+            # commission, jamais le contenu du devis ni celui du lead.
+            'devis_id': c.devis_id,
+            'lead_id': c.lead_id,
+            'base_ht': str(c.base_ht or Decimal('0')),
+            'taux': str(c.taux or Decimal('0')),
+            'montant': str(montant),
+            'statut': c.statut,
+            'statut_display': c.get_statut_display(),
+            'paye_le': c.paye_le.isoformat() if c.paye_le else None,
+        })
+
+    return {
+        'partenaire_nom': partenaire.nom,
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+        'lignes': lignes,
+        'totaux': {
+            'due': str(sous_totaux[CommissionPartenaire.Statut.DUE]),
+            'payee': str(sous_totaux[CommissionPartenaire.Statut.PAYEE]),
+            'annulee': str(sous_totaux[CommissionPartenaire.Statut.ANNULEE]),
+            'total': str(total),
+        },
+    }
+
+
 def pipeline_pondere_par_entite(company, entite_ids):
     """NTADM25 — pipeline PONDÉRÉ-PROBABILITÉ agrégé PAR ENTITÉ (NTADM2).
 

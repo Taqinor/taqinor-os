@@ -311,6 +311,133 @@ class MesSoumissionsPortailPartenaireViewSet(viewsets.ViewSet):
                         status=status.HTTP_201_CREATED)
 
 
+class MesCommissionsPortailLigneSerializer(serializers.Serializer):
+    """Une ligne de commission telle que le portail la montre au partenaire.
+
+    Reflet EXACT de ``apps.crm.selectors.releve_commissions_partenaire``. Le
+    devis et le lead ne sont que des RÉFÉRENCES opaques : le partenaire sait
+    sur quoi porte sa commission, jamais ce que contient le dossier.
+    """
+    id = serializers.IntegerField()
+    date_creation = serializers.DateTimeField(allow_null=True)
+    devis_id = serializers.IntegerField(allow_null=True)
+    lead_id = serializers.IntegerField(allow_null=True)
+    base_ht = serializers.CharField()
+    taux = serializers.CharField()
+    montant = serializers.CharField()
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    paye_le = serializers.DateField(allow_null=True)
+
+
+class MesCommissionsPortailTotauxSerializer(serializers.Serializer):
+    """Sous-sommes du relevé. Elles s'additionnent au total, par
+    construction : ce sont les mêmes lignes."""
+    due = serializers.CharField()
+    payee = serializers.CharField()
+    annulee = serializers.CharField()
+    total = serializers.CharField()
+
+
+class MesCommissionsPortailReleveSerializer(serializers.Serializer):
+    """Le relevé complet servi au partenaire."""
+    partenaire_nom = serializers.CharField(allow_blank=True)
+    debut = serializers.DateField(allow_null=True)
+    fin = serializers.DateField(allow_null=True)
+    lignes = serializers.ListField(child=MesCommissionsPortailLigneSerializer())
+    totaux = MesCommissionsPortailTotauxSerializer()
+
+
+#: NTPRT30 — bornes de période du relevé (facultatives, INCLUSIVES).
+_PARAMS_PERIODE = [
+    OpenApiParameter(
+        name='debut', type=OpenApiTypes.DATE,
+        location=OpenApiParameter.QUERY, required=False,
+        description='Début de période (AAAA-MM-JJ, inclus).'),
+    OpenApiParameter(
+        name='fin', type=OpenApiTypes.DATE,
+        location=OpenApiParameter.QUERY, required=False,
+        description='Fin de période (AAAA-MM-JJ, incluse).'),
+]
+
+
+class MesCommissionsPortailPartenaireViewSet(viewsets.ViewSet):
+    """NTPRT30 — « Mes commissions » : relevé + export PDF, portail PARTENAIRE.
+
+    Lecture SEULE : le partenaire consulte, il ne solde jamais sa propre
+    commission (``marquer_payee`` reste une action INTERNE). Le partenaire est
+    résolu depuis le compte connecté ; la lecture passe par
+    ``apps.crm.selectors`` — jamais un import de ses ``models``.
+
+    L'écran et le PDF consomment le MÊME relevé : le total du PDF est, par
+    construction, celui affiché, lui-même somme des lignes rendues (critère
+    d'acceptation NTPRT30). Le PDF emprunte ``core.pdf.render_pdf`` (ARC11),
+    jamais le moteur de devis premium (règle #4).
+    """
+
+    permission_classes = [IsPortalPartenaireUser]
+    serializer_class = MesCommissionsPortailReleveSerializer
+
+    @staticmethod
+    def _bornes(request):
+        """``(debut, fin, erreur)`` — une borne illisible NOMME son champ."""
+        from django.utils.dateparse import parse_date
+
+        bornes = {}
+        for champ in ('debut', 'fin'):
+            brute = (request.query_params.get(champ) or '').strip()
+            if not brute:
+                bornes[champ] = None
+                continue
+            valeur = parse_date(brute)
+            if valeur is None:
+                return None, None, {
+                    champ: 'Date invalide : utilisez le format AAAA-MM-JJ.'}
+            bornes[champ] = valeur
+        return bornes['debut'], bornes['fin'], None
+
+    def _releve(self, request):
+        from apps.crm.selectors import releve_commissions_partenaire
+
+        debut, fin, erreur = self._bornes(request)
+        if erreur is not None:
+            return None, erreur
+        return releve_commissions_partenaire(
+            request.user.company, portal_scope_id(request.user),
+            debut=debut, fin=fin), None
+
+    @extend_schema(parameters=_PARAMS_PERIODE,
+                   responses=MesCommissionsPortailReleveSerializer)
+    def list(self, request):
+        releve, erreur = self._releve(request)
+        if erreur is not None:
+            return Response(erreur, status=status.HTTP_400_BAD_REQUEST)
+        return Response(releve)
+
+    @extend_schema(parameters=_PARAMS_PERIODE,
+                   responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @action(detail=False, methods=['get'], url_path='pdf',
+            permission_classes=[IsPortalPartenaireUser])
+    def pdf(self, request):
+        """Relevé en PDF — même contenu et même total que l'écran."""
+        from django.http import HttpResponse
+
+        from .branding import marque_portail
+        from .pdf_commissions import render_releve_commissions_pdf
+
+        releve, erreur = self._releve(request)
+        if erreur is not None:
+            return Response(erreur, status=status.HTTP_400_BAD_REQUEST)
+
+        societe = marque_portail(request.user.company).get('nom_affichage', '')
+        pdf = render_releve_commissions_pdf(releve, societe=societe)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            'attachment; filename="releve-commissions.pdf"')
+        reponse['X-Content-Type-Options'] = 'nosniff'
+        return reponse
+
+
 class CandidatureFournisseurThrottle(SimpleRateThrottle):
     """NTPRT25 — même patron de limitation que XPUR22 (par IP, cache-based,
     aucune dépendance nouvelle). Un formulaire d'auto-inscription PUBLIC est
