@@ -6,7 +6,7 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    JournalDestruction, LegalHold, PlanTraitementRisque,
+    ControleInterne, JournalDestruction, LegalHold, PlanTraitementRisque,
     PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, ViolationDonnees,
 )
 
@@ -293,3 +293,31 @@ class RevueRisqueSerializer(serializers.ModelSerializer):
                 'prochaine_revue': 'La prochaine revue doit être postérieure '
                                    'à celle qu\'on enregistre.'})
         return attrs
+
+
+class ControleInterneSerializer(serializers.ModelSerializer):
+    """NTGRC16 — contrôle interne de la bibliothèque (SOX-lite)."""
+
+    domaine_libelle = serializers.CharField(
+        source='get_domaine_display', read_only=True)
+    type_libelle = serializers.CharField(
+        source='get_type_display', read_only=True)
+    frequence_libelle = serializers.CharField(
+        source='get_frequence_display', read_only=True)
+
+    class Meta:
+        model = ControleInterne
+        fields = [
+            'id', 'code', 'intitule', 'objectif',
+            'domaine', 'domaine_libelle', 'type', 'type_libelle',
+            'frequence', 'frequence_libelle', 'proprietaire',
+            'reference_cadre', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_code(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                'Le code du contrôle est obligatoire.')
+        return valeur

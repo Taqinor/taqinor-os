@@ -11,14 +11,14 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    JournalDestruction, LegalHold, PlanTraitementRisque,
+    ControleInterne, JournalDestruction, LegalHold, PlanTraitementRisque,
     PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, ViolationDonnees,
 )
 from .serializers import (
-    JournalDestructionSerializer, LegalHoldSerializer,
-    PlanTraitementRisqueSerializer, PolitiqueRetentionObjetSerializer,
-    RevueRisqueSerializer, RisqueEntrepriseSerializer,
-    ViolationDonneesSerializer,
+    ControleInterneSerializer, JournalDestructionSerializer,
+    LegalHoldSerializer, PlanTraitementRisqueSerializer,
+    PolitiqueRetentionObjetSerializer, RevueRisqueSerializer,
+    RisqueEntrepriseSerializer, ViolationDonneesSerializer,
 )
 
 
@@ -278,3 +278,23 @@ class RevueRisqueViewSet(CompanyScopedModelViewSet):
         qs = _dus(request.user.company, within=within)
         return Response({
             'results': RisqueEntrepriseSerializer(qs, many=True).data})
+
+
+class ControleInterneViewSet(CompanyScopedModelViewSet):
+    """NTGRC16 — bibliothèque des contrôles internes (SOX-lite)."""
+
+    queryset = ControleInterne.objects.all()
+    serializer_class = ControleInterneSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        domaine = (self.request.query_params.get('domaine') or '').strip()
+        if domaine:
+            qs = qs.filter(domaine=domaine)
+        actif = (self.request.query_params.get('actif') or '').strip()
+        if actif in ('1', 'true', 'True', 'oui'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False', 'non'):
+            qs = qs.filter(actif=False)
+        return qs

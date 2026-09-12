@@ -639,3 +639,103 @@ class RevueRisque(TenantModel):
     def __str__(self):
         return (f'Revue {self.date_revue:%d/%m/%Y} — '
                 f'{self.get_decision_display()}')
+
+
+class ControleInterne(TenantModel):
+    """NTGRC16 — bibliothèque des contrôles internes (SOX-lite).
+
+    Un contrôle DÉCRIT ce qu'on vérifie, à quelle fréquence et qui en répond.
+    Il ne porte AUCUN résultat : les exécutions vivent dans ``TestControle``
+    (NTGRC17). Séparer les deux est ce qui permet de dire « ce contrôle
+    mensuel n'a pas été testé ce mois-ci » — un modèle unique ne saurait que
+    dire « le dernier test remonte à… ».
+    """
+
+    DOMAINE_CHOICES = [
+        ('acces', 'Gestion des accès'),
+        ('segregation_taches', 'Séparation des tâches'),
+        ('cloture_compta', 'Clôture comptable'),
+        ('achats', 'Achats'),
+        ('paie', 'Paie'),
+        ('si', "Système d'information"),
+        ('sauvegarde', 'Sauvegarde & continuité'),
+    ]
+
+    TYPE_PREVENTIF = 'preventif'
+    TYPE_DETECTIF = 'detectif'
+    TYPE_CHOICES = [
+        (TYPE_PREVENTIF, 'Préventif'),
+        (TYPE_DETECTIF, 'Détectif'),
+    ]
+
+    FREQ_PERMANENT = 'permanent'
+    FREQ_QUOTIDIEN = 'quotidien'
+    FREQ_HEBDO = 'hebdo'
+    FREQ_MENSUEL = 'mensuel'
+    FREQ_TRIMESTRIEL = 'trimestriel'
+    FREQ_ANNUEL = 'annuel'
+    FREQUENCE_CHOICES = [
+        (FREQ_PERMANENT, 'Permanent'),
+        (FREQ_QUOTIDIEN, 'Quotidien'),
+        (FREQ_HEBDO, 'Hebdomadaire'),
+        (FREQ_MENSUEL, 'Mensuel'),
+        (FREQ_TRIMESTRIEL, 'Trimestriel'),
+        (FREQ_ANNUEL, 'Annuel'),
+    ]
+
+    #: Fenêtre de fraîcheur d'un test, en jours, par fréquence. Un contrôle
+    #: « permanent » est vérifié en continu : sa fenêtre est celle du mois.
+    FENETRE_JOURS = {
+        FREQ_PERMANENT: 30,
+        FREQ_QUOTIDIEN: 1,
+        FREQ_HEBDO: 7,
+        FREQ_MENSUEL: 30,
+        FREQ_TRIMESTRIEL: 90,
+        FREQ_ANNUEL: 365,
+    }
+
+    CADRE_CHOICES = [
+        ('ISO27001', 'ISO 27001'),
+        ('SOX', 'SOX'),
+        ('CGNC', 'CGNC'),
+        ('interne', 'Référentiel interne'),
+    ]
+
+    code = models.CharField('Code', max_length=40)
+    intitule = models.CharField('Intitulé', max_length=200)
+    objectif = models.TextField('Objectif', blank=True, default='')
+    domaine = models.CharField(
+        'Domaine', max_length=20, choices=DOMAINE_CHOICES, default='acces')
+    type = models.CharField(
+        'Type', max_length=10, choices=TYPE_CHOICES, default=TYPE_PREVENTIF)
+    frequence = models.CharField(
+        'Fréquence', max_length=12, choices=FREQUENCE_CHOICES,
+        default=FREQ_MENSUEL)
+    proprietaire = models.CharField(
+        'Propriétaire', max_length=160, blank=True, default='')
+    reference_cadre = models.CharField(
+        'Référentiel', max_length=12, choices=CADRE_CHOICES,
+        default='interne')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Contrôle interne'
+        verbose_name_plural = 'Bibliothèque de contrôles internes'
+        ordering = ['code', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='grc_controleinterne_co_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'domaine'],
+                         name='grc_controle_co_domaine_idx'),
+        ]
+
+    @property
+    def fenetre_jours(self):
+        """Durée de validité d'un test efficace, selon la fréquence."""
+        return self.FENETRE_JOURS.get(self.frequence, 30)
+
+    def __str__(self):
+        return f'{self.code} — {self.intitule}'

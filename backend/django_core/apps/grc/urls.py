@@ -10,7 +10,7 @@ from rest_framework.routers import DefaultRouter
 
 from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
-    JournalDestructionViewSet, LegalHoldViewSet,
+    ControleInterneViewSet, JournalDestructionViewSet, LegalHoldViewSet,
     PlanTraitementRisqueViewSet, PolitiqueRetentionObjetViewSet,
     RevueRisqueViewSet, RisqueEntrepriseViewSet, ViolationDonneesViewSet,
 )
@@ -37,6 +37,9 @@ router.register(r'plans-traitement-risque', PlanTraitementRisqueViewSet,
 # NTGRC15 — revues périodiques du risque (journal + cadence).
 router.register(r'revues-risque', RevueRisqueViewSet,
                 basename='grc-revue-risque')
+# NTGRC16 — bibliothèque des contrôles internes (SOX-lite).
+router.register(r'controles-internes', ControleInterneViewSet,
+                basename='grc-controle-interne')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit
