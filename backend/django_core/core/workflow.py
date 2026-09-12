@@ -61,6 +61,9 @@ alimentera à terme la sélection/instanciation de ces définitions de workflow 
 ce moteur reste l'EXÉCUTION, FG25 la CONFIGURATION.
 """
 import datetime
+import hashlib
+import json
+import re
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -81,6 +84,7 @@ __all__ = [
     'etapes_sla_depassees',
     'flag_overdue_steps',
     'instance_en_cours_pour',
+    'demarrer_depuis_matrice',
 ]
 
 
@@ -366,3 +370,88 @@ def decide_step(step, *, approve, user=None, commentaire='', now=None):
             step.instance, user=user, commentaire=commentaire, now=now)
     return rejeter_etape(
         step.instance, user=user, commentaire=commentaire, now=now)
+
+
+# ── NTWFL2 — démarrage piloté par la matrice d'approbation (NTWFL1) ─────────
+
+def _signature_definition_matrice(type_objet, chaine_paliers):
+    """Code STABLE d'une ``WorkflowDefinition`` générée depuis une chaîne de
+    paliers : deux appels avec la MÊME chaîne (même ``type_objet``, mêmes
+    paliers dans le même ordre) retombent sur le même ``code`` — la
+    définition est réutilisée (mise en cache) au lieu d'être recréée à
+    chaque démarrage. Une chaîne modifiée par l'admin (palier ajouté/modifié)
+    change le hash et matérialise une NOUVELLE définition (les instances déjà
+    démarrées sur l'ancienne restent intactes, ``WorkflowInstance.definition``
+    est en PROTECT)."""
+    base = re.sub(r'[^a-z0-9]+', '_', str(type_objet or '').lower()).strip('_')
+    base = base or 'objet'
+    payload = json.dumps(chaine_paliers or [], sort_keys=True, default=str)
+    digest = hashlib.sha1(payload.encode('utf-8')).hexdigest()[:16]
+    return f'matrice_{base}_{digest}'[:64]
+
+
+def _definition_depuis_matrice(company, matrice):
+    """Construit (ou réutilise) la ``WorkflowDefinition``/``WorkflowStepDefinition``
+    correspondant à une ligne ``core.MatriceApprobation`` (NTWFL1) — comble
+    l'écart entre la matrice DÉCLARATIVE et le moteur d'EXÉCUTION : sans ce
+    pont les deux ne se déclenchaient jamais l'un l'autre. ``None`` si la
+    matrice ne porte aucun palier (rien à démarrer)."""
+    from core.models import WorkflowDefinition, WorkflowStepDefinition
+
+    paliers = matrice.chaine_paliers or []
+    if not paliers:
+        return None
+
+    code = _signature_definition_matrice(matrice.type_objet, paliers)
+    definition = WorkflowDefinition.objects.filter(
+        company=company, code=code).first()
+    if definition is not None:
+        return definition
+
+    nom = f'Matrice {matrice.type_objet}'
+    if matrice.departement:
+        nom = f'{nom} — {matrice.departement}'
+    definition = WorkflowDefinition.objects.create(
+        company=company, code=code, nom=nom,
+        description=(
+            'Définition générée automatiquement depuis '
+            'core.MatriceApprobation (NTWFL2) — ne pas éditer à la main, '
+            "modifier la matrice d'approbation source à la place."))
+    for i, palier in enumerate(paliers, start=1):
+        palier = palier if isinstance(palier, dict) else {}
+        WorkflowStepDefinition.objects.create(
+            definition=definition,
+            ordre=i,
+            nom=palier.get('nom') or f"Palier {palier.get('palier', i)}",
+            type_approbation=WorkflowStepDefinition.APPROBATION_MANUELLE,
+            role_requis=palier.get('role_requis') or '',
+        )
+    return definition
+
+
+def demarrer_depuis_matrice(
+        target, type_objet, montant, company, *,
+        departement=None, user=None, now=None):
+    """NTWFL2 — résout ``core.MatriceApprobation`` (NTWFL1) pour
+    (``type_objet``, ``montant``, ``departement``) et démarre un
+    ``WorkflowInstance`` conforme sur ``target``.
+
+    Renvoie ``None`` — SANS RIEN CRÉER — si aucune ligne de matrice active ne
+    couvre le cas : l'appelant garde alors son comportement PRÉEXISTANT
+    inchangé (c'est le point d'entrée additif qui « comble l'écart entre la
+    matrice déclarative et le moteur d'exécution qui aujourd'hui ne se
+    déclenchent jamais l'un l'autre »). Avec une matrice couvrante, la
+    ``WorkflowDefinition`` est construite À LA VOLÉE (ou réutilisée par
+    signature de chaîne, voir ``_definition_depuis_matrice``) puis
+    ``demarrer_workflow`` instancie et active la première étape normalement.
+    """
+    from core.selectors import resoudre_matrice
+
+    matrice = resoudre_matrice(
+        company, type_objet, montant=montant, departement=departement)
+    if matrice is None:
+        return None
+    definition = _definition_depuis_matrice(company, matrice)
+    if definition is None:
+        return None
+    return demarrer_workflow(definition, target, company, user=user, now=now)
