@@ -85,6 +85,9 @@ __all__ = [
     'flag_overdue_steps',
     'instance_en_cours_pour',
     'demarrer_depuis_matrice',
+    'decide_step',
+    'register_delegation_resolver',
+    'delegants_actifs_pour',
 ]
 
 
@@ -358,18 +361,66 @@ def pending_steps_for_company(company):
     )
 
 
-def decide_step(step, *, approve, user=None, commentaire='', now=None):
+def decide_step(
+        step, *, approve, user=None, commentaire='', now=None,
+        on_behalf_of=None):
     """XKB1 — approuve/rejette une étape BPM en attente en résolvant son
     ``WorkflowInstance`` propriétaire (l'agrégateur ne connaît que l'étape).
 
     ``approve=True`` → ``approuver_etape`` ; ``approve=False`` →
     ``rejeter_etape``. Délègue entièrement à ces fonctions existantes (mêmes
-    garde-fous, même transaction atomique)."""
+    garde-fous, même transaction atomique).
+
+    NTWFL3 — ``on_behalf_of`` (délégant, optionnel) journalise la décision
+    comme prise « au nom de » ce délégant : AUCUNE nouvelle colonne (le
+    modèle ``WorkflowStepInstance`` reste inchangé, cf. Files de la tâche) —
+    la mention est préfixée dans le ``commentaire`` existant. ``None``
+    (défaut) préserve EXACTEMENT le comportement historique pour tout appel
+    existant qui ne passe pas ce paramètre."""
+    if on_behalf_of is not None:
+        commentaire = (
+            f'[Décidé par {user} au nom de {on_behalf_of}] {commentaire}'
+        ).strip()
     if approve:
         return approuver_etape(
             step.instance, user=user, commentaire=commentaire, now=now)
     return rejeter_etape(
         step.instance, user=user, commentaire=commentaire, now=now)
+
+
+# ── NTWFL3 — délégation de vacances (XKB3) branchée sur le moteur BPM ───────
+#
+# ``core`` reste FONDATION (contrat import-linter
+# core-foundation-is-a-base-layer) : il n'importe JAMAIS ``apps.automation``.
+# Le résolveur réel (``ApprovalDelegation.delegants_actifs_pour``) est
+# enregistré par ``apps.automation.apps.AutomationConfig.ready()`` — même
+# patron que ``core.retention.register_retention_policy``. Sans app
+# ``automation`` chargée (ou en tests qui n'en ont pas besoin), le registre
+# reste ``None`` et toute résolution renvoie une liste vide (neutre).
+_delegation_resolver = None
+
+
+def register_delegation_resolver(fn):
+    """Enregistre ``fn(suppleant, company, at=None) -> [delegant_id, ...]``.
+
+    Appelé par ``apps.automation.apps.ready()`` (NTWFL3). Un second appel
+    REMPLACE le résolveur (utile aux tests qui veulent l'isoler) — jamais
+    d'accumulation silencieuse."""
+    global _delegation_resolver
+    _delegation_resolver = fn
+
+
+def delegants_actifs_pour(suppleant, company, at=None):
+    """NTWFL3 — IDs des délégants pour lesquels ``suppleant`` détient une
+    délégation ACTIVE (via le résolveur enregistré, cf. ci-dessus). Liste
+    vide si aucun résolveur enregistré ou aucune délégation active — ne
+    lève jamais (une délégation ne doit jamais faire planter une décision)."""
+    if _delegation_resolver is None:
+        return []
+    try:
+        return list(_delegation_resolver(suppleant, company, at=at) or [])
+    except Exception:  # pragma: no cover - défensif
+        return []
 
 
 # ── NTWFL2 — démarrage piloté par la matrice d'approbation (NTWFL1) ─────────

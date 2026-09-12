@@ -126,6 +126,20 @@ def resoudre_matrice(company, type_objet, montant=None, departement=None):
     return candidats[0]
 
 
+# ── NTWFL3 — délégation de vacances (XKB3) appliquée aux étapes BPM ─────────
+
+def delegants_actifs_pour(suppleant, company, at=None):
+    """NTWFL3 — adaptateur mince : IDs des délégants pour lesquels
+    ``suppleant`` détient une délégation ACTIVE, pour affichage/décision
+    « au nom de » des étapes ``core.WorkflowStepInstance``.
+
+    ``core`` reste fondation : délègue à ``core.workflow.delegants_actifs_pour``
+    (registre branché par ``apps.automation``, jamais un import direct de
+    cette app depuis ``core``). Liste vide si aucune délégation active."""
+    from core.workflow import delegants_actifs_pour as _resoudre
+    return _resoudre(suppleant, company, at=at)
+
+
 def resolve_email_signature(company, nom_societe='', **context) -> str:
     """Signature à apposer au bas d'un email transactionnel d'une société.
 

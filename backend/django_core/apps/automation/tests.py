@@ -1633,3 +1633,48 @@ class ZCtr8InfoRequestedTests(TestCase):
         # rang suivant (2) est désormais celui attendu.
         self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
         self.assertEqual(services.rank_of_next_approver(req), 2)
+
+
+# ── NTWFL3 — délégation de vacances étendue aux étapes BPM (core.workflow) ──
+
+class Ntwfl3DelegantsActifsPourTests(TestCase):
+    """``ApprovalDelegation.delegants_actifs_pour`` — étend XKB3 aux étapes
+    ``core.WorkflowStepInstance`` SANS nouvelle table (réutilise ce modèle)."""
+
+    def setUp(self):
+        self.co = make_company('ntwfl3-a', 'NTWFL3 A')
+        self.autre = make_company('ntwfl3-b', 'NTWFL3 B')
+        self.delegant = make_user(self.co, 'ntwfl3-delegant', 'admin')
+        self.suppleant = make_user(self.co, 'ntwfl3-suppleant', 'admin')
+
+    def test_delegation_active_renvoie_le_delegant(self):
+        now = timezone.now()
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=now - timedelta(days=1),
+            date_fin=now + timedelta(days=1))
+        ids = ApprovalDelegation.delegants_actifs_pour(
+            self.suppleant, self.co, at=now)
+        self.assertEqual(ids, [self.delegant.id])
+
+    def test_hors_plage_liste_vide(self):
+        past = timezone.now() - timedelta(days=30)
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=past - timedelta(days=5), date_fin=past)
+        ids = ApprovalDelegation.delegants_actifs_pour(
+            self.suppleant, self.co, at=timezone.now())
+        self.assertEqual(ids, [])
+
+    def test_isolation_tenant(self):
+        now = timezone.now()
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=now - timedelta(days=1),
+            date_fin=now + timedelta(days=1))
+        ids = ApprovalDelegation.delegants_actifs_pour(
+            self.suppleant, self.autre, at=now)
+        self.assertEqual(ids, [])

@@ -35,3 +35,11 @@ class AutomationConfig(AppConfig):
                 apply_,
             ),
         )
+        # NTWFL3 — branche la délégation de vacances (XKB3, ApprovalDelegation)
+        # sur le moteur BPM ``core.workflow`` SANS que ``core`` importe cette
+        # app (contrat import-linter core-foundation-is-a-base-layer) : `core`
+        # expose un registre (``register_delegation_resolver``), c'est
+        # ``automation`` qui s'y branche depuis son propre ``ready()``.
+        from core.workflow import register_delegation_resolver
+        from .models import ApprovalDelegation
+        register_delegation_resolver(ApprovalDelegation.delegants_actifs_pour)
