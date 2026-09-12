@@ -17,7 +17,8 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
-from .serializers import (CapacitesRequeteSerializer, ExtraireRequeteSerializer,
+from .serializers import (AnalyseContratRequeteSerializer,
+                          CapacitesRequeteSerializer, ExtraireRequeteSerializer,
                           FicheCibleSerializer,
                           RechercheGlobaleRequeteSerializer,
                           UsageRequeteSerializer)
@@ -436,6 +437,61 @@ class ExtraireView(UsageContexteMixin, GenericAPIView):
             resultat = extraire_document(
                 company=request.user.company, file_bytes=contenu,
                 schema=schema)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class AnalyserContratView(UsageContexteMixin, GenericAPIView):
+    """NTAI19 — ``POST /api/django/ai/analyser-contrat/``.
+
+    Body ``{"contrat_id": 4, "document_id": 12, "confirmer": false}``. Lit la
+    pièce (OCR + gabarit contrat) et rend les dates, le montant, le préavis et
+    les clauses clés, puis PROPOSE une alerte de préavis.
+
+    Le premier appel n'écrit RIEN (``applique: false``). L'alerte n'est créée
+    que sur un second appel portant ``confirmer: true`` — et seulement si une
+    date de déclenchement a pu être ÉTABLIE (jamais inventée). La création
+    passe par le ``services.py`` de ``contrats``.
+    """
+
+    feature_key = 'ai.analyser_contrat'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = AnalyseContratRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant (périmètre explicite)."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiAnalyseContrat', {
+        'contrat_id': drf_serializers.IntegerField(),
+        'source': drf_serializers.CharField(),
+        'date_debut': drf_serializers.CharField(allow_null=True),
+        'date_fin': drf_serializers.CharField(allow_null=True),
+        'preavis_jours': drf_serializers.IntegerField(allow_null=True),
+        'montant': drf_serializers.CharField(allow_null=True),
+        'clauses': drf_serializers.JSONField(),
+        'champs_extraits': drf_serializers.JSONField(),
+        'proposition': drf_serializers.JSONField(allow_null=True),
+        'applique': drf_serializers.BooleanField(),
+    }))
+    def post(self, request):
+        from .contrat_ai import analyser_contrat
+
+        contrat_id = request.data.get('contrat_id')
+        if contrat_id in (None, ''):
+            return Response({'detail': 'contrat_id est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = analyser_contrat(
+                company=request.user.company, contrat_id=contrat_id,
+                document_id=request.data.get('document_id'),
+                confirmer=bool(request.data.get('confirmer')),
+                user=request.user)
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)

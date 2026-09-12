@@ -52,6 +52,9 @@ CIN_SCHEMA = OCRSchema(
 )
 
 # FG355 — Contrat / pièce signée.
+# NTAI19 — ÉLARGI (additif) aux échéances : ce sont elles qui font manquer un
+# préavis. Les champs historiques sont inchangés ; les nouveaux sont
+# facultatifs, donc une extraction qui ne les trouve pas reste valide.
 CONTRAT_SCHEMA = OCRSchema(
     name='contrat',
     label='Contrat / pièce',
@@ -62,6 +65,14 @@ CONTRAT_SCHEMA = OCRSchema(
         OCRField('montant_total', 'Montant total'),
         OCRField('objet', 'Objet'),
         OCRField('signataires', 'Signataires'),
+        # NTAI19 — échéances et clauses clés.
+        OCRField('date_debut', 'Date de début'),
+        OCRField('date_fin', "Date d'échéance / fin"),
+        OCRField('duree', 'Durée'),
+        OCRField('preavis', 'Préavis (durée ou nombre de jours)'),
+        # `clauses` : liste de {titre, texte} — les clauses jugées clés.
+        OCRField('clauses', 'Clauses clés'),
+        OCRField('reconduction', 'Reconduction (tacite ou non)'),
     ),
 )
 

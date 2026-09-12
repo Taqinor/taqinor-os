@@ -2,8 +2,8 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from .views import (AssistantConfigView, CrInterventionView,
-                    DescriptionProduitView, ExtraireView,
+from .views import (AnalyserContratView, AssistantConfigView,
+                    CrInterventionView, DescriptionProduitView, ExtraireView,
                     ProchainesActionsView, RapportPeriodeView,
                     RechercheGlobaleView, RedigerView, ResumeFicheView)
 from .viewsets import DocumentAiJobViewSet
@@ -29,6 +29,10 @@ urlpatterns = [
     # NTAI12 — mémo vocal → compte rendu d'intervention structuré (SAV).
     path('cr-intervention/', CrInterventionView.as_view(),
          name='ai-cr-intervention'),
+    # NTAI19 — analyse d'un contrat : échéances + proposition d'alerte de
+    # préavis (n'écrit qu'après confirmation explicite).
+    path('analyser-contrat/', AnalyserContratView.as_view(),
+         name='ai-analyser-contrat'),
     # NTAI15/NTAI16 — extraction documentaire à la demande (bulletin de paie,
     # facture fournisseur…). N'écrit rien, ne conserve pas le fichier.
     path('extraire/', ExtraireView.as_view(), name='ai-extraire'),

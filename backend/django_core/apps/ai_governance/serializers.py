@@ -181,6 +181,18 @@ class FicheCibleSerializer(serializers.Serializer):
     object_id = serializers.CharField()
 
 
+class AnalyseContratRequeteSerializer(serializers.Serializer):
+    """NTAI19 — corps de ``POST /api/django/ai/analyser-contrat/``.
+
+    ``confirmer`` est le SEUL chemin d'écriture : sans lui, l'endpoint ne fait
+    qu'analyser et proposer.
+    """
+
+    contrat_id = serializers.CharField()
+    document_id = serializers.CharField(required=False, allow_blank=True)
+    confirmer = serializers.BooleanField(required=False, default=False)
+
+
 class ExtraireRequeteSerializer(serializers.Serializer):
     """NTAI15/NTAI16 — corps de ``POST /api/django/ai/extraire/`` (multipart).
 
