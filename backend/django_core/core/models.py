@@ -3033,7 +3033,8 @@ from core.field_permissions import FieldPermissionRule  # noqa: E402,F401
 # découverte Django (app_label 'core', migrations).
 from core.ui_extensions import UiActionBouton, UiOngletCustom  # noqa: E402,F401
 
-# NTOBS3 — Rapport SLA mensuel par tenant : ``SlaSnapshot`` défini dans
-# ``core/sla.py`` (même pattern d'éclatement), réexporté ici en tout dernier
-# pour la découverte Django (app_label 'core', migrations).
-from core.sla import SlaSnapshot  # noqa: E402,F401
+# NTOBS3/NTOBS4 — Rapport SLA mensuel + barème de crédits : ``SlaSnapshot``/
+# ``SlaCreditPolicy`` définis dans ``core/sla.py`` (même pattern
+# d'éclatement), réexportés ici en tout dernier pour la découverte Django
+# (app_label 'core', migrations).
+from core.sla import SlaCreditPolicy, SlaSnapshot  # noqa: E402,F401

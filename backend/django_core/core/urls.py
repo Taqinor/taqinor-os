@@ -30,7 +30,10 @@ from .formule_api import (
     FormuleFonctionsView, FormuleTestView, FormuleValiderView,
 )
 from .rules_api import RegleOperateursView, RegleValiderView
-from .sla import SlaSnapshotListView, sla_export_pdf
+from .sla import (
+    SlaCreditsDusListView, SlaSnapshotListView, sla_credit_statut,
+    sla_export_pdf,
+)
 from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
@@ -207,4 +210,9 @@ urlpatterns = router.urls + [
     path('sla/', SlaSnapshotListView.as_view(), name='sla-list'),
     path('sla/<str:periode>/export-pdf/', sla_export_pdf,
          name='sla-export-pdf'),
+    # NTOBS4 — crédits SLA dus (Directeur/Administrateur, cross-tenant).
+    path('sla/credits/', SlaCreditsDusListView.as_view(),
+         name='sla-credits-dus'),
+    path('sla/credits/<int:pk>/statut/', sla_credit_statut,
+         name='sla-credit-statut'),
 ]
