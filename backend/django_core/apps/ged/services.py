@@ -3974,14 +3974,48 @@ def _pades_signer_disponible():
         return False
 
 
-def tsa_url_configuree():
-    """XGED5 — URL de la TSA (RFC 3161) configurée, ou '' (no-op).
+def tsa_urls_configurees():
+    """NTDOC22 — Liste ORDONNÉE des TSA (RFC 3161) à essayer, ou [].
 
-    KEY-GATED (mirroir `esign_active`/`embedding_enabled`) : sans
-    `settings.GED_TSA_URL`, l'horodatage qualifié est un no-op — le sceau
-    PAdES reste posé (si pyHanko est disponible) mais SANS horodatage TSA."""
+    XGED5 ne câblait qu'UNE seule autorité d'horodatage (`GED_TSA_URL`) : si
+    elle ne répondait pas, le document repartait sans horodatage. On accepte
+    désormais une LISTE de secours dans `GED_TSA_URLS` (séparées par des
+    virgules), essayées DANS L'ORDRE — la première qui répond gagne.
+
+    L'ordre est volontairement : `GED_TSA_URL` d'abord (l'autorité historique
+    reste prioritaire, donc AUCUNE régression pour une installation qui n'a
+    configuré qu'elle), puis les URL de `GED_TSA_URLS` non déjà présentes.
+    Aucune des deux configurée ⇒ liste vide ⇒ comportement inchangé (le sceau
+    PAdES est posé sans horodatage)."""
     from django.conf import settings
-    return (getattr(settings, 'GED_TSA_URL', '') or '').strip()
+    urls = []
+    principale = (getattr(settings, 'GED_TSA_URL', '') or '').strip()
+    if principale:
+        urls.append(principale)
+    brut = getattr(settings, 'GED_TSA_URLS', '') or ''
+    if isinstance(brut, (list, tuple)):
+        candidates = [str(u) for u in brut]
+    else:
+        candidates = str(brut).split(',')
+    for url in candidates:
+        url = url.strip()
+        if url and url not in urls:
+            urls.append(url)
+    return urls
+
+
+def tsa_url_configuree():
+    """XGED5 — URL de la TSA (RFC 3161) PRIORITAIRE configurée, ou '' (no-op).
+
+    KEY-GATED (mirroir `esign_active`/`embedding_enabled`) : sans TSA
+    configurée, l'horodatage qualifié est un no-op — le sceau PAdES reste posé
+    (si pyHanko est disponible) mais SANS horodatage TSA.
+
+    NTDOC22 — renvoie la PREMIÈRE de `tsa_urls_configurees()` : identique à
+    `GED_TSA_URL` dès qu'elle est posée (comportement XGED5 préservé), et
+    utilisable aussi quand seule la liste `GED_TSA_URLS` est configurée."""
+    urls = tsa_urls_configurees()
+    return urls[0] if urls else ''
 
 
 def _certificat_societe_pour_scellement(company):
@@ -4015,6 +4049,36 @@ def _certificat_societe_pour_scellement(company):
         return None
 
 
+def _timestamper_http(url):
+    """NTDOC22 — Horodateur RFC 3161 pour UNE URL de TSA (import paresseux).
+
+    Isolé en une fonction pour que la bascule entre TSA reste testable sans
+    pyHanko ni réseau."""
+    from pyhanko.sign.timestamps import HTTPTimeStamper
+    return HTTPTimeStamper(url)
+
+
+def _sceller_avec_timestamper(pdf_bytes, signataire, timestamper):
+    """NTDOC22 — UNE tentative de scellement PAdES avec un horodateur donné.
+
+    Isolée pour que chaque TSA de secours reparte d'un writer NEUF (le flux
+    d'entrée est consommé à chaque tentative). Lève en cas d'échec : c'est
+    l'appelant `sceller_pdf` qui décide de basculer ou de dégrader."""
+    from io import BytesIO
+
+    from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+    from pyhanko.sign import PdfSignatureMetadata, sign_pdf
+
+    writer = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
+    out = sign_pdf(
+        writer,
+        PdfSignatureMetadata(field_name='TaqinorSeal'),
+        signer=signataire,
+        timestamper=timestamper,
+    )
+    return out.getvalue()
+
+
 def sceller_pdf(pdf_bytes, *, company=None):
     """XGED5 — Scelle CRYPTOGRAPHIQUEMENT un PDF signé (PAdES, via pyHanko).
 
@@ -4025,39 +4089,40 @@ def sceller_pdf(pdf_bytes, *, company=None):
     numérique PAdES vérifiable dans n'importe quel lecteur PDF conforme ; toute
     modification ultérieure du fichier invalide le sceau.
 
-    Si `tsa_url_configuree()` renvoie une URL, un horodatage RFC 3161 est
-    demandé à cette TSA et inclus dans la signature (prépare l'« horodatage »
-    loi 43-20) — sinon le sceau est posé SANS horodatage TSA (no-op sur ce
-    volet uniquement, jamais bloquant).
+    NTDOC22 — les TSA de `tsa_urls_configurees()` sont essayées DANS L'ORDRE :
+    la première qui répond gagne, et son horodatage RFC 3161 est inclus dans la
+    signature (prépare l'« horodatage » loi 43-20). Si TOUTES échouent — ou si
+    aucune n'est configurée — le sceau est quand même posé SANS horodatage TSA :
+    l'horodatage est un PLUS, jamais un préalable bloquant.
 
     Renvoie `(out_bytes, scelle)` où `scelle` est False si la lib est absente,
     si aucun certificat n'est exploitable, ou si le scellement a échoué pour
     toute autre raison (best-effort total — ne lève JAMAIS)."""
     if not _pades_signer_disponible():
         return pdf_bytes, False
+    signataire = None
     try:
         signataire = _certificat_societe_pour_scellement(company)
-        if signataire is None:
-            return pdf_bytes, False
-        from io import BytesIO
+    except Exception:  # pragma: no cover - défensif.
+        signataire = None
+    if signataire is None:
+        return pdf_bytes, False
 
-        from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
-        from pyhanko.sign import PdfSignatureMetadata, sign_pdf
+    for tsa_url in tsa_urls_configurees():
+        try:
+            return _sceller_avec_timestamper(
+                pdf_bytes, signataire, _timestamper_http(tsa_url)), True
+        except Exception:
+            # TSA injoignable / réponse invalide : on tente la suivante.
+            logger.warning(
+                'XGED5/NTDOC22 : horodatage TSA indisponible, bascule sur la '
+                'suivante.', exc_info=True)
+            continue
 
-        timestamper = None
-        tsa_url = tsa_url_configuree()
-        if tsa_url:
-            from pyhanko.sign.timestamps import HTTPTimeStamper
-            timestamper = HTTPTimeStamper(tsa_url)
-
-        writer = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
-        out = sign_pdf(
-            writer,
-            PdfSignatureMetadata(field_name='TaqinorSeal'),
-            signer=signataire,
-            timestamper=timestamper,
-        )
-        return out.getvalue(), True
+    # Aucune TSA configurée, ou toutes en échec : on scelle SANS horodatage
+    # plutôt que de rendre un document non scellé.
+    try:
+        return _sceller_avec_timestamper(pdf_bytes, signataire, None), True
     except Exception:  # pragma: no cover - robustesse : jamais bloquer XGED4.
         return pdf_bytes, False
 
