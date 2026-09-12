@@ -19,6 +19,20 @@ const visitesApi = {
   // `visites_valider`, le SERVEUR impose commercial=self de toute façon.
   getMaJournee: (params, config) => api.get('/visites/ma-journee/', { params, ...config }),
 
+  // VTA16 — recherche lead MINIMALE, servie par l'app Visites (proxy des
+  // selectors crm) : {id, nom, ville, telephone} et RIEN d'autre — jamais la
+  // liste CRM. La permission `visites_valider` est portée par L'ENDPOINT
+  // lui-même côté serveur (Fable I2 : sinon un commercial terrain énumère
+  // l'annuaire leads au moteur de recherche) ; l'écran ne fait que refléter
+  // cette porte, il ne la remplace pas.
+  rechercherLeads: (q, config) =>
+    api.get('/visites/leads-recherche/', { params: { q }, ...config }),
+
+  // Membres de la société, pour le champ « assigner à ». Réutilise l'endpoint
+  // de fondation EXISTANT `/users/` (portée société côté serveur) — aucun
+  // nouvel endpoint, aucune donnée CRM.
+  getMembres: (config) => api.get('/users/', config),
+
   getVisites: (params, config) => api.get('/visites/visites/', { params, ...config }),
   getVisite: (id) => api.get(`/visites/visites/${id}/`),
   createVisite: (data) => api.post('/visites/visites/', data),

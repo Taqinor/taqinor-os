@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants,
    le fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes`). */
 import { lazy } from 'react'
-import { ClipboardCheck, CalendarCheck, ListChecks, Microscope } from 'lucide-react'
+import { ClipboardCheck, CalendarCheck, CalendarPlus, ListChecks, Microscope } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -32,6 +32,7 @@ const MaJourneePage = lazy(() => import('../../pages/visites/MaJourneePage'))
 const VisitesListPage = lazy(() => import('../../pages/visites/VisitesListPage'))
 const VisiteWizardPage = lazy(() => import('../../pages/visites/VisiteWizardPage'))
 const VisiteBureauEtudesPage = lazy(() => import('../../pages/visites/VisiteBureauEtudesPage'))
+const PlanifierVisitePage = lazy(() => import('../../pages/visites/PlanifierVisitePage'))
 const CalageToitPage = lazy(() => import('../../pages/visites/CalageToitPage'))
 
 // eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
@@ -66,6 +67,14 @@ const config = {
         perm: 'visites_valider',
       },
       {
+        // VTA16 — administration légère : le chemin bureau sans ouvrir le CRM.
+        to: '/visites/planifier',
+        label: 'Planifier une visite',
+        icon: navIcon(CalendarPlus),
+        roles: ROLES_VALIDER,
+        perm: 'visites_valider',
+      },
+      {
         to: '/visites/revue',
         label: 'Revue technique',
         icon: navIcon(Microscope),
@@ -76,6 +85,7 @@ const config = {
   },
   titles: [
     ['/visites/toutes', 'Visites — Toutes les visites'],
+    ['/visites/planifier', 'Visites — Planifier une visite'],
     ['/visites/revue', 'Visites — Revue technique'],
     ['/visites/', 'Visites — Visite terrain'],
     ['/visites', 'Visites — Ma journée'],
@@ -85,6 +95,7 @@ const config = {
     // VTA9 — accueil de l'app : la journée de l'utilisateur (jour + retards).
     { path: '/visites', component: MaJourneePage, roles: ROLES, perm: 'visites_voir', permRepliPalier: true },
     { path: '/visites/toutes', component: VisitesListPage, roles: ROLES_VALIDER, perm: 'visites_valider' },
+    { path: '/visites/planifier', component: PlanifierVisitePage, roles: ROLES_VALIDER, perm: 'visites_valider' },
     { path: '/visites/revue', component: VisiteBureauEtudesPage, roles: ROLES_VALIDER, perm: 'visites_valider' },
     // Wizard d'une visite : atteint depuis « Ma journée »/la liste/la fiche
     // lead, jamais depuis la nav (route dynamique, hors garde « zéro route
