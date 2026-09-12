@@ -40,10 +40,14 @@ class SalleDeDonneesViewSet(CompanyScopedModelViewSet):
     write_permission = 'datarooms_gerer'
 
     def get_queryset(self):
-        """Scope société (ARC2) + filtres optionnels ``?statut=``/``?deal_type=``."""
+        """Scope société (ARC2) + filtres optionnels.
+
+        ``?statut=``/``?deal_type=``, et le LIEN RETOUR NTDOC15
+        ``?source_type=&source_id=`` (« quelles salles viennent de ce
+        lead/chantier/contrat ? »)."""
         qs = super().get_queryset()
         params = self.request.query_params
-        for champ in ('statut', 'deal_type'):
+        for champ in ('statut', 'deal_type', 'source_type', 'source_id'):
             valeur = params.get(champ)
             if valeur:
                 qs = qs.filter(**{champ: valeur})
@@ -53,6 +57,29 @@ class SalleDeDonneesViewSet(CompanyScopedModelViewSet):
         """Société ET auteur posés côté serveur (jamais lus du corps)."""
         serializer.save(company=self.request.user.company,
                         created_by=self.request.user)
+
+    @action(detail=False, methods=['post'], url_path='creer-depuis-source')
+    def creer_depuis_source(self, request):
+        """NTDOC15 — Crée une salle DEPUIS un lead, un chantier ou un contrat.
+
+        Corps : ``{source_type, source_id, nom?, description?, deal_type?}``.
+        Le nom par défaut est le LIBELLÉ de l'objet source, résolu par le
+        `selectors.py` de l'app cible (aucun import cross-app de modèles) — un
+        objet d'une autre société est simplement introuvable (404)."""
+        try:
+            salle = services.creer_salle_depuis_source(
+                company=request.user.company,
+                source_type=(request.data.get('source_type') or '').strip(),
+                source_id=request.data.get('source_id'),
+                created_by=request.user,
+                nom=request.data.get('nom') or '',
+                description=request.data.get('description') or '',
+                deal_type=request.data.get('deal_type') or '')
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self.get_serializer(salle).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
     def documents(self, request, pk=None):

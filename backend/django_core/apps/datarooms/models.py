@@ -43,6 +43,17 @@ class SalleDeDonnees(TenantModel):
         OUVERTE = 'ouverte', 'Ouverte'
         FERMEE = 'fermee', 'Fermée'
 
+    class TypeSource(models.TextChoices):
+        """NTDOC15 — objet métier dont la salle est issue.
+
+        Vocabulaire FERMÉ, calqué sur ``contrats.ContratLien.TypeCible`` : une
+        entrée n'existe QUE si l'app cible expose un sélecteur de lecture
+        exploitable (``lead_card`` / ``chantier_card`` / ``contrat_card``)."""
+
+        LEAD = 'lead', 'Lead'
+        CHANTIER = 'chantier', 'Chantier'
+        CONTRAT = 'contrat', 'Contrat'
+
     nom = models.CharField(max_length=255, verbose_name='Nom')
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
@@ -61,6 +72,14 @@ class SalleDeDonnees(TenantModel):
     # viewer porte en plus SA propre expiration (NTDOC12).
     expires_at = models.DateTimeField(
         null=True, blank=True, verbose_name='Expire le')
+    # NTDOC15 — objet métier d'origine, en STRING-REF (patron
+    # ``contrats.ContratLien``) : aucune FK dure, aucun import cross-app. La
+    # résolution du libellé passe par le ``selectors.py`` de l'app cible.
+    source_type = models.CharField(
+        max_length=20, choices=TypeSource.choices, blank=True, default='',
+        verbose_name="Type d'objet d'origine")
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Identifiant d'origine")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='salles_donnees_creees',
@@ -73,6 +92,9 @@ class SalleDeDonnees(TenantModel):
         indexes = [
             models.Index(fields=['company', 'statut'],
                          name='dataroom_co_statut_idx'),
+            # NTDOC15 — lien RETOUR depuis la fiche du lead/chantier/contrat.
+            models.Index(fields=['company', 'source_type', 'source_id'],
+                         name='dataroom_co_source_idx'),
         ]
 
     def __str__(self):

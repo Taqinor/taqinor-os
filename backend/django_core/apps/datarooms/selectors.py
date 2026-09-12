@@ -52,3 +52,14 @@ def acces_de_salle(salle, *, actifs_seulement=False):
 def acces_for_company(company):
     """NTDOC12 — Accès viewer d'une société (QuerySet), pour la gestion."""
     return AccesSalleDonnees.objects.filter(company=company)
+
+
+def salles_pour_source(company, source_type, source_id):
+    """NTDOC15 — Salles issues d'un objet métier (lien RETOUR de sa fiche).
+
+    Point d'entrée LECTURE SEULE pour qu'une autre app affiche « cet objet a
+    N salles de données » sans importer ``datarooms.models``."""
+    if not source_type or not source_id:
+        return SalleDeDonnees.objects.none()
+    return SalleDeDonnees.objects.filter(
+        company=company, source_type=source_type, source_id=source_id)

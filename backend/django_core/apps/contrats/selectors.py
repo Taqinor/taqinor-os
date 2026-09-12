@@ -421,6 +421,34 @@ def liens_for_contrat(contrat):
         contrat=contrat, company=contrat.company).order_by('id')
 
 
+def contrat_card(contrat_id, company):
+    """NTDOC15 — fiche-carte LECTURE SEULE d'un contrat, scopée société.
+
+    Même contrat de sortie que ``crm.selectors.lead_card`` et
+    ``installations.selectors.chantier_card`` : ``{label, subtitle, url}``, ou
+    None si le contrat n'appartient pas à la société (jamais d'accès
+    cross-tenant). C'est le point d'entrée cross-app pour qu'une autre app
+    (ex. une salle de données créée depuis un contrat) affiche un libellé sans
+    jamais importer ``apps.contrats.models``."""
+    contrat = Contrat.objects.filter(pk=contrat_id, company=company).first()
+    if contrat is None:
+        return None
+    parties = []
+    try:
+        parties.append(contrat.get_type_contrat_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    try:
+        parties.append(contrat.get_statut_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    return {
+        'label': f'{contrat.reference} — {contrat.objet}'.strip(' —'),
+        'subtitle': ' · '.join(p for p in parties if p),
+        'url': f'/contrats/{contrat.pk}',
+    }
+
+
 def _label_devis(company, cible_id):
     """Libellé enrichi d'un devis via ``ventes.selectors`` (ou None).
 

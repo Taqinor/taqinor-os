@@ -74,6 +74,86 @@ def creer_salle(*, company, nom, created_by=None, description='',
         expires_at=expires_at, created_by=created_by)
 
 
+# ── NTDOC15 — Salle liée à un deal (Lead / Chantier / Contrat) ──────────────
+
+def _carte_lead(company, source_id):
+    """Fiche-carte d'un lead via ``crm.selectors`` (ou None).
+
+    Import fonction-local : on ne touche JAMAIS ``crm.models`` directement."""
+    try:
+        from apps.crm import selectors as crm_selectors
+        return crm_selectors.lead_card(source_id, company)
+    except Exception:  # pragma: no cover - défensif (app absente / cible KO)
+        return None
+
+
+def _carte_chantier(company, source_id):
+    """Fiche-carte d'un chantier via ``installations.selectors`` (ou None)."""
+    try:
+        from apps.installations import selectors as inst_selectors
+        return inst_selectors.chantier_card(source_id, company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def _carte_contrat(company, source_id):
+    """Fiche-carte d'un contrat via ``contrats.selectors`` (ou None)."""
+    try:
+        from apps.contrats import selectors as contrats_selectors
+        return contrats_selectors.contrat_card(source_id, company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+#: Résolveurs par type de source. Une entrée n'existe QUE si l'app cible expose
+#: un sélecteur de lecture exploitable — jamais d'import de ses ``models``.
+_RESOLVEURS_SOURCE = {
+    SalleDeDonnees.TypeSource.LEAD: _carte_lead,
+    SalleDeDonnees.TypeSource.CHANTIER: _carte_chantier,
+    SalleDeDonnees.TypeSource.CONTRAT: _carte_contrat,
+}
+
+
+def carte_source(company, source_type, source_id):
+    """NTDOC15 — Fiche-carte ``{label, subtitle, url}`` de l'objet d'origine.
+
+    Renvoie None si le type est inconnu, l'id absent, ou l'objet hors société
+    (le sélecteur cible est scopé : un id d'ailleurs renvoie None, jamais une
+    fuite)."""
+    if not source_type or not source_id:
+        return None
+    resolveur = _RESOLVEURS_SOURCE.get(source_type)
+    if resolveur is None:
+        return None
+    return resolveur(company, source_id)
+
+
+def creer_salle_depuis_source(*, company, source_type, source_id,
+                              created_by=None, nom='', description='',
+                              deal_type='', expires_at=None):
+    """NTDOC15 — Crée une salle PRÉ-NOMMÉE depuis un lead/chantier/contrat.
+
+    Le nom par défaut vient du LIBELLÉ de l'objet source (résolu par le
+    sélecteur de l'app cible) — jamais d'un libellé inventé. Un ``nom`` fourni
+    par l'appelant l'emporte.
+
+    Lève ``ValueError`` (message français) si la source est inconnue ou hors
+    société : la vue la traduit en 404, sans jamais dire si l'objet existe
+    ailleurs."""
+    carte = carte_source(company, source_type, source_id)
+    if carte is None:
+        raise ValueError(
+            "Cet objet est introuvable dans votre société.")
+    libelle = (nom or '').strip() or (carte.get('label') or '').strip()
+    if not libelle:
+        raise ValueError("Impossible de nommer la salle depuis cet objet.")
+    salle = SalleDeDonnees.objects.create(
+        company=company, nom=libelle[:255], description=description,
+        deal_type=deal_type, expires_at=expires_at, created_by=created_by,
+        source_type=source_type, source_id=source_id)
+    return salle
+
+
 # ── NTDOC12 — Accès par viewer nommé ────────────────────────────────────────
 
 def inviter_viewer(salle, *, nom, email='', expires_at=None, created_by=None):

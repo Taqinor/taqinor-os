@@ -66,12 +66,15 @@ class SalleDeDonneesSerializer(SameCompanyFKSerializerMixin,
     statut_libelle = serializers.CharField(
         source='get_statut_display', read_only=True)
     nombre_documents = serializers.SerializerMethodField()
+    source_label = serializers.SerializerMethodField()
+    source_url = serializers.SerializerMethodField()
 
     class Meta:
         model = SalleDeDonnees
         fields = [
             'id', 'nom', 'description', 'dossier_source', 'deal_type',
             'statut', 'statut_libelle', 'expires_at', 'nombre_documents',
+            'source_type', 'source_id', 'source_label', 'source_url',
             'created_at', 'updated_at',
         ]
         # `statut` ne change que par l'action de fermeture (NTDOC16) : un PATCH
@@ -80,6 +83,28 @@ class SalleDeDonneesSerializer(SameCompanyFKSerializerMixin,
 
     def get_nombre_documents(self, obj) -> int:
         return obj.documents.count()
+
+    def _carte_source(self, obj):
+        """NTDOC15 — fiche-carte de l'objet d'origine, résolue une seule fois."""
+        if not obj.source_type or not obj.source_id:
+            return None
+        cache = getattr(self, '_cache_source', None)
+        if cache is None:
+            cache = self._cache_source = {}
+        cle = (obj.source_type, obj.source_id, obj.company_id)
+        if cle not in cache:
+            from .services import carte_source
+            cache[cle] = carte_source(
+                obj.company, obj.source_type, obj.source_id)
+        return cache[cle]
+
+    def get_source_label(self, obj) -> str:
+        carte = self._carte_source(obj)
+        return (carte or {}).get('label') or ''
+
+    def get_source_url(self, obj) -> str:
+        carte = self._carte_source(obj)
+        return (carte or {}).get('url') or ''
 
 
 class AccesSalleDonneesSerializer(serializers.ModelSerializer):
