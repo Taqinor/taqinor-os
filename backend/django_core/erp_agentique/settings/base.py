@@ -1097,6 +1097,8 @@ CELERY_TASK_ROUTES = {
     'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
     # NTDATA24 — consolidation hebdomadaire des golden records.
     'dataquality.consolider_golden_records': {'queue': 'scheduled'},
+    # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
+    'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
     'core.dispatch_outbox': {'queue': 'scheduled'},

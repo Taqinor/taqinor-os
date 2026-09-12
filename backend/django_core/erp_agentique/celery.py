@@ -327,6 +327,15 @@ app.conf.beat_schedule = {
         'task': 'dataquality.evaluer_qualite_donnees',
         'schedule': crontab(hour=5, minute=45),
     },
+    # NTDATA42 — signale les points aberrants des séries de métriques nommées
+    # (z-score sur `core.anomaly` → `core.AnomalyFlag`). HEBDOMADAIRE : les
+    # séries sont MENSUELLES, un balayage quotidien re-scorerait les mêmes
+    # points douze fois par mois pour rien. Aucun seuil à configurer, aucune
+    # notification — un AnomalyFlag se consulte.
+    'semantic-detecter-anomalies-metriques': {
+        'task': 'semantic.detecter_anomalies_metriques',
+        'schedule': crontab(hour=4, minute=45, day_of_week=1),
+    },
     # NTDATA24 — recalcule les golden records (fiches consolidées) de chaque
     # société. HEBDOMADAIRE : la passe relit toutes les fiches des trois
     # entités et rejoue la détection de doublons, et l'identité consolidée d'un
