@@ -497,6 +497,28 @@ class KpiAlerte(models.Model):
         CATALOGUE = 'catalogue', 'KPI du catalogue'
         METRIQUE = 'metrique', 'Métrique nommée (couche sémantique)'
 
+    class ModeDetection(models.TextChoices):
+        """NTDATA41 — CE QUI est comparé au seuil.
+
+        ``SEUIL`` est le DÉFAUT et le comportement historique EXACT : la valeur
+        courante du KPI. Les deux autres modes comparent une DÉRIVÉE de la
+        métrique, ce qui n'a de sens que sur une trajectoire — ils exigent donc
+        une métrique nommée (le catalogue fermé rend des agrégats
+        instantanés, sans historique lisible).
+
+        * ``VARIATION`` — le Δ % entre les DEUX DERNIÈRES PÉRIODES COMPLÈTES.
+          « Une chute de MRR > 20 % » s'écrit alors : opérateur ``<``, seuil
+          ``-20``. La période EN COURS est exclue : le 3 du mois elle contient
+          trois jours et afficherait mécaniquement une chute de ~90 %.
+        * ``ANOMALIE`` — l'écart standardisé (z-score, ``core.anomaly``) du
+          DERNIER point face à sa propre série. Le ``seuil`` est alors le
+          nombre d'écarts-types au-delà duquel on alerte.
+        """
+
+        SEUIL = 'seuil', 'Seuil sur la valeur'
+        VARIATION = 'variation', 'Variation vs période précédente (%)'
+        ANOMALIE = 'anomalie', "Écart à l'habitude (z-score)"
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='reporting_kpi_alertes')
@@ -521,6 +543,12 @@ class KpiAlerte(models.Model):
         'semantic.MetricDefinition', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='alertes_kpi',
         verbose_name='Métrique nommée')
+    # NTDATA41 — ce qui est comparé au seuil : la valeur (défaut, historique),
+    # sa variation, ou son écart à l'habitude. ADDITIF : toutes les alertes
+    # existantes restent en `seuil` et se comportent à l'identique.
+    mode_detection = models.CharField(
+        max_length=12, choices=ModeDetection.choices,
+        default=ModeDetection.SEUIL, verbose_name='Mode de détection')
     operateur = models.CharField(
         max_length=10, choices=Operateur.choices, default=Operateur.SUP)
     seuil = models.DecimalField(max_digits=14, decimal_places=2)
@@ -578,6 +606,18 @@ class KpiAlerte(models.Model):
                     "Cette métrique appartient à une autre société.")
         elif not self.kpi:
             erreurs['kpi'] = 'Choisissez le KPI à surveiller.'
+        # NTDATA41 — variation et anomalie lisent une TRAJECTOIRE. Le catalogue
+        # fermé rend des agrégats instantanés (le DSO d'aujourd'hui, l'encours
+        # d'aujourd'hui) : il n'a pas d'historique à comparer. Refuser ici est
+        # plus honnête que de laisser créer une alerte qui ne se déclenchera
+        # jamais et que personne ne saura expliquer.
+        if (self.mode_detection != self.ModeDetection.SEUIL
+                and self.source != self.Source.METRIQUE):
+            erreurs['mode_detection'] = (
+                'La détection « %s » compare une trajectoire : elle exige une '
+                'métrique nommée (les KPI du catalogue ne rendent que leur '
+                'valeur du jour).'
+                % self.get_mode_detection_display())
         if erreurs:
             raise ValidationError(erreurs)
 
