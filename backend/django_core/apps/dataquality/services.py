@@ -279,6 +279,107 @@ def doublons_clients(company, user=None):
     )
 
 
+# ── NTDATA19 — DÉDOUBLONNAGE FOURNISSEURS & PRODUITS ────────────────────────
+#
+# Les fiches sont lues par les points d'entrée cross-app de `stock.selectors`
+# (jamais un import de `apps.stock.models`) : le filtre société y est posé, les
+# fiches déjà archivées en sont exclues, et AUCUN prix d'achat n'en sort — la
+# détection ne travaille que sur l'identité et les références.
+
+
+def doublons_fournisseurs(company, user=None):
+    """Groupes de fournisseurs qui désignent probablement la même entreprise.
+
+    Rapprochement par ICE (identifiant légal — le plus sûr), puis email,
+    téléphone et raison sociale normalisée approchée.
+    """
+    from apps.crm.selectors import (
+        normalize_email_key, normalize_name_key, normalize_phone_key,
+    )
+    from apps.stock.selectors import fournisseurs_pour_dedoublonnage
+
+    from .dedoublonnage import grouper_doublons
+
+    return grouper_doublons(
+        fournisseurs_pour_dedoublonnage(company),
+        criteres=('ice', 'telephone', 'email', 'nom'),
+        normaliseurs={
+            'ice': lambda v: (str(v or '').strip() or None),
+            'telephone': normalize_phone_key,
+            'email': normalize_email_key,
+            'nom': lambda v: normalize_name_key(v),
+        },
+    )
+
+
+def doublons_produits(company, user=None):
+    """Groupes de produits qui désignent probablement le même article.
+
+    Rapprochement par RÉFÉRENCE (``sku``, insensible à la casse et aux
+    espaces) puis par désignation normalisée approchée. La référence est
+    traitée comme un identifiant : deux fiches qui la partagent sont presque
+    certainement la même — d'où un poids proche de celui d'un ICE.
+    """
+    from apps.crm.selectors import normalize_name_key
+    from apps.stock.selectors import produits_pour_dedoublonnage
+
+    from .dedoublonnage import grouper_doublons
+
+    return grouper_doublons(
+        produits_pour_dedoublonnage(company),
+        criteres=('reference', 'nom'),
+        normaliseurs={
+            'reference': lambda v: (str(v or '').strip().lower() or None),
+            'nom': lambda v: normalize_name_key(v),
+        },
+        # La référence catalogue d'un produit vit dans `sku`.
+        champs={'reference': 'sku'},
+    )
+
+
+def fusionner_fournisseurs(company, user, survivant_id, doublons_ids):
+    """NTDATA19 — déclenche la fusion supervisée via ``stock.services``."""
+    from apps.stock.services import fournisseurs_par_ids, merge_fournisseurs
+
+    return _fusionner_via(
+        company, user, survivant_id, doublons_ids,
+        chargeur=fournisseurs_par_ids, fusion=merge_fournisseurs,
+        libelle='fournisseur')
+
+
+def fusionner_produits(company, user, survivant_id, doublons_ids):
+    """NTDATA19 — déclenche la fusion supervisée via ``stock.services``."""
+    from apps.stock.services import merge_produits, produits_par_ids
+
+    return _fusionner_via(
+        company, user, survivant_id, doublons_ids,
+        chargeur=produits_par_ids, fusion=merge_produits, libelle='produit')
+
+
+def _fusionner_via(company, user, survivant_id, doublons_ids, *, chargeur,
+                   fusion, libelle):
+    """Charge les fiches DANS la société puis délègue à l'app propriétaire.
+
+    Aucune logique de fusion ici : ``dataquality`` déclenche, l'app qui possède
+    les données exécute. Lève ``ValueError`` avec un message FRANÇAIS.
+    """
+    doublons_ids = [i for i in (doublons_ids or []) if i != survivant_id]
+    if not doublons_ids:
+        raise ValueError('Indiquez au moins un doublon à fusionner.')
+    fiches = {f.pk: f for f in chargeur(
+        company, [survivant_id] + list(doublons_ids))}
+    survivant = fiches.get(survivant_id)
+    if survivant is None:
+        raise ValueError(
+            'Fiche %s survivante introuvable dans cette société (#%s).'
+            % (libelle, survivant_id))
+    absorbes = [fiches[i] for i in doublons_ids if i in fiches]
+    if not absorbes:
+        raise ValueError(
+            "Aucun des doublons indiqués n'existe dans cette société.")
+    return fusion(survivant, absorbes, user)
+
+
 def fusionner_clients(company, user, survivant_id, doublons_ids):
     """NTDATA18 — déclenche la fusion supervisée via ``crm.services``.
 

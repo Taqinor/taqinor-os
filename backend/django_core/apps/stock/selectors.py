@@ -7,6 +7,45 @@ d'origine.
 """
 
 
+def fournisseurs_pour_dedoublonnage(company):
+    """NTDATA19 — fiches fournisseur d'une société, à plat, pour la détection
+    de doublons.
+
+    Point d'entrée cross-app SANCTIONNÉ : ``apps.dataquality`` lit les
+    fournisseurs par ICI, jamais en important ``apps.stock.models``. Le filtre
+    société est POSÉ ICI (aucun appelant ne peut sortir de son tenant), les
+    fiches déjà archivées sont exclues (un doublon déjà neutralisé n'a pas à
+    reparaître dans la file), et AUCUNE donnée d'achat (prix, conditions) n'est
+    rendue : la détection ne travaille que sur l'IDENTITÉ.
+
+    Renvoie une liste de dicts ``{id, nom, ice, email, telephone}``.
+    """
+    from .models import Fournisseur
+
+    return list(
+        Fournisseur.objects
+        .filter(company=company, is_archived=False)
+        .order_by('id')
+        .values('id', 'nom', 'ice', 'email', 'telephone'))
+
+
+def produits_pour_dedoublonnage(company):
+    """NTDATA19 — fiches produit d'une société, à plat, pour la détection de
+    doublons (référence + désignation + marque).
+
+    Même contrat que :func:`fournisseurs_pour_dedoublonnage` : filtre société
+    posé ici, produits archivés exclus, et AUCUN prix d'achat rendu (la
+    détection compare des références et des désignations, pas des marges).
+    """
+    from .models import Produit
+
+    return list(
+        Produit.objects
+        .filter(company=company, is_archived=False)
+        .order_by('id')
+        .values('id', 'nom', 'sku', 'marque'))
+
+
 def get_produit_scoped(company, pk):
     """Produit scopé société par id, ou None. Lecture seule."""
     from .models import Produit

@@ -28,7 +28,11 @@ from difflib import SequenceMatcher
 #: Poids = confiance du critère. Un identifiant légal (ICE) est plus sûr qu'un
 #: téléphone (partagé en famille), lui-même plus sûr qu'un nom (homonymes).
 POIDS_CRITERES = {
+    # Identifiants : deux fiches qui les partagent sont presque sûrement la
+    # même (l'ICE est attribué par l'administration, la référence catalogue
+    # par nous).
     'ice': 0.95,
+    'reference': 0.95,
     'telephone': 0.90,
     'email': 0.85,
     'nom': 0.60,
@@ -88,11 +92,11 @@ def _cles_exactes(lignes, champ, normaliseur):
     return {cle: ids for cle, ids in index.items() if len(ids) > 1}
 
 
-def _paires_de_noms(lignes, normaliseur):
+def _paires_de_noms(lignes, normaliseur, champ='nom'):
     """Paires d'ids dont les NOMS normalisés se ressemblent (blocage préfixe)."""
     blocs = {}
     for ligne in lignes:
-        cle = normaliseur(ligne.get('nom'))
+        cle = normaliseur(ligne.get(champ))
         if not cle:
             continue
         blocs.setdefault(cle[:PREFIXE_BLOC], []).append((ligne['id'], cle))
@@ -108,17 +112,22 @@ def _paires_de_noms(lignes, normaliseur):
     return paires
 
 
-def grouper_doublons(lignes, *, criteres, normaliseurs, libelle_champ='nom'):
+def grouper_doublons(lignes, *, criteres, normaliseurs, champs=None,
+                     libelle_champ='nom'):
     """Les GROUPES candidats d'un jeu de lignes.
 
     ``lignes`` — dicts portant au moins ``id`` et les champs des critères.
     ``criteres`` — sous-ensemble ordonné de :data:`POIDS_CRITERES` à appliquer
     (``'nom'`` déclenche la comparaison approchée, les autres une égalité de
     clé normalisée). ``normaliseurs`` — ``{critere: fonction}``.
+    ``champs`` — ``{critere: champ de la ligne}`` quand le nom du critère
+    diffère de celui de la donnée (un produit porte sa ``reference`` dans
+    ``sku``) ; par défaut le critère EST le nom du champ.
 
     Renvoie une liste de dicts ``{ids, score, motifs, libelles}`` triée par
     score décroissant puis par premier id (rendu déterministe).
     """
+    champs = dict(champs or {})
     lignes = [ligne for ligne in lignes if ligne.get('id') is not None]
     unions = _Unions()
     motifs_par_paire = {}
@@ -134,11 +143,12 @@ def grouper_doublons(lignes, *, criteres, normaliseurs, libelle_champ='nom'):
         normaliseur = normaliseurs.get(critere)
         if normaliseur is None:
             continue
+        champ = champs.get(critere, critere)
         if critere == 'nom':
-            for paire in _paires_de_noms(lignes, normaliseur):
+            for paire in _paires_de_noms(lignes, normaliseur, champ):
                 _noter(list(paire), 'nom')
             continue
-        for _cle, ids in _cles_exactes(lignes, critere, normaliseur).items():
+        for _cle, ids in _cles_exactes(lignes, champ, normaliseur).items():
             _noter(ids, critere)
 
     par_id = {ligne['id']: ligne for ligne in lignes}

@@ -7174,13 +7174,15 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
 # 2. AUCUN ORPHELIN. Tout ce qui pointait le doublon pointe le survivant —
 #    non pas une liste de quatre modèles écrite à la main (le dépôt compte
 #    plus de trente FK vers `Client`), mais le parcours des relations inverses
-#    déclarées par Django. Chaque relation est repointée dans son PROPRE
-#    point de sauvegarde : une contrainte d'unicité qui refuse (le survivant a
-#    déjà sa limite de crédit, par exemple) annule CETTE relation seule et
-#    le rapport la NOMME, au lieu de faire échouer toute la fusion en silence.
+#    déclarées par Django (`core.merge.repointer_relations`, la MÊME mécanique
+#    que la fusion fournisseur/produit de `stock` — jamais une seconde
+#    implémentation). Chaque relation est repointée dans son PROPRE point de
+#    sauvegarde : une contrainte d'unicité qui refuse (le survivant a déjà sa
+#    limite de crédit, par exemple) annule CETTE relation seule et le rapport
+#    la NOMME, au lieu de faire échouer toute la fusion en silence.
 #
-# 3. AUCUN IMPORT D'APP ÉTRANGÈRE. Le parcours passe par `Client._meta`
-#    (API Django), donc `crm` n'importe ni `ventes`, ni `facturation`, ni
+# 3. AUCUN IMPORT D'APP ÉTRANGÈRE. Le parcours passe par l'API `_meta` de
+#    Django, donc `crm` n'importe ni `ventes`, ni `facturation`, ni
 #    `installations`, ni `sav`.
 
 #: Champs du client dont une valeur VIDE chez le survivant est complétée
@@ -7204,8 +7206,10 @@ def merge_clients(survivor, others, user):
     de ce qu'un humain doit trancher (typiquement une contrainte d'unicité
     déjà occupée chez le survivant).
     """
-    from django.db import IntegrityError, transaction
+    from django.db import transaction
     from django.utils import timezone
+
+    from core.merge import completer_champs_vides, repointer_relations
 
     others = [o for o in others
               if o.pk != survivor.pk and o.company_id == survivor.company_id]
@@ -7214,39 +7218,17 @@ def merge_clients(survivor, others, user):
     if not others:
         return rapport
 
-    relations = [
-        rel for rel in Client._meta.related_objects
-        if getattr(rel, 'field', None) is not None
-        and not rel.many_to_many
-    ]
-
     with transaction.atomic():
         for absorbed in others:
-            for rel in relations:
-                modele = rel.related_model
-                nom_champ = rel.field.name
-                etiquette = '%s.%s.%s' % (
-                    modele._meta.app_label, modele.__name__, nom_champ)
-                try:
-                    with transaction.atomic():
-                        n = modele._base_manager.filter(
-                            **{nom_champ: absorbed}).update(
-                            **{nom_champ: survivor})
-                except IntegrityError as exc:
-                    rapport['non_repointes'].append(
-                        {'relation': etiquette, 'motif': str(exc)})
-                    continue
-                if n:
-                    rapport['repointes'][etiquette] = (
-                        rapport['repointes'].get(etiquette, 0) + n)
+            repointes, non_repointes = repointer_relations(absorbed, survivor)
+            for etiquette, n in repointes.items():
+                rapport['repointes'][etiquette] = (
+                    rapport['repointes'].get(etiquette, 0) + n)
+            rapport['non_repointes'].extend(non_repointes)
 
             # Compléter les champs VIDES du survivant (jamais écraser).
-            for champ in _MERGE_CLIENT_FILL_FIELDS:
-                courant = getattr(survivor, champ, None)
-                if courant in (None, '', False):
-                    valeur = getattr(absorbed, champ, None)
-                    if valeur not in (None, '', False):
-                        setattr(survivor, champ, valeur)
+            completer_champs_vides(survivor, absorbed,
+                                   _MERGE_CLIENT_FILL_FIELDS)
 
             # Neutraliser le doublon — jamais le supprimer.
             marqueur = dict(absorbed.custom_data or {})
