@@ -989,6 +989,36 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = serializer.save(company=self.request.user.company)
         generer_echeances_periode(periode)
 
+    @extend_schema(responses=inline_serializer('PaieConformite', {
+        'today': serializers.DateField(),
+        'conforme': serializers.BooleanField(),
+        'echeances_en_retard': serializers.ListField(
+            child=serializers.DictField()),
+        'echeances_a_venir': serializers.ListField(
+            child=serializers.DictField()),
+        'depots_manquants': serializers.ListField(
+            child=serializers.DictField()),
+        'baremes_non_valides': serializers.ListField(
+            child=serializers.DictField()),
+        'periodes_en_retard': serializers.ListField(
+            child=serializers.DictField()),
+        'alertes_pre_run': serializers.ListField(
+            child=serializers.DictField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='conformite')
+    def conformite(self, request):
+        """État de conformité paie de la société, en un seul écran (NTPAY16).
+
+        Réunit les échéances déclaratives en retard/à venir (XPAI6), les
+        preuves de dépôt manquantes (NTPAY5), les barèmes non validés par le
+        fondateur, les périodes ouvertes en retard de clôture (ZPAI12) et les
+        avertissements pré-run bloquants (ZPAI2). Lecture seule, gate
+        ``paie_voir`` (méthode sûre → mixin ``_PaieVoirOuGerer``).
+        """
+        return Response(
+            paie_selectors.cockpit_conformite_paie(request.user.company),
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='echeances')
     def echeances(self, request, pk=None):
         """Liste les échéances déclaratives de la période (XPAI6)."""

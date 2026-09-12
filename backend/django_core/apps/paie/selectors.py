@@ -231,6 +231,140 @@ def solde_avance(avance_id):
     return avance.solde_restant
 
 
+# ── NTPAY16 — Cockpit de conformité paie (échéances + preuves) ─────────────
+
+#: Fenêtre « à venir » du cockpit : une échéance dont la date limite tombe
+#: dans les 30 prochains jours est signalée AVANT d'être en retard.
+FENETRE_ECHEANCES_A_VENIR_JOURS = 30
+
+
+def cockpit_conformite_paie(company, *, today=None):
+    """État de conformité paie d'une société, en UN seul agrégat (NTPAY16).
+
+    Réunit les cinq signaux qui vivaient chacun dans son coin :
+
+    1. ``EcheanceDeclarative`` (XPAI6) EN RETARD et À VENIR (30 jours) ;
+    2. preuves de dépôt MANQUANTES (NTPAY5) — une échéance dont la date limite
+       est passée sans le moindre ``DepotDeclaratif`` non rejeté ;
+    3. barèmes/paramètres NON VALIDÉS par le fondateur
+       (``valide_par_fondateur=False``) — ils calculent de la paie réelle ;
+    4. périodes ouvertes EN RETARD de clôture (ZPAI12) ;
+    5. avertissements PRÉ-RUN bloquants des périodes ouvertes (ZPAI2).
+
+    ``today`` est injectable (tests déterministes). Lecture seule, strictement
+    scopée société. ``conforme`` est VRAI quand les cinq listes sont vides.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone as dj_timezone
+
+    from .models import (
+        BaremeIR, DepotDeclaratif, EcheanceDeclarative, ParametrePaie,
+        PeriodePaie,
+    )
+    from .services import avertissements_periode, periodes_cloture_en_retard
+
+    if today is None:
+        today = dj_timezone.localdate()
+    limite_a_venir = today + timedelta(days=FENETRE_ECHEANCES_A_VENIR_JOURS)
+
+    deposees = (EcheanceDeclarative.STATUT_DEPOSEE,
+                EcheanceDeclarative.STATUT_PAYEE)
+    echeances = list(
+        EcheanceDeclarative.objects
+        .filter(company=company)
+        .select_related('periode')
+        .order_by('date_limite', 'type_echeance')
+    )
+
+    # Preuves de dépôt réellement enregistrées (un dépôt REJETÉ ne prouve
+    # rien : la déclaration reste due).
+    avec_preuve = set(
+        DepotDeclaratif.objects
+        .filter(company=company)
+        .exclude(statut=DepotDeclaratif.STATUT_REJETE)
+        .values_list('echeance_id', flat=True)
+    )
+
+    def _ligne_echeance(echeance):
+        return {
+            'id': echeance.id,
+            'type': echeance.type_echeance,
+            'libelle': echeance.get_type_echeance_display(),
+            'date_limite': echeance.date_limite,
+            'statut': echeance.statut,
+            'periode_id': echeance.periode_id,
+            'annee': echeance.periode.annee,
+            'mois': echeance.periode.mois,
+            'jours': (echeance.date_limite - today).days,
+        }
+
+    en_retard, a_venir, sans_preuve = [], [], []
+    for echeance in echeances:
+        if echeance.statut in deposees:
+            continue
+        if echeance.date_limite < today:
+            en_retard.append(_ligne_echeance(echeance))
+            if echeance.id not in avec_preuve:
+                sans_preuve.append(_ligne_echeance(echeance))
+        elif echeance.date_limite <= limite_a_venir:
+            a_venir.append(_ligne_echeance(echeance))
+
+    baremes_non_valides = [
+        {'id': bareme.id, 'objet': 'bareme_ir',
+         'libelle': bareme.libelle or f'Barème IR {bareme.date_effet}',
+         'date_effet': bareme.date_effet}
+        for bareme in BaremeIR.objects.filter(
+            company=company, valide_par_fondateur=False)
+        .order_by('date_effet')
+    ] + [
+        {'id': parametre.id, 'objet': 'parametre_paie',
+         'libelle': f'Paramètres sociaux du {parametre.date_effet}',
+         'date_effet': parametre.date_effet}
+        for parametre in ParametrePaie.objects.filter(
+            company=company, valide_par_fondateur=False)
+        .order_by('date_effet')
+    ]
+
+    periodes_en_retard = [
+        {'id': periode.id, 'annee': periode.annee, 'mois': periode.mois,
+         'statut': periode.statut, 'type_run': periode.type_run}
+        for periode in periodes_cloture_en_retard(company)
+    ]
+
+    # ZPAI2 — prérequis manquants des périodes encore OUVERTES seulement :
+    # rejouer le panneau sur une période clôturée n'apprendrait rien.
+    periodes_ouvertes = PeriodePaie.objects.filter(
+        company=company,
+        statut__in=[PeriodePaie.STATUT_BROUILLON, PeriodePaie.STATUT_CALCULEE],
+    ).order_by('annee', 'mois')
+    alertes_pre_run = []
+    for periode in periodes_ouvertes:
+        signaux = avertissements_periode(periode)
+        bloquants = [s for s in signaux if s['gravite'] == 'bloquant']
+        if not signaux:
+            continue
+        alertes_pre_run.append({
+            'periode_id': periode.id,
+            'annee': periode.annee, 'mois': periode.mois,
+            'bloquants': len(bloquants),
+            'avertissements': len(signaux) - len(bloquants),
+        })
+
+    blocs = (en_retard, sans_preuve, baremes_non_valides, periodes_en_retard,
+             alertes_pre_run)
+    return {
+        'today': today,
+        'conforme': not any(blocs),
+        'echeances_en_retard': en_retard,
+        'echeances_a_venir': a_venir,
+        'depots_manquants': sans_preuve,
+        'baremes_non_valides': baremes_non_valides,
+        'periodes_en_retard': periodes_en_retard,
+        'alertes_pre_run': alertes_pre_run,
+    }
+
+
 def _periodes_de_la_fenetre(company, annee_debut, mois_debut, annee_fin,
                             mois_fin):
     """Périodes de paie de la société dans la fenêtre inclusive donnée."""
