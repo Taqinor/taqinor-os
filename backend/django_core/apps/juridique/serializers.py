@@ -26,6 +26,10 @@ class DossierJuridiqueSerializer(serializers.ModelSerializer):
     """Fiche d'un dossier juridique."""
 
     responsable_interne_nom = serializers.SerializerMethodField()
+    # NTJUR15 — la bannière de reprise ne s'affiche qu'UNE fois : le calcul
+    # vit sur le modèle (``reprise_provision_a_proposer``) pour que l'écran
+    # n'ait aucune règle métier à deviner.
+    reprise_provision_a_proposer = serializers.BooleanField(read_only=True)
     statut_libelle = serializers.CharField(
         source='get_statut_display', read_only=True)
     nature_libelle = serializers.CharField(
@@ -45,10 +49,14 @@ class DossierJuridiqueSerializer(serializers.ModelSerializer):
             # ne se pose que par l'action confirmée ``proposer-provision``).
             'montant_risque_estime', 'probabilite_risque',
             'provision_comptable_id',
+            # NTJUR15 — état de la bannière « reprendre la provision ».
+            'reprise_provision_proposee', 'reprise_provision_traitee',
+            'reprise_provision_a_proposer',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'reference', 'statut', 'provision_comptable_id',
+            'reprise_provision_proposee', 'reprise_provision_traitee',
             'created_at', 'updated_at',
         ]
 

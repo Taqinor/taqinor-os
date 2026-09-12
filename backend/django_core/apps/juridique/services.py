@@ -109,6 +109,118 @@ def creer_dossier_depuis_reclamation(company, reclamation_id, *, user=None,
 
 
 # ───────────────────────────────────────────────────────────────────────────
+# NTJUR2 — Machine à états PROCÉDURALE du dossier juridique
+#
+# Clés PROPRES au module (jamais ``STAGES.py``, règle #2 ; jamais le cycle
+# Devis/Facture, règle #4). Le champ ``statut`` est en lecture seule au
+# sérialiseur : il n'avance QUE par ``changer_statut`` (garde AUD515).
+# ───────────────────────────────────────────────────────────────────────────
+
+
+class TransitionError(Exception):
+    """Transition de statut illégale (message FR destiné à l'utilisateur)."""
+
+
+def _statuts():
+    from .models import DossierJuridique
+
+    return DossierJuridique.Statut
+
+
+def statut_transitions():
+    """Table des transitions LÉGALES : statut courant → statuts atteignables.
+
+    Un statut ``clos_*`` est TERMINAL : il n'ouvre sur rien (un dossier clos
+    ne repart pas — un nouvel épisode est un nouveau dossier).
+    """
+    s = _statuts()
+    clos = (s.CLOS_GAGNE, s.CLOS_PERDU, s.CLOS_TRANSACTION,
+            s.CLOS_DESISTEMENT)
+    return {
+        s.OUVERT: (s.INSTRUCTION, *clos),
+        s.INSTRUCTION: (s.AUDIENCE_PROGRAMMEE, s.EN_DELIBERE, *clos),
+        s.AUDIENCE_PROGRAMMEE: (s.EN_DELIBERE, s.INSTRUCTION, *clos),
+        s.EN_DELIBERE: (s.JUGEMENT_RENDU, *clos),
+        s.JUGEMENT_RENDU: (s.APPEL, s.EXECUTION, *clos),
+        s.APPEL: (s.INSTRUCTION, s.AUDIENCE_PROGRAMMEE, s.EN_DELIBERE,
+                  s.JUGEMENT_RENDU, *clos),
+        s.EXECUTION: clos,
+        s.CLOS_GAGNE: (),
+        s.CLOS_PERDU: (),
+        s.CLOS_TRANSACTION: (),
+        s.CLOS_DESISTEMENT: (),
+    }
+
+
+def statuts_suivants(dossier):
+    """Statuts légalement atteignables depuis l'état courant (lecture seule)."""
+    return list(statut_transitions().get(dossier.statut, ()))
+
+
+@transaction.atomic
+def changer_statut(dossier_juridique, nouveau_statut, *, user=None, motif=''):
+    """Applique une transition de statut GARDÉE (NTJUR2).
+
+    Refuse toute transition hors de la table (``TransitionError`` → 400 côté
+    vue) et laisse alors le dossier STRICTEMENT inchangé. Journalise le
+    changement dans le chatter GÉNÉRIQUE ``records.Activity`` (ARC8 — jamais
+    un énième modèle ``*Activity`` maison), auteur et société côté serveur.
+
+    Le premier paramètre est nommé ``dossier_juridique`` à dessein : c'est ce
+    qui range ``DossierJuridique`` parmi les modèles GOUVERNÉS de
+    ``scripts/check_machine_etats_statut_readonly.py`` (AUD515), qui interdit
+    dès lors tout sérialiseur laissant ``statut`` writable.
+    """
+    from apps.records import services as records_services
+    from apps.records.models import Activity
+
+    dossier = dossier_juridique
+    ancien = dossier.statut
+    legaux = statut_transitions().get(ancien, ())
+    if nouveau_statut not in {str(v) for v in legaux}:
+        raise TransitionError(
+            f"Transition impossible depuis « "
+            f"{dossier.get_statut_display()} » vers « {nouveau_statut} ».")
+    dossier.statut = nouveau_statut
+    dossier.save(update_fields=['statut', 'updated_at'])
+    records_services.log_activity(
+        dossier, Activity.Kind.MODIFICATION, user=user, field='statut',
+        field_label='Statut', old_value=ancien, new_value=nouveau_statut,
+        body=motif or '', company=dossier.company)
+    return dossier
+
+
+@transaction.atomic
+def clore_dossier(dossier, statut_final, *, user=None, motif=''):
+    """Clôt un dossier et PROPOSE (sans jamais l'appliquer) la reprise de sa
+    provision — NTJUR15.
+
+    Aucune écriture comptable n'est postée ici : la clôture ne fait que lever
+    la bannière (``reprise_provision_proposee``) quand le dossier porte une
+    ``provision_comptable_id``. Un dossier sans provision ne propose RIEN.
+    """
+    from .models import DossierJuridique
+
+    valides = {str(s) for s in DossierJuridique.STATUTS_CLOS}
+    if statut_final not in valides:
+        raise TransitionError(
+            "Statut de clôture invalide : choisissez gagné, perdu, "
+            "transaction ou désistement.")
+    dossier = changer_statut(dossier, statut_final, user=user, motif=motif)
+    if dossier.provision_comptable_id and not dossier.reprise_provision_traitee:
+        dossier.reprise_provision_proposee = True
+        dossier.save(update_fields=['reprise_provision_proposee',
+                                    'updated_at'])
+    emettre_dossier_clos(dossier, user=user)
+    return dossier
+
+
+def emettre_dossier_clos(dossier, *, user=None):
+    """Point d'émission de l'événement de clôture (branché par NTJUR26)."""
+    return None
+
+
+# ───────────────────────────────────────────────────────────────────────────
 # NTJUR14 — Provision pour risque : PROPOSÉE, jamais auto-comptabilisée
 #
 # Patron « propose → confirme » du dépôt : AUCUNE écriture comptable ne naît
@@ -182,6 +294,58 @@ def proposer_provision(dossier, *, montant, motif='', date_dotation=None,
     dossier.provision_comptable_id = provision.id
     dossier.save(update_fields=['provision_comptable_id', 'updated_at'])
     return provision
+
+
+@transaction.atomic
+def reprendre_provision_dossier(dossier, *, montant=None, user=None):
+    """Reprend la provision d'un dossier CLOS — NTJUR15, jamais automatique.
+
+    Appelée uniquement depuis l'action confirmée ``reprendre-provision``.
+    L'écriture inverse reste la responsabilité de
+    ``apps.compta.services.reprendre_provision`` (import FONCTION-LOCAL :
+    aucun modèle ``compta`` n'est importé ici — l'instance est résolue par
+    ``apps.compta.selectors.provision_par_id``).
+
+    Marque ``reprise_provision_traitee`` : la bannière ne revient pas au
+    rechargement suivant.
+    """
+    from django.core.exceptions import ValidationError
+
+    from apps.compta import selectors as compta_selectors
+    from apps.compta import services as compta_services
+
+    if not dossier.provision_comptable_id:
+        raise ProvisionError("Ce dossier ne porte aucune provision à reprendre.")
+    if dossier.reprise_provision_traitee:
+        raise ProvisionError(
+            "La reprise de provision de ce dossier a déjà été traitée.")
+    provision = compta_selectors.provision_par_id(
+        dossier.company, dossier.provision_comptable_id)
+    if provision is None:
+        raise ProvisionError(
+            "La provision comptable liée est introuvable dans votre société.")
+    try:
+        provision = compta_services.reprendre_provision(
+            provision, montant=montant, user=user)
+    except ValidationError as exc:
+        raise ProvisionError(
+            ' '.join(getattr(exc, 'messages', [str(exc)])))
+    dossier.reprise_provision_traitee = True
+    dossier.save(update_fields=['reprise_provision_traitee', 'updated_at'])
+    return provision
+
+
+def abandonner_reprise_provision(dossier):
+    """NTJUR15 — décision explicite de NE PAS reprendre la provision.
+
+    Éteint la bannière sans passer la moindre écriture : « traitée » veut dire
+    « une décision a été prise », pas « une écriture a été postée ».
+    """
+    if not dossier.reprise_provision_traitee:
+        dossier.reprise_provision_traitee = True
+        dossier.save(update_fields=['reprise_provision_traitee',
+                                    'updated_at'])
+    return dossier
 
 
 # ───────────────────────────────────────────────────────────────────────────

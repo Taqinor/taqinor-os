@@ -158,6 +158,14 @@ class DossierJuridique(TenantModel):
     provision_comptable_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='ID de la provision comptable')
+    # ── NTJUR15 — bannière « reprendre la provision » à la clôture ─────────
+    # PROPOSÉE à la clôture d'un dossier qui porte une provision ; jamais une
+    # reprise automatique. ``traitee`` empêche la bannière de revenir à chaque
+    # rechargement une fois la décision prise (reprise OU abandon explicite).
+    reprise_provision_proposee = models.BooleanField(
+        default=False, verbose_name='Reprise de provision proposée')
+    reprise_provision_traitee = models.BooleanField(
+        default=False, verbose_name='Reprise de provision traitée')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         # on_delete: trace d'auteur, jamais une raison de perdre le dossier.
@@ -184,6 +192,15 @@ class DossierJuridique(TenantModel):
     def est_clos(self):
         """Vrai si le dossier a atteint un statut terminal ``clos_*``."""
         return self.statut in {s.value for s in self.STATUTS_CLOS}
+
+    @property
+    def reprise_provision_a_proposer(self):
+        """NTJUR15 — la bannière « reprendre la provision » doit-elle
+        s'afficher ? Vraie UNE SEULE FOIS : la décision (reprise ou abandon
+        explicite) pose ``reprise_provision_traitee``."""
+        return bool(self.provision_comptable_id
+                    and self.reprise_provision_proposee
+                    and not self.reprise_provision_traitee)
 
 
 class CabinetAvocat(TenantModel):

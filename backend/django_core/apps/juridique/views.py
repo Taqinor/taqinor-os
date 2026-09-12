@@ -88,6 +88,93 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
                 created_by=self.request.user),
             period='yearly')
 
+    # ── NTJUR2 — machine à états procédurale ────────────────────────────────
+
+    @action(detail=True, methods=['get'], url_path='statuts-suivants')
+    def statuts_suivants(self, request, pk=None):
+        """Statuts légalement atteignables depuis l'état courant (lecture)."""
+        dossier = self.get_object()
+        return Response({
+            'statut': dossier.statut,
+            'suivants': [
+                {'valeur': str(v),
+                 'libelle': DossierJuridique.Statut(v).label}
+                for v in services.statuts_suivants(dossier)
+            ],
+        })
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """Applique une transition GARDÉE. Corps : ``{statut, motif}``.
+
+        Une transition hors machine renvoie 400 et laisse le dossier
+        STRICTEMENT inchangé.
+        """
+        dossier = self.get_object()
+        try:
+            dossier = services.changer_statut(
+                dossier, request.data.get('statut'), user=request.user,
+                motif=(request.data.get('motif') or '').strip())
+        except services.TransitionError as exc:
+            return Response({'statut': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(DossierJuridiqueSerializer(dossier).data)
+
+    @action(detail=True, methods=['post'], url_path='clore')
+    def clore(self, request, pk=None):
+        """Clôt le dossier. Corps : ``{statut_final, motif}``.
+
+        NTJUR15 — si le dossier porte une provision comptabilisée, la clôture
+        PROPOSE sa reprise (bannière) ; elle ne poste JAMAIS l'écriture.
+        """
+        dossier = self.get_object()
+        try:
+            dossier = services.clore_dossier(
+                dossier, request.data.get('statut_final'), user=request.user,
+                motif=(request.data.get('motif') or '').strip())
+        except services.TransitionError as exc:
+            return Response({'statut_final': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(DossierJuridiqueSerializer(dossier).data)
+
+    # ── NTJUR15 — reprise de provision à la clôture (jamais automatique) ────
+
+    @action(detail=True, methods=['post'], url_path='reprendre-provision',
+            permission_classes=[
+                ScopedPermission, HasPermissionOrLegacy('compta_saisir')])
+    def reprendre_provision(self, request, pk=None):
+        """Reprend (ou abandonne explicitement) la provision d'un dossier clos.
+
+        Corps : ``{confirme: true, montant?}`` pour reprendre,
+        ``{abandonner: true}`` pour éteindre la bannière SANS écriture.
+        Sans l'un des deux : aucun effet, la réponse rappelle qu'une
+        confirmation explicite est requise.
+        """
+        dossier = self.get_object()
+        if request.data.get('abandonner'):
+            services.abandonner_reprise_provision(dossier)
+            return Response({'reprise_provision_traitee': True,
+                             'provision_reprise': False})
+        if not request.data.get('confirme'):
+            return Response(
+                {'confirme': ("Confirmez explicitement la reprise : aucune "
+                              "écriture comptable n'est passée sans "
+                              "confirmation.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            provision = services.reprendre_provision_dossier(
+                dossier, montant=request.data.get('montant'),
+                user=request.user)
+        except services.ProvisionError as exc:
+            return Response({'montant': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'reprise_provision_traitee': True,
+            'provision_reprise': True,
+            'provision_comptable_id': provision.id,
+            'montant_repris': str(provision.montant_repris),
+        })
+
     # ── NTJUR14 — provision pour risque PROPOSÉE (jamais automatique) ───────
 
     @action(detail=True, methods=['post'], url_path='proposer-provision',
