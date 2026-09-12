@@ -411,3 +411,23 @@ export function normaliserInstances(payload) {
         : estEnRetardSla(it),
     }))
 }
+
+/* ============================================================================
+   NTWFL14 -- Editeur de formulaire visuel (FormBuilder.jsx) : réordonnancement
+   par glisser-déposer des champs du schéma. Vit ici (et non dans
+   FormBuilder.jsx) pour rester une fonction pure exportée sans casser
+   react-refresh (un fichier de composant ne doit exporter QUE des
+   composants).
+   ========================================================================== */
+
+/** Déplace l'élément `indexSource` vers `indexCible` (glisser-déposer), sans
+ * mutation. Purement locale au form builder (pas de renumérotation `ordre` --
+ * un schéma de formulaire n'en a pas). */
+export function deplacerChamp(schema, indexSource, indexCible) {
+  if (!Array.isArray(schema)) return []
+  if (indexSource === indexCible) return [...schema]
+  const next = [...schema]
+  const [moved] = next.splice(indexSource, 1)
+  next.splice(indexCible, 0, moved)
+  return next
+}

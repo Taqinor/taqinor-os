@@ -72,6 +72,7 @@ export const MANIFESTES = {
   immobilier: { sku: 'vertical_immobilier', libelle: 'Immobilier', installable: true },
   innovation: { sku: 'generic', libelle: 'Innovation', installable: true },
   installations: { sku: 'solar_core', libelle: 'Chantiers', installable: true },
+  juridique: { sku: 'generic', libelle: 'Juridique', installable: true },
   kb: { sku: 'generic', libelle: 'Base de connaissances', installable: true },
   litiges: { sku: 'generic', libelle: 'Réclamations & litiges', installable: true },
   marketing: { sku: 'generic', libelle: 'Marketing', installable: true },
