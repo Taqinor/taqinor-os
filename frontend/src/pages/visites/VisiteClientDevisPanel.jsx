@@ -3,8 +3,8 @@
 // identité/téléphone/WhatsApp/adresse/GPS + devis (numéro/statut/total TTC/
 // lignes) SANS `prix_achat` — le serveur ne l'expose déjà pas ici, ce panneau
 // n'en ajoute jamais un.
-import { Card, Badge } from '../../../ui'
-import { formatMAD } from '../../../lib/format'
+import { Card, Badge } from '../../ui'
+import { formatMAD } from '../../lib/format'
 import { whatsappUrl, mapsUrl } from './visiteHelpers'
 
 const STATUT_DEVIS_LABEL = {

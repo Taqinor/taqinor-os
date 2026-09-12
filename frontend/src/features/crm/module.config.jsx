@@ -60,14 +60,10 @@ const DefisPage = lazy(() => import('../../pages/crm/defis/DefisPage'))
 // MRY31 — écran « Suivi des relances » : les touches de cadence par jour et
 // leur statut (au-delà de la file « aujourd'hui + retard » du Cockpit).
 const RelancesSuiviPage = lazy(() => import('../../pages/crm/RelancesSuiviPage'))
-// VT5 — visite technique terrain (fondateur 2026-09-09) : « mes visites »
-// (commercial) + l'écran wizard checklist photos/mesures d'une visite.
-const VisitesListPage = lazy(() => import('../../pages/crm/visites/VisitesListPage'))
-const VisiteWizardPage = lazy(() => import('../../pages/crm/visites/VisiteWizardPage'))
-// VT8 — revue bureau d'études (feu vert calepinage / renvoi).
-const VisiteBureauEtudesPage = lazy(() => import('../../pages/crm/visites/VisiteBureauEtudesPage'))
-// VT11 — calage du toit réaliste (4 poignées de coins, drapage canvas).
-const CalageToitPage = lazy(() => import('../../pages/crm/visites/CalageToitPage'))
+// VTA8 — les 4 écrans de visite technique terrain ont QUITTÉ le CRM : ils
+// vivent dans l'app autonome « Visites » (`features/visites/module.config.jsx`,
+// routes `/visites/...`), parce que le commercial terrain qui les utilise n'a
+// aucun accès au CRM. Ne les remonter ici sous aucun prétexte.
 
 const config = {
   key: 'crm',
@@ -113,12 +109,8 @@ const config = {
       // visible de toute l'équipe, le filtre Responsable se réserve lui-même
       // aux rôles responsable/admin à l'intérieur de l'écran.
       { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'] },
-      // VT5 — « mes visites » (checklist photos/mesures guidée terrain).
-      { to: '/crm/visites',          label: 'Visites terrain',  k: 'nav.visites_terrain', icon: navIcon(ClipboardCheck), roles: ['normal','responsable','admin'] },
-      // VT8 — revue bureau d'études (feu vert calepinage) : réservée
-      // responsable/admin, comme Partenaires ci-dessus (action `valider`
-      // côté serveur porte déjà `crm_visite_valider`).
-      { to: '/crm/visites-revue',    label: 'Revue technique', k: 'nav.visites_revue', icon: navIcon(ClipboardCheck), roles: ['responsable','admin'] },
+      // VTA8 — « Visites terrain » et « Revue technique » sont passées à l'app
+      // Visites (nav `features/visites/module.config.jsx`).
     ],
   },
   routes: [
@@ -146,16 +138,8 @@ const config = {
     { path: '/crm/defis', component: DefisPage },
     // MRY31 — suivi des relances par jour.
     { path: '/crm/relances', component: RelancesSuiviPage },
-    // VT5 — visite technique terrain : « mes visites » + wizard d'une visite.
-    { path: '/crm/visites', component: VisitesListPage },
-    { path: '/crm/visites/:id', component: VisiteWizardPage },
-    // VT8 — revue bureau d'études.
-    { path: '/crm/visites-revue', component: VisiteBureauEtudesPage, roles: ['responsable', 'admin'] },
-    // VT11 — calage du toit réaliste : atteinte depuis le wizard (catégorie
-    // toiture), jamais depuis la nav — route dynamique, hors périmètre de la
-    // garde « zéro route orpheline » (module.config.test.jsx, comme
-    // `/crm/leads/:id`).
-    { path: '/crm/visites/:id/calage', component: CalageToitPage },
+    // VTA8 — les 4 routes `/crm/visites*` sont parties dans l'app Visites
+    // (`/visites`, `/visites/toutes`, `/visites/revue`, `/visites/:id[/calage]`).
   ],
 }
 

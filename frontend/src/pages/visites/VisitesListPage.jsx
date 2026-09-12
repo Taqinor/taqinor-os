@@ -1,14 +1,14 @@
 // VT5 — « Mes visites » (mobile-first) : les visites techniques du commercial
 // connecté, avec le badge de complétude renvoyé PAR LE SERVEUR
-// (`complet`/`manquants_count`, `GET /crm/visites/?mine=1`) — jamais recalculé
+// (`complet`/`manquants_count`, `GET /visites/?mine=1`) — jamais recalculé
 // ici. La création se fait normalement depuis la fiche lead (onglet Visite,
 // VisiteTab.jsx) ; ce bouton est un second point d'entrée pour le commercial
 // qui part de sa liste plutôt que d'un lead précis.
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import crmApi from '../../../api/crmApi'
-import PageHeader from '../../../components/layout/PageHeader'
-import { Card, Badge, Spinner, EmptyState, Segmented } from '../../../ui'
+import visitesApi from '../../api/visitesApi'
+import PageHeader from '../../components/layout/PageHeader'
+import { Card, Badge, Spinner, EmptyState, Segmented } from '../../ui'
 import { STATUT_VISITE_LABEL } from './visiteHelpers'
 
 export default function VisitesListPage() {
@@ -21,7 +21,7 @@ export default function VisitesListPage() {
   const load = useCallback(() => {
     setLoading(true)
     setErreur(null)
-    crmApi.getVisites(scope === 'mine' ? { mine: 1 } : {})
+    visitesApi.getVisites(scope === 'mine' ? { mine: 1 } : {})
       .then((res) => setVisites(res.data?.results ?? res.data ?? []))
       .catch(() => setErreur('Chargement des visites impossible.'))
       .finally(() => setLoading(false))
@@ -62,8 +62,8 @@ export default function VisitesListPage() {
                 role="button"
                 tabIndex={0}
                 className="flex min-h-11 cursor-pointer items-center justify-between gap-3 p-3"
-                onClick={() => navigate(`/crm/visites/${v.id}`)}
-                onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/crm/visites/${v.id}`) }}
+                onClick={() => navigate(`/visites/${v.id}`)}
+                onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/visites/${v.id}`) }}
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{v.lead_nom}</p>

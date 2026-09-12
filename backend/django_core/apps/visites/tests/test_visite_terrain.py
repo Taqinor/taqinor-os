@@ -26,7 +26,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm.models import Client, Lead, LeadActivity, VisiteTerrain
+from apps.crm.models import Client, Lead, LeadActivity
+from apps.visites.models import VisiteTerrain
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from apps.stock.models import Produit
@@ -82,9 +83,9 @@ def make_user(company, username, permissions):
         role=make_role(company, f'role-{username}', permissions))
 
 
-TERRAIN = ['crm_voir', 'crm_visite_voir', 'crm_visite_creer',
-           'crm_visite_modifier']
-BUREAU = TERRAIN + ['crm_visite_valider']
+TERRAIN = ['crm_voir', 'visites_voir', 'visites_creer',
+           'visites_modifier']
+BUREAU = TERRAIN + ['visites_valider']
 
 
 class VisiteTerrainBase(TestCase):
@@ -103,7 +104,7 @@ class VisiteTerrainBase(TestCase):
         self.api = auth(self.commercial)
 
     def creer_visite(self):
-        resp = self.api.post('/api/django/crm/visites/',
+        resp = self.api.post('/api/django/visites/visites/',
                              {'lead': self.lead.id}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         return resp.data['id']
@@ -113,7 +114,7 @@ class VisiteTerrainBase(TestCase):
         corps = {'slot_code': slot_code, 'fichier': upload}
         corps.update(extra)
         return self.api.post(
-            f'/api/django/crm/visites/{visite_id}/photos/', corps,
+            f'/api/django/visites/visites/{visite_id}/photos/', corps,
             format='multipart')
 
     def remplir(self, visite_id):
@@ -125,7 +126,7 @@ class VisiteTerrainBase(TestCase):
                 self.assertEqual(resp.status_code, 200, resp.data)
         for categorie, valeurs in MESURES_COMPLETES.items():
             resp = self.api.patch(
-                f'/api/django/crm/visites/{visite_id}/mesures/',
+                f'/api/django/visites/visites/{visite_id}/mesures/',
                 {'categorie': categorie, 'valeurs': valeurs}, format='json')
             self.assertEqual(resp.status_code, 200, resp.data)
 
@@ -135,16 +136,16 @@ class ScopingSocieteTests(VisiteTerrainBase):
         visite_id = self.creer_visite()
         intrus = auth(self.etranger)
 
-        detail = intrus.get(f'/api/django/crm/visites/{visite_id}/')
+        detail = intrus.get(f'/api/django/visites/visites/{visite_id}/')
         self.assertEqual(detail.status_code, 404)
 
-        liste = intrus.get('/api/django/crm/visites/')
+        liste = intrus.get('/api/django/visites/visites/')
         self.assertEqual(liste.status_code, 200)
         self.assertEqual(
             [ligne['id'] for ligne in liste.data], [])
 
     def test_creer_une_visite_sur_le_lead_dune_autre_societe_est_refuse(self):
-        resp = self.api.post('/api/django/crm/visites/',
+        resp = self.api.post('/api/django/visites/visites/',
                              {'lead': self.lead_etranger.id}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
@@ -159,7 +160,7 @@ class CompletudeTests(VisiteTerrainBase):
     def test_terminer_est_refuse_avec_la_liste_des_manquants(self):
         visite_id = self.creer_visite()
         resp = self.api.post(
-            f'/api/django/crm/visites/{visite_id}/terminer/', {},
+            f'/api/django/visites/visites/{visite_id}/terminer/', {},
             format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         manquants = resp.data['manquants']
@@ -181,18 +182,18 @@ class CompletudeTests(VisiteTerrainBase):
         self.assertEqual(
             self.poster_photo(visite_id, 'toiture_vue_generale').status_code,
             200)
-        detail = self.api.get(f'/api/django/crm/visites/{visite_id}/')
+        detail = self.api.get(f'/api/django/visites/visites/{visite_id}/')
         toiture = detail.data['checklist'][0]
         self.assertEqual(toiture['slots'][0]['etat'], 'manquant')
 
     def test_terminer_est_accepte_quand_tout_y_est(self):
         visite_id = self.creer_visite()
         self.remplir(visite_id)
-        detail = self.api.get(f'/api/django/crm/visites/{visite_id}/')
+        detail = self.api.get(f'/api/django/visites/visites/{visite_id}/')
         self.assertTrue(detail.data['completude']['complet'],
                         detail.data['completude']['manquants'])
         resp = self.api.post(
-            f'/api/django/crm/visites/{visite_id}/terminer/', {},
+            f'/api/django/visites/visites/{visite_id}/terminer/', {},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['statut'], VisiteTerrain.Statut.TERMINEE)
@@ -208,7 +209,7 @@ class CompletudeTests(VisiteTerrainBase):
     def test_mesure_invalide_nomme_le_champ_fautif(self):
         visite_id = self.creer_visite()
         resp = self.api.patch(
-            f'/api/django/crm/visites/{visite_id}/mesures/',
+            f'/api/django/visites/visites/{visite_id}/mesures/',
             {'categorie': 'tableau',
              'valeurs': {'type_alimentation': 'quadri'}}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
@@ -220,7 +221,7 @@ class CompletudeTests(VisiteTerrainBase):
         valeurs.pop('pente_deg')
         valeurs['toit_plat'] = True
         resp = self.api.patch(
-            f'/api/django/crm/visites/{visite_id}/mesures/',
+            f'/api/django/visites/visites/{visite_id}/mesures/',
             {'categorie': 'toiture', 'valeurs': valeurs}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         codes = {item['code']
@@ -233,10 +234,10 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
         visite_id = self.creer_visite()
         self.remplir(visite_id)
         self.assertEqual(
-            self.api.post(f'/api/django/crm/visites/{visite_id}/terminer/',
+            self.api.post(f'/api/django/visites/visites/{visite_id}/terminer/',
                           {}, format='json').status_code, 200)
 
-        detail = self.api.get(f'/api/django/crm/visites/{visite_id}/')
+        detail = self.api.get(f'/api/django/visites/visites/{visite_id}/')
         # Le slot se trouve par son CODE, jamais par position : l'ordre des
         # catégories vient de visite_checklist.py, pas de ce test.
         slot = next(s for cat in detail.data['checklist']
@@ -245,7 +246,7 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
 
         bureau = auth(self.bureau)
         renvoi = bureau.post(
-            f'/api/django/crm/visites/{visite_id}/renvoyer/',
+            f'/api/django/visites/visites/{visite_id}/renvoyer/',
             {'photos': [media_id], 'mesures': [], 'motif': 'Photo floue.'},
             format='json')
         self.assertEqual(renvoi.status_code, 200, renvoi.data)
@@ -258,19 +259,19 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
 
         # Tant que la photo n'est pas reprise, la visite n'est PAS terminable.
         refus = self.api.post(
-            f'/api/django/crm/visites/{visite_id}/terminer/', {},
+            f'/api/django/visites/visites/{visite_id}/terminer/', {},
             format='json')
         self.assertEqual(refus.status_code, 400, refus.data)
 
         supprime = self.api.delete(
-            f'/api/django/crm/visites/{visite_id}/photos/{media_id}/')
+            f'/api/django/visites/visites/{visite_id}/photos/{media_id}/')
         self.assertEqual(supprime.status_code, 200, supprime.data)
         self.assertEqual(
             self.poster_photo(visite_id, 'toiture_obstacles',
                               nom='reprise.png').status_code, 200)
 
         fini = self.api.post(
-            f'/api/django/crm/visites/{visite_id}/terminer/', {},
+            f'/api/django/visites/visites/{visite_id}/terminer/', {},
             format='json')
         self.assertEqual(fini.status_code, 200, fini.data)
 
@@ -278,7 +279,7 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
         visite_id = self.creer_visite()
         bureau = auth(self.bureau)
         resp = bureau.post(
-            f'/api/django/crm/visites/{visite_id}/renvoyer/',
+            f'/api/django/visites/visites/{visite_id}/renvoyer/',
             {'photos': [], 'mesures': [], 'motif': '   '}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('motif', resp.data['erreurs'])
@@ -288,7 +289,7 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
         self.remplir(visite_id)
         bureau = auth(self.bureau)
         resp = bureau.post(
-            f'/api/django/crm/visites/{visite_id}/renvoyer/',
+            f'/api/django/visites/visites/{visite_id}/renvoyer/',
             {'photos': [],
              'mesures': [{'categorie': 'tableau',
                           'code': 'calibre_disjoncteur_a'}],
@@ -303,7 +304,7 @@ class FeuVertTests(VisiteTerrainBase):
     def test_valider_est_refuse_sans_le_code_dedie(self):
         visite_id = self.creer_visite()
         resp = self.api.post(
-            f'/api/django/crm/visites/{visite_id}/valider/', {},
+            f'/api/django/visites/visites/{visite_id}/valider/', {},
             format='json')
         self.assertEqual(resp.status_code, 403, resp.data)
         self.assertNotEqual(
@@ -314,7 +315,7 @@ class FeuVertTests(VisiteTerrainBase):
         visite_id = self.creer_visite()
         bureau = auth(self.bureau)
         resp = bureau.post(
-            f'/api/django/crm/visites/{visite_id}/valider/', {},
+            f'/api/django/visites/visites/{visite_id}/valider/', {},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['statut'], VisiteTerrain.Statut.VALIDEE)
@@ -350,7 +351,7 @@ class PanneauClientDevisTests(VisiteTerrainBase):
     def test_le_panneau_porte_le_client_et_son_devis(self):
         devis = self._devis()
         visite_id = self.creer_visite()
-        detail = self.api.get(f'/api/django/crm/visites/{visite_id}/')
+        detail = self.api.get(f'/api/django/visites/visites/{visite_id}/')
         self.assertEqual(detail.status_code, 200)
         panneau = detail.data['client_panel']
         self.assertEqual(panneau['ville'], 'Bouskoura')
@@ -369,7 +370,7 @@ class PanneauClientDevisTests(VisiteTerrainBase):
 
         self._devis()
         visite_id = self.creer_visite()
-        detail = self.api.get(f'/api/django/crm/visites/{visite_id}/')
+        detail = self.api.get(f'/api/django/visites/visites/{visite_id}/')
         rendu = json.dumps(detail.data, default=str)
         for interdit in ('prix_achat', 'marge', '987.65', '987,65'):
             self.assertNotIn(interdit, rendu, interdit)
@@ -388,13 +389,13 @@ class ChatterTests(VisiteTerrainBase):
             any('Visite technique créée' in note for note in self._notes()))
 
         self.remplir(visite_id)
-        self.api.post(f'/api/django/crm/visites/{visite_id}/terminer/', {},
+        self.api.post(f'/api/django/visites/visites/{visite_id}/terminer/', {},
                       format='json')
         self.assertTrue(
             any('terminée' in note for note in self._notes()))
 
         bureau = auth(self.bureau)
-        bureau.post(f'/api/django/crm/visites/{visite_id}/valider/', {},
+        bureau.post(f'/api/django/visites/visites/{visite_id}/valider/', {},
                     format='json')
         notes = self._notes()
         self.assertTrue(any('feu vert' in note for note in notes), notes)
@@ -408,7 +409,7 @@ class ChatterTests(VisiteTerrainBase):
         visite_id = self.creer_visite()
         bureau = auth(self.bureau)
         bureau.post(
-            f'/api/django/crm/visites/{visite_id}/renvoyer/',
+            f'/api/django/visites/visites/{visite_id}/renvoyer/',
             {'photos': [], 'mesures': [], 'motif': 'Tableau non photographié.'},
             format='json')
         self.assertTrue(
@@ -429,7 +430,7 @@ class CablageRetourLeadTests(VisiteTerrainBase):
 
     def _valider(self, visite_id):
         bureau = auth(self.bureau)
-        resp = bureau.post(f'/api/django/crm/visites/{visite_id}/valider/',
+        resp = bureau.post(f'/api/django/visites/visites/{visite_id}/valider/',
                            {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         return resp
@@ -440,7 +441,7 @@ class CablageRetourLeadTests(VisiteTerrainBase):
         self.assertFalse(self.lead.visite_effectuee)
         visite_id = self.creer_visite()
         self.remplir(visite_id)
-        self.api.post(f'/api/django/crm/visites/{visite_id}/terminer/', {},
+        self.api.post(f'/api/django/visites/visites/{visite_id}/terminer/', {},
                       format='json')
         self._valider(visite_id)
 
@@ -450,7 +451,7 @@ class CablageRetourLeadTests(VisiteTerrainBase):
     def test_le_recap_ne_porte_que_des_mesures_reellement_saisies(self):
         visite_id = self.creer_visite()
         self.remplir(visite_id)
-        self.api.post(f'/api/django/crm/visites/{visite_id}/terminer/', {},
+        self.api.post(f'/api/django/visites/visites/{visite_id}/terminer/', {},
                       format='json')
         self._valider(visite_id)
 
@@ -527,7 +528,7 @@ class CablageRetourLeadTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['visite_id'], visite.id)
         self.assertEqual(resp.data['url'],
-                         f'/api/django/crm/visites/{visite.id}/photo-toit/')
+                         f'/api/django/visites/visites/{visite.id}/photo-toit/')
         self.assertEqual(len(resp.data['texture_calage']['coins']), 4)
 
     def test_une_visite_non_validee_ne_peint_jamais_de_toit(self):

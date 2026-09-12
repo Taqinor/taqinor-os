@@ -104,6 +104,8 @@ export const MANIFESTES = {
   uxviews: { sku: 'generic', libelle: 'Vues UX', installable: false },
   veille_ao: { sku: 'solar_core', libelle: 'Veille appels d\'offres', installable: true },
   ventes: { sku: 'solar_core', libelle: 'Ventes', installable: true },
+  // VTA1/VTA8 — app autonome « Visites terrain » (manifeste `apps/visites`).
+  visites: { sku: 'solar_core', libelle: 'Visites terrain', installable: true },
   voip: { sku: 'generic', libelle: 'Téléphonie', installable: true },
 }
 
