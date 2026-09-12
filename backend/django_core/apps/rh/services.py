@@ -3009,3 +3009,118 @@ def proposer_revision(cycle, employe, *, auteur_dossier, user,
         'augmentation_montant_proposee', 'justification', 'statut',
         'propose_par'])
     return existante
+
+
+# ── NTHCM7 — application d'un cycle clos → nouvelles ``Remuneration`` ───────
+
+class CycleNonClosError(Exception):
+    """NTHCM7 — un cycle non CLOS ne peut pas être appliqué (400)."""
+
+
+def _notifier_revision_appliquee(proposition):
+    """NTHCM7 — prévient l'employé que sa révision est appliquée.
+
+    Best-effort (aucune exception ne remonte) et SANS AUCUN MONTANT dans le
+    corps — exactement le patron XRH26 ``augmentation_proposee`` : le montant
+    vit dans ``Remuneration``, gatée ``salaires_voir``, jamais dans une
+    notification.
+    """
+    user = getattr(proposition.employe, 'user', None)
+    if user is None:
+        return
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        notify(
+            user,
+            EventType.APPROVAL_REQUESTED,
+            title='Révision salariale appliquée',
+            body=("Votre révision salariale a été appliquée. Le détail est "
+                  "consultable auprès des Ressources humaines."),
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        pass
+
+
+@transaction.atomic
+def appliquer_cycle_revision(cycle, user=None, *, today=None):
+    """NTHCM7 — matérialise les propositions APPROUVÉES d'un cycle CLOS.
+
+    Pour chaque ``PropositionRevision`` au statut ``approuvee`` et pas encore
+    appliquée :
+
+    * une NOUVELLE ligne ``Remuneration`` est créée (montant = snapshot +
+      augmentation proposée), datée de la ``date_effet`` du cycle (à défaut
+      ``date_fin``, à défaut le jour de l'application — aucune date
+      inventée) ; devise et périodicité héritent de la dernière ligne connue ;
+    * la proposition est marquée ``appliquee=True`` + ``date_application`` —
+      c'est le garde-fou d'IDEMPOTENCE : ré-appliquer ne recrée rien ;
+    * une entrée ``DossierActivity`` (XRH6, ``type=log``) trace la révision.
+      Elle porte le POURCENTAGE, JAMAIS les montants : le chatter du dossier
+      est gaté ``rh_voir`` alors que les salaires relèvent de
+      ``salaires_voir`` — y écrire un montant contournerait le palier ;
+    * l'employé est notifié SANS montant (patron XRH26).
+
+    Les propositions ``rejetee``/``proposee`` ne créent RIEN. Renvoie
+    ``{appliquees, ignorees}``.
+    """
+    from datetime import date as _date
+
+    from .models import (
+        CycleRevisionSalariale, DossierActivity, PropositionRevision,
+        Remuneration,
+    )
+
+    if cycle.statut != CycleRevisionSalariale.Statut.CLOS:
+        raise CycleNonClosError(
+            "Le cycle doit être clos (calibration validée) avant de pouvoir "
+            "être appliqué.")
+
+    jour = today or _date.today()
+    date_effet = cycle.date_effet or cycle.date_fin or jour
+
+    propositions = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle,
+        statut=PropositionRevision.Statut.APPROUVEE, appliquee=False)
+
+    appliquees = 0
+    for proposition in propositions.select_related('employe'):
+        employe = proposition.employe
+        derniere = (
+            Remuneration.objects
+            .filter(company=cycle.company, employe=employe)
+            .order_by('-date_effet', '-date_creation')
+            .first())
+        ancien = proposition.salaire_actuel or Decimal('0')
+        nouveau = (
+            ancien + (proposition.augmentation_montant_proposee
+                      or Decimal('0')))
+        Remuneration.objects.create(
+            company=cycle.company,
+            employe=employe,
+            montant=nouveau,
+            devise=derniere.devise if derniere else 'MAD',
+            periodicite=(derniere.periodicite if derniere
+                         else Remuneration.Periodicite.MENSUEL),
+            date_effet=date_effet,
+            motif=f'Révision salariale — {cycle.libelle}'[:200],
+        )
+        DossierActivity.objects.create(
+            company=cycle.company, employe=employe, auteur=user,
+            type=DossierActivity.Kind.LOG,
+            field='remuneration',
+            old_value='Avant révision',
+            new_value=(f'Révision {cycle.libelle} appliquée '
+                       f'(+{proposition.augmentation_pct_proposee} %)'),
+        )
+        proposition.appliquee = True
+        proposition.date_application = timezone.now()
+        proposition.save(update_fields=['appliquee', 'date_application'])
+        _notifier_revision_appliquee(proposition)
+        appliquees += 1
+
+    ignorees = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle).exclude(
+            statut=PropositionRevision.Statut.APPROUVEE).count()
+    return {'appliquees': appliquees, 'ignorees': ignorees}

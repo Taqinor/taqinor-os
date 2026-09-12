@@ -3071,6 +3071,9 @@ class CycleRevisionSalarialeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'libelle', 'periode', 'enveloppe_totale_pct',
             'statut', 'statut_display', 'date_debut', 'date_fin',
+            # NTHCM7 — date d'effet des ``Remuneration`` créées à
+            # l'application du cycle.
+            'date_effet',
             'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -3115,10 +3118,13 @@ class PropositionRevisionSerializer(serializers.ModelSerializer):
             'id', 'cycle', 'employe', 'employe_nom', 'salaire_actuel',
             'augmentation_pct_proposee', 'augmentation_montant_proposee',
             'justification', 'statut', 'statut_display', 'propose_par',
+            # NTHCM7 — marqueurs d'idempotence de l'application du cycle.
+            'appliquee', 'date_application',
             'date_creation',
         ]
         read_only_fields = [
             'salaire_actuel', 'augmentation_montant_proposee', 'propose_par',
+            'appliquee', 'date_application',
             'date_creation',
         ]
 

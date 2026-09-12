@@ -6354,6 +6354,12 @@ class CycleRevisionSalariale(models.Model):
         null=True, blank=True, verbose_name='Date de début')
     date_fin = models.DateField(
         null=True, blank=True, verbose_name='Date de fin')
+    # NTHCM7 — date d'effet des nouvelles ``Remuneration`` créées à
+    # l'application du cycle. Nullable : à défaut, l'application retombe sur
+    # ``date_fin`` puis, en dernier ressort, sur le jour de l'application
+    # (aucune date inventée dans le futur).
+    date_effet = models.DateField(
+        null=True, blank=True, verbose_name="Date d'effet des révisions")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -6473,6 +6479,12 @@ class PropositionRevision(models.Model):
         related_name='propositions_revision_proposees',
         verbose_name='Proposé par',
     )
+    # NTHCM7 — marqueur d'IDEMPOTENCE de l'application du cycle : une
+    # proposition déjà appliquée ne recrée JAMAIS de ligne ``Remuneration``.
+    appliquee = models.BooleanField(
+        default=False, verbose_name='Appliquée')
+    date_application = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'application")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

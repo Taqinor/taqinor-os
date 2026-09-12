@@ -6120,6 +6120,22 @@ class CycleRevisionSalarialeViewSet(TenantMixin, viewsets.ModelViewSet):
     search_fields = ['libelle', 'periode']
     ordering_fields = ['date_creation', 'periode']
 
+    @action(detail=True, methods=['post'], url_path='appliquer')
+    def appliquer(self, request, pk=None):
+        """NTHCM7 — matérialise les propositions APPROUVÉES d'un cycle CLOS.
+
+        Idempotente : une proposition déjà appliquée ne recrée aucune ligne
+        de rémunération, donc un second appel renvoie ``appliquees: 0``.
+        """
+        cycle = self.get_object()
+        try:
+            resultat = services.appliquer_cycle_revision(
+                cycle, request.user)
+        except services.CycleNonClosError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
 
 class EnveloppeManagerViewSet(TenantMixin, viewsets.ModelViewSet):
     """NTHCM5 — enveloppes allouées aux managers d'un cycle (``?cycle=<id>``).
