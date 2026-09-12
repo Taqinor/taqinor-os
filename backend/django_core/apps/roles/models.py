@@ -110,6 +110,19 @@ ALL_PERMISSIONS = [
     'sav_gerer',
     'sav_export',
     'sav_reassign',
+    # ── NTSRV39 — trois gestes SAV plus fins que `sav_gerer` ────────────────
+    # `sav_probleme_gerer` : créer/modifier un PROBLÈME (NTSRV16) et y
+    # rattacher des incidents. Un technicien traite ses tickets, il ne
+    # déclare pas la cause racine d'un parc — c'est un geste de responsable.
+    'sav_probleme_gerer',
+    # `sav_nps_voir` / `sav_sentiment_ia_voir` : lecture du NPS transactionnel
+    # (NTSRV14) et du badge de sentiment IA (NTSRV13). Catalogués ICI, en
+    # amont de ces deux tâches, pour la raison exacte de la règle WIR169 : un
+    # code posé sur un viewset sans entrée au catalogue rend 403 pour TOUS
+    # les rôles fins. Ils sont donc prêts le jour où ces écrans arrivent, et
+    # ces tâches n'auront pas à rouvrir `apps/roles`.
+    'sav_nps_voir',
+    'sav_sentiment_ia_voir',
     'parametres_voir',
     'parametres_modifier',
     'users_voir',
@@ -578,6 +591,10 @@ RESPONSABLE_PERMISSIONS = [
     'equipement_voir',
     'sav_voir',
     'sav_gerer',
+    # NTSRV39 — palier responsable : déclare les problèmes (cause racine) et
+    # lit NPS/sentiment. Comportement historique préservé (ce rôle avait déjà
+    # l'accès complet au SAV).
+    'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
     'parametres_voir',
     'users_voir',
     'reporting_voir',
@@ -763,6 +780,10 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'intervention_gerer', 'technicien_assign',
     'equipement_voir', 'equipement_gerer', 'sav_voir', 'sav_gerer',
     'sav_export', 'sav_reassign',
+    # NTSRV39 — c'est LE « Responsable SAV » de l'ERP : il déclare les
+    # problèmes (NTSRV16) et lit NPS/sentiment. Le Technicien de base ne les
+    # porte PAS (il garde l'accès ticket standard `sav_voir`/`sav_gerer`).
+    'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
     # QG4 — `stock_creer` retiré : la création de produits est réservée aux
     # rôles Directeur + Commercial responsable (décision Reda).
     'stock_voir', 'stock_modifier', 'stock_mouvement',

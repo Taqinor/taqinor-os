@@ -2782,7 +2782,12 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             return declared
         if self.action in READ_ACTIONS:
             return [HasPermissionOrLegacy('sav_voir')()]
-        return [HasPermissionOrLegacy('sav_gerer')()]
+        # NTSRV39 — l'ÉCRITURE d'un problème est un geste de responsable,
+        # distinct de `sav_gerer` (traiter ses tickets). Un technicien de base
+        # lit les problèmes (`sav_voir`) mais n'en crée/modifie aucun. Les
+        # comptes hérités SANS rôle fin gardent le comportement historique
+        # (repli `is_responsable` de HasPermissionOrLegacy).
+        return [HasPermissionOrLegacy('sav_probleme_gerer')()]
 
     def get_queryset(self):
         from django.db.models import Case, Count, IntegerField, Value, When
@@ -2854,7 +2859,7 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             'nb_tickets': drf_serializers.IntegerField(),
         }))
     @action(detail=True, methods=['post'], url_path='lier-ticket',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_probleme_gerer')])
     def lier_ticket(self, request, pk=None):
         """Rattache UN ticket au problème. Idempotent : un second appel
         renvoie le lien existant sans doublon (contrainte unique en base).
@@ -2901,7 +2906,7 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             'nb_tickets': drf_serializers.IntegerField(),
         }))
     @action(detail=True, methods=['post'], url_path='delier-ticket',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_probleme_gerer')])
     def delier_ticket(self, request, pk=None):
         """Détache un ticket du problème : supprime la LIGNE DE LIAISON,
         jamais le ticket. Idempotent (détacher deux fois ne casse rien)."""
