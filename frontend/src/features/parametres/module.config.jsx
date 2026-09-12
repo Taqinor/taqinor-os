@@ -146,6 +146,11 @@ const TiersDoublonsPage = lazy(() => import('../../pages/parametres/TiersDoublon
 // + tables autorisées de l'agent SQL, GET /sql-agent/schema — jusqu'ici sans
 // appelant côté frontend). Admin-only (écran de configuration sensible).
 const IaDiagnostic = lazy(() => import('./IaDiagnostic'))
+// NTAI6 — Paramètres → IA : capacités actives (fournisseur réel par capacité,
+// motif d'inactivité, latence médiane et dernière erreur mesurées, budget IA
+// du mois). Aucune clé d'API n'est exposée. Admin-only (le backend applique le
+// palier Administrateur/Directeur).
+const IaCapacites = lazy(() => import('./IaCapacites'))
 // PACT140 — Objets métier personnalisés (XPLT16) : définition sans code d'un
 // objet + de ses champs (mécanisme CustomFieldDef EXISTANT pointé sur
 // `module: custom:<code>`), puis écran GÉNÉRIQUE de ses enregistrements rendu
@@ -192,6 +197,7 @@ const config = {
       },
       { to: '/parametres/tiers-doublons', label: 'Doublons tiers', icon: <Copy size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/ia', label: 'IA (diagnostic)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
+      { to: '/parametres/ia-capacites', label: 'IA (capacités)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // ODY23(c) — écrans /parametres/* qui avaient une route sans entrée de menu.
       { to: '/parametres/export', label: 'Export / Sauvegarde', icon: <DownloadCloud size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/alertes-kpi', label: 'Alertes KPI', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
@@ -232,6 +238,7 @@ const config = {
     { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
+    { path: '/parametres/ia-capacites', component: IaCapacites, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },

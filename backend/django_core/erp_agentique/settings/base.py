@@ -1660,6 +1660,34 @@ try:
 except (ValueError, TypeError):
     AI_PROVIDERS = {}
 
+# NTAI3 — masquage des données personnelles avant envoi à un LLM EXTERNE
+# (« Trust Layer »). 'auto' (défaut) = actif dès qu'un fournisseur réel est
+# utilisé, SAUF s'il est déclaré auto-hébergé ci-dessous ; '1' = toujours ;
+# '0' = jamais (le chemin redevient octet-identique à l'existant). Le masquage
+# ne touche QUE le texte transmis — jamais la donnée stockée.
+AI_PII_REDACTION = os.environ.get('AI_PII_REDACTION', 'auto')
+
+# NTAI3 — fournisseurs tournant SUR NOTRE infrastructure : la donnée ne quitte
+# pas la maison, le masquage n'a donc pas lieu d'être (liste de clés séparées
+# par des virgules, ex. « ollama,vllm »).
+AI_SELF_HOSTED_PROVIDERS = tuple(
+    cle.strip() for cle in
+    (os.environ.get('AI_SELF_HOSTED_PROVIDERS', '') or '').split(',')
+    if cle.strip())
+
+# NTAI1 — tarifs des fournisseurs IA, en MAD pour 1 000 jetons :
+#   AI_TOKEN_COSTS = {'groq': {'prompt': '0.02', 'completion': '0.06'}}
+# VIDE par défaut, et c'est volontaire : un fournisseur sans tarif configuré
+# produit un coût estimé de 0 accompagné de « cout_tarife: false » — un coût
+# INCONNU, jamais présenté comme un coût nul (règle « zéro chiffre inventé »).
+# Lue depuis AI_TOKEN_COSTS_JSON (JSON) si présente.
+try:
+    AI_TOKEN_COSTS = _json.loads(os.environ.get('AI_TOKEN_COSTS_JSON', '') or '{}')
+    if not isinstance(AI_TOKEN_COSTS, dict):
+        AI_TOKEN_COSTS = {}
+except (ValueError, TypeError):
+    AI_TOKEN_COSTS = {}
+
 # NTAI17 — file de traitement documentaire IA (classification + extraction à
 # l'upload GED). ÉTEINTE par défaut : sans clé IA, empiler des jobs que rien ne
 # peut traiter n'apporte rien, et le dépôt d'une pièce reste byte-identique.

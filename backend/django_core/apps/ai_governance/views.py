@@ -15,9 +15,14 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.generics import GenericAPIView
 from rest_framework.views import APIView
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
-from .serializers import RechercheGlobaleRequeteSerializer
+from .serializers import (AnalyseContratRequeteSerializer,
+                          CapacitesRequeteSerializer, ExtraireRequeteSerializer,
+                          FicheCibleSerializer,
+                          RechercheGlobaleRequeteSerializer,
+                          ResumeDocumentRequeteSerializer,
+                          UsageRequeteSerializer)
 from .services import AiCopiloteUnavailable
 
 
@@ -28,7 +33,251 @@ def _unavailable_response(exc: AiCopiloteUnavailable) -> Response:
     return Response({'detail': str(exc)}, status=code)
 
 
-class DescriptionProduitView(APIView):
+class UsageContexteMixin:
+    """NTAI1 — pose « quelle société, quelle feature » autour du traitement.
+
+    Un fournisseur IA ne reçoit qu'un prompt : il ne peut pas savoir pour quelle
+    société il travaille. Ce contexte, posé ICI (côté serveur, à partir de
+    l'utilisateur authentifié — jamais d'un corps de requête), est ce qui permet
+    au journal d'usage d'attribuer l'appel à la bonne société. Sans lui, aucune
+    ligne n'est écrite (on ne devine jamais une société).
+
+    Le contexte est posé APRÈS ``initial()`` (donc après authentification, quand
+    ``request.user`` est réellement résolu) et rendu dans
+    ``finalize_response()``, qui est appelé même quand la vue lève.
+    """
+
+    #: Identifie la feature appelante dans le journal (texte stable).
+    feature_key = ''
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        from core.ai.usage import set_context
+
+        self._usage_token = set_context(
+            company_id=getattr(request.user, 'company_id', None),
+            feature_key=self.feature_key)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        from core.ai.usage import reset_context
+
+        reset_context(getattr(self, '_usage_token', None))
+        self._usage_token = None
+        return super().finalize_response(request, response, *args, **kwargs)
+
+
+class UsageView(GenericAPIView):
+    """NTAI1 — ``GET /api/django/ai-governance/usage/?since=&feature=``.
+
+    Agrégats d'usage IA de la société de l'appelant : par jour, par feature et
+    par fournisseur. Réservé au palier Administrateur/Directeur.
+
+    Ne renvoie QUE des métriques (aucun prompt, aucune donnée métier) et
+    signale explicitement les appels dont le coût est INCONNU (fournisseur sans
+    tarif configuré) plutôt que de les compter comme gratuits.
+    """
+
+    permission_classes = [IsAuthenticated, IsAdminOrResponsableTier]
+    # R2 (check_openapi_shapes) : base GenericAPIView + serializer de requête +
+    # `responses=` déclaré — la forme n'est jamais devinée, donc cette vue
+    # n'ajoute rien au cliquet, qui ne peut que décroître.
+    serializer_class = UsageRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant, jamais au-delà."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiUsageAgregats', {
+        'depuis': drf_serializers.CharField(allow_null=True),
+        'feature': drf_serializers.CharField(),
+        'totaux': drf_serializers.JSONField(),
+        'cout_complet': drf_serializers.BooleanField(),
+        'par_jour': drf_serializers.JSONField(),
+        'par_feature': drf_serializers.JSONField(),
+        'par_fournisseur': drf_serializers.JSONField(),
+    }))
+    def get(self, request):
+        from datetime import date
+
+        from .usage import agreger_usage, fenetre_par_defaut
+
+        since = request.query_params.get('since') or ''
+        if since:
+            try:
+                depuis = date.fromisoformat(since)
+            except ValueError:
+                return Response(
+                    {'detail': 'Paramètre « since » invalide — format attendu '
+                               'AAAA-MM-JJ.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            depuis = fenetre_par_defaut()
+
+        return Response(agreger_usage(
+            request.user.company, since=depuis,
+            feature=request.query_params.get('feature') or ''))
+
+
+class CapabilitiesView(GenericAPIView):
+    """NTAI6 — ``GET /api/django/ai-governance/capabilities/``.
+
+    Pour chaque capacité IA (ocr/stt/vision_qa/llm) : le fournisseur
+    sélectionné, s'il est ACTIF, pourquoi il ne l'est pas, et ses mesures
+    (appels, latence médiane, dernière erreur) issues du journal NTAI1.
+
+    AUCUNE CLÉ N'EST EXPOSÉE : on renvoie le NOM du fournisseur, jamais son
+    secret. La lecture se fait dans le contexte de la société de l'appelant,
+    pour que l'état affiché soit celui qu'il obtiendrait réellement (budget
+    épuisé compris).
+    """
+
+    permission_classes = [IsAuthenticated, IsAdminOrResponsableTier]
+    serializer_class = CapacitesRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant — seule source des
+        mesures de cet écran. Le rendre explicite rend le périmètre
+        vérifiable par la garde d'isolation multi-société, au lieu de le
+        laisser enfoui dans le calculateur de métriques."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiCapacitesEtat', {
+        'capacite': drf_serializers.CharField(),
+        'fournisseur_choisi': drf_serializers.CharField(),
+        'fournisseur_actif': drf_serializers.CharField(),
+        'label': drf_serializers.CharField(),
+        'configure': drf_serializers.BooleanField(),
+        'motif': drf_serializers.CharField(),
+        'appels': drf_serializers.IntegerField(allow_null=True),
+        'latence_p50_ms': drf_serializers.IntegerField(allow_null=True),
+        'derniere_erreur': drf_serializers.CharField(allow_blank=True),
+        'derniere_erreur_le': drf_serializers.CharField(allow_null=True),
+    }, many=True))
+    def get(self, request):
+        from core.ai.registry import capabilities_status
+        from core.ai.usage import usage_context
+
+        company = request.user.company
+        with usage_context(company_id=getattr(company, 'id', None),
+                           feature_key='ai.capabilities'):
+            return Response(capabilities_status(company))
+
+
+class ResumeFicheView(UsageContexteMixin, GenericAPIView):
+    """NTAI8 — ``POST /api/django/ai/resume-fiche/``.
+
+    Body ``{"content_type": "crm.lead", "object_id": 12}``. Renvoie un résumé
+    FR de la SITUATION de la fiche, construit à partir d'une allowlist de
+    champs + du fil d'activité (tout deux scopés société).
+
+    LECTURE SEULE. Type hors whitelist → 400 ; sans clé LLM → 503 douce
+    (« lecture manuelle »), aucun appel réseau.
+    """
+
+    feature_key = 'ai.resume_fiche'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = FicheCibleSerializer
+
+    def get_queryset(self):
+        """Fil d'activité de la SOCIÉTÉ de l'appelant — la seule source lue.
+
+        La fiche elle-même est résolue par ``resolve_target`` (qui refuse une
+        cible d'une autre société) ; ce ``get_queryset`` rend ce périmètre
+        EXPLICITE et vérifiable par la garde d'isolation multi-société.
+        """
+        from apps.records.models import Activity
+
+        return Activity.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiResumeFiche', {
+        'content_type': drf_serializers.CharField(),
+        'object_id': drf_serializers.IntegerField(),
+        'libelle': drf_serializers.CharField(),
+        'resume': drf_serializers.CharField(),
+        'faits': drf_serializers.JSONField(),
+        'entrees_fil': drf_serializers.IntegerField(),
+        'source': drf_serializers.CharField(),
+    }))
+    def post(self, request):
+        from .copilote import resumer_fiche
+
+        content_type = request.data.get('content_type')
+        object_id = request.data.get('object_id')
+        if not content_type or object_id in (None, ''):
+            return Response(
+                {'detail': 'content_type et object_id sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = resumer_fiche(
+                company=request.user.company, content_type=content_type,
+                object_id=object_id)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class ProchainesActionsView(UsageContexteMixin, GenericAPIView):
+    """NTAI9 — ``POST /api/django/ai/prochaines-actions/``.
+
+    Body ``{"content_type": "crm.lead", "object_id": 12}``. Renvoie 1 à 3
+    actions priorisées avec leur raison, et — quand elle existe — la clé
+    d'action du catalogue agent qui permet de l'exécuter EN UN CLIC, via le
+    chemin propose → confirme existant.
+
+    Disponible même SANS clé LLM (l'heuristique est déterministe et gratuite).
+    N'EXÉCUTE RIEN : la réponse porte ``execute: false``.
+    """
+
+    feature_key = 'ai.prochaines_actions'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = FicheCibleSerializer
+
+    def get_queryset(self):
+        """Fil d'activité de la SOCIÉTÉ de l'appelant — la seule source lue.
+
+        La fiche elle-même est résolue par ``resolve_target`` (qui refuse une
+        cible d'une autre société) ; ce ``get_queryset`` rend ce périmètre
+        EXPLICITE et vérifiable par la garde d'isolation multi-société.
+        """
+        from apps.records.models import Activity
+
+        return Activity.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiProchainesActions', {
+        'content_type': drf_serializers.CharField(),
+        'object_id': drf_serializers.IntegerField(),
+        'libelle': drf_serializers.CharField(),
+        'actions': drf_serializers.JSONField(),
+        'faits': drf_serializers.JSONField(),
+        'execute': drf_serializers.BooleanField(),
+    }))
+    def post(self, request):
+        from .copilote import prochaines_actions
+
+        content_type = request.data.get('content_type')
+        object_id = request.data.get('object_id')
+        if not content_type or object_id in (None, ''):
+            return Response(
+                {'detail': 'content_type et object_id sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = prochaines_actions(
+                company=request.user.company, content_type=content_type,
+                object_id=object_id, user=request.user)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class DescriptionProduitView(UsageContexteMixin, APIView):
     """NTAI13 — ``POST /api/django/ai/description-produit/``.
 
     Body ``{"produit_id": <int>}``. Renvoie une description commerciale FR + une
@@ -37,6 +286,7 @@ class DescriptionProduitView(APIView):
     champs côté service, testée).
     """
 
+    feature_key = 'ai.description_produit'
     permission_classes = [IsAuthenticated, IsAnyRole]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'ai_copilote'
@@ -56,7 +306,7 @@ class DescriptionProduitView(APIView):
         return Response(resultat)
 
 
-class RedigerView(APIView):
+class RedigerView(UsageContexteMixin, APIView):
     """NTAI11 — ``POST /api/django/ai/rediger/``.
 
     Body ``{"content_type": "crm.lead", "object_id": 12, "canal":
@@ -68,6 +318,7 @@ class RedigerView(APIView):
     relance CRM et la réponse SAV réutilisent CET endpoint.
     """
 
+    feature_key = 'ai.rediger'
     permission_classes = [IsAuthenticated, IsAnyRole]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'ai_copilote'
@@ -93,7 +344,7 @@ class RedigerView(APIView):
         return Response(resultat)
 
 
-class CrInterventionView(APIView):
+class CrInterventionView(UsageContexteMixin, APIView):
     """NTAI12 — ``POST /api/django/ai/cr-intervention/`` (multipart).
 
     Champs : ``file`` (mémo vocal) et ``ticket_id`` optionnel. Transcrit puis
@@ -104,6 +355,7 @@ class CrInterventionView(APIView):
     maître des transitions) et ne persiste JAMAIS l'audio reçu.
     """
 
+    feature_key = 'ai.cr_intervention'
     permission_classes = [IsAuthenticated, IsAnyRole]
     parser_classes = [MultiPartParser]
     throttle_classes = [ScopedRateThrottle]
@@ -130,7 +382,171 @@ class CrInterventionView(APIView):
         return Response(resultat)
 
 
-class RapportPeriodeView(APIView):
+class ExtraireView(UsageContexteMixin, GenericAPIView):
+    """NTAI15/NTAI16 — ``POST /api/django/ai/extraire/?schema=<nom>`` (multipart).
+
+    Champ ``file`` : la pièce à lire (PDF/JPEG/PNG/WebP, 12 Mo max). Renvoie
+    les champs du gabarit demandé (``bulletin_paie``, ``facture_fournisseur``,
+    ``cin``…) et, pour une facture fournisseur, un RAPPROCHEMENT prêt au
+    contrôle 3 volets.
+
+    N'ÉCRIT RIEN et NE CONSERVE PAS le fichier : la réponse porte
+    ``applique: false`` et ``fichier_conserve: false``. Sans clé OCR, 503
+    douce — aucun appel réseau.
+    """
+
+    feature_key = 'ai.extraire'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_transcription'
+    serializer_class = ExtraireRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant : c'est la seule chose
+        que cette vue ÉCRIT (une ligne de mesure), et elle est scopée société —
+        le rendre explicite le rend vérifiable par la garde d'isolation."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiExtraction', {
+        'schema': drf_serializers.CharField(),
+        'label': drf_serializers.CharField(),
+        'champs': drf_serializers.JSONField(),
+        'champs_manquants': drf_serializers.JSONField(),
+        'rapprochement': drf_serializers.JSONField(required=False),
+        'applique': drf_serializers.BooleanField(),
+        'fichier_conserve': drf_serializers.BooleanField(),
+        'source': drf_serializers.CharField(),
+    }))
+    def post(self, request):
+        from .extraction import extraire_document
+
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'detail': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            contenu = upload.read()
+        finally:
+            upload.close()
+
+        schema = (request.query_params.get('schema')
+                  or request.data.get('schema') or '')
+        try:
+            resultat = extraire_document(
+                company=request.user.company, file_bytes=contenu,
+                schema=schema)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class AnalyserContratView(UsageContexteMixin, GenericAPIView):
+    """NTAI19 — ``POST /api/django/ai/analyser-contrat/``.
+
+    Body ``{"contrat_id": 4, "document_id": 12, "confirmer": false}``. Lit la
+    pièce (OCR + gabarit contrat) et rend les dates, le montant, le préavis et
+    les clauses clés, puis PROPOSE une alerte de préavis.
+
+    Le premier appel n'écrit RIEN (``applique: false``). L'alerte n'est créée
+    que sur un second appel portant ``confirmer: true`` — et seulement si une
+    date de déclenchement a pu être ÉTABLIE (jamais inventée). La création
+    passe par le ``services.py`` de ``contrats``.
+    """
+
+    feature_key = 'ai.analyser_contrat'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = AnalyseContratRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant (périmètre explicite)."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiAnalyseContrat', {
+        'contrat_id': drf_serializers.IntegerField(),
+        'source': drf_serializers.CharField(),
+        'date_debut': drf_serializers.CharField(allow_null=True),
+        'date_fin': drf_serializers.CharField(allow_null=True),
+        'preavis_jours': drf_serializers.IntegerField(allow_null=True),
+        'montant': drf_serializers.CharField(allow_null=True),
+        'clauses': drf_serializers.JSONField(),
+        'champs_extraits': drf_serializers.JSONField(),
+        'proposition': drf_serializers.JSONField(allow_null=True),
+        'applique': drf_serializers.BooleanField(),
+    }))
+    def post(self, request):
+        from .contrat_ai import analyser_contrat
+
+        contrat_id = request.data.get('contrat_id')
+        if contrat_id in (None, ''):
+            return Response({'detail': 'contrat_id est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = analyser_contrat(
+                company=request.user.company, contrat_id=contrat_id,
+                document_id=request.data.get('document_id'),
+                confirmer=bool(request.data.get('confirmer')),
+                user=request.user)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class ResumerDocumentView(UsageContexteMixin, GenericAPIView):
+    """NTAI20 — ``POST /api/django/ai/resumer-document/``.
+
+    Body ``{"document_id": 12}``. Résume un LONG document fragment par
+    fragment (map) puis synthétise (reduce), en gardant chaque point clé
+    rattaché à son fragment — une citation vérifiable, pas un renvoi vague.
+
+    LECTURE SEULE. Sans clé LLM, renvoie l'aperçu plein-texte que la GED
+    expose déjà (``source: "apercu"``) — jamais une erreur, jamais un résumé
+    inventé.
+    """
+
+    feature_key = 'ai.resumer_document'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = ResumeDocumentRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant (périmètre explicite)."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiResumeDocument', {
+        'document_id': drf_serializers.IntegerField(),
+        'resume': drf_serializers.CharField(allow_blank=True),
+        'points_cles': drf_serializers.JSONField(),
+        'apercu': drf_serializers.CharField(allow_blank=True),
+        'fragments': drf_serializers.IntegerField(),
+        'tronque': drf_serializers.BooleanField(required=False),
+        'source': drf_serializers.CharField(),
+    }))
+    def post(self, request):
+        from .extraction import resumer_document
+
+        document_id = request.data.get('document_id')
+        if document_id in (None, ''):
+            return Response({'detail': 'document_id est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = resumer_document(
+                company=request.user.company, document_id=document_id)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class RapportPeriodeView(UsageContexteMixin, APIView):
     """NTAI36 — ``POST /api/django/ai/rapport-periode/``.
 
     Body ``{"module": "commercial|facturation", "periode": "AAAA-MM"}``.
@@ -141,6 +557,7 @@ class RapportPeriodeView(APIView):
     Brouillon éditable — ``envoye: false``, aucune diffusion automatique.
     """
 
+    feature_key = 'ai.rapport_periode'
     permission_classes = [IsAuthenticated, IsAnyRole]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'ai_copilote'
@@ -158,7 +575,7 @@ class RapportPeriodeView(APIView):
         return Response(resultat)
 
 
-class RechercheGlobaleView(GenericAPIView):
+class RechercheGlobaleView(UsageContexteMixin, GenericAPIView):
     """NTAI25 — ``POST /api/django/ai/recherche-globale/``.
 
     Body ``{"question": "quels clients ont un litige ouvert ?"}``. Cherche dans
@@ -173,6 +590,7 @@ class RechercheGlobaleView(GenericAPIView):
     LECTURE SEULE : rien n'est jamais écrit.
     """
 
+    feature_key = 'ai.recherche_globale'
     permission_classes = [IsAuthenticated, IsAnyRole]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'ai_copilote'
@@ -214,7 +632,7 @@ class RechercheGlobaleView(GenericAPIView):
         return Response(resultat)
 
 
-class AssistantConfigView(APIView):
+class AssistantConfigView(UsageContexteMixin, APIView):
     """NTAI35 — ``POST /api/django/ai/assistant-config/``.
 
     Body ``{"question": "où régler la TVA ?"}``. Renvoie une réponse FR et des
@@ -226,6 +644,7 @@ class AssistantConfigView(APIView):
     sur la FAQ statique de l'index — l'utilisateur obtient toujours son lien.
     """
 
+    feature_key = 'ai.assistant_config'
     permission_classes = [IsAuthenticated, IsAnyRole]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'ai_copilote'

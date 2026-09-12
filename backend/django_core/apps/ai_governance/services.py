@@ -13,10 +13,11 @@ Tout ce qui vit ici respecte trois invariants :
      jamais par sérialisation d'un objet entier : un champ interne ajouté plus
      tard au modèle ne peut pas fuiter tout seul.
 
-Note NTAI5 : les prompts par défaut vivent en constantes de module. Quand la
-bibliothèque de prompts éditables (``PromptTemplate`` + ``render_prompt``)
-sera posée, ces constantes deviendront le « défaut code » sur lequel elle
-retombe — le corps des fonctions ci-dessous ne change pas.
+NTAI5 : les prompts par défaut vivent en constantes de module ET sont
+enregistrés comme « défaut code » de la bibliothèque de prompts
+(``apps.ai_governance.prompts.enregistrer_defauts``). Chaque copilote lit
+désormais son prompt par :func:`prompt_effectif` : une société qui n'a rien
+surchargé obtient exactement le texte ci-dessous, au caractère près.
 """
 from __future__ import annotations
 
@@ -38,6 +39,35 @@ class AiCopiloteUnavailable(Exception):
     def __init__(self, message, *, configured=True):
         super().__init__(message)
         self.configured = configured
+
+
+def exiger_feature(company, feature_key) -> None:
+    """NTAI7 — Refuse proprement si la société a COUPÉ cette feature IA.
+
+    Lève :class:`AiCopiloteUnavailable` ``configured=False`` (503 douce, même
+    chemin qu'une clé absente : l'utilisateur lit un message FR, jamais une
+    500). Sans réglage, ne fait rien — le défaut est ACTIF."""
+    from core.ai.services import feature_enabled
+
+    if not feature_enabled(company, feature_key):
+        raise AiCopiloteUnavailable(
+            'Cette fonction IA a été désactivée pour votre société — '
+            'rapprochez-vous de votre administrateur.', configured=False)
+
+
+def prompt_effectif(company, cle, defaut='', context=None) -> str:
+    """NTAI5 — Corps EFFECTIF d'un prompt : surcharge société, sinon défaut.
+
+    Enveloppe tolérante de ``core.ai.prompts.render_prompt`` : une clé encore
+    inconnue de la bibliothèque (module chargé sans ``ready()``, test unitaire
+    isolé) retombe sur le ``defaut`` passé par l'appelant — le copilote ne
+    perd jamais son prompt à cause de la bibliothèque."""
+    from core.ai.prompts import render_prompt
+
+    try:
+        return render_prompt(company, cle, context or {})
+    except KeyError:
+        return defaut
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,6 +177,8 @@ def generer_description_produit(*, company, produit_id, max_tokens=400) -> dict:
     société (``configured=True`` → 400) ou si aucune clé LLM n'est configurée
     (``configured=False`` → 503, aucun appel réseau).
     """
+    exiger_feature(company, 'ai.description_produit')
+
     from apps.stock.selectors import get_produit_scoped
 
     try:
@@ -168,12 +200,23 @@ def generer_description_produit(*, company, produit_id, max_tokens=400) -> dict:
 
     prompt = build_description_produit_prompt(facts)
     res = get_provider('llm').complete(
-        prompt=prompt, system=PRODUIT_DESCRIPTION_SYSTEM, max_tokens=max_tokens)
+        prompt=prompt,
+        system=prompt_effectif(company, 'ai.description_produit.system',
+                               PRODUIT_DESCRIPTION_SYSTEM),
+        max_tokens=max_tokens)
     if not res.ok or not (res.data or {}).get('text'):
         raise AiCopiloteUnavailable(
             "Le fournisseur n'a pas produit de description exploitable.")
 
-    description, description_courte = _split_description(res.data['text'])
+    # NTAI4 — garde de sortie avant découpe : lexique filtré, longueur bornée.
+    from core.ai.services import guard_output
+
+    garde = guard_output(res.data['text'])
+    if garde.bloque:
+        raise AiCopiloteUnavailable(
+            "La description proposée a été écartée par le contrôle de sortie.")
+
+    description, description_courte = _split_description(garde.texte)
     return {
         'produit_id': produit.id,
         'description': description,
@@ -267,6 +310,8 @@ def rediger_brouillon(*, company, content_type, object_id, canal='email',
 
     N'ENVOIE JAMAIS : renvoie un brouillon éditable (``envoye: False``).
     """
+    exiger_feature(company, 'ai.rediger')
+
     from apps.records.serializers import resolve_target
     from core.ai.services import draft_reply
 
@@ -287,7 +332,8 @@ def rediger_brouillon(*, company, content_type, object_id, canal='email',
 
     fil = aplatir_fil(company=company, content_type=ct, object_id=cible.pk)
     contexte = f'{ct.app_label}.{ct.model} « {str(cible)[:120]} »'
-    consigne = REDACTION_CONSIGNE_CANAL.get(canal, '')
+    consigne = prompt_effectif(company, f'ai.rediger.{canal}',
+                               REDACTION_CONSIGNE_CANAL.get(canal, ''))
     intention = str(intention or '').strip()[:REDACTION_INTENTION_MAX]
     instruction = ' '.join(p for p in (intention, consigne) if p)
 
@@ -402,6 +448,8 @@ def cr_intervention_depuis_audio(*, company, file_bytes, ticket_id=None,
     reconnu ou ticket hors société (400) ; aucune clé STT (503, aucun appel
     réseau).
     """
+    exiger_feature(company, 'ai.cr_intervention')
+
     from apps.sav.selectors import ticket_scoped
     from core.ai.services import transcribe_audio
 
@@ -438,7 +486,10 @@ def cr_intervention_depuis_audio(*, company, file_bytes, ticket_id=None,
     structure = False
     if is_capability_configured('llm'):
         llm = get_provider('llm').complete(
-            prompt=transcript, system=CR_SYSTEM, max_tokens=max_tokens)
+            prompt=transcript,
+            system=prompt_effectif(company, 'ai.cr_intervention.system',
+                                   CR_SYSTEM),
+            max_tokens=max_tokens)
         if llm.ok and (llm.data or {}).get('text'):
             cr = _parse_cr_json(llm.data['text'])
             structure = True
@@ -631,6 +682,8 @@ def rapport_periode(*, company, module, periode, max_tokens=400) -> dict:
     Sans clé LLM : 503 douce — les métriques restent lisibles via l'écran de
     reporting existant.
     """
+    exiger_feature(company, 'ai.rapport_periode')
+
     module = str(module or '').strip().lower()
     if module not in RAPPORT_MODULES:
         raise AiCopiloteUnavailable(
@@ -647,7 +700,10 @@ def rapport_periode(*, company, module, periode, max_tokens=400) -> dict:
 
     prompt = build_rapport_prompt(module, periode, metriques)
     res = get_provider('llm').complete(
-        prompt=prompt, system=RAPPORT_SYSTEM, max_tokens=max_tokens)
+        prompt=prompt,
+        system=prompt_effectif(company, 'ai.rapport_periode.system',
+                               RAPPORT_SYSTEM),
+        max_tokens=max_tokens)
     if not res.ok or not (res.data or {}).get('text'):
         raise AiCopiloteUnavailable(
             "Le fournisseur n'a pas produit de narratif exploitable.")
@@ -1122,6 +1178,8 @@ def recherche_globale(*, company, question, limit=RECHERCHE_GLOBALE_LIMITE,
     ``'recherche'`` (repli : la liste des fiches trouvées, sans rédaction —
     c'est ce qui se passe sans clé LLM). N'ÉCRIT JAMAIS.
     """
+    exiger_feature(company, 'ai.recherche_globale')
+
     from core.ai.search import rechercher
 
     question = str(question or '').strip()
@@ -1155,7 +1213,9 @@ def recherche_globale(*, company, question, limit=RECHERCHE_GLOBALE_LIMITE,
     res = get_provider('llm').complete(
         prompt=(f'Question : {question}\n\nFiches disponibles :\n'
                 f'{_contexte_citations(resultats)}'),
-        system=RECHERCHE_GLOBALE_SYSTEM, max_tokens=max_tokens)
+        system=prompt_effectif(company, 'ai.recherche_globale.system',
+                               RECHERCHE_GLOBALE_SYSTEM),
+        max_tokens=max_tokens)
     if not res.ok or not (res.data or {}).get('text'):
         # Le fournisseur a échoué : on rend les fiches, jamais une erreur.
         return {

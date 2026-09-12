@@ -75,11 +75,18 @@ def traiter_document_ai_job_task(job_id):
     fournisseur ne fait jamais échouer la tâche — l'erreur est capturée dans le
     job lui-même.
     """
+    from core.ai.usage import usage_context
+
     from .models import DocumentAiJob
     from .services import traiter_document_ai_job
 
     job = DocumentAiJob.objects.filter(pk=job_id).first()
     if job is None:
         return None
-    traiter_document_ai_job(job)
+    # NTAI1 — hors requête, la société vient du JOB (jamais devinée) : sans ce
+    # contexte, l'appel OCR ne serait attribuable à personne et ne serait donc
+    # pas journalisé.
+    with usage_context(company_id=job.company_id,
+                       feature_key='ai.document_job'):
+        traiter_document_ai_job(job)
     return job.statut
