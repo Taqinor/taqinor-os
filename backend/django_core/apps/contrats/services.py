@@ -5336,3 +5336,183 @@ def executer_dunning_company(company, *, today=None):
                 contrat.pk, company.pk, exc_info=True)
 
     return total
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Dépôt de la version « contrepartie » (négociation par redlines)
+# ---------------------------------------------------------------------------
+
+
+class DepotContrepartieError(Exception):
+    """Levée quand un dépôt de version contrepartie ne peut pas être accepté."""
+
+
+#: Extensions acceptées pour une version renvoyée par la contrepartie. Un
+#: redline arrive en Word (.docx/.doc) ou en PDF ; on refuse tout le reste
+#: explicitement plutôt que d'accepter un binaire arbitraire.
+EXTENSIONS_CONTREPARTIE = ('.pdf', '.docx', '.doc', '.odt', '.rtf')
+
+#: Taille maximale d'un dépôt (10 Mo — même ordre que ``records.storage``).
+TAILLE_MAX_CONTREPARTIE = 10 * 1024 * 1024
+
+
+def _extension_contrepartie(nom_fichier):
+    """Extension normalisée (minuscule, avec le point) d'un nom de fichier."""
+    nom = (nom_fichier or '').strip().lower()
+    if '.' not in nom:
+        return ''
+    return '.' + nom.rsplit('.', 1)[-1]
+
+
+def _mime_contrepartie(extension):
+    """Type MIME déduit de l'extension (jamais lu du corps de requête)."""
+    return {
+        '.pdf': 'application/pdf',
+        '.docx': ('application/vnd.openxmlformats-officedocument'
+                  '.wordprocessingml.document'),
+        '.doc': 'application/msword',
+        '.odt': 'application/vnd.oasis.opendocument.text',
+        '.rtf': 'application/rtf',
+    }.get(extension, 'application/octet-stream')
+
+
+def stocker_fichier_contrepartie(company, contenu, *, nom_fichier):
+    """Téléverse les octets d'une version contrepartie et renvoie sa clé objet.
+
+    Clé PRÉFIXÉE SOCIÉTÉ (``contrats/contreparties/{company_id}/{uuid}.ext``,
+    motif ERR75/SCA42) : l'isolation multi-tenant vit dans la clé elle-même.
+    Le binaire n'est JAMAIS stocké dans un ``FileField`` — seule la clé est
+    conservée en base, comme ``VersionContrat.fichier_key``.
+
+    Import PARESSEUX du client MinIO (import-safe en CI/dev sans MinIO).
+    """
+    import io
+    import uuid
+
+    from django.conf import settings
+
+    from apps.ventes.utils.minio_client import (
+        ensure_uploads_bucket, get_minio_client,
+    )
+
+    extension = _extension_contrepartie(nom_fichier) or '.bin'
+    mime = _mime_contrepartie(extension)
+    company_id = getattr(company, 'id', company)
+    key = (f'contrats/contreparties/{company_id}/'
+           f'{uuid.uuid4().hex}{extension}')
+    client = get_minio_client()
+    ensure_uploads_bucket()
+    client.upload_fileobj(
+        io.BytesIO(contenu), settings.MINIO_BUCKET_UPLOADS, key,
+        ExtraArgs={'ContentType': mime})
+    return key, mime
+
+
+def deposer_document_contrepartie(contrat, *, nom_fichier, contenu=None,
+                                  fichier_key='', mime='',
+                                  depose_par_nom='', depose_par_email='',
+                                  depose_par=None, lien=None, commentaire='',
+                                  auteur=None):
+    """NTDOC1 — Enregistre la version renvoyée par la contrepartie.
+
+    Le fichier est soit déjà stocké (``fichier_key``), soit téléversé ici à
+    partir de ses octets (``contenu``) via ``stocker_fichier_contrepartie``.
+    La société est TOUJOURS celle du contrat (posée côté serveur, jamais lue
+    d'un corps de requête), l'horodatage est serveur.
+
+    N'ÉCRIT JAMAIS dans une ``VersionContrat`` : le contenu figé des rendus
+    internes (CONTRAT18) reste intouché — les deux familles cohabitent.
+
+    Refuse (``DepotContrepartieError``) un nom de fichier vide, une extension
+    hors ``EXTENSIONS_CONTREPARTIE`` ou un fichier au-delà de la taille max.
+    Journalise le dépôt au chatter du contrat (CONTRAT15).
+    """
+    from .models import DocumentContrepartie
+
+    nom_fichier = (nom_fichier or '').strip()
+    if not nom_fichier:
+        raise DepotContrepartieError(
+            'Le champ « nom_fichier » est obligatoire : indiquez le nom du '
+            'fichier déposé.')
+    extension = _extension_contrepartie(nom_fichier)
+    if extension not in EXTENSIONS_CONTREPARTIE:
+        raise DepotContrepartieError(
+            f'Le champ « nom_fichier » porte un format non accepté '
+            f'(« {extension or "sans extension"} ») : formats acceptés '
+            f'{", ".join(EXTENSIONS_CONTREPARTIE)}.')
+
+    taille = 0
+    if contenu is not None:
+        taille = len(contenu)
+        if taille == 0:
+            raise DepotContrepartieError(
+                'Le champ « fichier » est vide : déposez un document non '
+                'vide.')
+        if taille > TAILLE_MAX_CONTREPARTIE:
+            raise DepotContrepartieError(
+                f'Le champ « fichier » dépasse la taille maximale '
+                f'({TAILLE_MAX_CONTREPARTIE // (1024 * 1024)} Mo).')
+        fichier_key, mime_detecte = stocker_fichier_contrepartie(
+            contrat.company, contenu, nom_fichier=nom_fichier)
+        mime = mime or mime_detecte
+    if not fichier_key:
+        raise DepotContrepartieError(
+            'Le champ « fichier » est obligatoire : aucun contenu ni clé de '
+            'stockage fournis.')
+
+    document = DocumentContrepartie.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        lien=lien,
+        fichier_key=fichier_key,
+        nom_fichier=nom_fichier,
+        mime=mime or _mime_contrepartie(extension),
+        taille=taille,
+        depose_par_nom=(depose_par_nom or '').strip()[:200],
+        depose_par_email=(depose_par_email or '').strip()[:254],
+        depose_par=depose_par,
+        commentaire=commentaire or '',
+    )
+    journaliser_transition(
+        contrat, field='contrepartie', old_value='',
+        new_value=f'dépôt « {nom_fichier} »',
+        message=(document.depose_par_nom or ''), auteur=auteur)
+    return document
+
+
+def archiver_document_contrepartie(document, *, auteur=None):
+    """NTDOC1 — Archive (soft) un dépôt contrepartie — jamais de suppression.
+
+    Une pièce de négociation est une pièce juridique : l'API ne l'efface
+    JAMAIS physiquement, elle la retire seulement des listes de travail.
+    """
+    deja = document.archive
+    document.archiver()
+    if not deja:
+        journaliser_transition(
+            document.contrat, field='contrepartie',
+            old_value=f'dépôt « {document.nom_fichier} » actif',
+            new_value=f'dépôt « {document.nom_fichier} » archivé',
+            auteur=auteur)
+    return document
+
+
+def creer_lien_depot_contrepartie(contrat, *, destinataire_nom='',
+                                  destinataire_email='', expires_at=None,
+                                  created_by=None):
+    """NTDOC1 — Crée un lien tokenisé de dépôt pour la contrepartie externe.
+
+    Patron ``PartageGed``/XGED7 : le jeton est l'UNIQUE secret d'accès, la
+    société et le contrat sont implicites (résolus DEPUIS le jeton, jamais lus
+    d'un corps de requête).
+    """
+    from .models import LienDepotContrepartie
+
+    return LienDepotContrepartie.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        destinataire_nom=(destinataire_nom or '').strip()[:200],
+        destinataire_email=(destinataire_email or '').strip()[:254],
+        expires_at=expires_at,
+        created_by=created_by,
+    )

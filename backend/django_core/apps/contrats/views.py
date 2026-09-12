@@ -25,6 +25,7 @@ Action ``/instancier/`` crée un ``Contrat`` pré-rempli depuis le gabarit.
 from django.http import HttpResponse
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -94,9 +95,12 @@ from .serializers import (
     CampagneRevisionSerializer,
     ContratSerializer,
     CreerAvenantSerializer,
+    CreerLienDepotContrepartieSerializer,
     CycleFacturationLogSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
+    DeposerContrepartieSerializer,
+    DocumentContrepartieSerializer,
     EcheancierContratSerializer,
     EngagementSLASerializer,
     EtapeApprobationSerializer,
@@ -107,6 +111,7 @@ from .serializers import (
     MarquerPieceFournieSerializer,
     InstancierContratSerializer,
     JalonContratSerializer,
+    LienDepotContrepartieSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
     MotifResiliationSerializer,
@@ -1089,6 +1094,106 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
         return Response(
             VersionContratSerializer(
                 version, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ── NTDOC1 — dépôts « contrepartie » (négociation par redlines) ─────────
+
+    @action(detail=True, methods=['get', 'post'], url_path='contreparties',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def contreparties(self, request, pk=None):
+        """Versions renvoyées par la CONTREPARTIE d'un contrat (NTDOC1).
+
+        - ``GET`` : liste les dépôts non archivés (``?archives=1`` les inclut),
+          le plus récent en tête.
+        - ``POST`` (multipart) : dépose un fichier .pdf/.docx/.doc/.odt/.rtf.
+          La société, l'horodatage et l'utilisateur déposant sont posés CÔTÉ
+          SERVEUR ; la clé de stockage est préfixée société. Le dépôt n'écrase
+          JAMAIS le contenu figé d'une ``VersionContrat`` (CONTRAT18).
+        """
+        contrat = self.get_object()
+        if request.method == 'GET':
+            inclure = request.query_params.get('archives') in ('1', 'true')
+            docs = selectors.documents_contrepartie(
+                contrat, inclure_archives=inclure)
+            return Response(
+                DocumentContrepartieSerializer(
+                    docs, many=True, context={'request': request}).data)
+
+        body = DeposerContrepartieSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        fichier = data.get('fichier')
+        contenu = fichier.read() if fichier is not None else None
+        nom_fichier = (data.get('nom_fichier') or '').strip()
+        if fichier is not None and not nom_fichier:
+            nom_fichier = getattr(fichier, 'name', '') or ''
+        try:
+            document = services.deposer_document_contrepartie(
+                contrat,
+                nom_fichier=nom_fichier,
+                contenu=contenu,
+                fichier_key=(data.get('fichier_key') or '').strip(),
+                depose_par_nom=(
+                    data.get('depose_par_nom')
+                    or getattr(request.user, 'username', '') or ''),
+                depose_par_email=data.get('depose_par_email', ''),
+                depose_par=request.user,
+                commentaire=data.get('commentaire', ''),
+                auteur=request.user,
+            )
+        except services.DepotContrepartieError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DocumentContrepartieSerializer(
+                document, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'],
+            url_path=r'contreparties/(?P<cid>[^/.]+)/archiver')
+    def archiver_contrepartie(self, request, pk=None, cid=None):
+        """Archive (soft) un dépôt contrepartie — NTDOC1.
+
+        JAMAIS de suppression physique : le dépôt sort des listes de travail
+        mais reste en base (pièce juridique). 404 si le dépôt n'appartient pas
+        à ce contrat (donc à cette société).
+        """
+        contrat = self.get_object()
+        document = contrat.documents_contrepartie.filter(id=cid).first()
+        if document is None:
+            return Response(
+                {'detail': 'Dépôt contrepartie introuvable pour ce contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        services.archiver_document_contrepartie(
+            document, auteur=request.user)
+        return Response(
+            DocumentContrepartieSerializer(
+                document, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-lien-depot')
+    def creer_lien_depot(self, request, pk=None):
+        """Crée un lien tokenisé de dépôt pour la contrepartie externe (NTDOC1).
+
+        Patron ``PartageGed``/XGED7 : le jeton renvoyé est l'UNIQUE secret
+        d'accès au formulaire public de dépôt. Société et contrat sont posés
+        côté serveur.
+        """
+        contrat = self.get_object()
+        body = CreerLienDepotContrepartieSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        lien = services.creer_lien_depot_contrepartie(
+            contrat,
+            destinataire_nom=body.validated_data.get('destinataire_nom', ''),
+            destinataire_email=body.validated_data.get(
+                'destinataire_email', ''),
+            expires_at=body.validated_data.get('expires_at'),
+            created_by=request.user,
+        )
+        return Response(
+            LienDepotContrepartieSerializer(
+                lien, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
 

@@ -19,12 +19,14 @@ from .models import (
     ContratActivity,
     ContratLien,
     CycleFacturationLog,
+    DocumentContrepartie,
     EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
     EtapeDunning,
     IndexationPrix,
     JalonContrat,
+    LienDepotContrepartie,
     LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
@@ -1788,3 +1790,102 @@ class ChangerPlanSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Ce plan d'abonnement n'appartient pas à votre société.")
         return plan
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Dépôt de la version « contrepartie »
+# ---------------------------------------------------------------------------
+
+
+class DocumentContrepartieSerializer(serializers.ModelSerializer):
+    """Version renvoyée par la contrepartie, rattachée à un contrat (NTDOC1).
+
+    Tout ce qui engage la traçabilité est en LECTURE SEULE : la société, le
+    contrat, la clé de stockage, l'horodatage et le déposant sont posés CÔTÉ
+    SERVEUR (jamais lus du corps de requête). Seuls ``statut`` et
+    ``commentaire`` restent éditables (revue interne du redline).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    depose_par_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentContrepartie
+        fields = [
+            'id', 'contrat', 'lien', 'fichier_key', 'nom_fichier', 'mime',
+            'taille', 'depose_par_nom', 'depose_par_email', 'depose_par',
+            'depose_par_username', 'date_depot', 'statut', 'statut_display',
+            'archive', 'date_archivage', 'commentaire',
+        ]
+        read_only_fields = [
+            'id', 'contrat', 'lien', 'fichier_key', 'nom_fichier', 'mime',
+            'taille', 'depose_par_nom', 'depose_par_email', 'depose_par',
+            'depose_par_username', 'date_depot', 'statut_display', 'archive',
+            'date_archivage',
+        ]
+
+    def get_depose_par_username(self, obj):
+        return getattr(obj.depose_par, 'username', None)
+
+
+class LienDepotContrepartieSerializer(serializers.ModelSerializer):
+    """Lien tokenisé de dépôt pour la contrepartie externe (NTDOC1).
+
+    Le ``token`` est exposé en LECTURE SEULE (il est généré côté serveur) —
+    c'est l'UNIQUE secret d'accès, il n'est jamais accepté en écriture.
+    """
+    accessible = serializers.BooleanField(
+        source='is_accessible', read_only=True)
+
+    class Meta:
+        model = LienDepotContrepartie
+        fields = [
+            'id', 'contrat', 'token', 'destinataire_nom',
+            'destinataire_email', 'expires_at', 'actif', 'accessible',
+            'created_at',
+        ]
+        read_only_fields = [
+            'id', 'contrat', 'token', 'accessible', 'created_at',
+        ]
+
+
+class DeposerContrepartieSerializer(serializers.Serializer):
+    """Corps de l'action ``contreparties`` (POST) — NTDOC1.
+
+    ``fichier`` (upload multipart) OU ``fichier_key`` (objet déjà stocké) ;
+    ``nom_fichier`` est obligatoire quand seule une clé est fournie.
+    """
+    fichier = serializers.FileField(required=False)
+    fichier_key = serializers.CharField(
+        required=False, allow_blank=True, max_length=512)
+    nom_fichier = serializers.CharField(
+        required=False, allow_blank=True, max_length=255)
+    depose_par_nom = serializers.CharField(
+        required=False, allow_blank=True, max_length=200)
+    depose_par_email = serializers.EmailField(
+        required=False, allow_blank=True)
+    commentaire = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        fichier = attrs.get('fichier')
+        nom = (attrs.get('nom_fichier') or '').strip()
+        if fichier is None and not (attrs.get('fichier_key') or '').strip():
+            raise serializers.ValidationError({
+                'fichier': 'Déposez un fichier (ou fournissez une clé de '
+                           'stockage « fichier_key »).',
+            })
+        if fichier is None and not nom:
+            raise serializers.ValidationError({
+                'nom_fichier': 'Le nom du fichier est obligatoire quand seule '
+                               'une clé de stockage est fournie.',
+            })
+        return attrs
+
+
+class CreerLienDepotContrepartieSerializer(serializers.Serializer):
+    """Corps de l'action ``creer-lien-depot`` — NTDOC1."""
+    destinataire_nom = serializers.CharField(
+        required=False, allow_blank=True, max_length=200)
+    destinataire_email = serializers.EmailField(
+        required=False, allow_blank=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)

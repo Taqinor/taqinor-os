@@ -1676,3 +1676,45 @@ def rule_of_40(company, debut, fin):
         'marge_pct': marge_pct,
         'rule_of_40': rule,
     }
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Dépôts « contrepartie » d'un contrat (lecture seule)
+# ---------------------------------------------------------------------------
+
+
+def documents_contrepartie(contrat, *, inclure_archives=False):
+    """Dépôts de la contrepartie d'un contrat, le plus récent en tête (NTDOC1).
+
+    Par défaut les dépôts ARCHIVÉS sont masqués (soft-archive : ils existent
+    toujours en base, ils ne sont simplement plus dans la liste de travail).
+    Scopé au contrat — donc à sa société, garantie par l'appelant.
+    """
+    from .models import DocumentContrepartie
+
+    qs = DocumentContrepartie.objects.filter(
+        company=contrat.company, contrat=contrat)
+    if not inclure_archives:
+        qs = qs.filter(archive=False)
+    return qs.select_related('lien', 'depose_par')
+
+
+def lien_depot_par_token(token):
+    """Lien de dépôt contrepartie résolu par son SEUL jeton (NTDOC1).
+
+    Renvoie ``None`` pour un jeton vide, inconnu, révoqué ou expiré — aucune
+    distinction n'est faite côté API publique (pas de fuite d'existence). La
+    société et le contrat sont déduits DU LIEN, jamais du corps de requête.
+    """
+    from .models import LienDepotContrepartie
+
+    token = (token or '').strip()
+    if not token:
+        return None
+    lien = (LienDepotContrepartie.objects
+            .filter(token=token)
+            .select_related('contrat', 'company')
+            .first())
+    if lien is None or not lien.is_accessible:
+        return None
+    return lien

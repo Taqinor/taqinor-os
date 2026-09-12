@@ -12,6 +12,7 @@ porte un FK ``company`` posé côté serveur (jamais lu du corps de requête).
 Référence au client en lien lâche (``client_id``) — jamais un import cross-app
 du modèle ``crm.Client``. Ce module est entièrement additif.
 """
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
@@ -3713,3 +3714,195 @@ class EtapeDunningLog(TenantModel):
 
     def __str__(self):
         return f'contrat {self.contrat_id} / étape {self.etape_id}'
+
+
+# ---------------------------------------------------------------------------
+# NTDOC1 — Négociation par redlines : version « contrepartie » d'un contrat
+# ---------------------------------------------------------------------------
+#
+# Jusqu'ici, un contrat ne pouvait recevoir QUE des rendus INTERNES figés
+# (``VersionContrat``, CONTRAT18). Quand la partie adverse renvoyait le contrat
+# annoté/modifié (le « redline » du monde CLM), il n'existait AUCUN endroit où
+# le ranger : soit on écrasait un rendu interne (destruction d'une pièce
+# immuable), soit le fichier vivait dans une boîte mail. ``DocumentContrepartie``
+# est ce dépôt manquant — strictement ADDITIF, il ne touche JAMAIS le contenu
+# figé d'une ``VersionContrat``.
+
+
+def _default_depot_contrepartie_token():
+    """Jeton de dépôt long, imprévisible et URL-safe (pattern ``PartageGed``).
+
+    Même générateur que ``ged.PartageGed`` / ``ventes.ShareLink``
+    (``secrets.token_urlsafe(32)`` → ~43 caractères) : cryptographiquement
+    fort, impossible à deviner ou à énumérer. C'est le SEUL secret qui
+    authentifie un dépôt externe (la contrepartie n'a pas de compte ERP).
+    """
+    return secrets.token_urlsafe(32)
+
+
+class LienDepotContrepartie(TenantModel):
+    """Lien tokenisé permettant à la CONTREPARTIE de déposer sa version — NTDOC1.
+
+    Reprend le PATRON ``PartageGed``/XGED7 (jeton long imprévisible +
+    expiration optionnelle + kill-switch ``actif``) sans importer le modèle
+    d'une autre app : le lien est résolu UNIQUEMENT par son jeton, donc la
+    société et le contrat sont implicites — jamais lus du corps de requête.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+    """
+
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,  # on_delete: un lien de dépôt n'a plus d'objet sans son contrat
+        related_name='liens_depot_contrepartie',
+        verbose_name='Contrat',
+    )
+    token = models.CharField(
+        max_length=64, unique=True,
+        default=_default_depot_contrepartie_token, editable=False,
+        verbose_name='Jeton de dépôt')
+    # Identité ATTENDUE du déposant (pré-remplit ``depose_par_nom``/``_email``
+    # du dépôt). Purement informatif : le jeton reste l'unique clé d'accès.
+    destinataire_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Nom de la contrepartie')
+    destinataire_email = models.EmailField(
+        blank=True, default='', verbose_name='Email de la contrepartie')
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_liens_depot_crees',
+        verbose_name='Créé par',
+    )
+
+    class Meta:
+        verbose_name = 'Lien de dépôt contrepartie'
+        verbose_name_plural = 'Liens de dépôt contrepartie'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'contrat'],
+                name='contrats_liendepot_co_ct'),
+        ]
+
+    def __str__(self):
+        return f'Dépôt {self.token[:8]}… → contrat {self.contrat_id}'
+
+    @property
+    def is_expired(self):
+        """``True`` si le lien porte une expiration déjà dépassée."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_accessible(self):
+        """``True`` si le lien accepte encore un dépôt (actif ET non expiré)."""
+        return self.actif and not self.is_expired
+
+
+class DocumentContrepartie(TenantModel):
+    """Version renvoyée par la CONTREPARTIE, rattachée à un contrat — NTDOC1.
+
+    Le fichier binaire vit dans le stockage objet (MinIO) et n'est référencé
+    ici que par sa CLÉ (``fichier_key``) — jamais un ``FileField``, exactement
+    comme ``VersionContrat.fichier_key`` (CONTRAT18) et la GED.
+
+    Déposant : soit un compte interne (``depose_par`` non NULL), soit un
+    contact externe passé par un ``LienDepotContrepartie`` (``lien`` non NULL,
+    ``depose_par`` NULL) — dans les deux cas ``depose_par_nom`` /
+    ``depose_par_email`` gardent une trace lisible du déposant.
+
+    JAMAIS DE SUPPRESSION PHYSIQUE : ``archive=True`` retire le document des
+    listes de travail sans l'effacer (une pièce de négociation est une pièce
+    juridique). Rien ici n'écrase ni ne modifie une ``VersionContrat`` : les
+    deux familles cohabitent, la version interne reste immuable.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    class Statut(models.TextChoices):
+        NOUVEAU = 'nouveau', 'Nouveau'
+        EN_REVUE = 'en_revue', 'En revue'
+        TRAITE = 'traite', 'Traité'
+
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,  # on_delete: la pièce de négociation suit son contrat
+        related_name='documents_contrepartie',
+        verbose_name='Contrat',
+    )
+    # Lien tokenisé d'origine quand le dépôt vient de l'EXTÉRIEUR (NULL pour un
+    # dépôt fait par un compte interne). SET_NULL : révoquer/supprimer le lien
+    # n'efface jamais la pièce déposée.
+    lien = models.ForeignKey(
+        'LienDepotContrepartie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='depots',
+        verbose_name='Lien de dépôt',
+    )
+    # Clé de l'objet stocké (MinIO) — borne large mais finie (leçon FG136).
+    fichier_key = models.CharField(
+        max_length=512, blank=True, default='',
+        verbose_name='Clé du fichier')
+    nom_fichier = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Nom du fichier')
+    mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
+    taille = models.PositiveIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    depose_par_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Déposé par (nom)')
+    depose_par_email = models.EmailField(
+        blank=True, default='', verbose_name='Déposé par (email)')
+    # Utilisateur interne agissant (NULL pour un dépôt externe tokenisé).
+    depose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_depots_contrepartie',
+        verbose_name='Déposé par (compte)',
+    )
+    # Horodatage SERVEUR du dépôt (``DateTimeField`` — jamais un ``DateField``
+    # pour un tampon horaire, YDATA11).
+    date_depot = models.DateTimeField(
+        auto_now_add=True, verbose_name='Déposé le')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.NOUVEAU,
+        verbose_name='Statut')
+    # Soft-archive : JAMAIS de suppression physique depuis l'API.
+    archive = models.BooleanField(default=False, verbose_name='Archivé')
+    date_archivage = models.DateTimeField(
+        null=True, blank=True, verbose_name='Archivé le')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+
+    class Meta:
+        verbose_name = 'Document contrepartie'
+        verbose_name_plural = 'Documents contrepartie'
+        ordering = ['-date_depot', '-id']
+        indexes = [
+            models.Index(
+                fields=['contrat', '-date_depot'],
+                name='contrats_dcp_ct_date'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_dcp_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'Contrat {self.contrat_id} — {self.nom_fichier or "dépôt"}'
+
+    def archiver(self):
+        """Archive (soft) le dépôt — jamais d'effacement physique."""
+        if not self.archive:
+            self.archive = True
+            self.date_archivage = timezone.now()
+            self.save(update_fields=['archive', 'date_archivage'])
+        return self
