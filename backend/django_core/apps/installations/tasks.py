@@ -200,6 +200,10 @@ def _notifier_meteo_risque(interv):
     if responsable is None:
         return
     try:
+        # CHT9 — exclusion EXPLICITE du désenchevêtrement : cette alerte parle
+        # bien de la date de POSE du chantier (le fait métier de
+        # CHANTIER_DUE), contrairement aux 3 autres sites qui l'empruntaient
+        # par facilité — elle reste donc CHANTIER_DUE.
         notify(
             responsable, EventType.CHANTIER_DUE,
             f"Risque météo — pose du {interv.date_prevue}",

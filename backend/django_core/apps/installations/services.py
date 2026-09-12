@@ -2681,6 +2681,48 @@ def appliquer_replanification_masse(company, *, jour, motif, user,
     }
 
 
+def _notifier_intervention_assignee(interv, user):
+    """CHT9 — notifie (best-effort, ne lève jamais) le technicien affecté OU
+    RÉAFFECTÉ à une intervention (``views/intervention.py`` — ``perform_
+    create``/``perform_update``, seulement quand le technicien change, garde
+    YHIRE9). Sa PROPRE clé (``INTERVENTION_ASSIGNEE``) — jusqu'ici cette
+    affectation n'était tout simplement notifiée à personne.
+
+    QJR4-05 — même motif que ``_notifier_chantier_assigne``/``_notifier_
+    reassignation`` : l'appelant peut exécuter ceci DANS une transaction
+    (``perform_update`` ouvre un ``with transaction.atomic()``) ; l'envoi part
+    donc par ``transaction.on_commit`` — jamais sous verrou, jamais du tout si
+    la transaction échoue."""
+    try:
+        from django.db import transaction
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    if not interv.technicien_id:
+        return
+    try:
+        titre = f"Intervention assignée — #{interv.id}"
+        destinataire = interv.technicien
+        corps = (f"Chantier {interv.installation.reference}."
+                 if interv.installation_id else f"Intervention #{interv.id}.")
+        if interv.date_prevue:
+            corps += f" Prévue le {interv.date_prevue}."
+        company = interv.company
+        lien = f'/interventions?id={interv.id}'
+
+        def _envoyer():
+            try:
+                notify(destinataire, EventType.INTERVENTION_ASSIGNEE, titre,
+                       body=corps, link=lien, company=company)
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        transaction.on_commit(_envoyer)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
 def _notifier_reassignation(interv, user):
     """XFSM3 — notifie (best-effort, ne lève jamais) le technicien réassigné
     d'un changement de créneau.
@@ -2704,11 +2746,14 @@ def _notifier_reassignation(interv, user):
         destinataire = interv.technicien
         corps = f"Nouvelle date : {interv.date_prevue}."
         company = interv.company
+        # CHT9 — sa propre clé (INTERVENTION_REPLANIFIEE), plus l'emprunt de
+        # CHANTIER_DUE, + lien réel (lisible depuis CHT8).
+        lien = f'/interventions?id={interv.id}'
 
         def _envoyer():
             try:
-                notify(destinataire, EventType.CHANTIER_DUE, titre,
-                       body=corps, company=company)
+                notify(destinataire, EventType.INTERVENTION_REPLANIFIEE,
+                       titre, body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
                 pass
 
@@ -3467,13 +3512,16 @@ def _notifier_intervention_annulee(interv, user):
     except Exception:  # pragma: no cover - défensif
         pass
     titre = f"Intervention annulée — chantier {interv.installation.reference}"
+    # CHT9 — sa propre clé (INTERVENTION_ANNULEE), plus l'emprunt de
+    # CHANTIER_DUE, + lien réel (lisible depuis CHT8).
+    lien = f'/interventions?id={interv.id}'
     for dest in destinataires:
         try:
             notify(
-                dest, EventType.CHANTIER_DUE, titre,
+                dest, EventType.INTERVENTION_ANNULEE, titre,
                 body='Le chantier a été annulé, cette intervention ne '
                      'sera pas réalisée.',
-                company=interv.company)
+                link=lien, company=interv.company)
         except Exception:  # pragma: no cover - défensif
             pass
 
@@ -3529,12 +3577,16 @@ def notifier_jalon_a_facturer(jalon, user=None):
         from apps.notifications.models import EventType
         libelle_tranche = dict(jalon.TRANCHE_CHOICES).get(
             jalon.tranche_echeancier, jalon.tranche_echeancier)
-        recipients = resolve_recipients(jalon.company, EventType.CHANTIER_DUE)
+        # CHT9 — sa propre clé (TRANCHE_A_FACTURER), plus l'emprunt de
+        # CHANTIER_DUE, + lien réel vers le chantier.
+        recipients = resolve_recipients(
+            jalon.company, EventType.TRANCHE_A_FACTURER)
         titre = f'Facture {libelle_tranche} à émettre — jalon {jalon.libelle} atteint'
         notify_many(
-            recipients, EventType.CHANTIER_DUE, titre,
+            recipients, EventType.TRANCHE_A_FACTURER, titre,
             body=f'Chantier {installation.reference} — tranche '
                  f'« {libelle_tranche} » non encore facturée.',
+            link=f'/chantiers?id={installation.id}',
             company=jalon.company)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
