@@ -24,11 +24,15 @@ Deux règles de la maison sont câblées ici :
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import status
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer)
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from authentication.permissions import HasPermissionOrLegacy
+from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services, visite_checklist as checklist
@@ -105,10 +109,32 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         return self.PERMISSIONS_ECRITURE.get(
             getattr(self, 'action', None), 'visites_modifier')
 
-    # ── Lecture ──────────────────────────────────────────────────────────────
+    # -- VTA6 : PORTEE DURE "MES VISITES" -------------------------------------
+    #
+    # Avant VTA6, ne voir que ses visites etait un OPT-IN du client
+    # (``?mine=1``) : un commercial terrain curieux -- ou un ecran mal cable --
+    # listait toute la societe. Depuis que l'app a son propre utilisateur
+    # (role "Commercial terrain", VTA4), la restriction est imposee par le
+    # SERVEUR, sur TOUTES les routes du viewset (liste, detail, actions) :
+    #
+    #   * sans ``visites_valider``, on ne voit QUE ``commercial=self`` ;
+    #   * avec ``visites_valider`` (bureau d'etudes / responsable), on voit
+    #     l'equipe -- c'est son metier d'arbitrer les dossiers des autres.
+    #
+    # Consequence voulue : un GET sur la visite d'un collegue rend 404 (elle
+    # n'est pas dans le queryset), jamais 403 -- on ne confirme pas l'existence
+    # d'un enregistrement qu'on n'a pas le droit de voir. Le ``?mine=1``
+    # historique reste accepte : il RESTREINT encore un valideur a ses propres
+    # visites, il n'elargit jamais la portee de personne.
+
+    def _voit_toute_l_equipe(self):
+        """Vrai si l'appelant porte ``visites_valider`` (ou en tient lieu)."""
+        return _user_has_or_legacy(self.request.user, 'visites_valider')
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if not self._voit_toute_l_equipe():
+            return qs.filter(commercial=self.request.user)
         mine = str(self.request.query_params.get('mine', '')).strip()
         if mine in ('1', 'true'):
             qs = qs.filter(commercial=self.request.user)
@@ -277,6 +303,58 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         _marquer_en_cours(visite)
         return self._agregat(visite)
 
+    # -- VTA6 : PROGRESSION TERRAIN (deux boutons au pouce) -------------------
+    #
+    # "En route" puis "Arrive". L'heure vient TOUJOURS du serveur : un
+    # telephone dont l'horloge derive (ou qu'on avance expres) ne peut pas
+    # ecrire une heure d'arrivee. Les deux actions sont IDEMPOTENTES -- un
+    # double tap dans une zone a reseau faible ne repousse pas le jalon -- et
+    # reservees a l'ASSIGNE : un valideur voit la journee de son equipe, il ne
+    # pointe pas l'arrivee a la place du commercial qui roule.
+
+    def _refus_si_pas_l_assigne(self, visite):
+        if visite.commercial_id == self.request.user.id:
+            return None
+        return _erreur(
+            'commercial',
+            "Seul le commercial assigne a cette visite peut pointer sa "
+            "progression sur le terrain.",
+            status.HTTP_403_FORBIDDEN)
+
+    @action(detail=True, methods=['post'], url_path='demarrer-route')
+    def demarrer_route(self, request, pk=None):
+        """Pointe le DEPART vers le site (horodatage serveur, idempotent)."""
+        visite = self.get_object()
+        refus = self._refus_si_gelee(visite) or self._refus_si_pas_l_assigne(
+            visite)
+        if refus is not None:
+            return refus
+        if visite.en_route_le is None:
+            visite.en_route_le = timezone.now()
+            visite.save(update_fields=['en_route_le'])
+        return self._agregat(visite)
+
+    @action(detail=True, methods=['post'], url_path='arriver')
+    def arriver(self, request, pk=None):
+        """Pointe l'ARRIVEE sur le site (horodatage serveur, idempotent).
+
+        Ne reclame PAS que "En route" ait ete pointe : un commercial deja sur
+        place quand il ouvre l'app doit pouvoir dire qu'il est arrive -- lui
+        refuser l'arrivee parce qu'il a oublie un bouton serait une donnee
+        perdue pour rien. Le depart reste alors simplement ``null``, ce qui est
+        la verite.
+        """
+        visite = self.get_object()
+        refus = self._refus_si_gelee(visite) or self._refus_si_pas_l_assigne(
+            visite)
+        if refus is not None:
+            return refus
+        if visite.arrivee_le is None:
+            visite.arrivee_le = timezone.now()
+            visite.save(update_fields=['arrivee_le'])
+        _marquer_en_cours(visite)
+        return self._agregat(visite)
+
     # ── Transition « terminer » (gate de complétude SERVEUR) ─────────────────
 
     @action(detail=True, methods=['post'], url_path='terminer')
@@ -426,3 +504,55 @@ def _marquer_en_cours(visite):
                          VisiteTerrain.Statut.A_REFAIRE):
         visite.statut = VisiteTerrain.Statut.EN_COURS
         visite.save(update_fields=['statut'])
+
+
+# -- VTA6 : "MA JOURNEE", L'ACCUEIL DE L'APP ---------------------------------
+#
+# Recherche field-service : l'ecran d'accueil d'un terrain est SA JOURNEE, pas
+# un tableau de bord. Endpoint LITTERAL du contrat VTA0
+# (``apps/visites/contract_samples/ma_journee.json``) :
+# ``GET /api/django/visites/ma-journee/`` -- un segment de MODULE, pas une
+# ressource du routeur, d'ou un ``path()`` explicite dans ``urls.py``.
+
+class MaJourneeView(APIView):
+    """Les visites du JOUR + celles EN RETARD de l'appelant.
+
+    Portee, dans cet ordre et toujours cote serveur :
+
+    1. la SOCIETE (``request.user.company``) -- jamais lue du corps ni de la
+       query ;
+    2. la portee dure "mes visites" : sans ``visites_valider``, on ne voit que
+       ``commercial=self``. Un valideur voit sa propre journee par defaut et
+       celle de l'EQUIPE avec ``?tous=1`` -- un elargissement qu'un terrain ne
+       peut pas s'accorder, puisqu'il est conditionne a la permission.
+
+    La date vient de l'horloge SERVEUR dans le fuseau du projet
+    (``timezone.localdate()``) : le telephone ne choisit pas quel jour on est.
+    """
+
+    permission_classes = [HasPermissionOrLegacy('visites_voir')]
+
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'tous', bool, OpenApiParameter.QUERY,
+            description=("Reserve aux porteurs de visites_valider : la "
+                         "journee de toute l'equipe au lieu de la sienne."))],
+        responses=inline_serializer(
+            name='VisitesMaJournee',
+            fields={
+                'date': serializers.CharField(),
+                'en_retard_count': serializers.IntegerField(),
+                'visites': serializers.ListField(
+                    child=serializers.DictField()),
+            }))
+    def get(self, request):
+        visites = (VisiteTerrain.objects
+                   .select_related('lead', 'commercial')
+                   .filter(company=request.user.company))
+        tous = str(request.query_params.get('tous', '')).strip() in ('1',
+                                                                     'true')
+        if not (tous and _user_has_or_legacy(request.user,
+                                             'visites_valider')):
+            visites = visites.filter(commercial=request.user)
+        return Response(selectors.ma_journee(
+            visites, aujourdhui=timezone.localdate()))

@@ -27,6 +27,11 @@ def _visite_decimal(valeur):
     return None if valeur is None else float(valeur)
 
 
+def _visite_horodatage(valeur):
+    """Un horodatage ISO, ou ``None`` — jamais une chaîne vide trompeuse."""
+    return None if valeur is None else valeur.isoformat()
+
+
 def _visite_photo(media):
     attachment = media.attachment
     return {
@@ -219,6 +224,11 @@ def contexte_visite_terrain(visite):
         },
         'client_panel': _visite_client_panel(visite.lead),
         'devis': _visite_devis(visite.lead),
+        # VTA6 — jalons de progression, horodatés SERVEUR. ``None`` tant que le
+        # jalon n'est pas franchi : l'écran affiche « En route » ou « Arrivé »
+        # à partir de CE fait, il ne le devine pas.
+        'en_route_le': _visite_horodatage(visite.en_route_le),
+        'arrivee_le': _visite_horodatage(visite.arrivee_le),
     }
 
 
@@ -338,4 +348,70 @@ def ligne_visite_terrain(visite):
                         if visite.date_prevue else None),
         'complet': not manquants,
         'manquants_count': len(manquants),
+    }
+
+
+# -- VTA6 -- "MA JOURNEE" : L'ACCUEIL DE L'APP --------------------------------
+#
+# Recherche field-service : l'ecran d'accueil d'un terrain est SA JOURNEE, pas
+# un tableau de bord. Le serveur compose la liste ; le front n'invente rien --
+# ``complet`` et ``manquants_count`` viennent d'ici, comme dans la liste.
+#
+# Contrat : ``apps/visites/contract_samples/ma_journee.json``.
+
+def ligne_ma_journee(visite):
+    """UNE carte de "Ma journee" (contrat ``ma_journee.json``)."""
+    lead = visite.lead
+    nom = ' '.join(
+        part for part in [(lead.prenom or '').strip(), (lead.nom or '').strip()]
+        if part)
+    manquants = visite_terrain_manquants(visite)
+    return {
+        'id': visite.id,
+        'lead_nom': nom or (lead.nom or ''),
+        'ville': lead.ville or '',
+        'adresse': lead.adresse or '',
+        'gps_lat': _visite_decimal(lead.gps_lat),
+        'gps_lng': _visite_decimal(lead.gps_lng),
+        'date_prevue': (visite.date_prevue.isoformat()
+                        if visite.date_prevue else None),
+        'statut': visite.statut,
+        'en_route_le': _visite_horodatage(visite.en_route_le),
+        'arrivee_le': _visite_horodatage(visite.arrivee_le),
+        'complet': not manquants,
+        'manquants_count': len(manquants),
+    }
+
+
+def ma_journee(visites, *, aujourdhui):
+    """La journee d'un terrain : les visites DU JOUR + celles EN RETARD.
+
+    ``visites`` est un queryset DEJA scope (societe + portee dure "mes
+    visites") -- ce selector ne decide d'aucune permission, il compose.
+    ``aujourdhui`` est une date passee par l'appelant (la vue la lit sur
+    l'horloge serveur, dans le fuseau du projet) : aucune horloge n'est lue
+    ici, ce qui rend la fonction testable sans dependre du jour ou le test
+    tourne.
+
+    EN RETARD = une visite dont la date prevue est PASSEE et qui n'est ni
+    terminee, ni validee. Une visite SANS date prevue n'est jamais "en
+    retard" : on ne peut pas etre en retard sur un rendez-vous qu'on n'a pas
+    pris (elle reste visible dans la liste complete de l'app).
+    """
+    from .models import VisiteTerrain
+
+    closes = (VisiteTerrain.Statut.TERMINEE, VisiteTerrain.Statut.VALIDEE)
+    du_jour = visites.filter(date_prevue=aujourdhui)
+    en_retard = (visites
+                 .filter(date_prevue__lt=aujourdhui)
+                 .exclude(statut__in=closes))
+    lignes = sorted(
+        list(en_retard) + list(du_jour),
+        # Les retards d'abord (la dette la plus ancienne en tete), puis le
+        # jour ; tri DETERMINISTE (l'id departage), jamais laisse au SGBD.
+        key=lambda visite: (visite.date_prevue or aujourdhui, visite.id))
+    return {
+        'date': aujourdhui.isoformat(),
+        'en_retard_count': en_retard.count(),
+        'visites': [ligne_ma_journee(visite) for visite in lignes],
     }

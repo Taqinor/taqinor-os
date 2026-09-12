@@ -21,11 +21,17 @@ est le MODULE (et sa clé de manifeste), le 2ᵉ la RESSOURCE — le contrat
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import VisiteTerrainViewSet
+from .views import MaJourneeView, VisiteTerrainViewSet
 
 router = DefaultRouter()
 router.register(r'visites', VisiteTerrainViewSet, basename='visites-visite')
 
 urlpatterns = [
+    # VTA6 — l'ACCUEIL de l'app (contrat `contract_samples/ma_journee.json`).
+    # Chemin LITTÉRAL du contrat : `ma-journee` est un segment de MODULE, pas
+    # une ressource du routeur — d'où ce `path()` explicite, monté AVANT le
+    # routeur. À ne pas confondre avec `/ma-journee` (route d'accueil des
+    # TECHNICIENS, possédée par `apps.installations`).
+    path('ma-journee/', MaJourneeView.as_view(), name='visites-ma-journee'),
     path('', include(router.urls)),
 ]

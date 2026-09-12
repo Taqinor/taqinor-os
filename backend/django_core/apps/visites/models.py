@@ -100,6 +100,17 @@ class VisiteTerrain(TenantModel):
     #: ``{'coins': [[lat, lng] × 4]}``. NULL tant que non calé.
     texture_calage = models.JSONField(
         null=True, blank=True, verbose_name='Calage de la texture')
+    # ── VTA6 — PROGRESSION TERRAIN (horodatages SERVEUR) ────────────────
+    #
+    # Deux jalons au pouce, posés par les actions ``demarrer-route`` et
+    # ``arriver``. L'heure vient TOUJOURS du serveur : un téléphone dont
+    # l'horloge dérive (ou qu'on avance exprès) ne doit pas pouvoir écrire
+    # une heure d'arrivée. NULL tant que le jalon n'est pas franchi — jamais
+    # une valeur par défaut qui ferait croire à un passage.
+    en_route_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Départ vers le site')
+    arrivee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Arrivée sur le site')
 
     class Meta:
         # Table PHYSIQUE historique — le move ne déplace AUCUNE donnée.
