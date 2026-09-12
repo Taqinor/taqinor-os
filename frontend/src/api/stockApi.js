@@ -287,6 +287,13 @@ const stockApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // NTP2P10 — suggère le(s) BCF ouvert(s) du fournisseur les plus proches du
+  // montant OCR (lecture seule, l'utilisateur confirme via un PATCH classique
+  // sur la facture — voir `updateFactureFournisseur`).
+  getSuggestionsBcfFacture: (fournisseurId, montant) =>
+    api.get('/stock/factures-fournisseur/suggestions-bcf/', {
+      params: { fournisseur: fournisseurId, ...(montant ? { montant } : {}) },
+    }),
 
   // WR3 — Pilotage stock (analytics INTERNES ; les valeurs au prix d'achat
   // ne sortent jamais vers un document client).

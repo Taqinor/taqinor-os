@@ -563,6 +563,64 @@ def checklist_cloture_achats(company, periode=None, *, seuil_jours=15):
     }
 
 
+def suggerer_bcf_pour_facture(company, *, fournisseur_id, montant=None,
+                              jours_fenetre=60, limite=5):
+    """NTP2P10 — candidats ``BonCommandeFournisseur`` OUVERTS (envoyé/reçu)
+    du fournisseur, triés par proximité de montant avec ``montant`` (le
+    montant OCR de la facture), pour que l'écran de confirmation de la
+    facture OCR propose le BCF le plus vraisemblable EN PREMIER — ne lie
+    JAMAIS rien elle-même (LECTURE SEULE), l'utilisateur confirme toujours
+    explicitement (``FactureFournisseurViewSet.perform_update`` déclenche
+    alors l'évaluation 3 voies).
+
+    Un BCF commandé il y a plus de ``jours_fenetre`` jours (défaut 60) est
+    exclu — la proposition doit rester plausible. Sans ``montant``, les
+    candidats sont triés par date de commande la plus récente. Renvoie une
+    liste de dicts triée (le meilleur candidat en premier) :
+    ``{id, reference, montant_total, ecart, date_commande}``."""
+    from datetime import timedelta
+    from decimal import Decimal, InvalidOperation
+    from django.utils import timezone
+    from .models import BonCommandeFournisseur
+
+    if company is None or not fournisseur_id:
+        return []
+    aujourdhui = timezone.localdate()
+    borne_basse = aujourdhui - timedelta(days=int(jours_fenetre or 60))
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company, fournisseur_id=fournisseur_id,
+                  statut__in=[BonCommandeFournisseur.Statut.ENVOYE,
+                              BonCommandeFournisseur.Statut.RECU],
+                  date_commande__gte=borne_basse)
+          .prefetch_related('lignes')
+          .order_by('-date_commande'))
+
+    montant_cible = None
+    if montant not in (None, ''):
+        try:
+            montant_cible = Decimal(str(montant))
+        except (InvalidOperation, ValueError, TypeError):
+            montant_cible = None
+
+    candidats = []
+    for bc in qs:
+        total = montant_commande_bcf(bc)
+        ecart = abs(total - montant_cible) if montant_cible is not None else None
+        candidats.append({
+            'id': bc.id, 'reference': bc.reference,
+            'montant_total': total, 'ecart': ecart,
+            'date_commande': bc.date_commande,
+        })
+
+    def _tri(c):
+        if c['ecart'] is not None:
+            return (0, c['ecart'])
+        return (1, )
+
+    candidats.sort(key=_tri)
+    return candidats[:int(limite or 5)]
+
+
 def montant_recu_bcf(bon_commande):
     """Montant HT REÇU pour un BCF : Σ sur ses LIGNES de commande de
     (``quantite_recue`` × prix d'achat unitaire). Reflète la marchandise

@@ -105,6 +105,12 @@ function AnalyseTab({ canSave }) {
   const [factureLoading, setFactureLoading] = useState(false)
   const [factureDone, setFactureDone] = useState(null)
   const [factureError, setFactureError] = useState(null)
+  // NTP2P10 — suggestions de BCF ouvert du fournisseur, proposées dès que
+  // le brouillon de facture est créé ; ne lie JAMAIS rien tant que
+  // l'utilisateur n'a pas cliqué « Confirmer ».
+  const [bcfSuggestions, setBcfSuggestions] = useState([])
+  const [bcfLiantId, setBcfLiantId] = useState(null)
+  const [bcfLieId, setBcfLieId] = useState(null)
 
   const processFile = useCallback((file) => {
     if (!file) return
@@ -124,6 +130,9 @@ function AnalyseTab({ canSave }) {
     setCrmDone(null)
     setFactureDone(null)
     setFactureError(null)
+    setBcfSuggestions([])
+    setBcfLieId(null)
+    setBcfLiantId(null)
     setEditedFields({})
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
@@ -169,11 +178,37 @@ function AnalyseTab({ canSave }) {
         reference: r.data.reference,
         doublon: r.data.doublon_warning ?? null,
       })
+      // NTP2P10 — propose automatiquement le(s) BCF ouvert(s) du même
+      // fournisseur (best-effort : une facture sans fournisseur/BCF
+      // candidat reste utilisable, aucun blocage).
+      if (r.data.fournisseur) {
+        stockApi.getSuggestionsBcfFacture(r.data.fournisseur, r.data.montant_ttc)
+          .then((s) => setBcfSuggestions(s.data ?? []))
+          .catch(() => setBcfSuggestions([]))
+      }
     } catch (e) {
       setFactureError(
         e?.response?.data?.detail ?? 'Création de la facture impossible depuis ce document.')
     } finally {
       setFactureLoading(false)
+    }
+  }
+
+  // NTP2P10 — confirme le lien BCF choisi par l'utilisateur (jamais posé
+  // silencieusement) : un PATCH classique, qui déclenche côté serveur
+  // l'évaluation immédiate du rapprochement 3 voies.
+  const confirmerBcf = async (bonCommandeId) => {
+    if (!factureDone) return
+    setBcfLiantId(bonCommandeId)
+    try {
+      await stockApi.updateFactureFournisseur(
+        factureDone.id, { bon_commande: bonCommandeId })
+      setBcfLieId(bonCommandeId)
+      toast.success('Facture liée au bon de commande.')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'La liaison au BCF a échoué.')
+    } finally {
+      setBcfLiantId(null)
     }
   }
 
@@ -447,19 +482,46 @@ function AnalyseTab({ canSave }) {
               <span className="text-sm text-destructive">{factureError}</span>
             )}
             {factureDone && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={factureDone.doublon ? 'warning' : 'success'} className="gap-1.5 px-3 py-1.5 text-sm">
-                  <Check className="size-4" aria-hidden="true" />
-                  {factureDone.doublon
-                    ? `Facture brouillon créée (${factureDone.reference}) — doublon possible détecté`
-                    : `Facture brouillon créée (${factureDone.reference})`}
-                </Badge>
-                <Button
-                  variant="ghost" size="sm"
-                  onClick={() => navigate('/stock/factures-fournisseur')}
-                >
-                  Ouvrir les factures fournisseur
-                </Button>
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={factureDone.doublon ? 'warning' : 'success'} className="gap-1.5 px-3 py-1.5 text-sm">
+                    <Check className="size-4" aria-hidden="true" />
+                    {factureDone.doublon
+                      ? `Facture brouillon créée (${factureDone.reference}) — doublon possible détecté`
+                      : `Facture brouillon créée (${factureDone.reference})`}
+                  </Badge>
+                  <Button
+                    variant="ghost" size="sm"
+                    onClick={() => navigate('/stock/factures-fournisseur')}
+                  >
+                    Ouvrir les factures fournisseur
+                  </Button>
+                </div>
+                {/* NTP2P10 — suggestion(s) de BCF ouvert du même fournisseur,
+                    le meilleur candidat en premier ; jamais un lien posé sans
+                    confirmation explicite de l'utilisateur. */}
+                {bcfSuggestions.length > 0 && !bcfLieId && (
+                  <div className="flex flex-col gap-1.5 rounded-lg border border-info/30 bg-info/10 p-2.5 text-sm">
+                    <span className="font-medium">Bon de commande correspondant ?</span>
+                    {bcfSuggestions.map((s) => (
+                      <div key={s.id} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{s.reference} — {s.montant_total} MAD{s.ecart != null ? ` (écart ${s.ecart} MAD)` : ''}</span>
+                        <Button
+                          variant="outline" size="sm"
+                          loading={bcfLiantId === s.id}
+                          onClick={() => confirmerBcf(s.id)}
+                        >
+                          Confirmer
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {bcfLieId && (
+                  <Badge tone="success" className="w-fit gap-1.5 px-3 py-1.5 text-sm">
+                    <Check className="size-4" aria-hidden="true" /> Facture liée au bon de commande.
+                  </Badge>
+                )}
               </div>
             )}
             <Button variant="outline" size="sm" onClick={handleReset}>
