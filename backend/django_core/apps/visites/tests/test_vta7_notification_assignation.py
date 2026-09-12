@@ -127,7 +127,10 @@ class NotificationDAssignationTests(AssignationBase):
             '/api/django/visites/visites/',
             {'lead': self.lead.id, 'commercial': self.terrain.id},
             format='json')
-        reponse = auth(self.terrain).get('/api/django/notifications/')
+        # La LISTE vit sous le préfixe du routeur — la racine de l'app est
+        # l'index DRF (un dict), qui rendait ce test faux-positif en forme.
+        reponse = auth(self.terrain).get(
+            '/api/django/notifications/notifications/')
         self.assertEqual(reponse.status_code, 200, reponse.status_code)
         donnees = reponse.data
         lignes = (donnees['results'] if isinstance(donnees, dict)
