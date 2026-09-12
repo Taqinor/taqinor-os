@@ -200,16 +200,6 @@ ignore_imports =
 # `apps.ventes.* -> apps.audit.*` reste détecté.
     apps.marketing.services -> apps.audit.recorder
     apps.marketing.services -> apps.audit.models
-# NTGRC31 — `grc.selectors` gains a transverse e-discovery search
-# (`_resultats_audit`, lazy `from apps.audit.selectors import
-# rechercher_journal`) that reads the audit journal alongside CRM/GED as ONE
-# of the périmètres it searches — grc's OWN cross-app read, not ventes
-# reaching into audit. The pre-existing `ventes.retention.sweep_objets ->
-# grc.selectors.politiques_retention_actives` edge (NTGRC4) now makes the two
-# hops appear transitively coupled. Ignore only this satellite→satellite
-# edge, same motif as the exceptions above; a DIRECT
-# `apps.ventes.* -> apps.audit.*` import stays detected.
-    apps.grc.selectors -> apps.audit.selectors
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)
