@@ -1,13 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import { Plus, Pencil, Check, X, Send, Download, BarChart3 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, toast } from '../../../ui'
+import {
+  Button, Segmented, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Combobox, Input, Label,
+} from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import rhApi from '../../../api/rhApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+import ChantierSelect from '../../btp_chantier/ChantierSelect'
 
 // VX229 — options employé chargées une fois à l'ouverture du dialog (au lieu
 // d'un champ « Employé (ID) » tapé à la main), « Nom Prénom » comme EmployeList.
@@ -131,15 +136,129 @@ const FIELDS = {
     { name: 'taux_km', label: 'Taux/km', type: 'number' },
     { name: 'per_diem', label: 'Per diem', type: 'number' },
   ],
-  indemnitesChantier: [
-    { name: 'employe', label: 'Employé', async: employeAsync, required: true },
-    { name: 'date_deplacement', label: 'Date', type: 'date', required: true },
-    { name: 'libelle_chantier', label: 'Chantier' },
-    { name: 'nombre_jours', label: 'Nombre de jours', type: 'number' },
-  ],
+  // CHT16 — l'onglet Indemnités chantier n'utilise PLUS ce descripteur
+  // générique : `IndemniteChantierDialog` (ci-dessous) rend `ChantierSelect`
+  // (réutilisé de btp_chantier) à la place du texte libre `libelle_chantier`
+  // (conservé côté modèle en repli/héritage pour les enregistrements
+  // antérieurs, toujours affiché tel quel dans la colonne « Chantier »).
 }
 
 const TRESO_ID_HINT = 'ID du compte de trésorerie payeur'
+
+// CHT16 — dialogue dédié de l'onglet Indemnités chantier : `ChantierSelect`
+// (réutilisé de btp_chantier) remplace le texte libre `libelle_chantier` par
+// une sélection réelle de chantier (`installation_id`, validé société côté
+// serializer). Pas de générique `CrudDialog` ici — un champ « composant
+// réutilisé » n'entre pas dans son descripteur `fields` (`{name, label,
+// type?, options?, async?}`).
+function IndemniteChantierDialog({ open, onClose, row, onSubmit, onSaved }) {
+  const [values, setValues] = useState({})
+  const [employeOptions, setEmployeOptions] = useState([])
+  const [employeLoading, setEmployeLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setValues({
+      employe: row?.employe ?? '',
+      date_deplacement: row?.date_deplacement ?? '',
+      installation_id: row?.installation_id ?? '',
+      nombre_jours: row?.nombre_jours ?? '',
+    })
+  }, [open, row])
+
+  useEffect(() => {
+    if (!open) return
+    setEmployeLoading(true)
+    employeAsync()
+      .then((opts) => setEmployeOptions(opts || []))
+      .catch(() => setEmployeOptions([]))
+      .finally(() => setEmployeLoading(false))
+  }, [open])
+
+  const set = (name, v) => setValues((prev) => ({ ...prev, [name]: v }))
+
+  const submit = async (e) => {
+    e.preventDefault()
+    const payload = {}
+    for (const [k, v] of Object.entries(values)) {
+      if (v !== '' && v !== null && v !== undefined) payload[k] = v
+    }
+    setSaving(true)
+    try {
+      await onSubmit(payload)
+      toast.success('Enregistré.')
+      onSaved?.()
+      onClose?.()
+    } catch (err) {
+      const detail = err?.response?.data
+      const msg = typeof detail === 'string'
+        ? detail
+        : (detail?.detail || Object.values(detail || {})?.[0]
+          || 'Enregistrement impossible — vérifiez les champs.')
+      toast.error(Array.isArray(msg) ? msg[0] : String(msg))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{row ? "Modifier l'indemnité" : 'Nouvelle indemnité'}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} noValidate className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ic-employe" required>Employé</Label>
+            <Combobox
+              id="ic-employe"
+              options={employeOptions}
+              value={values.employe || null}
+              onChange={(v) => set('employe', v ?? '')}
+              disabled={employeLoading}
+              placeholder={employeLoading ? 'Chargement…' : 'Sélectionner…'}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ic-date" required>Date</Label>
+            <Input
+              id="ic-date"
+              type="date"
+              value={values.date_deplacement || ''}
+              onChange={(e) => set('date_deplacement', e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ic-chantier">Chantier</Label>
+            <ChantierSelect
+              id="ic-chantier"
+              label="Chantier"
+              value={values.installation_id}
+              onChange={(v) => set('installation_id', v || '')}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ic-jours">Nombre de jours</Label>
+            <Input
+              id="ic-jours"
+              type="number"
+              step="any"
+              value={values.nombre_jours ?? ''}
+              onChange={(e) => set('nombre_jours', e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 export default function NotesDeFraisPage() {
   const [tab, setTab] = useTabParam('notesFrais')  // VX231(c) — onglet persisté (?onglet=)
@@ -294,7 +413,15 @@ export default function NotesDeFraisPage() {
         emptyDescription="Rien à afficher pour cet onglet."
       />
 
-      {dialog && (
+      {dialog && tab === 'indemnitesChantier' ? (
+        <IndemniteChantierDialog
+          open
+          onClose={() => setDialog(null)}
+          row={dialog.row}
+          onSubmit={submit}
+          onSaved={list.reload}
+        />
+      ) : dialog && (
         <CrudDialog
           open
           onClose={() => setDialog(null)}
