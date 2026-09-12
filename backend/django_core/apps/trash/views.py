@@ -56,7 +56,9 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         # restaurée mentait de la même façon. La borne SOCIÉTÉ, elle, reste
         # posée par `TenantMixin.get_queryset` en amont : rien n'est élargi
         # côté multi-société.
-        if (getattr(self, 'action', None) == 'list'
+        # NTUX24 — `export_xlsx` reflète EXACTEMENT le même filtre par défaut
+        # que `list` (même bascule « Inclure les éléments restaurés »).
+        if (getattr(self, 'action', None) in ('list', 'export_xlsx')
                 and params.get('restaures') not in ('1', 'true', 'True')):
             qs = qs.filter(restaure_le__isnull=True)
         type_libelle = params.get('type')
@@ -102,3 +104,46 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
             'restaure': obj is not None,
             'element': ElementSupprimeSerializer(element).data,
         })
+
+    @action(detail=False, methods=['get'], url_path='export-xlsx')
+    def export_xlsx(self, request):
+        """NTUX24 — export .xlsx du journal de corbeille (audit de rétention
+        RGPD/CNDP), sur les MÊMES filtres que `list` (`?type=`/`?depuis=`/
+        `?jusqua=`/`?restaures=`) — jamais une seconde source de vérité.
+        Moteur .xlsx PARTAGÉ `apps.records.xlsx` (foundation app, exempte de
+        la frontière inter-apps), jamais le moteur `quote_engine` (règle #4,
+        hors périmètre). Aucune donnée sensible au-delà de `libelle_snapshot`
+        (jamais `donnees_snapshot`, best-effort affichage seul)."""
+        from django.utils import timezone
+
+        from apps.records.xlsx import build_xlsx_response
+
+        elements = self.get_queryset()
+        headers = [
+            'Type', 'Libellé', 'Supprimé par', 'Supprimé le', 'Expire le',
+            'Statut',
+        ]
+        now = timezone.now()
+        rows = []
+        for el in elements:
+            if el.restaure_le:
+                statut = 'Restauré'
+            elif el.expire_le and el.expire_le < now:
+                statut = 'Expiré (purge planifiée imminente)'
+            else:
+                statut = 'Actif'
+            supprime_par = el.supprime_par
+            nom_supprime_par = ''
+            if supprime_par:
+                full = f'{getattr(supprime_par, "first_name", "")} {getattr(supprime_par, "last_name", "")}'.strip()
+                nom_supprime_par = full or getattr(supprime_par, 'username', '') or ''
+            rows.append([
+                el.type_libelle or '',
+                el.libelle_snapshot or '',
+                nom_supprime_par,
+                el.supprime_le,
+                el.expire_le,
+                statut,
+            ])
+        return build_xlsx_response(
+            'journal-corbeille.xlsx', headers, rows, sheet_title='Journal corbeille')

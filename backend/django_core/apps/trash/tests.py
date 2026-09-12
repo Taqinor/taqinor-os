@@ -197,6 +197,92 @@ class CorbeilleApiTests(CorbeilleBase):
         self.assertIn('corbeille', entry.detail.lower())
 
 
+class NTUX24ExportXlsxTests(CorbeilleBase):
+    """NTUX24 — export .xlsx du journal de corbeille (audit de rétention)."""
+
+    def test_export_xlsx_forbidden_for_commercial(self):
+        resp = auth(self.commercial).get(f'{self.BASE}export-xlsx/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_export_xlsx_reflects_the_same_filters_as_list(self):
+        archiver(self.lead, type_libelle='Lead')
+        autre = Lead.objects.create(company=self.co_a, nom='Bennani')
+        archiver(autre, type_libelle='Devis')
+        resp = auth(self.directeur).get(f'{self.BASE}export-xlsx/', {'type': 'Lead'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            resp['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        from openpyxl import load_workbook
+        import io
+        wb = load_workbook(io.BytesIO(resp.content))
+        ws = wb.active
+        self.assertEqual(ws.max_row, 2)  # en-tête + 1 seule ligne (filtre type=Lead)
+        header = [c.value for c in ws[1]]
+        self.assertEqual(
+            header, ['Type', 'Libellé', 'Supprimé par', 'Supprimé le', 'Expire le', 'Statut'])
+        self.assertEqual(ws.cell(row=2, column=1).value, 'Lead')
+        self.assertEqual(ws.cell(row=2, column=6).value, 'Actif')
+
+    def test_export_xlsx_marks_a_restored_row(self):
+        archiver(self.lead, user=self.directeur, type_libelle='Lead')
+        element = ElementSupprime.objects.get()
+        auth(self.directeur).post(f'{self.BASE}{element.pk}/restaurer/')
+        resp = auth(self.directeur).get(f'{self.BASE}export-xlsx/', {'restaures': '1'})
+        from openpyxl import load_workbook
+        import io
+        wb = load_workbook(io.BytesIO(resp.content))
+        ws = wb.active
+        self.assertEqual(ws.cell(row=2, column=6).value, 'Restauré')
+
+    def test_export_xlsx_excludes_restored_rows_by_default(self):
+        archiver(self.lead, type_libelle='Lead')
+        element = ElementSupprime.objects.get()
+        auth(self.directeur).post(f'{self.BASE}{element.pk}/restaurer/')
+        resp = auth(self.directeur).get(f'{self.BASE}export-xlsx/')
+        from openpyxl import load_workbook
+        import io
+        wb = load_workbook(io.BytesIO(resp.content))
+        ws = wb.active
+        self.assertEqual(ws.max_row, 1)  # en-tête seul, la ligne restaurée est exclue
+
+
+class NTUX26AvertissementRestaurationTests(CorbeilleBase):
+    """NTUX26 — avertissement best-effort de l'assistant de restauration en
+    masse (jamais bloquant, `None` sans signal exploitable)."""
+
+    def test_no_signal_in_snapshot_means_no_warning(self):
+        archiver(self.lead, donnees={'ville': 'Rabat'})
+        resp = auth(self.directeur).get(self.BASE)
+        self.assertIsNone(rows(resp)[0]['avertissement_restauration'])
+
+    def test_responsable_disparu_declenche_un_avertissement(self):
+        archiver(self.lead, donnees={'responsable_id': 999999})
+        resp = auth(self.directeur).get(self.BASE)
+        self.assertIn("n'existe plus", rows(resp)[0]['avertissement_restauration'])
+
+    def test_responsable_desactive_declenche_un_avertissement(self):
+        inactif = make_user(self.co_a, 'trash-inactif')
+        inactif.is_active = False
+        inactif.save(update_fields=['is_active'])
+        archiver(self.lead, donnees={'responsable_id': inactif.id})
+        resp = auth(self.directeur).get(self.BASE)
+        self.assertIn('désactivé', rows(resp)[0]['avertissement_restauration'])
+
+    def test_responsable_actif_ne_declenche_aucun_avertissement(self):
+        archiver(self.lead, donnees={'responsable_id': self.directeur.id})
+        resp = auth(self.directeur).get(self.BASE)
+        self.assertIsNone(rows(resp)[0]['avertissement_restauration'])
+
+    def test_element_deja_restaure_naffiche_jamais_davertissement(self):
+        archiver(self.lead, donnees={'responsable_id': 999999})
+        element = ElementSupprime.objects.get()
+        auth(self.directeur).post(f'{self.BASE}{element.pk}/restaurer/')
+        resp = auth(self.directeur).get(self.BASE, {'restaures': '1'})
+        self.assertIsNone(rows(resp)[0]['avertissement_restauration'])
+
+
 class NTUX31PermissionsFinesTests(CorbeilleBase):
     """NTUX31 — `ux.corbeille.consulter`/`ux.corbeille.restaurer` s'ajoutent EN
     PLUS du palier hérité `IsAdminOrResponsableTier`, sans jamais retirer
