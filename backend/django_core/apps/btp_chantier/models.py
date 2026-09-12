@@ -1083,3 +1083,63 @@ class LotChecklistItem(TenantModel):
 
     def __str__(self):
         return f'{self.lot_id} · {self.libelle} · {"✓" if self.fait else "—"}'
+
+
+# ── NTCON25 — Réglages BTP par société (singleton par tenant) ──────────────
+
+#: Corps d'état classiques d'un chantier TCE — SUGGESTION par défaut de
+#: l'assistant NTCON23, éditable par société via ``ParametresBtpChantier``.
+LOTS_TYPES_DEFAUT = [
+    'Gros-œuvre', 'Électricité', 'Plomberie', 'CVC', 'Finitions',
+]
+
+
+def lots_types_defaut():
+    """Défaut CALLABLE du champ JSON (jamais une liste mutable partagée)."""
+    return list(LOTS_TYPES_DEFAUT)
+
+
+class ParametresBtpChantier(TenantModel):
+    """Réglages du module BTP pour UNE société (NTCON25).
+
+    Singleton par tenant (``OneToOneField`` sur ``company``), même patron que
+    les paramètres existants du dépôt (``qhse.CalendrierQhse``…) : au plus une
+    ligne par société, créée à la demande. Les valeurs sont lues par
+    ``services.config_btp`` — modifier un réglage change IMMÉDIATEMENT le
+    comportement du guard correspondant, sans redéploiement :
+
+    * ``guard_ppsps_bloquant`` → NTCON16 (bloque vs avertit au démarrage d'un
+      ordre de sous-traitance) ;
+    * ``guard_checklist_lot_bloquant`` → NTCON19 (bloque vs avertit à la
+      réception d'un lot).
+
+    Les délais et le taux de pénalité servent de DÉFAUTS de saisie ; ils ne
+    réécrivent jamais un objet déjà créé.
+    """
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_parametres', verbose_name='Société')
+    delai_reponse_rfi_defaut_jours = models.PositiveIntegerField(
+        default=5, verbose_name='Délai de réponse RFI par défaut (jours ouvrés)')
+    delai_revue_visa_defaut_jours = models.PositiveIntegerField(
+        default=10, verbose_name='Délai de revue de visa par défaut (jours ouvrés)')
+    guard_ppsps_bloquant = models.BooleanField(
+        default=True,
+        verbose_name='Bloquer le démarrage sans PPSPS signé (sinon avertir)')
+    guard_checklist_lot_bloquant = models.BooleanField(
+        default=True,
+        verbose_name='Bloquer la réception si la checklist du lot est incomplète')
+    lots_types_defaut = models.JSONField(
+        default=lots_types_defaut, blank=True,
+        verbose_name="Lots types suggérés par l'assistant")
+    taux_penalite_retard_defaut_pmil = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Taux de pénalité de retard par défaut (‰/jour)')
+
+    class Meta:
+        verbose_name = 'Réglages BTP'
+        verbose_name_plural = 'Réglages BTP'
+
+    def __str__(self):
+        return f'Réglages BTP — société {self.company_id}'

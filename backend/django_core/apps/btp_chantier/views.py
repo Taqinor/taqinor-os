@@ -19,16 +19,17 @@ from core.viewsets import CompanyScopedModelViewSet
 from . import selectors, services
 from .models import (
     AbonnementRapportPhoto, AvenantChantier, DecompteGeneral, DiffusionPlan,
-    JournalChantier, Lot, PPSPSChantier, PPSPSSignature, RFI, ReserveChantier,
-    VisaDocument,
+    JournalChantier, Lot, ParametresBtpChantier, PPSPSChantier, PPSPSSignature,
+    RFI, ReserveChantier, VisaDocument,
 )
 from .serializers import (
     AbonnementRapportPhotoSerializer, AvenantChantierPublicSerializer,
     AvenantChantierSerializer, DecompteGeneralSerializer,
     DiffusionPlanSerializer, JournalChantierSerializer, LotSerializer,
-    LotChecklistItemSerializer, PPSPSChantierSerializer,
-    PPSPSSignatureSerializer, ReserveChantierSerializer, RFISerializer,
-    SignatureBtpSerializer, VisaDocumentSerializer,
+    LotChecklistItemSerializer, ParametresBtpChantierSerializer,
+    PPSPSChantierSerializer, PPSPSSignatureSerializer,
+    ReserveChantierSerializer, RFISerializer, SignatureBtpSerializer,
+    VisaDocumentSerializer,
 )
 
 
@@ -941,6 +942,48 @@ class AbonnementRapportPhotoViewSet(
         if chantier_id not in (None, ''):
             qs = qs.filter(chantier_id=chantier_id)
         return qs
+
+
+class ParametresBtpView(APIView):
+    """NTCON25 — ``parametres/`` : réglages BTP de la société (singleton).
+
+    ``GET`` (lecture ``btp_voir``) renvoie les réglages EFFECTIFS de la
+    société — la ligne est créée à la demande avec les défauts du module, de
+    sorte qu'un tenant neuf voie exactement ce qui s'applique.
+    ``PUT``/``PATCH`` est réservé aux ADMINISTRATEURS (403 sinon) : ces
+    réglages pilotent des guards de sécurité (PPSPS) et de réception (lot).
+    Multi-tenant : la société vient TOUJOURS de l'utilisateur, jamais du corps.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def _reglages(self, request):
+        reglages, _ = ParametresBtpChantier.objects.get_or_create(
+            company=request.user.company)
+        return reglages
+
+    def get(self, request):
+        return Response(
+            ParametresBtpChantierSerializer(self._reglages(request)).data)
+
+    def put(self, request):
+        return self._ecrire(request, partial=False)
+
+    def patch(self, request):
+        return self._ecrire(request, partial=True)
+
+    def _ecrire(self, request, *, partial):
+        if not getattr(request.user, 'is_admin_role', False):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'},
+                status=status.HTTP_403_FORBIDDEN)
+        serializer = ParametresBtpChantierSerializer(
+            self._reglages(request), data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        # La société n'est JAMAIS lue du corps : l'instance la porte déjà.
+        serializer.save()
+        return Response(serializer.data)
 
 
 class ChantierClotureBtpView(APIView):

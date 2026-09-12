@@ -7,8 +7,8 @@ from rest_framework import serializers
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
     AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier,
-    AbonnementRapportPhoto, Lot, LotChecklistItem, PPSPSChantier,
-    PPSPSSignature, SignatureBtp, VisaDocument,
+    AbonnementRapportPhoto, Lot, LotChecklistItem, ParametresBtpChantier,
+    PPSPSChantier, PPSPSSignature, SignatureBtp, VisaDocument,
 )
 
 
@@ -341,6 +341,37 @@ class LotSerializer(serializers.ModelSerializer):
                     '« exécuté en interne » — décochez la case.'),
             })
         return attrs
+
+
+# ── NTCON25 — Réglages BTP par société ─────────────────────────────────────
+
+class ParametresBtpChantierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParametresBtpChantier
+        fields = [
+            'id', 'delai_reponse_rfi_defaut_jours',
+            'delai_revue_visa_defaut_jours', 'guard_ppsps_bloquant',
+            'guard_checklist_lot_bloquant', 'lots_types_defaut',
+            'taux_penalite_retard_defaut_pmil', 'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
+
+    def validate_lots_types_defaut(self, value):
+        """Liste de noms de lots — l'erreur NOMME l'entrée fautive."""
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'lots_types_defaut doit être une liste de noms de lots.')
+        for nom in value:
+            if not isinstance(nom, str) or not nom.strip():
+                raise serializers.ValidationError(
+                    f'Nom de lot invalide : « {nom} ».')
+        return [nom.strip() for nom in value]
+
+    def validate_taux_penalite_retard_defaut_pmil(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le taux de pénalité ne peut pas être négatif.')
+        return value
 
 
 # ── NTCON19 — Checklist de réception de lot ────────────────────────────────

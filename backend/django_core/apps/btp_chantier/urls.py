@@ -9,9 +9,10 @@ from .views import (
     ChantierPenalitesParLotView, ChantierPlanningLotsView,
     ChantierRapportAvancementView,
     DecompteGeneralViewSet, DiffusionPlanViewSet,
-    JournalChantierViewSet, LotViewSet, PPSPSChantierViewSet,
-    ReserveChantierViewSet, RFIViewSet, VisaDocumentViewSet,
-    avenant_public_approuver, avenant_public_detail, diffusion_public_ouvrir,
+    JournalChantierViewSet, LotViewSet, ParametresBtpView,
+    PPSPSChantierViewSet, ReserveChantierViewSet, RFIViewSet,
+    VisaDocumentViewSet, avenant_public_approuver, avenant_public_detail,
+    diffusion_public_ouvrir,
 )
 
 router = DefaultRouter()
@@ -48,6 +49,9 @@ urlpatterns = [
         'chantiers/<int:chantier_id>/debourse-vs-facture/',
         ChantierDebourseVsFactureView.as_view(),
         name='btp-chantier-debourse-vs-facture'),
+    path(
+        'parametres/', ParametresBtpView.as_view(),
+        name='btp-parametres'),
     path(
         'chantiers/<int:chantier_id>/cloture-btp/',
         ChantierClotureBtpView.as_view(),

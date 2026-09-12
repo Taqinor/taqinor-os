@@ -14,7 +14,9 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
-from .models import ReserveChantier, ReserveChantierHistorique
+from .models import (
+    LOTS_TYPES_DEFAUT, ReserveChantier, ReserveChantierHistorique,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -660,9 +662,7 @@ CONFIG_BTP_DEFAUTS = {
     'delai_revue_visa_defaut_jours': 10,
     'guard_ppsps_bloquant': True,
     'guard_checklist_lot_bloquant': True,
-    'lots_types_defaut': [
-        'Gros-œuvre', 'Électricité', 'Plomberie', 'CVC', 'Finitions',
-    ],
+    'lots_types_defaut': list(LOTS_TYPES_DEFAUT),
     'taux_penalite_retard_defaut_pmil': None,
 }
 
@@ -673,26 +673,26 @@ def config_btp(company):
 
     Point d'accès UNIQUE des soft-guards du module (PPSPS NTCON16, checklist
     de lot NTCON19) : changer un réglage change le comportement du guard
-    immédiatement, sans redéploiement. Résolution PARESSEUSE du modèle de
-    réglages (``apps.get_model``) : tant qu'il n'existe pas (ou qu'aucune ligne
-    n'est enregistrée pour cette société), les défauts s'appliquent.
+    immédiatement, sans redéploiement (aucun cache — la lecture est faite à
+    chaque appel). Tant qu'aucune ligne ``ParametresBtpChantier`` n'existe
+    pour la société, les défauts du module s'appliquent.
+
+    ``False`` est une valeur SIGNIFICATIVE (désactiver un guard) : seuls
+    ``None`` et la chaîne vide sont ignorés.
     """
-    from django.apps import apps as django_apps
+    from .models import ParametresBtpChantier
 
     valeurs = dict(CONFIG_BTP_DEFAUTS)
     if company is None:
         return valeurs
-    try:
-        Parametres = django_apps.get_model('btp_chantier', 'ParametresBtpChantier')
-    except LookupError:
-        return valeurs
-    reglages = Parametres.objects.filter(company=company).first()
+    reglages = ParametresBtpChantier.objects.filter(company=company).first()
     if reglages is None:
         return valeurs
     for cle in valeurs:
         valeur = getattr(reglages, cle, None)
-        if valeur not in (None, ''):
-            valeurs[cle] = valeur
+        if valeur is None or valeur == '':
+            continue
+        valeurs[cle] = valeur
     return valeurs
 
 

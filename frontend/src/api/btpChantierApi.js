@@ -180,6 +180,13 @@ const btpChantierApi = {
       params, responseType: 'blob',
     }),
 
+  // ── NTCON25 — Réglages BTP de la société (singleton par tenant) ─────────
+  // Lecture tout rôle BTP ; écriture réservée aux ADMIN (403 serveur sinon).
+  parametres: {
+    get: () => api.get('/btp-chantier/parametres/'),
+    enregistrer: (data) => api.patch('/btp-chantier/parametres/', data),
+  },
+
   // NTCON24 — assistant de clôture : GET = pré-requis (liste EXPLICITE de ce
   // qui bloque), POST = enchaîne vérification → DGD → notification et renvoie
   // l'URL d'export du dossier consolidé.

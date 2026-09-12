@@ -6,7 +6,7 @@
 import { lazy } from 'react'
 import {
   Calculator, ClipboardCheck, Construction, FileEdit, FileQuestion, Layers,
-  LayoutDashboard, MapPin, NotebookPen, Share2, Stamp, Wand2,
+  LayoutDashboard, MapPin, NotebookPen, Settings2, Share2, Stamp, Wand2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -48,6 +48,8 @@ const NouveauChantierBtpWizardPage = lazy(
 // NTCON24 — assistant guidé de clôture (DGD + export dossier).
 const ClotureChantierBtpWizardPage = lazy(
   () => import('./ClotureChantierBtpWizard'))
+// NTCON25 — réglages BTP de la société (admin).
+const ParametresBtpPage = lazy(() => import('./ParametresBtp'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -127,6 +129,12 @@ const config = {
         icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/parametres',
+        label: 'Réglages BTP',
+        icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['admin'],
+      },
     ],
   },
   titles: [
@@ -141,6 +149,7 @@ const config = {
     ['/btp-chantier/cockpit', 'Tableau de bord BTP du chantier'],
     ['/btp-chantier/nouveau', 'Créer un chantier BTP'],
     ['/btp-chantier/cloture', 'Clôture de chantier BTP'],
+    ['/btp-chantier/parametres', 'Réglages BTP'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -156,6 +165,7 @@ const config = {
     { path: '/btp-chantier/cockpit/:chantierId', component: ChantierBtpCockpitPage, roles: ROLES },
     { path: '/btp-chantier/nouveau', component: NouveauChantierBtpWizardPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/cloture', component: ClotureChantierBtpWizardPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/parametres', component: ParametresBtpPage, roles: ['admin'] },
   ],
 }
 
