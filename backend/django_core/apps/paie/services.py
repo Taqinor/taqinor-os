@@ -3301,6 +3301,70 @@ def notifier_echeances_en_retard(company):
 
 # ── ZPAI12 — Alerte de clôture de paie en retard (tâche planifiée) ─────────
 
+# ── NTPAY5 — Registre des dépôts déclaratifs & accusés ────────────────────
+
+def enregistrer_depot_declaratif(echeance, *, date_depot=None,
+                                 reference_depot='', fichier_key='',
+                                 montant_declare=None, statut=None,
+                                 motif_rejet=''):
+    """Enregistre la PREUVE de dépôt d'une déclaration (NTPAY5).
+
+    Crée un ``DepotDeclaratif`` rattaché à ``echeance`` (type et période
+    RECOPIÉS de l'échéance — jamais saisis à part, sans quoi la preuve pourrait
+    désigner une autre déclaration que celle qu'elle justifie) et fait
+    basculer l'échéance en « déposée ».
+
+    Un dépôt ``rejete`` n'avance JAMAIS l'échéance (la déclaration reste due)
+    et exige un ``motif_rejet`` — refusé sinon par une ``ValidationError`` qui
+    NOMME le champ. Le statut de l'échéance ne redescend jamais : une échéance
+    déjà « payée » reste payée.
+
+    Opération atomique. Renvoie le ``DepotDeclaratif`` créé.
+    """
+    from django.core.exceptions import ValidationError
+
+    from .models import DepotDeclaratif
+
+    statut = statut or DepotDeclaratif.STATUT_DEPOSE
+    valides = {code for code, _ in DepotDeclaratif.STATUT_CHOICES}
+    if statut not in valides:
+        raise ValidationError({'statut': [
+            f'Statut inconnu : attendu {", ".join(sorted(valides))}.']})
+    if statut == DepotDeclaratif.STATUT_REJETE and not (motif_rejet or '').strip():
+        raise ValidationError({'motif_rejet': [
+            'Motif du rejet requis : un dépôt rejeté sans motif ne prouve '
+            'rien.']})
+
+    periode = echeance.periode
+    if date_depot is None:
+        date_depot = timezone.localdate()
+    if montant_declare is None:
+        montant_declare = Decimal('0')
+
+    with transaction.atomic():
+        depot = DepotDeclaratif.objects.create(
+            company=echeance.company,
+            echeance=echeance,
+            type_declaration=echeance.type_echeance,
+            annee=periode.annee,
+            # L'état 9421 est ANNUEL : pas de mois sur sa preuve de dépôt.
+            mois=(None if echeance.type_echeance == DepotDeclaratif.TYPE_9421
+                  else periode.mois),
+            reference_depot=(reference_depot or '')[:80],
+            date_depot=date_depot,
+            fichier_key=(fichier_key or '')[:255],
+            montant_declare=_q(montant_declare),
+            statut=statut,
+            motif_rejet=(motif_rejet or '')[:300],
+        )
+        if statut != DepotDeclaratif.STATUT_REJETE and echeance.statut in (
+                EcheanceDeclarative.STATUT_A_GENERER,
+                EcheanceDeclarative.STATUT_GENEREE):
+            echeance.statut = EcheanceDeclarative.STATUT_DEPOSEE
+            echeance.save(update_fields=['statut'])
+    return depot
+
+
 def periodes_cloture_en_retard(company):
     """``PeriodePaie`` en ``brouillon``/``calculee`` dont le mois est écoulé (ZPAI12).
 

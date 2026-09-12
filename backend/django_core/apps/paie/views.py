@@ -12,11 +12,14 @@ from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
+from django.utils.dateparse import parse_date
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import (
+    FormParser, JSONParser, MultiPartParser,
+)
 from rest_framework.response import Response
 
 from . import builders
@@ -53,6 +56,7 @@ from .serializers import (
     BaremeIRSerializer,
     BulletinPaieSerializer,
     CumulAnnuelSerializer,
+    DepotDeclaratifSerializer,
     EcheanceDeclarativeSerializer,
     ElementVariableSerializer,
     LigneVirementSerializer,
@@ -98,6 +102,7 @@ from .services import (
     deposer_bds_principal,
     dry_run_reprise_cumuls,
     emettre_ordre_virement,
+    enregistrer_depot_declaratif,
     ensure_defaults,
     ensure_types_entree_ponctuelle_standard,
     ensure_rubriques_defaut,
@@ -2069,3 +2074,70 @@ class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
                 'ecriture_id': ecriture.id if ecriture else None,
             },
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get', 'post'], url_path='depots',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def depots(self, request, pk=None):
+        """Registre des dépôts déclaratifs de cette échéance (NTPAY5).
+
+        ``GET`` liste les dépôts (preuves) déjà enregistrés.
+
+        ``POST`` enregistre un dépôt et bascule l'échéance en « déposée » :
+        ``reference_depot``, ``date_depot`` (défaut aujourd'hui),
+        ``montant_declare``, ``statut`` (``depose``/``accepte``/``rejete``),
+        ``motif_rejet`` (REQUIS si rejeté), et l'accusé lui-même soit en
+        multipart (champ ``fichier``, PDF/PNG/JPEG/WebP), soit par une clé
+        déjà stockée (``fichier_key``). Un dépôt REJETÉ n'avance jamais
+        l'échéance.
+        """
+        echeance = self.get_object()
+        if request.method == 'GET':
+            return Response(
+                DepotDeclaratifSerializer(
+                    echeance.depots.all(), many=True).data,
+                status=status.HTTP_200_OK)
+
+        fichier_key = request.data.get('fichier_key') or ''
+        fichier = request.FILES.get('fichier')
+        if fichier is not None:
+            from apps.records.storage import store_attachment  # app socle
+
+            stocke, erreur = store_attachment(
+                fichier, company=request.user.company)
+            if erreur:
+                raise DRFValidationError({'fichier': [erreur]})
+            fichier_key = stocke['file_key']
+
+        date_depot = request.data.get('date_depot') or None
+        if date_depot:
+            date_depot = parse_date(str(date_depot))
+            if date_depot is None:
+                raise DRFValidationError({'date_depot': [
+                    'Date invalide : attendu AAAA-MM-JJ.']})
+        montant = request.data.get('montant_declare')
+        try:
+            montant = Decimal(str(montant)) if montant not in (None, '') \
+                else None
+        except (InvalidOperation, ValueError):
+            raise DRFValidationError({'montant_declare': [
+                'Montant invalide.']})
+
+        try:
+            depot = enregistrer_depot_declaratif(
+                echeance,
+                date_depot=date_depot,
+                reference_depot=request.data.get('reference_depot') or '',
+                fichier_key=fichier_key,
+                montant_declare=montant,
+                statut=request.data.get('statut') or None,
+                motif_rejet=request.data.get('motif_rejet') or '',
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(
+                exc.message_dict if hasattr(exc, 'message_dict')
+                else {'detail': exc.messages})
+        echeance.refresh_from_db()
+        return Response({
+            'depot': DepotDeclaratifSerializer(depot).data,
+            'echeance': self.get_serializer(echeance).data,
+        }, status=status.HTTP_201_CREATED)

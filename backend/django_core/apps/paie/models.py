@@ -2339,3 +2339,92 @@ class SchemaComptablePaie(models.Model):
             self.rubrique.code if self.rubrique_id else '?')
         return (f'{cible} → D{self.compte_debit or "—"} / '
                 f'C{self.compte_credit or "—"}')
+
+
+# ── NTPAY5 — Registre des dépôts déclaratifs & accusés (preuve) ────────────
+
+class DepotDeclaratif(models.Model):
+    """PREUVE de dépôt d'une déclaration de paie (NTPAY5), scopé société.
+
+    ``EcheanceDeclarative`` (XPAI6) suit le CALENDRIER des déclarations dues ;
+    rien ne conservait la PREUVE qu'une déclaration a réellement été déposée
+    (référence du dépôt, récépissé de l'organisme, montant déclaré, rejet
+    éventuel). Ce modèle rattache ce dossier de preuve à l'échéance :
+
+    * ``reference_depot`` — référence rendue par l'organisme (Damancom, SIMPL,
+      e-CIMR…) ;
+    * ``fichier_key`` — clé MinIO de l'accusé/récépissé téléversé ;
+    * ``montant_declare`` — montant porté sur la déclaration déposée ;
+    * ``statut`` — ``depose`` (remis), ``accepte`` (validé par l'organisme) ou
+      ``rejete``, auquel cas ``motif_rejet`` est OBLIGATOIRE et conservé.
+
+    Un dépôt ``depose``/``accepte`` fait basculer son échéance en « déposée »
+    (``services.enregistrer_depot_declaratif``) ; un dépôt REJETÉ ne l'avance
+    jamais — la déclaration reste due.
+    """
+    TYPE_BDS = 'bds'
+    TYPE_IR_MENSUEL = 'ir_mensuel'
+    TYPE_9421 = 'etat_9421'
+    TYPE_CIMR = 'cimr'
+    TYPE_CHOICES = [
+        (TYPE_BDS, 'BDS (CNSS)'),
+        (TYPE_IR_MENSUEL, 'IR mensuel'),
+        (TYPE_9421, 'État 9421 (annuel)'),
+        (TYPE_CIMR, 'CIMR'),
+    ]
+
+    STATUT_DEPOSE = 'depose'
+    STATUT_ACCEPTE = 'accepte'
+    STATUT_REJETE = 'rejete'
+    STATUT_CHOICES = [
+        (STATUT_DEPOSE, 'Déposé'),
+        (STATUT_ACCEPTE, 'Accepté'),
+        (STATUT_REJETE, 'Rejeté'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='paie_depots_declaratifs',
+        verbose_name='Société',
+    )
+    echeance = models.ForeignKey(
+        EcheanceDeclarative,
+        # on_delete: le dossier de preuve n'a plus d'objet sans l'échéance
+        # qu'il justifie (l'échéance elle-même suit sa période).
+        on_delete=models.CASCADE,
+        related_name='depots',
+        verbose_name='Échéance déclarative',
+    )
+    type_declaration = models.CharField(
+        max_length=12, choices=TYPE_CHOICES, verbose_name='Type')
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    # Mois de la déclaration — vide pour une déclaration ANNUELLE (état 9421).
+    mois = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Mois')
+    reference_depot = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Référence de dépôt')
+    date_depot = models.DateField(verbose_name='Date de dépôt')
+    fichier_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name="Clé de l'accusé (MinIO)")
+    montant_declare = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déclaré')
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_DEPOSE,
+        verbose_name='Statut')
+    motif_rejet = models.CharField(
+        max_length=300, blank=True, default='', verbose_name='Motif du rejet')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Dépôt déclaratif'
+        verbose_name_plural = 'Dépôts déclaratifs'
+        ordering = ['-date_depot', '-id']
+
+    def __str__(self):
+        return (f'{self.get_type_declaration_display()} '
+                f'{self.annee} — {self.get_statut_display()}')

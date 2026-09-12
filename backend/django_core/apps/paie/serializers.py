@@ -16,6 +16,7 @@ from .models import (
     BaremeIR,
     BulletinPaie,
     CumulAnnuel,
+    DepotDeclaratif,
     EcheanceDeclarative,
     ElementVariable,
     LigneBulletin,
@@ -702,6 +703,23 @@ class CumulAnnuelSerializer(serializers.ModelSerializer):
             'frais_professionnels', 'net_a_payer', 'charges_patronales',
             'provision_conges', 'conges_acquis', 'conges_pris',
             'nombre_bulletins', 'date_calcul', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class DepotDeclaratifSerializer(serializers.ModelSerializer):
+    """Preuve de dépôt d'une déclaration (NTPAY5) — LECTURE SEULE côté API.
+
+    Un dépôt ne se saisit JAMAIS en CRUD direct : il s'enregistre par l'action
+    ``echeances-declaratives/<id>/depots/`` (qui recopie type/période depuis
+    l'échéance et fait basculer son statut), jamais champ par champ.
+    """
+    class Meta:
+        model = DepotDeclaratif
+        fields = [
+            'id', 'echeance', 'type_declaration', 'annee', 'mois',
+            'reference_depot', 'date_depot', 'fichier_key',
+            'montant_declare', 'statut', 'motif_rejet', 'date_creation',
         ]
         read_only_fields = fields
 
