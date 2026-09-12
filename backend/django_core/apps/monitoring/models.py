@@ -31,6 +31,8 @@ idempotent — jamais deux tickets pour un même drapeau ouvert.
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 # FG282 — garantie de production (modèle additif en module dédié, re-exporté ici
 # pour que `monitoring.models.ProductionWarranty` reste l'import canonique).
 from .models_warranty import ProductionWarranty  # noqa: F401
@@ -256,7 +258,7 @@ class UnderperformanceFlag(models.Model):
 # (`selectors.disponibilite_vs_garantie`). STRICTEMENT ADDITIF : sans ligne
 # `SlaDisponibilite`, rien ne change (no-op gracieux `has_sla=False`).
 
-class SlaDisponibilite(models.Model):
+class SlaDisponibilite(TenantModel):
     """Engagement de DISPONIBILITÉ garanti d'UN système installé (NTNRG14).
 
     `disponibilite_garantie_pct` = seuil contractuel (ex. 98 %).
@@ -265,6 +267,10 @@ class SlaDisponibilite(models.Model):
     fenêtre observée. Défaut 0 = aucune compensation chiffrée (seul l'écart
     est exposé)."""
 
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``
+    # (FK company + created_at/updated_at) : la nullabilité et le
+    # related_name PRÉ-EXISTANTS de ce champ sont conservés à l'identique,
+    # donc redéclarés ici (le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='sla_disponibilites')
@@ -276,13 +282,11 @@ class SlaDisponibilite(models.Model):
     compensation_mad_par_jour_indispo = models.DecimalField(
         max_digits=10, decimal_places=2, default=0)
     note = models.TextField(blank=True, default='')
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'SLA de disponibilité'
         verbose_name_plural = 'SLA de disponibilité'
-        ordering = ['-date_modification']
+        ordering = ['-updated_at']
         # Nom EXPLICITE (≤ 30 car.) pour éviter toute divergence entre le nom
         # haché déterministe de Django et celui de la migration (écrite à la
         # main — voir CLAUDE.md, WOW « model↔migration drift »).
@@ -301,7 +305,7 @@ class SlaDisponibilite(models.Model):
 # aucun (XOR, comme `ProfilSaisonnier.produit`/`categorie`). Jamais d'import
 # cross-app : les deux références sont des ids nus.
 
-class CertificatCarbone(models.Model):
+class CertificatCarbone(TenantModel):
     """Un certificat carbone ÉMIS (registre), pour une cible et une période.
 
     `reference` est posée par `emettre_certificat_carbone` (numérotation
@@ -310,6 +314,9 @@ class CertificatCarbone(models.Model):
     l'appelant en dépose un — le registre reste utile même sans fichier
     (traçabilité pure).
     """
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel`` : la
+    # nullabilité et le related_name PRÉ-EXISTANTS sont conservés (redéclarés
+    # ici, le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='certificats_carbone')
@@ -325,12 +332,11 @@ class CertificatCarbone(models.Model):
     tco2_evitees = models.DecimalField(max_digits=12, decimal_places=3)
     reference = models.CharField(max_length=50)
     fichier_key = models.CharField(max_length=500, blank=True, default='')
-    date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Certificat carbone'
         verbose_name_plural = 'Certificats carbone'
-        ordering = ['-date_creation']
+        ordering = ['-created_at']
         indexes = [
             models.Index(
                 fields=['company', 'installation_id'],

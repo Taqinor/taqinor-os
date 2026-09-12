@@ -23,13 +23,16 @@ class Migration(migrations.Migration):
                 ('tco2_evitees', models.DecimalField(decimal_places=3, max_digits=12)),
                 ('reference', models.CharField(max_length=50)),
                 ('fichier_key', models.CharField(blank=True, default='', max_length=500)),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
+                # SCA4 — socle core.models.TenantModel (created_at/updated_at
+                # au lieu du seul date_creation à la main).
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='certificats_carbone', to='authentication.company')),
             ],
             options={
                 'verbose_name': 'Certificat carbone',
                 'verbose_name_plural': 'Certificats carbone',
-                'ordering': ['-date_creation'],
+                'ordering': ['-created_at'],
             },
         ),
         migrations.AddIndex(
