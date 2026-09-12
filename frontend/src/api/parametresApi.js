@@ -91,6 +91,12 @@ const parametresApi = {
   // lecture seule des BackupRun déjà produits par le moteur interne (YOPSB1/2),
   // scopé côté serveur sur la société de l'appelant.
   getMesSauvegardes: () => api.get('/core/mes-sauvegardes/'),
+  // NTOBS6/NTOBS7 — export de réversibilité complet (Directeur/Administrateur
+  // déclenche, tout le monde de la société consulte l'historique).
+  declencherExportReversibilite: (datasets) =>
+    api.post('/core/export-reversibilite/', datasets ? { datasets } : {}),
+  getHistoriqueExportReversibilite: () =>
+    api.get('/core/export-reversibilite/historique/'),
 }
 
 export default parametresApi

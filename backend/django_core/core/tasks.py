@@ -215,12 +215,29 @@ def generer_sla_mensuel_task():
 REVERSIBILITE_BUCKET = 'erp-reversibilite'
 
 
+def _marquer_run(run_id, **champs):
+    """NTOBS7 — met à jour l'``ExportReversibiliteRun`` d'historique, si son
+    id a été fourni (best-effort, jamais bloquant : NTOBS6 seul — sans
+    ``run_id`` — reste valide)."""
+    if not run_id:
+        return
+    try:
+        from .export_registry import ExportReversibiliteRun
+        ExportReversibiliteRun.objects.filter(pk=run_id).update(**champs)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception(
+            'core._marquer_run: échec mise à jour run %s.', run_id)
+
+
 @shared_task(name='core.export_reversibilite_tenant')
-def export_reversibilite_tenant(company_id, demande_par_id=None, datasets=None):
-    """NTOBS6 — construit le ZIP de réversibilité complet d'une société
-    (CSV par dataset enregistré, ``core.export_registry`` — JAMAIS
-    ``prix_achat``/champ interne-only) et notifie le demandeur avec un lien
-    tokenisé expirant sous 7 jours (``core.signed_download``).
+def export_reversibilite_tenant(
+        company_id, demande_par_id=None, datasets=None, run_id=None):
+    """NTOBS6/NTOBS7 — construit le ZIP de réversibilité complet d'une
+    société (CSV par dataset enregistré, ``core.export_registry`` — JAMAIS
+    ``prix_achat``/champ interne-only), notifie le demandeur avec un lien
+    tokenisé expirant sous 7 jours (``core.signed_download``), et fait
+    progresser l'``ExportReversibiliteRun`` d'historique (``run_id``,
+    optionnel — NTOBS7).
 
     ``datasets`` (NTOBS20, hors périmètre de ce lot) : optionnel, sous-liste
     de noms de datasets — absence = comportement par défaut (tout)."""
@@ -233,6 +250,7 @@ def export_reversibilite_tenant(company_id, demande_par_id=None, datasets=None):
     from authentication.models import Company
 
     from . import export_registry, signed_download
+    from .export_registry import ExportReversibiliteRun
 
     try:
         company = Company.objects.get(pk=company_id)
@@ -240,6 +258,7 @@ def export_reversibilite_tenant(company_id, demande_par_id=None, datasets=None):
         logger.warning(
             'core.export_reversibilite_tenant: société %s introuvable.',
             company_id)
+        _marquer_run(run_id, statut=ExportReversibiliteRun.Statut.ECHEC)
         return {'ok': False}
 
     fichiers, comptes = export_registry.export_all_datasets(company)
@@ -285,10 +304,15 @@ def export_reversibilite_tenant(company_id, demande_par_id=None, datasets=None):
         logger.exception(
             'core.export_reversibilite_tenant: échec upload MinIO '
             '(société %s).', company.id)
+        _marquer_run(run_id, statut=ExportReversibiliteRun.Statut.ECHEC)
         return {'ok': False}
 
     lien = signed_download.creer_lien(
         company, REVERSIBILITE_BUCKET, object_key, taille_octets=taille)
+    _marquer_run(
+        run_id, statut=ExportReversibiliteRun.Statut.PRET,
+        fichier_key=object_key, taille_octets=taille, token=lien.token,
+        expire_le=lien.expire_le)
 
     if demande_par_id:
         try:

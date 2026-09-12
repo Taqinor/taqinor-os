@@ -3043,3 +3043,9 @@ from core.sla import SlaCreditPolicy, SlaSnapshot  # noqa: E402,F401
 # ``core/signed_download.py`` (même pattern d'éclatement), réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
 from core.signed_download import SignedDownload  # noqa: E402,F401
+
+# NTOBS7 — historique des exports de réversibilité : ``ExportReversibiliteRun``
+# défini dans ``core/export_registry.py`` (même pattern d'éclatement),
+# réexporté ici en tout dernier pour la découverte Django (app_label 'core',
+# migrations).
+from core.export_registry import ExportReversibiliteRun  # noqa: E402,F401

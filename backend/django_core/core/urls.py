@@ -31,7 +31,8 @@ from .formule_api import (
 )
 from .backup import mes_sauvegardes_view
 from .export_registry import (
-    declencher_export_reversibilite, telecharger_export_reversibilite,
+    ExportReversibiliteHistoriqueView, declencher_export_reversibilite,
+    telecharger_export_reversibilite,
 )
 from .rules_api import RegleOperateursView, RegleValiderView
 from .sla import (
@@ -229,4 +230,8 @@ urlpatterns = router.urls + [
     path('export-reversibilite/telecharger/<str:token>/',
          telecharger_export_reversibilite,
          name='export-reversibilite-telecharger'),
+    # NTOBS7 — historique des exports (scopé société).
+    path('export-reversibilite/historique/',
+         ExportReversibiliteHistoriqueView.as_view(),
+         name='export-reversibilite-historique'),
 ]

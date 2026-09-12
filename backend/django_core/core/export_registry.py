@@ -25,14 +25,60 @@ import csv
 import io
 import logging
 
+from django.conf import settings
+from django.db import models
 from django.http import Http404, HttpResponse
-from rest_framework import status
+from django.utils import timezone
+from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
+from .models import TenantModel
+
 logger = logging.getLogger(__name__)
+
+
+class ExportReversibiliteRun(TenantModel):
+    """NTOBS7 — historique des exports de réversibilité d'une société.
+
+    Une ligne par déclenchement (``core.tasks.export_reversibilite_tenant``
+    la crée ``en_cours`` puis la fait progresser). ``company`` (obligatoire,
+    imposée côté serveur) vient de ``core.models.TenantModel``."""
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        PRET = 'pret', 'Prêt'
+        EXPIRE = 'expire', 'Expiré'
+        ECHEC = 'echec', 'Échec'
+
+    statut = models.CharField(
+        'Statut', max_length=10, choices=Statut.choices,
+        default=Statut.EN_COURS)
+    fichier_key = models.CharField(
+        'Clé objet MinIO', max_length=500, blank=True, default='')
+    taille_octets = models.BigIntegerField(
+        'Taille (octets)', null=True, blank=True)
+    token = models.CharField(
+        'Jeton de téléchargement', max_length=64, blank=True, default='')
+    expire_le = models.DateTimeField('Expire le', null=True, blank=True)
+    demande_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Demandé par')
+
+    class Meta:
+        verbose_name = 'Export de réversibilité'
+        verbose_name_plural = 'Exports de réversibilité'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Export réversibilité société {self.company_id} ({self.statut})'
+
+    @property
+    def expire(self):
+        return bool(self.expire_le and timezone.now() >= self.expire_le)
+
 
 # Registre BESPOKE en mémoire (process-local, repeuplé à chaque ``ready()``).
 _CUSTOM_REGISTRY: dict = {}
@@ -180,18 +226,47 @@ class ExportReversibiliteThrottle(UserRateThrottle):
 @throttle_classes([ExportReversibiliteThrottle])
 def declencher_export_reversibilite(request):
     """POST /api/django/core/export-reversibilite/ — Directeur/Administrateur
-    uniquement. Lance la tâche Celery et renvoie 202 immédiatement (l'export
-    complet d'un gros tenant peut prendre plusieurs minutes)."""
+    uniquement. Crée la ligne d'historique (NTOBS7, ``en_cours``) puis lance
+    la tâche Celery et renvoie 202 immédiatement (l'export complet d'un gros
+    tenant peut prendre plusieurs minutes)."""
     if not _is_directeur_or_admin(request.user):
         return Response(status=status.HTTP_403_FORBIDDEN)
     from . import tasks as core_tasks
+
+    run = ExportReversibiliteRun.objects.create(
+        company=request.user.company, demande_par=request.user,
+        statut=ExportReversibiliteRun.Statut.EN_COURS)
     datasets = request.data.get('datasets') or None
     core_tasks.export_reversibilite_tenant.delay(
         request.user.company_id, demande_par_id=request.user.id,
-        datasets=datasets)
+        datasets=datasets, run_id=run.id)
     return Response(
-        {'detail': "Export lancé — vous serez notifié quand il sera prêt."},
+        ExportReversibiliteRunSerializer(run).data,
         status=status.HTTP_202_ACCEPTED)
+
+
+class ExportReversibiliteRunSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExportReversibiliteRun
+        fields = [
+            'id', 'statut', 'taille_octets', 'token', 'expire_le',
+            'created_at',
+        ]
+
+
+class ExportReversibiliteHistoriqueView(generics.ListAPIView):
+    """GET /api/django/core/export-reversibilite/historique/ — scopé société."""
+
+    serializer_class = ExportReversibiliteRunSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return (
+            ExportReversibiliteRun.objects
+            .filter(company=self.request.user.company)
+            .order_by('-created_at')[:50]
+        )
 
 
 @api_view(['GET'])
