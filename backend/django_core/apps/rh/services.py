@@ -2496,28 +2496,49 @@ def passer_tentative_quiz(quiz, employe, *, reponses, session=None):
         )
 
     if quiz.habilitation_type and quiz.validite_mois:
-        today = timezone.localdate()
-        habilitation = Habilitation.objects.filter(
-            employe=employe, type_habilitation=quiz.habilitation_type).first()
-        base = today
-        if habilitation is not None and habilitation.date_validite and \
-                habilitation.date_validite > today:
-            base = habilitation.date_validite
-        nouvelle_echeance = _ajouter_mois(base, quiz.validite_mois)
-        if habilitation is None:
-            Habilitation.objects.create(
-                company=quiz.company, employe=employe,
-                type_habilitation=quiz.habilitation_type,
-                date_obtention=today, date_validite=nouvelle_echeance,
-                actif=True,
-            )
-        else:
-            habilitation.date_validite = nouvelle_echeance
-            habilitation.actif = True
-            habilitation.save(update_fields=[
-                'date_validite', 'actif', 'date_modification'])
+        prolonger_titre_rh(
+            Habilitation, company=quiz.company, employe=employe,
+            champ_type='type_habilitation', valeur_type=quiz.habilitation_type,
+            validite_mois=quiz.validite_mois)
 
     return tentative
+
+
+def prolonger_titre_rh(modele, *, company, employe, champ_type, valeur_type,
+                       validite_mois, aujourdhui=None):
+    """Crée ou PROLONGE un titre RH à échéance (XRH34, réutilisé par NTHCM21).
+
+    ``modele`` est ``Habilitation`` (FG173) ou ``Certification`` (FG174) —
+    deux familles distinctes qui partagent la même forme : une ligne par
+    (employé, type), avec ``date_obtention`` / ``date_validite`` / ``actif``.
+
+    RÈGLE DE PROLONGATION (celle d'XRH34, extraite ici pour n'exister QU'UNE
+    fois) : nouvelle échéance = ``max(aujourd'hui, échéance en cours) +
+    validite_mois``. Un titre encore valide se PROLONGE depuis sa fin (on ne
+    perd pas les mois restants) ; un titre expiré repart d'aujourd'hui.
+
+    Jamais de doublon : la ligne existante est mise à jour (contrainte unique
+    (employé, type) côté modèle), donc une re-certification/retake ne crée
+    jamais un second titre.
+    """
+    today = aujourdhui or timezone.localdate()
+    titre = modele.objects.filter(
+        employe=employe, **{champ_type: valeur_type}).first()
+    base = today
+    if titre is not None and titre.date_validite and \
+            titre.date_validite > today:
+        base = titre.date_validite
+    nouvelle_echeance = _ajouter_mois(base, validite_mois)
+    if titre is None:
+        return modele.objects.create(
+            company=company, employe=employe,
+            date_obtention=today, date_validite=nouvelle_echeance,
+            actif=True, **{champ_type: valeur_type})
+    titre.date_validite = nouvelle_echeance
+    titre.actif = True
+    titre.save(update_fields=[
+        'date_validite', 'actif', 'date_modification'])
+    return titre
 
 
 def generer_besoin_recertification(habilitation):
@@ -3204,8 +3225,16 @@ def recalculer_progression_parcours(progression, *, aujourdhui=None):
     re-lecture d'étape ne redate pas la réussite). Repasser sous le seuil
     (étape retirée) la remet à ``None``.
 
+    TITRE DÉLIVRÉ (NTHCM21). À la TRANSITION vers ``termine`` — et seulement
+    à la transition —, le titre visé par le parcours
+    (``habilitation_type`` / ``certification_type`` + ``validite_mois``) est
+    créé ou prolongé via ``prolonger_titre_rh``, le mécanisme XRH34 réutilisé
+    tel quel. Un parcours SANS titre lié n'a aucun effet de bord ; une
+    re-complétion (retake) ne duplique rien.
+
     Idempotent : appeler deux fois de suite ne change rien au second appel.
     """
+    etait_termine = progression.statut == progression.Statut.TERMINE
     etapes = list(progression.parcours.etapes.all())
     total = len(etapes)
     completees = set(
@@ -3233,7 +3262,40 @@ def recalculer_progression_parcours(progression, *, aujourdhui=None):
 
     progression.save(update_fields=[
         'pourcentage', 'statut', 'date_completion', 'updated_at'])
+
+    # NTHCM21 — le titre n'est délivré qu'à la TRANSITION vers « terminé ».
+    if termine and not etait_termine:
+        delivrer_titre_parcours(
+            progression, aujourdhui=aujourdhui or timezone.localdate())
     return progression
+
+
+def delivrer_titre_parcours(progression, *, aujourdhui=None):
+    """NTHCM21 — crée/prolonge le titre visé par un parcours TERMINÉ.
+
+    No-op (renvoie ``None``) quand le parcours ne vise aucun titre ou n'a pas
+    de ``validite_mois`` : un parcours sans certification liée n'a AUCUN effet
+    secondaire. Sinon, délègue à ``prolonger_titre_rh`` — le mécanisme XRH34,
+    jamais recopié.
+    """
+    from .models import Certification, Habilitation
+
+    parcours = progression.parcours
+    if not parcours.validite_mois:
+        return None
+    if parcours.habilitation_type:
+        return prolonger_titre_rh(
+            Habilitation, company=progression.company,
+            employe=progression.employe, champ_type='type_habilitation',
+            valeur_type=parcours.habilitation_type,
+            validite_mois=parcours.validite_mois, aujourdhui=aujourdhui)
+    if parcours.certification_type:
+        return prolonger_titre_rh(
+            Certification, company=progression.company,
+            employe=progression.employe, champ_type='type_certification',
+            valeur_type=parcours.certification_type,
+            validite_mois=parcours.validite_mois, aujourdhui=aujourdhui)
+    return None
 
 
 @transaction.atomic

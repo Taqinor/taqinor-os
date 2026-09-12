@@ -7267,6 +7267,24 @@ class ParcoursFormation(TenantModel):
         verbose_name='Département ciblé',
     )
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ── NTHCM21 — titre délivré à la complétion du parcours ──────────────
+    # Le dépôt n'a PAS de « référentiel » de titres : ``Habilitation``
+    # (FG173) et ``Certification`` (FG174) sont déjà les lignes PAR EMPLOYÉ,
+    # identifiées par leur TYPE. Le parcours vise donc un type dans l'une ou
+    # l'autre famille — jamais les deux (``clean()``) —, exactement comme
+    # ``QuizFormation.habilitation_type`` + ``validite_mois`` (XRH34), dont
+    # le mécanisme de prolongation est RÉUTILISÉ, pas redupliqué.
+    habilitation_type = models.CharField(
+        max_length=10, blank=True, default='',
+        choices=Habilitation.TypeHabilitation.choices,
+        verbose_name="Habilitation délivrée")
+    certification_type = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=Certification.TypeCertification.choices,
+        verbose_name='Certification délivrée')
+    validite_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Validité du titre délivré (mois)')
 
     class Meta:
         verbose_name = 'Parcours de formation'
@@ -7279,8 +7297,18 @@ class ParcoursFormation(TenantModel):
         ]
 
     def clean(self):
-        """Le ciblage doit rester dans la société du parcours."""
+        """Ciblage dans la société + UN SEUL titre délivré (NTHCM21)."""
         from django.core.exceptions import ValidationError
+
+        if self.habilitation_type and self.certification_type:
+            raise ValidationError(
+                'Un parcours délivre soit une habilitation, soit une '
+                'certification — jamais les deux.')
+        if (self.habilitation_type or self.certification_type) \
+                and not self.validite_mois:
+            raise ValidationError(
+                'Un parcours qui délivre un titre doit préciser sa validité '
+                'en mois.')
 
         if self.company_id is None:
             return

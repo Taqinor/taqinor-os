@@ -3612,12 +3612,35 @@ class ParcoursFormationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'titre', 'description', 'obligatoire',
             'poste_cible', 'departement_cible', 'actif',
+            # NTHCM21 — titre délivré à la complétion.
+            'habilitation_type', 'certification_type', 'validite_mois',
             'etapes', 'nombre_etapes', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
     def get_nombre_etapes(self, obj) -> int:
         return obj.etapes.count()
+
+    def validate(self, attrs):
+        """NTHCM21 — un seul titre délivré : la règle vit dans le MODÈLE."""
+        attrs = super().validate(attrs)
+        donnees = {}
+        for champ in ('habilitation_type', 'certification_type',
+                      'validite_mois'):
+            if self.instance is not None:
+                donnees[champ] = getattr(self.instance, champ)
+            if champ in attrs:
+                donnees[champ] = attrs[champ]
+        parcours = ParcoursFormation(
+            habilitation_type=donnees.get('habilitation_type') or '',
+            certification_type=donnees.get('certification_type') or '',
+            validite_mois=donnees.get('validite_mois'))
+        try:
+            parcours.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
 
     def validate_poste_cible(self, value):
         return _poste_meme_societe(self, value)
