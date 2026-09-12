@@ -110,6 +110,11 @@ const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
 // `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
 const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
+// NTP2P30 — wizard de clôture de fin de mois achats (agrégateur lecture
+// seule, atteint depuis /parametres/achats — même patron que /parametres/
+// objets-personnalises pour ses écrans « Enregistrements » : pas d'entrée
+// de menu séparée, la route suffit à le rendre atteignable).
+const ClotureAchatsWizardPage = lazy(() => import('../../pages/parametres/ClotureAchatsWizardPage'))
 // NTESG20 — réglages ESG de la société (seuil de dérive, pilote,
 // fréquence, pondération du badge de maturité). Nav ET route ensemble.
 const ParametresEsgPage = lazy(() => import('../../pages/parametres/ParametresEsgPage'))
@@ -251,6 +256,7 @@ const config = {
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/achats/cloture', component: ClotureAchatsWizardPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/esg', component: ParametresEsgPage, roles: ['admin'] },
     { path: '/parametres/gammes', component: GammesMarquesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },

@@ -493,6 +493,11 @@ app.conf.beat_schedule = {
         'task': 'installations.meteo_planning_j3',
         'schedule': crontab(hour=6, minute=30),
     },
+    # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
+    'installations-relancer-rfq-en-attente': {
+        'task': 'installations.relancer_rfq_en_attente',
+        'schedule': crontab(hour=7, minute=15),
+    },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
     # seulement (aucun BCF créé automatiquement), idempotent par société.
@@ -538,6 +543,12 @@ app.conf.beat_schedule = {
     'stock-notifier-documents-fournisseur-expirants': {
         'task': 'stock.notifier_documents_fournisseur_expirants',
         'schedule': crontab(hour=6, minute=37),
+    },
+    # NTP2P34 — recalcule quotidiennement le score de risque (NTP2P8) de
+    # tous les fournisseurs actifs ; calcul pur, aucun cache à invalider.
+    'stock-recompute-scores-risque': {
+        'task': 'stock.recompute_scores_risque',
+        'schedule': crontab(hour=6, minute=45),
     },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {

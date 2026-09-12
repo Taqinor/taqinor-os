@@ -1115,6 +1115,8 @@ CELERY_TASK_ROUTES = {
     'chat.retention_sweep': {'queue': 'scheduled'},
     'installations.rappel_rdv_j1': {'queue': 'scheduled'},
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
+    # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
+    'installations.relancer_rfq_en_attente': {'queue': 'scheduled'},
     'rh.alertes_expiration': {'queue': 'scheduled'},
     'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
@@ -1158,6 +1160,8 @@ CELERY_TASK_ROUTES = {
     'stock.notifier_bcf_en_retard_buyer': {'queue': 'scheduled'},
     # NTP2P20 — pieces d'onboarding fournisseur (NTP2P7) expirant sous 30 j.
     'stock.notifier_documents_fournisseur_expirants': {'queue': 'scheduled'},
+    # NTP2P34 — recalcul quotidien des scores de risque fournisseur (NTP2P8).
+    'stock.recompute_scores_risque': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
     'ventes.pre_echeance_reminders': {'queue': 'scheduled'},

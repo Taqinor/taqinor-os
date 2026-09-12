@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { CalendarCheck2, ShieldCheck } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { Button, Card, CardContent, Input, Label, Spinner, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
@@ -27,6 +28,10 @@ const emptyForm = {
   budget_departement_actif: false,
   onboarding_fournisseur_obligatoire: false,
   sod_stricte: false,
+  // NTP2P31 — notification immédiate du valideur direction (NTP2P45) sur
+  // une note de frais escaladée (NTP2P11). N'affecte jamais le calcul
+  // d'escalade lui-même.
+  plafond_notes_frais_actif: false,
 }
 
 function frErr(err, fallback = 'Une erreur est survenue.') {
@@ -59,6 +64,7 @@ export default function AchatsParametresPage() {
           budget_departement_actif: !!data.budget_departement_actif,
           onboarding_fournisseur_obligatoire: !!data.onboarding_fournisseur_obligatoire,
           sod_stricte: !!data.sod_stricte,
+          plafond_notes_frais_actif: !!data.plafond_notes_frais_actif,
         })
       })
       .catch(() => toast.error('Chargement des paramètres achats impossible.'))
@@ -106,6 +112,14 @@ export default function AchatsParametresPage() {
           Réglages achats/fournisseurs de la société — conformité, RAS-TVA et
           tolérances de rapprochement.
         </div>
+        {/* NTP2P30 — wizard de clôture de fin de mois (agrégateur lecture
+            seule : factures en exception, demandes anciennes, documents
+            expirés). */}
+        <Button asChild variant="outline">
+          <Link to="/parametres/achats/cloture">
+            <CalendarCheck2 /> Clôture de fin de mois
+          </Link>
+        </Button>
       </div>
 
       <form onSubmit={submit} noValidate className="flex flex-col gap-4">
@@ -164,8 +178,18 @@ export default function AchatsParametresPage() {
               Séparation des tâches : interdire au créateur d&apos;approuver sa
               propre demande ou note de frais escaladée (NTP2P37)
             </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch
+                id="ap-plafond-notes-frais-actif"
+                aria-label="Notifier immédiatement la direction sur une note de frais escaladée"
+                checked={form.plafond_notes_frais_actif}
+                onCheckedChange={(v) => setField('plafond_notes_frais_actif', v)}
+              />
+              Notifier immédiatement le valideur direction quand une note de
+              frais dépasse le seuil d&apos;escalade (NTP2P11/NTP2P45)
+            </label>
             <p className="text-xs text-muted-foreground">
-              Les trois sont désactivés par défaut : tant qu&apos;ils le sont,
+              Les quatre sont désactivés par défaut : tant qu&apos;ils le sont,
               le cycle achats reste exactement celui d&apos;avant.
             </p>
           </CardContent>

@@ -1283,6 +1283,10 @@ export default function BonsCommandeFournisseur() {
   // de source de vérité.
   const [enRetardIds, setEnRetardIds] = useState(() => new Set())
   const [filtreRetard, setFiltreRetard] = useState(false)
+  // NTP2P21 — suggestions de fusion des BCF brouillon du même fournisseur
+  // créés la même semaine (lecture seule côté serveur, jamais de fusion
+  // automatique — l'acheteur confirme via le bouton ci-dessous).
+  const [consolidationSuggestions, setConsolidationSuggestions] = useState([])
   // WIR220/XPUR13 — rapport « achats hors contrat » (fournisseur+période).
   const [showHorsContrat, setShowHorsContrat] = useState(false)
   // Réapprovisionnement (706) : un BCF brouillon pré-rempli demandé via l'état
@@ -1326,13 +1330,34 @@ export default function BonsCommandeFournisseur() {
       .then((r) => setEnRetardIds(new Set((r.data?.results ?? r.data ?? []).map((b) => b.id))))
       .catch(() => setEnRetardIds(new Set()))
   }
+  const reloadSuggestions = () => {
+    stockApi.getSuggestionsConsolidationBcf()
+      .then((r) => setConsolidationSuggestions(r.data ?? []))
+      .catch(() => setConsolidationSuggestions([]))
+  }
 
   useEffect(() => {
     reload()
     reloadEnRetard()
+    reloadSuggestions()
     stockApi.getFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
+
+  // NTP2P21 — fusionne directement une suggestion (mêmes garanties serveur
+  // que le bouton « Fusionner » de la sélection manuelle : ZPUR6).
+  const fusionnerSuggestion = async (suggestion) => {
+    setFusionError(null); setFusionInfo(null)
+    try {
+      const ids = suggestion.bons_commande.map((b) => b.id)
+      const r = await stockApi.fusionnerBcf(ids)
+      setFusionInfo(`BCF fusionnés en ${r.data?.reference ?? 'un nouveau bon de commande'}.`)
+      reload()
+      reloadSuggestions()
+    } catch (err) {
+      setFusionError(frBcfError(err, 'La fusion a échoué.'))
+    }
+  }
 
   // Le filtre statut reste local (Select dédié) ; la recherche texte
   // (référence / fournisseur) est gérée par le DataTable via globalColumns.
@@ -1421,6 +1446,29 @@ export default function BonsCommandeFournisseur() {
       {fusionInfo && (
         <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
           {fusionInfo}
+        </div>
+      )}
+
+      {/* NTP2P21 — suggestions de consolidation : ≥ 2 BCF brouillon du même
+          fournisseur créés la même semaine. Lecture seule tant que l'acheteur
+          n'a pas cliqué « Fusionner ». */}
+      {consolidationSuggestions.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-info/30 bg-info/10 p-3 text-sm">
+          {consolidationSuggestions.map((s) => (
+            <div key={`${s.fournisseur_id}-${s.annee_iso}-${s.semaine_iso}`}
+                 className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                {s.nb_bons} bons de commande brouillon vers <strong>{s.fournisseur_nom}</strong> cette
+                semaine (S{s.semaine_iso}/{s.annee_iso}) — regrouper en un seul ?
+                {s.economie_estimee != null && (
+                  <> Économie estimée : {Number(s.economie_estimee).toFixed(2)} MAD.</>
+                )}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => fusionnerSuggestion(s)}>
+                Fusionner
+              </Button>
+            </div>
+          ))}
         </div>
       )}
 

@@ -425,6 +425,202 @@ def montant_commande_bcf(bon_commande):
     return total
 
 
+def suggestions_consolidation_bcf(company):
+    """NTP2P21 — détecte les bons de commande BROUILLON du MÊME fournisseur
+    créés dans la MÊME semaine calendaire (ISO), et propose une fusion
+    (réutilise ``services.fusionner_bcf``, ZPUR6 — cette fonction ne fusionne
+    JAMAIS rien elle-même, LECTURE SEULE). Estime une économie sur les frais
+    de livraison quand ``Fournisseur.frais_livraison_estimes`` (NTP2P21) est
+    configuré — sans ce réglage, la suggestion reste visible mais SANS
+    chiffrage (jamais un montant inventé).
+
+    Renvoie une liste de dicts triée fournisseur puis semaine :
+    ``{fournisseur_id, fournisseur_nom, annee_iso, semaine_iso,
+    bons_commande: [{id, reference, date_creation, montant}], nb_bons,
+    economie_estimee}``. Vide si aucun fournisseur n'a ≥ 2 BCF brouillon la
+    même semaine."""
+    from collections import defaultdict
+    from decimal import Decimal
+    from .models import BonCommandeFournisseur
+
+    if company is None:
+        return []
+
+    brouillons = (
+        BonCommandeFournisseur.objects
+        .filter(company=company,
+                statut=BonCommandeFournisseur.Statut.BROUILLON,
+                fournisseur__isnull=False)
+        .select_related('fournisseur')
+        .prefetch_related('lignes')
+        .order_by('fournisseur_id', 'date_creation'))
+
+    groupes = defaultdict(list)
+    for bc in brouillons:
+        semaine = bc.date_creation.isocalendar()[:2]  # (année ISO, semaine ISO)
+        groupes[(bc.fournisseur_id, semaine)].append(bc)
+
+    suggestions = []
+    for (fournisseur_id, semaine), bons in groupes.items():
+        if len(bons) < 2:
+            continue
+        fournisseur = bons[0].fournisseur
+        frais_unitaire = fournisseur.frais_livraison_estimes
+        economie = None
+        if frais_unitaire is not None:
+            # Une livraison consolidée au lieu de N séparées : l'économie
+            # est (N - 1) fois le frais unitaire estimé.
+            economie = Decimal(len(bons) - 1) * frais_unitaire
+        suggestions.append({
+            'fournisseur_id': fournisseur_id,
+            'fournisseur_nom': fournisseur.nom,
+            'annee_iso': semaine[0],
+            'semaine_iso': semaine[1],
+            'bons_commande': [
+                {
+                    'id': bc.id, 'reference': bc.reference,
+                    'date_creation': bc.date_creation,
+                    'montant': montant_commande_bcf(bc),
+                }
+                for bc in bons
+            ],
+            'nb_bons': len(bons),
+            'economie_estimee': economie,
+        })
+    suggestions.sort(
+        key=lambda s: (s['fournisseur_nom'] or '', s['annee_iso'],
+                       s['semaine_iso']))
+    return suggestions
+
+
+def checklist_cloture_achats(company, periode=None, *, seuil_jours=15):
+    """NTP2P30 — agrège en LECTURE SEULE (aucune nouvelle donnée) les 3 files
+    que le contrôleur achats doit traiter au wizard de clôture de fin de
+    mois :
+
+      1. factures fournisseur en exception 3-voies non résolues DU MOIS de
+         ``periode`` (réutilise ``services.factures_en_exception`` — jamais
+         de logique dupliquée) ;
+      2. ``DemandeAchat`` SOUMISE en attente d'approbation depuis plus de
+         ``seuil_jours`` (défaut 15, configurable à l'appel — jamais une
+         valeur figée en base) ;
+      3. documents fournisseur EXPIRÉS (NTP2P20,
+         ``documents_fournisseur_expirant`` avec ``within_days=0``).
+
+    ``periode`` (date, défaut aujourd'hui) fixe le mois considéré pour la
+    file #1 uniquement. Renvoie ``{'periode', 'factures_en_exception': [...],
+    'demandes_en_attente_anciennes': [...], 'documents_expires': [...]}``
+    avec un compteur par file."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .services import factures_en_exception
+
+    if periode is None:
+        periode = timezone.localdate()
+
+    factures = [
+        f for f in factures_en_exception(company)
+        if f.date_facture and f.date_facture.year == periode.year
+        and f.date_facture.month == periode.month
+    ]
+
+    # Cross-app STRICT : lu via installations.selectors (jamais un import
+    # direct de installations.models depuis stock, cf. CLAUDE.md).
+    from apps.installations.selectors import demandes_achat_soumises_depuis
+    aujourdhui = timezone.localdate()
+    seuil_date = aujourdhui - timedelta(days=int(seuil_jours or 15))
+    demandes_anciennes = demandes_achat_soumises_depuis(company, seuil_date)
+
+    documents_expires = documents_fournisseur_expirant(
+        company, within_days=0, today=aujourdhui)
+
+    return {
+        'periode': periode,
+        'seuil_jours': int(seuil_jours or 15),
+        'factures_en_exception': [
+            {
+                'id': f.id, 'reference': f.reference,
+                'fournisseur_id': f.fournisseur_id,
+                'fournisseur_nom': (
+                    f.fournisseur.nom if f.fournisseur_id else ''),
+                'montant_ttc': f.montant_ttc,
+                'motif_ecart': f.motif_ecart,
+            }
+            for f in factures
+        ],
+        'nb_factures_en_exception': len(factures),
+        'demandes_en_attente_anciennes': [
+            {
+                'id': d.id, 'reference': d.reference, 'objet': d.objet,
+                'montant_estime': d.montant_estime,
+                'jours_en_attente': (aujourdhui - d.updated_at.date()).days,
+            }
+            for d in demandes_anciennes
+        ],
+        'nb_demandes_en_attente_anciennes': len(demandes_anciennes),
+        'documents_expires': documents_expires,
+        'nb_documents_expires': len(documents_expires),
+    }
+
+
+def suggerer_bcf_pour_facture(company, *, fournisseur_id, montant=None,
+                              jours_fenetre=60, limite=5):
+    """NTP2P10 — candidats ``BonCommandeFournisseur`` OUVERTS (envoyé/reçu)
+    du fournisseur, triés par proximité de montant avec ``montant`` (le
+    montant OCR de la facture), pour que l'écran de confirmation de la
+    facture OCR propose le BCF le plus vraisemblable EN PREMIER — ne lie
+    JAMAIS rien elle-même (LECTURE SEULE), l'utilisateur confirme toujours
+    explicitement (``FactureFournisseurViewSet.perform_update`` déclenche
+    alors l'évaluation 3 voies).
+
+    Un BCF commandé il y a plus de ``jours_fenetre`` jours (défaut 60) est
+    exclu — la proposition doit rester plausible. Sans ``montant``, les
+    candidats sont triés par date de commande la plus récente. Renvoie une
+    liste de dicts triée (le meilleur candidat en premier) :
+    ``{id, reference, montant_total, ecart, date_commande}``."""
+    from datetime import timedelta
+    from decimal import Decimal, InvalidOperation
+    from django.utils import timezone
+    from .models import BonCommandeFournisseur
+
+    if company is None or not fournisseur_id:
+        return []
+    aujourdhui = timezone.localdate()
+    borne_basse = aujourdhui - timedelta(days=int(jours_fenetre or 60))
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company, fournisseur_id=fournisseur_id,
+                  statut__in=[BonCommandeFournisseur.Statut.ENVOYE,
+                              BonCommandeFournisseur.Statut.RECU],
+                  date_commande__gte=borne_basse)
+          .prefetch_related('lignes')
+          .order_by('-date_commande'))
+
+    montant_cible = None
+    if montant not in (None, ''):
+        try:
+            montant_cible = Decimal(str(montant))
+        except (InvalidOperation, ValueError, TypeError):
+            montant_cible = None
+
+    candidats = []
+    for bc in qs:
+        total = montant_commande_bcf(bc)
+        ecart = abs(total - montant_cible) if montant_cible is not None else None
+        candidats.append({
+            'id': bc.id, 'reference': bc.reference,
+            'montant_total': total, 'ecart': ecart,
+            'date_commande': bc.date_commande,
+        })
+
+    def _tri(c):
+        if c['ecart'] is not None:
+            return (0, c['ecart'])
+        return (1, )
+
+    candidats.sort(key=_tri)
+    return candidats[:int(limite or 5)]
+
+
 def montant_recu_bcf(bon_commande):
     """Montant HT REÇU pour un BCF : Σ sur ses LIGNES de commande de
     (``quantite_recue`` × prix d'achat unitaire). Reflète la marchandise
@@ -1969,6 +2165,22 @@ def onboarding_fournisseur_obligatoire(company):
     from .models import AchatsParametres
     params = AchatsParametres.objects.filter(company=company).first()
     return bool(params and params.onboarding_fournisseur_obligatoire)
+
+
+def plafond_notes_frais_actif(company):
+    """NTP2P31 — la notification IMMÉDIATE du valideur direction est-elle
+    activée (NTP2P45) quand une note de frais est escaladée (NTP2P11) ?
+
+    OFF par défaut : le calcul d'escalade lui-même (posé sur la note +
+    journalisé au chatter) reste comportement historique inchangé — ce
+    réglage pilote UNIQUEMENT la notification immédiate, jamais le calcul.
+    Lu cross-app par ``apps.compta.services`` via ce sélecteur, jamais un
+    import direct de ``stock.models``."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.plafond_notes_frais_actif)
 
 
 def progression_onboarding(dossier):

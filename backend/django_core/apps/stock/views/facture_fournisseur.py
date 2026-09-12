@@ -1,3 +1,5 @@
+import logging
+
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
@@ -36,6 +38,8 @@ from authentication.permissions import (  # noqa: F401
     HasPermissionOrLegacy,
 )
 
+logger = logging.getLogger(__name__)
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -66,7 +70,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['comptes_a_payer', 'en_exception']:
+        if self.action in READ_ACTIONS + [
+                'comptes_a_payer', 'en_exception', 'suggestions_bcf']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'paiements', 'echeancier', 'resoudre_exception',
@@ -124,6 +129,27 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             facture_fournisseur_creee.send(
                 sender=FactureFournisseur, instance=facture,
                 company=company, user=self.request.user)
+
+    def perform_update(self, serializer):
+        """NTP2P10 — quand l'utilisateur CONFIRME (PATCH `bon_commande`, un
+        lien JAMAIS posé silencieusement — la suggestion NTP2P10 ci-dessous
+        propose, l'utilisateur choisit), déclenche IMMÉDIATEMENT l'évaluation
+        du rapprochement 3 voies (``services.evaluate_facture_exception``)
+        au lieu d'attendre le prochain paiement (``check_facture_exception_
+        gate``, le seul appelant jusqu'ici). Best-effort : une évaluation en
+        échec ne casse jamais la mise à jour de la facture."""
+        ancien_bon_commande_id = serializer.instance.bon_commande_id
+        facture = serializer.save()
+        nouveau_bon_commande_id = facture.bon_commande_id
+        if (nouveau_bon_commande_id
+                and nouveau_bon_commande_id != ancien_bon_commande_id):
+            try:
+                from ..services import evaluate_facture_exception
+                evaluate_facture_exception(self.request.user.company, facture)
+            except Exception:  # noqa: BLE001 — jamais bloquant
+                logger.warning(
+                    'NTP2P10: évaluation 3 voies échouée après confirmation '
+                    'BCF (facture %s)', facture.pk, exc_info=True)
 
     def perform_destroy(self, instance):
         """AUD207 — `PaiementFournisseur.facture` est désormais PROTECT (une
@@ -234,6 +260,26 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         if doublons:
             data['doublon_warning'] = doublons
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='suggestions-bcf')
+    def suggestions_bcf(self, request):
+        """NTP2P10 — propose le(s) ``BonCommandeFournisseur`` correspondant
+        à une facture OCR (matching fournisseur + montant approximatif +
+        fenêtre de dates), le meilleur candidat en premier. LECTURE SEULE :
+        ne lie JAMAIS rien — l'utilisateur confirme via un PATCH classique
+        (``factures-fournisseur/{id}/`` avec ``bon_commande``), qui déclenche
+        alors l'évaluation 3 voies (``perform_update``)."""
+        from ..selectors import suggerer_bcf_pour_facture
+
+        fournisseur_id = request.query_params.get('fournisseur')
+        if not fournisseur_id:
+            return Response(
+                {'detail': 'Le paramètre fournisseur est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        montant = request.query_params.get('montant')
+        return Response(suggerer_bcf_pour_facture(
+            request.user.company, fournisseur_id=fournisseur_id,
+            montant=montant))
 
     @action(detail=False, methods=['post'], url_path='depuis-ubl',
             parser_classes=[MultiPartParser, JSONParser])

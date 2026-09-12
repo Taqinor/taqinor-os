@@ -79,6 +79,34 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         serializer.save()
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='checklist-cloture')
+    def checklist_cloture(self, request):
+        """NTP2P30 — wizard de clôture de fin de mois achats : agrège en
+        LECTURE SEULE les 3 listes du mois en cours (ou ``?periode=YYYY-MM-
+        DD``) — factures en exception 3-voies non résolues, demandes d'achat
+        en attente trop anciennes (``?seuil_jours=N``, défaut 15), documents
+        fournisseur expirés. Aucune nouvelle donnée, aucune mutation."""
+        from datetime import date
+        from ..selectors import checklist_cloture_achats
+
+        periode_param = request.query_params.get('periode')
+        periode = None
+        if periode_param:
+            try:
+                periode = date.fromisoformat(periode_param)
+            except ValueError:
+                return Response(
+                    {'detail': 'Paramètre periode invalide (attendu '
+                               'YYYY-MM-DD).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        seuil_jours = request.query_params.get('seuil_jours', 15)
+        try:
+            seuil_jours = int(seuil_jours)
+        except (TypeError, ValueError):
+            seuil_jours = 15
+        return Response(checklist_cloture_achats(
+            request.user.company, periode, seuil_jours=seuil_jours))
+
 
 class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):
     """NTP2P9 — grille éditable Paramètres → Achats : override par catégorie

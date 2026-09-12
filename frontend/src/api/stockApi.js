@@ -152,6 +152,10 @@ const stockApi = {
     api.post(`/stock/bons-commande-fournisseur/${id}/confirmer/`, data),
   getBcfEnRetard: () =>
     api.get('/stock/bons-commande-fournisseur/en-retard/'),
+  // NTP2P21 — suggestions de fusion des BCF brouillon du même fournisseur
+  // créés la même semaine (lecture seule, jamais de fusion automatique).
+  getSuggestionsConsolidationBcf: () =>
+    api.get('/stock/bons-commande-fournisseur/suggestions-consolidation/'),
   getBcfSimilaires: (fournisseurId, produitIds) =>
     api.get('/stock/bons-commande-fournisseur/bcf-similaires/', {
       params: {
@@ -283,6 +287,13 @@ const stockApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // NTP2P10 — suggère le(s) BCF ouvert(s) du fournisseur les plus proches du
+  // montant OCR (lecture seule, l'utilisateur confirme via un PATCH classique
+  // sur la facture — voir `updateFactureFournisseur`).
+  getSuggestionsBcfFacture: (fournisseurId, montant) =>
+    api.get('/stock/factures-fournisseur/suggestions-bcf/', {
+      params: { fournisseur: fournisseurId, ...(montant ? { montant } : {}) },
+    }),
 
   // WR3 — Pilotage stock (analytics INTERNES ; les valeurs au prix d'achat
   // ne sortent jamais vers un document client).
@@ -356,6 +367,10 @@ const stockApi = {
   getAchatsParametres: () => api.get('/stock/achats-parametres/'),
   updateAchatsParametres: (id, data) =>
     api.patch(`/stock/achats-parametres/${id}/`, data),
+  // NTP2P30 — wizard de clôture de fin de mois achats (agrégateur lecture
+  // seule : factures en exception, demandes anciennes, documents expirés).
+  getChecklistClotureAchats: (params) =>
+    api.get('/stock/achats-parametres/checklist-cloture/', { params }),
   // FG55 — PDF d'une facture fournisseur (blob, interne).
   factureFournisseurPdf: (id) =>
     api.get(`/stock/factures-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
