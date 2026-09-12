@@ -53,6 +53,8 @@ import TicketWorksheetPanel from './TicketWorksheetPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
 import { crEnTexte } from './crInterventionUtils'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
+// NTUX37 — toast « Annuler » (NTUX6) après une édition en masse réussie.
+import { notifyBulkUpdateWithUndo } from '../../ui/datatable/notifyBulkUpdateWithUndo'
 import { telHref } from '../../lib/contactLinks'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
@@ -2201,7 +2203,11 @@ export default function TicketsPage() {
       const { data } = await savApi.actionsGroupeesTickets(
         selRows.map((r) => r.id), 'statut', { statut })
       return {
-        updated: (data?.traites ?? []).map((tid) => ({ id: tid })),
+        // NTUX37 — `before` capturé AVANT l'écriture (depuis `selRows`, jamais
+        // relu après coup) : c'est la valeur que l'annulation (NTUX6) réapplique.
+        updated: (data?.traites ?? []).map((tid) => ({
+          id: tid, before: parId.get(String(tid))?.statut, after: statut,
+        })),
         failed: (data?.echecs ?? []).map((e) => ({
           id: e.id,
           label: parId.get(String(e.id))?.reference,
@@ -2215,6 +2221,33 @@ export default function TicketsPage() {
           id: r.id, label: r.reference, reason: 'Mise à jour groupée impossible.',
         })),
       }
+    } finally {
+      reload()
+    }
+  }
+
+  // NTUX37 — annulation (NTUX6, fenêtre 10 s) : ré-applique le statut AVANT
+  // de chaque ligne, regroupé par valeur commune (un seul appel ATOMIQUE par
+  // groupe, MÊME endpoint que l'édition initiale — la machine d'états gardée
+  // côté serveur, apps/sav/machine_etats.py, autorise toujours un recul d'une
+  // étape ; une annulation qu'elle refuserait échoue normalement, jamais un
+  // contournement de la garde).
+  const revertBulkStatut = async (rows) => {
+    const idsParAvant = new Map()
+    for (const r of rows) {
+      if (!r.before) continue
+      if (!idsParAvant.has(r.before)) idsParAvant.set(r.before, [])
+      idsParAvant.get(r.before).push(r.id)
+    }
+    try {
+      await Promise.all(
+        [...idsParAvant.entries()].map(
+          ([statut, ids]) => savApi.actionsGroupeesTickets(ids, 'statut', { statut }),
+        ),
+      )
+      toast.success('Édition en masse annulée.')
+    } catch {
+      toast.error('Annulation impossible.')
     } finally {
       reload()
     }
@@ -2248,6 +2281,11 @@ export default function TicketsPage() {
     getOldValue: (row) => row.statut,
     formatValue: (v) => TICKET_STATUS_LABELS[v] ?? String(v ?? '—'),
     onConfirm: bulkEditStatut,
+    // NTUX37 — toast succès + bouton « Annuler » (NTUX6). Silencieux si tout
+    // a échoué (`result.updated` vide) — voir notifyBulkUpdateWithUndo.js.
+    onDone: (res) => notifyBulkUpdateWithUndo(res, {
+      fieldLabel: 'statut', onUndo: revertBulkStatut,
+    }),
   }
 
   // PACT174 — note groupée dans l'historique de chaque ticket sélectionné.

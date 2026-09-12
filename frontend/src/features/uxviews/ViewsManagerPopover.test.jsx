@@ -9,6 +9,7 @@ const duplicateViewMock = vi.fn()
 const renameViewMock = vi.fn()
 const deleteViewMock = vi.fn(() => Promise.resolve())
 const setDefaultForMyRoleMock = vi.fn(() => Promise.resolve())
+const reorderMineMock = vi.fn()
 let hookState
 
 vi.mock('./useServerSavedViews', () => ({
@@ -35,6 +36,7 @@ beforeEach(() => {
     mine: MINE, team: TEAM, activeView: null, loading: false,
     applyView: applyViewMock, duplicateView: duplicateViewMock, renameView: renameViewMock,
     deleteView: deleteViewMock, setDefaultForMyRole: setDefaultForMyRoleMock,
+    reorderMine: reorderMineMock,
   }
 })
 afterEach(() => cleanup())
@@ -101,5 +103,27 @@ describe('ViewsManagerPopover (NTUX2)', () => {
     fireEvent.change(input, { target: { value: 'Mes leads chauds' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(renameViewMock).toHaveBeenCalledWith(1, 'Mes leads chauds')
+  })
+
+  // ── NTUX21 — glisser-déposer de « Mes vues » ────────────────────────────
+  it('un seul favori perso : aucune poignée de déplacement', async () => {
+    render(<ViewsManagerPopover ecran="crm.leads" onApply={() => {}} />)
+    fireEvent.click(screen.getByTestId('uxviews-open-btn'))
+    await screen.findByText('Perso')
+    expect(screen.queryByRole('button', { name: /^déplacer /i })).toBeNull()
+  })
+
+  it('plusieurs vues perso : une poignée par vue perso, jamais sur les vues d\'équipe', async () => {
+    hookState.mine = [
+      { id: 1, nom: 'Perso A', est_defaut_role: false, configuration: {} },
+      { id: 3, nom: 'Perso B', est_defaut_role: false, configuration: {} },
+    ]
+    render(<ViewsManagerPopover ecran="crm.leads" onApply={() => {}} />)
+    fireEvent.click(screen.getByTestId('uxviews-open-btn'))
+    await screen.findByText('Perso A')
+    expect(screen.getByRole('button', { name: 'Déplacer Perso A' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Déplacer Perso B' })).toBeInTheDocument()
+    // La vue d'équipe ('Équipe') n'a jamais de poignée de déplacement.
+    expect(screen.queryByRole('button', { name: 'Déplacer Équipe' })).toBeNull()
   })
 })

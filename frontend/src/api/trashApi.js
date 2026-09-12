@@ -11,6 +11,11 @@ const trashApi = {
   // rétention, NTUX24) ; par défaut, seuls les éléments ENCORE en corbeille.
   listCorbeille: (params = {}) => api.get('/trash/corbeille/', { params }),
   restaurer: (id) => api.post(`/trash/corbeille/${id}/restaurer/`),
+  // NTUX24 — export .xlsx du journal, MÊMES filtres que `listCorbeille`
+  // (audit de rétention RGPD/CNDP).
+  exportXlsx: (params = {}) => api.get(
+    '/trash/corbeille/export-xlsx/', { params, responseType: 'blob' },
+  ),
 }
 
 export default trashApi

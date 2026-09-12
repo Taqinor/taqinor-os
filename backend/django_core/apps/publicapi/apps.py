@@ -33,6 +33,11 @@ class PublicApiConfig(AppConfig):
         # -> `apps.publicapi`.
         from . import btp_event_receivers
         btp_event_receivers.connect()
+        # NTUX32 — abonnés aux évènements des objets UX du bus `core.events`
+        # (`saved_view_shared`/`record_restored`), jamais un import direct
+        # `apps.uxviews`/`apps.trash` -> `apps.publicapi`.
+        from . import uxviews_event_receivers
+        uxviews_event_receivers.connect()
         # YOPSB11 — archivage par lots du journal WebhookDelivery (registre
         # partagé YOPSB10). Fenêtre founder-configurable via
         # WEBHOOK_DELIVERY_ARCHIVE_DAYS (défaut 0 = OFF, comportement inchangé).

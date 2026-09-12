@@ -318,6 +318,32 @@ def declared_action_permissions(view):
     return None
 
 
+class PeutExecuterEditionMasse(BasePermission):
+    """NTUX31 — ``ux.edition_masse.executer`` (souligné : ``ux_edition_masse_executer``).
+
+    Garde FINE sur le repli PAR DÉFAUT de ``BulkEditViewSet.appliquer``
+    (``core/views.py``) — s'ajoute EN PLUS du palier grossier hérité
+    ``IsAdminOrResponsableTier`` déjà posé là (AUD816), jamais à sa place :
+    une cible qui déclare ses PROPRES permissions (``register_bulk_target``)
+    continue de primer et n'est pas concernée par ce code. Repli légacy
+    conservé via ``_user_has_or_legacy`` — un compte hérité sans rôle fin garde
+    exactement son accès actuel ; un rôle fin doit désormais porter le code
+    pour que la case correspondante soit administrable dans l'éditeur de rôles.
+    """
+
+    message = (
+        "Permission « ux.edition_masse.executer » requise pour exécuter une "
+        "édition en masse.")
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        if getattr(user, 'portee', 'interne') != 'interne':
+            return False
+        return _user_has_or_legacy(user, 'ux_edition_masse_executer')
+
+
 class WriteScopedPermissionMixin:
     """Mixin de viewset : gate lecture/écriture par méthode HTTP (YRBAC5).
 

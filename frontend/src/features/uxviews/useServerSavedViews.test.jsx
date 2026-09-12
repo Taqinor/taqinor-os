@@ -144,4 +144,49 @@ describe('useServerSavedViews (NTUX2)', () => {
     await waitFor(() => expect(listSavedViewsMock).toHaveBeenCalled())
     expect(createSavedViewMock).not.toHaveBeenCalled()
   })
+
+  // ── NTUX21 — glisser-déposer de « Mes vues » (localStorage, PAS serveur) ─
+  describe('reorderMine (NTUX21)', () => {
+    const DEUX_PERSO = [
+      { id: 1, ecran: 'crm.leads', nom: 'Perso A', owner: 1, est_defaut_role: false, role_nom: null, configuration: {} },
+      { id: 4, ecran: 'crm.leads', nom: 'Perso B', owner: 1, est_defaut_role: false, role_nom: null, configuration: {} },
+    ]
+
+    it('sans ordre mémorisé, "mine" garde l\'ordre renvoyé par le serveur', async () => {
+      listSavedViewsMock.mockResolvedValue({ data: DEUX_PERSO })
+      const { result } = renderHook(() => useServerSavedViews('crm.leads'), {
+        wrapper: wrapper(makeStore({ userId: 1 })),
+      })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(result.current.mine.map((v) => v.id)).toEqual([1, 4])
+    })
+
+    it('reorderMine persiste en localStorage et réordonne IMMÉDIATEMENT, sans requête serveur', async () => {
+      listSavedViewsMock.mockResolvedValue({ data: DEUX_PERSO })
+      const { result } = renderHook(() => useServerSavedViews('crm.leads'), {
+        wrapper: wrapper(makeStore({ userId: 1 })),
+      })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      const appelsAvant = listSavedViewsMock.mock.calls.length
+
+      act(() => result.current.reorderMine([4, 1]))
+
+      expect(result.current.mine.map((v) => v.id)).toEqual([4, 1])
+      expect(localStorage.getItem('taqinor.uxviews.ordrePerso.crm.leads')).toBe('[4,1]')
+      // Purement local : aucun aller-retour réseau supplémentaire.
+      expect(listSavedViewsMock.mock.calls.length).toBe(appelsAvant)
+    })
+
+    it('l\'ordre perso ne s\'applique jamais aux vues d\'équipe', async () => {
+      listSavedViewsMock.mockResolvedValue({ data: VIEWS })
+      const { result } = renderHook(() => useServerSavedViews('crm.leads'), {
+        wrapper: wrapper(makeStore({ userId: 1 })),
+      })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      act(() => result.current.reorderMine([1]))
+      // Une seule vue perso ici (id=1) : rien à observer côté "mine", mais
+      // "team" (ids 2, 3) reste dans son ordre serveur d'origine.
+      expect(result.current.team.map((v) => v.id)).toEqual([2, 3])
+    })
+  })
 })

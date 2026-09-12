@@ -2,15 +2,22 @@
 // (Directeur/Admin, reflète `IsAdminOrResponsableTier` côté serveur — backend
 // `apps/trash` déjà complet : modèle, restauration par registre, purge
 // planifiée NTUX29). Cet écran est la MOITIÉ FRONTEND qui manquait.
+//
+// NTUX24 — « Exporter le journal » : XLSX des mêmes filtres que la liste
+// (audit de rétention RGPD/CNDP).
+// NTUX26 — sélection multiple + « Restaurer la sélection » : aperçu avec
+// avertissement AVANT confirmation (RestaurationMasseDialog.jsx).
 import { useCallback, useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Download, Trash2 } from 'lucide-react'
 import trashApi from '../../api/trashApi'
 import {
-  Card, CardContent, Button, Input, Label, EmptyState, Spinner, Badge, Switch,
+  Card, CardContent, Button, Input, Label, EmptyState, Spinner, Badge, Switch, Checkbox,
 } from '../../ui'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 // VX75 — tout horodatage passe par lib/format.js (jamais un toLocaleString nu).
 import { formatDateTime } from '../../lib/format'
+import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
+import RestaurationMasseDialog from './RestaurationMasseDialog'
 
 const FILTRES_VIDES = { type: '', depuis: '', jusqua: '' }
 const PAGE_SIZE = 50
@@ -22,8 +29,9 @@ export default function CorbeillePage() {
   // PiecesJointesPage.jsx, WIR270).
   const [saisie, setSaisie] = useState(FILTRES_VIDES)
   const [filtres, setFiltres] = useState(FILTRES_VIDES)
-  // NTUX24 (round 2) réutilisera ce même toggle pour le journal d'audit
-  // exportable — posé ici pour ne pas dupliquer le filtre serveur `?restaures=`.
+  // NTUX24 — ce même toggle pilote AUSSI le journal d'audit exportable
+  // (`buildParams()` ci-dessous) : jamais un filtre serveur `?restaures=`
+  // dupliqué entre la liste et l'export.
   const [inclureRestaures, setInclureRestaures] = useState(false)
   const [page, setPage] = useState(1)
   const [items, setItems] = useState([])
@@ -31,15 +39,27 @@ export default function CorbeillePage() {
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(null)
   const [restaurationEnCours, setRestaurationEnCours] = useState(null)
+  // NTUX24 — export .xlsx du journal, MÊMES filtres que la liste.
+  const [exporting, setExporting] = useState(false)
+  // NTUX26 — sélection multiple pour la restauration en masse.
+  const [selection, setSelection] = useState(() => new Set())
+  const [masseOpen, setMasseOpen] = useState(false)
 
-  const charger = useCallback(() => {
-    setLoading(true)
-    setErreur(null)
-    const params = { page }
+  // NTUX24 — filtres COMMUNS à `listCorbeille` et `exportXlsx` : jamais deux
+  // constructions divergentes (l'export doit refléter EXACTEMENT la liste).
+  const buildParams = useCallback(() => {
+    const params = {}
     if (filtres.type) params.type = filtres.type
     if (filtres.depuis) params.depuis = filtres.depuis
     if (filtres.jusqua) params.jusqua = filtres.jusqua
     if (inclureRestaures) params.restaures = 1
+    return params
+  }, [filtres, inclureRestaures])
+
+  const charger = useCallback(() => {
+    setLoading(true)
+    setErreur(null)
+    const params = { ...buildParams(), page }
 
     trashApi.listCorbeille(params)
       .then((r) => {
@@ -49,7 +69,7 @@ export default function CorbeillePage() {
       })
       .catch(() => setErreur('Corbeille indisponible.'))
       .finally(() => setLoading(false))
-  }, [filtres, inclureRestaures, page])
+  }, [buildParams, page])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de filtre
@@ -98,20 +118,67 @@ export default function CorbeillePage() {
       .finally(() => setRestaurationEnCours(null))
   }
 
+  // NTUX24 — export .xlsx du journal (mêmes filtres que la liste courante).
+  const exporter = () => {
+    setExporting(true)
+    trashApi.exportXlsx(buildParams())
+      .then((res) => downloadBlob(res.data, stampedFilename('journal-corbeille', 'xlsx')))
+      .catch(() => toast.error('Export impossible.'))
+      .finally(() => setExporting(false))
+  }
+
+  // NTUX26 — sélection multiple pour la restauration en masse. Un élément
+  // déjà restauré n'est jamais sélectionnable (rien à restaurer).
+  const restaurables = items.filter((el) => !el.restaure_le)
+  const toutSelectionne = restaurables.length > 0
+    && restaurables.every((el) => selection.has(el.id))
+  const basculerSelection = (id) => setSelection((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const basculerToutSelectionner = () => setSelection((prev) => {
+    if (toutSelectionne) return new Set()
+    return new Set(restaurables.map((el) => el.id))
+  })
+  const elementsSelectionnes = items.filter((el) => selection.has(el.id))
+
+  const handleMasseDone = ({ restored, failed }) => {
+    if (restored.length) {
+      toast.success(`${restored.length} élément(s) restauré(s).`)
+    }
+    if (failed.length) {
+      toast.error(`${failed.length} restauration(s) en échec — voir le détail.`)
+    }
+    setSelection(new Set())
+    if (!inclureRestaures) charger()
+    else setItems((prev) => prev.map((it) => {
+      const restaure = restored.find((r) => r.id === it.id)
+      return restaure ? { ...it, ...(restaure.element || { restaure_le: new Date().toISOString() }) } : it
+    }))
+  }
+
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <div className="page flex flex-col gap-4">
-      <div>
-        <h1 className="page-title flex items-center gap-2">
-          <Trash2 className="size-5" aria-hidden="true" />
-          Corbeille
-          <Badge tone="neutral">{total}</Badge>
-        </h1>
-        <p className="page-subtitle">
-          Éléments supprimés de toute l'application, conservés 30 jours et
-          restaurables à tout moment avant purge automatique.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="page-title flex items-center gap-2">
+            <Trash2 className="size-5" aria-hidden="true" />
+            Corbeille
+            <Badge tone="neutral">{total}</Badge>
+          </h1>
+          <p className="page-subtitle">
+            Éléments supprimés de toute l'application, conservés 30 jours et
+            restaurables à tout moment avant purge automatique.
+          </p>
+        </div>
+        {/* NTUX24 — audit de rétention RGPD/CNDP exportable. */}
+        <Button type="button" size="sm" variant="outline" loading={exporting} onClick={exporter}>
+          <Download />
+          Exporter le journal
+        </Button>
       </div>
 
       <Card>
@@ -161,9 +228,32 @@ export default function CorbeillePage() {
         />
       ) : (
         <>
+          {/* NTUX26 — restauration en masse : bouton actif dès qu'au moins un
+              élément restaurable est sélectionné. */}
+          {restaurables.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button" size="sm" variant="outline"
+                disabled={elementsSelectionnes.length === 0}
+                onClick={() => setMasseOpen(true)}
+              >
+                Restaurer la sélection
+                {elementsSelectionnes.length > 0 && ` (${elementsSelectionnes.length})`}
+              </Button>
+            </div>
+          )}
           <table className="data-table" data-testid="corbeille-table">
             <thead>
               <tr>
+                <th>
+                  {restaurables.length > 0 && (
+                    <Checkbox
+                      aria-label="Sélectionner tous les éléments restaurables"
+                      checked={toutSelectionne}
+                      onCheckedChange={basculerToutSelectionner}
+                    />
+                  )}
+                </th>
                 <th>Type</th><th>Libellé</th><th>Supprimé par</th>
                 <th>Supprimé le</th><th>Expire le</th><th>Restauré le</th><th />
               </tr>
@@ -171,6 +261,15 @@ export default function CorbeillePage() {
             <tbody>
               {items.map((el) => (
                 <tr key={el.id} data-testid="corbeille-row">
+                  <td>
+                    {!el.restaure_le && (
+                      <Checkbox
+                        aria-label={`Sélectionner ${el.libelle_snapshot || el.type_libelle || el.id}`}
+                        checked={selection.has(el.id)}
+                        onCheckedChange={() => basculerSelection(el.id)}
+                      />
+                    )}
+                  </td>
                   <td>{el.type_libelle || '—'}</td>
                   <td>{el.libelle_snapshot || '—'}</td>
                   <td>{el.supprime_par_nom || '—'}</td>
@@ -210,6 +309,13 @@ export default function CorbeillePage() {
           </div>
         </>
       )}
+
+      <RestaurationMasseDialog
+        open={masseOpen}
+        onOpenChange={setMasseOpen}
+        elements={elementsSelectionnes}
+        onDone={handleMasseDone}
+      />
     </div>
   )
 }

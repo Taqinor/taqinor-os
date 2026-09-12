@@ -12,6 +12,7 @@ from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
 from apps.installations.models import Installation
 from apps.stock.models import Produit
 from apps.scm.models import PolitiqueStock, PrevisionDemande
+from apps.uxviews.models import FavoriUtilisateur, SavedView
 
 from .models import BulkJob
 
@@ -189,3 +190,44 @@ class PublicPolitiqueStockSerializer(serializers.ModelSerializer):
             'stock_securite_manuel', 'revise_le',
         ]
         read_only_fields = fields
+
+
+class PublicSavedViewSerializer(serializers.ModelSerializer):
+    """NTUX33 — vue sauvegardée (apps.uxviews.SavedView, NTUX1), LECTURE
+    SEULE. Sans `?owner=`, seules les vues d'ÉQUIPE (déjà visibles en
+    interne de toute la société) atteignent ce serializer — voir
+    `public_uxviews_views.PublicSavedViewViewSet.get_queryset`."""
+    owner = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = SavedView
+        fields = [
+            'id', 'ecran', 'nom', 'configuration', 'visibilite',
+            'est_defaut_role', 'owner', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class PublicFavoriSerializer(serializers.ModelSerializer):
+    """NTUX33 — favori épinglé (apps.uxviews.FavoriUtilisateur, NTUX12),
+    LECTURE SEULE. STRICTEMENT scopé à `?owner=` (jamais servi sans, voir
+    `public_uxviews_views.PublicFavoriViewSet.get_queryset`) : un favori
+    d'un collègue ne doit jamais fuiter, même par clé d'API."""
+    modele = serializers.SerializerMethodField()
+    libelle = serializers.SerializerMethodField()
+    owner = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = FavoriUtilisateur
+        fields = [
+            'id', 'modele', 'object_id', 'libelle', 'ordre', 'owner',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_modele(self, obj):
+        return obj.cle_modele
+
+    def get_libelle(self, obj):
+        cible = obj.cible
+        return str(cible) if cible is not None else None

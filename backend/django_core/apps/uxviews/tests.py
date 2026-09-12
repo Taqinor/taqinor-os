@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 
-from .models import FavoriUtilisateur, SavedView, UxParametres
+from .models import EcranRecent, FavoriUtilisateur, SavedView, UxParametres
 
 User = get_user_model()
 
@@ -299,6 +299,264 @@ class SavedViewApiTests(TestCase):
         self.assertEqual(len(resp.data['erreurs']), 1)
 
 
+class NTUX31PermissionsFinesTests(TestCase):
+    """NTUX31 — les deux gardes fines s'ajoutent EN PLUS du palier hérité, sans
+    jamais retirer l'accès d'un compte SANS rôle fin (repli légacy)."""
+    BASE = '/api/django/uxviews/saved-views/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv31-a', 'A')
+        # Rôle fin « responsable » (porte des permissions d'écriture) SANS les
+        # deux codes NTUX31 : is_responsable/IsResponsableOrAdmin passerait
+        # côté legacy, mais la garde fine doit désormais refuser.
+        self.role_sans_code = Role.objects.create(
+            company=self.co_a, nom='Responsable maison', est_systeme=False,
+            permissions=['crm_voir', 'crm_creer', 'ventes_voir'],
+        )
+        self.role_avec_code = Role.objects.create(
+            company=self.co_a, nom='Responsable outillé', est_systeme=False,
+            permissions=[
+                'crm_voir', 'crm_creer', 'ventes_voir',
+                'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+            ],
+        )
+        self.user_sans_code = User.objects.create_user(
+            username='uxv31-sans', password='x', company=self.co_a,
+            role=self.role_sans_code)
+        self.user_avec_code = User.objects.create_user(
+            username='uxv31-avec', password='x', company=self.co_a,
+            role=self.role_avec_code)
+        self.role_cible = make_role(self.co_a, 'Commercial')
+
+    def test_partager_equipe_denied_without_fine_permission(self):
+        resp = auth(self.user_sans_code).post(
+            self.BASE,
+            {'ecran': 'crm.leads', 'nom': 'V équipe',
+             'visibilite': SavedView.Visibilite.EQUIPE},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertFalse(SavedView.objects.filter(nom='V équipe').exists())
+
+    def test_partager_equipe_allowed_with_fine_permission(self):
+        resp = auth(self.user_avec_code).post(
+            self.BASE,
+            {'ecran': 'crm.leads', 'nom': 'V équipe 2',
+             'visibilite': SavedView.Visibilite.EQUIPE},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_personal_view_unaffected_by_missing_permission(self):
+        # Le code ne garde QUE le partage d'équipe : une vue personnelle reste
+        # créable sans lui.
+        resp = auth(self.user_sans_code).post(
+            self.BASE, {'ecran': 'crm.leads', 'nom': 'V perso'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_definir_par_defaut_role_denied_without_fine_permission(self):
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.user_sans_code, ecran='crm.leads',
+            nom='Équipe', visibilite=SavedView.Visibilite.EQUIPE,
+            role=self.role_cible,
+        )
+        resp = auth(self.user_sans_code).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_definir_par_defaut_role_allowed_with_fine_permission(self):
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.user_avec_code, ecran='crm.leads',
+            nom='Équipe', visibilite=SavedView.Visibilite.EQUIPE,
+            role=self.role_cible,
+        )
+        resp = auth(self.user_avec_code).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+
+class NTUX40KpiAdoptionUxTests(TestCase):
+    """NTUX40 — `apps.uxviews.selectors.kpi_adoption_ux`, provider KPI fédéré
+    (ARC40, déclaré dans `apps/uxviews/platform.py`)."""
+
+    def setUp(self):
+        self.co = make_company('uxv40-a', 'A')
+        self.role_commercial = make_role(self.co, 'Commercial')
+
+    def _kpi(self):
+        from .selectors import kpi_adoption_ux
+        return {t['id']: t for t in kpi_adoption_ux(self.co)}
+
+    def test_zero_state_never_divides_by_zero(self):
+        tuiles = self._kpi()
+        self.assertEqual(tuiles['ux_pct_ecrans_defaut_role']['valeur'], 0)
+        self.assertEqual(tuiles['ux_moyenne_vues_personnelles']['valeur'], 0)
+        self.assertEqual(tuiles['ux_taux_edition_masse']['valeur'], 0)
+
+    def test_pct_ecrans_avec_defaut_role(self):
+        u = make_user(self.co, 'uxv40-u1')
+        SavedView.objects.create(
+            company=self.co, owner=u, ecran='crm.leads', nom='V1',
+            role=self.role_commercial, est_defaut_role=True,
+            visibilite=SavedView.Visibilite.EQUIPE)
+        SavedView.objects.create(
+            company=self.co, owner=u, ecran='ventes.devis', nom='V2')
+        tuiles = self._kpi()
+        # 1 écran sur 2 (crm.leads, ventes.devis) porte un défaut de rôle.
+        self.assertEqual(tuiles['ux_pct_ecrans_defaut_role']['valeur'], 50.0)
+
+    def test_moyenne_vues_personnelles_par_utilisateur_actif(self):
+        u1 = make_user(self.co, 'uxv40-u2')
+        make_user(self.co, 'uxv40-u3')  # 2e utilisateur actif, sans vue
+        SavedView.objects.create(company=self.co, owner=u1, ecran='crm.leads', nom='P1')
+        SavedView.objects.create(company=self.co, owner=u1, ecran='crm.leads', nom='P2')
+        tuiles = self._kpi()
+        # 2 vues personnelles / 2 utilisateurs actifs = 1.0.
+        self.assertEqual(tuiles['ux_moyenne_vues_personnelles']['valeur'], 1.0)
+
+    def test_taux_edition_masse_derive_de_laudit_log(self):
+        from apps.audit.models import AuditLog
+
+        AuditLog.objects.create(
+            company=self.co, action=AuditLog.Action.UPDATE,
+            detail='Édition en masse « Utilisateurs » (utilisateurs) : 3 ligne(s).')
+        AuditLog.objects.create(
+            company=self.co, action=AuditLog.Action.UPDATE,
+            detail='Statut : « Brouillon » → « Envoyé »')
+        AuditLog.objects.create(
+            company=self.co, action=AuditLog.Action.UPDATE,
+            detail='Statut : « Envoyé » → « Accepté »')
+        tuiles = self._kpi()
+        # 1 édition en masse sur 3 UPDATE au total = 33.3 %.
+        self.assertAlmostEqual(
+            tuiles['ux_taux_edition_masse']['valeur'], 33.3, places=1)
+
+    def test_returns_normalized_tile_shape(self):
+        for tuile in self._kpi().values():
+            for cle in ('id', 'label', 'valeur', 'unite'):
+                self.assertIn(cle, tuile)
+
+
+class NTUX39EcranRecentEtNotificationTests(TestCase):
+    """NTUX39 — `EcranRecent` (substitut serveur de NTUX11) + notification de
+    suivi quand une vue d'équipe consultée récemment change de filtres."""
+    BASE = '/api/django/uxviews/saved-views/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv39-a', 'A')
+        self.directeur = make_user(self.co_a, 'uxv39-directeur', role_legacy='responsable')
+        self.commercial1 = make_user(self.co_a, 'uxv39-com1', role_legacy='normal')
+        self.commercial2 = make_user(self.co_a, 'uxv39-com2', role_legacy='normal')
+
+    def test_listing_an_ecran_marks_it_recent_for_the_caller(self):
+        self.assertFalse(
+            EcranRecent.objects.filter(owner=self.commercial1, ecran='crm.leads').exists())
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        self.assertTrue(
+            EcranRecent.objects.filter(
+                company=self.co_a, owner=self.commercial1, ecran='crm.leads').exists())
+
+    def test_listing_twice_upserts_a_single_row(self):
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        self.assertEqual(
+            EcranRecent.objects.filter(owner=self.commercial1, ecran='crm.leads').count(), 1)
+
+    def test_modifying_team_view_filters_notifies_recent_viewers_not_the_whole_company(self):
+        from apps.notifications.models import EventType, Notification
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
+            visibilite=SavedView.Visibilite.EQUIPE, configuration={'filtres': {}},
+        )
+        # commercial1 a consulté l'écran récemment ; commercial2 jamais.
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/',
+            {'configuration': {'filtres': {'stage': 'nouveau'}}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.commercial1,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.commercial2,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+        # Jamais l'auteur de la modification lui-même.
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.directeur,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+
+    def test_renaming_without_changing_configuration_does_not_notify(self):
+        from apps.notifications.models import EventType, Notification
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
+            visibilite=SavedView.Visibilite.EQUIPE, configuration={'filtres': {}},
+        )
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/', {'nom': 'Équipe (renommée)'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+
+    def test_stale_ecran_recent_beyond_30_days_is_not_notified(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.notifications.models import EventType, Notification
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
+            visibilite=SavedView.Visibilite.EQUIPE, configuration={'filtres': {}},
+        )
+        ancien = EcranRecent.objects.create(
+            company=self.co_a, owner=self.commercial1, ecran='crm.leads')
+        EcranRecent.objects.filter(pk=ancien.pk).update(
+            consulte_le=timezone.now() - timedelta(days=45))
+
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/',
+            {'configuration': {'filtres': {'stage': 'nouveau'}}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.commercial1,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+
+
+class NTUX38AuditTraceTests(TestCase):
+    """NTUX38 — « définir vue par défaut de rôle » écrit une entrée d'audit
+    consultable (modèle `audit.AuditLog` existant, jamais un nouveau journal)."""
+    BASE = '/api/django/uxviews/saved-views/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv38-a', 'A')
+        self.directeur = make_user(self.co_a, 'uxv38-directeur', role_legacy='responsable')
+        self.role_cible = make_role(self.co_a, 'Commercial')
+
+    def test_definir_par_defaut_role_creates_an_audit_entry(self):
+        from apps.audit.models import AuditLog
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads',
+            nom='Équipe', visibilite=SavedView.Visibilite.EQUIPE,
+            role=self.role_cible,
+        )
+        avant = AuditLog.objects.count()
+        resp = auth(self.directeur).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(AuditLog.objects.count(), avant + 1)
+        entry = AuditLog.objects.latest('id')
+        self.assertEqual(entry.user, self.directeur)
+        self.assertEqual(entry.company, self.co_a)
+        self.assertIn('Commercial', entry.detail)
+        self.assertIn('crm.leads', entry.detail)
+
+
 class FavoriUtilisateurApiTests(TestCase):
     """NTUX12 — favoris épinglés, STRICTEMENT personnels."""
 
@@ -427,6 +685,91 @@ class FavoriUtilisateurApiTests(TestCase):
         self.assertEqual(
             auth(self.com1).delete(f'{self.BASE}{favori.pk}/').status_code, 204)
         self.assertEqual(FavoriUtilisateur.objects.count(), 0)
+
+
+class NTUX35ExportImportFavorisTests(TestCase):
+    """NTUX35 — export/import CSV des favoris à la reprise de poste :
+    identifiant MÉTIER (ex. email d'un lead), jamais `object_id` brut (qui
+    diffère entre environnements)."""
+    BASE = '/api/django/uxviews/favoris/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv35-a', 'A')
+        self.com1 = make_user(self.co_a, 'uxv35-com1')
+        self.com2 = make_user(self.co_a, 'uxv35-com2')
+        from apps.crm.models import Lead
+        self.lead = Lead.objects.create(
+            company=self.co_a, nom='Alaoui', email='alaoui@example.com')
+
+    def _csv(self, lignes):
+        contenu = '\n'.join(['type,champ_identifiant,identifiant,libelle'] + lignes)
+        return SimpleUploadedFile(
+            'favoris.csv', contenu.encode('utf-8'), content_type='text/csv')
+
+    def test_export_csv_expose_lidentifiant_metier_jamais_lobject_id(self):
+        import csv
+        import io
+
+        ct = ContentType.objects.get_for_model(self.lead)
+        FavoriUtilisateur.objects.create(
+            company=self.co_a, owner=self.com1, content_type=ct, object_id=self.lead.pk)
+        resp = auth(self.com1).get(f'{self.BASE}export-csv/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'text/csv')
+        lignes = list(csv.reader(io.StringIO(resp.content.decode('utf-8'))))
+        self.assertEqual(lignes[0], ['type', 'champ_identifiant', 'identifiant', 'libelle'])
+        self.assertEqual(lignes[1][:3], ['crm.lead', 'email', 'alaoui@example.com'])
+
+    def test_export_csv_est_strictement_personnel(self):
+        ct = ContentType.objects.get_for_model(self.lead)
+        FavoriUtilisateur.objects.create(
+            company=self.co_a, owner=self.com2, content_type=ct, object_id=self.lead.pk)
+        resp = auth(self.com1).get(f'{self.BASE}export-csv/')
+        self.assertEqual(resp.content.decode('utf-8').count('\n'), 1)  # en-tête seul
+
+    def test_import_resout_par_identifiant_metier_et_epingle(self):
+        fichier = self._csv([f'crm.lead,email,{self.lead.email},Alaoui'])
+        resp = auth(self.com2).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['importes'], 1)
+        self.assertEqual(resp.data['non_resolues'], 0)
+        favori = FavoriUtilisateur.objects.get(owner=self.com2)
+        self.assertEqual(favori.object_id, self.lead.pk)
+        self.assertEqual(favori.cle_modele, 'crm.lead')
+        self.assertEqual(favori.company, self.co_a)
+
+    def test_import_ignore_silencieusement_les_lignes_non_resolues_et_les_compte(self):
+        fichier = self._csv([
+            f'crm.lead,email,{self.lead.email},Alaoui',
+            'crm.lead,email,fantome@example.com,Fantôme',
+        ])
+        resp = auth(self.com1).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['importes'], 1)
+        self.assertEqual(resp.data['non_resolues'], 1)
+
+    def test_import_ne_traverse_jamais_la_frontiere_societe(self):
+        from apps.crm.models import Lead
+
+        co_b = make_company('uxv35-b', 'B')
+        lead_b = Lead.objects.create(
+            company=co_b, nom='Externe', email='externe@example.com')
+        fichier = self._csv([f'crm.lead,email,{lead_b.email},Externe'])
+        resp = auth(self.com1).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.data['importes'], 0)
+        self.assertEqual(resp.data['non_resolues'], 1)
+        self.assertFalse(FavoriUtilisateur.objects.filter(owner=self.com1).exists())
+
+    def test_reimporter_une_cible_deja_epinglee_est_un_no_op(self):
+        ct = ContentType.objects.get_for_model(self.lead)
+        FavoriUtilisateur.objects.create(
+            company=self.co_a, owner=self.com1, content_type=ct, object_id=self.lead.pk)
+        fichier = self._csv([f'crm.lead,email,{self.lead.email},Alaoui'])
+        auth(self.com1).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(
+            FavoriUtilisateur.objects.filter(
+                owner=self.com1, content_type=ct, object_id=self.lead.pk).count(),
+            1)
 
 
 class UxParametresApiTests(TestCase):

@@ -34,6 +34,20 @@ const uxviewsApi = {
   deleteFavori: (id) => api.delete(`/uxviews/favoris/${id}/`),
   // NTUX21 — réordonnancement drag-and-drop : `ordre` = position cible (0 = tête).
   reordonnerFavori: (id, ordre) => api.post(`/uxviews/favoris/${id}/reordonner/`, { ordre }),
+  // NTUX35 — export/import CSV des favoris à la reprise de poste (démission,
+  // changement de portefeuille) : résolution par IDENTIFIANT MÉTIER (ex. la
+  // référence d'un devis), jamais par `object_id` brut (diffère d'un
+  // environnement à l'autre). L'import renvoie `{importes, non_resolues}` —
+  // les lignes non résolues sont ignorées silencieusement côté serveur, ce
+  // compte est le seul signal.
+  exportFavorisCsv: () => api.get('/uxviews/favoris/export-csv/', { responseType: 'blob' }),
+  importFavoris: (file) => {
+    const form = new FormData()
+    form.append('fichier', file)
+    return api.post('/uxviews/favoris/importer/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }
 
 export default uxviewsApi

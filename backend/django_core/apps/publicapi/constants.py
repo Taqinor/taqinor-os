@@ -46,6 +46,16 @@ SCOPE_READ_EVENTS = 'read:events'
 # ce sont les chiffres que le client signe, pas la marge de l'entreprise.
 SCOPE_READ_BTP = 'read:btp'
 
+# NTUX33 — favoris épinglés (apps.uxviews.FavoriUtilisateur, NTUX12) et vues
+# sauvegardées (apps.uxviews.SavedView, NTUX1) en LECTURE SEULE, pour une
+# intégration interne (portail interne, dashboard BI tiers) qui a le
+# consentement d'un utilisateur (voir `apps/publicapi/public_uxviews_views.py`
+# — `?owner=<id>` est le proxy de ce consentement, une clé d'API n'ayant pas
+# de notion de session). Un favori est STRICTEMENT personnel (NTUX12) : ce
+# scope n'ouvre JAMAIS la lecture d'un favori sans `?owner=` explicite.
+SCOPE_READ_FAVORIS = 'read:favoris'
+SCOPE_READ_VUES = 'read:vues'
+
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
 # viennent de STAGES.py (jamais hardcodés).
@@ -73,6 +83,10 @@ SCOPE_CHOICES = [
      "Lire le flux d'évènements (limité aux familles déjà autorisées)"),
     (SCOPE_READ_BTP,
      'Lire le suivi de chantier BTP (réserves, RFI, visas, décomptes)'),
+    (SCOPE_READ_FAVORIS,
+     "Lire les favoris épinglés d'un utilisateur consentant (?owner=)"),
+    (SCOPE_READ_VUES,
+     "Lire les vues sauvegardées d'équipe, ou d'un utilisateur consentant (?owner=)"),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
     (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),
@@ -129,6 +143,12 @@ EVENT_BTP_RESERVE_LEVEE = 'reserve.levee'
 EVENT_BTP_RFI_REPONDU = 'rfi.repondu'
 EVENT_BTP_VISA_APPROUVE = 'visa.approuve'
 EVENT_BTP_DGD_FINALISE = 'dgd.finalise'
+# NTUX32 — évènements des objets UX (apps.uxviews / apps.trash), consommés
+# depuis `core.events` par `apps/publicapi/uxviews_event_receivers.py` (jamais
+# un import direct `uxviews`/`trash` -> `publicapi`). Clés SOULIGNÉES (pas
+# pointées) : littéralement celles nommées par le plan NTUX32.
+EVENT_SAVED_VIEW_SHARED = 'saved_view_shared'
+EVENT_RECORD_RESTORED = 'record_restored'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -153,6 +173,8 @@ EVENT_CHOICES = [
     (EVENT_BTP_RFI_REPONDU, 'BTP — RFI répondu'),
     (EVENT_BTP_VISA_APPROUVE, 'BTP — visa approuvé'),
     (EVENT_BTP_DGD_FINALISE, 'BTP — décompte général finalisé'),
+    (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
+    (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

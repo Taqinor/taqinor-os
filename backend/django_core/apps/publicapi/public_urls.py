@@ -39,6 +39,7 @@ from .public_btp_views import (
     PublicDecompteGeneralViewSet, PublicRFIViewSet,
     PublicReserveChantierViewSet, PublicVisaDocumentViewSet,
 )
+from .public_uxviews_views import PublicFavoriViewSet, PublicSavedViewViewSet
 
 router = DefaultRouter()
 router.register(r'leads', PublicLeadViewSet, basename='public-lead')
@@ -71,6 +72,13 @@ router.register(
 router.register(
     r'btp/decomptes-generaux', PublicDecompteGeneralViewSet,
     basename='public-btp-dgd')
+# NTUX33 — favoris épinglés + vues sauvegardées (apps.uxviews), scopes
+# `read:favoris`/`read:vues`. Racine des ressources historiques (comme
+# leads/devis/…) : pas de sous-préfixe dédié, ce sont des ressources
+# transverses au même titre.
+router.register(r'favoris', PublicFavoriViewSet, basename='public-favori')
+router.register(
+    r'saved-views', PublicSavedViewViewSet, basename='public-saved-view')
 
 urlpatterns = [
     # XPLT5 — écriture (scopes leads:write / activities:write), distincte du

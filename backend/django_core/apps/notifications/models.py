@@ -285,6 +285,13 @@ class EventType(models.TextChoices):
     # corbeille transverse, NTUX29). Jamais de suppression automatique du favori.
     UXVIEWS_FAVORIS_OBSOLETES = (
         'uxviews_favoris_obsoletes', 'Favoris pointant vers des éléments supprimés')
+    # NTUX39 — une vue sauvegardée PARTAGÉE À L'ÉQUIPE (`uxviews.SavedView`,
+    # NTUX1) est modifiée par son propriétaire (filtres/colonnes) : notifie
+    # les utilisateurs qui l'ont consultée récemment (`uxviews.EcranRecent`,
+    # substitut serveur de NTUX11 — le widget « Récents » vit en localStorage,
+    # jamais transmis au serveur), jamais toute la société.
+    UXVIEWS_VUE_EQUIPE_MODIFIEE = (
+        'uxviews_vue_equipe_modifiee', "Vue d'équipe modifiée")
     # NTLOG38 — rappel J-3 (beat quotidien) sur une `transport.EtapeTransport`
     # dont `date_prevue` est dépassée et `statut_etape` != fait : notifie le
     # responsable transport (motif `apps.sav.tasks._responsables`), une
