@@ -8,6 +8,7 @@ from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -795,6 +796,46 @@ class LotViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
             except services.TransitionInvalide as exc:
                 raise ValidationError({'statut': str(exc)})
         super().perform_update(serializer)
+
+    @action(detail=False, methods=['post'], url_path='import',
+            permission_classes=[ScopedPermission],
+            parser_classes=[MultiPartParser])
+    def importer(self, request):
+        """NTCON29 — import CSV/XLSX en masse des lots d'UN chantier.
+
+        Corps ``multipart`` : ``file`` (CSV ou XLSX) + ``chantier`` (id).
+        Réutilise ``apps.dataimport`` (parseur + journal ``ImportJob``) —
+        jamais un 2ᵉ mécanisme d'import.
+
+        FORME DÉCLARÉE (``contract_samples/lots_import.json``) :
+        ``{job_id, total_lignes, crees, erreurs, lignes: [{ligne, motif}]}``.
+        ``lignes`` ne liste QUE les lignes refusées, avec un motif qui NOMME la
+        cause (sous-traitant introuvable, dates incohérentes…) : une ligne
+        invalide ne bloque JAMAIS les lignes valides.
+        """
+        fichier = request.FILES.get('file')
+        if fichier is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni (champ « file »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        chantier_id = request.data.get('chantier')
+        if not chantier_id:
+            return Response(
+                {'detail': 'Le chantier de destination est requis '
+                           '(champ « chantier »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id,
+            company=request.user.company)
+        try:
+            resultat = services.importer_lots(
+                company=request.user.company, chantier=chantier,
+                fichier_octets=fichier.read(), nom_fichier=fichier.name,
+                user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get', 'post'],
             permission_classes=[ScopedPermission])

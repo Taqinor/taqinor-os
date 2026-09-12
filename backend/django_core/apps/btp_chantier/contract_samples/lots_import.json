@@ -1,0 +1,23 @@
+{
+  "endpoint": "POST /api/django/btp-chantier/lots/import/",
+  "pourquoi": "NTCON29 — import CSV/XLSX en masse des lots et jalons contractuels d'un chantier, en réutilisant `apps.dataimport` (parseur `parsing.iter_rows` + journal `ImportJob`/`ImportJobRow`) plutôt qu'un 2e mécanisme d'import. PACT10 : la forme du rapport d'import est déclarée ICI pour que l'écran ne l'invente pas.",
+  "avertissement_forme": "Corps `multipart/form-data` : `file` (CSV ou XLSX) + `chantier` (id). `lignes` ne contient QUE les lignes REFUSÉES — une ligne invalide ne bloque jamais les lignes valides (50 lots dont 3 erronés = 47 créés + 3 motifs). Chaque `motif` NOMME la cause (sous-traitant introuvable, dates incohérentes, montant illisible, lot déjà présent) : jamais un « non enregistré » générique. `job_id` pointe l'`ImportJob` correspondant, consultable dans l'historique d'import commun à tout l'ERP.",
+  "exemple": {
+    "job_id": 118,
+    "total_lignes": 50,
+    "crees": 47,
+    "erreurs": 3,
+    "lignes": [
+      { "ligne": 7, "motif": "sous-traitant introuvable : « SARL BATIX » (créez-le au référentiel fournisseurs avant l'import)" },
+      { "ligne": 19, "motif": "dates incohérentes : fin prévue (2026-03-01) avant début prévu (2026-05-10)" },
+      { "ligne": 33, "motif": "nom du lot manquant" }
+    ]
+  },
+  "exemple_vide": {
+    "job_id": 119,
+    "total_lignes": 0,
+    "crees": 0,
+    "erreurs": 0,
+    "lignes": []
+  }
+}

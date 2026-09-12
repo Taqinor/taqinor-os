@@ -10,8 +10,9 @@ modèle d'une autre app.
 from __future__ import annotations
 
 import logging
+import re
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -1541,3 +1542,279 @@ def recalculer_penalites_lots(*, company=None, chantier=None,
                     penalite_calculee_cache=charge,
                     penalite_calculee_le=horodatage)
     return {'chantiers': nb_chantiers, 'lots': nb_lots}
+
+
+# ── NTCON29 — import CSV/XLSX des lots et jalons contractuels ───────────────
+
+#: En-têtes acceptés → champ ``Lot``. Plusieurs libellés par champ parce
+#: qu'un fichier réel vient d'un planning Excel, pas d'un gabarit ERP.
+COLONNES_LOT = {
+    'nom': ('nom', 'lot', 'nom du lot', 'designation', 'désignation',
+            'libelle', 'libellé'),
+    'sous_traitant': ('entreprise', 'sous-traitant', 'sous_traitant',
+                      'sous traitant', 'fournisseur', 'reference entreprise',
+                      'référence entreprise'),
+    'date_debut_prevue': ('date debut', 'date début', 'debut prevu',
+                          'début prévu', 'date_debut_prevue', 'debut'),
+    'date_fin_prevue': ('date fin', 'fin prevue', 'fin prévue',
+                        'date_fin_prevue', 'fin'),
+    'jalon_contractuel': ('jalon', 'jalon contractuel', 'jalon_contractuel',
+                          'contractuel'),
+    'montant_ht': ('montant', 'montant ht', 'montant_ht'),
+    'taux_penalite_retard_pmil': (
+        'taux penalite', 'taux pénalité', 'taux_penalite_retard_pmil',
+        'penalite', 'pénalité', 'taux penalite retard'),
+    'plafond_penalite_pct': ('plafond', 'plafond penalite', 'plafond pénalité',
+                             'plafond_penalite_pct'),
+    'ordre': ('ordre', 'rang', 'n°', 'numero', 'numéro'),
+}
+
+_ESPACES = re.compile(r'\s+')
+
+_VRAI_IMPORT = {'1', 'oui', 'o', 'true', 'vrai', 'yes', 'y', 'x'}
+_FAUX_IMPORT = {'', '0', 'non', 'n', 'false', 'faux', 'no'}
+
+
+def _normaliser_entete(entete):
+    """Minuscule, espaces normalises (un fichier Excel reel porte des
+    espaces insecables et des doubles espaces dans ses en-tetes)."""
+    texte = (entete or '').replace('\xa0', ' ')
+    return _ESPACES.sub(' ', texte).strip().lower()
+
+
+def _index_colonnes(headers):
+    """En-tête brut du fichier → nom de champ ``Lot`` (dict)."""
+    connus = {}
+    for champ, alias in COLONNES_LOT.items():
+        for libelle in alias:
+            connus[libelle] = champ
+    index = {}
+    for entete in headers or []:
+        champ = connus.get(_normaliser_entete(entete))
+        if champ and champ not in index.values():
+            index[entete] = champ
+    return index
+
+
+def _valeur_date(brut):
+    """Date ISO ou jj/mm/aaaa → ``date``. Lève ``ValueError`` si illisible."""
+    from datetime import date, datetime
+
+    if brut in (None, ''):
+        return None
+    if isinstance(brut, datetime):
+        return brut.date()
+    if isinstance(brut, date):
+        return brut
+    texte = str(brut).strip()
+    for motif in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%d.%m.%Y'):
+        try:
+            return datetime.strptime(texte, motif).date()
+        except ValueError:
+            continue
+    raise ValueError(f'date illisible : « {texte} » (attendu jj/mm/aaaa)')
+
+
+def _valeur_decimale(brut, libelle):
+    """Nombre décimal tolérant (virgule, espaces, séparateur de milliers)."""
+    from decimal import Decimal, InvalidOperation
+
+    if brut in (None, ''):
+        return None
+    texte = (str(brut).replace(' ', '').replace(' ', '')
+             .replace(',', '.'))
+    try:
+        return Decimal(texte)
+    except InvalidOperation:
+        raise ValueError(f'{libelle} illisible : « {brut} »')
+
+
+def _valeur_booleenne(brut):
+    texte = str(brut if brut is not None else '').strip().lower()
+    if texte in _VRAI_IMPORT:
+        return True
+    if texte in _FAUX_IMPORT:
+        return False
+    raise ValueError(f'jalon contractuel illisible : « {brut} » (oui/non)')
+
+
+def _resoudre_sous_traitant(reference, company):
+    """``stock.Fournisseur`` de la société par référence/nom — LECTURE
+    cross-app par ``django.apps.get_model`` (jamais un import de ``stock.
+    models``, jamais une écriture). ``None`` si la cellule est vide ;
+    ``ValueError`` si la référence ne résout pas."""
+    from django.apps import apps as django_apps
+
+    texte = (str(reference) if reference is not None else '').strip()
+    if not texte:
+        return None
+    Fournisseur = django_apps.get_model('stock', 'Fournisseur')
+    qs = Fournisseur.objects.filter(company=company)
+    trouve = qs.filter(nom__iexact=texte).first()
+    if trouve is None and hasattr(Fournisseur, 'code'):
+        trouve = qs.filter(code__iexact=texte).first()
+    if trouve is None:
+        trouve = qs.filter(nom__icontains=texte).first()
+    if trouve is None:
+        raise ValueError(
+            f'sous-traitant introuvable : « {texte} » (créez-le au '
+            'référentiel fournisseurs avant l\'import)')
+    return trouve
+
+
+def importer_lots(*, company, chantier, fichier_octets, nom_fichier,
+                  user=None):
+    """NTCON29 — importe en masse les lots d'un chantier depuis un CSV/XLSX.
+
+    Réutilise TEL QUEL le mécanisme d'import du dépôt (``apps.dataimport`` :
+    ``parsing.iter_rows`` pour la lecture, ``services.enregistrer_job`` pour le
+    journal ``ImportJob``/``ImportJobRow``) — jamais un 2ᵉ mécanisme d'import.
+
+    UNE LIGNE INVALIDE NE BLOQUE PAS LES AUTRES : chaque ligne est validée et
+    écrite indépendamment ; l'échec d'une ligne produit une ``ImportJobRow``
+    en erreur avec un motif PRÉCIS (sous-traitant introuvable, dates
+    incohérentes, montant illisible) et le lot suivant est traité.
+
+    Renvoie ``{'job_id', 'total_lignes', 'crees', 'erreurs', 'lignes': [...]}``
+    — ``lignes`` ne contient QUE les lignes en erreur (rapport à l'écran).
+    """
+    from apps.dataimport.models import ImportJobRow
+    from apps.dataimport.parsing import iter_rows
+    from apps.dataimport.services import enregistrer_job
+
+    from .models import Lot
+
+    try:
+        headers, lignes_brutes = iter_rows(fichier_octets, nom_fichier)
+    except Exception as exc:  # noqa: BLE001 — fichier corrompu/illisible
+        raise ValueError(
+            f'Fichier illisible ({nom_fichier}) : {exc}') from exc
+
+    index = _index_colonnes(headers)
+    if 'nom' not in index.values():
+        raise ValueError(
+            "Colonne « nom du lot » introuvable. En-têtes acceptés : "
+            + ', '.join(COLONNES_LOT['nom']))
+
+    journal = []
+    crees = 0
+    for rang, brute in enumerate(lignes_brutes, start=2):  # 1 = l'en-tête
+        donnees = {champ: brute.get(entete)
+                   for entete, champ in index.items()}
+        try:
+            champs = _valider_ligne_lot(donnees, company)
+        except ValueError as exc:
+            journal.append({
+                'ligne': rang, 'statut': ImportJobRow.Statut.ERREUR,
+                'motif': str(exc)[:255], 'donnees': _jsonifiable(brute)})
+            continue
+        try:
+            # SAVEPOINT par ligne : une violation d'unicité (lot déjà présent
+            # sur ce chantier) salit la transaction si elle n'est pas isolée —
+            # la ligne suivante échouerait alors sans raison propre.
+            with transaction.atomic():
+                lot = Lot.objects.create(
+                    company=company, chantier=chantier, **champs)
+        except IntegrityError:
+            journal.append({
+                'ligne': rang, 'statut': ImportJobRow.Statut.ERREUR,
+                'motif': (f'lot « {champs["nom"]} » déjà présent sur ce '
+                          'chantier')[:255],
+                'donnees': _jsonifiable(brute)})
+            continue
+        crees += 1
+        journal.append({
+            'ligne': rang, 'statut': ImportJobRow.Statut.OK,
+            'donnees': _jsonifiable(brute),
+            'cible': 'btp_chantier.Lot', 'cible_id': lot.pk})
+
+    job = enregistrer_job(
+        company, 'btp_lots', nom_fichier, user=user, mode='creer',
+        total_lignes=len(lignes_brutes), created=crees, lignes=journal)
+    erreurs = [ligne for ligne in journal
+               if ligne['statut'] == ImportJobRow.Statut.ERREUR]
+    return {
+        'job_id': job.pk,
+        'total_lignes': len(lignes_brutes),
+        'crees': crees,
+        'erreurs': len(erreurs),
+        'lignes': [{'ligne': e['ligne'], 'motif': e['motif']}
+                   for e in erreurs],
+    }
+
+
+def _jsonifiable(brute):
+    """Ligne brute stockable en JSON (openpyxl rend des ``datetime``)."""
+    from datetime import date, datetime
+    from decimal import Decimal
+
+    sortie = {}
+    for cle, valeur in (brute or {}).items():
+        if isinstance(valeur, (datetime, date)):
+            sortie[str(cle)] = valeur.isoformat()
+        elif isinstance(valeur, Decimal):
+            sortie[str(cle)] = str(valeur)
+        else:
+            sortie[str(cle)] = valeur
+    return sortie
+
+
+def _valider_ligne_lot(donnees, company):
+    """Une ligne brute → kwargs de ``Lot``. ``ValueError`` NOMME le champ
+    fautif (règle fondateur : jamais un « non enregistré » générique)."""
+    nom = (str(donnees.get('nom') or '')).strip()
+    if not nom:
+        raise ValueError('nom du lot manquant')
+
+    champs = {'nom': nom[:120]}
+
+    sous_traitant = _resoudre_sous_traitant(
+        donnees.get('sous_traitant'), company)
+    if sous_traitant is not None:
+        champs['sous_traitant'] = sous_traitant
+        champs['interne'] = False
+
+    debut = _valeur_date(donnees.get('date_debut_prevue'))
+    fin = _valeur_date(donnees.get('date_fin_prevue'))
+    if debut and fin and fin < debut:
+        raise ValueError(
+            f'dates incohérentes : fin prévue ({fin}) avant début prévu '
+            f'({debut})')
+    if debut:
+        champs['date_debut_prevue'] = debut
+    if fin:
+        champs['date_fin_prevue'] = fin
+
+    if donnees.get('jalon_contractuel') is not None:
+        champs['jalon_contractuel'] = _valeur_booleenne(
+            donnees['jalon_contractuel'])
+
+    montant = _valeur_decimale(donnees.get('montant_ht'), 'montant HT')
+    if montant is not None:
+        if montant < 0:
+            raise ValueError(f'montant HT négatif : {montant}')
+        champs['montant_ht'] = montant
+
+    taux = _valeur_decimale(
+        donnees.get('taux_penalite_retard_pmil'), 'taux de pénalité')
+    if taux is not None:
+        if taux < 0:
+            raise ValueError(f'taux de pénalité négatif : {taux}')
+        champs['taux_penalite_retard_pmil'] = taux
+
+    plafond = _valeur_decimale(
+        donnees.get('plafond_penalite_pct'), 'plafond de pénalité')
+    if plafond is not None:
+        if not 0 <= plafond <= 100:
+            raise ValueError(
+                f'plafond de pénalité hors bornes : {plafond} % '
+                '(attendu entre 0 et 100)')
+        champs['plafond_penalite_pct'] = plafond
+
+    ordre = _valeur_decimale(donnees.get('ordre'), 'ordre')
+    if ordre is not None:
+        if ordre < 0:
+            raise ValueError(f'ordre négatif : {ordre}')
+        champs['ordre'] = int(ordre)
+
+    return champs
