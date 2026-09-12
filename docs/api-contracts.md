@@ -280,8 +280,6 @@
     detail:texte, ics_url:inconnu, message:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: convertirLeadEnClient -> /api/django/crm/leads/<>/convertir-client
     client:inconnu, detail:texte, mode:inconnu
-- frontend/src/api/crmApi.js :: createVisite -> /api/django/crm/visites
-    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
 - frontend/src/api/crmApi.js :: deleteLead -> /api/django/crm/leads/<>
     corbeille_id:inconnu, detail:texte, id:inconnu
 - frontend/src/api/crmApi.js :: getClientConsolidation -> /api/django/crm/clients/<>/consolidation
@@ -312,8 +310,6 @@
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getSlaBreach -> /api/django/crm/leads/sla-breach
     count:nombre, results:inconnu, sla_hours:inconnu
-- frontend/src/api/crmApi.js :: getVisite -> /api/django/crm/visites/<>
-    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
 - frontend/src/api/crmApi.js :: mintQuestionnaireLien -> /api/django/crm/leads/<>/questionnaire-lien
     detail:texte, expires_at:texte, manquantes:inconnu, questions:inconnu, token:inconnu, url:inconnu, url_interne:inconnu
 - frontend/src/api/crmApi.js :: parrainageStats -> /api/django/crm/parrainages/stats
