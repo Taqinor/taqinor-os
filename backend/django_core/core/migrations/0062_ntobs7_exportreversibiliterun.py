@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
                 ('taille_octets', models.BigIntegerField(blank=True, null=True, verbose_name='Taille (octets)')),
                 ('token', models.CharField(blank=True, default='', max_length=64, verbose_name='Jeton de téléchargement')),
                 ('expire_le', models.DateTimeField(blank=True, null=True, verbose_name='Expire le')),
-                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='core_exportreversibiliterun_set', to='authentication.company', verbose_name='Société')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
                 ('demande_par', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL, verbose_name='Demandé par')),
             ],
             options={

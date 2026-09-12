@@ -12,6 +12,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('notifications', '0055_eventtype_maintenance_window_announced'),
+        ('notifications', '0055_merge_20260912_1001'),
     ]
 
     operations = [

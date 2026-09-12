@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0058_ntext20_21_ui_extensions'),
+        ('core', '0064_ntobs10_trustcenterentry'),
     ]
 
     operations = [

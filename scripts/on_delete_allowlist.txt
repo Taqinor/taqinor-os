@@ -1346,6 +1346,11 @@ backend/django_core/apps/sav/models.py::TicketSatisfaction.company
 backend/django_core/apps/sav/models.py::TicketSatisfaction.ticket
 backend/django_core/apps/sav/models.py::WarrantyClaim.company
 backend/django_core/apps/sav/models.py::WorksheetMaintenanceModele.company
+# --- backend/django_core/apps/statuspage/models.py
+backend/django_core/apps/statuspage/models.py::ComponentStatus.company
+backend/django_core/apps/statuspage/models.py::IncidentPublic.company
+backend/django_core/apps/statuspage/models.py::IncidentUpdate.incident
+backend/django_core/apps/statuspage/models.py::UptimeDayBucket.company
 # --- backend/django_core/apps/stock/models.py
 backend/django_core/apps/stock/models.py::AchatsParametres.company
 backend/django_core/apps/stock/models.py::AcompteFournisseur.company

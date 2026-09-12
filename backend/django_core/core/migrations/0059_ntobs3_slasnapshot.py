@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ('uptime_pct', models.DecimalField(decimal_places=4, max_digits=7, verbose_name='Disponibilité (%)')),
                 ('latence_p95_ms', models.PositiveIntegerField(blank=True, help_text='None = aucune mesure disponible pour cette période (jamais un chiffre inventé).', null=True, verbose_name='Latence P95 (ms)')),
                 ('genere_le', models.DateTimeField(default=timezone.now, verbose_name='Généré le')),
-                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='core_slasnapshot_set', to='authentication.company', verbose_name='Société')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
             ],
             options={
                 'verbose_name': 'Rapport SLA mensuel',
