@@ -1324,6 +1324,8 @@ CELERY_TASK_ROUTES = {
     # 06h45). Toute tâche du beat_schedule DOIT être routée explicitement vers
     # `scheduled` (garde core/tests/test_celery_task_routes.py).
     'paie.rappeler_echeances_declaratives': {'queue': 'scheduled'},
+    # NTPAY26 — recalcul des cumuls annuels en dérive (beat mensuel).
+    'paie.recalculer_cumuls_annuels': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en

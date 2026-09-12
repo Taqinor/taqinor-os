@@ -1204,6 +1204,13 @@ app.conf.beat_schedule = {
         'task': 'paie.rappeler_echeances_declaratives',
         'schedule': crontab(hour=6, minute=45),
     },
+    # NTPAY26 — recalcul des cumuls annuels EN DÉRIVE, le 2 du mois la nuit
+    # (J+1 de la clôture mensuelle : les bulletins de la veille sont figés).
+    # Ne touche QUE les cumuls divergents, avec une ligne d'ajustement tracée.
+    'paie-recalculer-cumuls-annuels': {
+        'task': 'paie.recalculer_cumuls_annuels',
+        'schedule': crontab(day_of_month=2, hour=2, minute=20),
+    },
 }
 
 

@@ -142,6 +142,117 @@ def rappeler_echeances_declaratives_company(company, *, today=None):
     return notifies
 
 
+#: Champ de chatter portant la trace d'un ajustement de cumul annuel.
+CHAMP_AJUSTEMENT_CUMUL = 'ajustement_cumul_annuel'
+
+
+def _ecarts_cumul(profil, annee):
+    """Écarts entre le ``CumulAnnuel`` stocké et la somme RÉELLE des bulletins.
+
+    Calcul PUR : aucune écriture. Renvoie ``(cumul, {champ: (ancien, reel)})``
+    — le dict est vide quand le cumul est cohérent. ``cumul`` vaut ``None``
+    quand aucun cumul n'existe encore pour l'année (rien à corriger : c'est
+    ``recalculer_cumul_annuel`` qui le créera, jamais une dérive).
+    """
+    from decimal import Decimal
+
+    from .models import BulletinPaie, CumulAnnuel
+    from .services import _CUMUL_CHAMPS, _q
+
+    cumul = CumulAnnuel.objects.filter(
+        company=profil.company, profil=profil, annee=annee).first()
+    if cumul is None:
+        return None, {}
+
+    reels = {champ: Decimal('0') for champ in _CUMUL_CHAMPS}
+    nombre = 0
+    for bulletin in BulletinPaie.objects.filter(
+            company=profil.company, profil=profil, periode__annee=annee,
+            statut=BulletinPaie.STATUT_VALIDE):
+        nombre += 1
+        for champ in _CUMUL_CHAMPS:
+            reels[champ] += Decimal(getattr(bulletin, champ) or 0)
+
+    ecarts = {}
+    for champ in _CUMUL_CHAMPS:
+        ancien = Decimal(getattr(cumul, champ) or 0)
+        reel = _q(reels[champ])
+        if ancien != reel:
+            ecarts[champ] = (ancien, reel)
+    if cumul.nombre_bulletins != nombre:
+        ecarts['nombre_bulletins'] = (cumul.nombre_bulletins, nombre)
+    return cumul, ecarts
+
+
+def recalculer_cumuls_annuels_company(company, *, annee=None, today=None):
+    """Corrige les ``CumulAnnuel`` EN DÉRIVE d'une société (NTPAY26).
+
+    Un cumul peut diverger SILENCIEUSEMENT de la réalité : un bulletin validé
+    après coup, un rappel rétroactif (NTPAY1) non répercuté, un import.
+    Ce balayage recompare chaque cumul de l'année à la somme réelle des
+    bulletins VALIDÉS et, EN CAS D'ÉCART SEULEMENT, le recalcule — en
+    déposant une LIGNE D'AJUSTEMENT horodatée et motivée sur le chatter
+    ``records`` du cumul (jamais une mutation silencieuse).
+
+    Un cumul déjà cohérent n'est PAS touché : ni écriture, ni ``date_calcul``
+    rafraîchie, ni ligne de trace. ``annee``/``today`` sont injectables.
+    Renvoie la liste des ``(cumul, ecarts)`` corrigés.
+    """
+    from django.utils import timezone as dj_timezone
+
+    from apps.records import services as records_services
+
+    from .models import ProfilPaie
+    from .services import recalculer_cumul_annuel
+
+    if today is None:
+        today = dj_timezone.localdate()
+    if annee is None:
+        annee = today.year
+
+    corriges = []
+    for profil in ProfilPaie.objects.filter(company=company, actif=True):
+        cumul, ecarts = _ecarts_cumul(profil, annee)
+        if cumul is None or not ecarts:
+            continue
+        detail = ' ; '.join(
+            f'{champ} {ancien} → {reel}'
+            for champ, (ancien, reel) in sorted(ecarts.items()))
+        recalculer_cumul_annuel(profil, annee)
+        records_services.log_activity(
+            cumul, 'modification', company=company,
+            field=CHAMP_AJUSTEMENT_CUMUL,
+            field_label=f'Ajustement du cumul {annee}',
+            old_value=detail,
+            new_value=f'Recalculé le {today.isoformat()}',
+            body=(
+                f'Cumul annuel {annee} désynchronisé de la somme des '
+                f'bulletins validés — recalculé. Écarts : {detail}.'))
+        corriges.append((cumul, ecarts))
+    return corriges
+
+
+@shared_task(name='paie.recalculer_cumuls_annuels')
+def recalculer_cumuls_annuels():
+    """NTPAY26 — recalcul mensuel des cumuls annuels en dérive.
+
+    Planifié à J+1 de la clôture mensuelle (le 2 du mois, la nuit) : la
+    clôture de la veille a figé ses bulletins, le cumul peut donc être
+    confronté à la réalité.
+    """
+    from authentication.selectors import active_companies
+
+    total = 0
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        try:
+            total += len(recalculer_cumuls_annuels_company(company))
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+            logger.warning(
+                'paie.recalculer_cumuls_annuels : échec pour la société #%s',
+                getattr(company, 'pk', '?'), exc_info=True)
+    return total
+
+
 @shared_task(name='paie.rappeler_echeances_declaratives')
 def rappeler_echeances_declaratives():
     """NTPAY25 — balayage quotidien des échéances déclaratives à venir.
