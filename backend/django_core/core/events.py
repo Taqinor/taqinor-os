@@ -1054,3 +1054,17 @@ scm_cycle_sop_cloture = django.dispatch.Signal()
 # ``[ ]``). Sans fonctionnalité source, aucun signal n'est déclaré ici : un
 # signal jamais émis serait un seam creux, pas un contrat. Un futur task
 # scorant les fournisseurs pourra l'ajouter ici sans rien casser.
+
+# NTJUR26 — Émis EXACTEMENT à la clôture d'un ``juridique.DossierJuridique``
+# (``apps.juridique.services.clore_dossier``, transition vers l'un des quatre
+# statuts ``clos_*``). L'abonné DANS ce dépôt est ``apps/juridique/
+# receivers.py`` : il lève la bannière « reprendre la provision » (NTJUR15) —
+# une PROPOSITION, jamais une écriture. ``apps.compta`` peut s'y abonner de la
+# même façon pour proposer la reprise depuis son propre écran, sans que
+# ``juridique`` l'importe.
+# GARANTIE : cet événement ne poste JAMAIS d'écriture comptable — la reprise
+# reste gardée par une confirmation explicite (patron « propose → confirme »).
+# Arguments : ``dossier`` (l'instance close), ``company``, ``resultat`` (le
+# statut ``clos_*`` atteint), ``montant_final`` (Decimal — le montant en jeu
+# arrêté), ``user`` (peut être ``None``).
+dossier_juridique_clos = django.dispatch.Signal()

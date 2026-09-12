@@ -207,17 +207,32 @@ def clore_dossier(dossier, statut_final, *, user=None, motif=''):
             "Statut de clôture invalide : choisissez gagné, perdu, "
             "transaction ou désistement.")
     dossier = changer_statut(dossier, statut_final, user=user, motif=motif)
-    if dossier.provision_comptable_id and not dossier.reprise_provision_traitee:
-        dossier.reprise_provision_proposee = True
-        dossier.save(update_fields=['reprise_provision_proposee',
-                                    'updated_at'])
+    # NTJUR26 — la bannière n'est plus levée en dur ici : la clôture ÉMET un
+    # événement, et l'abonné (``apps/juridique/receivers.py``) la lève. Le
+    # seam est ainsi ouvert à ``apps.compta`` sans que ``juridique`` l'importe.
     emettre_dossier_clos(dossier, user=user)
     return dossier
 
 
 def emettre_dossier_clos(dossier, *, user=None):
-    """Point d'émission de l'événement de clôture (branché par NTJUR26)."""
-    return None
+    """Émet ``core.events.dossier_juridique_clos`` (NTJUR26).
+
+    Bus de signaux SYNCHRONE : les abonnés s'exécutent dans la transaction de
+    la clôture, donc l'instance rendue à l'appelant porte déjà l'effet de la
+    bannière. Aucun abonné ne poste d'écriture comptable — ils ne peuvent que
+    PROPOSER (patron « propose → confirme »).
+    """
+    from core import events
+
+    events.dossier_juridique_clos.send(
+        sender=dossier.__class__,
+        dossier=dossier,
+        company=dossier.company,
+        resultat=dossier.statut,
+        montant_final=dossier.montant_en_jeu,
+        user=user,
+    )
+    return dossier
 
 
 # ───────────────────────────────────────────────────────────────────────────
