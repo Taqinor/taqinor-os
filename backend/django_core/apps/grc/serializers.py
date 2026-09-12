@@ -6,8 +6,8 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    JournalDestruction, LegalHold, PolitiqueRetentionObjet, RisqueEntreprise,
-    ViolationDonnees,
+    JournalDestruction, LegalHold, PlanTraitementRisque,
+    PolitiqueRetentionObjet, RisqueEntreprise, ViolationDonnees,
 )
 
 
@@ -211,3 +211,47 @@ class RisqueEntrepriseSerializer(serializers.ModelSerializer):
             if champ in attrs:
                 self._borner(champ, attrs[champ])
         return attrs
+
+
+class PlanTraitementRisqueSerializer(serializers.ModelSerializer):
+    """NTGRC14 — action de traitement d'un risque + son suivi.
+
+    Le risque lié est restreint à la société de l'appelant : un plan ne peut
+    jamais pointer le risque d'une autre société (défense en profondeur
+    derrière le scoping du viewset).
+    """
+
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    risque_reference = serializers.CharField(
+        source='risque.reference', read_only=True)
+    en_retard = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlanTraitementRisque
+        fields = [
+            'id', 'risque', 'risque_reference', 'action', 'responsable',
+            'echeance', 'statut', 'statut_libelle', 'cout_estime',
+            'avancement_pct', 'en_retard', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_en_retard(self, obj):
+        return obj.est_en_retard()
+
+    def get_fields(self):
+        fields = super().get_fields()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if company is not None and 'risque' in fields:
+            fields['risque'].queryset = RisqueEntreprise.objects.filter(
+                company=company)
+        return fields
+
+    def validate_avancement_pct(self, valeur):
+        if valeur is None:
+            return 0
+        if not (0 <= int(valeur) <= 100):
+            raise serializers.ValidationError(
+                "L'avancement doit valoir entre 0 et 100 %.")
+        return valeur

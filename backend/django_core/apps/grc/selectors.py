@@ -183,6 +183,25 @@ def matrice_risques(company, residuelle=False):
     return {'cases': cases, 'total': sum(c['nombre'] for c in cases)}
 
 
+def plans_en_retard(company, aujourdhui=None):
+    """NTGRC14 — plans de traitement dont l'échéance est passée et non faits.
+
+    Le retard est calculé sur la DATE, pas lu du champ ``statut`` : un statut
+    se périme dès que personne ne le met à jour, et le tableau de bord du
+    risque afficherait alors « tout va bien » sur des actions abandonnées.
+    """
+    from django.utils import timezone
+
+    from .models import PlanTraitementRisque
+
+    jour = aujourdhui or timezone.now().date()
+    return (PlanTraitementRisque.objects
+            .filter(company=company, echeance__lt=jour)
+            .exclude(statut=PlanTraitementRisque.STATUT_FAIT)
+            .select_related('risque')
+            .order_by('echeance', 'id'))
+
+
 def violations_echeance_72h_depassee(company, now=None):
     """NTGRC6 — violations dont le délai légal de notification est DÉPASSÉ.
 

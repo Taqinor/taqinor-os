@@ -11,8 +11,8 @@ from rest_framework.routers import DefaultRouter
 from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
     JournalDestructionViewSet, LegalHoldViewSet,
-    PolitiqueRetentionObjetViewSet, RisqueEntrepriseViewSet,
-    ViolationDonneesViewSet,
+    PlanTraitementRisqueViewSet, PolitiqueRetentionObjetViewSet,
+    RisqueEntrepriseViewSet, ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -31,6 +31,9 @@ router.register(r'legal-holds', LegalHoldViewSet, basename='grc-legal-hold')
 # NTGRC13 — registre des risques d'entreprise (ERM) + matrice 5×5.
 router.register(r'risques-entreprise', RisqueEntrepriseViewSet,
                 basename='grc-risque-entreprise')
+# NTGRC14 — plans de traitement du risque + suivi des retards.
+router.register(r'plans-traitement-risque', PlanTraitementRisqueViewSet,
+                basename='grc-plan-traitement-risque')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

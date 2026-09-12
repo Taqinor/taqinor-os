@@ -524,3 +524,70 @@ class RisqueEntreprise(TenantModel):
 
     def __str__(self):
         return f'{self.reference or "RQ"} — {self.titre}'
+
+
+class PlanTraitementRisque(TenantModel):
+    """NTGRC14 — action de traitement d'un risque + son suivi.
+
+    Un registre des risques sans plans d'action est un inventaire de
+    problèmes : c'est le plan qui transforme le constat en travail assigné et
+    daté. Le retard n'est PAS lu du champ ``statut`` (qui se périme dès que
+    personne ne le met à jour) mais recalculé sur l'échéance — voir
+    ``selectors.plans_en_retard``.
+    """
+
+    STATUT_A_FAIRE = 'a_faire'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_FAIT = 'fait'
+    STATUT_EN_RETARD = 'en_retard'
+    STATUT_CHOICES = [
+        (STATUT_A_FAIRE, 'À faire'),
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_FAIT, 'Fait'),
+        (STATUT_EN_RETARD, 'En retard'),
+    ]
+
+    risque = models.ForeignKey(
+        RisqueEntreprise,
+        # on_delete: un plan de traitement n'existe que pour SON risque.
+        on_delete=models.CASCADE,
+        related_name='plans_traitement', verbose_name='Risque')
+    action = models.CharField('Action', max_length=255)
+    responsable = models.CharField(
+        'Responsable', max_length=160, blank=True, default='')
+    echeance = models.DateField('Échéance', null=True, blank=True)
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_A_FAIRE)
+    cout_estime = models.DecimalField(
+        'Coût estimé (MAD)', max_digits=12, decimal_places=2, default=0)
+    avancement_pct = models.PositiveSmallIntegerField(
+        'Avancement (%)', default=0)
+
+    class Meta:
+        verbose_name = 'Plan de traitement du risque'
+        verbose_name_plural = 'Plans de traitement du risque'
+        ordering = ['echeance', 'id']
+        indexes = [
+            models.Index(fields=['company', 'echeance'],
+                         name='grc_plan_co_echeance_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='grc_plan_co_statut_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Borne l'avancement à 0-100 (un pourcentage n'excède pas 100)."""
+        try:
+            self.avancement_pct = max(0, min(100, int(self.avancement_pct)))
+        except (TypeError, ValueError):
+            self.avancement_pct = 0
+        return super().save(*args, **kwargs)
+
+    def est_en_retard(self, aujourdhui=None):
+        """Échéance dépassée ET pas encore fait (jamais lu du statut stocké)."""
+        if self.statut == self.STATUT_FAIT or not self.echeance:
+            return False
+        return self.echeance < (aujourdhui or timezone.now().date())
+
+    def __str__(self):
+        return f'{self.action} ({self.get_statut_display()})'

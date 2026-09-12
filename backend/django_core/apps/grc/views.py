@@ -11,13 +11,13 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    JournalDestruction, LegalHold, PolitiqueRetentionObjet, RisqueEntreprise,
-    ViolationDonnees,
+    JournalDestruction, LegalHold, PlanTraitementRisque,
+    PolitiqueRetentionObjet, RisqueEntreprise, ViolationDonnees,
 )
 from .serializers import (
     JournalDestructionSerializer, LegalHoldSerializer,
-    PolitiqueRetentionObjetSerializer, RisqueEntrepriseSerializer,
-    ViolationDonneesSerializer,
+    PlanTraitementRisqueSerializer, PolitiqueRetentionObjetSerializer,
+    RisqueEntrepriseSerializer, ViolationDonneesSerializer,
 )
 
 
@@ -224,3 +224,19 @@ class RisqueEntrepriseViewSet(CompanyScopedModelViewSet):
             '1', 'true', 'True', 'oui')
         return Response(matrice_risques(request.user.company,
                                         residuelle=residuelle))
+
+
+class PlanTraitementRisqueViewSet(CompanyScopedModelViewSet):
+    """NTGRC14 — plans de traitement du risque + suivi des retards."""
+
+    queryset = PlanTraitementRisque.objects.select_related('risque').all()
+    serializer_class = PlanTraitementRisqueSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """Plans dont l'échéance est passée et qui ne sont pas faits."""
+        from .selectors import plans_en_retard
+
+        qs = plans_en_retard(request.user.company)
+        return Response({'results': self.get_serializer(qs, many=True).data})
