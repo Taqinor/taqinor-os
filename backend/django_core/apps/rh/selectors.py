@@ -3568,6 +3568,153 @@ def analytics_diversite(company, departement_id=None, *, aujourdhui=None):
     }
 
 
+#: NTHCM28 — mots-clés qui classent un ``TypeAbsence`` de la société en
+#: « maladie ». Volontairement une HEURISTIQUE sur le référentiel RÉEL de la
+#: société (``code``/``libelle``) : ce dépôt ne pose aucun type « maladie »
+#: statutaire (``seed_types_absence`` sème MAT/PAT/MAR/NAI/DEC/CIRC/AT/MAP),
+#: et inventer une catégorie que le terrain n'a pas serait pire que de lire
+#: ce qu'il a écrit. Tout le reste est compté en « congé ».
+MOTS_CLES_MALADIE = ('MAL', 'MALADIE', 'SICK')
+
+
+def _est_type_maladie(type_absence):
+    if type_absence is None:
+        return False
+    texte = f'{type_absence.code} {type_absence.libelle}'.upper()
+    return any(mot in texte for mot in MOTS_CLES_MALADIE)
+
+
+def _jours_absence_dans_fenetre(demande, debut, fin):
+    """Jours décomptés d'une demande, BORNÉS à la fenêtre demandée.
+
+    On ne prend jamais ``demande.jours`` tel quel : une demande à cheval sur
+    la fenêtre gonflerait le taux du mois. On recompte l'intersection avec la
+    MÊME règle que la demande (jours ouvrés si son type le requiert, sinon
+    jours calendaires) — jamais un prorata approximatif.
+    """
+    from . import holidays
+
+    d_debut = max(demande.date_debut, debut)
+    d_fin = min(demande.date_fin, fin)
+    if d_debut > d_fin:
+        return 0
+    type_absence = demande.type_absence
+    if type_absence is not None and type_absence.decompte_jours_ouvres:
+        return holidays.working_days(d_debut, d_fin)
+    return holidays.calendar_days(d_debut, d_fin)
+
+
+def taux_absenteisme(company, debut, fin, departement_id=None):
+    """NTHCM28 — taux d'absentéisme UNIFIÉ (congés + maladie + AT + injustifié).
+
+    Les briques existaient séparément (``DemandeConge`` FG163,
+    ``AccidentTravail`` FG181, ``IncidentPresence`` FG171) sans qu'aucune vue
+    ne donne le taux GLOBAL. Ici :
+
+    * NUMÉRATEUR — jours d'absence de la période, ventilés par motif :
+      ``conge`` / ``maladie`` (demandes VALIDÉES, bornées à la fenêtre),
+      ``accident_travail`` (jours d'arrêt d'un AT survenu dans la fenêtre),
+      ``non_justifie`` (un ``IncidentPresence`` d'absence injustifiée NON
+      régularisé = 1 jour) ;
+    * DÉNOMINATEUR — effectif PRÉSENT sur la période × jours ouvrés de la
+      période.
+
+    Division par zéro GARDÉE : une période sans jour ouvré ou une société sans
+    effectif renvoie ``taux_pct=None`` (jamais 0 %, qui se lirait comme un
+    excellent résultat alors qu'il n'y a rien à mesurer).
+
+    La ventilation par motif SOMME exactement au total (un test le prouve), et
+    le découpage MENSUEL est calculé sur les mêmes règles. Aucune migration :
+    c'est une lecture pure.
+    """
+    from . import holidays
+
+    if departement_id:
+        employes = DossierEmploye.objects.filter(
+            company=company, departement_id=departement_id)
+    else:
+        employes = DossierEmploye.objects.filter(company=company)
+    # Effectif PRÉSENT sur la période : ni embauché après la fin, ni sorti
+    # avant le début. Un dossier sans date d'embauche est compté présent
+    # (c'est l'existant : la date n'est pas obligatoire).
+    presents = employes.exclude(date_embauche__gt=fin).exclude(
+        date_sortie__lt=debut)
+    ids_presents = list(presents.values_list('id', flat=True))
+    effectif = len(ids_presents)
+    jours_ouvres = holidays.working_days(debut, fin)
+
+    motifs = {'conge': 0.0, 'maladie': 0.0,
+              'accident_travail': 0.0, 'non_justifie': 0.0}
+    par_mois = {}
+
+    def _ajouter(mois, motif, jours):
+        if not jours:
+            return
+        motifs[motif] += jours
+        seau = par_mois.setdefault(
+            mois, {'mois': mois, 'jours': 0.0,
+                   'conge': 0.0, 'maladie': 0.0,
+                   'accident_travail': 0.0, 'non_justifie': 0.0})
+        seau[motif] += jours
+        seau['jours'] += jours
+
+    demandes = DemandeConge.objects.filter(
+        company=company, employe_id__in=ids_presents,
+        statut=DemandeConge.Statut.VALIDEE,
+        date_debut__lte=fin, date_fin__gte=debut,
+    ).select_related('type_absence')
+    for demande in demandes:
+        jours = float(_jours_absence_dans_fenetre(demande, debut, fin))
+        motif = 'maladie' if _est_type_maladie(demande.type_absence) \
+            else 'conge'
+        _ajouter(max(demande.date_debut, debut).strftime('%Y-%m'),
+                 motif, jours)
+
+    accidents = AccidentTravail.objects.filter(
+        company=company, employe_id__in=ids_presents, arret_travail=True,
+        date_accident__gte=debut, date_accident__lte=fin)
+    for accident in accidents:
+        _ajouter(accident.date_accident.strftime('%Y-%m'),
+                 'accident_travail', float(accident.nb_jours_arret or 0))
+
+    incidents = IncidentPresence.objects.filter(
+        company=company, employe_id__in=ids_presents,
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE,
+        justifie=False, date__gte=debut, date__lte=fin)
+    for incident in incidents:
+        _ajouter(incident.date.strftime('%Y-%m'), 'non_justifie', 1.0)
+
+    total_jours = sum(motifs.values())
+    denominateur = effectif * jours_ouvres
+    taux = (round(100 * total_jours / denominateur, 2)
+            if denominateur else None)
+
+    return {
+        'debut': debut,
+        'fin': fin,
+        'departement_id': int(departement_id) if departement_id else None,
+        'effectif': effectif,
+        'jours_ouvres_periode': jours_ouvres,
+        'jours_absence_total': round(total_jours, 2),
+        'taux_pct': taux,
+        'par_motif': {cle: round(valeur, 2)
+                      for cle, valeur in motifs.items()},
+        'par_mois': [
+            {cle: (round(valeur, 2) if isinstance(valeur, float) else valeur)
+             for cle, valeur in seau.items()}
+            for seau in sorted(par_mois.values(), key=lambda s: s['mois'])],
+    }
+
+
+def comparaison_absenteisme(company, debut, fin, departement_id):
+    """NTHCM28 — taux d'UN département vs celui de la société entière."""
+    return {
+        'departement': taux_absenteisme(
+            company, debut, fin, departement_id=departement_id),
+        'societe': taux_absenteisme(company, debut, fin),
+    }
+
+
 def offboarding_en_retard(company, *, aujourdhui=None):
     """NTHCM24 — tâches de SORTIE dont l'échéance est dépassée, par criticité.
 

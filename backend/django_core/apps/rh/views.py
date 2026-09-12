@@ -6241,6 +6241,23 @@ class CockpitRhViewSet(viewsets.ViewSet):
                          if ligne['risque_vacance']])
 
 
+def _date_du_parametre(request, nom):
+    """Date ``AAAA-MM-JJ`` lue d'un paramètre de requête, ou ``None``.
+
+    ``None`` couvre l'absence ET le format invalide : l'appelant décide quoi
+    en faire (ici, un 400 explicite plutôt qu'un défaut implicite).
+    """
+    from datetime import datetime
+
+    brut = request.query_params.get(nom)
+    if not brut:
+        return None
+    try:
+        return datetime.strptime(brut, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return None
+
+
 class AnalyticsRhViewSet(viewsets.ViewSet):
     """NTHCM27/28 — analytics RH AGRÉGÉES (lecture seule, jamais nominatives).
 
@@ -6262,6 +6279,34 @@ class AnalyticsRhViewSet(viewsets.ViewSet):
             selectors.analytics_diversite(
                 request.user.company,
                 departement_id=request.query_params.get('departement')))
+
+    @action(detail=False, methods=['get'], url_path='absenteisme')
+    def absenteisme(self, request):
+        """NTHCM28 — taux d'absentéisme unifié sur ``?debut=``/``?fin=``.
+
+        Les deux bornes sont OBLIGATOIRES et explicites : un défaut implicite
+        (« ce mois-ci ») ferait lire au RH un taux dont il ne connaît pas la
+        période. ``?departement=`` ajoute la comparaison département/société.
+        """
+        debut = _date_du_parametre(request, 'debut')
+        fin = _date_du_parametre(request, 'fin')
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les bornes « debut » et « fin » sont '
+                           'obligatoires (format AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if debut > fin:
+            return Response(
+                {'detail': 'La date de début est postérieure à la date de '
+                           'fin.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        departement = request.query_params.get('departement')
+        if departement:
+            return Response(
+                selectors.comparaison_absenteisme(
+                    request.user.company, debut, fin, departement))
+        return Response(
+            selectors.taux_absenteisme(request.user.company, debut, fin))
 
 
 # ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
