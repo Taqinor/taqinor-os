@@ -197,6 +197,10 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
 
     @extend_schema(responses=inline_serializer('JuridiqueTableauBord', {
         'nombre_dossiers': serializers.IntegerField(),
+        'montant_en_jeu_total': serializers.CharField(),
+        'provisions_proposees': serializers.IntegerField(),
+        'provisions_comptabilisees': serializers.IntegerField(),
+        'echeances_prescription_30j': serializers.IntegerField(),
         'total_engage': serializers.CharField(),
         'total_consomme': serializers.CharField(),
         'par_nature': inline_serializer('JuridiqueTableauBordNature', {

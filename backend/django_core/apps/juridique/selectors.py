@@ -99,6 +99,26 @@ def budget_dossier(dossier):
     }
 
 
+def _echeances_prescription(company, dossiers, jours=30):
+    """Nombre de délais ``en_cours`` expirant sous ``jours``, bornés aux
+    dossiers passés en argument (donc au périmètre VISIBLE de l'appelant)."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import DelaiPrescription
+
+    if not dossiers:
+        return 0
+    limite = timezone.localdate() + timedelta(days=jours)
+    return DelaiPrescription.objects.filter(
+        company=company,
+        dossier__in=[d.pk for d in dossiers],
+        statut=DelaiPrescription.Statut.EN_COURS,
+        date_limite__lte=limite,
+    ).count()
+
+
 def tableau_bord_juridique(company, user=None):
     """Agrégat juridique de la société (NTJUR12).
 
@@ -109,12 +129,27 @@ def tableau_bord_juridique(company, user=None):
     """
     from decimal import Decimal
 
+    from .models import DossierJuridique
+
     dossiers = list(dossiers_visibles(company, user=user))
+    clos_valeurs = {str(s) for s in DossierJuridique.STATUTS_CLOS}
     par_nature = {}
     depassements = []
     total_engage = Decimal('0')
     total_consomme = Decimal('0')
+    montant_en_jeu_ouvert = Decimal('0')
+    # NTJUR24 — provisions PROPOSÉES (un risque estimé saisi, mais aucune
+    # écriture) vs COMPTABILISÉES (une ``compta.Provision`` réellement liée).
+    # La distinction est le cœur du patron « propose → confirme ».
+    provisions_proposees = 0
+    provisions_comptabilisees = 0
     for dossier in dossiers:
+        if dossier.statut not in clos_valeurs:
+            montant_en_jeu_ouvert += dossier.montant_en_jeu or Decimal('0')
+        if dossier.provision_comptable_id:
+            provisions_comptabilisees += 1
+        elif dossier.montant_risque_estime:
+            provisions_proposees += 1
         budget = budget_dossier(dossier)
         engage = Decimal(budget['engage'])
         consomme = Decimal(budget['consomme'])
@@ -136,8 +171,18 @@ def tableau_bord_juridique(company, user=None):
                 'consomme': budget['consomme'],
                 'pourcentage_consomme': budget['pourcentage_consomme'],
             })
+    # NTJUR24 — prescriptions qui expirent sous 30 jours, sur les dossiers
+    # VISIBLES uniquement (un délai d'un dossier confidentiel ne fuite pas
+    # davantage par ce compteur que par les totaux).
+    echeances_30j = _echeances_prescription(company, dossiers, jours=30)
+
     return {
         'nombre_dossiers': len(dossiers),
+        'montant_en_jeu_total': str(
+            montant_en_jeu_ouvert.quantize(Decimal('0.01'))),
+        'provisions_proposees': provisions_proposees,
+        'provisions_comptabilisees': provisions_comptabilisees,
+        'echeances_prescription_30j': echeances_30j,
         'total_engage': str(total_engage.quantize(Decimal('0.01'))),
         'total_consomme': str(total_consomme.quantize(Decimal('0.01'))),
         'par_nature': [
