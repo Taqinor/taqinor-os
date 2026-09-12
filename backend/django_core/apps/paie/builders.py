@@ -1088,6 +1088,74 @@ def render_etat_charges_pdf(periode, *, etat=None, today=None):
         etat, employeur_context(periode.company), today=today))
 
 
+# ── NTPAY19 — Rapport « Masse salariale » (PDF) ────────────────────────────
+
+LIBELLES_GROUPEMENT_MASSE = {
+    'departement': 'Département',
+    'site': 'Site / zone',
+}
+
+
+def _fenetre_txt(rapport):
+    debut, fin = rapport['periode_debut'], rapport['periode_fin']
+    return (f"{debut['mois']:02d}/{debut['annee']} → "
+            f"{fin['mois']:02d}/{fin['annee']}")
+
+
+def render_masse_salariale_html(rapport, employeur, *, today=None):
+    """HTML du rapport de masse salariale (NTPAY19).
+
+    ``rapport`` = le dict de ``services.rapport_masse_salariale``. Les totaux
+    proviennent des bulletins VALIDÉS de la fenêtre — jamais d'une projection.
+    """
+    if today is None:
+        today = date.today()
+    entete_groupe = escape(LIBELLES_GROUPEMENT_MASSE.get(
+        rapport['group_by'], 'Groupe'))
+    lignes = ''.join(
+        f"<tr><td>{escape(str(groupe['libelle']))}</td>"
+        f"<td>{groupe['effectif']}</td>"
+        f"<td>{_fmt(groupe['brut'])}</td>"
+        f"<td>{_fmt(groupe['charges_patronales'])}</td>"
+        f"<td>{_fmt(groupe['cout_total'])}</td></tr>"
+        for groupe in rapport['groupes'])
+    totaux = rapport['totaux']
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th, td {{ border: 1px solid #999; padding: 4px 6px; text-align: right; }}
+  th:nth-child(1), td:nth-child(1) {{ text-align: left; }}
+  tfoot td {{ font-weight: 700; }}
+  .date {{ text-align: right; margin-top: 20px; }}
+</style></head><body>
+  {_entete_employeur_html(employeur)}
+  <h1>Masse salariale — {escape(_fenetre_txt(rapport))}</h1>
+  <p>{rapport['nombre_bulletins']} bulletin(s) validé(s) sur
+     {rapport['nombre_periodes']} période(s).</p>
+  <table>
+    <thead><tr><th>{entete_groupe}</th><th>Effectif</th><th>Brut</th>
+      <th>Charges patronales</th><th>Coût total</th></tr></thead>
+    <tbody>{lignes}</tbody>
+    <tfoot><tr><td>Total</td><td>{totaux['effectif']}</td>
+      <td>{_fmt(totaux['brut'])}</td>
+      <td>{_fmt(totaux['charges_patronales'])}</td>
+      <td>{_fmt(totaux['cout_total'])}</td></tr></tfoot>
+  </table>
+  <p class="date">Édité le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_masse_salariale_pdf(rapport, *, company=None, employeur=None,
+                               today=None):
+    """Rapport de masse salariale → octets PDF (NTPAY19)."""
+    if employeur is None:
+        employeur = employeur_context(company)
+    return _html_to_pdf(render_masse_salariale_html(
+        rapport, employeur, today=today))
+
+
 def render_historique_carriere_html(historique, *, today=None):
     """Construit le HTML de la fiche historique carrière/salaire (XPAI26).
 

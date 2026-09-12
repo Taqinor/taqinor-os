@@ -6375,6 +6375,22 @@ def etat_charges(periode):
     }
 
 
+# ── NTPAY19 — Rapport « Masse salariale » (délégué au sélecteur) ───────────
+
+def rapport_masse_salariale(company, periode_debut, periode_fin, *,
+                            group_by='departement'):
+    """Synthèse de masse salariale par département/site (NTPAY19).
+
+    Le CALCUL est une LECTURE PURE : il vit dans ``selectors`` (règle de
+    séparation lectures/écritures de l'app). Cette fonction n'est que le point
+    d'entrée historique côté ``services`` — elle ne duplique rien.
+    """
+    from . import selectors as paie_selectors
+
+    return paie_selectors.rapport_masse_salariale(
+        company, periode_debut, periode_fin, group_by=group_by)
+
+
 # ── NTPAY4 — Télépaiement CNSS : bordereau + fichier de règlement ───────────
 
 # Jour LIMITE de règlement des cotisations CNSS (cadre marocain : avant le 10

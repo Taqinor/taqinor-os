@@ -1064,6 +1064,77 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         'alertes_pre_run': serializers.ListField(
             child=serializers.DictField()),
     }))
+    @extend_schema(responses=inline_serializer('PaieMasseSalariale', {
+        'group_by': serializers.CharField(),
+        'periode_debut': serializers.DictField(),
+        'periode_fin': serializers.DictField(),
+        'nombre_periodes': serializers.IntegerField(),
+        'nombre_bulletins': serializers.IntegerField(),
+        'groupes': serializers.ListField(child=serializers.DictField()),
+        'totaux': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'],
+            url_path='rapports/masse-salariale')
+    def rapport_masse_salariale_action(self, request):
+        """Rapport de masse salariale par département ou par site (NTPAY19).
+
+        Paramètres : ``debut`` et ``fin`` au format ``AAAA-MM`` (requis),
+        ``group_by`` ∈ {``departement``, ``site``} (défaut ``departement``),
+        ``export`` ∈ {``csv``, ``pdf``}. Lecture seule, bulletins VALIDÉS
+        uniquement, gate ``paie_voir``.
+        """
+        debut = request.query_params.get('debut')
+        fin = request.query_params.get('fin')
+        if not debut or not fin:
+            return Response(
+                {'detail': 'Paramètres "debut" et "fin" requis '
+                 '(format AAAA-MM).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        group_by = request.query_params.get('group_by', 'departement')
+        try:
+            rapport = paie_selectors.rapport_masse_salariale(
+                request.user.company, debut, fin, group_by=group_by)
+        except (ValueError, TypeError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        export = request.query_params.get('export')
+        if export == 'pdf':
+            try:
+                pdf = builders.render_masse_salariale_pdf(
+                    rapport, company=request.user.company)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(pdf, f'masse_salariale_{debut}_{fin}.pdf')
+        if export == 'csv':
+            return self._export_masse_salariale_csv(rapport, debut, fin)
+        return Response(rapport, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_masse_salariale_csv(rapport, debut, fin):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([f'Masse salariale {debut} - {fin}'])
+        writer.writerow([])
+        writer.writerow([
+            'Groupe', 'Effectif', 'Brut', 'Charges patronales', 'Coût total'])
+        for groupe in rapport['groupes']:
+            writer.writerow([
+                groupe['libelle'], groupe['effectif'], groupe['brut'],
+                groupe['charges_patronales'], groupe['cout_total']])
+        totaux = rapport['totaux']
+        writer.writerow([])
+        writer.writerow([
+            'Total', totaux['effectif'], totaux['brut'],
+            totaux['charges_patronales'], totaux['cout_total']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="masse_salariale_{debut}_{fin}.csv"')
+        return resp
+
     @action(detail=False, methods=['get'], url_path='conformite')
     def conformite(self, request):
         """État de conformité paie de la société, en un seul écran (NTPAY16).

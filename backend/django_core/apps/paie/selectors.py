@@ -524,6 +524,146 @@ def comparer_baremes(company, ancien, nouveau, echantillon_profils=None):
     }
 
 
+# ── NTPAY19 — Rapport « Masse salariale » par période / service / site ─────
+
+GROUPEMENTS_MASSE_SALARIALE = ('departement', 'site')
+
+#: Libellé du groupe « pas d'information » — jamais une affectation inventée.
+LIBELLE_SANS_GROUPE = {
+    'departement': 'Sans département',
+    'site': 'Sans site déclaré',
+}
+
+
+def _bornes_rapport(valeur):
+    """``(annee, mois)`` depuis un couple, une ``PeriodePaie`` ou 'YYYY-MM'."""
+    if valeur is None:
+        return None
+    if hasattr(valeur, 'annee') and hasattr(valeur, 'mois'):
+        return int(valeur.annee), int(valeur.mois)
+    if isinstance(valeur, str):
+        annee, _, mois = valeur.partition('-')
+        return int(annee), int(mois)
+    annee, mois = valeur
+    return int(annee), int(mois)
+
+
+def rapport_masse_salariale(company, periode_debut, periode_fin, *,
+                            group_by='departement'):
+    """Synthèse de masse salariale sur une fenêtre de périodes (NTPAY19).
+
+    Somme, sur les bulletins VALIDÉS des périodes comprises entre
+    ``periode_debut`` et ``periode_fin`` (inclus, chacun un couple
+    ``(annee, mois)``, une ``PeriodePaie`` ou ``'YYYY-MM'``), le brut, les
+    charges patronales, le coût total et l'EFFECTIF distinct, groupés par
+    ``departement`` ou par ``site``.
+
+    Le département et le site sont lus via ``apps.rh.selectors``
+    (``departements_par_employe`` / ``equipe_terrain`` — jamais ``rh.models``).
+    Un employé sans rattachement tombe dans « Sans département » / « Sans site
+    déclaré » : aucune affectation n'est inventée. NOTE — la zone
+    d'intervention n'est exposée que pour les employés ACTIFS : un salarié
+    sorti en cours de fenêtre apparaît donc « sans site », jamais rattaché au
+    hasard.
+
+    Lecture seule, scopée société.
+    """
+    if group_by not in GROUPEMENTS_MASSE_SALARIALE:
+        raise ValueError(
+            "group_by doit être 'departement' ou 'site'.")
+
+    from .models import PeriodePaie
+
+    annee_debut, mois_debut = _bornes_rapport(periode_debut)
+    annee_fin, mois_fin = _bornes_rapport(periode_fin)
+    borne_debut = annee_debut * 12 + mois_debut
+    borne_fin = annee_fin * 12 + mois_fin
+
+    periodes = [
+        p for p in PeriodePaie.objects.filter(company=company)
+        if borne_debut <= (p.annee * 12 + p.mois) <= borne_fin
+    ]
+    bulletins = list(
+        BulletinPaie.objects
+        .filter(company=company, periode_id__in=[p.id for p in periodes],
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil')
+    )
+
+    employe_ids = {
+        b.profil.employe_id for b in bulletins
+        if b.profil_id and b.profil.employe_id
+    }
+    groupe_par_employe = {}
+    if employe_ids:
+        from apps.rh import selectors as rh_selectors
+
+        if group_by == 'departement':
+            infos = rh_selectors.departements_par_employe(company, employe_ids)
+            groupe_par_employe = {
+                employe_id: (info.get('departement_id'),
+                             info.get('departement_nom') or '')
+                for employe_id, info in infos.items()
+            }
+        else:
+            for ligne in rh_selectors.equipe_terrain(company):
+                zone = (ligne.get('zone_intervention') or '').strip()
+                if zone:
+                    groupe_par_employe[ligne['employe_id']] = (zone, zone)
+
+    agrege = {}
+    totaux = {
+        'brut': Decimal('0.00'), 'charges_patronales': Decimal('0.00'),
+        'cout_total': Decimal('0.00'),
+    }
+    profils_totaux = set()
+    for bulletin in bulletins:
+        employe_id = bulletin.profil.employe_id if bulletin.profil_id else None
+        cle, libelle = groupe_par_employe.get(employe_id, (None, ''))
+        if not cle:
+            cle = f'sans_{group_by}'
+            libelle = LIBELLE_SANS_GROUPE[group_by]
+        entree = agrege.setdefault(cle, {
+            'cle': cle, 'libelle': libelle or str(cle),
+            'brut': Decimal('0.00'),
+            'charges_patronales': Decimal('0.00'),
+            'cout_total': Decimal('0.00'),
+            'profils': set(),
+        })
+        brut = Decimal(bulletin.brut or 0)
+        charges = Decimal(bulletin.charges_patronales or 0)
+        entree['brut'] += brut
+        entree['charges_patronales'] += charges
+        entree['cout_total'] += brut + charges
+        entree['profils'].add(bulletin.profil_id)
+        totaux['brut'] += brut
+        totaux['charges_patronales'] += charges
+        totaux['cout_total'] += brut + charges
+        profils_totaux.add(bulletin.profil_id)
+
+    groupes = []
+    for entree in agrege.values():
+        groupes.append({
+            'cle': entree['cle'], 'libelle': entree['libelle'],
+            'brut': entree['brut'],
+            'charges_patronales': entree['charges_patronales'],
+            'cout_total': entree['cout_total'],
+            'effectif': len(entree['profils']),
+        })
+    groupes.sort(key=lambda g: (g['libelle'], str(g['cle'])))
+    totaux['effectif'] = len(profils_totaux)
+
+    return {
+        'group_by': group_by,
+        'periode_debut': {'annee': annee_debut, 'mois': mois_debut},
+        'periode_fin': {'annee': annee_fin, 'mois': mois_fin},
+        'nombre_periodes': len(periodes),
+        'nombre_bulletins': len(bulletins),
+        'groupes': groupes,
+        'totaux': totaux,
+    }
+
+
 def _periodes_de_la_fenetre(company, annee_debut, mois_debut, annee_fin,
                             mois_fin):
     """Périodes de paie de la société dans la fenêtre inclusive donnée."""
