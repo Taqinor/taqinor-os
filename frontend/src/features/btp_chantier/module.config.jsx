@@ -5,8 +5,8 @@
    module.config.jsx`. */
 import { lazy } from 'react'
 import {
-  Calculator, Construction, FileEdit, FileQuestion, Layers, LayoutDashboard,
-  MapPin, NotebookPen, Share2, Stamp, Wand2,
+  Calculator, ClipboardCheck, Construction, FileEdit, FileQuestion, Layers,
+  LayoutDashboard, MapPin, NotebookPen, Share2, Stamp, Wand2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -45,6 +45,9 @@ const ChantierBtpCockpitPage = lazy(() => import('./ChantierBtpCockpit'))
 // NTCON23 — assistant guidé de création d'un chantier BTP.
 const NouveauChantierBtpWizardPage = lazy(
   () => import('./NouveauChantierBtpWizard'))
+// NTCON24 — assistant guidé de clôture (DGD + export dossier).
+const ClotureChantierBtpWizardPage = lazy(
+  () => import('./ClotureChantierBtpWizard'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -118,6 +121,12 @@ const config = {
         icon: <Wand2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/cloture',
+        label: 'Clôture de chantier',
+        icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   titles: [
@@ -131,6 +140,7 @@ const config = {
     ['/btp-chantier/planning-lots', "Planning tous corps d'état (par lot)"],
     ['/btp-chantier/cockpit', 'Tableau de bord BTP du chantier'],
     ['/btp-chantier/nouveau', 'Créer un chantier BTP'],
+    ['/btp-chantier/cloture', 'Clôture de chantier BTP'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -145,6 +155,7 @@ const config = {
     { path: '/btp-chantier/cockpit', component: ChantierBtpCockpitPage, roles: ROLES },
     { path: '/btp-chantier/cockpit/:chantierId', component: ChantierBtpCockpitPage, roles: ROLES },
     { path: '/btp-chantier/nouveau', component: NouveauChantierBtpWizardPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/cloture', component: ClotureChantierBtpWizardPage, roles: ['responsable', 'admin'] },
   ],
 }
 

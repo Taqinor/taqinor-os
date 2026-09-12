@@ -796,6 +796,105 @@ def verifier_ppsps_avant_demarrage(*, company, chantier_id, sous_traitant_id,
     return False
 
 
+# ── NTCON24 — Clôture guidée d'un chantier BTP ─────────────────────────────
+
+def prerequis_cloture_btp(chantier):
+    """NTCON24 — pré-requis de clôture d'un chantier BTP (lecture seule).
+
+    Trois contrôles, chacun renvoyant un message EXPLICITE en français (jamais
+    un « non conforme » générique — règle fondateur « l'erreur nomme ce qui
+    bloque ») :
+
+    1. aucune réserve BLOQUANTE encore ouverte (NTCON1/2) ;
+    2. aucun visa encore en attente de décision NI refusé (NTCON5) ;
+    3. si le chantier gère un PPSPS validé (NTCON16), tous les sous-traitants
+       ACTIFS (ordres FG305 ``emis``/``en_cours``) l'ont signé.
+
+    Renvoie ``{'pret': bool, 'blocages': [str, …]}``.
+    """
+    from . import selectors
+    from .models import VisaDocument
+
+    blocages = []
+
+    bloquantes = selectors.reserves_actives_bloquantes(
+        chantier.company, chantier=chantier).count()
+    if bloquantes:
+        blocages.append(
+            f'{bloquantes} réserve(s) bloquante(s) encore ouverte(s) — '
+            'à lever avant la clôture.')
+
+    en_attente = VisaDocument.objects.filter(
+        chantier=chantier, company=chantier.company,
+        statut__in=[VisaDocument.Statut.SOUMIS, VisaDocument.Statut.EN_REVUE],
+    ).values_list('reference', flat=True)
+    if en_attente:
+        blocages.append(
+            'Visa(s) encore en attente de décision : '
+            f'{", ".join(en_attente)}.')
+    refuses = VisaDocument.objects.filter(
+        chantier=chantier, company=chantier.company,
+        statut=VisaDocument.Statut.REFUSE).values_list('reference', flat=True)
+    if refuses:
+        blocages.append(
+            f'Visa(s) refusé(s) à reprendre : {", ".join(refuses)}.')
+
+    if chantier_a_un_ppsps(chantier.pk):
+        manquants = []
+        ordres = (
+            chantier.installations_ordres_sous_traitance
+            .filter(statut__in=['emis', 'en_cours'])
+            .select_related('sous_traitant'))
+        for ordre in ordres:
+            if not ordre.sous_traitant_id:
+                continue
+            if not sous_traitant_a_signe_ppsps(
+                    chantier.pk, ordre.sous_traitant_id):
+                manquants.append(ordre.sous_traitant.nom)
+        if manquants:
+            blocages.append(
+                'PPSPS non signé par : ' + ', '.join(sorted(set(manquants)))
+                + '.')
+
+    return {'pret': not blocages, 'blocages': blocages}
+
+
+@transaction.atomic
+def cloturer_chantier_btp(chantier, *, user, montant_marche_initial_ht=0,
+                          situations_incluses=None, retenue_garantie_id=None):
+    """NTCON24 — enchaîne la clôture d'un chantier BTP en UNE action.
+
+    Séquence : vérification des pré-requis (``prerequis_cloture_btp`` — refus
+    ``TransitionInvalide`` listant PRÉCISÉMENT ce qui manque) → génération du
+    DGD (NTCON9, ``creer_decompte_general`` : référence race-safe + totaux
+    recalculés) → notification (NTCON9 ``notifier_dgd``, statut ``notifie``).
+
+    L'export du dossier consolidé (NTCON20) se télécharge ensuite sur
+    ``chantiers/<id>/export-dossier-btp/`` — l'assistant enchaîne les deux
+    sans étape manuelle côté utilisateur.
+
+    NOTE DE PÉRIMÈTRE — NTCON24 évoquait un « lien client NTCON8-style » : le
+    jeton public de NTCON8 appartient à ``AvenantChantier`` ; ``DecompteGeneral``
+    n'en porte pas et lui en ajouter un serait un NOUVEAU canal public
+    non demandé. La notification passe donc par le chemin DGD EXISTANT
+    (statut ``notifie`` + PDF ``export-pdf``), sans inventer de surface
+    publique supplémentaire.
+    """
+    prerequis = prerequis_cloture_btp(chantier)
+    if not prerequis['pret']:
+        raise TransitionInvalide(
+            'Clôture impossible — ' + ' '.join(prerequis['blocages']))
+
+    dgd = creer_decompte_general(
+        company=chantier.company, chantier=chantier, cree_par=user,
+        montant_marche_initial_ht=montant_marche_initial_ht or 0,
+        situations_incluses=situations_incluses,
+        retenue_garantie_id=retenue_garantie_id)
+    notifier_dgd(dgd, user=user)
+    dgd.refresh_from_db()
+    return {'dgd': dgd, 'prerequis': prerequis}
+
+
 # ── NTCON20 — Export « dossier chantier » consolidé ────────────────────────
 
 def export_dossier_btp(chantier):

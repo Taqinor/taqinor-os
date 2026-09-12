@@ -943,6 +943,50 @@ class AbonnementRapportPhotoViewSet(
         return qs
 
 
+class ChantierClotureBtpView(APIView):
+    """NTCON24 — ``chantiers/<id>/cloture-btp/`` : assistant de clôture.
+
+    * ``GET`` — état des PRÉ-REQUIS (réserves bloquantes, visas, PPSPS signé)
+      avec la liste EXPLICITE de ce qui bloque encore ;
+    * ``POST`` — enchaîne : vérification → DGD (NTCON9) → notification, puis
+      renvoie l'URL d'export du dossier consolidé (NTCON20). Refuse (400) en
+      listant précisément les pré-requis manquants.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def _chantier(self, request, chantier_id):
+        return get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+
+    def get(self, request, chantier_id):
+        chantier = self._chantier(request, chantier_id)
+        return Response(services.prerequis_cloture_btp(chantier))
+
+    def post(self, request, chantier_id):
+        chantier = self._chantier(request, chantier_id)
+        try:
+            resultat = services.cloturer_chantier_btp(
+                chantier, user=request.user,
+                montant_marche_initial_ht=request.data.get(
+                    'montant_marche_initial_ht', 0),
+                situations_incluses=request.data.get('situations_incluses'),
+                retenue_garantie_id=request.data.get('retenue_garantie_id'))
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc),
+                 'blocages': services.prerequis_cloture_btp(chantier)['blocages']},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'dgd': DecompteGeneralSerializer(resultat['dgd']).data,
+            'prerequis': resultat['prerequis'],
+            'export_dossier_url': (
+                f'/api/django/btp-chantier/chantiers/{chantier_id}/'
+                'export-dossier-btp/'),
+        })
+
+
 class ChantierRapportAvancementView(APIView):
     """NTCON22 — ``chantiers/<id>/rapport-avancement/?du=&au=`` : PDF INTERNE
     d'avancement (lots vs planning, réserves, RFI, effectifs, QHSE).

@@ -180,6 +180,16 @@ const btpChantierApi = {
       params, responseType: 'blob',
     }),
 
+  // NTCON24 — assistant de clôture : GET = pré-requis (liste EXPLICITE de ce
+  // qui bloque), POST = enchaîne vérification → DGD → notification et renvoie
+  // l'URL d'export du dossier consolidé.
+  cloture: {
+    prerequis: (chantierId) =>
+      api.get(`/btp-chantier/chantiers/${chantierId}/cloture-btp/`),
+    cloturer: (chantierId, data) =>
+      api.post(`/btp-chantier/chantiers/${chantierId}/cloture-btp/`, data),
+  },
+
   // NTCON20 — ZIP « dossier chantier » consolidé (archivage légal/litige) :
   // journal, réserves levées + preuves, visas approuvés, DGD, PPSPS signés.
   exportDossierBtp: (chantierId) =>
