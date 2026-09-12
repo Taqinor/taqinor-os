@@ -94,8 +94,12 @@ class MontantFactureMoisTest(TestCase):
         self.company = Company.objects.create(nom='Acme', slug='acme-ntobs4c')
 
     def test_reads_real_montant_ttc_from_facturation(self):
-        from apps.crm.models import Client
-        from apps.facturation.models import Facture
+        # Résolus par nom (jamais un import statique d'apps.crm/apps.
+        # facturation) : core reste une couche de base même en test (AUD422,
+        # ".importlinter").
+        from django.apps import apps as django_apps
+        Client = django_apps.get_model('crm', 'Client')
+        Facture = django_apps.get_model('facturation', 'Facture')
 
         client_obj = Client.objects.create(
             company=self.company, nom='Test', prenom='Client',
@@ -150,5 +154,7 @@ class SlaCreditsDusEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.snap.refresh_from_db()
         self.assertEqual(self.snap.credit_statut, SlaSnapshot.CreditStatut.EMIS)
-        from apps.facturation.models import Avoir
+        # Résolu par nom (jamais un import statique d'apps.facturation).
+        from django.apps import apps as django_apps
+        Avoir = django_apps.get_model('facturation', 'Avoir')
         self.assertEqual(Avoir.objects.filter(company=self.company).count(), 0)

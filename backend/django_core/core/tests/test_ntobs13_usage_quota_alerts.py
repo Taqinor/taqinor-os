@@ -39,7 +39,7 @@ class NotifierSeuilsUsageTest(TestCase):
         with mock.patch(
                 'core.usage_limits.usage_summary',
                 return_value=_fake_summary(85)), \
-                mock.patch('apps.notifications.services.notify') as notify_mock:
+                mock.patch('core.notify_registry.notify') as notify_mock:
             n1 = usage_limits.notifier_seuils_usage()
             n2 = usage_limits.notifier_seuils_usage()
         self.assertEqual(n1, 1)
@@ -54,7 +54,7 @@ class NotifierSeuilsUsageTest(TestCase):
         with mock.patch(
                 'core.usage_limits.usage_summary',
                 return_value=_fake_summary(100)), \
-                mock.patch('apps.notifications.services.notify') as notify_mock:
+                mock.patch('core.notify_registry.notify') as notify_mock:
             n = usage_limits.notifier_seuils_usage()
         self.assertEqual(n, 1)
         self.assertTrue(notify_mock.called)
@@ -71,7 +71,7 @@ class NotifierSeuilsUsageTest(TestCase):
         with mock.patch(
                 'core.usage_limits.usage_summary',
                 return_value=_fake_summary(85)), \
-                mock.patch('apps.notifications.services.notify') as notify_mock:
+                mock.patch('core.notify_registry.notify') as notify_mock:
             n = usage_limits.notifier_seuils_usage()
         self.assertEqual(n, 1)
         self.assertTrue(notify_mock.called)
@@ -80,7 +80,7 @@ class NotifierSeuilsUsageTest(TestCase):
         with mock.patch(
                 'core.usage_limits.usage_summary',
                 return_value=_fake_summary(50)), \
-                mock.patch('apps.notifications.services.notify') as notify_mock:
+                mock.patch('core.notify_registry.notify') as notify_mock:
             n = usage_limits.notifier_seuils_usage()
         self.assertEqual(n, 0)
         self.assertFalse(notify_mock.called)
@@ -94,7 +94,7 @@ class NotifierSeuilsUsageTest(TestCase):
         }
         with mock.patch(
                 'core.usage_limits.usage_summary', return_value=summary), \
-                mock.patch('apps.notifications.services.notify') as notify_mock:
+                mock.patch('core.notify_registry.notify') as notify_mock:
             n = usage_limits.notifier_seuils_usage()
         self.assertEqual(n, 0)
         self.assertFalse(notify_mock.called)

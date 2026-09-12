@@ -181,23 +181,21 @@ def _quota_alert_cache_key(company_id, ressource_nom):
 
 
 def _notifier_seuil_quota(company, ressource, seuil, pct):
-    try:
-        from apps.notifications.models import EventType
-        from apps.notifications.services import notify
-        from .maintenance_windows import admins_cibles
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        return
+    """'usage_quota_seuil_franchi' reflète apps.notifications.models.
+    EventType.USAGE_QUOTA_SEUIL_FRANCHI — passé en string littéral, jamais un
+    import d'apps.notifications (contrat import-linter core-foundation-is-a-
+    base-layer)."""
+    from . import notify_registry
+    from .maintenance_windows import admins_cibles
+
     titre = f"{ressource['nom']} atteint {int(pct)}% du quota"
     for admin in admins_cibles(company):
-        try:
-            notify(
-                admin, EventType.USAGE_QUOTA_SEUIL_FRANCHI, titre,
-                body=f"Votre {ressource['nom'].lower()} atteint {int(pct)}% "
-                     'du quota.',
-                company=company,
-            )
-        except Exception:  # noqa: BLE001
-            continue
+        notify_registry.notify(
+            admin, 'usage_quota_seuil_franchi', titre,
+            body=f"Votre {ressource['nom'].lower()} atteint {int(pct)}% "
+                 'du quota.',
+            company=company,
+        )
 
 
 def notifier_seuils_usage(now=None):

@@ -52,3 +52,11 @@ class NotificationsConfig(AppConfig):
         from core.workflow import register_business_day_advance
         from . import calendar_utils
         register_business_day_advance(calendar_utils.ajouter_heures_ouvrees)
+        # NTOBS9/NTOBS13 — branche ce module comme notifieur générique de
+        # `core` (`core.notify_registry`, même pattern additif que
+        # `register_business_day_advance` ci-dessus) : `core.maintenance_
+        # windows`/`core.usage_limits`/`core.tasks` appellent ce registre
+        # SANS jamais importer `apps.notifications`.
+        from core.notify_registry import register_notify
+        from .services import notify as _notify_impl
+        register_notify(_notify_impl)

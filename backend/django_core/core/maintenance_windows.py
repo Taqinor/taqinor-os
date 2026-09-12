@@ -92,22 +92,19 @@ def admins_cibles(company):
 
 
 def _notifier_fenetre(fenetre, delai_label):
-    """Best-effort : un envoi en échec pour UN admin n'empêche pas les autres."""
-    try:
-        from apps.notifications.models import EventType
-        from apps.notifications.services import notify
-    except Exception:  # noqa: BLE001 — module notifications KO, jamais bloquant
-        return
+    """Best-effort : un envoi en échec pour UN admin n'empêche pas les autres.
+    Passe par ``core.notify_registry`` (jamais un import direct d'``apps.
+    notifications`` — contrat import-linter ``core-foundation-is-a-base-
+    layer``) ; ``'maintenance_window_announced'`` reflète
+    ``apps.notifications.models.EventType.MAINTENANCE_WINDOW_ANNOUNCED``."""
+    from . import notify_registry
 
     titre = f'Fenêtre de maintenance {delai_label}'
     for admin in admins_cibles(fenetre.company):
-        try:
-            notify(
-                admin, EventType.MAINTENANCE_WINDOW_ANNOUNCED, titre,
-                body=fenetre.description, company=admin.company,
-            )
-        except Exception:  # noqa: BLE001
-            continue
+        notify_registry.notify(
+            admin, 'maintenance_window_announced', titre,
+            body=fenetre.description, company=admin.company,
+        )
 
 
 def notifier_fenetres_a_venir(now=None):
@@ -191,20 +188,15 @@ def annuler_fenetre(request, pk):
 
 
 def _notifier_annulation(fenetre):
-    try:
-        from apps.notifications.models import EventType
-        from apps.notifications.services import notify
-    except Exception:  # noqa: BLE001
-        return
+    """Passe par ``core.notify_registry`` — voir ``_notifier_fenetre`` ci-dessus."""
+    from . import notify_registry
+
     for admin in admins_cibles(fenetre.company):
-        try:
-            notify(
-                admin, EventType.MAINTENANCE_WINDOW_ANNOUNCED,
-                'Fenêtre de maintenance annulée',
-                body=fenetre.description, company=admin.company,
-            )
-        except Exception:  # noqa: BLE001
-            continue
+        notify_registry.notify(
+            admin, 'maintenance_window_announced',
+            'Fenêtre de maintenance annulée',
+            body=fenetre.description, company=admin.company,
+        )
 
 
 @api_view(['GET'])

@@ -1,19 +1,27 @@
 """NTOBS8 — page « Limites & usage » unifiée (lecture seule, aucun nouveau
 compteur stocké)."""
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from authentication.models import Company
-from apps.ged.models import Cabinet, Document, DocumentVersion, Folder, QuotaStockage
 from apps.parametres.models import CompanyProfile
-from apps.publicapi.models import ApiKey
 
 from core import usage_limits
 from core.models import ApiUsageRecord
 
 User = get_user_model()
+# Résolus par nom (jamais un import statique d'apps.ged/apps.publicapi,
+# non-fondation) : core reste une couche de base même en test — même patron
+# que core.tests.test_rls_cross_tenant_denial (AUD422, ".importlinter").
+Cabinet = django_apps.get_model('ged', 'Cabinet')
+Document = django_apps.get_model('ged', 'Document')
+DocumentVersion = django_apps.get_model('ged', 'DocumentVersion')
+Folder = django_apps.get_model('ged', 'Folder')
+QuotaStockage = django_apps.get_model('ged', 'QuotaStockage')
+ApiKey = django_apps.get_model('publicapi', 'ApiKey')
 
 
 def _document_avec_version(company, size, suffix=''):

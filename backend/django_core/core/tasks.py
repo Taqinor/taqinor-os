@@ -317,13 +317,17 @@ def export_reversibilite_tenant(
     if demande_par_id:
         try:
             from authentication.models import CustomUser
-            from apps.notifications.models import EventType
-            from apps.notifications.services import notify
+
+            from . import notify_registry
 
             demandeur = CustomUser.objects.filter(pk=demande_par_id).first()
             if demandeur:
-                notify(
-                    demandeur, EventType.EXPORT_REVERSIBILITE_PRET,
+                # 'export_reversibilite_pret' reflète apps.notifications.
+                # models.EventType.EXPORT_REVERSIBILITE_PRET — passé en
+                # string littéral, jamais un import d'apps.notifications
+                # (contrat import-linter core-foundation-is-a-base-layer).
+                notify_registry.notify(
+                    demandeur, 'export_reversibilite_pret',
                     'Votre export de données est prêt',
                     body='Le lien expire dans 7 jours.',
                     link=f'/api/django/core/export-reversibilite/'

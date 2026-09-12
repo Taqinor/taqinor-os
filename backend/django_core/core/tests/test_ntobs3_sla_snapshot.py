@@ -7,13 +7,19 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from django.apps import apps as django_apps
+
 from authentication.models import Company
-from apps.statuspage.models import IncidentPublic
 
 from core import metrics as metrics_infra
 from core.sla import SlaSnapshot, generer_snapshot_societe, uptime_pct_periode
 
 User = get_user_model()
+# Résolu par nom (jamais un import statique d'apps.statuspage) : core reste
+# une couche de base (contrat import-linter core-foundation-is-a-base-layer),
+# même en test — même patron que core.tests.test_rls_cross_tenant_denial
+# (AUD422, ".importlinter").
+IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 
 
 class UptimePctPeriodeTest(TestCase):

@@ -30,7 +30,7 @@ class NotifierFenetresAVenirTest(TestCase):
             company=self.company, debute_le=now + timezone.timedelta(hours=23),
             termine_le=now + timezone.timedelta(hours=24),
             description='Bascule infra planifiée.')
-        with mock.patch('apps.notifications.services.notify') as notify_mock:
+        with mock.patch('core.notify_registry.notify') as notify_mock:
             n1 = notifier_fenetres_a_venir(now=now)
             n2 = notifier_fenetres_a_venir(now=now)
         fenetre.refresh_from_db()
@@ -47,7 +47,7 @@ class NotifierFenetresAVenirTest(TestCase):
             debute_le=now + timezone.timedelta(minutes=30),
             termine_le=now + timezone.timedelta(hours=1),
             description='Fenêtre imminente.')
-        with mock.patch('apps.notifications.services.notify'):
+        with mock.patch('core.notify_registry.notify'):
             notifier_fenetres_a_venir(now=now)
         fenetre.refresh_from_db()
         self.assertTrue(fenetre.notifie_24h_avant)
@@ -59,7 +59,7 @@ class NotifierFenetresAVenirTest(TestCase):
             company=self.company, debute_le=now + timezone.timedelta(days=5),
             termine_le=now + timezone.timedelta(days=5, hours=1),
             description='Trop loin.')
-        with mock.patch('apps.notifications.services.notify') as notify_mock:
+        with mock.patch('core.notify_registry.notify') as notify_mock:
             n = notifier_fenetres_a_venir(now=now)
         self.assertEqual(n, 0)
         self.assertFalse(notify_mock.called)
@@ -75,7 +75,7 @@ class NotifierFenetresAVenirTest(TestCase):
             company=None, debute_le=now + timezone.timedelta(minutes=30),
             termine_le=now + timezone.timedelta(hours=1),
             description='Maintenance système large.')
-        with mock.patch('apps.notifications.services.notify') as notify_mock:
+        with mock.patch('core.notify_registry.notify') as notify_mock:
             notifier_fenetres_a_venir(now=now)
         # Les deux directeurs (deux sociétés) sont notifiés — 2 appels par
         # seuil (24h + 1h) x 2 admins = 4.
@@ -198,7 +198,7 @@ class MaintenanceWindowPermissionTest(TestCase):
         fenetre = MaintenanceWindow.objects.create(
             company=self.company, debute_le=now + timezone.timedelta(hours=1),
             termine_le=now + timezone.timedelta(hours=2), description='X')
-        with mock.patch('apps.notifications.services.notify') as notify_mock:
+        with mock.patch('core.notify_registry.notify') as notify_mock:
             resp = self._client(self.directeur).post(
                 f'/api/django/core/maintenance-windows/{fenetre.pk}/annuler/')
         self.assertEqual(resp.status_code, 200)
