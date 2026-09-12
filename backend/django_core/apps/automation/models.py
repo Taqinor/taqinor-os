@@ -62,6 +62,12 @@ class TriggerType(models.TextChoices):
     # XPRJ23 ci-dessus) est CONSERVÉ tel quel.
     RECORD_STATE_CHANGE = (
         'record_state_change', "Changement d'état d'un enregistrement")
+    # NTEXT27 — un CustomRecord (enregistrement d'un objet personnalisé
+    # XPLT16) créé OU modifié. ``trigger_config={'object_code': 'x'}`` filtre
+    # sur l'objet ; vide ⇒ matche tout objet personnalisé de la société.
+    CUSTOM_RECORD_SAVED = (
+        'custom_record_saved',
+        "Enregistrement d'objet personnalisé créé/modifié")
 
 
 # XPLT3 — whitelist FERMÉE (app_label, model) -> {champ date autorisé: label}

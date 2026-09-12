@@ -169,6 +169,16 @@ def _trigger_matches(rule, instance, context):
             return evaluate_condition_group(conditions, ctx)
         return True
 
+    if rule.trigger_type == TriggerType.CUSTOM_RECORD_SAVED:
+        # NTEXT27 — ``object_code`` posé dans le contexte par le signal
+        # (``signals._custom_record_saved``) : vide ⇒ matche tout objet
+        # personnalisé de la société (comportement générique par défaut,
+        # cohérent avec les autres déclencheurs sans config).
+        wanted = cfg.get('object_code')
+        if not wanted:
+            return True
+        return ctx.get('object_code') == wanted
+
     # DEVIS_ACCEPTED / FACTURE_OVERDUE / WARRANTY_EXPIRING / MAINTENANCE_DUE /
     # STOCK_BELOW_THRESHOLD : la condition est déjà tranchée par l'émetteur du
     # signal (le moteur n'est appelé que quand l'événement s'est produit).
