@@ -2611,6 +2611,47 @@ class CategorieTicketViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(
+        responses=inline_serializer('SavImportCategorieCompetence', {
+            'cible': drf_serializers.CharField(),
+            'total_lignes': drf_serializers.IntegerField(),
+            'valides': drf_serializers.IntegerField(),
+            'rejetees': drf_serializers.IntegerField(),
+            'appliquees': drf_serializers.IntegerField(),
+            'lignes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        }))
+    @action(detail=False, methods=['post'],
+            url_path='importer-competences')
+    def importer_competences(self, request):
+        """NTSRV43 — Import CSV/XLSX des compétences requises par catégorie.
+
+        ``file`` (multipart, même nom de champ que l'import générique
+        ``apps/dataimport``) + ``apercu=1`` pour un APERÇU qui ne touche
+        jamais la base. Sans ``apercu``, les lignes VALIDES sont appliquées et
+        les lignes fautives rapportées une par une avec leur motif — jamais un
+        échec global silencieux (critère d'acceptation NTSRV43).
+
+        Écriture = permission d'écriture du référentiel (``get_permissions``
+        du viewset : responsable/admin), aucune garde déclarée sur l'action
+        pour ne pas court-circuiter cet override."""
+        from .imports import importer, previsualiser
+
+        fichier = request.FILES.get('file')
+        if fichier is None:
+            return Response(
+                {'file': 'Aucun fichier reçu (champ « file », CSV ou XLSX).'},
+                status=400)
+        octets = fichier.read()
+        apercu = str(request.query_params.get('apercu')
+                     or request.data.get('apercu') or '') in ('1', 'true')
+        fonction = previsualiser if apercu else importer
+        try:
+            recap = fonction(request.user.company, octets, fichier.name)
+        except ValueError as exc:
+            return Response({'file': str(exc)}, status=400)
+        return Response(recap)
+
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
 

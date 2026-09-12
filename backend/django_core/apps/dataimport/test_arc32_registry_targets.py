@@ -73,8 +73,16 @@ HISTORICAL_TARGETS = {
 #   crée directement des AFFAIRES : les deux cibles coexistent délibérément et
 #   ne doivent jamais fusionner — un fichier d'agrégateur de 400 lignes
 #   ouvrirait sinon 400 dossiers dont 380 seraient du bruit.
+#   NTSRV43 — 'sav_categorie_competence' : declaree par
+#   ``apps/sav/platform.py`` et servie par ``apps/sav/imports.py``
+#   (``FIELD_MAP``, ses propres en-tetes et ses propres validations). Elle ne
+#   cree AUCUNE fiche a plat : elle peuple un ManyToMany
+#   (``CategorieTicket.competences_requises``, NTSRV6) dont la cle humaine est
+#   un CODE de competence RH resolu via ``rh.selectors`` — donc pas d'entree
+#   dans ``dataimport.FIELD_MAPS``.
 REGISTRY_ONLY_TARGETS = {
     'obstacles', 'chaines', 'avis', 'avis_veille',
+    'sav_categorie_competence',
 }
 
 # Référence de non-régression du set RÉSOLU par ``_LazyTargets`` : les cibles
@@ -94,6 +102,7 @@ TARGET_OWNER_MODULE = {
     'devis': 'ventes', 'factures': 'ventes',
     'obstacles': 'ao', 'chaines': 'ao', 'avis': 'ao',
     'avis_veille': 'veille_ao',
+    'sav_categorie_competence': 'sav',
 }
 
 
