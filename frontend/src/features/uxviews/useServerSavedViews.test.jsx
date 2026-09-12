@@ -8,10 +8,11 @@ import { configureStore } from '@reduxjs/toolkit'
 
 const listSavedViewsMock = vi.fn()
 const deleteSavedViewMock = vi.fn()
+const createSavedViewMock = vi.fn(() => Promise.resolve({ data: { id: 99 } }))
 vi.mock('../../api/uxviewsApi', () => ({
   default: {
     listSavedViews: (...args) => listSavedViewsMock(...args),
-    createSavedView: vi.fn(),
+    createSavedView: (...args) => createSavedViewMock(...args),
     updateSavedView: vi.fn(),
     deleteSavedView: (...args) => deleteSavedViewMock(...args),
     definirParDefautRole: vi.fn(),
@@ -48,6 +49,8 @@ const VIEWS = [
 beforeEach(() => {
   listSavedViewsMock.mockReset()
   deleteSavedViewMock.mockReset()
+  createSavedViewMock.mockClear()
+  createSavedViewMock.mockResolvedValue({ data: { id: 99 } })
   localStorage.clear()
 })
 
@@ -113,5 +116,32 @@ describe('useServerSavedViews (NTUX2)', () => {
     await waitFor(() => expect(result.current.activeView?.id).toBe(1))
     act(() => result.current.applyView(null))
     await waitFor(() => expect(result.current.activeView?.id).toBe(2))
+  })
+
+  it('NTUX1 — migre les vues localStorage historiques (hooks/useSavedViews) au montage, puis recharge', async () => {
+    localStorage.setItem('taqinor.crm.leads.savedViews', JSON.stringify([
+      { name: 'Mes chauds', state: { score: 'chaud' } },
+    ]))
+    listSavedViewsMock.mockResolvedValue({ data: VIEWS })
+    renderHook(() => useServerSavedViews('crm.leads'), {
+      wrapper: wrapper(makeStore({ userId: 1 })),
+    })
+    await waitFor(() => expect(createSavedViewMock).toHaveBeenCalledWith({
+      ecran: 'crm.leads', nom: 'Mes chauds', configuration: { score: 'chaud' },
+    }))
+    // Migration réussie → la liste serveur est rechargée une seconde fois
+    // (montage + après migration) pour révéler la vue fraîchement créée.
+    await waitFor(() => expect(listSavedViewsMock.mock.calls.length).toBeGreaterThanOrEqual(2))
+    // Le drapeau posé empêche toute nouvelle tentative à un remontage.
+    expect(localStorage.getItem('taqinor.uxviews.migrated.crm.leads')).toBe('1')
+  })
+
+  it('NTUX1 — sans vue locale historique, ne crée rien (migration no-op)', async () => {
+    listSavedViewsMock.mockResolvedValue({ data: VIEWS })
+    renderHook(() => useServerSavedViews('crm.leads'), {
+      wrapper: wrapper(makeStore({ userId: 1 })),
+    })
+    await waitFor(() => expect(listSavedViewsMock).toHaveBeenCalled())
+    expect(createSavedViewMock).not.toHaveBeenCalled()
   })
 })
