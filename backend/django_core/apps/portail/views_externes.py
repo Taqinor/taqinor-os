@@ -28,7 +28,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from apps.roles.permissions import (
-    IsPortalFournisseurUser, IsPortalPartenaireUser, portal_scope_id,
+    IsPortalFournisseurUser, IsPortalPartenaireUser, IsPortalScopedUser,
+    portal_scope_id,
 )
 
 
@@ -452,6 +453,59 @@ class MesCommissionsPortailPartenaireViewSet(viewsets.ViewSet):
             'attachment; filename="releve-commissions.pdf"')
         reponse['X-Content-Type-Options'] = 'nosniff'
         return reponse
+
+
+class PreferencePortailSerializer(serializers.Serializer):
+    """NTPRT34 — préférences d'affichage du compte portail connecté."""
+    langue = serializers.CharField()
+    langues_disponibles = serializers.ListField(child=serializers.DictField())
+
+
+@extend_schema(methods=['GET'], responses=PreferencePortailSerializer)
+@extend_schema(methods=['PUT'], request=inline_serializer(
+    name='PreferencePortailEcriture',
+    fields={'langue': serializers.CharField()},
+), responses=PreferencePortailSerializer)
+@api_view(['GET', 'PUT'])
+@permission_classes([IsPortalScopedUser])
+def preference_portail(request):
+    """NTPRT34 — lit / écrit la langue du portail du compte CONNECTÉ.
+
+    Garde ``IsPortalScopedUser`` (n'importe quelle portée PORTAIL, jamais un
+    interne) : la préférence d'affichage est la seule surface commune aux
+    trois portails — client, fournisseur et partenaire en ont le même besoin.
+
+    Le compte et la société sont pris sur ``request.user`` — jamais du corps :
+    un ``utilisateur`` ou un ``company`` envoyé par le client est ignoré. Le
+    critère d'acceptation (« persiste par compte portail, pas un cookie
+    volatile ») est donc tenu côté serveur, et la langue suit le compte d'un
+    appareil à l'autre.
+    """
+    from .models import PreferencePortail
+
+    langues = [{'code': code, 'libelle': libelle}
+               for code, libelle in PreferencePortail.Langue.choices]
+
+    if request.method == 'PUT':
+        demandee = str(request.data.get('langue') or '').strip().lower()
+        if demandee not in PreferencePortail.Langue.values:
+            return Response(
+                {'langue': 'Langue non disponible pour le portail.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        PreferencePortail.objects.update_or_create(
+            utilisateur=request.user,
+            defaults={'company': request.user.company, 'langue': demandee})
+        return Response({'langue': demandee, 'langues_disponibles': langues})
+
+    preference = PreferencePortail.objects.filter(
+        utilisateur=request.user).first()
+    # Aucune ligne = aucun choix exprimé : le défaut du modèle (français)
+    # s'applique, jamais une erreur ni une langue devinée.
+    return Response({
+        'langue': (preference.langue if preference is not None
+                   else PreferencePortail.Langue.FR),
+        'langues_disponibles': langues,
+    })
 
 
 class CandidatureFournisseurThrottle(SimpleRateThrottle):

@@ -36,6 +36,7 @@ from .views_externes import (
     MesCommissionsPortailPartenaireViewSet,
     MesSoumissionsPortailPartenaireViewSet,
     candidature_fournisseur,
+    preference_portail,
     tableau_de_bord_fournisseur,
     tableau_de_bord_partenaire,
 )
@@ -92,6 +93,11 @@ urlpatterns = [
          name='portail-fournisseur-tableau-de-bord'),
     path('partenaire/tableau-de-bord/', tableau_de_bord_partenaire,
          name='portail-partenaire-tableau-de-bord'),
+    # NTPRT34 — préférence d'affichage (langue) du compte portail connecté :
+    # la SEULE surface commune aux trois portails, d'où la garde « portail
+    # quelconque » plutôt qu'une portée exacte.
+    path('ma-preference/', preference_portail,
+         name='portail-ma-preference'),
     # NTPRT25 — auto-inscription fournisseur : PUBLIC (AllowAny) et
     # rate-limité. Volontairement déclaré AVANT le routeur pour qu'aucun
     # ViewSet ne puisse l'ombrer.

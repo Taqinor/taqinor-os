@@ -19,6 +19,12 @@ const portailApi = {
   // société est résolue côté serveur par l'en-tête Host — on n'envoie AUCUN
   // identifiant de société (ce serait un énumérateur de tenants).
   themePublic: () => api.get('/public/portail/theme/'),
+  // NTPRT34 — langue du shell portail. SERVEUR (suit le compte), jamais un
+  // cookie : c'est le critère d'acceptation. Ouvert aux TROIS portées portail.
+  preference: {
+    get: () => api.get('/portail/ma-preference/'),
+    set: (langue) => api.put('/portail/ma-preference/', { langue }),
+  },
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),

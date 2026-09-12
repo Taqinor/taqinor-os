@@ -12,15 +12,17 @@ import PortalLayout from '../PortalLayout'
    ========================================================================== */
 
 // Non exporté : utilisé uniquement dans ce fichier (fast-refresh).
+// NTPRT34 — `labelAr` = libellé arabe de l'onglet (repli français si absent).
 const NAV_FOURNISSEUR = [
-  { to: '/portail/fournisseur', label: 'Tableau de bord', end: true },
+  { to: '/portail/fournisseur', label: 'Tableau de bord', labelAr: 'لوحة التحكم', end: true },
   // NTPRT21 — « Mes bons de commande » (liste + confirmation de date).
-  { to: '/portail/fournisseur/commandes', label: 'Mes commandes' },
+  { to: '/portail/fournisseur/commandes', label: 'Mes commandes', labelAr: 'طلبياتي' },
 ]
 
 export default function PortalFournisseurLayout({ children }) {
   return (
-    <PortalLayout titre="Espace fournisseur" items={NAV_FOURNISSEUR}>
+    <PortalLayout titre="Espace fournisseur" titreAr="فضاء المورّد"
+                  items={NAV_FOURNISSEUR}>
       {children}
     </PortalLayout>
   )
