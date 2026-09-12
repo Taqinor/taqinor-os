@@ -227,6 +227,28 @@ def demandes_en_retard(company, now=None):
             .order_by('date_echeance', 'id'))
 
 
+def demandes_proches_echeance(company, within_days=7, now=None):
+    """NTGRC34 — demandes OUVERTES dont l'échéance approche ou est dépassée.
+
+    Pendant « préventif » de :func:`demandes_en_retard` : un rappel qui ne
+    part qu'une fois le délai légal DÉPASSÉ arrive toujours trop tard. La
+    fenêtre inclut donc le retard (échéance déjà passée) ET l'imminence
+    (échéance dans ``within_days`` jours) — c'est la même file de travail.
+
+    Bornée à la société ; triée par échéance la plus proche d'abord.
+    """
+    from .models import DataSubjectRequest
+
+    now = now or timezone.now()
+    limite = now + timezone.timedelta(days=max(0, int(within_days or 0)))
+    return (DataSubjectRequest.objects
+            .filter(company=company, date_echeance__isnull=False,
+                    date_echeance__lte=limite)
+            .exclude(statut__in=[DataSubjectRequest.STATUT_TRAITEE,
+                                 DataSubjectRequest.STATUT_REFUSEE])
+            .order_by('date_echeance', 'id'))
+
+
 def traiter_demande(request):
     """Exécute une ``DataSubjectRequest`` (accès → export, effacement → erase).
 

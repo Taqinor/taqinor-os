@@ -257,3 +257,25 @@ def wrap_email_html(
         })
     except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
         return corps_texte or ''
+
+
+def traitements_haut_risque(company, actifs_seuls=True):
+    """NTGRC27 — traitements CNDP marqués « données sensibles / haut risque ».
+
+    Sélecteur FIN, ajouté ici pour que les modules de conformité (``grc``)
+    lisent le registre des traitements par un point d'entrée nommé plutôt que
+    de dupliquer la règle « qu'est-ce qu'un traitement à haut risque » chacun
+    de leur côté. ``core`` reste FONDATION : rien n'est importé d'une app
+    métier, c'est ``core`` qui possède ``RegistreTraitement``.
+
+    Toujours borné à une société ; trié de façon déterministe.
+    """
+    from .models import RegistreTraitement
+
+    if company is None:
+        return RegistreTraitement.objects.none()
+    qs = RegistreTraitement.objects.filter(
+        company=company, donnees_sensibles=True)
+    if actifs_seuls:
+        qs = qs.filter(actif=True)
+    return qs.order_by('code', 'id')

@@ -114,6 +114,40 @@ def security_events(company, since=None, until=None):
     return qs.order_by('-timestamp')
 
 
+def rechercher_journal(company, terme, debut=None, fin=None, limite=200):
+    """NTGRC31 — lignes du journal correspondant à un TERME, sur une fenêtre.
+
+    Fonction FINE ajoutée pour la recherche e-discovery de ``grc`` : une autre
+    app doit pouvoir interroger le journal d'activité SANS importer
+    ``apps.audit.models``. Le terme est cherché dans l'ACTEUR
+    (``actor_username``), le LIBELLÉ de la cible (``object_repr``) et le
+    DÉTAIL — les trois champs qui portent du texte lisible ; jamais dans le
+    diff structuré, qui n'est pas fait pour ça.
+
+    ``company`` obligatoire (scope strict) ; un terme vide ne renvoie RIEN
+    (une recherche e-discovery sans terme ramènerait tout le journal, ce qui
+    n'est pas une recherche). Ordonné du plus récent au plus ancien et borné
+    par ``limite`` : un jeu de résultats ingérable n'est pas exploitable dans
+    un dossier.
+    """
+    from django.db.models import Q
+
+    from .models import AuditLog
+
+    if company is None or not (terme or '').strip():
+        return AuditLog.objects.none()
+    terme = terme.strip()
+    qs = AuditLog.objects.filter(company=company).filter(
+        Q(actor_username__icontains=terme)
+        | Q(object_repr__icontains=terme)
+        | Q(detail__icontains=terme))
+    if debut is not None:
+        qs = qs.filter(timestamp__gte=debut)
+    if fin is not None:
+        qs = qs.filter(timestamp__lte=fin)
+    return qs.order_by('-timestamp')[:max(1, int(limite or 200))]
+
+
 # ---------------------------------------------------------------------------
 # NTSEC17 — vérification du chaînage d'inviolabilité + rétention plancher.
 # ---------------------------------------------------------------------------

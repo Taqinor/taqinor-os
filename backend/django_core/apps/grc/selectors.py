@@ -298,3 +298,706 @@ def violations_echeance_72h_depassee(company, now=None):
             .exclude(statut__in=[ViolationDonnees.STATUT_NOTIFIEE,
                                  ViolationDonnees.STATUT_CLOTUREE])
             .order_by('date_echeance_72h', 'id'))
+
+
+# ── NTGRC20 — attestations de lecture des politiques ────────────────────────
+
+def employes_cibles(company, politique):
+    """Ids des dossiers employés VISÉS par une politique (via ``rh.selectors``).
+
+    Le dénominateur d'un taux d'attestation est la POPULATION CIBLE, pas le
+    nombre de personnes qui ont déjà cliqué. La cible est lue chez ``rh`` par
+    son ``selectors.py`` — jamais un import de ``rh.models``.
+
+    * ``tous`` → tous les dossiers ACTIFS de la société ;
+    * ``departement`` → ceux dont le département correspond (par nom, sans
+      tenir compte de la casse, ou par identifiant) ;
+    * ``role`` → les dossiers reliés à un compte portant le rôle visé.
+
+    Une cible que l'on ne sait pas résoudre renvoie un ensemble VIDE : mieux
+    vaut un taux affiché « sans cible » qu'un taux calculé sur une population
+    inventée.
+    """
+    from apps.rh.selectors import dossiers_actifs
+
+    from .models import PolitiqueInterne
+
+    if company is None or politique is None:
+        return set()
+
+    ids = set(dossiers_actifs(company).values_list('id', flat=True))
+    cible = getattr(politique, 'cible', None)
+    valeur = (getattr(politique, 'cible_valeur', '') or '').strip()
+
+    if cible == PolitiqueInterne.CIBLE_TOUS:
+        return ids
+    if not valeur:
+        return set()
+
+    if cible == PolitiqueInterne.CIBLE_DEPARTEMENT:
+        from apps.rh.selectors import departements_par_employe
+
+        mapping = departements_par_employe(company, ids)
+        cherche = valeur.casefold()
+        return {
+            employe_id
+            for employe_id, info in mapping.items()
+            if (info.get('departement_nom') or '').casefold() == cherche
+            or str(info.get('departement_id') or '') == valeur
+        }
+
+    if cible == PolitiqueInterne.CIBLE_ROLE:
+        from django.contrib.auth import get_user_model
+
+        from apps.rh.selectors import dossier_employe_for_user
+
+        cibles = set()
+        utilisateurs = get_user_model().objects.filter(
+            company=company, is_active=True, role_legacy=valeur)
+        for user_id in utilisateurs.values_list('id', flat=True):
+            dossier = dossier_employe_for_user(company, user_id)
+            if dossier is not None and dossier.pk in ids:
+                cibles.add(dossier.pk)
+        return cibles
+
+    return set()
+
+
+def taux_attestation(company, politique):
+    """NTGRC20 — taux d'attestation de la VERSION COURANTE d'une politique.
+
+    Renvoie ``{'version', 'cible', 'attestants', 'taux_pct', 'manquants'}``.
+
+    Le taux porte sur la version PUBLIÉE en cours : une attestation de la v2
+    ne vaut pas pour la v3 (c'est tout l'intérêt de versionner). Une politique
+    jamais publiée (``version`` = 0) renvoie 0 attestant et un taux de 0 — pas
+    une division par zéro, et surtout pas un « 100 % » flatteur sur une
+    politique que personne n'a jamais pu lire.
+    """
+    from .models import AttestationPolitique
+
+    version = int(getattr(politique, 'version', 0) or 0)
+    cibles = employes_cibles(company, politique) if version else set()
+    attestants = set()
+    if version:
+        lignes = (AttestationPolitique.objects
+                  .filter(company=company, politique=politique,
+                          version_attestee=version)
+                  .exclude(employe_ref='')
+                  .values_list('employe_ref', flat=True))
+        for ref in lignes:
+            try:
+                attestants.add(int(ref))
+            except (TypeError, ValueError):
+                continue
+
+    dedans = cibles & attestants
+    total = len(cibles)
+    taux = round(100.0 * len(dedans) / total, 1) if total else 0.0
+    return {
+        'version': version,
+        'cible': total,
+        'attestants': len(dedans),
+        'taux_pct': taux,
+        'manquants': sorted(cibles - attestants),
+    }
+
+
+def attestations_manquantes(company):
+    """NTGRC21 — qui doit encore attester quoi, par politique PUBLIÉE.
+
+    Renvoie une liste de dicts ``{politique, version, manquants}`` où
+    ``manquants`` est la liste triée des ids de dossiers employés visés qui
+    n'ont pas attesté la version COURANTE. Les politiques sans manquant sont
+    omises (une relance vide n'existe pas) ; les brouillons et les politiques
+    obsolètes ne sont jamais relancés — on ne réclame pas la lecture d'un
+    texte qui peut encore changer ou qui n'est plus en vigueur.
+    """
+    from .models import PolitiqueInterne
+
+    if company is None:
+        return []
+    resultats = []
+    publiees = (PolitiqueInterne.objects
+                .filter(company=company,
+                        statut=PolitiqueInterne.STATUT_PUBLIEE,
+                        version__gte=1)
+                .order_by('titre', 'id'))
+    for politique in publiees:
+        taux = taux_attestation(company, politique)
+        manquants = taux['manquants']
+        if not manquants:
+            continue
+        resultats.append({
+            'politique': politique,
+            'version': taux['version'],
+            'manquants': manquants,
+        })
+    return resultats
+
+
+# ── NTGRC27 — analyses d'impact (AIPD) ──────────────────────────────────────
+
+def traitements_dpia_manquante(company):
+    """NTGRC27 — traitements à HAUT RISQUE sans AIPD VALIDÉE.
+
+    Lecture du registre des traitements par le sélecteur FIN de ``core``
+    (``core.selectors.traitements_haut_risque``) — jamais par une règle
+    « qu'est-ce qu'un traitement sensible » redupliquée ici.
+
+    Un traitement compte comme couvert UNIQUEMENT si son AIPD est au statut
+    « validée ». Un brouillon ou une analyse « à réviser » ne protège
+    personne : c'est exactement le cas que ce sélecteur existe pour faire
+    remonter.
+
+    Renvoie une liste de dicts ``{traitement, analyse}`` (``analyse`` = la
+    dernière AIPD connue, ou ``None`` si aucune n'existe), triée par code.
+    """
+    from core.selectors import traitements_haut_risque
+
+    from .models import AnalyseImpactDPIA
+
+    if company is None:
+        return []
+    traitements = list(traitements_haut_risque(company))
+    if not traitements:
+        return []
+
+    refs = {str(t.pk) for t in traitements}
+    analyses = {}
+    for analyse in (AnalyseImpactDPIA.objects
+                    .filter(company=company, traitement_ref__in=refs)
+                    .order_by('id')):
+        # La plus RÉCENTE fait foi (order_by croissant + écrasement).
+        analyses[analyse.traitement_ref] = analyse
+
+    manquants = []
+    for traitement in traitements:
+        analyse = analyses.get(str(traitement.pk))
+        if (analyse is not None
+                and analyse.statut == AnalyseImpactDPIA.STATUT_VALIDEE):
+            continue
+        manquants.append({'traitement': traitement, 'analyse': analyse})
+    return manquants
+
+
+# ── NTGRC28 — cockpit de conformité du DPO ──────────────────────────────────
+
+#: Au-delà de cette criticité (grille 5×5), un risque est en ZONE ROUGE.
+#: 15 = 3×5 ou 5×3 : le premier palier où un risque est à la fois probable et
+#: grave. En-dessous, tout remonterait et le cockpit ne dirait plus rien.
+SEUIL_CRITICITE_CRITIQUE = 15
+
+
+def tableau_bord_dpo(company, now=None):
+    """NTGRC28 — les SEPT compteurs de conformité, en UN seul appel.
+
+    Un DPO ouvrait sept écrans pour savoir s'il était à jour ; ce sélecteur
+    répond d'un coup. LECTURE SEULE et sans aucune donnée personnelle : des
+    COMPTES et des ÉCHÉANCES, jamais un nom ni un email — un tableau de bord
+    de conformité qui étale l'identité des personnes concernées serait
+    lui-même un manquement.
+
+    Les compteurs, dans l'ordre :
+      1. ``dsr_ouverts`` — demandes de droits en cours + délais restants ;
+      2. ``violations_72h`` — violations sous obligation de notification ;
+      3. ``consentements_retires_mois`` — retraits du mois en cours ;
+      4. ``politiques_non_attestees`` — politiques publiées non lues par tous ;
+      5. ``controles_a_tester`` — contrôles internes dont le test est dû ;
+      6. ``risques_critiques`` — risques résiduels en zone rouge ;
+      7. ``traitements_sans_dpia`` — traitements sensibles sans AIPD validée.
+    """
+    from django.utils import timezone
+
+    from core.models import ConsentRecord, DataSubjectRequest
+
+    from .models import RisqueEntreprise, ViolationDonnees
+
+    maintenant = now or timezone.now()
+    if company is None:
+        return {}
+
+    # 1. Demandes de droits ouvertes + délai restant (jours, jamais négatif
+    #    masqué : une demande en retard affiche un nombre NÉGATIF, c'est
+    #    exactement l'information qui doit sauter aux yeux).
+    ouvertes = (DataSubjectRequest.objects
+                .filter(company=company)
+                .exclude(statut__in=[DataSubjectRequest.STATUT_TRAITEE,
+                                     DataSubjectRequest.STATUT_REFUSEE])
+                .order_by('date_echeance', 'id'))
+    dsr = []
+    en_retard = 0
+    for demande in ouvertes:
+        echeance = demande.date_echeance
+        jours = None
+        if echeance is not None:
+            jours = (echeance - maintenant).days
+            if jours < 0:
+                en_retard += 1
+        dsr.append({
+            'type': demande.kind,
+            'statut': demande.statut,
+            'echeance': echeance.isoformat() if echeance else None,
+            'jours_restants': jours,
+        })
+
+    # 2. Violations : celles qui sont encore sous obligation de notification.
+    violations = (ViolationDonnees.objects
+                  .filter(company=company,
+                          notification_cndp_requise=True,
+                          date_notification_cndp__isnull=True)
+                  .exclude(statut__in=[ViolationDonnees.STATUT_NOTIFIEE,
+                                       ViolationDonnees.STATUT_CLOTUREE]))
+    violations_depassees = violations.filter(
+        date_echeance_72h__lt=maintenant).count()
+
+    # 3. Consentements RETIRÉS depuis le début du mois courant.
+    #    ``occurred_at`` (l'instant où la PERSONNE a agi) est facultatif : on
+    #    retombe sur ``created_at`` (l'instant où NOUS l'avons enregistré)
+    #    plutôt que d'ignorer la ligne — un retrait sans date saisie reste un
+    #    retrait, et le compter à zéro serait le pire des deux mondes.
+    from django.db.models.functions import Coalesce
+
+    debut_mois = maintenant.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
+    retraits = (ConsentRecord.objects
+                .filter(company=company, granted=False)
+                .annotate(quand_effectif=Coalesce('occurred_at', 'created_at'))
+                .filter(quand_effectif__gte=debut_mois)
+                .count())
+
+    return {
+        'dsr_ouverts': len(dsr),
+        'dsr_en_retard': en_retard,
+        'dsr_details': dsr,
+        'violations_72h': violations.count(),
+        'violations_72h_depassees': violations_depassees,
+        'consentements_retires_mois': retraits,
+        'politiques_non_attestees': len(attestations_manquantes(company)),
+        'controles_a_tester': len(controles_a_tester(company)),
+        'risques_critiques': (
+            RisqueEntreprise.objects
+            .filter(company=company,
+                    criticite_residuelle__gte=SEUIL_CRITICITE_CRITIQUE)
+            .exclude(statut=RisqueEntreprise.STATUT_CLOS)
+            .count()),
+        'traitements_sans_dpia': len(traitements_dpia_manquante(company)),
+        'calcule_le': maintenant.isoformat(),
+    }
+
+
+# ── NTGRC29 — score de maturité conformité ──────────────────────────────────
+
+#: Pondération des six critères du score (somme = 100).
+#:
+#: Les poids ne sont pas « au feeling » : les deux premiers critères sont ceux
+#: qu'un contrôleur demande EN PREMIER (le registre des traitements et la
+#: preuve que les contrôles tournent), les quatre suivants mesurent la
+#: RÉACTION (délais tenus, politiques lues, violations notifiées, AIPD à jour).
+PONDERATION_CONFORMITE = {
+    'ropa': 20,
+    'controles': 20,
+    'dsr': 15,
+    'politiques': 15,
+    'violations': 15,
+    'dpia': 15,
+}
+
+#: Champs qui rendent une ligne de RoPA réellement exploitable. Un registre
+#: où il ne reste que le code et la finalité ne prouve rien à personne.
+CHAMPS_ROPA_REQUIS = ('finalite', 'base_legale', 'categories_donnees',
+                      'duree_conservation')
+
+
+def _pourcent(numerateur, denominateur, sans_donnee=0.0):
+    """Pourcentage borné 0-100 ; ``sans_donnee`` quand il n'y a rien à mesurer.
+
+    La valeur par défaut du « rien à mesurer » est un CHOIX explicite, jamais
+    le même partout : ce qu'on doit DÉCLARER (registre, contrôles, politiques)
+    vaut 0 quand c'est vide — une absence de déclaration n'est pas une
+    conformité ; ce à quoi on doit RÉAGIR (demandes, violations, AIPD) vaut
+    100 quand il n'y a rien eu — on ne reproche pas un retard à qui n'a rien
+    reçu.
+    """
+    if not denominateur:
+        return float(sans_donnee)
+    return round(max(0.0, min(100.0, 100.0 * numerateur / denominateur)), 1)
+
+
+def score_conformite(company, now=None):
+    """NTGRC29 — score de maturité conformité (0-100) + détail par critère.
+
+    Renvoie ``{'score', 'details': [{critere, libelle, score, poids,
+    points, commentaire}], 'calcule_le'}``. Le total est la somme des
+    ``score × poids / 100`` — borné 0-100 par construction.
+
+    Aucun chiffre n'est inventé : chaque critère dit SUR QUOI il porte
+    (numérateur/dénominateur réels) dans son commentaire, pour qu'un score
+    médiocre soit actionnable au lieu d'être vexant.
+    """
+    from django.utils import timezone
+
+    from core.models import DataSubjectRequest, RegistreTraitement
+    from core.selectors import traitements_haut_risque
+
+    from .models import ControleInterne, PolitiqueInterne, ViolationDonnees
+
+    maintenant = now or timezone.now()
+    if company is None:
+        return {'score': 0.0, 'details': [], 'calcule_le': None}
+
+    details = []
+
+    # 1. RoPA — part des traitements ACTIFS réellement renseignés.
+    traitements = list(RegistreTraitement.objects.filter(
+        company=company, actif=True))
+    complets = sum(
+        1 for t in traitements
+        if all((getattr(t, champ, '') or '').strip()
+               for champ in CHAMPS_ROPA_REQUIS))
+    details.append({
+        'critere': 'ropa',
+        'libelle': 'Registre des traitements renseigné',
+        'score': _pourcent(complets, len(traitements)),
+        'poids': PONDERATION_CONFORMITE['ropa'],
+        'commentaire': (f'{complets} traitement(s) complet(s) sur '
+                        f'{len(traitements)} actif(s).'),
+    })
+
+    # 2. Contrôles internes — part des contrôles actifs NON dus (donc testés
+    #    efficacement dans leur fenêtre de fréquence).
+    total_controles = ControleInterne.objects.filter(
+        company=company, actif=True).count()
+    dus = len(controles_a_tester(company, aujourdhui=maintenant.date()))
+    details.append({
+        'critere': 'controles',
+        'libelle': 'Contrôles internes testés et efficaces',
+        'score': _pourcent(total_controles - dus, total_controles),
+        'poids': PONDERATION_CONFORMITE['controles'],
+        'commentaire': (f'{total_controles - dus} contrôle(s) à jour sur '
+                        f'{total_controles} actif(s).'),
+    })
+
+    # 3. Demandes de droits — part traitée DANS les délais légaux.
+    dsr_total = dsr_dans_delai = 0
+    for demande in DataSubjectRequest.objects.filter(company=company):
+        echeance = demande.date_echeance
+        if echeance is None:
+            continue
+        close = demande.statut in (DataSubjectRequest.STATUT_TRAITEE,
+                                   DataSubjectRequest.STATUT_REFUSEE)
+        if not close and echeance >= maintenant:
+            continue  # encore dans les temps : rien à juger.
+        dsr_total += 1
+        if close and (demande.traitee_le or maintenant) <= echeance:
+            dsr_dans_delai += 1
+    details.append({
+        'critere': 'dsr',
+        'libelle': 'Demandes de droits traitées dans les délais',
+        'score': _pourcent(dsr_dans_delai, dsr_total, sans_donnee=100.0),
+        'poids': PONDERATION_CONFORMITE['dsr'],
+        'commentaire': (f'{dsr_dans_delai} demande(s) dans les délais sur '
+                        f'{dsr_total} arrivée(s) à échéance.'),
+    })
+
+    # 4. Politiques — moyenne des taux d'attestation des politiques PUBLIÉES.
+    publiees = list(PolitiqueInterne.objects.filter(
+        company=company, statut=PolitiqueInterne.STATUT_PUBLIEE,
+        version__gte=1))
+    if publiees:
+        moyenne = round(sum(
+            taux_attestation(company, p)['taux_pct']
+            for p in publiees) / len(publiees), 1)
+    else:
+        moyenne = 0.0
+    details.append({
+        'critere': 'politiques',
+        'libelle': 'Politiques publiées et attestées',
+        'score': moyenne,
+        'poids': PONDERATION_CONFORMITE['politiques'],
+        'commentaire': (f'{len(publiees)} politique(s) publiée(s), taux '
+                        f"d'attestation moyen {moyenne} %."),
+    })
+
+    # 5. Violations — part notifiée AVANT l'échéance de 72 h. Le dénominateur
+    #    ne retient que celles dont l'échéance est passée ou déjà notifiées :
+    #    on ne reproche pas un retard à une violation d'il y a deux heures.
+    violations = ViolationDonnees.objects.filter(
+        company=company, notification_cndp_requise=True)
+    v_total = v_a_temps = 0
+    for violation in violations:
+        echeance = violation.date_echeance_72h
+        notifiee = violation.date_notification_cndp
+        if notifiee is None and (echeance is None or echeance >= maintenant):
+            continue
+        v_total += 1
+        if notifiee is not None and echeance is not None \
+                and notifiee <= echeance:
+            v_a_temps += 1
+    details.append({
+        'critere': 'violations',
+        'libelle': 'Violations notifiées sous 72 h',
+        'score': _pourcent(v_a_temps, v_total, sans_donnee=100.0),
+        'poids': PONDERATION_CONFORMITE['violations'],
+        'commentaire': (f'{v_a_temps} violation(s) notifiée(s) à temps sur '
+                        f'{v_total} à notifier.'),
+    })
+
+    # 6. AIPD — part des traitements à haut risque COUVERTS par une analyse
+    #    validée.
+    haut_risque = traitements_haut_risque(company).count()
+    manquantes = len(traitements_dpia_manquante(company))
+    details.append({
+        'critere': 'dpia',
+        'libelle': 'Analyses d\'impact (AIPD) à jour',
+        'score': _pourcent(haut_risque - manquantes, haut_risque,
+                           sans_donnee=100.0),
+        'poids': PONDERATION_CONFORMITE['dpia'],
+        'commentaire': (f'{haut_risque - manquantes} traitement(s) à haut '
+                        f'risque couvert(s) sur {haut_risque}.'),
+    })
+
+    for detail in details:
+        detail['points'] = round(detail['score'] * detail['poids'] / 100.0, 2)
+    total = round(sum(d['points'] for d in details), 1)
+    return {
+        'score': max(0.0, min(100.0, total)),
+        'details': details,
+        'calcule_le': maintenant.isoformat(),
+    }
+
+
+# ── NTGRC30 — cartographie des flux de données ──────────────────────────────
+
+def flux_hors_maroc(company):
+    """NTGRC30 — flux SORTANT du Maroc, à surveiller.
+
+    Un transfert international n'est pas interdit, il est CONDITIONNÉ : il
+    faut pouvoir nommer la garantie qui l'encadre. Ce sélecteur remonte donc
+    TOUS les flux déclarés hors Maroc — y compris (et surtout) ceux SANS
+    garantie déclarée, qui sont précisément ceux qu'il faut régulariser.
+
+    Trié garanties manquantes d'abord : c'est la file de travail, pas une
+    liste alphabétique.
+    """
+    from .models import FluxDonnees
+
+    if company is None:
+        return FluxDonnees.objects.none()
+    return (FluxDonnees.objects
+            .filter(company=company, transfert_hors_maroc=True)
+            .order_by('garanties', 'pays_destination', 'id'))
+
+
+# ── NTGRC31 — recherche e-discovery transverse ──────────────────────────────
+
+#: Périmètres interrogeables par la recherche e-discovery. Ensemble FERMÉ :
+#: une app absente d'ici n'est jamais fouillée par accident, et une valeur
+#: inconnue envoyée par l'appelant ne devient pas un scan sauvage.
+APPS_E_DISCOVERY = ('crm_client', 'crm_lead', 'audit_log', 'ged_document')
+
+
+def _resultats_crm(company, terme, type_objet):
+    """Ids CRM correspondant au terme, via ``crm.selectors`` (jamais models).
+
+    Le terme est résolu comme IDENTIFIANT de personne (email ou téléphone) :
+    c'est ce que ``crm.selectors`` sait faire de façon fiable et indexée. Une
+    recherche par nom libre traverserait toute la table sans index et
+    ramènerait des homonymes — dans un dossier de contentieux, c'est pire que
+    rien.
+    """
+    from apps.crm.selectors import (
+        client_ids_par_identifiant, lead_ids_par_identifiant,
+    )
+
+    resolveur = (client_ids_par_identifiant if type_objet == 'crm_client'
+                 else lead_ids_par_identifiant)
+    return [
+        {'id': objet_id, 'libelle': f'{type_objet} #{objet_id}',
+         'horodatage': None}
+        for objet_id in resolveur(company, terme)
+    ]
+
+
+def _resultats_audit(company, terme, debut, fin):
+    """Lignes du journal d'activité, via ``audit.selectors`` (jamais models)."""
+    from apps.audit.selectors import rechercher_journal
+
+    return [
+        {
+            'id': ligne.pk,
+            'libelle': (ligne.object_repr or ligne.detail or
+                        ligne.get_action_display()),
+            'horodatage': (ligne.timestamp.isoformat()
+                           if ligne.timestamp else None),
+        }
+        for ligne in rechercher_journal(company, terme, debut, fin)
+    ]
+
+
+def _resultats_ged(user, terme):
+    """Documents GED, via ``ged.selectors.search_documents`` — ACL RESPECTÉE.
+
+    La recherche documentaire de la GED est bornée par les droits de coffre de
+    l'utilisateur. On passe donc l'UTILISATEUR, jamais la seule société : une
+    recherche e-discovery ne doit pas devenir le chemin détourné qui ouvre les
+    coffres auxquels l'appelant n'a pas accès. Sans utilisateur, la GED est
+    simplement omise du périmètre (et le dit).
+
+    Best-effort : la recherche plein-texte dépend d'un index Postgres ; son
+    indisponibilité ne doit pas faire échouer toute la recherche.
+    """
+    if user is None:
+        return []
+    try:
+        from apps.ged.selectors import search_documents
+
+        return [
+            {
+                'id': document.pk,
+                'libelle': getattr(document, 'nom', '') or f'#{document.pk}',
+                'horodatage': (document.created_at.isoformat()
+                               if getattr(document, 'created_at', None)
+                               else None),
+            }
+            for document in search_documents(user, terme)[:200]
+        ]
+    except Exception:  # noqa: BLE001 - GED/plein-texte indisponible
+        return []
+
+
+def rechercher_e_discovery(company, terme, apps=None, periode=None,
+                           user=None, now=None):
+    """NTGRC31 — recherche transverse horodatée, prête pour un dossier.
+
+    ``apps`` : liste de périmètres parmi ``APPS_E_DISCOVERY`` (défaut : tous).
+    ``periode`` : dict ``{debut, fin}`` (datetimes) appliqué aux résultats qui
+    portent une date — le journal d'activité et la GED. Les objets métier
+    (clients, leads) n'ont pas de « date d'apparition » pertinente ici : les
+    filtrer sur une période donnerait l'illusion d'une exhaustivité qui
+    n'existe pas.
+
+    ``user`` : nécessaire pour fouiller la GED (son ACL de coffre est
+    respectée). Sans lui, ``ged_document`` renvoie une liste vide et
+    ``perimetres_omis`` le DIT — jamais un zéro silencieux qu'on prendrait
+    pour « rien trouvé ».
+
+    Renvoie ``{'terme', 'apps', 'periode', 'resultats', 'total',
+    'perimetres_omis', 'genere_le'}`` — un jeu de résultats groupé par app,
+    horodaté, directement exportable.
+    """
+    from django.utils import timezone
+
+    maintenant = now or timezone.now()
+    terme = (terme or '').strip()
+    demandes = [a for a in (apps or APPS_E_DISCOVERY)
+                if a in APPS_E_DISCOVERY]
+    if not demandes:
+        demandes = list(APPS_E_DISCOVERY)
+
+    periode = periode or {}
+    debut, fin = periode.get('debut'), periode.get('fin')
+
+    resultats = {}
+    omis = []
+    if terme:
+        for perimetre in demandes:
+            if perimetre in ('crm_client', 'crm_lead'):
+                resultats[perimetre] = _resultats_crm(
+                    company, terme, perimetre)
+            elif perimetre == 'audit_log':
+                resultats[perimetre] = _resultats_audit(
+                    company, terme, debut, fin)
+            elif perimetre == 'ged_document':
+                if user is None:
+                    resultats[perimetre] = []
+                    omis.append('ged_document')
+                else:
+                    resultats[perimetre] = _resultats_ged(user, terme)
+    else:
+        resultats = {perimetre: [] for perimetre in demandes}
+
+    return {
+        'terme': terme,
+        'apps': demandes,
+        'periode': {
+            'debut': debut.isoformat() if debut else None,
+            'fin': fin.isoformat() if fin else None,
+        },
+        'resultats': resultats,
+        'total': sum(len(lignes) for lignes in resultats.values()),
+        'perimetres_omis': omis,
+        'genere_le': maintenant.isoformat(),
+    }
+
+
+# ── NTGRC33 — cadres de conformité & couverture ─────────────────────────────
+
+def taux_couverture(company, cadre):
+    """NTGRC33 — taux de couverture d'un cadre : COUVERTES / TOTAL.
+
+    ``taux_pct`` ne compte QUE les exigences pleinement couvertes — c'est la
+    seule lecture qu'un auditeur accepte : une exigence à moitié traitée n'est
+    pas traitée.
+
+    Le détail est renvoyé (``couvert`` / ``partiel`` / ``non_couvert``) et,
+    séparément, un ``taux_avec_partiel_pct`` qui crédite le partiel d'une
+    demi-exigence — utile pour mesurer l'AVANCEMENT interne, jamais pour
+    annoncer une conformité. Les deux chiffres portent des noms distincts
+    précisément pour qu'on ne puisse pas prendre l'un pour l'autre.
+    """
+    from .models import ExigenceCadre
+
+    vide = {'total': 0, 'couvert': 0, 'partiel': 0, 'non_couvert': 0,
+            'taux_pct': 0.0, 'taux_avec_partiel_pct': 0.0}
+    if company is None or cadre is None:
+        return vide
+
+    comptes = {statut: 0 for statut, _ in ExigenceCadre.COUVERTURE_CHOICES}
+    for statut in (ExigenceCadre.objects
+                   .filter(company=company, cadre=cadre)
+                   .values_list('statut_couverture', flat=True)):
+        if statut in comptes:
+            comptes[statut] += 1
+
+    total = sum(comptes.values())
+    if not total:
+        return vide
+    couvert = comptes[ExigenceCadre.COUVERTURE_COUVERT]
+    partiel = comptes[ExigenceCadre.COUVERTURE_PARTIEL]
+    return {
+        'total': total,
+        'couvert': couvert,
+        'partiel': partiel,
+        'non_couvert': comptes[ExigenceCadre.COUVERTURE_NON],
+        'taux_pct': round(100.0 * couvert / total, 1),
+        'taux_avec_partiel_pct': round(
+            100.0 * (couvert + 0.5 * partiel) / total, 1),
+    }
+
+
+# ── NTGRC35 — sous-traitants & clauses (art. 28) ────────────────────────────
+
+def sous_traitants_sans_clause(company):
+    """NTGRC35 — sous-traitants SANS clause de sous-traitance signée.
+
+    C'est le manquement le plus banal et le plus sanctionné : confier des
+    données personnelles à un tiers sans contrat qui l'encadre. Les plus
+    risqués remontent EN PREMIER — la file de travail se lit de haut en bas.
+
+    Une ``date_clause`` renseignée mais ``clause_signee`` à ``False`` reste
+    dans la liste : c'est la SIGNATURE qui engage, pas la date qu'on a notée.
+    """
+    from django.db.models import Case, IntegerField, Value, When
+
+    from .models import SousTraitantRGPD
+
+    if company is None:
+        return SousTraitantRGPD.objects.none()
+    return (SousTraitantRGPD.objects
+            .filter(company=company, clause_signee=False)
+            .annotate(poids_risque=Case(
+                When(niveau_risque=SousTraitantRGPD.RISQUE_ELEVE, then=Value(0)),
+                When(niveau_risque=SousTraitantRGPD.RISQUE_MOYEN, then=Value(1)),
+                default=Value(2), output_field=IntegerField()))
+            .order_by('poids_risque', 'nom', 'id'))
