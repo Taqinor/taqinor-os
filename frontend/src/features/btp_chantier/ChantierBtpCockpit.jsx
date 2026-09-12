@@ -5,6 +5,8 @@ import { Badge } from '../../ui'
 import btpChantierApi from '../../api/btpChantierApi'
 import ChantierSelect from './ChantierSelect'
 import { formatMontant } from './planningLots.utils'
+// NTI18N1 — rollout i18n : premier écran Chantiers migré.
+import { useT } from '../../i18n'
 
 /* ============================================================================
    NTCON21 — Tableau de bord BTP par chantier.
@@ -42,6 +44,7 @@ function Bloc({ titre, children }) {
 }
 
 export default function ChantierBtpCockpit() {
+  const t = useT()
   const params = useParams()
   const [chantierId, setChantierId] = useState(params.chantierId || '')
   const [etat, setEtat] = useState({
@@ -171,7 +174,7 @@ export default function ChantierBtpCockpit() {
 
           <Bloc titre="Déboursé vs facturé">
             {etat.debourseInterdit && (
-              <p>Réservé aux responsables (donnée interne).</p>
+              <p>{t('chantiers.debourse.reserve', null, 'Réservé aux responsables (donnée interne).')}</p>
             )}
             {!etat.debourseInterdit && !etat.debourse && <p>Indisponible.</p>}
             {!etat.debourseInterdit && etat.debourse && (

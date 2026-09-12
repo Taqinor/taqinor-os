@@ -6,6 +6,8 @@ import { useConfirmDialog } from '../../ui/confirm'
 import { formatDate } from '../../lib/format'
 import { unwrapList } from '../../api/resource'
 import rhApi from '../../api/rhApi'
+// NTI18N1 — rollout i18n : premier écran RH migré (titre de la liste).
+import { useT } from '../../i18n'
 
 /* ============================================================================
    PACT84 — Guichet des demandes RH (attestations).
@@ -19,6 +21,7 @@ import rhApi from '../../api/rhApi'
    ========================================================================== */
 
 export default function DemandesRh() {
+  const t = useT()
   const { confirmDelete } = useConfirmDialog()
   const [demandes, setDemandes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -94,7 +97,7 @@ export default function DemandesRh() {
       </div>
 
       <ListShell
-        title="Guichet des demandes"
+        title={t('rh.demandes.title', null, 'Guichet des demandes')}
         columns={columns}
         rows={demandes}
         loading={loading}

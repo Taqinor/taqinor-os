@@ -7,6 +7,8 @@ import {
 } from '../../ui'
 import { formatMAD, formatDate } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
+// NTI18N1 — rollout i18n : premier écran Chantiers/Installations migré.
+import { useT } from '../../i18n'
 
 /* ============================================================================
    WIR110 — Approvisionnement avancé (consultation, `/chantiers/approvisionnement`).
@@ -148,11 +150,12 @@ const TABS = [
 ]
 
 export default function ApprovisionnementPage() {
+  const t = useT()
   return (
     <div className="page flex flex-col gap-6">
       <PageHeader
-        title="Approvisionnement avancé"
-        subtitle="Seuils et approbations BCF, contrats-cadre, commandes d'appel, contrats de prix fournisseur et réceptions non facturées."
+        title={t('chantiers.approvisionnement.title', null, 'Approvisionnement avancé')}
+        subtitle={t('chantiers.approvisionnement.subtitle', null, "Seuils et approbations BCF, contrats-cadre, commandes d'appel, contrats de prix fournisseur et réceptions non facturées.")}
       />
       <Tabs defaultValue="seuils" className="flex flex-col gap-4">
         <TabsList className="flex flex-wrap">

@@ -6,6 +6,8 @@ import { ModuleHero } from '../../ui/module'
 import { Button } from '../../ui'
 import { fetchDevis, fetchFactures } from '../../features/ventes/store/ventesSlice'
 import { formatNumber, formatMAD } from '../../lib/format'
+// NTI18N1 — rollout i18n : premier écran Ventes migré (sous-titre du cockpit).
+import { useT } from '../../i18n'
 
 /* ============================================================================
    ODY16 — Cockpit Ventes : porte d'entrée de l'app (ModuleHero VX15 + actions
@@ -23,6 +25,7 @@ import { formatNumber, formatMAD } from '../../lib/format'
    `navGroup: 'facturation'` posé sur les items concernés du module.config).
    ========================================================================== */
 export default function VentesCockpit() {
+  const t = useT()
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { devis, factures } = useSelector((s) => s.ventes)
@@ -58,7 +61,7 @@ export default function VentesCockpit() {
     <div className="page">
       <ModuleHero
         title="Ventes"
-        subtitle="Devis, bons de commande, facturation et relances"
+        subtitle={t('ventes.cockpit.subtitle', null, 'Devis, bons de commande, facturation et relances')}
         accent="var(--module-accent-brass)"
         actions={(
           <>

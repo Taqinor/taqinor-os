@@ -9,6 +9,8 @@ import { BarArrondie } from '../../../ui/charts'
 import { toast, Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../ui'
 import { formatMAD, formatNumber, formatPercent } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+// NTI18N1 — rollout i18n : premier écran Compta migré.
+import { useT } from '../../../i18n'
 // APX35 — les tranches d'ancienneté viennent de la balance âgée DÉJÀ exposée :
 // aucun endpoint nouveau, aucun champ serveur ajouté.
 import ventesApi from '../../../api/ventesApi'
@@ -63,6 +65,7 @@ export function resolveTiersLabel(tiersId, tiersById) {
 }
 
 export default function CockpitPage() {
+  const t = useT()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -267,7 +270,7 @@ export default function CockpitPage() {
           va chercher son export mensuel (aucune logique d'export dupliquée). */}
       <Card>
         <CardHeader>
-          <CardTitle>Où trouver mes exports</CardTitle>
+          <CardTitle>{t('compta.exports.title', null, 'Où trouver mes exports')}</CardTitle>
           <CardDescription>
             Le handoff mensuel au comptable externe est réparti sur ces écrans.
           </CardDescription>
