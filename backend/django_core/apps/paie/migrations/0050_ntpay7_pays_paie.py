@@ -41,11 +41,13 @@ class Migration(migrations.Migration):
                     verbose_name='Moteur de calcul')),
                 ('actif', models.BooleanField(
                     default=True, verbose_name='Actif')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle `core.models.TenantModel`.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='paie_pays', to='authentication.company',
+                    related_name='%(app_label)s_%(class)s_set',
+                    to='authentication.company',
                     verbose_name='Société')),
             ],
             options={

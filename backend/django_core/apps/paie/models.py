@@ -19,6 +19,7 @@ from decimal import Decimal
 from django.db import models
 
 from core.crypto_fields import EncryptedCharField
+from core.models import TenantModel
 
 
 # ── PAIE2 — Paramètres sociaux versionnés ──────────────────────────────────
@@ -433,7 +434,7 @@ class TrancheIR(models.Model):
 
 # ── NTPAY7 — Pays de paie (moteur multi-pays) ──────────────────────────────
 
-class PaysPaie(models.Model):
+class PaysPaie(TenantModel):
     """Pays de paie d'une société (NTPAY7), scopé société.
 
     Le moteur de paie était 100 % marocain EN DUR (CNSS/AMO/IR MA). Ce modèle
@@ -458,12 +459,9 @@ class PaysPaie(models.Model):
         (CODE_CI, "Côte d'Ivoire"),
     ]
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: purge tenant
-        related_name='paie_pays',
-        verbose_name='Société',
-    )
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``
+    # (FK ``company`` + ``created_at``/``updated_at``) : aucun nouveau modèle
+    # ne re-déclare cette paire à la main.
     code_iso = models.CharField(
         max_length=2, choices=CODE_ISO_CHOICES, verbose_name='Code ISO')
     libelle = models.CharField(max_length=80, verbose_name='Libellé')
@@ -475,8 +473,6 @@ class PaysPaie(models.Model):
         max_length=12, blank=True, default='',
         verbose_name='Moteur de calcul')
     actif = models.BooleanField(default=True, verbose_name='Actif')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Pays de paie'
@@ -2349,7 +2345,7 @@ class TypeEntreePonctuelle(models.Model):
 
 # ── NTPAY2 — Interface comptable paramétrable (rubrique × analytique) ───────
 
-class SchemaComptablePaie(models.Model):
+class SchemaComptablePaie(TenantModel):
     """Ligne de mapping comptable de la paie (NTPAY2), scopée société.
 
     ``services.journal_de_paie`` codait EN DUR les comptes CGNC de l'écriture
@@ -2385,12 +2381,7 @@ class SchemaComptablePaie(models.Model):
         (CODE_NET, 'Net à payer (dû au personnel)'),
     ]
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: purge tenant
-        related_name='paie_schemas_comptables',
-        verbose_name='Société',
-    )
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``.
     code_systeme = models.CharField(
         max_length=24, choices=CODE_SYSTEME_CHOICES, blank=True, default='',
         verbose_name='Poste système')
@@ -2414,8 +2405,6 @@ class SchemaComptablePaie(models.Model):
         verbose_name='Section analytique (ID, compta.CentreCout)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Ligne de plan comptable paie'
@@ -2454,7 +2443,7 @@ class SchemaComptablePaie(models.Model):
 
 # ── NTPAY5 — Registre des dépôts déclaratifs & accusés (preuve) ────────────
 
-class DepotDeclaratif(models.Model):
+class DepotDeclaratif(TenantModel):
     """PREUVE de dépôt d'une déclaration de paie (NTPAY5), scopé société.
 
     ``EcheanceDeclarative`` (XPAI6) suit le CALENDRIER des déclarations dues ;
@@ -2493,12 +2482,7 @@ class DepotDeclaratif(models.Model):
         (STATUT_REJETE, 'Rejeté'),
     ]
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: purge tenant
-        related_name='paie_depots_declaratifs',
-        verbose_name='Société',
-    )
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``.
     echeance = models.ForeignKey(
         EcheanceDeclarative,
         # on_delete: le dossier de preuve n'a plus d'objet sans l'échéance
@@ -2528,8 +2512,6 @@ class DepotDeclaratif(models.Model):
         verbose_name='Statut')
     motif_rejet = models.CharField(
         max_length=300, blank=True, default='', verbose_name='Motif du rejet')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Dépôt déclaratif'

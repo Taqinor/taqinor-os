@@ -56,11 +56,12 @@ class Migration(migrations.Migration):
                 ('motif_rejet', models.CharField(
                     blank=True, default='', max_length=300,
                     verbose_name='Motif du rejet')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle `core.models.TenantModel`.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='paie_depots_declaratifs',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('echeance', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

@@ -51,11 +51,13 @@ class Migration(migrations.Migration):
                     default=True, verbose_name='Actif')),
                 ('ordre', models.PositiveIntegerField(
                     default=0, verbose_name='Ordre')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle `core.models.TenantModel` (FK company +
+                # created_at/updated_at), jamais re-déclaré à la main.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='paie_schemas_comptables',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('rubrique', models.ForeignKey(
                     blank=True, null=True,

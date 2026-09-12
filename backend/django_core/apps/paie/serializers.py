@@ -759,6 +759,11 @@ class DepotDeclaratifSerializer(serializers.ModelSerializer):
     ``echeances-declaratives/<id>/depots/`` (qui recopie type/période depuis
     l'échéance et fait basculer son statut), jamais champ par champ.
     """
+    # SCA4 — le socle ``TenantModel`` horodate en ``created_at`` ; l'API paie
+    # expose ``date_creation`` (convention de l'app), jamais deux noms.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
     class Meta:
         model = DepotDeclaratif
         fields = [
@@ -777,6 +782,9 @@ class PaysPaieSerializer(serializers.ModelSerializer):
     qui ne saurait produire aucun bulletin.
     """
     moteur_disponible = serializers.SerializerMethodField(read_only=True)
+    # SCA4 — cf. ``DepotDeclaratifSerializer``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = PaysPaie
@@ -818,6 +826,9 @@ class SchemaComptablePaieSerializer(serializers.ModelSerializer):
         source='rubrique.code', read_only=True)
     rubrique_libelle = serializers.CharField(
         source='rubrique.libelle', read_only=True)
+    # SCA4 — cf. ``DepotDeclaratifSerializer``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = SchemaComptablePaie
