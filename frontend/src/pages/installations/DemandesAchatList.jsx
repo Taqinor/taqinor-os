@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Trash2, Send, Check, X } from 'lucide-react'
+import { Plus, Trash2, Send, Check, X, FileSearch } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import CatalogueAchatPicker from '../../components/CatalogueAchatPicker'
+import RFQCreationWizard from '../../features/installations/RFQCreationWizard'
 import { formatMAD, formatDate } from '../../lib/format'
 import { toastSuccess, toastError } from '../../lib/toast'
 import {
@@ -78,6 +79,8 @@ export default function DemandesAchatList() {
   const [acting, setActing] = useState(false)
   const [refusing, setRefusing] = useState(false)
   const [motifRefus, setMotifRefus] = useState('')
+  // NTP2P28 — wizard de création RFQ depuis une demande approuvée.
+  const [showRfqWizard, setShowRfqWizard] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -614,6 +617,11 @@ export default function DemandesAchatList() {
                     </Button>
                   </>
                 )}
+                {detail.statut === 'approuvee' && !detail.bon_commande && (
+                  <Button variant="outline" onClick={() => setShowRfqWizard(true)}>
+                    <FileSearch className="size-4" aria-hidden="true" /> Créer une RFQ
+                  </Button>
+                )}
                 {!(detail.statut === 'brouillon' || (detail.statut === 'soumise' && isManager)) && (
                   <Button variant="ghost" onClick={() => setDetail(null)}>Fermer</Button>
                 )}
@@ -622,6 +630,15 @@ export default function DemandesAchatList() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* NTP2P28 — wizard 3 étapes : fournisseurs → lignes reprises → envoi. */}
+      {showRfqWizard && detail && (
+        <RFQCreationWizard
+          demande={detail}
+          onClose={() => setShowRfqWizard(false)}
+          onDone={() => { setShowRfqWizard(false); toastSuccess('RFQ créée et envoyée.') }}
+        />
+      )}
     </div>
   )
 }
