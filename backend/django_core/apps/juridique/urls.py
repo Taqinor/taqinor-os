@@ -8,7 +8,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CabinetAvocatViewSet, DossierJuridiqueViewSet, MandatAvocatViewSet,
+    AudienceViewSet, CabinetAvocatViewSet, DelaiPrescriptionViewSet,
+    DossierJuridiqueViewSet, MandatAvocatViewSet, NoteHonorairesViewSet,
     RegleApprobationJuridiqueViewSet,
 )
 
@@ -22,6 +23,14 @@ router.register(
 router.register(
     r'regles-approbation', RegleApprobationJuridiqueViewSet,
     basename='juridique-regle-approbation')
+router.register(
+    r'audiences', AudienceViewSet, basename='juridique-audience')
+router.register(
+    r'delais-prescription', DelaiPrescriptionViewSet,
+    basename='juridique-delai-prescription')
+router.register(
+    r'notes-honoraires', NoteHonorairesViewSet,
+    basename='juridique-note-honoraires')
 
 urlpatterns = [
     path('', include(router.urls)),

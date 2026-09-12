@@ -25,12 +25,14 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    CabinetAvocat, DossierJuridique, EtapeApprobationJuridique, MandatAvocat,
+    Audience, CabinetAvocat, DelaiPrescription, DossierJuridique,
+    EtapeApprobationJuridique, MandatAvocat, NoteHonoraires,
     RegleApprobationJuridique,
 )
 from .serializers import (
-    CabinetAvocatSerializer, DossierJuridiqueSerializer,
-    EtapeApprobationJuridiqueSerializer, MandatAvocatSerializer,
+    AudienceSerializer, CabinetAvocatSerializer, DelaiPrescriptionSerializer,
+    DossierJuridiqueSerializer, EtapeApprobationJuridiqueSerializer,
+    MandatAvocatSerializer, NoteHonorairesSerializer,
     RegleApprobationJuridiqueSerializer,
 )
 
@@ -398,6 +400,146 @@ class MandatAvocatViewSet(CompanyScopedModelViewSet):
             return Response({'statut': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(MandatAvocatSerializer(mandat).data)
+
+
+class _DossierScopedViewSet(CompanyScopedModelViewSet):
+    """Base des objets rattachés à un dossier : scope société + héritage de la
+    CONFIDENTIALITÉ du dossier (ses pièces suivent le dossier) + ``?dossier=``.
+    """
+
+    read_permission = 'juridique_voir'
+    write_permission = 'juridique_gerer'
+    #: Chemin d'accès au dossier depuis le modèle (ORM lookup).
+    chemin_dossier = 'dossier'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not selectors.peut_voir_confidentiel(self.request.user):
+            qs = qs.exclude(**{
+                f'{self.chemin_dossier}__confidentialite':
+                    DossierJuridique.NiveauConfidentialite.CONFIDENTIEL})
+        dossier_id = self.request.query_params.get('dossier')
+        if dossier_id:
+            qs = qs.filter(**{f'{self.chemin_dossier}_id': dossier_id})
+        return qs
+
+
+class AudienceViewSet(_DossierScopedViewSet):
+    """Audiences d'un dossier (NTJUR5)."""
+
+    queryset = Audience.objects.select_related('dossier').all()
+    serializer_class = AudienceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_audience', 'id']
+
+    @action(detail=True, methods=['post'], url_path='reporter')
+    def reporter(self, request, pk=None):
+        """Reporte l'audience : l'ancienne devient ``reportee``, une NOUVELLE
+        ligne est créée (l'historique de la première est préservé)."""
+        audience = self.get_object()
+        try:
+            nouvelle = services.reporter_audience(
+                audience,
+                request.data.get('date_audience'),
+                heure=request.data.get('heure'),
+                juridiction_salle=request.data.get('juridiction_salle'),
+                motif=(request.data.get('motif') or '').strip())
+        except services.TransitionError as exc:
+            return Response({'date_audience': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(AudienceSerializer(nouvelle).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class DelaiPrescriptionViewSet(_DossierScopedViewSet):
+    """Délais procéduraux (NTJUR4). ``date_limite`` posée côté serveur."""
+
+    queryset = DelaiPrescription.objects.select_related('dossier').all()
+    serializer_class = DelaiPrescriptionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_limite', 'id']
+
+    def _date_limite(self, serializer, instance=None):
+        declenchement = serializer.validated_data.get(
+            'date_declenchement',
+            getattr(instance, 'date_declenchement', None))
+        duree = serializer.validated_data.get(
+            'duree_jours', getattr(instance, 'duree_jours', 0))
+        return services.calculer_date_limite(
+            self.request.user.company, declenchement, duree)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        date_limite=self._date_limite(serializer))
+
+    def perform_update(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            date_limite=self._date_limite(serializer, serializer.instance))
+
+    @action(detail=False, methods=['get'], url_path='expirants')
+    def expirants(self, request):
+        """Délais encore ``en_cours`` dont la limite tombe dans ``?within=N``
+        jours (défaut 30)."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        try:
+            within = int(request.query_params.get('within') or 30)
+        except (TypeError, ValueError):
+            within = 30
+        aujourdhui = timezone.localdate()
+        qs = self.get_queryset().filter(
+            statut=DelaiPrescription.Statut.EN_COURS,
+            date_limite__lte=aujourdhui + timedelta(days=within),
+        ).order_by('date_limite', 'id')
+        return Response(DelaiPrescriptionSerializer(qs, many=True).data)
+
+
+class NoteHonorairesViewSet(_DossierScopedViewSet):
+    """Notes d'honoraires reçues des cabinets (NTJUR11)."""
+
+    queryset = NoteHonoraires.objects.select_related(
+        'mandat', 'mandat__dossier').all()
+    serializer_class = NoteHonorairesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_facture', 'id']
+    chemin_dossier = 'mandat__dossier'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        mandat_id = self.request.query_params.get('mandat')
+        if mandat_id:
+            qs = qs.filter(mandat_id=mandat_id)
+        return qs
+
+    def perform_create(self, serializer):
+        """Référence anti-collision posée côté serveur (``NHJ-AAAAMM-NNNN``)."""
+        from core.numbering import create_with_reference
+
+        company = self.request.user.company
+        create_with_reference(
+            NoteHonoraires, 'NHJ', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference))
+
+    def _changer_statut(self, request, cible):
+        note = self.get_object()
+        note.statut = cible
+        note.save(update_fields=['statut', 'updated_at'])
+        return Response(NoteHonorairesSerializer(note).data)
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Valide la note : elle entre alors dans le budget CONSOMMÉ."""
+        return self._changer_statut(request, NoteHonoraires.Statut.VALIDEE)
+
+    @action(detail=True, methods=['post'], url_path='marquer-payee')
+    def marquer_payee(self, request, pk=None):
+        """Marque la note payée. Le paiement RÉEL reste un flux fournisseur
+        (module achats) — cette action ne fait que tracer."""
+        return self._changer_statut(request, NoteHonoraires.Statut.PAYEE)
 
 
 class RegleApprobationJuridiqueViewSet(CompanyScopedModelViewSet):

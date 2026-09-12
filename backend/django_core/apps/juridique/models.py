@@ -319,6 +319,182 @@ class MandatAvocat(TenantModel):
         return Decimal('0')
 
 
+class Audience(TenantModel):
+    """Une audience de la procédure (NTJUR5).
+
+    Reporter une audience ne la SUPPRIME jamais : l'ancienne passe à
+    ``reportee`` et une nouvelle ligne est créée — l'historique procédural est
+    une pièce à valeur légale.
+    """
+
+    class TypeAudience(models.TextChoices):
+        MISE_EN_ETAT = 'mise_en_etat', 'Mise en état'
+        PLAIDOIRIE = 'plaidoirie', 'Plaidoirie'
+        REFERE = 'refere', 'Référé'
+        EXECUTION = 'execution', 'Exécution'
+
+    class Statut(models.TextChoices):
+        PROGRAMMEE = 'programmee', 'Programmée'
+        TENUE = 'tenue', 'Tenue'
+        REPORTEE = 'reportee', 'Reportée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    dossier = models.ForeignKey(
+        DossierJuridique,
+        # on_delete: une audience n'existe que pour son dossier.
+        on_delete=models.CASCADE,
+        related_name='audiences',
+        verbose_name='Dossier juridique',
+    )
+    date_audience = models.DateField(verbose_name="Date d'audience")
+    heure = models.TimeField(null=True, blank=True, verbose_name='Heure')
+    juridiction_salle = models.CharField(
+        max_length=160, blank=True, default='', verbose_name='Salle')
+    type_audience = models.CharField(
+        max_length=20, choices=TypeAudience.choices,
+        default=TypeAudience.MISE_EN_ETAT, verbose_name="Type d'audience")
+    resultat = models.TextField(
+        blank=True, default='', verbose_name='Résultat')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.PROGRAMMEE, verbose_name='Statut')
+    prochaine_echeance = models.DateField(
+        null=True, blank=True, verbose_name='Prochaine échéance')
+    # Audience qui a été REPORTÉE vers celle-ci (chaîne d'historique).
+    reporte_depuis = models.ForeignKey(
+        'self',
+        # on_delete: on ne perd pas la nouvelle audience si l'ancienne part.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reports',
+        verbose_name='Reportée depuis',
+    )
+
+    class Meta:
+        verbose_name = 'Audience'
+        verbose_name_plural = 'Audiences'
+        ordering = ['date_audience', 'id']
+        indexes = [
+            models.Index(fields=['dossier', 'date_audience'],
+                         name='juridique_audience_do_dat'),
+        ]
+
+    def __str__(self):
+        return f'{self.date_audience} — dossier {self.dossier_id}'
+
+
+class DelaiPrescription(TenantModel):
+    """Un délai procédural à ne pas manquer (NTJUR4).
+
+    ``date_limite`` est TOUJOURS calculée côté serveur en jours OUVRÉS,
+    jours fériés de la société compris
+    (``services.calculer_date_limite`` → ``notifications.calendar_utils``) :
+    un délai juridique manqué ne se rattrape pas.
+    """
+
+    class TypeDelai(models.TextChoices):
+        PRESCRIPTION_ACTION = 'prescription_action', "Prescription de l'action"
+        DELAI_APPEL = 'delai_appel', "Délai d'appel"
+        DELAI_POURVOI = 'delai_pourvoi', 'Délai de pourvoi'
+        DELAI_REPONSE = 'delai_reponse', 'Délai de réponse'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        RESPECTE = 'respecte', 'Respecté'
+        EXPIRE = 'expire', 'Expiré'
+
+    dossier = models.ForeignKey(
+        DossierJuridique,
+        # on_delete: un délai n'existe que pour son dossier.
+        on_delete=models.CASCADE,
+        related_name='delais_prescription',
+        verbose_name='Dossier juridique',
+    )
+    type_delai = models.CharField(
+        max_length=25, choices=TypeDelai.choices,
+        default=TypeDelai.AUTRE, verbose_name='Type de délai')
+    date_declenchement = models.DateField(
+        verbose_name='Date de déclenchement')
+    duree_jours = models.PositiveIntegerField(
+        default=0, verbose_name='Durée (jours ouvrés)')
+    date_limite = models.DateField(verbose_name='Date limite')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.EN_COURS, verbose_name='Statut')
+    alerte_envoyee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Alerte envoyée le')
+
+    class Meta:
+        verbose_name = 'Délai de prescription'
+        verbose_name_plural = 'Délais de prescription'
+        ordering = ['date_limite', 'id']
+        indexes = [
+            models.Index(fields=['company', 'date_limite'],
+                         name='juridique_delai_co_lim'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_delai_display()} — {self.date_limite}'
+
+
+class NoteHonoraires(TenantModel):
+    """Note d'honoraires reçue d'un cabinet (NTJUR11).
+
+    TRACE le montant engagé côté juridique. Le PAIEMENT effectif reste un flux
+    fournisseur classique (module achats) — ce modèle ne le duplique jamais.
+    """
+
+    class Statut(models.TextChoices):
+        RECUE = 'recue', 'Reçue'
+        VALIDEE = 'validee', 'Validée'
+        PAYEE = 'payee', 'Payée'
+
+    mandat = models.ForeignKey(
+        MandatAvocat,
+        # on_delete: une note n'existe que pour son mandat.
+        on_delete=models.CASCADE,
+        related_name='notes_honoraires',
+        verbose_name='Mandat',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    date_facture = models.DateField(verbose_name='Date de facture')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant HT')
+    tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='TVA')
+    montant_ttc = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant TTC')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.RECUE, verbose_name='Statut')
+    # ARC26 — jamais de ``FileField`` : la pièce vit dans le stockage objet,
+    # sous une clé préfixée par la société (SCA42). Ici on ne stocke que la
+    # clé produite par le service d'upload.
+    piece_jointe_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé de la pièce jointe')
+
+    class Meta:
+        verbose_name = "Note d'honoraires"
+        verbose_name_plural = "Notes d'honoraires"
+        ordering = ['-date_facture', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='juridique_note_co_ref_uniq'),
+        ]
+
+    def __str__(self):
+        return self.reference or f'note {self.pk}'
+
+
 class RegleApprobationJuridique(TenantModel):
     """Règle d'approbation d'un engagement de dépense juridique (NTJUR19).
 

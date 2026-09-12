@@ -221,6 +221,83 @@ def emettre_dossier_clos(dossier, *, user=None):
 
 
 # ───────────────────────────────────────────────────────────────────────────
+# NTJUR4 / NTJUR5 / NTJUR11 — échéancier procédural et honoraires
+# ───────────────────────────────────────────────────────────────────────────
+
+
+def calculer_date_limite(company, date_declenchement, duree_jours):
+    """Date limite d'un délai procédural, en jours OUVRÉS (NTJUR4).
+
+    Réutilise ``apps.notifications.calendar_utils.ajouter_jours_ouvres``
+    (import fonction-local) : week-ends ET jours fériés de la société sont
+    sautés — un férié dans la fenêtre décale donc la date limite. Aucune
+    logique de calendrier n'est réécrite ici.
+    """
+    from apps.notifications import calendar_utils
+
+    return calendar_utils.ajouter_jours_ouvres(
+        date_declenchement, int(duree_jours or 0), company)
+
+
+@transaction.atomic
+def reporter_audience(audience, nouvelle_date, *, heure=None,
+                      juridiction_salle=None, motif=''):
+    """Reporte une audience : l'ancienne devient ``reportee``, une NOUVELLE
+    ligne est créée (NTJUR5) — jamais de suppression, jamais d'écrasement.
+
+    Renvoie la nouvelle audience. Refuse de reporter une audience déjà tenue
+    ou annulée (son histoire est close).
+    """
+    from .models import Audience
+
+    if audience.statut in (Audience.Statut.TENUE, Audience.Statut.ANNULEE):
+        raise TransitionError(
+            "Une audience déjà tenue ou annulée ne peut plus être reportée.")
+    if not nouvelle_date:
+        raise TransitionError("Indiquez la nouvelle date d'audience.")
+    nouvelle = Audience.objects.create(
+        company=audience.company,
+        dossier=audience.dossier,
+        date_audience=nouvelle_date,
+        heure=heure if heure is not None else audience.heure,
+        juridiction_salle=(juridiction_salle
+                           if juridiction_salle is not None
+                           else audience.juridiction_salle),
+        type_audience=audience.type_audience,
+        statut=Audience.Statut.PROGRAMMEE,
+        reporte_depuis=audience,
+    )
+    audience.statut = Audience.Statut.REPORTEE
+    if motif:
+        audience.resultat = (
+            f'{audience.resultat}\nReport : {motif}'.strip())
+    audience.save(update_fields=['statut', 'resultat', 'updated_at'])
+    return nouvelle
+
+
+def creer_note_honoraires(mandat, **champs):
+    """Crée une note d'honoraires avec une référence anti-collision (NTJUR11).
+
+    Référence ``NHJ-AAAAMM-NNNN`` via ``core.numbering`` — jamais
+    ``count() + 1``.
+    """
+    from core.numbering import create_with_reference
+
+    from .models import NoteHonoraires
+
+    champs.pop('company', None)
+    champs.pop('reference', None)
+
+    def _save(reference):
+        return NoteHonoraires.objects.create(
+            company=mandat.company, mandat=mandat, reference=reference,
+            **champs)
+
+    return create_with_reference(
+        NoteHonoraires, 'NHJ', mandat.company, _save)
+
+
+# ───────────────────────────────────────────────────────────────────────────
 # NTJUR14 — Provision pour risque : PROPOSÉE, jamais auto-comptabilisée
 #
 # Patron « propose → confirme » du dépôt : AUCUNE écriture comptable ne naît

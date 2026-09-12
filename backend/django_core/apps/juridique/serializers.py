@@ -11,7 +11,8 @@ jamais court-circuiter les gardes métier (AUD515).
 from rest_framework import serializers
 
 from .models import (
-    CabinetAvocat, DossierJuridique, EtapeApprobationJuridique, MandatAvocat,
+    Audience, CabinetAvocat, DelaiPrescription, DossierJuridique,
+    EtapeApprobationJuridique, MandatAvocat, NoteHonoraires,
     RegleApprobationJuridique,
 )
 
@@ -145,6 +146,83 @@ class MandatAvocatSerializer(serializers.ModelSerializer):
                 {'taux_horaire': 'Renseignez le taux horaire pour un mandat '
                                  'facturé à l\'heure.'})
         return attrs
+
+
+class _DossierScopedSerializer(serializers.ModelSerializer):
+    """Base : le ``dossier`` visé doit appartenir à la société de l'appelant."""
+
+    def validate_dossier(self, value):
+        company = _company_de(self)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Ce dossier juridique n'appartient pas à votre société.")
+        return value
+
+
+class AudienceSerializer(_DossierScopedSerializer):
+    """Audience de la procédure (NTJUR5).
+
+    ``statut`` est en lecture seule : une audience ne se « reporte » que par
+    l'action dédiée, qui préserve l'historique au lieu de l'écraser.
+    """
+
+    class Meta:
+        model = Audience
+        fields = [
+            'id', 'dossier', 'date_audience', 'heure', 'juridiction_salle',
+            'type_audience', 'resultat', 'statut', 'prochaine_echeance',
+            'reporte_depuis', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'reporte_depuis', 'created_at',
+                            'updated_at']
+
+
+class DelaiPrescriptionSerializer(_DossierScopedSerializer):
+    """Délai procédural (NTJUR4). ``date_limite`` est TOUJOURS calculée côté
+    serveur (jours ouvrés, fériés société compris) — jamais saisie."""
+
+    jours_restants = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DelaiPrescription
+        fields = [
+            'id', 'dossier', 'type_delai', 'date_declenchement',
+            'duree_jours', 'date_limite', 'statut', 'alerte_envoyee_le',
+            'jours_restants', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['date_limite', 'alerte_envoyee_le', 'created_at',
+                            'updated_at']
+
+    def get_jours_restants(self, obj):
+        from django.utils import timezone
+
+        if not obj.date_limite:
+            return None
+        return (obj.date_limite - timezone.localdate()).days
+
+
+class NoteHonorairesSerializer(serializers.ModelSerializer):
+    """Note d'honoraires d'un mandat (NTJUR11).
+
+    ``reference`` (anti-collision) et ``statut`` (actions ``valider`` /
+    ``marquer-payee``) sont en lecture seule.
+    """
+
+    class Meta:
+        model = NoteHonoraires
+        fields = [
+            'id', 'mandat', 'reference', 'date_facture', 'montant_ht', 'tva',
+            'montant_ttc', 'description', 'statut', 'piece_jointe_key',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['reference', 'statut', 'created_at', 'updated_at']
+
+    def validate_mandat(self, value):
+        company = _company_de(self)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Ce mandat n'appartient pas à votre société.")
+        return value
 
 
 class RegleApprobationJuridiqueSerializer(serializers.ModelSerializer):
