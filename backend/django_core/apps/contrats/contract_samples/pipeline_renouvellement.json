@@ -1,0 +1,72 @@
+{
+  "endpoint": "GET /api/django/contrats/contrats/pipeline-renouvellement/?trimestre=&annee=",
+  "pourquoi": "NTDOC19 — le sélecteur `contrats_a_renouveler` (CONTRAT21) existait mais aucune vue PIPELINE ne le consommait : la démarche de renouvellement se pilotait à l'œil. PACT10 : la forme de l'agrégat est déclarée ICI, une seule fois, AVANT que le serveur et l'écran Kanban ne l'inventent chacun de leur côté.",
+  "avertissement_forme": "`mois` est une LISTE d'objets `{mois, contrats}` (jamais un dictionnaire indexé par numéro de mois) et `par_avancement` un OBJET de compteurs (jamais une liste) — l'écran ne peut donc pas `.map()` sur `par_avancement`. `avancement` appartient au vocabulaire FERMÉ `aucune_action | notifie | en_negociation | renouvele | resilie` : c'est l'état de la DÉMARCHE, jamais `Contrat.statut` (CONTRAT12) ni une étape du funnel STAGES.py (rule #2). `preavis_depasse` vaut true quand `date_fin − preavis_jours` est déjà passé ET que le préavis n'a pas été traité : c'est l'urgence à afficher en premier. Un trimestre entièrement passé renvoie la même forme avec `total: 0` et `mois: []` — jamais une erreur. Aucun montant n'est exposé ici.",
+  "exemple": {
+    "annee": 2026,
+    "trimestre": 4,
+    "debut": "2026-10-01",
+    "fin": "2026-12-31",
+    "total": 2,
+    "preavis_depasses": 1,
+    "par_avancement": {
+      "aucune_action": 1,
+      "notifie": 0,
+      "en_negociation": 1,
+      "renouvele": 0,
+      "resilie": 0
+    },
+    "mois": [
+      {
+        "mois": 10,
+        "contrats": [
+          {
+            "contrat_id": 41,
+            "reference": "CTR-2025-0041",
+            "objet": "Maintenance photovoltaïque",
+            "date_fin": "2026-10-27",
+            "preavis_jours": 60,
+            "limite_preavis": "2026-08-28",
+            "preavis_depasse": true,
+            "tacite_reconduction": true,
+            "avancement": "aucune_action",
+            "avancement_display": "Aucune action"
+          }
+        ]
+      },
+      {
+        "mois": 12,
+        "contrats": [
+          {
+            "contrat_id": 58,
+            "reference": "CTR-2026-0058",
+            "objet": "Exploitation centrale Bouskoura",
+            "date_fin": "2026-12-15",
+            "preavis_jours": 30,
+            "limite_preavis": "2026-11-15",
+            "preavis_depasse": false,
+            "tacite_reconduction": false,
+            "avancement": "en_negociation",
+            "avancement_display": "En négociation"
+          }
+        ]
+      }
+    ]
+  },
+  "exemple_vide": {
+    "annee": 2026,
+    "trimestre": 1,
+    "debut": "2026-01-01",
+    "fin": "2026-03-31",
+    "total": 0,
+    "preavis_depasses": 0,
+    "par_avancement": {
+      "aucune_action": 0,
+      "notifie": 0,
+      "en_negociation": 0,
+      "renouvele": 0,
+      "resilie": 0
+    },
+    "mois": []
+  }
+}

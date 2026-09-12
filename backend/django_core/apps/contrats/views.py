@@ -436,6 +436,35 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             ContratSerializer(
                 qs, many=True, context={'request': request}).data)
 
+    @action(detail=False, methods=['get'], url_path='pipeline-renouvellement')
+    def pipeline_renouvellement(self, request):
+        """Pipeline TRIMESTRIEL des renouvellements, groupé par mois (NTDOC19).
+
+        `?trimestre=1..4` et `?annee=` (défaut : le trimestre calendaire
+        courant). RÉUTILISE ``contrats_a_renouveler`` (CONTRAT21) — aucune
+        donnée n'est recalculée ni dupliquée. Chaque contrat porte l'avancement
+        RÉEL de la démarche (aucune action / notifié / en négociation NTDOC4 /
+        renouvelé / résilié) et le drapeau ``preavis_depasse`` (CONTRAT20 :
+        date limite de préavis déjà passée) — l'urgence à traiter en premier.
+
+        Lecture seule : ne change aucun statut. Le pipeline est borné au
+        queryset de l'appelant (filtre de confidentialité hérité), pour qu'un
+        contrat confidentiel ne fuite jamais par un agrégat.
+        """
+        try:
+            resultat = selectors.pipeline_renouvellements(
+                request.user.company,
+                trimestre=request.query_params.get('trimestre'),
+                annee=request.query_params.get('annee'),
+                ids_autorises=list(
+                    self.get_queryset().values_list('id', flat=True)),
+            )
+        except (TypeError, ValueError) as exc:
+            return Response(
+                {'detail': str(exc) or "Trimestre ou année invalide."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
     @action(detail=False, methods=['get'], url_path='tableau-de-bord')
     def tableau_de_bord(self, request):
         """Tableau de bord des contrats (CONTRAT33).
