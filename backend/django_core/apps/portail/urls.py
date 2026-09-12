@@ -74,14 +74,14 @@ router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
 # n'était donc jamais exercée par un vrai client.
 router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
                 basename='portail-mes-demandes-sav')
-# NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
-# commande, et la confirmation de date d'arrivée (le même effet que le chemin
-# tokenisé XPUR22, simplement authentifié).
 # NTPRT35 — widget « Satisfaction » : le déclencheur d'INTERFACE qui manquait
 # à FG238/FG239 (l'enquête était créée à la réception d'un chantier, sans
 # aucun écran client pour y répondre).
 router.register(r'satisfaction', SatisfactionPortailViewSet,
                 basename='portail-satisfaction')
+# NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
+# commande, et la confirmation de date d'arrivée (le même effet que le chemin
+# tokenisé XPUR22, simplement authentifié).
 router.register(r'mes-bons-commande', MesBcfPortailFournisseurViewSet,
                 basename='portail-mes-bons-commande')
 # NTPRT28 — deal registration : le PARTENAIRE connecté enregistre ses affaires
