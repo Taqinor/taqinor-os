@@ -147,9 +147,11 @@ class ConfirmationDeclencheRapprochementTests(TestCase):
         self.assertEqual(self.facture.bon_commande_id, self.bc.id)
         # Le rapprochement 3 voies a été créé/rafraîchi (AUD233) : la
         # facture n'a pas attendu le prochain paiement pour être évaluée.
-        from apps.compta.selectors import rapprochement_ecart_pct
-        self.assertIsNotNone(
-            rapprochement_ecart_pct(self.company, self.bc.id))
+        # On interroge l'EXISTENCE, pas l'écart : rien n'a encore été reçu sur
+        # ce BCF, donc `rapprochement_ecart_pct` vaut légitimement None (on ne
+        # divise pas par un reçu nul) même une fois l'évaluation faite.
+        from apps.compta.selectors import rapprochement_existe
+        self.assertTrue(rapprochement_existe(self.company, self.bc.id))
 
     def test_patch_sans_changer_bon_commande_ne_relance_rien(self):
         # Un PATCH qui ne touche pas bon_commande (ex. note) ne déclenche
@@ -158,5 +160,5 @@ class ConfirmationDeclencheRapprochementTests(TestCase):
             f'{BASE}/factures-fournisseur/{self.facture.id}/',
             {'note': 'test'}, format='json')
         self.assertEqual(resp.status_code, 200)
-        from apps.compta.selectors import rapprochement_ecart_pct
-        self.assertIsNone(rapprochement_ecart_pct(self.company, self.bc.id))
+        from apps.compta.selectors import rapprochement_existe
+        self.assertFalse(rapprochement_existe(self.company, self.bc.id))

@@ -2063,6 +2063,19 @@ def rapprochement_ecart_pct(company, bon_commande_id):
     return sur_facturation / rapp.montant_recu * Decimal('100')
 
 
+def rapprochement_existe(company, bon_commande_id):
+    """AUD233 — un rapprochement 3 voies existe-t-il déjà pour ce BCF ?
+
+    Complément de ``rapprochement_ecart_pct`` pour les appelants qui veulent
+    savoir si l'ÉVALUATION a eu lieu, pas quel écart elle a trouvé : l'écart
+    vaut légitimement ``None`` tant que rien n'a été reçu (division par zéro,
+    et « 0 reçu » n'est pas un écart), donc il ne peut pas servir de preuve
+    d'existence. Lecture seule, scopée société.
+    """
+    return Rapprochement.objects.filter(
+        company=company, bon_commande_id=bon_commande_id).exists()
+
+
 # ── FG132 — Échéancier & relevé fournisseur (balance âgée AP + relevé) ──────
 # Miroir fournisseur de la balance âgée clients (apps.ventes.recouvrement). Tout
 # se déduit du grand livre de la compta elle-même (lignes du compte 4411
