@@ -9,13 +9,16 @@ diverger silencieusement. Verrouille aussi que tout scope référencé par le
 mapping bulk (NTAPI14/15, `EXPORT_SCOPE_BY_ENTITY`/`IMPORT_SCOPE_BY_ENTITY`)
 existe bien dans `constants.ALL_SCOPES` (jamais un scope fantôme).
 
-Hors périmètre (intentionnel) : le 3e volet du critère NTAPI42 (« chaque code
-d'erreur émis existe au catalogue NTAPI4 ») ne peut être vérifié tant que
-NTAPI4 (`publicapi/error_catalog.py`, catalogue d'erreurs consultable — tâche
-distincte, non construite) n'existe pas. Idem pour `sandbox/reset/` et
-`changelog/` : endpoints utilitaires SANS scope métier, déjà couverts par
-leurs propres suites (`tests_ntapi27_sandbox.py`/`tests_ntapi24_changelog.py`)
-et volontairement HORS du contrat ressources/écritures/bulk vérifié ici.
+Le 3e volet du critère NTAPI42 (« chaque code d'erreur émis existe au catalogue
+NTAPI4 ») est désormais vérifié : NTAPI4 (`publicapi/error_catalog.py`) existe,
+et son catalogue est dérivé de la table du handler NTAPI3 — le test ci-dessous
+verrouille l'égalité dans les DEUX sens (aucun code émis sans explication,
+aucune explication fantôme).
+
+`sandbox/reset/`, `changelog/` et `errors/` restent hors du contrat vérifié
+ici : endpoints utilitaires SANS scope métier, déjà couverts par leurs propres
+suites (`tests_ntapi27_sandbox.py` / `tests_ntapi24_changelog.py` /
+`tests_ntapi4_error_catalog.py`).
 """
 import re
 
@@ -34,7 +37,7 @@ _PK_GROUP_RE = re.compile(r'\(\?P<pk>[^)]*\)')
 _TYPED_CONVERTER_RE = re.compile(r'<(?:\w+:)?(\w+)>')
 # Endpoints utilitaires publics SANS scope métier — hors du contrat
 # ressources/écritures/bulk documenté en OpenAPI (voir docstring module).
-_UTILITY_PATHS = {'sandbox/reset/', 'changelog/'}
+_UTILITY_PATHS = {'sandbox/reset/', 'changelog/', 'errors/'}
 
 
 def _router_mounted_paths():
@@ -98,6 +101,20 @@ class Ntapi42ApiContractConsistencyTests(SimpleTestCase):
             phantom, set(),
             f"Chemin(s) documenté(s) sans endpoint monté correspondant : "
             f"{sorted(phantom)}")
+
+    def test_every_emitted_error_code_is_in_the_catalog(self):
+        """3e volet NTAPI42 (débloqué par NTAPI4) : chaque code d'erreur que
+        le handler NTAPI3 peut émettre existe au catalogue — et l'inverse,
+        aucune explication fantôme sans code émis correspondant."""
+        from .error_catalog import codes_documentes, codes_emis
+
+        emis, documentes = codes_emis(), codes_documentes()
+        self.assertEqual(
+            emis - documentes, set(),
+            "Code(s) d'erreur émis sans entrée au catalogue NTAPI4.")
+        self.assertEqual(
+            documentes - emis, set(),
+            "Entrée(s) du catalogue NTAPI4 sans code d'erreur émis.")
 
     def test_bulk_scope_mapping_uses_only_known_scopes(self):
         combined = {**EXPORT_SCOPE_BY_ENTITY, **IMPORT_SCOPE_BY_ENTITY}

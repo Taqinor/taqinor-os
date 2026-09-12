@@ -26,6 +26,7 @@ from .bulk_views import (
 )
 from .public_sandbox_views import SandboxResetView
 from .public_changelog_views import PublicChangelogView
+from .public_errors_views import PublicErrorCatalogView
 from .public_licence_views import PublicLicenceStatutView
 from .public_scm_views import (
     PublicPolitiqueStockViewSet, PublicPrevisionDemandeViewSet,
@@ -76,6 +77,10 @@ urlpatterns = [
     # NTAPI24 — fil « changelog API » dédié (public, aucune clé requise).
     path('changelog/', PublicChangelogView.as_view(),
          name='public-changelog'),
+    # NTAPI4 — catalogue d'erreurs consultable (public, aucune clé requise) :
+    # cible du `doc_url` de chaque enveloppe d'erreur NTAPI3.
+    path('errors/', PublicErrorCatalogView.as_view(),
+         name='public-error-catalog'),
     # NTADM42 — statut de licence (plan/modules/sièges) de la société de la clé.
     path('licence/statut/', PublicLicenceStatutView.as_view(),
          name='public-licence-statut'),
