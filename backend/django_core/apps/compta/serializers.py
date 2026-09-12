@@ -1237,6 +1237,7 @@ class IndemniteChantierSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'employe', 'employe_nom', 'bareme',
             'bareme_libelle', 'date_deplacement', 'libelle_chantier',
+            'installation_id',
             'depart_lat', 'depart_lng', 'site_lat', 'site_lng', 'aller_retour',
             'nombre_jours', 'distance_km', 'montant_km', 'montant_per_diem',
             'montant_total', 'statut', 'statut_display', 'compte_charge',
@@ -1258,6 +1259,22 @@ class IndemniteChantierSerializer(serializers.ModelSerializer):
 
     def validate_bareme(self, value):
         return _meme_societe(self, value, 'Barème')
+
+    def validate_installation_id(self, value):
+        # CHT16 — le chantier (installations.Installation) doit exister et
+        # appartenir à la même société. Lu EXCLUSIVEMENT via
+        # apps.installations.selectors (jamais un import de modèle depuis
+        # compta/frais — le contre-exemple gestion_projet, loose ref jamais
+        # validée, ne doit PAS être copié).
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        from apps.installations.selectors import installation_scoped
+        if company is not None and installation_scoped(company, value) is None:
+            raise serializers.ValidationError(
+                'Chantier introuvable pour votre société.')
+        return value
 
 
 class DeclarationTVASerializer(serializers.ModelSerializer):

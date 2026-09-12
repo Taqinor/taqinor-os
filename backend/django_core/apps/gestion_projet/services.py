@@ -1473,22 +1473,38 @@ def creer_projet_depuis_devis(devis_data, *, company, user=None):
 
     ``devis_data`` provient EXCLUSIVEMENT de
     ``apps.ventes.selectors.devis_pour_projet`` (jamais un import de
-    ``ventes.models``). Refuse (``DevisVersProjetError``) si un ``ProjetLien``
-    pointant déjà ce devis existe pour la société (re-run → « déjà lié »). Le
-    ``code`` du projet est généré via une numérotation SÛRE (plus haut
-    suffixe utilisé + 1, jamais ``count()+1``).
+    ``ventes.models`` — c'est un DICT, pas un objet devis, d'où la résolution
+    du chantier via l'id qu'il contient). Refuse (``DevisVersProjetError``) si
+    un ``ProjetLien`` pointant déjà ce devis existe pour la société (re-run →
+    message CIBLÉ nommant le projet déjà rattaché, CHT18 : « chantier déjà
+    rattaché au projet X » quand le chantier est identifiable, sinon la même
+    formulation sur le devis). Le ``code`` du projet est généré via une
+    numérotation SÛRE (plus haut suffixe utilisé + 1, jamais ``count()+1``).
+
+    CHT18 — quand un chantier (``apps.installations.Installation``) est lié à
+    ce devis, un ``ProjetChantier`` est posé dans LE MÊME appel réseau (plus
+    besoin, côté frontend, d'un second POST ``projet-chantiers`` séparé après
+    la création du projet).
 
     Renvoie ``{'projet': Projet, 'lien': ProjetLien, 'budget': BudgetProjet}``.
     """
-    from .models import BudgetProjet, LigneBudgetProjet, ProjetLien
+    from .models import BudgetProjet, LigneBudgetProjet, ProjetChantier, ProjetLien
+
+    from apps.installations.selectors import installation_for_devis
 
     devis_id = devis_data['id']
-    deja_lie = ProjetLien.objects.filter(
+    lien_existant = ProjetLien.objects.filter(
         company=company, type_cible=ProjetLien.TypeCible.DEVIS,
-        cible_id=devis_id).exists()
-    if deja_lie:
+        cible_id=devis_id).select_related('projet').first()
+    if lien_existant is not None:
+        chantier_existant = installation_for_devis(devis_id, company=company)
+        if chantier_existant is not None:
+            raise DevisVersProjetError(
+                f'Le chantier {chantier_existant.reference} est déjà '
+                f'rattaché au projet {lien_existant.projet.code}.')
         raise DevisVersProjetError(
-            f'Le devis {devis_data["reference"]} est déjà lié à un projet.')
+            f'Le devis {devis_data["reference"]} est déjà rattaché au '
+            f'projet {lien_existant.projet.code}.')
 
     projet = Projet.objects.create(
         company=company,
@@ -1525,6 +1541,16 @@ def creer_projet_depuis_devis(devis_data, *, company, user=None):
             categorie=LigneBudgetProjet.Categorie.MAIN_OEUVRE,
             libelle="Main-d'œuvre (depuis devis)",
             montant_prevu=devis_data['montant_main_oeuvre'],
+        )
+
+    # CHT18 — un seul appel réseau : le chantier (s'il existe) est rattaché
+    # ICI, plutôt que de laisser le frontend faire un second POST
+    # `projet-chantiers` après coup.
+    chantier = installation_for_devis(devis_id, company=company)
+    if chantier is not None:
+        ProjetChantier.objects.create(
+            company=company, projet=projet, chantier_id=chantier.id,
+            libelle=chantier.reference,
         )
 
     return {'projet': projet, 'lien': lien, 'budget': budget}

@@ -59,6 +59,46 @@ def _meme_societe(serializer, value, label):
     return value
 
 
+def _meme_societe_chantier_id(serializer, value):
+    """CHT1 — garde-fou multi-sociétés sur la référence LÂCHE ``chantier_id``.
+
+    ``chantier_id`` n'est pas un FK dur : DRF ne valide donc RIEN, et un entier
+    devinable suffisait à rattacher le chantier d'une AUTRE société à un projet
+    (puis à agréger ses montants). Même patron que ``_meme_societe``
+    (``btp_chantier.serializers._meme_societe``, correctif AUD310), mais la
+    cible est résolue par ``django.apps.apps.get_model`` — LECTURE cross-app
+    sans import statique de ``installations.models``, jamais une écriture.
+
+    Un id introuvable est traité comme un id d'une autre société : les deux
+    sont « inconnus » du point de vue de l'appelant, et refuser AVANT écriture
+    est la seule garde (aucune contrainte de base ne rattrape une référence
+    lâche). ``None``/vide traverse (champ optionnel) ; hors contexte API
+    (aucune ``request``, aucune société : usage programmatique interne), on ne
+    bloque pas — la porte réellement exposée est le ViewSet.
+    """
+    from django.apps import apps as django_apps
+
+    if value in (None, ''):
+        return value
+    request = serializer.context.get('request')
+    if request is None:
+        return value
+    company_id = getattr(getattr(request, 'user', None), 'company_id', None)
+    if not company_id:
+        return value
+    try:
+        Installation = django_apps.get_model('installations', 'Installation')
+    except LookupError:  # pragma: no cover - installations non installé
+        return value
+    chantier_company_id = (Installation.objects
+                           .filter(pk=value)
+                           .values_list('company_id', flat=True)
+                           .first())
+    if chantier_company_id != company_id:
+        raise serializers.ValidationError('Chantier inconnu.')
+    return value
+
+
 class ProjetSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -128,6 +168,10 @@ class ProjetChantierSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+    def validate_chantier_id(self, value):
+        """CHT1 — le chantier rattaché DOIT appartenir à la société appelante."""
+        return _meme_societe_chantier_id(self, value)
 
 
 class PhaseProjetSerializer(serializers.ModelSerializer):
@@ -908,6 +952,10 @@ class CompteRenduReunionSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+    def validate_chantier_id(self, value):
+        """CHT1 — jumeau du trou ``ProjetChantier`` : même garde société."""
+        return _meme_societe_chantier_id(self, value)
 
 
 class VersionDocumentSerializer(serializers.ModelSerializer):

@@ -11,7 +11,9 @@ passer par le shim compta. Ce module est le point d'accès stable pour toute
 future lecture fine — jamais un import direct de ``apps.portail.models`` depuis
 l'extérieur.
 """
-from .models import ComptePortailClient, DemandeTicketPortail
+from .models import (
+    ComptePortailClient, DemandeTicketPortail, JalonChantierPortail,
+)
 
 
 # ── AUD138 — État d'activation du compte portail d'un client ────────────────
@@ -83,3 +85,16 @@ def demandes_ticket_count(company):
     if company is None:
         return 0
     return DemandeTicketPortail.objects.filter(company=company).count()
+
+
+# ── CHT10 — Jalons de chantier publiés au portail ────────────────────────────
+
+def jalons_du_chantier(company, chantier_id):
+    """CHT10 — Jalons portail d'UN chantier, scopés société, dans l'ordre
+    d'affichage. Point d'entrée cross-app (``installations`` lit via ce
+    sélecteur — jamais un import de ``apps.portail.models``)."""
+    if not company or not chantier_id:
+        return JalonChantierPortail.objects.none()
+    return (JalonChantierPortail.objects
+            .filter(company=company, chantier_id=chantier_id)
+            .order_by('ordre', 'id'))

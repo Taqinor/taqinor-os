@@ -4,6 +4,7 @@
 // changer de statut, réassignation du technicien, cartes portant client,
 // ville, type, date prévue, équipe et statut. Tout le texte est en français.
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { MapPin, CalendarDays, Users, Wrench } from 'lucide-react'
 import {
   DndContext,
@@ -549,6 +550,32 @@ export default function InterventionsPage() {
   const [fStatut, setFStatut] = useState('')
   const [fType, setFType] = useState('')
 
+  // CHT8 — lien interne partageable : /interventions?id=<pk> ouvre la fiche
+  // de l'intervention ciblée (état DÉRIVÉ, aucun effet — même patron ?id= que
+  // InstallationsPage.jsx:343). Prérequis des liens de notification CHT9
+  // (règle WIR176 : jamais un paramètre qu'aucune page ne lit).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const wantedId = searchParams.get('id')
+  const deepItem = useMemo(() => {
+    if (!wantedId) return null
+    return (items ?? []).find((it) => String(it.id) === String(wantedId)) ?? null
+  }, [wantedId, items])
+  // id demandé mais introuvable (une fois le chargement terminé) : EmptyState
+  // inline plutôt qu'un panneau vide ou une page blanche.
+  const deepMissing = !!wantedId && !loading && !deepItem
+  const clearDeepLink = () => {
+    if (searchParams.has('id')) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('id')
+        return next
+      }, { replace: true })
+    }
+  }
+  // Panneau ouvert : sélection manuelle OU intervention ciblée par le lien profond.
+  const detailItem = selected ?? deepItem
+  const closeDetail = () => { setSelected(null); clearDeepLink() }
+
   const [view, setView] = useState(() => {
     try {
       const saved = localStorage.getItem(VIEW_KEY)
@@ -686,6 +713,17 @@ export default function InterventionsPage() {
         </div>
       </div>
 
+      {/* CHT8 — ?id=<pk> introuvable : EmptyState inline (jamais une page
+          blanche, règle WIR176). */}
+      {deepMissing && (
+        <EmptyState
+          title="Intervention introuvable"
+          description="L'intervention de ce lien n'existe plus ou n'est pas accessible."
+          action={<Button size="sm" variant="outline" onClick={clearDeepLink}>Fermer</Button>}
+          className="my-2 border-warning/40"
+        />
+      )}
+
       <div className="lp-view-area">
         {view === 'liste' && <ListView items={filtered} onOpen={setSelected} />}
         {view === 'kanban' && (
@@ -694,11 +732,11 @@ export default function InterventionsPage() {
         )}
       </div>
 
-      {selected && (
+      {detailItem && (
         <DetailSheet
-          intervention={filtered.find((x) => x.id === selected.id) ?? selected}
+          intervention={filtered.find((x) => x.id === detailItem.id) ?? detailItem}
           users={users}
-          onClose={() => setSelected(null)}
+          onClose={closeDetail}
           onChanged={fetchData}
         />
       )}

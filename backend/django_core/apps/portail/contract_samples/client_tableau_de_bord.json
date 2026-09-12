@@ -1,0 +1,23 @@
+{
+  "endpoint": "GET /api/django/portail/client/tableau-de-bord/",
+  "pourquoi": "NTPRT9 — cartes résumé du tableau de bord CLIENT authentifié (frontend/src/features/portail/client/PortailClientAccueil.jsx), servies par apps.portail.views_client.tableau_de_bord_client. Chaque champ vient du sélecteur PROPRIÉTAIRE de son domaine : devis_en_attente et factures_impayees/prochaine_echeance de apps.ventes.selectors.resume_portail_client, tickets_ouverts de apps.sav.selectors.tickets_ouverts_client, prochain_jalon de apps.installations.selectors.prochain_jalon_client_portail (lui-même dérivé de la timeline portail apps.portail.selectors.jalons_du_chantier, synchronisée automatiquement par CHT11). Société ET client viennent EXCLUSIVEMENT du compte portail connecté — jamais d'un paramètre. `prochain_jalon` est `null` si le client n'a aucun chantier actif ou si tous ses jalons publiés sont déjà atteints — jamais un jalon fabriqué.",
+  "exemple": {
+    "devis_en_attente": 2,
+    "factures_impayees": 1,
+    "prochaine_echeance": "2026-09-30",
+    "tickets_ouverts": 1,
+    "prochain_jalon": {
+      "chantier_id": 17,
+      "chantier_reference": "CH-2026-0017",
+      "libelle": "Installation",
+      "date_jalon": null
+    }
+  },
+  "exemple_vide": {
+    "devis_en_attente": 0,
+    "factures_impayees": 0,
+    "prochaine_echeance": null,
+    "tickets_ouverts": 0,
+    "prochain_jalon": null
+  }
+}

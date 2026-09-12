@@ -26,10 +26,12 @@ from .views import (
     PaiementFacturePortailViewSet,
 )
 from .views_client import (
+    MesChantiersPortailViewSet,
     MesDemandesSavPortailViewSet,
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
+    tableau_de_bord_client,
 )
 from .views_externes import (
     candidature_fournisseur,
@@ -69,8 +71,16 @@ router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
 # n'était donc jamais exercée par un vrai client.
 router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
                 basename='portail-mes-demandes-sav')
+# NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11) +
+# galerie photos avant/pendant/après, jamais de donnée financière.
+router.register(r'mes-chantiers', MesChantiersPortailViewSet,
+                basename='portail-mes-chantiers')
 
 urlpatterns = [
+    # NTPRT9 — tableau de bord du portail CLIENT (garde de portée EXACTE,
+    # symétrique de NTPRT20/NTPRT27 ci-dessous).
+    path('client/tableau-de-bord/', tableau_de_bord_client,
+         name='portail-client-tableau-de-bord'),
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et
     # PARTENAIRE (gardes de portée EXACTE, symétriques du portail client).
     path('fournisseur/tableau-de-bord/', tableau_de_bord_fournisseur,

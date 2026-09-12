@@ -298,3 +298,34 @@ def reactiver_acces_client(company, client_id):
     réactive un accès retiré — jamais un re-provisionnement silencieux.
     """
     return _basculer_acces_portail_client(company, client_id, actif=True)
+
+
+# ── CHT10 — Publier un jalon de chantier au portail client ──────────────────
+#
+# Avant CHT10, AUCUNE fonction d'écriture propre n'existait pour publier un
+# jalon de chantier : seul le ModelViewSet CRUD legacy
+# (``apps.compta.views.JalonChantierPortailViewSet`` + son action
+# ``marquer_atteint``) écrivait ``JalonChantierPortail``. ``upsert_jalon_
+# chantier`` est le SEUL point d'entrée cross-app — ``installations`` n'importe
+# jamais ``apps.portail.models`` (contrat d'import CI).
+
+def upsert_jalon_chantier(company, chantier_id, cle_phase, libelle,
+                          atteint=False, date_jalon=None):
+    """CHT10 — Publie (crée ou met à jour) UN jalon de chantier au portail.
+
+    Idempotent par ``(company, chantier_id, cle_phase)`` : la même phase
+    republiée met simplement à jour la ligne existante, jamais une nouvelle.
+    Jamais de suppression. ``cle_phase`` vide/None est un no-op (aucune clé
+    stable pour discriminer une phase) — renvoie ``None``.
+    """
+    from .models import JalonChantierPortail
+
+    if not company or not chantier_id or not cle_phase:
+        return None
+    defaults = {'libelle': libelle, 'atteint': bool(atteint)}
+    if date_jalon is not None:
+        defaults['date_jalon'] = date_jalon
+    jalon, _created = JalonChantierPortail.objects.update_or_create(
+        company=company, chantier_id=chantier_id, cle_phase=cle_phase,
+        defaults=defaults)
+    return jalon

@@ -33,6 +33,12 @@ modules =
     apps.stock.models
     apps.sav.models
     apps.installations.models
+# VTA1 — `apps.visites.models` rejoint le contrat d'indépendance : la visite
+# technique est sortie du CRM et sa FK `lead` est une référence STRING
+# ('crm.Lead'). Sans cette ligne, rien n'empêcherait un futur commit de
+# réimporter `apps.crm.models` et de recréer le couplage au chargement que le
+# move VTA existe pour supprimer.
+    apps.visites.models
 # A domain model may call its OWN app's selector/service layer LAZILY
 # (function-local import inside a model method — e.g. `NoteDebit.tva_par_taux`
 # → `ventes.selectors.tva_buckets`, `Ticket` → `sav.selectors.droits_restants`,
@@ -413,6 +419,7 @@ forbidden_modules =
     apps.uxviews
     apps.veille_ao
     apps.ventes
+    apps.visites
     apps.voip
 # ARC18/19/21 + AUDV23 — les modules de TEST des ponts Tiers importent volontairement les
 # vrais modèles historiques (crm.Client/Lead, stock.Fournisseur, compta.Partenaire,

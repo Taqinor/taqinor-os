@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Link2, FileText, Package, Hammer, ClipboardList, Camera, Wrench, Zap,
   History, Send, ScrollText, Download, ExternalLink, WifiOff, TriangleAlert,
-  RotateCw, Milestone, Printer, PenLine,
+  RotateCw, Milestone, Printer, PenLine, Share2,
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
@@ -13,6 +13,8 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
+// CHT18 — CTA « Créer le projet de facturation » depuis la fiche chantier.
+import gestionProjetApi from '../../api/gestionProjetApi'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
@@ -236,11 +238,30 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  // CHT22 — un seul niveau de qualité pour changer le statut : le chemin
+  // Select legacy affiche désormais les MÊMES raisons formatées (ch6-blocked-
+  // reasons) que le stepper CH6, au lieu d'un message d'erreur brut. Même
+  // source de raisons (`changer_statut_chantier` → `TransitionRefusee`, gates
+  // CH2) : on intercepte le 400 `{statut: [...]}` plutôt que de dupliquer un
+  // second appel à `etapes-chantier/{id}/etapes/`.
+  const [statutBlockedReasons, setStatutBlockedReasons] = useState(null)
   // Retour FR explicite pour les actions secondaires (équipement / intervention
   // / ticket / besoin) dont les échecs étaient avalés (catch vides).
   const [actionError, setActionError] = useState(null)
   const actionMsg = (err, fallback) =>
     err?.response?.data?.detail || (typeof fallback === 'string' ? fallback : 'Action impossible.')
+
+  // CHT18/CHT20 — Projet (gestion_projet) déjà rattaché à CE chantier, s'il
+  // existe : `null` = aucun (ou pas encore chargé). Gate la CTA « Créer le
+  // projet de facturation » (CHT18) et alimente le lien « Projet de
+  // facturation » de la section « Autour de ce chantier » (CHT20).
+  const [projetChantierLie, setProjetChantierLie] = useState(null)
+  const [creerProjetBusy, setCreerProjetBusy] = useState(false)
+  // CHT20 — RegulatoryDossier (ventes) lié au devis de ce chantier, s'il
+  // existe : distinct de la couche 82-21 posée directement sur le chantier
+  // (section « Dossier réglementaire » plus bas) — l'utilisateur doit savoir
+  // laquelle des deux couches fait foi.
+  const [dossierReglementaireLie, setDossierReglementaireLie] = useState(null)
 
   // Historique (chatter)
   const [historique, setHistorique] = useState([])
@@ -374,6 +395,31 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     savApi.getContrats({ client: installation.client })
       .then(r => setContrats(r.data?.results ?? r.data ?? [])).catch(() => {})
   }
+  // CHT18/CHT20 — lecture légère best-effort : `projet-chantiers` ne filtre
+  // pas par `chantier_id` (AUCUN nouveau backend, CHT20) — on lit une page au
+  // maximum autorisé (`page_size=200`, déjà supporté par la pagination
+  // standard) et on filtre côté client. Échec silencieux : dégrade en
+  // « aucun projet rattaché », jamais bloquant pour la fiche.
+  const loadProjetChantierLie = () => {
+    gestionProjetApi.getChantiers({ page_size: 200 })
+      .then((r) => {
+        const rows = r.data?.results ?? r.data ?? []
+        setProjetChantierLie(rows.find((pc) => pc.chantier_id === id) ?? null)
+      })
+      .catch(() => {})
+  }
+  // CHT20 — lecture légère best-effort, endpoint EXISTANT (RegulatoryDossier,
+  // FG268) déjà filtrable par `?devis=` (aucun nouveau backend) : le premier
+  // dossier réglementaire du devis de ce chantier, s'il existe.
+  const loadDossierReglementaire = () => {
+    if (!installation.devis) return
+    ventesApi.getReglementaire('dossiers-reglementaires', { devis: installation.devis })
+      .then((r) => {
+        const rows = r.data?.results ?? r.data ?? []
+        setDossierReglementaireLie(rows[0] ?? null)
+      })
+      .catch(() => {})
+  }
 
   useEffect(() => {
     loadHistorique()
@@ -388,6 +434,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     checkDevisDivergence()
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    loadProjetChantierLie()
+    loadDossierReglementaire()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -470,10 +518,28 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     } catch { /* erreur silencieuse */ }
   }
 
+  // CHT18 — CTA « Créer le projet de facturation » : appelle l'action XPRJ21
+  // existante (elle rattache désormais AUSSI le `ProjetChantier` en un seul
+  // appel réseau), puis navigue vers la fiche du projet créé — la
+  // facturation à l'avancement reste dans gestion_projet (Path B rejeté).
+  const creerProjetFacturation = async () => {
+    setCreerProjetBusy(true)
+    try {
+      const r = await gestionProjetApi.creerProjetDepuisDevis(current.devis)
+      toast.success(`Projet ${r.data.code} créé.`)
+      navigate(`/projets/${r.data.id}`)
+    } catch (err) {
+      setActionError(actionMsg(err, 'Création du projet de facturation impossible.'))
+    } finally {
+      setCreerProjetBusy(false)
+    }
+  }
+
   const handleSave = async (e) => {
     e?.preventDefault?.()
     setSaving(true)
     setSaveError(null)
+    setStatutBlockedReasons(null)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
       const data = Object.fromEntries(
@@ -481,10 +547,20 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       await dispatch(updateInstallation({ id, data })).unwrap()
       onSaved?.()
     } catch (err) {
-      // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé.
-      // Le thunk rejette avec `err.response.data ?? err.message` ; on reconstruit
-      // la forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
-      setSaveError(errorMessageFrom({ response: { data: err } }, 'Enregistrement impossible.'))
+      // CHT22 — une transition de statut refusée par les gates CH2 renvoie
+      // `{statut: [raisons...]}` (`views/installation.py:perform_update` →
+      // `ValidationError({'statut': exc.raisons})`) : mêmes raisons FR que
+      // celles listées par le stepper CH6, rendues dans le MÊME format
+      // (ch6-blocked-reasons) plutôt qu'un message brut sérialisé.
+      const raisons = Array.isArray(err?.statut) ? err.statut : null
+      if (raisons && raisons.length > 0) {
+        setStatutBlockedReasons(raisons)
+      } else {
+        // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé.
+        // Le thunk rejette avec `err.response.data ?? err.message` ; on reconstruit
+        // la forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
+        setSaveError(errorMessageFrom({ response: { data: err } }, 'Enregistrement impossible.'))
+      }
     } finally {
       setSaving(false)
     }
@@ -933,7 +1009,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   </Button>
                 )}
                 {current.client && (
-                  <Button size="sm" variant="outline" onClick={() => navigate('/crm')}>
+                  // CHT21(c) — ciblait la liste nue ; même patron que « Voir
+                  // le lead » voisin (?id= déjà lu par ClientList.jsx:73).
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate(`/crm?id=${current.client}`)}>
                     Voir le client
                   </Button>
                 )}
@@ -941,6 +1020,69 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   <Button size="sm" variant="outline"
                           onClick={() => navigate(`/crm/leads?lead=${current.lead}`)}>
                     Voir le lead
+                  </Button>
+                )}
+                {/* CHT18 — visible seulement quand un devis existe et
+                    qu'aucun Projet (gestion_projet) n'est déjà rattaché ;
+                    l'accès (responsable/admin) est déjà gardé côté serveur. */}
+                {current.devis && !projetChantierLie && (
+                  <Button size="sm" variant="outline" loading={creerProjetBusy}
+                          onClick={creerProjetFacturation}>
+                    Créer le projet de facturation
+                  </Button>
+                )}
+              </div>
+            </Section>
+            {/* ── CHT20 — la passerelle vers les satellites : fin du parcours
+                « re-sélectionner le même chantier dans 4 menus ». Chaque lien
+                est un deep-link RÉEL déjà lu par l'écran cible (CHT19,
+                ?chantier=<id>) — jamais une URL ad hoc. ── */}
+            <Section icon={Share2} title="Autour de ce chantier">
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/chantiers/suivi-projet?chantier=${current.id}`)}>
+                  Suivi projet
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/chantiers/sous-traitance?chantier=${current.id}`)}>
+                  Sous-traitance
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/reserves?chantier=${current.id}`)}>
+                  Réserves
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/rfi?chantier=${current.id}`)}>
+                  RFI
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/journal?chantier=${current.id}`)}>
+                  Journal
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/avenants?chantier=${current.id}`)}>
+                  Avenants
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/btp-chantier/dgd?chantier=${current.id}`)}>
+                  DGD
+                </Button>
+                {/* Best-effort, lecture d'un endpoint EXISTANT (CHT18/CHT20) —
+                    absent tant que rien n'est rattaché. */}
+                {projetChantierLie && (
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate(`/projets/${projetChantierLie.projet}`)}>
+                    Projet de facturation ({projetChantierLie.projet_code})
+                  </Button>
+                )}
+                {/* Couche SÉPARÉE de la section « Dossier réglementaire »
+                    ci-dessous (celle-ci vit sur le chantier ; RegulatoryDossier
+                    vit sur le devis, côté ventes) — le lien évite toute
+                    confusion sur laquelle fait foi. */}
+                {dossierReglementaireLie && (
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate('/ventes/dossiers-reglementaires')}>
+                    Dossier réglementaire ({dossierReglementaireLie.statut_label})
                   </Button>
                 )}
               </div>
@@ -1053,7 +1195,21 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Textarea id="ch-notes" rows={2} value={fields.notes ?? ''}
                           onChange={(e) => set('notes', e.target.value)} />
               </FormField>
-              {saveError && (
+              {/* CHT22 — même format que le stepper CH6 (ChantierGateTimeline)
+                  quand la transition de statut est bloquée par un gate : une
+                  liste à puces des raisons, jamais un message brut. */}
+              {statutBlockedReasons ? (
+                <div
+                  role="alert"
+                  className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
+                  data-testid="ch6-blocked-reasons"
+                >
+                  <strong>Étape bloquée par un gate&nbsp;:</strong>
+                  <ul className="flex flex-col gap-0.5">
+                    {statutBlockedReasons.map((r) => <li key={r}>• {r}</li>)}
+                  </ul>
+                </div>
+              ) : saveError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
                   {saveError}
                 </div>

@@ -28,6 +28,26 @@ une route RÉELLE :
   - ``/chantiers?id=<pk>``      — InstallationsPage (CHANTIER_DUE) ;
   - ``/admin/impersonation``    — ImpersonationConsentement (pas de
     deep-link par id).
+
+CHT7 ajoute trois sites qui pointaient vers ``/installations`` — une route
+qu'AUCUN écran ne sert :
+  - ``_notifier_chantier_assigne`` (CHANTIER_ASSIGNE, installations/services.py)
+    → ``/chantiers?id=<pk>`` ;
+  - ``chantier_card`` (installations/selectors.py, partage messagerie) →
+    ``/chantiers?id=<pk>`` (pas un ``Notification`` — sélecteur appelé direct) ;
+  - ``_notifier_demandeur_decision`` (DA_DECIDEE, installations/views/
+    demande_achat.py) → ``/chantiers/demandes-achat`` SANS paramètre : aucun
+    écran ne lit ``?demande=`` (DemandesAchatList.jsx ne lit que ``chantier``/
+    ``intervention``) — WIR176 interdit un paramètre que rien ne consomme.
+
+CHT9 retague trois sites qui empruntaient ``CHANTIER_DUE`` par facilité (sa
+propre clé désormais, doctrine « un EventType = un fait métier ») + le lien
+``/interventions?id=<pk>`` (InterventionsPage, lisible depuis CHT8) :
+  - ``_notifier_reassignation`` → INTERVENTION_REPLANIFIEE ;
+  - ``_notifier_intervention_annulee`` (``annuler_interventions_ouvertes``) →
+    INTERVENTION_ANNULEE ;
+  - ``notifier_jalon_a_facturer`` → TRANCHE_A_FACTURER,
+    ``/chantiers?id=<pk>``.
 """
 from datetime import date, timedelta
 from decimal import Decimal
@@ -35,6 +55,8 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -307,6 +329,150 @@ class ComptaApprobationConfigLinkTests(TestCase):
             recipient=approver, event_type=EventType.APPROVAL_REQUESTED)
         self.assertEqual(notif.link, '/comptabilite/approbations-config')
         self.assertNotIn('/compta/approbations/', notif.link)
+
+
+# ── CHT7 — CHANTIER_ASSIGNE / chantier_card / DA_DECIDEE (installations) ──
+
+class ChantierAssigneLinkTests(TestCase):
+    def test_link_lands_on_chantiers_with_id(self):
+        from apps.crm.models import Client
+        from apps.installations.services import create_installation_from_devis
+        from apps.ventes.models import Devis
+
+        company = _make_company('Wir176ChtAssCo')
+        tech = _make_user(company, 'wir176-cht-tech', role_legacy='responsable')
+        cl = Client.objects.create(
+            company=company, nom='ClientChtAssigne',
+            email='wir176-cht@example.invalid')
+        devis = Devis.objects.create(
+            company=company, reference='DEV-WIR176-CHTASS-1', client=cl,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+
+        with self.captureOnCommitCallbacks(execute=True):
+            inst, created = create_installation_from_devis(devis, tech, company)
+        self.assertTrue(created)
+
+        notif = Notification.objects.get(
+            recipient=tech, event_type=EventType.CHANTIER_ASSIGNE)
+        self.assertEqual(notif.link, f'/chantiers?id={inst.pk}')
+        self.assertNotIn(f'/installations?installation={inst.pk}', notif.link)
+
+
+class ChantierCardLinkTests(TestCase):
+    def test_card_url_lands_on_chantiers_with_id(self):
+        from apps.installations.models import Installation
+        from apps.installations.selectors import chantier_card
+
+        company = _make_company('Wir176ChtCardCo')
+        chantier = Installation.objects.create(
+            company=company, reference='CHT-WIR176-CARD-1')
+
+        card = chantier_card(chantier.pk, company)
+        self.assertEqual(card['url'], f'/chantiers?id={chantier.pk}')
+        self.assertNotIn(f'/installations/{chantier.pk}', card['url'])
+
+
+class DaDecideeLinkTests(TestCase):
+    def setUp(self):
+        self.company = _make_company('Wir176DaDecideeCo')
+        self.demandeur = _make_user(self.company, 'wir176-da-demandeur')
+        self.approbateur = _make_user(
+            self.company, 'wir176-da-appro', role_legacy='admin')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.approbateur)}')
+
+    def _demande(self):
+        from apps.installations.models import DemandeAchat
+        return DemandeAchat.objects.create(
+            company=self.company, reference='DA-WIR176-DECIDEE-1',
+            objet='Câbles WIR176', statut=DemandeAchat.Statut.SOUMISE,
+            created_by=self.demandeur)
+
+    def test_approuver_link_lands_on_chantiers_demandes_achat_sans_param(self):
+        da = self._demande()
+        r = self.api.post(
+            f'/api/django/installations/demandes-achat/{da.id}/approuver/')
+        self.assertEqual(r.status_code, 200, r.data)
+        notif = Notification.objects.get(
+            recipient=self.demandeur, event_type=EventType.DA_DECIDEE)
+        self.assertEqual(notif.link, '/chantiers/demandes-achat')
+        self.assertNotIn('/installations/demandes-achat', notif.link)
+        self.assertNotIn('?', notif.link)
+
+
+# ── CHT9 — INTERVENTION_REPLANIFIEE / _ANNULEE / TRANCHE_A_FACTURER ───────
+
+class InterventionReplanifieeLinkTests(TestCase):
+    def test_link_lands_on_interventions_with_id(self):
+        from apps.installations.models import Installation, Intervention
+        from apps.installations.services import _notifier_reassignation
+
+        company = _make_company('Wir176ReplanCo')
+        tech = _make_user(company, 'wir176-replan-tech', role_legacy='responsable')
+        inst = Installation.objects.create(
+            company=company, reference='CHT-WIR176-REPLAN-1')
+        interv = Intervention.objects.create(
+            company=company, installation=inst,
+            type_intervention=Intervention.Type.CONTROLE, technicien=tech)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            _notifier_reassignation(interv, tech)
+
+        notif = Notification.objects.get(
+            recipient=tech, event_type=EventType.INTERVENTION_REPLANIFIEE)
+        self.assertEqual(notif.link, f'/interventions?id={interv.pk}')
+        self.assertNotEqual(notif.event_type, EventType.CHANTIER_DUE)
+
+
+class InterventionAnnuleeLinkTests(TestCase):
+    def test_link_lands_on_interventions_with_id(self):
+        from apps.installations.models import Installation, Intervention
+        from apps.installations.services import annuler_interventions_ouvertes
+
+        company = _make_company('Wir176AnnuleeCo')
+        tech = _make_user(company, 'wir176-annulee-tech', role_legacy='responsable')
+        admin = _make_user(company, 'wir176-annulee-admin', role_legacy='admin')
+        inst = Installation.objects.create(
+            company=company, reference='CHT-WIR176-ANNULEE-1')
+        interv = Intervention.objects.create(
+            company=company, installation=inst,
+            type_intervention=Intervention.Type.CONTROLE, technicien=tech)
+
+        annuler_interventions_ouvertes(inst, admin)
+
+        notif = Notification.objects.get(
+            recipient=tech, event_type=EventType.INTERVENTION_ANNULEE)
+        self.assertEqual(notif.link, f'/interventions?id={interv.pk}')
+
+
+class TrancheAFacturerLinkTests(TestCase):
+    def test_link_lands_on_chantiers_with_id(self):
+        from apps.crm.models import Client
+        from apps.installations.models import Installation, JalonProjet
+        from apps.installations.services import notifier_jalon_a_facturer
+        from apps.ventes.models import Devis
+
+        company = _make_company('Wir176TrancheCo')
+        resp = _make_user(company, 'wir176-tranche-resp', role_legacy='responsable')
+        cl = Client.objects.create(company=company, nom='ClientTranche')
+        devis = Devis.objects.create(
+            company=company, reference='DEV-WIR176-TRANCHE-1', client=cl,
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
+        inst = Installation.objects.create(
+            company=company, reference='CHT-WIR176-TRANCHE-1', client=cl,
+            devis=devis)
+        jalon = JalonProjet.objects.create(
+            company=company, installation=inst, phase=JalonProjet.Phase.POSE,
+            libelle='Pose', tranche_echeancier=JalonProjet.TRANCHE_ACOMPTE,
+            atteint=True)
+
+        notifier_jalon_a_facturer(jalon, resp)
+
+        notif = Notification.objects.get(
+            recipient=resp, event_type=EventType.TRANCHE_A_FACTURER)
+        self.assertEqual(notif.link, f'/chantiers?id={inst.pk}')
 
 
 # ── Impersonation ────────────────────────────────────────────────────────

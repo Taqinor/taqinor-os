@@ -169,7 +169,13 @@ def _lien_introuvable():
         'formats_acceptes': drf_serializers.ListField(
             child=drf_serializers.CharField()),
     }))
-@extend_schema(methods=['POST'], responses=inline_serializer(
+@extend_schema(methods=['POST'], request=inline_serializer('DepotContrepartieRequete', {
+    'fichier': drf_serializers.FileField(),
+    'nom_fichier': drf_serializers.CharField(required=False),
+    'depose_par_nom': drf_serializers.CharField(required=False),
+    'depose_par_email': drf_serializers.CharField(required=False),
+    'commentaire': drf_serializers.CharField(required=False),
+}), responses=inline_serializer(
     'DepotContrepartieReponse', {'ok': drf_serializers.BooleanField()}))
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])

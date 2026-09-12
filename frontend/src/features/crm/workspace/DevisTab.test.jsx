@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
 import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
@@ -92,16 +93,20 @@ function renderTab(props = {}) {
   const onWaPreview = vi.fn()
   const onWaReset = vi.fn()
   const utils = render(
-    <DevisTab
-      state={leadState()}
-      onAction={onAction}
-      wa={waState()}
-      onWaToggle={onWaToggle}
-      onWaLangue={onWaLangue}
-      onWaPreview={onWaPreview}
-      onWaReset={onWaReset}
-      {...props}
-    />,
+    // CHT21(b) — la référence du chantier déjà créé est désormais un vrai
+    // lien (`Link` vers `/chantiers?id=`) : exige un contexte Router.
+    <MemoryRouter>
+      <DevisTab
+        state={leadState()}
+        onAction={onAction}
+        wa={waState()}
+        onWaToggle={onWaToggle}
+        onWaLangue={onWaLangue}
+        onWaPreview={onWaPreview}
+        onWaReset={onWaReset}
+        {...props}
+      />
+    </MemoryRouter>,
   )
   return { ...utils, onAction, onWaToggle, onWaLangue, onWaPreview, onWaReset }
 }
@@ -219,6 +224,12 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     renderTab({ state: leadState({ devis: [{ ...devisAccepte, chantier: { id: 5, reference: 'CHT-2026-005' } }] }) })
     expect(screen.getByText(/CHT-2026-005/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Créer le chantier/ })).toBeNull()
+  })
+
+  it('CHT21(b) — la référence du chantier est un lien réel vers /chantiers?id=', () => {
+    renderTab({ state: leadState({ devis: [{ ...devisAccepte, chantier: { id: 5, reference: 'CHT-2026-005' } }] }) })
+    const lien = screen.getByRole('link', { name: /CHT-2026-005/ })
+    expect(lien).toHaveAttribute('href', '/chantiers?id=5')
   })
 
   it('devis brouillon : aucune action facture/chantier ni piste document', () => {

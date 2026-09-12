@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10055, operations: 17925, components: 5238}
+counts: {paths: 10101, operations: 17979, components: 5264}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2872,8 +2872,10 @@ operations:
 - get /api/django/crm/visites/{id}/ -> django_crm_visites_retrieve
 - patch /api/django/crm/visites/{id}/ -> django_crm_visites_partial_update
 - put /api/django/crm/visites/{id}/ -> django_crm_visites_update
+- post /api/django/crm/visites/{id}/arriver/ -> django_crm_visites_arriver_create
 - post /api/django/crm/visites/{id}/assembler-photos/ -> django_crm_visites_assembler_photos_create
 - patch /api/django/crm/visites/{id}/calage/ -> django_crm_visites_calage_partial_update
+- post /api/django/crm/visites/{id}/demarrer-route/ -> django_crm_visites_demarrer_route_create
 - patch /api/django/crm/visites/{id}/mesures/ -> django_crm_visites_mesures_partial_update
 - get /api/django/crm/visites/{id}/photo-toit/ -> django_crm_visites_photo_toit_retrieve
 - post /api/django/crm/visites/{id}/photos/ -> django_crm_visites_photos_create
@@ -6180,6 +6182,7 @@ operations:
 - post /api/django/parametres/upload-signature/ -> django_parametres_upload_signature_create
 - get /api/django/portail/acceptations-devis-portail/ -> django_portail_acceptations_devis_portail_list
 - get /api/django/portail/acceptations-devis-portail/{id}/ -> django_portail_acceptations_devis_portail_retrieve
+- get /api/django/portail/client/tableau-de-bord/ -> django_portail_client_tableau_de_bord_retrieve
 - get /api/django/portail/comptes-portail/ -> django_portail_comptes_portail_list
 - post /api/django/portail/comptes-portail/ -> django_portail_comptes_portail_create
 - delete /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_destroy
@@ -6212,6 +6215,10 @@ operations:
 - patch /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_partial_update
 - put /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_update
 - post /api/django/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> django_portail_jalons_chantier_portail_marquer_atteint_create
+- get /api/django/portail/mes-chantiers/ -> django_portail_mes_chantiers_list
+- get /api/django/portail/mes-chantiers/{id}/ -> django_portail_mes_chantiers_retrieve
+- get /api/django/portail/mes-chantiers/{id}/photo/{attachment_id}/ -> django_portail_mes_chantiers_photo_retrieve
+- get /api/django/portail/mes-chantiers/{id}/photos/ -> django_portail_mes_chantiers_photos_retrieve
 - get /api/django/portail/mes-demandes-sav/ -> django_portail_mes_demandes_sav_list
 - post /api/django/portail/mes-demandes-sav/ -> django_portail_mes_demandes_sav_create
 - post /api/django/portail/mes-demandes-sav/consulter-article-kb/ -> django_portail_mes_demandes_sav_consulter_article_kb_create
@@ -7001,6 +7008,7 @@ operations:
 - post /api/django/reporting/rapport-definitions/{id}/executer/ -> django_reporting_rapport_definitions_executer_create
 - get /api/django/reporting/rapport-definitions/{id}/export/ -> django_reporting_rapport_definitions_export_retrieve
 - get /api/django/reporting/rapports-partages/{token}/ -> django_reporting_rapports_partages_retrieve
+- get /api/django/reporting/reports/chantier/ -> django_reporting_reports_chantier_retrieve
 - get /api/django/reporting/reports/field/ -> django_reporting_reports_field_retrieve
 - get /api/django/reporting/reports/kpi-federes/ -> django_reporting_reports_kpi_federes_retrieve
 - get /api/django/reporting/reports/sales/ -> django_reporting_reports_sales_retrieve
@@ -8979,6 +8987,25 @@ operations:
 - put /api/django/ventes/tests-pr-reception/{id}/ -> django_ventes_tests_pr_reception_update
 - get /api/django/ventes/toiture/charge/ -> django_ventes_toiture_charge_retrieve
 - post /api/django/ventes/toiture/charge/ -> django_ventes_toiture_charge_create
+- get /api/django/visites/leads-recherche/ -> django_visites_leads_recherche_retrieve
+- get /api/django/visites/ma-journee/ -> django_visites_ma_journee_retrieve
+- get /api/django/visites/visites/ -> django_visites_visites_list
+- post /api/django/visites/visites/ -> django_visites_visites_create
+- delete /api/django/visites/visites/{id}/ -> django_visites_visites_destroy
+- get /api/django/visites/visites/{id}/ -> django_visites_visites_retrieve
+- patch /api/django/visites/visites/{id}/ -> django_visites_visites_partial_update
+- put /api/django/visites/visites/{id}/ -> django_visites_visites_update
+- post /api/django/visites/visites/{id}/arriver/ -> django_visites_visites_arriver_create
+- post /api/django/visites/visites/{id}/assembler-photos/ -> django_visites_visites_assembler_photos_create
+- patch /api/django/visites/visites/{id}/calage/ -> django_visites_visites_calage_partial_update
+- post /api/django/visites/visites/{id}/demarrer-route/ -> django_visites_visites_demarrer_route_create
+- patch /api/django/visites/visites/{id}/mesures/ -> django_visites_visites_mesures_partial_update
+- get /api/django/visites/visites/{id}/photo-toit/ -> django_visites_visites_photo_toit_retrieve
+- post /api/django/visites/visites/{id}/photos/ -> django_visites_visites_photos_create
+- delete /api/django/visites/visites/{id}/photos/{media_id}/ -> django_visites_visites_photos_destroy
+- post /api/django/visites/visites/{id}/renvoyer/ -> django_visites_visites_renvoyer_create
+- post /api/django/visites/visites/{id}/terminer/ -> django_visites_visites_terminer_create
+- post /api/django/visites/visites/{id}/valider/ -> django_visites_visites_valider_create
 - get /api/django/voip/appels/ -> django_voip_appels_list
 - post /api/django/voip/appels/entrant/ -> django_voip_appels_entrant_create
 - post /api/django/voip/appels/sortant/ -> django_voip_appels_sortant_create
@@ -11873,8 +11900,10 @@ operations:
 - get /api/v1/crm/visites/{id}/ -> v1_crm_visites_retrieve
 - patch /api/v1/crm/visites/{id}/ -> v1_crm_visites_partial_update
 - put /api/v1/crm/visites/{id}/ -> v1_crm_visites_update
+- post /api/v1/crm/visites/{id}/arriver/ -> v1_crm_visites_arriver_create
 - post /api/v1/crm/visites/{id}/assembler-photos/ -> v1_crm_visites_assembler_photos_create
 - patch /api/v1/crm/visites/{id}/calage/ -> v1_crm_visites_calage_partial_update
+- post /api/v1/crm/visites/{id}/demarrer-route/ -> v1_crm_visites_demarrer_route_create
 - patch /api/v1/crm/visites/{id}/mesures/ -> v1_crm_visites_mesures_partial_update
 - get /api/v1/crm/visites/{id}/photo-toit/ -> v1_crm_visites_photo_toit_retrieve
 - post /api/v1/crm/visites/{id}/photos/ -> v1_crm_visites_photos_create
@@ -15181,6 +15210,7 @@ operations:
 - post /api/v1/parametres/upload-signature/ -> v1_parametres_upload_signature_create
 - get /api/v1/portail/acceptations-devis-portail/ -> v1_portail_acceptations_devis_portail_list
 - get /api/v1/portail/acceptations-devis-portail/{id}/ -> v1_portail_acceptations_devis_portail_retrieve
+- get /api/v1/portail/client/tableau-de-bord/ -> v1_portail_client_tableau_de_bord_retrieve
 - get /api/v1/portail/comptes-portail/ -> v1_portail_comptes_portail_list
 - post /api/v1/portail/comptes-portail/ -> v1_portail_comptes_portail_create
 - delete /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_destroy
@@ -15213,6 +15243,10 @@ operations:
 - patch /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_partial_update
 - put /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_update
 - post /api/v1/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> v1_portail_jalons_chantier_portail_marquer_atteint_create
+- get /api/v1/portail/mes-chantiers/ -> v1_portail_mes_chantiers_list
+- get /api/v1/portail/mes-chantiers/{id}/ -> v1_portail_mes_chantiers_retrieve
+- get /api/v1/portail/mes-chantiers/{id}/photo/{attachment_id}/ -> v1_portail_mes_chantiers_photo_retrieve
+- get /api/v1/portail/mes-chantiers/{id}/photos/ -> v1_portail_mes_chantiers_photos_retrieve
 - get /api/v1/portail/mes-demandes-sav/ -> v1_portail_mes_demandes_sav_list
 - post /api/v1/portail/mes-demandes-sav/ -> v1_portail_mes_demandes_sav_create
 - post /api/v1/portail/mes-demandes-sav/consulter-article-kb/ -> v1_portail_mes_demandes_sav_consulter_article_kb_create
@@ -15956,6 +15990,7 @@ operations:
 - post /api/v1/reporting/rapport-definitions/{id}/executer/ -> v1_reporting_rapport_definitions_executer_create
 - get /api/v1/reporting/rapport-definitions/{id}/export/ -> v1_reporting_rapport_definitions_export_retrieve
 - get /api/v1/reporting/rapports-partages/{token}/ -> v1_reporting_rapports_partages_retrieve
+- get /api/v1/reporting/reports/chantier/ -> v1_reporting_reports_chantier_retrieve
 - get /api/v1/reporting/reports/field/ -> v1_reporting_reports_field_retrieve
 - get /api/v1/reporting/reports/kpi-federes/ -> v1_reporting_reports_kpi_federes_retrieve
 - get /api/v1/reporting/reports/sales/ -> v1_reporting_reports_sales_retrieve
@@ -17931,6 +17966,25 @@ operations:
 - put /api/v1/ventes/tests-pr-reception/{id}/ -> v1_ventes_tests_pr_reception_update
 - get /api/v1/ventes/toiture/charge/ -> v1_ventes_toiture_charge_retrieve
 - post /api/v1/ventes/toiture/charge/ -> v1_ventes_toiture_charge_create
+- get /api/v1/visites/leads-recherche/ -> v1_visites_leads_recherche_retrieve
+- get /api/v1/visites/ma-journee/ -> v1_visites_ma_journee_retrieve
+- get /api/v1/visites/visites/ -> v1_visites_visites_list
+- post /api/v1/visites/visites/ -> v1_visites_visites_create
+- delete /api/v1/visites/visites/{id}/ -> v1_visites_visites_destroy
+- get /api/v1/visites/visites/{id}/ -> v1_visites_visites_retrieve
+- patch /api/v1/visites/visites/{id}/ -> v1_visites_visites_partial_update
+- put /api/v1/visites/visites/{id}/ -> v1_visites_visites_update
+- post /api/v1/visites/visites/{id}/arriver/ -> v1_visites_visites_arriver_create
+- post /api/v1/visites/visites/{id}/assembler-photos/ -> v1_visites_visites_assembler_photos_create
+- patch /api/v1/visites/visites/{id}/calage/ -> v1_visites_visites_calage_partial_update
+- post /api/v1/visites/visites/{id}/demarrer-route/ -> v1_visites_visites_demarrer_route_create
+- patch /api/v1/visites/visites/{id}/mesures/ -> v1_visites_visites_mesures_partial_update
+- get /api/v1/visites/visites/{id}/photo-toit/ -> v1_visites_visites_photo_toit_retrieve
+- post /api/v1/visites/visites/{id}/photos/ -> v1_visites_visites_photos_create
+- delete /api/v1/visites/visites/{id}/photos/{media_id}/ -> v1_visites_visites_photos_destroy
+- post /api/v1/visites/visites/{id}/renvoyer/ -> v1_visites_visites_renvoyer_create
+- post /api/v1/visites/visites/{id}/terminer/ -> v1_visites_visites_terminer_create
+- post /api/v1/visites/visites/{id}/valider/ -> v1_visites_visites_valider_create
 - get /api/v1/voip/appels/ -> v1_voip_appels_list
 - post /api/v1/voip/appels/entrant/ -> v1_voip_appels_entrant_create
 - post /api/v1/voip/appels/sortant/ -> v1_voip_appels_sortant_create
@@ -18426,6 +18480,7 @@ components:
 - ChangelogEntryRequest
 - ChangerStatutCautionRequest
 - ChantierClotureBtpReponse
+- ChantierClotureBtpRequeteRequest
 - ChantierIntervenantsReponse
 - ChantierPenalitesParLotReponse
 - ChantierPlanningLotReponse
@@ -18834,6 +18889,7 @@ components:
 - DepotConsignationRequest
 - DepotContrepartieContexteReponse
 - DepotContrepartieReponse
+- DepotContrepartieRequeteRequest
 - DepotPublic
 - DepotPublicRequest
 - DepreciationImmobilisation
@@ -19673,6 +19729,12 @@ components:
 - MatiereRequest
 - MenuCantine
 - MenuCantineRequest
+- MesChantiersPortail
+- MesChantiersPortailDetail
+- MesChantiersPortailJalon
+- MesChantiersPortailLigne
+- MesChantiersPortailPhoto
+- MesChantiersPortailPhotos
 - MesDemandesSavPortail
 - MesDemandesSavPortailLigne
 - MesDemandesSavPortailLigneRequest
@@ -20988,6 +21050,7 @@ components:
 - ParametresAbonnement
 - ParametresAbonnementRequest
 - ParametresBtpChantier
+- ParametresBtpChantierRequest
 - ParametresCPQ
 - ParametresCPQRequest
 - ParametresDouane
@@ -21622,6 +21685,7 @@ components:
 - PatchedParametrageRelanceClientRequest
 - PatchedParametrePaieRequest
 - PatchedParametresAbonnementRequest
+- PatchedParametresBtpChantierRequest
 - PatchedParametresCPQRequest
 - PatchedParametresDouaneRequest
 - PatchedParametresEducationRequest
@@ -22021,6 +22085,16 @@ components:
 - PieceSoumission
 - PieceSoumissionRequest
 - PilierEnum
+- PilotageChantiersCycleTime
+- PilotageChantiersParEquipe
+- PilotageChantiersParType
+- PilotageChantiersReport
+- PilotageChantiersReprise
+- PilotageChantiersRetardItem
+- PilotageChantiersRetards
+- PilotageChantiersSegment
+- PilotageChantiersSegmentParEquipe
+- PilotageChantiersSegmentParType
 - PisteAuditComptable
 - PlafondNoteFrais
 - PlafondNoteFraisRequest
@@ -22114,9 +22188,12 @@ components:
 - PolitiqueRetentionRequest
 - PolitiqueStock
 - PolitiqueStockRequest
+- PortailClientProchainJalon
+- PortailClientTableauDeBord
 - PortailCreerTicketReponse
 - PortailProjetToken
 - PortailProjetTokenRequest
+- PortailTicketRequeteRequest
 - PortailTiersToken
 - PortailTiersTokenRequest
 - PosDashboardRetail
@@ -23136,6 +23213,8 @@ components:
 - VisiteTerrain
 - VisiteTerrainRequest
 - VisiteTerrainStatutEnum
+- VisitesLeadsRecherche
+- VisitesMaJournee
 - VoteIdee
 - VoteIdeeRequest
 - VueGedEnregistree
@@ -23155,6 +23234,7 @@ components:
 - WhatsAppTemplateCategorieEnum
 - WhatsAppTemplateRequest
 - WhatsappInboundReponse
+- WhatsappInboundRequeteRequest
 - WorkflowDefinition
 - WorkflowDefinitionRequest
 - WorkflowStepDefinition

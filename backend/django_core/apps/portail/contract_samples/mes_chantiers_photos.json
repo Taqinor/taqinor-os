@@ -1,0 +1,25 @@
+{
+  "endpoint": "GET /api/django/portail/mes-chantiers/{id}/photos/",
+  "pourquoi": "NTPRT14 — galerie photos avant/pendant/après d'UN chantier, servie par MesChantiersPortailViewSet.photos via apps.installations.selectors.photos_chantier_client_portail (elle-même une vue client-safe de chantier_photos, PUB63/PUB73 — jamais un champ financier). `url` pointe la route portail scopée (`MesChantiersPortailViewSet.photo`) qui relaie les octets — jamais l'endpoint interne records/attachments/<id>/download/. Filtrable par `?phase=avant|pendant|apres`. Un chantier d'un autre client renvoie 404, jamais une liste vide silencieuse.",
+  "exemple": {
+    "results": [
+      {
+        "id": 501,
+        "phase": "avant",
+        "filename": "toiture-avant.jpg",
+        "created_at": "2026-06-02T09:00:00Z",
+        "url": "/api/django/portail/mes-chantiers/17/photo/501/"
+      },
+      {
+        "id": 507,
+        "phase": "apres",
+        "filename": "toiture-apres.jpg",
+        "created_at": "2026-07-20T16:00:00Z",
+        "url": "/api/django/portail/mes-chantiers/17/photo/507/"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "results": []
+  }
+}

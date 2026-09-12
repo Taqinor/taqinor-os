@@ -189,7 +189,7 @@ const PER_CHUNK_BUDGET_KB = 350
 // Recalé au réel + petite marge (~15 Ko), pas au palier généreux habituel :
 // aucun chunk individuel ne dépasse son budget dédié (PER_CHUNK_BUDGET_KB
 // + budgets vendors restent les vrais garde-fous de poids).
-const TOTAL_BUDGET_KB = 3610
+const TOTAL_BUDGET_KB = 3640
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -295,12 +295,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // 2026-09-06 : 760 -> 770. Batch 3 AUD/MRY — 6 écrans/panneaux code-splittés
 // de plus (mesuré 763).
 // 2026-09-10 : 770 -> 778. Groupe VT — écrans visite code-splittés (mesuré 773).
-// 2026-09-12 : 778 -> 795. Vague 1 drain NT — cliquet périmé par le gros
-// drain précédent (classe #85 du catalogue de bugs CI), mesuré 787 chunks en
-// CI. Recalé au réel + petite marge (~8), même geste que TOTAL_BUDGET_KB
-// ci-dessus : croissance une-route-un-chunk, pas une prolifération de
-// structure.
-export const MAX_CHUNK_COUNT = 795
+// 2026-09-12 : 778 -> 800. Vague 1 drain NT (mesuré 787) + lot CHT/NTPRT
+// PR #668 (mesuré 781 seul) fusionnés — les deux lots s'additionnent sur
+// l'arbre mergé ; recalage au réel combiné + marge (classe #85). Croissance
+// une-route-un-chunk ; le budget gzip + PER_CHUNK_BUDGET_KB (350) restent
+// les vrais garde-fous de poids.
+export const MAX_CHUNK_COUNT = 800
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

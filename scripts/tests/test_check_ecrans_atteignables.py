@@ -721,7 +721,8 @@ class DepotReelTests(unittest.TestCase):
         # 49 -> 52 : la vague 1 du run SUPPLY (14/08/2026) donne son PREMIER
         # module.config.jsx a trois apps neuves (transport /transport/*,
         # mrp /mrp/*, scm /scm/*).
-        self.assertEqual(stats["configs"], 52)
+        # 52 -> 53 : VTA8 (12/09/2026) — l'app visites gagne son module.config.
+        self.assertEqual(stats["configs"], 53)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182
@@ -776,7 +777,7 @@ class PlancherInventaireTests(unittest.TestCase):
             "check_ecrans_atteignables": {
                 "ecrans": {"valeur": 902,
                            "chemin": "frontend/src/{features,pages}"},
-                "configs": {"valeur": 52,
+                "configs": {"valeur": 53,
                             "chemin": "frontend/src/features/*/module.config.jsx"},
             }
         }), encoding="utf-8")
