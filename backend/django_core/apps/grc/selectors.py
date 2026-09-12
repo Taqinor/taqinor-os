@@ -584,3 +584,184 @@ def tableau_bord_dpo(company, now=None):
         'traitements_sans_dpia': len(traitements_dpia_manquante(company)),
         'calcule_le': maintenant.isoformat(),
     }
+
+
+# ── NTGRC29 — score de maturité conformité ──────────────────────────────────
+
+#: Pondération des six critères du score (somme = 100).
+#:
+#: Les poids ne sont pas « au feeling » : les deux premiers critères sont ceux
+#: qu'un contrôleur demande EN PREMIER (le registre des traitements et la
+#: preuve que les contrôles tournent), les quatre suivants mesurent la
+#: RÉACTION (délais tenus, politiques lues, violations notifiées, AIPD à jour).
+PONDERATION_CONFORMITE = {
+    'ropa': 20,
+    'controles': 20,
+    'dsr': 15,
+    'politiques': 15,
+    'violations': 15,
+    'dpia': 15,
+}
+
+#: Champs qui rendent une ligne de RoPA réellement exploitable. Un registre
+#: où il ne reste que le code et la finalité ne prouve rien à personne.
+CHAMPS_ROPA_REQUIS = ('finalite', 'base_legale', 'categories_donnees',
+                      'duree_conservation')
+
+
+def _pourcent(numerateur, denominateur, sans_donnee=0.0):
+    """Pourcentage borné 0-100 ; ``sans_donnee`` quand il n'y a rien à mesurer.
+
+    La valeur par défaut du « rien à mesurer » est un CHOIX explicite, jamais
+    le même partout : ce qu'on doit DÉCLARER (registre, contrôles, politiques)
+    vaut 0 quand c'est vide — une absence de déclaration n'est pas une
+    conformité ; ce à quoi on doit RÉAGIR (demandes, violations, AIPD) vaut
+    100 quand il n'y a rien eu — on ne reproche pas un retard à qui n'a rien
+    reçu.
+    """
+    if not denominateur:
+        return float(sans_donnee)
+    return round(max(0.0, min(100.0, 100.0 * numerateur / denominateur)), 1)
+
+
+def score_conformite(company, now=None):
+    """NTGRC29 — score de maturité conformité (0-100) + détail par critère.
+
+    Renvoie ``{'score', 'details': [{critere, libelle, score, poids,
+    points, commentaire}], 'calcule_le'}``. Le total est la somme des
+    ``score × poids / 100`` — borné 0-100 par construction.
+
+    Aucun chiffre n'est inventé : chaque critère dit SUR QUOI il porte
+    (numérateur/dénominateur réels) dans son commentaire, pour qu'un score
+    médiocre soit actionnable au lieu d'être vexant.
+    """
+    from django.utils import timezone
+
+    from core.models import DataSubjectRequest, RegistreTraitement
+    from core.selectors import traitements_haut_risque
+
+    from .models import ControleInterne, PolitiqueInterne, ViolationDonnees
+
+    maintenant = now or timezone.now()
+    if company is None:
+        return {'score': 0.0, 'details': [], 'calcule_le': None}
+
+    details = []
+
+    # 1. RoPA — part des traitements ACTIFS réellement renseignés.
+    traitements = list(RegistreTraitement.objects.filter(
+        company=company, actif=True))
+    complets = sum(
+        1 for t in traitements
+        if all((getattr(t, champ, '') or '').strip()
+               for champ in CHAMPS_ROPA_REQUIS))
+    details.append({
+        'critere': 'ropa',
+        'libelle': 'Registre des traitements renseigné',
+        'score': _pourcent(complets, len(traitements)),
+        'poids': PONDERATION_CONFORMITE['ropa'],
+        'commentaire': (f'{complets} traitement(s) complet(s) sur '
+                        f'{len(traitements)} actif(s).'),
+    })
+
+    # 2. Contrôles internes — part des contrôles actifs NON dus (donc testés
+    #    efficacement dans leur fenêtre de fréquence).
+    total_controles = ControleInterne.objects.filter(
+        company=company, actif=True).count()
+    dus = len(controles_a_tester(company, aujourdhui=maintenant.date()))
+    details.append({
+        'critere': 'controles',
+        'libelle': 'Contrôles internes testés et efficaces',
+        'score': _pourcent(total_controles - dus, total_controles),
+        'poids': PONDERATION_CONFORMITE['controles'],
+        'commentaire': (f'{total_controles - dus} contrôle(s) à jour sur '
+                        f'{total_controles} actif(s).'),
+    })
+
+    # 3. Demandes de droits — part traitée DANS les délais légaux.
+    dsr_total = dsr_dans_delai = 0
+    for demande in DataSubjectRequest.objects.filter(company=company):
+        echeance = demande.date_echeance
+        if echeance is None:
+            continue
+        close = demande.statut in (DataSubjectRequest.STATUT_TRAITEE,
+                                   DataSubjectRequest.STATUT_REFUSEE)
+        if not close and echeance >= maintenant:
+            continue  # encore dans les temps : rien à juger.
+        dsr_total += 1
+        if close and (demande.traitee_le or maintenant) <= echeance:
+            dsr_dans_delai += 1
+    details.append({
+        'critere': 'dsr',
+        'libelle': 'Demandes de droits traitées dans les délais',
+        'score': _pourcent(dsr_dans_delai, dsr_total, sans_donnee=100.0),
+        'poids': PONDERATION_CONFORMITE['dsr'],
+        'commentaire': (f'{dsr_dans_delai} demande(s) dans les délais sur '
+                        f'{dsr_total} arrivée(s) à échéance.'),
+    })
+
+    # 4. Politiques — moyenne des taux d'attestation des politiques PUBLIÉES.
+    publiees = list(PolitiqueInterne.objects.filter(
+        company=company, statut=PolitiqueInterne.STATUT_PUBLIEE,
+        version__gte=1))
+    if publiees:
+        moyenne = round(sum(
+            taux_attestation(company, p)['taux_pct']
+            for p in publiees) / len(publiees), 1)
+    else:
+        moyenne = 0.0
+    details.append({
+        'critere': 'politiques',
+        'libelle': 'Politiques publiées et attestées',
+        'score': moyenne,
+        'poids': PONDERATION_CONFORMITE['politiques'],
+        'commentaire': (f'{len(publiees)} politique(s) publiée(s), taux '
+                        f"d'attestation moyen {moyenne} %."),
+    })
+
+    # 5. Violations — part notifiée AVANT l'échéance de 72 h. Le dénominateur
+    #    ne retient que celles dont l'échéance est passée ou déjà notifiées :
+    #    on ne reproche pas un retard à une violation d'il y a deux heures.
+    violations = ViolationDonnees.objects.filter(
+        company=company, notification_cndp_requise=True)
+    v_total = v_a_temps = 0
+    for violation in violations:
+        echeance = violation.date_echeance_72h
+        notifiee = violation.date_notification_cndp
+        if notifiee is None and (echeance is None or echeance >= maintenant):
+            continue
+        v_total += 1
+        if notifiee is not None and echeance is not None \
+                and notifiee <= echeance:
+            v_a_temps += 1
+    details.append({
+        'critere': 'violations',
+        'libelle': 'Violations notifiées sous 72 h',
+        'score': _pourcent(v_a_temps, v_total, sans_donnee=100.0),
+        'poids': PONDERATION_CONFORMITE['violations'],
+        'commentaire': (f'{v_a_temps} violation(s) notifiée(s) à temps sur '
+                        f'{v_total} à notifier.'),
+    })
+
+    # 6. AIPD — part des traitements à haut risque COUVERTS par une analyse
+    #    validée.
+    haut_risque = traitements_haut_risque(company).count()
+    manquantes = len(traitements_dpia_manquante(company))
+    details.append({
+        'critere': 'dpia',
+        'libelle': 'Analyses d\'impact (AIPD) à jour',
+        'score': _pourcent(haut_risque - manquantes, haut_risque,
+                           sans_donnee=100.0),
+        'poids': PONDERATION_CONFORMITE['dpia'],
+        'commentaire': (f'{haut_risque - manquantes} traitement(s) à haut '
+                        f'risque couvert(s) sur {haut_risque}.'),
+    })
+
+    for detail in details:
+        detail['points'] = round(detail['score'] * detail['poids'] / 100.0, 2)
+    total = round(sum(d['points'] for d in details), 1)
+    return {
+        'score': max(0.0, min(100.0, total)),
+        'details': details,
+        'calcule_le': maintenant.isoformat(),
+    }

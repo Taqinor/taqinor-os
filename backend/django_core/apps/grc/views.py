@@ -861,3 +861,18 @@ def tableau_bord_dpo(request):
     from .selectors import tableau_bord_dpo as _cockpit
 
     return Response(_cockpit(request.user.company))
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def score_conformite(request):
+    """NTGRC29 — score de maturité conformité (0-100) + détail par critère.
+
+    Agrégat LECTURE SEULE, scopé à ``request.user.company``. Le total ET le
+    détail pondéré partent du même calcul : un score sans son détail ne dit
+    pas quoi corriger, et deux calculs séparés finissent toujours par se
+    contredire.
+    """
+    from .selectors import score_conformite as _score
+
+    return Response(_score(request.user.company))
