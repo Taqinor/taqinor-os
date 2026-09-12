@@ -243,3 +243,165 @@ def creer_violation(company, **champs):
 
     return create_with_reference(
         ViolationDonnees, ViolationDonnees.REFERENCE_PREFIX, company, _save)
+
+
+# ── NTGRC7 — dossier de notification CNDP (PDF) ─────────────────────────────
+
+#: Les 8 rubriques exigées par une notification de violation (loi 09-08 /
+#: RGPD art. 33). L'ordre est celui du formulaire : il ne change pas.
+RUBRIQUES_NOTIFICATION = (
+    'Responsable du traitement',
+    'Nature de la violation',
+    'Chronologie',
+    'Catégories et nombre de personnes concernées',
+    'Catégories de données concernées',
+    'Conséquences probables pour les personnes',
+    'Mesures prises ou proposées',
+    'Point de contact (DPO)',
+)
+
+_NON_RENSEIGNE = '— non renseigné'
+
+
+def contact_responsable(company):
+    """Coordonnées du responsable de traitement (profil société, best-effort).
+
+    Résolution PAR CHAÎNE (jamais un import de ``apps.parametres.models``).
+    Aucune valeur n'est inventée : un champ vide reste vide.
+    """
+    from django.apps import apps as django_apps
+
+    try:
+        CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
+        profil = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # noqa: BLE001 - profil indisponible ⇒ dossier quand même
+        profil = None
+    if profil is None:
+        return {'nom': getattr(company, 'nom', '') or '', 'email': '',
+                'telephone': '', 'adresse': ''}
+    return {
+        'nom': getattr(profil, 'nom', '') or getattr(company, 'nom', '') or '',
+        'email': getattr(profil, 'email', '') or '',
+        'telephone': getattr(profil, 'telephone', '') or '',
+        'adresse': getattr(profil, 'adresse', '') or '',
+    }
+
+
+def contexte_dossier_notification(violation, now=None):
+    """Contenu structuré du dossier CNDP — les 8 rubriques, dans l'ordre.
+
+    Séparé du rendu : le contenu est testable sans WeasyPrint, et un futur
+    format (XML de téléservice, export) réutilisera exactement la même source.
+    """
+    now = now or timezone.now()
+    contact = contact_responsable(violation.company)
+
+    def _ou_vide(valeur):
+        return valeur if (valeur or '').strip() else _NON_RENSEIGNE
+
+    categories = violation.categories_donnees or []
+    if isinstance(categories, (list, tuple)):
+        categories_txt = ', '.join(str(c) for c in categories)
+    else:
+        categories_txt = str(categories)
+
+    chronologie = [
+        ('Incident', violation.date_incident),
+        ('Détection', violation.date_detection),
+        ('Échéance de notification (72 h)', violation.date_echeance_72h),
+        ('Notification CNDP', violation.date_notification_cndp),
+    ]
+
+    return {
+        'reference': violation.reference,
+        'genere_le': now,
+        'rubriques': [
+            {
+                'titre': 'Responsable du traitement',
+                'contenu': _ou_vide(
+                    ' — '.join(p for p in [contact['nom'], contact['adresse']]
+                               if p)),
+            },
+            {
+                'titre': 'Nature de la violation',
+                'contenu': (f"{violation.get_nature_display()} "
+                            f"(gravité : {violation.get_gravite_display()})"),
+            },
+            {
+                'titre': 'Chronologie',
+                'contenu': ' | '.join(
+                    f'{libelle} : '
+                    + (f'{quand:%d/%m/%Y %H:%M}' if quand else _NON_RENSEIGNE)
+                    for libelle, quand in chronologie),
+            },
+            {
+                'titre': 'Catégories et nombre de personnes concernées',
+                'contenu': (f'{violation.nombre_personnes_estime} personne(s) '
+                            'concernée(s), estimation'),
+            },
+            {
+                'titre': 'Catégories de données concernées',
+                'contenu': _ou_vide(categories_txt),
+            },
+            {
+                'titre': 'Conséquences probables pour les personnes',
+                'contenu': _ou_vide(violation.risque_personnes),
+            },
+            {
+                'titre': 'Mesures prises ou proposées',
+                'contenu': _ou_vide(violation.mesures_prises),
+            },
+            {
+                'titre': 'Point de contact (DPO)',
+                'contenu': _ou_vide(
+                    ' — '.join(p for p in [contact['email'],
+                                           contact['telephone']] if p)),
+            },
+        ],
+    }
+
+
+def _html_dossier_notification(contexte):
+    """Gabarit HTML du dossier (inline : un seul consommateur, aucun gabarit
+    partagé à maintenir)."""
+    from html import escape
+
+    lignes = ''.join(
+        '<tr><th style="text-align:left;vertical-align:top;width:34%;'
+        'padding:6px 10px;border:1px solid #999;background:#f3f3f3;">'
+        + escape(r['titre'])
+        + '</th><td style="padding:6px 10px;border:1px solid #999;">'
+        + escape(r['contenu']) + '</td></tr>'
+        for r in contexte['rubriques'])
+    return (
+        '<html><head><meta charset="utf-8"><style>'
+        'body{font-family:sans-serif;font-size:11pt;}'
+        'h1{font-size:15pt;margin-bottom:2px;}'
+        'table{width:100%;border-collapse:collapse;margin-top:14px;}'
+        '.meta{color:#555;font-size:9pt;}'
+        '</style></head><body>'
+        '<h1>Notification de violation de données personnelles</h1>'
+        '<div class="meta">Référence '
+        + escape(contexte['reference'] or '—')
+        + ' — dossier généré le '
+        + contexte['genere_le'].strftime('%d/%m/%Y à %H:%M')
+        + ' (loi 09-08, notification sous 72 heures)</div>'
+        '<table>' + lignes + '</table>'
+        '</body></html>'
+    )
+
+
+def generer_dossier_notification(violation, now=None):
+    """Rend le dossier de notification CNDP en PDF (octets).
+
+    Passe par ``core.pdf.render_pdf`` (ARC11) — JAMAIS un import direct de
+    WeasyPrint, et surtout JAMAIS le moteur de devis (règle #4 : `/proposal`
+    est l'unique chemin des PDF de devis client).
+    """
+    from core.pdf import render_pdf
+
+    contexte = contexte_dossier_notification(violation, now=now)
+    pdf = render_pdf(
+        html=_html_dossier_notification(contexte),
+        company=violation.company, header=True, footer=True)
+    return pdf, contexte

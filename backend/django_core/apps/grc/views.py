@@ -113,6 +113,39 @@ class ViolationDonneesViewSet(CompanyScopedModelViewSet):
             return Response({'statut': str(exc)}, status=400)
         return Response(self.get_serializer(violation).data)
 
+    @action(detail=True, methods=['get', 'post'],
+            url_path='generer-dossier-notification')
+    def generer_dossier_notification(self, request, pk=None):
+        """NTGRC7 — rend le dossier de notification CNDP en PDF.
+
+        Le PDF liste les 8 rubriques réglementaires + l'horodatage de
+        génération. Rendu par ``core.pdf`` (ARC11) — jamais le moteur de devis
+        (règle #4). L'événement est journalisé en ``audit.AuditLog`` via le bus
+        ``core.events`` (aucun import de l'app audit depuis grc).
+        """
+        from django.http import HttpResponse
+
+        from core.events import document_pdf_generated
+
+        from .services import generer_dossier_notification as _generer
+
+        violation = self.get_object()
+        try:
+            pdf, contexte = _generer(violation)
+        except RuntimeError as exc:
+            # WeasyPrint absent (build allégé) : message honnête, jamais 500.
+            return Response({'detail': str(exc)}, status=503)
+
+        document_pdf_generated.send(
+            sender=self.__class__, instance=violation,
+            kind='violation_donnees')
+
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        nom = (contexte['reference'] or 'violation').replace('/', '-')
+        reponse['Content-Disposition'] = (
+            f'attachment; filename="notification-cndp-{nom}.pdf"')
+        return reponse
+
     @action(detail=True, methods=['post'], url_path='notifier-cndp')
     def notifier_cndp(self, request, pk=None):
         """Enregistre la notification CNDP (date + statut, ensemble)."""
