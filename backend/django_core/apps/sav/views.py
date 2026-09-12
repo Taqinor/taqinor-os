@@ -2956,6 +2956,75 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             'results': groupes,
         })
 
+    @extend_schema(
+        request=inline_serializer('SavProblemeDepuisRegroupementRequest', {
+            'titre': drf_serializers.CharField(),
+            'description': drf_serializers.CharField(required=False),
+            'cause_racine': drf_serializers.CharField(required=False),
+            'ticket_ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField()),
+        }),
+        responses=inline_serializer('SavProblemeDepuisRegroupementResponse', {
+            'id': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(),
+            'titre': drf_serializers.CharField(),
+            'nb_tickets': drf_serializers.IntegerField(),
+        }))
+    @action(detail=False, methods=['post'],
+            url_path='creer-depuis-regroupement',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def creer_depuis_regroupement(self, request):
+        """NTSRV31 — crée le problème ET rattache les tickets COCHÉS en UN
+        SEUL appel transactionnel.
+
+        Décocher un ticket dans l'assistant l'exclut réellement : seuls les
+        ids reçus sont rattachés (aucun « tout le groupe » implicite côté
+        serveur). Tout ou rien : si un id est inconnu, RIEN n'est créé."""
+        company = request.user.company
+        titre = str(request.data.get('titre') or '').strip()
+        if not titre:
+            raise ValidationError(
+                {'titre': 'Le titre du problème est obligatoire.'})
+        bruts = request.data.get('ticket_ids')
+        if not isinstance(bruts, (list, tuple)) or not bruts:
+            raise ValidationError(
+                {'ticket_ids': 'Cochez au moins un ticket à rattacher.'})
+        try:
+            demandes = [int(valeur) for valeur in bruts]
+        except (TypeError, ValueError):
+            raise ValidationError({'ticket_ids': 'Ticket inconnu.'})
+
+        tickets = list(Ticket.objects.filter(
+            pk__in=demandes, company=company))
+        if len(tickets) != len(set(demandes)):
+            raise ValidationError(
+                {'ticket_ids': 'Ticket inconnu (il appartient à une autre '
+                               'société ou a été supprimé).'})
+
+        with transaction.atomic():
+            probleme = create_with_reference(
+                Probleme, 'PRB', company,
+                lambda ref: Probleme.objects.create(
+                    company=company, reference=ref, titre=titre,
+                    description=str(request.data.get('description') or ''),
+                    cause_racine=str(request.data.get('cause_racine') or '')),
+            )
+            ProblemeIncident.objects.bulk_create([
+                ProblemeIncident(company=company, probleme=probleme,
+                                 ticket=ticket)
+                for ticket in tickets])
+        for ticket in tickets:
+            activity.log_note(
+                ticket, request.user,
+                f'Rattaché au problème {probleme.reference} — '
+                f'{probleme.titre}')
+        return Response({
+            'id': probleme.pk,
+            'reference': probleme.reference,
+            'titre': probleme.titre,
+            'nb_tickets': len(tickets),
+        }, status=status.HTTP_201_CREATED)
+
 
 def _bornes_periode(request):
     """Bornes ``?date_debut=`` / ``?date_fin=`` (AAAA-MM-JJ), optionnelles.
