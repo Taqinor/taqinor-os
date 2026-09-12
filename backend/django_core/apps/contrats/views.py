@@ -1457,6 +1457,11 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
 
     # ── NTDOC7 — Parapheur électronique du dirigeant ──────────────────────
 
+    # Forme DÉCLARÉE : sans elle, le schéma documenterait le
+    # ``serializer_class`` du ViewSet (``ContratSerializer``) alors que cette
+    # action rend une ÉTAPE — un schéma qui ment est pire qu'un schéma vide.
+    @extend_schema(request=AssignerEtapeSerializer,
+                   responses=EtapeApprobationSerializer)
     @action(detail=True, methods=['post'], url_path='assigner-etape')
     def assigner_etape(self, request, pk=None):
         """Assigne NOMINATIVEMENT une étape d'approbation (NTDOC7).
@@ -3616,6 +3621,8 @@ class ParametresCLMViewSet(_ContratsBaseViewSet):
     queryset = ParametresCLM.objects.all()
     serializer_class = ParametresCLMSerializer
 
+    @extend_schema(request=ParametresCLMSerializer,
+                   responses=ParametresCLMSerializer)
     @action(detail=False, methods=['get', 'patch'], url_path='courant')
     def courant(self, request):
         parametres = services.get_parametres_clm(request.user.company)
