@@ -230,6 +230,16 @@ const coreApi = {
       traiter: (id) => api.post(`/core/dsr-requests/${id}/traiter/`),
     },
   },
+
+  // NTOBS9 — fenêtres de maintenance planifiées. `actives` (tout rôle
+  // authentifié) alimente la bannière du shell ; list/create/annuler sont
+  // réservés Directeur/Administrateur côté serveur (403 sinon).
+  maintenanceWindows: {
+    actives: () => api.get('/core/maintenance-windows/actives/'),
+    list: () => api.get('/core/maintenance-windows/'),
+    create: (data) => api.post('/core/maintenance-windows/', data),
+    annuler: (id) => api.post(`/core/maintenance-windows/${id}/annuler/`),
+  },
 }
 
 export default coreApi

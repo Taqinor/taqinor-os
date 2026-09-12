@@ -3049,3 +3049,10 @@ from core.signed_download import SignedDownload  # noqa: E402,F401
 # réexporté ici en tout dernier pour la découverte Django (app_label 'core',
 # migrations).
 from core.export_registry import ExportReversibiliteRun  # noqa: E402,F401
+
+# NTOBS9 — fenêtres de maintenance planifiées : ``MaintenanceWindow`` défini
+# dans ``core/maintenance_windows.py`` (nommage distinct de ``core/
+# maintenance.py``, NTPLT55, une fonctionnalité totalement différente — le
+# mode lecture-seule global) — même pattern d'éclatement, réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.maintenance_windows import MaintenanceWindow  # noqa: E402,F401

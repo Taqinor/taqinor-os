@@ -1246,6 +1246,11 @@ app.conf.beat_schedule = {
         'task': 'core.generer_sla_mensuel',
         'schedule': crontab(day_of_month=1, hour=3, minute=15),
     },
+    # NTOBS9 — notifie 24h/1h avant une fenêtre de maintenance planifiée.
+    'core-notifier-fenetres-maintenance': {
+        'task': 'core.notifier_fenetres_maintenance',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 

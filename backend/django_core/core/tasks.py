@@ -336,3 +336,16 @@ def export_reversibilite_tenant(
                 '(société %s).', company.id)
 
     return {'ok': True, 'token': lien.token, 'taille_octets': taille}
+
+
+@shared_task(name='core.notifier_fenetres_maintenance')
+def notifier_fenetres_maintenance_task():
+    """NTOBS9 — notifie 24h/1h avant une fenêtre de maintenance planifiée
+    (beat toutes les 15 min). Enveloppe fine de
+    ``core.maintenance_windows`` (nommage distinct de ``core.maintenance``,
+    NTPLT55, une fonctionnalité totalement différente)."""
+    from . import maintenance_windows
+
+    n = maintenance_windows.notifier_fenetres_a_venir()
+    logger.info('core.notifier_fenetres_maintenance: %d notification(s).', n)
+    return {'notifies': n}

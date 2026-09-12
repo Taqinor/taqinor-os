@@ -30,6 +30,9 @@ from .formule_api import (
     FormuleFonctionsView, FormuleTestView, FormuleValiderView,
 )
 from .backup import mes_sauvegardes_view
+from .maintenance_windows import (
+    MaintenanceWindowListCreateView, annuler_fenetre, fenetres_actives,
+)
 from .export_registry import (
     ExportReversibiliteHistoriqueView, declencher_export_reversibilite,
     telecharger_export_reversibilite,
@@ -241,4 +244,12 @@ urlpatterns = router.urls + [
     # d'exploitation, pas le quota self-service du tenant) ; ce endpoint
     # prend donc `usage-limites/` pour ne rien casser côté NTPLT6.
     path('usage-limites/', usage_view, name='usage-limites-summary'),
+    # NTOBS9 — fenêtres de maintenance (création/annulation Directeur,
+    # cross-tenant ; lecture des fenêtres actives pour la bannière shell).
+    path('maintenance-windows/', MaintenanceWindowListCreateView.as_view(),
+         name='maintenance-windows'),
+    path('maintenance-windows/actives/', fenetres_actives,
+         name='maintenance-windows-actives'),
+    path('maintenance-windows/<int:pk>/annuler/', annuler_fenetre,
+         name='maintenance-windows-annuler'),
 ]

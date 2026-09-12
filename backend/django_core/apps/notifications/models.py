@@ -361,6 +361,10 @@ class EventType(models.TextChoices):
     # le lien tokenisé (7 jours, core.signed_download).
     EXPORT_REVERSIBILITE_PRET = (
         'export_reversibilite_pret', 'Export de vos données prêt')
+    # NTOBS9 — une fenêtre de maintenance planifiée (core.MaintenanceWindow)
+    # approche (24h/1h avant) ou est annulée : notifie les admins concernés.
+    MAINTENANCE_WINDOW_ANNOUNCED = (
+        'maintenance_window_announced', 'Fenêtre de maintenance annoncée')
 
 
 class Channel(models.TextChoices):

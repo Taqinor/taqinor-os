@@ -1358,6 +1358,8 @@ CELERY_TASK_ROUTES = {
     'statuspage.rafraichir_composants': {'queue': 'scheduled'},
     # NTOBS3 — snapshot SLA mensuel de toutes les sociétés.
     'core.generer_sla_mensuel': {'queue': 'scheduled'},
+    # NTOBS9 — notification 24h/1h avant une fenêtre de maintenance.
+    'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
