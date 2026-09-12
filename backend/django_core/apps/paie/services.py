@@ -5677,6 +5677,164 @@ def etat_des_charges(periode):
     }
 
 
+# ── NTPAY4 — Télépaiement CNSS : bordereau + fichier de règlement ───────────
+
+# Jour LIMITE de règlement des cotisations CNSS (cadre marocain : avant le 10
+# du mois suivant, comme la date limite de la BDS — cf.
+# ``echeances_attendues``/``etat_des_charges``).
+JOUR_LIMITE_PAIEMENT_CNSS = 10
+
+# Organismes du bordereau de PAIEMENT (distinct du bordereau DÉCLARATIF
+# DAMANCOM) : chacun avec les champs du livre de paie qui l'alimentent, côté
+# salarial puis patronal. Allocations familiales et taxe de formation
+# professionnelle sont 100 % patronales (aucune part salariale) — elles sont
+# recouvrées par la CNSS mais restent des lignes DISTINCTES sur le bordereau,
+# comme sur l'avis de la caisse.
+ORGANISMES_PAIEMENT_CNSS = [
+    ('cnss', 'CNSS — prestations sociales',
+     ['cnss_salariale'], ['cnss_patronale']),
+    ('amo', 'AMO — assurance maladie obligatoire',
+     ['amo_salariale'], ['amo_patronale']),
+    ('allocations_familiales', 'Allocations familiales',
+     [], ['allocations_familiales']),
+    ('formation_professionnelle', 'Taxe de formation professionnelle',
+     [], ['formation_professionnelle']),
+]
+
+# Gabarit du fichier de TÉLÉPAIEMENT (longueurs fixes, même patron que le
+# fichier SIMT XPAI8 : (champ, longueur, remplissage 'L'/'R')). Le gabarit
+# EXACT dépend de l'organisme/de la banque du fondateur — ce format livre le
+# mécanisme et une structure usuelle, jamais un format prétendu officiel.
+GABARIT_TELEPAIEMENT_CNSS_ENTETE = [
+    ('type_enregistrement', 1, 'L'),   # 'E' = en-tête
+    ('numero_affiliation', 12, 'L'),
+    ('raison_sociale', 40, 'L'),
+    ('periode', 6, 'L'),               # AAAAMM
+    ('date_limite', 8, 'L'),           # AAAAMMJJ
+    ('nombre_organismes', 3, 'R'),
+    ('total_centimes', 15, 'R'),
+]
+
+GABARIT_TELEPAIEMENT_CNSS_LIGNE = [
+    ('type_enregistrement', 1, 'L'),   # 'D' = détail organisme
+    ('code_organisme', 26, 'L'),
+    ('salarial_centimes', 15, 'R'),
+    ('patronal_centimes', 15, 'R'),
+    ('total_centimes', 15, 'R'),
+]
+
+
+def bordereau_paiement_cnss(periode):
+    """Bordereau de PAIEMENT des cotisations CNSS d'une période (NTPAY4).
+
+    Le fichier DÉCLARATIF DAMANCOM (``fichier_damancom_cnss``/``_strict``)
+    dit QUI est déclaré ; il ne disait pas COMBIEN régler ni à quelle date.
+    Ce bordereau agrège, sur les bulletins VALIDÉS de la ``periode`` (via
+    ``livre_de_paie`` — donc TOUS les bulletins validés, pas seulement les
+    profils affiliés CNSS), le montant dû par organisme (CNSS, AMO,
+    allocations familiales, taxe de formation professionnelle), parts
+    salariale ET patronale, et rappelle la référence du dépôt BDS lié ainsi
+    que la date limite (le 10 du mois suivant).
+
+    Lecture seule — aucune écriture, aucun effet de bord. Renvoie ::
+
+        {'annee', 'mois', 'nombre_salaries', 'organismes': [...],
+         'total_general', 'date_limite', 'reference_bds', 'date_depot_bds',
+         'avertissements'}
+    """
+    from .models import DepotBDS
+
+    registre = livre_de_paie(periode)
+    totaux = registre['totaux']
+
+    organismes = []
+    total_general = Decimal('0')
+    for code, libelle, champs_sal, champs_pat in ORGANISMES_PAIEMENT_CNSS:
+        salarial = sum(
+            (Decimal(totaux[champ] or 0) for champ in champs_sal),
+            Decimal('0'))
+        patronal = sum(
+            (Decimal(totaux[champ] or 0) for champ in champs_pat),
+            Decimal('0'))
+        total = salarial + patronal
+        total_general += total
+        organismes.append({
+            'code': code, 'libelle': libelle,
+            'salarial': _q(salarial), 'patronal': _q(patronal),
+            'total': _q(total),
+        })
+
+    annee, mois = _mois_suivant(periode.annee, periode.mois)
+    date_limite = date(annee, mois, JOUR_LIMITE_PAIEMENT_CNSS)
+
+    depot = (
+        DepotBDS.objects
+        .filter(company=periode.company, periode=periode,
+                type_depot=DepotBDS.TYPE_PRINCIPAL)
+        .order_by('-date_depot')
+        .first()
+    )
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'nombre_salaries': registre['nombre_salaries'],
+        'organismes': organismes,
+        'total_general': _q(total_general),
+        'date_limite': date_limite,
+        # Référence du dépôt DÉCLARATIF lié — vide tant que la BDS n'a pas été
+        # déposée (on n'invente jamais une référence).
+        'reference_bds': f'BDS-{depot.id}' if depot is not None else '',
+        'date_depot_bds': depot.date_depot if depot is not None else None,
+        'avertissements': avertissements_parametre_paie(
+            periode.company, le_jour, contexte='Bordereau de paiement CNSS'),
+    }
+
+
+def fichier_telepaiement_cnss(periode, *, bordereau=None):
+    """Fichier de TÉLÉPAIEMENT des cotisations CNSS (NTPAY4).
+
+    Format à LONGUEURS FIXES (gabarits ``GABARIT_TELEPAIEMENT_CNSS_*``,
+    montants en CENTIMES) construit sur ``bordereau_paiement_cnss`` : un
+    enregistrement d'en-tête société puis un enregistrement par organisme.
+    Même patron que le fichier de virement SIMT (XPAI8) — le gabarit exact
+    reste à confirmer auprès de l'organisme. Renvoie ``{'lignes': [str, …],
+    'total', 'nb_lignes', 'date_limite'}``. Lecture seule.
+    """
+    if bordereau is None:
+        bordereau = bordereau_paiement_cnss(periode)
+    company = periode.company
+    total_centimes = int(_q(bordereau['total_general']) * 100)
+    entete = _formater_enregistrement_simt({
+        'type_enregistrement': 'E',
+        'numero_affiliation': getattr(
+            company, 'numero_cnss_employeur', '') or '',
+        'raison_sociale': getattr(company, 'nom', '') or '',
+        'periode': f'{periode.annee}{periode.mois:02d}',
+        'date_limite': bordereau['date_limite'].strftime('%Y%m%d'),
+        'nombre_organismes': len(bordereau['organismes']),
+        'total_centimes': total_centimes,
+    }, GABARIT_TELEPAIEMENT_CNSS_ENTETE)
+
+    lignes = [entete]
+    for organisme in bordereau['organismes']:
+        lignes.append(_formater_enregistrement_simt({
+            'type_enregistrement': 'D',
+            'code_organisme': organisme['code'],
+            'salarial_centimes': int(_q(organisme['salarial']) * 100),
+            'patronal_centimes': int(_q(organisme['patronal']) * 100),
+            'total_centimes': int(_q(organisme['total']) * 100),
+        }, GABARIT_TELEPAIEMENT_CNSS_LIGNE))
+
+    return {
+        'lignes': lignes,
+        'total': bordereau['total_general'],
+        'nb_lignes': len(bordereau['organismes']),
+        'date_limite': bordereau['date_limite'],
+    }
+
+
 def rapprochement_paie_gl(periode):
     """Rapproche le livre de paie (documentaire) au GL posté (XPAI5).
 

@@ -76,6 +76,7 @@ from .services import (
     appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
+    bordereau_paiement_cnss,
     brut_pour_net_cible,
     avertissements_parametre_paie,
     avertissements_periode,
@@ -111,6 +112,7 @@ from .services import (
     fichier_cimr,
     fichier_damancom_cnss,
     fichier_damancom_strict,
+    fichier_telepaiement_cnss,
     fichier_virement_paie,
     fichier_virement_paie_simt,
     generer_bulletin,
@@ -911,6 +913,35 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         contenu = request.data.get('contenu', '')
         rapport = rapprocher_affebds(request.user.company, contenu)
         return Response(rapport, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='bordereau-cnss')
+    def bordereau_cnss(self, request, pk=None):
+        """Bordereau de PAIEMENT des cotisations CNSS de la période (NTPAY4).
+
+        JSON par défaut (montants par organisme, total, date limite, dépôt BDS
+        lié). ``?export=pdf`` renvoie le bordereau imprimable,
+        ``?export=fichier`` le fichier de télépaiement à longueurs fixes.
+        Lecture seule — ne déclare ni ne règle rien.
+        """
+        periode = self.get_object()
+        bordereau = bordereau_paiement_cnss(periode)
+        export = (request.query_params.get('export') or '').lower()
+        if export == 'pdf':
+            try:
+                pdf = builders.render_bordereau_cnss_pdf(
+                    periode, bordereau=bordereau)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(
+                pdf,
+                f'bordereau_cnss_{periode.annee}_{periode.mois:02d}.pdf')
+        if export == 'fichier':
+            return Response(
+                fichier_telepaiement_cnss(periode, bordereau=bordereau),
+                status=status.HTTP_200_OK)
+        return Response(bordereau, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='fichier-damancom')
     def fichier_damancom(self, request, pk=None):

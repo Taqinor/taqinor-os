@@ -726,6 +726,72 @@ def render_registre_conges_pdf(registre, *, today=None):
     return _html_to_pdf(render_registre_conges_html(registre, today=today))
 
 
+def render_bordereau_cnss_html(bordereau, employeur, *, today=None):
+    """HTML du bordereau de PAIEMENT des cotisations CNSS (NTPAY4).
+
+    ``bordereau`` = le dict de ``services.bordereau_paiement_cnss`` ;
+    ``employeur`` = celui de ``employeur_context`` (mentions réellement
+    renseignées uniquement — rien n'est inventé). Le document porte le montant
+    dû par organisme (part salariale / patronale / total), le total général, la
+    DATE LIMITE de règlement et la référence du dépôt BDS lié quand elle
+    existe.
+    """
+    if today is None:
+        today = date.today()
+    lignes_html = ''.join(
+        f"<tr><td>{escape(str(org['libelle']))}</td>"
+        f"<td>{_fmt(org['salarial'])}</td>"
+        f"<td>{_fmt(org['patronal'])}</td>"
+        f"<td>{_fmt(org['total'])}</td></tr>"
+        for org in bordereau['organismes'])
+    reference = bordereau.get('reference_bds') or ''
+    ligne_reference = (
+        f"<p><strong>Déclaration liée :</strong> {escape(reference)}</p>"
+        if reference else
+        "<p><em>Aucun dépôt BDS enregistré pour cette période.</em></p>")
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th, td {{ border: 1px solid #999; padding: 4px 6px; text-align: right; }}
+  th:nth-child(1), td:nth-child(1) {{ text-align: left; }}
+  tfoot td {{ font-weight: 700; }}
+  .date {{ text-align: right; margin-top: 20px; }}
+  .limite {{ margin-top: 12px; font-weight: 700; }}
+</style></head><body>
+  {_entete_employeur_html(employeur)}
+  <h1>Bordereau de paiement des cotisations CNSS —
+    {bordereau['mois']:02d}/{bordereau['annee']}</h1>
+  {ligne_reference}
+  <table>
+    <thead><tr><th>Organisme</th><th>Part salariale</th>
+      <th>Part patronale</th><th>Total à régler</th></tr></thead>
+    <tbody>{lignes_html}</tbody>
+    <tfoot><tr><td>Total général</td><td></td><td></td>
+      <td>{_fmt(bordereau['total_general'])}</td></tr></tfoot>
+  </table>
+  <p class="limite">À régler au plus tard le
+    {escape(_date_fr(bordereau['date_limite']))}.</p>
+  <p>Effectif déclaré : {bordereau['nombre_salaries']} salarié(s).</p>
+  <p class="date">Édité le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_bordereau_cnss_pdf(periode, *, bordereau=None, today=None):
+    """Bordereau de paiement CNSS → octets PDF (NTPAY4).
+
+    ``bordereau`` évite un recalcul quand l'appelant l'a déjà (l'endpoint
+    sert JSON + PDF depuis le même calcul) ; omis, il est calculé ici.
+    """
+    from . import services  # import paresseux : services importe déjà builders
+
+    if bordereau is None:
+        bordereau = services.bordereau_paiement_cnss(periode)
+    return _html_to_pdf(render_bordereau_cnss_html(
+        bordereau, employeur_context(periode.company), today=today))
+
+
 def render_historique_carriere_html(historique, *, today=None):
     """Construit le HTML de la fiche historique carrière/salaire (XPAI26).
 
