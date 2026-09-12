@@ -993,6 +993,19 @@ class EtapeApprobation(models.Model):
         related_name='contrats_etapes_approuvees',
         verbose_name='Approbateur',
     )
+    # NTDOC7 — destinataire NOMMÉ de l'étape (parapheur du dirigeant). NULL =
+    # étape non assignée nominativement : comportement historique STRICTEMENT
+    # inchangé (le workflow reste piloté par ``niveau_approbation``, aucune
+    # étape existante n'est réassignée). Sert UNIQUEMENT à alimenter la file
+    # « ce qui m'attend » du parapheur ; ne restreint JAMAIS qui peut décider
+    # l'étape (``approuver_etape`` garde exactement ses gardes d'ordre).
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_etapes_assignees',
+        verbose_name='Assignée à',
+    )
     statut = models.CharField(
         max_length=20,
         choices=Statut.choices,
@@ -1019,6 +1032,12 @@ class EtapeApprobation(models.Model):
                 fields=['contrat', 'niveau'],
                 name='contrats_etapeapp_ct_niv',
             ),
+            # NTDOC7 — AUCUN index composite ajouté pour la file du parapheur :
+            # le FK ``assigne_a`` porte déjà son propre index (Django en crée
+            # un par défaut sur toute colonne FK), et l'index existant
+            # ``contrats_etapeapp_co_sta`` (company, statut) couvre le reste
+            # du filtre. Un AddIndex sur une table PRÉ-EXISTANTE tiendrait un
+            # verrou d'écriture bloquant en prod (YOPSB6) pour un gain nul.
         ]
 
     def __str__(self):
@@ -4058,6 +4077,148 @@ class ParametresAbonnement(TenantModel):
 
     def __str__(self):
         return f'Paramètres abonnement — société {self.company_id}'
+
+
+class ParametresCLM(TenantModel):
+    """Réglages du cycle de vie contractuel (CLM) d'une société — NTDOC29.
+
+    Les règles du groupe NTDOC étaient des constantes de code : la clôture de
+    négociation EXIGEAIT que tous les commentaires de redline soient résolus
+    (NTDOC4), rien n'imposait de passer par une négociation avant de soumettre
+    un contrat, et la durée de vie d'une salle de données n'était réglable
+    nulle part. Ce singleton par société les rend paramétrables.
+
+    **Chaque valeur par défaut reproduit EXACTEMENT le comportement d'avant** :
+
+    - ``resolution_commentaires_obligatoire=True`` — la garde stricte de
+      NTDOC4, inchangée. La mettre à ``False`` ASSOUPLIT : on peut alors
+      clôturer une négociation avec des points encore ouverts.
+    - ``negociation_obligatoire_avant_signature=False`` — le chemin direct
+      ``brouillon → en_approbation`` reste ouvert, comme aujourd'hui. À
+      ``True``, la machine d'états (CONTRAT12) refuse ce raccourci : il faut
+      passer par ``en_negociation``.
+    - ``duree_defaut_expiration_salle_donnees_jours=30`` — durée de vie par
+      défaut proposée pour une salle de données (NTDOC11-16). Réglage STOCKÉ
+      en attendant l'app ``datarooms`` ; il ne pilote rien d'autre aujourd'hui.
+    - ``parapheur_notification_quotidienne=False`` — OPT-IN. Aucune relance
+      quotidienne du parapheur (NTDOC7) n'existe aujourd'hui ; l'activer sera
+      un geste explicite, jamais une surprise à la migration.
+
+    Singleton par société (contrainte d'unicité sur ``company``, accès
+    ``services.get_parametres_clm`` en get-or-create). Hérite de
+    ``core.models.TenantModel`` (company + horodatage).
+    """
+
+    resolution_commentaires_obligatoire = models.BooleanField(
+        default=True,
+        verbose_name='Résolution des commentaires obligatoire',
+        help_text='NTDOC4 — exiger que TOUS les commentaires de redline '
+                  'soient résolus avant de clôturer une négociation '
+                  '(comportement historique : activé).',
+    )
+    negociation_obligatoire_avant_signature = models.BooleanField(
+        default=False,
+        verbose_name='Négociation obligatoire avant approbation',
+        help_text='Interdire le passage direct « brouillon → en approbation » '
+                  ": un round de négociation devient obligatoire "
+                  '(comportement historique : désactivé).',
+    )
+    duree_defaut_expiration_salle_donnees_jours = models.PositiveIntegerField(
+        default=30,
+        verbose_name="Durée de vie par défaut d'une salle de données (jours)",
+        help_text='NTDOC11-16 — durée proposée à la création d\'une salle de '
+                  'données.',
+    )
+    parapheur_notification_quotidienne = models.BooleanField(
+        default=False,
+        verbose_name='Relance quotidienne du parapheur',
+        help_text='NTDOC7/NTDOC34 — envoyer au dirigeant un récapitulatif '
+                  'quotidien de son parapheur (comportement historique : '
+                  'aucune relance).',
+    )
+
+    class Meta:
+        verbose_name = 'Paramètres CLM'
+        verbose_name_plural = 'Paramètres CLM'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='contrats_parametresclm_uniq_co'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres CLM — société {self.company_id}'
+
+
+#: NTDOC20 — délai de prévenance appliqué à tout type de contrat NON réglé.
+#: C'est la valeur HISTORIQUE du semis d'alertes (``semer_alertes_echeances``
+#: ``within_days=30``) : la garder identique est ce qui rend la migration
+#: totalement neutre. Un test vérifie que les deux ne divergent jamais.
+DELAI_RENOUVELLEMENT_DEFAUT = 30
+
+#: NTDOC20 — délais de prévenance SUGGÉRÉS par type de contrat (jours). Ce
+#: sont des SUGGESTIONS d'écran (Paramètres), PAS des valeurs appliquées : tant
+#: qu'aucune ligne ``ParametreRenouvellement`` n'est créée, le semis d'alertes
+#: garde EXACTEMENT son délai historique. Aucun comportement ne change à la
+#: migration.
+DELAIS_RENOUVELLEMENT_SUGGERES = {
+    'maintenance': 90,
+    'om': 90,
+    'monitoring': 90,
+    'ppa': 120,
+    'sous_traitance': 30,
+    'fournisseur': 30,
+    'location': 30,
+    'nda': 30,
+}
+
+
+class ParametreRenouvellement(TenantModel):
+    """Délai de prévenance d'échéance PAR type de contrat — NTDOC20.
+
+    ``semer_alertes_echeances`` (CONTRAT22) semait ses ``AlerteContrat`` sur
+    une fenêtre UNIQUE (``within_days``, 30 jours) valable pour tous les
+    contrats : un contrat de maintenance qu'il faut anticiper 90 jours à
+    l'avance et une location qu'on traite à 30 jours étaient alertés au même
+    moment. Ce modèle règle ce délai par ``type_contrat``.
+
+    Une seule ligne par (société, type de contrat). **Un type SANS ligne garde
+    le délai historique** — la fenêtre passée à ``semer_alertes_echeances`` :
+    aucune société ne voit son comportement changer tant qu'elle n'a rien
+    configuré (``DELAIS_RENOUVELLEMENT_SUGGERES`` n'est qu'une suggestion
+    d'écran, jamais une valeur écrite d'office).
+
+    Multi-tenant : hérite de ``core.models.TenantModel`` (company + horodatage),
+    ``company`` posée côté serveur.
+    """
+
+    type_contrat = models.CharField(
+        max_length=20,
+        choices=Contrat.TypeContrat.choices,
+        verbose_name='Type de contrat',
+    )
+    delai_avant_echeance_jours = models.PositiveIntegerField(
+        default=DELAI_RENOUVELLEMENT_DEFAUT,
+        verbose_name="Délai de prévenance avant échéance (jours)",
+        help_text="Nombre de jours avant l'échéance à partir duquel une "
+                  'alerte est semée pour les contrats de ce type.',
+    )
+
+    class Meta:
+        verbose_name = 'Délai de renouvellement par type'
+        verbose_name_plural = 'Délais de renouvellement par type'
+        ordering = ['company_id', 'type_contrat']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'type_contrat'],
+                name='contrats_paramrenouv_uniq'),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.get_type_contrat_display()} — '
+            f'{self.delai_avant_echeance_jours} j'
+        )
 
 
 class CompteurUsageArchive(TenantModel):

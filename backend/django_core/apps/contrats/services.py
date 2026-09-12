@@ -1277,6 +1277,15 @@ def semer_alertes_echeances(company, *, within_days=30, today=None,
     - ``selectors.contrats_a_renouveler`` → une alerte ``echeance`` datée à la
       fin du contrat (``date_fin``).
 
+    NTDOC20 — le délai de prévenance n'est plus une CONSTANTE UNIQUE : chaque
+    ``type_contrat`` peut porter le sien (``ParametreRenouvellement``, lu via
+    ``selectors.delais_renouvellement``). Un contrat de maintenance réglé à 90
+    jours est alerté 90 jours avant, une location réglée à 30 jours l'est à 30.
+    **Un type NON configuré garde ``within_days``** — donc une société qui n'a
+    rien réglé obtient exactement le semis d'avant (la fenêtre de balayage est
+    élargie au plus grand délai, puis chaque contrat est re-filtré sur SON
+    propre délai : sans configuration les deux bornes coïncident).
+
     IDEMPOTENT : on ne crée pas de doublon — pour un contrat donné, un type
     d'alerte donné et une date de déclenchement donnée, si une alerte
     NON-annulée existe déjà on la saute. La société est posée côté serveur
@@ -1292,6 +1301,16 @@ def semer_alertes_echeances(company, *, within_days=30, today=None,
 
     if today is None:
         today = timezone.localdate()
+
+    # NTDOC20 — délais par type. Dict VIDE = aucune configuration = fenêtre
+    # unique historique.
+    delais = selectors.delais_renouvellement(company)
+    fenetre_balayage = max([within_days] + list(delais.values()))
+
+    def _limite(contrat):
+        """Date-plafond propre à CE contrat (son type, sinon la fenêtre reçue)."""
+        jours = delais.get(contrat.type_contrat, within_days)
+        return today + timedelta(days=max(0, jours))
 
     creees = []
 
@@ -1314,16 +1333,17 @@ def semer_alertes_echeances(company, *, within_days=30, today=None,
         ))
 
     for contrat in selectors.contrats_a_preavis(
-            company, within_days=within_days, today=today):
-        _semer(
-            contrat, AlerteContrat.TypeAlerte.PREAVIS,
-            contrat.echeance_preavis())
+            company, within_days=fenetre_balayage, today=today):
+        echeance = contrat.echeance_preavis()
+        if echeance is None or echeance > _limite(contrat):
+            continue
+        _semer(contrat, AlerteContrat.TypeAlerte.PREAVIS, echeance)
 
     for contrat in selectors.contrats_a_renouveler(
-            company, within_days=within_days, today=today):
-        _semer(
-            contrat, AlerteContrat.TypeAlerte.ECHEANCE,
-            contrat.date_fin)
+            company, within_days=fenetre_balayage, today=today):
+        if contrat.date_fin is None or contrat.date_fin > _limite(contrat):
+            continue
+        _semer(contrat, AlerteContrat.TypeAlerte.ECHEANCE, contrat.date_fin)
 
     return {
         'company_id': company.id,
@@ -6164,6 +6184,12 @@ def cloturer_negociation(contrat, *, user=None):
     GARDE : TOUS les ``CommentaireRedline`` du contrat doivent être ``resolu``
     — il est impossible de clôturer avec un point ouvert.
 
+    NTDOC29 — cette garde est désormais RÉGLABLE par société
+    (``ParametresCLM.resolution_commentaires_obligatoire``). Elle est ACTIVE
+    par défaut : le comportement strict de NTDOC4 est inchangé pour toute
+    société qui n'a rien réglé. La désactiver ASSOUPLIT — on peut alors
+    clôturer avec des points encore ouverts (l'entrée de chatter le dit).
+
     Effets : les dépôts de contrepartie encore ouverts passent ``traite``,
     puis la transition ``en_negociation → en_approbation`` est appliquée par la
     MACHINE D'ÉTATS (qui porte en plus la garde « au moins deux parties »).
@@ -6178,7 +6204,10 @@ def cloturer_negociation(contrat, *, user=None):
             'négociation (action « demarrer-negociation »).')
 
     ouverts = _selectors.commentaires_redline_ouverts(contrat).count()
-    if ouverts:
+    exiger_resolution = bool(
+        _selectors.reglages_clm(contrat.company)
+        .resolution_commentaires_obligatoire)
+    if ouverts and exiger_resolution:
         raise NegociationError(
             f'Impossible de clôturer la négociation : {ouverts} '
             f'commentaire(s) de redline ne sont pas résolus.')
@@ -6194,11 +6223,33 @@ def cloturer_negociation(contrat, *, user=None):
     ).exclude(statut=DocumentContrepartie.Statut.TRAITE).update(
         statut=DocumentContrepartie.Statut.TRAITE)
 
+    message = 'clôture de la négociation'
+    if ouverts and not exiger_resolution:
+        # NTDOC29 — la société a assoupli la garde : on le TRACE, pour qu'un
+        # relecteur voie que des points étaient encore ouverts à la clôture.
+        message += (
+            f' ({ouverts} commentaire(s) encore ouvert(s) — résolution non '
+            'exigée par les réglages CLM)')
     journaliser_transition(
         contrat, field='statut', old_value=ancien,
-        new_value=contrat.statut, message='clôture de la négociation',
+        new_value=contrat.statut, message=message,
         auteur=user)
     return contrat
+
+
+def get_parametres_clm(company):
+    """NTDOC29 — Réglages CLM de la société (singleton, écran de réglage).
+
+    Créé PARESSEUSEMENT au premier accès avec les valeurs par défaut du
+    modèle — qui reproduisent EXACTEMENT le comportement d'avant (garde
+    stricte NTDOC4 active, négociation non obligatoire, aucune relance de
+    parapheur). Les GARDES, elles, lisent ``selectors.reglages_clm`` : une
+    lecture pure qui ne crée jamais de ligne au passage.
+    """
+    from .models import ParametresCLM
+
+    params, _ = ParametresCLM.objects.get_or_create(company=company)
+    return params
 
 
 def duree_retention_contreparties(company):
@@ -6240,3 +6291,267 @@ def purger_contreparties_archivees(company, *, now=None):
     if purges:
         echus.delete()
     return {'purges': purges, 'duree_jours': int(duree)}
+
+
+# ---------------------------------------------------------------------------
+# NTDOC7 — Parapheur : signature EN LOT, jamais tout-ou-rien
+# ---------------------------------------------------------------------------
+
+
+class ParapheurError(Exception):
+    """Levée quand un lot de parapheur est lui-même invalide.
+
+    Ex. : aucun contrat sélectionné. Un item INDIVIDUEL en échec ne lève
+    jamais : il est RAPPORTÉ (voir ``signer_lot_parapheur``).
+    """
+
+
+def assigner_etape(etape, *, assigne_a=None, auteur=None):
+    """Assigne (ou désassigne) NOMINATIVEMENT une étape d'approbation (NTDOC7).
+
+    Pose ``EtapeApprobation.assigne_a`` pour faire entrer l'étape dans le
+    parapheur de cette personne. ``assigne_a=None`` retire l'assignation.
+
+    L'assignation ne DÉCIDE rien : le statut de l'étape, l'ordre du workflow
+    et les gardes de ``approuver_etape`` restent strictement inchangés. Une
+    étape déjà décidée (approuvée / rejetée) n'est plus assignable —
+    ``ApprobationError`` — pour ne pas ressusciter un item dans une file.
+    Journalisé au chatter du contrat (CONTRAT15).
+    """
+    from .models import EtapeApprobation
+
+    if etape.statut != EtapeApprobation.Statut.EN_ATTENTE:
+        raise ApprobationError(
+            "Cette étape d'approbation a déjà été décidée : elle n'est plus "
+            'assignable.')
+    ancien = etape.assigne_a_id
+    etape.assigne_a = assigne_a
+    etape.save(update_fields=['assigne_a'])
+    journaliser_transition(
+        etape.contrat, field='assignation_etape',
+        old_value=ancien or '',
+        new_value=etape.assigne_a_id or '',
+        message=f"Étape {etape.niveau} du workflow d'approbation.",
+        auteur=auteur)
+    return etape
+
+
+def signer_lot_parapheur(user, contrat_ids, *, signataire_nom,
+                         ip_adresse='', user_agent='', today=None):
+    """Signe EN LOT les contrats du parapheur d'un utilisateur (NTDOC7).
+
+    Réutilise ``signer_contrat`` (CONTRAT16) ITEM PAR ITEM — aucune logique de
+    signature dupliquée, la machine d'états gardée reste le seul chemin vers
+    ``signe``. Le nom dactylographié (loi 53-05) est saisi UNE fois et appliqué
+    à chaque item ; le rôle est toujours le rôle INTERNE (``prestataire``) —
+    jamais lu du corps de requête.
+
+    **JAMAIS TOUT-OU-RIEN.** Chaque item est tenté indépendamment, HORS d'une
+    transaction englobante : un contrat signé entre-temps par un tiers, un
+    contrat sorti de l'état signable ou un contrat d'une autre société est
+    RAPPORTÉ en échec sans annuler les signatures déjà posées du lot. C'est le
+    critère d'acceptation de NTDOC7.
+
+    ``contrat_ids`` est dédoublonné en conservant l'ordre de saisie. Les ids
+    hors société (ou inexistants) sont rapportés « introuvable » — jamais une
+    fuite d'existence d'un contrat d'une autre société.
+
+    Renvoie ``{'nb_signes', 'nb_echecs', 'resultats': [...]}`` où chaque
+    résultat porte ``contrat``, ``ok``, ``detail``, ``contrat_signe`` et
+    ``contrat_actif``.
+    """
+    from .models import Contrat, SignatureContrat
+
+    company = getattr(user, 'company', None)
+    if company is None:
+        raise ParapheurError(
+            "Aucune société n'est rattachée à cet utilisateur.")
+
+    nom = (signataire_nom or '').strip()
+    if not nom:
+        raise ParapheurError('Le nom du signataire est requis (loi 53-05).')
+
+    # Dédoublonnage en conservant l'ordre de saisie (un même contrat listé
+    # deux fois ne doit pas produire deux tentatives, donc un faux échec
+    # « déjà signé » sur sa propre première signature).
+    vus = set()
+    ordonnes = []
+    for brut in contrat_ids or []:
+        try:
+            cid = int(brut)
+        except (TypeError, ValueError):
+            continue
+        if cid in vus:
+            continue
+        vus.add(cid)
+        ordonnes.append(cid)
+
+    if not ordonnes:
+        raise ParapheurError('Aucun contrat sélectionné.')
+
+    par_id = {
+        c.id: c
+        for c in Contrat.objects.filter(company=company, id__in=ordonnes)
+    }
+
+    resultats = []
+    nb_signes = 0
+    for cid in ordonnes:
+        contrat = par_id.get(cid)
+        if contrat is None:
+            resultats.append({
+                'contrat': cid,
+                'ok': False,
+                'detail': 'Contrat introuvable pour cette société.',
+                'contrat_signe': False,
+                'contrat_actif': False,
+            })
+            continue
+        try:
+            issue = signer_contrat(
+                contrat,
+                signataire_nom=nom,
+                role_signataire=(
+                    SignatureContrat.RoleSignataire.PRESTATAIRE),
+                signataire=user,
+                ip_adresse=ip_adresse or '',
+                user_agent=user_agent or '',
+                auteur=user,
+                today=today,
+            )
+        except SignatureError as exc:
+            # Item en conflit (déjà signé entre-temps par un tiers, ou état
+            # documentaire incompatible) : RAPPORTÉ, jamais bloquant.
+            resultats.append({
+                'contrat': cid,
+                'ok': False,
+                'detail': str(exc),
+                'contrat_signe': False,
+                'contrat_actif': False,
+            })
+            continue
+        nb_signes += 1
+        resultats.append({
+            'contrat': cid,
+            'ok': True,
+            'detail': 'Signature enregistrée.',
+            'contrat_signe': issue['contrat_signe'],
+            'contrat_actif': issue['contrat_actif'],
+        })
+
+    return {
+        'nb_signes': nb_signes,
+        'nb_echecs': len(resultats) - nb_signes,
+        'resultats': resultats,
+    }
+
+
+# ---------------------------------------------------------------------------
+# NTDOC6 — Alerte de déviation de clause (bibliothèque ↔ texte du contrat)
+# ---------------------------------------------------------------------------
+#
+# Une DÉVIATION, c'est une clause que la bibliothèque déclare OBLIGATOIRE pour
+# ce type de contrat (NTDOC5, ``Clause.obligatoire_pour_types``) et dont le
+# texte a été ÉDITÉ sur le contrat (``ClauseContrat.surchargee``). Une clause
+# facultative surchargée n'est PAS une déviation : personnaliser une clause
+# libre est le geste normal du métier.
+#
+# Le diff est calculé avec ``difflib`` de la bibliothèque STANDARD — aucune
+# dépendance nouvelle, aucun coût.
+
+
+def _lignes_diff(texte):
+    """Découpe un texte en lignes comparables par ``difflib``.
+
+    ``splitlines()`` (sans ``keepends``) normalise CRLF/LF : deux textes qui ne
+    diffèrent QUE par leurs fins de ligne ne produisent aucune déviation.
+    """
+    return (texte or '').splitlines()
+
+
+def diff_clause(texte_source, texte_surcharge):
+    """Diff unifié entre le texte de la bibliothèque et le texte du contrat.
+
+    Renvoie un dict ``{'diff', 'lignes_ajoutees', 'lignes_supprimees',
+    'identique'}``. ``diff`` est un texte au format unifié (``difflib.
+    unified_diff``), prêt à afficher ; ``identique`` vaut ``True`` quand les
+    deux textes ne diffèrent que par leurs fins de ligne — le drapeau
+    ``surchargee`` peut alors être posé sans écart réel, et on ne crie pas au
+    loup.
+    """
+    import difflib
+
+    source = _lignes_diff(texte_source)
+    surcharge = _lignes_diff(texte_surcharge)
+    lignes = list(difflib.unified_diff(
+        source, surcharge,
+        fromfile='bibliothèque', tofile='contrat', lineterm=''))
+    ajoutees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('+') and not ligne.startswith('+++'))
+    supprimees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('-') and not ligne.startswith('---'))
+    return {
+        'diff': '\n'.join(lignes),
+        'lignes_ajoutees': ajoutees,
+        'lignes_supprimees': supprimees,
+        'identique': not lignes,
+    }
+
+
+def detecter_deviations(contrat):
+    """Déviations de clauses OBLIGATOIRES d'un contrat (NTDOC6) — lecture seule.
+
+    Pour chaque ``ClauseContrat`` du contrat qui est À LA FOIS ``surchargee``
+    ET adossée à une ``Clause``-source déclarée obligatoire pour le
+    ``type_contrat`` (NTDOC5), calcule le diff texte source ↔ texte surchargé
+    et renvoie une entrée décrivant l'écart.
+
+    N'est PAS une déviation (et n'apparaît donc jamais) :
+
+    - une clause surchargée dont la source n'est PAS obligatoire pour ce type ;
+    - une clause obligatoire NON surchargée (texte tel quel) ;
+    - une clause ad hoc (``clause=NULL`` — aucune source à comparer) ;
+    - une surcharge qui ne change RIEN au texte (fins de ligne seulement).
+
+    Aucune écriture : ni statut, ni drapeau, ni notification. Renvoie une liste
+    ordonnée par ``ordre`` de clause dans le contrat.
+    """
+    type_contrat = contrat.type_contrat or ''
+    resolues = (
+        contrat.clauses_resolues
+        .filter(surchargee=True)
+        .exclude(clause__isnull=True)
+        .select_related('clause')
+        .order_by('ordre', 'id')
+    )
+
+    deviations = []
+    for resolue in resolues:
+        source = resolue.clause
+        types_obligatoires = source.obligatoire_pour_types or []
+        if type_contrat not in types_obligatoires:
+            continue
+        ecart = diff_clause(source.corps, resolue.corps)
+        if ecart['identique']:
+            continue
+        deviations.append({
+            'clause_contrat': resolue.id,
+            'clause_source': source.id,
+            'titre': resolue.titre,
+            'titre_source': source.titre,
+            'ordre': resolue.ordre,
+            'type_clause': source.type_clause,
+            'texte_source': source.corps,
+            'texte_surcharge': resolue.corps,
+            'diff': ecart['diff'],
+            'lignes_ajoutees': ecart['lignes_ajoutees'],
+            'lignes_supprimees': ecart['lignes_supprimees'],
+        })
+    return deviations
+
+
+def contrat_en_deviation(contrat):
+    """``True`` si le contrat porte au moins une déviation (NTDOC6)."""
+    return bool(detecter_deviations(contrat))

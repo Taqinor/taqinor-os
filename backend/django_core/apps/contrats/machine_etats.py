@@ -122,6 +122,27 @@ def _transitions_gardees_parties():
     }
 
 
+def _negociation_obligatoire(contrat):
+    """NTDOC29 — la société impose-t-elle un round de négociation ?
+
+    Lecture PURE via ``selectors.reglages_clm`` (import fonction-local : ce
+    module ne dépend que de ``models`` au chargement). Un contrat sans société
+    résoluble, ou toute erreur de lecture, laisse passer : une garde
+    OPTIONNELLE ne doit jamais bloquer une transition légitime.
+    """
+    company = getattr(contrat, 'company', None)
+    if company is None:
+        return False
+    try:
+        from . import selectors
+
+        return bool(
+            selectors.reglages_clm(company)
+            .negociation_obligatoire_avant_signature)
+    except Exception:  # pragma: no cover - défensif (garde optionnelle)
+        return False
+
+
 def statuts_suivants(contrat):
     """Liste des statuts cibles autorisés depuis le statut courant du contrat."""
     return sorted(_transitions().get(contrat.statut, set()))
@@ -160,6 +181,18 @@ def changer_statut(contrat, statut_cible, *, persister=True):
             # Reformule en TransitionInterdite pour un point d'échec unique.
             message = exc.messages[0] if exc.messages else str(exc)
             raise TransitionInterdite(message)
+
+    # NTDOC29 — réglage société « négociation obligatoire avant approbation ».
+    # DÉSACTIVÉ PAR DÉFAUT : le raccourci brouillon → en_approbation reste
+    # ouvert, comportement strictement inchangé. Activé, il force le passage
+    # par un round de redlines. Lecture PURE (aucune ligne créée au passage).
+    S = _statuts()
+    if (statut_courant, statut_cible) == (S.BROUILLON, S.EN_APPROBATION):
+        if _negociation_obligatoire(contrat):
+            raise TransitionInterdite(
+                'Votre société exige un round de négociation avant '
+                "l'approbation : ouvrez d'abord la négociation (action "
+                '« demarrer-negociation »).')
 
     contrat.statut = statut_cible
     if persister:
