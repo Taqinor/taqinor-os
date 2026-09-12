@@ -511,6 +511,15 @@ class WorkflowStepDefinition(TimestampedModel):
         'Groupe parallèle', null=True, blank=True,
         help_text='Étapes partageant ce même entier démarrent ensemble '
                   '(fan-out/fan-in simple). Vide = séquentiel (défaut).')
+    # NTWFL12 — formulaire dynamique rattaché à cette étape (optionnel).
+    # SET_NULL : supprimer un formulaire ne casse jamais une étape déjà
+    # configurée (elle redevient simplement sans formulaire). Référence par
+    # chaîne (``'FormulaireDefinition'``) : le modèle est défini plus bas
+    # dans ce même fichier.
+    formulaire = models.ForeignKey(
+        'FormulaireDefinition', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='etapes',
+        verbose_name='Formulaire dynamique')
 
     class Meta:
         verbose_name = 'Étape de workflow (modèle)'
@@ -645,6 +654,12 @@ class WorkflowStepInstance(TimestampedModel):
         'Dernier rappel envoyé le', null=True, blank=True,
         help_text='Vide = jamais relancée ; posé une seule fois (jamais '
                   'un second rappel pour la même étape).')
+    # NTWFL12 — réponses au formulaire dynamique de ``step_def.formulaire``
+    # (JSON additif : {champ: valeur, ...} ; une section répétable capture
+    # une LISTE de sous-dicts sous la clé de la section). Vide tant que
+    # l'étape ne porte pas de formulaire ou n'a pas encore été remplie.
+    donnees_formulaire = models.JSONField(
+        'Données du formulaire', default=dict, blank=True)
 
     class Meta:
         verbose_name = 'Étape de workflow (instance)'
@@ -774,6 +789,81 @@ class MatriceApprobation(TenantModel):
         if self.montant_min is None or self.montant_max is None:
             return None
         return self.montant_max - self.montant_min
+
+
+# ---------------------------------------------------------------------------
+# NTWFL12/13 — Formulaires dynamiques rattachés aux processus BPM.
+#
+# ``FormulaireDefinition`` reste un modèle SÉPARÉ de
+# ``customfields.CustomFieldDef`` (même vocabulaire de types pour la
+# cohérence UX — texte/nombre/date/choix/booléen/section — mais un
+# formulaire s'attache à une ÉTAPE de workflow, jamais directement à un
+# objet métier). ``schema`` est une liste ORDONNÉE de champs :
+# ``[{nom, type, requis, options?, repetable?}, ...]`` — un champ
+# ``type='section'`` avec ``repetable=True`` capture N occurrences (une
+# LISTE de sous-dicts dans ``WorkflowStepInstance.donnees_formulaire``).
+# ``champs_conditionnels`` : ``{nom_champ: {"visible_si": <condition FG367>}}``
+# — réutilise ``core.rules.evaluate_condition_group`` (AUCUN nouveau moteur
+# de conditions), évaluée contre les AUTRES réponses déjà saisies.
+# ---------------------------------------------------------------------------
+
+class FormulaireDefinition(TenantModel):
+    """Formulaire dynamique rattachable à une ``WorkflowStepDefinition``."""
+
+    code = models.CharField(
+        'Code', max_length=64,
+        help_text='Identifiant stable par société (ex. « demande_conge »).')
+    nom = models.CharField('Nom', max_length=160)
+    schema = models.JSONField(
+        'Schéma', default=list, blank=True,
+        help_text='Liste ordonnée de champs typés '
+                  '{nom, type, requis, options?, repetable?}.')
+    champs_conditionnels = models.JSONField(
+        'Champs conditionnels', default=dict, blank=True,
+        help_text='{nom_champ: {"visible_si": <condition core.rules>}}.')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Formulaire dynamique'
+        verbose_name_plural = 'Formulaires dynamiques'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='core_formdef_company_code_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.code})'
+
+
+class FormulaireChampReutilisable(TenantModel):
+    """NTWFL13 — champ de formulaire réutilisable (bibliothèque partagée).
+
+    Inséré PAR RÉFÉRENCE (``ref``, résolu côté frontend/serializer — le champ
+    inline dans ``FormulaireDefinition.schema`` porte ``{"ref": <id>}``
+    plutôt qu'une redéfinition complète) dans plusieurs formulaires : modifier
+    ce champ met à jour son libellé PARTOUT où il est référencé, sans
+    dupliquer sa définition."""
+
+    nom = models.CharField('Nom', max_length=160)
+    type = models.CharField(
+        'Type', max_length=20,
+        choices=[
+            ('texte', 'Texte'), ('nombre', 'Nombre'), ('date', 'Date'),
+            ('choix', 'Choix'), ('booleen', 'Booléen'),
+        ])
+    options = models.JSONField(
+        'Options', default=list, blank=True,
+        help_text='Liste des choix possibles (type « choix » uniquement).')
+
+    class Meta:
+        verbose_name = 'Champ de formulaire réutilisable'
+        verbose_name_plural = 'Champs de formulaire réutilisables'
+        ordering = ['nom', 'id']
+
+    def __str__(self):
+        return self.nom
 
 
 # ---------------------------------------------------------------------------

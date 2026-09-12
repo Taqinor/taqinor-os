@@ -54,6 +54,8 @@ from .models import (
     Dashboard,
     DataSubjectRequest,
     DeletionRecord,
+    FormulaireChampReutilisable,
+    FormulaireDefinition,
     MatriceApprobation,
     ModuleToggle,
     OutboxEvent,
@@ -257,7 +259,7 @@ class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
             'id', 'definition', 'ordre', 'nom', 'type_approbation',
             'sla_heures', 'role_requis', 'escalade_vers',
             'calendrier_ouvre', 'condition_transition',
-            'etape_alternative_si_echec',
+            'etape_alternative_si_echec', 'groupe_parallele', 'formulaire',
         ]
         read_only_fields = ['id']
         extra_kwargs = {'definition': {'required': False}}
@@ -424,6 +426,45 @@ class MatriceApprobationSerializer(serializers.ModelSerializer):
                     'maximum.'),
             })
         return attrs
+
+
+class FormulaireDefinitionSerializer(serializers.ModelSerializer):
+    """NTWFL12 — formulaire dynamique rattachable à une étape de workflow.
+
+    ``company`` imposée côté serveur (``TenantMixin``). ``schema``/
+    ``champs_conditionnels`` restent des JSON opaques pour ``core`` (le
+    frontend — ``FormBuilder.jsx``/``DynamicForm.jsx`` — porte la
+    validation de FORME détaillée ; ici, une vérification minimale de
+    structure suffit à éviter un schéma manifestement cassé)."""
+
+    class Meta:
+        model = FormulaireDefinition
+        fields = [
+            'id', 'code', 'nom', 'schema', 'champs_conditionnels', 'actif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_schema(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Le champ « Schéma » doit être une liste de champs.')
+        for i, champ in enumerate(value, start=1):
+            if not isinstance(champ, dict) or not champ.get('nom'):
+                raise serializers.ValidationError(
+                    f"Champ {i} : doit être un objet avec au moins « nom ».")
+        return value
+
+
+class FormulaireChampReutilisableSerializer(serializers.ModelSerializer):
+    """NTWFL13 — champ de bibliothèque réutilisable entre formulaires."""
+
+    class Meta:
+        model = FormulaireChampReutilisable
+        fields = ['id', 'nom', 'type', 'options', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class DashboardSerializer(serializers.ModelSerializer):

@@ -363,6 +363,38 @@ export function simulerWorkflow(steps, contexte = {}) {
   }
 }
 
+/* ============================================================================
+   NTWFL12 -- Formulaires dynamiques : logique de visibilite/completude
+   partagee entre DynamicForm.jsx et son ecran d'approbation (miroir client
+   de core.workflow._formulaire_incomplet -- le SERVEUR reste le dernier mot).
+   ========================================================================== */
+
+/** Un champ (par `nom`) est-il visible selon `champsConditionnels`
+ * (`{nom: {visible_si: <condition core.rules>}}`) et les valeurs DEJA
+ * saisies. Sans condition : toujours visible. */
+export function champVisible(nom, champsConditionnels, valeurs) {
+  const regle = (champsConditionnels && champsConditionnels[nom]) || {}
+  if (!regle.visible_si) return true
+  return evaluerConditionGroupe(regle.visible_si, valeurs || {})
+}
+
+/** Liste les champs (du `schema`, hors sections) requis mais absents/vides
+ * de `valeurs`, en ne comptant que les champs VISIBLES. Miroir de
+ * `core.workflow._formulaire_incomplet`. */
+export function champsFormulaireManquants(schema, champsConditionnels, valeurs) {
+  const list = Array.isArray(schema) ? schema : []
+  const v = valeurs || {}
+  return list
+    .filter((c) => c && c.type !== 'section' && c.requis)
+    .filter((c) => champVisible(c.nom, champsConditionnels, v))
+    .filter((c) => {
+      const val = v[c.nom]
+      return val === undefined || val === null || val === ''
+        || (Array.isArray(val) && val.length === 0)
+    })
+    .map((c) => c.nom)
+}
+
 /** Normalise la liste d'items renvoyée par la boîte d'approbations
  * (`GET reporting/approbations-en-attente/?source=workflow`) : ne garde que
  * les items dont la source est bien `'workflow'` (défense en profondeur — le

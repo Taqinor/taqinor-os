@@ -55,6 +55,8 @@ from .models import (
     Dashboard,
     DataSubjectRequest,
     DeletionRecord,
+    FormulaireChampReutilisable,
+    FormulaireDefinition,
     MatriceApprobation,
     ModuleToggle,
     PaymentTransaction,
@@ -75,6 +77,8 @@ from .serializers import (
     DashboardSerializer,
     DataSubjectRequestSerializer,
     DeletionRecordSerializer,
+    FormulaireChampReutilisableSerializer,
+    FormulaireDefinitionSerializer,
     MatriceApprobationSerializer,
     ModuleToggleSerializer,
     OutboxEventSerializer,
@@ -239,6 +243,33 @@ class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = MatriceApprobationSerializer
     queryset = MatriceApprobation.objects.all()
     pagination_class = None  # petite liste par société — renvoyée à plat.
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+
+class FormulaireDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTWFL12 — CRUD admin des formulaires dynamiques (rattachables aux
+    étapes de workflow via ``WorkflowStepDefinition.formulaire``)."""
+
+    serializer_class = FormulaireDefinitionSerializer
+    queryset = FormulaireDefinition.objects.all()
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+
+class FormulaireChampReutilisableViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTWFL13 — bibliothèque de champs de formulaire réutilisables."""
+
+    serializer_class = FormulaireChampReutilisableSerializer
+    queryset = FormulaireChampReutilisable.objects.all()
+    pagination_class = None
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):

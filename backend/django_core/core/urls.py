@@ -38,6 +38,8 @@ from .views import (
     ConsentRecordViewSet,
     DashboardViewSet,
     DataSubjectRequestViewSet,
+    FormulaireChampReutilisableViewSet,
+    FormulaireDefinitionViewSet,
     MatriceApprobationViewSet,
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
@@ -77,6 +79,12 @@ router.register(r'workflow-step-definitions', WorkflowStepDefinitionViewSet,
 # apps.contrats avant leur logique historique.
 router.register(r'matrices-approbation', MatriceApprobationViewSet,
                 basename='matrice-approbation')
+# NTWFL12/13 — formulaires dynamiques rattachables aux étapes de workflow +
+# bibliothèque de champs réutilisables.
+router.register(r'formulaires', FormulaireDefinitionViewSet,
+                basename='formulaire-definition')
+router.register(r'formulaire-champs', FormulaireChampReutilisableViewSet,
+                basename='formulaire-champ')
 # FG381 — dashboards sans-code (CRUD multi-tenant, scoping perso/partagé).
 router.register(r'dashboards', DashboardViewSet, basename='dashboard')
 # FG370 — paiement carte en ligne d'une facture (CMI / Payzone, gated).

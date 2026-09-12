@@ -253,6 +253,43 @@ def _garde_transition_ok(step, instance):
     return evaluate_condition_group(condition, _contexte_cible(instance))
 
 
+def _champ_visible(champ_nom, formulaire, donnees):
+    """NTWFL12 — un champ sans condition est toujours visible ; une
+    condition (format core.rules) est évaluée contre les AUTRES réponses
+    déjà saisies (``donnees``)."""
+    regle = (formulaire.champs_conditionnels or {}).get(champ_nom) or {}
+    visible_si = regle.get('visible_si')
+    if not visible_si:
+        return True
+    from core.rules import evaluate_condition_group
+    return evaluate_condition_group(visible_si, donnees)
+
+
+def _formulaire_incomplet(step):
+    """NTWFL12 — ``True`` si ``step.step_def.formulaire`` exige un champ
+    (``requis``) actuellement VISIBLE (cf. ``_champ_visible``) mais absent/
+    vide de ``step.donnees_formulaire``. Sans formulaire rattaché : toujours
+    ``False`` (comportement historique inchangé). Une section répétable
+    (``type == 'section'`` avec ``repetable``) ne porte pas de valeur
+    directe — seuls les champs simples sont vérifiés ici."""
+    formulaire = step.step_def.formulaire
+    if formulaire is None:
+        return False
+    donnees = step.donnees_formulaire or {}
+    for champ in formulaire.schema or []:
+        if not isinstance(champ, dict) or champ.get('type') == 'section':
+            continue
+        if not champ.get('requis'):
+            continue
+        nom = champ.get('nom')
+        if not _champ_visible(nom, formulaire, donnees):
+            continue
+        valeur = donnees.get(nom)
+        if valeur in (None, '', [], {}):
+            return True
+    return False
+
+
 def _router_vers_alternative(step, instance, moment):
     """NTWFL7 — route vers ``step.step_def.etape_alternative_si_echec`` (un
     ``ordre`` de la MÊME définition) quand la garde échoue : l'étape
@@ -426,7 +463,8 @@ def approuver_etape(instance, user=None, commentaire='', now=None, step=None):
     existant qui ne passe pas ce paramètre.
 
     Lève ``ValueError`` si l'instance n'est pas en cours ou n'a pas d'étape
-    active en attente.
+    active en attente, ou (NTWFL12) si un formulaire dynamique requis n'est
+    pas complété (``step.donnees_formulaire``).
     """
     moment = _resolve_now(now)
     if instance.statut != WorkflowInstance.STATUT_EN_COURS:
@@ -434,6 +472,10 @@ def approuver_etape(instance, user=None, commentaire='', now=None, step=None):
     cible = step if step is not None else etape_courante_de(instance)
     if cible is None or cible.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
         raise ValueError("Aucune étape en attente à approuver.")
+    if _formulaire_incomplet(cible):
+        raise ValueError(
+            "Le formulaire de cette étape doit être complété avant "
+            "l'approbation.")
     cible.statut = WorkflowStepInstance.STATUT_APPROUVE
     cible.assignee = user
     cible.decided_le = moment
