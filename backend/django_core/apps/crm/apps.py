@@ -49,6 +49,10 @@ class CrmConfig(AppConfig):
         # AG6 — enregistre les actions agentiques CRM dans le registre AG1.
         from .agent_actions import register_crm_actions
         register_crm_actions()
+        # NTDATA2 — déclare les datasets BI CRM (leads/clients) dans
+        # `core.data_explorer` : l'app propriétaire déclare, le noyau exécute.
+        from . import bi_datasets
+        bi_datasets.register_dataset()
         # XPLT23 — fournisseur DSR CRM (export/anonymisation loi 09-08).
         from . import dsr_provider
         dsr_provider.register()
