@@ -1428,7 +1428,9 @@ def chantier_card(chantier_id, company):
     return {
         'label': f'Chantier {chantier.reference}',
         'subtitle': ' · '.join(p for p in parts if p),
-        'url': f'/installations/{chantier.pk}',
+        # CHT7 — `/installations/<id>` est un 404 réel : la fiche chantier vit
+        # sur `/chantiers` (InstallationsPage.jsx:343 lit `?id=`).
+        'url': f'/chantiers?id={chantier.pk}',
     }
 
 

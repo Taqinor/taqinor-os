@@ -432,7 +432,9 @@ def _notifier_chantier_assigne(inst, technicien):
         corps = (f"Le chantier « {inst.reference} »"
                  + (f" (client : {client_nom})" if client_nom else '')
                  + " vous est assigné.")
-        lien = f'/installations?installation={inst.pk}'
+        # CHT7 — `/installations` n'est la route d'AUCUN écran : la fiche
+        # chantier vit sur `/chantiers` (InstallationsPage.jsx:343 lit `id`).
+        lien = f'/chantiers?id={inst.pk}'
         company = inst.company
 
         def _envoyer():
