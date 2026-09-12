@@ -203,6 +203,39 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── NTJUR1 — Affaires juridiques (apps/juridique), même patron YRBAC3 que
+    # ``contrat_*``/``litige_*`` ci-dessus. Deux codes DISJOINTS :
+    #   * ``juridique_voir``  — lecture des dossiers (GET/HEAD/OPTIONS) ;
+    #   * ``juridique_gerer`` — écriture (POST/PUT/PATCH/DELETE + actions).
+    # Module NEUF : comme ``ao_*`` (AOF2), ``rh_*`` (WIR172) et ``fpa_*``
+    # (WIR173), ils ne sont mappés sur AUCUN rôle Responsable/Commercial/
+    # Technicien/Viewer ci-dessous — un dossier contentieux (licenciement,
+    # litige actionnaire) reste à la direction, qui les porte par héritage
+    # d'``ALL_PERMISSIONS``. Aucun accès existant n'est retiré : l'app n'existait
+    # pas. Le filtrage de CONFIDENTIALITÉ (dossiers ``confidentiel`` invisibles
+    # hors palier administrateur) est une garde SUPPLÉMENTAIRE, posée dans le
+    # ``get_queryset`` du ViewSet (NTJUR1).
+    'juridique_voir',
+    'juridique_gerer',
+    # NTJUR39 — ENGAGER UNE DÉPENSE n'est pas « écrire dans le module ».
+    # ``juridique_gerer_mandats`` est REQUISE, EN PLUS de ``juridique_gerer``,
+    # pour créer/modifier un ``MandatAvocat`` ou une ``NoteHonoraires``, et
+    # pour proposer une provision (NTJUR14). Un responsable de dossier sans ce
+    # code consulte son dossier mais n'engage aucune dépense. DISTINCTE de la
+    # permission de confidentialité : voir un dossier secret ne donne pas le
+    # droit de signer un cabinet à 300 000 MAD.
+    'juridique_gerer_mandats',
+    # NTJUR40 — DÉFENSE EN PROFONDEUR sur le workflow d'approbation des
+    # engagements juridiques (NTJUR19) : ``juridique_approuver_engagement``
+    # est REQUISE, EN PLUS de ``juridique_gerer``, pour décider une étape.
+    # Être NOMMÉ approbateur d'une étape ne suffit donc jamais : retirer la
+    # permission au rôle d'un approbateur désigné bloque IMMÉDIATEMENT son
+    # bouton « Approuver » côté API, sans toucher aux étapes en cours. Même
+    # esprit que ``cpq_approbation_approuver`` (NTCPQ36). Non mappée sur un
+    # rôle non-direction : seuls Directeur/Administrateur la portent par
+    # héritage d'``ALL_PERMISSIONS``, un admin peut l'octroyer à un rôle
+    # comptable/juridique dédié.
+    'juridique_approuver_engagement',
     # ── WIR172 — Ressources humaines (apps/rh), même patron YRBAC3. Le module
     # RH n'avait AUCUNE permission fine : ``_RhBaseViewSet`` était gardé par le
     # grossier ``IsResponsableOrAdmin``, qui passe dès qu'un rôle accorde UNE
@@ -442,6 +475,8 @@ PERMISSION_MODULE = {
     'litige_voir': 'litiges',
     'litige_gerer': 'litiges',
     **{c: 'kb' for c in ALL_PERMISSIONS if c.startswith('kb_')},
+    # NTJUR1 — clé de manifeste ``juridique`` (apps/juridique).
+    **{c: 'juridique' for c in ALL_PERMISSIONS if c.startswith('juridique_')},
     **{c: 'rh' for c in ALL_PERMISSIONS if c.startswith('rh_')},
     **{c: 'fpa' for c in ALL_PERMISSIONS if c.startswith('fpa_')},
     **{c: 'ged' for c in ALL_PERMISSIONS if c.startswith('ged_')},

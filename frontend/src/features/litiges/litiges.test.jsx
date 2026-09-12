@@ -28,6 +28,7 @@ const litigesApiMock = vi.hoisted(() => ({
   prendreEnCharge: vi.fn(),
   resoudre: vi.fn(),
   rejeter: vi.fn(),
+  escaladerJuridique: vi.fn(),
 }))
 vi.mock('../../api/litigesApi', () => ({ default: litigesApiMock }))
 
@@ -196,5 +197,53 @@ describe('ReclamationEditor — facture liée (WIR10)', () => {
     expect(payload.source_type).toBe('facture')
     expect(payload.source_id).toBe(55)
     expect(payload.bloque_relances).toBe(true)
+  })
+})
+
+// ── NTJUR23 — escalade vers un dossier juridique (bouton + badge sans reload) ──
+describe('ReclamationDetail — escalade juridique', () => {
+  it('remplace le bouton par le badge du dossier sans recharger la page', async () => {
+    litigesApiMock.get.mockResolvedValue({
+      data: {
+        id: 7,
+        reference: 'REC-0007',
+        objet: 'Retard de livraison',
+        statut: 'ouverte',
+        dossier_juridique_id: null,
+      },
+    })
+    litigesApiMock.historique.mockResolvedValue({ data: [] })
+    litigesApiMock.escaladerJuridique.mockResolvedValue({
+      data: { dossier_juridique_id: 12, reference: 'JUR-2026-0004', cree: true },
+    })
+
+    render(wrap(<ReclamationDetail reclamationId={7} onBack={() => {}} onEdit={() => {}} />))
+
+    const bouton = await screen.findByRole('button', { name: /Ouvrir un dossier juridique/ })
+    fireEvent.click(bouton)
+
+    expect(await screen.findByText('Dossier juridique JUR-2026-0004')).toBeTruthy()
+    // Le badge remplace le bouton : plus aucun appel de rechargement de page.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /Ouvrir un dossier juridique/ })).toBeNull())
+    expect(litigesApiMock.escaladerJuridique).toHaveBeenCalledWith(7)
+  })
+
+  it('affiche directement le badge quand la réclamation est déjà escaladée', async () => {
+    litigesApiMock.get.mockResolvedValue({
+      data: {
+        id: 8,
+        reference: 'REC-0008',
+        objet: 'Impayé',
+        statut: 'ouverte',
+        dossier_juridique_id: 42,
+      },
+    })
+    litigesApiMock.historique.mockResolvedValue({ data: [] })
+
+    render(wrap(<ReclamationDetail reclamationId={8} onBack={() => {}} onEdit={() => {}} />))
+
+    expect(await screen.findByText('Dossier juridique lié')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Ouvrir un dossier juridique/ })).toBeNull()
   })
 })

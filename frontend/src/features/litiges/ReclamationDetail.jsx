@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Pencil, PlayCircle, CheckCircle2, XCircle, Send } from 'lucide-react'
+import { Pencil, PlayCircle, CheckCircle2, XCircle, Send, Scale } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
 import { Button, Badge, Textarea, EmptyState, Spinner, DefinitionList, toast } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
@@ -31,6 +31,9 @@ export default function ReclamationDetail({ reclamationId, onBack, onEdit, onCha
   const [loading, setLoading] = useState(true)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // NTJUR23 — dossier juridique lié, mis à jour SANS reload : la réponse de
+  // l'escalade porte déjà l'id et la référence du dossier.
+  const [dossierJuridique, setDossierJuridique] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -41,6 +44,13 @@ export default function ReclamationDetail({ reclamationId, onBack, onEdit, onCha
       .then(([r, h]) => {
         setRec(r.data)
         setActivites(Array.isArray(h.data) ? h.data : (h.data?.results ?? []))
+        // NTJUR23 — le serveur ne renvoie que l'id ; la référence n'arrive
+        // qu'avec la réponse d'escalade. On n'invente jamais « JUR-… ».
+        setDossierJuridique((prev) => (
+          r.data?.dossier_juridique_id
+            ? { id: r.data.dossier_juridique_id, reference: prev?.reference || '' }
+            : null
+        ))
       })
       .catch(() => toast.error('Impossible de charger la réclamation.'))
       .finally(() => setLoading(false))
@@ -63,6 +73,29 @@ export default function ReclamationDetail({ reclamationId, onBack, onEdit, onCha
       onChanged?.()
     } catch {
       toast.error('Transition impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // NTJUR23 — escalade vers un dossier juridique. Le badge apparaît
+  // IMMÉDIATEMENT (état local alimenté par la réponse), sans recharger la page.
+  const escaladerJuridique = async () => {
+    setBusy(true)
+    try {
+      const { data } = await litigesApi.escaladerJuridique(reclamationId)
+      setDossierJuridique({
+        id: data?.dossier_juridique_id,
+        reference: data?.reference || '',
+      })
+      toast.success(
+        data?.cree
+          ? `Dossier juridique ${data?.reference || ''} ouvert.`.trim()
+          : 'Cette réclamation est déjà rattachée à un dossier juridique.',
+      )
+      onChanged?.()
+    } catch {
+      toast.error("Impossible d'ouvrir le dossier juridique.")
     } finally {
       setBusy(false)
     }
@@ -216,6 +249,18 @@ export default function ReclamationDetail({ reclamationId, onBack, onEdit, onCha
       <Button type="button" variant="outline" onClick={onEdit}>
         <Pencil /> Éditer
       </Button>
+      {dossierJuridique ? (
+        <Badge tone="info">
+          <Scale className="size-3.5" />
+          {dossierJuridique.reference
+            ? `Dossier juridique ${dossierJuridique.reference}`
+            : 'Dossier juridique lié'}
+        </Badge>
+      ) : (
+        <Button type="button" variant="outline" onClick={escaladerJuridique} disabled={busy}>
+          <Scale /> Ouvrir un dossier juridique
+        </Button>
+      )}
       {!estTerminal(rec.statut) && transitions.map((key) => {
         const T = TRANSITION_LABELS[key]
         const Icon = T.icon

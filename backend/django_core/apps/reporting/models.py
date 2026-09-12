@@ -382,6 +382,21 @@ class KpiAlerte(models.Model):
         # SCM exécutif natif (``/scm/dashboard``), pas dupliquées ici.
         TAUX_SERVICE_SCM = (
             'taux_service_scm', 'Supply chain — taux de service (%)')
+        # NTJUR48 — KPI juridiques (``apps.juridique.selectors.
+        # kpis_juridiques``, lu SANS importer aucun modèle juridique). Ils
+        # EXCLUENT toujours les dossiers confidentiels des agrégats visibles à
+        # un rôle non autorisé (cohérent avec NTJUR24) : le filtrage vit dans
+        # le sélecteur, pas dans l'appelant.
+        JURIDIQUE_DOSSIERS_OUVERTS = (
+            'juridique_dossiers_ouverts', 'Juridique — dossiers ouverts')
+        JURIDIQUE_MONTANT_EN_JEU_TOTAL = (
+            'juridique_montant_en_jeu_total',
+            'Juridique — montant total en jeu (MAD)')
+        JURIDIQUE_TAUX_GAIN = (
+            'juridique_taux_gain', 'Juridique — taux de gain (%)')
+        JURIDIQUE_DELAI_MOYEN_RESOLUTION = (
+            'juridique_delai_moyen_resolution',
+            'Juridique — délai moyen de résolution (jours)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'
@@ -393,7 +408,11 @@ class KpiAlerte(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         related_name='reporting_kpi_alertes')
     nom = models.CharField(max_length=120, blank=True, default='')
-    kpi = models.CharField(max_length=30, choices=Kpi.choices)
+    # NTJUR48 — élargi 30 → 40 : ``juridique_delai_moyen_resolution`` fait 32
+    # caractères. ÉLARGISSEMENT pur (aucune valeur existante ne dépasse 30,
+    # aucune troncature possible) — en PostgreSQL un varchar élargi est une
+    # opération de métadonnées, sans réécriture de table.
+    kpi = models.CharField(max_length=40, choices=Kpi.choices)
     operateur = models.CharField(
         max_length=10, choices=Operateur.choices, default=Operateur.SUP)
     seuil = models.DecimalField(max_digits=14, decimal_places=2)

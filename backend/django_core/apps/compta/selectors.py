@@ -6220,3 +6220,17 @@ def journal_tresorerie(company, compte, debut=None, fin=None, *,
         'total_credit': total_credit,
         'solde_cloture': solde,
     }
+
+
+def provision_par_id(company, provision_id):
+    """NTJUR15 — ``Provision`` (XACC26) de CETTE société par son id, ou None.
+
+    Point d'entrée LECTURE cross-app : ``apps.juridique`` résout ainsi la
+    provision qu'il a fait comptabiliser (référence string-ref
+    ``DossierJuridique.provision_comptable_id``) pour la repasser en INSTANCE
+    à ``services.reprendre_provision``, SANS jamais importer
+    ``apps.compta.models``. Scopé société : un id d'une autre société renvoie
+    None, jamais l'objet."""
+    if not provision_id or company is None:
+        return None
+    return Provision.objects.filter(pk=provision_id, company=company).first()
