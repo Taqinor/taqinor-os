@@ -35,6 +35,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from . import activity, selectors, services
 from .models import (
     AccidentTravail,
+    ActeurTache,
     AffectationRoster,
     AffectationVehicule,
     AnalyseRisquesChantier,
@@ -1157,10 +1158,11 @@ class ElementSortieViewSet(_RhBaseViewSet):
     Société scopée + Administrateur/Responsable. La liste d'un employé s'obtient
     via ``?employe=<id>``. ``employe`` doit appartenir à la société.
     """
-    queryset = ElementSortie.objects.select_related('employe').all()
+    queryset = ElementSortie.objects.select_related(
+        'employe', 'assigne_a').all()
     serializer_class = ElementSortieSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['type_element', 'libelle', 'date_creation']
+    ordering_fields = ['type_element', 'libelle', 'echeance', 'date_creation']
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1172,7 +1174,40 @@ class ElementSortieViewSet(_RhBaseViewSet):
             qs = qs.filter(recupere=False)
         elif recupere in ('1', 'true', 'True'):
             qs = qs.filter(recupere=True)
+        acteur = self.request.query_params.get('acteur_type')
+        if acteur:
+            qs = qs.filter(acteur_type=acteur)
         return qs
+
+    def perform_create(self, serializer):
+        """NTHCM24 — ``assigne_a`` RÉSOLU serveur quand il n'est pas fourni.
+
+        Même règle que l'onboarding (``services.resoudre_acteur_tache``) :
+        manager → le manager hiérarchique, it → le contact IT de la société,
+        employe_lui_meme → l'employé, rh → l'utilisateur qui crée. Une cible
+        absente laisse la tâche NON-ASSIGNÉE (signal), jamais retombée sur
+        quelqu'un au hasard.
+        """
+        donnees = serializer.validated_data
+        assigne = donnees.get('assigne_a')
+        employe = donnees.get('employe')
+        if assigne is None and employe is not None:
+            assigne = services.resoudre_acteur_tache(
+                employe, donnees.get('acteur_type') or ActeurTache.RH,
+                createur=self.request.user)
+        serializer.save(
+            company=self.request.user.company, assigne_a=assigne)
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """NTHCM24 — tâches de sortie en retard, les tâches IT en tête.
+
+        Alimente la section « offboarding en retard » du cockpit RH (FG200) :
+        un accès non révoqué après la date de sortie est un risque de
+        sécurité, il doit se lire en premier.
+        """
+        return Response(
+            selectors.offboarding_en_retard(request.user.company))
 
 
 class EntretienSortieViewSet(_RhBaseViewSet):

@@ -724,6 +724,22 @@ class ElementSortie(models.Model):
         null=True, blank=True, verbose_name='Date de récupération')
     note = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Note')
+    # NTHCM24 — symétrique de NTHCM23 côté SORTIE. L'IT porte ici les tâches
+    # CRITIQUES (révocation d'accès, récupération de matériel) : une
+    # révocation tardive est un risque de sécurité, d'où le tri par criticité
+    # du rapport ``selectors.offboarding_en_retard``.
+    acteur_type = models.CharField(
+        max_length=16, choices=ActeurTache.choices,
+        default=ActeurTache.RH, verbose_name='Acteur')
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_taches_sortie',
+        verbose_name='Assignée à',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -732,6 +748,14 @@ class ElementSortie(models.Model):
         verbose_name_plural = 'Éléments de sortie'
         ordering = ['type_element', 'libelle']
         indexes = [models.Index(fields=['company', 'employe'])]
+
+    @property
+    def en_retard(self):
+        """NTHCM24 — échéance dépassée ET élément pas encore récupéré."""
+        if self.recupere or self.echeance is None:
+            return False
+        from django.utils import timezone
+        return self.echeance < timezone.localdate()
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.libelle}'

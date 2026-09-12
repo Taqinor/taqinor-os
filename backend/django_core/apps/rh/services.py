@@ -2157,6 +2157,9 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle=f'EPI — {dotation.epi.designation}'[:160],
             type_element=ElementSortie.TypeElement.EPI,
+            # NTHCM24 — tout est dû À LA DATE DE SORTIE ; le rapport
+            # `offboarding_en_retard` s'appuie sur cette échéance.
+            echeance=date_sortie,
         )
 
     # Véhicules affectés ACTIFS → clôturés à la date de sortie + checklist.
@@ -2169,6 +2172,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle=f'Véhicule #{affectation.vehicule_id}'[:160],
             type_element=ElementSortie.TypeElement.VEHICULE,
+            echeance=date_sortie,  # NTHCM24
         )
         affectation.statut = AffectationVehicule.Statut.TERMINEE
         affectation.date_fin = date_sortie
@@ -2195,6 +2199,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle='Véhicules flotte encore ouverts'[:160],
             type_element=ElementSortie.TypeElement.VEHICULE,
+            echeance=date_sortie,  # NTHCM24
             note=(
                 f'{len(affectations_flotte)} affectation(s) flotte '
                 f'ouverte(s) : {vehicules_labels}'[:255]),
@@ -2218,6 +2223,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle='Avances sur salaire non soldées'[:160],
             type_element=ElementSortie.TypeElement.AUTRE,
+            echeance=date_sortie,  # NTHCM24
             note=note[:255],
         )
 

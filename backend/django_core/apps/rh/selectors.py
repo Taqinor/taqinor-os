@@ -3486,3 +3486,44 @@ def zones_intervention(company):
         .values_list('zone_intervention', flat=True)
         .distinct())
     return sorted(set(valeurs))
+
+
+def offboarding_en_retard(company, *, aujourdhui=None):
+    """NTHCM24 — tâches de SORTIE dont l'échéance est dépassée, par criticité.
+
+    Une révocation d'accès tardive est un risque de SÉCURITÉ (un ancien
+    salarié qui garde ses accès) : les tâches portées par l'INFORMATIQUE
+    remontent donc EN TÊTE, puis le reste, chaque groupe trié du retard le
+    plus ancien au plus récent.
+
+    Ne remonte QUE ce qui est réellement en retard : une tâche déjà récupérée,
+    ou sans échéance, n'y figure jamais. ``aujourdhui`` est injectable (test
+    déterministe) — la lecture d'horloge n'a lieu qu'ici, à défaut.
+    """
+    from .models import ActeurTache, ElementSortie
+
+    today = aujourdhui or timezone.localdate()
+    lignes = (
+        ElementSortie.objects
+        .filter(company=company, recupere=False, echeance__lt=today)
+        .select_related('employe', 'assigne_a')
+        .order_by('echeance', 'id'))
+    resultat = []
+    for ligne in lignes:
+        resultat.append({
+            'id': ligne.id,
+            'employe_id': ligne.employe_id,
+            'employe': f'{ligne.employe.nom} {ligne.employe.prenom}',
+            'libelle': ligne.libelle,
+            'type_element': ligne.type_element,
+            'acteur_type': ligne.acteur_type,
+            'assigne_a_id': ligne.assigne_a_id,
+            'echeance': ligne.echeance,
+            'jours_de_retard': (today - ligne.echeance).days,
+            'critique': ligne.acteur_type == ActeurTache.IT,
+        })
+    # Tri STABLE : les tâches IT d'abord, l'ordre par ancienneté de retard
+    # (déjà posé par le queryset) étant préservé à l'intérieur de chaque
+    # groupe.
+    resultat.sort(key=lambda ligne: 0 if ligne['critique'] else 1)
+    return resultat

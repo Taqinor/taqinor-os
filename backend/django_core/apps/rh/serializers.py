@@ -409,20 +409,45 @@ class PosteSerializer(serializers.ModelSerializer):
 
 
 class ElementSortieSerializer(serializers.ModelSerializer):
-    """Élément de checklist d'offboarding (FG161). ``employe`` même société."""
+    """Élément de checklist d'offboarding (FG161). ``employe`` même société.
+
+    NTHCM24 — ``acteur_type`` dit QUI porte la tâche ; ``assigne_a`` est
+    RÉSOLU côté serveur quand il n'est pas fourni (vue), et ``en_retard`` est
+    calculé, jamais stocké.
+    """
     type_element_display = serializers.CharField(
         source='get_type_element_display', read_only=True)
+    acteur_type_display = serializers.CharField(
+        source='get_acteur_type_display', read_only=True)
+    assigne_a_nom = serializers.SerializerMethodField()
+    en_retard = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ElementSortie
         fields = [
             'id', 'employe', 'libelle', 'type_element', 'type_element_display',
-            'recupere', 'date_recuperation', 'note', 'date_creation',
+            'recupere', 'date_recuperation', 'note',
+            'acteur_type', 'acteur_type_display', 'assigne_a',
+            'assigne_a_nom', 'echeance', 'en_retard', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['en_retard', 'date_creation']
+
+    def get_assigne_a_nom(self, obj) -> str:
+        if obj.assigne_a_id is None:
+            return ''
+        return (obj.assigne_a.get_full_name()
+                or obj.assigne_a.username or '')
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+    def validate_assigne_a(self, value):
+        """Réassignation possible, mais JAMAIS vers une autre société."""
+        request = self.context.get('request')
+        if value is not None and request is not None:
+            if value.company_id != request.user.company_id:
+                raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
 
 
 class EntretienSortieSerializer(serializers.ModelSerializer):
