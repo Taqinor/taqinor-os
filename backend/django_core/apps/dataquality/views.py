@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from authentication.permissions import IsResponsableOrAdmin
 from core.mixins import TenantMixin
 
-from . import services
+from . import selectors, services
 from .models import RegleQualite, ResultatQualite
 
 
@@ -92,3 +92,24 @@ class RapportQualiteView(APIView):
             'entite': entite,
             'regles': services.rapport_qualite(request.user.company, entite),
         })
+
+
+class CompletudeView(APIView):
+    """NTDATA16 — part des champs CRITIQUES renseignés, par entité métier.
+
+    ``GET /dataquality/completude/`` rend un score par entité (clients,
+    pistes, produits, factures) + le détail champ par champ, et la moyenne
+    des entités réellement mesurables. Une entité sans fiche n'a pas de score
+    (jamais 100 %) et n'entre pas dans la moyenne.
+    """
+
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(
+        responses=inline_serializer('CompletudeReponse', {
+            'entites': serializers.JSONField(),
+            'score_global': serializers.FloatField(allow_null=True),
+        }))
+    def get(self, request):
+        return Response(selectors.completude_module(
+            request.user.company, request.user))

@@ -49,6 +49,11 @@ PRODUITS_DATASET = 'stock_produits'
 PRODUITS_FIELDS = [
     'id', 'categorie', 'categorie__nom', 'marque', 'quantite_stock',
     'seuil_alerte', 'est_low_stock', 'prix_achat', 'valeur_achat',
+    # NTDATA16/19 — référence et prix de VENTE : nécessaires au score de
+    # complétude du catalogue et à la détection de doublons produit. Le prix
+    # de vente est une donnée CLIENT (il figure sur les devis) — seul le prix
+    # d'ACHAT est sous permission.
+    'sku', 'nom', 'prix_vente',
 ]
 # Champ -> attribut de permission du LECTEUR (AUD801).
 PRODUITS_GATED = {
@@ -78,6 +83,9 @@ PRODUITS_FIELD_META = {
     'est_low_stock': {'label': 'Stock bas', 'type': 'dimension'},
     'prix_achat': {'label': "Prix d'achat", 'type': 'mesure'},
     'valeur_achat': {'label': "Valeur d'achat du stock", 'type': 'mesure'},
+    'sku': {'label': 'Référence (SKU)', 'type': 'dimension'},
+    'nom': {'label': 'Désignation', 'type': 'dimension'},
+    'prix_vente': {'label': 'Prix de vente', 'type': 'mesure'},
 }
 MOUVEMENTS_FIELD_META = {
     'id': {'label': 'Mouvements', 'type': 'mesure'},

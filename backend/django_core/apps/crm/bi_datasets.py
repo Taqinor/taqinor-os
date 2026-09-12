@@ -29,6 +29,9 @@ LEADS_FIELDS = [
     'id', 'stage', 'canal', 'priorite', 'ville', 'mois_creation',
     'type_installation', 'perdu_bool', 'motif_perte', 'owner_username',
     'signe_num', 'montant_estime',
+    # NTDATA16 — champs d'identité nécessaires au score de COMPLÉTUDE (un
+    # lead sans téléphone n'est pas rappelable).
+    'nom', 'telephone', 'email',
 ]
 
 CLIENTS_DATASET = 'crm_clients'
@@ -59,6 +62,9 @@ LEADS_FIELD_META = {
     'owner_username': {'label': 'Responsable', 'type': 'dimension'},
     'signe_num': {'label': 'Signés (1/0)', 'type': 'mesure'},
     'montant_estime': {'label': 'Montant estimé', 'type': 'mesure'},
+    'nom': {'label': 'Nom', 'type': 'dimension'},
+    'telephone': {'label': 'Téléphone', 'type': 'dimension'},
+    'email': {'label': 'Email', 'type': 'dimension'},
 }
 CLIENTS_FIELD_META = {
     'id': {'label': 'Clients', 'type': 'mesure'},

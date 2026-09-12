@@ -46,6 +46,9 @@ FACTURES_DATASET = 'ventes_factures'
 FACTURES_FIELDS = [
     'id', 'statut', 'type_facture', 'mois_emission', 'montant_ht',
     'montant_tva', 'montant_ttc', 'montant_paye', 'reste_du', 'echue_bool',
+    # NTDATA16 — champs du score de COMPLÉTUDE : une facture sans client ni
+    # échéance n'est pas recouvrable.
+    'client', 'date_echeance',
 ]
 
 # ── ventes_paiements ────────────────────────────────────────────────────────
@@ -77,6 +80,8 @@ FACTURES_FIELD_META = {
     'montant_paye': {'label': 'Montant payé', 'type': 'mesure'},
     'reste_du': {'label': 'Reste dû', 'type': 'mesure'},
     'echue_bool': {'label': 'Échue', 'type': 'dimension'},
+    'client': {'label': 'Client (id)', 'type': 'dimension'},
+    'date_echeance': {'label': "Date d'échéance", 'type': 'temps'},
 }
 PAIEMENTS_FIELD_META = {
     'id': {'label': 'Paiements', 'type': 'mesure'},
