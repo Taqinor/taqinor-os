@@ -296,6 +296,22 @@ def _steps_apres(instance, ordre):
     )
 
 
+def _steps_du_groupe(instance, step):
+    """NTWFL10 — étapes de ``instance`` partageant le MÊME
+    ``step_def.groupe_parallele`` que ``step`` (``step`` inclus). Sans
+    groupe (``groupe_parallele`` vide), renvoie ``[step]`` seul —
+    comportement séquentiel inchangé."""
+    groupe = step.step_def.groupe_parallele
+    if not groupe:
+        return [step]
+    return list(
+        instance.step_instances
+        .filter(step_def__groupe_parallele=groupe)
+        .select_related('step_def')
+        .order_by('ordre', 'id')
+    )
+
+
 @transaction.atomic
 def avancer(instance, now=None, _from_start=False):
     """Fait progresser l'instance après une décision (ou au démarrage).
@@ -304,6 +320,17 @@ def avancer(instance, now=None, _from_start=False):
     s'arrête sur la première étape ``en_attente`` non-auto (qui devient
     ``etape_courante``). Si plus aucune étape n'est en attente, l'instance est
     terminée. ``now`` est passé pour horodater déterministiquement.
+
+    NTWFL10 — groupe parallèle (``step_def.groupe_parallele``) : la marche
+    ORDRE PAR ORDRE existante fait déjà tout le travail d'attente (émergent,
+    sans code dédié) — tant qu'un membre du groupe reste ``en_attente``,
+    ``_avancer_pointeur`` s'y arrête (il cherche le prochain ``ordre``
+    strictement supérieur, PEU IMPORTE son statut, donc un membre du groupe
+    encore en attente est toujours retrouvé avant l'étape suivante). Seule
+    la NOTIFICATION de fan-out (tous les membres à la fois) a besoin d'un
+    traitement dédié — voir plus bas. Un rejet dans un groupe termine
+    l'instance immédiatement (``rejeter_etape``), exactement comme un rejet
+    séquentiel classique — aucun code dédié non plus.
     """
     moment = _resolve_now(now)
     if instance.statut != WorkflowInstance.STATUT_EN_COURS:
@@ -346,6 +373,22 @@ def avancer(instance, now=None, _from_start=False):
             continue
 
         # Étape manuelle / par rôle en attente : on s'arrête ici.
+        # NTWFL10 — groupe parallèle : fan-out (notifie TOUS les membres
+        # encore en attente) SEULEMENT au premier arrêt sur le groupe
+        # (aucun membre encore décidé) — évite de re-notifier à chaque
+        # ré-entrée dans la boucle après la décision d'UN SEUL membre
+        # (celle-ci ne fait qu'avancer le pointeur vers le membre suivant
+        # encore en attente, cf. docstring de ``avancer`` ci-dessus).
+        membres = _steps_du_groupe(instance, step)
+        if len(membres) > 1:
+            deja_decides = [
+                m for m in membres
+                if m.statut != WorkflowStepInstance.STATUT_EN_ATTENTE]
+            if not deja_decides:
+                for membre in membres:
+                    _emit_etape_activee(membre, instance.company)
+            return instance
+
         # NTWFL5 — signale qu'une étape vient de devenir ACTIVE (comble
         # YEVNT8 pour FG366 : aujourd'hui aucune notification ne part à la
         # création). Émission SYNCHRONE, best-effort côté abonné (jamais
@@ -371,46 +414,65 @@ def _terminer(instance, moment):
 
 
 @transaction.atomic
-def approuver_etape(instance, user=None, commentaire='', now=None):
+def approuver_etape(instance, user=None, commentaire='', now=None, step=None):
     """Approuve l'étape courante puis avance séquentiellement.
+
+    ``step`` (NTWFL10, optionnel) désigne PRÉCISÉMENT l'étape à approuver —
+    nécessaire pour un groupe parallèle où PLUSIEURS étapes sont en attente
+    À LA FOIS (``etape_courante_de`` n'en résout qu'une). Sans ``step``
+    (défaut), résout ``etape_courante_de(instance)`` comme avant —
+    comportement historique STRICTEMENT inchangé pour tout appelant
+    existant qui ne passe pas ce paramètre.
 
     Lève ``ValueError`` si l'instance n'est pas en cours ou n'a pas d'étape
     active en attente.
     """
     moment = _resolve_now(now)
-    step = etape_courante_de(instance)
-    if step is None or step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+    if instance.statut != WorkflowInstance.STATUT_EN_COURS:
         raise ValueError("Aucune étape en attente à approuver.")
-    step.statut = WorkflowStepInstance.STATUT_APPROUVE
-    step.assignee = user
-    step.decided_le = moment
+    cible = step if step is not None else etape_courante_de(instance)
+    if cible is None or cible.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+        raise ValueError("Aucune étape en attente à approuver.")
+    cible.statut = WorkflowStepInstance.STATUT_APPROUVE
+    cible.assignee = user
+    cible.decided_le = moment
     if commentaire:
-        step.commentaire = commentaire
-    step.save(update_fields=[
+        cible.commentaire = commentaire
+    cible.save(update_fields=[
         'statut', 'assignee', 'decided_le', 'commentaire', 'updated_at'])
     avancer(instance, now=moment)
-    return step
+    return cible
 
 
 @transaction.atomic
-def rejeter_etape(instance, user=None, commentaire='', now=None):
+def rejeter_etape(instance, user=None, commentaire='', now=None, step=None):
     """Rejette l'étape courante : l'instance est terminée (chaîne stoppée).
+
+    ``step`` (NTWFL10, optionnel) — même rôle que sur ``approuver_etape`` :
+    désigne l'étape à rejeter dans un groupe parallèle. NTWFL10 — un rejet
+    dans un groupe parallèle rejette l'ENSEMBLE (pas de logique de
+    quorum) : ce comportement est DÉJÀ celui-ci (l'instance termine
+    immédiatement, sans code dédié — les autres membres du groupe, encore
+    ``en_attente``, cessent simplement d'apparaître dans les listes
+    d'attente puisque celles-ci sont bornées à ``instance__statut=en_cours``).
 
     Lève ``ValueError`` si aucune étape n'est en attente.
     """
     moment = _resolve_now(now)
-    step = etape_courante_de(instance)
-    if step is None or step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+    if instance.statut != WorkflowInstance.STATUT_EN_COURS:
         raise ValueError("Aucune étape en attente à rejeter.")
-    step.statut = WorkflowStepInstance.STATUT_REJETE
-    step.assignee = user
-    step.decided_le = moment
+    cible = step if step is not None else etape_courante_de(instance)
+    if cible is None or cible.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+        raise ValueError("Aucune étape en attente à rejeter.")
+    cible.statut = WorkflowStepInstance.STATUT_REJETE
+    cible.assignee = user
+    cible.decided_le = moment
     if commentaire:
-        step.commentaire = commentaire
-    step.save(update_fields=[
+        cible.commentaire = commentaire
+    cible.save(update_fields=[
         'statut', 'assignee', 'decided_le', 'commentaire', 'updated_at'])
     _terminer(instance, moment)
-    return step
+    return cible
 
 
 @transaction.atomic
@@ -535,16 +597,27 @@ def decide_step(
     modèle ``WorkflowStepInstance`` reste inchangé, cf. Files de la tâche) —
     la mention est préfixée dans le ``commentaire`` existant. ``None``
     (défaut) préserve EXACTEMENT le comportement historique pour tout appel
-    existant qui ne passe pas ce paramètre."""
+    existant qui ne passe pas ce paramètre.
+
+    NTWFL10 — passe désormais ``step=step`` à ``approuver_etape``/
+    ``rejeter_etape`` : décide PRÉCISÉMENT l'étape que l'agrégateur affichait
+    (nécessaire pour un groupe parallèle, où plusieurs étapes de la MÊME
+    instance sont en attente à la fois — sans ce paramètre, une résolution
+    via ``etape_courante_de`` déciderait toujours le même membre). Pour une
+    instance séquentielle classique (un seul membre en attente), ``step``
+    EST déjà l'étape que ``etape_courante_de`` aurait résolue — comportement
+    identique."""
     if on_behalf_of is not None:
         commentaire = (
             f'[Décidé par {user} au nom de {on_behalf_of}] {commentaire}'
         ).strip()
     if approve:
         return approuver_etape(
-            step.instance, user=user, commentaire=commentaire, now=now)
+            step.instance, user=user, commentaire=commentaire, now=now,
+            step=step)
     return rejeter_etape(
-        step.instance, user=user, commentaire=commentaire, now=now)
+        step.instance, user=user, commentaire=commentaire, now=now,
+        step=step)
 
 
 # ── NTWFL3 — délégation de vacances (XKB3) branchée sur le moteur BPM ───────

@@ -499,6 +499,18 @@ class WorkflowStepDefinition(TimestampedModel):
         'Étape alternative si échec', null=True, blank=True,
         help_text="Ordre (dans la même définition) de l'étape vers "
                   "laquelle router si la garde ci-dessus échoue.")
+    # NTWFL10 — fan-out/fan-in SIMPLE (pas de gateway parallèle complet, pas
+    # de quorum). Toutes les étapes d'une définition partageant le MÊME
+    # entier ``groupe_parallele`` démarrent ENSEMBLE ; ``core.workflow.avancer``
+    # n'avance à l'étape suivante qu'une fois TOUTES décidées (approuvées),
+    # et un rejet dans le groupe rejette l'instance entière — même règle
+    # qu'un rejet séquentiel classique. ``None`` (défaut) = comportement
+    # séquentiel inchangé. Les membres d'un même groupe doivent avoir des
+    # ``ordre`` CONSÉCUTIFS (garde-fou de simplicité, cf. designer NTWFL6).
+    groupe_parallele = models.PositiveIntegerField(
+        'Groupe parallèle', null=True, blank=True,
+        help_text='Étapes partageant ce même entier démarrent ensemble '
+                  '(fan-out/fan-in simple). Vide = séquentiel (défaut).')
 
     class Meta:
         verbose_name = 'Étape de workflow (modèle)'
