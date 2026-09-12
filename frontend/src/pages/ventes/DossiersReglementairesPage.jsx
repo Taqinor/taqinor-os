@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ventesApi from '../../api/ventesApi'
 import PageHeader from '../../components/layout/PageHeader'
 import { Badge, Button, Card, CardContent, EmptyState, Segmented, Skeleton } from '../../ui'
@@ -66,6 +67,45 @@ const TON_ALERTE = Object.fromEntries(
 const LIBELLE_ALERTE = Object.fromEntries(
   STATUTS_ALERTE.map((s) => [s.value, s.label]))
 
+/* ── CHT26 — File de travail : dossiers réglementaires groupés par statut ──
+   Le tableau générique ci-dessus liste UNE ressource à la fois sans jamais
+   dire où porter l'attention en premier. Cette vue groupe les dossiers
+   (FG268) par les 7 statuts canoniques (models_regulatory.py) et les trie
+   par urgence — le statut d'alerte déjà calculé par le calendrier (CHT25 y
+   ajoute la prochaine action explicite), jamais un recalcul de date ici. */
+const STATUTS_DOSSIER = [
+  { value: 'en_constitution', label: 'En constitution' },
+  { value: 'depose', label: 'Déposé' },
+  { value: 'en_instruction', label: 'En instruction' },
+  { value: 'complement_demande', label: 'Complément demandé' },
+  { value: 'approuve', label: 'Approuvé' },
+  { value: 'refuse', label: 'Refusé' },
+  { value: 'comptage_pose', label: 'Comptage posé' },
+]
+
+const VUES = [
+  { value: 'tableau', label: 'Tableau' },
+  { value: 'file', label: 'File de travail' },
+]
+
+const ORDRE_URGENCE = { expire: 0, imminent: 1, a_venir: 2 }
+
+// La plus urgente échéance liée à un dossier, toutes origines confondues
+// (pièce de checklist, dépôt en instruction, validité d'accord, prochaine
+// action explicite CHT25) — ``null`` si le dossier n'a aucune échéance.
+const urgenceDossier = (dossierId, echeances) => {
+  let pire = null
+  for (const e of echeances) {
+    if (String(e.dossier_id) !== String(dossierId)) continue
+    const rang = ORDRE_URGENCE[e.statut_alerte] ?? 3
+    if (!pire || rang < pire.rang ||
+        (rang === pire.rang && e.date_echeance < pire.date_echeance)) {
+      pire = { rang, ...e }
+    }
+  }
+  return pire
+}
+
 // Jours restants : le serveur les compte (négatif = dépassé). On ne recalcule
 // jamais une date ici.
 const renduJours = (jours) => {
@@ -88,10 +128,18 @@ const rendu = (v) => {
 }
 
 export default function DossiersReglementairesPage() {
+  const [vue, setVue] = useState('tableau')
   const [ressource, setRessource] = useState(RESSOURCES[0].value)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // CHT26 — snapshot STABLE des dossiers (FG268), indépendant de la
+  // ressource actuellement choisie dans le Segmented ci-dessous : la
+  // ressource PAR DÉFAUT étant déjà `dossiers-reglementaires`, l'effet de
+  // montage ci-dessous l'alimente SANS appel réseau supplémentaire.
+  const [dossiers, setDossiers] = useState([])
+  const [dossiersLoading, setDossiersLoading] = useState(true)
+  const [dossiersError, setDossiersError] = useState(false)
   // Ignore une réponse devenue obsolète (ressource changée entre-temps) —
   // même rôle que le drapeau `active` d'un effet, partagé entre le montage
   // et `changerRessource`.
@@ -127,10 +175,23 @@ export default function DossiersReglementairesPage() {
       .then((r) => {
         if (latestRef.current !== v) return
         const data = r.data
-        setRows(Array.isArray(data) ? data : (data?.results || []))
+        const liste = Array.isArray(data) ? data : (data?.results || [])
+        setRows(liste)
+        // CHT26 — `v` est déjà `dossiers-reglementaires` : même réponse,
+        // capturée à part pour la File de travail (voir le commentaire
+        // sur `dossiers` plus haut).
+        setDossiers(liste)
+        setDossiersError(false)
       })
-      .catch(() => { if (latestRef.current === v) { setRows([]); setError(true) } })
-      .finally(() => { if (latestRef.current === v) setLoading(false) })
+      .catch(() => {
+        if (latestRef.current === v) {
+          setRows([]); setError(true)
+          setDossiers([]); setDossiersError(true)
+        }
+      })
+      .finally(() => {
+        if (latestRef.current === v) { setLoading(false); setDossiersLoading(false) }
+      })
   }, [])
 
   /* ── WIR224 — Panneau « Échéances à venir » ────────────────────────────
@@ -146,6 +207,10 @@ export default function DossiersReglementairesPage() {
   const [calLoading, setCalLoading] = useState(true)
   const [calError, setCalError] = useState(false)
   const latestFiltreRef = useRef(null)
+  // CHT26 — TOUTES les échéances (jamais tronquées par le filtre d'alerte
+  // ci-dessus) : la File de travail en a besoin pour classer CHAQUE dossier
+  // par urgence, quel que soit le filtre actif dans le panneau au-dessus.
+  const [echeancesToutes, setEcheancesToutes] = useState([])
 
   const chargerCalendrier = (statut) => {
     latestFiltreRef.current = statut
@@ -155,7 +220,10 @@ export default function DossiersReglementairesPage() {
         if (latestFiltreRef.current !== statut) return
         setEcheances(r.data?.echeances ?? [])
         // Seule la vue COMPLÈTE fait autorité pour les compteurs.
-        if (!statut) setResume(r.data?.resume ?? null)
+        if (!statut) {
+          setResume(r.data?.resume ?? null)
+          setEcheancesToutes(r.data?.echeances ?? [])
+        }
         setCalError(false)
       })
       .catch(() => {
@@ -185,11 +253,51 @@ export default function DossiersReglementairesPage() {
 
   const courante = RESSOURCES.find((r) => r.value === ressource)
 
+  // CHT26 — dossiers groupés par statut (les 7 canoniques), triés par
+  // urgence au sein de chaque groupe (le plus urgent d'abord, puis la date
+  // d'échéance croissante, puis les dossiers sans échéance en dernier).
+  const dossiersParStatut = useMemo(() => {
+    const groupes = Object.fromEntries(STATUTS_DOSSIER.map((s) => [s.value, []]))
+    for (const d of dossiers) {
+      if (groupes[d.statut]) groupes[d.statut].push(d)
+    }
+    for (const cle of Object.keys(groupes)) {
+      groupes[cle] = [...groupes[cle]].sort((a, b) => {
+        const ua = urgenceDossier(a.id, echeancesToutes)
+        const ub = urgenceDossier(b.id, echeancesToutes)
+        const ra = ua ? ua.rang : 3
+        const rb = ub ? ub.rang : 3
+        if (ra !== rb) return ra - rb
+        if (ua?.date_echeance && ub?.date_echeance) {
+          return ua.date_echeance < ub.date_echeance ? -1
+            : ua.date_echeance > ub.date_echeance ? 1 : 0
+        }
+        if (ua?.date_echeance) return -1
+        if (ub?.date_echeance) return 1
+        return 0
+      })
+    }
+    return groupes
+  }, [dossiers, echeancesToutes])
+
+  const ouvrirDossierDansLeTableau = () => {
+    setVue('tableau')
+    changerRessource('dossiers-reglementaires')
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="Dossiers réglementaires & mise en service"
         subtitle="Dossiers de raccordement, checklists, échanges opérateur, subventions, régularisation 82-21, recette IEC 62446, courbes I-V, packs as-built et attestations."
+      />
+
+      <Segmented
+        options={VUES}
+        value={vue}
+        onChange={setVue}
+        aria-label="Vue des dossiers réglementaires"
+        className="mb-4"
       />
 
       {/* ── WIR224/FG273 — Échéances à venir (alertes d'expiration) ──────── */}
@@ -272,58 +380,132 @@ export default function DossiersReglementairesPage() {
         </CardContent>
       </Card>
 
-      <Segmented
-        options={RESSOURCES.map((r) => ({ value: r.value, label: r.label }))}
-        value={ressource}
-        onChange={changerRessource}
-        aria-label="Ressource réglementaire"
-      />
+      {vue === 'tableau' && (
+        <>
+          <Segmented
+            options={RESSOURCES.map((r) => ({ value: r.value, label: r.label }))}
+            value={ressource}
+            onChange={changerRessource}
+            aria-label="Ressource réglementaire"
+          />
 
-      <Card className="mt-4">
-        <CardContent className="p-0">
-          {loading && <Skeleton className="m-4 h-24" />}
-          {!loading && error && (
-            <EmptyState
-              title="Chargement impossible"
-              description={`La ressource « ${courante?.label} » n'a pas pu être chargée.`}
-            />
-          )}
-          {!loading && !error && rows.length === 0 && (
-            <EmptyState
-              title="Aucun élément"
-              description={`Aucun enregistrement « ${courante?.label} » (${courante?.tag}) pour votre société.`}
-            />
-          )}
-          {!loading && !error && rows.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm"
-                aria-label={`Liste ${courante?.label}`}>
-                <thead>
-                  <tr className="border-b border-border">
-                    {colonnes.map((c) => (
-                      <th key={c} scope="col"
-                        className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {c.replace(/_/g, ' ')}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, i) => (
-                    <tr key={row.id ?? i} className="border-b border-border/60 last:border-b-0">
-                      {colonnes.map((c) => (
-                        <td key={c} className="px-3 py-2 text-foreground">
-                          {rendu(row[c])}
-                        </td>
+          <Card className="mt-4">
+            <CardContent className="p-0">
+              {loading && <Skeleton className="m-4 h-24" />}
+              {!loading && error && (
+                <EmptyState
+                  title="Chargement impossible"
+                  description={`La ressource « ${courante?.label} » n'a pas pu être chargée.`}
+                />
+              )}
+              {!loading && !error && rows.length === 0 && (
+                <EmptyState
+                  title="Aucun élément"
+                  description={`Aucun enregistrement « ${courante?.label} » (${courante?.tag}) pour votre société.`}
+                />
+              )}
+              {!loading && !error && rows.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm"
+                    aria-label={`Liste ${courante?.label}`}>
+                    <thead>
+                      <tr className="border-b border-border">
+                        {colonnes.map((c) => (
+                          <th key={c} scope="col"
+                            className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            {c.replace(/_/g, ' ')}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, i) => (
+                        <tr key={row.id ?? i} className="border-b border-border/60 last:border-b-0">
+                          {colonnes.map((c) => (
+                            <td key={c} className="px-3 py-2 text-foreground">
+                              {rendu(row[c])}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* ── CHT26 — File de travail : dossiers groupés par statut, triés par
+           urgence ─────────────────────────────────────────────────────── */}
+      {vue === 'file' && (
+        <div className="mt-4 flex flex-col gap-4"
+             aria-label="File de travail des dossiers réglementaires">
+          {dossiersLoading && <Skeleton className="h-24" />}
+          {!dossiersLoading && dossiersError && (
+            <EmptyState
+              title="File de travail indisponible"
+              description="Les dossiers réglementaires n’ont pas pu être chargés."
+            />
           )}
-        </CardContent>
-      </Card>
+          {!dossiersLoading && !dossiersError && STATUTS_DOSSIER.map((s) => {
+            const groupe = dossiersParStatut[s.value] || []
+            return (
+              <Card key={s.value} data-statut-groupe={s.value}>
+                <CardContent>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="m-0 text-sm font-semibold text-foreground">
+                      {s.label}
+                    </h3>
+                    <Badge tone="neutral">{groupe.length}</Badge>
+                  </div>
+                  {groupe.length === 0 ? (
+                    <p className="m-0 text-sm text-muted-foreground">
+                      Aucun dossier.
+                    </p>
+                  ) : (
+                    <ul className="m-0 flex list-none flex-col gap-1.5 p-0"
+                        aria-label={`Dossiers — ${s.label}`}>
+                      {groupe.map((d) => {
+                        const urg = urgenceDossier(d.id, echeancesToutes)
+                        return (
+                          <li key={d.id} data-dossier-id={d.id}
+                            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm">
+                            {urg && (
+                              <Badge tone={TON_ALERTE[urg.statut_alerte] ?? 'neutral'}>
+                                {LIBELLE_ALERTE[urg.statut_alerte] ?? urg.statut_alerte}
+                              </Badge>
+                            )}
+                            <span className="font-medium text-foreground">
+                              {d.reference_dossier || `Devis ${d.devis}`}
+                            </span>
+                            {urg && (
+                              <span className="text-muted-foreground">
+                                {urg.libelle} — {urg.date_echeance}
+                              </span>
+                            )}
+                            <Button type="button" size="sm" variant="ghost"
+                                    onClick={ouvrirDossierDansLeTableau}>
+                              Voir le dossier
+                            </Button>
+                            {d.chantier && (
+                              <Link to={`/chantiers?id=${d.chantier}`}
+                                    className="text-sm underline">
+                                Voir le chantier
+                              </Link>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
