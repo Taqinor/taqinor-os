@@ -9,6 +9,28 @@
 
 const LOCALE = 'fr-FR'
 
+// NTI18N11 — mappe la locale du cadre i18n léger (fr/en/ar, `useI18n().
+// locale`) vers le tag BCP 47 consommé par `Intl`. Chaque fonction de ce
+// fichier accepte désormais une option `locale` : OMISE, le comportement
+// historique (fr-FR) reste IDENTIQUE caractère pour caractère (verrouillé par
+// des tests dédiés) ; fournie ('fr'/'en'/'ar'), le format change
+// IMMÉDIATEMENT (Intl est synchrone, aucun rechargement) — critère
+// d'acceptation littéral de cette tâche.
+const LOCALE_TAGS = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' }
+
+function resolveLocaleTag(locale) {
+  return (locale && LOCALE_TAGS[locale]) || LOCALE
+}
+
+// ar-MA affiche par défaut des chiffres OCCIDENTAUX, jamais arabo-indiens —
+// même convention déjà posée par NTI18N6/XSAL13 (« les chiffres restent LTR
+// même en contexte RTL »). L'énoncé les qualifie d'« optionnels » : cette
+// fonction est le SEUL point de bascule futur (un opt-in explicite pourrait y
+// renvoyer 'arab'), jamais le défaut aujourd'hui.
+function numberingSystemFor(locale) {
+  return locale === 'ar' ? 'latn' : undefined
+}
+
 /** Coerce une valeur (number | string fr/en) en nombre fini, sinon null. */
 export function toNumber(value) {
   if (value === null || value === undefined || value === '') return null
@@ -32,35 +54,42 @@ export function toNumber(value) {
  * Montant en dirhams marocains. Par défaut 2 décimales, séparateur fr-FR,
  * suffixe « MAD ». `decimals` configurable ; valeur invalide → tiret cadratin.
  */
-export function formatMAD(value, { decimals = 2, withSymbol = true } = {}) {
+export function formatMAD(value, { decimals = 2, withSymbol = true, locale } = {}) {
   const n = toNumber(value)
   if (n === null) return '—'
-  const body = new Intl.NumberFormat(LOCALE, {
+  const body = new Intl.NumberFormat(resolveLocaleTag(locale), {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
+    numberingSystem: numberingSystemFor(locale),
   }).format(n)
   return withSymbol ? `${body} MAD` : body
 }
 
-/** Nombre fr-FR (espace fine comme séparateur de milliers, virgule décimale). */
-export function formatNumber(value, { decimals } = {}) {
+/**
+ * Nombre localisé — fr-FR par défaut (espace fine milliers, virgule
+ * décimale) ; `locale: 'en'` → virgule milliers + point décimal ; `locale:
+ * 'ar'` → mêmes séparateurs qu'ar-MA (chiffres occidentaux, jamais
+ * arabo-indiens par défaut — voir `numberingSystemFor`).
+ */
+export function formatNumber(value, { decimals, locale } = {}) {
   const n = toNumber(value)
   if (n === null) return '—'
-  const opts = {}
+  const opts = { numberingSystem: numberingSystemFor(locale) }
   if (decimals !== undefined) {
     opts.minimumFractionDigits = decimals
     opts.maximumFractionDigits = decimals
   }
-  return new Intl.NumberFormat(LOCALE, opts).format(n)
+  return new Intl.NumberFormat(resolveLocaleTag(locale), opts).format(n)
 }
 
 /** Pourcentage : `formatPercent(19)` → « 19 % » ; `formatPercent(0.5,{decimals:1})` → « 0,5 % ». */
-export function formatPercent(value, { decimals = 0 } = {}) {
+export function formatPercent(value, { decimals = 0, locale } = {}) {
   const n = toNumber(value)
   if (n === null) return '—'
-  const body = new Intl.NumberFormat(LOCALE, {
+  const body = new Intl.NumberFormat(resolveLocaleTag(locale), {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
+    numberingSystem: numberingSystemFor(locale),
   }).format(n)
   return `${body} %`
 }
@@ -83,18 +112,25 @@ function asDate(value) {
  * `hooks/useCompanyTimeZone.js`, lit `CompanyProfile.fuseau_horaire`). Le
  * BACKEND continue de stocker en UTC — seule l'interprétation d'affichage
  * change ici.
+ *
+ * NTI18N11 — `locale` optionnel ('fr'/'en'/'ar', `useI18n().locale`) : omis,
+ * comportement historique fr-FR inchangé (jj/mm/aaaa) ; fourni, l'ordre
+ * jour/mois s'adapte à la locale ciblée (ex. 'en' → mm/dd/yyyy) et les
+ * chiffres restent occidentaux en 'ar' (jamais arabo-indiens par défaut).
  */
-export function formatDate(value, { long = false, timeZone } = {}) {
+export function formatDate(value, { long = false, timeZone, locale } = {}) {
   const d = asDate(value)
   if (!d) return '—'
-  const zoneOpt = timeZone ? { timeZone } : {}
+  const opts = { numberingSystem: numberingSystemFor(locale) }
+  if (timeZone) opts.timeZone = timeZone
+  const tag = resolveLocaleTag(locale)
   if (long) {
-    return new Intl.DateTimeFormat(LOCALE, {
-      day: 'numeric', month: 'long', year: 'numeric', ...zoneOpt,
+    return new Intl.DateTimeFormat(tag, {
+      day: 'numeric', month: 'long', year: 'numeric', ...opts,
     }).format(d)
   }
-  return new Intl.DateTimeFormat(LOCALE, {
-    day: '2-digit', month: '2-digit', year: 'numeric', ...zoneOpt,
+  return new Intl.DateTimeFormat(tag, {
+    day: '2-digit', month: '2-digit', year: 'numeric', ...opts,
   }).format(d)
 }
 
@@ -107,20 +143,24 @@ export function formatDate(value, { long = false, timeZone } = {}) {
  * omis, comportement historique inchangé ; fourni, l'heure affichée suit le
  * fuseau de la SOCIÉTÉ plutôt que celui du poste qui consulte l'écran —
  * critère d'acceptation (pointages RH, chatter) d'une société basée à Dakar.
+ *
+ * NTI18N11 — `locale` optionnel, même contrat que `formatDate` ci-dessus.
  */
-export function formatDateTime(value, { long = false, timeZone } = {}) {
+export function formatDateTime(value, { long = false, timeZone, locale } = {}) {
   const d = asDate(value)
   if (!d) return '—'
-  const zoneOpt = timeZone ? { timeZone } : {}
+  const opts = { numberingSystem: numberingSystemFor(locale) }
+  if (timeZone) opts.timeZone = timeZone
+  const tag = resolveLocaleTag(locale)
   if (long) {
-    return new Intl.DateTimeFormat(LOCALE, {
+    return new Intl.DateTimeFormat(tag, {
       day: 'numeric', month: 'long', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', ...zoneOpt,
+      hour: '2-digit', minute: '2-digit', ...opts,
     }).format(d)
   }
-  return new Intl.DateTimeFormat(LOCALE, {
+  return new Intl.DateTimeFormat(tag, {
     day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', ...zoneOpt,
+    hour: '2-digit', minute: '2-digit', ...opts,
   }).format(d)
 }
 
