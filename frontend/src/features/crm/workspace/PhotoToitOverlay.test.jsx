@@ -43,7 +43,7 @@ const CONTOUR = [
 // LA FORME DU SERVEUR, telle quelle (contrat VT12).
 const REPONSE_AVEC_PHOTO = {
   visite_id: 7,
-  url: '/api/django/crm/visites/7/photo-toit/',
+  url: '/api/django/visites/visites/7/photo-toit/',
   texture_calage: {
     coins: [
       [33.589, -7.603],
@@ -61,7 +61,7 @@ describe('normaliserTextureToit — la forme du contrat VT12', () => {
     const texture = normaliserTextureToit(REPONSE_AVEC_PHOTO)
     expect(texture).toBeTruthy()
     expect(texture.visiteId).toBe(7)
-    expect(texture.url).toBe('/api/django/crm/visites/7/photo-toit/')
+    expect(texture.url).toBe('/api/django/visites/visites/7/photo-toit/')
     expect(texture.coins).toHaveLength(4)
   })
 
