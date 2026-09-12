@@ -32,6 +32,8 @@ from datetime import timedelta
 
 from authentication.permissions import IsResponsableOrAdmin
 from core.dates import aujourd_hui_local
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -319,6 +321,75 @@ def chantiers_en_retard(company):
     return {'total': len(items), 'items': items}
 
 
+def _segment_serializer(name='PilotageChantiersSegment'):
+    # Fabrique : une INSTANCE fraîche par usage (DRF refuse de lier deux fois
+    # le même serializer en `child=`) ; chaque usage porte son PROPRE nom de
+    # composant (spectacular refuse un même nom pour deux identités).
+    return inline_serializer(
+        name=name,
+        fields={
+            'de': serializers.CharField(),
+            'vers': serializers.CharField(),
+            'label': serializers.CharField(),
+            'n': serializers.IntegerField(),
+            'jours_median': serializers.FloatField(allow_null=True),
+            'jours_moyen': serializers.FloatField(allow_null=True),
+        })
+
+
+@extend_schema(responses=inline_serializer(
+    name='PilotageChantiersReport',
+    fields={
+        'cycle_time': inline_serializer(
+            name='PilotageChantiersCycleTime',
+            fields={
+                'segments': serializers.ListField(child=_segment_serializer()),
+                'par_type_installation': serializers.ListField(
+                    child=inline_serializer(
+                        name='PilotageChantiersParType',
+                        fields={
+                            'type_installation': serializers.CharField(
+                                allow_null=True),
+                            'label': serializers.CharField(),
+                            'segments': serializers.ListField(
+                                child=_segment_serializer(
+                                    'PilotageChantiersSegmentParType')),
+                        })),
+                'par_equipe': serializers.ListField(
+                    child=inline_serializer(
+                        name='PilotageChantiersParEquipe',
+                        fields={
+                            'equipe_id': serializers.IntegerField(
+                                allow_null=True),
+                            'equipe': serializers.CharField(),
+                            'segments': serializers.ListField(
+                                child=_segment_serializer(
+                                    'PilotageChantiersSegmentParEquipe')),
+                        })),
+            }),
+        'taux_reprise_post_mes': inline_serializer(
+            name='PilotageChantiersReprise',
+            fields={
+                'fenetre_jours': serializers.IntegerField(),
+                'nb_eligibles': serializers.IntegerField(),
+                'nb_avec_reprise': serializers.IntegerField(),
+                'taux_pct': serializers.FloatField(allow_null=True),
+            }),
+        'chantiers_en_retard': inline_serializer(
+            name='PilotageChantiersRetards',
+            fields={
+                'total': serializers.IntegerField(),
+                'items': serializers.ListField(child=inline_serializer(
+                    name='PilotageChantiersRetardItem',
+                    fields={
+                        'installation_id': serializers.IntegerField(),
+                        'reference': serializers.CharField(),
+                        'client': serializers.CharField(allow_null=True),
+                        'date_pose_prevue': serializers.CharField(),
+                        'jours_retard': serializers.IntegerField(),
+                    })),
+            }),
+    }))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def pilotage_chantiers_report(request):

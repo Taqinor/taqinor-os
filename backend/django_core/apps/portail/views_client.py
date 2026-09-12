@@ -85,6 +85,23 @@ def _ip(request):
     return ip_de_requete(request)
 
 
+@extend_schema(responses=inline_serializer(
+    name='PortailClientTableauDeBord',
+    fields={
+        'devis_en_attente': serializers.IntegerField(),
+        'factures_impayees': serializers.IntegerField(),
+        'prochaine_echeance': serializers.DateField(allow_null=True),
+        'tickets_ouverts': serializers.IntegerField(),
+        'prochain_jalon': inline_serializer(
+            name='PortailClientProchainJalon',
+            fields={
+                'chantier_id': serializers.IntegerField(),
+                'chantier_reference': serializers.CharField(),
+                'libelle': serializers.CharField(),
+                'date_jalon': serializers.DateField(allow_null=True),
+            },
+            allow_null=True),
+    }))
 @api_view(['GET'])
 @permission_classes([IsPortalClientUser])
 def tableau_de_bord_client(request):
@@ -747,9 +764,12 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
         return Response({'results': photos_chantier_client_portail(
             company, client_id, pk, phase=phase)})
 
-    @extend_schema(parameters=[_ID_CHANTIER])
+    @extend_schema(parameters=[_ID_CHANTIER, OpenApiParameter(
+        name='attachment_id', type=OpenApiTypes.INT,
+        location=OpenApiParameter.PATH,
+        description='Identifiant de la photo (records.Attachment).')])
     @action(detail=True, methods=['get'],
-            url_path=r'photo/(?P<attachment_id>[^/.]+)')
+            url_path=r'photo/(?P<attachment_id>[0-9]+)')
     def photo(self, request, pk=None, attachment_id=None):
         """Sert la PHOTO en ligne (même patron que
         ``MesLivraisonsPortailViewSet.preuve_photo`` — AUD301) : ``records``
