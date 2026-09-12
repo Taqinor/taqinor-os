@@ -437,6 +437,14 @@ class JalonChantierPortail(models.Model):
     atteint = models.BooleanField(default=False, verbose_name='Atteint')
     date_jalon = models.DateField(
         null=True, blank=True, verbose_name='Date du jalon')
+    # CHT10 — clé stable identifiant la PHASE (ex. 'etude', 'installation'),
+    # absente jusqu'ici : sans elle, aucune écriture idempotente n'est possible
+    # (impossible de savoir si un jalon existe déjà pour une phase donnée).
+    # NULL pour les jalons legacy créés à la main (écran admin, sans clé) —
+    # exclus de la contrainte d'unicité ci-dessous.
+    cle_phase = models.CharField(
+        max_length=60, null=True, blank=True,
+        verbose_name='Clé de phase (portail)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -445,6 +453,16 @@ class JalonChantierPortail(models.Model):
         verbose_name_plural = 'Jalons de chantier (portail)'
         db_table = 'compta_jalonchantierportail'
         ordering = ['chantier_id', 'ordre', 'id']
+        constraints = [
+            # CHT10 — une seule ligne par (société, chantier, phase) quand la
+            # phase est renseignée ; les jalons legacy (cle_phase NULL/vide)
+            # ne sont jamais concernés.
+            models.UniqueConstraint(
+                fields=['company', 'chantier', 'cle_phase'],
+                condition=~models.Q(cle_phase__isnull=True)
+                & ~models.Q(cle_phase=''),
+                name='uniq_jalon_chantier_portail_cle_phase'),
+        ]
 
     def __str__(self):
         return f'Chantier #{self.chantier_id} — {self.libelle}'

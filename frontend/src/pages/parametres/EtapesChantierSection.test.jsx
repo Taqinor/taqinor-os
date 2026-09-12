@@ -7,17 +7,16 @@ import { configureStore } from '@reduxjs/toolkit'
    étapes, montre les commandes de configuration au Directeur et les cache à un
    non-Directeur (lecture seule). */
 
+/* PACT10 / CHT23 — la charge utile vient de l'exemple COMMITTÉ
+   (`apps/installations/contract_samples/etapes_chantier.json`), jamais d'un
+   objet retapé à la main. */
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+
+const ETAPES = exempleContrat('installations', 'etapes_chantier').results
+
 vi.mock('../../api/installationsApi', () => ({
   default: {
-    getStagesChantier: vi.fn(async () => ({
-      data: [
-        { id: 1, cle: 'etude_site', libelle: 'Visite technique', ordre: 0,
-          bloquant: false, actif: true, protege: true, statut_legacy_display: 'Signé' },
-        { id: 2, cle: 'mise_en_service', libelle: 'Mise en service', ordre: 6,
-          bloquant: true, actif: true, protege: true, exige_tests: true,
-          statut_legacy_display: 'Installé' },
-      ],
-    })),
+    getStagesChantier: vi.fn(),
     saveStageChantier: vi.fn(async () => ({ data: {} })),
     deleteStageChantier: vi.fn(async () => ({ data: {} })),
   },
@@ -50,6 +49,8 @@ const renderSection = async (opts = {}) => {
 beforeEach(() => {
   installationsApi.getStagesChantier.mockClear()
   installationsApi.saveStageChantier.mockClear()
+  installationsApi.getStagesChantier.mockResolvedValue(
+    reponseContrat('installations', 'etapes_chantier'))
 })
 afterEach(() => cleanup())
 
@@ -89,5 +90,45 @@ describe('CH5 EtapesChantierSection', () => {
     await waitFor(() =>
       expect(installationsApi.saveStageChantier).toHaveBeenCalledWith(
         1, { libelle: 'Étude de site' }))
+  })
+
+  // CHT23 — seuils de comptage configurables (photos_min / checklist_pct_min),
+  // affichés pour l'étape bloquante à `exige_photos`/`exige_checklist` du
+  // contrat (id 2, « Mise en service »).
+  it('affiche les seuils photos/checklist du contrat pour l’étape bloquante', async () => {
+    await renderSection()
+    await screen.findByDisplayValue('Mise en service')
+    const stage = ETAPES.find((s) => s.id === 2)
+    expect(screen.getByLabelText('Photos minimum'))
+      .toHaveValue(stage.photos_min)
+    expect(screen.getByLabelText('% de checklist minimum'))
+      .toHaveValue(stage.checklist_pct_min)
+  })
+
+  it('enregistre le nombre de photos minimum au blur', async () => {
+    await renderSection()
+    const input = await screen.findByLabelText('Photos minimum')
+    fireEvent.change(input, { target: { value: '5' } })
+    fireEvent.blur(input)
+    await waitFor(() =>
+      expect(installationsApi.saveStageChantier).toHaveBeenCalledWith(
+        2, { photos_min: 5 }))
+  })
+
+  it('enregistre le pourcentage de checklist minimum au blur', async () => {
+    await renderSection()
+    const input = await screen.findByLabelText('% de checklist minimum')
+    fireEvent.change(input, { target: { value: '60' } })
+    fireEvent.blur(input)
+    await waitFor(() =>
+      expect(installationsApi.saveStageChantier).toHaveBeenCalledWith(
+        2, { checklist_pct_min: 60 }))
+  })
+
+  it('désactive les seuils en lecture seule', async () => {
+    await renderSection({ role: 'normal', role_nom: 'Technicien' })
+    await screen.findByLabelText('Photos minimum')
+    expect(screen.getByLabelText('Photos minimum')).toBeDisabled()
+    expect(screen.getByLabelText('% de checklist minimum')).toBeDisabled()
   })
 })

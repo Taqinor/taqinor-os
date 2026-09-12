@@ -382,7 +382,11 @@ export class Outbox {
 // sont des clés, pas des outbox concurrents.
 
 // source-choix: offlinesync.OfflineOperation.module
-export const OFFLINE_MODULES = ['crm', 'ventes', 'stock', 'installations', 'sav']
+// VTA10 — `visites` rejoint la liste avec l'app autonome Visites terrain : le
+// commercial saisit ses mesures dans un sous-sol ou un champ, donc HORS RÉSEAU.
+// Sa contrepartie serveur est `offlinesync.OfflineOperation.Module.VISITES` +
+// le handler `visite.mesures` (VTA10, moitié backend).
+export const OFFLINE_MODULES = ['crm', 'ventes', 'stock', 'installations', 'sav', 'visites']
 
 // Point de synchro unique, côté serveur : POST /offlinesync/operations/batch/.
 // L'import du client HTTP est DYNAMIQUE et différé au premier envoi pour que ce

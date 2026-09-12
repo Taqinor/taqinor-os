@@ -15,10 +15,11 @@ duplique donc jamais le chantier. La création est company-scopée
 from django.dispatch import receiver
 
 from core.events import (
-    devis_accepted, reception_fournisseur_confirmee,
+    bon_commande_cree, devis_accepted, reception_fournisseur_confirmee,
     facture_fournisseur_creee,
 )
 
+from .models import Installation
 from .services import (
     create_installation_from_devis, provisionner_gr_ir_reception,
     lettrer_gr_ir_facture, peupler_series_entrepot_reception,
@@ -79,6 +80,31 @@ def _reserver_stock_chantier_on_reception(sender, reception, company, user,
     chantier (idempotent, plafonné au manque recalculé, no-op sans lien)."""
     try:
         reserver_stock_recu_pour_chantier(reception=reception)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(bon_commande_cree,
+          dispatch_uid="installations_rattacher_chantier_on_bon_commande_cree")
+def _rattacher_chantier_on_bon_commande_cree(sender, instance, company,
+                                             **kwargs):
+    """CHT15 — à la création d'un bon de commande, rattache AUTOMATIQUEMENT
+    le chantier né du même devis (``Installation.bon_commande`` existe déjà
+    mais n'était jamais posé par ce chemin — la jointure devis↔BC↔chantier
+    restait IMPLICITE, jamais matérialisée sur la ligne chantier).
+
+    Idempotent (``bon_commande__isnull=True`` — un second envoi, ou un
+    chantier déjà rattaché à la main, n'est jamais écrasé) et tenant-safe
+    (``company`` posée côté serveur par l'émetteur, jamais du corps de
+    requête). No-op si le BC n'a pas de devis (BC manuel hors échéancier).
+    Best-effort : ne bloque jamais la création du BC."""
+    devis_id = getattr(instance, 'devis_id', None)
+    if devis_id is None:
+        return
+    try:
+        Installation.objects.filter(
+            devis_id=devis_id, company=company, bon_commande__isnull=True,
+        ).update(bon_commande=instance)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
 

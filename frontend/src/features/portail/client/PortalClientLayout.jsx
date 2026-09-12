@@ -9,7 +9,6 @@ import PortalLayout from '../PortalLayout'
    en une ligne :
      - SAV               → NTPRT12
      - Documents         → NTPRT13
-     - Chantiers         → NTPRT14
      - Consommation      → NTPRT15
      - Contrats          → NTPRT16
      - Équipe            → NTPRT17 (dépend de NTPRT6, invitations)
@@ -25,6 +24,10 @@ const NAV_CLIENT = [
   // WIR216 — le lien de l'email de livraison (FG228/XSTK22) pointait vers
   // une section qui n'existait pas encore.
   { to: '/portail/client/livraisons', label: 'Livraisons', labelAr: 'التسليمات' },
+  // NTPRT14 — timeline (jalons portail CHT10/CHT11) + galerie photos.
+  // `labelAr` volontairement absent : repli français documenté ci-dessus, le
+  // libellé arabe de cet onglet reste à faire valider (jamais inventé ici).
+  { to: '/portail/client/chantiers', label: 'Chantiers' },
 ]
 
 export default function PortalClientLayout({ children }) {

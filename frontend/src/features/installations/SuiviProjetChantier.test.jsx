@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 
 /* PACT59 — Suivi projet du chantier : jalons, modèles, comptes-rendus
-   (FG293/FG296/FG298). */
+   (FG293/FG296/FG298).
+   CHT19 — `ChantierSelect` (accepte désormais `?chantier=<id>`) exige un
+   contexte Router (`useSearchParams`) : `renderPage()` fournit le
+   `MemoryRouter` dont les 7 écrans-frères disposent déjà dans leurs tests. */
 
 function mockMatchMedia() {
   window.matchMedia = (query) => ({
@@ -36,11 +40,19 @@ vi.mock('../../api/installationsApi', () => ({ default: inst }))
 
 import SuiviProjetChantier from './SuiviProjetChantier'
 
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <SuiviProjetChantier />
+    </MemoryRouter>,
+  )
+}
+
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('SuiviProjetChantier (PACT59)', () => {
   it('affiche les jalons du chantier sélectionné', async () => {
-    render(<SuiviProjetChantier />)
+    renderPage()
     expect(await screen.findByTestId('jalon-14')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Jalons' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Modèles de projet' })).toBeInTheDocument()
@@ -49,7 +61,7 @@ describe('SuiviProjetChantier (PACT59)', () => {
 
   it('marque un jalon atteint', async () => {
     const user = userEvent.setup()
-    render(<SuiviProjetChantier />)
+    renderPage()
     await screen.findByTestId('jalon-14')
     await user.click(screen.getAllByRole('button', { name: 'Marquer atteint' })[0])
     await waitFor(() => expect(inst.updateJalonProjet).toHaveBeenCalledWith(
@@ -58,7 +70,7 @@ describe('SuiviProjetChantier (PACT59)', () => {
 
   it('crée un nouveau jalon', async () => {
     const user = userEvent.setup()
-    render(<SuiviProjetChantier />)
+    renderPage()
     await screen.findByTestId('jalon-14')
     await user.click(screen.getAllByRole('button', { name: /Nouveau jalon/ })[0])
     await user.type(screen.getByLabelText('Libellé'), 'Pose panneaux')
@@ -69,7 +81,7 @@ describe('SuiviProjetChantier (PACT59)', () => {
 
   it('instancie un modèle de projet sur le chantier (jalons et nomenclature pré-créés)', async () => {
     const user = userEvent.setup()
-    render(<SuiviProjetChantier />)
+    renderPage()
     await screen.findByTestId('jalon-14')
     await user.click(screen.getByRole('tab', { name: 'Modèles de projet' }))
     expect(await screen.findByTestId('modele-projet-2')).toBeInTheDocument()
@@ -80,7 +92,7 @@ describe('SuiviProjetChantier (PACT59)', () => {
 
   it('rédige un compte-rendu de réunion de chantier', async () => {
     const user = userEvent.setup()
-    render(<SuiviProjetChantier />)
+    renderPage()
     await screen.findByTestId('jalon-14')
     await user.click(screen.getByRole('tab', { name: 'Réunions de chantier' }))
     await user.click(screen.getAllByRole('button', { name: /Nouveau compte-rendu/ })[0])

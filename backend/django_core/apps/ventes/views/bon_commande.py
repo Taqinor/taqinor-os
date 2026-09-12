@@ -65,6 +65,36 @@ def _reserver_stock_bc_actif(company):
     except Exception:  # pragma: no cover - défensif
         return False
 
+
+def _notifier_chantier_materiel_confirme(bc):
+    """CHT15 — notifie (best-effort, ne lève jamais) le responsable du
+    chantier né du même devis que ce BC désormais CONFIRMÉ.
+
+    NOTIFICATION SEULEMENT — jamais de transition automatique de statut
+    chantier (gates YSERV1/DUERP imprévisibles depuis un signal, pas de user
+    légitime, cascade d'effets inadaptée). Lecture cross-app via
+    ``installations.selectors`` uniquement (jamais son modèle)."""
+    if bc.devis_id is None:
+        return
+    try:
+        from apps.installations.selectors import installation_for_devis
+        installation = installation_for_devis(bc.devis, company=bc.company)
+        if installation is None:
+            return
+        responsable = installation.technicien_responsable
+        if responsable is None:
+            return
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        notify(
+            responsable, EventType.CHANTIER_MATERIEL_CONFIRME,
+            f'Matériel confirmé — chantier {installation.reference}',
+            body=f'Le bon de commande {bc.reference} est confirmé.',
+            link=f'/chantiers?id={installation.id}',
+            company=bc.company)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -167,6 +197,9 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         if _reserver_stock_bc_actif(bc.company):
             from apps.installations.services import reserver_stock_depuis_bc
             reserver_stock_depuis_bc(bc)
+        # CHT15 — nudge « Matériel commandé » (notification seulement, jamais
+        # de transition de statut chantier).
+        _notifier_chantier_materiel_confirme(bc)
         return Response(BonCommandeSerializer(bc).data)
 
     @action(detail=True, methods=['post'], url_path='marquer-livre',

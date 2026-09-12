@@ -22,7 +22,10 @@ from ..models import (
 from ..serializers import (
     JalonProjetSerializer, ModeleProjetSerializer, ReunionChantierSerializer,
 )
-from ..services import instantiate_modele_projet, notifier_jalon_a_facturer
+from ..services import (
+    instantiate_modele_projet, notifier_jalon_a_facturer,
+    synchroniser_jalon_portail,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -68,6 +71,12 @@ class JalonProjetViewSet(CompanyScopedModelViewSet):
         if jalon.atteint and not old_atteint:
             try:
                 notifier_jalon_a_facturer(jalon, self.request.user)
+            except Exception:  # pragma: no cover - défensif
+                pass
+            # CHT11 — fin de la double saisie interne/portail (best-effort,
+            # ne bloque jamais l'update du jalon).
+            try:
+                synchroniser_jalon_portail(jalon, self.request.user)
             except Exception:  # pragma: no cover - défensif
                 pass
 

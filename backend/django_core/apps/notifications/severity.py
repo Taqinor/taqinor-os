@@ -119,6 +119,13 @@ EVENT_CATEGORY = {
     EventType.BON_COMMANDE_CREE: 'finance',
     EventType.CHANTIER_DUE: 'chantier',
     EventType.CHANTIER_ASSIGNE: 'chantier',
+    # CHT9 — désenchevêtrés de CHANTIER_DUE (doctrine « un EventType = un fait
+    # métier », voir notifications/models.py) : même catégorie d'affichage.
+    EventType.INTERVENTION_ASSIGNEE: 'chantier',
+    EventType.INTERVENTION_REPLANIFIEE: 'chantier',
+    EventType.INTERVENTION_ANNULEE: 'chantier',
+    EventType.TRANCHE_A_FACTURER: 'chantier',
+    EventType.CHANTIER_MATERIEL_CONFIRME: 'chantier',
     EventType.WARRANTY_EXPIRING: 'sav',
     EventType.MAINTENANCE_DUE: 'sav',
     EventType.SAV_TICKET_OPENED: 'sav',
@@ -220,6 +227,15 @@ ACTION_EVENT_TYPES = frozenset({
     # dans les infos.
     EventType.VISITEUR_APPAREIL_PARTAGE,
     EventType.VISITEUR_CONCURRENT_SUSPECTE,
+    # CHT9 — 4 des 5 désenchevêtrés de CHANTIER_DUE attendent un geste
+    # (prendre en charge la nouvelle affectation/le nouveau créneau, émettre
+    # la facture, confirmer la réception du matériel) ; INTERVENTION_ANNULEE
+    # reste volontairement une INFO — rien à faire, l'intervention n'aura
+    # simplement pas lieu.
+    EventType.INTERVENTION_ASSIGNEE,
+    EventType.INTERVENTION_REPLANIFIEE,
+    EventType.TRANCHE_A_FACTURER,
+    EventType.CHANTIER_MATERIEL_CONFIRME,
 })
 
 

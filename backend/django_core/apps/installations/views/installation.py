@@ -436,8 +436,22 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def annuler(self, request, pk=None):
         """Annule le chantier (DRAPEAU avec motif — pas une étape)."""
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        from ..services import est_directeur, verifier_annulation_cloture
+
         inst = self.get_object()
         motif = (request.data.get('motif') or '').strip()
+        # CHT2 — le verrou AUD326 s'appliquait au seul changement de STATUT :
+        # cette action, drapeau orthogonal, contournait le gel en libérant les
+        # réservations et en soldant les interventions d'un chantier CLÔTURÉ
+        # sans motif ni autorité. La RÈGLE vit dans le service ; seule la
+        # répartition HTTP 403 (autorité) / 400 (motif manquant) est décidée
+        # ici — même adaptateur que la réouverture dans `perform_update`.
+        raison_cloture = verifier_annulation_cloture(inst, request.user, motif)
+        if raison_cloture:
+            if motif and not est_directeur(request.user):
+                raise PermissionDenied(raison_cloture)
+            raise ValidationError({'motif': [raison_cloture]})
         if not inst.annule:
             inst.annule = True
             inst.motif_annulation = motif or None

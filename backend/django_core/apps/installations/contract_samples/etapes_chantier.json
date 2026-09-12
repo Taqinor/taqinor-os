@@ -1,0 +1,52 @@
+{
+  "endpoint": "GET /api/django/installations/etapes-chantier/",
+  "pourquoi": "CHT23 — `StageModele` (CH1/CH5) gagne deux champs de comptage configurables : `photos_min` (nombre de photos réellement déposées exigées, défaut 0) et `checklist_pct_min` (pourcentage de checklist fait exigé, défaut 100). ADDITIF STRICT : aux défauts, les gates `exige_checklist`/`exige_photos` restent le comportement historique (« tous faits ») — voir `apps.installations.services._gate_check_checklist`/`_gate_check_photos`. `StageModeleSerializer` (`serializers_stage.py`) est servi par un ModelViewSet standard (`StageModeleViewSet`, `views/stage_config.py`) — la réponse est donc l'enveloppe de pagination DRF (`core.pagination.StandardPagination` : `count`/`next`/`previous`/`results`), jamais un dictionnaire littéral que `check_api_shapes.py` peut lire statiquement (d'où l'absence de `forme_serveur: complete` ici — cet exemple documente la forme sans prétendre être vérifié contre le code serveur, comme les autres échantillons `forme_serveur` non déclarée). `frontend/src/pages/parametres/EtapesChantierSection.jsx` lit `r.data.results ?? r.data` : le test frontend importe cet exemple au lieu d'inventer son propre `PAYLOAD`.",
+  "exemple": {
+    "count": 2,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 1,
+        "cle": "etude_site",
+        "libelle": "Visite technique",
+        "ordre": 0,
+        "bloquant": false,
+        "exige_checklist": false,
+        "exige_photos": false,
+        "exige_series": false,
+        "exige_tests": false,
+        "exige_materiel": false,
+        "exige_dossier": false,
+        "exige_pack": false,
+        "photos_min": 0,
+        "checklist_pct_min": 100,
+        "statut_legacy": "signe",
+        "statut_legacy_display": "Signé",
+        "actif": true,
+        "protege": true
+      },
+      {
+        "id": 2,
+        "cle": "mise_en_service",
+        "libelle": "Mise en service",
+        "ordre": 6,
+        "bloquant": true,
+        "exige_checklist": true,
+        "exige_photos": true,
+        "exige_series": false,
+        "exige_tests": true,
+        "exige_materiel": false,
+        "exige_dossier": false,
+        "exige_pack": false,
+        "photos_min": 3,
+        "checklist_pct_min": 80,
+        "statut_legacy": "installe",
+        "statut_legacy_display": "Installé",
+        "actif": true,
+        "protege": true
+      }
+    ]
+  },
+  "exemple_vide": { "count": 0, "next": null, "previous": null, "results": [] }
+}

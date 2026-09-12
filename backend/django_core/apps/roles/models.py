@@ -80,17 +80,22 @@ ALL_PERMISSIONS = [
     'crm_supprimer',
     'crm_export',
     'crm_reassign',
-    # ── VT2 — Visite technique terrain (module CRM) ──────────────────────────
+    # ── VT2/VTA4 — Visite technique terrain (module `visites`) ───────────────
     # Quatre actions DISJOINTES : consulter une visite, en créer une, la
     # remplir (photos/mesures/terminer), et donner le FEU VERT calepinage.
-    # ``crm_visite_valider`` est délibérément séparé de ``crm_visite_modifier``
-    # : celui qui relève les mesures sur le toit n'est pas celui qui décide que
+    # ``visites_valider`` est délibérément séparé de ``visites_modifier`` :
+    # celui qui relève les mesures sur le toit n'est pas celui qui décide que
     # le dossier est bon (même esprit que ``compta_saisir``/``compta_valider``).
-    # Préfixe ``crm_`` ⇒ le module propriétaire est déduit automatiquement.
-    'crm_visite_voir',
-    'crm_visite_creer',
-    'crm_visite_modifier',
-    'crm_visite_valider',
+    # VTA4 — codes RENOMMÉS de ``crm_visite_*`` en ``visites_*`` : la visite a
+    # quitté le CRM pour son app autonome, et un commercial terrain porte ces
+    # droits SANS aucun droit CRM. Garder le préfixe ``crm_`` ferait déduire le
+    # mauvais module propriétaire et rendrait le droit invisible à une société
+    # qui n'a pas le module CRM. Une data migration réécrit les Role.permissions
+    # déjà en base (apps/roles/migrations/0004_vta4_renommer_permissions_visite).
+    'visites_voir',
+    'visites_creer',
+    'visites_modifier',
+    'visites_valider',
     'ventes_voir',
     'ventes_creer',
     'ventes_modifier',
@@ -453,6 +458,9 @@ ALL_PERMISSIONS = [
 PERMISSION_MODULE = {
     **{c: 'stock' for c in ALL_PERMISSIONS if c.startswith('stock_')},
     **{c: 'crm' for c in ALL_PERMISSIONS if c.startswith('crm_')},
+    # VTA4 — les droits de la visite terrain appartiennent au module
+    # `visites`, plus au CRM (app autonome depuis le groupe VTA).
+    **{c: 'visites' for c in ALL_PERMISSIONS if c.startswith('visites_')},
     **{c: 'ventes' for c in ALL_PERMISSIONS if c.startswith('ventes_')},
     'installation_voir': 'installations',
     'installation_gerer': 'installations',
@@ -538,10 +546,11 @@ RESPONSABLE_PERMISSIONS = [
     'crm_modifier',
     # VT2 — le Responsable pilote les visites techniques ET porte le feu vert
     # bureau d'études (c'est lui qui arbitre un dossier de calepinage).
-    'crm_visite_voir',
-    'crm_visite_creer',
-    'crm_visite_modifier',
-    'crm_visite_valider',
+    # VTA4 — codes renommés `visites_*` (app autonome) ; périmètre inchangé.
+    'visites_voir',
+    'visites_creer',
+    'visites_modifier',
+    'visites_valider',
     'ventes_voir',
     'ventes_creer',
     'ventes_modifier',
@@ -667,8 +676,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'crm_voir', 'crm_creer', 'crm_modifier', 'crm_supprimer', 'crm_export',
     'crm_reassign',
     # VT2 — mène les visites ET arbitre le feu vert de son équipe.
-    'crm_visite_voir', 'crm_visite_creer', 'crm_visite_modifier',
-    'crm_visite_valider',
+    # VTA4 — codes renommés `visites_*` ; périmètre inchangé.
+    'visites_voir', 'visites_creer', 'visites_modifier',
+    'visites_valider',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
     'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
@@ -706,8 +716,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
 COMMERCIAL_PERMISSIONS = [
     'crm_voir', 'crm_creer', 'crm_modifier', 'crm_export',
     # VT2 — le commercial TERRAIN remplit la visite ; il ne se donne JAMAIS le
-    # feu vert à lui-même (`crm_visite_valider` absent, à dessein).
-    'crm_visite_voir', 'crm_visite_creer', 'crm_visite_modifier',
+    # feu vert à lui-même (`visites_valider` absent, à dessein).
+    # VTA4 — codes renommés `visites_*` ; périmètre inchangé.
+    'visites_voir', 'visites_creer', 'visites_modifier',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_valider',
     'ventes_pdf', 'ventes_export',
     'stock_voir', 'equipement_voir', 'sav_voir',
@@ -729,6 +740,31 @@ COMMERCIAL_PERMISSIONS = [
     # (c'est le but du module) ; le réglage reste au palier responsable.
     'veille_ao_voir',
     SCOPE_TEAM,
+]
+
+# ───────────────────────────────────────────────────────────────────────────
+# VTA4 — COMMERCIAL TERRAIN : l'utilisateur de l'app Visites, et RIEN d'autre
+# ───────────────────────────────────────────────────────────────────────────
+# Commande fondateur 2026-09-12 : « l'utilisateur qui fera la visite n'aura
+# probablement pas l'accès CRM ». C'est le rôle qui rend cette phrase vraie —
+# et c'est pour lui que la visite est sortie du CRM.
+#
+# Trois droits métier (il relève, il ne valide JAMAIS son propre travail — même
+# règle que le rôle Commercial) + LE marqueur de visibilité d'app
+# ``app_visites_voir`` (ODY26) : dès qu'un rôle porte un marqueur, la liste
+# devient une LISTE BLANCHE — ce rôle ne voit donc QUE la tuile Visites sur
+# l'accueil. Le marqueur reste HORS d'``ALL_PERMISSIONS`` (mécanique ODY26 : il
+# ne donne aucun droit, il en retire ; l'y mettre restreindrait mécaniquement
+# Directeur/Administrateur qui en dérivent).
+#
+# PAS de ``crm_voir`` : le panneau client/devis de la visite est servi par
+# l'agrégat de ``apps.visites``, pas par l'API CRM — un commercial terrain
+# reçoit donc bien 403 sur ``/api/django/crm/leads/``, ce qui est le point.
+# Le rôle Technicien existant n'est PAS touché (il porte ~25 droits post-vente
+# et sa route d'accueil ``/ma-journee`` appartient à ``installations``).
+COMMERCIAL_TERRAIN_PERMISSIONS = [
+    'visites_voir', 'visites_creer', 'visites_modifier',
+    permission_app('visites'),
 ]
 
 # Technicien responsable : Chantiers/SAV/Stock complets, assigne les
@@ -763,6 +799,13 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # écriture (palier « responsable » du module.config BTP). Les assurances
     # restent hors de sa portée (gouvernance).
     'btp_voir', 'btp_gerer',
+    # VTA4 — le feu vert calepinage est un arbitrage TECHNIQUE : le responsable
+    # technique le porte au même titre que le commercial responsable.
+    # `visites_voir` vient AVEC : `visites_valider` seul donnerait un rôle qui
+    # peut valider une visite sans pouvoir l'ouvrir (la lecture de l'agrégat
+    # est gatée par `visites_voir`). Il ne porte NI `creer` NI `modifier` — il
+    # arbitre, il ne relève pas les mesures.
+    'visites_voir', 'visites_valider',
     SCOPE_SUBTREE,
 ]
 
@@ -996,6 +1039,9 @@ CANONICAL_SYSTEM_ROLES = [
     ('Administrateur', ADMIN_PERMISSIONS),
     ('Commercial responsable', COMMERCIAL_RESP_PERMISSIONS),
     ('Commercial', COMMERCIAL_PERMISSIONS),
+    # VTA4 — l'utilisateur de l'app Visites : il fait les visites terrain et
+    # n'a AUCUN accès CRM (liste blanche d'apps `app_visites_voir`).
+    ('Commercial terrain', COMMERCIAL_TERRAIN_PERMISSIONS),
     ('Technicien responsable', TECHNICIEN_RESP_PERMISSIONS),
     ('Technicien', TECHNICIEN_PERMISSIONS),
     ('Viewer', VIEWER_PERMISSIONS),

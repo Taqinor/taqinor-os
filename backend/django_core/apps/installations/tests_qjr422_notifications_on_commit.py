@@ -149,13 +149,14 @@ class LeJumeauReassignation(_Base):
         with self.captureOnCommitCallbacks(execute=False) as rappels:
             _notifier_reassignation(interv, self.tech)
             self.assertEqual(
-                self._notifs(EventType.CHANTIER_DUE).count(), 0,
+                # CHT9 — sa propre clé, désenchevêtrée de CHANTIER_DUE.
+                self._notifs(EventType.INTERVENTION_REPLANIFIEE).count(), 0,
                 'la notification de réassignation est partie sous le verrou '
                 "select_for_update de la replanification en masse.")
         self.assertTrue(rappels)
         for rappel in rappels:
             rappel()
-        notifs = self._notifs(EventType.CHANTIER_DUE)
+        notifs = self._notifs(EventType.INTERVENTION_REPLANIFIEE)
         self.assertEqual(notifs.count(), 1)
         self.assertIn(str(interv.id), notifs.first().title)
 
@@ -166,7 +167,8 @@ class LeJumeauReassignation(_Base):
                 with transaction.atomic():
                     _notifier_reassignation(interv, self.tech)
                     raise RuntimeError('la replanification échoue (simulé)')
-        self.assertEqual(self._notifs(EventType.CHANTIER_DUE).count(), 0)
+        self.assertEqual(
+            self._notifs(EventType.INTERVENTION_REPLANIFIEE).count(), 0)
 
     def test_sans_technicien_aucun_rappel_n_est_enregistre(self):
         """Le no-op reste un no-op : aucune notification, aucun rappel."""
@@ -176,4 +178,5 @@ class LeJumeauReassignation(_Base):
         with self.captureOnCommitCallbacks(execute=True) as rappels:
             _notifier_reassignation(interv, self.tech)
         self.assertEqual(rappels, [])
-        self.assertEqual(self._notifs(EventType.CHANTIER_DUE).count(), 0)
+        self.assertEqual(
+            self._notifs(EventType.INTERVENTION_REPLANIFIEE).count(), 0)

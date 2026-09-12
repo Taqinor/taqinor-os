@@ -7,7 +7,10 @@ issues des dossiers de raccordement (FG268-269) :
     date limite de dépôt / fourniture d'une pièce ;
   * dossiers déposés en attente de décision (``RegulatoryDossier.date_depot``) ;
   * validité d'un accord (``RegulatoryDossier.date_decision`` + fenêtre de
-    validité paramétrable, défaut 12 mois) — date limite de mise en service.
+    validité paramétrable, défaut 12 mois) — date limite de mise en service ;
+  * CHT25 — prochaine action EXPLICITE posée par l'utilisateur sur le dossier
+    (``RegulatoryDossier.prochaine_action``/``prochaine_action_date``), en
+    PLUS des règles déduites ci-dessus — jamais un remplacement.
 
 Chaque échéance porte un statut d'alerte calculé par rapport à aujourd'hui :
 ``expire`` (passée), ``imminent`` (≤ seuil de jours), ``a_venir`` (au-delà). Ne
@@ -125,6 +128,22 @@ def calendrier_reglementaire(request):
                 'libelle': (f"Date limite MES (validité accord) — "
                             f"devis {d.devis_id}"),
                 'date_echeance': limite_mes.isoformat(),
+                'statut_alerte': statut,
+                'jours_restants': jours,
+                'relance_due': False,
+            })
+        # CHT25 — prochaine action explicite : indépendante du statut du
+        # dossier (l'utilisateur peut vouloir relancer même un dossier
+        # approuvé), toujours en PLUS des deux règles déduites ci-dessus.
+        if d.prochaine_action_date:
+            statut, jours = _alerte(d.prochaine_action_date, today, seuil)
+            echeances.append({
+                'type': 'prochaine_action',
+                'sous_type': d.regime_8221,
+                'dossier_id': d.id,
+                'libelle': d.prochaine_action or (
+                    f'Prochaine action — devis {d.devis_id}'),
+                'date_echeance': d.prochaine_action_date.isoformat(),
                 'statut_alerte': statut,
                 'jours_restants': jours,
                 'relance_due': False,

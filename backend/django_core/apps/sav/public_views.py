@@ -250,7 +250,11 @@ def equipement_public_signaler(request, token):
 
 # ── NTSRV2 — Formulaire portail client → ticket SAV (public, tokenisé) ───────
 
-@extend_schema(responses=inline_serializer('PortailCreerTicketReponse', {
+@extend_schema(request=inline_serializer('PortailTicketRequete', {
+    'sujet': drf_serializers.CharField(),
+    'description': drf_serializers.CharField(required=False),
+    'chantier': drf_serializers.IntegerField(required=False),
+}), responses=inline_serializer('PortailCreerTicketReponse', {
     'reference': drf_serializers.CharField(),
     'numero_suivi': drf_serializers.CharField(required=False),
     'suivi_token': drf_serializers.CharField(required=False),
@@ -365,7 +369,9 @@ def portail_creer_ticket(request):
 
 # ── NTSRV3 — Webhook WhatsApp entrant (GATED, 404 sans clé) ─────────────────
 
-@extend_schema(responses=inline_serializer('WhatsappInboundReponse', {
+@extend_schema(request=inline_serializer('WhatsappInboundRequete', {
+    'entry': drf_serializers.ListField(required=False),
+}), responses=inline_serializer('WhatsappInboundReponse', {
     'reference': drf_serializers.CharField(required=False),
     'cree': drf_serializers.BooleanField(required=False),
     'detail': drf_serializers.CharField(required=False),

@@ -80,6 +80,14 @@ export default function EtapesChantierSection() {
     try { await installationsApi.saveStageChantier(s.id, { [key]: !s[key] }); load() }
     catch { /* */ }
   }
+  // CHT23 — exigences de comptage configurables (additif : défauts 0/100 =
+  // comportement historique octet pour octet).
+  const updateSeuil = async (s, key, min, max, valeur) => {
+    const n = Number(valeur)
+    if (!Number.isFinite(n) || n < min || n > max) return
+    try { await installationsApi.saveStageChantier(s.id, { [key]: n }); load() }
+    catch { /* */ }
+  }
   const moveStage = async (idx, dir) => {
     const j = idx + dir
     if (j < 0 || j >= stages.length) return
@@ -190,6 +198,34 @@ export default function EtapesChantierSection() {
                         {label}
                       </button>
                     ))}
+                  </div>
+                )}
+                {s.bloquant && s.exige_photos && (
+                  <div className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
+                    <label htmlFor={`photos-min-${s.id}`}>Photos minimum</label>
+                    <Input
+                      id={`photos-min-${s.id}`}
+                      type="number" min={0} step={1}
+                      defaultValue={s.photos_min ?? 0}
+                      disabled={!canEdit}
+                      onBlur={(e) => canEdit
+                        && updateSeuil(s, 'photos_min', 0, 999, e.target.value)}
+                      className="w-20"
+                    />
+                  </div>
+                )}
+                {s.bloquant && s.exige_checklist && (
+                  <div className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
+                    <label htmlFor={`checklist-pct-min-${s.id}`}>% de checklist minimum</label>
+                    <Input
+                      id={`checklist-pct-min-${s.id}`}
+                      type="number" min={0} max={100} step={1}
+                      defaultValue={s.checklist_pct_min ?? 100}
+                      disabled={!canEdit}
+                      onBlur={(e) => canEdit
+                        && updateSeuil(s, 'checklist_pct_min', 0, 100, e.target.value)}
+                      className="w-20"
+                    />
                   </div>
                 )}
               </CardContent>

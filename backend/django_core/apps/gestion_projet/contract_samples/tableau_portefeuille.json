@@ -1,9 +1,9 @@
 {
   "endpoint": "GET /api/django/gestion-projet/projets/portefeuille/?statut=<optionnel>&seuil_jours=<optionnel>",
-  "pourquoi": "AUDV16 (PROJ36/PROJ26) — `tableau_portefeuille` et l'action `portefeuille` étaient déjà câblés backend + client API (`gestionProjetApi.getPortefeuille`) mais ZÉRO écran ne les appelait (note « MENU FONDATEUR » d'AUD3). Le fondateur a tranché : construire l'écran Portefeuille. PRÉREQUIS traité DANS cette même tâche : le N+1 GP-4 (`rollup_avancement`/`retards_projet`/`pnl_projet`/aggregate charge/lookup dernier point APPELÉS PAR PROJET, ~10-14 requêtes/projet) est vectorisé — tout est préchargé en bloc et regroupé en mémoire, le nombre de requêtes est désormais FIXE (voir `tests/test_audv16_portefeuille_n1.py`). `marge_reelle` suit AUD329 (déjà réconcilié, pas de double-comptage affectations/timesheets) ; le revenu reste à 0 (dégradé cross-app, comme `pnl_projet`). Donnée 100 % INTERNE — jamais exposée au client.",
+  "pourquoi": "AUDV16 (PROJ36/PROJ26) — `tableau_portefeuille` et l'action `portefeuille` étaient déjà câblés backend + client API (`gestionProjetApi.getPortefeuille`) mais ZÉRO écran ne les appelait (note « MENU FONDATEUR » d'AUD3). Le fondateur a tranché : construire l'écran Portefeuille. PRÉREQUIS traité DANS cette même tâche : le N+1 GP-4 (`rollup_avancement`/`retards_projet`/`pnl_projet`/aggregate charge/lookup dernier point APPELÉS PAR PROJET, ~10-14 requêtes/projet) est vectorisé — tout est préchargé en bloc et regroupé en mémoire, le nombre de requêtes est désormais FIXE (voir `tests/test_audv16_portefeuille_n1.py`). `marge_reelle` suit AUD329 (déjà réconcilié, pas de double-comptage affectations/timesheets). CHT13 — le revenu n'est plus câblé à 0 : `marge_reelle` = CA FACTURÉ réel (devis rattachés via `ProjetLien`, montants en BATCH via `ventes.selectors.montants_factures_par_devis`, cohérent FG295) moins le coût réel — voir `tests/test_cht13_revenu_projet.py`. Donnée 100 % INTERNE — jamais exposée au client. Forme du CONTRAT = la réponse HTTP réelle de l'action `portefeuille` (`views.py`) : elle sélectionne un SOUS-ENSEMBLE des clés du sélecteur `tableau_portefeuille` — `note_satisfaction`/`politique_facturation` par ligne et `note_satisfaction_moyenne` au total existent côté sélecteur mais ne traversent PAS le réseau (staleness pré-CHT13 corrigée ici, PACT10 : un test frontend ne doit jamais mocker une clé absente du fil).",
   "exemple": {
     "nb_projets": 2,
-    "total_marge_reelle": "-1500.00",
+    "total_marge_reelle": "1000.00",
     "total_charge": "20",
     "total_retards": 2,
     "total_risques": 1,
@@ -16,11 +16,9 @@
         "avancement_pct": 40,
         "nb_retards": 2,
         "nb_risques": 1,
-        "marge_reelle": "-1500.00",
+        "marge_reelle": "2500.00",
         "charge_totale": "10",
-        "derniere_sante": "orange",
-        "note_satisfaction": 4.5,
-        "politique_facturation": "forfait"
+        "derniere_sante": "orange"
       },
       {
         "projet_id": 11,
@@ -30,11 +28,9 @@
         "avancement_pct": 0,
         "nb_retards": 0,
         "nb_risques": 0,
-        "marge_reelle": "0.00",
+        "marge_reelle": "-1500.00",
         "charge_totale": "10",
-        "derniere_sante": null,
-        "note_satisfaction": null,
-        "politique_facturation": "forfait"
+        "derniere_sante": null
       }
     ]
   }

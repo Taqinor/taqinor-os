@@ -334,6 +334,13 @@ INSTALLED_APPS = [
     # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
     # opaque (`appel_offre_id`), jamais par FK.
     'apps.veille_ao',
+    # Groupe VTA — Visites techniques terrain, sorties d'`apps.crm` (commande
+    # fondateur 2026-09-12) : l'utilisateur qui fait la visite n'a pas l'accès
+    # CRM. App NEUVE et distincte d'`apps.installations` (pré-vente rattachée
+    # au Lead vs post-vente). Chargée APRÈS `apps.crm` : le move state-only
+    # VTA2 recrée les modèles sur les tables `crm_visite*` existantes et la
+    # migration crm compagnon doit les retirer de l'état AVANT.
+    'apps.visites',
     # Groupe NTLOG — Douane & import/export (docs/plans/PLAN_SUPPLY.md).
     # NTLOG14 seulement (DossierExport) : le volet import (NTLOG10, GARDE
     # WIR80) reste BLOCKED, en conflit avec installations.DossierImport

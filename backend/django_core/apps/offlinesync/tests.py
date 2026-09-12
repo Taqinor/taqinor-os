@@ -561,3 +561,126 @@ class ConflitSynchroTests(TestCase):
         self.assertEqual(lignes[0]['statut'], 'conflit')
         self.assertEqual(lignes[0]['conflit']['champ'], 'date_modification')
         self.assertEqual(lignes[0]['resolution'], '')
+
+
+class VisiteMesuresHorsLigneTests(TestCase):
+    """VTA10 — rejeu de `visite.mesures` (moitié serveur de la file `visites`).
+
+    Le critère : une mesure saisie dans une cave sans réseau s'applique UNE
+    SEULE FOIS à la reconnexion, ne franchit aucune frontière de société, et
+    ne permet pas à un terrain d'écrire sur la visite d'un collègue — la file
+    hors-ligne refait EXACTEMENT les gardes de la route en ligne.
+    """
+
+    #: Le rôle « Commercial terrain » (VTA4) ne porte PAS ``visites_valider``.
+    TERRAIN = ['visites_voir', 'visites_creer', 'visites_modifier']
+
+    @staticmethod
+    def _terrain(company, username, permissions):
+        from apps.roles.models import Role
+
+        role = Role.objects.create(company=company, nom=f'role-{username}',
+                                   permissions=list(permissions))
+        return User.objects.create_user(
+            username=username, password='x', company=company,
+            role_legacy='normal', role=role)
+
+    def setUp(self):
+        from apps.visites.models import VisiteTerrain
+
+        self.co_a = make_company('ofs-vta-a', 'Société A')
+        self.co_b = make_company('ofs-vta-b', 'Société B')
+        self.user = self._terrain(self.co_a, 'ofs-vta-com', self.TERRAIN)
+        self.collegue = self._terrain(self.co_a, 'ofs-vta-com2', self.TERRAIN)
+        self.etranger = self._terrain(self.co_b, 'ofs-vta-b1', self.TERRAIN)
+        self.api = auth(self.user)
+        self.lead = Lead.objects.create(company=self.co_a, nom='Alaoui')
+        self.visite = VisiteTerrain.objects.create(
+            company=self.co_a, lead=self.lead, commercial=self.user)
+
+    def _op(self, cle, **surcharges):
+        payload = {'visite': self.visite.id, 'categorie': 'toiture',
+                   'valeurs': {'longueur_m': 12.5, 'orientation': 'sud'}}
+        payload.update(surcharges)
+        return {'ops': [op(cle, 'visite.mesures', payload)]}
+
+    def test_mesures_hors_ligne_appliquees_une_seule_fois_meme_rejouees(self):
+        lot = self._op('cle-mes-1')
+        premier = self.api.post(BATCH, lot, format='json')
+        self.assertEqual(premier.status_code, 200)
+        self.assertEqual(premier.data['applied'], 1)
+        self.assertEqual(premier.data['results'][0]['module'], 'visites')
+
+        second = self.api.post(BATCH, lot, format='json')
+        self.assertEqual(second.data['replayed'], 1)
+        self.assertEqual(second.data['applied'], 0)
+
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.mesures['toiture']['longueur_m'], 12.5)
+        self.assertEqual(self.visite.mesures['toiture']['orientation'], 'sud')
+        self.assertEqual(OfflineOperation.objects.filter(
+            company=self.co_a, client_op_id='cle-mes-1').count(), 1)
+
+    def test_saisie_marque_la_visite_en_cours(self):
+        from apps.visites.models import VisiteTerrain
+
+        self.api.post(BATCH, self._op('cle-mes-encours'), format='json')
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.statut, VisiteTerrain.Statut.EN_COURS)
+
+    def test_rejeu_est_last_write_wins_sans_doubler_les_valeurs(self):
+        self.api.post(BATCH, self._op('cle-mes-a'), format='json')
+        self.api.post(BATCH, self._op(
+            'cle-mes-b', valeurs={'longueur_m': 9}), format='json')
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.mesures['toiture']['longueur_m'], 9)
+        # La 1re valeur d'un AUTRE champ survit : on POSE, on n'écrase pas
+        # tout le bloc.
+        self.assertEqual(self.visite.mesures['toiture']['orientation'], 'sud')
+
+    def test_visite_d_une_autre_societe_est_indiscernable_d_un_id_inconnu(self):
+        resp = auth(self.etranger).post(BATCH, self._op('cle-mes-x'),
+                                        format='json')
+        self.assertEqual(resp.data['errors'], 1)
+        self.assertIn('Visite inconnue',
+                      resp.data['results'][0]['error'])
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.mesures, {})
+
+    def test_terrain_ne_peut_pas_ecrire_sur_la_visite_d_un_collegue(self):
+        resp = auth(self.collegue).post(BATCH, self._op('cle-mes-col'),
+                                        format='json')
+        self.assertEqual(resp.data['errors'], 1)
+        self.assertIn('autre commercial', resp.data['results'][0]['error'])
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.mesures, {})
+
+    def test_visite_validee_reste_en_lecture_seule(self):
+        from apps.visites.models import VisiteTerrain
+
+        self.visite.statut = VisiteTerrain.Statut.VALIDEE
+        self.visite.save(update_fields=['statut'])
+        resp = self.api.post(BATCH, self._op('cle-mes-gel'), format='json')
+        self.assertEqual(resp.data['errors'], 1)
+        self.assertIn('lecture seule', resp.data['results'][0]['error'])
+
+    def test_champ_inconnu_refuse_avec_un_message_qui_le_nomme(self):
+        resp = self.api.post(
+            BATCH, self._op('cle-mes-champ', valeurs={'zzz': 1}),
+            format='json')
+        self.assertEqual(resp.data['errors'], 1)
+        self.assertIn('Champ inconnu', resp.data['results'][0]['error'])
+
+    def test_categorie_manquante_refusee(self):
+        resp = self.api.post(BATCH, self._op('cle-mes-cat', categorie=''),
+                             format='json')
+        self.assertEqual(resp.data['errors'], 1)
+        self.assertIn('Catégorie', resp.data['results'][0]['error'])
+
+    def test_op_refusee_reste_rejouable_apres_correction(self):
+        self.api.post(BATCH, self._op('cle-mes-fix', valeurs={'zzz': 1}),
+                      format='json')
+        resp = self.api.post(BATCH, self._op('cle-mes-fix'), format='json')
+        self.assertEqual(resp.data['applied'], 1)
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.mesures['toiture']['longueur_m'], 12.5)

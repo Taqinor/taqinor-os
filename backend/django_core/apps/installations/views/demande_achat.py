@@ -78,9 +78,13 @@ def _notifier_demandeur_decision(da, approuvee):
             corps = f"Votre demande « {da.objet} » ({da.reference}) a été refusée."
             if da.motif_refus:
                 corps += f" Motif : {da.motif_refus}"
+        # CHT7 — `/installations/demandes-achat` est un 404 réel (route
+        # `/chantiers/demandes-achat`) ; `?demande=` n'est lu par AUCUN écran
+        # (DemandesAchatList.jsx ne lit que `chantier`/`intervention`) — WIR176
+        # interdit un paramètre que rien ne consomme, on part donc sans lui.
         notify(
             demandeur, EventType.DA_DECIDEE, titre, body=corps,
-            link=f'/installations/demandes-achat?demande={da.pk}',
+            link='/chantiers/demandes-achat',
             company=da.company)
     except Exception:  # pragma: no cover - défensif
         pass
