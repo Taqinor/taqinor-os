@@ -1115,6 +1115,8 @@ CELERY_TASK_ROUTES = {
     'chat.retention_sweep': {'queue': 'scheduled'},
     'installations.rappel_rdv_j1': {'queue': 'scheduled'},
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
+    # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
+    'installations.relancer_rfq_en_attente': {'queue': 'scheduled'},
     'rh.alertes_expiration': {'queue': 'scheduled'},
     'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},

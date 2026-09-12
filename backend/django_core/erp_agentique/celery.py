@@ -479,6 +479,11 @@ app.conf.beat_schedule = {
         'task': 'installations.meteo_planning_j3',
         'schedule': crontab(hour=6, minute=30),
     },
+    # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
+    'installations-relancer-rfq-en-attente': {
+        'task': 'installations.relancer_rfq_en_attente',
+        'schedule': crontab(hour=7, minute=15),
+    },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
     # seulement (aucun BCF créé automatiquement), idempotent par société.
