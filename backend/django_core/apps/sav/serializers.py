@@ -383,6 +383,13 @@ class TicketSerializer(serializers.ModelSerializer):
             # AUD529 — le lien vers la réclamation est posé par l'action
             # `escalader-reclamation` (frontière litiges), jamais du corps.
             'reclamation_id_ext',
+            # NTSRV1/2/3/5 — le CANAL D'OUVERTURE est posé par le producteur
+            # côté serveur (handler e-mail, portail public, webhook WhatsApp,
+            # saisie back-office = `manuel`), jamais depuis le corps.
+            'canal_ouverture',
+            # NTSRV12 — mémoire d'idempotence des paliers d'escalade, écrite
+            # par le balayage SLA uniquement.
+            'sla_escalade_paliers_notifies',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir

@@ -31,6 +31,9 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
+                # ARC1 — socle TenantModel (created_at / updated_at).
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('libelle', models.CharField(
                     blank=True, default='', max_length=120,
                     verbose_name='Libellé')),
@@ -51,7 +54,6 @@ class Migration(migrations.Migration):
                     max_length=30, verbose_name='Notifier le rôle')),
                 ('actif', models.BooleanField(
                     default=True, verbose_name='Actif')),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name='escalades_sla_sav',

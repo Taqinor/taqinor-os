@@ -54,6 +54,9 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
+                # ARC1 — socle TenantModel (created_at / updated_at).
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('message_id', models.CharField(
                     max_length=255, verbose_name='Message-ID')),
                 ('in_reply_to', models.CharField(

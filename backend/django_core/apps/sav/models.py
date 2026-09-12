@@ -35,6 +35,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from core.models import TenantModel
+
 from .dateutils import add_months
 
 
@@ -2368,7 +2370,7 @@ class TicketWorksheet(models.Model):
 
 # ── NTSRV12 — Paliers d'escalade SLA configurables ──────────────────────────
 
-class EscaladeSlaNiveau(models.Model):
+class EscaladeSlaNiveau(TenantModel):
     """NTSRV12 — UN palier d'escalade SLA d'une société (ex. J+0 →
     responsable technicien, J+1 → directeur).
 
@@ -2381,6 +2383,9 @@ class EscaladeSlaNiveau(models.Model):
     ``notifier_role`` (tous les comptes actifs de ce palier de rôle) sinon les
     destinataires par défaut de l'événement (``resolve_recipients``).
     """
+    # ARC1 — socle ``TenantModel`` (FK company + created_at/updated_at) ; le
+    # champ est REDÉCLARÉ à l'identique uniquement pour nommer l'accesseur
+    # inverse (motif documenté dans la docstring de ``core.models.TenantModel``).
     company = models.ForeignKey(
         # on_delete: cascade de tenant standard.
         'authentication.Company', on_delete=models.CASCADE,
@@ -2405,7 +2410,7 @@ class EscaladeSlaNiveau(models.Model):
         null=True, blank=True, related_name='escalades_sla_sav',
         verbose_name='Notifier l’utilisateur')
     actif = models.BooleanField(default=True, verbose_name='Actif')
-    date_creation = models.DateTimeField(auto_now_add=True)
+    # ``created_at`` / ``updated_at`` viennent du socle ``TenantModel``.
 
     class Meta:
         verbose_name = 'Palier d’escalade SLA'
@@ -2424,7 +2429,7 @@ class EscaladeSlaNiveau(models.Model):
 
 # ── NTSRV1 — Fil e-mail d'un ticket (threading RFC 5322) ─────────────────────
 
-class TicketEmailThread(models.Model):
+class TicketEmailThread(TenantModel):
     """NTSRV1 — UN message e-mail (entrant ou sortant) rattaché à un ticket.
 
     C'est la MÉMOIRE de threading : elle mémorise le ``message_id`` de chaque
@@ -2445,6 +2450,11 @@ class TicketEmailThread(models.Model):
         ENTRANT = 'entrant', 'Entrant'
         SORTANT = 'sortant', 'Sortant'
 
+    # ARC1 — socle ``TenantModel`` (FK company + created_at/updated_at) ; le
+    # champ est REDÉCLARÉ pour nommer l'accesseur inverse ET rester
+    # NULLABLE comme ``Ticket.company`` (un fil ne peut pas être plus strict
+    # que le ticket qu'il documente). Motif documenté dans la docstring de
+    # ``core.models.TenantModel``.
     company = models.ForeignKey(
         # on_delete: cascade de tenant standard — un fil e-mail n'existe pas
         # hors de sa société.

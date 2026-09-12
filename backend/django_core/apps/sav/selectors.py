@@ -1364,15 +1364,25 @@ def affectations_pour(user):
 
 # ── NTSRV11 — Échéance SLA en HEURES ouvrées (étend XSAV5) ──────────────────
 
-def _bornes_du_jour(jour, horaires):
-    """``(début, fin)`` de la fenêtre ouvrée pour ``jour`` (datetimes naïfs
-    en heure locale)."""
-    from datetime import datetime
+def combiner_heure_locale(jour, hhmm):
+    """NTSRV11 — ``datetime`` LOCAL (naïf) au jour + heure ``'HH:MM'`` donnés.
 
-    h_debut, m_debut = (int(x) for x in horaires['debut'].split(':'))
-    h_fin, m_fin = (int(x) for x in horaires['fin'].split(':'))
-    return (datetime(jour.year, jour.month, jour.day, h_debut, m_debut),
-            datetime(jour.year, jour.month, jour.day, h_fin, m_fin))
+    Convention assumée du module : ce calcul d'horaires d'ouverture raisonne
+    en HEURE MURALE locale et ne produit jamais d'horodatage stocké — seule
+    la DATE de l'échéance finit en base (``Ticket.sla_due_at``, un
+    ``DateField``). ``datetime.combine`` (même patron que
+    ``apps/adsengine/rule_backtest.py``) plutôt qu'un constructeur
+    ``datetime(y, m, d, …)``."""
+    from datetime import datetime, time
+
+    heures, minutes = (int(x) for x in hhmm.split(':'))
+    return datetime.combine(jour, time(heures, minutes))
+
+
+def _bornes_du_jour(jour, horaires):
+    """``(début, fin)`` de la fenêtre ouvrée pour ``jour`` (heure locale)."""
+    return (combiner_heure_locale(jour, horaires['debut']),
+            combiner_heure_locale(jour, horaires['fin']))
 
 
 def _jour_ouvre(jour, horaires, extra_holidays=None):

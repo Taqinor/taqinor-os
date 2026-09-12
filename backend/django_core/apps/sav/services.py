@@ -349,18 +349,17 @@ def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
 
 
 def _depart_sla(date_ouverture, sla):
-    """NTSRV11 — instant de DÉPART du décompte : l'heure courante quand le
-    ticket est ouvert aujourd'hui, sinon l'ouverture de la fenêtre ce
-    jour-là (une date seule ne porte pas d'heure)."""
-    from datetime import datetime
+    """NTSRV11 — instant de DÉPART du décompte, en heure MURALE locale :
+    l'heure courante quand le ticket est ouvert aujourd'hui, sinon
+    l'ouverture de la fenêtre ce jour-là (une date seule ne porte pas
+    d'heure)."""
+    from .selectors import combiner_heure_locale
 
-    horaires = sla.horaires_effectifs()
     maintenant = timezone.localtime()
     if date_ouverture == maintenant.date():
         return maintenant.replace(tzinfo=None)
-    heure, minute = (int(x) for x in horaires['debut'].split(':'))
-    return datetime(date_ouverture.year, date_ouverture.month,
-                    date_ouverture.day, heure, minute)
+    return combiner_heure_locale(
+        date_ouverture, sla.horaires_effectifs()['debut'])
 
 
 def poser_sla_due_at(ticket, *, persister=True):
