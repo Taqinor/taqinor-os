@@ -535,6 +535,15 @@ class Clause(models.Model):
     corps = models.TextField(verbose_name="Corps de la clause")
     ordre = models.PositiveIntegerField(default=0, verbose_name="Ordre")
     actif = models.BooleanField(default=True, verbose_name="Actif")
+    # NTDOC5 — bibliothèque de clauses OBLIGATOIRES par type de contrat.
+    # Liste (JSON) de codes ``Contrat.TypeContrat`` pour lesquels cette clause
+    # est EXIGÉE. Liste vide (défaut) = clause facultative — comportement
+    # strictement inchangé pour toutes les clauses existantes. Aucune clause
+    # n'est renommée : le champ est purement additif.
+    obligatoire_pour_types = models.JSONField(
+        default=list, blank=True,
+        verbose_name="Obligatoire pour les types de contrat",
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name="Créé le"
     )

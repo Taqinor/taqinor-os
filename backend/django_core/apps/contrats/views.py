@@ -1217,6 +1217,24 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=['get'], url_path='clauses-manquantes')
+    def clauses_manquantes(self, request, pk=None):
+        """Clauses OBLIGATOIRES du type de contrat encore absentes (NTDOC5).
+
+        Lecture seule : compare la bibliothèque (``Clause.
+        obligatoire_pour_types``) aux ``ClauseContrat`` réellement présentes.
+        Un contrat complet renvoie une liste vide. Ne crée et ne renomme
+        AUCUNE clause.
+        """
+        contrat = self.get_object()
+        manquantes = selectors.clauses_obligatoires_manquantes(contrat)
+        return Response({
+            'type_contrat': contrat.type_contrat,
+            'count': len(manquantes),
+            'results': ClauseSerializer(
+                manquantes, many=True, context={'request': request}).data,
+        })
+
     # ── NTDOC3 — commentaires de redline (CRUD + résolution) ───────────────
 
     @action(detail=True, methods=['get', 'post'],

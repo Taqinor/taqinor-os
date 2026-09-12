@@ -1745,3 +1745,65 @@ def commentaires_redline(contrat, *, resolu=None):
 def commentaires_redline_ouverts(contrat):
     """Commentaires de redline NON RÉSOLUS d'un contrat (NTDOC3/NTDOC4)."""
     return commentaires_redline(contrat, resolu=False)
+
+
+# ---------------------------------------------------------------------------
+# NTDOC5 — Clauses OBLIGATOIRES par type de contrat
+# ---------------------------------------------------------------------------
+
+
+def _normaliser_titre_clause(titre):
+    """Titre de clause normalisé (casse/espaces) pour un rapprochement souple."""
+    return ' '.join((titre or '').split()).strip().lower()
+
+
+def clauses_obligatoires(company, type_contrat):
+    """Clauses ACTIVES déclarées obligatoires pour un ``type_contrat`` (NTDOC5).
+
+    Le filtrage est fait EN PYTHON sur ``Clause.obligatoire_pour_types`` (une
+    liste JSON) : la bibliothèque de clauses d'une société est petite, et un
+    filtre Python reste portable quel que soit le backend de base (là où un
+    lookup ``__contains`` sur JSONField ne l'est pas). Renvoie une liste
+    ordonnée (``ordre``, ``titre``), bornée à la société.
+    """
+    from .models import Clause
+
+    if not type_contrat:
+        return []
+    clauses = Clause.objects.filter(company=company, actif=True).order_by(
+        'ordre', 'titre', 'id')
+    retenues = []
+    for clause in clauses:
+        types = clause.obligatoire_pour_types or []
+        if not isinstance(types, (list, tuple)):
+            continue
+        if type_contrat in [str(t) for t in types]:
+            retenues.append(clause)
+    return retenues
+
+
+def clauses_obligatoires_manquantes(contrat):
+    """Clauses obligatoires du type du contrat ABSENTES de ce contrat (NTDOC5).
+
+    Compare les clauses obligatoires du ``type_contrat`` (bibliothèque,
+    ``clauses_obligatoires``) aux ``ClauseContrat`` RÉELLEMENT présentes sur le
+    contrat. Une clause est considérée PRÉSENTE si le contrat porte une
+    ``ClauseContrat`` qui la référence (FK ``clause``) OU une clause ad hoc
+    dont le titre normalisé est identique (une clause retapée à la main compte
+    quand même). Renvoie la liste des ``Clause`` manquantes — vide quand le
+    contrat est complet. Lecture seule : ne crée et ne modifie rien.
+    """
+    obligatoires = clauses_obligatoires(contrat.company, contrat.type_contrat)
+    if not obligatoires:
+        return []
+    presentes_ids = set()
+    presentes_titres = set()
+    for resolue in contrat.clauses_resolues.all():
+        if resolue.clause_id:
+            presentes_ids.add(resolue.clause_id)
+        presentes_titres.add(_normaliser_titre_clause(resolue.titre))
+    return [
+        clause for clause in obligatoires
+        if clause.id not in presentes_ids
+        and _normaliser_titre_clause(clause.titre) not in presentes_titres
+    ]

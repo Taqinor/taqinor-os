@@ -487,9 +487,27 @@ class ClauseSerializer(serializers.ModelSerializer):
             "corps_localise",
             "ordre",
             "actif",
+            # NTDOC5 — types de contrat pour lesquels la clause est EXIGÉE.
+            "obligatoire_pour_types",
             "date_creation",
         ]
         read_only_fields = ["date_creation"]
+
+    def validate_obligatoire_pour_types(self, value):
+        """NTDOC5 — liste de codes ``Contrat.TypeContrat`` valides, ou vide."""
+        if value in (None, ''):
+            return []
+        if not isinstance(value, (list, tuple)):
+            raise serializers.ValidationError(
+                'Le champ « obligatoire_pour_types » doit être une liste de '
+                'types de contrat.')
+        connus = {code for code, _ in Contrat.TypeContrat.choices}
+        inconnus = [str(v) for v in value if str(v) not in connus]
+        if inconnus:
+            raise serializers.ValidationError(
+                f'Le champ « obligatoire_pour_types » contient des types de '
+                f'contrat inconnus : {", ".join(inconnus)}.')
+        return [str(v) for v in value]
 
     def _target_locale(self):
         request = self.context.get('request')
