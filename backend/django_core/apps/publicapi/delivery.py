@@ -137,7 +137,7 @@ def _record(webhook, event, payload, *, status, response_status, error):
     try:
         event_id = (payload.get(EVENT_ID_KEY, '')
                     if isinstance(payload, dict) else '')
-        return WebhookDelivery.objects.create(
+        enregistrement = WebhookDelivery.objects.create(
             company_id=webhook.company_id,
             webhook=webhook,
             event=event,
@@ -153,6 +153,13 @@ def _record(webhook, event, payload, *, status, response_status, error):
     except Exception:  # noqa: BLE001 — ne jamais propager
         logger.exception('Could not log webhook delivery')
         return None
+    # NTAPI11 — la tentative est journalisée : c'est le SEUL endroit où toutes
+    # les voies de livraison (envoi initial, reprises Celery YAPIC8, reprises
+    # programmées NTAPI8, replay manuel FG102) se rejoignent — donc le seul
+    # point d'accroche qui ne peut pas être contourné. Best-effort.
+    from .webhook_health import apres_livraison
+    apres_livraison(webhook, status)
+    return enregistrement
 
 
 def _send(webhook, event, payload, extra_headers=None):
@@ -222,6 +229,21 @@ def _deliver_one(webhook, event, payload):
     return outcome
 
 
+def _journaliser_flux(company_id, event, payload):
+    """NTAPI17 — ajoute l'évènement au journal append-only consommable.
+
+    Best-effort : le flux est un canal d'OBSERVATION, il ne doit jamais faire
+    échouer l'enregistrement métier ni empêcher la livraison webhook."""
+    try:
+        from .events_feed import enregistrer
+        enregistrer(
+            company_id, event, payload,
+            event_id=(payload.get(EVENT_ID_KEY, '')
+                      if isinstance(payload, dict) else ''))
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception('Could not append event %s to the public feed', event)
+
+
 def dispatch_event(company_id, event, payload):
     """Livre `event` à tous les webhooks activés de la société abonnés, via la
     tâche Celery `deliver_webhook` (retries + backoff). Best-effort, jamais
@@ -229,16 +251,29 @@ def dispatch_event(company_id, event, payload):
     cibles et toutes les tentatives."""
     if not company_id:
         return
+    payload = ensure_event_id(payload)
+    # NTAPI17 — le flux PULL est alimenté par les MÊMES signaux, AVANT et
+    # INDÉPENDAMMENT de tout abonnement webhook : un client sans URL publique
+    # doit voir l'évènement même si personne n'y est abonné en push, un
+    # évènement filtré par NTAPI12 pour un webhook reste lisible dans le flux,
+    # et une table `Webhook` momentanément illisible (early-return ci-dessous)
+    # ne doit pas créer un TROU dans le journal consommable.
+    _journaliser_flux(company_id, event, payload)
     try:
         webhooks = list(
             Webhook.objects.filter(company_id=company_id, enabled=True))
     except Exception:  # noqa: BLE001
         logger.exception('Could not load webhooks for company %s', company_id)
         return
-    payload = ensure_event_id(payload)
     from .tasks import deliver_webhook
+    from .webhook_filters import webhook_accepte
     for webhook in webhooks:
         if not webhook.subscribes_to(event):
+            continue
+        # NTAPI12 — condition FINE par évènement (`Webhook.filtres`), évaluée
+        # par `core.rules` sur le payload AVANT la mise en file. Sans filtre
+        # sur cet évènement : toujours livré (comportement historique).
+        if not webhook_accepte(webhook, event, payload):
             continue
         try:
             deliver_webhook.delay(webhook.id, event, payload)

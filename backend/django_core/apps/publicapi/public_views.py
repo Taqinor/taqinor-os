@@ -24,7 +24,7 @@ from apps.ventes.models import Devis, Facture
 from apps.installations.models import Installation
 from apps.stock.models import Produit
 
-from .auth import ApiKeyAuthentication, HasApiScope, ApiKeyRateThrottle
+from .auth import PUBLIC_AUTHENTICATION_CLASSES, HasApiScope, ApiKeyRateThrottle
 from .constants import (
     SCOPE_READ_LEADS, SCOPE_READ_DEVIS,
     SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS, SCOPE_READ_STOCK,
@@ -54,7 +54,7 @@ class PublicReadOnlyViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSe
         incrémentale) — ``date_modification`` quand il existe, sinon la date de
         création/émission.
     """
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [HasApiScope]
     throttle_classes = [ApiKeyRateThrottle]
     # Tri natif DRF (inclus dans rest_framework, aucune dépendance ajoutée).

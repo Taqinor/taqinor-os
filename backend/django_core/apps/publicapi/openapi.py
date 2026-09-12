@@ -50,8 +50,9 @@ _ERROR_SCHEMA = {
     'required': ['error'],
 }
 
-# NTAPI6 (débit réellement appliqué) posera ces en-têtes sur CHAQUE réponse —
-# déjà documentés ici en avance de phase, comme `doc_url` anticipe NTAPI4.
+# NTAPI6 — ces en-têtes sont RÉELLEMENT posés sur chaque réponse publique dès
+# qu'un plan (`core.ApiUsagePlan`) borne le volume de la société ; sans plan,
+# aucune borne n'existe et aucun en-tête n'est inventé.
 _RATE_LIMIT_HEADERS = {
     'X-RateLimit-Limit': {
         'schema': {'type': 'integer'},

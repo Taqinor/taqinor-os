@@ -185,23 +185,40 @@ def facture_pre_save(sender, instance, **kwargs):
     _capture_old_statut(Facture, instance)
 
 
+def _montant(valeur):
+    """Montant JSON-sérialisable (``Decimal`` → ``float``), ``None`` si vide.
+
+    NTAPI12 — les montants de VENTE figurent dans la charge utile pour qu'un
+    abonnement fin (`Webhook.filtres`, ex. ``{"montant_ttc__gte": 10000}``)
+    ait un champ sur lequel se prononcer : `core.rules` traite un champ ABSENT
+    comme une condition fausse, donc sans ce champ le filtre documenté
+    bloquerait TOUT. Ajout purement ADDITIF (un consommateur existant ignore
+    une clé qu'il ne lit pas). Aucun coût interne n'est jamais exposé — ni
+    `prix_achat`, ni marge : uniquement ce que le client paie.
+    """
+    return float(valeur) if valeur is not None else None
+
+
+def _payload_facture(instance, event):
+    return {
+        'event': event,
+        'id': instance.pk,
+        'reference': instance.reference,
+        'statut': instance.statut,
+        'montant_ht': _montant(instance.montant_ht),
+        'montant_ttc': _montant(instance.montant_ttc),
+    }
+
+
 def facture_post_save(sender, instance, created, **kwargs):
     if created:
-        _safe_dispatch(instance.company_id, EVENT_FACTURE_CREATED, {
-            'event': EVENT_FACTURE_CREATED,
-            'id': instance.pk,
-            'reference': instance.reference,
-            'statut': instance.statut,
-        })
+        _safe_dispatch(instance.company_id, EVENT_FACTURE_CREATED,
+                       _payload_facture(instance, EVENT_FACTURE_CREATED))
     old = getattr(instance, _OLD_STATUT_ATTR, None)
     paid = Facture.Statut.PAYEE
     if instance.statut == paid and old != paid:
-        _safe_dispatch(instance.company_id, EVENT_FACTURE_PAID, {
-            'event': EVENT_FACTURE_PAID,
-            'id': instance.pk,
-            'reference': instance.reference,
-            'statut': instance.statut,
-        })
+        _safe_dispatch(instance.company_id, EVENT_FACTURE_PAID,
+                       _payload_facture(instance, EVENT_FACTURE_PAID))
 
 
 # ── Paiement ─────────────────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ from .public_views import (
 )
 from .public_write_views import (
     PublicLeadCreateView, PublicLeadUpdateView, PublicActivityCreateView,
+    PublicDevisCreateView, PublicTicketCreateView,
 )
 from .bulk_views import (
     PublicExportCreateView, PublicImportCreateView, PublicJobViewSet,
@@ -26,6 +27,9 @@ from .bulk_views import (
 )
 from .public_sandbox_views import SandboxResetView
 from .public_changelog_views import PublicChangelogView
+from .public_errors_views import PublicErrorCatalogView
+from .public_events_views import PublicEventFeedView
+from .public_oauth_views import PublicOAuthTokenView
 from .public_licence_views import PublicLicenceStatutView
 from .public_scm_views import (
     PublicPolitiqueStockViewSet, PublicPrevisionDemandeViewSet,
@@ -61,6 +65,12 @@ urlpatterns = [
          name='public-lead-write-update'),
     path('leads-write/<int:pk>/activites/', PublicActivityCreateView.as_view(),
          name='public-activity-write-create'),
+    # NTAPI18 — écriture étendue : devis BROUILLON (scope devis:write) et
+    # ticket SAV correctif (scope tickets:write). Aucun statut aval touché.
+    path('devis-write/', PublicDevisCreateView.as_view(),
+         name='public-devis-write-create'),
+    path('tickets-write/', PublicTicketCreateView.as_view(),
+         name='public-ticket-write-create'),
     # NTAPI14/15 — jobs bulk export/import asynchrones (202 + suivi via `jobs/`).
     path('exports/', PublicExportCreateView.as_view(),
          name='public-exports-create'),
@@ -70,12 +80,22 @@ urlpatterns = [
     # pour `=IMPORTDATA()` Google Sheets/Excel Web.
     path('exports/<str:entite>.csv', PublicCsvPullExportView.as_view(),
          name='public-exports-csv-pull'),
+    # NTAPI19 — jeton OAuth2 client_credentials (endpoint non authentifié :
+    # c'est lui qui authentifie, d'où son throttle dédié par IP).
+    path('oauth/token/', PublicOAuthTokenView.as_view(),
+         name='public-oauth-token'),
+    # NTAPI17 — flux d'évènements consommable par curseur (CDC léger).
+    path('events/', PublicEventFeedView.as_view(), name='public-event-feed'),
     # NTAPI27 — reset du bac à sable (clé `test` seule).
     path('sandbox/reset/', SandboxResetView.as_view(),
          name='public-sandbox-reset'),
     # NTAPI24 — fil « changelog API » dédié (public, aucune clé requise).
     path('changelog/', PublicChangelogView.as_view(),
          name='public-changelog'),
+    # NTAPI4 — catalogue d'erreurs consultable (public, aucune clé requise) :
+    # cible du `doc_url` de chaque enveloppe d'erreur NTAPI3.
+    path('errors/', PublicErrorCatalogView.as_view(),
+         name='public-error-catalog'),
     # NTADM42 — statut de licence (plan/modules/sièges) de la société de la clé.
     path('licence/statut/', PublicLicenceStatutView.as_view(),
          name='public-licence-statut'),

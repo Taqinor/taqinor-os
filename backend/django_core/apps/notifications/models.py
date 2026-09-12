@@ -349,6 +349,13 @@ class EventType(models.TextChoices):
     CONSENTEMENT_RETIRE_TRAITE = (
         'consentement_retire_traite',
         'Traitement d\'une personne ayant retiré son consentement')
+    # NTAPI11 — un endpoint webhook SORTANT (apps.publicapi.Webhook) accumule
+    # assez d'échecs consécutifs pour être considéré MORT : il est
+    # automatiquement désactivé, et l'admin du tenant en est averti. La
+    # réactivation reste un geste MANUEL explicite — jamais une remise en
+    # service automatique vers une cible qui a cessé de répondre.
+    API_WEBHOOK_DESACTIVE = (
+        'api_webhook_desactive', 'Webhook désactivé automatiquement')
 
 
 class Channel(models.TextChoices):

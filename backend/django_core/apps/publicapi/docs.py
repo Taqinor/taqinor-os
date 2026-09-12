@@ -82,6 +82,19 @@ def public_api_reference():
                 "La société est déduite de la clé : il n'existe aucun moyen de "
                 "lire les données d'une autre société."
             ),
+            # NTAPI19 — second schéma accepté, en PLUS de la clé d'API (jamais
+            # à sa place : aucune intégration existante n'est touchée).
+            'oauth2': (
+                "Alternative recommandée pour une intégration d'entreprise : "
+                "`POST /api/public/v1/oauth/token/` (grant "
+                "`client_credentials`) échange, une fois, `client_id` + "
+                "`client_secret` contre un jeton COURT, présenté ensuite en "
+                "`Authorization: Bearer <jeton>`. Un secret permanent ne "
+                "circule donc plus à chaque appel. Les scopes du jeton sont "
+                "ceux du client (ou le sous-ensemble demandé via `scope`) ; "
+                "retirer un scope au client prend effet IMMÉDIATEMENT, sans "
+                "attendre l'expiration des jetons déjà émis."
+            ),
         },
         'scopes': [
             {'code': code, 'libelle': libelle}
@@ -203,6 +216,31 @@ def public_api_reference():
                     'scope': 'activities:write',
                     'description': "Ajoute une note (chatter) sur un lead.",
                 },
+                {
+                    'chemin': '/api/public/v1/devis-write/',
+                    'methode': 'POST',
+                    'scope': 'devis:write',
+                    'description': (
+                        "NTAPI18 — crée un devis BROUILLON rattaché à un lead "
+                        "existant (corps : `lead`, plus `numero`/`montant_ht`/"
+                        "`montant_tva`/`montant_ttc`/`date` en aide à la "
+                        "saisie). Le client est résolu côté serveur depuis le "
+                        "lead, sans doublon. Aucune ligne n'est créée et aucun "
+                        "statut aval n'est touché : le devis reste `brouillon` "
+                        "et le PDF client reste servi par `/proposal`."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/tickets-write/',
+                    'methode': 'POST',
+                    'scope': 'tickets:write',
+                    'description': (
+                        "NTAPI18 — ouvre un ticket SAV correctif (corps : "
+                        "`client`, `description`, `installation` optionnelle). "
+                        "Toutes les entités liées sont bornées à la société de "
+                        "la clé."
+                    ),
+                },
             ],
         },
         'endpoints_bulk': {
@@ -281,6 +319,42 @@ def public_api_reference():
                     'request_body': False,
                     'query_token_auth': True,
                     'response_csv': True,
+                },
+                {
+                    'chemin': '/api/public/v1/events/',
+                    'methode': 'GET',
+                    'description': (
+                        "NTAPI17 — flux d'évènements consommable par CURSEUR "
+                        "(`?after=<sequence>&limit=<n>`), alimenté par les "
+                        "mêmes signaux que les webhooks. Pendant PULL du push : "
+                        "pour une intégration qui ne peut pas exposer d'URL "
+                        "publique, et comme filet de rattrapage. Scope "
+                        "`read:events` pour ouvrir le canal ; chaque évènement "
+                        "reste filtré par le scope de lecture de SA famille "
+                        "(`lead.*` → `read:leads`, `facture.*` → "
+                        "`read:factures`…) — le flux n'est jamais un "
+                        "contournement des scopes de lecture."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                },
+                {
+                    'chemin': '/api/public/v1/oauth/token/',
+                    'methode': 'POST',
+                    'description': (
+                        "NTAPI19 — échange `client_id`/`client_secret` contre "
+                        "un jeton COURT (grant `client_credentials`). Corps : "
+                        "`grant_type=client_credentials`, `client_id`, "
+                        "`client_secret`, `scope` optionnel (sous-ensemble). "
+                        "Le jeton s'utilise ensuite en "
+                        "`Authorization: Bearer <jeton>` sur TOUS les "
+                        "endpoints publics, en alternative à "
+                        "`Authorization: Api-Key <clé>`. Identifiants "
+                        "invalides → 401, message identique quel que soit le "
+                        "motif."
+                    ),
+                    'success_status': '200',
+                    'request_body': True,
                 },
             ],
         },

@@ -193,7 +193,20 @@ class Webhook(models.Model):
     secret = EncryptedCharField(max_length=128)
     # Évènements auxquels ce webhook est abonné (sous-ensemble de ALL_EVENTS).
     events = models.JSONField(default=list, blank=True)
+    # NTAPI12 — abonnement FIN : condition par évènement, évaluée sur le
+    # payload AVANT livraison (moteur `core.rules`, FG367). Forme :
+    # ``{"facture.paid": {"montant_ttc__gte": 10000}}``. Un évènement absent
+    # de ce dict n'est jamais filtré (comportement historique) — le filtrage
+    # est OPT-IN, évènement par évènement.
+    filtres = models.JSONField(default=dict, blank=True)
     enabled = models.BooleanField(default=True)
+    # NTAPI11 — traçabilité d'une désactivation AUTOMATIQUE (cible morte).
+    # `disabled_at` vide = jamais auto-désactivé ; un admin qui réactive
+    # manuellement les remet à vide (cf. `services.reactiver_webhook`). Une
+    # désactivation manuelle par l'admin laisse ces deux champs vides : on
+    # distingue ainsi « l'admin l'a coupé » de « la cible est morte ».
+    disabled_reason = models.TextField(blank=True, default='')
+    disabled_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -652,3 +665,262 @@ class BulkJob(TenantModel):
 
 
 __all__ += ['BulkJob']
+
+
+class ApiEvent(TenantModel):
+    """NTAPI17 — journal APPEND-ONLY des évènements, consommable par curseur.
+
+    Le même flux d'évènements que les webhooks (``delivery.dispatch_event`` est
+    le point unique où tous les signaux métier se rejoignent), mais en mode
+    PULL : un intégrateur qui ne peut pas exposer d'URL publique (derrière un
+    pare-feu, un poste de travail, un connecteur no-code) relit
+    ``GET /api/public/v1/events/?after=<sequence>`` et ne voit que du NEUF.
+
+    POURQUOI UNE ``sequence`` PAR SOCIÉTÉ ET NON LA PK. Une PK globale
+    divulguerait le VOLUME des autres tenants (un client verrait ses ids sauter
+    de 4 000 entre deux de ses évènements) et rendrait la pagination par curseur
+    fragile. Chaque société a donc son propre compteur dense, contraint unique
+    par ``(company, sequence)`` — attribué par ``services_events.enregistrer``
+    (plus-haut-utilisé + 1, savepoint + retry sur course), JAMAIS par un
+    ``count() + 1`` (règle de numérotation du dépôt).
+
+    APPEND-ONLY : aucun champ n'est jamais modifié après création. La purge se
+    fait par RÉTENTION (politique ``publicapi_api_event_retention``, bornée par
+    le plan NTAPI7), jamais par mise à jour.
+    """
+
+    # Compteur DENSE et croissant, propre à la société (jamais la PK globale).
+    sequence = models.BigIntegerField()
+    # Code d'évènement (`constants.ALL_EVENTS`) — même vocabulaire que les
+    # webhooks, jamais un second jeu de noms.
+    type = models.CharField(max_length=50)
+    payload = models.JSONField(default=dict, blank=True)
+    # Identité STABLE de l'évènement source (uuid4), partagée avec la livraison
+    # webhook correspondante : un consommateur qui utilise LES DEUX canaux
+    # (webhook + rattrapage par le flux) déduplique dessus.
+    event_id = models.CharField(max_length=36, blank=True, default='',
+                                db_index=True)
+    # created_at / updated_at hérités de core.TenantModel.
+
+    class Meta:
+        verbose_name = "Évènement d'API publique"
+        verbose_name_plural = "Évènements d'API publique"
+        ordering = ['company', 'sequence']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'sequence'],
+                name='publicapi_apievent_co_seq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'sequence'],
+                         name='publicapi_apievent_cur_idx'),
+        ]
+
+    def __str__(self):
+        return f'#{self.sequence} {self.type} (société {self.company_id})'
+
+
+__all__ += ['ApiEvent']
+
+
+class OAuthClient(TenantModel):
+    """NTAPI19 — client OAuth2 « client_credentials » d'une intégration.
+
+    Une clé d'API est un secret PERMANENT que le client doit stocker et
+    transmettre à chaque appel : s'il fuite (log, capture réseau, dépôt git),
+    il reste valable jusqu'à sa rotation manuelle. Le flot
+    ``client_credentials`` échange ce secret permanent, UNE fois, contre un
+    jeton COURT (défaut 1 h) — c'est ce que réclame toute DSI d'un grand
+    compte, et c'est la seule raison d'être de ce modèle.
+
+    LE CHOIX DE CONCEPTION QUI PORTE TOUT LE RESTE : chaque client OAuth porte
+    une ``ApiKey`` COMPAGNON, et le jeton émis se résout à CETTE clé. Tout
+    l'aval — vérification de scope (``HasApiScope``), débit et quota (NTAPI6 et
+    ses compteurs ``ApiUsageRecord``), en-têtes ``X-RateLimit-*``, version
+    épinglée (NTAPI5), annonces de dépréciation (NTAPI2), scoping société —
+    fonctionne donc SANS UNE LIGNE DE CHANGEMENT ni un seul assouplissement de
+    contrôle. L'alternative (un porteur d'identité parallèle) aurait exigé de
+    relâcher chaque ``isinstance(request.auth, ApiKey)`` du chemin public, et
+    aurait ouvert un trou de quota : un intégrateur passé en OAuth n'aurait
+    plus été compté nulle part.
+
+    Le secret en clair de la clé compagnon est GÉNÉRÉ PUIS JETÉ : elle n'est
+    donc utilisable QUE par ce flot OAuth, jamais comme un
+    ``Authorization: Api-Key`` direct.
+    """
+
+    label = models.CharField(max_length=120)
+    # Identifiant PUBLIC du client (transmis en clair, comme chez tout
+    # fournisseur OAuth2) — unique au niveau global pour une résolution O(1).
+    client_id = models.CharField(max_length=64, unique=True, db_index=True)
+    # Le secret, lui, n'est JAMAIS stocké en clair : même empreinte poivrée
+    # (HMAC-SHA256 avec la SECRET_KEY) que `ApiKey.key_hash`, jamais relisible.
+    client_secret_hash = models.CharField(max_length=64, db_index=True)
+    scopes = models.JSONField(default=list, blank=True)
+    actif = models.BooleanField(default=True)
+    api_key = models.ForeignKey(
+        ApiKey,
+        on_delete=models.CASCADE,  # on_delete: composition — la cle compagnon n'existe que pour ce client OAuth
+        related_name='oauth_clients',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='oauth_clients_crees',
+    )
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Client OAuth2 (API publique)'
+        verbose_name_plural = 'Clients OAuth2 (API publique)'
+        ordering = ['-created_at']
+        constraints = [
+            # L'unicité OPÉRANTE de `client_id` est GLOBALE (`unique=True` sur
+            # le champ) : le flot `client_credentials` résout le client AVANT
+            # de connaître la société — c'est la définition même du grant, on
+            # ne peut pas la scoper. Cette contrainte-ci énonce en plus, au
+            # niveau du schéma, l'invariant multi-tenant correspondant : deux
+            # clients d'une MÊME société ne partagent jamais un `client_id`.
+            models.UniqueConstraint(
+                fields=['company', 'client_id'],
+                name='publicapi_oauthclient_co_cid'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='publicapi_oauth_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.label} ({self.client_id})'
+
+    def has_scope(self, scope):
+        return scope in (self.scopes or [])
+
+    @classmethod
+    def issue(cls, *, company, label, scopes, created_by=None):
+        """Crée un client et renvoie ``(instance, client_id, secret_en_clair)``.
+
+        Le secret n'est disponible QU'ICI. La clé compagnon est créée avec les
+        MÊMES scopes ; son propre secret en clair est délibérément jeté (elle
+        n'est utilisable que via ce flot OAuth).
+        """
+        from .constants import ALL_SCOPES
+
+        propres = [s for s in (scopes or []) if s in ALL_SCOPES]
+        compagnon, _raw_jete = ApiKey.issue(
+            company=company, label=f'OAuth · {label}', scopes=propres,
+            created_by=created_by)
+        client_id = f'tqc_{secrets.token_urlsafe(18)}'
+        secret = secrets.token_urlsafe(32)
+        instance = cls.objects.create(
+            company=company,
+            label=label,
+            client_id=client_id,
+            client_secret_hash=hash_key(secret),
+            scopes=propres,
+            api_key=compagnon,
+            created_by=created_by,
+        )
+        return instance, client_id, secret
+
+    def verifie_secret(self, secret_clair):
+        """Comparaison à temps constant du secret présenté."""
+        if not secret_clair:
+            return False
+        return hmac.compare_digest(
+            self.client_secret_hash, hash_key(str(secret_clair)))
+
+
+__all__ += ['OAuthClient']
+
+
+class PartenaireEdi(TenantModel):
+    """NTAPI36 — registre des partenaires EDI (identifiants + mappings SKU).
+
+    Un échange EDI n'est PAS un échange de SKU internes : chaque partenaire
+    (grande distribution, centrale d'achat, donneur d'ordre industriel)
+    identifie les articles par SON propre code, et s'identifie lui-même par un
+    ``GLN`` (EDIFACT/GS1) ou un ``DUNS`` (X12/Amérique du Nord). Ce registre
+    porte les deux : QUI est le partenaire, et COMMENT traduire les références
+    d'articles dans les deux sens.
+
+    ``mapping_sku`` est un simple dict ``{"<sku interne>": "<code partenaire>"}``.
+    UN SKU ABSENT DU MAPPING N'EST JAMAIS UNE ERREUR BLOQUANTE : la traduction
+    renvoie le SKU interne tel quel ET un avertissement (voir
+    ``edi_partners.traduire_lignes``). Refuser l'export entier pour un article
+    non mappé bloquerait une facture complète sur un seul article accessoire —
+    alors qu'un code non reconnu côté partenaire se règle par un échange
+    humain, en aval.
+
+    Registre INERTE tant que l'EDI n'est pas activé : ce modèle ne déclenche
+    aucune transmission, il ne fait que décrire des correspondances.
+    """
+
+    FORMAT_EDIFACT = 'edifact'
+    FORMAT_X12 = 'x12'
+    FORMAT_CHOICES = [
+        (FORMAT_EDIFACT, 'EDIFACT (UN/CEFACT)'),
+        (FORMAT_X12, 'ANSI X12'),
+    ]
+
+    TYPE_GLN = 'gln'
+    TYPE_DUNS = 'duns'
+    TYPE_IDENTIFIANT_CHOICES = [
+        (TYPE_GLN, 'GLN (GS1)'),
+        (TYPE_DUNS, 'DUNS'),
+    ]
+
+    nom = models.CharField(max_length=200)
+    type_identifiant = models.CharField(
+        max_length=8, choices=TYPE_IDENTIFIANT_CHOICES, default=TYPE_GLN)
+    identifiant = models.CharField(
+        max_length=64,
+        help_text="GLN (13 chiffres) ou DUNS (9 chiffres) du partenaire.")
+    format = models.CharField(
+        max_length=10, choices=FORMAT_CHOICES, default=FORMAT_EDIFACT)
+    # {"SKU-INTERNE": "CODE-PARTENAIRE"} — jamais une liste, jamais un CSV :
+    # la recherche d'un SKU doit rester O(1) au moment de l'export.
+    mapping_sku = models.JSONField(default=dict, blank=True)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Partenaire EDI'
+        verbose_name_plural = 'Partenaires EDI'
+        ordering = ['nom', 'id']
+        constraints = [
+            # Un même identifiant ne désigne qu'UN partenaire par société —
+            # deux lignes concurrentes donneraient deux mappings possibles pour
+            # le même GLN, donc un export non déterministe.
+            models.UniqueConstraint(
+                fields=['company', 'identifiant'],
+                name='publicapi_partenaireedi_co_ident'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='publicapi_pedi_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.type_identifiant.upper()} {self.identifiant})'
+
+    def code_pour_sku(self, sku):
+        """Code partenaire d'un SKU interne, ou ``None`` s'il n'est pas mappé."""
+        mapping = self.mapping_sku if isinstance(self.mapping_sku, dict) else {}
+        return mapping.get(sku) or None
+
+    def sku_pour_code(self, code_partenaire):
+        """Traduction INVERSE (import : un ORDERS porte les codes DU
+        partenaire). ``None`` si aucun SKU interne ne correspond.
+
+        Construite à la volée depuis ``mapping_sku`` plutôt que stockée en
+        double : un second dict à maintenir finirait fatalement désynchronisé
+        du premier."""
+        mapping = self.mapping_sku if isinstance(self.mapping_sku, dict) else {}
+        for sku, code in mapping.items():
+            if code == code_partenaire:
+                return sku
+        return None
+
+
+__all__ += ['PartenaireEdi']

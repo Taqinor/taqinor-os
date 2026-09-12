@@ -30,12 +30,24 @@ SCOPE_READ_SCM = 'read:scm'
 # Identifiant tel que nommé au plan (``juridique:read``) — il ne suit pas le
 # préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici.
 SCOPE_READ_JURIDIQUE = 'juridique:read'
+# NTAPI17 — flux d'évènements consommable (`/api/public/v1/events/`). Ce scope
+# ouvre le CANAL, il n'accorde AUCUNE donnée à lui seul : chaque évènement
+# reste filtré par le scope de lecture de SA famille (voir
+# `events_feed.SCOPE_PAR_EVENEMENT`). Une clé qui ne porterait que ce scope lit
+# un flux VIDE — le flux n'est jamais un contournement des scopes de lecture.
+SCOPE_READ_EVENTS = 'read:events'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
 # viennent de STAGES.py (jamais hardcodés).
 SCOPE_WRITE_LEADS = 'leads:write'
 SCOPE_WRITE_ACTIVITIES = 'activities:write'
+# NTAPI18 — écriture ÉTENDUE. `devis:write` crée un devis BROUILLON rattaché à
+# un lead/client existant (jamais un devis envoyé/accepté : l'API ne change
+# aucun statut aval, règle #4) ; `tickets:write` ouvre un ticket SAV correctif.
+# Les deux passent EXCLUSIVEMENT par les `services.py` des apps cibles.
+SCOPE_WRITE_DEVIS = 'devis:write'
+SCOPE_WRITE_TICKETS = 'tickets:write'
 
 # Ordre = ordre d'affichage dans l'écran Paramètres.
 SCOPE_CHOICES = [
@@ -48,8 +60,12 @@ SCOPE_CHOICES = [
     (SCOPE_READ_SCM, 'Lire la planification supply chain (prévisions, politiques de stock, réappro)'),
     (SCOPE_READ_JURIDIQUE,
      'Lire les dossiers juridiques non confidentiels et leur budget'),
+    (SCOPE_READ_EVENTS,
+     "Lire le flux d'évènements (limité aux familles déjà autorisées)"),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
+    (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),
+    (SCOPE_WRITE_TICKETS, 'Créer un ticket SAV correctif'),
 ]
 ALL_SCOPES = [code for code, _ in SCOPE_CHOICES]
 
