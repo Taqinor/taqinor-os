@@ -153,6 +153,16 @@ const paieApi = {
   stc: (id, data) => api.post(`/paie/profils/${id}/stc/`, data),
   stcPdf: (id) =>
     api.get(`/paie/profils/${id}/stc-pdf/`, { responseType: 'blob' }),
+  // NTPAY6 — certificat de travail de sortie (art. 72), pièce de l'assistant
+  // STC : dates exactes d'entrée/sortie + emploi(s) + « libre de tout
+  // engagement ». Distinct de l'attestation de travail générique (PAIE34).
+  certificatTravail: (id) =>
+    api.get(`/paie/profils/${id}/certificat-travail/`,
+      { responseType: 'blob' }),
+  // NTPAY12 — pays de paie (moteur multi-pays NTPAY7). `moteur_disponible`
+  // est dit par le SERVEUR : un pays sans pack de calcul livré n'est jamais
+  // proposé à l'affectation d'un profil.
+  getPaysPaie: (params) => api.get('/paie/pays-paie/', { params }),
   simulationBulletin: (id, params) =>
     api.get(`/paie/profils/${id}/simulation/`, { params }),
   registreConges: (params) =>

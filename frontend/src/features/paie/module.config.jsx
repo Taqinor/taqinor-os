@@ -3,7 +3,8 @@
    de composants : le fast-refresh ne s'y applique pas — comme moduleRoutes.jsx. */
 import { lazy } from 'react'
 import {
-  Wallet, FileText, SlidersHorizontal, Banknote, ReceiptText, ListPlus,
+  Wallet, FileText, SlidersHorizontal, Banknote, ReceiptText, ListPlus, BookOpen,
+  Globe,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -25,6 +26,10 @@ const MesBulletins = lazy(() => import('./MesBulletins.jsx'))
 // PACT95 — catalogue des types d'entrées ponctuelles (ZPAI9,
 // `TypeEntreePonctuelle`), jusque-là sans aucun écran.
 const TypesEntreePonctuelle = lazy(() => import('./TypesEntreePonctuelle.jsx'))
+// NTPAY3 — plan comptable paie (schema de ventilation NTPAY2), editable.
+const PlanComptablePaie = lazy(() => import('./PlanComptablePaie.jsx'))
+// NTPAY12 — pays de paie (moteur multi-pays NTPAY7), activation + moteur.
+const PaysPaie = lazy(() => import('./PaysPaie.jsx'))
 
 const ICON = { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' }
 const PALIER = ['responsable', 'admin']
@@ -52,6 +57,10 @@ export default {
         icon: <Banknote {...ICON} />, roles: PALIER },
       { to: '/paie/types-entree-ponctuelle', label: 'Types d’entrées ponctuelles',
         icon: <ListPlus {...ICON} />, roles: PALIER },
+      { to: '/paie/plan-comptable', label: 'Plan comptable paie',
+        icon: <BookOpen {...ICON} />, roles: PALIER },
+      { to: '/paie/pays', label: 'Pays de paie',
+        icon: <Globe {...ICON} />, roles: PALIER },
       // UX14 — self-service : visible pour TOUS les rôles.
       { to: '/paie/mes-bulletins', label: 'Mes bulletins',
         icon: <ReceiptText {...ICON} />, roles: TOUS },
@@ -62,6 +71,8 @@ export default {
     ['/paie/mes-bulletins', 'Mes bulletins'],
     ['/paie/declarations', 'Déclarations & virements'],
     ['/paie/types-entree-ponctuelle', 'Types d’entrées ponctuelles'],
+    ['/paie/plan-comptable', 'Plan comptable paie'],
+    ['/paie/pays', 'Pays de paie'],
     ['/paie/parametres', 'Paramètres de paie'],
     ['/paie/bulletins', 'Bulletins de paie'],
     ['/paie', 'Run de paie'],
@@ -74,6 +85,8 @@ export default {
     { path: '/paie/parametres', component: PaieParametres, roles: PALIER },
     { path: '/paie/declarations', component: PaieDeclarations, roles: PALIER },
     { path: '/paie/types-entree-ponctuelle', component: TypesEntreePonctuelle, roles: PALIER },
+    { path: '/paie/plan-comptable', component: PlanComptablePaie, roles: PALIER },
+    { path: '/paie/pays', component: PaysPaie, roles: PALIER },
     // Route self-service : pas de `roles` → authLoader (tout utilisateur connecté).
     { path: '/paie/mes-bulletins', component: MesBulletins },
   ],

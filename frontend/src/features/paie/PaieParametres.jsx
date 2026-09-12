@@ -885,6 +885,11 @@ function ProfilDialog({ profil, onClose, onSaved }) {
   const [numeroAmo, setNumeroAmo] = useState(profil?.numero_amo || '')
   const [affilieCimr, setAffilieCimr] = useState(profil ? Boolean(profil.affilie_cimr) : false)
   const [numeroCimr, setNumeroCimr] = useState(profil?.numero_cimr || '')
+  // NTPAY12 — pays de paie du profil : vide = moteur marocain (défaut).
+  // Seuls les pays ACTIFS dont le pack de calcul est LIVRÉ sont proposés —
+  // c'est le serveur qui le dit (`moteur_disponible`), jamais le client.
+  const [paysOptions, setPaysOptions] = useState([])
+  const [paysId, setPaysId] = useState(profil?.pays ? String(profil.pays) : '')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -895,12 +900,20 @@ function ProfilDialog({ profil, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    paieApi.getPaysPaie()
+      .then((r) => setPaysOptions(
+        listOf(r.data).filter((p) => p.actif && p.moteur_disponible)))
+      .catch(() => setPaysOptions([]))
+  }, [])
+
   const enregistrer = async () => {
     if (!isEdit && !employeId) { toast.error('Choisissez un employé.'); return }
     setBusy(true)
     try {
       await paieApi.saveProfil(profil?.id, {
         ...(isEdit ? {} : { employe: Number(employeId) }),
+        pays: paysId ? Number(paysId) : null,
         type_remuneration: typeRemuneration,
         salaire_base: Number(salaireBase) || 0,
         rib,
@@ -940,6 +953,25 @@ function ProfilDialog({ profil, onClose, onSaved }) {
                   {employes.map((e) => (
                     <SelectItem key={e.id} value={String(e.id)}>
                       {`${e.nom || ''} ${e.prenom || ''}`.trim() || `Employé #${e.id}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          )}
+          {paysOptions.length > 0 && (
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">
+                Pays de paie (vide = Maroc)
+              </span>
+              <Select value={paysId} onValueChange={setPaysId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Maroc (par défaut)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paysOptions.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.code_iso} — {p.libelle} ({p.devise})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1130,6 +1162,21 @@ function StcDialog({ profil, onClose }) {
     } finally { setBusy(false) }
   }
 
+  // NTPAY6 — pièce de sortie obligatoire (art. 72), distincte du reçu STC :
+  // dates exactes d'entrée/sortie + emploi(s) + « libre de tout engagement ».
+  const telechargerCertificat = async () => {
+    setBusy(true)
+    try {
+      const { data } = await paieApi.certificatTravail(profil.id)
+      openPdfBlob(data, `certificat_travail_${profil.id}.pdf`)
+    } catch (e) {
+      toast.error(
+        e?.response?.data?.detail
+        || 'Certificat de travail indisponible (moteur de rendu).',
+      )
+    } finally { setBusy(false) }
+  }
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
@@ -1176,6 +1223,10 @@ function StcDialog({ profil, onClose }) {
           )}
         </div>
         <DialogFooter>
+          <Button variant="outline" onClick={telechargerCertificat}
+            loading={busy}>
+            <Download size={16} aria-hidden="true" /> Certificat de travail
+          </Button>
           {bulletin && (
             <Button variant="outline" onClick={telechargerRecu} loading={busy}>
               <Download size={16} aria-hidden="true" /> Reçu PDF
