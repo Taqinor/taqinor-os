@@ -896,6 +896,80 @@ def tableau_bord_dpo(request):
     return Response(_cockpit(request.user.company))
 
 
+def _periode_depuis_requete(donnees):
+    """Fenêtre ``{debut, fin}`` lue de la requête (ISO), ou dates vides.
+
+    Une date illisible est traitée comme ABSENTE plutôt que rejetée : une
+    recherche e-discovery ne doit pas échouer sur une faute de frappe de
+    fenêtre — elle doit chercher, et dire sur quelle fenêtre elle a cherché
+    (la réponse renvoie toujours la période effectivement appliquée).
+    """
+    from django.utils.dateparse import parse_datetime
+
+    fenetre = {}
+    for cle in ('debut', 'fin'):
+        brut = (donnees.get(cle) or '').strip()
+        fenetre[cle] = parse_datetime(brut) if brut else None
+    return fenetre
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminOrResponsableTier])
+def e_discovery(request):
+    """NTGRC31 — recherche transverse horodatée (+ mise sous séquestre).
+
+    ``GET`` : ``?terme=...&apps=crm_client,audit_log&debut=...&fin=...``
+    renvoie les résultats groupés par app.
+
+    ``POST`` : mêmes paramètres dans le corps, plus un objet ``legal_hold``
+    (``{nom, motif, demandeur, base_juridique}``) qui CRÉE un séquestre
+    couvrant les résultats gelables. Les types que le séquestre ne sait pas
+    réellement geler (le journal d'activité) sont listés dans
+    ``types_ignores`` — jamais passés sous silence.
+    """
+    from .selectors import rechercher_e_discovery
+    from .services import placer_resultats_sous_hold
+
+    donnees = request.data if request.method == 'POST' else request.query_params
+    donnees = donnees or {}
+    terme = (donnees.get('terme') or '').strip()
+    if not terme:
+        return Response(
+            {'terme': 'Indiquez le terme à rechercher (email, téléphone ou '
+                      'mot-clé).'}, status=400)
+
+    brut_apps = donnees.get('apps')
+    if isinstance(brut_apps, str):
+        apps_demandees = [a.strip() for a in brut_apps.split(',') if a.strip()]
+    elif isinstance(brut_apps, (list, tuple)):
+        apps_demandees = [str(a).strip() for a in brut_apps if str(a).strip()]
+    else:
+        apps_demandees = None
+
+    resultat = rechercher_e_discovery(
+        request.user.company, terme, apps=apps_demandees,
+        periode=_periode_depuis_requete(donnees), user=request.user)
+
+    if request.method == 'GET':
+        return Response(resultat)
+
+    demande_hold = donnees.get('legal_hold') or {}
+    if not isinstance(demande_hold, dict) or not demande_hold:
+        return Response(resultat)
+
+    hold, ignores = placer_resultats_sous_hold(
+        request.user.company, resultat['resultats'],
+        nom=demande_hold.get('nom') or f'E-discovery « {terme} »',
+        motif=demande_hold.get('motif'),
+        demandeur=(demande_hold.get('demandeur')
+                   or getattr(request.user, 'username', '') or ''),
+        base_juridique=demande_hold.get('base_juridique') or '')
+    resultat['types_ignores'] = ignores
+    resultat['legal_hold'] = (
+        LegalHoldSerializer(hold).data if hold is not None else None)
+    return Response(resultat, status=201 if hold is not None else 200)
+
+
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def score_conformite(request):

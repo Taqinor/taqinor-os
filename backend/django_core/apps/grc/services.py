@@ -1178,3 +1178,58 @@ def demander_revision_dpia(analyse):
     analyse.statut = AnalyseImpactDPIA.STATUT_A_REVISER
     analyse.save(update_fields=['statut', 'updated_at'])
     return analyse
+
+
+# ── NTGRC31 — e-discovery : mise sous séquestre des résultats ───────────────
+
+#: Périmètres e-discovery qu'un séquestre transverse sait réellement GELER.
+#: Le journal d'activité en est absent À DESSEIN : il est déjà protégé par sa
+#: propre rétention plancher (``audit.selectors.AUDIT_RETENTION_FLOOR_DAYS``)
+#: et une ligne de journal ne « s'anonymise » pas. Prétendre la geler ici
+#: écrirait un périmètre que rien n'applique — pire qu'un périmètre absent.
+TYPES_GELABLES = ('crm_client', 'crm_lead')
+
+
+def placer_resultats_sous_hold(company, resultats, *, nom, motif=None,
+                               demandeur='', base_juridique=''):
+    """NTGRC31 — crée un ``LegalHold`` couvrant les résultats d'une recherche.
+
+    ``resultats`` est le dict ``{type_objet: [{id, …}]}`` renvoyé par
+    ``rechercher_e_discovery``. Seuls les types RÉELLEMENT gelables entrent
+    dans le périmètre (``TYPES_GELABLES``) ; les autres sont ignorés et le
+    séquestre ne prétend pas les couvrir.
+
+    Renvoie ``(hold, types_ignores)`` — ou ``(None, types_ignores)`` si aucun
+    résultat gelable : créer un séquestre vide donnerait l'illusion d'une
+    protection inexistante.
+    """
+    from .models import LegalHold
+
+    perimetre = []
+    ignores = []
+    for type_objet, lignes in sorted((resultats or {}).items()):
+        ids = sorted({
+            ligne.get('id') for ligne in (lignes or [])
+            if isinstance(ligne, dict) and ligne.get('id') is not None
+        })
+        if not ids:
+            continue
+        if type_objet not in TYPES_GELABLES:
+            ignores.append(type_objet)
+            continue
+        perimetre.append({'type_objet': type_objet, 'filtre': {'ids': ids}})
+
+    if not perimetre:
+        return None, ignores
+
+    hold = LegalHold.objects.create(
+        company=company,
+        nom=(nom or 'Séquestre e-discovery')[:160],
+        motif=motif or LegalHold.MOTIF_LITIGE,
+        perimetre=perimetre,
+        date_debut=timezone.now().date(),
+        statut=LegalHold.STATUT_ACTIF,
+        demandeur=(demandeur or '')[:160],
+        base_juridique=base_juridique or '',
+    )
+    return hold, ignores

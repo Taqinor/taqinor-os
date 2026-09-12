@@ -21,7 +21,7 @@ from .views import (
     PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
     QuestionnaireFournisseurViewSet, ReponseQuestionnaireViewSet,
     RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
-    ViolationDonneesViewSet, score_conformite, tableau_bord_dpo,
+    ViolationDonneesViewSet, e_discovery, score_conformite, tableau_bord_dpo,
 )
 
 router = DefaultRouter()
@@ -95,5 +95,7 @@ urlpatterns = [
     path('tableau-bord-dpo/', tableau_bord_dpo, name='grc-tableau-bord-dpo'),
     # NTGRC29 — score de maturité conformité (total + détail pondéré).
     path('score-conformite/', score_conformite, name='grc-score-conformite'),
+    # NTGRC31 — recherche e-discovery transverse (+ séquestre des résultats).
+    path('e-discovery/', e_discovery, name='grc-e-discovery'),
     path('', include(router.urls)),
 ]
