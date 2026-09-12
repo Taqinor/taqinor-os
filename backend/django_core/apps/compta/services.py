@@ -15148,7 +15148,7 @@ def _lire_lignes_plafonds_csv(company, file_bytes, filename):
             if montant < 0:
                 invalide = (colonne, brut)
                 break
-            fields[champ] = montant.quantize(Decimal('0.01'))
+            fields[champ] = quantize_mad(montant)
         if invalide is not None:
             erreurs.append({
                 'ligne': idx,
