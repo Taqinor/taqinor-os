@@ -51,6 +51,9 @@ const esgApi = {
   // ── Objectifs de trajectoire ESG (NTESG7) ──
   objectifs: {
     list: (params) => api.get('/esg/objectifs-esg/', { params }),
+    // NTESG19 — codes d'indicateurs RÉELS de la société (+ années cibles déjà
+    // prises) : l'assistant ne propose jamais de saisie libre.
+    codesDisponibles: () => api.get('/esg/objectifs-esg/codes-disponibles/'),
     get: (id) => api.get(`/esg/objectifs-esg/${id}/`),
     create: (data) => api.post('/esg/objectifs-esg/', data),
     update: (id, data) => api.patch(`/esg/objectifs-esg/${id}/`, data),

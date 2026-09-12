@@ -313,6 +313,56 @@ def couverture_catalogue(company):
 
 # ── NTESG7 — trajectoire vs réalisé ────────────────────────────────────────
 
+def codes_indicateurs_disponibles(company):
+    """NTESG19 — codes d'``qhse.IndicateurESG`` sur lesquels un objectif de
+    trajectoire peut réellement porter.
+
+    Un ``ObjectifESGTrajectoire.indicateur_code`` qui ne correspond à AUCUN
+    indicateur existant est un objectif qui n'aura jamais de « réalisé » : le
+    graphe restera vide pour toujours. L'assistant NTESG19 ne propose donc que
+    des codes RÉELS, jamais une saisie libre.
+
+    Chaque entrée porte, en plus du code et du libellé, l'état d'objectif
+    ACTIF déjà posé (``objectifs_actifs`` = liste des années cibles) — c'est
+    ce qui permet à l'écran de refuser un doublon AVANT l'appel serveur, avec
+    un message qui nomme l'année en conflit.
+
+    Lecture cross-app par le SÉLECTEUR de ``qhse`` (jamais ses ``models``) ;
+    dégrade proprement à une liste vide si l'app est absente/en erreur.
+    """
+    from .models import ObjectifESGTrajectoire
+
+    if company is None:
+        return []
+
+    lignes = []
+    try:
+        from apps.qhse.selectors import export_esg
+        lignes = export_esg(company).get('lignes', []) or []
+    except Exception:  # noqa: BLE001 — dégradation gracieuse (qhse absent)
+        lignes = []
+
+    actifs = {}
+    for code, annee in ObjectifESGTrajectoire.objects.filter(
+            company=company, actif=True).values_list(
+                'indicateur_code', 'annee_cible'):
+        actifs.setdefault(code, []).append(annee)
+
+    vus = {}
+    for ligne in lignes:
+        code = ligne.get('code')
+        if not code or code in vus:
+            continue
+        vus[code] = {
+            'code': code,
+            'libelle': ligne.get('libelle') or '',
+            'pilier': ligne.get('pilier') or '',
+            'unite': ligne.get('unite') or '',
+            'objectifs_actifs': sorted(actifs.get(code, [])),
+        }
+    return sorted(vus.values(), key=lambda entree: entree['code'])
+
+
 def _valeur_indicateur_annee(company, code, annee):
     """Valeur réelle d'un ``qhse.IndicateurESG`` (par ``code``) pour une
     année donnée, via ``qhse.selectors.export_esg`` — ``None`` si absente."""

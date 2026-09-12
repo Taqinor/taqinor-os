@@ -186,6 +186,27 @@ class ObjectifESGTrajectoireViewSet(CompanyScopedModelViewSet):
         objectif = self.get_object()
         return Response(trajectoire_vs_realise(objectif))
 
+    @action(detail=False, methods=['get'], url_path='codes-disponibles',
+            permission_classes=[ScopedPermission])
+    def codes_disponibles(self, request):
+        """NTESG19 — codes d'indicateurs sur lesquels un objectif peut porter.
+
+        FORME DÉCLARÉE (``contract_samples/codes_indicateurs_esg.json``) :
+        une LISTE de ``{code, libelle, pilier, unite, objectifs_actifs[]}``.
+        ``objectifs_actifs`` donne les années cibles DÉJÀ prises pour ce code :
+        l'assistant refuse le doublon AVANT l'appel serveur, avec un message
+        qui nomme l'année en conflit (la contrainte d'unicité
+        company+code+annee_cible reste la barrière finale).
+
+        Un code absent de cette liste n'a AUCUN indicateur réel derrière : un
+        objectif posé dessus n'aurait jamais de « réalisé ». C'est pourquoi
+        l'assistant ne propose jamais de saisie libre.
+        """
+        from .selectors import codes_indicateurs_disponibles
+
+        return Response(
+            codes_indicateurs_disponibles(request.user.company))
+
 
 class PartiePrenanteESGViewSet(CompanyScopedModelViewSet):
     """Registre des parties prenantes ESG — matérialité simplifiée

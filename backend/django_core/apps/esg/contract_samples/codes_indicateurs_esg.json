@@ -1,0 +1,24 @@
+{
+  "endpoint": "GET /api/django/esg/objectifs-esg/codes-disponibles/",
+  "pourquoi": "NTESG19 — l'assistant « Créer un objectif de trajectoire » ne doit JAMAIS proposer une saisie libre : un `indicateur_code` qui ne correspond à aucun `qhse.IndicateurESG` produit un objectif dont le « réalisé » restera vide pour toujours. Cet endpoint sert la liste des codes RÉELS de la société, avec les années cibles déjà prises, pour que l'écran refuse un doublon avant l'appel serveur. PACT10 : la forme est déclarée ICI.",
+  "avertissement_forme": "Le corps HTTP RÉEL est DIRECTEMENT ce tableau, SANS enveloppe (`views.py::codes_disponibles` fait `return Response(codes_indicateurs_disponibles(...))`). `exemple` l'enveloppe sous `codes` uniquement parce que ce fichier de contrat exige un OBJET (scripts/check_api_shapes.py) — un test qui consomme cette fixture doit lire `exempleContrat(...).codes`, jamais le document entier. `objectifs_actifs` liste les ANNÉES CIBLES déjà occupées par un objectif ACTIF sur ce code : c'est la contrainte d'unicité company+code+annee_cible, rendue visible à l'écran. La liste est VIDE si l'app qhse est absente — l'assistant le dit alors clairement plutôt que d'ouvrir une saisie libre.",
+  "exemple": {
+    "codes": [
+      {
+        "code": "ENV-CO2",
+        "libelle": "Émissions de CO2 (scope 1+2)",
+        "pilier": "environnement",
+        "unite": "tCO2e",
+        "objectifs_actifs": [2030]
+      },
+      {
+        "code": "SOC-FORM",
+        "libelle": "Heures de formation par salarié",
+        "pilier": "social",
+        "unite": "h",
+        "objectifs_actifs": []
+      }
+    ]
+  },
+  "exemple_vide": { "codes": [] }
+}
