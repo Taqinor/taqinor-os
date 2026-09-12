@@ -736,3 +736,410 @@ class DiffusionPlan(TenantModel):
 
     def __str__(self):
         return f'Diffusion {self.document_ged_id} v{self.version_diffusee} — chantier {self.chantier_id}'
+
+
+# ── NTCON14 — Planning TCE multi-lots avec jalons contractuels ──────────────
+
+class Lot(TenantModel):
+    """Un LOT du planning tous-corps-d'état d'un chantier (gros-œuvre,
+    électricité, plomberie, CVC, finitions…) — NTCON14.
+
+    FRONTIÈRE CROSS-APP (CLAUDE.md, contrat de propriété PLAN_VERTICALS).
+    Le texte de NTCON14 situait ce modèle dans ``gestion_projet`` (app
+    EXISTANTE) et voulait un FK ``lot`` posé sur ``gestion_projet.Tache``.
+    Les deux écritures sont INTERDITES à ce module : une app verticale ne
+    touche NI les ``models``/``views`` NI la chaîne de migrations d'une autre
+    app. ``Lot`` vit donc ICI (même app que le reste du vertical BTP, même FK
+    RÉELLE par chaîne vers ``installations.Installation`` que ``ReserveChantier``
+    /``RFI``/``JournalChantier``), et le rattachement des tâches existantes
+    passe par la table de liaison ``LotTache`` déclarée dans CETTE app
+    (M2M ``through``) — strictement additif, zéro migration chez
+    ``gestion_projet``, et fonctionnellement équivalent au FK souhaité
+    (une tâche appartient à au plus un lot : contrainte d'unicité sur
+    ``tache``).
+
+    ``entreprise`` = ``sous_traitant`` (FK CHAÎNE vers ``stock.Fournisseur``,
+    le référentiel UNIFIÉ des sous-traitants depuis DC34 — FG304 n'a plus de
+    table parallèle) OU ``interne=True`` (exécution en régie). Le couple est
+    validé côté sérialiseur (message français nommant le champ fautif).
+
+    ``taux_penalite_retard_pmil`` (‰/jour) + ``plafond_penalite_pct`` reprennent
+    le pattern XPRJ27 (``gestion_projet.selectors.penalites_retard``) mais PAR
+    LOT : un lot en retard n'expose que SA propre pénalité (NTCON15).
+    Donnée INTERNE — jamais dans une sortie client.
+    """
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_lots', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_lots', verbose_name='Chantier')
+    nom = models.CharField(
+        max_length=120,
+        verbose_name='Nom du lot (gros-œuvre, électricité, plomberie…)')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    # Code couleur du Gantt groupé par lot (hex, #RRGGBB).
+    couleur = models.CharField(
+        max_length=7, blank=True, default='',
+        verbose_name='Couleur du lot (Gantt)')
+    interne = models.BooleanField(
+        default=True, verbose_name='Exécuté en interne (régie)')
+    # FK CHAÎNE — jamais un import de ``apps.stock.models`` (contrat M1).
+    sous_traitant = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.SET_NULL,
+        # on_delete: SET_NULL — retirer un sous-traitant ne détruit pas le lot.
+        null=True, blank=True, related_name='btp_lots',
+        verbose_name='Entreprise (sous-traitant)')
+    date_debut_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Début prévu')
+    date_fin_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Fin prévue')
+    date_fin_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Fin réelle')
+    jalon_contractuel = models.BooleanField(
+        default=False, verbose_name='Jalon contractuel')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant du lot HT')
+    taux_penalite_retard_pmil = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Taux de pénalité de retard (‰/jour)')
+    plafond_penalite_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond de pénalité (% du montant du lot)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PLANIFIE,
+        verbose_name='Statut')
+    # Rattachement des ``gestion_projet.Tache`` EXISTANTES — table de liaison
+    # locale (``LotTache``), aucune migration chez ``gestion_projet``.
+    taches = models.ManyToManyField(
+        'gestion_projet.Tache', through='LotTache', blank=True,
+        related_name='btp_lots', verbose_name='Tâches rattachées')
+
+    class Meta:
+        verbose_name = 'Lot de chantier'
+        verbose_name_plural = 'Lots de chantier'
+        ordering = ['ordre', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['chantier', 'nom'], name='btp_lot_chantier_nom_uniq'),
+        ]
+        indexes = [
+            # Noms EXPLICITES (≤ 30 car.) : cette migration est écrite à la
+            # main, un nom auto-haché divergerait du state (cf. mémoire
+            # « migration index-name divergence »).
+            models.Index(fields=['company', 'chantier', 'statut'],
+                         name='btp_lot_co_chan_statut'),
+            models.Index(fields=['company', 'jalon_contractuel'],
+                         name='btp_lot_co_jalon'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} — chantier {self.chantier_id}'
+
+
+class LotTache(TenantModel):
+    """NTCON14 — rattachement d'une ``gestion_projet.Tache`` EXISTANTE à un
+    ``Lot`` (table de liaison du M2M ``Lot.taches``).
+
+    Vit dans CETTE app (jamais un FK ajouté sur ``gestion_projet.Tache``, qui
+    exigerait une migration hors périmètre). ``tache`` est UNIQUE : une tâche
+    appartient à au plus UN lot — exactement la sémantique du FK optionnel
+    décrit par NTCON14.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_lot_taches', verbose_name='Société')
+    lot = models.ForeignKey(
+        Lot, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='rattachements', verbose_name='Lot')
+    tache = models.ForeignKey(
+        'gestion_projet.Tache', on_delete=models.CASCADE,
+        # on_delete: cascade — le rattachement n'a pas de sens sans sa tâche.
+        related_name='btp_lot_rattachements', verbose_name='Tâche')
+    date_rattachement = models.DateTimeField(
+        auto_now_add=True, verbose_name='Rattachée le')
+
+    class Meta:
+        verbose_name = 'Rattachement tâche ↔ lot'
+        verbose_name_plural = 'Rattachements tâche ↔ lot'
+        ordering = ['lot_id', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tache'], name='btp_lot_tache_unique_lot'),
+        ]
+
+    def __str__(self):
+        return f'Tâche {self.tache_id} → lot {self.lot_id}'
+
+
+# ── NTCON16 — PPSPS (plan de prévention) ↔ QHSE ─────────────────────────────
+
+class PPSPSChantier(TenantModel):
+    """Plan Particulier de Sécurité et de Protection de la Santé d'un chantier.
+
+    ``qhse.PermisTravail``/``EvaluationRisque`` couvrent déjà le niveau
+    chantier GÉNÉRIQUE : NTCON16 ajoute le document PPSPS lui-même, ses LOTS
+    couverts (NTCON14) et la SIGNATURE de chaque sous-traitant intervenant
+    (``PPSPSSignature``, e-sign typée loi 53-05 — même principe que
+    ``SignatureBtp``/``contrats.SignatureContrat``).
+
+    ``document_ged_id`` référence LÂCHEMENT le document GED du PPSPS (aucun FK
+    dur vers ``ged``), comme ``VisaDocument``/``DiffusionPlan``. ``qhse`` n'est
+    JAMAIS réécrit : le lien se fait par le chantier, en lecture seule.
+
+    Le PPSPS est « opposable » une fois ``date_validation`` posée : c'est ce
+    plan-là que les sous-traitants doivent signer avant de démarrer
+    (``services.sous_traitant_a_signe_ppsps``, soft-guard NTCON16).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_ppsps', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_ppsps', verbose_name='Chantier')
+    titre = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Titre')
+    document_ged_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du document GED du PPSPS')
+    date_validation = models.DateField(
+        null=True, blank=True, verbose_name='Validé le')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_ppsps_valides',
+        verbose_name='Validé par')
+    lots_couverts = models.ManyToManyField(
+        Lot, blank=True, related_name='ppsps',
+        verbose_name='Lots couverts')
+    # FK CHAÎNE vers le référentiel UNIFIÉ des sous-traitants (DC34) —
+    # la date de signature vit sur la table de liaison ``PPSPSSignature``.
+    sous_traitants_signataires = models.ManyToManyField(
+        'stock.Fournisseur', through='PPSPSSignature', blank=True,
+        related_name='btp_ppsps_signes',
+        verbose_name='Sous-traitants signataires')
+
+    class Meta:
+        verbose_name = 'PPSPS de chantier'
+        verbose_name_plural = 'PPSPS de chantier'
+        ordering = ['-date_validation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'chantier'],
+                         name='btp_ppsps_co_chantier'),
+        ]
+
+    def __str__(self):
+        return f'PPSPS #{self.pk} — chantier {self.chantier_id}'
+
+    @property
+    def est_valide(self):
+        return self.date_validation is not None
+
+
+class PPSPSSignature(TenantModel):
+    """NTCON16 — signature d'un sous-traitant sur le PPSPS d'un chantier.
+
+    Table de liaison du M2M ``PPSPSChantier.sous_traitants_signataires``, qui
+    porte la DATE de signature et la preuve e-sign (nom dactylographié + IP +
+    user-agent serveur — loi 53-05, même forme que ``SignatureBtp``). Un
+    sous-traitant ne signe qu'UNE fois un PPSPS donné (contrainte d'unicité).
+    """
+
+    class Methode(models.TextChoices):
+        TYPED = 'typed', 'Nom dactylographié'
+        DRAW = 'draw', 'Signature dessinée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_ppsps_signatures', verbose_name='Société')
+    ppsps = models.ForeignKey(
+        PPSPSChantier, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='signatures', verbose_name='PPSPS')
+    sous_traitant = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.CASCADE,
+        # on_delete: cascade — la signature n'a pas de sens sans son signataire.
+        related_name='btp_ppsps_signatures', verbose_name='Sous-traitant')
+    signataire_nom = models.CharField(
+        max_length=255, verbose_name='Nom du signataire')
+    methode = models.CharField(
+        max_length=20, choices=Methode.choices, default=Methode.TYPED,
+        verbose_name='Méthode de signature')
+    date_signature = models.DateTimeField(
+        auto_now_add=True, verbose_name='Signé le')
+    ip_adresse = models.CharField(max_length=45, blank=True, default='')
+    user_agent = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Signature de PPSPS'
+        verbose_name_plural = 'Signatures de PPSPS'
+        ordering = ['-date_signature', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ppsps', 'sous_traitant'],
+                name='btp_ppsps_signataire_uniq'),
+        ]
+
+    def __str__(self):
+        return f'PPSPS {self.ppsps_id} signé par {self.sous_traitant_id}'
+
+
+# ── NTCON18 — Photo-rapport hebdomadaire (opt-in PAR CHANTIER) ─────────────
+
+class AbonnementRapportPhoto(TenantModel):
+    """NTCON18 — opt-in d'un chantier au photo-rapport hebdomadaire.
+
+    Le sweep ``manage.py rapport_photo_hebdo`` ne traite QUE les chantiers
+    ayant une ligne ``actif=True`` : aucun envoi n'est jamais déclenché par
+    défaut (opt-in strict). ``destinataires`` porte les emails client/MOE ;
+    le PDF produit est un document d'AVANCEMENT PHOTO — jamais un coût
+    interne, jamais un prix d'achat (règle CLAUDE.md).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_abonnements_rapport_photo', verbose_name='Société')
+    chantier = models.OneToOneField(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_abonnement_rapport_photo', verbose_name='Chantier')
+    actif = models.BooleanField(
+        default=True, verbose_name='Envoi hebdomadaire activé')
+    destinataires = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Destinataires (emails client/MOE)')
+    dernier_envoi = models.DateField(
+        null=True, blank=True, verbose_name='Dernier envoi')
+
+    class Meta:
+        verbose_name = 'Abonnement au photo-rapport hebdomadaire'
+        verbose_name_plural = 'Abonnements au photo-rapport hebdomadaire'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='btp_rapportphoto_co_actif'),
+        ]
+
+    def __str__(self):
+        return f'Photo-rapport chantier {self.chantier_id}'
+
+
+# ── NTCON19 — Checklist de réception de LOT ────────────────────────────────
+
+class LotChecklistItem(TenantModel):
+    """Étape de la checklist de RÉCEPTION d'un ``Lot`` (NTCON19).
+
+    Réplique le PATTERN d'``installations.ChantierChecklistItem`` (clé +
+    libellé + ordre + fait/fait_par/fait_le, unicité par parent+clé) SANS
+    importer ``installations.models`` ni toucher sa chaîne de migrations : la
+    checklist de réception d'un LOT est un objet DISTINCT de la checklist
+    d'exécution du CHANTIER (qui reste entièrement gérée par ``installations``,
+    inchangée). Un lot ne peut passer ``termine`` que si toutes ses étapes
+    ``obligatoire`` sont cochées — soft-guard paramétrable
+    (``services.config_btp`` → ``guard_checklist_lot_bloquant``, NTCON25).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_lot_checklist_items', verbose_name='Société')
+    lot = models.ForeignKey(
+        Lot, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='checklist', verbose_name='Lot')
+    cle = models.CharField(max_length=40, verbose_name='Clé')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    obligatoire = models.BooleanField(
+        default=True, verbose_name='Obligatoire pour la réception')
+    fait = models.BooleanField(default=False, verbose_name='Fait')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_lot_checklist_faits',
+        verbose_name='Fait par')
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+
+    class Meta:
+        verbose_name = 'Étape de checklist de réception (lot)'
+        verbose_name_plural = 'Étapes de checklist de réception (lot)'
+        ordering = ['ordre', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['lot', 'cle'], name='btp_lot_checklist_cle_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.lot_id} · {self.libelle} · {"✓" if self.fait else "—"}'
+
+
+# ── NTCON25 — Réglages BTP par société (singleton par tenant) ──────────────
+
+#: Corps d'état classiques d'un chantier TCE — SUGGESTION par défaut de
+#: l'assistant NTCON23, éditable par société via ``ParametresBtpChantier``.
+LOTS_TYPES_DEFAUT = [
+    'Gros-œuvre', 'Électricité', 'Plomberie', 'CVC', 'Finitions',
+]
+
+
+def lots_types_defaut():
+    """Défaut CALLABLE du champ JSON (jamais une liste mutable partagée)."""
+    return list(LOTS_TYPES_DEFAUT)
+
+
+class ParametresBtpChantier(TenantModel):
+    """Réglages du module BTP pour UNE société (NTCON25).
+
+    Singleton par tenant (``OneToOneField`` sur ``company``), même patron que
+    les paramètres existants du dépôt (``qhse.CalendrierQhse``…) : au plus une
+    ligne par société, créée à la demande. Les valeurs sont lues par
+    ``services.config_btp`` — modifier un réglage change IMMÉDIATEMENT le
+    comportement du guard correspondant, sans redéploiement :
+
+    * ``guard_ppsps_bloquant`` → NTCON16 (bloque vs avertit au démarrage d'un
+      ordre de sous-traitance) ;
+    * ``guard_checklist_lot_bloquant`` → NTCON19 (bloque vs avertit à la
+      réception d'un lot).
+
+    Les délais et le taux de pénalité servent de DÉFAUTS de saisie ; ils ne
+    réécrivent jamais un objet déjà créé.
+    """
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_parametres', verbose_name='Société')
+    delai_reponse_rfi_defaut_jours = models.PositiveIntegerField(
+        default=5, verbose_name='Délai de réponse RFI par défaut (jours ouvrés)')
+    delai_revue_visa_defaut_jours = models.PositiveIntegerField(
+        default=10, verbose_name='Délai de revue de visa par défaut (jours ouvrés)')
+    guard_ppsps_bloquant = models.BooleanField(
+        default=True,
+        verbose_name='Bloquer le démarrage sans PPSPS signé (sinon avertir)')
+    guard_checklist_lot_bloquant = models.BooleanField(
+        default=True,
+        verbose_name='Bloquer la réception si la checklist du lot est incomplète')
+    lots_types_defaut = models.JSONField(
+        default=lots_types_defaut, blank=True,
+        verbose_name="Lots types suggérés par l'assistant")
+    taux_penalite_retard_defaut_pmil = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Taux de pénalité de retard par défaut (‰/jour)')
+
+    class Meta:
+        verbose_name = 'Réglages BTP'
+        verbose_name_plural = 'Réglages BTP'
+
+    def __str__(self):
+        return f'Réglages BTP — société {self.company_id}'

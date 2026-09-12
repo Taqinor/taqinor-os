@@ -5,8 +5,8 @@
    module.config.jsx`. */
 import { lazy } from 'react'
 import {
-  Calculator, Construction, FileEdit, FileQuestion, MapPin, NotebookPen,
-  Share2, Stamp,
+  Calculator, ClipboardCheck, Construction, FileEdit, FileQuestion, Layers,
+  LayoutDashboard, MapPin, NotebookPen, Settings2, Share2, Stamp, Wand2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -38,6 +38,18 @@ const JournalChantierPage = lazy(() => import('./JournalChantier'))
 const AvenantsChantierPage = lazy(() => import('./AvenantsChantier'))
 const DecompteGeneralPage = lazy(() => import('./DecompteGeneral'))
 const DiffusionPlansPage = lazy(() => import('./DiffusionPlans'))
+// NTCON14 — planning tous corps d'état groupé par lot.
+const PlanningLotsPage = lazy(() => import('./PlanningLots'))
+// NTCON21 — tableau de bord BTP par chantier (6 blocs, lecture seule).
+const ChantierBtpCockpitPage = lazy(() => import('./ChantierBtpCockpit'))
+// NTCON23 — assistant guidé de création d'un chantier BTP.
+const NouveauChantierBtpWizardPage = lazy(
+  () => import('./NouveauChantierBtpWizard'))
+// NTCON24 — assistant guidé de clôture (DGD + export dossier).
+const ClotureChantierBtpWizardPage = lazy(
+  () => import('./ClotureChantierBtpWizard'))
+// NTCON25 — réglages BTP de la société (admin).
+const ParametresBtpPage = lazy(() => import('./ParametresBtp'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -93,6 +105,36 @@ const config = {
         icon: <Share2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/planning-lots',
+        label: 'Planning par lot',
+        icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
+      {
+        to: '/btp-chantier/cockpit',
+        label: 'Tableau de bord chantier',
+        icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
+        to: '/btp-chantier/nouveau',
+        label: 'Nouvel assistant chantier',
+        icon: <Wand2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
+      {
+        to: '/btp-chantier/cloture',
+        label: 'Clôture de chantier',
+        icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
+      {
+        to: '/btp-chantier/parametres',
+        label: 'Réglages BTP',
+        icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['admin'],
+      },
     ],
   },
   titles: [
@@ -103,6 +145,11 @@ const config = {
     ['/btp-chantier/avenants', 'Avenants de chantier'],
     ['/btp-chantier/dgd', 'Décompte général et définitif'],
     ['/btp-chantier/diffusion-plans', 'Diffusion contrôlée de plans'],
+    ['/btp-chantier/planning-lots', "Planning tous corps d'état (par lot)"],
+    ['/btp-chantier/cockpit', 'Tableau de bord BTP du chantier'],
+    ['/btp-chantier/nouveau', 'Créer un chantier BTP'],
+    ['/btp-chantier/cloture', 'Clôture de chantier BTP'],
+    ['/btp-chantier/parametres', 'Réglages BTP'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -113,6 +160,12 @@ const config = {
     { path: '/btp-chantier/avenants', component: AvenantsChantierPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/dgd', component: DecompteGeneralPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/diffusion-plans', component: DiffusionPlansPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/planning-lots', component: PlanningLotsPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/cockpit', component: ChantierBtpCockpitPage, roles: ROLES },
+    { path: '/btp-chantier/cockpit/:chantierId', component: ChantierBtpCockpitPage, roles: ROLES },
+    { path: '/btp-chantier/nouveau', component: NouveauChantierBtpWizardPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/cloture', component: ClotureChantierBtpWizardPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/parametres', component: ParametresBtpPage, roles: ['admin'] },
   ],
 }
 

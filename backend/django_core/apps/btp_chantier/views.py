@@ -18,14 +18,18 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier, RFI,
-    ReserveChantier, VisaDocument,
+    AbonnementRapportPhoto, AvenantChantier, DecompteGeneral, DiffusionPlan,
+    JournalChantier, Lot, ParametresBtpChantier, PPSPSChantier, PPSPSSignature,
+    RFI, ReserveChantier, VisaDocument,
 )
 from .serializers import (
-    AvenantChantierPublicSerializer, AvenantChantierSerializer,
-    DecompteGeneralSerializer, DiffusionPlanSerializer,
-    JournalChantierSerializer, ReserveChantierSerializer, RFISerializer,
-    SignatureBtpSerializer, VisaDocumentSerializer,
+    AbonnementRapportPhotoSerializer, AvenantChantierPublicSerializer,
+    AvenantChantierSerializer, DecompteGeneralSerializer,
+    DiffusionPlanSerializer, JournalChantierSerializer, LotSerializer,
+    LotChecklistItemSerializer, ParametresBtpChantierSerializer,
+    PPSPSChantierSerializer, PPSPSSignatureSerializer,
+    ReserveChantierSerializer, RFISerializer, SignatureBtpSerializer,
+    VisaDocumentSerializer,
 )
 
 
@@ -736,6 +740,413 @@ class ChantierDebourseVsFactureView(APIView):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
         return Response(selectors.debourse_sec_vs_facture(chantier))
+
+
+# ── NTCON14 — Lots (planning TCE multi-lots) ────────────────────────────────
+
+class LotViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """Lots du planning tous-corps-d'état — NTCON14.
+
+    Filtres liste : ``?chantier=&statut=&jalon=``. Action ``taches/``
+    (GET = tâches rattachées, POST = (re)définit l'ensemble des tâches du lot).
+    """
+    queryset = Lot.objects.select_related('chantier', 'sous_traitant').all()
+    serializer_class = LotSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        p = self.request.query_params
+        return selectors.lots_filtres(
+            qs, chantier_id=p.get('chantier'), statut=p.get('statut'),
+            jalon=p.get('jalon'))
+
+    def perform_update(self, serializer):
+        """NTCON19 — soft-guard : un lot ne passe ``termine`` que si sa
+        checklist de réception est 100 % cochée (403/400 explicite sinon)."""
+        from rest_framework.exceptions import ValidationError
+
+        instance = self.get_object()
+        nouveau_statut = serializer.validated_data.get('statut')
+        if (nouveau_statut == Lot.Statut.TERMINE
+                and instance.statut != Lot.Statut.TERMINE):
+            try:
+                services.verifier_checklist_avant_reception(instance)
+            except services.TransitionInvalide as exc:
+                raise ValidationError({'statut': str(exc)})
+        super().perform_update(serializer)
+
+    @action(detail=True, methods=['get', 'post'],
+            permission_classes=[ScopedPermission])
+    def checklist(self, request, pk=None):
+        """NTCON19 — checklist de RÉCEPTION du lot (distincte de la checklist
+        d'exécution du chantier). POST ``{"etapes": [{cle, libelle, ordre?,
+        obligatoire?}, …]}`` (liste vide/absente = modèle par défaut)."""
+        lot = self.get_object()
+        if request.method.lower() == 'post':
+            try:
+                services.definir_checklist_lot(
+                    lot, request.data.get('etapes'))
+            except services.TransitionInvalide as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        etat = services.etat_checklist_lot(lot)
+        etat['etapes'] = LotChecklistItemSerializer(
+            lot.checklist.all(), many=True).data
+        return Response(etat)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def cocher(self, request, pk=None):
+        """NTCON19 — coche/décoche une étape : ``{"cle": "...", "fait": true}``."""
+        lot = self.get_object()
+        cle = (request.data.get('cle') or '').strip()
+        if not cle:
+            return Response(
+                {'cle': 'cle est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fait = request.data.get('fait', True)
+        try:
+            item = services.cocher_item_checklist_lot(
+                lot, cle=cle, user=request.user, fait=bool(fait))
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LotChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def terminer(self, request, pk=None):
+        """NTCON19 — réceptionne le lot (guard checklist + ``date_fin_reelle``
+        qui FIGE le retard pris en compte par NTCON15)."""
+        lot = self.get_object()
+        try:
+            services.terminer_lot(lot, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        lot.refresh_from_db()
+        return Response(LotSerializer(lot).data)
+
+    @action(detail=True, methods=['get', 'post'],
+            permission_classes=[ScopedPermission])
+    def taches(self, request, pk=None):
+        """NTCON14 — rattachement des ``gestion_projet.Tache`` EXISTANTES.
+
+        POST ``{"taches": [id, …]}`` remplace l'ensemble rattaché au lot
+        (table de liaison locale ``LotTache`` — aucune écriture chez
+        ``gestion_projet``).
+        """
+        lot = self.get_object()
+        if request.method.lower() == 'post':
+            try:
+                services.definir_taches_du_lot(lot, request.data.get('taches'))
+            except services.TransitionInvalide as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except (TypeError, ValueError):
+                return Response(
+                    {'taches': 'taches doit être une liste d\'identifiants.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            lot.refresh_from_db()
+        return Response(
+            list(lot.taches.values(
+                'id', 'libelle', 'statut', 'avancement_pct',
+                'date_debut_prevue', 'date_fin_prevue').order_by(
+                    'ordre', 'id')))
+
+
+class PPSPSChantierViewSet(
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """PPSPS de chantier — NTCON16.
+
+    Filtres liste : ``?chantier=``. Actions ``valider/`` (rend le plan
+    opposable) et ``signer/`` (signature d'un sous-traitant, e-sign typée
+    loi 53-05 : ``{"sous_traitant": id, "signataire_nom": "…"}``).
+    """
+    queryset = PPSPSChantier.objects.select_related(
+        'chantier', 'valide_par').prefetch_related(
+            'lots_couverts', 'signatures__sous_traitant').all()
+    serializer_class = PPSPSChantierSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def valider(self, request, pk=None):
+        ppsps = self.get_object()
+        try:
+            services.valider_ppsps(ppsps, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        ppsps.refresh_from_db()
+        return Response(PPSPSChantierSerializer(ppsps).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def signer(self, request, pk=None):
+        """NTCON16 — signature d'un sous-traitant (loi 53-05)."""
+        ppsps = self.get_object()
+        signataire_nom = (request.data.get('signataire_nom') or '').strip()
+        if not signataire_nom:
+            return Response(
+                {'signataire_nom': 'signataire_nom est requis (loi 53-05).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # Modèle du sous-traitant résolu par la FK DÉJÀ déclarée — aucun
+        # import cross-app (même patron que ``_chantier_model``).
+        modele_st = PPSPSSignature._meta.get_field('sous_traitant').related_model
+        sous_traitant = modele_st.objects.filter(
+            pk=request.data.get('sous_traitant'),
+            company=request.user.company).first()
+        if sous_traitant is None:
+            return Response(
+                {'sous_traitant': 'Sous-traitant inconnu pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            signature = services.signer_ppsps(
+                ppsps, sous_traitant=sous_traitant,
+                signataire_nom=signataire_nom,
+                ip_adresse=_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''))
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(PPSPSSignatureSerializer(signature).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class AbonnementRapportPhotoViewSet(
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """Opt-in d'un chantier au photo-rapport hebdomadaire — NTCON18.
+
+    Filtres liste : ``?chantier=``. Tant qu'aucune ligne n'existe pour un
+    chantier, AUCUN envoi n'a lieu (opt-in strict, côté sweep).
+    """
+    queryset = AbonnementRapportPhoto.objects.select_related('chantier').all()
+    serializer_class = AbonnementRapportPhotoSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+
+class ParametresBtpView(APIView):
+    """NTCON25 — ``parametres/`` : réglages BTP de la société (singleton).
+
+    ``GET`` (lecture ``btp_voir``) renvoie les réglages EFFECTIFS de la
+    société — la ligne est créée à la demande avec les défauts du module, de
+    sorte qu'un tenant neuf voie exactement ce qui s'applique.
+    ``PUT``/``PATCH`` est réservé aux ADMINISTRATEURS (403 sinon) : ces
+    réglages pilotent des guards de sécurité (PPSPS) et de réception (lot).
+    Multi-tenant : la société vient TOUJOURS de l'utilisateur, jamais du corps.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def _reglages(self, request):
+        reglages, _ = ParametresBtpChantier.objects.get_or_create(
+            company=request.user.company)
+        return reglages
+
+    def get(self, request):
+        return Response(
+            ParametresBtpChantierSerializer(self._reglages(request)).data)
+
+    def put(self, request):
+        return self._ecrire(request, partial=False)
+
+    def patch(self, request):
+        return self._ecrire(request, partial=True)
+
+    def _ecrire(self, request, *, partial):
+        if not getattr(request.user, 'is_admin_role', False):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'},
+                status=status.HTTP_403_FORBIDDEN)
+        serializer = ParametresBtpChantierSerializer(
+            self._reglages(request), data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        # La société n'est JAMAIS lue du corps : l'instance la porte déjà.
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ChantierClotureBtpView(APIView):
+    """NTCON24 — ``chantiers/<id>/cloture-btp/`` : assistant de clôture.
+
+    * ``GET`` — état des PRÉ-REQUIS (réserves bloquantes, visas, PPSPS signé)
+      avec la liste EXPLICITE de ce qui bloque encore ;
+    * ``POST`` — enchaîne : vérification → DGD (NTCON9) → notification, puis
+      renvoie l'URL d'export du dossier consolidé (NTCON20). Refuse (400) en
+      listant précisément les pré-requis manquants.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def _chantier(self, request, chantier_id):
+        return get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+
+    def get(self, request, chantier_id):
+        chantier = self._chantier(request, chantier_id)
+        return Response(services.prerequis_cloture_btp(chantier))
+
+    def post(self, request, chantier_id):
+        chantier = self._chantier(request, chantier_id)
+        try:
+            resultat = services.cloturer_chantier_btp(
+                chantier, user=request.user,
+                montant_marche_initial_ht=request.data.get(
+                    'montant_marche_initial_ht', 0),
+                situations_incluses=request.data.get('situations_incluses'),
+                retenue_garantie_id=request.data.get('retenue_garantie_id'))
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc),
+                 'blocages': services.prerequis_cloture_btp(chantier)['blocages']},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'dgd': DecompteGeneralSerializer(resultat['dgd']).data,
+            'prerequis': resultat['prerequis'],
+            'export_dossier_url': (
+                f'/api/django/btp-chantier/chantiers/{chantier_id}/'
+                'export-dossier-btp/'),
+        })
+
+
+class ChantierRapportAvancementView(APIView):
+    """NTCON22 — ``chantiers/<id>/rapport-avancement/?du=&au=`` : PDF INTERNE
+    d'avancement (lots vs planning, réserves, RFI, effectifs, QHSE).
+
+    Document interne/MOE : JAMAIS un devis client, jamais servi par
+    ``/proposal`` (règle #4), aucun prix d'achat. Période par défaut :
+    les 7 derniers jours.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        from datetime import date, timedelta
+
+        from django.http import HttpResponse
+
+        from .pdf import render_rapport_avancement_pdf
+
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+
+        def _date(param, defaut):
+            brut = request.query_params.get(param)
+            if not brut:
+                return defaut
+            try:
+                return date.fromisoformat(brut)
+            except ValueError:
+                return None
+
+        au = _date('au', timezone.localdate())
+        if au is None:
+            return Response(
+                {'au': 'Date invalide — format attendu AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        du = _date('du', au - timedelta(days=6))
+        if du is None:
+            return Response(
+                {'du': 'Date invalide — format attendu AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if du > au:
+            return Response(
+                {'du': f'Le début de période ne peut pas suivre la fin ({au}).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        donnees = selectors.rapport_avancement(chantier, du, au)
+        pdf_bytes = render_rapport_avancement_pdf(chantier, donnees)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="avancement-chantier-{chantier_id}-'
+            f'{du}-{au}.pdf"')
+        return response
+
+
+class ChantierExportDossierBtpView(APIView):
+    """NTCON20 — ``chantiers/<id>/export-dossier-btp/`` : ZIP consolidant le
+    dossier du chantier (journal, réserves levées + preuves, visas approuvés,
+    DGD, PPSPS signés). Archivage légal loi 09-08 / litige."""
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        from django.http import HttpResponse
+
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        zip_bytes = services.export_dossier_btp(chantier)
+        response = HttpResponse(zip_bytes, content_type='application/zip')
+        response['Content-Disposition'] = (
+            f'attachment; filename="dossier-chantier-{chantier_id}.zip"')
+        return response
+
+
+class ChantierIntervenantsView(APIView):
+    """NTCON17 — ``chantiers/<id>/intervenants/`` : registre de coordination
+    SPS/CISSCT (sous-traitants actifs + attestations, PPSPS signé, effectifs
+    du jour, titres RH à risque). LECTURE SEULE — aucune écriture."""
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.registre_intervenants(chantier))
+
+
+class ChantierPenalitesParLotView(APIView):
+    """NTCON15 — ``chantiers/<id>/penalites-par-lot/``.
+
+    Données INTERNES de pilotage (exposition financière) : ``btp_gerer``
+    exigé même en LECTURE — jamais une pénalité dans une sortie client
+    (même garde que ``ChantierDebourseVsFactureView``, NTCON11).
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_gerer'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.penalites_retard_par_lot(chantier))
+
+
+class ChantierPlanningLotsView(APIView):
+    """NTCON14 — ``chantiers/<id>/planning-lots/`` : le Gantt du chantier
+    GROUPÉ PAR LOT (avec code couleur), lecture seule."""
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.planning_par_lot(chantier))
 
 
 # ── NTCON12/NTCON13 — Diffusion contrôlée de plans ──────────────────────────

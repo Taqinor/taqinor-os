@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
-from .models import RFI, ReserveChantier
+from .models import RFI, Lot, ReserveChantier
 
 
 # ── NTCON1 — Réserves de chantier ───────────────────────────────────────────
@@ -316,6 +316,428 @@ def debourse_sec_vs_facture(chantier):
         'avenants_approuves': total_avenants,
         'facture_total': facture_total,
         'marge': facture_total - debourse_total,
+    }
+
+
+# ── NTCON14 — Planning TCE multi-lots ───────────────────────────────────────
+
+# Palette de repli du Gantt groupé par lot : utilisée SEULEMENT quand le lot
+# n'a pas de ``couleur`` choisie (jamais une couleur inventée écrite en base).
+PALETTE_LOTS = [
+    '#2563EB', '#16A34A', '#D97706', '#DC2626', '#7C3AED',
+    '#0891B2', '#DB2777', '#65A30D',
+]
+
+
+def couleur_lot(lot, rang=0):
+    """Couleur d'affichage d'un lot : celle choisie, sinon un repli stable de
+    ``PALETTE_LOTS`` indexé par le rang du lot dans son chantier."""
+    return lot.couleur or PALETTE_LOTS[rang % len(PALETTE_LOTS)]
+
+
+def lots_filtres(qs, *, chantier_id=None, statut=None, jalon=None):
+    """Filtres optionnels ``?chantier=&statut=&jalon=`` (queryset déjà scopé
+    société par ``TenantMixin``). Lecture seule."""
+    if chantier_id not in (None, ''):
+        qs = qs.filter(chantier_id=chantier_id)
+    if statut not in (None, ''):
+        qs = qs.filter(statut=statut)
+    if jalon not in (None, ''):
+        qs = qs.filter(jalon_contractuel=str(jalon).lower() in ('1', 'true', 'vrai'))
+    return qs
+
+
+def planning_par_lot(chantier):
+    """NTCON14 — planning Gantt d'un chantier GROUPÉ PAR LOT, avec code
+    couleur. Lecture seule, aucune écriture.
+
+    Les tâches proviennent de ``gestion_projet.Tache`` via la table de liaison
+    LOCALE ``LotTache`` (relation déclarée par CHAÎNE dans ``models.py`` — aucun
+    import de ``gestion_projet.models``). Un lot sans tâche rattachée renvoie
+    simplement une liste vide : le Gantt affiche alors la barre du lot seule
+    (ses dates prévues).
+
+    Chaque lot porte ``avancement_pct`` (moyenne simple des
+    ``Tache.avancement_pct`` rattachées, 0 sans tâche) et ``en_retard``
+    (fin prévue dépassée, lot non terminé).
+    """
+    aujourdhui = timezone.localdate()
+    lots = list(
+        Lot.objects.filter(chantier=chantier)
+        .select_related('sous_traitant')
+        .prefetch_related('taches')
+        .order_by('ordre', 'id'))
+    resultat = []
+    for rang, lot in enumerate(lots):
+        taches = [{
+            'id': t.id,
+            'libelle': t.libelle,
+            'statut': t.statut,
+            'avancement_pct': t.avancement_pct,
+            'date_debut_prevue': t.date_debut_prevue,
+            'date_fin_prevue': t.date_fin_prevue,
+        } for t in lot.taches.all().order_by('ordre', 'id')]
+        avancement = (
+            round(sum(t['avancement_pct'] for t in taches) / len(taches))
+            if taches else 0)
+        resultat.append({
+            'id': lot.id,
+            'nom': lot.nom,
+            'ordre': lot.ordre,
+            'couleur': couleur_lot(lot, rang),
+            'statut': lot.statut,
+            'jalon_contractuel': lot.jalon_contractuel,
+            'interne': lot.interne,
+            'sous_traitant_id': lot.sous_traitant_id,
+            'sous_traitant_nom': (
+                lot.sous_traitant.nom if lot.sous_traitant_id else ''),
+            'date_debut_prevue': lot.date_debut_prevue,
+            'date_fin_prevue': lot.date_fin_prevue,
+            'date_fin_reelle': lot.date_fin_reelle,
+            'avancement_pct': avancement,
+            'en_retard': bool(
+                lot.statut != Lot.Statut.TERMINE and lot.date_fin_prevue
+                and lot.date_fin_prevue < aujourdhui),
+            'taches': taches,
+        })
+    return resultat
+
+
+# ── NTCON15 — Pénalités de retard PAR LOT ───────────────────────────────────
+
+def penalites_retard_par_lot(chantier, date_reference=None):
+    """NTCON15 — exposition aux pénalités de retard, LOT PAR LOT.
+
+    Reprend EXACTEMENT la formule XPRJ27
+    (``gestion_projet.selectors.penalites_retard``) ::
+
+        jours_depassement × (taux / 1000) × montant
+
+    plafonnée à ``plafond_penalite_pct`` % du montant quand ce plafond est
+    renseigné — mais appliquée au ``Lot`` (NTCON14) et non au projet entier :
+    chaque lot est calculé INDÉPENDAMMENT, un lot en retard n'alourdit jamais
+    la pénalité d'un autre lot.
+
+    Un lot n'est « applicable » que s'il porte un ``jalon_contractuel``, un
+    ``taux_penalite_retard_pmil``, un ``montant_ht`` non nul et une
+    ``date_fin_prevue`` — sinon exposition NULLE avec ``applicable=False``
+    (jamais d'erreur : le sélecteur reste appelable sur n'importe quel
+    chantier). Le retard d'un lot TERMINÉ est FIGÉ à sa ``date_fin_reelle``
+    (il ne continue pas de courir) ; un lot en cours court jusqu'à
+    ``date_reference`` (défaut : aujourd'hui).
+
+    Donnée INTERNE de pilotage — jamais dans un document client. Lecture
+    seule : rien n'est écrit, rien n'est figé (le décompte DÉFINITIF reste à
+    établir à la réception du lot).
+    """
+    from decimal import Decimal
+
+    if date_reference is None:
+        date_reference = timezone.localdate()
+
+    lots = Lot.objects.filter(chantier=chantier).order_by('ordre', 'id')
+    resultats = []
+    total = Decimal('0')
+    for lot in lots:
+        montant = lot.montant_ht or Decimal('0')
+        applicable = bool(
+            lot.jalon_contractuel
+            and lot.taux_penalite_retard_pmil is not None
+            and montant
+            and lot.date_fin_prevue is not None
+        )
+        if not applicable:
+            resultats.append({
+                'lot_id': lot.id,
+                'lot': lot.nom,
+                'applicable': False,
+                'jours_depassement': 0,
+                'taux_penalite_retard_pmil': lot.taux_penalite_retard_pmil,
+                'montant_ht': montant,
+                'plafond_penalite_pct': lot.plafond_penalite_pct,
+                'exposition_brute': Decimal('0'),
+                'plafond_montant': None,
+                'exposition': Decimal('0'),
+                'plafonnee': False,
+                'decompte_definitif_a_etablir': False,
+            })
+            continue
+
+        # Le retard d'un lot TERMINÉ est figé à sa fin réelle.
+        fin_constatee = date_reference
+        if lot.statut == Lot.Statut.TERMINE and lot.date_fin_reelle:
+            fin_constatee = lot.date_fin_reelle
+        jours = max((fin_constatee - lot.date_fin_prevue).days, 0)
+
+        taux = lot.taux_penalite_retard_pmil
+        brute = (
+            Decimal(jours) * (taux / Decimal('1000')) * montant
+        ).quantize(Decimal('0.01'))
+
+        plafond_montant = None
+        exposition = brute
+        plafonnee = False
+        if lot.plafond_penalite_pct is not None:
+            plafond_montant = (
+                montant * lot.plafond_penalite_pct / Decimal('100')
+            ).quantize(Decimal('0.01'))
+            if brute > plafond_montant:
+                exposition = plafond_montant
+                plafonnee = True
+
+        total += exposition
+        resultats.append({
+            'lot_id': lot.id,
+            'lot': lot.nom,
+            'applicable': True,
+            'jours_depassement': jours,
+            'taux_penalite_retard_pmil': taux,
+            'montant_ht': montant,
+            'plafond_penalite_pct': lot.plafond_penalite_pct,
+            'exposition_brute': brute,
+            'plafond_montant': plafond_montant,
+            'exposition': exposition,
+            'plafonnee': plafonnee,
+            'decompte_definitif_a_etablir': jours > 0,
+        })
+
+    return {
+        'chantier_id': chantier.pk,
+        'date_reference': date_reference,
+        'lots': resultats,
+        'total_exposition': total,
+    }
+
+
+# ── NTCON22 — Rapport d'avancement de chantier sur une période ─────────────
+
+def rapport_avancement(chantier, du, au):
+    """NTCON22 — agrégats d'avancement d'un chantier sur ``[du, au]``.
+
+    Document strictement INTERNE/MOE : AUCUN prix d'achat, aucun coût, jamais
+    exposé via ``/proposal`` (règle #4 — le moteur premium ne rend QUE les
+    devis client). Lecture seule.
+
+    * **lots** (NTCON14) — avancement + retard vs planning ;
+    * **réserves** (NTCON1/2) — créées / levées SUR LA PÉRIODE + reste ouvert ;
+    * **RFI en cours** (NTCON3) — encore ouverts à la fin de période ;
+    * **effectif moyen** — moyenne des effectifs des ``JournalChantier``
+      (NTCON6) renseignés sur la période ;
+    * **QHSE** — points d'arrêt BLOQUANTS du chantier, lus par le SÉLECTEUR de
+      ``qhse`` (jamais ses ``models``/``views``).
+    """
+    from apps.qhse import selectors as qhse_selectors
+
+    from .models import JournalChantier, ReserveChantier
+
+    aujourdhui = timezone.localdate()
+    company = chantier.company
+
+    # ── Lots ────────────────────────────────────────────────────────────
+    lots = []
+    for bloc in planning_par_lot(chantier):
+        fin_prevue = bloc['date_fin_prevue']
+        fin_reelle = bloc['date_fin_reelle']
+        reference = fin_reelle or min(au, aujourdhui)
+        jours_retard = 0
+        if fin_prevue and reference and reference > fin_prevue:
+            jours_retard = (reference - fin_prevue).days
+        lots.append({
+            'nom': bloc['nom'],
+            'statut': bloc['statut'],
+            'avancement_pct': bloc['avancement_pct'],
+            'date_fin_prevue': fin_prevue,
+            'date_fin_reelle': fin_reelle,
+            'en_retard': bloc['en_retard'],
+            'jours_retard': jours_retard,
+        })
+
+    # ── Réserves de la période ──────────────────────────────────────────
+    reserves = ReserveChantier.objects.filter(
+        chantier=chantier, company=company)
+    creees = reserves.filter(
+        created_at__date__gte=du, created_at__date__lte=au).count()
+    levees = reserves.filter(
+        statut=ReserveChantier.Statut.LEVEE,
+        date_levee__date__gte=du, date_levee__date__lte=au).count()
+    ouvertes = reserves.filter(statut__in=[
+        ReserveChantier.Statut.OUVERTE,
+        ReserveChantier.Statut.EN_COURS,
+        ReserveChantier.Statut.CONTESTEE,
+    ]).count()
+    bloquantes = reserves_actives_bloquantes(company, chantier=chantier).count()
+
+    # ── RFI encore ouverts ──────────────────────────────────────────────
+    rfis = [{
+        'numero': rfi.numero,
+        'question': rfi.question,
+        'date_limite_reponse': rfi.date_limite_reponse,
+        'en_retard': bool(
+            rfi.date_limite_reponse and rfi.date_limite_reponse < aujourdhui),
+    } for rfi in RFI.objects.filter(
+        chantier=chantier, company=company,
+        statut=RFI.Statut.OUVERT).order_by('numero')]
+
+    # ── Effectif moyen sur la période (journal NTCON6) ──────────────────
+    entrees = JournalChantier.objects.filter(
+        chantier=chantier, company=company, date__gte=du, date__lte=au)
+    total_interne = total_st = jours = 0
+    for entree in entrees:
+        jours += 1
+        if isinstance(entree.effectif_interne, dict):
+            total_interne += sum(entree.effectif_interne.values())
+        if isinstance(entree.effectif_sous_traitant, dict):
+            total_st += sum(entree.effectif_sous_traitant.values())
+    effectif = {
+        'jours_renseignes': jours,
+        'moyenne_interne': round(total_interne / jours, 1) if jours else 0,
+        'moyenne_sous_traitant': round(total_st / jours, 1) if jours else 0,
+    }
+
+    return {
+        'chantier_id': chantier.pk,
+        'du': du,
+        'au': au,
+        'lots': lots,
+        'reserves': {
+            'creees_periode': creees,
+            'levees_periode': levees,
+            'ouvertes': ouvertes,
+            'bloquantes_ouvertes': bloquantes,
+        },
+        'rfi_en_cours': rfis,
+        'effectif_moyen': effectif,
+        'qhse_points_arret_bloquants': (
+            qhse_selectors.hold_points_bloquants_pour_chantier(
+                company, chantier.pk)),
+    }
+
+
+# ── NTCON17 — Registre des intervenants (coordination SPS/CISSCT) ──────────
+
+def registre_intervenants(chantier, jour=None):
+    """NTCON17 — vue consolidée des intervenants d'un chantier, en UN écran.
+
+    LECTURE SEULE, aucune écriture nulle part. Agrège, chacun par le SÉLECTEUR
+    de son app (jamais ses ``models``/``views``) :
+
+    * **sous-traitants actifs** — ``installations.OrdreSousTraitance``
+      (FG305) au statut ``emis``/``en_cours`` sur ce chantier, via la relation
+      RÉELLE ``chantier.installations_ordres_sous_traitance`` (même app que le
+      FK ``chantier``, comme ``debourse_sec_vs_facture``) ;
+    * **attestations à jour** (FG307) — ``installations.selectors.
+      sous_traitant_attestations_manquantes`` : une pièce obligatoire EXPIRÉE
+      est signalée explicitement ;
+    * **PPSPS signé** (NTCON16) — ``services.sous_traitant_a_signe_ppsps`` ;
+    * **effectifs du jour** — DERNIÈRE entrée du ``JournalChantier`` (NTCON6) ;
+    * **personnel interne présent + titres à risque** — ``rh.selectors``
+      (``presences_installation`` FG170, ``habilitations_expirantes`` FG173,
+      ``certifications_expirantes`` FG174) : tout titre expiré ou expirant
+      sous 30 jours est remonté pour la coordination SPS.
+
+    ``alertes`` rassemble, en français, ce qui doit sauter aux yeux du
+    coordonnateur : attestation expirée, PPSPS non signé, titre RH échu.
+    """
+    from apps.installations import selectors as installations_selectors
+    from apps.rh import selectors as rh_selectors
+
+    from . import services
+    from .models import JournalChantier
+
+    if jour is None:
+        jour = timezone.localdate()
+
+    # ── Sous-traitants actifs sur le chantier (FG305) ───────────────────
+    sous_traitants = []
+    alertes = []
+    ordres = (
+        chantier.installations_ordres_sous_traitance
+        .filter(statut__in=['emis', 'en_cours'])
+        .select_related('sous_traitant'))
+    for ordre in ordres:
+        st = ordre.sous_traitant
+        manquantes = installations_selectors.sous_traitant_attestations_manquantes(
+            st, jour) if st is not None else []
+        ppsps_signe = bool(st is not None and services.sous_traitant_a_signe_ppsps(
+            chantier.pk, st.pk))
+        sous_traitants.append({
+            'ordre_id': ordre.pk,
+            'reference': ordre.reference,
+            'statut': ordre.statut,
+            'prestation': ordre.prestation,
+            'sous_traitant_id': getattr(st, 'pk', None),
+            'sous_traitant_nom': getattr(st, 'nom', ''),
+            'attestations_manquantes': manquantes,
+            'attestations_a_jour': not manquantes,
+            'ppsps_signe': ppsps_signe,
+        })
+        if manquantes:
+            pieces = ', '.join(m['type_piece'] for m in manquantes)
+            alertes.append(
+                f'{getattr(st, "nom", "Sous-traitant")} : pièce(s) '
+                f'obligatoire(s) expirée(s) — {pieces}.')
+        if not ppsps_signe and services.chantier_a_un_ppsps(chantier.pk):
+            alertes.append(
+                f'{getattr(st, "nom", "Sous-traitant")} : PPSPS du chantier '
+                'non signé.')
+
+    # ── Effectifs du jour (dernière entrée de journal, NTCON6) ──────────
+    journal = JournalChantier.objects.filter(
+        chantier=chantier).order_by('-date', '-id').first()
+    effectifs = {
+        'date': journal.date if journal else None,
+        'effectif_interne': (journal.effectif_interne or {}) if journal else {},
+        'effectif_sous_traitant': (
+            (journal.effectif_sous_traitant or {}) if journal else {}),
+        'total_interne': sum(
+            (journal.effectif_interne or {}).values()) if journal and isinstance(
+                journal.effectif_interne, dict) else 0,
+    }
+
+    # ── Personnel interne présent + titres RH à risque (FG170/173/174) ──
+    company = chantier.company
+    presences = rh_selectors.presences_installation(
+        company, chantier.pk, date_debut=jour, date_fin=jour,
+        presents_seulement=True)
+    personnel = []
+    for presence in presences:
+        employe = presence.employe
+        titres = []
+        for hab in rh_selectors.habilitations_expirantes(
+                company, within_days=30, employe_id=employe.pk):
+            titres.append({
+                'famille': 'habilitation',
+                'libelle': hab.get_type_habilitation_display(),
+                'date_validite': hab.date_validite,
+                'expiree': bool(hab.date_validite and hab.date_validite < jour),
+            })
+        for cert in rh_selectors.certifications_expirantes(
+                company, within_days=30, employe_id=employe.pk):
+            titres.append({
+                'famille': 'certification',
+                'libelle': cert.get_type_certification_display(),
+                'date_validite': cert.date_validite,
+                'expiree': bool(
+                    cert.date_validite and cert.date_validite < jour),
+            })
+        personnel.append({
+            'employe_id': employe.pk,
+            'employe': str(employe),
+            'titres_a_risque': titres,
+        })
+        for titre in titres:
+            if titre['expiree']:
+                alertes.append(
+                    f'{employe} : {titre["libelle"]} expiré(e) le '
+                    f'{titre["date_validite"]}.')
+
+    return {
+        'chantier_id': chantier.pk,
+        'date': jour,
+        'sous_traitants': sous_traitants,
+        'effectifs_du_jour': effectifs,
+        'personnel_interne': personnel,
+        'alertes': alertes,
     }
 
 

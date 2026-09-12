@@ -14,7 +14,9 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
-from .models import ReserveChantier, ReserveChantierHistorique
+from .models import (
+    LOTS_TYPES_DEFAUT, ReserveChantier, ReserveChantierHistorique,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -648,6 +650,737 @@ def marquer_diffusion_lue(diffusion, *, cle_destinataire):
     diffusion.accuse_reception = accuse
     diffusion.save(update_fields=['accuse_reception'])
     return diffusion
+
+
+# ── Réglages BTP par société (consommés par les soft-guards) ───────────────
+
+#: Défauts du module quand la société n'a encore aucun réglage enregistré.
+#: NTCON25 pose le modèle ``ParametresBtpChantier`` (singleton par société) ;
+#: ``config_btp`` le consomme dès qu'il existe — ces valeurs restent le repli.
+CONFIG_BTP_DEFAUTS = {
+    'delai_reponse_rfi_defaut_jours': 5,
+    'delai_revue_visa_defaut_jours': 10,
+    'guard_ppsps_bloquant': True,
+    'guard_checklist_lot_bloquant': True,
+    'lots_types_defaut': list(LOTS_TYPES_DEFAUT),
+    'taux_penalite_retard_defaut_pmil': None,
+}
+
+
+def config_btp(company):
+    """Réglages BTP EFFECTIFS de ``company`` (dict), repli sur
+    ``CONFIG_BTP_DEFAUTS``.
+
+    Point d'accès UNIQUE des soft-guards du module (PPSPS NTCON16, checklist
+    de lot NTCON19) : changer un réglage change le comportement du guard
+    immédiatement, sans redéploiement (aucun cache — la lecture est faite à
+    chaque appel). Tant qu'aucune ligne ``ParametresBtpChantier`` n'existe
+    pour la société, les défauts du module s'appliquent.
+
+    ``False`` est une valeur SIGNIFICATIVE (désactiver un guard) : seuls
+    ``None`` et la chaîne vide sont ignorés.
+    """
+    from .models import ParametresBtpChantier
+
+    valeurs = dict(CONFIG_BTP_DEFAUTS)
+    if company is None:
+        return valeurs
+    reglages = ParametresBtpChantier.objects.filter(company=company).first()
+    if reglages is None:
+        return valeurs
+    for cle in valeurs:
+        valeur = getattr(reglages, cle, None)
+        if valeur is None or valeur == '':
+            continue
+        valeurs[cle] = valeur
+    return valeurs
+
+
+# ── NTCON16 — PPSPS : validation, signature sous-traitant, soft-guard ──────
+
+def valider_ppsps(ppsps, *, user):
+    """NTCON16 — rend le PPSPS opposable (pose ``date_validation``/
+    ``valide_par`` côté SERVEUR). Idempotent : revalider est refusé."""
+    if ppsps.date_validation:
+        raise TransitionInvalide(
+            f'PPSPS #{ppsps.pk} : déjà validé le {ppsps.date_validation}.')
+    ppsps.date_validation = timezone.localdate()
+    ppsps.valide_par = user
+    ppsps.save(update_fields=['date_validation', 'valide_par', 'updated_at'])
+    return ppsps
+
+
+def signer_ppsps(ppsps, *, sous_traitant, signataire_nom, ip_adresse='',
+                 user_agent=''):
+    """NTCON16 — enregistre la signature d'un sous-traitant sur le PPSPS
+    (e-sign typée loi 53-05 : nom dactylographié + IP/user-agent SERVEUR).
+
+    Refuse (``TransitionInvalide``) une seconde signature du même
+    sous-traitant sur le même PPSPS, et un sous-traitant d'une autre société.
+    """
+    from .models import PPSPSSignature
+
+    if getattr(sous_traitant, 'company_id', None) not in (
+            None, ppsps.company_id):
+        raise TransitionInvalide(
+            'sous_traitant : sous-traitant inconnu pour cette société.')
+    if PPSPSSignature.objects.filter(
+            ppsps=ppsps, sous_traitant=sous_traitant).exists():
+        raise TransitionInvalide(
+            f'PPSPS #{ppsps.pk} : ce sous-traitant a déjà signé.')
+    return PPSPSSignature.objects.create(
+        company=ppsps.company, ppsps=ppsps, sous_traitant=sous_traitant,
+        signataire_nom=signataire_nom, ip_adresse=ip_adresse,
+        user_agent=user_agent)
+
+
+def sous_traitant_a_signe_ppsps(chantier_id, sous_traitant_id):
+    """NTCON16 — le sous-traitant a-t-il signé un PPSPS VALIDÉ de ce chantier ?
+
+    Un PPSPS non encore validé (``date_validation`` vide) n'est pas opposable :
+    seule une signature sur un PPSPS validé compte.
+    """
+    from .models import PPSPSSignature
+
+    return PPSPSSignature.objects.filter(
+        ppsps__chantier_id=chantier_id,
+        ppsps__date_validation__isnull=False,
+        sous_traitant_id=sous_traitant_id,
+    ).exists()
+
+
+def chantier_a_un_ppsps(chantier_id):
+    """NTCON16 — ce chantier gère-t-il un PPSPS (au moins un VALIDÉ) ?
+
+    Le soft-guard ne s'applique QUE dans ce cas : un chantier sans PPSPS
+    validé n'a rien à faire signer — bloquer y rendrait l'ERP inutilisable
+    pour les chantiers hors périmètre PPSPS.
+    """
+    from .models import PPSPSChantier
+
+    return PPSPSChantier.objects.filter(
+        chantier_id=chantier_id, date_validation__isnull=False).exists()
+
+
+def verifier_ppsps_avant_demarrage(*, company, chantier_id, sous_traitant_id,
+                                   libelle_ordre=''):
+    """NTCON16 — soft-guard « PPSPS signé » avant le démarrage d'un ordre de
+    sous-traitance (FG305, ``installations.OrdreSousTraitance`` → ``en_cours``).
+
+    Motif (pattern ``qhse.services.exiger_document_unique``, QHSE22) :
+      * chantier sans PPSPS validé → rien à exiger, on laisse passer ;
+      * sous-traitant ayant signé → on laisse passer ;
+      * sinon, selon ``config_btp(company)['guard_ppsps_bloquant']`` :
+        ``True`` → ``PermissionDenied`` (403 côté API, message français),
+        ``False`` → simple AVERTISSEMENT journalisé (jamais bloquant).
+
+    Renvoie ``True`` si le démarrage est autorisé, ``False`` s'il n'est
+    qu'averti. Ne lève jamais pour une raison technique (chantier absent…).
+    """
+    from django.core.exceptions import PermissionDenied
+
+    if not chantier_id or not sous_traitant_id:
+        return True
+    if not chantier_a_un_ppsps(chantier_id):
+        return True
+    if sous_traitant_a_signe_ppsps(chantier_id, sous_traitant_id):
+        return True
+
+    message = (
+        f'PPSPS non signé : le sous-traitant de {libelle_ordre or "cet ordre"} '
+        "n'a pas signé le PPSPS validé du chantier — signature requise avant "
+        'le démarrage des travaux.')
+    if config_btp(company).get('guard_ppsps_bloquant', True):
+        raise PermissionDenied(message)
+    logger.warning('btp_chantier: %s (guard en mode avertissement)', message)
+    return False
+
+
+# ── NTCON24 — Clôture guidée d'un chantier BTP ─────────────────────────────
+
+def prerequis_cloture_btp(chantier):
+    """NTCON24 — pré-requis de clôture d'un chantier BTP (lecture seule).
+
+    Trois contrôles, chacun renvoyant un message EXPLICITE en français (jamais
+    un « non conforme » générique — règle fondateur « l'erreur nomme ce qui
+    bloque ») :
+
+    1. aucune réserve BLOQUANTE encore ouverte (NTCON1/2) ;
+    2. aucun visa encore en attente de décision NI refusé (NTCON5) ;
+    3. si le chantier gère un PPSPS validé (NTCON16), tous les sous-traitants
+       ACTIFS (ordres FG305 ``emis``/``en_cours``) l'ont signé.
+
+    Renvoie ``{'pret': bool, 'blocages': [str, …]}``.
+    """
+    from . import selectors
+    from .models import VisaDocument
+
+    blocages = []
+
+    bloquantes = selectors.reserves_actives_bloquantes(
+        chantier.company, chantier=chantier).count()
+    if bloquantes:
+        blocages.append(
+            f'{bloquantes} réserve(s) bloquante(s) encore ouverte(s) — '
+            'à lever avant la clôture.')
+
+    en_attente = VisaDocument.objects.filter(
+        chantier=chantier, company=chantier.company,
+        statut__in=[VisaDocument.Statut.SOUMIS, VisaDocument.Statut.EN_REVUE],
+    ).values_list('reference', flat=True)
+    if en_attente:
+        blocages.append(
+            'Visa(s) encore en attente de décision : '
+            f'{", ".join(en_attente)}.')
+    refuses = VisaDocument.objects.filter(
+        chantier=chantier, company=chantier.company,
+        statut=VisaDocument.Statut.REFUSE).values_list('reference', flat=True)
+    if refuses:
+        blocages.append(
+            f'Visa(s) refusé(s) à reprendre : {", ".join(refuses)}.')
+
+    if chantier_a_un_ppsps(chantier.pk):
+        manquants = []
+        ordres = (
+            chantier.installations_ordres_sous_traitance
+            .filter(statut__in=['emis', 'en_cours'])
+            .select_related('sous_traitant'))
+        for ordre in ordres:
+            if not ordre.sous_traitant_id:
+                continue
+            if not sous_traitant_a_signe_ppsps(
+                    chantier.pk, ordre.sous_traitant_id):
+                manquants.append(ordre.sous_traitant.nom)
+        if manquants:
+            blocages.append(
+                'PPSPS non signé par : ' + ', '.join(sorted(set(manquants)))
+                + '.')
+
+    return {'pret': not blocages, 'blocages': blocages}
+
+
+@transaction.atomic
+def cloturer_chantier_btp(chantier, *, user, montant_marche_initial_ht=0,
+                          situations_incluses=None, retenue_garantie_id=None):
+    """NTCON24 — enchaîne la clôture d'un chantier BTP en UNE action.
+
+    Séquence : vérification des pré-requis (``prerequis_cloture_btp`` — refus
+    ``TransitionInvalide`` listant PRÉCISÉMENT ce qui manque) → génération du
+    DGD (NTCON9, ``creer_decompte_general`` : référence race-safe + totaux
+    recalculés) → notification (NTCON9 ``notifier_dgd``, statut ``notifie``).
+
+    L'export du dossier consolidé (NTCON20) se télécharge ensuite sur
+    ``chantiers/<id>/export-dossier-btp/`` — l'assistant enchaîne les deux
+    sans étape manuelle côté utilisateur.
+
+    NOTE DE PÉRIMÈTRE — NTCON24 évoquait un « lien client NTCON8-style » : le
+    jeton public de NTCON8 appartient à ``AvenantChantier`` ; ``DecompteGeneral``
+    n'en porte pas et lui en ajouter un serait un NOUVEAU canal public
+    non demandé. La notification passe donc par le chemin DGD EXISTANT
+    (statut ``notifie`` + PDF ``export-pdf``), sans inventer de surface
+    publique supplémentaire.
+    """
+    prerequis = prerequis_cloture_btp(chantier)
+    if not prerequis['pret']:
+        raise TransitionInvalide(
+            'Clôture impossible — ' + ' '.join(prerequis['blocages']))
+
+    dgd = creer_decompte_general(
+        company=chantier.company, chantier=chantier, cree_par=user,
+        montant_marche_initial_ht=montant_marche_initial_ht or 0,
+        situations_incluses=situations_incluses,
+        retenue_garantie_id=retenue_garantie_id)
+    notifier_dgd(dgd, user=user)
+    dgd.refresh_from_db()
+    return {'dgd': dgd, 'prerequis': prerequis}
+
+
+# ── NTCON20 — Export « dossier chantier » consolidé ────────────────────────
+
+def export_dossier_btp(chantier):
+    """NTCON20 — ZIP consolidant le dossier d'un chantier (archivage légal
+    loi 09-08 / litige). Réutilise le PATTERN d'export ZIP de XKB17
+    (``kb.services.export_articles_zip``) : ``zipfile`` + ``records.storage.
+    fetch_attachment`` (import fonction-local, ``records`` est une app de
+    FONDATION).
+
+    Contenu, STRICTEMENT scopé au chantier ET à sa société — jamais une pièce
+    d'un autre chantier ni d'une autre société :
+
+    * ``manifeste.txt`` — inventaire daté du dossier ;
+    * ``journal-chantier.pdf`` — journal complet (NTCON6) ;
+    * ``reserves/reserves-levees.csv`` + ``reserves/<id>/<fichier>`` — réserves
+      LEVÉES (NTCON1/2) avec leurs preuves photo ;
+    * ``visas/visas-approuves.csv`` — visas approuvés (NTCON5) ;
+    * ``dgd/<reference>.pdf`` — décomptes généraux (NTCON9) ;
+    * ``ppsps/ppsps-<id>.txt`` — PPSPS validés + signataires (NTCON16).
+
+    Renvoie les octets du ZIP.
+    """
+    import csv
+    import io
+    import zipfile
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+    from apps.records.storage import fetch_attachment
+
+    from .models import (
+        DecompteGeneral, JournalChantier, PPSPSChantier, ReserveChantier,
+        VisaDocument,
+    )
+    from .pdf import render_dgd_pdf, render_journal_chantier_pdf
+
+    company = chantier.company
+    buffer = io.BytesIO()
+
+    def _csv(entetes, lignes):
+        sortie = io.StringIO()
+        writer = csv.writer(sortie, delimiter=';')
+        writer.writerow(entetes)
+        writer.writerows(lignes)
+        return sortie.getvalue()
+
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # ── Journal de chantier (NTCON6) ────────────────────────────────
+        entrees = JournalChantier.objects.filter(
+            chantier=chantier, company=company).order_by('date')
+        try:
+            zf.writestr(
+                'journal-chantier.pdf',
+                render_journal_chantier_pdf(chantier, entrees))
+        except Exception:  # pragma: no cover - défensif (WeasyPrint absent)
+            logger.warning(
+                'btp_chantier: journal PDF absent du dossier %s',
+                chantier.pk, exc_info=True)
+
+        # ── Réserves LEVÉES + preuves (NTCON1/2) ────────────────────────
+        reserves = ReserveChantier.objects.filter(
+            chantier=chantier, company=company,
+            statut=ReserveChantier.Statut.LEVEE).order_by('id')
+        zf.writestr('reserves/reserves-levees.csv', _csv(
+            ['id', 'lot', 'gravite', 'description', 'date_levee'],
+            [[r.id, r.lot, r.gravite, r.description, r.date_levee or '']
+             for r in reserves]))
+        ct_reserve = ContentType.objects.get_for_model(ReserveChantier)
+        for reserve in reserves:
+            preuves = Attachment.objects.filter(
+                content_type=ct_reserve, object_id=reserve.id,
+                company=company)
+            for preuve in preuves:
+                data, erreur = fetch_attachment(preuve.file_key)
+                if erreur or data is None:
+                    continue
+                zf.writestr(
+                    f'reserves/{reserve.id}/{preuve.filename}', data)
+
+        # ── Visas approuvés (NTCON5) ────────────────────────────────────
+        visas = VisaDocument.objects.filter(
+            chantier=chantier, company=company,
+            statut__in=[
+                VisaDocument.Statut.APPROUVE_SANS_RESERVE,
+                VisaDocument.Statut.APPROUVE_AVEC_OBSERVATIONS,
+            ]).order_by('id')
+        zf.writestr('visas/visas-approuves.csv', _csv(
+            ['reference', 'type', 'document_ged_id', 'statut', 'date_revue'],
+            [[v.reference, v.type_visa, v.document_ged_id, v.statut,
+              v.date_revue or ''] for v in visas]))
+
+        # ── DGD (NTCON9) ────────────────────────────────────────────────
+        decomptes = DecompteGeneral.objects.filter(
+            chantier=chantier, company=company).order_by('id')
+        for dgd in decomptes:
+            try:
+                zf.writestr(f'dgd/{dgd.reference}.pdf', render_dgd_pdf(dgd))
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'btp_chantier: DGD PDF %s absent du dossier',
+                    dgd.reference, exc_info=True)
+
+        # ── PPSPS validés + signataires (NTCON16) ───────────────────────
+        for ppsps in PPSPSChantier.objects.filter(
+                chantier=chantier, company=company,
+                date_validation__isnull=False).order_by('id'):
+            lignes = [
+                f'PPSPS #{ppsps.pk} — {ppsps.titre or "sans titre"}',
+                f'Validé le : {ppsps.date_validation}',
+                f'Document GED : {ppsps.document_ged_id or "—"}',
+                'Signataires :',
+            ]
+            for signature in ppsps.signatures.select_related('sous_traitant'):
+                lignes.append(
+                    f'  - {signature.sous_traitant.nom} — '
+                    f'{signature.signataire_nom} '
+                    f'({signature.date_signature:%Y-%m-%d})')
+            zf.writestr(
+                f'ppsps/ppsps-{ppsps.pk}.txt', '\n'.join(lignes) + '\n')
+
+        # ── Manifeste ───────────────────────────────────────────────────
+        zf.writestr('manifeste.txt', '\n'.join([
+            f'Dossier de chantier — {chantier}',
+            f'Chantier : #{chantier.pk}',
+            f'Export du : {timezone.localdate()}',
+            f'Entrées de journal : {entrees.count()}',
+            f'Réserves levées : {reserves.count()}',
+            f'Visas approuvés : {visas.count()}',
+            f'Décomptes généraux : {decomptes.count()}',
+        ]) + '\n')
+
+    return buffer.getvalue()
+
+
+# ── NTCON19 — Checklist de réception de lot ────────────────────────────────
+
+#: Étapes de réception proposées par défaut quand aucune n'est fournie —
+#: modèle de départ ÉDITABLE, jamais imposé (chaque lot garde les siennes).
+CHECKLIST_RECEPTION_DEFAUT = [
+    ('conformite_execution', "Conformité d'exécution vérifiée"),
+    ('reserves_levees', 'Réserves du lot levées'),
+    ('essais_realises', 'Essais / mise en service réalisés'),
+    ('doe_remis', "Dossier des ouvrages exécutés (DOE) remis"),
+    ('nettoyage', 'Nettoyage et repli de chantier'),
+]
+
+
+@transaction.atomic
+def definir_checklist_lot(lot, etapes=None):
+    """NTCON19 — (RE)définit les étapes de réception d'un ``Lot``.
+
+    ``etapes`` : liste de dicts ``{cle, libelle, ordre?, obligatoire?}``.
+    ``None``/vide applique ``CHECKLIST_RECEPTION_DEFAUT``. Les étapes DÉJÀ
+    cochées conservent leur état (on ne « décoche » jamais un contrôle
+    réalisé) ; les étapes absentes de la nouvelle liste sont retirées.
+    """
+    from .models import LotChecklistItem
+
+    if not etapes:
+        etapes = [
+            {'cle': cle, 'libelle': libelle, 'ordre': rang}
+            for rang, (cle, libelle) in enumerate(
+                CHECKLIST_RECEPTION_DEFAUT, start=1)
+        ]
+
+    cles = []
+    for rang, etape in enumerate(etapes, start=1):
+        if not isinstance(etape, dict):
+            raise TransitionInvalide(
+                'etapes : chaque étape doit être un objet '
+                '{cle, libelle, ordre?, obligatoire?}.')
+        cle = (etape.get('cle') or '').strip()
+        libelle = (etape.get('libelle') or '').strip()
+        if not cle or not libelle:
+            raise TransitionInvalide(
+                'etapes : « cle » et « libelle » sont obligatoires pour '
+                'chaque étape.')
+        if cle in cles:
+            raise TransitionInvalide(
+                f'etapes : clé en double « {cle} ».')
+        cles.append(cle)
+        LotChecklistItem.objects.update_or_create(
+            lot=lot, cle=cle,
+            defaults={
+                'company': lot.company,
+                'libelle': libelle,
+                'ordre': etape.get('ordre') or rang,
+                'obligatoire': bool(etape.get('obligatoire', True)),
+            })
+    LotChecklistItem.objects.filter(lot=lot).exclude(cle__in=cles).delete()
+    return list(LotChecklistItem.objects.filter(lot=lot))
+
+
+def cocher_item_checklist_lot(lot, *, cle, user, fait=True):
+    """NTCON19 — coche/décoche une étape de réception (auteur + horodatage
+    posés CÔTÉ SERVEUR)."""
+    from .models import LotChecklistItem
+
+    item = LotChecklistItem.objects.filter(lot=lot, cle=cle).first()
+    if item is None:
+        raise TransitionInvalide(
+            f'cle : étape « {cle} » inconnue sur ce lot.')
+    item.fait = bool(fait)
+    item.fait_par = user if fait else None
+    item.fait_le = timezone.now() if fait else None
+    item.save(update_fields=['fait', 'fait_par', 'fait_le', 'updated_at'])
+    return item
+
+
+def etat_checklist_lot(lot):
+    """NTCON19 — état de la checklist de réception : ``{total, faits,
+    obligatoires_restants, complete}`` (lecture seule).
+
+    ``complete`` vaut True quand AUCUNE étape obligatoire ne reste à cocher —
+    un lot sans checklist est donc « complet » (rien n'est exigé tant que rien
+    n'a été défini).
+    """
+    from .models import LotChecklistItem
+
+    items = list(LotChecklistItem.objects.filter(lot=lot))
+    restants = [i.libelle for i in items if i.obligatoire and not i.fait]
+    return {
+        'total': len(items),
+        'faits': sum(1 for i in items if i.fait),
+        'obligatoires_restants': restants,
+        'complete': not restants,
+    }
+
+
+def verifier_checklist_avant_reception(lot):
+    """NTCON19 — soft-guard « checklist de réception 100 % cochée » avant le
+    passage d'un ``Lot`` à ``termine``.
+
+    Selon ``config_btp(company)['guard_checklist_lot_bloquant']`` :
+    ``True`` → ``TransitionInvalide`` nommant les étapes restantes,
+    ``False`` → simple AVERTISSEMENT journalisé. Renvoie ``True`` si la
+    réception est autorisée sans réserve, ``False`` si elle n'est qu'avertie.
+    """
+    etat = etat_checklist_lot(lot)
+    if etat['complete']:
+        return True
+    restants = ', '.join(etat['obligatoires_restants'])
+    message = (
+        f'Checklist de réception incomplète pour le lot « {lot.nom} » — '
+        f'étape(s) restante(s) : {restants}.')
+    if config_btp(lot.company).get('guard_checklist_lot_bloquant', True):
+        raise TransitionInvalide(message)
+    logger.warning('btp_chantier: %s (guard en mode avertissement)', message)
+    return False
+
+
+def terminer_lot(lot, *, user, date_fin_reelle=None):
+    """NTCON19 — réceptionne un lot (statut → ``termine``) APRÈS le soft-guard
+    de checklist. Pose ``date_fin_reelle`` (aujourd'hui par défaut) : c'est
+    elle qui FIGE le retard pris en compte par NTCON15."""
+    from .models import Lot
+
+    if lot.statut == Lot.Statut.TERMINE:
+        raise TransitionInvalide(
+            f'Lot « {lot.nom} » : déjà terminé.')
+    verifier_checklist_avant_reception(lot)
+    lot.statut = Lot.Statut.TERMINE
+    lot.date_fin_reelle = date_fin_reelle or timezone.localdate()
+    lot.save(update_fields=['statut', 'date_fin_reelle', 'updated_at'])
+    return lot
+
+
+# ── NTCON18 — Photo-rapport hebdomadaire (opt-in par chantier) ─────────────
+
+#: Plafond de photos embarquées dans un photo-rapport (PDF raisonnable).
+MAX_PHOTOS_RAPPORT = 60
+
+
+def email_sortant_configure():
+    """NTCON18 — l'envoi d'email réel est-il configuré (clé API présente) ?
+
+    Lecture de ``settings.ANYMAIL`` UNIQUEMENT (aucune dépendance cross-app) :
+    sans clé, la commande est un NO-OP PROPRE (elle produit le PDF mais
+    n'envoie rien et le dit) — jamais une erreur.
+    """
+    from django.conf import settings as dj_settings
+
+    anymail = getattr(dj_settings, 'ANYMAIL', None) or {}
+    return bool(
+        anymail.get('SENDINBLUE_API_KEY') or anymail.get('SENDGRID_API_KEY'))
+
+
+def collecter_photos_periode(chantier, du, au):
+    """NTCON18 — photos ``records.Attachment`` du chantier sur ``[du, au]``.
+
+    Trois sources, toutes rattachées au MÊME chantier : le chantier lui-même,
+    ses réserves (NTCON1) et ses entrées de journal (NTCON6). ``records`` est
+    une app de FONDATION : import direct autorisé (aucune frontière cross-app).
+    Seules les images sont embarquées (``mime`` commençant par ``image/``) ;
+    les octets sont lus via ``records.storage.fetch_attachment`` et encodés en
+    ``data:`` URI. Renvoie une liste de dicts triés par date croissante.
+    """
+    import base64
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+
+    from .models import JournalChantier, ReserveChantier
+
+    cibles = [
+        ('Chantier', ContentType.objects.get_for_model(chantier.__class__),
+         [chantier.pk]),
+        ('Réserve', ContentType.objects.get_for_model(ReserveChantier),
+         list(ReserveChantier.objects.filter(
+             chantier=chantier).values_list('id', flat=True))),
+        ('Journal', ContentType.objects.get_for_model(JournalChantier),
+         list(JournalChantier.objects.filter(
+             chantier=chantier).values_list('id', flat=True))),
+    ]
+
+    lignes = []
+    for libelle, content_type, ids in cibles:
+        if not ids:
+            continue
+        qs = Attachment.objects.filter(
+            company=chantier.company, content_type=content_type,
+            object_id__in=ids, created_at__date__gte=du,
+            created_at__date__lte=au).order_by('created_at', 'id')
+        for att in qs:
+            lignes.append({
+                'source': libelle,
+                'date': att.created_at.date().isoformat(),
+                'phase': att.phase or '',
+                'filename': att.filename,
+                'mime': att.mime or '',
+                'file_key': att.file_key,
+            })
+
+    lignes.sort(key=lambda ligne: ligne['date'])
+    lignes = lignes[:MAX_PHOTOS_RAPPORT]
+
+    from apps.records.storage import fetch_attachment
+    for ligne in lignes:
+        ligne['data_uri'] = None
+        if not (ligne['mime'] or '').startswith('image/'):
+            continue
+        data, erreur = fetch_attachment(ligne['file_key'])
+        if erreur or not data:
+            continue
+        ligne['data_uri'] = (
+            f'data:{ligne["mime"]};base64,'
+            f'{base64.b64encode(data).decode("ascii")}')
+    return lignes
+
+
+def envoyer_rapports_photo_hebdo(*, du=None, au=None, chantier_id=None,
+                                 dry_run=False):
+    """NTCON18 — balaie les chantiers ABONNÉS et envoie leur photo-rapport.
+
+    Opt-in strict : seuls les ``AbonnementRapportPhoto`` ``actif=True`` sont
+    traités. Période par défaut : les 7 derniers jours (``au`` = aujourd'hui).
+    Sans clé email configurée (``email_sortant_configure``) ou en ``dry_run``,
+    le PDF est bien produit mais RIEN n'est envoyé — no-op propre.
+
+    Renvoie ``{'examines', 'envoyes', 'sans_photo', 'email_configure'}``.
+    """
+    from datetime import timedelta
+
+    from .models import AbonnementRapportPhoto
+    from .pdf import render_rapport_photo_pdf
+
+    au = au or timezone.localdate()
+    du = du or (au - timedelta(days=6))
+    envoi_possible = email_sortant_configure() and not dry_run
+
+    qs = AbonnementRapportPhoto.objects.filter(
+        actif=True).select_related('chantier', 'company')
+    if chantier_id:
+        qs = qs.filter(chantier_id=chantier_id)
+
+    examines = envoyes = sans_photo = 0
+    for abonnement in qs:
+        examines += 1
+        photos = collecter_photos_periode(abonnement.chantier, du, au)
+        if not photos:
+            sans_photo += 1
+            continue
+        try:
+            pdf_bytes = render_rapport_photo_pdf(
+                abonnement.chantier, du, au, photos)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant
+            logger.warning(
+                'btp_chantier: rendu du photo-rapport échoué pour le chantier '
+                '%s', abonnement.chantier_id, exc_info=True)
+            continue
+        destinataires = [
+            adresse for adresse in (abonnement.destinataires or []) if adresse]
+        if not (envoi_possible and destinataires):
+            continue
+        try:
+            from django.conf import settings as dj_settings
+            from django.core.mail import EmailMessage
+
+            message = EmailMessage(
+                subject=f'Avancement photo — {abonnement.chantier}',
+                body=(
+                    f'Bonjour,\n\nVeuillez trouver ci-joint le rapport '
+                    f"d'avancement photo du {du} au {au}.\n"),
+                from_email=getattr(
+                    dj_settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local'),
+                to=destinataires,
+            )
+            message.attach(
+                f'avancement-photo-{abonnement.chantier_id}-{au}.pdf',
+                pdf_bytes, 'application/pdf')
+            message.send(fail_silently=True)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            logger.warning(
+                'btp_chantier: envoi du photo-rapport échoué pour le chantier '
+                '%s', abonnement.chantier_id, exc_info=True)
+            continue
+        abonnement.dernier_envoi = au
+        abonnement.save(update_fields=['dernier_envoi', 'updated_at'])
+        envoyes += 1
+
+    return {
+        'examines': examines,
+        'envoyes': envoyes,
+        'sans_photo': sans_photo,
+        'email_configure': email_sortant_configure(),
+    }
+
+
+# ── NTCON14 — Rattachement des tâches existantes à un lot ──────────────────
+
+def taches_hors_societe(tache_ids, company):
+    """NTCON14 — parmi ``tache_ids`` (IDs ``gestion_projet.Tache``), renvoie
+    ceux qui n'appartiennent PAS à ``company`` (inconnu ou autre société).
+
+    LECTURE cross-app via ``django.apps.apps.get_model`` — jamais un import
+    statique de ``gestion_projet.models``, jamais une écriture (même patron que
+    ``selectors.situations_incluses_hors_societe``).
+    """
+    from django.apps import apps as django_apps
+
+    tache_ids = list(tache_ids or [])
+    if not tache_ids:
+        return []
+    try:
+        Tache = django_apps.get_model('gestion_projet', 'Tache')
+    except LookupError:  # pragma: no cover - gestion_projet non installé
+        return list(tache_ids)
+    connus = set(Tache.objects.filter(
+        id__in=tache_ids, company=company).values_list('id', flat=True))
+    return [tid for tid in tache_ids if tid not in connus]
+
+
+@transaction.atomic
+def definir_taches_du_lot(lot, tache_ids):
+    """NTCON14 — (RE)définit l'ensemble des tâches rattachées à ``lot``.
+
+    Refuse (``TransitionInvalide``, message français nommant le champ) toute
+    tâche inconnue/cross-société, ou déjà rattachée à un AUTRE lot (une tâche
+    appartient à au plus un lot — contrainte ``btp_lot_tache_unique_lot``).
+    """
+    from .models import LotTache
+
+    tache_ids = [int(t) for t in (tache_ids or [])]
+    inconnues = taches_hors_societe(tache_ids, lot.company)
+    if inconnues:
+        raise TransitionInvalide(
+            f'taches : tâche(s) inconnue(s) ou appartenant à une autre '
+            f'société : {inconnues}.')
+    deja_ailleurs = list(
+        LotTache.objects.filter(tache_id__in=tache_ids)
+        .exclude(lot=lot).values_list('tache_id', flat=True))
+    if deja_ailleurs:
+        raise TransitionInvalide(
+            f'taches : tâche(s) déjà rattachée(s) à un autre lot : '
+            f'{deja_ailleurs}. Détachez-les d\'abord.')
+    LotTache.objects.filter(lot=lot).exclude(
+        tache_id__in=tache_ids).delete()
+    existantes = set(
+        LotTache.objects.filter(lot=lot).values_list('tache_id', flat=True))
+    LotTache.objects.bulk_create([
+        LotTache(company=lot.company, lot=lot, tache_id=tid)
+        for tid in tache_ids if tid not in existantes
+    ])
+    return lot
 
 
 def alerter_rfi_en_retard():

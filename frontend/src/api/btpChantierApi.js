@@ -128,6 +128,102 @@ const btpChantierApi = {
   debourseVsFacture: (chantierId) =>
     api.get(`/btp-chantier/chantiers/${chantierId}/debourse-vs-facture/`),
 
+  // ── NTCON14 — Lots du planning tous-corps-d'état (TCE) ──────────────────
+  lots: {
+    // `params` : { chantier, statut, jalon } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/lots/', { params }),
+    // `data` : { chantier, nom, ordre?, couleur?, interne?, sous_traitant?,
+    // date_debut_prevue?, date_fin_prevue?, jalon_contractuel?, montant_ht?,
+    // taux_penalite_retard_pmil?, plafond_penalite_pct? }.
+    create: (data) => api.post('/btp-chantier/lots/', data),
+    update: (id, data) => api.patch(`/btp-chantier/lots/${id}/`, data),
+    remove: (id) => api.delete(`/btp-chantier/lots/${id}/`),
+    // Tâches `gestion_projet.Tache` rattachées au lot (lecture).
+    taches: (id) => api.get(`/btp-chantier/lots/${id}/taches/`),
+    // Remplace l'ensemble des tâches rattachées (`tacheIds` = liste d'IDs).
+    definirTaches: (id, tacheIds) =>
+      api.post(`/btp-chantier/lots/${id}/taches/`, { taches: tacheIds }),
+    // NTCON19 — checklist de RÉCEPTION du lot (distincte de la checklist
+    // d'exécution du chantier). `etapes` absente = modèle par défaut.
+    checklist: (id) => api.get(`/btp-chantier/lots/${id}/checklist/`),
+    definirChecklist: (id, etapes) =>
+      api.post(`/btp-chantier/lots/${id}/checklist/`, { etapes }),
+    cocher: (id, cle, fait = true) =>
+      api.post(`/btp-chantier/lots/${id}/cocher/`, { cle, fait }),
+    // Réception du lot : refusée (400) tant qu'une étape obligatoire reste
+    // à cocher, selon le réglage `guard_checklist_lot_bloquant`.
+    terminer: (id) => api.post(`/btp-chantier/lots/${id}/terminer/`),
+  },
+  // NTCON14 — Gantt du chantier GROUPÉ PAR LOT (avec code couleur).
+  planningLots: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/planning-lots/`),
+  // NTCON15 — exposition aux pénalités de retard, LOT PAR LOT (donnée
+  // INTERNE : le serveur exige `btp_gerer` même en lecture, 403 sinon).
+  penalitesParLot: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/penalites-par-lot/`),
+
+  // ── NTCON18 — Opt-in au photo-rapport hebdomadaire (par chantier) ───────
+  // Aucun envoi tant qu'aucune ligne `actif` n'existe pour le chantier.
+  abonnementsRapportPhoto: {
+    list: (params) =>
+      api.get('/btp-chantier/abonnements-rapport-photo/', { params }),
+    // `data` : { chantier, actif?, destinataires? (emails client/MOE) }.
+    create: (data) => api.post('/btp-chantier/abonnements-rapport-photo/', data),
+    update: (id, data) =>
+      api.patch(`/btp-chantier/abonnements-rapport-photo/${id}/`, data),
+  },
+
+  // NTCON22 — PDF INTERNE d'avancement sur une période (`{ du, au }`) :
+  // jamais un devis client, jamais servi par `/proposal`, aucun coût d'achat.
+  rapportAvancement: (chantierId, params) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/rapport-avancement/`, {
+      params, responseType: 'blob',
+    }),
+
+  // ── NTCON25 — Réglages BTP de la société (singleton par tenant) ─────────
+  // Lecture tout rôle BTP ; écriture réservée aux ADMIN (403 serveur sinon).
+  parametres: {
+    get: () => api.get('/btp-chantier/parametres/'),
+    enregistrer: (data) => api.patch('/btp-chantier/parametres/', data),
+  },
+
+  // NTCON24 — assistant de clôture : GET = pré-requis (liste EXPLICITE de ce
+  // qui bloque), POST = enchaîne vérification → DGD → notification et renvoie
+  // l'URL d'export du dossier consolidé.
+  cloture: {
+    prerequis: (chantierId) =>
+      api.get(`/btp-chantier/chantiers/${chantierId}/cloture-btp/`),
+    cloturer: (chantierId, data) =>
+      api.post(`/btp-chantier/chantiers/${chantierId}/cloture-btp/`, data),
+  },
+
+  // NTCON20 — ZIP « dossier chantier » consolidé (archivage légal/litige) :
+  // journal, réserves levées + preuves, visas approuvés, DGD, PPSPS signés.
+  exportDossierBtp: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/export-dossier-btp/`, {
+      responseType: 'blob',
+    }),
+
+  // NTCON17 — registre des intervenants (coordination SPS/CISSCT) : lecture
+  // seule, agrège sous-traitants actifs + attestations + PPSPS + effectifs.
+  intervenants: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/intervenants/`),
+
+  // ── NTCON16 — PPSPS de chantier (plan de prévention) ────────────────────
+  ppsps: {
+    // `params` : { chantier } — optionnel.
+    list: (params) => api.get('/btp-chantier/ppsps/', { params }),
+    // `data` : { chantier, titre?, document_ged_id?, lots_couverts? }.
+    create: (data) => api.post('/btp-chantier/ppsps/', data),
+    // Rend le plan opposable (`date_validation`/`valide_par` posés serveur).
+    valider: (id) => api.post(`/btp-chantier/ppsps/${id}/valider/`),
+    // Signature d'un sous-traitant (e-sign typée, loi 53-05).
+    signer: (id, sousTraitantId, signataireNom) =>
+      api.post(`/btp-chantier/ppsps/${id}/signer/`, {
+        sous_traitant: sousTraitantId, signataire_nom: signataireNom,
+      }),
+  },
+
   // ── PACT68 — Diffusion contrôlée de plans — NTCON12/13 ───────────────────
   diffusions: {
     // `params` : { chantier, document } — tous optionnels.

@@ -70,6 +70,22 @@ def make_projet_lie(company, chantier, **kwargs):
     return projet
 
 
+def make_tache(company, projet, **kwargs):
+    """Crée une ``gestion_projet.Tache`` (NTCON14 — rattachement à un lot)."""
+    from apps.gestion_projet.models import Tache
+    n = next(_seq)
+    kwargs.setdefault('libelle', f'Tâche {n}')
+    return Tache.objects.create(company=company, projet=projet, **kwargs)
+
+
+def make_lot(company, chantier, **kwargs):
+    """Crée un ``btp_chantier.Lot`` (NTCON14)."""
+    from apps.btp_chantier.models import Lot
+    n = next(_seq)
+    kwargs.setdefault('nom', f'Lot {n}')
+    return Lot.objects.create(company=company, chantier=chantier, **kwargs)
+
+
 def make_ressource_profil(company, **kwargs):
     from apps.gestion_projet.models import RessourceProfil
     n = next(_seq)
@@ -121,6 +137,41 @@ def make_ordre_sous_traitance(company, chantier, sous_traitant, **kwargs):
     return OrdreSousTraitance.objects.create(
         company=company, chantier=chantier, sous_traitant=sous_traitant,
         **kwargs)
+
+
+def make_attestation_sous_traitant(company, sous_traitant, **kwargs):
+    """Crée une ``installations.AttestationSousTraitant`` (FG307) — NTCON17."""
+    from apps.installations.models_attestation_soustraitant import (
+        AttestationSousTraitant,
+    )
+    return AttestationSousTraitant.objects.create(
+        company=company, sous_traitant=sous_traitant, **kwargs)
+
+
+def make_employe(company, **kwargs):
+    """Crée un ``rh.DossierEmploye`` (NTCON17 — registre des intervenants)."""
+    from apps.rh.models import DossierEmploye
+    n = next(_seq)
+    kwargs.setdefault('matricule', f'MAT-{n}')
+    kwargs.setdefault('nom', f'Nom{n}')
+    kwargs.setdefault('prenom', 'Ali')
+    return DossierEmploye.objects.create(company=company, **kwargs)
+
+
+def make_presence_chantier(company, employe, chantier, jour, **kwargs):
+    """Crée une ``rh.PresenceChantier`` (FG170) — NTCON17."""
+    from apps.rh.models import PresenceChantier
+    kwargs.setdefault('statut', PresenceChantier.Statut.PRESENT)
+    return PresenceChantier.objects.create(
+        company=company, employe=employe, installation_id=chantier.pk,
+        date=jour, **kwargs)
+
+
+def make_habilitation(company, employe, **kwargs):
+    """Crée une ``rh.Habilitation`` (FG173) — NTCON17."""
+    from apps.rh.models import Habilitation
+    return Habilitation.objects.create(
+        company=company, employe=employe, **kwargs)
 
 
 def make_produit(company, prix_achat=0, prix_vente=0, **kwargs):
