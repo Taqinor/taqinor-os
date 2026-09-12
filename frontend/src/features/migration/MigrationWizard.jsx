@@ -7,8 +7,13 @@ import { Badge, Button, Card, Progress, buttonVariants, toast } from '../../ui'
 import { cn } from '../../lib/cn'
 import migrationApi from '../../api/migrationApi'
 import {
-  ENTITES, STATUTS_LOT, STATUTS_PROJET, errMessage, formatMAD, labelSource,
+  ENTITES, STATUTS_LOT, STATUTS_PROJET, errMessage, labelSource,
 } from './constants'
+// NTMIG18 — le montant MAD passe par le helper PARTAGÉ (`fr-FR` +
+// `Intl.NumberFormat`, séparateur de milliers « espace fine »), jamais par
+// l'ancien `formatMAD` local de `./constants` (`fr-MA` + `toLocaleString`
+// brut) qui rendait « 15.000,00 » (point) au lieu de « 15 000,00 ».
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    NTMIG17 — Assistant de migration pas-à-pas (4 étapes par lot).
