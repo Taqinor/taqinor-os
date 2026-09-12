@@ -581,6 +581,16 @@ const rhApi = {
   getOrganigramme: (params) =>
     api.get('/rh/employes/organigramme/', { params }),
 
+  // ── NTHCM3 — rattachements fonctionnels (dotted-line) ──
+  getRattachementsFonctionnels: (params) =>
+    api.get('/rh/rattachements-fonctionnels/', { params }),
+  createRattachementFonctionnel: (data) =>
+    api.post('/rh/rattachements-fonctionnels/', data),
+  updateRattachementFonctionnel: (id, data) =>
+    api.patch(`/rh/rattachements-fonctionnels/${id}/`, data),
+  deleteRattachementFonctionnel: (id) =>
+    api.delete(`/rh/rattachements-fonctionnels/${id}/`),
+
   // ── NTHCM4 — postes budgétés vs pourvus (headcount) ──
   getEffectifPoste: (posteId) =>
     api.get(`/rh/postes/${posteId}/effectif/`),

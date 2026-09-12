@@ -3495,7 +3495,8 @@ def zones_intervention(company):
 PROFONDEUR_MAX_ORGANIGRAMME = 12
 
 
-def arbre_hierarchique(company, racine_id=None, q=None):
+def arbre_hierarchique(company, racine_id=None, q=None,
+                       inclure_matriciel=False, aujourdhui=None):
     """NTHCM2 — organigramme imbriqué de la société (lecture pure).
 
     Part des employés SANS manager (les racines réelles), ou d'une ``racine_id``
@@ -3515,8 +3516,17 @@ def arbre_hierarchique(company, racine_id=None, q=None):
     Les employés SORTIS sont exclus (un organigramme montre l'organisation
     d'aujourd'hui) ; un employé dont le manager est hors périmètre (sorti, ou
     d'une autre société) devient une racine plutôt que de disparaître.
+
+    MATRICIEL (NTHCM3, ``inclure_matriciel``). La clé
+    ``rattachements_fonctionnels`` est TOUJOURS présente (forme de nœud
+    stable, contrat PACT10) : vide par défaut, remplie des rattachements
+    ACTIFS à ``aujourdhui`` quand on la demande. Ces liens sont une SECONDE
+    ligne, en pointillés côté écran — jamais mélangée à la hiérarchie, qui
+    reste seule à évaluer/approuver.
     """
     from authentication.avatars import presign_avatar
+
+    jour = aujourdhui or timezone.localdate()
 
     employes = list(
         DossierEmploye.objects
@@ -3541,6 +3551,30 @@ def arbre_hierarchique(company, racine_id=None, q=None):
                    if employe.manager_id not in index]
 
     terme = (q or '').strip().lower()
+
+    # NTHCM3 — rattachements fonctionnels ACTIFS, indexés par employé. Une
+    # seule requête pour tout l'arbre (jamais une par nœud).
+    matriciel = {}
+    if inclure_matriciel:
+        from .models import RattachementFonctionnel
+
+        liens = (
+            RattachementFonctionnel.objects
+            .filter(company=company, employe_id__in=index.keys())
+            .select_related('manager_fonctionnel')
+            .order_by('role_fonctionnel', 'id'))
+        for lien in liens:
+            if not lien.actif_le(jour):
+                continue
+            manager = lien.manager_fonctionnel
+            matriciel.setdefault(lien.employe_id, []).append({
+                'id': lien.id,
+                'manager_fonctionnel_id': lien.manager_fonctionnel_id,
+                'manager_fonctionnel': (
+                    f'{manager.nom} {manager.prenom}'.strip()
+                    if manager else ''),
+                'role_fonctionnel': lien.role_fonctionnel,
+            })
 
     def _photo(employe):
         utilisateur = employe.user
@@ -3584,6 +3618,9 @@ def arbre_hierarchique(company, racine_id=None, q=None):
             'tronque': tronque,
             'correspond': correspond,
             'sur_chemin': sur_chemin,
+            # NTHCM3 — clé TOUJOURS présente (forme de nœud stable) :
+            # vide tant que le matriciel n'est pas demandé.
+            'rattachements_fonctionnels': matriciel.get(employe.id, []),
             'subordonnes': subordonnes,
         }
 
@@ -3592,6 +3629,7 @@ def arbre_hierarchique(company, racine_id=None, q=None):
         'effectif': len(employes),
         'profondeur_max': PROFONDEUR_MAX_ORGANIGRAMME,
         'recherche': terme,
+        'matriciel': bool(inclure_matriciel),
     }
 
 

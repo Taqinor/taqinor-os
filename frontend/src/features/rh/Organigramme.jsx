@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Network, Users } from 'lucide-react'
 import {
   Avatar, AvatarFallback, AvatarImage, initials,
-  Card, EmptyState, Input, Label, Spinner, Stat, toast,
+  Card, EmptyState, Input, Label, Spinner, Stat, Switch, toast,
 } from '../../ui'
 import rhApi from '../../api/rhApi'
 
@@ -90,6 +90,26 @@ function Noeud({ noeud, deplieParDefaut, replies, basculer }) {
         )}
       </div>
 
+      {noeud.rattachements_fonctionnels?.length > 0 && (
+        <ul className="ml-6 list-none">
+          {noeud.rattachements_fonctionnels.map((lien) => (
+            <li
+              key={lien.id}
+              /* Trait POINTILLÉ : la ligne fonctionnelle ne se confond jamais
+                 avec la ligne hiérarchique (trait plein ci-dessus). */
+              className="my-1 flex items-center gap-2 rounded-lg border border-dashed px-3 py-1.5 text-xs text-muted-foreground"
+              data-org-dotted={lien.id}
+            >
+              <span className="font-medium">
+                {lien.role_fonctionnel || 'Rattachement fonctionnel'}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span className="truncate">{lien.manager_fonctionnel}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {noeud.tronque && (
         <p className="pl-6 text-xs text-warning">
           Branche coupée : profondeur maximale atteinte (ou boucle détectée
@@ -116,14 +136,19 @@ function Noeud({ noeud, deplieParDefaut, replies, basculer }) {
 
 export default function Organigramme() {
   const [recherche, setRecherche] = useState('')
+  const [matriciel, setMatriciel] = useState(false)
   const [etat, setEtat] = useState({ data: null, loading: true, error: null })
   const [replies, setReplies] = useState(() => new Set())
   const { data, loading, error } = etat
 
   useEffect(() => {
     let vivant = true
-    const params = recherche.trim() ? { q: recherche.trim() } : undefined
-    rhApi.getOrganigramme(params)
+    const params = {}
+    if (recherche.trim()) params.q = recherche.trim()
+    // NTHCM3 — le matriciel est OPT-IN : sans ce paramètre le serveur ne
+    // charge ni ne renvoie aucun rattachement fonctionnel.
+    if (matriciel) params.inclure_matriciel = '1'
+    rhApi.getOrganigramme(Object.keys(params).length ? params : undefined)
       .then((res) => {
         if (vivant) setEtat({ data: res.data, loading: false, error: null })
       })
@@ -137,7 +162,7 @@ export default function Organigramme() {
         toast.error('Impossible de charger l’organigramme.')
       })
     return () => { vivant = false }
-  }, [recherche])
+  }, [recherche, matriciel])
 
   const enRecherche = Boolean(data?.recherche)
 
@@ -175,6 +200,16 @@ export default function Organigramme() {
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Nom, matricule ou poste"
           />
+        </div>
+        <div className="flex items-center gap-2 pb-2">
+          <Switch
+            id="org-matriciel"
+            checked={matriciel}
+            onCheckedChange={(valeur) => setMatriciel(Boolean(valeur))}
+          />
+          <Label htmlFor="org-matriciel">
+            Afficher les rattachements fonctionnels
+          </Label>
         </div>
         <div className="sm:ml-auto">
           <Stat

@@ -62,6 +62,7 @@ from .views import (
     FeuilleTempsViewSet,
     ParcoursFormationViewSet,
     ProgressionParcoursViewSet,
+    RattachementFonctionnelViewSet,
     HabilitationViewSet,
     HeuresSuppViewSet,
     HoraireTravailViewSet,
@@ -214,6 +215,9 @@ router.register(r'feedbacks-continus', FeedbackContinuViewSet)
 router.register(r'parcours-formation', ParcoursFormationViewSet)
 router.register(r'etapes-parcours', EtapeParcoursViewSet)
 router.register(r'progressions-parcours', ProgressionParcoursViewSet)
+# NTHCM3 — rattachements fonctionnels (dotted-line).
+router.register(
+    r'rattachements-fonctionnels', RattachementFonctionnelViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

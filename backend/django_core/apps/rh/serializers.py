@@ -95,6 +95,7 @@ from .models import (
     PrimeAttribuee,
     ProgressionParcours,
     QuizFormation,
+    RattachementFonctionnel,
     Remuneration,
     ReponsePulse,
     RetourFeedback360,
@@ -3608,6 +3609,59 @@ class FeedbackContinuSerializer(serializers.ModelSerializer):
 
     def validate_pour(self, value):
         return _meme_societe(self, value, 'Destinataire')
+
+
+class RattachementFonctionnelSerializer(serializers.ModelSerializer):
+    """NTHCM3 — ligne fonctionnelle (dotted-line), distincte de la hiérarchie."""
+    employe_nom = serializers.SerializerMethodField()
+    manager_fonctionnel_nom = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = RattachementFonctionnel
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'manager_fonctionnel', 'manager_fonctionnel_nom',
+            'role_fonctionnel', 'date_debut', 'date_fin', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_employe_nom(self, obj) -> str:
+        if obj.employe_id is None:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_manager_fonctionnel_nom(self, obj) -> str:
+        if obj.manager_fonctionnel_id is None:
+            return ''
+        return (f'{obj.manager_fonctionnel.nom} '
+                f'{obj.manager_fonctionnel.prenom}')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_manager_fonctionnel(self, value):
+        return _meme_societe(self, value, 'Manager fonctionnel')
+
+    def validate(self, attrs):
+        """Auto-rattachement et fenêtre incohérente : règles du MODÈLE."""
+        attrs = super().validate(attrs)
+        donnees = {}
+        for champ in ('employe', 'manager_fonctionnel',
+                      'date_debut', 'date_fin'):
+            if self.instance is not None:
+                donnees[champ] = getattr(self.instance, champ)
+            if champ in attrs:
+                donnees[champ] = attrs[champ]
+        lien = RattachementFonctionnel(**donnees)
+        try:
+            lien.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
 
 
 class EtapeParcoursSerializer(serializers.ModelSerializer):

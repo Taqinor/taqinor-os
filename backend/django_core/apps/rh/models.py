@@ -7339,6 +7339,88 @@ class FeedbackContinu(TenantModel):
         return f'{self.get_type_display()} → {self.pour_id}'
 
 
+class RattachementFonctionnel(TenantModel):
+    """NTHCM3 — ligne FONCTIONNELLE (dotted-line), distincte de la hiérarchie.
+
+    ``DossierEmploye.manager`` (NTHCM1) est la ligne HIÉRARCHIQUE : celle qui
+    ÉVALUE et APPROUVE, unique par employé. Un poseur rattaché à un chef de
+    chantier peut pourtant dépendre FONCTIONNELLEMENT du responsable QHSE sur
+    son domaine — sans que celui-ci l'évalue.
+
+    C'est cette seconde ligne, VOLONTAIREMENT multiple : un employé peut
+    porter N rattachements fonctionnels actifs en même temps. La fenêtre
+    ``date_debut``/``date_fin`` (toutes deux facultatives) permet un
+    rattachement temporaire (mission, projet) sans le supprimer ensuite.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4).
+    """
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: composition — le rattachement ne décrit que ce collaborateur ; sans lui il ne rattache plus rien.
+        related_name='rattachements_fonctionnels',
+        verbose_name='Employé',
+    )
+    manager_fonctionnel = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — le manager fonctionnel est un champ d'IDENTITÉ du lien (un rattachement « vers personne » n'a plus de sens, et `check_on_delete` refuse un SET_NULL sur un champ d'identité).
+        related_name='rattaches_fonctionnels',
+        verbose_name='Manager fonctionnel',
+    )
+    role_fonctionnel = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Rôle fonctionnel')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin')
+
+    class Meta:
+        verbose_name = 'Rattachement fonctionnel'
+        verbose_name_plural = 'Rattachements fonctionnels'
+        ordering = ['employe', 'role_fonctionnel']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_rattfonc_comp_emp_idx'),
+        ]
+
+    def clean(self):
+        """Pas d'auto-rattachement, pas de cross-tenant, fenêtre cohérente."""
+        from django.core.exceptions import ValidationError
+
+        if self.employe_id and self.manager_fonctionnel_id \
+                and self.employe_id == self.manager_fonctionnel_id:
+            raise ValidationError(
+                'Un employé ne peut pas être son propre manager fonctionnel.')
+        if self.date_debut and self.date_fin and self.date_fin < self.date_debut:
+            raise ValidationError(
+                'La date de fin est antérieure à la date de début.')
+        if self.company_id is None:
+            return
+        for champ, libelle in (('employe', 'Employé'),
+                               ('manager_fonctionnel', 'Manager fonctionnel')):
+            dossier = getattr(self, champ, None)
+            if dossier is not None and dossier.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : ce dossier appartient à une autre société.')
+
+    def actif_le(self, jour):
+        """Vrai si le rattachement couvre ``jour`` (bornes incluses).
+
+        Une borne absente = ouverte de ce côté : un rattachement sans aucune
+        date est actif en permanence (le cas courant).
+        """
+        if self.date_debut and jour < self.date_debut:
+            return False
+        if self.date_fin and jour > self.date_fin:
+            return False
+        return True
+
+    def __str__(self):
+        return (f'{self.employe_id} → {self.manager_fonctionnel_id} '
+                f'({self.role_fonctionnel or "fonctionnel"})')
+
+
 class ParcoursFormation(TenantModel):
     """NTHCM17 — PARCOURS de formation : une suite ORDONNÉE d'étapes.
 

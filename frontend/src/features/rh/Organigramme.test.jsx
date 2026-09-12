@@ -83,6 +83,35 @@ describe('Organigramme (NTHCM2)', () => {
       .toBeTruthy()
   })
 
+  it('superpose les rattachements fonctionnels sur demande (NTHCM3)', async () => {
+    rhApi.getOrganigramme.mockResolvedValue(
+      reponseContrat('rh', 'organigramme'))
+    renderEcran()
+    await screen.findByText(RACINE.employe)
+
+    const lien = POSEUSE.rattachements_fonctionnels[0]
+    // Ligne fonctionnelle rendue en POINTILLÉS, distincte du trait plein
+    // hiérarchique — et jamais confondue avec le manager qui évalue.
+    expect(screen.getByText(lien.role_fonctionnel)).toBeTruthy()
+    expect(screen.getByText(lien.manager_fonctionnel)).toBeTruthy()
+  })
+
+  it('le matriciel est OPT-IN : il n’est demandé qu’après bascule', async () => {
+    rhApi.getOrganigramme.mockResolvedValue(
+      reponseContrat('rh', 'organigramme'))
+    renderEcran()
+    await screen.findByText(RACINE.employe)
+
+    expect(rhApi.getOrganigramme).toHaveBeenCalledWith(undefined)
+
+    fireEvent.click(screen.getByRole('switch'))
+    await waitFor(() => {
+      expect(rhApi.getOrganigramme).toHaveBeenCalledWith({
+        inclure_matriciel: '1',
+      })
+    })
+  })
+
   it('affiche la coupure d’une branche tronquée au lieu de boucler', async () => {
     const tronque = JSON.parse(JSON.stringify(CONTRAT))
     tronque.racines[0].subordonnes[0].tronque = true

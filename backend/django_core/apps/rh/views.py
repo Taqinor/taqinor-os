@@ -116,6 +116,7 @@ from .models import (
     PrimeAttribuee,
     ProgressionParcours,
     QuizFormation,
+    RattachementFonctionnel,
     Remuneration,
     RetourFeedback360,
     Sanction,
@@ -218,6 +219,7 @@ from .serializers import (
     QuizFormationPortailSerializer,
     QuizFormationSerializer,
     MonFeedback360Serializer,
+    RattachementFonctionnelSerializer,
     RemunerationSerializer,
     RetourFeedback360Serializer,
     SanctionSerializer,
@@ -506,7 +508,10 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             selectors.arbre_hierarchique(
                 request.user.company,
                 racine_id=request.query_params.get('racine'),
-                q=request.query_params.get('q')))
+                q=request.query_params.get('q'),
+                # NTHCM3 — superpose la ligne FONCTIONNELLE (pointillés).
+                inclure_matriciel=(
+                    request.query_params.get('inclure_matriciel') == '1')))
 
     @action(detail=False, methods=['get'], url_path='equipe-terrain')
     def equipe_terrain(self, request):
@@ -6769,6 +6774,38 @@ class FeedbackContinuViewSet(_RhBaseViewSet):
             raise serializers.ValidationError(
                 {'pour': "On ne peut pas s'adresser un feedback à soi-même."})
         serializer.save(company=self.request.user.company, de=moi)
+
+
+class RattachementFonctionnelViewSet(_RhBaseViewSet):
+    """NTHCM3 — rattachements FONCTIONNELS (``?employe=``, ``?manager=``).
+
+    Distinct de ``DossierEmploye.manager`` (NTHCM1, hiérarchique et unique) :
+    plusieurs rattachements actifs sont possibles par employé, avec une
+    fenêtre de dates facultative pour un rattachement temporaire.
+    """
+    queryset = RattachementFonctionnel.objects.select_related(
+        'employe', 'manager_fonctionnel').all()
+    serializer_class = RattachementFonctionnelSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['role_fonctionnel', 'date_debut', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        manager = params.get('manager')
+        if manager:
+            qs = qs.filter(manager_fonctionnel_id=manager)
+        if params.get('actifs') == '1':
+            jour = timezone.localdate()
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(date_debut__isnull=True) | Q(date_debut__lte=jour),
+            ).filter(
+                Q(date_fin__isnull=True) | Q(date_fin__gte=jour))
+        return qs
 
 
 class ParcoursFormationViewSet(_RhBaseViewSet):
