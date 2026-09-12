@@ -6240,3 +6240,156 @@ def purger_contreparties_archivees(company, *, now=None):
     if purges:
         echus.delete()
     return {'purges': purges, 'duree_jours': int(duree)}
+
+
+# ---------------------------------------------------------------------------
+# NTDOC7 — Parapheur : signature EN LOT, jamais tout-ou-rien
+# ---------------------------------------------------------------------------
+
+
+class ParapheurError(Exception):
+    """Levée quand un lot de parapheur est lui-même invalide.
+
+    Ex. : aucun contrat sélectionné. Un item INDIVIDUEL en échec ne lève
+    jamais : il est RAPPORTÉ (voir ``signer_lot_parapheur``).
+    """
+
+
+def assigner_etape(etape, *, assigne_a=None, auteur=None):
+    """Assigne (ou désassigne) NOMINATIVEMENT une étape d'approbation (NTDOC7).
+
+    Pose ``EtapeApprobation.assigne_a`` pour faire entrer l'étape dans le
+    parapheur de cette personne. ``assigne_a=None`` retire l'assignation.
+
+    L'assignation ne DÉCIDE rien : le statut de l'étape, l'ordre du workflow
+    et les gardes de ``approuver_etape`` restent strictement inchangés. Une
+    étape déjà décidée (approuvée / rejetée) n'est plus assignable —
+    ``ApprobationError`` — pour ne pas ressusciter un item dans une file.
+    Journalisé au chatter du contrat (CONTRAT15).
+    """
+    from .models import EtapeApprobation
+
+    if etape.statut != EtapeApprobation.Statut.EN_ATTENTE:
+        raise ApprobationError(
+            "Cette étape d'approbation a déjà été décidée : elle n'est plus "
+            'assignable.')
+    ancien = etape.assigne_a_id
+    etape.assigne_a = assigne_a
+    etape.save(update_fields=['assigne_a'])
+    journaliser_transition(
+        etape.contrat, field='assignation_etape',
+        old_value=ancien or '',
+        new_value=etape.assigne_a_id or '',
+        message=f"Étape {etape.niveau} du workflow d'approbation.",
+        auteur=auteur)
+    return etape
+
+
+def signer_lot_parapheur(user, contrat_ids, *, signataire_nom,
+                         ip_adresse='', user_agent='', today=None):
+    """Signe EN LOT les contrats du parapheur d'un utilisateur (NTDOC7).
+
+    Réutilise ``signer_contrat`` (CONTRAT16) ITEM PAR ITEM — aucune logique de
+    signature dupliquée, la machine d'états gardée reste le seul chemin vers
+    ``signe``. Le nom dactylographié (loi 53-05) est saisi UNE fois et appliqué
+    à chaque item ; le rôle est toujours le rôle INTERNE (``prestataire``) —
+    jamais lu du corps de requête.
+
+    **JAMAIS TOUT-OU-RIEN.** Chaque item est tenté indépendamment, HORS d'une
+    transaction englobante : un contrat signé entre-temps par un tiers, un
+    contrat sorti de l'état signable ou un contrat d'une autre société est
+    RAPPORTÉ en échec sans annuler les signatures déjà posées du lot. C'est le
+    critère d'acceptation de NTDOC7.
+
+    ``contrat_ids`` est dédoublonné en conservant l'ordre de saisie. Les ids
+    hors société (ou inexistants) sont rapportés « introuvable » — jamais une
+    fuite d'existence d'un contrat d'une autre société.
+
+    Renvoie ``{'nb_signes', 'nb_echecs', 'resultats': [...]}`` où chaque
+    résultat porte ``contrat``, ``ok``, ``detail``, ``contrat_signe`` et
+    ``contrat_actif``.
+    """
+    from .models import Contrat, SignatureContrat
+
+    company = getattr(user, 'company', None)
+    if company is None:
+        raise ParapheurError(
+            "Aucune société n'est rattachée à cet utilisateur.")
+
+    nom = (signataire_nom or '').strip()
+    if not nom:
+        raise ParapheurError('Le nom du signataire est requis (loi 53-05).')
+
+    # Dédoublonnage en conservant l'ordre de saisie (un même contrat listé
+    # deux fois ne doit pas produire deux tentatives, donc un faux échec
+    # « déjà signé » sur sa propre première signature).
+    vus = set()
+    ordonnes = []
+    for brut in contrat_ids or []:
+        try:
+            cid = int(brut)
+        except (TypeError, ValueError):
+            continue
+        if cid in vus:
+            continue
+        vus.add(cid)
+        ordonnes.append(cid)
+
+    if not ordonnes:
+        raise ParapheurError('Aucun contrat sélectionné.')
+
+    par_id = {
+        c.id: c
+        for c in Contrat.objects.filter(company=company, id__in=ordonnes)
+    }
+
+    resultats = []
+    nb_signes = 0
+    for cid in ordonnes:
+        contrat = par_id.get(cid)
+        if contrat is None:
+            resultats.append({
+                'contrat': cid,
+                'ok': False,
+                'detail': 'Contrat introuvable pour cette société.',
+                'contrat_signe': False,
+                'contrat_actif': False,
+            })
+            continue
+        try:
+            issue = signer_contrat(
+                contrat,
+                signataire_nom=nom,
+                role_signataire=(
+                    SignatureContrat.RoleSignataire.PRESTATAIRE),
+                signataire=user,
+                ip_adresse=ip_adresse or '',
+                user_agent=user_agent or '',
+                auteur=user,
+                today=today,
+            )
+        except SignatureError as exc:
+            # Item en conflit (déjà signé entre-temps par un tiers, ou état
+            # documentaire incompatible) : RAPPORTÉ, jamais bloquant.
+            resultats.append({
+                'contrat': cid,
+                'ok': False,
+                'detail': str(exc),
+                'contrat_signe': False,
+                'contrat_actif': False,
+            })
+            continue
+        nb_signes += 1
+        resultats.append({
+            'contrat': cid,
+            'ok': True,
+            'detail': 'Signature enregistrée.',
+            'contrat_signe': issue['contrat_signe'],
+            'contrat_actif': issue['contrat_actif'],
+        })
+
+    return {
+        'nb_signes': nb_signes,
+        'nb_echecs': len(resultats) - nb_signes,
+        'resultats': resultats,
+    }

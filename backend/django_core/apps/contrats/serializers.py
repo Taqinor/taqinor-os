@@ -789,6 +789,9 @@ class EtapeApprobationSerializer(serializers.ModelSerializer):
             'id', 'contrat', 'regle', 'niveau',
             'niveau_approbation', 'niveau_approbation_display',
             'approbateur', 'statut', 'statut_display',
+            # NTDOC7 — destinataire NOMMÉ de l'étape (file du parapheur). Posé
+            # par l'action ``assigner-etape``, jamais en POST direct.
+            'assigne_a',
             'decision_le', 'commentaire', 'date_creation',
         ]
         read_only_fields = fields
@@ -803,6 +806,19 @@ class DeciderEtapeSerializer(serializers.Serializer):
     etape = serializers.IntegerField(min_value=1)
     commentaire = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=False)
+
+
+class AssignerEtapeSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/assigner-etape/ (NTDOC7).
+
+    ``etape`` désigne l'étape (id) à assigner ; ``assigne_a`` l'utilisateur
+    destinataire (id) — ``null`` retire l'assignation et sort l'étape du
+    parapheur, sans jamais la décider. La société est garantie par le contrat
+    (posée côté serveur).
+    """
+    etape = serializers.IntegerField(min_value=1)
+    assigne_a = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True)
 
 
 class SignatureContratSerializer(serializers.ModelSerializer):
@@ -848,6 +864,30 @@ class SignerContratSerializer(serializers.Serializer):
         choices=SignatureContrat.RoleSignataire.choices)
     methode = serializers.ChoiceField(
         choices=SignatureContrat.Methode.choices, required=False)
+
+    def validate_signataire_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le nom du signataire est requis (loi 53-05).')
+        return value
+
+
+class SignerLotParapheurSerializer(serializers.Serializer):
+    """Corps de POST /contrats/parapheur/signer-lot/ (NTDOC7).
+
+    Le dirigeant tape son nom UNE fois (loi 53-05) et coche les contrats à
+    parapher. Le rôle de signature (``prestataire``), l'utilisateur agissant,
+    la société et les preuves (IP, user agent) sont posés CÔTÉ SERVEUR —
+    jamais lus du corps de requête. Le rapport est rendu ITEM PAR ITEM : un
+    contrat en conflit n'annule jamais le reste du lot.
+    """
+    contrats = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        help_text='Identifiants des contrats à parapher.',
+    )
+    signataire_nom = serializers.CharField(max_length=255)
 
     def validate_signataire_nom(self, value):
         value = (value or '').strip()

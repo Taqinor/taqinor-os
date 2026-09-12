@@ -23,7 +23,9 @@ Bibliothèque de gabarits/modèles de contrats. Scopé société (TenantMixin).
 Action ``/instancier/`` crée un ``Contrat`` pré-rempli depuis le gabarit.
 """
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, status, viewsets
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -82,6 +84,7 @@ from .serializers import (
     AjouterClausesManquantesSerializer,
     AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
+    AssignerEtapeSerializer,
     AvenantSerializer,
     CautionSerializer,
     ChangerPlanSerializer,
@@ -144,6 +147,7 @@ from .serializers import (
     SequenceDunningSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
+    SignerLotParapheurSerializer,
     VersionContratSerializer,
 )
 
@@ -1369,6 +1373,129 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             'statut': contrat.statut,
             'etapes': etapes,
         })
+
+    # ── NTDOC7 — Parapheur électronique du dirigeant ──────────────────────
+
+    @action(detail=True, methods=['post'], url_path='assigner-etape')
+    def assigner_etape(self, request, pk=None):
+        """Assigne NOMINATIVEMENT une étape d'approbation (NTDOC7).
+
+        Corps : ``etape`` (id, requis) et ``assigne_a`` (id d'utilisateur, ou
+        ``null`` pour retirer l'assignation). L'étape entre alors dans le
+        parapheur de cette personne. N'approuve ni ne rejette RIEN : le statut
+        de l'étape et l'ordre du workflow restent inchangés. 404 sur une étape
+        d'un autre contrat ou un utilisateur d'une autre société (jamais une
+        fuite d'existence), 400 sur une étape déjà décidée.
+        """
+        contrat = self.get_object()
+        body = AssignerEtapeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        etape = contrat.etapes_approbation.filter(
+            id=body.validated_data['etape']).first()
+        if etape is None:
+            return Response(
+                {'detail': "Étape d'approbation introuvable pour ce contrat."},
+                status=status.HTTP_404_NOT_FOUND)
+
+        destinataire = None
+        destinataire_id = body.validated_data.get('assigne_a')
+        if destinataire_id:
+            from django.contrib.auth import get_user_model
+
+            destinataire = get_user_model().objects.filter(
+                id=destinataire_id, company=request.user.company).first()
+            if destinataire is None:
+                return Response(
+                    {'detail': 'Utilisateur introuvable pour cette société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.assigner_etape(
+                etape, assigne_a=destinataire, auteur=request.user)
+        except services.ApprobationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            EtapeApprobationSerializer(
+                etape, context={'request': request}).data)
+
+    # Forme DÉCLARÉE (PACT7/R2) : ces deux endpoints AGRÈGENT (une file
+    # unifiée, un rapport par item) — leur schéma publie donc la liste exacte
+    # des clés, jamais « un objet ». Un schéma vide ne protège rien.
+    @extend_schema(responses=inline_serializer('ContratsParapheur', {
+        'count': drf_serializers.IntegerField(),
+        'results': inline_serializer('ContratsParapheurItem', {
+            'type': drf_serializers.CharField(),
+            'contrat': drf_serializers.IntegerField(),
+            'contrat_reference': drf_serializers.CharField(),
+            'contrat_objet': drf_serializers.CharField(),
+            'statut': drf_serializers.CharField(),
+            'echeance': drf_serializers.DateField(allow_null=True),
+            'etape': drf_serializers.IntegerField(allow_null=True),
+            'niveau': drf_serializers.IntegerField(allow_null=True),
+            'libelle': drf_serializers.CharField(),
+        }, many=True),
+    }))
+    @action(detail=False, methods=['get'], url_path='parapheur')
+    def parapheur(self, request):
+        """File UNIFIÉE « ce qui m'attend » du parapheur (NTDOC7).
+
+        Lecture seule, scopée société : en une seule liste triée par échéance
+        (la plus proche d'abord), les contrats dont la signature INTERNE
+        (rôle ``prestataire``) manque encore ET les ``EtapeApprobation``
+        ``en_attente`` nominativement assignées à l'utilisateur courant. Ne
+        pose AUCUN statut, ne signe rien. Un contrat signé entre-temps par un
+        tiers disparaît de la file au rechargement suivant.
+        """
+        items = selectors.items_parapheur(request.user)
+        return Response({
+            'count': len(items),
+            'results': items,
+        })
+
+    @extend_schema(
+        request=SignerLotParapheurSerializer,
+        responses=inline_serializer('ContratsParapheurSignerLot', {
+            'nb_signes': drf_serializers.IntegerField(),
+            'nb_echecs': drf_serializers.IntegerField(),
+            'resultats': inline_serializer('ContratsParapheurResultat', {
+                'contrat': drf_serializers.IntegerField(),
+                'ok': drf_serializers.BooleanField(),
+                'detail': drf_serializers.CharField(),
+                'contrat_signe': drf_serializers.BooleanField(),
+                'contrat_actif': drf_serializers.BooleanField(),
+            }, many=True),
+        }))
+    @action(detail=False, methods=['post'], url_path='parapheur/signer-lot')
+    def parapheur_signer_lot(self, request):
+        """Signe EN LOT les contrats cochés dans le parapheur (NTDOC7).
+
+        Corps : ``contrats`` (liste d'identifiants) et ``signataire_nom`` (nom
+        dactylographié tapé UNE fois — loi 53-05). Le rôle
+        (``prestataire``), l'utilisateur agissant, la société et les preuves
+        (IP, user agent) sont posés CÔTÉ SERVEUR. Chaque item réutilise
+        ``signer_contrat`` (CONTRAT16) — jamais une logique de signature
+        parallèle.
+
+        **JAMAIS TOUT-OU-RIEN** : un contrat signé entre-temps par un tiers
+        (ou sorti de l'état signable) est RAPPORTÉ en échec dans
+        ``resultats`` pendant que les autres se signent normalement. La
+        réponse est donc 200 même en échec partiel ; seul un lot
+        intrinsèquement invalide (aucun contrat) rend 400.
+        """
+        body = SignerLotParapheurSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            rapport = services.signer_lot_parapheur(
+                request.user,
+                body.validated_data['contrats'],
+                signataire_nom=body.validated_data['signataire_nom'],
+                ip_adresse=_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            )
+        except services.ParapheurError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(rapport)
 
     @action(detail=True, methods=['get'], url_path='clauses-manquantes')
     def clauses_manquantes(self, request, pk=None):

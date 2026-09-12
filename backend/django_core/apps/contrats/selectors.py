@@ -8,9 +8,9 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
-from datetime import timedelta
+from datetime import date, timedelta
 
-from django.db.models import ExpressionWrapper, F, fields
+from django.db.models import Exists, ExpressionWrapper, F, OuterRef, fields
 from django.utils import timezone
 
 from .models import (
@@ -2126,3 +2126,138 @@ def releve_abonnement(contrat, debut=None, fin=None):
         'total_paiements': sum(
             (_D(str(p['montant'] or 0)) for p in paiements), _D('0')),
     }
+
+
+# ---------------------------------------------------------------------------
+# NTDOC7 — Parapheur électronique du dirigeant (file « ce qui m'attend »)
+# ---------------------------------------------------------------------------
+#
+# Une SEULE liste unifiée pour la personne qui paraphe : les contrats dont la
+# signature INTERNE (rôle ``prestataire``) manque encore, ET les étapes
+# d'approbation ``en_attente`` qui lui sont nominativement assignées
+# (``EtapeApprobation.assigne_a``). Lecture seule : ce module ne pose aucun
+# statut, ne signe rien, n'approuve rien.
+
+
+def _role_interne():
+    """Rôle de signature porté par la société elle-même (côté prestataire).
+
+    C'est CE rôle qu'un dirigeant appose depuis son parapheur — jamais celui
+    du client, qui signe par ses propres voies (lien public, cérémonie GED).
+    Aucune constante dupliquée : la valeur vient du modèle.
+    """
+    return SignatureContrat.RoleSignataire.PRESTATAIRE
+
+
+def contrats_en_attente_de_parapheur(company, *, statuts=None):
+    """Contrats de la société dont la signature INTERNE manque (NTDOC7).
+
+    Un contrat entre dans le parapheur quand il est parvenu au stade où la
+    signature est attendue (``en_approbation`` par défaut — l'unique statut
+    depuis lequel la machine d'états CONTRAT12 autorise ``→ signe``) et
+    qu'AUCUNE ``SignatureContrat`` de rôle ``prestataire`` n'a encore été
+    posée. Un contrat signé entre-temps par un tiers SORT donc de la file au
+    prochain appel, sans aucune écriture.
+
+    ``statuts`` est injectable (tests / futur élargissement). Ordonné par
+    urgence : ``date_fin`` la plus proche d'abord, les contrats sans échéance
+    en dernier. Lecture seule, scopé société.
+    """
+    if statuts is None:
+        statuts = [Contrat.Statut.EN_APPROBATION]
+    deja_signe = SignatureContrat.objects.filter(
+        company=company,
+        contrat=OuterRef('pk'),
+        role_signataire=_role_interne(),
+    )
+    return (
+        Contrat.objects.filter(company=company, statut__in=list(statuts))
+        .annotate(signe_en_interne=Exists(deja_signe))
+        .filter(signe_en_interne=False)
+        .order_by(F('date_fin').asc(nulls_last=True), 'id')
+    )
+
+
+def etapes_en_attente_pour(user):
+    """Étapes d'approbation ``en_attente`` ASSIGNÉES à ``user`` (NTDOC7).
+
+    Scopé société (celle de l'utilisateur) : une étape d'une autre société
+    n'apparaît jamais, même si le FK ``assigne_a`` pointait vers lui. Les
+    étapes non assignées (``assigne_a`` NULL — tout l'existant) ne remontent
+    JAMAIS ici : la file du parapheur est nominative, le workflow historique
+    reste inchangé. Ordonné par échéance du contrat puis par niveau d'étape.
+    """
+    company = getattr(user, 'company', None)
+    if company is None:
+        return EtapeApprobation.objects.none()
+    return (
+        EtapeApprobation.objects
+        .filter(company=company, assigne_a=user,
+                statut=EtapeApprobation.Statut.EN_ATTENTE)
+        .select_related('contrat')
+        .order_by(F('contrat__date_fin').asc(nulls_last=True),
+                  'niveau', 'id')
+    )
+
+
+def items_parapheur(user):
+    """File UNIFIÉE du parapheur d'un utilisateur (NTDOC7) — lecture seule.
+
+    Fusionne les deux natures d'attente en une seule liste triée par échéance
+    (la plus proche d'abord, les items sans échéance en dernier) :
+
+    - ``type='signature'`` — un contrat dont la signature interne
+      (``prestataire``) manque encore ;
+    - ``type='approbation'`` — une ``EtapeApprobation`` ``en_attente``
+      nominativement assignée à cet utilisateur.
+
+    Chaque item porte ``contrat``/``contrat_reference``/``contrat_objet``,
+    l'``echeance`` qui sert au tri, et ``etape`` (l'id de l'étape, ``None``
+    pour un item de signature). Aucune écriture, aucun statut touché.
+    """
+    company = getattr(user, 'company', None)
+    if company is None:
+        return []
+
+    items = []
+    for contrat in contrats_en_attente_de_parapheur(company):
+        items.append({
+            'type': 'signature',
+            'contrat': contrat.id,
+            'contrat_reference': contrat.reference or '',
+            'contrat_objet': contrat.objet or '',
+            'statut': contrat.statut,
+            'echeance': contrat.date_fin,
+            'etape': None,
+            'niveau': None,
+            'libelle': 'Signature du prestataire attendue',
+        })
+    for etape in etapes_en_attente_pour(user):
+        items.append({
+            'type': 'approbation',
+            'contrat': etape.contrat_id,
+            'contrat_reference': etape.contrat.reference or '',
+            'contrat_objet': etape.contrat.objet or '',
+            'statut': etape.contrat.statut,
+            'echeance': etape.contrat.date_fin,
+            'etape': etape.id,
+            'niveau': etape.niveau,
+            'libelle': (
+                f'Approbation niveau {etape.niveau} '
+                f'({etape.get_niveau_approbation_display()})'
+            ),
+        })
+
+    # Tri unifié par urgence : échéance la plus proche d'abord, les items sans
+    # échéance en dernier (une date absente ne doit jamais passer devant une
+    # date réelle). Départage stable par contrat puis par étape.
+    def _cle(item):
+        echeance = item['echeance']
+        return (
+            echeance is None,
+            echeance or date.max,
+            item['contrat'],
+            item['etape'] or 0,
+        )
+
+    return sorted(items, key=_cle)

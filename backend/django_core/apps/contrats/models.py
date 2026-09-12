@@ -993,6 +993,19 @@ class EtapeApprobation(models.Model):
         related_name='contrats_etapes_approuvees',
         verbose_name='Approbateur',
     )
+    # NTDOC7 — destinataire NOMMÉ de l'étape (parapheur du dirigeant). NULL =
+    # étape non assignée nominativement : comportement historique STRICTEMENT
+    # inchangé (le workflow reste piloté par ``niveau_approbation``, aucune
+    # étape existante n'est réassignée). Sert UNIQUEMENT à alimenter la file
+    # « ce qui m'attend » du parapheur ; ne restreint JAMAIS qui peut décider
+    # l'étape (``approuver_etape`` garde exactement ses gardes d'ordre).
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_etapes_assignees',
+        verbose_name='Assignée à',
+    )
     statut = models.CharField(
         max_length=20,
         choices=Statut.choices,
@@ -1019,6 +1032,12 @@ class EtapeApprobation(models.Model):
                 fields=['contrat', 'niveau'],
                 name='contrats_etapeapp_ct_niv',
             ),
+            # NTDOC7 — AUCUN index composite ajouté pour la file du parapheur :
+            # le FK ``assigne_a`` porte déjà son propre index (Django en crée
+            # un par défaut sur toute colonne FK), et l'index existant
+            # ``contrats_etapeapp_co_sta`` (company, statut) couvre le reste
+            # du filtre. Un AddIndex sur une table PRÉ-EXISTANTE tiendrait un
+            # verrou d'écriture bloquant en prod (YOPSB6) pour un gain nul.
         ]
 
     def __str__(self):
