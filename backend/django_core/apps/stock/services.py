@@ -4161,6 +4161,50 @@ def notify_expiring_conformite_documents(company, jours=30):
     return count
 
 
+def notify_expiring_documents_fournisseur(company, jours=30, *, link=None):
+    """NTP2P20 — notifie le responsable/admin des pièces d'onboarding
+    fournisseur (NTP2P7, ``DocumentFournisseur`` — distinct de
+    ``DocumentConformiteFournisseur`` ci-dessus) expirant sous ``jours``
+    jours. Best-effort. Réutilise ``documents_fournisseur_expirant``
+    (sélecteur pur, jamais de logique dupliquée) et le même EventType
+    ``SUPPLIER_DOC_EXPIRING`` (sémantique identique, aucun nouveau type).
+
+    ``link`` (optionnel) : posé sur CHAQUE notification pour permettre à un
+    appelant planifié (``tasks.notifier_documents_fournisseur_expirants_task``)
+    de vérifier l'idempotence PAR LIEN (``_deja_notifie_aujourdhui``) sans se
+    confondre avec le sweep XPUR1 (même EventType, guard par société SANS
+    lien) — deux couches de documents distinctes, deux garde-fous distincts.
+
+    Renvoie le nombre de documents notifiés."""
+    from .selectors import documents_fournisseur_expirant
+
+    docs = documents_fournisseur_expirant(company, within_days=jours)
+    count = 0
+    for doc in docs:
+        try:
+            from apps.notifications.services import notify_many
+            from apps.notifications.models import EventType
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            recipients = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['responsable', 'admin'])
+            titre = (f"Document fournisseur bientôt expiré "
+                     f"({doc['fournisseur_nom']})")
+            corps = (f"{doc['type_document_display']} de "
+                     f"{doc['fournisseur_nom']} expire le "
+                     f"{doc['date_expiration']}.")
+            notify_many(
+                recipients, EventType.SUPPLIER_DOC_EXPIRING,
+                title=titre, body=corps, link=link, company=company)
+            count += 1
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'notify_expiring_documents_fournisseur: échec pour doc %s',
+                doc['document_id'])
+    return count
+
+
 # ── XPUR2 — RAS-TVA sur paiements fournisseurs (LF 2024) ───────────────────
 
 def _fournisseur_a_arf_valide(fournisseur):

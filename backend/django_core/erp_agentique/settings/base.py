@@ -1125,6 +1125,8 @@ CELERY_TASK_ROUTES = {
     # conformité fournisseur expirants + BCF en retard côté acheteur).
     'stock.notifier_documents_conformite_expirants': {'queue': 'scheduled'},
     'stock.notifier_bcf_en_retard_buyer': {'queue': 'scheduled'},
+    # NTP2P20 — pieces d'onboarding fournisseur (NTP2P7) expirant sous 30 j.
+    'stock.notifier_documents_fournisseur_expirants': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
     'ventes.pre_echeance_reminders': {'queue': 'scheduled'},

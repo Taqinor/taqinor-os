@@ -2385,6 +2385,61 @@ def historique_prix_fournisseur(company, produit_id, fournisseur_id):
     }
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P20 — Documents fournisseur expirants (pièces d'onboarding, NTP2P7)
+# ══════════════════════════════════════════════════════════════════════════
+
+def documents_fournisseur_expirant(company, within_days=30, today=None):
+    """NTP2P20 — pièces ``DocumentFournisseur`` (NTP2P7, onboarding) expirant
+    (ou déjà expirées) dans les ``within_days`` prochains jours.
+
+    Réutilise le pattern ``rh.selectors.echeances_rh`` (moteur d'alerte
+    d'expiration unifié) : sélecteur PUR (pas d'I/O temps réel, ``today``
+    paramétrable), scopé société, triée par échéance la plus proche. Distinct
+    de ``DocumentConformiteFournisseur`` (XPUR1, registre sans fichier — déjà
+    couvert par ``notify_expiring_conformite_documents``) : cette couche
+    cible les pièces RÉELLEMENT téléversées du coffre d'onboarding.
+
+    Renvoie une liste de dicts ``{'document_id', 'fournisseur_id',
+    'fournisseur_nom', 'type_document', 'type_document_display',
+    'date_expiration', 'jours_restants'}``."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import DocumentFournisseur
+
+    if company is None:
+        return []
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+
+    qs = (DocumentFournisseur.objects
+          .filter(company=company, date_expiration__isnull=False,
+                  date_expiration__lte=limite)
+          .select_related('dossier', 'dossier__fournisseur')
+          .order_by('date_expiration', 'id'))
+
+    rows = []
+    for doc in qs:
+        fournisseur = doc.dossier.fournisseur if doc.dossier_id else None
+        rows.append({
+            'document_id': doc.id,
+            'fournisseur_id': fournisseur.id if fournisseur else None,
+            'fournisseur_nom': fournisseur.nom if fournisseur else '',
+            'type_document': doc.type_document,
+            'type_document_display': doc.get_type_document_display(),
+            'date_expiration': doc.date_expiration,
+            'jours_restants': (doc.date_expiration - today).days,
+        })
+    return rows
+
+
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.
