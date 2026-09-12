@@ -1165,6 +1165,26 @@ class QuestionnaireFournisseur(TenantModel):
     # et il survit à la suppression de celui-ci).
     modele_ref = models.CharField(
         'Modèle d\'origine', max_length=64, blank=True, default='')
+    # ── NTGRC24 — portail PUBLIC fournisseur (répondre sans compte) ──────────
+    # Jeton OPAQUE, distinct de l'identifiant : un fournisseur ouvre SON
+    # questionnaire et rien d'autre ; aucune énumération possible, aucun id
+    # interne exposé. NULL tant qu'aucun lien public n'a été émis (plusieurs
+    # NULL restent autorisés par l'unicité Postgres).
+    token_acces = models.CharField(
+        'Jeton d\'accès public', max_length=64, null=True, blank=True,
+        unique=True,
+        help_text='Jeton opaque du portail fournisseur (jamais l\'id réel).')
+    token_expire_le = models.DateTimeField(
+        'Expiration du lien public', null=True, blank=True,
+        help_text='Passée cette date le lien ne répond plus : un lien de '
+                  'collecte de données qui vit éternellement est une porte '
+                  'ouverte.')
+    date_soumission = models.DateTimeField(
+        'Soumis le', null=True, blank=True,
+        help_text='Horodatage SERVEUR de la soumission publique.')
+    preuve_soumission = models.JSONField(
+        'Preuve de soumission', default=dict, blank=True,
+        help_text='IP et user-agent du fournisseur, posés côté serveur.')
 
     class Meta:
         verbose_name = 'Questionnaire fournisseur'

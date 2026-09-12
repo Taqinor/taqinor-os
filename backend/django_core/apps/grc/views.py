@@ -539,6 +539,33 @@ class QuestionnaireFournisseurViewSet(CompanyScopedModelViewSet):
         return Response({'results': ReponseQuestionnaireSerializer(
             questionnaire.reponses.all(), many=True).data})
 
+    @action(detail=True, methods=['post'], url_path='lien-public')
+    def lien_public(self, request, pk=None):
+        """NTGRC24 — émet (ou renouvelle) le lien public du fournisseur.
+
+        Renouveler INVALIDE l'ancien lien — c'est voulu : on « relance » un
+        fournisseur quand son contact a changé, l'ancien destinataire ne doit
+        plus pouvoir répondre.
+        """
+        from .services import (
+            DELAI_LIEN_QUESTIONNAIRE_JOURS, emettre_lien_questionnaire,
+        )
+
+        questionnaire = self.get_object()
+        try:
+            jours = int(request.data.get('jours')
+                        or DELAI_LIEN_QUESTIONNAIRE_JOURS)
+        except (TypeError, ValueError):
+            return Response(
+                {'jours': 'Indiquez un nombre de jours valide.'}, status=400)
+        emettre_lien_questionnaire(questionnaire, jours=jours)
+        return Response({
+            'token': questionnaire.token_acces,
+            'url': f'/api/django/grc/public/questionnaire/'
+                   f'{questionnaire.token_acces}/',
+            'expire_le': questionnaire.token_expire_le.isoformat(),
+        })
+
     @action(detail=True, methods=['post'], url_path='changer-statut')
     def changer_statut(self, request, pk=None):
         """Fait avancer le questionnaire (``{"statut": "valide"}``)."""

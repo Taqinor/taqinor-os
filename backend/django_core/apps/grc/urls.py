@@ -8,7 +8,9 @@ désactivés vise le bon module.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .public_views import deposer_demande_droit, suivre_demande_droit
+from .public_views import (
+    deposer_demande_droit, questionnaire_public, suivre_demande_droit,
+)
 from .views import (
     AttestationPolitiqueViewSet, ControleInterneViewSet,
     DeficienceControleViewSet, JournalDestructionViewSet, LegalHoldViewSet,
@@ -73,5 +75,9 @@ urlpatterns = [
          name='grc-demande-droit-depot'),
     path('public/demande-droit/<str:token>/', suivre_demande_droit,
          name='grc-demande-droit-suivi'),
+    # NTGRC24 — portail PUBLIC du fournisseur : il répond à SON questionnaire
+    # sans compte, par un jeton opaque à durée de vie bornée.
+    path('public/questionnaire/<str:token>/', questionnaire_public,
+         name='grc-questionnaire-public'),
     path('', include(router.urls)),
 ]

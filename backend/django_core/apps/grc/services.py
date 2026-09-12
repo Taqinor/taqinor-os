@@ -837,3 +837,150 @@ def instancier_questionnaire(modele, fournisseur_ref='', *, date_envoi=None,
             for rang, question in enumerate(questions, start=1)
         ])
     return questionnaire
+
+
+# ── NTGRC24 — portail PUBLIC fournisseur (répondre sans compte) ─────────────
+
+#: Durée de vie par défaut d'un lien public de questionnaire, en jours.
+DELAI_LIEN_QUESTIONNAIRE_JOURS = 30
+
+
+class LienQuestionnaireInvalide(Exception):
+    """Jeton inconnu, expiré, ou questionnaire déjà arbitré.
+
+    Porte un ``code`` HTTP suggéré (404 / 410 / 409) : la vue le traduit tel
+    quel. Un fournisseur honnête doit pouvoir distinguer « ce lien a expiré »
+    de « ce lien n'existe pas » — les jetons font 32 octets d'entropie, il n'y
+    a rien à énumérer, et le silence ne protégerait que notre confort.
+    """
+
+    def __init__(self, message, code=404):
+        super().__init__(message)
+        self.code = code
+
+
+def emettre_lien_questionnaire(questionnaire, jours=None):
+    """Émet (ou renouvelle) le jeton d'accès public d'un questionnaire.
+
+    Renouveler INVALIDE l'ancien lien : c'est le comportement attendu quand on
+    « relance » un fournisseur après un départ de contact. Renvoie le
+    questionnaire rafraîchi.
+    """
+    jours = DELAI_LIEN_QUESTIONNAIRE_JOURS if jours is None else int(jours)
+    questionnaire.token_acces = secrets.token_urlsafe(32)[:64]
+    questionnaire.token_expire_le = timezone.now() + timezone.timedelta(
+        days=max(1, jours))
+    questionnaire.save(update_fields=[
+        'token_acces', 'token_expire_le', 'updated_at'])
+    return questionnaire
+
+
+def questionnaire_par_token(token, now=None):
+    """Résout un questionnaire par son jeton public, ou lève.
+
+    Aucune société n'est demandée : le jeton EST la clé, et il est déjà lié à
+    une seule société — aucun accès inter-tenant n'est donc possible (on ne
+    peut pas « deviner » le jeton d'un autre tenant).
+    """
+    from .models import QuestionnaireFournisseur
+
+    token = (token or '').strip()
+    if not token:
+        raise LienQuestionnaireInvalide(
+            'Lien de questionnaire invalide.', code=404)
+    questionnaire = QuestionnaireFournisseur.objects.filter(
+        token_acces=token).first()
+    if questionnaire is None:
+        raise LienQuestionnaireInvalide(
+            'Lien de questionnaire invalide.', code=404)
+    maintenant = now or timezone.now()
+    if (questionnaire.token_expire_le
+            and questionnaire.token_expire_le < maintenant):
+        raise LienQuestionnaireInvalide(
+            'Ce lien a expiré. Demandez-en un nouveau à votre contact.',
+            code=410)
+    return questionnaire
+
+
+def vue_publique_questionnaire(questionnaire):
+    """Contenu PUBLIC d'un questionnaire : ses questions, rien d'autre.
+
+    Volontairement SANS identifiants internes, sans fournisseur_ref, sans
+    score et sans évaluateur : le fournisseur répond à des questions, il n'a
+    pas à voir la notation interne que l'on fait de lui. Les questions sont
+    désignées par leur ``ordre``, stable et non énumérable.
+    """
+    return {
+        'type': questionnaire.type,
+        'type_libelle': questionnaire.get_type_display(),
+        'statut': questionnaire.statut,
+        'date_echeance': (questionnaire.date_echeance.isoformat()
+                          if questionnaire.date_echeance else None),
+        'expire_le': (questionnaire.token_expire_le.isoformat()
+                      if questionnaire.token_expire_le else None),
+        'soumis_le': (questionnaire.date_soumission.isoformat()
+                      if questionnaire.date_soumission else None),
+        'questions': [
+            {
+                'ordre': reponse.ordre,
+                'question': reponse.question,
+                'obligatoire': reponse.obligatoire,
+                'reponse': reponse.reponse,
+                'commentaire': reponse.commentaire,
+            }
+            for reponse in questionnaire.reponses.all()
+        ],
+    }
+
+
+def soumettre_questionnaire_public(questionnaire, reponses, *, preuve=None,
+                                   now=None):
+    """Enregistre les réponses déposées par le fournisseur, sans compte.
+
+    ``reponses`` est une liste de ``{ordre, reponse, commentaire}``. Un
+    ``ordre`` inconnu est IGNORÉ (jamais une création de question par le
+    fournisseur : il répond, il ne rédige pas le questionnaire). ``conforme``
+    n'est JAMAIS écrit ici — c'est l'évaluation interne, elle n'appartient pas
+    au répondant.
+
+    Le statut est ensuite recalculé : « complété » dès que toutes les
+    questions obligatoires portent une réponse. L'horodatage et l'IP sont
+    posés CÔTÉ SERVEUR.
+    """
+    from django.db import transaction
+
+    from .models import QuestionnaireFournisseur
+
+    if questionnaire.statut in (QuestionnaireFournisseur.STATUT_VALIDE,
+                                QuestionnaireFournisseur.STATUT_REFUSE):
+        raise LienQuestionnaireInvalide(
+            'Ce questionnaire a déjà été arbitré : il n\'est plus '
+            'modifiable.', code=409)
+
+    par_ordre = {r.ordre: r for r in questionnaire.reponses.all()}
+    a_sauver = []
+    for entree in (reponses or []):
+        if not isinstance(entree, dict):
+            continue
+        try:
+            ordre = int(entree.get('ordre'))
+        except (TypeError, ValueError):
+            continue
+        cible = par_ordre.get(ordre)
+        if cible is None:
+            continue
+        cible.reponse = str(entree.get('reponse') or '')
+        cible.commentaire = str(entree.get('commentaire') or '')
+        a_sauver.append(cible)
+
+    maintenant = now or timezone.now()
+    with transaction.atomic():
+        for cible in a_sauver:
+            cible.save(update_fields=['reponse', 'commentaire', 'updated_at'])
+        questionnaire.date_soumission = maintenant
+        questionnaire.preuve_soumission = preuve or {}
+        questionnaire.save(update_fields=[
+            'date_soumission', 'preuve_soumission', 'updated_at'])
+        recalculer_questionnaire(questionnaire)
+    questionnaire.refresh_from_db()
+    return questionnaire
