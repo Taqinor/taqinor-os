@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send, Layers3,
 } from 'lucide-react'
@@ -960,7 +961,13 @@ export default function DevisTab({
                       {busyAction === `f-${d.id}` ? '…' : '🧾 Générer la facture'}
                     </Button>
                     {d.chantier ? (
-                      <span className="gen-hint" title="Chantier déjà créé">🏗 {d.chantier.reference}</span>
+                      // CHT21(b) — span inerte devenu cliquable : deep-link
+                      // réel vers la fiche chantier (patron ?id= déjà lu par
+                      // InstallationsPage.jsx:343), jamais la liste nue.
+                      <Link to={`/chantiers?id=${d.chantier.id}`}
+                            className="gen-hint" title="Voir le chantier">
+                        🏗 {d.chantier.reference}
+                      </Link>
                     ) : (
                       <Button
                         type="button" size="sm" variant="outline"

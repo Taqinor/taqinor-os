@@ -16,6 +16,9 @@ import {
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { formatDate } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
+// CHT19 — sélecteur de chantier partagé (accepte `?chantier=<id>` au montage).
+import ChantierSelect from '../btp_chantier/ChantierSelect'
+import { useChantiers } from '../btp_chantier/useChantiers'
 
 const PHASES = [
   ['etude', 'Étude'], ['appro', 'Approvisionnement'], ['pose', 'Pose'],
@@ -283,23 +286,22 @@ function ReunionsTab({ installationId }) {
 }
 
 export default function SuiviProjetChantier() {
-  const [chantiers, setChantiers] = useState([])
-  const [loadingChantiers, setLoadingChantiers] = useState(true)
+  // CHT19 — la liste + le chargement du chantier viennent désormais de
+  // `ChantierSelect` (partagé avec les 7 écrans btp_chantier) : plus de
+  // fetch ad hoc ici. `selected` reste piloté par CETTE page (choix
+  // utilisateur, ou pré-sélection `?chantier=<id>` lue au montage par
+  // `ChantierSelect` lui-même).
   const [selected, setSelected] = useState(null)
-
+  // Non-régression : sans choix explicite (utilisateur ou `?chantier=`
+  // consommé par `ChantierSelect`), on retombe sur le PREMIER chantier une
+  // fois la liste chargée — comportement historique préservé (même hook que
+  // `ChantierSelect`, donc même liste).
+  const { chantiers, loading: loadingChantiers } = useChantiers()
   useEffect(() => {
-    let alive = true
-    installationsApi.getInstallations({ page_size: 200 })
-      .then((res) => {
-        if (!alive) return
-        const rows = unwrap(res)
-        setChantiers(rows)
-        setSelected((cur) => cur ?? rows[0]?.id ?? null)
-      })
-      .catch(() => {})
-      .finally(() => { if (alive) setLoadingChantiers(false) })
-    return () => { alive = false }
-  }, [])
+    if (loadingChantiers || selected != null || chantiers.length === 0) return
+    setSelected(chantiers[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingChantiers, chantiers])
 
   return (
     <div className="page flex flex-col gap-6">
@@ -307,37 +309,35 @@ export default function SuiviProjetChantier() {
         title="Suivi projet du chantier"
         subtitle="Jalons de phase, modèles de projet et comptes-rendus de réunion."
       />
-      {loadingChantiers ? (
-        <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-          <Spinner className="size-4 text-primary" /> Chargement…
-        </p>
-      ) : chantiers.length === 0 ? (
-        <EmptyState title="Aucun chantier" description="Créez un chantier avant de suivre son projet." className="py-10" />
+      <div>
+        <label className="form-label" htmlFor="spc-chantier">Chantier</label>
+        <ChantierSelect
+          id="spc-chantier"
+          value={selected}
+          onChange={(v) => setSelected(v ? Number(v) : null)}
+        />
+      </div>
+      {selected != null ? (
+        <Tabs defaultValue="jalons" className="flex flex-col gap-4">
+          <TabsList className="flex flex-wrap">
+            <TabsTrigger value="jalons">Jalons</TabsTrigger>
+            <TabsTrigger value="modeles">Modèles de projet</TabsTrigger>
+            <TabsTrigger value="reunions">Réunions de chantier</TabsTrigger>
+          </TabsList>
+          <TabsContent value="jalons">
+            <JalonsTab installationId={selected} />
+          </TabsContent>
+          <TabsContent value="modeles">
+            <ModelesTab installationId={selected} />
+          </TabsContent>
+          <TabsContent value="reunions">
+            <ReunionsTab installationId={selected} />
+          </TabsContent>
+        </Tabs>
       ) : (
-        <>
-          <label className="form-label" htmlFor="spc-chantier">Chantier</label>
-          <select id="spc-chantier" className="form-control max-w-sm" value={selected ?? ''} onChange={(e) => setSelected(Number(e.target.value))}>
-            {chantiers.map((c) => <option key={c.id} value={c.id}>{c.reference || `#${c.id}`}</option>)}
-          </select>
-          {selected != null && (
-            <Tabs defaultValue="jalons" className="flex flex-col gap-4">
-              <TabsList className="flex flex-wrap">
-                <TabsTrigger value="jalons">Jalons</TabsTrigger>
-                <TabsTrigger value="modeles">Modèles de projet</TabsTrigger>
-                <TabsTrigger value="reunions">Réunions de chantier</TabsTrigger>
-              </TabsList>
-              <TabsContent value="jalons">
-                <JalonsTab installationId={selected} />
-              </TabsContent>
-              <TabsContent value="modeles">
-                <ModelesTab installationId={selected} />
-              </TabsContent>
-              <TabsContent value="reunions">
-                <ReunionsTab installationId={selected} />
-              </TabsContent>
-            </Tabs>
-          )}
-        </>
+        <EmptyState title="Aucun chantier sélectionné"
+                    description="Choisissez un chantier pour voir son suivi de projet."
+                    className="py-10" />
       )}
     </div>
   )
