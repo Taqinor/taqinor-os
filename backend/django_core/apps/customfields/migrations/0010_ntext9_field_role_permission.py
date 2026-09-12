@@ -31,12 +31,14 @@ class Migration(migrations.Migration):
                              ('lecture', 'Lecture seule'),
                              ('edition', 'Édition')],
                     default='edition', max_length=10)),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
-                ('date_modification', models.DateTimeField(auto_now=True)),
+                # SCA4 — socle `core.models.TenantModel` (FK company +
+                # created_at/updated_at), jamais re-déclaré à la main.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='field_role_permissions',
-                    to='authentication.company')),
+                    related_name='%(app_label)s_%(class)s_set',
+                    to='authentication.company', verbose_name='Société')),
                 ('field_def', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name='role_permissions',

@@ -8,6 +8,8 @@ définition ne touche pas le schéma. Cf. docs/erp-data-model-proposal.md.
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 
 class CustomFieldDef(models.Model):
     class Module(models.TextChoices):
@@ -115,7 +117,7 @@ class CustomFieldDef(models.Model):
         return f'{self.module}.{self.code}'
 
 
-class FieldRolePermission(models.Model):
+class FieldRolePermission(TenantModel):
     """NTEXT9 — visibilité/édition d'UN ``CustomFieldDef``, PAR PALIER de rôle.
 
     ``role_tier`` reprend le même vocabulaire que ``core.VuePersonnalisee.
@@ -130,15 +132,16 @@ class FieldRolePermission(models.Model):
     ``services.niveau_pour_role``, qui retombe sur ``EDITION`` en l'absence
     de ligne)."""
 
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel`` (FK
+    # ``company`` + ``created_at``/``updated_at``) : modèle NEUF, aucun
+    # accesseur ``related_name`` historique à préserver, donc le défaut du
+    # socle (``%(app_label)s_%(class)s_set``) s'applique sans redéclaration.
+
     class Niveau(models.TextChoices):
         MASQUE = 'masque', 'Masqué'
         LECTURE = 'lecture', 'Lecture seule'
         EDITION = 'edition', 'Édition'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: une permission de champ n'a aucun sens hors de sa société — la société supprimée, la ligne l'est aussi
-        related_name='field_role_permissions')
     field_def = models.ForeignKey(
         CustomFieldDef,
         on_delete=models.CASCADE,  # on_delete: une permission n'existe QUE pour son champ (composition, même patron que CustomRecord.objet) ; supprimer le champ supprime ses permissions
@@ -149,9 +152,6 @@ class FieldRolePermission(models.Model):
                   "(authentication.role_tiers).")
     niveau = models.CharField(
         max_length=10, choices=Niveau.choices, default=Niveau.EDITION)
-
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Permission de champ par rôle'

@@ -331,6 +331,14 @@ def _validate_fichier_value(field_def, val):
 class FieldRolePermissionSerializer(serializers.ModelSerializer):
     """NTEXT9 — permission de champ par palier de rôle (admin)."""
 
+    # SCA4 — le socle ``TenantModel`` horodate en ``created_at``/
+    # ``updated_at`` ; l'API expose ``date_creation``/``date_modification``
+    # (convention de l'app), jamais deux noms pour la même donnée.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+    date_modification = serializers.DateTimeField(
+        source='updated_at', read_only=True)
+
     class Meta:
         model = FieldRolePermission
         fields = ['id', 'field_def', 'role_tier', 'niveau',

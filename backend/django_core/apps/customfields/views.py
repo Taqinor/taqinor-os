@@ -5,6 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
+from core.viewsets import CompanyScopedModelViewSet
 from apps.parametres.models import SettingsAuditLog
 from .audit_plateforme import AuditPlateformeMixin
 from .models import (
@@ -251,11 +252,18 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
                          'source': result.source})
 
 
-class FieldRolePermissionViewSet(TenantMixin, viewsets.ModelViewSet):
+class FieldRolePermissionViewSet(CompanyScopedModelViewSet):
     """NTEXT9 — permissions de champ par palier de rôle. Lecture tout rôle
     (le formulaire en a besoin — cf. ``CustomFieldDefSerializer.
     to_representation``/``vue_formulaire``), écriture admin uniquement.
-    Filtrable par ``?field_def=<id>``."""
+    Filtrable par ``?field_def=<id>``.
+
+    SCA4 — socle ``core.viewsets.CompanyScopedModelViewSet`` (hérite déjà de
+    ``TenantMixin`` + ``ModelViewSet``, byte-identique au patron précédent) :
+    ``get_permissions`` propre ci-dessous prime sur le défaut
+    ``ScopedPermission`` du socle (DRF n'appelle jamais ``permission_classes``
+    quand ``get_permissions`` est surchargé), donc la matrice 401/403 reste
+    inchangée."""
     queryset = FieldRolePermission.objects.all()
     serializer_class = FieldRolePermissionSerializer
 
