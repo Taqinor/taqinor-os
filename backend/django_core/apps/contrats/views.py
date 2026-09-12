@@ -775,6 +775,46 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
 
+    @action(detail=True, methods=['get'], url_path='releve-pdf')
+    def releve_pdf(self, request, pk=None):
+        """NTSUB20 — Relevé d'abonnement imprimable (état RÉCAPITULATIF).
+
+        Query ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (les deux optionnels).
+        Liste les échéances de la période, les add-ons facturés (NTSUB2), les
+        compteurs d'usage relevés (NTSUB4) et les paiements reçus (lus via
+        ``apps.ventes.selectors``). C'est un état des lieux pour un client
+        B2B : NI un devis NI une facture, aucun statut modifié, aucune écriture
+        — le moteur de devis premium ``/proposal`` (rule #4) n'est donc pas
+        concerné et cette route ne s'y substitue jamais. Rendu WeasyPrint
+        générique ; 503 explicite si WeasyPrint est indisponible.
+
+        La société est garantie par ``get_object`` (queryset scopé société).
+        """
+        from .pdf_location import generate_releve_abonnement_pdf
+
+        contrat = self.get_object()
+        params = request.query_params
+        try:
+            releve = selectors.releve_abonnement(
+                contrat, params.get('debut') or None,
+                params.get('fin') or None)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': "Période invalide : « debut » et « fin » doivent "
+                           'être au format AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            pdf_bytes = generate_releve_abonnement_pdf(contrat, releve)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        filename = (
+            f"releve-{contrat.reference or contrat.id}.pdf".replace('/', '-'))
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response
+
     @action(detail=True, methods=['post'], url_path='changer-statut')
     def changer_statut(self, request, pk=None):
         """Applique une transition de statut GARDÉE (CONTRAT12).

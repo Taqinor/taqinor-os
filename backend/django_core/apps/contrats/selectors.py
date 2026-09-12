@@ -1676,3 +1676,125 @@ def rule_of_40(company, debut, fin):
         'marge_pct': marge_pct,
         'rule_of_40': rule,
     }
+
+
+# ── NTSUB20 — Relevé d'abonnement (état récapitulatif, JAMAIS un devis) ────
+
+def releve_abonnement(contrat, debut=None, fin=None):
+    """NTSUB20 — Relevé récapitulatif d'un abonnement sur une période.
+
+    État des lieux demandé par un client B2B : les ÉCHÉANCES de la période
+    (``LigneEcheance`` des échéanciers du contrat), les ADD-ONS actifs et leur
+    montant de période (NTSUB2), les COMPTEURS D'USAGE relevés (NTSUB4) et les
+    PAIEMENTS reçus sur les factures émises pour ces échéances — ces derniers
+    lus via ``apps.ventes.selectors.paiements_des_factures`` (jamais un import
+    de ``ventes``/``facturation``.models).
+
+    Ce n'est NI un devis NI une facture : aucun total n'est présenté comme un
+    montant à payer, rien n'est émis, aucun statut ne bouge — le moteur de
+    devis premium (``/proposal``, rule #4) n'est donc pas concerné.
+
+    Renvoie ``{'contrat', 'date_debut', 'date_fin', 'echeances', 'addons',
+    'compteurs', 'paiements', 'total_echeances', 'total_addons',
+    'total_paiements'}``. Lecture seule, scopée au contrat fourni.
+    """
+    from datetime import date as _date
+    from decimal import Decimal as _D
+
+    from django.db.models import Q
+
+    from .models import (
+        AbonnementAddOnLigne, CompteurUsage, LigneEcheance)
+
+    def _jour(valeur):
+        """Normalise une borne (str ISO ou ``date``) — ``ValueError`` sinon."""
+        if valeur in (None, ''):
+            return None
+        if isinstance(valeur, _date):
+            return valeur
+        return _date.fromisoformat(str(valeur))
+
+    debut = _jour(debut)
+    fin = _jour(fin)
+    company = contrat.company
+    lignes_qs = LigneEcheance.objects.filter(
+        company=company, echeancier__contrat=contrat)
+    if debut:
+        lignes_qs = lignes_qs.filter(date_echeance__gte=debut)
+    if fin:
+        lignes_qs = lignes_qs.filter(date_echeance__lte=fin)
+    lignes = list(lignes_qs.order_by('date_echeance', 'numero', 'id'))
+
+    echeances = [{
+        'id': ligne.id,
+        'numero': ligne.numero,
+        'libelle': ligne.libelle,
+        'date_echeance': ligne.date_echeance,
+        'montant': ligne.montant or _D('0'),
+        'statut': ligne.statut,
+        'statut_libelle': ligne.get_statut_display(),
+        'date_paiement': ligne.date_paiement,
+        'facture_id': ligne.facture_id,
+    } for ligne in lignes]
+
+    addons_qs = AbonnementAddOnLigne.objects.filter(
+        company=company,
+        type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+        cible_id=contrat.id,
+    ).select_related('addon')
+    if fin:
+        addons_qs = addons_qs.filter(actif_depuis__lte=fin)
+    if debut:
+        addons_qs = addons_qs.filter(
+            Q(actif_jusqua__isnull=True) | Q(actif_jusqua__gte=debut))
+    addons = [{
+        'id': ligne.id,
+        'addon': ligne.addon.nom,
+        'code': getattr(ligne.addon, 'code', ''),
+        'quantite': ligne.quantite,
+        'prix_unitaire': ligne.addon.prix_unitaire or _D('0'),
+        'montant': ligne.montant_periode(),
+        'actif_depuis': ligne.actif_depuis,
+        'actif_jusqua': ligne.actif_jusqua,
+    } for ligne in addons_qs.order_by('actif_depuis', 'id')]
+
+    compteurs_qs = CompteurUsage.objects.filter(
+        company=company,
+        type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+        cible_id=contrat.id)
+    if debut:
+        compteurs_qs = compteurs_qs.filter(periode_fin__gte=debut)
+    if fin:
+        compteurs_qs = compteurs_qs.filter(periode_debut__lte=fin)
+    compteurs = [{
+        'id': c.id,
+        'code_compteur': c.code_compteur,
+        'periode_debut': c.periode_debut,
+        'periode_fin': c.periode_fin,
+        'quantite': c.quantite or _D('0'),
+        'source': c.source,
+    } for c in compteurs_qs.order_by('periode_debut', 'id')]
+
+    from apps.ventes.selectors import paiements_des_factures
+
+    facture_ids = [ligne.facture_id for ligne in lignes if ligne.facture_id]
+    paiements = paiements_des_factures(facture_ids, debut=debut, fin=fin)
+
+    return {
+        'contrat': {
+            'id': contrat.id,
+            'reference': getattr(contrat, 'reference', '') or '',
+            'objet': getattr(contrat, 'objet', '') or '',
+        },
+        'date_debut': debut,
+        'date_fin': fin,
+        'echeances': echeances,
+        'addons': addons,
+        'compteurs': compteurs,
+        'paiements': paiements,
+        'total_echeances': sum(
+            (e['montant'] for e in echeances), _D('0')),
+        'total_addons': sum((a['montant'] for a in addons), _D('0')),
+        'total_paiements': sum(
+            (_D(str(p['montant'] or 0)) for p in paiements), _D('0')),
+    }
