@@ -75,7 +75,7 @@ DECIMAL_PLACES_ALLOWLIST = {
     "backend/django_core/apps/stock/models.py:763",
     "backend/django_core/apps/btp_chantier/models.py:812",
     "backend/django_core/apps/btp_chantier/models.py:1136",
-    "backend/django_core/apps/contrats/models.py:4085",
+    "backend/django_core/apps/contrats/models.py:4246",
 }
 
 FLOAT_LIKE = {"FloatField"}
