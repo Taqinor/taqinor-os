@@ -199,6 +199,23 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         instance.est_defaut_role = True
         instance.visibilite = SavedView.Visibilite.EQUIPE
         instance.save(update_fields=['role', 'est_defaut_role', 'visibilite', 'updated_at'])
+        # NTUX38 — traçabilité audit d'une action UX sensible (modèle
+        # `audit.AuditLog` existant, jamais un nouveau journal ; import
+        # fonction-local, même patron que `authentication/views.py`).
+        # Requête dédiée pour le nom du rôle : `instance.role` a été mis en
+        # cache par `select_related('role')` du queryset AVANT la réaffectation
+        # de `role_id` ci-dessus — le lire ici renverrait l'ANCIEN rôle.
+        from apps.audit.models import AuditLog
+        from apps.audit.recorder import record as audit_record
+        from apps.roles.models import Role
+        role_nom = Role.objects.filter(pk=role_id).values_list(
+            'nom', flat=True).first() or role_id
+        audit_record(
+            AuditLog.Action.UPDATE, instance=instance, user=request.user,
+            company=instance.company,
+            detail=(
+                f'Vue par défaut du rôle « {role_nom} » définie sur '
+                f'« {instance.ecran} » : « {instance.nom} ».'))
         return Response(SavedViewSerializer(instance).data)
 
     @action(detail=False, methods=['get'], url_path='toutes-company')

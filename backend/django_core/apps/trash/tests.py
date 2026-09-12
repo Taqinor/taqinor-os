@@ -181,6 +181,21 @@ class CorbeilleApiTests(CorbeilleBase):
         resp = auth(self.directeur_b).post(f'{self.BASE}{element.pk}/restaurer/')
         self.assertEqual(resp.status_code, 404)
 
+    def test_restaurer_creates_an_audit_entry(self):
+        """NTUX38 — traçabilité audit (modèle `audit.AuditLog` existant)."""
+        from apps.audit.models import AuditLog
+
+        archiver(self.lead, type_libelle='Lead')
+        element = ElementSupprime.objects.get()
+        avant = AuditLog.objects.count()
+        resp = auth(self.directeur).post(f'{self.BASE}{element.pk}/restaurer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(AuditLog.objects.count(), avant + 1)
+        entry = AuditLog.objects.latest('id')
+        self.assertEqual(entry.user, self.directeur)
+        self.assertEqual(entry.company, self.co_a)
+        self.assertIn('corbeille', entry.detail.lower())
+
 
 class NTUX31PermissionsFinesTests(CorbeilleBase):
     """NTUX31 — `ux.corbeille.consulter`/`ux.corbeille.restaurer` s'ajoutent EN

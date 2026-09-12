@@ -375,6 +375,36 @@ class NTUX31PermissionsFinesTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
 
 
+class NTUX38AuditTraceTests(TestCase):
+    """NTUX38 — « définir vue par défaut de rôle » écrit une entrée d'audit
+    consultable (modèle `audit.AuditLog` existant, jamais un nouveau journal)."""
+    BASE = '/api/django/uxviews/saved-views/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv38-a', 'A')
+        self.directeur = make_user(self.co_a, 'uxv38-directeur', role_legacy='responsable')
+        self.role_cible = make_role(self.co_a, 'Commercial')
+
+    def test_definir_par_defaut_role_creates_an_audit_entry(self):
+        from apps.audit.models import AuditLog
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads',
+            nom='Équipe', visibilite=SavedView.Visibilite.EQUIPE,
+            role=self.role_cible,
+        )
+        avant = AuditLog.objects.count()
+        resp = auth(self.directeur).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(AuditLog.objects.count(), avant + 1)
+        entry = AuditLog.objects.latest('id')
+        self.assertEqual(entry.user, self.directeur)
+        self.assertEqual(entry.company, self.co_a)
+        self.assertIn('Commercial', entry.detail)
+        self.assertIn('crm.leads', entry.detail)
+
+
 class FavoriUtilisateurApiTests(TestCase):
     """NTUX12 — favoris épinglés, STRICTEMENT personnels."""
 

@@ -87,6 +87,17 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
             obj = restaurer(element, user=request.user)
         except RestaurationImpossible as exc:
             raise ValidationError({'detail': str(exc)})
+        # NTUX38 — traçabilité audit d'une action UX sensible (modèle
+        # `audit.AuditLog` existant, jamais un nouveau journal ; import
+        # fonction-local, même patron qu'ailleurs dans le dépôt).
+        from apps.audit.models import AuditLog
+        from apps.audit.recorder import record as audit_record
+        audit_record(
+            AuditLog.Action.UPDATE, instance=element, user=request.user,
+            company=element.company,
+            detail=(
+                f'Restauré depuis la corbeille : {element.type_libelle or "élément"} '
+                f'« {element.libelle_snapshot} ».'))
         return Response({
             'restaure': obj is not None,
             'element': ElementSupprimeSerializer(element).data,
