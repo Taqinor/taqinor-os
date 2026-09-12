@@ -3906,3 +3906,91 @@ class DocumentContrepartie(TenantModel):
             self.date_archivage = timezone.now()
             self.save(update_fields=['archive', 'date_archivage'])
         return self
+
+
+class CommentaireRedline(TenantModel):
+    """Commentaire ancré sur une ligne du diff de négociation — NTDOC3.
+
+    Un commentaire de redline s'ancre soit sur une LIGNE du diff produit par
+    ``services.comparer_contrepartie`` (NTDOC2 — ``ligne_reference`` +
+    ``extrait_ligne``, l'extrait gardant le commentaire lisible même si le
+    diff est recalculé), soit sur une ``Clause`` de la bibliothèque
+    (``clause``), soit sur rien (commentaire général du round).
+
+    Tant que ``resolu`` est faux, le commentaire reste VISIBLE : c'est lui qui
+    bloque la clôture de la négociation (NTDOC4). La résolution trace QUI
+    (``resolu_par``) et QUAND (``date_resolution``) — jamais depuis le corps de
+    requête.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    ``contrat``/``document_contrepartie``/``clause`` sont des références
+    internes à l'app `contrats` (FK dur autorisé).
+    """
+
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,  # on_delete: un commentaire de redline n'existe pas sans son contrat
+        related_name='commentaires_redline',
+        verbose_name='Contrat',
+    )
+    # Dépôt contrepartie commenté (NULL = commentaire général du contrat).
+    # SET_NULL : archiver/délier un dépôt n'efface jamais un commentaire.
+    document_contrepartie = models.ForeignKey(
+        'DocumentContrepartie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='commentaires_redline',
+        verbose_name='Dépôt contrepartie',
+    )
+    # Clause de la bibliothèque visée (optionnelle).
+    clause = models.ForeignKey(
+        'Clause',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='commentaires_redline',
+        verbose_name='Clause visée',
+    )
+    # Index (0-based) de la ligne du diff NTDOC2 sur laquelle le commentaire
+    # est ancré. NULL = commentaire non ancré à une ligne précise.
+    ligne_reference = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Ligne du diff')
+    # Copie de la ligne commentée : garde le commentaire compréhensible même
+    # si le diff est recalculé après un nouveau dépôt (borne, leçon FG136).
+    extrait_ligne = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Extrait de la ligne')
+    contenu = models.TextField(verbose_name='Commentaire')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_commentaires_redline',
+        verbose_name='Auteur',
+    )
+    resolu = models.BooleanField(default=False, verbose_name='Résolu')
+    resolu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_commentaires_redline_resolus',
+        verbose_name='Résolu par',
+    )
+    date_resolution = models.DateTimeField(
+        null=True, blank=True, verbose_name='Résolu le')
+
+    class Meta:
+        verbose_name = 'Commentaire de redline'
+        verbose_name_plural = 'Commentaires de redline'
+        ordering = ['contrat_id', 'resolu', 'ligne_reference', 'id']
+        indexes = [
+            models.Index(
+                fields=['contrat', 'resolu'],
+                name='contrats_cred_ct_resolu'),
+            models.Index(
+                fields=['company', 'resolu'],
+                name='contrats_cred_co_resolu'),
+        ]
+
+    def __str__(self):
+        etat = 'résolu' if self.resolu else 'ouvert'
+        return f'Contrat {self.contrat_id} — commentaire {etat}'

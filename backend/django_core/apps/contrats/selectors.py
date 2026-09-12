@@ -1718,3 +1718,30 @@ def lien_depot_par_token(token):
     if lien is None or not lien.is_accessible:
         return None
     return lien
+
+
+# ---------------------------------------------------------------------------
+# NTDOC3 — Commentaires de redline d'un contrat (lecture seule)
+# ---------------------------------------------------------------------------
+
+
+def commentaires_redline(contrat, *, resolu=None):
+    """Commentaires de redline d'un contrat (NTDOC3), non résolus en tête.
+
+    ``resolu=False`` ne renvoie que les commentaires OUVERTS (ceux qui
+    bloquent la clôture de la négociation, NTDOC4) ; ``resolu=True`` que les
+    résolus ; ``None`` (défaut) les deux. Scopé au contrat — donc à sa société.
+    """
+    from .models import CommentaireRedline
+
+    qs = CommentaireRedline.objects.filter(
+        company=contrat.company, contrat=contrat)
+    if resolu is not None:
+        qs = qs.filter(resolu=resolu)
+    return qs.select_related(
+        'auteur', 'resolu_par', 'clause', 'document_contrepartie')
+
+
+def commentaires_redline_ouverts(contrat):
+    """Commentaires de redline NON RÉSOLUS d'un contrat (NTDOC3/NTDOC4)."""
+    return commentaires_redline(contrat, resolu=False)

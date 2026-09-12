@@ -14,6 +14,7 @@ from .models import (
     Caution,
     Clause,
     ClauseContrat,
+    CommentaireRedline,
     CompteurUsage,
     Contrat,
     ContratActivity,
@@ -1889,3 +1890,72 @@ class CreerLienDepotContrepartieSerializer(serializers.Serializer):
     destinataire_email = serializers.EmailField(
         required=False, allow_blank=True)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+# ---------------------------------------------------------------------------
+# NTDOC3 — Commentaires de redline
+# ---------------------------------------------------------------------------
+
+
+class CommentaireRedlineSerializer(serializers.ModelSerializer):
+    """Commentaire ancré sur le diff de négociation (NTDOC3).
+
+    ``auteur``, ``resolu``, ``resolu_par`` et ``date_resolution`` sont en
+    LECTURE SEULE : ils sont posés CÔTÉ SERVEUR (l'utilisateur courant, la
+    date serveur) — jamais lus du corps de requête. La résolution passe par
+    l'action ``resoudre``.
+    """
+    auteur_nom = serializers.SerializerMethodField()
+    resolu_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommentaireRedline
+        fields = [
+            'id', 'contrat', 'document_contrepartie', 'clause',
+            'ligne_reference', 'extrait_ligne', 'contenu', 'auteur',
+            'auteur_nom', 'resolu', 'resolu_par', 'resolu_par_nom',
+            'date_resolution', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'contrat', 'auteur', 'auteur_nom', 'resolu', 'resolu_par',
+            'resolu_par_nom', 'date_resolution', 'created_at',
+        ]
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', None)
+
+    def get_resolu_par_nom(self, obj):
+        return getattr(obj.resolu_par, 'username', None)
+
+
+class CreerCommentaireRedlineSerializer(serializers.Serializer):
+    """Corps de création d'un commentaire de redline — NTDOC3."""
+    contenu = serializers.CharField()
+    document_contrepartie = serializers.IntegerField(
+        required=False, allow_null=True)
+    clause = serializers.IntegerField(required=False, allow_null=True)
+    ligne_reference = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0)
+    extrait_ligne = serializers.CharField(
+        required=False, allow_blank=True, max_length=500)
+
+    def validate_contenu(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le commentaire ne peut pas être vide.')
+        return value
+
+
+class ModifierCommentaireRedlineSerializer(serializers.Serializer):
+    """Corps d'édition d'un commentaire de redline — NTDOC3 (contenu seul)."""
+    contenu = serializers.CharField()
+    extrait_ligne = serializers.CharField(
+        required=False, allow_blank=True, max_length=500)
+
+    def validate_contenu(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le commentaire ne peut pas être vide.')
+        return value

@@ -5733,3 +5733,94 @@ def comparer_contrepartie(contrat, document_contrepartie):
         'lignes_ajoutees': ajoutees,
         'lignes_supprimees': supprimees,
     }
+
+
+# ---------------------------------------------------------------------------
+# NTDOC3 — Commentaires de redline (ancrés sur une ligne du diff / une clause)
+# ---------------------------------------------------------------------------
+
+
+class CommentaireRedlineError(Exception):
+    """Levée quand un commentaire de redline ne peut pas être écrit."""
+
+
+def creer_commentaire_redline(contrat, *, contenu, document_contrepartie=None,
+                              clause=None, ligne_reference=None,
+                              extrait_ligne='', auteur=None):
+    """NTDOC3 — Pose un commentaire sur le diff de négociation d'un contrat.
+
+    La société est celle du CONTRAT (posée côté serveur) et l'auteur est
+    l'utilisateur courant passé par la vue — ni l'une ni l'autre n'est lue du
+    corps de requête. Le commentaire naît toujours NON RÉSOLU : c'est lui qui
+    bloque la clôture de la négociation (NTDOC4).
+
+    Refuse (``CommentaireRedlineError``) un contenu vide, ou un dépôt/clause
+    d'un autre contrat ou d'une autre société (défense en profondeur).
+    """
+    from .models import CommentaireRedline
+
+    contenu = (contenu or '').strip()
+    if not contenu:
+        raise CommentaireRedlineError(
+            'Le champ « contenu » est obligatoire : un commentaire vide ne '
+            'peut pas être enregistré.')
+    if (document_contrepartie is not None
+            and document_contrepartie.contrat_id != contrat.id):
+        raise CommentaireRedlineError(
+            'Le champ « document_contrepartie » désigne un dépôt qui '
+            "n'appartient pas à ce contrat.")
+    if clause is not None and clause.company_id != contrat.company_id:
+        raise CommentaireRedlineError(
+            'Le champ « clause » désigne une clause qui n\'appartient pas à '
+            'votre société.')
+
+    commentaire = CommentaireRedline.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        document_contrepartie=document_contrepartie,
+        clause=clause,
+        ligne_reference=ligne_reference,
+        extrait_ligne=(extrait_ligne or '')[:500],
+        contenu=contenu,
+        auteur=auteur,
+    )
+    journaliser_transition(
+        contrat, field='redline', old_value='',
+        new_value='commentaire posé', message=contenu[:500], auteur=auteur)
+    return commentaire
+
+
+def resoudre_commentaire_redline(commentaire, *, user=None):
+    """NTDOC3 — Marque un commentaire de redline RÉSOLU (qui + quand, serveur).
+
+    Idempotent : re-résoudre un commentaire déjà résolu ne réécrit ni
+    ``resolu_par`` ni ``date_resolution`` (la première résolution fait foi).
+    """
+    if commentaire.resolu:
+        return commentaire
+    commentaire.resolu = True
+    commentaire.resolu_par = user
+    commentaire.date_resolution = timezone.now()
+    commentaire.save(
+        update_fields=['resolu', 'resolu_par', 'date_resolution'])
+    journaliser_transition(
+        commentaire.contrat, field='redline',
+        old_value='commentaire ouvert', new_value='commentaire résolu',
+        message=commentaire.contenu[:500], auteur=user)
+    return commentaire
+
+
+def rouvrir_commentaire_redline(commentaire, *, user=None):
+    """NTDOC3 — Rouvre un commentaire résolu (la négociation redevient bloquée)."""
+    if not commentaire.resolu:
+        return commentaire
+    commentaire.resolu = False
+    commentaire.resolu_par = None
+    commentaire.date_resolution = None
+    commentaire.save(
+        update_fields=['resolu', 'resolu_par', 'date_resolution'])
+    journaliser_transition(
+        commentaire.contrat, field='redline',
+        old_value='commentaire résolu', new_value='commentaire rouvert',
+        auteur=user)
+    return commentaire

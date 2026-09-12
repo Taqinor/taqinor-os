@@ -90,11 +90,13 @@ from .serializers import (
     EcourterOrdreLocationSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
+    CommentaireRedlineSerializer,
     ContratActivitySerializer,
     ContratLienSerializer,
     CampagneRevisionSerializer,
     ContratSerializer,
     CreerAvenantSerializer,
+    CreerCommentaireRedlineSerializer,
     CreerLienDepotContrepartieSerializer,
     CycleFacturationLogSerializer,
     CreerVersionSerializer,
@@ -109,6 +111,7 @@ from .serializers import (
     IndexationPrixSerializer,
     LigneEcheanceSerializer,
     MarquerPieceFournieSerializer,
+    ModifierCommentaireRedlineSerializer,
     InstancierContratSerializer,
     JalonContratSerializer,
     LienDepotContrepartieSerializer,
@@ -1213,6 +1216,139 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 lien, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    # ── NTDOC3 — commentaires de redline (CRUD + résolution) ───────────────
+
+    @action(detail=True, methods=['get', 'post'],
+            url_path='commentaires-redline')
+    def commentaires_redline(self, request, pk=None):
+        """Commentaires ancrés sur le diff de négociation (NTDOC3).
+
+        - ``GET`` : liste (``?resolu=0|1`` filtre), non résolus en tête.
+        - ``POST`` : pose un commentaire. L'auteur et la société sont posés
+          CÔTÉ SERVEUR ; le commentaire naît NON RÉSOLU (il bloque alors la
+          clôture de la négociation — NTDOC4).
+        """
+        contrat = self.get_object()
+        if request.method == 'GET':
+            brut = request.query_params.get('resolu')
+            resolu = None
+            if brut in ('0', 'false'):
+                resolu = False
+            elif brut in ('1', 'true'):
+                resolu = True
+            items = selectors.commentaires_redline(contrat, resolu=resolu)
+            return Response(
+                CommentaireRedlineSerializer(
+                    items, many=True, context={'request': request}).data)
+
+        body = CreerCommentaireRedlineSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        depot = None
+        if data.get('document_contrepartie'):
+            depot = contrat.documents_contrepartie.filter(
+                id=data['document_contrepartie']).first()
+            if depot is None:
+                return Response(
+                    {'detail': 'Le champ « document_contrepartie » désigne '
+                               'un dépôt introuvable pour ce contrat.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        clause = None
+        if data.get('clause'):
+            clause = Clause.objects.filter(
+                id=data['clause'], company=contrat.company).first()
+            if clause is None:
+                return Response(
+                    {'detail': 'Le champ « clause » désigne une clause '
+                               'introuvable pour votre société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            commentaire = services.creer_commentaire_redline(
+                contrat,
+                contenu=data['contenu'],
+                document_contrepartie=depot,
+                clause=clause,
+                ligne_reference=data.get('ligne_reference'),
+                extrait_ligne=data.get('extrait_ligne', ''),
+                auteur=request.user,
+            )
+        except services.CommentaireRedlineError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['patch', 'delete'],
+            url_path=r'commentaires-redline/(?P<cid>[^/.]+)')
+    def commentaire_redline_detail(self, request, pk=None, cid=None):
+        """Édite (PATCH) ou supprime (DELETE) un commentaire de redline (NTDOC3).
+
+        404 si le commentaire n'appartient pas à ce contrat (donc à cette
+        société).
+        """
+        contrat = self.get_object()
+        commentaire = contrat.commentaires_redline.filter(id=cid).first()
+        if commentaire is None:
+            return Response(
+                {'detail': 'Commentaire de redline introuvable pour ce '
+                           'contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        if request.method == 'DELETE':
+            commentaire.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        body = ModifierCommentaireRedlineSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        commentaire.contenu = body.validated_data['contenu']
+        champs = ['contenu']
+        if 'extrait_ligne' in body.validated_data:
+            commentaire.extrait_ligne = (
+                body.validated_data['extrait_ligne'] or '')[:500]
+            champs.append('extrait_ligne')
+        commentaire.save(update_fields=champs)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'commentaires-redline/(?P<cid>[^/.]+)/resoudre')
+    def resoudre_commentaire_redline(self, request, pk=None, cid=None):
+        """Marque un commentaire de redline RÉSOLU (NTDOC3).
+
+        Trace QUI et QUAND côté serveur. Idempotent : la première résolution
+        fait foi.
+        """
+        contrat = self.get_object()
+        commentaire = contrat.commentaires_redline.filter(id=cid).first()
+        if commentaire is None:
+            return Response(
+                {'detail': 'Commentaire de redline introuvable pour ce '
+                           'contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        services.resoudre_commentaire_redline(commentaire, user=request.user)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'commentaires-redline/(?P<cid>[^/.]+)/rouvrir')
+    def rouvrir_commentaire_redline(self, request, pk=None, cid=None):
+        """Rouvre un commentaire résolu (NTDOC3) — la négociation rebloque."""
+        contrat = self.get_object()
+        commentaire = contrat.commentaires_redline.filter(id=cid).first()
+        if commentaire is None:
+            return Response(
+                {'detail': 'Commentaire de redline introuvable pour ce '
+                           'contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        services.rouvrir_commentaire_redline(commentaire, user=request.user)
+        return Response(
+            CommentaireRedlineSerializer(
+                commentaire, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='avenants')
     def avenants(self, request, pk=None):
