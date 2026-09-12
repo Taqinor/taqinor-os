@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { FileText, Receipt } from 'lucide-react'
 import { Card } from '../../../ui'
+import SatisfactionPrompt from './SatisfactionPrompt'
 
 /* ============================================================================
    NTPRT8 — Accueil du portail client.
@@ -40,6 +41,10 @@ export default function PortailClientAccueil() {
       <p className="text-sm text-muted-foreground">
         Bienvenue dans votre espace client.
       </p>
+      {/* NTPRT35 — ne se rend QUE s'il y a une enquête sans réponse ; le
+          serveur en est seul juge (jamais un drapeau local), donc le prompt
+          ne se rejoue jamais une fois répondu. */}
+      <SatisfactionPrompt />
       <div className="grid gap-3 sm:grid-cols-2">
         {SECTIONS.map((section) => {
           const { to, icone: Icone, titre, texte } = section

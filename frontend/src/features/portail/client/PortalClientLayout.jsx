@@ -16,18 +16,21 @@ import PortalLayout from '../PortalLayout'
    ========================================================================== */
 
 // Non exporté : utilisé uniquement dans ce fichier (fast-refresh).
+// NTPRT34 — `labelAr` = libellé arabe de l'onglet ; sans lui, le shell rend
+// le français (jamais une clé technique).
 const NAV_CLIENT = [
-  { to: '/portail/client', label: 'Tableau de bord', end: true },
-  { to: '/portail/client/devis', label: 'Devis' },
-  { to: '/portail/client/factures', label: 'Commandes & Factures' },
+  { to: '/portail/client', label: 'Tableau de bord', labelAr: 'لوحة التحكم', end: true },
+  { to: '/portail/client/devis', label: 'Devis', labelAr: 'عروض الأسعار' },
+  { to: '/portail/client/factures', label: 'Commandes & Factures', labelAr: 'الطلبات والفواتير' },
   // WIR216 — le lien de l'email de livraison (FG228/XSTK22) pointait vers
   // une section qui n'existait pas encore.
-  { to: '/portail/client/livraisons', label: 'Livraisons' },
+  { to: '/portail/client/livraisons', label: 'Livraisons', labelAr: 'التسليمات' },
 ]
 
 export default function PortalClientLayout({ children }) {
   return (
-    <PortalLayout titre="Espace client" items={NAV_CLIENT}>
+    <PortalLayout titre="Espace client" titreAr="فضاء العميل"
+                  items={NAV_CLIENT}>
       {children}
     </PortalLayout>
   )

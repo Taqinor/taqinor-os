@@ -5970,11 +5970,34 @@ def confirmer_bcf_portail_fournisseur(
     d'origine (`date_livraison_prevue`) n'est jamais écrasée (préserve
     l'OTD). Isolation stricte : le BCF DOIT appartenir au fournisseur
     porteur du jeton, sinon lève ValueError (jamais d'accès croisé)."""
+    bc = _appliquer_confirmation_bcf_fournisseur(
+        token_obj.company, token_obj.fournisseur_id, bcf_id,
+        date_confirmee=date_confirmee,
+        numero_confirmation=numero_confirmation)
+
+    from django.utils import timezone
+    token_obj.last_used_at = timezone.now()
+    token_obj.save(update_fields=['last_used_at'])
+
+    notify_bcf_confirmation_fournisseur(bc)
+    return bc
+
+
+def _appliquer_confirmation_bcf_fournisseur(
+        company, fournisseur_id, bcf_id, *, date_confirmee,
+        numero_confirmation=''):
+    """NTPRT21 — CŒUR unique de la confirmation d'un BCF par le fournisseur.
+
+    Extrait de ``confirmer_bcf_portail_fournisseur`` (XPUR22) SANS changer une
+    ligne de sa sémantique, pour que le chemin authentifié (compte portail
+    fournisseur) et le chemin tokenisé historique appliquent EXACTEMENT le même
+    effet : la date DEMANDÉE (``date_livraison_prevue``) n'est jamais écrasée
+    (l'OTD promis-vs-reçu reste mesurable), seul l'accusé fournisseur est posé.
+    """
     from .models import BonCommandeFournisseur
 
     bc = BonCommandeFournisseur.objects.filter(
-        pk=bcf_id, company=token_obj.company,
-        fournisseur=token_obj.fournisseur).first()
+        pk=bcf_id, company=company, fournisseur_id=fournisseur_id).first()
     if bc is None:
         raise ValueError(
             "Ce bon de commande n'appartient pas à ce fournisseur.")
@@ -5982,11 +6005,24 @@ def confirmer_bcf_portail_fournisseur(
     bc.numero_confirmation_fournisseur = numero_confirmation or ''
     bc.save(update_fields=[
         'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
+    return bc
 
-    from django.utils import timezone
-    token_obj.last_used_at = timezone.now()
-    token_obj.save(update_fields=['last_used_at'])
 
+def confirmer_bcf_compte_fournisseur(
+        company, fournisseur_id, bcf_id, *, date_confirmee,
+        numero_confirmation=''):
+    """NTPRT21 — confirmation d'un BCF par un COMPTE fournisseur authentifié.
+
+    Point d'entrée cross-app de ``apps.portail`` (jamais un import de
+    ``apps.stock.models`` depuis portail). Le comportement est celui de
+    ``confirmer_bcf_portail_fournisseur`` À L'IDENTIQUE — même cœur, même
+    notification interne — MOINS l'horodatage du jeton, qui n'existe pas sur ce
+    chemin. L'isolation est la même : un BCF d'un autre fournisseur (ou d'une
+    autre société) lève ``ValueError``, jamais d'accès croisé.
+    """
+    bc = _appliquer_confirmation_bcf_fournisseur(
+        company, fournisseur_id, bcf_id, date_confirmee=date_confirmee,
+        numero_confirmation=numero_confirmation)
     notify_bcf_confirmation_fournisseur(bc)
     return bc
 

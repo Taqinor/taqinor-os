@@ -3603,6 +3603,173 @@ def resume_portail_partenaire(company, partenaire_id):
     }
 
 
+def soumissions_partenaire_portail(company, partenaire_id):
+    """NTPRT28 — SES soumissions de leads, telles que le portail les montre.
+
+    Point d'entrée cross-app LECTURE SEULE de ``apps.portail`` (jamais un
+    import de ``apps.crm.models`` depuis portail). Borné au couple (société,
+    partenaire) : un ``partenaire_id`` absent — ou d'une autre société —
+    renvoie une liste VIDE, jamais les soumissions d'un autre partenaire.
+
+    Charge utile volontairement pauvre : ce que LE PARTENAIRE a saisi, plus
+    l'avancement de sa soumission. Aucune donnée interne (propriétaire du
+    lead, notes commerciales, montants) ne transite ici.
+    """
+    if company is None or not partenaire_id:
+        return []
+
+    from .models import Partenaire, SoumissionLeadPartenaire
+
+    if not Partenaire.objects.filter(
+            company=company, pk=partenaire_id).exists():
+        return []
+
+    return [{
+        'id': s.id,
+        'nom_prospect': s.nom_prospect,
+        'telephone_prospect': s.telephone_prospect,
+        'email_prospect': s.email_prospect,
+        'ville': s.ville,
+        'note': s.note,
+        'statut': s.statut,
+        'statut_display': s.get_statut_display(),
+        # Le partenaire voit que SON prospect est devenu un dossier réel
+        # (traçabilité de sa commission) — jamais le contenu de ce dossier.
+        'converti': bool(s.lead_id),
+        'date_soumission': (s.date_soumission.isoformat()
+                            if s.date_soumission else None),
+    } for s in SoumissionLeadPartenaire.objects.filter(
+        company=company, partenaire_id=partenaire_id)]
+
+
+def partenaire_peut_soumettre(company, partenaire_id):
+    """NTPRT32 — le partenaire est-il AGRÉÉ pour enregistrer une affaire ?
+
+    Renvoie ``(autorise, motif)`` :
+
+    * ``(False, None)`` — aucun partenaire de cet id dans CETTE société.
+      L'appelant répond « introuvable » : on ne dit jamais qu'il existe
+      ailleurs ;
+    * ``(False, '<message français>')`` — le partenaire existe mais son
+      agrément ne l'autorise pas : le message lui EXPLIQUE pourquoi ;
+    * ``(True, '')`` — nominal.
+
+    Le statut d'agrément (FG237, ``Partenaire.statut_onboarding``) est la
+    SEULE autorité, avec le drapeau ``actif`` qui ferme la porte de la même
+    façon : c'est exactement ce que le critère d'acceptation NTPRT32 demande
+    de faire respecter par NTPRT28. Un partenaire encore ``prospect`` ou
+    ``en_cours`` d'agrément — comme un partenaire ``suspendu`` — n'enregistre
+    aucune affaire ; les soumissions DÉJÀ déposées restent consultables (on
+    ne ferme jamais rétroactivement l'historique du partenaire).
+    """
+    if company is None or not partenaire_id:
+        return False, None
+
+    from .models import Partenaire
+
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return False, None
+    if not partenaire.actif:
+        return False, ('Votre compte partenaire est désactivé. Contactez '
+                       'votre interlocuteur commercial.')
+    if partenaire.statut_onboarding == 'suspendu':
+        return False, ('Votre agrément est suspendu : vous ne pouvez pas '
+                       'enregistrer de nouvelle affaire pour le moment.')
+    if partenaire.statut_onboarding != 'agree':
+        return False, ("Votre agrément n'est pas encore finalisé : vous "
+                       "pourrez enregistrer vos affaires dès l'activation "
+                       'de votre partenariat.')
+    return True, ''
+
+
+def releve_commissions_partenaire(company, partenaire_id, debut=None,
+                                  fin=None):
+    """NTPRT30 — relevé des commissions DU partenaire, sur une période.
+
+    Point d'entrée cross-app LECTURE SEULE de ``apps.portail`` (jamais un
+    import de ``apps.crm.models`` depuis portail). Borné au couple (société,
+    partenaire) : un partenaire absent de CETTE société renvoie un relevé VIDE,
+    jamais les commissions d'un autre.
+
+    ``debut``/``fin`` sont des ``date`` INCLUSIVES appliquées à la date de
+    création de la commission ; omises, le relevé couvre tout l'historique.
+
+    Le TOTAL est, par construction, la somme des montants des lignes RENDUES —
+    jamais un agrégat calculé sur un autre périmètre que celui affiché (c'est
+    exactement le critère d'acceptation NTPRT30). ``due``/``payee``/``annulee``
+    en sont les trois sous-sommes : elles s'additionnent au total, à l'unité
+    près.
+    """
+    from decimal import Decimal
+
+    vide = {
+        'partenaire_nom': '',
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+        'lignes': [],
+        'totaux': {'due': '0', 'payee': '0', 'annulee': '0', 'total': '0'},
+    }
+    if company is None or not partenaire_id:
+        return vide
+
+    from .models import CommissionPartenaire, Partenaire
+
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return vide
+
+    qs = CommissionPartenaire.objects.filter(
+        company=company, partenaire=partenaire)
+    if debut is not None:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_creation__date__lte=fin)
+
+    lignes = []
+    sous_totaux = {
+        CommissionPartenaire.Statut.DUE: Decimal('0'),
+        CommissionPartenaire.Statut.PAYEE: Decimal('0'),
+        CommissionPartenaire.Statut.ANNULEE: Decimal('0'),
+    }
+    total = Decimal('0')
+    for c in qs.order_by('-date_creation', '-id'):
+        montant = c.montant or Decimal('0')
+        total += montant
+        if c.statut in sous_totaux:
+            sous_totaux[c.statut] += montant
+        lignes.append({
+            'id': c.id,
+            'date_creation': (c.date_creation.isoformat()
+                              if c.date_creation else None),
+            # Références opaques : le partenaire sait SUR QUOI porte sa
+            # commission, jamais le contenu du devis ni celui du lead.
+            'devis_id': c.devis_id,
+            'lead_id': c.lead_id,
+            'base_ht': str(c.base_ht or Decimal('0')),
+            'taux': str(c.taux or Decimal('0')),
+            'montant': str(montant),
+            'statut': c.statut,
+            'statut_display': c.get_statut_display(),
+            'paye_le': c.paye_le.isoformat() if c.paye_le else None,
+        })
+
+    return {
+        'partenaire_nom': partenaire.nom,
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+        'lignes': lignes,
+        'totaux': {
+            'due': str(sous_totaux[CommissionPartenaire.Statut.DUE]),
+            'payee': str(sous_totaux[CommissionPartenaire.Statut.PAYEE]),
+            'annulee': str(sous_totaux[CommissionPartenaire.Statut.ANNULEE]),
+            'total': str(total),
+        },
+    }
+
+
 def pipeline_pondere_par_entite(company, entite_ids):
     """NTADM25 — pipeline PONDÉRÉ-PROBABILITÉ agrégé PAR ENTITÉ (NTADM2).
 

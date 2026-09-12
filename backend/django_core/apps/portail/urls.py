@@ -30,9 +30,14 @@ from .views_client import (
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
+    SatisfactionPortailViewSet,
 )
 from .views_externes import (
+    MesBcfPortailFournisseurViewSet,
+    MesCommissionsPortailPartenaireViewSet,
+    MesSoumissionsPortailPartenaireViewSet,
     candidature_fournisseur,
+    preference_portail,
     tableau_de_bord_fournisseur,
     tableau_de_bord_partenaire,
 )
@@ -69,6 +74,23 @@ router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
 # n'était donc jamais exercée par un vrai client.
 router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
                 basename='portail-mes-demandes-sav')
+# NTPRT35 — widget « Satisfaction » : le déclencheur d'INTERFACE qui manquait
+# à FG238/FG239 (l'enquête était créée à la réception d'un chantier, sans
+# aucun écran client pour y répondre).
+router.register(r'satisfaction', SatisfactionPortailViewSet,
+                basename='portail-satisfaction')
+# NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
+# commande, et la confirmation de date d'arrivée (le même effet que le chemin
+# tokenisé XPUR22, simplement authentifié).
+router.register(r'mes-bons-commande', MesBcfPortailFournisseurViewSet,
+                basename='portail-mes-bons-commande')
+# NTPRT28 — deal registration : le PARTENAIRE connecté enregistre ses affaires
+# (anti-doublon 30 jours) et suit leur avancement.
+router.register(r'mes-soumissions', MesSoumissionsPortailPartenaireViewSet,
+                basename='portail-mes-soumissions')
+# NTPRT30 — « Mes commissions » : relevé (écran) + export PDF, lecture seule.
+router.register(r'mes-commissions', MesCommissionsPortailPartenaireViewSet,
+                basename='portail-mes-commissions')
 
 urlpatterns = [
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et
@@ -77,6 +99,11 @@ urlpatterns = [
          name='portail-fournisseur-tableau-de-bord'),
     path('partenaire/tableau-de-bord/', tableau_de_bord_partenaire,
          name='portail-partenaire-tableau-de-bord'),
+    # NTPRT34 — préférence d'affichage (langue) du compte portail connecté :
+    # la SEULE surface commune aux trois portails, d'où la garde « portail
+    # quelconque » plutôt qu'une portée exacte.
+    path('ma-preference/', preference_portail,
+         name='portail-ma-preference'),
     # NTPRT25 — auto-inscription fournisseur : PUBLIC (AllowAny) et
     # rate-limité. Volontairement déclaré AVANT le routeur pour qu'aucun
     # ViewSet ne puisse l'ombrer.

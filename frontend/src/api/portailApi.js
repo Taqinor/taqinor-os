@@ -19,6 +19,12 @@ const portailApi = {
   // société est résolue côté serveur par l'en-tête Host — on n'envoie AUCUN
   // identifiant de société (ce serait un énumérateur de tenants).
   themePublic: () => api.get('/public/portail/theme/'),
+  // NTPRT34 — langue du shell portail. SERVEUR (suit le compte), jamais un
+  // cookie : c'est le critère d'acceptation. Ouvert aux TROIS portées portail.
+  preference: {
+    get: () => api.get('/portail/ma-preference/'),
+    set: (langue) => api.put('/portail/ma-preference/', { langue }),
+  },
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),
@@ -62,14 +68,47 @@ const portailApi = {
       api.post('/portail/mes-demandes-sav/consulter-article-kb/',
         { article_id: articleId }),
   },
+  // NTPRT35 — widget « Satisfaction » : le serveur ne renvoie une enquête que
+  // tant qu'elle est SANS réponse. Une fois répondue, `enquete` est null —
+  // c'est ce qui garantit « une fois par événement », sans état local.
+  satisfaction: {
+    enAttente: () => api.get('/portail/satisfaction/'),
+    repondre: (payload) =>
+      api.post('/portail/satisfaction/repondre/', payload),
+  },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au
   // rattachement du compte connecté.
   fournisseur: {
     tableauDeBord: () => api.get('/portail/fournisseur/tableau-de-bord/'),
+    // NTPRT21 — « Mes bons de commande » : le fournisseur est déduit du compte
+    // connecté côté serveur. `confirmer` produit le MÊME effet que l'ancien
+    // lien tokenisé XPUR22 (accusé posé, date demandée jamais écrasée).
+    bonsCommande: {
+      liste: () => api.get('/portail/mes-bons-commande/'),
+      detail: (id) => api.get(`/portail/mes-bons-commande/${id}/`),
+      confirmer: (id, payload) =>
+        api.post(`/portail/mes-bons-commande/${id}/confirmer/`, payload),
+    },
   },
   partenaire: {
     tableauDeBord: () => api.get('/portail/partenaire/tableau-de-bord/'),
+    // NTPRT28 — deal registration : le partenaire vient du compte connecté,
+    // jamais du corps. Un 409 signifie « déjà soumis » (anti-doublon 30 j).
+    soumissions: {
+      liste: () => api.get('/portail/mes-soumissions/'),
+      detail: (id) => api.get(`/portail/mes-soumissions/${id}/`),
+      creer: (payload) => api.post('/portail/mes-soumissions/', payload),
+    },
+    // NTPRT30 — relevé de commissions (lecture seule) + son PDF. Le PDF est
+    // un FICHIER : `responseType: 'blob'`. Il porte le MÊME total que l'écran
+    // (le serveur ne calcule le relevé qu'une fois).
+    commissions: {
+      releve: (params) => api.get('/portail/mes-commissions/', { params }),
+      pdf: (params) => api.get('/portail/mes-commissions/pdf/', {
+        params, responseType: 'blob',
+      }),
+    },
   },
   // PACT96-101 — administration ERP du portail (ComptePortailClient et son
   // provisioning, preuve d'acceptation de devis, rapprochement des paiements,

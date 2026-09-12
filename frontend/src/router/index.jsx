@@ -111,9 +111,15 @@ const PortailClientMotDePasse = lazy(() => import('../features/portail/client/Po
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
 const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
 const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
+// NTPRT21 — « Mes bons de commande » du portail fournisseur (liste + accusé).
+const PortailFournisseurBcf = lazy(() => import('../features/portail/fournisseur/PortailFournisseurBcf'))
 // NTPRT27 — shell + tableau de bord du PORTAIL PARTENAIRE.
 const PortalPartenaireLayout = lazy(() => import('../features/portail/partenaire/PortalPartenaireLayout'))
 const PortailPartenaireAccueil = lazy(() => import('../features/portail/partenaire/PortailPartenaireAccueil'))
+// NTPRT28 — deal registration : enregistrer une affaire + suivi des soumissions.
+const PortailPartenaireLeads = lazy(() => import('../features/portail/partenaire/PortailPartenaireLeads'))
+// NTPRT30 — relevé de commissions du partenaire (écran + export PDF).
+const PortailPartenaireCommissions = lazy(() => import('../features/portail/partenaire/PortailPartenaireCommissions'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -452,12 +458,32 @@ const router = createBrowserRouter([
     loader: portalLoader(PORTEE_FOURNISSEUR),
     element: <WithPortal shell={PortalFournisseurLayout}><PortailFournisseurAccueil /></WithPortal>,
   },
+  // NTPRT21 — « Mes bons de commande » : porte XPUR22 (lien tokenisé) sur le
+  // compte fournisseur réel, même garde de portée que le tableau de bord.
+  {
+    path: '/portail/fournisseur/commandes',
+    loader: portalLoader(PORTEE_FOURNISSEUR),
+    element: <WithPortal shell={PortalFournisseurLayout}><PortailFournisseurBcf /></WithPortal>,
+  },
   // NTPRT27 — PORTAIL PARTENAIRE : garde symétrique (portée exacte
   // `portail_partenaire`), structure identique aux deux shells ci-dessus.
   {
     path: '/portail/partenaire',
     loader: portalLoader(PORTEE_PARTENAIRE),
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireAccueil /></WithPortal>,
+  },
+  // NTPRT28 — « Mes affaires » : deal registration (anti-doublon 30 jours) et
+  // suivi des soumissions, même garde de portée que le tableau de bord.
+  {
+    path: '/portail/partenaire/affaires',
+    loader: portalLoader(PORTEE_PARTENAIRE),
+    element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireLeads /></WithPortal>,
+  },
+  // NTPRT30 — « Mes commissions » : relevé + PDF, lecture seule.
+  {
+    path: '/portail/partenaire/commissions',
+    loader: portalLoader(PORTEE_PARTENAIRE),
+    element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireCommissions /></WithPortal>,
   },
 
   // ODY2 — Menu d'accueil : la grille de MES apps. `/dashboard` reste une route

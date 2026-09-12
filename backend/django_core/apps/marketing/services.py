@@ -35,6 +35,9 @@ from apps.compta.services import (  # noqa: F401
     envoyer_enquete_nps,
     envoyer_test_campagne,
     executer_etapes_dues,
+    # NTPRT35 — lu par le portail client pour PROPOSER (jamais publier) le
+    # lien d'avis Google au promoteur ; vide = no-op propre (FG239).
+    google_review_url_configuree,
     inscrire_lead_sequence,
     leads_source_roi,
     nb_participants_actifs,
@@ -1632,3 +1635,39 @@ def rappeler_approbations_envoi_en_attente(company, *, maintenant=None,
         demande.save(update_fields=['rappel_envoye_le'])
         notifiees.append(demande.id)
     return notifiees
+
+
+# ── NTPRT35 — Réponse à l'enquête de satisfaction DEPUIS LE PORTAIL ─────────
+#
+# Point d'entrée d'ÉCRITURE pour ``apps.portail`` : l'enquête vit ici, donc
+# c'est ici qu'on l'écrit — jamais un ``EnqueteNPS.objects`` depuis une autre
+# app. AUCUNE logique de scoring nouvelle : la réponse est appliquée par
+# ``repondre_enquete_nps`` (FG238) tel quel, avec ses effets aval (YSERV11) et
+# son idempotence « déjà répondue ». La SEULE chose ajoutée ici est le
+# BORNAGE au client du compte portail appelant.
+
+def repondre_enquete_satisfaction_client(company, client_id, enquete_id, *,
+                                         score, commentaire=''):
+    """NTPRT35 — enregistre la réponse d'un client à SON enquête.
+
+    Renvoie ``(enquete, erreur)`` — ``erreur`` valant ``None`` en cas de
+    succès, sinon une clé stable (``'introuvable'`` / ``'score'``) que
+    l'appelant HTTP traduit en message français. Une enquête d'un autre client
+    (ou d'une autre société) est INTROUVABLE : jamais « trouvée puis refusée ».
+    """
+    from .models import EnqueteNPS
+
+    if company is None or not client_id or not enquete_id:
+        return None, 'introuvable'
+    enquete = EnqueteNPS.objects.filter(
+        company=company, client_id=client_id, pk=enquete_id).first()
+    if enquete is None:
+        return None, 'introuvable'
+    try:
+        note = int(score)
+    except (TypeError, ValueError):
+        return None, 'score'
+    if note < 0 or note > 10:
+        return None, 'score'
+    return repondre_enquete_nps(
+        enquete, score=note, commentaire=str(commentaire or '')[:4000]), None
