@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ArrowLeft, Check, GripVertical, Plus, Trash2,
+  ArrowLeft, Check, GripVertical, LayoutList, Plus, Rows3, Trash2,
 } from 'lucide-react'
 import {
   Button, Input, Textarea, Badge, Card, toast,
@@ -13,6 +13,7 @@ import PageHeader from '../../components/layout/PageHeader'
 import coreApi from '../../api/coreApi'
 import {
   deplacerEtapeVersIndex, renumeroterEtapes, ajouterEtape, retirerEtape,
+  swimlanesDe,
 } from './workflow'
 
 /* ============================================================================
@@ -90,6 +91,52 @@ function EtapeNoeud({
           {etape.etape_alternative_si_echec ? ` -> sinon etape ${etape.etape_alternative_si_echec}` : ''}
         </span>
       )}
+    </div>
+  )
+}
+
+/* ============================================================================
+   NTWFL8 -- Swimlanes par role : regroupement PUREMENT visuel (aucun champ
+   backend nouveau, derive de `role_requis` existant, swimlanesDe testee).
+   ========================================================================== */
+function VueSwimlanes({
+  steps, selection, onSelect, onDragStart, onDeplacerVersRole,
+}) {
+  const bandes = useMemo(() => swimlanesDe(steps), [steps])
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="wfd-swimlanes">
+      {bandes.map((bande) => (
+        <div
+          key={bande.role || '__sans_role__'}
+          className="rounded-md border p-3"
+          data-testid={`wfd-swimlane-${bande.role || 'sans-role'}`}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); onDeplacerVersRole(bande.role) }}
+        >
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            {bande.role || 'Sans role'}
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            {bande.steps.map((etape) => {
+              const index = steps.findIndex((s) => s.ordre === etape.ordre)
+              return (
+                <EtapeNoeud
+                  key={etape.ordre}
+                  etape={etape}
+                  index={index}
+                  total={steps.length}
+                  selectionnee={selection === index}
+                  onSelect={onSelect}
+                  onDragStart={onDragStart}
+                  onDragOver={() => {}}
+                  onDrop={() => {}}
+                />
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -236,7 +283,12 @@ export default function WorkflowDesigner() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [selection, setSelection] = useState(null)
-  const [dragIndex, setDragIndex] = useState(null)
+  // NTWFL6/8 — l'index en cours de glisser n'est jamais lu directement, seul
+  // le setter fonctionnel importe (patron déjà utilisé pour un état
+  // write-only, ex. PaieDeclarations.jsx `const [, setBusy]`).
+  const [, setDragIndex] = useState(null)
+  // NTWFL8 — bascule séquence/swimlanes (aucune donnée nouvelle, pure vue).
+  const [vueParRole, setVueParRole] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -267,6 +319,19 @@ export default function WorkflowDesigner() {
   function majEtape(etapeMaj) {
     setSteps((prev) => prev.map((s) => (s.ordre === etapeMaj.ordre ? etapeMaj : s)))
   }
+
+  // NTWFL8 — déposer un noeud dans une bande met à jour SON role_requis
+  // (dérivé, aucun nouveau champ) ; journalisé au chatter côté serveur
+  // (aucun ici — c'est un simple champ texte, comme l'éditeur liste).
+  const onDeplacerVersRole = useCallback((role) => {
+    setDragIndex((source) => {
+      if (source == null) return null
+      setSteps((prev) => prev.map(
+        (s, i) => (i === source ? { ...s, role_requis: role } : s),
+      ))
+      return null
+    })
+  }, [])
 
   function ajouter() {
     setSteps((prev) => ajouterEtape(prev))
@@ -330,27 +395,57 @@ export default function WorkflowDesigner() {
           action={<Button onClick={ajouter}><Plus /> Ajouter une etape</Button>}
         />
       ) : (
-        <Card className="overflow-x-auto p-4">
-          <div className="flex items-center gap-6" data-testid="wfd-canvas">
-            {steps.map((etape, index) => (
-              <div key={etape.ordre} className="flex items-center gap-2">
-                <EtapeNoeud
-                  etape={etape}
-                  index={index}
-                  total={steps.length}
-                  selectionnee={selection === index}
-                  onSelect={setSelection}
-                  onDragStart={onDragStart}
-                  onDragOver={onDragOver}
-                  onDrop={onDrop}
-                />
-                {index < steps.length - 1 && (
-                  <span aria-hidden="true" className="text-muted-foreground">&rarr;</span>
-                )}
-              </div>
-            ))}
+        <>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={vueParRole ? 'ghost' : 'secondary'}
+              size="sm"
+              onClick={() => setVueParRole(false)}
+              data-testid="wfd-vue-sequence"
+            >
+              <LayoutList /> Sequence
+            </Button>
+            <Button
+              variant={vueParRole ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setVueParRole(true)}
+              data-testid="wfd-vue-swimlanes"
+            >
+              <Rows3 /> Par role
+            </Button>
           </div>
-        </Card>
+          <Card className="overflow-x-auto p-4">
+            {vueParRole ? (
+              <VueSwimlanes
+                steps={steps}
+                selection={selection}
+                onSelect={setSelection}
+                onDragStart={onDragStart}
+                onDeplacerVersRole={onDeplacerVersRole}
+              />
+            ) : (
+              <div className="flex items-center gap-6" data-testid="wfd-canvas">
+                {steps.map((etape, index) => (
+                  <div key={etape.ordre} className="flex items-center gap-2">
+                    <EtapeNoeud
+                      etape={etape}
+                      index={index}
+                      total={steps.length}
+                      selectionnee={selection === index}
+                      onSelect={setSelection}
+                      onDragStart={onDragStart}
+                      onDragOver={onDragOver}
+                      onDrop={onDrop}
+                    />
+                    {index < steps.length - 1 && (
+                      <span aria-hidden="true" className="text-muted-foreground">&rarr;</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </>
       )}
 
       <div className="flex flex-wrap items-center gap-2">

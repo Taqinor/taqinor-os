@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import {
-  deplacerEtapeVersIndex, swimlanesDe, validerEtapesDefinition,
-  evaluerConditionGroupe, simulerWorkflow,
+  swimlanesDe, validerEtapesDefinition, evaluerConditionGroupe, simulerWorkflow,
 } from './workflow'
 
 /* NTWFL6/8/9/11 -- designer visuel (canvas) : logique pure (testable sans
@@ -199,5 +198,68 @@ describe('WorkflowDesigner -- rendu (NTWFL6)', () => {
     await waitFor(() => expect(definitionsUpdate).toHaveBeenCalled())
     const [, payload] = definitionsUpdate.mock.calls[0]
     expect(payload.steps).toHaveLength(3)
+  })
+})
+
+describe('WorkflowDesigner -- swimlanes par role (NTWFL8)', () => {
+  const DEFINITION_ROLES = {
+    id: 10,
+    nom: 'Trois roles',
+    description: '',
+    steps: [
+      { id: 1, ordre: 1, nom: 'A', type_approbation: 'manuelle', role_requis: 'commercial' },
+      { id: 2, ordre: 2, nom: 'B', type_approbation: 'manuelle', role_requis: 'responsable' },
+      { id: 3, ordre: 3, nom: 'C', type_approbation: 'manuelle', role_requis: 'admin' },
+    ],
+  }
+
+  function monterRoles() {
+    return render(
+      <MemoryRouter initialEntries={['/workflow/10/designer']}>
+        <ThemeProvider>
+          <Routes>
+            <Route path="/workflow/:id/designer" element={<WorkflowDesigner />} />
+          </Routes>
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+  }
+
+  it('affiche une bande par role', async () => {
+    definitionsGet.mockResolvedValue({ data: DEFINITION_ROLES })
+    const user = userEvent.setup()
+    monterRoles()
+    await screen.findByTestId('wfd-node-1')
+    await user.click(screen.getByTestId('wfd-vue-swimlanes'))
+    expect(screen.getByTestId('wfd-swimlane-commercial')).toBeTruthy()
+    expect(screen.getByTestId('wfd-swimlane-responsable')).toBeTruthy()
+    expect(screen.getByTestId('wfd-swimlane-admin')).toBeTruthy()
+  })
+
+  it('une definition sans role affiche une seule bande', async () => {
+    definitionsGet.mockResolvedValue({ data: DEFINITION })
+    const user = userEvent.setup()
+    monter()
+    await screen.findByTestId('wfd-node-1')
+    await user.click(screen.getByTestId('wfd-vue-swimlanes'))
+    // Les deux etapes de DEFINITION portent le meme role ('admin').
+    expect(screen.getByTestId('wfd-swimlane-admin')).toBeTruthy()
+    expect(screen.queryByTestId('wfd-swimlane-sans-role')).toBeNull()
+  })
+
+  it('deplacer un noeud entre bandes met a jour role_requis', async () => {
+    definitionsGet.mockResolvedValue({ data: DEFINITION_ROLES })
+    const user = userEvent.setup()
+    monterRoles()
+    await screen.findByTestId('wfd-node-1')
+    await user.click(screen.getByTestId('wfd-vue-swimlanes'))
+
+    const noeudA = screen.getByTestId('wfd-node-1') // role 'commercial'
+    const bandeAdmin = screen.getByTestId('wfd-swimlane-admin')
+    fireEvent.dragStart(noeudA)
+    fireEvent.drop(bandeAdmin)
+
+    await user.click(noeudA)
+    expect(await screen.findByTestId('wfd-panel-role')).toHaveValue('admin')
   })
 })
