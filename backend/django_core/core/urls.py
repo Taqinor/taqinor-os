@@ -37,6 +37,8 @@ from .views import (
     ChangelogViewSet,
     ConsentRecordViewSet,
     DashboardViewSet,
+    DataExplorerDatasetsView,
+    DataExplorerRunView,
     DataSubjectRequestViewSet,
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
@@ -153,4 +155,15 @@ urlpatterns = router.urls + [
     # (liste blanche + scoping société de data_explorer, liens profonds).
     path('data-explorer/drill/', DrillDownView.as_view(),
          name='data-explorer-drill'),
+    # NTDATA5 — catalogue BI enrichi (label FR + type par champ) et schéma
+    # détaillé d'un dataset.
+    path('data-explorer/datasets/', DataExplorerDatasetsView.as_view(),
+         name='data-explorer-datasets'),
+    path('data-explorer/datasets/<str:name>/',
+         DataExplorerDatasetsView.as_view(),
+         name='data-explorer-dataset-detail'),
+    # NTDATA6 — exécution self-service d'une requête ad-hoc (liste blanche +
+    # scoping société + plafond de lignes ; jamais de SQL brut).
+    path('data-explorer/run/', DataExplorerRunView.as_view(),
+         name='data-explorer-run'),
 ]

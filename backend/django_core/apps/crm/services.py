@@ -7241,3 +7241,136 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
         f'La visite du lead « {visite.lead} » revient à refaire. '
         f'Motif : {motif}')
     return ''
+
+
+# ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
+#
+# Sur le modèle de `merge_leads` ci-dessus, mais pour `Client` : le détecteur
+# (`dataquality.services.doublons_clients`) PROPOSE, un humain DÉCIDE, et cette
+# fonction exécute. Jamais de fusion automatique.
+#
+# TROIS GARANTIES DURES :
+#
+# 1. AUCUNE SUPPRESSION. Le doublon n'est jamais effacé : il est NEUTRALISÉ.
+#    `Client` ne porte pas (encore) de drapeau d'archivage — ajouter une
+#    colonne supposerait une migration `crm`, hors du périmètre de cette
+#    tâche. On utilise donc le mécanisme EXISTANT prévu pour ça :
+#    `avertissement_bloquant` (une garde serveur refuse dès lors l'acceptation
+#    et la facturation d'un devis pour ce client, patron XFAC28) + un
+#    avertissement lisible, + un marqueur `custom_data['fusionne_dans']` qui
+#    trace la cible et la date. La fiche reste consultable, son historique
+#    intact, et la fusion est intégralement réversible à la main.
+#
+# 2. AUCUN ORPHELIN. Tout ce qui pointait le doublon pointe le survivant —
+#    non pas une liste de quatre modèles écrite à la main (le dépôt compte
+#    plus de trente FK vers `Client`), mais le parcours des relations inverses
+#    déclarées par Django (`core.merge.repointer_relations`, la MÊME mécanique
+#    que la fusion fournisseur/produit de `stock` — jamais une seconde
+#    implémentation). Chaque relation est repointée dans son PROPRE point de
+#    sauvegarde : une contrainte d'unicité qui refuse (le survivant a déjà sa
+#    limite de crédit, par exemple) annule CETTE relation seule et le rapport
+#    la NOMME, au lieu de faire échouer toute la fusion en silence.
+#
+# 3. AUCUN IMPORT D'APP ÉTRANGÈRE. Le parcours passe par l'API `_meta` de
+#    Django, donc `crm` n'importe ni `ventes`, ni `facturation`, ni
+#    `installations`, ni `sav`.
+
+#: Champs du client dont une valeur VIDE chez le survivant est complétée
+#: depuis un doublon (jamais l'inverse : on n'écrase jamais une valeur saisie).
+_MERGE_CLIENT_FILL_FIELDS = (
+    'prenom', 'email', 'telephone', 'adresse', 'cin', 'ice', 'if_fiscal',
+    'rc', 'langue_document', 'delai_paiement_jours',
+)
+
+
+def merge_clients(survivor, others, user):
+    """Fusionne ``others`` dans ``survivor`` sans perte ni suppression.
+
+    Renvoie un rapport ::
+
+        {'survivant': <Client>, 'absorbes': [ids],
+         'repointes': {'<app.Modele.champ>': n, …},
+         'non_repointes': [{'relation': …, 'motif': …}, …]}
+
+    ``non_repointes`` n'est PAS un échec silencieux : c'est la liste, nommée,
+    de ce qu'un humain doit trancher (typiquement une contrainte d'unicité
+    déjà occupée chez le survivant).
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from core.merge import completer_champs_vides, repointer_relations
+
+    others = [o for o in others
+              if o.pk != survivor.pk and o.company_id == survivor.company_id]
+    rapport = {'survivant': survivor, 'absorbes': [],
+               'repointes': {}, 'non_repointes': []}
+    if not others:
+        return rapport
+
+    with transaction.atomic():
+        for absorbed in others:
+            repointes, non_repointes = repointer_relations(absorbed, survivor)
+            for etiquette, n in repointes.items():
+                rapport['repointes'][etiquette] = (
+                    rapport['repointes'].get(etiquette, 0) + n)
+            rapport['non_repointes'].extend(non_repointes)
+
+            # Compléter les champs VIDES du survivant (jamais écraser).
+            completer_champs_vides(survivor, absorbed,
+                                   _MERGE_CLIENT_FILL_FIELDS)
+
+            # Neutraliser le doublon — jamais le supprimer.
+            marqueur = dict(absorbed.custom_data or {})
+            marqueur['fusionne_dans'] = survivor.pk
+            marqueur['fusionne_le'] = timezone.now().isoformat()
+            marqueur['fusionne_par'] = getattr(user, 'username', '') or ''
+            absorbed.custom_data = marqueur
+            absorbed.avertissement_bloquant = True
+            absorbed.avertissement_vente = (
+                'Fiche fusionnée dans le client #%s — ne plus utiliser.'
+                % survivor.pk)
+            absorbed.save(update_fields=[
+                'custom_data', 'avertissement_bloquant',
+                'avertissement_vente', 'date_modification'])
+            rapport['absorbes'].append(absorbed.pk)
+
+            _journaliser_fusion_client(survivor, absorbed, user)
+
+        survivor.save()
+    return rapport
+
+
+def _journaliser_fusion_client(survivor, absorbed, user):
+    """Trace la fusion dans le chatter GÉNÉRIQUE (``records.Activity``, ARC8).
+
+    Best-effort : une trace manquante ne doit jamais annuler une fusion déjà
+    appliquée — mais elle n'est pas avalée en silence non plus (log).
+    """
+    try:
+        from apps.records.services import log_note
+        log_note(
+            survivor, user,
+            'Fusion : le client « %s » (#%s) a été absorbé dans cette fiche.'
+            % (absorbed.nom, absorbed.pk),
+            company=survivor.company)
+        log_note(
+            absorbed, user,
+            'Fiche fusionnée dans le client #%s — conservée en lecture, '
+            'bloquée à la vente.' % survivor.pk,
+            company=absorbed.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.exception(
+            'NTDATA18 : chatter de fusion non écrit (client #%s → #%s)',
+            absorbed.pk, survivor.pk)
+
+
+def clients_par_ids(company, ids):
+    """NTDATA18 — point d'entrée cross-app : les clients d'une société par id.
+
+    Utilisé par ``apps.dataquality`` pour charger un groupe de doublons AVANT
+    de demander la fusion — jamais un import de ``crm.models`` là-bas. Le
+    filtre société est POSÉ ICI : une autre app ne peut pas charger le client
+    d'un autre tenant en passant un id deviné.
+    """
+    return list(Client.objects.filter(company=company, pk__in=list(ids or [])))

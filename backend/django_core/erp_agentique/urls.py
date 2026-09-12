@@ -209,6 +209,9 @@ _APP_URLS = [
     # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
     # de l'exécution `apps.stock` existante.
     path('scm/', include('apps.scm.urls')),
+    # Groupe NTDATA — qualité de données : règles de validation, rapport de
+    # conformité, complétude par module et dédoublonnage cross-module.
+    path('dataquality/', include('apps.dataquality.urls')),
 ]
 
 urlpatterns = [

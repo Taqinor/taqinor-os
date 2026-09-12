@@ -6902,6 +6902,116 @@ def consommer_engagements_demande(company, demande_achat_id,
     return qs.update(**valeurs)
 
 
+# ── NTDATA19 — FUSION SUPERVISÉE : FOURNISSEURS & PRODUITS ──────────────────
+#
+# Même contrat que `crm.services.merge_clients` (NTDATA18), et la MÊME
+# mécanique de repointage (`core.merge`) — jamais une seconde implémentation :
+#
+#   * le détecteur (`dataquality.services.doublons_fournisseurs` /
+#     `doublons_produits`) PROPOSE, un humain DÉCIDE, ces fonctions exécutent ;
+#   * tout ce qui référençait le doublon (prix fournisseurs, mouvements de
+#     stock, lignes de bon de commande, lignes de devis…) pointe le survivant,
+#     par parcours des relations inverses — jamais une liste écrite à la main ;
+#   * le doublon est ARCHIVÉ (`is_archived`), JAMAIS supprimé : `Fournisseur`
+#     et `Produit` portent tous deux ce drapeau, donc l'archivage est ici un
+#     vrai archivage (contrairement à `crm.Client`, qui n'en a pas encore).
+#
+# Le PRIX D'ACHAT n'est ni lu ni écrit par ces fonctions : elles ne touchent
+# que l'identité et les références.
+
+#: Champs d'identité d'un fournisseur complétés chez le survivant s'ils sont
+#: vides (jamais écrasés).
+_MERGE_FOURNISSEUR_FILL_FIELDS = (
+    'contact_personne', 'email', 'telephone', 'adresse', 'ice',
+    'identifiant_fiscal', 'rc', 'rib',
+)
+
+#: Idem pour un produit. `prix_achat` en est ABSENT volontairement : une
+#: fusion ne doit jamais faire migrer un coût d'une fiche à l'autre.
+_MERGE_PRODUIT_FILL_FIELDS = (
+    'sku', 'marque', 'description', 'garantie', 'code_barres', 'unite_stock',
+)
+
+
+def _fusionner(survivor, others, user, *, champs_a_completer, etiquette):
+    """Noyau commun des deux fusions (repointage + complétion + archivage)."""
+    from django.db import transaction
+
+    from core.merge import completer_champs_vides, repointer_relations
+
+    others = [o for o in others
+              if o.pk != survivor.pk and o.company_id == survivor.company_id]
+    rapport = {'survivant': survivor, 'absorbes': [],
+               'repointes': {}, 'non_repointes': []}
+    if not others:
+        return rapport
+
+    with transaction.atomic():
+        for absorbed in others:
+            repointes, non_repointes = repointer_relations(absorbed, survivor)
+            for cle, n in repointes.items():
+                rapport['repointes'][cle] = rapport['repointes'].get(cle, 0) + n
+            rapport['non_repointes'].extend(non_repointes)
+
+            completer_champs_vides(survivor, absorbed, champs_a_completer)
+
+            marqueur = dict(absorbed.custom_data or {})
+            marqueur['fusionne_dans'] = survivor.pk
+            marqueur['fusionne_par'] = getattr(user, 'username', '') or ''
+            absorbed.custom_data = marqueur
+            absorbed.is_archived = True
+            absorbed.save(update_fields=['custom_data', 'is_archived'])
+            rapport['absorbes'].append(absorbed.pk)
+            logger.info('%s : #%s absorbé dans #%s par %s',
+                        etiquette, absorbed.pk, survivor.pk,
+                        getattr(user, 'username', '?'))
+        survivor.save()
+    return rapport
+
+
+def merge_fournisseurs(survivor, others, user):
+    """NTDATA19 — fusionne des fournisseurs doublons dans ``survivor``.
+
+    Aucun mouvement, aucun prix fournisseur, aucune ligne de bon de commande
+    n'est perdu : tout est repointé. Les doublons sont ARCHIVÉS, jamais
+    supprimés.
+    """
+    return _fusionner(survivor, others, user,
+                      champs_a_completer=_MERGE_FOURNISSEUR_FILL_FIELDS,
+                      etiquette='NTDATA19 fusion fournisseur')
+
+
+def merge_produits(survivor, others, user):
+    """NTDATA19 — fusionne des produits doublons dans ``survivor``.
+
+    Les quantités NE SONT PAS additionnées : un stock est un fait physique
+    constaté, pas une somme de fiches. Le survivant garde SA quantité et
+    l'historique des mouvements des doublons lui est rattaché — c'est un
+    inventaire qui doit trancher l'écart, pas une fusion.
+    """
+    return _fusionner(survivor, others, user,
+                      champs_a_completer=_MERGE_PRODUIT_FILL_FIELDS,
+                      etiquette='NTDATA19 fusion produit')
+
+
+def fournisseurs_par_ids(company, ids):
+    """NTDATA19 — fournisseurs d'une société par id (point d'entrée cross-app).
+
+    Le filtre société est POSÉ ICI : une autre app ne peut pas charger le
+    fournisseur d'un autre tenant en devinant un id.
+    """
+    from .models import Fournisseur
+    return list(Fournisseur.objects.filter(
+        company=company, pk__in=list(ids or [])))
+
+
+def produits_par_ids(company, ids):
+    """NTDATA19 — produits d'une société par id (point d'entrée cross-app)."""
+    from .models import Produit
+    return list(Produit.objects.filter(
+        company=company, pk__in=list(ids or [])))
+
+
 # -- Groupe NTWMS -- couche ENTREPOT (rangement, vagues, colisage, quais) --
 # Definis dans `services_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.services import ...`.

@@ -352,6 +352,16 @@ INSTALLED_APPS = [
     # saisonnière, politiques de stock ABC/stock de sécurité, cycle S&OP
     # mensuel) au-dessus de l'exécution `apps.stock` existante.
     'apps.scm',
+    # Groupe NTDATA — couche SÉMANTIQUE : une métrique (mrr, dso, marge_brute)
+    # se définit UNE fois, company-scopée, et se résout en une requête sur les
+    # datasets que les apps métier déclarent (core.data_explorer). N'importe
+    # aucun modèle d'app métier : le dataset est désigné par son NOM.
+    'apps.semantic',
+    # Groupe NTDATA — QUALITÉ DE DONNÉES : règles de validation d'entreprise,
+    # complétude par module et dédoublonnage cross-module. Posée sur les
+    # datasets déclarés par les apps métier (aucun import de leurs modèles) ;
+    # elle MESURE et RAPPORTE, elle ne bloque aucune écriture.
+    'apps.dataquality',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
@@ -1071,6 +1081,8 @@ CELERY_TASK_ROUTES = {
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
+    # NTDATA15 — évaluation quotidienne des règles de qualité de données.
+    'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
     'core.dispatch_outbox': {'queue': 'scheduled'},
