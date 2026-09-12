@@ -103,6 +103,17 @@ class RegulatoryDossier(models.Model):
     date_decision = models.DateField(null=True, blank=True,
                                      verbose_name='Date de décision')
     notes = models.TextField(blank=True, null=True)
+    # CHT25 — échéance EXPLICITE choisie par l'utilisateur (ex. « relancer
+    # l'opérateur »), en plus des règles déduites (dépôt en instruction,
+    # validité d'accord) déjà lues par le calendrier réglementaire
+    # (``calendrier_view.py``). Jamais fusionnée avec la couche chantier
+    # (``installations.Installation`` — décision de localité ci-dessus) : FK
+    # chaîne uniquement.
+    prochaine_action = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Prochaine action')
+    prochaine_action_date = models.DateField(
+        null=True, blank=True, verbose_name='Date de la prochaine action')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='dossiers_reg_crees')
