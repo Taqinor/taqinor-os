@@ -30,6 +30,10 @@ const WorkflowsScreen = lazy(() => import('./WorkflowsScreen'))
 // liste XPLT8 sur la MEME donnee (WIR51). Route dediee /workflow/:id/designer
 // (pas de nav.items -- accessible depuis le bouton "Designer" de la liste).
 const WorkflowDesigner = lazy(() => import('./WorkflowDesigner'))
+// NTWFL14 -- editeur de formulaire visuel (drag-and-drop), construit sur
+// FormulaireDefinition.schema (NTWFL12/13). Route dediee, `:id` = 'nouveau'
+// pour une creation.
+const FormBuilder = lazy(() => import('./FormBuilder'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -73,7 +77,8 @@ const config = {
   sectionLabels: { workflow: 'Workflow' },
   routes: [
     { path: '/workflow/taches-planifiees', component: TachesPlanifieesScreen, roles: ROLES },
-    // NTWFL6 -- doit précéder `/workflow` (plus spécifique en premier).
+    // NTWFL6/14 -- doivent précéder `/workflow` (plus spécifique en premier).
+    { path: '/workflow/formulaires/:id', component: FormBuilder, roles: ROLES },
     { path: '/workflow/:id/designer', component: WorkflowDesigner, roles: ROLES },
     { path: '/workflow', component: WorkflowsScreen, roles: ROLES },
   ],

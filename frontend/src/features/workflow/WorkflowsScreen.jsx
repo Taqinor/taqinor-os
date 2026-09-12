@@ -521,6 +521,15 @@ export default function WorkflowsScreen() {
       <PageHeader
         title="Workflows"
         subtitle="Definitions & etapes, modeles installables, instances en cours (moteur BPM FG366/368/369)."
+        actions={(
+          // NTWFL14 — éditeur de formulaire visuel (aucune donnée backend
+          // nouvelle, construit sur FormulaireDefinition.schema).
+          <Link to="/workflow/formulaires/nouveau">
+            <Button variant="secondary" data-testid="wf-nouveau-formulaire">
+              Nouveau formulaire
+            </Button>
+          </Link>
+        )}
       />
       <Tabs defaultValue="definitions">
         <TabsList>

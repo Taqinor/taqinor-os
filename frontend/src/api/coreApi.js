@@ -83,6 +83,23 @@ const coreApi = {
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
+  // NTWFL12/13/14 — formulaires dynamiques rattachables aux étapes de
+  // workflow (FormBuilder.jsx) + bibliothèque de champs réutilisables.
+  formulaires: {
+    list: () => api.get('/core/formulaires/'),
+    get: (id) => api.get(`/core/formulaires/${id}/`),
+    create: (payload) => api.post('/core/formulaires/', payload),
+    update: (id, payload) => api.put(`/core/formulaires/${id}/`, payload),
+    remove: (id) => api.delete(`/core/formulaires/${id}/`),
+  },
+  formulaireChamps: {
+    list: () => api.get('/core/formulaire-champs/'),
+    create: (payload) => api.post('/core/formulaire-champs/', payload),
+    update: (id, payload) =>
+      api.put(`/core/formulaire-champs/${id}/`, payload),
+    remove: (id) => api.delete(`/core/formulaire-champs/${id}/`),
+  },
+
   // PACT122 — FG382 explorateur de données : catalogue de datasets enregistrés
   // par les apps métier, exécution d'une spec ad-hoc, et requêtes SAUVEGARDÉES
   // (personnelles ou de société via `partage`). `company`/`owner` ne sont
