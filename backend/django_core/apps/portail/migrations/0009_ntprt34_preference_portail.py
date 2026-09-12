@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
         # `authentication.Company` naît dans cette migration-là (la FK
         # `company` de TenantModel en dépend).
         ('authentication', '0003_company_alter_customuser_groups_and_more'),
-        ('portail', '0007_documentclientportail_fichier_filename_and_more'),
+        ('portail', '0008_cht10_jalonchantierportail_cle_phase'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

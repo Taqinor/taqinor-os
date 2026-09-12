@@ -11,12 +11,12 @@ responsable/admin : un rapport de qualité expose des identifiants de fiches
 non conformes.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers, status, viewsets
+from core.viewsets import CompanyScopedModelViewSet
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import IsResponsableOrAdmin
-from core.mixins import TenantMixin
 
 from . import selectors, services
 from .models import RegleQualite, ResultatQualite
@@ -61,7 +61,7 @@ class ResultatQualiteSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RegleQualiteViewSet(TenantMixin, viewsets.ModelViewSet):
+class RegleQualiteViewSet(CompanyScopedModelViewSet):
     """CRUD des règles de qualité, bornées à la société."""
     serializer_class = RegleQualiteSerializer
     permission_classes = [IsResponsableOrAdmin]

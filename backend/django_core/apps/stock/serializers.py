@@ -1742,6 +1742,11 @@ class ToleranceRapprochementCategorieSerializer(serializers.ModelSerializer):
     categorie_nom = serializers.CharField(
         source='categorie.nom', read_only=True)
 
+    # SCA4 — le modèle a rejoint TenantModel (created_at/updated_at) ; l'API
+    # continue d'exposer les clés historiques via source=.
+    date_creation = serializers.DateTimeField(source='created_at', read_only=True)
+    date_modification = serializers.DateTimeField(source='updated_at', read_only=True)
+
     class Meta:
         model = ToleranceRapprochementCategorie
         fields = [
