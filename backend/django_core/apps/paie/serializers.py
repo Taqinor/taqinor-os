@@ -822,10 +822,13 @@ class SchemaComptablePaieSerializer(serializers.ModelSerializer):
     doublée ici pour rendre un 400 qui NOMME le champ fautif au lieu d'une
     ``IntegrityError`` 500 sur la contrainte DB.
     """
+    # ``default=''`` garde la CLÉ présente pour une ligne de POSTE SYSTÈME
+    # (sans rubrique) : sans lui, DRF omet purement le champ et la forme de la
+    # réponse changerait d'une ligne à l'autre.
     rubrique_code = serializers.CharField(
-        source='rubrique.code', read_only=True)
+        source='rubrique.code', read_only=True, default='')
     rubrique_libelle = serializers.CharField(
-        source='rubrique.libelle', read_only=True)
+        source='rubrique.libelle', read_only=True, default='')
     # SCA4 — cf. ``DepotDeclaratifSerializer``.
     date_creation = serializers.DateTimeField(
         source='created_at', read_only=True)
