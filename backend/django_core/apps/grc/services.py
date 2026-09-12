@@ -984,3 +984,113 @@ def soumettre_questionnaire_public(questionnaire, reponses, *, preuve=None,
         recalculer_questionnaire(questionnaire)
     questionnaire.refresh_from_db()
     return questionnaire
+
+
+# ── NTGRC25 — incidents de sécurité (distincts des violations) ──────────────
+
+class TransitionIncidentInterdite(ValueError):
+    """Transition de statut illégale sur un ``IncidentSecurite``.
+
+    Traduite en 400 par la vue (jamais 500) ; le message NOMME les deux
+    statuts, en français.
+    """
+
+
+class EscaladeImpossible(ValueError):
+    """Escalade refusée (incident déjà escaladé…). Traduite en 400/409."""
+
+
+def creer_incident(company, **champs):
+    """Crée un ``IncidentSecurite`` avec sa référence INC race-safe.
+
+    Numérotation par ``core.numbering`` (plus-haut-utilisé + 1 par société et
+    par mois) — JAMAIS ``count() + 1``, qui entre en collision dès qu'une
+    ligne est supprimée.
+    """
+    from core.numbering import create_with_reference
+
+    from .models import IncidentSecurite
+
+    def _save(reference):
+        return IncidentSecurite.objects.create(
+            company=company, reference=reference, **champs)
+
+    return create_with_reference(
+        IncidentSecurite, IncidentSecurite.REFERENCE_PREFIX, company, _save)
+
+
+def _transitions_incident(statut):
+    from .models import IncidentSecurite as Inc
+
+    table = {
+        Inc.STATUT_OUVERT: {Inc.STATUT_EN_COURS, Inc.STATUT_RESOLU,
+                            Inc.STATUT_CLOS},
+        Inc.STATUT_EN_COURS: {Inc.STATUT_RESOLU, Inc.STATUT_CLOS},
+        Inc.STATUT_RESOLU: {Inc.STATUT_CLOS, Inc.STATUT_EN_COURS},
+        # Terminal : un incident clos ne se rouvre pas — on en ouvre un
+        # nouveau, qui repart avec sa propre chronologie.
+        Inc.STATUT_CLOS: set(),
+    }
+    return table.get(statut, set())
+
+
+def changer_statut_incident(incident, cible, acteur=''):
+    """Fait avancer un incident de sécurité (garde de transition)."""
+    from .models import IncidentSecurite
+
+    libelles = dict(IncidentSecurite.STATUT_CHOICES)
+    if cible not in libelles:
+        raise TransitionIncidentInterdite(
+            f'Statut « {cible} » inconnu pour un incident de sécurité.')
+    if cible not in _transitions_incident(incident.statut):
+        raise TransitionIncidentInterdite(
+            'Transition impossible : un incident « '
+            f'{libelles.get(incident.statut, incident.statut)} » ne peut pas '
+            f'passer à « {libelles[cible]} ».')
+    ancien = incident.statut
+    incident.statut = cible
+    incident.save(update_fields=['statut', 'updated_at'])
+    journaliser_transition_incident(incident, ancien, cible, acteur=acteur)
+    return incident
+
+
+def journaliser_transition_incident(incident, ancien, nouveau, acteur=''):
+    """Point d'extension de la chronologie d'incident (NTGRC26).
+
+    Défini ICI et appelé par le service de transition pour que le jour où la
+    chronologie existe, AUCUNE transition ne lui échappe — un journal qu'on
+    branche après coup rate toujours la moitié des événements.
+    """
+    return None
+
+
+def escalader_incident_en_violation(incident, **champs):
+    """Crée la ``ViolationDonnees`` correspondant à un incident, et la relie.
+
+    Appelée quand l'incident touche EFFECTIVEMENT des données personnelles.
+    La violation naît avec SA propre date de détection (celle de l'incident
+    par défaut) : c'est elle qui fait courir le délai légal de 72 h.
+
+    IDEMPOTENT : un incident déjà escaladé ne crée pas une seconde violation
+    (deux dossiers réglementaires pour un même fait, c'est exactement ce qu'un
+    contrôleur relève). Le lien est un identifiant TEXTE, comme partout dans
+    ce module.
+    """
+    if (incident.violation_donnees_ref or '').strip():
+        raise EscaladeImpossible(
+            'Cet incident a déjà été escaladé en violation de données '
+            f'(référence {incident.violation_donnees_ref}).')
+
+    champs.setdefault('date_detection', incident.date_detection)
+    champs.setdefault('date_incident', incident.date_detection)
+    champs.setdefault('gravite', incident.severite)
+    champs.setdefault(
+        'risque_personnes',
+        (incident.impact or '').strip()
+        or f'Escalade de l\'incident {incident.reference}.')
+    champs.setdefault('mesures_prises', (incident.description or '').strip())
+
+    violation = creer_violation(incident.company, **champs)
+    incident.violation_donnees_ref = str(violation.pk)
+    incident.save(update_fields=['violation_donnees_ref', 'updated_at'])
+    return violation

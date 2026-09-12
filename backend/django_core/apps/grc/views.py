@@ -13,19 +13,20 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
-    JournalDestruction, LegalHold, ModeleQuestionnaire, PlanTraitementRisque,
-    PolitiqueInterne, PolitiqueRetentionObjet, QuestionnaireFournisseur,
-    ReponseQuestionnaire, RevueRisque, RisqueEntreprise, TestControle,
-    ViolationDonnees,
+    IncidentSecurite, JournalDestruction, LegalHold, ModeleQuestionnaire,
+    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
+    QuestionnaireFournisseur, ReponseQuestionnaire, RevueRisque,
+    RisqueEntreprise, TestControle, ViolationDonnees,
 )
 from .serializers import (
     AttestationPolitiqueSerializer, ControleInterneSerializer,
-    DeficienceControleSerializer, JournalDestructionSerializer,
-    LegalHoldSerializer, ModeleQuestionnaireSerializer,
-    PlanTraitementRisqueSerializer, PolitiqueInterneSerializer,
-    PolitiqueRetentionObjetSerializer, PolitiqueVersionSerializer,
-    QuestionnaireFournisseurSerializer, ReponseQuestionnaireSerializer,
-    RevueRisqueSerializer, RisqueEntrepriseSerializer, TestControleSerializer,
+    DeficienceControleSerializer, IncidentSecuriteSerializer,
+    JournalDestructionSerializer, LegalHoldSerializer,
+    ModeleQuestionnaireSerializer, PlanTraitementRisqueSerializer,
+    PolitiqueInterneSerializer, PolitiqueRetentionObjetSerializer,
+    PolitiqueVersionSerializer, QuestionnaireFournisseurSerializer,
+    ReponseQuestionnaireSerializer, RevueRisqueSerializer,
+    RisqueEntrepriseSerializer, TestControleSerializer,
     ViolationDonneesSerializer,
 )
 
@@ -680,3 +681,80 @@ class ModeleQuestionnaireViewSet(CompanyScopedModelViewSet):
             QuestionnaireFournisseurSerializer(
                 questionnaire, context=self.get_serializer_context()).data,
             status=201)
+
+
+class IncidentSecuriteViewSet(CompanyScopedModelViewSet):
+    """NTGRC25 — registre des incidents de sécurité + escalade réglementaire."""
+
+    queryset = IncidentSecurite.objects.all()
+    serializer_class = IncidentSecuriteSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = (params.get('statut') or '').strip()
+        if statut:
+            qs = qs.filter(statut=statut)
+        severite = (params.get('severite') or '').strip()
+        if severite:
+            qs = qs.filter(severite=severite)
+        type_i = (params.get('type') or '').strip()
+        if type_i:
+            qs = qs.filter(type=type_i)
+        return qs
+
+    def perform_create(self, serializer):
+        """Référence INC race-safe + société imposée côté serveur."""
+        from .services import creer_incident
+
+        champs = dict(serializer.validated_data)
+        champs.pop('company', None)
+        champs.pop('reference', None)
+        serializer.instance = creer_incident(
+            self.request.user.company, **champs)
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """Fait avancer l'incident (``{"statut": "en_cours"}``)."""
+        from .services import (
+            TransitionIncidentInterdite, changer_statut_incident,
+        )
+
+        incident = self.get_object()
+        cible = (request.data.get('statut') or '').strip()
+        try:
+            changer_statut_incident(
+                incident, cible,
+                acteur=getattr(request.user, 'username', '') or '')
+        except TransitionIncidentInterdite as exc:
+            return Response({'statut': str(exc)}, status=400)
+        return Response(self.get_serializer(incident).data)
+
+    @action(detail=True, methods=['post'], url_path='escalader-violation')
+    def escalader_violation(self, request, pk=None):
+        """Crée la violation de données correspondant à cet incident.
+
+        À n'utiliser QUE si des données personnelles sont effectivement
+        touchées : c'est cette création qui démarre l'horloge légale de 72 h.
+        """
+        from .services import (
+            EscaladeImpossible, escalader_incident_en_violation,
+        )
+
+        incident = self.get_object()
+        donnees = request.data or {}
+        champs = {}
+        for cle in ('nature', 'categories_donnees',
+                    'nombre_personnes_estime', 'risque_personnes',
+                    'mesures_prises', 'notification_cndp_requise'):
+            if cle in donnees and donnees.get(cle) not in (None, ''):
+                champs[cle] = donnees[cle]
+        try:
+            violation = escalader_incident_en_violation(incident, **champs)
+        except EscaladeImpossible as exc:
+            return Response({'violation_donnees_ref': str(exc)}, status=409)
+        return Response({
+            'incident': self.get_serializer(incident).data,
+            'violation': ViolationDonneesSerializer(violation).data,
+        }, status=201)

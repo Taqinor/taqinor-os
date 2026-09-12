@@ -14,7 +14,8 @@ from .public_views import (
 from .views import (
     AttestationPolitiqueViewSet, ControleInterneViewSet,
     DeficienceControleViewSet, JournalDestructionViewSet, LegalHoldViewSet,
-    ModeleQuestionnaireViewSet, PlanTraitementRisqueViewSet,
+    IncidentSecuriteViewSet, ModeleQuestionnaireViewSet,
+    PlanTraitementRisqueViewSet,
     PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
     QuestionnaireFournisseurViewSet, ReponseQuestionnaireViewSet,
     RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
@@ -66,6 +67,9 @@ router.register(r'reponses-questionnaire', ReponseQuestionnaireViewSet,
 # NTGRC23 — trames réutilisables + instanciation d'un questionnaire.
 router.register(r'modeles-questionnaire', ModeleQuestionnaireViewSet,
                 basename='grc-modele-questionnaire')
+# NTGRC25 — registre des incidents de sécurité (≠ violations de données).
+router.register(r'incidents-securite', IncidentSecuriteViewSet,
+                basename='grc-incident-securite')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

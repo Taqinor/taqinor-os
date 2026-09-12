@@ -1289,3 +1289,106 @@ class ModeleQuestionnaire(TenantModel):
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_display()})'
+
+
+class IncidentSecurite(TenantModel):
+    """NTGRC25 — registre des incidents de SÉCURITÉ.
+
+    DISTINCT de ``ViolationDonnees`` (NTGRC6), et la distinction n'est pas
+    cosmétique : un ordinateur portable chiffré perdu est un incident de
+    sécurité SANS violation de données ; un email envoyé à la mauvaise liste
+    est une violation de données SANS incident technique. Confondre les deux
+    fait soit déclencher des notifications CNDP inutiles, soit rater celles
+    qui sont dues.
+
+    Quand un incident touche EFFECTIVEMENT des données personnelles, on
+    l'ESCALADE : l'action dédiée crée la ``ViolationDonnees`` correspondante
+    et la relie par un identifiant TEXTE — le registre réglementaire garde sa
+    propre horloge de 72 h, calée sur SA date de détection.
+    """
+
+    #: Préfixe des références (INC-YYYYMM-0001), race-safe via `core.numbering`.
+    REFERENCE_PREFIX = 'INC'
+
+    TYPE_PHISHING = 'phishing'
+    TYPE_MALWARE = 'malware'
+    TYPE_ACCES_NON_AUTORISE = 'acces_non_autorise'
+    TYPE_PERTE_MATERIEL = 'perte_materiel'
+    TYPE_DENI_SERVICE = 'deni_service'
+    TYPE_AUTRE = 'autre'
+    TYPE_CHOICES = [
+        (TYPE_PHISHING, 'Hameçonnage'),
+        (TYPE_MALWARE, 'Logiciel malveillant'),
+        (TYPE_ACCES_NON_AUTORISE, 'Accès non autorisé'),
+        (TYPE_PERTE_MATERIEL, 'Perte ou vol de matériel'),
+        (TYPE_DENI_SERVICE, 'Déni de service'),
+        (TYPE_AUTRE, 'Autre'),
+    ]
+
+    SEVERITE_FAIBLE = 'faible'
+    SEVERITE_MOYENNE = 'moyenne'
+    SEVERITE_ELEVEE = 'elevee'
+    SEVERITE_CRITIQUE = 'critique'
+    SEVERITE_CHOICES = [
+        (SEVERITE_FAIBLE, 'Faible'),
+        (SEVERITE_MOYENNE, 'Moyenne'),
+        (SEVERITE_ELEVEE, 'Élevée'),
+        (SEVERITE_CRITIQUE, 'Critique'),
+    ]
+
+    STATUT_OUVERT = 'ouvert'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_RESOLU = 'resolu'
+    STATUT_CLOS = 'clos'
+    STATUT_CHOICES = [
+        (STATUT_OUVERT, 'Ouvert'),
+        (STATUT_EN_COURS, 'En cours de traitement'),
+        (STATUT_RESOLU, 'Résolu'),
+        (STATUT_CLOS, 'Clos'),
+    ]
+
+    reference = models.CharField('Référence', max_length=40, blank=True,
+                                 default='')
+    titre = models.CharField('Titre', max_length=200)
+    type = models.CharField(
+        'Type', max_length=20, choices=TYPE_CHOICES, default=TYPE_AUTRE)
+    severite = models.CharField(
+        'Sévérité', max_length=10, choices=SEVERITE_CHOICES,
+        default=SEVERITE_MOYENNE)
+    date_detection = models.DateTimeField(
+        'Date de détection',
+        help_text='Moment où l\'incident a été CONNU.')
+    systemes_touches = models.JSONField(
+        'Systèmes touchés', default=list, blank=True,
+        help_text='Ex. ["messagerie", "erp", "poste-comptabilite"].')
+    description = models.TextField('Description', blank=True, default='')
+    impact = models.TextField('Impact constaté', blank=True, default='')
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_OUVERT)
+    assigne = models.CharField(
+        'Assigné à', max_length=160, blank=True, default='')
+    violation_donnees_ref = models.CharField(
+        'Violation de données liée', max_length=64, blank=True, default='',
+        help_text='Identifiant texte de la grc.ViolationDonnees créée par '
+                  'escalade (vide tant qu\'aucune donnée personnelle n\'est '
+                  'concernée).')
+
+    class Meta:
+        verbose_name = 'Incident de sécurité'
+        verbose_name_plural = 'Registre des incidents de sécurité'
+        ordering = ['-date_detection', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='grc_incidentsecurite_co_ref'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_incident_co_statut_idx'),
+            models.Index(fields=['company', 'severite'],
+                         name='grc_incident_co_sever_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "INC"} — {self.titre}'

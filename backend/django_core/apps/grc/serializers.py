@@ -7,10 +7,10 @@ from rest_framework import serializers
 
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
-    JournalDestruction, LegalHold, ModeleQuestionnaire, PlanTraitementRisque,
-    PolitiqueInterne, PolitiqueRetentionObjet, PolitiqueVersion,
-    QuestionnaireFournisseur, ReponseQuestionnaire, RevueRisque,
-    RisqueEntreprise, TestControle, ViolationDonnees,
+    IncidentSecurite, JournalDestruction, LegalHold, ModeleQuestionnaire,
+    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
+    PolitiqueVersion, QuestionnaireFournisseur, ReponseQuestionnaire,
+    RevueRisque, RisqueEntreprise, TestControle, ViolationDonnees,
 )
 
 
@@ -710,4 +710,50 @@ class ModeleQuestionnaireSerializer(serializers.ModelSerializer):
                 continue
             raise serializers.ValidationError(
                 'Chaque question doit porter un « intitule » non vide.')
+        return valeur
+
+
+class IncidentSecuriteSerializer(serializers.ModelSerializer):
+    """NTGRC25 — incident de sécurité (distinct d'une violation de données).
+
+    ``reference``, ``statut`` et ``violation_donnees_ref`` sont en LECTURE
+    SEULE : la première vient de la numérotation race-safe, le deuxième bouge
+    par ``changer-statut/`` (garde de transition), le troisième est posé par
+    l'escalade — l'écrire à la main ferait pointer un incident vers n'importe
+    quelle violation.
+    """
+
+    type_libelle = serializers.CharField(
+        source='get_type_display', read_only=True)
+    severite_libelle = serializers.CharField(
+        source='get_severite_display', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = IncidentSecurite
+        fields = [
+            'id', 'reference', 'titre', 'type', 'type_libelle', 'severite',
+            'severite_libelle', 'date_detection', 'systemes_touches',
+            'description', 'impact', 'statut', 'statut_libelle', 'assigne',
+            'violation_donnees_ref', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'reference', 'statut', 'violation_donnees_ref',
+            'created_at', 'updated_at',
+        ]
+
+    def validate_titre(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                "Le titre de l'incident est obligatoire.")
+        return valeur
+
+    def validate_systemes_touches(self, valeur):
+        if valeur in (None, ''):
+            return []
+        if not isinstance(valeur, list):
+            raise serializers.ValidationError(
+                'Les systèmes touchés doivent être une LISTE de libellés.')
         return valeur
