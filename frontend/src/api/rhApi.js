@@ -581,6 +581,14 @@ const rhApi = {
   getOrganigramme: (params) =>
     api.get('/rh/employes/organigramme/', { params }),
 
+  // ── NTHCM5/6 — cycles de révision salariale (SENSIBLE : le serveur gate
+  //    tout sur `salaires_voir`) ──
+  getCyclesRevision: (params) => api.get('/rh/cycles-revision/', { params }),
+  getCalibrationCycle: (id) =>
+    api.get(`/rh/cycles-revision/${id}/calibration/`),
+  validerCalibrationCycle: (id) =>
+    api.post(`/rh/cycles-revision/${id}/valider-calibration/`, {}),
+
   // ── NTHCM3 — rattachements fonctionnels (dotted-line) ──
   getRattachementsFonctionnels: (params) =>
     api.get('/rh/rattachements-fonctionnels/', { params }),

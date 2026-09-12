@@ -8,7 +8,7 @@ import {
   GraduationCap, Briefcase, ShieldAlert, UserCircle,
   Car, FileText, CalendarPlus, ClipboardCheck, ListChecks,
   Calculator, LogOut, Wallet, Clock3, CalendarOff, Milestone,
-  DoorClosed, Gift, SlidersHorizontal, HardHat, MapPin, Network,
+  DoorClosed, Gift, SlidersHorizontal, HardHat, MapPin, Network, Scale,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -60,6 +60,10 @@ const PresentsChantier = lazy(() => import('./PresentsChantier.jsx'))
 const EquipeDispatch = lazy(() => import('../../pages/dispatch/EquipePage.jsx'))
 // NTHCM2 — organigramme hiérarchique (lecture), consomme NTHCM1.
 const Organigramme = lazy(() => import('./Organigramme.jsx'))
+// NTHCM6 — calibration des revisions salariales (donnee de paie, gatee
+// `salaires_voir` COTE SERVEUR : la nav reste sur le gate RH, le 403
+// eventuel vient du serveur, jamais d'un gate invente ici).
+const CalibrationRevisions = lazy(() => import('./CalibrationRevisions.jsx'))
 
 // Rôles autorisés pour le back-office RH — 'normal' inclus : un rôle fin de
 // palier normal portant `rh_voir` est servi 200 par le serveur, la nav doit
@@ -113,6 +117,8 @@ export default {
       { to: '/rh/presents-chantier', label: 'Présents chantier', icon: <HardHat size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // NTHCM2 — organigramme hiérarchique.
       { to: '/rh/organigramme', label: 'Organigramme', icon: <Network size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      // NTHCM6 — calibration des révisions salariales.
+      { to: '/rh/calibration-revisions', label: 'Calibration des révisions', icon: <Scale size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // NTFSM26 — équipe terrain par zone (dispatch d'intervention).
       { to: '/dispatch/equipe', label: 'Équipe terrain (zones)', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // UX28 — portail self-service : tous rôles. La Sidebar filtre via
@@ -143,6 +149,7 @@ export default {
     ['/rh/reglages', 'Réglages RH'],
     ['/rh/presents-chantier', 'Présents chantier'],
     ['/rh/organigramme', 'Organigramme'],
+    ['/rh/calibration-revisions', 'Calibration des révisions salariales'],
     ['/dispatch/equipe', 'Équipe terrain par zone'],
     ['/rh/portail', 'Mon portail RH'],
     ['/rh', 'Cockpit RH'],
@@ -176,6 +183,8 @@ export default {
     { path: '/rh/presents-chantier', component: PresentsChantier, ...GATE_RH },
     // NTHCM2 — organigramme hiérarchique (lecture seule).
     { path: '/rh/organigramme', component: Organigramme, ...GATE_RH },
+    // NTHCM6 — calibration des révisions salariales.
+    { path: '/rh/calibration-revisions', component: CalibrationRevisions, ...GATE_RH },
     // NTFSM26 — écran de dispatch alimenté par les données RH.
     { path: '/dispatch/equipe', component: EquipeDispatch, ...GATE_RH },
     // UX28 — portail self-service : tous rôles (authLoader simple).

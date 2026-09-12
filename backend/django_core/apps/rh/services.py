@@ -3204,6 +3204,41 @@ def proposer_revision(cycle, employe, *, auteur_dossier, user,
 
 # ── NTHCM7 — application d'un cycle clos → nouvelles ``Remuneration`` ───────
 
+class CalibrationDejaValideeError(Exception):
+    """NTHCM6 — la calibration de ce cycle a déjà été figée (400)."""
+
+
+@transaction.atomic
+def valider_calibration_cycle(cycle):
+    """NTHCM6 — FIGE les décisions d'un cycle : il passe ``clos``.
+
+    UNE SEULE FOIS. Un cycle déjà ``clos`` lève
+    ``CalibrationDejaValideeError`` : c'est ce qui empêche une « re-calibration »
+    silencieuse après que les managers ont été informés de leurs décisions.
+
+    Le gel est le PASSAGE À ``clos`` lui-même : ``proposer_revision`` refuse
+    déjà d'écrire dans un cycle qui n'est pas ouvert, et ``appliquer`` (NTHCM7)
+    exige au contraire un cycle clos. On ne duplique donc aucune garde ici —
+    on pose l'état dont les deux autres dépendent.
+
+    Renvoie le compte de propositions figées (pour l'écran), sans les modifier :
+    la trace durable d'une révision APPLIQUÉE reste ``Remuneration`` (NTHCM7).
+    """
+    from .models import CycleRevisionSalariale, PropositionRevision
+
+    if cycle.statut == CycleRevisionSalariale.Statut.CLOS:
+        raise CalibrationDejaValideeError('Cycle déjà clos.')
+
+    cycle.statut = CycleRevisionSalariale.Statut.CLOS
+    cycle.save(update_fields=['statut', 'updated_at'])
+    return {
+        'cycle': cycle.id,
+        'statut': cycle.statut,
+        'propositions_figees': PropositionRevision.objects.filter(
+            company=cycle.company, cycle=cycle).count(),
+    }
+
+
 class CycleNonClosError(Exception):
     """NTHCM7 — un cycle non CLOS ne peut pas être appliqué (400)."""
 

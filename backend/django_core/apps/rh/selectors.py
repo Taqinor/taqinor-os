@@ -4,6 +4,7 @@ Lectures cadrées société : chaque sélecteur exige la ``company`` de l'appela
 et ne renvoie jamais de données hors de sa société.
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 
@@ -3486,6 +3487,125 @@ def zones_intervention(company):
         .values_list('zone_intervention', flat=True)
         .distinct())
     return sorted(set(valeurs))
+
+
+#: NTHCM6 — tranches de l'histogramme de calibration, en POINTS DE % (bornes
+#: basses incluses, la dernière est ouverte). Vocabulaire FERMÉ : l'écran ne
+#: choisit pas ses tranches, sinon deux écrans liraient deux distributions.
+TRANCHES_CALIBRATION = (
+    ('0', Decimal('0'), Decimal('0')),
+    ('0-2', Decimal('0'), Decimal('2')),
+    ('2-4', Decimal('2'), Decimal('4')),
+    ('4-6', Decimal('4'), Decimal('6')),
+    ('6+', Decimal('6'), None),
+)
+
+
+def _tranche_calibration(pourcentage):
+    """Étiquette de tranche d'un pourcentage d'augmentation."""
+    valeur = pourcentage or Decimal('0')
+    if valeur <= 0:
+        return '0'
+    for etiquette, borne_basse, borne_haute in TRANCHES_CALIBRATION[1:]:
+        if borne_haute is None:
+            return etiquette
+        if borne_basse < valeur <= borne_haute:
+            return etiquette
+    return TRANCHES_CALIBRATION[-1][0]
+
+
+def calibration_cycle_revision(company, cycle_id):
+    """NTHCM6 — vue RH d'ENSEMBLE d'un cycle : toutes les propositions.
+
+    Un manager ne voit que SON équipe (NTHCM5) ; le RH, lui, doit comparer
+    les managers entre eux avant de figer — c'est tout l'objet de la
+    calibration. Renvoie :
+
+    * ``propositions`` — TOUTES celles du cycle, tous managers confondus,
+      avec le manager hiérarchique de chaque employé (NTHCM1) ;
+    * ``distribution`` — l'histogramme par tranche de % d'augmentation, sur
+      le vocabulaire FERMÉ ``TRANCHES_CALIBRATION`` (aucune tranche inventée
+      côté écran) ;
+    * ``par_manager`` — enveloppe ALLOUÉE vs CONSOMMÉE par manager, et le
+      dépassement éventuel ;
+    * ``cycle`` — son identité + son statut (l'écran sait s'il est déjà clos).
+
+    Les propositions REJETÉES apparaissent dans la liste (le RH doit voir ce
+    qui a été écarté) mais ne consomment AUCUNE enveloppe — même règle que
+    ``services.enveloppe_consommee``, jamais recopiée ici.
+
+    Lecture pure : ce sélecteur ne fige rien (c'est
+    ``services.valider_calibration_cycle`` qui le fait).
+    """
+    from . import services
+    from .models import (
+        CycleRevisionSalariale, EnveloppeManager, PropositionRevision,
+    )
+
+    cycle = CycleRevisionSalariale.objects.filter(
+        company=company, pk=cycle_id).first()
+    if cycle is None:
+        return None
+
+    propositions = list(
+        PropositionRevision.objects
+        .filter(company=company, cycle=cycle)
+        .select_related('employe', 'employe__manager')
+        .order_by('employe__nom', 'employe__prenom'))
+
+    distribution = {etiquette: 0 for etiquette, _, _ in TRANCHES_CALIBRATION}
+    lignes = []
+    for proposition in propositions:
+        etiquette = _tranche_calibration(
+            proposition.augmentation_pct_proposee)
+        distribution[etiquette] += 1
+        manager = proposition.employe.manager
+        lignes.append({
+            'id': proposition.id,
+            'employe_id': proposition.employe_id,
+            'employe': (f'{proposition.employe.nom} '
+                        f'{proposition.employe.prenom}'),
+            'manager_id': proposition.employe.manager_id,
+            'manager': (f'{manager.nom} {manager.prenom}'
+                        if manager else ''),
+            'augmentation_pct_proposee': proposition.augmentation_pct_proposee,
+            'statut': proposition.statut,
+            'tranche': etiquette,
+        })
+
+    par_manager = []
+    enveloppes = (
+        EnveloppeManager.objects
+        .filter(company=company, cycle=cycle)
+        .select_related('manager')
+        .order_by('manager__nom', 'manager__prenom'))
+    for enveloppe in enveloppes:
+        consommee = services.enveloppe_consommee(cycle, enveloppe.manager)
+        allouee = enveloppe.enveloppe_pct or Decimal('0')
+        par_manager.append({
+            'manager_id': enveloppe.manager_id,
+            'manager': (f'{enveloppe.manager.nom} '
+                        f'{enveloppe.manager.prenom}'),
+            'enveloppe_allouee_pct': allouee,
+            'enveloppe_consommee_pct': consommee,
+            'depassement': consommee > allouee,
+        })
+
+    return {
+        'cycle': {
+            'id': cycle.id,
+            'libelle': cycle.libelle,
+            'periode': cycle.periode,
+            'statut': cycle.statut,
+            'clos': cycle.statut == CycleRevisionSalariale.Statut.CLOS,
+        },
+        'propositions': lignes,
+        'distribution': [
+            {'tranche': etiquette, 'nombre': distribution[etiquette]}
+            for etiquette, _, _ in TRANCHES_CALIBRATION],
+        'par_manager': par_manager,
+        'nb_propositions': len(lignes),
+    }
 
 
 #: NTHCM2 — profondeur MAXIMALE d'un organigramme rendu. Garde anti-boucle

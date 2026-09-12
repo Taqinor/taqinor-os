@@ -6364,6 +6364,32 @@ class CycleRevisionSalarialeViewSet(CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(resultat)
 
+    @action(detail=True, methods=['get'], url_path='calibration')
+    def calibration(self, request, pk=None):
+        """NTHCM6 — TOUTES les propositions du cycle, tous managers confondus.
+
+        Un manager ne voit que son équipe (NTHCM5) ; la calibration est la vue
+        RH d'ensemble qui permet de comparer les managers AVANT de figer.
+        Gate de classe ``salaires_voir`` (donnée de paie).
+        """
+        cycle = self.get_object()
+        return Response(
+            selectors.calibration_cycle_revision(
+                request.user.company, cycle.pk))
+
+    @action(detail=True, methods=['post'], url_path='valider-calibration')
+    def valider_calibration(self, request, pk=None):
+        """NTHCM6 — fige les décisions du cycle (``clos``), UNE seule fois."""
+        cycle = self.get_object()
+        try:
+            resultat = services.valider_calibration_cycle(cycle)
+        except services.CalibrationDejaValideeError:
+            return Response(
+                {'detail': 'Cycle déjà clos : la calibration a déjà été '
+                           'validée, elle ne peut pas être rejouée.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
 
 class EnveloppeManagerViewSet(CompanyScopedModelViewSet):
     """NTHCM5 — enveloppes allouées aux managers d'un cycle (``?cycle=<id>``).
