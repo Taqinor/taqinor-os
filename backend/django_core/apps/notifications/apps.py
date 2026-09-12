@@ -44,3 +44,11 @@ class NotificationsConfig(AppConfig):
         # le moteur ne soit plus inerte sur les évènements métier.
         from . import signals
         signals.connect()
+        # NTWFL4 — branche le calendrier d'heures ouvrées (FG5) sur le moteur
+        # BPM ``core.workflow`` SANS que ``core`` importe cette app (contrat
+        # import-linter core-foundation-is-a-base-layer) : `core` expose un
+        # registre (``register_business_day_advance``), c'est
+        # ``notifications`` qui s'y branche depuis son propre ``ready()``.
+        from core.workflow import register_business_day_advance
+        from . import calendar_utils
+        register_business_day_advance(calendar_utils.ajouter_heures_ouvrees)

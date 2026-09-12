@@ -6,7 +6,7 @@ import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
-  Ship, Route, Layers, Repeat,
+  Ship, Route, Layers, Repeat, Trash2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -146,6 +146,11 @@ const TiersDoublonsPage = lazy(() => import('../../pages/parametres/TiersDoublon
 // + tables autorisées de l'agent SQL, GET /sql-agent/schema — jusqu'ici sans
 // appelant côté frontend). Admin-only (écran de configuration sensible).
 const IaDiagnostic = lazy(() => import('./IaDiagnostic'))
+// NTAI6 — Paramètres → IA : capacités actives (fournisseur réel par capacité,
+// motif d'inactivité, latence médiane et dernière erreur mesurées, budget IA
+// du mois). Aucune clé d'API n'est exposée. Admin-only (le backend applique le
+// palier Administrateur/Directeur).
+const IaCapacites = lazy(() => import('./IaCapacites'))
 // PACT140 — Objets métier personnalisés (XPLT16) : définition sans code d'un
 // objet + de ses champs (mécanisme CustomFieldDef EXISTANT pointé sur
 // `module: custom:<code>`), puis écran GÉNÉRIQUE de ses enregistrements rendu
@@ -162,6 +167,14 @@ const PlansCommissionPage = lazy(() => import('../../pages/parametres/PlansCommi
 // groupe NTSUB : fin d'essai, expiration de carte, seuil d'usage).
 const AbonnementsParametresPage = lazy(() => import('../../pages/parametres/AbonnementsParametresPage'))
 const CustomObjectRecordsPage = lazy(() => import('../customobjects/CustomObjectRecordsPage'))
+// NTUX7 — Corbeille transverse 30 jours (`apps/trash`, backend déjà complet) :
+// moitié frontend manquante, écran de gouvernance Directeur/Admin (reflète
+// `IsAdminOrResponsableTier` côté serveur, `corbeille/` + `{id}/restaurer/`).
+const CorbeillePage = lazy(() => import('../../pages/parametres/CorbeillePage'))
+// NTUX27 — Réglages UX par tenant (`apps.uxviews.UxParametres`, backend déjà
+// complet, singleton société) : moitié frontend manquante, Directeur/Admin
+// uniquement (reflète `IsAdminOrResponsableTier` côté serveur en écriture).
+const UxParametresPage = lazy(() => import('../../pages/parametres/UxParametresPage'))
 
 const config = {
   key: 'parametres',
@@ -192,6 +205,7 @@ const config = {
       },
       { to: '/parametres/tiers-doublons', label: 'Doublons tiers', icon: <Copy size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/ia', label: 'IA (diagnostic)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
+      { to: '/parametres/ia-capacites', label: 'IA (capacités)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // ODY23(c) — écrans /parametres/* qui avaient une route sans entrée de menu.
       { to: '/parametres/export', label: 'Export / Sauvegarde', icon: <DownloadCloud size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/alertes-kpi', label: 'Alertes KPI', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
@@ -214,6 +228,10 @@ const config = {
       { to: '/parametres/plans-commission', label: 'Plans de commission', icon: <BadgePercent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTSUB24 — nav ET route ensemble (un écran non atteignable est un écran mort).
       { to: '/parametres/abonnements', label: 'Facturation récurrente', icon: <Repeat size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTUX7 — corbeille transverse (nav ET route ensemble, motif PACT150).
+      { to: '/parametres/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTUX27 — réglages UX par tenant (nav ET route ensemble, motif PACT150).
+      { to: '/parametres/ux', label: 'UX', icon: <Settings size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -232,10 +250,13 @@ const config = {
     { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
+    { path: '/parametres/ia-capacites', component: IaCapacites, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/abonnements', component: AbonnementsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés

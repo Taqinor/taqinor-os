@@ -363,6 +363,13 @@ class EventType(models.TextChoices):
         'visite_terrain_validee', 'Visite technique validée (feu vert)')
     VISITE_TERRAIN_A_REFAIRE = (
         'visite_terrain_a_refaire', 'Visite technique à refaire')
+    # NTGRC9 — une personne qui a RETIRÉ son consentement est de nouveau
+    # traitée (nouveau lead, devis accepté). Alerte de conformité destinée au
+    # DPO : elle ne bloque JAMAIS l'opération commerciale, elle la signale —
+    # c'est au responsable de trancher, pas à la machine.
+    CONSENTEMENT_RETIRE_TRAITE = (
+        'consentement_retire_traite',
+        'Traitement d\'une personne ayant retiré son consentement')
     # VTA7 — « une visite t'est assignée ». Clé DISTINCTE des deux bords du feu
     # vert : c'est le seul message qui arrive AVANT la visite, au commercial
     # terrain, et qui doit atterrir dans sa journée. La fondre avec

@@ -37,7 +37,13 @@ from .views import (
     ChangelogViewSet,
     ConsentRecordViewSet,
     DashboardViewSet,
+    DataExplorerDatasetsView,
+    DataExplorerDatasetDetailView,
+    DataExplorerRunView,
     DataSubjectRequestViewSet,
+    FormulaireChampReutilisableViewSet,
+    FormulaireDefinitionViewSet,
+    MatriceApprobationViewSet,
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
     OutboxEventViewSet,
@@ -71,6 +77,17 @@ router.register(r'workflow-definitions', WorkflowDefinitionViewSet,
                 basename='workflow-definition')
 router.register(r'workflow-step-definitions', WorkflowStepDefinitionViewSet,
                 basename='workflow-step-definition')
+# NTWFL1 — matrice d'approbation d'entreprise unifiée (objet × montant ×
+# département → chaîne de paliers), référentiel additif consulté par FG25 /
+# apps.contrats avant leur logique historique.
+router.register(r'matrices-approbation', MatriceApprobationViewSet,
+                basename='matrice-approbation')
+# NTWFL12/13 — formulaires dynamiques rattachables aux étapes de workflow +
+# bibliothèque de champs réutilisables.
+router.register(r'formulaires', FormulaireDefinitionViewSet,
+                basename='formulaire-definition')
+router.register(r'formulaire-champs', FormulaireChampReutilisableViewSet,
+                basename='formulaire-champ')
 # FG381 — dashboards sans-code (CRUD multi-tenant, scoping perso/partagé).
 router.register(r'dashboards', DashboardViewSet, basename='dashboard')
 # FG370 — paiement carte en ligne d'une facture (CMI / Payzone, gated).
@@ -153,4 +170,15 @@ urlpatterns = router.urls + [
     # (liste blanche + scoping société de data_explorer, liens profonds).
     path('data-explorer/drill/', DrillDownView.as_view(),
          name='data-explorer-drill'),
+    # NTDATA5 — catalogue BI enrichi (label FR + type par champ) et schéma
+    # détaillé d'un dataset.
+    path('data-explorer/datasets/', DataExplorerDatasetsView.as_view(),
+         name='data-explorer-datasets'),
+    path('data-explorer/datasets/<str:name>/',
+         DataExplorerDatasetDetailView.as_view(),
+         name='data-explorer-dataset-detail'),
+    # NTDATA6 — exécution self-service d'une requête ad-hoc (liste blanche +
+    # scoping société + plafond de lignes ; jamais de SQL brut).
+    path('data-explorer/run/', DataExplorerRunView.as_view(),
+         name='data-explorer-run'),
 ]

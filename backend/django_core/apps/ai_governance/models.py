@@ -4,10 +4,96 @@ MULTI-TENANT : tout modèle ici hérite de ``core.models.TenantModel`` (FK
 ``company`` + horodatage) — la société est TOUJOURS posée côté serveur, jamais
 lue d'un corps de requête.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
+
+
+class LlmUsageRecord(TenantModel):
+    """NTAI1 — Une ligne par appel RÉEL à une capacité IA.
+
+    Sert à répondre, par société, à « qui consomme l'IA, combien, et à quel
+    coût ». Écrite best-effort par le puits enregistré dans
+    ``apps.py::ready()`` depuis la fondation ``core.ai.usage``.
+
+    INVARIANTS :
+
+      * **Aucune donnée métier.** Ni prompt, ni réponse, ni identifiant d'objet :
+        seulement des MÉTRIQUES. Le journal ne peut pas devenir un second
+        magasin de données clients.
+      * **Société posée côté serveur.** Elle vient du contexte d'appel
+        (``core.ai.usage.usage_context``), jamais d'un corps de requête ; sans
+        société connue, aucune ligne n'est écrite.
+      * **Coût jamais inventé.** ``cout_tarife=False`` signifie « aucun tarif
+        configuré pour ce fournisseur » : ``cost_estimated`` vaut alors 0 mais
+        c'est un coût INCONNU, pas un coût nul — et l'agrégat le dit.
+      * **Chemin NO-OP muet.** Sans fournisseur configuré, rien n'est appelé
+        donc rien n'est journalisé (aucune ligne parasite).
+    """
+
+    CAPACITE_CHOICES = [
+        ('ocr', 'OCR (document)'),
+        ('stt', 'Transcription audio'),
+        ('vision_qa', 'Contrôle vision'),
+        ('llm', 'Génération de texte'),
+    ]
+
+    capability = models.CharField(
+        max_length=20, choices=CAPACITE_CHOICES,
+        help_text='Capacité IA appelée.')
+    provider = models.CharField(
+        max_length=60, help_text='Clé du fournisseur ayant servi l\'appel.')
+    feature_key = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Feature appelante (ex. « ai.rediger ») — texte libre posé '
+                  'par la couche appelante, jamais par le client.')
+    prompt_tokens = models.PositiveIntegerField(default=0)
+    completion_tokens = models.PositiveIntegerField(default=0)
+    #: UNITÉ : le micro-MAD (10⁻⁶ MAD), entier — PAS un DecimalField.
+    #: Un appel LLM coûte une FRACTION de centime : à 2 décimales (la règle
+    #: monétaire du dépôt, YDATA7) chaque ligne s'arrondirait à 0,00 et le
+    #: total mensuel afficherait « gratuit » — un chiffre faux, donc interdit.
+    #: L'entier est exact, se somme sans dérive, et la propriété
+    #: :attr:`cost_estimated` le rend en MAD pour l'affichage.
+    cost_estimated_micro_mad = models.PositiveBigIntegerField(
+        default=0,
+        help_text='Coût estimé en micro-MAD (10⁻⁶ MAD) — significatif '
+                  'UNIQUEMENT si « cout_tarife » est vrai.')
+    cout_tarife = models.BooleanField(
+        default=False,
+        help_text='Un tarif était configuré pour ce fournisseur au moment de '
+                  'l\'appel ; sinon le coût est inconnu (et non nul).')
+    latency_ms = models.PositiveIntegerField(default=0)
+    success = models.BooleanField(default=True)
+    message = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Message d\'erreur du fournisseur (jamais le contenu du '
+                  'prompt).')
+
+    class Meta:
+        verbose_name = "Usage d'une capacité IA"
+        verbose_name_plural = "Usages des capacités IA"
+        ordering = ['-created_at', '-id']
+        indexes = [
+            # Noms EXPLICITES (≤30 car.) : sans eux Django dérive un hash qui
+            # diverge du nom écrit à la main dans la migration.
+            models.Index(fields=['company', '-created_at'],
+                         name='ai_gov_usage_co_date_idx'),
+            models.Index(fields=['company', 'feature_key'],
+                         name='ai_gov_usage_co_feat_idx'),
+        ]
+
+    @property
+    def cost_estimated(self) -> Decimal:
+        """Coût estimé en MAD (dérivé de l'entier micro-MAD, sans perte)."""
+        return (Decimal(self.cost_estimated_micro_mad or 0)
+                / Decimal('1000000')).quantize(Decimal('0.000001'))
+
+    def __str__(self):
+        return f'{self.capability}/{self.provider} ({self.created_at:%Y-%m-%d})'
 
 
 class DriftSnapshot(TenantModel):
@@ -186,3 +272,166 @@ class ExtractionCorrection(TenantModel):
 
     def __str__(self):
         return f'{self.champ} (job #{self.job_id})'
+
+
+class LlmBudget(TenantModel):
+    """NTAI2 — Plafond mensuel de dépense IA d'une société + seuil d'alerte.
+
+    Le budget est le COUPE-CIRCUIT de la facture IA : au-delà de 100 % du
+    plafond, ``core.ai.registry.get_provider('llm')`` rend le fournisseur NO-OP
+    « budget épuisé » et chaque feature générative dégrade proprement (503
+    douce, message FR) au lieu de continuer à facturer. Au franchissement du
+    seuil d'alerte, les responsables sont prévenus UNE fois par mois
+    (``alerte_periode`` rend l'alerte idempotente).
+
+    Un seul budget par société (contrainte d'unicité) : sans elle, deux lignes
+    concurrentes rendraient le coupe-circuit non déterministe.
+
+    Le plafond est comparé à la dépense RÉELLE journalisée (NTAI1). Sans tarif
+    configuré pour le fournisseur, la dépense connue reste nulle : le
+    coupe-circuit ne se déclenche donc JAMAIS sur un chiffre inventé.
+    """
+
+    montant_mensuel_mad = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text='Plafond de dépense IA du mois, en MAD.')
+    seuil_alerte_pct = models.PositiveSmallIntegerField(
+        default=80,
+        help_text='Pourcentage du plafond déclenchant une alerte (défaut 80).')
+    actif = models.BooleanField(
+        default=True,
+        help_text="Un budget inactif ne bride rien et n'alerte pas.")
+    alerte_periode = models.CharField(
+        max_length=7, blank=True, default='',
+        help_text='Période « AAAA-MM » de la dernière alerte émise — rend '
+                  "l'alerte idempotente sur le mois.")
+
+    class Meta:
+        verbose_name = 'Budget IA'
+        verbose_name_plural = 'Budgets IA'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'], name='uniq_llmbudget_company'),
+        ]
+
+    def __str__(self):
+        return f'Budget IA {self.montant_mensuel_mad} MAD/mois'
+
+
+class PromptTemplate(TenantModel):
+    """NTAI5 — Surcharge société du prompt d'une feature IA.
+
+    Le défaut vit dans le CODE (``core.ai.prompts.register_default_prompt``) ;
+    cette table ne porte que ce qu'une société a choisi de changer. Aucune
+    ligne = comportement byte-identique à l'avant-NTAI5.
+
+    ``cle`` identifie la feature (``'ai.rediger.email'``) et est unique PAR
+    SOCIÉTÉ : deux sociétés peuvent surcharger la même feature différemment,
+    et aucune ne voit celle de l'autre.
+
+    Chaque changement de ``corps`` fige une :class:`PromptTemplateVersion` :
+    on peut toujours dire quel texte a produit un brouillon donné.
+    """
+
+    cle = models.CharField(
+        max_length=120,
+        help_text="Clé de la feature IA surchargée (ex. « ai.rediger.email »).")
+    label = models.CharField(
+        max_length=160, blank=True, default='',
+        help_text='Libellé lisible affiché dans l\'écran de paramétrage.')
+    corps = models.TextField(
+        help_text='Corps du prompt, avec des placeholders {{champ}}.')
+    capability = models.CharField(
+        max_length=20, blank=True, default='llm',
+        help_text='Capacité concernée (llm/ocr/stt/vision_qa).')
+    actif = models.BooleanField(
+        default=True,
+        help_text='Une surcharge inactive laisse le défaut code s\'appliquer.')
+
+    class Meta:
+        verbose_name = 'Gabarit de prompt'
+        verbose_name_plural = 'Gabarits de prompt'
+        ordering = ['cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'], name='uniq_prompttemplate_co_cle'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ai_gov_prompt_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.label or self.cle
+
+
+class PromptTemplateVersion(TenantModel):
+    """NTAI5 — Photo IMMUABLE d'un corps de prompt à un instant donné.
+
+    Écrite par le serveur à chaque changement de corps ; jamais modifiée
+    ensuite (aucune route d'écriture ne l'expose). Le numéro est attribué côté
+    serveur, par gabarit.
+    """
+
+    template = models.ForeignKey(
+        # on_delete: une version n'a de sens que rattachée à son gabarit ;
+        # ce n'est ni une donnée métier ni une pièce comptable.
+        PromptTemplate, on_delete=models.CASCADE, related_name='versions')
+    numero = models.PositiveIntegerField(default=1)
+    corps = models.TextField(blank=True, default='')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ai_prompt_versions')
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Version de gabarit de prompt'
+        verbose_name_plural = 'Versions de gabarit de prompt'
+        ordering = ['-numero', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['template', 'numero'],
+                name='uniq_prompttemplateversion_num'),
+        ]
+
+    def __str__(self):
+        return f'{self.template_id} v{self.numero}'
+
+
+class AiFeatureToggle(TenantModel):
+    """NTAI7 — Consentement IA d'une société, feature par feature.
+
+    Une société peut refuser l'IA sur un périmètre précis (« pas d'IA sur les
+    données RH ») sans renoncer au reste. **Le défaut est ACTIF** : l'absence
+    de ligne veut dire « rien n'a été refusé », donc le comportement reste
+    byte-identique à l'avant-NTAI7. Couper une feature est une décision
+    explicite, jamais un effet de bord.
+
+    Le refus est strictement scopé société : couper « ai.rediger » chez l'un
+    ne change rien chez l'autre.
+    """
+
+    feature_key = models.CharField(
+        max_length=120,
+        help_text='Clé de la feature IA (ex. « ai.rediger »), telle qu\'elle '
+                  'apparaît aussi dans le journal d\'usage.')
+    actif = models.BooleanField(
+        default=True,
+        help_text='Décoché = la feature devient inopérante pour cette société.')
+    motif = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Pourquoi la société a coupé cette feature (traçabilité).')
+
+    class Meta:
+        verbose_name = 'Consentement IA'
+        verbose_name_plural = 'Consentements IA'
+        ordering = ['feature_key']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'feature_key'],
+                name='uniq_aifeaturetoggle_co_key'),
+        ]
+
+    def __str__(self):
+        return f'{self.feature_key} ({"actif" if self.actif else "coupé"})'

@@ -23,3 +23,8 @@ class ComptaConfig(AppConfig):
         # tiers.Tiers (l'import câble le récepteur post_save ; pont réversible,
         # ODX13-compatible).
         from . import tiers_bridge  # noqa: F401
+        # NTDATA11 — enregistre les adaptateurs de métrique (DSO, marge brute)
+        # dans la couche sémantique. Le CALCUL reste ici (grand livre) ;
+        # `semantic` ne connaît qu'une clé et une fonction.
+        from .selectors import register_metric_adapters
+        register_metric_adapters()

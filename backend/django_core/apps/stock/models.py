@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django.db import models
+
+from core.models import TenantModel  # SCA4 — socle multi-tenant
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -514,6 +516,45 @@ class AchatsParametres(models.Model):
         max_digits=14, decimal_places=2, default=0,
         help_text='NTWMS21 — valeur MAD au-dessus de laquelle un transfert '
                   'exige une approbation. 0 = désactivé.')
+
+
+class ToleranceRapprochementCategorie(TenantModel):
+    """NTP2P9 — override PAR CATÉGORIE produit des tolérances par défaut du
+    rapprochement 3 voies (``AchatsParametres.tolerance_prix_pct``/
+    ``tolerance_prix_absolu_mad``, XPUR10).
+
+    Consultée par ``stock.services.evaluer_tolerance_ecart`` AVANT le défaut
+    société : une catégorie SANS ligne ici retombe sur le défaut société
+    (comportement historique inchangé). ``tolerance_prix_pct``/
+    ``tolerance_prix_absolu_mad`` sont indépendants — l'un ou l'autre (ou les
+    deux) peuvent être renseignés ; ``None`` = pas d'override sur cet axe pour
+    cette catégorie (retombe alors sur le défaut société pour CET axe précis).
+    """
+    # SCA4 — héritage TenantModel ; ``company`` redéclarée UNIQUEMENT pour
+    # préserver le related_name historique (PLAYBOOK du socle).
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='tolerances_rapprochement_categorie')
+    categorie = models.ForeignKey(
+        Categorie, on_delete=models.CASCADE,
+        related_name='tolerances_rapprochement')
+    tolerance_prix_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Écart %% toléré pour cette catégorie. Vide = retombe sur '
+                  'le défaut société (AchatsParametres.tolerance_prix_pct).')
+    tolerance_prix_absolu_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Écart MAD absolu toléré pour cette catégorie. Vide = '
+                  'retombe sur le défaut société.')
+
+    class Meta:
+        verbose_name = 'Tolérance de rapprochement par catégorie'
+        verbose_name_plural = 'Tolérances de rapprochement par catégorie'
+        unique_together = [('company', 'categorie')]
+        ordering = ['categorie__nom']
+
+    def __str__(self):
+        return f'Tolérance {self.categorie_id} · {self.tolerance_prix_pct}%'
 
 
 class DocumentConformiteFournisseur(models.Model):
@@ -2366,9 +2407,6 @@ from django.core.exceptions import (  # noqa: E402
 )
 
 
-from core.models import TenantModel  # noqa: E402  (SCA4 — socle multi-tenant)
-
-
 # ── NTP2P4 — Budget d'engagement par département ───────────────────────────
 # Un budget est une ENVELOPPE (département × période) ; chaque demande d'achat
 # soumise consomme cette enveloppe sous forme d'ENGAGEMENT. Le blocage dur est
@@ -2376,6 +2414,7 @@ from core.models import TenantModel  # noqa: E402  (SCA4 — socle multi-tenant)
 # activation, la soumission d'une demande d'achat reste exactement ce qu'elle
 # était. Le département est référencé en STRING-FK vers ``rh.Departement``
 # (aucun import cross-app au chargement).
+
 
 class BudgetDepartement(TenantModel):
     """NTP2P4 — enveloppe budgétaire d'achats d'un département sur une période.
@@ -2729,3 +2768,34 @@ from apps.achats.models import (  # noqa: E402,F401
     ReceptionFournisseur,
     RetourFournisseur,
 )
+
+
+# ── NTWFL2 — pont matrice d'approbation (NTWFL1) → moteur BPM (core.workflow) ─
+# Câblage additif du bon de commande fournisseur sur la matrice d'entreprise
+# unifiée : SANS aucune ``core.MatriceApprobation`` (type_objet
+# ``'purchase_order'``) configurée pour la société, cette fonction ne crée
+# RIEN et renvoie ``None`` — comportement strictement inchangé (l'appelant
+# retombe alors sur son propre gate historique, ex. FG312/YPROC4). Avec une
+# matrice couvrante, un ``WorkflowInstance`` traçable démarre/est réutilisé.
+# Générique par duck-typing (``bon_commande.total_achat`` /
+# ``bon_commande.company``) : aucun import cross-app supplémentaire au-delà
+# de ``core.workflow`` (couche de fondation).
+def demarrer_approbation_bcf_depuis_matrice(
+        bon_commande, *, departement='achats', user=None, now=None):
+    """Démarre (ou renvoie l'instance ``en_cours`` existante) le workflow
+    d'approbation matriciel NTWFL1/NTWFL2 pour un ``BonCommandeFournisseur``.
+
+    ``departement`` par défaut ``'achats'`` — un bon de commande fournisseur
+    appartient par nature au département Achats, aligné sur l'exemple
+    canonique de la matrice (« Bon de commande × Achats × >50 000 MAD »).
+    Renvoie ``None`` si aucune matrice ne couvre le montant du bon de
+    commande (aucun effet de bord)."""
+    from core import workflow as core_workflow
+
+    instance = core_workflow.instance_en_cours_pour(
+        bon_commande, bon_commande.company)
+    if instance is not None:
+        return instance
+    return core_workflow.demarrer_depuis_matrice(
+        bon_commande, 'purchase_order', bon_commande.total_achat,
+        bon_commande.company, departement=departement, user=user, now=now)

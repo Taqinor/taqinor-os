@@ -75,10 +75,29 @@ const coreApi = {
   // dans le corps ; `code` dérivé du nom côté serveur).
   workflowDefinitions: {
     list: () => api.get('/core/workflow-definitions/'),
+    // NTWFL6 — chargement d'UNE définition (designer visuel canvas).
+    get: (id) => api.get(`/core/workflow-definitions/${id}/`),
     create: (payload) => api.post('/core/workflow-definitions/', payload),
     update: (id, payload) =>
       api.put(`/core/workflow-definitions/${id}/`, payload),
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
+  },
+
+  // NTWFL12/13/14 — formulaires dynamiques rattachables aux étapes de
+  // workflow (FormBuilder.jsx) + bibliothèque de champs réutilisables.
+  formulaires: {
+    list: () => api.get('/core/formulaires/'),
+    get: (id) => api.get(`/core/formulaires/${id}/`),
+    create: (payload) => api.post('/core/formulaires/', payload),
+    update: (id, payload) => api.put(`/core/formulaires/${id}/`, payload),
+    remove: (id) => api.delete(`/core/formulaires/${id}/`),
+  },
+  formulaireChamps: {
+    list: () => api.get('/core/formulaire-champs/'),
+    create: (payload) => api.post('/core/formulaire-champs/', payload),
+    update: (id, payload) =>
+      api.put(`/core/formulaire-champs/${id}/`, payload),
+    remove: (id) => api.delete(`/core/formulaire-champs/${id}/`),
   },
 
   // PACT122 — FG382 explorateur de données : catalogue de datasets enregistrés

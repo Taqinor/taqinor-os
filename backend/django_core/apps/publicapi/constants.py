@@ -22,6 +22,14 @@ SCOPE_READ_LICENCE = 'read:licence'
 # tableau de bord réappro consolidé, en LECTURE SEULE. Intégration externe
 # (TMS, connecteur planification tiers).
 SCOPE_READ_SCM = 'read:scm'
+# NTJUR41 — affaires juridiques (apps.juridique) en LECTURE SEULE : registre
+# des dossiers et budget d'un dossier, pour un usage externe RESTREINT
+# (courtier d'assurance RC, cabinet partenaire). Le filtrage de
+# CONFIDENTIALITÉ s'applique AUSSI à l'accès par clé : une clé n'est jamais un
+# administrateur, donc elle ne voit JAMAIS un dossier `confidentiel`.
+# Identifiant tel que nommé au plan (``juridique:read``) — il ne suit pas le
+# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici.
+SCOPE_READ_JURIDIQUE = 'juridique:read'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
@@ -38,6 +46,8 @@ SCOPE_CHOICES = [
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
     (SCOPE_READ_LICENCE, 'Lire le statut de licence (plan, modules, sièges)'),
     (SCOPE_READ_SCM, 'Lire la planification supply chain (prévisions, politiques de stock, réappro)'),
+    (SCOPE_READ_JURIDIQUE,
+     'Lire les dossiers juridiques non confidentiels et leur budget'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
 ]
@@ -107,6 +117,23 @@ EVENT_CHOICES = [
     (EVENT_SCM_CYCLE_SOP_CLOTURE, 'Supply chain — cycle S&OP clôturé'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
+
+
+# ── NTAPI1 — versions servies de l'API publique ─────────────────────────────
+# Source UNIQUE des versions montées : le routeur (`public_urls.py`), l'alias
+# legacy (`legacy_urls.py`), la résolution de version (`versioning.py`) et la
+# doc (`docs.py`) lisent TOUS ces constantes — jamais une chaîne 'v1' en dur.
+PUBLIC_API_DEFAULT_VERSION = 'v1'
+PUBLIC_API_VERSIONS = ['v1']
+# Racine historique NON versionnée, conservée 12 mois comme alias 301 → v1
+# (aucune clé existante cassée : elle suit simplement la redirection).
+PUBLIC_API_LEGACY_BASE = '/api/public/'
+# Racine canonique versionnée (celle que la doc et l'OpenAPI annoncent).
+PUBLIC_API_BASE = f'{PUBLIC_API_LEGACY_BASE}{PUBLIC_API_DEFAULT_VERSION}/'
+# Fin de vie ANNONCÉE de l'alias non versionné (12 mois après NTAPI1). Lue par
+# `legacy_urls.py` pour poser un en-tête `Sunset` sur chaque redirection : une
+# intégration qui n'a pas migré le voit dans ses propres logs.
+PUBLIC_API_LEGACY_SUNSET = '2027-09-12'
 
 
 # ── NTAPI26 — environnement d'une clé (préfixe distinct, isolation bac à

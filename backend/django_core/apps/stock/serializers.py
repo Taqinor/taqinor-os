@@ -22,6 +22,7 @@ from .models import (
     LotEntrepot, InventaireAnnuel, RevalorisationStock, ConditionnementProduit,
     ModeleBonCommandeFournisseur, ModeleBonCommandeFournisseurLigne,
     NomenclatureCodeBarres, RegleCodeBarres,
+    ToleranceRapprochementCategorie,
 )
 
 
@@ -1726,11 +1727,31 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
             'id', 'bloquer_paiement_conformite_expiree',
             'ras_tva_actif', 'tolerance_prix_pct',
             'tolerance_prix_absolu_mad', 'tolerance_quantite_pct',
-            # Procure-to-Pay — interrupteurs NTP2P4 / NTP2P7 / NTP2P37, tous
-            # à False par défaut (comportement historique inchangé).
+            # Procure-to-Pay — interrupteurs NTP2P4 / NTP2P7 / NTP2P37, tous à
+            # False par défaut (comportement historique inchangé).
             'budget_departement_actif', 'onboarding_fournisseur_obligatoire',
             'sod_stricte',
             'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class ToleranceRapprochementCategorieSerializer(serializers.ModelSerializer):
+    """NTP2P9 — grille éditable Paramètres → Achats (override par catégorie
+    des tolérances 3 voies XPUR10)."""
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True)
+
+    # SCA4 — le modèle a rejoint TenantModel (created_at/updated_at) ; l'API
+    # continue d'exposer les clés historiques via source=.
+    date_creation = serializers.DateTimeField(source='created_at', read_only=True)
+    date_modification = serializers.DateTimeField(source='updated_at', read_only=True)
+
+    class Meta:
+        model = ToleranceRapprochementCategorie
+        fields = [
+            'id', 'categorie', 'categorie_nom', 'tolerance_prix_pct',
+            'tolerance_prix_absolu_mad', 'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
 

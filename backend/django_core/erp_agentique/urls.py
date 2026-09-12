@@ -115,6 +115,8 @@ _APP_URLS = [
     path('qhse/', include('apps.qhse.urls')),
     path('kb/', include('apps.kb.urls')),
     path('litiges/', include('apps.litiges.urls')),
+    # Groupe NTJUR — Affaires juridiques (contentieux d'entreprise).
+    path('juridique/', include('apps.juridique.urls')),
     # Groupe NTESG — Reporting ESG/durabilité consolidé.
     path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
@@ -133,6 +135,9 @@ _APP_URLS = [
     # hériter des DEUX préfixes comme toutes les autres apps (`api/django/` et
     # `api/v1/`) ; les chemins existants restent identiques.
     path('accessreview/', include('apps.accessreview.urls')),
+    # Groupe NTGRC — GRC & Conformité (risques, contrôles internes, RGPD/
+    # loi 09-08 outillé). Le préfixe correspond à module_manifest['key'].
+    path('grc/', include('apps.grc.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
     # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).
@@ -188,6 +193,10 @@ _APP_URLS = [
     # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
     # implicite ; 503 douce sans clé LLM/STT configurée).
     path('ai/', include('apps.ai_governance.urls')),
+    # Groupe NTAI — gouvernance IA (journal d'usage & coûts, budgets, état des
+    # capacités). Surfaces d'ADMINISTRATION, réservées au palier
+    # Administrateur/Directeur — distinctes des copilotes ci-dessus.
+    path('ai-governance/', include('apps.ai_governance.urls_gouvernance')),
     # Groupe NTAI — conversations commerciales enregistrées (upload d'un appel
     # + transcription asynchrone key-gated). Le segment est IDENTIQUE à la clé
     # de manifeste (`conversation_ai`, avec underscore) : le gatage 404 des
@@ -212,6 +221,9 @@ _APP_URLS = [
     # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
     # de l'exécution `apps.stock` existante.
     path('scm/', include('apps.scm.urls')),
+    # Groupe NTDATA — qualité de données : règles de validation, rapport de
+    # conformité, complétude par module et dédoublonnage cross-module.
+    path('dataquality/', include('apps.dataquality.urls')),
 ]
 
 urlpatterns = [
@@ -253,14 +265,19 @@ urlpatterns = [
     path('api/django/public/sav/', include('apps.sav.public_urls')),
     # XPLT4 — Webhook entrant générique (token dans l'URL) — sans login.
     path('api/django/public/', include('apps.automation.public_urls')),
-    # N89 — API publique REST par clé d'API (données read-only).
-    path('api/public/', include('apps.publicapi.public_urls')),
     # NTAPI20 — document OpenAPI 3.1 (aucune auth requise, document de
-    # découverte). Chemin littéral MINIMAL sous le futur préfixe versionné
-    # (NTAPI1, pas encore construit) : n'anticipe PAS l'alias/dépréciation
-    # complet, juste le chemin dont NTAPI20 a besoin.
+    # découverte). Déclaré AVANT le routeur versionné : chemin littéral, il ne
+    # doit jamais être capté par une route de ressource.
     path('api/public/v1/openapi.json', PublicOpenApiSchemaView.as_view(),
          name='public-openapi-v1'),
+    # N89 — API publique REST par clé d'API. NTAPI1 — montée sous le PRÉFIXE DE
+    # VERSION ; l'urlconf incluse est elle-même version-agnostique.
+    path('api/public/v1/', include('apps.publicapi.public_urls')),
+    # NTAPI1 — alias de compatibilité 12 mois : toute la racine historique NON
+    # versionnée redirige définitivement vers v1 (301 en lecture, 308 en
+    # écriture pour ne pas perdre le corps). DOIT rester en DERNIER de la
+    # famille `api/public/` — c'est un attrape-tout.
+    path('api/public/', include('apps.publicapi.legacy_urls')),
     # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.
     path('api/django/public/pos/', include('apps.pos.public_urls')),
     # XCTR14 — Portail client : « Mes contrats & abonnements » — sans login.

@@ -6220,3 +6220,70 @@ def journal_tresorerie(company, compte, debut=None, fin=None, *,
         'total_credit': total_credit,
         'solde_cloture': solde,
     }
+
+
+def provision_par_id(company, provision_id):
+    """NTJUR15 — ``Provision`` (XACC26) de CETTE société par son id, ou None.
+
+    Point d'entrée LECTURE cross-app : ``apps.juridique`` résout ainsi la
+    provision qu'il a fait comptabiliser (référence string-ref
+    ``DossierJuridique.provision_comptable_id``) pour la repasser en INSTANCE
+    à ``services.reprendre_provision``, SANS jamais importer
+    ``apps.compta.models``. Scopé société : un id d'une autre société renvoie
+    None, jamais l'objet."""
+    if not provision_id or company is None:
+        return None
+    return Provision.objects.filter(pk=provision_id, company=company).first()
+
+
+# ── NTDATA11 — ADAPTATEURS DE MÉTRIQUE (couche sémantique) ──────────────────
+#
+# Le DSO et la marge brute du dépôt sont calculés par ``pilotage_financier``
+# À PARTIR DU GRAND LIVRE (encours 3421/4411, compte de produits et charges).
+# Les ré-écrire en agrégat SQL sur un dataset produirait un SECOND chiffre —
+# exactement ce que la couche sémantique existe pour empêcher. Ces deux
+# fonctions sont donc des ENVELOPPES MINCES : elles n'ajoutent aucun calcul,
+# elles extraient la clé demandée du cockpit existant.
+#
+# Signature imposée par ``apps.semantic.adapters`` :
+#     adaptateur(company, user, *, period=None, filters=None) -> valeur | None
+# ``filters`` est ignoré (le cockpit ne prend pas de filtre libre) ; ``period``
+# porte ``{'debut', 'fin'}`` ou le couple ``(debut, fin)``.
+
+
+def _periode_pilotage(period):
+    """Traduit la ``period`` de la couche sémantique en (date_debut, date_fin)."""
+    if not period:
+        return None, None
+    if isinstance(period, (tuple, list)):
+        valeurs = list(period) + [None, None]
+        return valeurs[0], valeurs[1]
+    return period.get('debut'), period.get('fin')
+
+
+def metrique_dso(company, user=None, *, period=None, filters=None):
+    """NTDATA11 — DSO (jours) de la société, LU du cockpit ``pilotage_financier``.
+
+    Aucune seconde définition : c'est la valeur que l'écran Pilotage affiche.
+    """
+    debut, fin = _periode_pilotage(period)
+    return pilotage_financier(company, date_debut=debut, date_fin=fin)['dso']
+
+
+def metrique_marge_brute(company, user=None, *, period=None, filters=None):
+    """NTDATA11 — marge brute (MAD) de la société, LUE du grand livre via
+    ``pilotage_financier`` (produits − charges de la période)."""
+    debut, fin = _periode_pilotage(period)
+    return pilotage_financier(
+        company, date_debut=debut, date_fin=fin)['marge_brute']
+
+
+def register_metric_adapters():
+    """Enregistre les adaptateurs compta dans ``apps.semantic`` (idempotent).
+
+    Appelé depuis ``ComptaConfig.ready()``. C'est l'app PROPRIÉTAIRE du calcul
+    qui vient s'enregistrer — ``semantic`` n'importe jamais ``compta``.
+    """
+    from apps.semantic.adapters import register_adapter
+    register_adapter('compta.dso', metrique_dso)
+    register_adapter('compta.marge_brute', metrique_marge_brute)

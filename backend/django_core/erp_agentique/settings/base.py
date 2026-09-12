@@ -272,6 +272,11 @@ INSTALLED_APPS = [
     # est DÉLÉGUÉ à apps.dataimport (jamais un 2e importateur) ; aucune
     # écriture SQL vers Odoo (règle #1).
     'apps.migration',
+    # Groupe NTJUR — Affaires juridiques (contentieux/précontentieux) :
+    # dossiers, parties, audiences, prescriptions, conseils externes,
+    # budget et provisions PROPOSÉES. Distincte de `litiges` (réclamation
+    # client) et de `contrats` (CLM) — string-FK uniquement vers elles.
+    'apps.juridique',
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).
@@ -354,6 +359,22 @@ INSTALLED_APPS = [
     # saisonnière, politiques de stock ABC/stock de sécurité, cycle S&OP
     # mensuel) au-dessus de l'exécution `apps.stock` existante.
     'apps.scm',
+    # Groupe NTDATA — couche SÉMANTIQUE : une métrique (mrr, dso, marge_brute)
+    # se définit UNE fois, company-scopée, et se résout en une requête sur les
+    # datasets que les apps métier déclarent (core.data_explorer). N'importe
+    # aucun modèle d'app métier : le dataset est désigné par son NOM.
+    'apps.semantic',
+    # Groupe NTDATA — QUALITÉ DE DONNÉES : règles de validation d'entreprise,
+    # complétude par module et dédoublonnage cross-module. Posée sur les
+    # datasets déclarés par les apps métier (aucun import de leurs modèles) ;
+    # elle MESURE et RAPPORTE, elle ne bloque aucune écriture.
+    'apps.dataquality',
+    # Groupe NTGRC — GRC & Privacy : registre des risques d'entreprise,
+    # contrôles internes, RGPD/loi 09-08 outillé (portail DSR public, journal
+    # de destruction, legal hold transverse, violations 72h). ÉTEND le socle
+    # `core` (RegistreTraitement/ConsentRecord/DataSubjectRequest + registres
+    # `core.dsr` et `core.retention`) — ne le duplique jamais.
+    'apps.grc',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
@@ -1073,6 +1094,8 @@ CELERY_TASK_ROUTES = {
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
+    # NTDATA15 — évaluation quotidienne des règles de qualité de données.
+    'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
     'core.dispatch_outbox': {'queue': 'scheduled'},
@@ -1132,6 +1155,8 @@ CELERY_TASK_ROUTES = {
     # conformité fournisseur expirants + BCF en retard côté acheteur).
     'stock.notifier_documents_conformite_expirants': {'queue': 'scheduled'},
     'stock.notifier_bcf_en_retard_buyer': {'queue': 'scheduled'},
+    # NTP2P20 — pieces d'onboarding fournisseur (NTP2P7) expirant sous 30 j.
+    'stock.notifier_documents_fournisseur_expirants': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
     'ventes.pre_echeance_reminders': {'queue': 'scheduled'},
@@ -1660,6 +1685,34 @@ try:
         AI_PROVIDERS = {}
 except (ValueError, TypeError):
     AI_PROVIDERS = {}
+
+# NTAI3 — masquage des données personnelles avant envoi à un LLM EXTERNE
+# (« Trust Layer »). 'auto' (défaut) = actif dès qu'un fournisseur réel est
+# utilisé, SAUF s'il est déclaré auto-hébergé ci-dessous ; '1' = toujours ;
+# '0' = jamais (le chemin redevient octet-identique à l'existant). Le masquage
+# ne touche QUE le texte transmis — jamais la donnée stockée.
+AI_PII_REDACTION = os.environ.get('AI_PII_REDACTION', 'auto')
+
+# NTAI3 — fournisseurs tournant SUR NOTRE infrastructure : la donnée ne quitte
+# pas la maison, le masquage n'a donc pas lieu d'être (liste de clés séparées
+# par des virgules, ex. « ollama,vllm »).
+AI_SELF_HOSTED_PROVIDERS = tuple(
+    cle.strip() for cle in
+    (os.environ.get('AI_SELF_HOSTED_PROVIDERS', '') or '').split(',')
+    if cle.strip())
+
+# NTAI1 — tarifs des fournisseurs IA, en MAD pour 1 000 jetons :
+#   AI_TOKEN_COSTS = {'groq': {'prompt': '0.02', 'completion': '0.06'}}
+# VIDE par défaut, et c'est volontaire : un fournisseur sans tarif configuré
+# produit un coût estimé de 0 accompagné de « cout_tarife: false » — un coût
+# INCONNU, jamais présenté comme un coût nul (règle « zéro chiffre inventé »).
+# Lue depuis AI_TOKEN_COSTS_JSON (JSON) si présente.
+try:
+    AI_TOKEN_COSTS = _json.loads(os.environ.get('AI_TOKEN_COSTS_JSON', '') or '{}')
+    if not isinstance(AI_TOKEN_COSTS, dict):
+        AI_TOKEN_COSTS = {}
+except (ValueError, TypeError):
+    AI_TOKEN_COSTS = {}
 
 # NTAI17 — file de traitement documentaire IA (classification + extraction à
 # l'upload GED). ÉTEINTE par défaut : sans clé IA, empiler des jobs que rien ne

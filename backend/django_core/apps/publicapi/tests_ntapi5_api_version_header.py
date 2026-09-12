@@ -35,7 +35,7 @@ class Ntapi5ApiVersionHeaderTests(TestCase):
 
     def test_default_key_reports_v1_on_success(self):
         self.assertEqual(self.key.api_version, 'v1')
-        resp = _key_client(self.raw).get('/api/public/leads/')
+        resp = _key_client(self.raw).get('/api/public/v1/leads/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp[API_VERSION_HEADER], 'v1')
 
@@ -44,7 +44,7 @@ class Ntapi5ApiVersionHeaderTests(TestCase):
         # chemin appelé, qui reste non-versionné aujourd'hui).
         self.key.api_version = 'v2'
         self.key.save(update_fields=['api_version'])
-        resp = _key_client(self.raw).get('/api/public/devis/')  # 403 : hors scope
+        resp = _key_client(self.raw).get('/api/public/v1/devis/')  # 403 : hors scope
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp[API_VERSION_HEADER], 'v2')
 
@@ -54,9 +54,9 @@ class Ntapi5ApiVersionHeaderTests(TestCase):
         other_key, other_raw = ApiKey.issue(
             company=self.co, label='other', scopes=[SCOPE_READ_LEADS])
         self.assertEqual(other_key.api_version, 'v1')
-        resp_v1 = _key_client(other_raw).get('/api/public/leads/')
+        resp_v1 = _key_client(other_raw).get('/api/public/v1/leads/')
         self.assertEqual(resp_v1[API_VERSION_HEADER], 'v1')
         self.key.api_version = 'v2'
         self.key.save(update_fields=['api_version'])
-        resp_v2 = _key_client(self.raw).get('/api/public/leads/')
+        resp_v2 = _key_client(self.raw).get('/api/public/v1/leads/')
         self.assertEqual(resp_v2[API_VERSION_HEADER], 'v2')

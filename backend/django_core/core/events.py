@@ -495,6 +495,14 @@ meta_lead_captured = django.dispatch.Signal()
 # optionnel). Abonné dans ce repo : adsengine (apps/adsengine/receivers.py).
 lead_erased = django.dispatch.Signal()
 
+# NTGRC9 — Émis à la CRÉATION d'un lead CRM, quelle que soit la porte d'entrée
+# (saisie, webhook site, import). Arguments : lead (crm.Lead), company.
+# Émetteur dans ce repo : crm (apps/crm/receivers.py, post_save created=True).
+# Abonné dans ce repo : grc (alerte DPO quand la personne a retiré son
+# consentement) — ainsi `grc` n'importe jamais `apps.crm.models`, et `crm`
+# n'a aucune connaissance de `grc`.
+lead_created = django.dispatch.Signal()
+
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
@@ -1062,6 +1070,19 @@ scm_rupture_imminente_detectee = django.dispatch.Signal()
 # ``scm.CyclePlanificationSOP``, déjà ``clos``), ``user`` (peut être None).
 scm_cycle_sop_cloture = django.dispatch.Signal()
 
+# NTWFL5 — Émis par ``core.workflow.avancer`` (moteur BPM FG366) exactement
+# quand une ``WorkflowStepInstance`` devient la nouvelle étape ACTIVE
+# (manuelle/par rôle, en attente de décision) — comble YEVNT8 pour FG366 :
+# aujourd'hui aucune notification ne part à la création d'une étape
+# d'approbation BPM (les 4 autres sources de l'agrégateur XKB1 sont déjà
+# câblées, voir ``apps/notifications/signals.py``). Émission best-effort,
+# jamais bloquante pour le moteur BPM. Arguments : ``step``
+# (``core.WorkflowStepInstance``, la nouvelle étape courante), ``company``.
+# Abonné dans ce repo : notifications (``apps/notifications/signals.py``,
+# notifie les managers de la société — ``core`` n'a aucune notion
+# d'assignation par utilisateur, seulement ``step_def.role_requis``).
+workflow_etape_activee = django.dispatch.Signal()
+
 # NTSCM39 — ADAPTATION DE PÉRIMÈTRE : le plan prévoit un 3ᵉ événement
 # ``scm.score_fournisseur_degrade`` (« émis par NTSCM23 ») — NTSCM23 (score
 # fournisseur) n'existe pas dans ``docs/plans/PLAN_SUPPLY.md`` (aucune tâche
@@ -1069,3 +1090,17 @@ scm_cycle_sop_cloture = django.dispatch.Signal()
 # ``[ ]``). Sans fonctionnalité source, aucun signal n'est déclaré ici : un
 # signal jamais émis serait un seam creux, pas un contrat. Un futur task
 # scorant les fournisseurs pourra l'ajouter ici sans rien casser.
+
+# NTJUR26 — Émis EXACTEMENT à la clôture d'un ``juridique.DossierJuridique``
+# (``apps.juridique.services.clore_dossier``, transition vers l'un des quatre
+# statuts ``clos_*``). L'abonné DANS ce dépôt est ``apps/juridique/
+# receivers.py`` : il lève la bannière « reprendre la provision » (NTJUR15) —
+# une PROPOSITION, jamais une écriture. ``apps.compta`` peut s'y abonner de la
+# même façon pour proposer la reprise depuis son propre écran, sans que
+# ``juridique`` l'importe.
+# GARANTIE : cet événement ne poste JAMAIS d'écriture comptable — la reprise
+# reste gardée par une confirmation explicite (patron « propose → confirme »).
+# Arguments : ``dossier`` (l'instance close), ``company``, ``resultat`` (le
+# statut ``clos_*`` atteint), ``montant_final`` (Decimal — le montant en jeu
+# arrêté), ``user`` (peut être ``None``).
+dossier_juridique_clos = django.dispatch.Signal()

@@ -471,6 +471,55 @@ class WorkflowStepDefinition(TimestampedModel):
     escalade_vers = models.CharField(
         'Escalade vers', max_length=120, blank=True, default='',
         help_text='Destinataire/rôle visé si le SLA est dépassé (générique).')
+    # NTWFL4 — défaut FAUX = comportement inchangé (SLA en heures BRUTES,
+    # weekends/nuits comptent, comme aujourd'hui). Activé, l'échéance saute
+    # les jours NON OUVRÉS de la société (calendrier déjà construit dans
+    # apps.notifications.calendar_utils, jamais un second modèle calendrier
+    # — voir core.workflow._sla_echeance).
+    calendrier_ouvre = models.BooleanField(
+        'Échéance en jours ouvrés', default=False,
+        help_text="Active, l'échéance SLA saute les jours non ouvrés/fériés "
+                  'de la société au lieu de compter en heures brutes.')
+    # NTWFL7 — garde de transition (branche simple, pas de gateway parallèle
+    # complet). Format IDENTIQUE à ``core.rules.evaluate_condition_group``
+    # (FG367, AUCUN nouveau moteur de conditions). ``None``/vide = pas de
+    # garde (comportement inchangé : une étape ``auto`` s'auto-approuve
+    # toujours). Évaluée par ``core.workflow.avancer`` contre le contexte de
+    # la cible sérialisée AVANT d'auto-approuver une étape ``auto``.
+    condition_transition = models.JSONField(
+        'Condition de transition', null=True, blank=True, default=None,
+        help_text="Garde évaluée contre la cible (format core.rules) avant "
+                  "qu'une étape automatique ne s'auto-approuve. Vide = "
+                  'toujours franchie.')
+    # NTWFL7 — ``ordre`` (au sein de la MÊME définition) de l'étape vers
+    # laquelle router si ``condition_transition`` échoue. Vide = sans garde
+    # échouée valide, l'étape reste simplement EN ATTENTE (comme une étape
+    # manuelle bloquée) plutôt que de planter ou de sauter au hasard.
+    etape_alternative_si_echec = models.PositiveIntegerField(
+        'Étape alternative si échec', null=True, blank=True,
+        help_text="Ordre (dans la même définition) de l'étape vers "
+                  "laquelle router si la garde ci-dessus échoue.")
+    # NTWFL10 — fan-out/fan-in SIMPLE (pas de gateway parallèle complet, pas
+    # de quorum). Toutes les étapes d'une définition partageant le MÊME
+    # entier ``groupe_parallele`` démarrent ENSEMBLE ; ``core.workflow.avancer``
+    # n'avance à l'étape suivante qu'une fois TOUTES décidées (approuvées),
+    # et un rejet dans le groupe rejette l'instance entière — même règle
+    # qu'un rejet séquentiel classique. ``None`` (défaut) = comportement
+    # séquentiel inchangé. Les membres d'un même groupe doivent avoir des
+    # ``ordre`` CONSÉCUTIFS (garde-fou de simplicité, cf. designer NTWFL6).
+    groupe_parallele = models.PositiveIntegerField(
+        'Groupe parallèle', null=True, blank=True,
+        help_text='Étapes partageant ce même entier démarrent ensemble '
+                  '(fan-out/fan-in simple). Vide = séquentiel (défaut).')
+    # NTWFL12 — formulaire dynamique rattaché à cette étape (optionnel).
+    # SET_NULL : supprimer un formulaire ne casse jamais une étape déjà
+    # configurée (elle redevient simplement sans formulaire). Référence par
+    # chaîne (``'FormulaireDefinition'``) : le modèle est défini plus bas
+    # dans ce même fichier.
+    formulaire = models.ForeignKey(
+        'FormulaireDefinition', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='etapes',
+        verbose_name='Formulaire dynamique')
 
     class Meta:
         verbose_name = 'Étape de workflow (modèle)'
@@ -559,11 +608,19 @@ class WorkflowStepInstance(TimestampedModel):
     STATUT_APPROUVE = 'approuve'
     STATUT_REJETE = 'rejete'
     STATUT_ESCALADE = 'escalade'
+    # NTWFL7 — branche NON empruntée (garde de transition échouée ET une
+    # étape alternative valide a été empruntée à sa place). Une étape
+    # ``ignoree`` n'apparaît JAMAIS dans les listes « en attente »
+    # (``pending_steps_for_company``/``etapes_sla_depassees`` filtrent déjà
+    # sur ``STATUT_EN_ATTENTE``) — comportement additif, aucun code existant
+    # à adapter.
+    STATUT_IGNOREE = 'ignoree'
     STATUT_CHOICES = [
         (STATUT_EN_ATTENTE, 'En attente'),
         (STATUT_APPROUVE, 'Approuvé'),
         (STATUT_REJETE, 'Rejeté'),
         (STATUT_ESCALADE, 'Escaladé'),
+        (STATUT_IGNOREE, 'Ignorée (branche non empruntée)'),
     ]
 
     company = models.ForeignKey(
@@ -590,6 +647,19 @@ class WorkflowStepInstance(TimestampedModel):
         help_text='started + sla_heures ; vide si l\'étape n\'a pas de SLA.')
     decided_le = models.DateTimeField('Décidé le', null=True, blank=True)
     commentaire = models.TextField('Commentaire', blank=True, default='')
+    # NTWFL5 — marqueur anti-double-notification : posé par
+    # core.workflow.marquer_rappel_envoye() la PREMIÈRE fois qu'un rappel à
+    # mi-SLA est émis (core.workflow.etapes_a_mi_sla) ; vide = jamais relancée.
+    dernier_rappel_le = models.DateTimeField(
+        'Dernier rappel envoyé le', null=True, blank=True,
+        help_text='Vide = jamais relancée ; posé une seule fois (jamais '
+                  'un second rappel pour la même étape).')
+    # NTWFL12 — réponses au formulaire dynamique de ``step_def.formulaire``
+    # (JSON additif : {champ: valeur, ...} ; une section répétable capture
+    # une LISTE de sous-dicts sous la clé de la section). Vide tant que
+    # l'étape ne porte pas de formulaire ou n'a pas encore été remplie.
+    donnees_formulaire = models.JSONField(
+        'Données du formulaire', default=dict, blank=True)
 
     class Meta:
         verbose_name = 'Étape de workflow (instance)'
@@ -606,6 +676,194 @@ class WorkflowStepInstance(TimestampedModel):
 
     def __str__(self):
         return f'{self.instance_id}/{self.ordre} ({self.get_statut_display()})'
+
+
+# ---------------------------------------------------------------------------
+# NTWFL1 — Matrice d'approbation d'entreprise UNIFIÉE (objet × montant ×
+# département → chaîne de paliers).
+#
+# Avant ce modèle, l'approbation d'entreprise vivait ÉCLATÉE en trois
+# implémentations qui ne se parlaient pas : ``parametres.ApprovalPolicy``
+# (FG25, une politique PLATE par type d'action × société, un seul palier),
+# ``automation.ApprovalRequestType`` (demandes ad-hoc, un seul palier) et
+# ``contrats.RegleApprobation`` (règles propres aux contrats, un seul niveau).
+# ``MatriceApprobation`` les UNIFIE en un référentiel unique object×montant×
+# département avec une CHAÎNE de paliers ordonnée (``chaine_paliers``).
+#
+# COMPATIBILITÉ (aucune régression) : les trois modèles legacy restent
+# INCHANGÉS et continuent de fonctionner exactement comme avant — cette
+# matrice est un référentiel ADDITIF que les appelants consultent EN PREMIER
+# (voir ``core.selectors.resoudre_matrice`` et les entrées « unifiées » de
+# ``parametres.ApprovalPolicy``/``apps.contrats.selectors``) ; à défaut de
+# ligne correspondante, le comportement legacy s'applique intégralement en
+# repli (« écriture toujours possible en fallback si aucune ligne ne
+# matche »).
+#
+# ``type_objet`` reste un texte LIBRE (pas de ``TextChoices`` dupliqué ici) :
+# la docstring documente les valeurs attendues, alignées par CONVENTION sur
+# ``parametres.ApprovalPolicy.ActionType`` (discount/quote_amount/
+# purchase_order/expense/contract/refund) et sur les noms créés par un admin
+# dans ``automation.ApprovalRequestType`` — jamais un import Python de ces
+# catalogues (``core`` reste une couche de base, contrat import-linter
+# ``core-foundation-is-a-base-layer``).
+class MatriceApprobation(TenantModel):
+    """Ligne de matrice d'approbation : objet × montant × département → chaîne.
+
+    ``chaine_paliers`` est une liste JSON ORDONNÉE de paliers :
+    ``[{"palier": 1, "nombre_approbateurs_requis": 1, "role_requis": "..."},
+    ...]`` — remplace le simple ``approver_tier`` unique de FG25. Une chaîne
+    vide est rejetée à la validation (une matrice active doit décrire au
+    moins un palier).
+    """
+
+    type_objet = models.CharField(
+        "Type d'objet", max_length=40,
+        help_text=(
+            "Valeur libre alignée par convention sur "
+            "parametres.ApprovalPolicy.ActionType ou sur le nom d'un "
+            "automation.ApprovalRequestType — jamais dupliquée ici."))
+    departement = models.CharField(
+        'Département', max_length=80, blank=True, default='',
+        help_text="Libellé libre (aligné sur roles.Role/service RH). "
+                  "Vide = s'applique à tous les départements.")
+    montant_min = models.DecimalField(
+        'Montant minimum', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+        help_text='NULL = borne non fixée (ouverte de ce côté).')
+    montant_max = models.DecimalField(
+        'Montant maximum', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+        help_text='NULL = borne non fixée (ouverte de ce côté).')
+    chaine_paliers = models.JSONField(
+        'Chaîne de paliers', default=list, blank=True,
+        help_text='Liste ordonnée de '
+                  '{palier, nombre_approbateurs_requis, role_requis}.')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = "Matrice d'approbation"
+        verbose_name_plural = "Matrices d'approbation"
+        ordering = ['type_objet', 'departement', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_objet', 'actif'],
+                name='core_matappr_co_typ_act_idx'),
+        ]
+
+    def __str__(self):
+        cible = self.departement or 'tous départements'
+        return f'{self.type_objet} ({cible})'
+
+    def couvre(self, montant, departement=None):
+        """Indique si cette ligne couvre un couple (montant, département).
+
+        Le département est couvert si la ligne vise « tous départements »
+        (``departement`` vide) OU correspond exactement (comparaison
+        insensible à la casse). Le montant est couvert s'il tombe dans
+        ``[montant_min, montant_max]`` (bornes incluses ; NULL = ouverte).
+        """
+        if self.departement:
+            if not departement:
+                return False
+            if self.departement.strip().lower() != str(departement).strip().lower():
+                return False
+        if montant is None:
+            return self.montant_min is None and self.montant_max is None
+        from decimal import Decimal
+        try:
+            montant = Decimal(str(montant))
+        except Exception:
+            return False
+        if self.montant_min is not None and montant < self.montant_min:
+            return False
+        if self.montant_max is not None and montant > self.montant_max:
+            return False
+        return True
+
+    def largeur_intervalle(self):
+        """Largeur de l'intervalle de montant (départage de spécificité).
+
+        Une borne ouverte (NULL) compte comme « infinie » : une ligne bornée
+        des deux côtés est plus spécifique qu'une ligne à borne ouverte.
+        """
+        if self.montant_min is None or self.montant_max is None:
+            return None
+        return self.montant_max - self.montant_min
+
+
+# ---------------------------------------------------------------------------
+# NTWFL12/13 — Formulaires dynamiques rattachés aux processus BPM.
+#
+# ``FormulaireDefinition`` reste un modèle SÉPARÉ de
+# ``customfields.CustomFieldDef`` (même vocabulaire de types pour la
+# cohérence UX — texte/nombre/date/choix/booléen/section — mais un
+# formulaire s'attache à une ÉTAPE de workflow, jamais directement à un
+# objet métier). ``schema`` est une liste ORDONNÉE de champs :
+# ``[{nom, type, requis, options?, repetable?}, ...]`` — un champ
+# ``type='section'`` avec ``repetable=True`` capture N occurrences (une
+# LISTE de sous-dicts dans ``WorkflowStepInstance.donnees_formulaire``).
+# ``champs_conditionnels`` : ``{nom_champ: {"visible_si": <condition FG367>}}``
+# — réutilise ``core.rules.evaluate_condition_group`` (AUCUN nouveau moteur
+# de conditions), évaluée contre les AUTRES réponses déjà saisies.
+# ---------------------------------------------------------------------------
+
+class FormulaireDefinition(TenantModel):
+    """Formulaire dynamique rattachable à une ``WorkflowStepDefinition``."""
+
+    code = models.CharField(
+        'Code', max_length=64,
+        help_text='Identifiant stable par société (ex. « demande_conge »).')
+    nom = models.CharField('Nom', max_length=160)
+    schema = models.JSONField(
+        'Schéma', default=list, blank=True,
+        help_text='Liste ordonnée de champs typés '
+                  '{nom, type, requis, options?, repetable?}.')
+    champs_conditionnels = models.JSONField(
+        'Champs conditionnels', default=dict, blank=True,
+        help_text='{nom_champ: {"visible_si": <condition core.rules>}}.')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Formulaire dynamique'
+        verbose_name_plural = 'Formulaires dynamiques'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='core_formdef_company_code_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.code})'
+
+
+class FormulaireChampReutilisable(TenantModel):
+    """NTWFL13 — champ de formulaire réutilisable (bibliothèque partagée).
+
+    Inséré PAR RÉFÉRENCE (``ref``, résolu côté frontend/serializer — le champ
+    inline dans ``FormulaireDefinition.schema`` porte ``{"ref": <id>}``
+    plutôt qu'une redéfinition complète) dans plusieurs formulaires : modifier
+    ce champ met à jour son libellé PARTOUT où il est référencé, sans
+    dupliquer sa définition."""
+
+    nom = models.CharField('Nom', max_length=160)
+    type = models.CharField(
+        'Type', max_length=20,
+        choices=[
+            ('texte', 'Texte'), ('nombre', 'Nombre'), ('date', 'Date'),
+            ('choix', 'Choix'), ('booleen', 'Booléen'),
+        ])
+    options = models.JSONField(
+        'Options', default=list, blank=True,
+        help_text='Liste des choix possibles (type « choix » uniquement).')
+
+    class Meta:
+        verbose_name = 'Champ de formulaire réutilisable'
+        verbose_name_plural = 'Champs de formulaire réutilisables'
+        ordering = ['nom', 'id']
+
+    def __str__(self):
+        return self.nom
 
 
 # ---------------------------------------------------------------------------
@@ -1420,13 +1678,22 @@ class DataSubjectRequest(TimestampedModel):
     ]
 
     STATUT_RECUE = 'recue'
+    # NTGRC3 — étape de VÉRIFICATION D'IDENTITÉ : on ne livre jamais les
+    # données d'une personne sans s'être assuré que le demandeur est bien
+    # elle. Couche de statut DOCUMENTAIRE, séparée et permanente, sans aucun
+    # rapport avec le funnel commercial de STAGES.py.
+    STATUT_EN_VERIFICATION = 'en_verification'
     STATUT_TRAITEE = 'traitee'
     STATUT_REFUSEE = 'refusee'
     STATUT_CHOICES = [
         (STATUT_RECUE, 'Reçue'),
+        (STATUT_EN_VERIFICATION, "En vérification d'identité"),
         (STATUT_TRAITEE, 'Traitée'),
         (STATUT_REFUSEE, 'Refusée'),
     ]
+
+    #: NTGRC3 — délai légal de réponse (loi 09-08), en jours.
+    DELAI_LEGAL_JOURS = 30
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -1437,11 +1704,37 @@ class DataSubjectRequest(TimestampedModel):
         help_text='Email ou téléphone de la personne concernée.')
     kind = models.CharField('Type', max_length=20, choices=KIND_CHOICES)
     statut = models.CharField(
-        'Statut', max_length=12, choices=STATUT_CHOICES, default=STATUT_RECUE)
+        'Statut', max_length=20, choices=STATUT_CHOICES, default=STATUT_RECUE)
     resultat = models.JSONField(
         'Résultat', default=dict, blank=True,
         help_text="Payload d'export (accès) ou compte-rendu d'effacement.")
     traitee_le = models.DateTimeField('Traitée le', null=True, blank=True)
+    # ── NTGRC2 — dépôt PUBLIC de la demande (portail loi 09-08) ──────────────
+    # Preuve du dépôt, posée CÔTÉ SERVEUR uniquement : horodatage serveur, IP
+    # et user-agent du déposant. Vide pour toute demande saisie en interne
+    # (comportement historique strictement inchangé).
+    preuve = models.JSONField(
+        'Preuve de dépôt', default=dict, blank=True,
+        help_text='Horodatage serveur, IP et user-agent du dépôt public.')
+    # Jeton de SUIVI opaque, distinct de l'id : le déposant suit sa demande
+    # sans qu'aucun identifiant interne ne fuite, et sans énumération possible.
+    # NULL pour les demandes internes (plusieurs NULL restent autorisés par
+    # l'unicité Postgres).
+    token_suivi = models.CharField(
+        'Jeton de suivi', max_length=64, null=True, blank=True, unique=True,
+        help_text='Jeton opaque de suivi public (jamais l\'identifiant réel).')
+    # ── NTGRC3 — échéance légale + pièces du dossier ─────────────────────────
+    # Posée À LA CRÉATION (= date de réception + 30 jours, loi 09-08) et jamais
+    # recalculée ensuite : une demande ne voit pas son délai légal reculer.
+    date_echeance = models.DateTimeField(
+        'Échéance légale', null=True, blank=True,
+        help_text='Date de réception + 30 jours (loi 09-08).')
+    # Pièces justificatives du dossier (clés de stockage + libellés) — jamais
+    # la pièce elle-même, jamais de donnée personnelle brute.
+    pieces = models.JSONField(
+        'Pièces du dossier', default=list, blank=True,
+        help_text='Liste de {libelle, cle} — références de pièces, jamais '
+                  'leur contenu.')
 
     class Meta:
         verbose_name = 'Demande de personne concernée'
@@ -1452,7 +1745,25 @@ class DataSubjectRequest(TimestampedModel):
                          name='core_dsr_co_statut_idx'),
             models.Index(fields=['company', 'subject_identifier'],
                          name='core_dsr_co_subj_idx'),
+            # NTGRC3 — balayage « demandes en retard » (échéance × statut).
+            models.Index(fields=['company', 'date_echeance'],
+                         name='core_dsr_co_echeance_idx'),
         ]
+
+    def save(self, *args, **kwargs):
+        """Pose l'échéance légale UNE FOIS, à la création.
+
+        ``created_at`` n'existe pas encore au moment où l'on écrit la ligne
+        (``auto_now_add`` est résolu pendant l'INSERT) : on prend donc
+        l'instant courant, qui est le même à la microseconde près. Une
+        échéance déjà posée n'est JAMAIS recalculée — sinon le délai légal
+        reculerait à chaque enregistrement.
+        """
+        if self.date_echeance is None:
+            base = self.created_at or timezone.now()
+            self.date_echeance = base + timezone.timedelta(
+                days=self.DELAI_LEGAL_JOURS)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f'DSR {self.kind} — {self.subject_identifier} ({self.statut})'

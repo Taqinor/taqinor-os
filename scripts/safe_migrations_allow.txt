@@ -75,3 +75,8 @@ backend/django_core/apps/parametres/migrations/0080_remove_companyprofile_pannea
 # reversal (restores the column with its default of False) — no companion data
 # plan needed, the column carried no decision anywhere.
 backend/django_core/apps/crm/migrations/0088_crx35_retrait_playbook_bloquant.py
+# NTGRC3 (12/09/2026) — index (company, date_echeance) sur core.DataSubjectRequest :
+# table DSR quasi vide en production (quelques demandes), la construction de
+# l'index est instantanee — le verrou d'un AddIndex nu y est negligeable, et une
+# migration concurrent separee recreerait une collision de numerotation inter-lots.
+backend/django_core/core/migrations/0056_ntgrc3_dsr_echeance.py

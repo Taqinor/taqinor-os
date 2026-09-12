@@ -1,4 +1,4 @@
-"""NTAPI15 — Import bulk asynchrone `POST /api/public/imports/` (leads/activités).
+"""NTAPI15 — Import bulk asynchrone `POST /api/public/v1/imports/` (leads/activités).
 
 Couvre : upload CSV/JSONL → `BulkJob` import, mode `create`/`upsert` (dédup
 email/téléphone), un fichier MIXTE crée les lignes valides et liste
@@ -89,7 +89,7 @@ class Ntapi15ImportEndpointTests(_MinioMixin, TestCase):
         _api_key, raw = _key(self.co, [])
         upload = SimpleUploadedFile('l.csv', b'nom\nx\n', content_type='text/csv')
         resp = _client(raw).post(
-            '/api/public/imports/',
+            '/api/public/v1/imports/',
             {'entite': 'leads', 'file': upload}, format='multipart')
         self.assertEqual(resp.status_code, 403)
 
@@ -98,7 +98,7 @@ class Ntapi15ImportEndpointTests(_MinioMixin, TestCase):
         upload = SimpleUploadedFile('l.csv', b'nom\nx\n', content_type='text/csv')
         with mock.patch.object(bulk, '_dispatch_import'):
             resp = _client(raw).post(
-                '/api/public/imports/',
+                '/api/public/v1/imports/',
                 {'entite': 'leads', 'file': upload}, format='multipart')
         self.assertEqual(resp.status_code, 202)
         self.assertEqual(BulkJob.objects.filter(company=self.co).count(), 1)

@@ -642,6 +642,94 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             company, article_id)})
 
 
+# ── NTPRT35 — Widget « Satisfaction » post-interaction ──────────────────────
+
+class SatisfactionPortailSerializer(serializers.Serializer):
+    """L'enquête en attente, ou ``enquete: null`` quand il n'y a rien à
+    demander."""
+    enquete = serializers.DictField(allow_null=True)
+
+
+class SatisfactionPortailViewSet(viewsets.ViewSet):
+    """NTPRT35 — prompt de satisfaction du portail client.
+
+    C'est le DÉCLENCHEUR D'INTERFACE qui manquait à FG238/FG239 : l'enquête
+    (``marketing.EnqueteNPS``) était bien CRÉÉE à la réception d'un chantier
+    (YSERV4) mais le client n'avait aucun écran pour y répondre. Aucune
+    logique de scoring n'est ajoutée ici : la lecture passe par
+    ``marketing.selectors``, l'écriture par ``marketing.services`` — jamais
+    un import de ses ``models``.
+
+    « Une fois par événement » (critère d'acceptation) ne repose sur AUCUN
+    compteur de session : une enquête par événement (contrainte d'unicité
+    AUD618 sur le chantier), et y répondre la passe à ``REPONDUE``, donc hors
+    du sélecteur — définitivement. Fermer le prompt sans répondre n'écrit
+    rien : la question revient, ce qui est le comportement voulu (on n'a pas
+    encore l'avis), mais elle ne se REJOUE jamais une fois répondue.
+
+    FG239 (avis Google) reste un ROUTAGE, pas une API payante : après une
+    réponse de promoteur, on renvoie le lien SI la société en a configuré un
+    (``GOOGLE_REVIEW_URL``) — vide sinon, sans erreur.
+    """
+
+    permission_classes = [IsPortalClientUser]
+    serializer_class = SatisfactionPortailSerializer
+
+    @extend_schema(responses=SatisfactionPortailSerializer)
+    def list(self, request):
+        from apps.marketing.selectors import enquete_satisfaction_en_attente
+        company, client_id = _scope(request)
+        return Response({
+            'enquete': enquete_satisfaction_en_attente(company, client_id)})
+
+    @extend_schema(
+        request=inline_serializer(
+            name='SatisfactionPortailReponse',
+            fields={
+                'enquete_id': serializers.IntegerField(),
+                'score': serializers.IntegerField(),
+                'commentaire': serializers.CharField(
+                    required=False, allow_blank=True),
+            }),
+        responses=inline_serializer(
+            name='SatisfactionPortailMerci',
+            fields={
+                'detail': serializers.CharField(),
+                'lien_avis_google': serializers.CharField(allow_blank=True),
+            }))
+    @action(detail=False, methods=['post'], url_path='repondre',
+            permission_classes=[IsPortalClientUser])
+    def repondre(self, request):
+        """Enregistre la note. Les erreurs NOMMENT le champ fautif."""
+        from apps.marketing.services import (
+            repondre_enquete_satisfaction_client,
+        )
+
+        company, client_id = _scope(request)
+        enquete, erreur = repondre_enquete_satisfaction_client(
+            company, client_id, request.data.get('enquete_id'),
+            score=request.data.get('score'),
+            commentaire=request.data.get('commentaire') or '')
+        if erreur == 'score':
+            return Response(
+                {'score': 'Donnez une note entre 0 et 10.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if erreur is not None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # FG239 — routage (jamais une API payante) : le lien n'est proposé
+        # qu'au promoteur, et seulement si la société en a configuré un.
+        lien = ''
+        if enquete.categorie == 'promoteur':
+            from apps.marketing.services import google_review_url_configuree
+            lien = google_review_url_configuree()
+        return Response({
+            'detail': 'Merci pour votre retour !',
+            'lien_avis_google': lien,
+        })
+
+
 # ── NTPRT14 — « Mes chantiers » (timeline + photos avant/pendant/après) ────
 #
 # ``viewsets.ViewSet`` nu (aucun queryset), même remarque YAPIC6 que

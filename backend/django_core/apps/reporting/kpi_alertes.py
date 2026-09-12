@@ -22,6 +22,14 @@ Catalogue fermé (``KpiAlerte.Kpi``) :
   * ``taux_service_scm`` (NTSCM46) — % de SKU sous politique de stock qui ne
                                 sont pas en rupture/à commander
                                 (``apps.scm.selectors.tableau_bord_executif``).
+  * ``juridique_dossiers_ouverts`` / ``juridique_montant_en_jeu_total`` /
+    ``juridique_taux_gain`` / ``juridique_delai_moyen_resolution`` (NTJUR48)
+                              — les quatre KPI du contentieux
+                                (``apps.juridique.selectors.kpis_juridiques``).
+                                Ils EXCLUENT toujours les dossiers
+                                confidentiels des agrégats visibles à un rôle
+                                non autorisé — le filtrage vit dans le
+                                sélecteur, jamais chez l'appelant.
 """
 from decimal import Decimal
 
@@ -37,21 +45,55 @@ class KpiAlerteSerializer(serializers.ModelSerializer):
     kpi_label = serializers.CharField(source='get_kpi_display', read_only=True)
     operateur_label = serializers.CharField(
         source='get_operateur_display', read_only=True)
+    # NTDATA13 — clé lisible de la métrique ciblée (vide pour une alerte
+    # « catalogue »), pour que l'écran n'ait pas à re-interroger semantic.
+    metric_cle = serializers.CharField(
+        source='metric_definition.cle', read_only=True, default='')
 
     class Meta:
         model = KpiAlerte
         # company posée côté serveur — jamais lue du corps.
         fields = [
-            'id', 'nom', 'kpi', 'kpi_label', 'operateur', 'operateur_label',
+            'id', 'nom', 'source', 'kpi', 'kpi_label', 'metric_definition',
+            'metric_cle', 'operateur', 'operateur_label',
             'seuil', 'destinataire_role', 'destinataires_utilisateurs',
             'actif', 'deja_notifie', 'derniere_valeur',
             'derniere_evaluation_le', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'kpi_label', 'operateur_label', 'deja_notifie',
-            'derniere_valeur', 'derniere_evaluation_le', 'created_at',
-            'updated_at',
+            'id', 'kpi_label', 'metric_cle', 'operateur_label',
+            'deja_notifie', 'derniere_valeur', 'derniere_evaluation_le',
+            'created_at', 'updated_at',
         ]
+
+    def validate(self, attrs):
+        """NTDATA13 — la même règle que ``KpiAlerte.clean()``, rendue au
+        CHAMP fautif (le front sait alors lequel surligner).
+
+        La métrique est cherchée DANS LA SOCIÉTÉ de l'appelant : le corps de
+        requête ne peut pas faire pointer une alerte vers le tenant voisin.
+        """
+        instance = getattr(self, 'instance', None)
+        source = attrs.get('source', getattr(instance, 'source', None)
+                           or KpiAlerte.Source.CATALOGUE)
+        metrique = attrs.get(
+            'metric_definition', getattr(instance, 'metric_definition', None))
+        kpi = attrs.get('kpi', getattr(instance, 'kpi', ''))
+        if source == KpiAlerte.Source.METRIQUE:
+            if metrique is None:
+                raise serializers.ValidationError({
+                    'metric_definition':
+                        'Choisissez la métrique nommée à surveiller.'})
+            requete = self.context.get('request')
+            company = getattr(getattr(requete, 'user', None), 'company', None)
+            if company is not None and metrique.company_id != company.id:
+                raise serializers.ValidationError({
+                    'metric_definition':
+                        "Cette métrique appartient à une autre société."})
+        elif not kpi:
+            raise serializers.ValidationError({
+                'kpi': 'Choisissez le KPI à surveiller.'})
+        return attrs
 
 
 class KpiAlerteViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -120,6 +162,25 @@ def _compute_taux_service_scm(company):
     return Decimal(str(taux)) if taux is not None else None
 
 
+def _kpis_juridiques(company, user):
+    """NTJUR48 — les quatre KPI juridiques en UN seul appel au sélecteur de
+    ``apps.juridique`` (import paresseux — ``reporting`` reste un satellite,
+    aucun import de modèle métier). Le filtrage de CONFIDENTIALITÉ est porté
+    par le sélecteur : ``user`` décide, l'appelant n'a rien à deviner."""
+    from apps.juridique.selectors import kpis_juridiques
+    return kpis_juridiques(company, user=user)
+
+
+def _compute_juridique(company, user, cle):
+    """Extrait UNE des quatre valeurs. ``None`` (KPI ignoré, jamais un 0
+    trompeur) quand la métrique n'est pas définie — aucun dossier clos, par
+    exemple."""
+    valeur = _kpis_juridiques(company, user).get(cle)
+    if valeur is None:
+        return None
+    return Decimal(str(valeur))
+
+
 # SOL14 — module PROPRIÉTAIRE d'un KPI, quand il en a un. Un KPI dont le
 # module est éteint pour la société DÉGRADE PROPREMENT : valeur `None`, donc
 # aucun franchissement, aucune notification, et la tuile disparaît de l'écran
@@ -129,6 +190,12 @@ def _compute_taux_service_scm(company):
 KPI_MODULE = {
     KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT: 'douane',
     KpiAlerte.Kpi.TAUX_SERVICE_SCM: 'scm',
+    # NTJUR48 — module `juridique` éteint pour la société ⇒ dégradation propre
+    # (valeur None, aucune notification, tuile masquée).
+    KpiAlerte.Kpi.JURIDIQUE_DOSSIERS_OUVERTS: 'juridique',
+    KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: 'juridique',
+    KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: 'juridique',
+    KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: 'juridique',
 }
 
 
@@ -162,7 +229,45 @@ _KPI_COMPUTERS = {
         _compute_delai_moyen_dedouanement(company),
     KpiAlerte.Kpi.TAUX_SERVICE_SCM: lambda company, user:
         _compute_taux_service_scm(company),
+    # NTJUR48 — les quatre KPI juridiques passent le ``user`` au sélecteur :
+    # c'est LUI qui exclut les dossiers confidentiels de l'agrégat.
+    KpiAlerte.Kpi.JURIDIQUE_DOSSIERS_OUVERTS: lambda company, user:
+        _compute_juridique(company, user, 'juridique_dossiers_ouverts'),
+    KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: lambda company, user:
+        _compute_juridique(company, user, 'juridique_montant_en_jeu_total'),
+    KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: lambda company, user:
+        _compute_juridique(company, user, 'juridique_taux_gain'),
+    KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: lambda company, user:
+        _compute_juridique(company, user,
+                           'juridique_delai_moyen_resolution'),
 }
+
+
+def _compute_metrique(alerte, user):
+    """NTDATA13 — la valeur d'une alerte de source « métrique ».
+
+    Passe par le résolveur de la couche sémantique (NTDATA8, import
+    FONCTION-LOCAL : `reporting` n'importe `semantic` qu'à l'appel). La
+    métrique est résolue SANS regroupement — un seuil compare un nombre, pas
+    une série — et le lecteur transmis est l'utilisateur représentatif de la
+    société, donc un champ sous permission reste masqué (AUD801) et la
+    métrique rend alors VIDE plutôt que de divulguer.
+
+    Rend `None` (aucun franchissement) quand la métrique est introuvable,
+    inactive ou inexécutable : une alerte ne doit jamais se déclencher sur un
+    chiffre qui n'existe pas.
+    """
+    from apps.semantic import services as semantic_services
+
+    try:
+        valeur = semantic_services.resolve_metric_valeur(
+            alerte.company, user, alerte.metric_definition.cle)
+    except (semantic_services.MetriqueInconnue,
+            semantic_services.MetriqueNonResolvable):
+        return None
+    if valeur is None:
+        return None
+    return Decimal(str(valeur))
 
 
 def _resolve_representative_user(company):
@@ -187,14 +292,26 @@ def evaluate_kpi_alerte(alerte, *, now=None):
     manquante dégrade à ``valeur=None`` (jamais de franchissement)."""
     from django.utils import timezone
 
-    computer = _KPI_COMPUTERS.get(alerte.kpi)
-    if computer is None:
-        return None, False, False
-
-    # SOL14 — module du KPI éteint pour cette société : dégradation propre
-    # (aucune valeur, donc aucun franchissement ni notification, et la tuile
-    # disparaît). On n'appelle SURTOUT pas le sélecteur d'une app coupée.
-    if not kpi_disponible(alerte.company, alerte.kpi):
+    # NTDATA13 — deux SOURCES possibles. `catalogue` (le défaut, et toutes
+    # les alertes existantes) passe par le catalogue fermé ci-dessus ;
+    # `metrique` résout N'IMPORTE QUELLE MetricDefinition de la société via la
+    # couche sémantique (NTDATA8). Les deux chemins partagent ensuite
+    # EXACTEMENT la même comparaison, la même dédup et la même notification.
+    est_metrique = alerte.source == KpiAlerte.Source.METRIQUE
+    computer = None
+    if not est_metrique:
+        computer = _KPI_COMPUTERS.get(alerte.kpi)
+        if computer is None:
+            return None, False, False
+        # SOL14 — module du KPI éteint pour cette société : dégradation propre
+        # (aucune valeur, donc aucun franchissement ni notification, et la
+        # tuile disparaît). On n'appelle SURTOUT pas le sélecteur d'une app
+        # coupée.
+        if not kpi_disponible(alerte.company, alerte.kpi):
+            return None, False, False
+    elif alerte.metric_definition_id is None:
+        # Définition supprimée : l'alerte survit (SET_NULL) mais n'a plus rien
+        # à mesurer — aucune valeur, donc aucun franchissement.
         return None, False, False
 
     user = _resolve_representative_user(alerte.company)
@@ -202,7 +319,10 @@ def evaluate_kpi_alerte(alerte, *, now=None):
         return None, False, False
 
     try:
-        valeur = computer(alerte.company, user)
+        if est_metrique:
+            valeur = _compute_metrique(alerte, user)
+        else:
+            valeur = computer(alerte.company, user)
     except Exception:  # pragma: no cover - dégradation défensive
         valeur = None
 
@@ -263,7 +383,8 @@ def evaluate_all_kpi_alertes(now=None):
     Appelée par le job Beat quotidien. Chaque alerte est isolée (une erreur
     n'interrompt jamais les suivantes)."""
     results = []
-    for alerte in KpiAlerte.objects.filter(actif=True).select_related('company'):
+    for alerte in KpiAlerte.objects.filter(actif=True).select_related(
+            'company', 'metric_definition'):
         try:
             valeur, franchi, notifie = evaluate_kpi_alerte(alerte, now=now)
             results.append({

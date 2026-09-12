@@ -52,6 +52,11 @@ class VentesConfig(AppConfig):
         # démarrage. Idempotent si ready() est appelé plusieurs fois.
         from .agent_actions import register_ventes_actions
         register_ventes_actions()
+        # NTDATA1 — déclare les datasets BI ventes (devis/factures/paiements)
+        # dans `core.data_explorer`, exactement comme `sav` le fait : c'est
+        # l'app propriétaire qui déclare, le noyau qui exécute. Idempotent.
+        from . import bi_datasets
+        bi_datasets.register_dataset()
         # YLEDG12 — abonne ventes à `payment_captured` (core FG370) : câble
         # les récepteurs du bus d'événements (M6). Import local, jamais
         # d'effet de bord à l'import du module.
@@ -73,3 +78,12 @@ class VentesConfig(AppConfig):
         produit_modifie.connect(
             on_produit_modifie,
             dispatch_uid='ventes_resync_devis_on_produit_modifie')
+        # NTGRC1 — fournisseur DSR (loi 09-08) des Ventes : `core.dsr` agrège
+        # l'export/effacement sans importer aucune app métier ; c'est CHAQUE
+        # app qui s'enregistre. Idempotent (le registre est un dict par nom).
+        from . import dsr_provider
+        dsr_provider.register()
+        # NTGRC4 — rétention des factures pilotée par les politiques GRC, en
+        # SIGNALEMENT seul (obligations comptables et fiscales).
+        from . import retention
+        retention.register()

@@ -35,6 +35,13 @@ const litigesApi = {
   resoudre: (id) => api.post(`/litiges/reclamations/${id}/resoudre/`),
   rejeter: (id) => api.post(`/litiges/reclamations/${id}/rejeter/`),
 
+  // ── NTJUR6/NTJUR23 — escalade vers un dossier juridique ──
+  // IDEMPOTENT côté serveur : 201 à la création, 200 si la réclamation est
+  // déjà liée (le même dossier est renvoyé — jamais de doublon). Réponse :
+  // { dossier_juridique_id, reference, cree }.
+  escaladerJuridique: (id, data) =>
+    api.post(`/litiges/reclamations/${id}/escalader-juridique/`, data || {}),
+
   // ── Chatter (historique + note libre) ──
   historique: (id) => api.get(`/litiges/reclamations/${id}/historique/`),
   noter: (id, message) =>

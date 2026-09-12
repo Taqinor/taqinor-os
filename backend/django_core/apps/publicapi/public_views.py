@@ -1,4 +1,4 @@
-"""Vues LECTURE SEULE de l'API publique (N89), sous /api/public/.
+"""Vues LECTURE SEULE de l'API publique (N89), sous /api/public/v1/.
 
 Chaque vue est authentifiée par clé d'API (ApiKeyAuthentication), scopée à la
 société de la clé (jamais cross-tenant), paginée et protégée par un scope

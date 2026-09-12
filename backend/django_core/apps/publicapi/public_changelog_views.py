@@ -1,4 +1,4 @@
-"""NTAPI24 — fil « changelog API » dédié, sous /api/public/.
+"""NTAPI24 — fil « changelog API » dédié, sous /api/public/v1/.
 
 Réutilise/étend FG399 (`core.models.ChangelogEntry`) au lieu d'un modèle
 dupliqué : ce fil est le SOUS-ENSEMBLE des notes de version marquées
@@ -39,7 +39,7 @@ def _serialize(entry):
 
 
 class PublicChangelogView(APIView):
-    """``GET /api/public/changelog/`` — fil des notes de version PUBLIÉES,
+    """``GET /api/public/v1/changelog/`` — fil des notes de version PUBLIÉES,
     triable/filtrable par ``?version=``. Aucune clé d'API requise (document
     de découverte global, sans donnée de société)."""
     authentication_classes = []

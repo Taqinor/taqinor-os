@@ -1,6 +1,6 @@
 """NTAPI27 — bac à sable API avec données de démo.
 
-`seed_api_sandbox` (idempotent, additif) et `POST /api/public/sandbox/reset/`
+`seed_api_sandbox` (idempotent, additif) et `POST /api/public/v1/sandbox/reset/`
 (clé `test` seule) : une clé test lit des leads de démo, en crée un, puis un
 reset restaure l'état initial.
 """
@@ -82,13 +82,13 @@ class Ntapi27SandboxTests(TestCase):
         client = _key_client(raw)
 
         # 1) Lit des leads de démo.
-        listing = client.get('/api/public/leads/')
+        listing = client.get('/api/public/v1/leads/')
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(len(listing.data['results']), len(DEMO_LEADS))
 
         # 2) En crée un.
         create_resp = client.post(
-            '/api/public/leads-write/', {'nom': 'Lead créé par la clé test'},
+            '/api/public/v1/leads-write/', {'nom': 'Lead créé par la clé test'},
             format='json')
         self.assertEqual(create_resp.status_code, 201)
         self.assertEqual(
@@ -96,7 +96,7 @@ class Ntapi27SandboxTests(TestCase):
             len(DEMO_LEADS) + 1)
 
         # 3) Reset restaure l'état initial.
-        reset_resp = client.post('/api/public/sandbox/reset/')
+        reset_resp = client.post('/api/public/v1/sandbox/reset/')
         self.assertEqual(reset_resp.status_code, 200)
         self.assertEqual(
             Lead.objects.filter(company=tenant.sandbox_company).count(),

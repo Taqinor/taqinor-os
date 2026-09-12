@@ -84,3 +84,18 @@ def journaliser_note(reclamation, message, *, user=None):
         auteur=user if (
             user and getattr(user, 'is_authenticated', False)) else None,
     )
+
+
+def lier_dossier_juridique(reclamation, dossier_id):
+    """NTJUR6 — pose la référence LÂCHE vers le dossier juridique escaladé.
+
+    Point d'entrée services pour ``apps.juridique`` : il pose l'identifiant
+    sans jamais importer ``apps.litiges.models``. IDEMPOTENT — une réclamation
+    déjà liée n'est pas réécrite (le premier dossier reste le bon), ce qui
+    interdit mécaniquement la double-création côté appelant. Renvoie l'id du
+    dossier effectivement lié."""
+    if reclamation.dossier_juridique_id:
+        return reclamation.dossier_juridique_id
+    reclamation.dossier_juridique_id = dossier_id
+    reclamation.save(update_fields=['dossier_juridique_id'])
+    return dossier_id

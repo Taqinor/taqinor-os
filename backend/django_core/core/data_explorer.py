@@ -78,8 +78,21 @@ class ChampNonAutorise(Exception):
     """Champ/filtre hors de la liste blanche du dataset."""
 
 
+# ── NTDATA5 — MÉTADONNÉES BI D'UN CHAMP ─────────────────────────────────────
+# Le catalogue ne disait QUE le nom brut d'un champ : impossible pour le front
+# de proposer « une mesure à agréger » distincte d'« une dimension à croiser »
+# ou d'« un axe de temps ». Trois natures suffisent, et le défaut est
+# RÉTRO-COMPATIBLE : un champ sans métadonnée reste une dimension texte —
+# aucun dataset existant n'a à être touché pour continuer de fonctionner.
+TYPE_DIMENSION = 'dimension'
+TYPE_MESURE = 'mesure'
+TYPE_TEMPS = 'temps'
+TYPES_CHAMP = (TYPE_DIMENSION, TYPE_MESURE, TYPE_TEMPS)
+
+
 def register_dataset(name, label, fields, queryset_provider,
-                     cache_partage=False, gated_fields=None):
+                     cache_partage=False, gated_fields=None,
+                     field_meta=None):
     """Enregistre un dataset interrogeable (idempotent).
 
     ``fields`` = liste blanche de chemins de champs. ``queryset_provider`` =
@@ -98,6 +111,13 @@ def register_dataset(name, label, fields, queryset_provider,
     ``user`` est ``None``). Un dataset qui déclare des champs gated ne peut PAS
     partager son cache : le résultat dépend du LECTEUR, pas seulement de la
     société — ``cache_partage`` est donc refusé avec ``gated_fields``.
+
+    NTDATA5 — ``field_meta`` : dict OPTIONNEL ``{champ: {'label': 'Montant
+    TTC', 'type': 'mesure'}}`` déclaré par le ``bi_datasets.py`` de l'app
+    propriétaire. ``type`` ∈ ``dimension`` | ``mesure`` | ``temps``. Un champ
+    absent du dict — ou un dataset sans ``field_meta`` du tout — reste une
+    DIMENSION portant son propre nom comme libellé : strictement le rendu
+    d'avant NTDATA5.
     """
     if not name or not callable(queryset_provider):
         raise ValueError('Dataset : nom + queryset_provider requis.')
@@ -106,23 +126,92 @@ def register_dataset(name, label, fields, queryset_provider,
         raise ValueError(
             'Dataset %r : « cache_partage » est incompatible avec des champs '
             'sous permission (le résultat dépend du lecteur).' % name)
+    meta = {}
+    for champ, brut in (field_meta or {}).items():
+        brut = dict(brut or {})
+        nature = brut.get('type') or TYPE_DIMENSION
+        if nature not in TYPES_CHAMP:
+            raise ValueError(
+                'Dataset %r, champ %r : type de champ inconnu %r '
+                '(attendu : %s).'
+                % (name, champ, nature, ', '.join(TYPES_CHAMP)))
+        meta[champ] = {'label': brut.get('label') or champ, 'type': nature}
     _DATASETS[name] = {
         'label': label or name,
         'fields': list(fields or []),
         'provider': queryset_provider,
         'cache_partage': bool(cache_partage),
         'gated_fields': gated,
+        'field_meta': meta,
     }
 
 
-def list_datasets():
-    """Catalogue normalisé des datasets enregistrés (rendu stable)."""
-    out = [
-        {'name': name, 'label': d['label'], 'fields': list(d['fields'])}
-        for name, d in _DATASETS.items()
-    ]
+def _champs_decrits(dataset, user=None):
+    """NTDATA5 — les champs d'un dataset, enrichis de leur ``label``/``type``.
+
+    Les champs sous permission que ``user`` n'a pas le droit de voir sont
+    ABSENTS du schéma (même règle qu'``run_query`` : ce que le lecteur ne peut
+    pas interroger, il n'a pas à le voir proposé). ``user=None`` (appelant
+    historique, sans acteur) ⇒ catalogue COMPLET, rendu inchangé.
+    """
+    interdits = champs_interdits(dataset, user) if user is not None else set()
+    meta = dataset.get('field_meta') or {}
+    champs = []
+    for champ in dataset['fields']:
+        if champ in interdits:
+            continue
+        info = meta.get(champ)
+        champs.append({
+            'name': champ,
+            'label': (info or {}).get('label') or champ,
+            'type': (info or {}).get('type') or TYPE_DIMENSION,
+        })
+    return champs
+
+
+def list_datasets(user=None):
+    """Catalogue normalisé des datasets enregistrés (rendu stable).
+
+    ``fields`` (liste de noms) est CONSERVÉ tel quel — tous les consommateurs
+    historiques le lisent. NTDATA5 ajoute ``champs`` : la même liste enrichie
+    de ``label`` + ``type`` (``dimension``/``mesure``/``temps``), pour que le
+    front sache quoi proposer à l'agrégation et quoi proposer au croisement.
+
+    ``user`` (optionnel) — quand il est fourni, les champs sous permission que
+    ce lecteur n'a pas le droit de voir sont retirés des DEUX listes. Omis :
+    rendu historique complet.
+    """
+    out = []
+    for name, d in _DATASETS.items():
+        champs = _champs_decrits(d, user)
+        noms = [c['name'] for c in champs]
+        out.append({
+            'name': name,
+            'label': d['label'],
+            'fields': list(d['fields']) if user is None else noms,
+            'champs': champs,
+        })
     out.sort(key=lambda d: d['name'])
     return out
+
+
+def describe_dataset(name, user=None):
+    """NTDATA5 — schéma DÉTAILLÉ d'un seul dataset (endpoint de détail).
+
+    Lève ``DatasetInconnu`` si le dataset n'existe pas.
+    """
+    dataset = get_dataset(name)
+    champs = _champs_decrits(dataset, user)
+    return {
+        'name': name,
+        'label': dataset['label'],
+        'fields': [c['name'] for c in champs],
+        'champs': champs,
+        'mesures': [c['name'] for c in champs if c['type'] == TYPE_MESURE],
+        'dimensions': [c['name'] for c in champs
+                       if c['type'] == TYPE_DIMENSION],
+        'temps': [c['name'] for c in champs if c['type'] == TYPE_TEMPS],
+    }
 
 
 def get_dataset(name):

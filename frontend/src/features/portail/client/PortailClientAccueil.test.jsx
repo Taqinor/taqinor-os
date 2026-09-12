@@ -18,7 +18,10 @@ import { reponseContrat } from '../../../test/fixtures/contractSamples'
    ========================================================================== */
 
 vi.mock('../../../api/portailApi', () => ({
-  default: { tableauDeBord: vi.fn() },
+  default: {
+    tableauDeBord: vi.fn(),
+    satisfaction: { enAttente: vi.fn(), repondre: vi.fn() },
+  },
 }))
 
 import portailApi from '../../../api/portailApi'
@@ -27,6 +30,7 @@ import PortailClientAccueil from './PortailClientAccueil.jsx'
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function renderPage() {
+  portailApi.satisfaction.enAttente.mockResolvedValue({ data: { enquete: null } })
   const store = configureStore({
     reducer: { auth: (s = { user: { first_name: 'Sami' } }) => s },
   })

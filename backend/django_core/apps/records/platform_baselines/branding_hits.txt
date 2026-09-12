@@ -108,3 +108,8 @@ frontend/src/test/a11y.test.jsx
 # Paramètres → Messages). L'entrée deviendra inerte le jour où ces défauts
 # seront eux-mêmes tirés de `company_identity`.
 apps/parametres/models_messages.py
+# NTAPI1/5 (12/09/2026) — l'en-tete de version X-Taqinor-Api-Version est un
+# CONTRAT API public (pattern Stripe-Version) : le nom du produit dans
+# l'en-tete fait partie du contrat NTAPI5, pas un branding d'ecran ; le
+# branding client reste TenantTheme/CompanyProfile.
+apps/publicapi/versioning.py

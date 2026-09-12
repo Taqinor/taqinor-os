@@ -24,3 +24,7 @@ class InstallationsConfig(AppConfig):
         # (import function-local pour éviter les cycles au chargement des apps).
         from .agent_actions import register_installation_actions
         register_installation_actions()
+        # NTDATA4 — déclare le dataset BI `chantiers` dans `core.data_explorer`
+        # (l'app propriétaire déclare, le noyau exécute). Idempotent.
+        from . import bi_datasets
+        bi_datasets.register_dataset()

@@ -8,6 +8,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import uxviewsApi from '../../api/uxviewsApi'
 import rolesApi from '../../api/rolesApi'
+// NTUX1 — migration BEST-EFFORT des vues localStorage historiques
+// (`hooks/useSavedViews.js`) vers l'API serveur, au premier montage d'un
+// écran qui adopte ce hook (jamais bloquant, jamais rejouée après succès).
+import { migrateLocalSavedViewsForEcran } from './migrateLocalSavedViews'
 
 const PREF_PREFIX = 'taqinor.uxviews.pref.'
 
@@ -66,6 +70,17 @@ export function useServerSavedViews(ecran) {
   useEffect(() => { refresh() }, [refresh])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture préférence locale au montage / changement d'écran
   useEffect(() => { setPrefId(readPref(ecran)) }, [ecran])
+
+  // NTUX1 — migration best-effort des vues localStorage historiques de CET
+  // écran, une seule fois (drapeau posé par le module) : si des vues ont
+  // réellement été migrées, on recharge la liste serveur pour les révéler
+  // immédiatement (jamais un rechargement quand il n'y avait rien à migrer).
+  useEffect(() => {
+    if (!ecran) return
+    migrateLocalSavedViewsForEcran(ecran, { create: uxviewsApi.createSavedView })
+      .then((res) => { if (res?.migrated) refresh() })
+      .catch(() => { /* best-effort — ne bloque jamais l'écran */ })
+  }, [ecran, refresh])
 
   const mine = useMemo(() => views.filter((v) => String(v.owner) === String(userId)), [views, userId])
   const team = useMemo(() => views.filter((v) => String(v.owner) !== String(userId)), [views, userId])

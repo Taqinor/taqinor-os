@@ -6146,6 +6146,96 @@ def ajouter_specialite_partenaire(partenaire_id, company, specialite):
     return partenaire
 
 
+# ── NTPRT28 — Deal registration : soumission d'un lead par un partenaire ────
+#
+# Point d'entrée d'ÉCRITURE pour ``apps.portail`` (le portail partenaire
+# authentifié) : la fiche partenaire et ses soumissions vivent ici, donc c'est
+# ici qu'on les écrit — jamais un ``SoumissionLeadPartenaire.objects.create()``
+# depuis une autre app.
+
+#: NTPRT28 — fenêtre pendant laquelle une re-soumission du MÊME prospect par le
+#: MÊME partenaire est traitée comme un doublon (critère d'acceptation).
+FENETRE_DOUBLON_SOUMISSION_JOURS = 30
+
+
+def soumission_partenaire_deja_faite(company, partenaire_id, email_prospect,
+                                     fenetre_jours=None):
+    """NTPRT28 — soumission RÉCENTE du même prospect par le même partenaire.
+
+    Renvoie la soumission existante, ou ``None``. La comparaison se fait sur
+    l'email du prospect, normalisé (casse/espaces) : c'est la seule clé
+    stable dont on dispose côté partenaire. Un email VIDE ne déclenche jamais
+    de doublon — sinon deux prospects anonymes distincts s'annuleraient
+    mutuellement.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import SoumissionLeadPartenaire
+
+    email = (email_prospect or '').strip().lower()
+    if company is None or not partenaire_id or not email:
+        return None
+    jours = (FENETRE_DOUBLON_SOUMISSION_JOURS if fenetre_jours is None
+             else fenetre_jours)
+    depuis = timezone.now() - timedelta(days=jours)
+    return (SoumissionLeadPartenaire.objects
+            .filter(company=company, partenaire_id=partenaire_id,
+                    email_prospect__iexact=email,
+                    date_soumission__gte=depuis)
+            .order_by('-date_soumission')
+            .first())
+
+
+def soumettre_lead_partenaire(company, partenaire_id, donnees):
+    """NTPRT28 — enregistre la soumission d'un prospect par un partenaire.
+
+    Renvoie ``(soumission, doublon)`` :
+
+    * ``(None, None)`` — le partenaire n'existe pas dans CETTE société (jamais
+      d'écriture cross-tenant) ;
+    * ``(None, existante)`` — une soumission du MÊME prospect par le MÊME
+      partenaire date de moins de 30 jours : RIEN n'est créé, l'appelant
+      signale « déjà soumis » (jamais de doublon silencieux) ;
+    * ``(creee, None)`` — nominal.
+
+    ``company`` et ``partenaire`` sont posés par le serveur ; seuls les champs
+    de coordonnées du prospect sont lus de ``donnees``. Le statut naît
+    ``SOUMIS`` : la qualification (et la création du lead réel, référencé par
+    ``lead_id`` — la piste de traçabilité pour la commission) reste un acte
+    INTERNE, jamais un effet de bord de la soumission.
+    """
+    from .models import Partenaire, SoumissionLeadPartenaire
+
+    if company is None or not partenaire_id:
+        return None, None
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return None, None
+
+    donnees = donnees or {}
+    email = str(donnees.get('email_prospect') or '').strip()
+    existante = soumission_partenaire_deja_faite(
+        company, partenaire.id, email)
+    if existante is not None:
+        return None, existante
+
+    soumission = SoumissionLeadPartenaire.objects.create(
+        company=company,
+        partenaire=partenaire,
+        nom_prospect=str(donnees.get('nom_prospect') or '').strip()[:200],
+        telephone_prospect=str(
+            donnees.get('telephone_prospect') or '').strip()[:30],
+        email_prospect=email[:254],
+        ville=str(donnees.get('ville') or '').strip()[:120],
+        note=str(donnees.get('note') or '').strip()[:4000],
+        statut=SoumissionLeadPartenaire.Statut.SOUMIS,
+    )
+    return soumission, None
+
+
 # ---------------------------------------------------------------------------
 # AUD518 — Effets de CRÉATION d'un lead importé (dataimport)
 # ---------------------------------------------------------------------------
@@ -7061,3 +7151,154 @@ def ecrire_retour_lead_visite(lead, recap):
     if champs:
         lead.save(update_fields=champs)
     return lead
+
+
+# ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
+#
+# Sur le modèle de `merge_leads` ci-dessus, mais pour `Client` : le détecteur
+# (`dataquality.services.doublons_clients`) PROPOSE, un humain DÉCIDE, et cette
+# fonction exécute. Jamais de fusion automatique.
+#
+# TROIS GARANTIES DURES :
+#
+# 1. AUCUNE SUPPRESSION. Le doublon n'est jamais effacé : il est NEUTRALISÉ.
+#    `Client` ne porte pas (encore) de drapeau d'archivage — ajouter une
+#    colonne supposerait une migration `crm`, hors du périmètre de cette
+#    tâche. On utilise donc le mécanisme EXISTANT prévu pour ça :
+#    `avertissement_bloquant` (une garde serveur refuse dès lors l'acceptation
+#    et la facturation d'un devis pour ce client, patron XFAC28) + un
+#    avertissement lisible, + un marqueur `custom_data['fusionne_dans']` qui
+#    trace la cible et la date. La fiche reste consultable, son historique
+#    intact, et la fusion est intégralement réversible à la main.
+#
+# 2. AUCUN ORPHELIN. Tout ce qui pointait le doublon pointe le survivant —
+#    non pas une liste de quatre modèles écrite à la main (le dépôt compte
+#    plus de trente FK vers `Client`), mais le parcours des relations inverses
+#    déclarées par Django (`core.merge.repointer_relations`, la MÊME mécanique
+#    que la fusion fournisseur/produit de `stock` — jamais une seconde
+#    implémentation). Chaque relation est repointée dans son PROPRE point de
+#    sauvegarde : une contrainte d'unicité qui refuse (le survivant a déjà sa
+#    limite de crédit, par exemple) annule CETTE relation seule et le rapport
+#    la NOMME, au lieu de faire échouer toute la fusion en silence.
+#
+# 3. AUCUN IMPORT D'APP ÉTRANGÈRE. Le parcours passe par l'API `_meta` de
+#    Django, donc `crm` n'importe ni `ventes`, ni `facturation`, ni
+#    `installations`, ni `sav`.
+
+#: Champs du client dont une valeur VIDE chez le survivant est complétée
+#: depuis un doublon (jamais l'inverse : on n'écrase jamais une valeur saisie).
+_MERGE_CLIENT_FILL_FIELDS = (
+    'prenom', 'email', 'telephone', 'adresse', 'cin', 'ice', 'if_fiscal',
+    'rc', 'langue_document', 'delai_paiement_jours',
+)
+
+#: Clé où l'e-mail CÉDÉ au survivant est conservé sur le doublon neutralisé.
+#: Même patron (et même esprit « rien n'est perdu ») que la migration CRX24
+#: ``crm/0086_crx24_client_email_unique_ci``.
+CLE_EMAIL_AVANT_FUSION = 'email_avant_fusion'
+
+
+def merge_clients(survivor, others, user):
+    """Fusionne ``others`` dans ``survivor`` sans perte ni suppression.
+
+    Renvoie un rapport ::
+
+        {'survivant': <Client>, 'absorbes': [ids],
+         'repointes': {'<app.Modele.champ>': n, …},
+         'non_repointes': [{'relation': …, 'motif': …}, …]}
+
+    ``non_repointes`` n'est PAS un échec silencieux : c'est la liste, nommée,
+    de ce qu'un humain doit trancher (typiquement une contrainte d'unicité
+    déjà occupée chez le survivant).
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from core.merge import completer_champs_vides, repointer_relations
+
+    others = [o for o in others
+              if o.pk != survivor.pk and o.company_id == survivor.company_id]
+    rapport = {'survivant': survivor, 'absorbes': [],
+               'repointes': {}, 'non_repointes': []}
+    if not others:
+        return rapport
+
+    with transaction.atomic():
+        for absorbed in others:
+            repointes, non_repointes = repointer_relations(absorbed, survivor)
+            for etiquette, n in repointes.items():
+                rapport['repointes'][etiquette] = (
+                    rapport['repointes'].get(etiquette, 0) + n)
+            rapport['non_repointes'].extend(non_repointes)
+
+            # Compléter les champs VIDES du survivant (jamais écraser).
+            completes = completer_champs_vides(survivor, absorbed,
+                                               _MERGE_CLIENT_FILL_FIELDS)
+
+            # Neutraliser le doublon — jamais le supprimer.
+            marqueur = dict(absorbed.custom_data or {})
+            marqueur['fusionne_dans'] = survivor.pk
+            marqueur['fusionne_le'] = timezone.now().isoformat()
+            marqueur['fusionne_par'] = getattr(user, 'username', '') or ''
+            champs_absorbe = ['custom_data', 'avertissement_bloquant',
+                              'avertissement_vente', 'date_modification']
+            if 'email' in completes:
+                # CRX24 — l'e-mail client est UNIQUE par société (index
+                # fonctionnel insensible à la casse
+                # ``crx24_client_email_unique_ci``). Le doublon n'étant JAMAIS
+                # supprimé, il faut qu'il LIBÈRE l'e-mail qu'il vient de céder
+                # au survivant : sinon les deux fiches le portent et
+                # PostgreSQL refuse le ``survivor.save()`` final — la fusion
+                # entière échouait alors sur une IntegrityError. Rien n'est
+                # perdu : la valeur est conservée sur le doublon dans
+                # ``custom_data`` (même patron que la migration CRX24).
+                marqueur[CLE_EMAIL_AVANT_FUSION] = absorbed.email
+                absorbed.email = None
+                champs_absorbe.append('email')
+            absorbed.custom_data = marqueur
+            absorbed.avertissement_bloquant = True
+            absorbed.avertissement_vente = (
+                'Fiche fusionnée dans le client #%s — ne plus utiliser.'
+                % survivor.pk)
+            absorbed.save(update_fields=champs_absorbe)
+            rapport['absorbes'].append(absorbed.pk)
+
+            _journaliser_fusion_client(survivor, absorbed, user)
+
+        survivor.save()
+    return rapport
+
+
+def _journaliser_fusion_client(survivor, absorbed, user):
+    """Trace la fusion dans le chatter GÉNÉRIQUE (``records.Activity``, ARC8).
+
+    Best-effort : une trace manquante ne doit jamais annuler une fusion déjà
+    appliquée — mais elle n'est pas avalée en silence non plus (log).
+    """
+    try:
+        from apps.records.services import log_note
+        log_note(
+            survivor, user,
+            'Fusion : le client « %s » (#%s) a été absorbé dans cette fiche.'
+            % (absorbed.nom, absorbed.pk),
+            company=survivor.company)
+        log_note(
+            absorbed, user,
+            'Fiche fusionnée dans le client #%s — conservée en lecture, '
+            'bloquée à la vente.' % survivor.pk,
+            company=absorbed.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.exception(
+            'NTDATA18 : chatter de fusion non écrit (client #%s → #%s)',
+            absorbed.pk, survivor.pk)
+
+
+def clients_par_ids(company, ids):
+    """NTDATA18 — point d'entrée cross-app : les clients d'une société par id.
+
+    Utilisé par ``apps.dataquality`` pour charger un groupe de doublons AVANT
+    de demander la fusion — jamais un import de ``crm.models`` là-bas. Le
+    filtre société est POSÉ ICI : une autre app ne peut pas charger le client
+    d'un autre tenant en passant un id deviné.
+    """
+    return list(Client.objects.filter(company=company, pk__in=list(ids or [])))

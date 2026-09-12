@@ -128,6 +128,28 @@ def normalize_phone_key(value):
     return crm_services.normalize_phone(value)
 
 
+def normalize_email_key(value):
+    """NTDATA17 — clé email normalisée EXPOSÉE aux autres apps.
+
+    Même point d'entrée sanctionné que :func:`normalize_phone_key` : délègue à
+    ``services.normalize_email`` pour qu'une autre app (la qualité de données,
+    par exemple) rapproche EXACTEMENT comme le CRM, sans importer ni
+    ``crm.services`` ni ``crm.models``. Lecture pure, aucun accès base."""
+    from . import services as crm_services
+    return crm_services.normalize_email(value)
+
+
+def normalize_name_key(nom, prenom=None, societe=None):
+    """NTDATA17 — clé de NOM normalisée EXPOSÉE aux autres apps.
+
+    Délègue à ``services.normalize_name`` (accents retirés, minuscules, mots
+    triés, ponctuation écrasée). Rend une chaîne VIDE quand le nom est trop
+    court pour rapprocher quoi que ce soit — c'est la garde du CRM, et elle
+    doit valoir pour tous ses lecteurs. Lecture pure, aucun accès base."""
+    from . import services as crm_services
+    return crm_services.normalize_name(nom, prenom, societe)
+
+
 def find_lead_id_by_phone(company, phone):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que
@@ -3638,6 +3660,173 @@ def resume_portail_partenaire(company, partenaire_id):
     }
 
 
+def soumissions_partenaire_portail(company, partenaire_id):
+    """NTPRT28 — SES soumissions de leads, telles que le portail les montre.
+
+    Point d'entrée cross-app LECTURE SEULE de ``apps.portail`` (jamais un
+    import de ``apps.crm.models`` depuis portail). Borné au couple (société,
+    partenaire) : un ``partenaire_id`` absent — ou d'une autre société —
+    renvoie une liste VIDE, jamais les soumissions d'un autre partenaire.
+
+    Charge utile volontairement pauvre : ce que LE PARTENAIRE a saisi, plus
+    l'avancement de sa soumission. Aucune donnée interne (propriétaire du
+    lead, notes commerciales, montants) ne transite ici.
+    """
+    if company is None or not partenaire_id:
+        return []
+
+    from .models import Partenaire, SoumissionLeadPartenaire
+
+    if not Partenaire.objects.filter(
+            company=company, pk=partenaire_id).exists():
+        return []
+
+    return [{
+        'id': s.id,
+        'nom_prospect': s.nom_prospect,
+        'telephone_prospect': s.telephone_prospect,
+        'email_prospect': s.email_prospect,
+        'ville': s.ville,
+        'note': s.note,
+        'statut': s.statut,
+        'statut_display': s.get_statut_display(),
+        # Le partenaire voit que SON prospect est devenu un dossier réel
+        # (traçabilité de sa commission) — jamais le contenu de ce dossier.
+        'converti': bool(s.lead_id),
+        'date_soumission': (s.date_soumission.isoformat()
+                            if s.date_soumission else None),
+    } for s in SoumissionLeadPartenaire.objects.filter(
+        company=company, partenaire_id=partenaire_id)]
+
+
+def partenaire_peut_soumettre(company, partenaire_id):
+    """NTPRT32 — le partenaire est-il AGRÉÉ pour enregistrer une affaire ?
+
+    Renvoie ``(autorise, motif)`` :
+
+    * ``(False, None)`` — aucun partenaire de cet id dans CETTE société.
+      L'appelant répond « introuvable » : on ne dit jamais qu'il existe
+      ailleurs ;
+    * ``(False, '<message français>')`` — le partenaire existe mais son
+      agrément ne l'autorise pas : le message lui EXPLIQUE pourquoi ;
+    * ``(True, '')`` — nominal.
+
+    Le statut d'agrément (FG237, ``Partenaire.statut_onboarding``) est la
+    SEULE autorité, avec le drapeau ``actif`` qui ferme la porte de la même
+    façon : c'est exactement ce que le critère d'acceptation NTPRT32 demande
+    de faire respecter par NTPRT28. Un partenaire encore ``prospect`` ou
+    ``en_cours`` d'agrément — comme un partenaire ``suspendu`` — n'enregistre
+    aucune affaire ; les soumissions DÉJÀ déposées restent consultables (on
+    ne ferme jamais rétroactivement l'historique du partenaire).
+    """
+    if company is None or not partenaire_id:
+        return False, None
+
+    from .models import Partenaire
+
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return False, None
+    if not partenaire.actif:
+        return False, ('Votre compte partenaire est désactivé. Contactez '
+                       'votre interlocuteur commercial.')
+    if partenaire.statut_onboarding == 'suspendu':
+        return False, ('Votre agrément est suspendu : vous ne pouvez pas '
+                       'enregistrer de nouvelle affaire pour le moment.')
+    if partenaire.statut_onboarding != 'agree':
+        return False, ("Votre agrément n'est pas encore finalisé : vous "
+                       "pourrez enregistrer vos affaires dès l'activation "
+                       'de votre partenariat.')
+    return True, ''
+
+
+def releve_commissions_partenaire(company, partenaire_id, debut=None,
+                                  fin=None):
+    """NTPRT30 — relevé des commissions DU partenaire, sur une période.
+
+    Point d'entrée cross-app LECTURE SEULE de ``apps.portail`` (jamais un
+    import de ``apps.crm.models`` depuis portail). Borné au couple (société,
+    partenaire) : un partenaire absent de CETTE société renvoie un relevé VIDE,
+    jamais les commissions d'un autre.
+
+    ``debut``/``fin`` sont des ``date`` INCLUSIVES appliquées à la date de
+    création de la commission ; omises, le relevé couvre tout l'historique.
+
+    Le TOTAL est, par construction, la somme des montants des lignes RENDUES —
+    jamais un agrégat calculé sur un autre périmètre que celui affiché (c'est
+    exactement le critère d'acceptation NTPRT30). ``due``/``payee``/``annulee``
+    en sont les trois sous-sommes : elles s'additionnent au total, à l'unité
+    près.
+    """
+    from decimal import Decimal
+
+    vide = {
+        'partenaire_nom': '',
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+        'lignes': [],
+        'totaux': {'due': '0', 'payee': '0', 'annulee': '0', 'total': '0'},
+    }
+    if company is None or not partenaire_id:
+        return vide
+
+    from .models import CommissionPartenaire, Partenaire
+
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return vide
+
+    qs = CommissionPartenaire.objects.filter(
+        company=company, partenaire=partenaire)
+    if debut is not None:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_creation__date__lte=fin)
+
+    lignes = []
+    sous_totaux = {
+        CommissionPartenaire.Statut.DUE: Decimal('0'),
+        CommissionPartenaire.Statut.PAYEE: Decimal('0'),
+        CommissionPartenaire.Statut.ANNULEE: Decimal('0'),
+    }
+    total = Decimal('0')
+    for c in qs.order_by('-date_creation', '-id'):
+        montant = c.montant or Decimal('0')
+        total += montant
+        if c.statut in sous_totaux:
+            sous_totaux[c.statut] += montant
+        lignes.append({
+            'id': c.id,
+            'date_creation': (c.date_creation.isoformat()
+                              if c.date_creation else None),
+            # Références opaques : le partenaire sait SUR QUOI porte sa
+            # commission, jamais le contenu du devis ni celui du lead.
+            'devis_id': c.devis_id,
+            'lead_id': c.lead_id,
+            'base_ht': str(c.base_ht or Decimal('0')),
+            'taux': str(c.taux or Decimal('0')),
+            'montant': str(montant),
+            'statut': c.statut,
+            'statut_display': c.get_statut_display(),
+            'paye_le': c.paye_le.isoformat() if c.paye_le else None,
+        })
+
+    return {
+        'partenaire_nom': partenaire.nom,
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+        'lignes': lignes,
+        'totaux': {
+            'due': str(sous_totaux[CommissionPartenaire.Statut.DUE]),
+            'payee': str(sous_totaux[CommissionPartenaire.Statut.PAYEE]),
+            'annulee': str(sous_totaux[CommissionPartenaire.Statut.ANNULEE]),
+            'total': str(total),
+        },
+    }
+
+
 def pipeline_pondere_par_entite(company, entite_ids):
     """NTADM25 — pipeline PONDÉRÉ-PROBABILITÉ agrégé PAR ENTITÉ (NTADM2).
 
@@ -4186,3 +4375,123 @@ def lead_ids_by_contact(company, *, email=None, phone=None):
         for lead in find_duplicates_by_contact(
             company, email=email, phone=phone)
     ]
+
+
+# ── NTDATA11 — ADAPTATEUR DE MÉTRIQUE (couche sémantique) ───────────────────
+#
+# Le pipeline PONDÉRÉ n'est pas un agrégat SQL : il passe lead par lead par
+# ``apps.reporting.pipeline._lead_forecast_value`` × ``_lead_win_weight``
+# (scorer ``core.win_probability``). Cette enveloppe MINCE réutilise
+# exactement ces scorers — aucune seconde définition, aucun coefficient
+# recopié — pour que la métrique nommée « valeur_pipeline_ponderee » rende le
+# MÊME chiffre que l'écran Pipeline.
+
+
+def metrique_pipeline_pondere(company, user=None, *, period=None,
+                              filters=None):
+    """NTDATA11 — valeur PONDÉRÉE du pipeline ouvert (MAD) d'une société.
+
+    Population : leads non archivés, non perdus, dont l'étape n'est ni SIGNED
+    ni COLD (les clés viennent de ``STAGES.py``, jamais écrites ici) — la
+    MÊME population qu'``pipeline_pondere_par_entite``. ``period``
+    (``{'debut','fin'}`` ou couple) borne la date de création ; ``filters``
+    est ignoré (la population est celle du pipeline, par définition).
+    """
+    from decimal import Decimal
+
+    from apps.reporting.pipeline import _lead_forecast_value, _lead_win_weight
+
+    from . import stages as stage_mod
+    from .models import Lead
+
+    ouvertes = [
+        k for k in stage_mod.STAGES
+        if k not in (stage_mod.SIGNED, stage_mod.COLD)
+    ]
+    qs = (Lead.objects
+          .filter(company=company, is_archived=False, perdu=False,
+                  stage__in=ouvertes)
+          .prefetch_related('devis'))
+    if period:
+        if isinstance(period, (tuple, list)):
+            valeurs = list(period) + [None, None]
+            debut, fin = valeurs[0], valeurs[1]
+        else:
+            debut, fin = period.get('debut'), period.get('fin')
+        if debut is not None:
+            qs = qs.filter(date_creation__gte=debut)
+        if fin is not None:
+            qs = qs.filter(date_creation__lte=fin)
+    total = Decimal('0')
+    for lead in qs:
+        total += _lead_forecast_value(lead) * _lead_win_weight(lead)
+    return total
+
+
+def register_metric_adapters():
+    """Enregistre les adaptateurs CRM dans ``apps.semantic`` (idempotent).
+
+    Appelé depuis ``CrmConfig.ready()`` : c'est l'app PROPRIÉTAIRE du calcul
+    qui vient s'enregistrer — ``semantic`` n'importe jamais ``crm``.
+    """
+    from apps.semantic.adapters import register_adapter
+    register_adapter('crm.pipeline_pondere', metrique_pipeline_pondere)
+
+
+def client_ids_par_identifiant(company, identifiant):
+    """NTGRC1 — ids des ``Client`` de la société correspondant à une PERSONNE.
+
+    Fonction fine ajoutée pour le fournisseur DSR des Ventes (loi 09-08) : une
+    autre app doit pouvoir retrouver les clients d'une personne concernée SANS
+    importer ``apps.crm.models``. ``identifiant`` = un email OU un téléphone,
+    exactement comme ``core.DataSubjectRequest.subject_identifier``.
+
+    Renvoie une liste d'ids (jamais d'instances, jamais de PII) bornée à
+    ``company`` — aucune lecture cross-société.
+    """
+    from .models import Client
+    from .services import normalize_email, normalize_phone
+
+    if company is None or not (identifiant or '').strip():
+        return []
+
+    email = normalize_email(identifiant)
+    phone = normalize_phone(identifiant)
+    qs = Client.objects.filter(company=company)
+
+    ids = set()
+    if email:
+        ids.update(qs.filter(email__iexact=email).values_list('id', flat=True))
+    if phone:
+        ids.update(
+            pk for pk, tel in qs.values_list('id', 'telephone')
+            if normalize_phone(tel) == phone)
+    return sorted(ids)
+
+
+def lead_ids_par_identifiant(company, identifiant):
+    """NTGRC8 — ids des ``Lead`` de la société correspondant à une PERSONNE.
+
+    Pendant de :func:`client_ids_par_identifiant` pour les leads, utilisé par
+    la mise sous séquestre transverse (``grc``) : elle doit pouvoir désigner
+    « tous les leads de cette personne » SANS importer ``apps.crm.models``.
+    Le téléphone passe par la colonne NORMALISÉE indexée (QW10) — jamais un
+    scan Python de toute la table des leads.
+    """
+    from .models import Lead
+    from .services import normalize_email, normalize_phone
+
+    if company is None or not (identifiant or '').strip():
+        return []
+
+    email = normalize_email(identifiant)
+    phone = normalize_phone(identifiant)
+    qs = Lead.objects.filter(company=company)
+
+    ids = set()
+    if email:
+        ids.update(qs.filter(email__iexact=email).values_list('id', flat=True))
+    if phone:
+        ids.update(
+            qs.filter(phone_normalise=phone).values_list('id', flat=True))
+    return sorted(ids)

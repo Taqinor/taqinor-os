@@ -21,11 +21,17 @@ const CashAujourdhuiCard = lazy(() => import('../features/compta/CashAujourdhuiC
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
+// NTUX12 — favoris épinglés par utilisateur (autonome : ne rend rien sans
+// favori), même patron que RecentEntitiesWidget ci-dessus.
+const FavorisWidget = lazy(() => import('../features/uxviews/FavorisWidget'))
 // WIR144 — tuiles KPI crédit fédérées (kpi_providers) sur le cockpit direction.
 const CreditKpiCards = lazy(() => import('../features/credit/CreditKpiCards'))
 // NTIDE50 — tuiles KPI innovation fédérées (kpi_providers) : « Idées cette
 // semaine » + top idée votée, même patron que CreditKpiCards (WIR144).
 const InnovationKpiCard = lazy(() => import('../features/innovation/InnovationKpiCard'))
+// NTJUR24 — carte « Risques juridiques » (apps/juridique) : agrégat serveur
+// déjà filtré par confidentialité, aucune fuite par somme côté écran.
+const RisquesJuridiquesCard = lazy(() => import('../features/juridique/RisquesJuridiquesCard'))
 // NTMFG22 — carte Production (Atelier MRP) : OF en retard, charge moyenne
 // 7j, TRS moyen 7j, alerte entretien de poste. Même patron d'intégration
 // (lazy + ErrorBoundary + gate `profile === 'directeur'`), appel direct
@@ -1136,6 +1142,19 @@ export function Component() {
             </ErrorBoundary>
           )}
 
+          {/* NTJUR24 — « Risques juridiques » : dossiers ouverts par nature,
+              montant en jeu, provisions proposées vs comptabilisées et
+              prescriptions sous 30 jours. L'agrégat vient du serveur, qui
+              EXCLUT déjà les dossiers confidentiels du périmètre d'un rôle non
+              autorisé (aucune fuite par somme). Dégrade en silence. */}
+          {profile === 'directeur' && (
+            <ErrorBoundary>
+              <Suspense fallback={null}>
+                <RisquesJuridiquesCard />
+              </Suspense>
+            </ErrorBoundary>
+          )}
+
           {/* NTMFG22 — carte Production (Atelier MRP), drill-down
               /mrp/ordres-fabrication. Dégrade en silence (403/flux vide).
               SOL5 — masquée quand le module mrp est désactivé pour la société.
@@ -1428,6 +1447,11 @@ export function Component() {
           {/* NTUX11 — Récents (autonome : ne rend rien sans entité récente). */}
           <Suspense fallback={null}>
             <RecentEntitiesWidget />
+          </Suspense>
+
+          {/* NTUX12 — Favoris épinglés (autonome : ne rend rien sans favori). */}
+          <Suspense fallback={null}>
+            <FavorisWidget />
           </Suspense>
 
           {/* FG8 — Flux d'activités planifiées (records.Activity).

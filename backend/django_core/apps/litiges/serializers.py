@@ -54,6 +54,9 @@ class ReclamationSerializer(serializers.ModelSerializer):
             # LITIGE5 — concurrent gagnant + motif sur deal perdu (étend FG242).
             'concurrent_nom', 'concurrent_prix', 'concurrent_devise',
             'motif_perte',
+            # NTJUR6 — dossier juridique ouvert par escalade (lecture seule :
+            # le lien se pose uniquement via ``escalader-juridique``).
+            'dossier_juridique_id',
             'created_by', 'date_creation',
         ]
         # ``statut`` ne se modifie pas par PATCH direct : le cycle de vie passe
@@ -61,7 +64,11 @@ class ReclamationSerializer(serializers.ModelSerializer):
         # qui appliquent la machine à états et journalisent le chatter.
         # ``bloque_relances`` est modifiable par PATCH (le gestionnaire peut
         # désactiver la suspension si nécessaire).
-        read_only_fields = ['created_by', 'date_creation', 'statut']
+        # NTJUR6 — ``dossier_juridique_id`` est LECTURE SEULE : le lien ne se
+        # pose que par l'action ``escalader-juridique`` (idempotente), jamais
+        # par un PATCH qui contournerait la garde anti-doublon.
+        read_only_fields = ['created_by', 'date_creation', 'statut',
+                            'dossier_juridique_id']
 
     def get_ncr(self, obj):
         """Aperçu de la non-conformité QHSE liée (ou None), scopé société.

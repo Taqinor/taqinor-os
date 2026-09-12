@@ -712,6 +712,23 @@ class ApprovalDelegation(models.Model):
         at = at or timezone.now()
         return self.date_debut <= at <= self.date_fin
 
+    @classmethod
+    def delegants_actifs_pour(cls, suppleant, company, at=None):
+        """NTWFL3 — IDs des délégants pour lesquels ``suppleant`` détient une
+        délégation ACTIVE à l'instant ``at`` (défaut : maintenant), pour
+        ``company``. Réutilise ce modèle existant (aucune nouvelle table) :
+        étend son application aux étapes ``core.WorkflowStepInstance`` en
+        plus des ``ApprovalRequest`` ad-hoc déjà couvertes (XKB3). Liste vide
+        si aucune délégation active — comportement neutre par défaut."""
+        from django.utils import timezone
+        at = at or timezone.now()
+        return list(
+            cls.objects.filter(
+                company=company, suppleant=suppleant,
+                date_debut__lte=at, date_fin__gte=at,
+            ).values_list('delegant_id', flat=True)
+        )
+
 
 # ── XPLT4 — Webhook ENTRANT générique alimentant une règle ──────────────────
 

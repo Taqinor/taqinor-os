@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
-  ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2, X,
+  ArrowDown, ArrowUp, Check, GitBranch, Pencil, Plus, Trash2, X,
 } from 'lucide-react'
 import {
   Button, IconButton, Input, Textarea, Badge, Card, toast,
@@ -341,6 +342,16 @@ function DefinitionsTab() {
                     >
                       <Pencil /> Modifier
                     </Button>
+                    {/* NTWFL6 — vue graphique complementaire (meme donnee). */}
+                    <Link to={`/workflow/${d.id}/designer`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`wf-def-designer-${d.id}`}
+                      >
+                        <GitBranch /> Designer
+                      </Button>
+                    </Link>
                   </div>
                 </div>
                 {d.description && (
@@ -510,6 +521,15 @@ export default function WorkflowsScreen() {
       <PageHeader
         title="Workflows"
         subtitle="Definitions & etapes, modeles installables, instances en cours (moteur BPM FG366/368/369)."
+        actions={(
+          // NTWFL14 — éditeur de formulaire visuel (aucune donnée backend
+          // nouvelle, construit sur FormulaireDefinition.schema).
+          <Link to="/workflow/formulaires/nouveau">
+            <Button variant="secondary" data-testid="wf-nouveau-formulaire">
+              Nouveau formulaire
+            </Button>
+          </Link>
+        )}
       />
       <Tabs defaultValue="definitions">
         <TabsList>

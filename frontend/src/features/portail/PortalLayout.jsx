@@ -8,6 +8,10 @@ import {
   subscribeTenantTheme,
 } from '../../design/tenantTheme'
 import coreApi from '../../api/coreApi'
+import portailApi from '../../api/portailApi'
+import {
+  LANGUE_PAR_DEFAUT, LANGUES, chrome, directionLangue, libelle,
+} from './langue'
 import { Button } from '../../ui'
 
 /* ============================================================================
@@ -25,12 +29,19 @@ import { Button } from '../../ui'
    <html> via `setTenantTheme`, puis lit la marque publiée. Un échec réseau ou
    un thème absent retombe en SILENCE sur le thème neutre (`tokens.css`) : un
    logo manquant ne casse jamais un écran client.
+
+   NTPRT34 — langue du portail (FR/AR) : la préférence est SERVEUR (elle suit
+   le compte, jamais un cookie), elle ne couvre que la nav et la chrome de ce
+   shell, et l'arabe bascule le sens d'écriture (`dir="rtl"`). Une lecture ou
+   une écriture en échec laisse la langue courante : le portail ne se met
+   jamais à moitié en arabe à cause d'une requête perdue.
    ========================================================================== */
 
-export default function PortalLayout({ titre, items, children }) {
+export default function PortalLayout({ titre, titreAr, items, children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [marque, setMarque] = useState(getCurrentTenantTheme)
+  const [langue, setLangue] = useState(LANGUE_PAR_DEFAUT)
 
   // Le thème est publié par un pub/sub en mémoire (design/tenantTheme).
   useEffect(() => subscribeTenantTheme(setMarque), [])
@@ -47,13 +58,36 @@ export default function PortalLayout({ titre, items, children }) {
     return () => { annule = true }
   }, [])
 
+  // NTPRT34 — langue choisie par CE compte portail (serveur). Un échec de
+  // lecture garde le français : jamais d'erreur visible pour un libellé.
+  useEffect(() => {
+    let annule = false
+    portailApi.preference.get()
+      .then((r) => {
+        if (!annule && LANGUES.includes(r.data?.langue)) {
+          setLangue(r.data.langue)
+        }
+      })
+      .catch(() => {})
+    return () => { annule = true }
+  }, [])
+
+  const changerLangue = (code) => {
+    const precedente = langue
+    setLangue(code)
+    // La préférence est SERVEUR : si l'écriture échoue, on revient à l'état
+    // affiché avant le clic plutôt que de mentir sur ce qui est enregistré.
+    portailApi.preference.set(code).catch(() => setLangue(precedente))
+  }
+
   const handleLogout = async () => {
     await dispatch(logoutUser())
     navigate('/login')
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground"
+         lang={langue} dir={directionLangue(langue)}>
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-3">
           {marque.logoUrl
@@ -63,15 +97,29 @@ export default function PortalLayout({ titre, items, children }) {
               )
             : null}
           <span className="font-display text-base font-semibold tracking-tight">
-            {marque.nomAffichage || titre}
+            {marque.nomAffichage || libelle({ label: titre, labelAr: titreAr }, langue)}
           </span>
-          <span className="ml-auto" />
+          <span className="ms-auto" />
+          <div className="flex items-center gap-1"
+               role="group" aria-label={chrome(langue, 'langue')}>
+            {LANGUES.map((code) => (
+              <Button
+                key={code}
+                variant={code === langue ? 'secondary' : 'ghost'}
+                size="sm"
+                aria-pressed={code === langue}
+                onClick={() => changerLangue(code)}
+              >
+                {code.toUpperCase()}
+              </Button>
+            ))}
+          </div>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             <LogOut className="size-4" aria-hidden="true" />
-            Se déconnecter
+            {chrome(langue, 'deconnexion')}
           </Button>
         </div>
-        <nav aria-label="Navigation du portail"
+        <nav aria-label={chrome(langue, 'navigation')}
              className="mx-auto max-w-5xl overflow-x-auto px-4">
           <ul className="flex min-w-max items-center gap-1 pb-2">
             {(items || []).map((item) => (
@@ -86,7 +134,7 @@ export default function PortalLayout({ titre, items, children }) {
                       : 'text-muted-foreground hover:text-foreground',
                   ].join(' ')}
                 >
-                  {item.label}
+                  {libelle(item, langue)}
                 </NavLink>
               </li>
             ))}

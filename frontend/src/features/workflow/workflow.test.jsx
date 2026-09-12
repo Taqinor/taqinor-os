@@ -7,6 +7,7 @@ import {
   nouvelleEtape,
   renumeroterEtapes,
   deplacerEtape,
+  deplacerEtapeVersIndex,
   ajouterEtape,
   retirerEtape,
   validerDefinition,
@@ -86,6 +87,39 @@ describe('workflow.js -- logique pure', () => {
     it('renumeroterEtapes() est defensif sur une entree non-tableau', () => {
       expect(renumeroterEtapes(null)).toEqual([])
       expect(renumeroterEtapes(undefined)).toEqual([])
+    })
+
+    // NTWFL6 -- le canvas (glisser-deposer) et l'editeur liste (fleches
+    // monter/descendre) DOIVENT produire le meme resultat pour le meme
+    // geste : deplacerEtapeVersIndex delegue a deplacerEtape (meme fonction
+    // que ci-dessus), donc les deux vues restent forcement synchronisees.
+    it('deplacerEtapeVersIndex() deplace un noeud a l\'index cible (glisser-deposer)', () => {
+      const steps = [
+        { ordre: 1, nom: 'A' },
+        { ordre: 2, nom: 'B' },
+        { ordre: 3, nom: 'C' },
+      ]
+      const apresDepot = deplacerEtapeVersIndex(steps, 0, 2) // A depose en derniere position
+      expect(apresDepot.map((s) => s.nom)).toEqual(['B', 'C', 'A'])
+      expect(apresDepot.map((s) => s.ordre)).toEqual([1, 2, 3])
+    })
+
+    it('deplacerEtapeVersIndex() produit le meme resultat que deplacerEtape', () => {
+      const steps = [
+        { ordre: 1, nom: 'A' },
+        { ordre: 2, nom: 'B' },
+        { ordre: 3, nom: 'C' },
+      ]
+      expect(deplacerEtapeVersIndex(steps, 2, 0)).toEqual(deplacerEtape(steps, 2, -2))
+    })
+
+    it('deplacerEtapeVersIndex() ne fait rien si source === cible', () => {
+      const steps = [{ ordre: 1, nom: 'A' }, { ordre: 2, nom: 'B' }]
+      expect(deplacerEtapeVersIndex(steps, 1, 1).map((s) => s.nom)).toEqual(['A', 'B'])
+    })
+
+    it('deplacerEtapeVersIndex() est defensif sur une entree non-tableau', () => {
+      expect(deplacerEtapeVersIndex(undefined, 0, 1)).toEqual([])
     })
   })
 

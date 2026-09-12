@@ -1,6 +1,6 @@
 """NTAPI24 — changelog API dédié, réutilise/étend FG399 (`core.ChangelogEntry`).
 
-`GET /api/public/changelog/` : une entrée « breaking v2 » apparaît dans le
+`GET /api/public/v1/changelog/` : une entrée « breaking v2 » apparaît dans le
 fil et le endpoint JSON, filtrable par ``?version=``.
 """
 from django.test import TestCase
@@ -27,7 +27,7 @@ class Ntapi24ChangelogTests(TestCase):
             publie=False)
 
     def test_breaking_entry_appears_in_feed(self):
-        resp = APIClient().get('/api/public/changelog/')
+        resp = APIClient().get('/api/public/v1/changelog/')
         self.assertEqual(resp.status_code, 200)
         titres = [row['titre'] for row in resp.data['results']]
         self.assertIn('Breaking v2', titres)
@@ -37,12 +37,12 @@ class Ntapi24ChangelogTests(TestCase):
         self.assertTrue(breaking_row['breaking'])
 
     def test_unpublished_entry_never_appears(self):
-        resp = APIClient().get('/api/public/changelog/')
+        resp = APIClient().get('/api/public/v1/changelog/')
         titres = [row['titre'] for row in resp.data['results']]
         self.assertNotIn('Brouillon', titres)
 
     def test_filterable_by_version(self):
-        resp = APIClient().get('/api/public/changelog/', {'version': 'v2'})
+        resp = APIClient().get('/api/public/v1/changelog/', {'version': 'v2'})
         self.assertEqual(resp.status_code, 200)
         versions = {row['version'] for row in resp.data['results']}
         self.assertEqual(versions, {'v2'})
@@ -52,5 +52,5 @@ class Ntapi24ChangelogTests(TestCase):
 
     def test_no_authentication_required(self):
         # Document de découverte global, comme openapi.json (NTAPI20).
-        resp = APIClient().get('/api/public/changelog/')
+        resp = APIClient().get('/api/public/v1/changelog/')
         self.assertEqual(resp.status_code, 200)

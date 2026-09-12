@@ -7,6 +7,45 @@ d'origine.
 """
 
 
+def fournisseurs_pour_dedoublonnage(company):
+    """NTDATA19 — fiches fournisseur d'une société, à plat, pour la détection
+    de doublons.
+
+    Point d'entrée cross-app SANCTIONNÉ : ``apps.dataquality`` lit les
+    fournisseurs par ICI, jamais en important ``apps.stock.models``. Le filtre
+    société est POSÉ ICI (aucun appelant ne peut sortir de son tenant), les
+    fiches déjà archivées sont exclues (un doublon déjà neutralisé n'a pas à
+    reparaître dans la file), et AUCUNE donnée d'achat (prix, conditions) n'est
+    rendue : la détection ne travaille que sur l'IDENTITÉ.
+
+    Renvoie une liste de dicts ``{id, nom, ice, email, telephone}``.
+    """
+    from .models import Fournisseur
+
+    return list(
+        Fournisseur.objects
+        .filter(company=company, is_archived=False)
+        .order_by('id')
+        .values('id', 'nom', 'ice', 'email', 'telephone'))
+
+
+def produits_pour_dedoublonnage(company):
+    """NTDATA19 — fiches produit d'une société, à plat, pour la détection de
+    doublons (référence + désignation + marque).
+
+    Même contrat que :func:`fournisseurs_pour_dedoublonnage` : filtre société
+    posé ici, produits archivés exclus, et AUCUN prix d'achat rendu (la
+    détection compare des références et des désignations, pas des marges).
+    """
+    from .models import Produit
+
+    return list(
+        Produit.objects
+        .filter(company=company, is_archived=False)
+        .order_by('id')
+        .values('id', 'nom', 'sku', 'marque'))
+
+
 def get_produit_scoped(company, pk):
     """Produit scopé société par id, ou None. Lecture seule."""
     from .models import Produit
@@ -1259,6 +1298,67 @@ def resume_portail_fournisseur(company, fournisseur_id):
     }
 
 
+def bcf_portail_fournisseur(company, fournisseur_id):
+    """NTPRT21 — Bons de commande VISIBLES par un compte fournisseur portail.
+
+    Même contenu et même isolation que la liste déjà servie par le portail
+    tokenisé XPUR22 (``services.portail_fournisseur_documents``), mais bornée
+    au couple (société, fournisseur) du COMPTE connecté au lieu d'un jeton :
+    ``apps.portail`` n'importe jamais ``apps.stock.models``, il passe par ici.
+
+    Un ``fournisseur_id`` absent — ou d'une autre société — renvoie une liste
+    VIDE, jamais les commandes de la société entière. La charge utile ne porte
+    aucun prix d'achat ni aucune marge : à ce stade le fournisseur n'a besoin
+    que de savoir CE QU'ON LUI COMMANDE et QUAND il doit livrer.
+    """
+    if company is None or not fournisseur_id:
+        return []
+
+    from .models import BonCommandeFournisseur, Fournisseur
+
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return []
+
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company, fournisseur=fournisseur)
+          .exclude(statut=BonCommandeFournisseur.Statut.BROUILLON)
+          .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+          .prefetch_related('lignes__produit')
+          .order_by('-date_commande', '-id'))
+
+    lignes = []
+    for bc in qs:
+        lignes.append({
+            'id': bc.id,
+            'reference': bc.reference,
+            'statut': bc.statut,
+            'statut_display': bc.get_statut_display(),
+            'date_commande': bc.date_commande,
+            'date_livraison_prevue': bc.date_livraison_prevue,
+            'date_confirmee_fournisseur': bc.date_confirmee_fournisseur,
+            'numero_confirmation_fournisseur': (
+                bc.numero_confirmation_fournisseur or ''),
+            # « À confirmer » = envoyé au fournisseur et jamais accusé. C'est
+            # EXACTEMENT le compteur du tableau de bord NTPRT20, dérivé ici de
+            # la même condition — jamais une seconde définition.
+            'a_confirmer': (
+                bc.statut == BonCommandeFournisseur.Statut.ENVOYE
+                and bc.date_confirmee_fournisseur is None),
+            'lignes': [
+                {
+                    'produit_nom': (ligne.produit.nom if ligne.produit_id
+                                    else ligne.designation),
+                    'quantite': ligne.quantite,
+                    'quantite_recue': ligne.quantite_recue,
+                }
+                for ligne in bc.lignes.all()
+            ],
+        })
+    return lignes
+
+
 # ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
 # Point d'entrée cross-app LECTURE SEULE : le moteur de calepinage
 # (core.calepinage) et les autres apps lisent les caractéristiques d'un
@@ -2199,6 +2299,311 @@ def conformite_fournisseurs(company, *, debut=None, fin=None):
                 company, fournisseur.pk, debut=debut, fin=fin),
         })
     return lignes
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P17 — Dashboard spend management (réutilise le pattern
+# ``litiges.selectors.tableau_bord_litiges`` : agrégation PURE, lecture seule,
+# scopée société, bornée ``debut``/``fin`` optionnels).
+# ══════════════════════════════════════════════════════════════════════════
+
+def _coerce_date_stock(value):
+    """date | 'YYYY-MM-DD' | None → date | None (chaîne invalide → None)."""
+    import datetime as _dt
+    if value is None or value == '':
+        return None
+    if isinstance(value, _dt.date) and not isinstance(value, _dt.datetime):
+        return value
+    if isinstance(value, _dt.datetime):
+        return value.date()
+    from django.utils.dateparse import parse_date
+    return parse_date(str(value))
+
+
+def _budgets_departement_du_mois(company, aujourdhui):
+    """Consommation budgétaire par département résolue pour le MOIS courant
+    (``resoudre_budget_departement``/``consommation_budget``, NTP2P4) —
+    uniquement les départements PORTEURS d'un budget (annuel ou mensuel).
+    Renvoie une liste triée par taux de consommation décroissant."""
+    from .models import BudgetDepartement
+
+    departement_ids = (
+        BudgetDepartement.objects
+        .filter(company=company, actif=True, annee=aujourdhui.year)
+        .values_list('departement_id', flat=True).distinct())
+    lignes = []
+    for departement_id in departement_ids:
+        budget = resoudre_budget_departement(
+            company, departement_id, aujourdhui)
+        detail = consommation_budget(budget)
+        if detail is None:
+            continue
+        lignes.append(detail)
+    lignes.sort(key=lambda d: d['taux_consommation_pct'], reverse=True)
+    return lignes
+
+
+def _top_fournisseurs_par_volume(company, *, debut=None, fin=None, limite=5):
+    """Fournisseurs classés par volume d'achat (Σ lignes BCF HT interne) sur
+    la période — jamais de ``prix_achat`` exposé côté client, cette agrégation
+    reste un rapport INTERNE (achats)."""
+    from decimal import Decimal
+    from django.db.models import DecimalField, F, Sum
+    from django.db.models.functions import Coalesce
+    from .models import LigneBonCommandeFournisseur
+
+    qs = LigneBonCommandeFournisseur.objects.filter(
+        bon_commande__company=company)
+    if debut:
+        qs = qs.filter(bon_commande__date_commande__gte=debut)
+    if fin:
+        qs = qs.filter(bon_commande__date_commande__lte=fin)
+    agreges = (
+        qs.values('bon_commande__fournisseur_id',
+                  'bon_commande__fournisseur__nom')
+        .annotate(volume=Coalesce(
+            Sum(F('quantite') * F('prix_achat_unitaire'),
+                output_field=DecimalField(max_digits=18, decimal_places=2)),
+            Decimal('0'),
+            output_field=DecimalField(max_digits=18, decimal_places=2)))
+        .order_by('-volume')[:limite])
+    return [
+        {'fournisseur_id': row['bon_commande__fournisseur_id'],
+         'fournisseur': row['bon_commande__fournisseur__nom'],
+         'volume': row['volume']}
+        for row in agreges
+    ]
+
+
+def _delais_demande_bcf_reception(company, *, debut=None, fin=None):
+    """Délai moyen demande→BCF (jours) et BCF→première réception CONFIRMÉE
+    (jours), sur les demandes converties dans la période. ``None`` quand
+    aucune donnée exploitable (jamais de division par zéro)."""
+    from .models import BonCommandeFournisseur, ReceptionFournisseur
+    from apps.installations.selectors import demandes_achat_converties
+
+    demandes = demandes_achat_converties(company, debut=debut, fin=fin)
+    ecarts_demande_bcf = []
+    bcf_ids = []
+    for demande_id, date_demande, bon_commande_id in demandes:
+        if not bon_commande_id or date_demande is None:
+            continue
+        bcf_ids.append(bon_commande_id)
+        try:
+            bcf = BonCommandeFournisseur.objects.filter(
+                id=bon_commande_id, company=company).first()
+        except Exception:  # pragma: no cover - défensif
+            bcf = None
+        if bcf is None or bcf.date_creation is None:
+            continue
+        jours = (bcf.date_creation.date() - date_demande).days
+        if jours >= 0:
+            ecarts_demande_bcf.append(jours)
+
+    ecarts_bcf_reception = []
+    if bcf_ids:
+        for bcf_id, bcf_date in (
+                BonCommandeFournisseur.objects
+                .filter(id__in=bcf_ids)
+                .values_list('id', 'date_creation')):
+            premiere_reception = (
+                ReceptionFournisseur.objects
+                .filter(bon_commande_id=bcf_id,
+                        statut=ReceptionFournisseur.Statut.CONFIRME)
+                .order_by('date_creation').values_list(
+                    'date_creation', flat=True).first())
+            if premiere_reception is None or bcf_date is None:
+                continue
+            jours = (premiere_reception.date() - bcf_date.date()).days
+            if jours >= 0:
+                ecarts_bcf_reception.append(jours)
+
+    def _moyenne(valeurs):
+        return round(sum(valeurs) / len(valeurs), 1) if valeurs else None
+
+    return _moyenne(ecarts_demande_bcf), _moyenne(ecarts_bcf_reception)
+
+
+def tableau_bord_achats(company, debut=None, fin=None):
+    """NTP2P17 — dashboard spend management (lecture seule).
+
+    Réunit en UN appel :
+      * ``budgets_departement`` — consommation par département (NTP2P4),
+        triée par taux décroissant (le % de consommation du mois en cours
+        se lit directement sur chaque ligne, ``taux_consommation_pct``) ;
+      * ``top_fournisseurs`` — 5 premiers fournisseurs par volume d'achat ;
+      * ``delai_demande_bcf_jours`` / ``delai_bcf_reception_jours`` — délais
+        moyens demande→BCF et BCF→réception ;
+      * ``exceptions_3voies`` — ``{en_cours, resolues, total}`` (XPUR10) ;
+      * ``notes_frais_en_attente`` — ``{count, montant_total}`` (lu via
+        ``apps.frais.selectors`` — jamais un import de ``apps.frais.models``).
+
+    ``debut``/``fin`` (date ou ISO) bornent les métriques temporelles ; les
+    budgets départementaux restent au MOIS COURANT (poste de pilotage
+    "aujourd'hui", indépendant de la période choisie pour le reste).
+    """
+    from django.utils import timezone
+    from .models import FactureFournisseur
+
+    d_debut = _coerce_date_stock(debut)
+    d_fin = _coerce_date_stock(fin)
+    aujourdhui = timezone.localdate()
+
+    exceptions_qs = FactureFournisseur.objects.filter(company=company)
+    if d_debut is not None:
+        exceptions_qs = exceptions_qs.filter(date_creation__date__gte=d_debut)
+    if d_fin is not None:
+        exceptions_qs = exceptions_qs.filter(date_creation__date__lte=d_fin)
+    en_cours = exceptions_qs.filter(
+        statut_controle=FactureFournisseur.StatutControle.EXCEPTION).count()
+    resolues = exceptions_qs.filter(
+        statut_controle=FactureFournisseur.StatutControle.RESOLUE).count()
+
+    try:
+        from apps.frais.selectors import notes_frais_en_attente
+        notes_attente = notes_frais_en_attente(company)
+    except Exception:  # pragma: no cover - défensif (frais indisponible)
+        notes_attente = {'count': 0, 'montant_total': 0}
+
+    delai_demande_bcf, delai_bcf_reception = _delais_demande_bcf_reception(
+        company, debut=d_debut, fin=d_fin)
+
+    return {
+        'debut': d_debut.isoformat() if d_debut else None,
+        'fin': d_fin.isoformat() if d_fin else None,
+        'budgets_departement': _budgets_departement_du_mois(
+            company, aujourdhui),
+        'top_fournisseurs': _top_fournisseurs_par_volume(
+            company, debut=d_debut, fin=d_fin),
+        'delai_demande_bcf_jours': delai_demande_bcf,
+        'delai_bcf_reception_jours': delai_bcf_reception,
+        'exceptions_3voies': {
+            'en_cours': en_cours, 'resolues': resolues,
+            'total': en_cours + resolues,
+        },
+        'notes_frais_en_attente': notes_attente,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P18 — Historique de prix négocié par fournisseur/produit
+# ══════════════════════════════════════════════════════════════════════════
+
+def historique_prix_fournisseur(company, produit_id, fournisseur_id):
+    """NTP2P18 — série temporelle des prix RÉELLEMENT reçus (lignes de BCF
+    réceptionnées, ``quantite_recue > 0``) pour ce couple produit×fournisseur,
+    avec écart vs le prix catalogue courant (``PrixFournisseur.prix_achat``).
+
+    Alerte (``dernier_prix_alerte``) quand le DERNIER prix reçu dépasse le
+    catalogue de plus du seuil configuré — réutilise
+    ``AchatsParametres.seuil_deviation_prix_pct`` (XPUR13, déjà le seuil
+    « écart % vs dernier prix/prix moyen d'achat » utilisé sur les lignes de
+    BCF) plutôt que d'ajouter un second réglage quasi identique. 0 (défaut) =
+    désactivé, comportement historique inchangé (aucune alerte). Lecture
+    seule ; ``prix_achat`` reste une donnée INTERNE (jamais client-facing)."""
+    from decimal import Decimal
+    from .models import AchatsParametres, LigneBonCommandeFournisseur, PrixFournisseur
+
+    lignes = list(
+        LigneBonCommandeFournisseur.objects.filter(
+            bon_commande__company=company,
+            bon_commande__fournisseur_id=fournisseur_id,
+            produit_id=produit_id, quantite_recue__gt=0,
+        ).select_related('bon_commande')
+        .order_by('bon_commande__date_creation', 'id'))
+
+    catalogue = PrixFournisseur.objects.filter(
+        company=company, produit_id=produit_id,
+        fournisseur_id=fournisseur_id).first()
+    prix_catalogue = catalogue.prix_achat if catalogue else None
+
+    seuil = AchatsParametres.for_company(company).seuil_deviation_prix_pct \
+        or Decimal('0')
+
+    historique = []
+    for ligne in lignes:
+        ecart_pct = None
+        if prix_catalogue:
+            ecart_pct = round(float(
+                (ligne.prix_achat_unitaire - prix_catalogue)
+                / prix_catalogue * 100), 2)
+        historique.append({
+            'bon_commande_id': ligne.bon_commande_id,
+            'reference': ligne.bon_commande.reference,
+            'date': ligne.bon_commande.date_creation,
+            'prix_recu': ligne.prix_achat_unitaire,
+            'ecart_vs_catalogue_pct': ecart_pct,
+        })
+
+    dernier_prix_alerte = False
+    if historique and seuil and prix_catalogue:
+        dernier_ecart = historique[-1]['ecart_vs_catalogue_pct']
+        if dernier_ecart is not None and dernier_ecart > float(seuil):
+            dernier_prix_alerte = True
+
+    return {
+        'produit_id': produit_id,
+        'fournisseur_id': fournisseur_id,
+        'prix_catalogue_actuel': prix_catalogue,
+        'seuil_alerte_pct': seuil,
+        'historique': historique,
+        'dernier_prix_alerte': dernier_prix_alerte,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P20 — Documents fournisseur expirants (pièces d'onboarding, NTP2P7)
+# ══════════════════════════════════════════════════════════════════════════
+
+def documents_fournisseur_expirant(company, within_days=30, today=None):
+    """NTP2P20 — pièces ``DocumentFournisseur`` (NTP2P7, onboarding) expirant
+    (ou déjà expirées) dans les ``within_days`` prochains jours.
+
+    Réutilise le pattern ``rh.selectors.echeances_rh`` (moteur d'alerte
+    d'expiration unifié) : sélecteur PUR (pas d'I/O temps réel, ``today``
+    paramétrable), scopé société, triée par échéance la plus proche. Distinct
+    de ``DocumentConformiteFournisseur`` (XPUR1, registre sans fichier — déjà
+    couvert par ``notify_expiring_conformite_documents``) : cette couche
+    cible les pièces RÉELLEMENT téléversées du coffre d'onboarding.
+
+    Renvoie une liste de dicts ``{'document_id', 'fournisseur_id',
+    'fournisseur_nom', 'type_document', 'type_document_display',
+    'date_expiration', 'jours_restants'}``."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import DocumentFournisseur
+
+    if company is None:
+        return []
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+
+    qs = (DocumentFournisseur.objects
+          .filter(company=company, date_expiration__isnull=False,
+                  date_expiration__lte=limite)
+          .select_related('dossier', 'dossier__fournisseur')
+          .order_by('date_expiration', 'id'))
+
+    rows = []
+    for doc in qs:
+        fournisseur = doc.dossier.fournisseur if doc.dossier_id else None
+        rows.append({
+            'document_id': doc.id,
+            'fournisseur_id': fournisseur.id if fournisseur else None,
+            'fournisseur_nom': fournisseur.nom if fournisseur else '',
+            'type_document': doc.type_document,
+            'type_document_display': doc.get_type_document_display(),
+            'date_expiration': doc.date_expiration,
+            'jours_restants': (doc.date_expiration - today).days,
+        })
+    return rows
 
 
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --

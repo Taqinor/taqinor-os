@@ -78,7 +78,7 @@ class PublicWriteAPIView(PublicApiResponseMixin, APIView):
 
 
 class PublicLeadCreateView(PublicWriteAPIView):
-    """POST /api/public/leads-write/ — crée un lead (scope `leads:write`)."""
+    """POST /api/public/v1/leads-write/ — crée un lead (scope `leads:write`)."""
     required_scope = SCOPE_WRITE_LEADS
     endpoint_name = 'leads-write:create'
 
@@ -99,7 +99,7 @@ class PublicLeadCreateView(PublicWriteAPIView):
 
 
 class PublicLeadUpdateView(PublicWriteAPIView):
-    """PATCH /api/public/leads-write/<id>/ — met à jour un lead DE CETTE
+    """PATCH /api/public/v1/leads-write/<id>/ — met à jour un lead DE CETTE
     SOCIÉTÉ (scope `leads:write`). 404 si le lead n'appartient pas à la
     société de la clé (jamais de fuite cross-tenant)."""
     required_scope = SCOPE_WRITE_LEADS
@@ -128,7 +128,7 @@ class PublicLeadUpdateView(PublicWriteAPIView):
 
 
 class PublicActivityCreateView(PublicWriteAPIView):
-    """POST /api/public/leads-write/<id>/activites/ — ajoute une note chatter
+    """POST /api/public/v1/leads-write/<id>/activites/ — ajoute une note chatter
     sur un lead DE CETTE SOCIÉTÉ (scope `activities:write`)."""
     required_scope = SCOPE_WRITE_ACTIVITIES
     endpoint_name = 'activities-write:create'

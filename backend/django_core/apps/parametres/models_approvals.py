@@ -66,12 +66,31 @@ class ApprovalPolicy(models.Model):
         return f'{self.company_id}:{self.action_type}'
 
     @classmethod
-    def requires_approval(cls, company, action_type, amount=None):
+    def requires_approval(
+            cls, company, action_type, amount=None, departement=None):
         """True si ``action_type`` à ``amount`` exige une approbation pour
         ``company``. Inerte (False) sans politique activée. ``amount=None`` →
-        on considère le seuil franchi (action toujours soumise si activée)."""
+        on considère le seuil franchi (action toujours soumise si activée).
+
+        NTWFL1 — VUE DE COMPATIBILITÉ : consulte D'ABORD la matrice unifiée
+        ``core.MatriceApprobation`` (``departement`` optionnel, nouveau
+        paramètre rétro-compatible — les appelants existants qui ne le
+        passent pas gardent un comportement identique) ; une ligne de
+        matrice qui couvre le cas fait foi (une chaîne de paliers existe
+        forcément si la ligne existe → approbation requise). SANS ligne de
+        matrice correspondante, retombe intégralement sur la politique
+        ``ApprovalPolicy`` historique ci-dessous — aucune donnée existante
+        perdue, aucun comportement changé pour les sociétés sans matrice."""
         if company is None:
             return False
+        try:
+            from core.selectors import resoudre_matrice
+            if resoudre_matrice(
+                    company, action_type, montant=amount,
+                    departement=departement) is not None:
+                return True
+        except Exception:  # pragma: no cover - défensif, jamais bloquant
+            pass
         policy = cls.objects.filter(
             company=company, action_type=action_type, enabled=True).first()
         if policy is None:

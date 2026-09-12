@@ -43,6 +43,63 @@ que ``apps/crm/tiers_bridge.py``). Ce module ne garde donc que le champ
 """
 from django.db import models
 
+from core.models import TenantModel
+
+
+# ── NTPRT34 — Préférence d'affichage du compte portail (langue) ─────────────
+
+class PreferencePortail(TenantModel):
+    """Préférences d'AFFICHAGE d'un compte portail (NTPRT34).
+
+    Aujourd'hui : la LANGUE de l'interface portail (FR/AR). Le critère de la
+    tâche est explicite — « le choix persiste par compte portail (préférence
+    utilisateur, pas cookie volatile) » : la valeur vit donc côté serveur,
+    rattachée au ``CustomUser`` du portail, et suit le compte d'un appareil à
+    l'autre.
+
+    Pourquoi ICI et pas sur ``CustomUser`` : ``authentication`` est une app de
+    FONDATION partagée par tout l'ERP ; une colonne « langue du portail » y
+    serait un champ de domaine posé dans le socle. Une ligne additive dans
+    ``portail`` porte exactement la même information sans toucher au socle, et
+    disparaît avec le compte (``CASCADE``).
+
+    Portée : les trois portées portail (client / fournisseur / partenaire) —
+    ``CustomUser`` porte déjà la portée, inutile de la recopier ici. Hérite de
+    ``TenantModel`` (ARC1) : FK ``company`` + horodatage, comme tout nouveau
+    modèle multi-société.
+    """
+
+    class Langue(models.TextChoices):
+        """Langues réellement servies par le shell portail.
+
+        Référentiel volontairement FERMÉ : une langue hors liste afficherait
+        une interface à moitié traduite. ``fr`` reste le défaut — aucun compte
+        existant ne change de langue du fait de cette tâche.
+        """
+        FR = 'fr', 'Français'
+        AR = 'ar', 'العربية'
+
+    utilisateur = models.OneToOneField(
+        'authentication.CustomUser',
+        # on_delete: pure préférence d'AFFICHAGE du compte — sans le compte,
+        # elle ne désigne plus rien et n'a aucune valeur de preuve. Supprimée
+        # avec lui.
+        on_delete=models.CASCADE,
+        related_name='preference_portail',
+        verbose_name='Compte portail',
+    )
+    langue = models.CharField(
+        max_length=2, choices=Langue.choices, default=Langue.FR,
+        verbose_name='Langue du portail')
+
+    class Meta:
+        verbose_name = 'Préférence de portail'
+        verbose_name_plural = 'Préférences de portail'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Portail {self.utilisateur_id} — {self.langue}'
+
 
 # ── FG228 — Portail self-service client ────────────────────────────────────
 

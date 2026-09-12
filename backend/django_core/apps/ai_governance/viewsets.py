@@ -9,17 +9,121 @@ Le scoping société vient de ``core.mixins.TenantMixin`` (``get_queryset``
 filtré sur ``request.user.company``), donc le sweep générique d'isolation
 multi-tenant couvre ce viewset automatiquement.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from core.viewsets import CompanyScopedModelViewSet
+from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAdminRole, IsAnyRole
 from core.mixins import TenantMixin
 
-from .models import DocumentAiJob
-from .serializers import DocumentAiJobSerializer
+from .models import (AiFeatureToggle, DocumentAiJob, LlmBudget,
+                     PromptTemplate)
+from .serializers import (AiFeatureToggleSerializer, DocumentAiJobSerializer,
+                          LlmBudgetSerializer, PromptTemplateSerializer)
 from .services import AiCopiloteUnavailable
+
+
+class LlmBudgetViewSet(CompanyScopedModelViewSet):
+    """NTAI2 — CRUD du budget IA mensuel. ADMIN uniquement.
+
+    Le scoping société vient de ``TenantMixin`` en lecture ; en écriture la
+    société est FORCÉE depuis l'utilisateur (``perform_create``), jamais lue du
+    corps de requête. Un seul budget par société (contrainte d'unicité) : une
+    seconde création renvoie une erreur FR explicite plutôt qu'un 500.
+    """
+
+    queryset = LlmBudget.objects.all()
+    serializer_class = LlmBudgetSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def perform_create(self, serializer):
+        # La société vient TOUJOURS du serveur ; le doublon est refusé en 400
+        # par le sérialiseur (``validate``), jamais par une 500 d'intégrité.
+        serializer.save(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiBudgetStatut', {
+        'configure': drf_serializers.BooleanField(),
+        'plafond_mad': drf_serializers.CharField(),
+        'depense_mad': drf_serializers.CharField(),
+        'pourcentage': drf_serializers.FloatField(),
+        'depasse': drf_serializers.BooleanField(),
+        'alerte': drf_serializers.BooleanField(),
+        'periode': drf_serializers.CharField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='statut')
+    def statut(self, request):
+        """``GET budgets/statut/`` — situation du mois COURANT.
+
+        Renvoie ``configure: false`` quand aucun budget actif n'est défini :
+        aucun pourcentage n'est affiché contre un plafond imaginaire.
+        """
+        from core.ai.usage import budget_status
+
+        return Response(budget_status(request.user.company).as_dict())
+
+
+class AiFeatureToggleViewSet(CompanyScopedModelViewSet):
+    """NTAI7 — CRUD des consentements IA. ADMIN uniquement.
+
+    Couper une feature ici la rend inopérante POUR CETTE SOCIÉTÉ seulement ;
+    l'absence de ligne vaut « actif » (le défaut n'est jamais un refus).
+    """
+
+    queryset = AiFeatureToggle.objects.all()
+    serializer_class = AiFeatureToggleSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class PromptTemplateViewSet(CompanyScopedModelViewSet):
+    """NTAI5 — CRUD des surcharges de prompt. ADMIN uniquement.
+
+    Chaque écriture FIGE une version immuable du corps : on peut toujours dire
+    quel texte a produit un brouillon donné. La société est posée côté serveur.
+    """
+
+    queryset = PromptTemplate.objects.all()
+    serializer_class = PromptTemplateSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get_queryset(self):
+        return super().get_queryset().prefetch_related('versions')
+
+    def perform_create(self, serializer):
+        from .prompts import figer_version
+
+        gabarit = serializer.save(company=self.request.user.company)
+        figer_version(gabarit, user=self.request.user)
+
+    def perform_update(self, serializer):
+        from .prompts import figer_version
+
+        gabarit = serializer.save()
+        figer_version(gabarit, user=self.request.user)
+
+    @extend_schema(responses=inline_serializer('AiPromptsEffectifs', {
+        'cle': drf_serializers.CharField(),
+        'corps': drf_serializers.CharField(),
+        'origine': drf_serializers.CharField(),
+        'placeholders': drf_serializers.JSONField(),
+    }, many=True))
+    @action(detail=False, methods=['get'], url_path='effective')
+    def effective(self, request):
+        """``GET prompt-templates/effective/`` — ce qui s'applique VRAIMENT.
+
+        Pour chaque clé connue du code : le corps effectif et son origine
+        (``code`` ou ``societe``). C'est la liste exhaustive de ce qu'une
+        société peut surcharger.
+        """
+        from .prompts import prompts_effectifs
+
+        return Response(prompts_effectifs(request.user.company))
 
 
 class DocumentAiJobViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

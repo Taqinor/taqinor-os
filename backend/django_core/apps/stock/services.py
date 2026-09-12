@@ -4161,6 +4161,50 @@ def notify_expiring_conformite_documents(company, jours=30):
     return count
 
 
+def notify_expiring_documents_fournisseur(company, jours=30, *, link=None):
+    """NTP2P20 — notifie le responsable/admin des pièces d'onboarding
+    fournisseur (NTP2P7, ``DocumentFournisseur`` — distinct de
+    ``DocumentConformiteFournisseur`` ci-dessus) expirant sous ``jours``
+    jours. Best-effort. Réutilise ``documents_fournisseur_expirant``
+    (sélecteur pur, jamais de logique dupliquée) et le même EventType
+    ``SUPPLIER_DOC_EXPIRING`` (sémantique identique, aucun nouveau type).
+
+    ``link`` (optionnel) : posé sur CHAQUE notification pour permettre à un
+    appelant planifié (``tasks.notifier_documents_fournisseur_expirants_task``)
+    de vérifier l'idempotence PAR LIEN (``_deja_notifie_aujourdhui``) sans se
+    confondre avec le sweep XPUR1 (même EventType, guard par société SANS
+    lien) — deux couches de documents distinctes, deux garde-fous distincts.
+
+    Renvoie le nombre de documents notifiés."""
+    from .selectors import documents_fournisseur_expirant
+
+    docs = documents_fournisseur_expirant(company, within_days=jours)
+    count = 0
+    for doc in docs:
+        try:
+            from apps.notifications.services import notify_many
+            from apps.notifications.models import EventType
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            recipients = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['responsable', 'admin'])
+            titre = (f"Document fournisseur bientôt expiré "
+                     f"({doc['fournisseur_nom']})")
+            corps = (f"{doc['type_document_display']} de "
+                     f"{doc['fournisseur_nom']} expire le "
+                     f"{doc['date_expiration']}.")
+            notify_many(
+                recipients, EventType.SUPPLIER_DOC_EXPIRING,
+                title=titre, body=corps, link=link, company=company)
+            count += 1
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'notify_expiring_documents_fournisseur: échec pour doc %s',
+                doc['document_id'])
+    return count
+
+
 # ── XPUR2 — RAS-TVA sur paiements fournisseurs (LF 2024) ───────────────────
 
 def _fournisseur_a_arf_valide(fournisseur):
@@ -4889,17 +4933,57 @@ def rafraichir_rapprochement_3voies_auto(company, bon_commande_id, *,
         return None
 
 
+def _categorie_unique_du_bcf(bon_commande_id):
+    """NTP2P9 — catégorie produit COMMUNE aux lignes catalogue du BCF, ou
+    ``None`` si les lignes portent des catégories différentes (ou aucune
+    catégorie) — dans ce cas le défaut société s'applique (comportement
+    XPUR10 inchangé). Une ligne libre/service (``produit`` vide) est ignorée
+    pour cette détection."""
+    from .models import LigneBonCommandeFournisseur
+    categorie_ids = set(
+        LigneBonCommandeFournisseur.objects
+        .filter(bon_commande_id=bon_commande_id, produit__isnull=False,
+                produit__categorie__isnull=False)
+        .values_list('produit__categorie_id', flat=True).distinct())
+    if len(categorie_ids) == 1:
+        return next(iter(categorie_ids))
+    return None
+
+
+def evaluer_tolerance_ecart(company, bon_commande_id):
+    """NTP2P9 — tolérance de rapprochement 3 voies APPLICABLE à ce BCF :
+    la plus SPÉCIFIQUE (``ToleranceRapprochementCategorie`` de la catégorie
+    commune à ses lignes) prime sur le défaut société (XPUR10,
+    ``AchatsParametres.tolerance_prix_pct``).
+
+    Un BCF dont les lignes couvrent PLUSIEURS catégories (ou aucune catégorie
+    identifiable) retombe sur le défaut société — comportement historique
+    inchangé. Renvoie un ``Decimal`` (jamais ``None``)."""
+    from .models import AchatsParametres, ToleranceRapprochementCategorie
+    parametres = AchatsParametres.for_company(company)
+    defaut = parametres.tolerance_prix_pct or Decimal('0')
+    categorie_id = _categorie_unique_du_bcf(bon_commande_id)
+    if categorie_id is None:
+        return defaut
+    override = ToleranceRapprochementCategorie.objects.filter(
+        company=company, categorie_id=categorie_id).first()
+    if override is None or override.tolerance_prix_pct is None:
+        return defaut
+    return override.tolerance_prix_pct
+
+
 def evaluate_facture_exception(company, facture):
     """XPUR10 — compare l'écart du rapprochement 3 voies (FG131, lu via
     ``apps.compta.selectors`` — jamais d'import de modèles compta) du BCF
-    d'origine de ``facture`` aux tolérances par défaut de la société
-    (``AchatsParametres.tolerance_prix_pct``/``tolerance_prix_absolu_mad``).
+    d'origine de ``facture`` à la tolérance APPLICABLE (NTP2P9 —
+    ``evaluer_tolerance_ecart`` : catégorie du BCF si configurée, sinon le
+    défaut de la société, ``AchatsParametres.tolerance_prix_pct``).
 
     Hors tolérance → statut_controle=exception + motif_ecart(persistés).
     Dans la tolérance (ou pas de BCF/rapprochement encore évalué) → no-op,
     la facture reste 'normale' (comportement historique). Renvoie
     ``(en_exception: bool, ecart_pct: Decimal|None)``."""
-    from .models import AchatsParametres, FactureFournisseur
+    from .models import FactureFournisseur
     if not facture.bon_commande_id:
         return False, None
     try:
@@ -4915,13 +4999,13 @@ def evaluate_facture_exception(company, facture):
     ecart_pct = rapprochement_ecart_pct(company, facture.bon_commande_id)
     if ecart_pct is None:
         return False, None
-    parametres = AchatsParametres.for_company(company)
-    tolerance = parametres.tolerance_prix_pct or Decimal('0')
+    # NTP2P9 — tolérance la plus spécifique (catégorie > défaut société).
+    tolerance = evaluer_tolerance_ecart(company, facture.bon_commande_id)
     hors_tolerance = ecart_pct > tolerance
     if hors_tolerance:
         facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
         facture.motif_ecart = (
-            f'Écart de {ecart_pct:.2f} % (tolérance société : '
+            f'Écart de {ecart_pct:.2f} % (tolérance applicable : '
             f'{tolerance:.2f} %) sur le rapprochement 3 voies.')
         facture.save(update_fields=['statut_controle', 'motif_ecart'])
     return hors_tolerance, ecart_pct
@@ -5970,11 +6054,34 @@ def confirmer_bcf_portail_fournisseur(
     d'origine (`date_livraison_prevue`) n'est jamais écrasée (préserve
     l'OTD). Isolation stricte : le BCF DOIT appartenir au fournisseur
     porteur du jeton, sinon lève ValueError (jamais d'accès croisé)."""
+    bc = _appliquer_confirmation_bcf_fournisseur(
+        token_obj.company, token_obj.fournisseur_id, bcf_id,
+        date_confirmee=date_confirmee,
+        numero_confirmation=numero_confirmation)
+
+    from django.utils import timezone
+    token_obj.last_used_at = timezone.now()
+    token_obj.save(update_fields=['last_used_at'])
+
+    notify_bcf_confirmation_fournisseur(bc)
+    return bc
+
+
+def _appliquer_confirmation_bcf_fournisseur(
+        company, fournisseur_id, bcf_id, *, date_confirmee,
+        numero_confirmation=''):
+    """NTPRT21 — CŒUR unique de la confirmation d'un BCF par le fournisseur.
+
+    Extrait de ``confirmer_bcf_portail_fournisseur`` (XPUR22) SANS changer une
+    ligne de sa sémantique, pour que le chemin authentifié (compte portail
+    fournisseur) et le chemin tokenisé historique appliquent EXACTEMENT le même
+    effet : la date DEMANDÉE (``date_livraison_prevue``) n'est jamais écrasée
+    (l'OTD promis-vs-reçu reste mesurable), seul l'accusé fournisseur est posé.
+    """
     from .models import BonCommandeFournisseur
 
     bc = BonCommandeFournisseur.objects.filter(
-        pk=bcf_id, company=token_obj.company,
-        fournisseur=token_obj.fournisseur).first()
+        pk=bcf_id, company=company, fournisseur_id=fournisseur_id).first()
     if bc is None:
         raise ValueError(
             "Ce bon de commande n'appartient pas à ce fournisseur.")
@@ -5982,11 +6089,24 @@ def confirmer_bcf_portail_fournisseur(
     bc.numero_confirmation_fournisseur = numero_confirmation or ''
     bc.save(update_fields=[
         'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
+    return bc
 
-    from django.utils import timezone
-    token_obj.last_used_at = timezone.now()
-    token_obj.save(update_fields=['last_used_at'])
 
+def confirmer_bcf_compte_fournisseur(
+        company, fournisseur_id, bcf_id, *, date_confirmee,
+        numero_confirmation=''):
+    """NTPRT21 — confirmation d'un BCF par un COMPTE fournisseur authentifié.
+
+    Point d'entrée cross-app de ``apps.portail`` (jamais un import de
+    ``apps.stock.models`` depuis portail). Le comportement est celui de
+    ``confirmer_bcf_portail_fournisseur`` À L'IDENTIQUE — même cœur, même
+    notification interne — MOINS l'horodatage du jeton, qui n'existe pas sur ce
+    chemin. L'isolation est la même : un BCF d'un autre fournisseur (ou d'une
+    autre société) lève ``ValueError``, jamais d'accès croisé.
+    """
+    bc = _appliquer_confirmation_bcf_fournisseur(
+        company, fournisseur_id, bcf_id, date_confirmee=date_confirmee,
+        numero_confirmation=numero_confirmation)
     notify_bcf_confirmation_fournisseur(bc)
     return bc
 
@@ -6864,6 +6984,116 @@ def consommer_engagements_demande(company, demande_achat_id,
     if bon_commande_id:
         valeurs['bon_commande_id'] = bon_commande_id
     return qs.update(**valeurs)
+
+
+# ── NTDATA19 — FUSION SUPERVISÉE : FOURNISSEURS & PRODUITS ──────────────────
+#
+# Même contrat que `crm.services.merge_clients` (NTDATA18), et la MÊME
+# mécanique de repointage (`core.merge`) — jamais une seconde implémentation :
+#
+#   * le détecteur (`dataquality.services.doublons_fournisseurs` /
+#     `doublons_produits`) PROPOSE, un humain DÉCIDE, ces fonctions exécutent ;
+#   * tout ce qui référençait le doublon (prix fournisseurs, mouvements de
+#     stock, lignes de bon de commande, lignes de devis…) pointe le survivant,
+#     par parcours des relations inverses — jamais une liste écrite à la main ;
+#   * le doublon est ARCHIVÉ (`is_archived`), JAMAIS supprimé : `Fournisseur`
+#     et `Produit` portent tous deux ce drapeau, donc l'archivage est ici un
+#     vrai archivage (contrairement à `crm.Client`, qui n'en a pas encore).
+#
+# Le PRIX D'ACHAT n'est ni lu ni écrit par ces fonctions : elles ne touchent
+# que l'identité et les références.
+
+#: Champs d'identité d'un fournisseur complétés chez le survivant s'ils sont
+#: vides (jamais écrasés).
+_MERGE_FOURNISSEUR_FILL_FIELDS = (
+    'contact_personne', 'email', 'telephone', 'adresse', 'ice',
+    'identifiant_fiscal', 'rc', 'rib',
+)
+
+#: Idem pour un produit. `prix_achat` en est ABSENT volontairement : une
+#: fusion ne doit jamais faire migrer un coût d'une fiche à l'autre.
+_MERGE_PRODUIT_FILL_FIELDS = (
+    'sku', 'marque', 'description', 'garantie', 'code_barres', 'unite_stock',
+)
+
+
+def _fusionner(survivor, others, user, *, champs_a_completer, etiquette):
+    """Noyau commun des deux fusions (repointage + complétion + archivage)."""
+    from django.db import transaction
+
+    from core.merge import completer_champs_vides, repointer_relations
+
+    others = [o for o in others
+              if o.pk != survivor.pk and o.company_id == survivor.company_id]
+    rapport = {'survivant': survivor, 'absorbes': [],
+               'repointes': {}, 'non_repointes': []}
+    if not others:
+        return rapport
+
+    with transaction.atomic():
+        for absorbed in others:
+            repointes, non_repointes = repointer_relations(absorbed, survivor)
+            for cle, n in repointes.items():
+                rapport['repointes'][cle] = rapport['repointes'].get(cle, 0) + n
+            rapport['non_repointes'].extend(non_repointes)
+
+            completer_champs_vides(survivor, absorbed, champs_a_completer)
+
+            marqueur = dict(absorbed.custom_data or {})
+            marqueur['fusionne_dans'] = survivor.pk
+            marqueur['fusionne_par'] = getattr(user, 'username', '') or ''
+            absorbed.custom_data = marqueur
+            absorbed.is_archived = True
+            absorbed.save(update_fields=['custom_data', 'is_archived'])
+            rapport['absorbes'].append(absorbed.pk)
+            logger.info('%s : #%s absorbé dans #%s par %s',
+                        etiquette, absorbed.pk, survivor.pk,
+                        getattr(user, 'username', '?'))
+        survivor.save()
+    return rapport
+
+
+def merge_fournisseurs(survivor, others, user):
+    """NTDATA19 — fusionne des fournisseurs doublons dans ``survivor``.
+
+    Aucun mouvement, aucun prix fournisseur, aucune ligne de bon de commande
+    n'est perdu : tout est repointé. Les doublons sont ARCHIVÉS, jamais
+    supprimés.
+    """
+    return _fusionner(survivor, others, user,
+                      champs_a_completer=_MERGE_FOURNISSEUR_FILL_FIELDS,
+                      etiquette='NTDATA19 fusion fournisseur')
+
+
+def merge_produits(survivor, others, user):
+    """NTDATA19 — fusionne des produits doublons dans ``survivor``.
+
+    Les quantités NE SONT PAS additionnées : un stock est un fait physique
+    constaté, pas une somme de fiches. Le survivant garde SA quantité et
+    l'historique des mouvements des doublons lui est rattaché — c'est un
+    inventaire qui doit trancher l'écart, pas une fusion.
+    """
+    return _fusionner(survivor, others, user,
+                      champs_a_completer=_MERGE_PRODUIT_FILL_FIELDS,
+                      etiquette='NTDATA19 fusion produit')
+
+
+def fournisseurs_par_ids(company, ids):
+    """NTDATA19 — fournisseurs d'une société par id (point d'entrée cross-app).
+
+    Le filtre société est POSÉ ICI : une autre app ne peut pas charger le
+    fournisseur d'un autre tenant en devinant un id.
+    """
+    from .models import Fournisseur
+    return list(Fournisseur.objects.filter(
+        company=company, pk__in=list(ids or [])))
+
+
+def produits_par_ids(company, ids):
+    """NTDATA19 — produits d'une société par id (point d'entrée cross-app)."""
+    from .models import Produit
+    return list(Produit.objects.filter(
+        company=company, pk__in=list(ids or [])))
 
 
 # -- Groupe NTWMS -- couche ENTREPOT (rangement, vagues, colisage, quais) --

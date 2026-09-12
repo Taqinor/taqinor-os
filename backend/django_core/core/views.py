@@ -17,6 +17,8 @@ Découplage : aucune importation d'app domaine ici — seulement l'infra Celery
 via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
     api_view,
@@ -26,6 +28,7 @@ from rest_framework.decorators import (
 )
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from authentication.permissions import (
     IsAdminOrResponsableTier,
@@ -55,6 +58,9 @@ from .models import (
     Dashboard,
     DataSubjectRequest,
     DeletionRecord,
+    FormulaireChampReutilisable,
+    FormulaireDefinition,
+    MatriceApprobation,
     ModuleToggle,
     PaymentTransaction,
     RegistreTraitement,
@@ -74,6 +80,9 @@ from .serializers import (
     DashboardSerializer,
     DataSubjectRequestSerializer,
     DeletionRecordSerializer,
+    FormulaireChampReutilisableSerializer,
+    FormulaireDefinitionSerializer,
+    MatriceApprobationSerializer,
     ModuleToggleSerializer,
     OutboxEventSerializer,
     PaymentTransactionSerializer,
@@ -219,6 +228,51 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = WorkflowDefinitionSerializer
     queryset = WorkflowDefinition.objects.all().prefetch_related('steps')
     pagination_class = None  # petite liste par société — renvoyée à plat.
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+
+class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTWFL1 — CRUD admin de la matrice d'approbation d'entreprise unifiée.
+
+    ``TenantMixin`` filtre par société et impose ``company`` à la création
+    comme à la mise à jour (jamais lue du corps). Écriture réservée au palier
+    admin/responsable ; lecture ouverte à tout utilisateur authentifié (les
+    écrans d'approbation ont besoin de savoir quelle chaîne s'applique)."""
+
+    serializer_class = MatriceApprobationSerializer
+    queryset = MatriceApprobation.objects.all()
+    pagination_class = None  # petite liste par société — renvoyée à plat.
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+
+class FormulaireDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTWFL12 — CRUD admin des formulaires dynamiques (rattachables aux
+    étapes de workflow via ``WorkflowStepDefinition.formulaire``)."""
+
+    serializer_class = FormulaireDefinitionSerializer
+    queryset = FormulaireDefinition.objects.all()
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+
+class FormulaireChampReutilisableViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTWFL13 — bibliothèque de champs de formulaire réutilisables."""
+
+    serializer_class = FormulaireChampReutilisableSerializer
+    queryset = FormulaireChampReutilisable.objects.all()
+    pagination_class = None
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
@@ -428,7 +482,12 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def datasets(self, request):
-        return Response(data_explorer.list_datasets())
+        # NTDATA5 — le catalogue porte désormais, par champ, un `label` FR et
+        # un `type` (dimension/mesure/temps) sous la clé `champs` ; `fields`
+        # (liste de noms) est conservé tel quel pour les consommateurs
+        # historiques. L'acteur est transmis : un champ sous permission que ce
+        # lecteur ne peut pas interroger n'est plus proposé (AUD801).
+        return Response(data_explorer.list_datasets(request.user))
 
     def _execute(self, dataset, spec):
         from .formula import FormulaError
@@ -457,6 +516,154 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': "Champ « dataset » requis."},
                             status=status.HTTP_400_BAD_REQUEST)
         return self._execute(dataset, (request.data or {}).get('spec') or {})
+
+
+class DataExplorerDatasetsView(APIView):
+    """NTDATA5 — catalogue BI des datasets + schéma détaillé d'un dataset.
+
+      * ``GET core/data-explorer/datasets/``        — tous les datasets, chaque
+        champ portant son ``label`` FR et son ``type``
+        (``dimension``/``mesure``/``temps``) ;
+      * ``GET core/data-explorer/datasets/<name>/`` — le schéma détaillé d'UN
+        dataset, avec les listes prêtes à l'emploi ``mesures`` /
+        ``dimensions`` / ``temps`` (le front sait alors quoi proposer à
+        l'agrégation et quoi proposer au croisement).
+
+    Lecture seule, authentifiée. Les champs sous permission que le lecteur n'a
+    pas le droit d'interroger ne lui sont jamais PROPOSÉS non plus (AUD801) :
+    l'acteur est transmis au catalogue.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses=inline_serializer('DataExplorerCatalogue', {
+            'datasets': drf_serializers.JSONField(),
+        }))
+    def get(self, request, name=None):
+        if name:
+            try:
+                return Response(
+                    data_explorer.describe_dataset(name, request.user))
+            except data_explorer.DatasetInconnu as exc:
+                return Response({'detail': str(exc)},
+                                status=status.HTTP_404_NOT_FOUND)
+        return Response({'datasets': data_explorer.list_datasets(request.user)})
+
+
+class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
+    """Meme vue, route detail — operation_id distinct pour que le schema
+    OpenAPI ne fonde pas liste et detail dans un seul identifiant (collision
+    d'operationId relevee par la garde YAPIC6)."""
+
+    @extend_schema(
+        responses=inline_serializer('DataExplorerDatasetSchema', {
+            'name': drf_serializers.CharField(),
+            'mesures': drf_serializers.JSONField(),
+            'dimensions': drf_serializers.JSONField(),
+            'temps': drf_serializers.JSONField(),
+        }))
+    def get(self, request, name=None):
+        return super().get(request, name=name)
+
+
+#: NTDATA6 — borne dure du nombre de lignes rendues par une requête ad-hoc.
+#: Le moteur (``data_explorer.run_query``) plafonne déjà à 5000 ; on le REDIT
+#: ici pour que l'endpoint refuse EXPLICITEMENT une demande abusive au lieu de
+#: la rogner en silence (un utilisateur qui demande 50 000 lignes doit savoir
+#: qu'il n'en a reçu que 5 000).
+LIMITE_MAX_EXPLORATION = 5000
+
+
+class DataExplorerRunView(APIView):
+    """NTDATA6 — exécution self-service générique d'une requête ad-hoc.
+
+    ``POST core/data-explorer/run/`` avec
+    ``{dataset, select, filters, group_by, aggregates, order, limit}`` — la
+    spec de ``core.data_explorer.run_query``, à plat (``order`` est accepté
+    comme alias de ``order_by``, les deux formes marchent).
+
+    TROIS GARDES, aucune contournable :
+
+    * la SOCIÉTÉ — le queryset du dataset est déjà borné par l'app
+      propriétaire (``request.user.company`` est le seul périmètre possible) ;
+    * la LISTE BLANCHE — tout champ hors de celle du dataset est une erreur
+      400, et un champ sous permission est silencieusement écarté (AUD801) ;
+    * la LIMITE — ``limit`` est plafonnée à ``LIMITE_MAX_EXPLORATION``, une
+      demande au-delà est REFUSÉE (400) plutôt que rognée en silence.
+
+    Aucun SQL brut n'est accepté : la seule entrée est une spec déclarative.
+    Réservée au palier responsable/admin (``IsResponsableOrAdmin``) : une
+    requête libre sur un dataset entier n'est pas une lecture d'écran.
+    """
+
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(
+        request=inline_serializer('DataExplorerRunRequete', {
+            'dataset': drf_serializers.CharField(),
+            'select': drf_serializers.JSONField(required=False),
+            'filters': drf_serializers.JSONField(required=False),
+            'group_by': drf_serializers.JSONField(required=False),
+            'aggregates': drf_serializers.JSONField(required=False),
+            'order': drf_serializers.JSONField(required=False),
+            'limit': drf_serializers.IntegerField(required=False),
+        }),
+        responses=inline_serializer('DataExplorerRunReponse', {
+            'dataset': drf_serializers.CharField(),
+            'nb': drf_serializers.IntegerField(),
+            'rows': drf_serializers.JSONField(),
+        }))
+    def post(self, request):
+        from .formula import FormulaError
+
+        corps = request.data or {}
+        dataset = corps.get('dataset')
+        if not dataset:
+            return Response({'detail': "Champ « dataset » requis."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        limite = corps.get('limit')
+        if limite not in (None, ''):
+            try:
+                limite = int(limite)
+            except (TypeError, ValueError):
+                return Response(
+                    {'detail': "Champ « limit » : un entier est attendu."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if limite < 1:
+                return Response(
+                    {'detail': "Champ « limit » : doit valoir au moins 1."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if limite > LIMITE_MAX_EXPLORATION:
+                return Response(
+                    {'detail': "Champ « limit » : %d lignes au maximum."
+                               % LIMITE_MAX_EXPLORATION},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            limite = None
+
+        spec = {
+            'select': corps.get('select') or [],
+            'filters': corps.get('filters') or {},
+            'group_by': corps.get('group_by') or [],
+            'aggregates': corps.get('aggregates') or [],
+            'formula_measures': corps.get('formula_measures') or [],
+            # « order » est le mot de la spec NTDATA6 ; « order_by » celui du
+            # moteur — les deux sont acceptés, jamais un troisième.
+            'order_by': corps.get('order') or corps.get('order_by') or [],
+            'limit': limite,
+        }
+        try:
+            rows = data_explorer.run_query(
+                dataset, request.user.company, request.user, spec)
+        except data_explorer.DatasetInconnu as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
+        except (data_explorer.ChampNonAutorise, FormulaError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'dataset': dataset, 'nb': len(rows), 'rows': rows})
 
 
 class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -826,8 +1033,40 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     def traiter(self, request, pk=None):
         from . import dsr
         dsr_request = self.get_object()
-        dsr.traiter_demande(dsr_request)
+        try:
+            dsr.traiter_demande(dsr_request)
+        except dsr.TransitionInterdite as exc:
+            # NTGRC3 — transition illégale ⇒ 400 explicite (jamais 500), le
+            # message nomme le statut courant et le statut visé.
+            return Response({'statut': str(exc)}, status=400)
+        except dsr.EffacementBloque as exc:
+            # NTGRC8 — une garde (mise sous séquestre) refuse l'effacement :
+            # 409 (conflit d'état) avec le motif, jamais un échec silencieux.
+            return Response({'detail': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
+
+    @action(detail=True, methods=['post'], url_path='prendre-en-charge')
+    def prendre_en_charge(self, request, pk=None):
+        """NTGRC3 — passe la demande en VÉRIFICATION D'IDENTITÉ.
+
+        Étape obligatoire avant de livrer les données de quelqu'un : on
+        s'assure d'abord que le demandeur est bien la personne concernée. Une
+        transition illégale renvoie 400 (jamais 500).
+        """
+        from . import dsr
+        dsr_request = self.get_object()
+        try:
+            dsr.prendre_en_charge(dsr_request)
+        except dsr.TransitionInterdite as exc:
+            return Response({'statut': str(exc)}, status=400)
+        return Response(self.get_serializer(dsr_request).data)
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """NTGRC3 — demandes dont l'échéance légale (30 j) est dépassée."""
+        from . import dsr
+        qs = dsr.demandes_en_retard(request.user.company)
+        return Response({'results': self.get_serializer(qs, many=True).data})
 
 
 class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):

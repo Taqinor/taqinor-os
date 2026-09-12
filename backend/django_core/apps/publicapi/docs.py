@@ -60,7 +60,7 @@ def public_api_reference():
     return {
         'titre': "API publique Taqinor — Référence",
         'version': '1',
-        'base_url': '/api/public/',
+        'base_url': '/api/public/v1/',
         'introduction': (
             "API REST authentifiée par clé d'API et scopée à votre société. "
             "Principalement en lecture seule ; un sous-ensemble d'écriture "
@@ -107,7 +107,7 @@ def public_api_reference():
         },
         'endpoints': [
             {
-                'chemin': '/api/public/leads/',
+                'chemin': '/api/public/v1/leads/',
                 'scope': 'read:leads',
                 'description': "Leads CRM (pipeline commercial).",
                 'filtres': [
@@ -118,7 +118,7 @@ def public_api_reference():
                 'updated_since': 'date_modification',
             },
             {
-                'chemin': '/api/public/devis/',
+                'chemin': '/api/public/v1/devis/',
                 'scope': 'read:devis',
                 'description': "Devis (avec lignes, prix de vente uniquement).",
                 'filtres': ['statut', 'mode_installation', 'client', 'lead'],
@@ -126,7 +126,7 @@ def public_api_reference():
                 'updated_since': 'date_creation',
             },
             {
-                'chemin': '/api/public/factures/',
+                'chemin': '/api/public/v1/factures/',
                 'scope': 'read:factures',
                 'description': "Factures (avec lignes).",
                 'filtres': ['statut', 'type_facture', 'client', 'devis'],
@@ -134,7 +134,7 @@ def public_api_reference():
                 'updated_since': 'date_emission',
             },
             {
-                'chemin': '/api/public/chantiers/',
+                'chemin': '/api/public/v1/chantiers/',
                 'scope': 'read:chantiers',
                 'description': "Chantiers / installations.",
                 'filtres': [
@@ -145,7 +145,7 @@ def public_api_reference():
                 'updated_since': 'date_modification',
             },
             {
-                'chemin': '/api/public/produits/',
+                'chemin': '/api/public/v1/produits/',
                 'scope': 'read:stock',
                 'description': (
                     "Disponibilité produit (SKU/nom/marque/catégorie/quantité "
@@ -186,19 +186,19 @@ def public_api_reference():
             'entete_idempotence': 'Idempotency-Key',
             'liste': [
                 {
-                    'chemin': '/api/public/leads-write/',
+                    'chemin': '/api/public/v1/leads-write/',
                     'methode': 'POST',
                     'scope': 'leads:write',
                     'description': "Crée un lead.",
                 },
                 {
-                    'chemin': '/api/public/leads-write/<id>/',
+                    'chemin': '/api/public/v1/leads-write/<id>/',
                     'methode': 'PATCH',
                     'scope': 'leads:write',
                     'description': "Met à jour un lead existant.",
                 },
                 {
-                    'chemin': '/api/public/leads-write/<id>/activites/',
+                    'chemin': '/api/public/v1/leads-write/<id>/activites/',
                     'methode': 'POST',
                     'scope': 'activities:write',
                     'description': "Ajoute une note (chatter) sur un lead.",
@@ -215,7 +215,7 @@ def public_api_reference():
             ),
             'liste': [
                 {
-                    'chemin': '/api/public/exports/',
+                    'chemin': '/api/public/v1/exports/',
                     'methode': 'POST',
                     'description': (
                         "Lance un export bulk asynchrone (leads/devis/"
@@ -227,7 +227,7 @@ def public_api_reference():
                     'request_body': True,
                 },
                 {
-                    'chemin': '/api/public/imports/',
+                    'chemin': '/api/public/v1/imports/',
                     'methode': 'POST',
                     'description': (
                         "Lance un import bulk asynchrone (leads/activités) "
@@ -239,14 +239,14 @@ def public_api_reference():
                     'request_body': True,
                 },
                 {
-                    'chemin': '/api/public/jobs/',
+                    'chemin': '/api/public/v1/jobs/',
                     'methode': 'GET',
                     'description': "Liste paginée des jobs bulk de la société.",
                     'success_status': '200',
                     'request_body': False,
                 },
                 {
-                    'chemin': '/api/public/jobs/<id>/',
+                    'chemin': '/api/public/v1/jobs/<id>/',
                     'methode': 'GET',
                     'description': (
                         "Suivi d'un job bulk : statut, progression %, "
@@ -257,7 +257,7 @@ def public_api_reference():
                     'request_body': False,
                 },
                 {
-                    'chemin': '/api/public/jobs/<id>/relancer/',
+                    'chemin': '/api/public/v1/jobs/<id>/relancer/',
                     'methode': 'POST',
                     'description': (
                         "Reprend un job en échec depuis son curseur "
@@ -267,7 +267,7 @@ def public_api_reference():
                     'request_body': False,
                 },
                 {
-                    'chemin': '/api/public/exports/<entite>.csv',
+                    'chemin': '/api/public/v1/exports/<entite>.csv',
                     'methode': 'GET',
                     'description': (
                         "NTAPI30 — pull CSV live SYNCHRONE (leads/devis/"

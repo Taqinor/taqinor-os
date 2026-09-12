@@ -1,4 +1,4 @@
-"""NTAPI3 — enveloppe d'erreur normalisée DÉDIÉE à l'API publique (/api/public/).
+"""NTAPI3 — enveloppe d'erreur normalisée DÉDIÉE à l'API publique (/api/public/v1/).
 
 Handler d'exception DRF façon Stripe, DISTINCT du handler global
 ``core.exceptions.taqinor_exception_handler`` (YAPIC3, qui reste inchangé pour

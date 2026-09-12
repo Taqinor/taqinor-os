@@ -382,6 +382,21 @@ class KpiAlerte(models.Model):
         # SCM exécutif natif (``/scm/dashboard``), pas dupliquées ici.
         TAUX_SERVICE_SCM = (
             'taux_service_scm', 'Supply chain — taux de service (%)')
+        # NTJUR48 — KPI juridiques (``apps.juridique.selectors.
+        # kpis_juridiques``, lu SANS importer aucun modèle juridique). Ils
+        # EXCLUENT toujours les dossiers confidentiels des agrégats visibles à
+        # un rôle non autorisé (cohérent avec NTJUR24) : le filtrage vit dans
+        # le sélecteur, pas dans l'appelant.
+        JURIDIQUE_DOSSIERS_OUVERTS = (
+            'juridique_dossiers_ouverts', 'Juridique — dossiers ouverts')
+        JURIDIQUE_MONTANT_EN_JEU_TOTAL = (
+            'juridique_montant_en_jeu_total',
+            'Juridique — montant total en jeu (MAD)')
+        JURIDIQUE_TAUX_GAIN = (
+            'juridique_taux_gain', 'Juridique — taux de gain (%)')
+        JURIDIQUE_DELAI_MOYEN_RESOLUTION = (
+            'juridique_delai_moyen_resolution',
+            'Juridique — délai moyen de résolution (jours)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'
@@ -389,11 +404,44 @@ class KpiAlerte(models.Model):
         INF = 'inf', '<'
         INF_EGAL = 'inf_egal', '<='
 
+    class Source(models.TextChoices):
+        """NTDATA13 — d'où vient le nombre comparé au seuil.
+
+        ``CATALOGUE`` est le DÉFAUT et le comportement historique EXACT : le
+        catalogue fermé ``Kpi`` ci-dessus, chaque valeur branchée sur un
+        selector existant. ``METRIQUE`` ouvre le seuil à N'IMPORTE QUELLE
+        ``semantic.MetricDefinition`` de la société — la couche sémantique
+        NTDATA7/8 — sans que le catalogue fermé ait à grossir à chaque
+        nouveau besoin.
+        """
+
+        CATALOGUE = 'catalogue', 'KPI du catalogue'
+        METRIQUE = 'metrique', 'Métrique nommée (couche sémantique)'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='reporting_kpi_alertes')
     nom = models.CharField(max_length=120, blank=True, default='')
-    kpi = models.CharField(max_length=30, choices=Kpi.choices)
+    # NTJUR48 — élargi 30 → 40 : ``juridique_delai_moyen_resolution`` fait 32
+    # caractères. ÉLARGISSEMENT pur (aucune valeur existante ne dépasse 30,
+    # aucune troncature possible) — en PostgreSQL un varchar élargi est une
+    # opération de métadonnées, sans réécriture de table.
+    source = models.CharField(
+        max_length=12, choices=Source.choices, default=Source.CATALOGUE,
+        verbose_name='Source du chiffre')
+    # NTDATA13 — `kpi` devient facultatif : une alerte de source `metrique`
+    # n'en porte pas. Additif — toutes les alertes existantes gardent leur
+    # valeur et leur source `catalogue`.
+    kpi = models.CharField(
+        max_length=40, choices=Kpi.choices, blank=True, default='')
+    # FK STRING vers la couche sémantique (aucun import de `apps.semantic`
+    # dans ce module). SET_NULL : supprimer une définition de métrique ne
+    # détruit jamais l'alerte — elle devient simplement inévaluable, et le
+    # journal le dit.
+    metric_definition = models.ForeignKey(
+        'semantic.MetricDefinition', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alertes_kpi',
+        verbose_name='Métrique nommée')
     operateur = models.CharField(
         max_length=10, choices=Operateur.choices, default=Operateur.SUP)
     seuil = models.DecimalField(max_digits=14, decimal_places=2)
@@ -428,6 +476,31 @@ class KpiAlerte(models.Model):
 
     def __str__(self):
         return self.nom or f'{self.get_kpi_display()} {self.operateur} {self.seuil}'
+
+    def clean(self):
+        """NTDATA13 — une alerte dit CLAIREMENT ce qu'elle mesure.
+
+        Erreurs portées par le CHAMP fautif (jamais un « non enregistré »
+        générique) : source « catalogue » ⇒ ``kpi`` obligatoire ; source
+        « métrique » ⇒ ``metric_definition`` obligatoire, et de la MÊME
+        société (une alerte ne peut pas pointer la métrique d'un autre
+        tenant).
+        """
+        from django.core.exceptions import ValidationError
+
+        erreurs = {}
+        if self.source == self.Source.METRIQUE:
+            if self.metric_definition_id is None:
+                erreurs['metric_definition'] = (
+                    'Choisissez la métrique nommée à surveiller.')
+            elif (self.company_id
+                    and self.metric_definition.company_id != self.company_id):
+                erreurs['metric_definition'] = (
+                    "Cette métrique appartient à une autre société.")
+        elif not self.kpi:
+            erreurs['kpi'] = 'Choisissez le KPI à surveiller.'
+        if erreurs:
+            raise ValidationError(erreurs)
 
     def est_franchi(self, valeur):
         """True si ``valeur`` franchit le seuil selon l'opérateur configuré."""

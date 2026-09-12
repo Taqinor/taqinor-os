@@ -22,7 +22,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from core.permissions import WriteScopedPermissionMixin
+from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from .models import Reclamation, ReclamationActivity
@@ -125,6 +125,61 @@ class ReclamationViewSet(UsageGuardedDestroyMixin, _LitigesBaseViewSet):
 
         data = selectors.analyse_concurrents_perte(request.user.company)
         return Response(data)
+
+    # ── Escalade vers un dossier juridique (NTJUR6) ──────────────────────────
+    # Garde DÉCLARÉE (ratchet YRBAC3) : exactement le défaut de la classe
+    # (`WriteScopedPermissionMixin.permission_classes`), donc `litige_gerer`
+    # pour ce POST — même garde que ses sœurs d'écriture
+    # (`prendre_en_charge` / `resoudre` / `rejeter`). Déclarer le défaut ne
+    # change RIEN au runtime (cf. `core.permissions.
+    # declared_action_permissions`), mais rend la garde EXPLICITE : une
+    # `@action` custom ne se lit pas dans la méthode HTTP.
+    @action(detail=True, methods=['post'], url_path='escalader-juridique',
+            permission_classes=[ScopedPermission])
+    def escalader_juridique(self, request, pk=None):
+        """Ouvre (ou retrouve) le dossier juridique de cette réclamation.
+
+        Délègue à ``apps.juridique.services.creer_dossier_depuis_reclamation``
+        (import FONCTION-LOCAL : la frontière inter-apps passe par le service
+        de l'app cible, jamais par ses ``models``). IDEMPOTENT : un second
+        appel renvoie le dossier déjà lié avec ``201`` → ``200``, sans jamais
+        créer de doublon. Corps optionnel : ``partie_adverse_nom``, ``nature``,
+        ``type_procedure``, ``responsable_interne`` (surcharges de
+        pré-remplissage).
+        """
+        from apps.juridique import services as juridique_services
+
+        reclamation = self.get_object()
+        overrides = {
+            champ: request.data.get(champ)
+            for champ in ('partie_adverse_nom', 'nature', 'type_procedure',
+                          'titre')
+            if request.data.get(champ)
+        }
+        dossier, cree = juridique_services.creer_dossier_depuis_reclamation(
+            request.user.company, reclamation.pk, user=request.user,
+            **overrides)
+        if dossier is None:
+            return Response(
+                {'detail': 'Réclamation introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        if cree:
+            ReclamationActivity.objects.create(
+                company=request.user.company,
+                reclamation=reclamation,
+                type=ReclamationActivity.Kind.NOTE,
+                message=(f'Dossier juridique {dossier.reference} ouvert par '
+                         f'escalade.'),
+                auteur=request.user,
+            )
+        return Response(
+            {
+                'dossier_juridique_id': dossier.id,
+                'reference': dossier.reference,
+                'cree': cree,
+            },
+            status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK),
+        )
 
     # ── Machine à états + chatter ────────────────────────────────────────────
     def _transition(self, request, *, allowed_from, target):

@@ -25,7 +25,7 @@ class IsTestApiKey(permissions.BasePermission):
 
 
 class SandboxResetView(PublicApiResponseMixin, APIView):
-    """``POST /api/public/sandbox/reset/`` — remet le bac à sable de la clé
+    """``POST /api/public/v1/sandbox/reset/`` — remet le bac à sable de la clé
     appelante à son état initial (efface puis reseed les données de démo).
     Une clé `live` reçoit 403 — elle n'a jamais accès au bac à sable."""
     authentication_classes = [ApiKeyAuthentication]

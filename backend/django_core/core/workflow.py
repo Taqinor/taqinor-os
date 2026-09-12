@@ -61,6 +61,9 @@ alimentera à terme la sélection/instanciation de ces définitions de workflow 
 ce moteur reste l'EXÉCUTION, FG25 la CONFIGURATION.
 """
 import datetime
+import hashlib
+import json
+import re
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -81,6 +84,14 @@ __all__ = [
     'etapes_sla_depassees',
     'flag_overdue_steps',
     'instance_en_cours_pour',
+    'demarrer_depuis_matrice',
+    'decide_step',
+    'register_delegation_resolver',
+    'delegants_actifs_pour',
+    'register_business_day_advance',
+    'etapes_a_mi_sla',
+    'marquer_rappel_envoye',
+    'valider_definition_steps',
 ]
 
 
@@ -92,10 +103,39 @@ def _resolve_now(now):
     return now if now is not None else timezone.now()
 
 
-def _sla_echeance(started, sla_heures):
-    """``started + sla_heures`` (datetime) ou ``None`` si pas de SLA."""
+# NTWFL4 — résolveur de calendrier ouvré, branché par
+# ``apps.notifications.apps.ready()`` (jamais un import direct de cette app
+# depuis ``core`` : contrat import-linter core-foundation-is-a-base-layer).
+# Signature : ``fn(started: datetime, sla_heures: int, company) -> datetime``.
+_business_day_advance_resolver = None
+
+
+def register_business_day_advance(fn):
+    """Enregistre le résolveur de calendrier ouvré (NTWFL4).
+
+    Appelé par ``apps.notifications.apps.ready()`` avec
+    ``calendar_utils.ajouter_heures_ouvrees``. Un second appel REMPLACE le
+    résolveur (utile aux tests qui veulent l'isoler)."""
+    global _business_day_advance_resolver
+    _business_day_advance_resolver = fn
+
+
+def _sla_echeance(started, sla_heures, *, calendrier_ouvre=False, company=None):
+    """``started + sla_heures`` (datetime) ou ``None`` si pas de SLA.
+
+    NTWFL4 — ``calendrier_ouvre=True`` (avec ``company``) délègue au
+    résolveur de calendrier ouvré enregistré (heures OUVRÉES : les jours non
+    ouvrés/fériés de la société sont sautés) ; ``calendrier_ouvre=False``
+    (défaut) ou sans résolveur enregistré garde le calcul HISTORIQUE en
+    heures brutes — comportement strictement inchangé."""
     if not sla_heures:
         return None
+    if (calendrier_ouvre and company is not None
+            and _business_day_advance_resolver is not None):
+        try:
+            return _business_day_advance_resolver(started, sla_heures, company)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant
+            pass
     return started + datetime.timedelta(hours=sla_heures)
 
 
@@ -133,7 +173,10 @@ def demarrer_workflow(definition, target, company, user=None, now=None):
             step_def=sd,
             ordre=sd.ordre,
             statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
-            sla_echeance=_sla_echeance(started, sd.sla_heures),
+            sla_echeance=_sla_echeance(
+                started, sd.sla_heures,
+                calendrier_ouvre=getattr(sd, 'calendrier_ouvre', False),
+                company=company),
         )
 
     if not step_defs:
@@ -182,11 +225,127 @@ def etape_courante_de(instance):
     )
 
 
+def _contexte_cible(instance):
+    """NTWFL7 — sérialise superficiellement ``instance.target`` (la cible
+    générique via contenttypes) en un ``dict`` PLAT ``{champ: valeur}`` pour
+    ``core.rules.evaluate_condition_group``. Générique : introspecte les
+    champs CONCRETS du modèle cible sans jamais importer son type (``core``
+    reste fondation). ``{}`` si la cible est absente/introspection
+    impossible — une garde sans contexte disponible échoue prudemment
+    (feuilles ``core.rules`` : champ absent ⇒ ``False``)."""
+    target = getattr(instance, 'target', None)
+    if target is None:
+        return {}
+    try:
+        return {f.name: getattr(target, f.name, None)
+                for f in target._meta.fields}
+    except Exception:  # pragma: no cover - défensif
+        return {}
+
+
+def _garde_transition_ok(step, instance):
+    """NTWFL7 — ``True`` si la garde ``condition_transition`` de l'étape est
+    vérifiée (ou absente — comportement inchangé : toujours franchie)."""
+    condition = step.step_def.condition_transition
+    if not condition:
+        return True
+    from core.rules import evaluate_condition_group
+    return evaluate_condition_group(condition, _contexte_cible(instance))
+
+
+def _champ_visible(champ_nom, formulaire, donnees):
+    """NTWFL12 — un champ sans condition est toujours visible ; une
+    condition (format core.rules) est évaluée contre les AUTRES réponses
+    déjà saisies (``donnees``)."""
+    regle = (formulaire.champs_conditionnels or {}).get(champ_nom) or {}
+    visible_si = regle.get('visible_si')
+    if not visible_si:
+        return True
+    from core.rules import evaluate_condition_group
+    return evaluate_condition_group(visible_si, donnees)
+
+
+def _formulaire_incomplet(step):
+    """NTWFL12 — ``True`` si ``step.step_def.formulaire`` exige un champ
+    (``requis``) actuellement VISIBLE (cf. ``_champ_visible``) mais absent/
+    vide de ``step.donnees_formulaire``. Sans formulaire rattaché : toujours
+    ``False`` (comportement historique inchangé). Une section répétable
+    (``type == 'section'`` avec ``repetable``) ne porte pas de valeur
+    directe — seuls les champs simples sont vérifiés ici."""
+    formulaire = step.step_def.formulaire
+    if formulaire is None:
+        return False
+    donnees = step.donnees_formulaire or {}
+    for champ in formulaire.schema or []:
+        if not isinstance(champ, dict) or champ.get('type') == 'section':
+            continue
+        if not champ.get('requis'):
+            continue
+        nom = champ.get('nom')
+        if not _champ_visible(nom, formulaire, donnees):
+            continue
+        valeur = donnees.get(nom)
+        if valeur in (None, '', [], {}):
+            return True
+    return False
+
+
+def _router_vers_alternative(step, instance, moment):
+    """NTWFL7 — route vers ``step.step_def.etape_alternative_si_echec`` (un
+    ``ordre`` de la MÊME définition) quand la garde échoue : l'étape
+    courante est marquée ``ignoree`` (branche non empruntée) et le pointeur
+    saute directement à l'étape alternative. Renvoie ``True`` si une route a
+    été prise, ``False`` sinon (pas d'alternative configurée, ou ``ordre``
+    introuvable — traité comme « pas d'alternative » plutôt que de planter)."""
+    ordre_alt = step.step_def.etape_alternative_si_echec
+    if not ordre_alt:
+        return False
+    cible = (
+        instance.step_instances.filter(ordre=ordre_alt).order_by('id').first()
+    )
+    if cible is None:
+        return False
+    step.statut = WorkflowStepInstance.STATUT_IGNOREE
+    step.decided_le = moment
+    step.save(update_fields=['statut', 'decided_le', 'updated_at'])
+    instance.etape_courante = ordre_alt
+    instance.save(update_fields=['etape_courante', 'updated_at'])
+    return True
+
+
+def _emit_etape_activee(step, company):
+    """NTWFL5 — émet ``core.events.workflow_etape_activee`` (best-effort,
+    jamais bloquant : une notification cassée ne doit jamais empêcher le
+    moteur BPM d'avancer)."""
+    try:
+        from core.events import workflow_etape_activee
+        workflow_etape_activee.send(
+            sender='core.workflow', step=step, company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
 def _steps_apres(instance, ordre):
     """Étapes dont l'``ordre`` est strictement supérieur, triées."""
     return list(
         instance.step_instances
         .filter(ordre__gt=ordre)
+        .order_by('ordre', 'id')
+    )
+
+
+def _steps_du_groupe(instance, step):
+    """NTWFL10 — étapes de ``instance`` partageant le MÊME
+    ``step_def.groupe_parallele`` que ``step`` (``step`` inclus). Sans
+    groupe (``groupe_parallele`` vide), renvoie ``[step]`` seul —
+    comportement séquentiel inchangé."""
+    groupe = step.step_def.groupe_parallele
+    if not groupe:
+        return [step]
+    return list(
+        instance.step_instances
+        .filter(step_def__groupe_parallele=groupe)
+        .select_related('step_def')
         .order_by('ordre', 'id')
     )
 
@@ -199,6 +358,17 @@ def avancer(instance, now=None, _from_start=False):
     s'arrête sur la première étape ``en_attente`` non-auto (qui devient
     ``etape_courante``). Si plus aucune étape n'est en attente, l'instance est
     terminée. ``now`` est passé pour horodater déterministiquement.
+
+    NTWFL10 — groupe parallèle (``step_def.groupe_parallele``) : la marche
+    ORDRE PAR ORDRE existante fait déjà tout le travail d'attente (émergent,
+    sans code dédié) — tant qu'un membre du groupe reste ``en_attente``,
+    ``_avancer_pointeur`` s'y arrête (il cherche le prochain ``ordre``
+    strictement supérieur, PEU IMPORTE son statut, donc un membre du groupe
+    encore en attente est toujours retrouvé avant l'étape suivante). Seule
+    la NOTIFICATION de fan-out (tous les membres à la fois) a besoin d'un
+    traitement dédié — voir plus bas. Un rejet dans un groupe termine
+    l'instance immédiatement (``rejeter_etape``), exactement comme un rejet
+    séquentiel classique — aucun code dédié non plus.
     """
     moment = _resolve_now(now)
     if instance.statut != WorkflowInstance.STATUT_EN_COURS:
@@ -225,6 +395,15 @@ def avancer(instance, now=None, _from_start=False):
 
         if step.step_def.type_approbation == \
                 step.step_def.APPROBATION_AUTO:
+            # NTWFL7 — garde de transition AVANT l'auto-approbation.
+            if not _garde_transition_ok(step, instance):
+                route_prise = _router_vers_alternative(step, instance, moment)
+                if route_prise:
+                    continue
+                # Pas d'alternative valide : reste EN ATTENTE (comme une
+                # étape manuelle bloquée) plutôt que de forcer l'avancement.
+                _emit_etape_activee(step, instance.company)
+                return instance
             step.statut = WorkflowStepInstance.STATUT_APPROUVE
             step.decided_le = moment
             step.save(update_fields=['statut', 'decided_le', 'updated_at'])
@@ -232,6 +411,27 @@ def avancer(instance, now=None, _from_start=False):
             continue
 
         # Étape manuelle / par rôle en attente : on s'arrête ici.
+        # NTWFL10 — groupe parallèle : fan-out (notifie TOUS les membres
+        # encore en attente) SEULEMENT au premier arrêt sur le groupe
+        # (aucun membre encore décidé) — évite de re-notifier à chaque
+        # ré-entrée dans la boucle après la décision d'UN SEUL membre
+        # (celle-ci ne fait qu'avancer le pointeur vers le membre suivant
+        # encore en attente, cf. docstring de ``avancer`` ci-dessus).
+        membres = _steps_du_groupe(instance, step)
+        if len(membres) > 1:
+            deja_decides = [
+                m for m in membres
+                if m.statut != WorkflowStepInstance.STATUT_EN_ATTENTE]
+            if not deja_decides:
+                for membre in membres:
+                    _emit_etape_activee(membre, instance.company)
+            return instance
+
+        # NTWFL5 — signale qu'une étape vient de devenir ACTIVE (comble
+        # YEVNT8 pour FG366 : aujourd'hui aucune notification ne part à la
+        # création). Émission SYNCHRONE, best-effort côté abonné (jamais
+        # bloquant pour le moteur BPM lui-même).
+        _emit_etape_activee(step, instance.company)
         return instance
 
 
@@ -252,46 +452,70 @@ def _terminer(instance, moment):
 
 
 @transaction.atomic
-def approuver_etape(instance, user=None, commentaire='', now=None):
+def approuver_etape(instance, user=None, commentaire='', now=None, step=None):
     """Approuve l'étape courante puis avance séquentiellement.
 
+    ``step`` (NTWFL10, optionnel) désigne PRÉCISÉMENT l'étape à approuver —
+    nécessaire pour un groupe parallèle où PLUSIEURS étapes sont en attente
+    À LA FOIS (``etape_courante_de`` n'en résout qu'une). Sans ``step``
+    (défaut), résout ``etape_courante_de(instance)`` comme avant —
+    comportement historique STRICTEMENT inchangé pour tout appelant
+    existant qui ne passe pas ce paramètre.
+
     Lève ``ValueError`` si l'instance n'est pas en cours ou n'a pas d'étape
-    active en attente.
+    active en attente, ou (NTWFL12) si un formulaire dynamique requis n'est
+    pas complété (``step.donnees_formulaire``).
     """
     moment = _resolve_now(now)
-    step = etape_courante_de(instance)
-    if step is None or step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+    if instance.statut != WorkflowInstance.STATUT_EN_COURS:
         raise ValueError("Aucune étape en attente à approuver.")
-    step.statut = WorkflowStepInstance.STATUT_APPROUVE
-    step.assignee = user
-    step.decided_le = moment
+    cible = step if step is not None else etape_courante_de(instance)
+    if cible is None or cible.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+        raise ValueError("Aucune étape en attente à approuver.")
+    if _formulaire_incomplet(cible):
+        raise ValueError(
+            "Le formulaire de cette étape doit être complété avant "
+            "l'approbation.")
+    cible.statut = WorkflowStepInstance.STATUT_APPROUVE
+    cible.assignee = user
+    cible.decided_le = moment
     if commentaire:
-        step.commentaire = commentaire
-    step.save(update_fields=[
+        cible.commentaire = commentaire
+    cible.save(update_fields=[
         'statut', 'assignee', 'decided_le', 'commentaire', 'updated_at'])
     avancer(instance, now=moment)
-    return step
+    return cible
 
 
 @transaction.atomic
-def rejeter_etape(instance, user=None, commentaire='', now=None):
+def rejeter_etape(instance, user=None, commentaire='', now=None, step=None):
     """Rejette l'étape courante : l'instance est terminée (chaîne stoppée).
+
+    ``step`` (NTWFL10, optionnel) — même rôle que sur ``approuver_etape`` :
+    désigne l'étape à rejeter dans un groupe parallèle. NTWFL10 — un rejet
+    dans un groupe parallèle rejette l'ENSEMBLE (pas de logique de
+    quorum) : ce comportement est DÉJÀ celui-ci (l'instance termine
+    immédiatement, sans code dédié — les autres membres du groupe, encore
+    ``en_attente``, cessent simplement d'apparaître dans les listes
+    d'attente puisque celles-ci sont bornées à ``instance__statut=en_cours``).
 
     Lève ``ValueError`` si aucune étape n'est en attente.
     """
     moment = _resolve_now(now)
-    step = etape_courante_de(instance)
-    if step is None or step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+    if instance.statut != WorkflowInstance.STATUT_EN_COURS:
         raise ValueError("Aucune étape en attente à rejeter.")
-    step.statut = WorkflowStepInstance.STATUT_REJETE
-    step.assignee = user
-    step.decided_le = moment
+    cible = step if step is not None else etape_courante_de(instance)
+    if cible is None or cible.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+        raise ValueError("Aucune étape en attente à rejeter.")
+    cible.statut = WorkflowStepInstance.STATUT_REJETE
+    cible.assignee = user
+    cible.decided_le = moment
     if commentaire:
-        step.commentaire = commentaire
-    step.save(update_fields=[
+        cible.commentaire = commentaire
+    cible.save(update_fields=[
         'statut', 'assignee', 'decided_le', 'commentaire', 'updated_at'])
     _terminer(instance, moment)
-    return step
+    return cible
 
 
 @transaction.atomic
@@ -334,6 +558,53 @@ def flag_overdue_steps(company, now):
     return overdue
 
 
+# ── NTWFL5 — relance à mi-SLA (comble YEVNT9 pour FG366) ────────────────────
+
+def etapes_a_mi_sla(company, now):
+    """Sélecteur : étapes ``en_attente`` dont AU MOINS 50 % du délai SLA
+    s'est écoulé depuis le départ de l'instance, jamais encore relancées.
+
+    ``now`` est OBLIGATOIRE (déterminisme). Une étape est éligible si : elle
+    est encore en attente, porte une ``sla_echeance`` (sans SLA configuré,
+    jamais de rappel), son instance est en cours et porte ``started_le``,
+    ``dernier_rappel_le`` est vide (jamais deux rappels pour la même étape)
+    et l'instant à mi-chemin entre ``started_le`` et ``sla_echeance`` est
+    déjà passé. Triée par échéance la plus proche d'abord."""
+    candidats = (
+        WorkflowStepInstance.objects.filter(
+            company=company,
+            statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+            sla_echeance__isnull=False,
+            dernier_rappel_le__isnull=True,
+            instance__statut=WorkflowInstance.STATUT_EN_COURS,
+            instance__started_le__isnull=False,
+        )
+        .select_related('instance')
+        .order_by('sla_echeance', 'id')
+    )
+    resultat = []
+    for step in candidats:
+        debut = step.instance.started_le
+        fin = step.sla_echeance
+        if fin <= debut:
+            continue
+        mi_chemin = debut + (fin - debut) / 2
+        if now >= mi_chemin:
+            resultat.append(step)
+    return resultat
+
+
+def marquer_rappel_envoye(step, now=None):
+    """Marque ``step`` comme relancée à l'instant ``now`` (défaut : maintenant).
+
+    Empêche tout second rappel pour la même étape (``etapes_a_mi_sla`` ne la
+    renverra plus, ``dernier_rappel_le`` n'étant plus vide)."""
+    moment = _resolve_now(now)
+    step.dernier_rappel_le = moment
+    step.save(update_fields=['dernier_rappel_le', 'updated_at'])
+    return step
+
+
 # ── XKB1 — boîte d'approbations centralisée (lecture cross-app) ──────────────
 
 def pending_steps_for_company(company):
@@ -354,15 +625,237 @@ def pending_steps_for_company(company):
     )
 
 
-def decide_step(step, *, approve, user=None, commentaire='', now=None):
+def decide_step(
+        step, *, approve, user=None, commentaire='', now=None,
+        on_behalf_of=None):
     """XKB1 — approuve/rejette une étape BPM en attente en résolvant son
     ``WorkflowInstance`` propriétaire (l'agrégateur ne connaît que l'étape).
 
     ``approve=True`` → ``approuver_etape`` ; ``approve=False`` →
     ``rejeter_etape``. Délègue entièrement à ces fonctions existantes (mêmes
-    garde-fous, même transaction atomique)."""
+    garde-fous, même transaction atomique).
+
+    NTWFL3 — ``on_behalf_of`` (délégant, optionnel) journalise la décision
+    comme prise « au nom de » ce délégant : AUCUNE nouvelle colonne (le
+    modèle ``WorkflowStepInstance`` reste inchangé, cf. Files de la tâche) —
+    la mention est préfixée dans le ``commentaire`` existant. ``None``
+    (défaut) préserve EXACTEMENT le comportement historique pour tout appel
+    existant qui ne passe pas ce paramètre.
+
+    NTWFL10 — passe désormais ``step=step`` à ``approuver_etape``/
+    ``rejeter_etape`` : décide PRÉCISÉMENT l'étape que l'agrégateur affichait
+    (nécessaire pour un groupe parallèle, où plusieurs étapes de la MÊME
+    instance sont en attente à la fois — sans ce paramètre, une résolution
+    via ``etape_courante_de`` déciderait toujours le même membre). Pour une
+    instance séquentielle classique (un seul membre en attente), ``step``
+    EST déjà l'étape que ``etape_courante_de`` aurait résolue — comportement
+    identique."""
+    if on_behalf_of is not None:
+        commentaire = (
+            f'[Décidé par {user} au nom de {on_behalf_of}] {commentaire}'
+        ).strip()
     if approve:
         return approuver_etape(
-            step.instance, user=user, commentaire=commentaire, now=now)
+            step.instance, user=user, commentaire=commentaire, now=now,
+            step=step)
     return rejeter_etape(
-        step.instance, user=user, commentaire=commentaire, now=now)
+        step.instance, user=user, commentaire=commentaire, now=now,
+        step=step)
+
+
+# ── NTWFL3 — délégation de vacances (XKB3) branchée sur le moteur BPM ───────
+#
+# ``core`` reste FONDATION (contrat import-linter
+# core-foundation-is-a-base-layer) : il n'importe JAMAIS ``apps.automation``.
+# Le résolveur réel (``ApprovalDelegation.delegants_actifs_pour``) est
+# enregistré par ``apps.automation.apps.AutomationConfig.ready()`` — même
+# patron que ``core.retention.register_retention_policy``. Sans app
+# ``automation`` chargée (ou en tests qui n'en ont pas besoin), le registre
+# reste ``None`` et toute résolution renvoie une liste vide (neutre).
+_delegation_resolver = None
+
+
+def register_delegation_resolver(fn):
+    """Enregistre ``fn(suppleant, company, at=None) -> [delegant_id, ...]``.
+
+    Appelé par ``apps.automation.apps.ready()`` (NTWFL3). Un second appel
+    REMPLACE le résolveur (utile aux tests qui veulent l'isoler) — jamais
+    d'accumulation silencieuse."""
+    global _delegation_resolver
+    _delegation_resolver = fn
+
+
+def delegants_actifs_pour(suppleant, company, at=None):
+    """NTWFL3 — IDs des délégants pour lesquels ``suppleant`` détient une
+    délégation ACTIVE (via le résolveur enregistré, cf. ci-dessus). Liste
+    vide si aucun résolveur enregistré ou aucune délégation active — ne
+    lève jamais (une délégation ne doit jamais faire planter une décision)."""
+    if _delegation_resolver is None:
+        return []
+    try:
+        return list(_delegation_resolver(suppleant, company, at=at) or [])
+    except Exception:  # pragma: no cover - défensif
+        return []
+
+
+# ── NTWFL9 — validation d'une définition AVANT sauvegarde ───────────────────
+
+def _champ(step, nom, defaut=None):
+    """Lit ``nom`` sur ``step``, qu'il s'agisse d'un ``dict`` (payload brut,
+    ex. venant d'un sérialiseur) ou d'une instance de modèle."""
+    if isinstance(step, dict):
+        return step.get(nom, defaut)
+    return getattr(step, nom, defaut)
+
+
+def valider_definition_steps(steps):
+    """NTWFL9 — valide une liste d'étapes AVANT sauvegarde d'une définition.
+
+    ``steps`` : liste de ``dict``/instances portant au moins ``ordre``,
+    ``type_approbation``, ``role_requis``, ``etape_alternative_si_echec``
+    (le format exact du payload du sérialiseur ou des instances
+    ``WorkflowStepDefinition`` — les deux sont acceptés). Renvoie une liste
+    d'erreurs en FRANÇAIS (vide = définition valide) ; NE LÈVE JAMAIS.
+
+    Règles vérifiées :
+      * au moins UNE étape ;
+      * chaque étape ``manuelle`` (``APPROBATION_MANUELLE``) porte un
+        ``role_requis`` non vide (aucun « assigné par défaut » distinct
+        n'existe sur ce modèle — ``role_requis`` est le seul champ
+        d'assignation) ;
+      * aucune boucle infinie via ``etape_alternative_si_echec`` (NTWFL7) :
+        suit la chaîne d'alternatives de chaque étape et détecte un cycle.
+    """
+    from core.models import WorkflowStepDefinition
+
+    erreurs = []
+    if not steps:
+        erreurs.append(
+            'Une définition de workflow doit comporter au moins une étape.')
+        return erreurs
+
+    par_ordre = {}
+    for s in steps:
+        ordre = _champ(s, 'ordre')
+        if ordre is not None:
+            par_ordre[ordre] = s
+
+    for s in steps:
+        ordre = _champ(s, 'ordre')
+        nom = _champ(s, 'nom') or f'#{ordre}'
+        if (_champ(s, 'type_approbation')
+                == WorkflowStepDefinition.APPROBATION_MANUELLE
+                and not _champ(s, 'role_requis')):
+            erreurs.append(
+                f'L\'étape « {nom} » (approbation manuelle) doit préciser '
+                'un rôle requis.')
+
+    boucles_signalees = set()
+    for s in steps:
+        depart = _champ(s, 'ordre')
+        alt = _champ(s, 'etape_alternative_si_echec')
+        if not alt:
+            continue
+        vus = {depart}
+        courant = alt
+        while courant:
+            if courant in vus:
+                if depart not in boucles_signalees:
+                    nom = _champ(s, 'nom') or f'#{depart}'
+                    erreurs.append(
+                        f'L\'étape « {nom} » forme une boucle infinie via '
+                        'ses étapes alternatives.')
+                    boucles_signalees.add(depart)
+                break
+            vus.add(courant)
+            suivante = par_ordre.get(courant)
+            courant = (
+                _champ(suivante, 'etape_alternative_si_echec')
+                if suivante is not None else None)
+
+    return erreurs
+
+
+# ── NTWFL2 — démarrage piloté par la matrice d'approbation (NTWFL1) ─────────
+
+def _signature_definition_matrice(type_objet, chaine_paliers):
+    """Code STABLE d'une ``WorkflowDefinition`` générée depuis une chaîne de
+    paliers : deux appels avec la MÊME chaîne (même ``type_objet``, mêmes
+    paliers dans le même ordre) retombent sur le même ``code`` — la
+    définition est réutilisée (mise en cache) au lieu d'être recréée à
+    chaque démarrage. Une chaîne modifiée par l'admin (palier ajouté/modifié)
+    change le hash et matérialise une NOUVELLE définition (les instances déjà
+    démarrées sur l'ancienne restent intactes, ``WorkflowInstance.definition``
+    est en PROTECT)."""
+    base = re.sub(r'[^a-z0-9]+', '_', str(type_objet or '').lower()).strip('_')
+    base = base or 'objet'
+    payload = json.dumps(chaine_paliers or [], sort_keys=True, default=str)
+    digest = hashlib.sha1(payload.encode('utf-8')).hexdigest()[:16]
+    return f'matrice_{base}_{digest}'[:64]
+
+
+def _definition_depuis_matrice(company, matrice):
+    """Construit (ou réutilise) la ``WorkflowDefinition``/``WorkflowStepDefinition``
+    correspondant à une ligne ``core.MatriceApprobation`` (NTWFL1) — comble
+    l'écart entre la matrice DÉCLARATIVE et le moteur d'EXÉCUTION : sans ce
+    pont les deux ne se déclenchaient jamais l'un l'autre. ``None`` si la
+    matrice ne porte aucun palier (rien à démarrer)."""
+    from core.models import WorkflowDefinition, WorkflowStepDefinition
+
+    paliers = matrice.chaine_paliers or []
+    if not paliers:
+        return None
+
+    code = _signature_definition_matrice(matrice.type_objet, paliers)
+    definition = WorkflowDefinition.objects.filter(
+        company=company, code=code).first()
+    if definition is not None:
+        return definition
+
+    nom = f'Matrice {matrice.type_objet}'
+    if matrice.departement:
+        nom = f'{nom} — {matrice.departement}'
+    definition = WorkflowDefinition.objects.create(
+        company=company, code=code, nom=nom,
+        description=(
+            'Définition générée automatiquement depuis '
+            'core.MatriceApprobation (NTWFL2) — ne pas éditer à la main, '
+            "modifier la matrice d'approbation source à la place."))
+    for i, palier in enumerate(paliers, start=1):
+        palier = palier if isinstance(palier, dict) else {}
+        WorkflowStepDefinition.objects.create(
+            definition=definition,
+            ordre=i,
+            nom=palier.get('nom') or f"Palier {palier.get('palier', i)}",
+            type_approbation=WorkflowStepDefinition.APPROBATION_MANUELLE,
+            role_requis=palier.get('role_requis') or '',
+        )
+    return definition
+
+
+def demarrer_depuis_matrice(
+        target, type_objet, montant, company, *,
+        departement=None, user=None, now=None):
+    """NTWFL2 — résout ``core.MatriceApprobation`` (NTWFL1) pour
+    (``type_objet``, ``montant``, ``departement``) et démarre un
+    ``WorkflowInstance`` conforme sur ``target``.
+
+    Renvoie ``None`` — SANS RIEN CRÉER — si aucune ligne de matrice active ne
+    couvre le cas : l'appelant garde alors son comportement PRÉEXISTANT
+    inchangé (c'est le point d'entrée additif qui « comble l'écart entre la
+    matrice déclarative et le moteur d'exécution qui aujourd'hui ne se
+    déclenchent jamais l'un l'autre »). Avec une matrice couvrante, la
+    ``WorkflowDefinition`` est construite À LA VOLÉE (ou réutilisée par
+    signature de chaîne, voir ``_definition_depuis_matrice``) puis
+    ``demarrer_workflow`` instancie et active la première étape normalement.
+    """
+    from core.selectors import resoudre_matrice
+
+    matrice = resoudre_matrice(
+        company, type_objet, montant=montant, departement=departement)
+    if matrice is None:
+        return None
+    definition = _definition_depuis_matrice(company, matrice)
+    if definition is None:
+        return None
+    return demarrer_workflow(definition, target, company, user=user, now=now)

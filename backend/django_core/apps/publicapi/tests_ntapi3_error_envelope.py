@@ -1,4 +1,4 @@
-"""NTAPI3 — enveloppe d'erreur normalisée (Stripe-like) sur /api/public/.
+"""NTAPI3 — enveloppe d'erreur normalisée (Stripe-like) sur /api/public/v1/.
 
 Couvre : 403 (scope manquant), 404 (objet hors société — jamais de fuite
 cross-tenant même dans le MESSAGE d'erreur), 400 (filtre inconnu → `param`
@@ -50,7 +50,7 @@ class Ntapi3ErrorEnvelopeTests(TestCase):
         self.assertNotIn('detail', body)
 
     def test_missing_scope_returns_authentication_error_envelope(self):
-        resp = _key_client(self.raw_a).get('/api/public/devis/')
+        resp = _key_client(self.raw_a).get('/api/public/v1/devis/')
         self.assertEqual(resp.status_code, 403)
         self._assert_envelope_shape(resp.data)
         self.assertEqual(resp.data['error']['type'], 'authentication_error')
@@ -59,7 +59,7 @@ class Ntapi3ErrorEnvelopeTests(TestCase):
         self.assertIn('X-Request-Id', resp)
 
     def test_object_not_found_never_leaks_cross_tenant(self):
-        resp = _key_client(self.raw_a).get('/api/public/leads/999999/')
+        resp = _key_client(self.raw_a).get('/api/public/v1/leads/999999/')
         self.assertEqual(resp.status_code, 404)
         self._assert_envelope_shape(resp.data)
         self.assertEqual(resp.data['error']['type'], 'invalid_request_error')
@@ -68,7 +68,7 @@ class Ntapi3ErrorEnvelopeTests(TestCase):
         self.assertNotIn(str(self.co_b.id), resp.data['error']['message'])
 
     def test_unknown_filter_returns_param_of_offending_field(self):
-        resp = _key_client(self.raw_a).get('/api/public/leads/?bogus=1')
+        resp = _key_client(self.raw_a).get('/api/public/v1/leads/?bogus=1')
         self.assertEqual(resp.status_code, 400)
         self._assert_envelope_shape(resp.data)
         self.assertEqual(resp.data['error']['code'], 'validation_error')
@@ -79,11 +79,11 @@ class Ntapi3ErrorEnvelopeTests(TestCase):
         client = _key_client(self.raw_a)
         headers = {'HTTP_IDEMPOTENCY_KEY': 'dup-key-1'}
         first = client.post(
-            '/api/public/leads-write/', {'nom': 'Premier'},
+            '/api/public/v1/leads-write/', {'nom': 'Premier'},
             format='json', **headers)
         self.assertEqual(first.status_code, 201)
         second = client.post(
-            '/api/public/leads-write/', {'nom': 'Different'},
+            '/api/public/v1/leads-write/', {'nom': 'Different'},
             format='json', **headers)
         self.assertEqual(second.status_code, 409)
         self._assert_envelope_shape(second.data)

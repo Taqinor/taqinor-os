@@ -17,11 +17,11 @@ from django.dispatch import receiver
 from core.events import (
     ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
     devis_accepted, devis_refused, devis_sent, layout_finalise,
-    lead_stage_changed, ticket_resolu, visite_validee,
+    lead_created, lead_stage_changed, ticket_resolu, visite_validee,
 )
 
 from . import stages
-from .models import Appointment, LeadActivity
+from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
     ecrire_retour_lead_visite,
@@ -745,6 +745,27 @@ def _emit_appointment_effectue_on_transition(sender, instance, created,
         logger.warning(
             'PUB30 : émission appointment_effectue échouée pour le '
             'rendez-vous #%s', getattr(instance, 'pk', '?'), exc_info=True)
+
+
+@receiver(post_save, sender=Lead, dispatch_uid='crm_emit_lead_created')
+def _emit_lead_created(sender, instance, created, **kwargs):
+    """NTGRC9 — émet ``core.events.lead_created`` à la CRÉATION d'un lead.
+
+    Quelle que soit la porte d'entrée (saisie, webhook site, import). Le CRM
+    ne sait RIEN de ses abonnés (aujourd'hui : la conformité GRC, qui alerte
+    le DPO si la personne avait retiré son consentement). Best-effort : un
+    abonné en échec ne casse jamais la création du lead.
+    """
+    if not created:
+        return
+    try:
+        lead_created.send(
+            sender='crm.Lead', lead=instance,
+            company=getattr(instance, 'company', None))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'NTGRC9 : émission lead_created échouée pour le lead #%s',
+            getattr(instance, 'pk', '?'), exc_info=True)
 
 
 # ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────
