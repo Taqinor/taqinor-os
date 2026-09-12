@@ -61,6 +61,11 @@ class DossierJuridique(TenantModel):
         INTERNE = 'interne', 'Interne'
         CONFIDENTIEL = 'confidentiel', 'Confidentiel'
 
+    class ProbabiliteRisque(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        FORTE = 'forte', 'Forte'
+
     class Statut(models.TextChoices):
         """Machine à états PROCÉDURALE — clés propres au module juridique.
 
@@ -137,6 +142,22 @@ class DossierJuridique(TenantModel):
     statut = models.CharField(
         max_length=25, choices=Statut.choices,
         default=Statut.OUVERT, verbose_name='Statut')
+    # ── NTJUR14 — risque ÉDITORIAL vs provision COMPTABILISÉE ──────────────
+    # Ces deux champs sont une APPRÉCIATION interne (ce que le juriste pense
+    # risquer) : ils ne déclenchent AUCUNE écriture comptable, jamais.
+    montant_risque_estime = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant de risque estimé')
+    probabilite_risque = models.CharField(
+        max_length=10, choices=ProbabiliteRisque.choices,
+        blank=True, default='', verbose_name='Probabilité du risque')
+    # Provision RÉELLEMENT comptabilisée (``compta.Provision``), posée
+    # UNIQUEMENT par l'action ``proposer-provision`` après confirmation
+    # explicite. Référence LÂCHE (id seul) : ``juridique`` n'importe aucun
+    # modèle ``compta``, seulement son ``services.py``.
+    provision_comptable_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID de la provision comptable')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         # on_delete: trace d'auteur, jamais une raison de perdre le dossier.

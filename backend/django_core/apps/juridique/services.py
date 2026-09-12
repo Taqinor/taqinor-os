@@ -109,6 +109,82 @@ def creer_dossier_depuis_reclamation(company, reclamation_id, *, user=None,
 
 
 # ───────────────────────────────────────────────────────────────────────────
+# NTJUR14 — Provision pour risque : PROPOSÉE, jamais auto-comptabilisée
+#
+# Patron « propose → confirme » du dépôt : AUCUNE écriture comptable ne naît
+# d'un changement d'état métier. Ouvrir un dossier à fort montant en jeu, ou le
+# faire avancer, ne poste RIEN — seul un appel EXPLICITE et CONFIRMÉ à
+# ``proposer_provision`` déclenche ``compta.services.enregistrer_provision``.
+# ───────────────────────────────────────────────────────────────────────────
+
+
+class ProvisionError(Exception):
+    """Proposition de provision refusée (message FR pour l'utilisateur)."""
+
+
+def apercu_provision(dossier, *, montant=None, motif='', date_dotation=None):
+    """Aperçu de la dotation PROPOSÉE — lecture seule, n'écrit rien.
+
+    Sert la première moitié du geste « propose → confirme » : l'écran montre
+    ce qui SERA comptabilisé avant que quiconque ne confirme.
+    """
+    from decimal import Decimal
+
+    montant = (Decimal(str(montant)) if montant is not None
+               else (dossier.montant_risque_estime or Decimal('0')))
+    return {
+        'dossier': dossier.id,
+        'reference': dossier.reference,
+        'nature': 'risques_charges',
+        'montant': str(montant),
+        'motif': motif or f'Provision pour risque — {dossier.reference}',
+        'date_dotation': str(date_dotation or timezone.localdate()),
+    }
+
+
+@transaction.atomic
+def proposer_provision(dossier, *, montant, motif='', date_dotation=None,
+                       user=None):
+    """Comptabilise la provision pour risque d'un dossier (NTJUR14).
+
+    N'est JAMAIS appelée automatiquement : l'appelant (la vue) exige une
+    confirmation explicite ET une permission comptable. L'écriture elle-même
+    reste la responsabilité de ``apps.compta.services.enregistrer_provision``
+    (import FONCTION-LOCAL : ``juridique`` n'importe aucun modèle ``compta``).
+
+    Refuse un montant ≤ 0 et une seconde provision sur le même dossier (une
+    dotation en double serait une écriture fausse, pas une commodité).
+    """
+    from decimal import Decimal
+
+    from apps.compta import services as compta_services
+
+    if dossier.provision_comptable_id:
+        raise ProvisionError(
+            "Ce dossier porte déjà une provision comptabilisée : passez par "
+            "une reprise plutôt que par une seconde dotation.")
+    try:
+        montant = Decimal(str(montant))
+    except (TypeError, ValueError, ArithmeticError):
+        raise ProvisionError("Montant de provision invalide.")
+    if montant <= 0:
+        raise ProvisionError(
+            "Le montant de la provision doit être strictement positif.")
+
+    provision = compta_services.enregistrer_provision(
+        dossier.company,
+        nature='risques_charges',
+        date_dotation=date_dotation or timezone.localdate(),
+        montant=montant,
+        motif=motif or f'Provision pour risque — {dossier.reference}',
+        user=user,
+    )
+    dossier.provision_comptable_id = provision.id
+    dossier.save(update_fields=['provision_comptable_id', 'updated_at'])
+    return provision
+
+
+# ───────────────────────────────────────────────────────────────────────────
 # NTJUR19 — Workflow d'approbation des engagements de dépenses juridiques
 #
 # Patron IDENTIQUE à ``contrats.services`` (CONTRAT13/14) : règle la plus

@@ -40,10 +40,16 @@ class DossierJuridiqueSerializer(serializers.ModelSerializer):
             'notre_position', 'resume_faits', 'date_ouverture',
             'responsable_interne', 'responsable_interne_nom',
             'confidentialite', 'statut', 'statut_libelle',
+            # NTJUR14 — appréciation ÉDITORIALE du risque (éditable) ; la
+            # provision réellement comptabilisée est en lecture seule (elle
+            # ne se pose que par l'action confirmée ``proposer-provision``).
+            'montant_risque_estime', 'probabilite_risque',
+            'provision_comptable_id',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'reference', 'statut', 'created_at', 'updated_at',
+            'reference', 'statut', 'provision_comptable_id',
+            'created_at', 'updated_at',
         ]
 
     def get_responsable_interne_nom(self, obj):

@@ -88,6 +88,57 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
                 created_by=self.request.user),
             period='yearly')
 
+    # ── NTJUR14 — provision pour risque PROPOSÉE (jamais automatique) ───────
+
+    @action(detail=True, methods=['post'], url_path='proposer-provision',
+            permission_classes=[
+                ScopedPermission, HasPermissionOrLegacy('compta_saisir')])
+    def proposer_provision(self, request, pk=None):
+        """Propose (et, sur confirmation, comptabilise) la provision du dossier.
+
+        Corps : ``{montant, motif, date_dotation, confirme}``. SANS
+        ``confirme`` vrai, la réponse est un APERÇU et AUCUNE écriture n'est
+        postée — c'est le patron « propose → confirme » du dépôt : aucune
+        écriture comptable ne naît d'un simple changement d'état juridique.
+        Réservée au palier comptable/Administrateur (``compta_saisir``).
+        """
+        from django.core.exceptions import ValidationError
+
+        dossier = self.get_object()
+        montant = request.data.get('montant')
+        motif = (request.data.get('motif') or '').strip()
+        date_dotation = request.data.get('date_dotation') or None
+        apercu = services.apercu_provision(
+            dossier, montant=montant, motif=motif,
+            date_dotation=date_dotation)
+        if not request.data.get('confirme'):
+            return Response(
+                {
+                    'confirme': ("Confirmez explicitement la dotation : "
+                                 "aucune écriture comptable n'est passée sans "
+                                 "confirmation."),
+                    'apercu': apercu,
+                },
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            provision = services.proposer_provision(
+                dossier, montant=montant, motif=motif,
+                date_dotation=date_dotation, user=request.user)
+        except services.ProvisionError as exc:
+            return Response({'montant': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as exc:
+            return Response(
+                {'montant': getattr(exc, 'messages', [str(exc)])},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'provision_comptable_id': provision.id,
+                'reference': provision.reference,
+                'montant': str(provision.montant_dotation),
+            },
+            status=status.HTTP_201_CREATED)
+
     # ── NTJUR19 — workflow d'approbation d'un engagement juridique ──────────
 
     def _mandat_du_dossier(self, request, dossier):
