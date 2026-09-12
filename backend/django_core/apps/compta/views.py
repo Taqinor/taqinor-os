@@ -940,6 +940,39 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             fin=params.get('fin') or None)
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='situation-effets')
+    def situation_effets(self, request):
+        """NTTRE22 — Situation des effets en portefeuille (état imprimable).
+
+        Tous les ``Effet`` par sens/statut ET par tranche d'échéance
+        (< 30 j / 30-60 j / 60-90 j / > 90 j) avec le total de chaque tranche.
+        ``?date=AAAA-MM-JJ`` (défaut aujourd'hui), ``?sens=recevoir|payer``.
+        ``?export=pdf`` télécharge l'état (WeasyPrint, document INTERNE — le
+        moteur de devis premium n'est pas concerné). Le paramètre de sortie est
+        ``export`` et non ``format`` : ``format`` est RÉSERVÉ par DRF pour la
+        négociation de contenu (un ``?format=pdf`` renverrait 406 avant même
+        d'atteindre cette vue), convention déjà en place sur tous les autres
+        exports de ce ViewSet. Lecture seule, scopée société.
+        """
+        date_reference = request.query_params.get('date') or None
+        try:
+            data = selectors.situation_effets(
+                request.user.company, date_reference=date_reference,
+                sens=request.query_params.get('sens') or None)
+        except ValueError:
+            return Response(
+                {'detail': "Le paramètre 'date' est invalide "
+                           '(format attendu : AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_situation_effets_pdf
+            result = self._pdf_or_503(lambda: render_situation_effets_pdf(
+                data, self._company_profile(request)))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'situation_effets.pdf')
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='qualite-rapprochements')
     def qualite_rapprochements(self, request):
         """NTTRE20 — Écart résiduel des rapprochements clôturés, par mois.

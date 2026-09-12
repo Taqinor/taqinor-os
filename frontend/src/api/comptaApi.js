@@ -82,6 +82,14 @@ const comptaApi = {
     // pointées à la clôture), mois par mois.
     qualiteRapprochements: (params) =>
       api.get('/compta/etats/qualite-rapprochements/', { params }),
+    // NTTRE22 — situation des effets (par statut/sens et par tranche
+    // d'échéance). JSON par défaut, PDF via `?export=pdf` (jamais `?format=`,
+    // réservé par DRF).
+    situationEffets: (params) =>
+      api.get('/compta/etats/situation-effets/', { params }),
+    situationEffetsPdf: (params) =>
+      api.get('/compta/etats/situation-effets/',
+        { params: { export: 'pdf', ...params }, responseType: 'blob' }),
     balanceAgeeFournisseurs: (params) =>
       api.get('/compta/etats/balance-agee-fournisseurs/', { params }),
     releveFournisseur: (tiersId, params) =>

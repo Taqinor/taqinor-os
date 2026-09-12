@@ -355,3 +355,132 @@ def render_balance_agee_pdf(data, company_profile=None, *,
         html=render_balance_agee_html(
             data, company_profile, date_reference=date_reference,
             today=today, titre=titre))
+
+
+# ── NTTRE22 — Situation des effets en portefeuille ─────────────────────────
+
+def render_situation_effets_html(data, company_profile=None, *, today=None):
+    """HTML de la situation des effets (``selectors.situation_effets``).
+
+    Deux lectures du MÊME portefeuille : par sens/statut (avec le détail des
+    effets) puis par tranche d'échéance (avec le total de chaque tranche).
+    Aucun recalcul ici — les totaux viennent du sélecteur.
+    """
+    if today is None:
+        today = date.today()
+    entete = _entete_societe_html(company_profile)
+    reference = data.get('date_reference')
+    periode_txt = (f'Situation au {reference}' if reference
+                   else 'Situation à ce jour')
+
+    sections = []
+    for groupe in data.get('groupes', []):
+        rows = ''.join(
+            f"<tr><td>{escape(str(e.get('numero') or '—'))}</td>"
+            f"<td>{escape(str(e.get('type_libelle', '')))}</td>"
+            f"<td>{escape(str(e.get('tireur') or '—'))}</td>"
+            f"<td>{escape(str(e.get('banque') or '—'))}</td>"
+            f"<td>{escape(str(e.get('date_echeance', '')))}</td>"
+            f"<td class=\"montant\">{_fmt(e.get('montant'))}</td></tr>"
+            for e in groupe.get('effets', [])
+        )
+        sections.append(f"""
+        <h2>{escape(str(groupe.get('sens_libelle', '')))} —
+        {escape(str(groupe.get('statut_libelle', '')))}</h2>
+        <table><thead><tr><th>Numéro</th><th>Type</th><th>Tireur</th>
+        <th>Banque</th><th>Échéance</th>
+        <th class="montant">Montant</th></tr></thead>
+        <tbody>{rows}
+        <tr class="total-row"><td colspan="5">Total du groupe
+        ({groupe.get('nb', 0)} effet(s))</td>
+        <td class="montant">{_fmt(groupe.get('total'))}</td>
+        </tr></tbody></table>""")
+
+    tranches_rows = ''.join(
+        f"<tr><td>{escape(str(t.get('libelle', '')))}</td>"
+        f"<td class=\"montant\">{t.get('nb', 0)}</td>"
+        f"<td class=\"montant\">{_fmt(t.get('total'))}</td></tr>"
+        for t in data.get('tranches', [])
+    )
+    corps = f"""
+    <h2>Par tranche d'échéance</h2>
+    <table><thead><tr><th>Tranche</th>
+    <th class="montant">Nombre</th>
+    <th class="montant">Total</th></tr></thead>
+    <tbody>{tranches_rows}
+    <tr class="total-row"><td>Total portefeuille
+    ({data.get('nb_effets', 0)} effet(s))</td>
+    <td class="montant"></td>
+    <td class="montant">{_fmt(data.get('total_general'))}</td>
+    </tr></tbody></table>
+    {''.join(sections) or '<p>Aucun effet en portefeuille.</p>'}"""
+    return _wrap(entete, 'Situation des effets en portefeuille', periode_txt,
+                 corps, today)
+
+
+def render_situation_effets_pdf(data, company_profile=None, *, today=None):
+    return render_pdf(
+        html=render_situation_effets_html(data, company_profile, today=today))
+
+
+# ── NTTRE23 — Certificat de pouvoir bancaire ───────────────────────────────
+
+def render_certificat_pouvoir_html(data, company_profile=None, *, today=None):
+    """HTML du certificat d'un pouvoir bancaire (NTTRE23).
+
+    ``data`` = dict plat du pouvoir (titulaire, CIN, compte(s) couverts,
+    plafonds seul/conjoint, période de validité, statut). Un pouvoir RÉVOQUÉ
+    est rendu BARRÉ, avec la mention « révoqué » en tête — le document reste
+    éditable pour la banque, mais ne peut jamais passer pour valide.
+    """
+    if today is None:
+        today = date.today()
+    entete = _entete_societe_html(company_profile)
+    revoque = bool(data.get('revoque'))
+    periode_txt = (
+        f"Validité du {data.get('date_debut') or '—'} "
+        f"au {data.get('date_fin') or '—'}")
+
+    bandeau = ''
+    if revoque:
+        bandeau = ('<p class="revoque-mention"><strong>POUVOIR '
+                   'RÉVOQUÉ</strong> — ce certificat n\'habilite plus son '
+                   'titulaire.</p>')
+    lignes = [
+        ('Titulaire', data.get('titulaire_nom') or '—'),
+        ('CIN du titulaire', data.get('titulaire_cin') or '—'),
+        ('Compte couvert', data.get('compte_libelle') or '—'),
+        ('Banque', data.get('compte_banque') or '—'),
+        ('RIB', data.get('compte_rib') or '—'),
+        ('Début de validité', data.get('date_debut') or '—'),
+        ('Fin de validité', data.get('date_fin') or '—'),
+        ('Statut', data.get('statut_libelle') or '—'),
+    ]
+    rows = ''.join(
+        f'<tr><td>{escape(str(cle))}</td>'
+        f'<td>{escape(str(valeur))}</td></tr>' for cle, valeur in lignes)
+    corps = f"""
+    <style>
+      .revoque-mention {{ color: #b00; text-align: center; font-size: 13px; }}
+      .revoque table, .revoque .plafonds {{ text-decoration: line-through; }}
+    </style>
+    {bandeau}
+    <div class="{'revoque' if revoque else ''}">
+      <table><tbody>{rows}</tbody></table>
+      <h2 class="plafonds">Plafonds de signature</h2>
+      <table class="plafonds"><thead><tr><th>Type de signature</th>
+      <th class="montant">Plafond</th></tr></thead><tbody>
+      <tr><td>Signature seul</td>
+      <td class="montant">{_fmt(data.get('plafond_signature_seul'))}</td></tr>
+      <tr><td>Signature conjointe</td>
+      <td class="montant">
+      {_fmt(data.get('plafond_signature_conjointe'))}</td></tr>
+      </tbody></table>
+    </div>"""
+    return _wrap(entete, 'Certificat de pouvoir bancaire', periode_txt, corps,
+                 today)
+
+
+def render_certificat_pouvoir_pdf(data, company_profile=None, *, today=None):
+    return render_pdf(
+        html=render_certificat_pouvoir_html(data, company_profile, today=today))

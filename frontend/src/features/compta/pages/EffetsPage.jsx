@@ -237,17 +237,32 @@ export default function EffetsPage() {
   const canCreate = tab === 'effets'
   const submit = (payload) => comptaApi.effets.create(payload)
 
+  // NTTRE22 — état imprimable « Situation des effets en portefeuille » :
+  // par statut/sens et par tranche d'échéance, avec le total par tranche.
+  const exporterSituation = async () => {
+    try {
+      const res = await comptaApi.etats.situationEffetsPdf()
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, 'situation-effets.pdf')
+    } catch {
+      toast.error('Situation des effets indisponible.')
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header">
         <h2>Effets & règlements fournisseurs</h2>
-        {canCreate && (
-          <div className="page-header-actions">
+        <div className="page-header-actions">
+          <Button variant="outline" onClick={exporterSituation}>
+            <Download /> Situation du portefeuille (PDF)
+          </Button>
+          {canCreate && (
             <Button onClick={() => setDialog({ row: null })}>
               <Plus /> Nouvel effet
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="mb-3">

@@ -5939,3 +5939,96 @@ def qualite_rapprochements(company, *, nb_mois=12, today=None):
         'total_lignes_non_pointees': sum(
             m['lignes_non_pointees'] for m in mois),
     }
+
+
+# ── NTTRE22 — Situation des effets en portefeuille (état imprimable) ───────
+
+#: Tranches d'échéance de l'état des effets, en jours depuis la date demandée.
+TRANCHES_EFFETS = (
+    ('moins_30', 'Moins de 30 jours', None, 30),
+    ('de_30_a_60', 'De 30 à 60 jours', 30, 60),
+    ('de_60_a_90', 'De 60 à 90 jours', 60, 90),
+    ('plus_90', 'Plus de 90 jours', 90, None),
+)
+
+
+def situation_effets(company, *, date_reference=None, sens=None):
+    """NTTRE22 — Situation des effets : par statut/sens ET par tranche.
+
+    Liste TOUS les ``Effet`` de la société (chèques, traites, billets), en
+    double lecture :
+
+    * ``groupes`` — par ``sens`` (à recevoir / à payer) puis par ``statut``
+      (portefeuille / remis / escompté / endossé / encaissé / payé / impayé),
+      avec le total du groupe ;
+    * ``tranches`` — par distance de l'échéance à ``date_reference``
+      (< 30 j / 30-60 j / 60-90 j / > 90 j), avec le total de la tranche.
+
+    Le total d'une tranche est, par construction, la somme des montants des
+    effets qui y tombent à la date demandée. Lecture seule, scopée société.
+    """
+    reference = _as_date(date_reference) or timezone.localdate()
+    qs = Effet.objects.filter(company=company)
+    if sens:
+        qs = qs.filter(sens=sens)
+    effets = list(qs.order_by('sens', 'statut', 'date_echeance', 'id'))
+
+    def _ligne(effet):
+        return {
+            'id': effet.id,
+            'sens': effet.sens,
+            'sens_libelle': effet.get_sens_display(),
+            'statut': effet.statut,
+            'statut_libelle': effet.get_statut_display(),
+            'type_effet': effet.type_effet,
+            'type_libelle': effet.get_type_effet_display(),
+            'numero': effet.numero,
+            'tireur': effet.tireur,
+            'banque': effet.banque,
+            'date_echeance': effet.date_echeance,
+            'jours_restants': (effet.date_echeance - reference).days,
+            'montant': effet.montant or Decimal('0'),
+            'date_protet': effet.date_protet,
+        }
+
+    groupes = {}
+    for effet in effets:
+        cle = (effet.sens, effet.statut)
+        groupe = groupes.setdefault(cle, {
+            'sens': effet.sens,
+            'sens_libelle': effet.get_sens_display(),
+            'statut': effet.statut,
+            'statut_libelle': effet.get_statut_display(),
+            'effets': [],
+            'nb': 0,
+            'total': Decimal('0'),
+        })
+        groupe['effets'].append(_ligne(effet))
+        groupe['nb'] += 1
+        groupe['total'] += effet.montant or Decimal('0')
+
+    tranches = [{
+        'code': code, 'libelle': libelle, 'nb': 0, 'total': Decimal('0'),
+        'effets': [],
+    } for code, libelle, _min, _max in TRANCHES_EFFETS]
+    par_code = {t['code']: t for t in tranches}
+    for effet in effets:
+        jours = (effet.date_echeance - reference).days
+        for code, _libelle, borne_min, borne_max in TRANCHES_EFFETS:
+            if ((borne_min is None or jours >= borne_min)
+                    and (borne_max is None or jours < borne_max)):
+                tranche = par_code[code]
+                tranche['effets'].append(_ligne(effet))
+                tranche['nb'] += 1
+                tranche['total'] += effet.montant or Decimal('0')
+                break
+
+    total_general = sum(
+        (e.montant or Decimal('0') for e in effets), Decimal('0'))
+    return {
+        'date_reference': reference,
+        'groupes': [groupes[cle] for cle in sorted(groupes)],
+        'tranches': tranches,
+        'nb_effets': len(effets),
+        'total_general': total_general,
+    }

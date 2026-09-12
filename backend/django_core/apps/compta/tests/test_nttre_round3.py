@@ -269,3 +269,106 @@ class QualiteRapprochementsTests(TestCase):
             '/api/django/compta/etats/qualite-rapprochements/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['total_lignes_non_pointees'], 0)
+
+
+class SituationEffetsTests(TestCase):
+    """NTTRE22 — situation du portefeuille d'effets par statut/sens/tranche."""
+
+    REFERENCE = date(2026, 5, 4)
+
+    def setUp(self):
+        self.co = make_company('nttre22', 'NTTRE22 Co')
+        self.user = User.objects.create_user(
+            username='nttre22-user', password='x', company=self.co,
+            role_legacy='responsable')
+        self.api = auth(self.user)
+
+    def _effet(self, jours, montant, *, sens=Effet.Sens.RECEVOIR,
+               statut=Effet.Statut.PORTEFEUILLE, numero=''):
+        echeance = self.REFERENCE + timedelta(days=jours)
+        return Effet.objects.create(
+            company=self.co, sens=sens, statut=statut,
+            type_effet=Effet.TypeEffet.CHEQUE,
+            numero=numero or f'E{jours}',
+            montant=Decimal(montant),
+            # Émission toujours ANTÉRIEURE à l'échéance (invariant du modèle).
+            date_emission=echeance - timedelta(days=30),
+            date_echeance=echeance)
+
+    def test_total_par_tranche_egale_la_somme_des_effets_qui_y_tombent(self):
+        self._effet(5, '100')      # < 30 j
+        self._effet(29, '50')      # < 30 j (borne haute exclue)
+        self._effet(30, '200')     # 30-60 j (borne basse incluse)
+        self._effet(75, '300')     # 60-90 j
+        self._effet(120, '400')    # > 90 j
+        data = selectors.situation_effets(
+            self.co, date_reference=self.REFERENCE)
+        par_code = {t['code']: t for t in data['tranches']}
+        self.assertEqual(par_code['moins_30']['total'], Decimal('150'))
+        self.assertEqual(par_code['moins_30']['nb'], 2)
+        self.assertEqual(par_code['de_30_a_60']['total'], Decimal('200'))
+        self.assertEqual(par_code['de_60_a_90']['total'], Decimal('300'))
+        self.assertEqual(par_code['plus_90']['total'], Decimal('400'))
+        self.assertEqual(data['total_general'], Decimal('1050'))
+        # Chaque tranche redit exactement la somme des effets qu'elle liste.
+        for tranche in data['tranches']:
+            somme = sum((e['montant'] for e in tranche['effets']), Decimal('0'))
+            self.assertEqual(tranche['total'], somme)
+
+    def test_effet_en_retard_tombe_dans_la_premiere_tranche(self):
+        self._effet(-10, '90')
+        data = selectors.situation_effets(
+            self.co, date_reference=self.REFERENCE)
+        par_code = {t['code']: t for t in data['tranches']}
+        self.assertEqual(par_code['moins_30']['total'], Decimal('90'))
+
+    def test_groupes_par_sens_et_statut(self):
+        self._effet(10, '100', sens=Effet.Sens.RECEVOIR,
+                    statut=Effet.Statut.PORTEFEUILLE, numero='R1')
+        self._effet(12, '60', sens=Effet.Sens.RECEVOIR,
+                    statut=Effet.Statut.REMIS, numero='R2')
+        self._effet(15, '80', sens=Effet.Sens.PAYER,
+                    statut=Effet.Statut.PORTEFEUILLE, numero='P1')
+        data = selectors.situation_effets(
+            self.co, date_reference=self.REFERENCE)
+        cles = {(g['sens'], g['statut']): g for g in data['groupes']}
+        self.assertEqual(len(cles), 3)
+        self.assertEqual(
+            cles[('recevoir', 'portefeuille')]['total'], Decimal('100'))
+        self.assertEqual(cles[('recevoir', 'remis')]['total'], Decimal('60'))
+        self.assertEqual(
+            cles[('payer', 'portefeuille')]['total'], Decimal('80'))
+
+    def test_html_imprimable_reprend_les_tranches(self):
+        from apps.compta.pdf_etats import render_situation_effets_html
+
+        self._effet(5, '100', numero='CHQ-42')
+        data = selectors.situation_effets(
+            self.co, date_reference=self.REFERENCE)
+        html = render_situation_effets_html(data, None, today=self.REFERENCE)
+        self.assertIn('Situation des effets en portefeuille', html)
+        self.assertIn('Moins de 30 jours', html)
+        self.assertIn('CHQ-42', html)
+
+    def test_endpoint_json_et_isolation_societe(self):
+        self._effet(5, '100')
+        resp = self.api.get(
+            '/api/django/compta/etats/situation-effets/'
+            f'?date={self.REFERENCE.isoformat()}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['total_general'], Decimal('100'))
+
+        autre = make_company('nttre22-b', 'NTTRE22 B')
+        user_b = User.objects.create_user(
+            username='nttre22-user-b', password='x', company=autre,
+            role_legacy='responsable')
+        resp_b = auth(user_b).get(
+            '/api/django/compta/etats/situation-effets/')
+        self.assertEqual(resp_b.status_code, 200)
+        self.assertEqual(resp_b.data['nb_effets'], 0)
+
+    def test_date_invalide_refusee_en_francais(self):
+        resp = self.api.get(
+            '/api/django/compta/etats/situation-effets/?date=pas-une-date')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('date', resp.data['detail'])
