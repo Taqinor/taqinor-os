@@ -904,6 +904,11 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         Solde par compte/caisse + total (depuis les comptes de trésorerie et le
         grand livre), enrichi d'une projection nette indicative (AR/AP/paie/TVA).
         Lecture seule, scopée société, Admin/Responsable uniquement.
+
+        NTTRE17 — la réponse porte EN PLUS ``cash_du_jour`` (solde arrêté au
+        jour J, delta vs la veille, 3 prochaines échéances) : ajout strictement
+        ADDITIF sur cet endpoint existant, pour que la carte « Cash
+        aujourd'hui » du cockpit s'affiche sans AUCUNE requête supplémentaire.
         """
         periode = self._periode(request)
         company = request.user.company
@@ -917,6 +922,7 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'comptes': position['comptes'],
             'total': position['total'],
             'projection': projection,
+            'cash_du_jour': selectors.cash_aujourdhui(company),
         })
 
     @action(detail=False, methods=['get'], url_path='frais-bancaires')

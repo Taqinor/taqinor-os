@@ -5815,3 +5815,66 @@ def cautions_a_restituer(company, *, within=None, today=None):
         'date_echeance': c.date_echeance,
         'date_mainlevee': c.date_mainlevee,
     } for c in qs]
+
+
+# ── NTTRE17 — Bloc « Cash aujourd'hui » du cockpit ──────────────────────────
+
+def cash_aujourdhui(company, *, aujourd_hui=None):
+    """NTTRE17 — Solde consolidé du jour, delta vs la veille, 3 échéances.
+
+    Bloc COMPACT destiné à la carte mobile du tableau de bord : la trésorerie
+    consolidée multi-comptes arrêtée au jour J (même calcul que
+    ``position_tresorerie``), l'écart avec ce même solde arrêté la veille, et
+    les 3 prochaines échéances de trésorerie (effets ouverts + campagnes de
+    règlement non postées) en montant SIGNÉ (+ encaissement / − décaissement).
+
+    Publié DANS la réponse de ``etats/position-tresorerie/`` (clé
+    ``cash_du_jour``) : la carte du cockpit n'a ainsi AUCUNE requête à émettre
+    au-delà de cet appel déjà existant, et aucun nouvel endpoint n'est créé.
+    Lecture seule, scopée société.
+    """
+    from .models import PaymentRun
+
+    jour = _as_date(aujourd_hui) or timezone.localdate()
+    veille = jour - timedelta(days=1)
+    total_jour = position_tresorerie(company, date_fin=jour)['total']
+    total_veille = position_tresorerie(company, date_fin=veille)['total']
+
+    echeances = []
+    effets = Effet.objects.filter(
+        company=company, date_echeance__gte=jour,
+        statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS,
+                    Effet.Statut.ESCOMPTE],
+    ).order_by('date_echeance', 'id')[:3]
+    for effet in effets:
+        montant = effet.montant or Decimal('0')
+        echeances.append({
+            'source': 'effet',
+            'id': effet.id,
+            'libelle': (effet.numero or effet.tireur
+                        or effet.get_type_effet_display()),
+            'date': effet.date_echeance,
+            'montant': (montant if effet.sens == Effet.Sens.RECEVOIR
+                        else -montant),
+        })
+    runs = PaymentRun.objects.filter(
+        company=company, date_paiement__gte=jour, posted=False,
+    ).exclude(
+        statut=PaymentRun.Statut.POSTEE).order_by('date_paiement', 'id')[:3]
+    for run in runs:
+        echeances.append({
+            'source': 'payment_run',
+            'id': run.id,
+            'libelle': run.reference or f'Campagne de règlement #{run.id}',
+            'date': run.date_paiement,
+            # Une campagne de règlement est toujours un DÉCAISSEMENT.
+            'montant': -(run.total or Decimal('0')),
+        })
+    echeances.sort(key=lambda e: (e['date'], e['source'], e['id']))
+    return {
+        'date': jour,
+        'total': total_jour,
+        'total_veille': total_veille,
+        'delta_veille': total_jour - total_veille,
+        'prochaines_echeances': echeances[:3],
+    }
