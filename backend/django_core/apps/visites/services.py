@@ -170,3 +170,156 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
         f'La visite du lead « {visite.lead} » revient à refaire. '
         f'Motif : {motif}')
     return ''
+
+
+# ── VTA10 — LA SAISIE DES MESURES, UNE SEULE FOIS ────────────────────────────
+#
+# La validation ET l'écriture des mesures vivent ICI, pas dans la vue : le même
+# geste arrive par DEUX portes — le PATCH en ligne
+# (``/visites/visites/<id>/mesures/``) et le REJEU hors-ligne du moteur
+# ``apps.offlinesync`` (op ``visite.mesures``). Deux copies de ces règles
+# seraient deux vérités : la vue et le handler appellent la même fonction.
+#
+# L'écriture est « last-write-wins » (elle POSE des valeurs, jamais un
+# incrément) : rejouer deux fois la même opération donne exactement le même
+# état — c'est ce que le moteur hors-ligne exige de tout handler.
+
+def valeur_mesure(declaration, brute):
+    """Convertit/valide UNE valeur de mesure. Renvoie ``(valeur, message)``.
+
+    ``message`` NOMME le champ fautif en français (règle maison) ; il vaut
+    ``None`` quand la valeur est acceptée. Aucun SEUIL technique n'est jugé
+    ici : on vérifie la NATURE d'une mesure, jamais si elle est « suffisante ».
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from . import visite_checklist as checklist
+
+    if brute is None or brute == '':
+        return None, None
+    nature = declaration['nature']
+    if nature == checklist.NOMBRE:
+        try:
+            nombre = Decimal(str(brute))
+        except (InvalidOperation, ValueError, TypeError):
+            return None, (f"« {declaration['libelle']} » attend un nombre "
+                          f'(reçu : {brute!r}).')
+        if nombre < 0:
+            return None, (f"« {declaration['libelle']} » ne peut pas être "
+                          'négatif.')
+        return float(nombre), None
+    if nature == checklist.BOOLEEN:
+        if isinstance(brute, bool):
+            return brute, None
+        texte = str(brute).strip().lower()
+        if texte in ('true', '1', 'oui'):
+            return True, None
+        if texte in ('false', '0', 'non'):
+            return False, None
+        return None, f"« {declaration['libelle']} » attend oui ou non."
+    if nature == checklist.CHOIX:
+        texte = str(brute).strip()
+        if texte not in declaration['choix']:
+            options = ', '.join(declaration['choix'])
+            return None, (f"« {declaration['libelle']} » : valeur inconnue "
+                          f'« {texte} ». Choix possibles : {options}.')
+        return texte, None
+    return str(brute), None
+
+
+def marquer_en_cours(visite):
+    """Un brouillon (ou une visite à refaire) devient « en cours ».
+
+    Déclenché par la première contribution réelle du terrain — photo, mesure
+    ou pointage d'arrivée.
+    """
+    from .models import VisiteTerrain
+
+    if visite.statut in (VisiteTerrain.Statut.BROUILLON,
+                         VisiteTerrain.Statut.A_REFAIRE):
+        visite.statut = VisiteTerrain.Statut.EN_COURS
+        visite.save(update_fields=['statut'])
+    return visite
+
+
+def enregistrer_mesures(visite, categorie, valeurs):
+    """POSE les mesures d'UNE catégorie. Renvoie ``(visite, erreurs)``.
+
+    ``erreurs`` est le dict ``{champ: message FR}`` servi tel quel en 400 par
+    la vue — chaque message NOMME son champ. Rien n'est écrit dès qu'une seule
+    valeur est refusée : la catégorie part entière ou pas du tout.
+    """
+    from . import visite_checklist as checklist
+
+    declaration = checklist.categorie(categorie)
+    if declaration is None or not declaration['mesures']:
+        return None, {'categorie': ('Catégorie de mesures inconnue '
+                                    f'« {categorie} ».')}
+    if not isinstance(valeurs, dict):
+        return None, {'valeurs': ('Les valeurs doivent être un objet '
+                                  '{champ: valeur}.')}
+
+    connus = {champ['code']: champ for champ in declaration['mesures']}
+    erreurs = {}
+    propres = {}
+    for code, brute in valeurs.items():
+        champ = connus.get(code)
+        if champ is None:
+            erreurs[code] = (f'Champ inconnu dans la catégorie '
+                             f'« {declaration["libelle"]} ».')
+            continue
+        valeur, message = valeur_mesure(champ, brute)
+        if message:
+            erreurs[code] = message
+        else:
+            propres[code] = valeur
+    if erreurs:
+        return None, erreurs
+
+    stockees = visite.mesures if isinstance(visite.mesures, dict) else {}
+    bloc = dict(stockees.get(categorie) or {})
+    bloc.update(propres)
+    stockees = dict(stockees)
+    stockees[categorie] = bloc
+    visite.mesures = stockees
+    visite.save(update_fields=['mesures'])
+    marquer_en_cours(visite)
+    return visite, {}
+
+
+def appliquer_mesures_hors_ligne(company, user, visite_id, categorie, valeurs):
+    """Rejeu HORS-LIGNE de la saisie de mesures — ``(resultat, motif)``.
+
+    C'est la porte d'entrée que ``apps.offlinesync`` appelle (jamais les
+    modèles de cette app). Elle refait, dans l'ordre, TOUTES les gardes de la
+    route en ligne — sinon la file hors-ligne serait un contournement de
+    permission :
+
+    1. la SOCIÉTÉ : la visite est cherchée bornée ``company`` (posée serveur),
+       donc l'id d'un autre locataire est indiscernable d'un id inconnu ;
+    2. la portée dure « mes visites » (VTA6) : sans ``visites_valider``, on ne
+       peut écrire que sur SA visite ;
+    3. le gel VT3 : une visite validée reste en lecture seule.
+
+    ``motif`` est un message FR prêt à afficher, ``None`` en cas de succès.
+    """
+    from core.permissions import _user_has_or_legacy
+
+    from .models import VisiteTerrain
+
+    visite = (VisiteTerrain.objects
+              .filter(company=company, pk=visite_id).first())
+    if visite is None:
+        return None, 'Visite inconnue.'
+    if (visite.commercial_id != getattr(user, 'id', None)
+            and not _user_has_or_legacy(user, 'visites_valider')):
+        return None, ('Cette visite est assignée à un autre commercial : '
+                      'vous ne pouvez pas saisir ses mesures.')
+    if not visite.modifiable:
+        return None, visite.raison_lecture_seule
+
+    visite, erreurs = enregistrer_mesures(visite, categorie, valeurs)
+    if erreurs:
+        return None, ' '.join(str(message) for message in erreurs.values())
+    return {'visite': visite.id, 'categorie': categorie,
+            'mesures': visite.mesures.get(categorie, {})}, None

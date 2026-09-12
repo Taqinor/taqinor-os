@@ -50,38 +50,9 @@ def _erreur(champ, message, code=status.HTTP_400_BAD_REQUEST):
     return Response({'erreurs': {champ: message}}, status=code)
 
 
-def _valeur_mesure(declaration, brute):
-    """Convertit/valide UNE valeur de mesure. Renvoie (valeur, message)."""
-    if brute is None or brute == '':
-        return None, None
-    nature = declaration['nature']
-    if nature == checklist.NOMBRE:
-        try:
-            nombre = Decimal(str(brute))
-        except (InvalidOperation, ValueError, TypeError):
-            return None, (f"« {declaration['libelle']} » attend un nombre "
-                          f'(reçu : {brute!r}).')
-        if nombre < 0:
-            return None, (f"« {declaration['libelle']} » ne peut pas être "
-                          'négatif.')
-        return float(nombre), None
-    if nature == checklist.BOOLEEN:
-        if isinstance(brute, bool):
-            return brute, None
-        texte = str(brute).strip().lower()
-        if texte in ('true', '1', 'oui'):
-            return True, None
-        if texte in ('false', '0', 'non'):
-            return False, None
-        return None, (f"« {declaration['libelle']} » attend oui ou non.")
-    if nature == checklist.CHOIX:
-        texte = str(brute).strip()
-        if texte not in declaration['choix']:
-            options = ', '.join(declaration['choix'])
-            return None, (f"« {declaration['libelle']} » : valeur inconnue "
-                          f'« {texte} ». Choix possibles : {options}.')
-        return texte, None
-    return str(brute), None
+# VTA10 — la validation/écriture d'une mesure vit dans ``services.py`` : la
+# MÊME fonction sert la route en ligne (ci-dessous) et le rejeu hors-ligne du
+# moteur ``apps.offlinesync``. Deux copies seraient deux vérités.
 
 
 class VisiteTerrainViewSet(CompanyScopedModelViewSet):
@@ -276,43 +247,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return refus
 
         categorie = (request.data.get('categorie') or '').strip()
-        declaration = checklist.categorie(categorie)
-        if declaration is None or not declaration['mesures']:
-            return _erreur(
-                'categorie',
-                f'Catégorie de mesures inconnue « {categorie} ».')
-        valeurs = request.data.get('valeurs')
-        if not isinstance(valeurs, dict):
-            return _erreur('valeurs',
-                           'Les valeurs doivent être un objet '
-                           '{champ: valeur}.')
-
-        connus = {champ['code']: champ for champ in declaration['mesures']}
-        erreurs = {}
-        propres = {}
-        for code, brute in valeurs.items():
-            champ = connus.get(code)
-            if champ is None:
-                erreurs[code] = (f'Champ inconnu dans la catégorie '
-                                 f'« {declaration["libelle"]} ».')
-                continue
-            valeur, message = _valeur_mesure(champ, brute)
-            if message:
-                erreurs[code] = message
-            else:
-                propres[code] = valeur
+        visite, erreurs = services.enregistrer_mesures(
+            visite, categorie, request.data.get('valeurs'))
         if erreurs:
             return Response({'erreurs': erreurs},
                             status=status.HTTP_400_BAD_REQUEST)
-
-        stockees = visite.mesures if isinstance(visite.mesures, dict) else {}
-        bloc = dict(stockees.get(categorie) or {})
-        bloc.update(propres)
-        stockees = dict(stockees)
-        stockees[categorie] = bloc
-        visite.mesures = stockees
-        visite.save(update_fields=['mesures'])
-        _marquer_en_cours(visite)
         return self._agregat(visite)
 
     # -- VTA6 : PROGRESSION TERRAIN (deux boutons au pouce) -------------------
@@ -510,12 +449,8 @@ def _coordonnee(brute):
         return None, 'Coordonnée GPS invalide.'
 
 
-def _marquer_en_cours(visite):
-    """Un brouillon devient « en cours » dès la première contribution."""
-    if visite.statut in (VisiteTerrain.Statut.BROUILLON,
-                         VisiteTerrain.Statut.A_REFAIRE):
-        visite.statut = VisiteTerrain.Statut.EN_COURS
-        visite.save(update_fields=['statut'])
+#: VTA10 — alias du service (source unique, partagée avec le rejeu hors-ligne).
+_marquer_en_cours = services.marquer_en_cours
 
 
 # -- VTA6 : "MA JOURNEE", L'ACCUEIL DE L'APP ---------------------------------
