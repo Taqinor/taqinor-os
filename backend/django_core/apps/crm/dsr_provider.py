@@ -259,7 +259,15 @@ def erase_crm(company, subject_identifier):
 
 
 def register():
-    """Enregistre le fournisseur DSR CRM (idempotent). Appelé en ready()."""
+    """Enregistre le fournisseur DSR CRM (idempotent). Appelé en ready().
+
+    ``erase_order=100`` : le CRM porte l'IDENTITÉ de la personne (email,
+    téléphone) — c'est la clé avec laquelle les AUTRES apps retrouvent leurs
+    documents (``ventes`` passe par ``crm.selectors.client_ids_par_identifiant``).
+    Anonymiser le CRM en premier (ordre alphabétique) effaçait cette clé sous
+    les pieds des fournisseurs suivants : leur effacement ne trouvait plus rien
+    et repartait à zéro, sans erreur. Le CRM s'efface donc EN DERNIER.
+    """
     from core import dsr
     dsr.register_dsr_provider(
-        PROVIDER_NAME, export=export_crm, erase=erase_crm)
+        PROVIDER_NAME, export=export_crm, erase=erase_crm, erase_order=100)
