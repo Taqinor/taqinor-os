@@ -466,12 +466,26 @@ app.conf.beat_schedule = {
     # WIR30 — pré-alerte SLA (J-x) + escalade à la violation (XSAV6,
     # apps/sav/views.py scan_sla_pre_alerts_and_escalations), bâtie/testée
     # mais jamais planifiée jusqu'ici. DISTINCT de scan_sla_breaches
-    # (planifiée séparément par NTSRV38). OFF par défaut par société
+    # (planifiée séparément juste en dessous). OFF par défaut par société
     # (sla_warning_days=0, escalade_activee=False) : no-op tant qu'aucun
     # réglage n'est activé.
+    # NTSRV38 — cadence relevée de quotidienne à TOUTES LES 15 MINUTES : les
+    # paliers d'escalade multi-niveaux (NTSRV12) vivent dans cette fonction,
+    # et un palier « J+1 → direction » n'a aucun sens s'il n'est rescanné
+    # qu'une fois par jour. Le balayage est idempotent par ticket et deux
+    # exécutions concurrentes sont exclues par un verrou (apps/sav/tasks.py).
     'sav-scan-sla-pre-alerts-and-escalations': {
         'task': 'sav.scan_sla_pre_alerts_and_escalations_quotidien',
-        'schedule': crontab(hour=7, minute=42),
+        'schedule': crontab(minute='*/15'),
+    },
+    # NTSRV38 — violation SLA (FG81, apps/sav/views.py scan_sla_breaches) :
+    # bâtie et testée mais SANS aucune entrée beat jusqu'ici (elle ne tournait
+    # qu'à la demande). Décalée de 7 minutes sur le quart d'heure pour ne pas
+    # balayer les tickets en même temps que la tâche ci-dessus. OFF par
+    # société tant que sla_breach_enabled est False (défaut).
+    'sav-scan-sla-breaches-quart-heure': {
+        'task': 'sav.scan_sla_breaches_quart_heure',
+        'schedule': crontab(minute='7,22,37,52'),
     },
     # XFSM21 — météo J+3 sur les poses planifiées (Open-Meteo, gratuit,
     # sans clé), quotidien, heure creuse matinale.

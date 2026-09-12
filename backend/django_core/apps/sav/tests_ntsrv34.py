@@ -90,9 +90,11 @@ class NTSRV34ReponseTypeCanauxTest(TestCase):
     def test_ticket_dune_autre_societe_ne_filtre_pas(self):
         autre, _ = Company.objects.get_or_create(
             slug='sav-ntsrv34-bis', defaults={'nom': 'Autre NTSRV34'})
+        client_autre = Client.objects.create(
+            company=autre, nom='Client', prenom='NTSRV34bis')
         etranger = Ticket.objects.create(
             company=autre, reference='SAV-NTSRV34-X',
-            statut=Ticket.Statut.EN_COURS,
+            client=client_autre, statut=Ticket.Statut.EN_COURS,
             canal_ouverture=Ticket.CanalOuverture.WHATSAPP)
         # Ticket hors société : introuvable pour cet utilisateur, donc aucun
         # filtre appliqué (jamais une fuite du canal d'un autre tenant).
