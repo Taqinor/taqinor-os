@@ -8,7 +8,7 @@ import {
   GraduationCap, Briefcase, ShieldAlert, UserCircle,
   Car, FileText, CalendarPlus, ClipboardCheck, ListChecks,
   Calculator, LogOut, Wallet, Clock3, CalendarOff, Milestone,
-  DoorClosed, Gift, SlidersHorizontal, HardHat,
+  DoorClosed, Gift, SlidersHorizontal, HardHat, MapPin,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -55,6 +55,9 @@ const ReglagesRh = lazy(() => import('./ReglagesRh.jsx'))
 // AUDV20 — effectif chantier (selectors.effectif_present_le, jusqu'ici sans
 // aucun consommateur) : son propre écran, comme le reste du module.
 const PresentsChantier = lazy(() => import('./PresentsChantier.jsx'))
+// NTFSM26 — vue équipe terrain par zone géographique (écran de dispatch, dont
+// les données sont 100 % RH : c'est donc ce registre qui le porte).
+const EquipeDispatch = lazy(() => import('../../pages/dispatch/EquipePage.jsx'))
 
 // Rôles autorisés pour le back-office RH — 'normal' inclus : un rôle fin de
 // palier normal portant `rh_voir` est servi 200 par le serveur, la nav doit
@@ -106,6 +109,8 @@ export default {
       { to: '/rh/reglages', label: 'Réglages RH', icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // AUDV20 — présents chantier (effectif du jour, base facturation/litige).
       { to: '/rh/presents-chantier', label: 'Présents chantier', icon: <HardHat size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      // NTFSM26 — équipe terrain par zone (dispatch d'intervention).
+      { to: '/dispatch/equipe', label: 'Équipe terrain (zones)', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // UX28 — portail self-service : tous rôles. La Sidebar filtre via
       // `it.roles.includes(role)` → chaque item DOIT porter `roles` (sinon crash).
       { to: '/rh/portail', label: 'Mon portail', icon: <UserCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },
@@ -133,6 +138,7 @@ export default {
     ['/rh/primes-indemnites', 'Primes & indemnités'],
     ['/rh/reglages', 'Réglages RH'],
     ['/rh/presents-chantier', 'Présents chantier'],
+    ['/dispatch/equipe', 'Équipe terrain par zone'],
     ['/rh/portail', 'Mon portail RH'],
     ['/rh', 'Cockpit RH'],
   ],
@@ -163,6 +169,8 @@ export default {
     { path: '/rh/reglages', component: ReglagesRh, ...GATE_RH },
     // AUDV20 — présents chantier.
     { path: '/rh/presents-chantier', component: PresentsChantier, ...GATE_RH },
+    // NTFSM26 — écran de dispatch alimenté par les données RH.
+    { path: '/dispatch/equipe', component: EquipeDispatch, ...GATE_RH },
     // UX28 — portail self-service : tous rôles (authLoader simple).
     { path: '/rh/portail', component: Portail },
   ],

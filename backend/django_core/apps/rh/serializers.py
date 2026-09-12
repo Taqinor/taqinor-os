@@ -31,6 +31,19 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    CycleRevisionSalariale,
+    EnqueteEngagement,
+    EnveloppeManager,
+    EvaluationNeufBox,
+    KeyResult,
+    ReponseEnquete,
+    KeyResultIndividuel,
+    ObjectifEntreprise,
+    OkrIndividuel,
+    PlanActionEngagement,
+    PlanSuccession,
+    PosteCle,
+    PropositionRevision,
     DemandeAllocation,
     DemandeConge,
     DemandeRH,
@@ -170,7 +183,12 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'id', 'user', 'matricule', 'nom', 'prenom', 'cin',
             'cnss', 'cimr', 'amo', 'situation_familiale',
             'situation_familiale_display', 'nombre_enfants', 'telephone',
-            'email', 'poste', 'poste_ref', 'departement', 'date_embauche',
+            'email', 'poste', 'poste_ref', 'departement',
+            # NTHCM1 — ligne hiérarchique (manager direct).
+            'manager',
+            # NTFSM26 — zone géographique d'intervention (champ libre).
+            'zone_intervention',
+            'date_embauche',
             'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
             'statut', 'statut_display', 'cout_horaire',
@@ -211,6 +229,29 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
 
     def validate_poste_ref(self, value):
         return _poste_meme_societe(self, value)
+
+    def validate_manager(self, value):
+        """NTHCM1 — un manager d'une AUTRE société est refusé (400)."""
+        return _meme_societe(self, value, 'Manager')
+
+    def validate(self, attrs):
+        """NTHCM1 — rejette le cycle managérial (A→B→A) en invoquant
+        explicitement ``DossierEmploye.clean()`` (DRF n'appelle pas
+        ``full_clean()``), exactement comme ``DepartementSerializer``."""
+        if 'manager' not in attrs:
+            return attrs
+        company = (self.instance.company if self.instance
+                   else self.context['request'].user.company)
+        sonde = DossierEmploye(
+            pk=self.instance.pk if self.instance else None,
+            company=company,
+            manager=attrs.get('manager'),
+        )
+        try:
+            sonde.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'manager': exc.messages})
+        return attrs
 
 
 class AnnuaireEmployeSerializer(serializers.ModelSerializer):
@@ -353,6 +394,8 @@ class PosteSerializer(serializers.ModelSerializer):
         model = Poste
         fields = [
             'id', 'intitule', 'code', 'departement', 'departement_nom',
+            # NTHCM4 — effectif budgété (0 = pas de limite posée).
+            'effectif_budgete',
             'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -2714,6 +2757,8 @@ class ReglageRHSerializer(serializers.ModelSerializer):
         model = ReglageRH
         fields = [
             'id', 'geofence_metres', 'retention_candidatures_mois',
+            # NTHCM13 — seuil du croisement criticité × flight-risk.
+            'seuil_risque_succession',
             'date_modification']
         read_only_fields = ['date_modification']
 
@@ -3026,3 +3071,376 @@ class MonFeedback360Serializer(serializers.ModelSerializer):
         read_only_fields = [
             'evaluation', 'relation', 'date_invitation', 'date_soumission',
         ]
+
+
+# ── NTHCM5 — cycles de révision salariale ───────────────────────────────────
+
+class CycleRevisionSalarialeSerializer(serializers.ModelSerializer):
+    """NTHCM5 — campagne de révision salariale (donnée paie SENSIBLE)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CycleRevisionSalariale
+        fields = [
+            'id', 'libelle', 'periode', 'enveloppe_totale_pct',
+            'statut', 'statut_display', 'date_debut', 'date_fin',
+            # NTHCM7 — date d'effet des ``Remuneration`` créées à
+            # l'application du cycle.
+            'date_effet',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class EnveloppeManagerSerializer(serializers.ModelSerializer):
+    """NTHCM5 — enveloppe (points de %) allouée à un manager sur un cycle."""
+    manager_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EnveloppeManager
+        fields = [
+            'id', 'cycle', 'manager', 'manager_nom', 'enveloppe_pct',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_manager_nom(self, obj):
+        return f'{obj.manager.nom} {obj.manager.prenom}'
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+    def validate_manager(self, value):
+        return _meme_societe(self, value, 'Manager')
+
+
+class PropositionRevisionSerializer(serializers.ModelSerializer):
+    """NTHCM5 — proposition d'augmentation, LECTURE + écriture encadrée.
+
+    ``salaire_actuel``, ``augmentation_montant_proposee`` et ``propose_par``
+    sont posés CÔTÉ SERVEUR (``services.proposer_revision``) : ils restent en
+    lecture seule ici.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PropositionRevision
+        fields = [
+            'id', 'cycle', 'employe', 'employe_nom', 'salaire_actuel',
+            'augmentation_pct_proposee', 'augmentation_montant_proposee',
+            'justification', 'statut', 'statut_display', 'propose_par',
+            # NTHCM7 — marqueurs d'idempotence de l'application du cycle.
+            'appliquee', 'date_application',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'salaire_actuel', 'augmentation_montant_proposee', 'propose_par',
+            'appliquee', 'date_application',
+            'date_creation',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class ProposerRevisionSerializer(serializers.Serializer):
+    """NTHCM5 — ENTRÉE de ``propositions-revision`` (création).
+
+    Sérialiseur d'entrée dédié, volontairement PAS un ``ModelSerializer`` :
+    celui-ci hériterait du ``UniqueTogetherValidator`` de la contrainte
+    ``(cycle, employe)`` et refuserait en 400 une RE-proposition pour le même
+    employé, alors que ``services.proposer_revision`` la traite comme une
+    mise à jour (l'enveloppe n'est alors pas double-comptée).
+    """
+    cycle = serializers.PrimaryKeyRelatedField(
+        queryset=CycleRevisionSalariale.objects.all())
+    employe = serializers.PrimaryKeyRelatedField(
+        queryset=DossierEmploye.objects.all())
+    augmentation_pct_proposee = serializers.DecimalField(
+        max_digits=6, decimal_places=2, required=False, default=0)
+    justification = serializers.CharField(
+        required=False, allow_blank=True, default='')
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+# ── NTHCM8 — OKR d'entreprise (cascade OPTIONNELLE) ─────────────────────────
+
+class KeyResultSerializer(serializers.ModelSerializer):
+    """NTHCM8 — résultat clé d'un objectif d'entreprise.
+
+    ``progression_pct`` est une PROPRIÉTÉ dérivée (actuelle/cible, bornée
+    0-100) — lecture seule, jamais écrite par le client.
+    """
+    progression_pct = serializers.DecimalField(
+        max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = KeyResult
+        fields = [
+            'id', 'objectif', 'libelle', 'valeur_cible', 'valeur_actuelle',
+            'unite', 'progression_pct', 'date_creation',
+        ]
+        read_only_fields = ['progression_pct', 'date_creation']
+
+    def validate_objectif(self, value):
+        return _meme_societe(self, value, 'Objectif')
+
+
+class ObjectifEntrepriseSerializer(serializers.ModelSerializer):
+    """NTHCM8 — objectif d'entreprise + ses résultats clés (lecture)."""
+    key_results = KeyResultSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ObjectifEntreprise
+        fields = [
+            'id', 'titre', 'periode', 'description', 'proprietaire',
+            'key_results', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_proprietaire(self, value):
+        return _meme_societe(self, value, 'Propriétaire')
+
+
+class KeyResultIndividuelSerializer(serializers.ModelSerializer):
+    """NTHCM8 — résultat clé d'un OKR individuel.
+
+    ``progression_pct`` est recalculée CÔTÉ SERVEUR à chaque sauvegarde
+    (``KeyResultIndividuel.save``) : lecture seule ici.
+    """
+    class Meta:
+        model = KeyResultIndividuel
+        fields = [
+            'id', 'okr', 'libelle', 'valeur_cible', 'valeur_actuelle',
+            'unite', 'progression_pct', 'date_creation',
+        ]
+        read_only_fields = ['progression_pct', 'date_creation']
+
+    def validate_okr(self, value):
+        return _meme_societe(self, value, 'OKR')
+
+
+class OkrIndividuelSerializer(serializers.ModelSerializer):
+    """NTHCM8 — OKR d'un employé. ``objectif_parent`` reste OPTIONNEL."""
+    key_results = KeyResultIndividuelSerializer(many=True, read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    progression_pct = serializers.DecimalField(
+        max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = OkrIndividuel
+        fields = [
+            'id', 'employe', 'employe_nom', 'periode', 'titre',
+            'objectif_parent', 'key_results', 'progression_pct',
+            'date_creation',
+        ]
+        read_only_fields = ['progression_pct', 'date_creation']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_objectif_parent(self, value):
+        return _meme_societe(self, value, "Objectif d'entreprise")
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+class EvaluationNeufBoxSerializer(serializers.ModelSerializer):
+    """NTHCM10 — positionnement 9-box d'un employé.
+
+    ``case_calculee`` est posée CÔTÉ SERVEUR depuis les deux axes et
+    ``evalue_par`` vient de la requête : les deux restent en lecture seule.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    axe_performance_display = serializers.CharField(
+        source='get_axe_performance_display', read_only=True)
+    axe_potentiel_display = serializers.CharField(
+        source='get_axe_potentiel_display', read_only=True)
+
+    class Meta:
+        model = EvaluationNeufBox
+        fields = [
+            'id', 'employe', 'employe_nom', 'campagne',
+            'axe_performance', 'axe_performance_display',
+            'axe_potentiel', 'axe_potentiel_display',
+            'case_calculee', 'notes', 'evalue_par', 'date_creation',
+        ]
+        read_only_fields = ['case_calculee', 'evalue_par', 'date_creation']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_campagne(self, value):
+        return _meme_societe(self, value, 'Campagne')
+
+
+# ── NTHCM12 — plans de succession par poste-clé ─────────────────────────────
+
+class PosteCleSerializer(serializers.ModelSerializer):
+    """NTHCM12 — marquage explicite d'un poste comme CLÉ (jamais auto)."""
+    poste_intitule = serializers.CharField(
+        source='poste.intitule', read_only=True)
+    criticite_display = serializers.CharField(
+        source='get_criticite_display', read_only=True)
+
+    class Meta:
+        model = PosteCle
+        fields = [
+            'id', 'poste', 'poste_intitule', 'criticite',
+            'criticite_display', 'justification', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_poste(self, value):
+        """Poste de la société, et JAMAIS marqué deux fois.
+
+        La contrainte ``(company, poste)`` vit en base, mais ``company``
+        n'étant pas exposée, DRF ne peut pas en dériver de validateur : sans
+        ce contrôle explicite le doublon remonterait en 500 au lieu d'un 400
+        qui NOMME le champ fautif.
+        """
+        value = _poste_meme_societe(self, value)
+        request = self.context.get('request')
+        if value is None or request is None:
+            return value
+        doublons = PosteCle.objects.filter(
+            company_id=request.user.company_id, poste=value)
+        if self.instance is not None:
+            doublons = doublons.exclude(pk=self.instance.pk)
+        if doublons.exists():
+            raise serializers.ValidationError(
+                'Ce poste est déjà marqué comme poste-clé.')
+        return value
+
+
+class PlanSuccessionSerializer(serializers.ModelSerializer):
+    """NTHCM12 — successeur identifié pour un poste-clé, avec readiness."""
+    successeur_nom = serializers.SerializerMethodField()
+    rang_display = serializers.CharField(
+        source='get_rang_display', read_only=True)
+    readiness_display = serializers.CharField(
+        source='get_readiness_display', read_only=True)
+
+    class Meta:
+        model = PlanSuccession
+        fields = [
+            'id', 'poste_cle', 'successeur', 'successeur_nom',
+            'rang', 'rang_display', 'readiness', 'readiness_display',
+            'plan_developpement', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_successeur_nom(self, obj):
+        return f'{obj.successeur.nom} {obj.successeur.prenom}'
+
+    def validate_poste_cle(self, value):
+        return _meme_societe(self, value, 'Poste-clé')
+
+    def validate_successeur(self, value):
+        return _meme_societe(self, value, 'Successeur')
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+class EnqueteEngagementSerializer(serializers.ModelSerializer):
+    """NTHCM14 — enquête d'engagement (questions typées par catégorie).
+
+    ``anonyme`` n'est modifiable QU'AVANT la première réponse : le basculer
+    ensuite rendrait le corpus incohérent (des réponses anonymes et
+    nominatives mélangées dans le même agrégat).
+    """
+    nombre_reponses = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EnqueteEngagement
+        fields = [
+            'id', 'titre', 'questions', 'date_debut', 'date_fin',
+            'anonyme', 'nombre_reponses', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nombre_reponses(self, obj):
+        return obj.reponses.count()
+
+    def validate(self, attrs):
+        """Vocabulaire des questions FERMÉ (``EnqueteEngagement.clean``) et
+        ``anonyme`` figé dès la première réponse."""
+        questions = attrs.get(
+            'questions',
+            self.instance.questions if self.instance else [])
+        sonde = EnqueteEngagement(questions=questions)
+        try:
+            sonde.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'questions': exc.messages})
+
+        if (self.instance is not None and 'anonyme' in attrs
+                and attrs['anonyme'] != self.instance.anonyme
+                and self.instance.reponses.exists()):
+            raise serializers.ValidationError({'anonyme': [
+                "Le mode d'anonymat ne peut plus changer : cette enquête a "
+                'déjà reçu des réponses.']})
+        return attrs
+
+
+class ReponseEnqueteSerializer(serializers.ModelSerializer):
+    """NTHCM14 — réponse à une enquête (lecture).
+
+    ``employe`` est présent pour le mode NOMINATIF uniquement ; en mode
+    anonyme il vaut toujours ``None`` (contrainte de base
+    ``rh_repenq_anonyme_sans_employe``).
+    """
+    class Meta:
+        model = ReponseEnquete
+        fields = [
+            'id', 'enquete', 'anonyme', 'employe', 'reponses',
+            'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class PlanActionEngagementSerializer(serializers.ModelSerializer):
+    """NTHCM15 — action de suivi assignée, issue d'une enquête."""
+    responsable_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PlanActionEngagement
+        fields = [
+            'id', 'enquete', 'categorie_ciblee', 'action',
+            'responsable', 'responsable_nom', 'echeance',
+            'statut', 'statut_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_responsable_nom(self, obj):
+        if obj.responsable_id is None:
+            return ''
+        return f'{obj.responsable.nom} {obj.responsable.prenom}'
+
+    def validate_enquete(self, value):
+        return _meme_societe(self, value, 'Enquête')
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')

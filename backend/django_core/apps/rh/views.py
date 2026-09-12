@@ -55,6 +55,18 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    CycleRevisionSalariale,
+    EnqueteEngagement,
+    EnveloppeManager,
+    EvaluationNeufBox,
+    KeyResult,
+    KeyResultIndividuel,
+    ObjectifEntreprise,
+    OkrIndividuel,
+    PlanActionEngagement,
+    PlanSuccession,
+    PosteCle,
+    PropositionRevision,
     DemandeAllocation,
     DemandeConge,
     DemandeRH,
@@ -135,6 +147,19 @@ from .serializers import (
     CompetenceRequiseSerializer,
     CompetenceSerializer,
     CorrectionPointageSerializer,
+    CycleRevisionSalarialeSerializer,
+    EnqueteEngagementSerializer,
+    EnveloppeManagerSerializer,
+    EvaluationNeufBoxSerializer,
+    KeyResultIndividuelSerializer,
+    KeyResultSerializer,
+    ObjectifEntrepriseSerializer,
+    OkrIndividuelSerializer,
+    PlanActionEngagementSerializer,
+    PlanSuccessionSerializer,
+    PosteCleSerializer,
+    PropositionRevisionSerializer,
+    ProposerRevisionSerializer,
     DemandeAllocationSerializer,
     DemandeCongeSerializer,
     DemandeRHSerializer,
@@ -439,6 +464,43 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         return Response(
             DossierActivitySerializer(
                 employe.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='subordonnes')
+    def subordonnes(self, request, pk=None):
+        """NTHCM1 — rattachés DIRECTS de cet employé (non récursif).
+
+        Société scopée deux fois : ``get_object()`` passe par le queryset du
+        ``TenantMixin``, puis le filtre reprend la société DE L'OBJET (et non
+        celle de la requête, ``None`` pour un superutilisateur plateforme).
+        """
+        employe = self.get_object()
+        directs = (
+            DossierEmploye.objects
+            .filter(company=employe.company, manager=employe)
+            .select_related('poste_ref', 'departement')
+            .order_by('nom', 'prenom'))
+        return Response(
+            DossierEmployeSerializer(
+                directs, many=True, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'], url_path='equipe-terrain')
+    def equipe_terrain(self, request):
+        """NTFSM26 — équipe terrain : compétences, habilitations et zone.
+
+        ``?zone=Casablanca`` ne renvoie QUE les techniciens dont la
+        ``zone_intervention`` correspond (comparaison exacte, casse ignorée) ;
+        ``?competence=<code>`` affine sur une compétence acquise.
+        """
+        return Response(selectors.equipe_terrain(
+            request.user.company,
+            zone=request.query_params.get('zone'),
+            competence_code=request.query_params.get('competence')))
+
+    @action(detail=False, methods=['get'], url_path='zones-intervention')
+    def zones_intervention(self, request):
+        """NTFSM26 — zones réellement déclarées (alimente le filtre)."""
+        return Response(
+            selectors.zones_intervention(request.user.company))
 
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
@@ -1045,6 +1107,18 @@ class PosteViewSet(_RhBaseViewSet):
         poste = self.get_object()
         return Response(
             selectors.candidats_internes(request.user.company, poste.id))
+
+    @action(detail=True, methods=['get'], url_path='effectif')
+    def effectif(self, request, pk=None):
+        """NTHCM4 — budgété / pourvus / ouverts + drapeau de dépassement."""
+        poste = self.get_object()
+        return Response(selectors.effectif_poste(poste.company, poste.id))
+
+    @action(detail=False, methods=['get'], url_path='effectifs')
+    def effectifs(self, request):
+        """NTHCM4 — le même comparatif pour TOUS les postes de la société
+        (colonne « Budgété / Pourvu » de l'écran postes)."""
+        return Response(selectors.effectifs_postes(request.user.company))
 
 
 class HoraireTravailViewSet(_RhBaseViewSet):
@@ -6065,3 +6139,387 @@ class CockpitRhViewSet(viewsets.ViewSet):
         return Response(
             selectors.top_risque_attrition(
                 request.user.company, limite=limite))
+
+    @action(detail=False, methods=['get'], url_path='postes-a-risque')
+    def postes_a_risque(self, request):
+        """NTHCM13 — section « Postes à risque » du cockpit RH (FG200).
+
+        Même calcul que ``postes-cles/risque-succession/``, exposé ici pour
+        que le cockpit n'ait qu'un seul interlocuteur ; restreint aux postes
+        réellement en ``risque_vacance`` (la liste complète reste consultable
+        sur l'endpoint dédié). Servi à part du ``list()`` du cockpit pour ne
+        pas y ajouter un scoring par employé à chaque chargement (même
+        raison que ``top-risque-attrition``).
+        """
+        lignes = selectors.risque_succession(request.user.company)
+        return Response([ligne for ligne in lignes
+                         if ligne['risque_vacance']])
+
+
+# ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
+
+class CycleRevisionSalarialeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTHCM5 — campagnes de révision salariale (paie SENSIBLE).
+
+    Lecture ET écriture réservées aux porteurs de ``salaires_voir`` (comme
+    ``GrilleSalarialeViewSet``/``RemunerationViewSet``) : sans cette
+    permission tout accès est refusé (403). Société scopée + posée côté
+    serveur.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = CycleRevisionSalariale.objects.all()
+    serializer_class = CycleRevisionSalarialeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'periode']
+    ordering_fields = ['date_creation', 'periode']
+
+    @action(detail=True, methods=['post'], url_path='appliquer')
+    def appliquer(self, request, pk=None):
+        """NTHCM7 — matérialise les propositions APPROUVÉES d'un cycle CLOS.
+
+        Idempotente : une proposition déjà appliquée ne recrée aucune ligne
+        de rémunération, donc un second appel renvoie ``appliquees: 0``.
+        """
+        cycle = self.get_object()
+        try:
+            resultat = services.appliquer_cycle_revision(
+                cycle, request.user)
+        except services.CycleNonClosError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
+
+class EnveloppeManagerViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTHCM5 — enveloppes allouées aux managers d'un cycle (``?cycle=<id>``).
+
+    Gaté ``salaires_voir``. ``company`` posée côté serveur.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = EnveloppeManager.objects.select_related(
+        'cycle', 'manager').all()
+    serializer_class = EnveloppeManagerSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+
+class PropositionRevisionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTHCM5 — propositions d'augmentation d'un cycle (``?cycle=<id>``).
+
+    Gaté ``salaires_voir``. La CRÉATION passe obligatoirement par
+    ``services.proposer_revision`` : un manager ne peut proposer que pour SES
+    subordonnés directs (403) et jamais au-delà de son enveloppe (400 avec un
+    message FR explicite). ``salaire_actuel``, le montant et ``propose_par``
+    sont posés côté serveur.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = PropositionRevision.objects.select_related(
+        'cycle', 'employe').all()
+    serializer_class = PropositionRevisionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        # Sérialiseur d'ENTRÉE dédié (pas le ModelSerializer) : voir sa
+        # docstring — le validateur d'unicité (cycle, employe) refuserait une
+        # RE-proposition que le service traite en mise à jour.
+        entree = ProposerRevisionSerializer(
+            data=request.data, context=self.get_serializer_context())
+        entree.is_valid(raise_exception=True)
+        serializer = entree
+        cycle = serializer.validated_data['cycle']
+        employe = serializer.validated_data['employe']
+        auteur_dossier = selectors.dossier_employe_for_user(
+            request.user.company, request.user.id)
+        try:
+            proposition = services.proposer_revision(
+                cycle, employe,
+                auteur_dossier=auteur_dossier,
+                user=request.user,
+                augmentation_pct=serializer.validated_data.get(
+                    'augmentation_pct_proposee') or 0,
+                justification=serializer.validated_data.get(
+                    'justification', ''))
+        except services.HorsPerimetreManagerError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        except services.EnveloppeDepasseeError as exc:
+            return Response(
+                {'augmentation_pct_proposee': [str(exc)]},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(proposition).data,
+            status=status.HTTP_201_CREATED)
+
+
+# ── NTHCM8 — OKR d'entreprise (cascade OPTIONNELLE) ─────────────────────────
+
+class ObjectifEntrepriseViewSet(_RhBaseViewSet):
+    """NTHCM8 — objectifs d'ENTREPRISE d'une période (``?periode=T1-2027``).
+
+    Société scopée + permissions RH fines (``rh_voir``/``rh_gerer``).
+    """
+    queryset = ObjectifEntreprise.objects.select_related(
+        'proprietaire').prefetch_related('key_results').all()
+    serializer_class = ObjectifEntrepriseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'periode']
+    ordering_fields = ['periode', 'titre']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode=periode)
+        return qs
+
+
+class KeyResultViewSet(_RhBaseViewSet):
+    """NTHCM8 — résultats clés d'un objectif d'entreprise (``?objectif=``)."""
+    queryset = KeyResult.objects.select_related('objectif').all()
+    serializer_class = KeyResultSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        objectif = self.request.query_params.get('objectif')
+        if objectif:
+            qs = qs.filter(objectif_id=objectif)
+        return qs
+
+
+class OkrIndividuelViewSet(_RhBaseViewSet):
+    """NTHCM8 — OKR individuels (``?employe=``, ``?periode=``, ``?parent=``).
+
+    ``objectif_parent`` reste OPTIONNEL : un OKR sans parent est valide.
+    """
+    queryset = OkrIndividuel.objects.select_related(
+        'employe', 'objectif_parent').prefetch_related('key_results').all()
+    serializer_class = OkrIndividuelSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'periode']
+    ordering_fields = ['periode', 'titre']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        periode = params.get('periode')
+        if periode:
+            qs = qs.filter(periode=periode)
+        parent = params.get('parent')
+        if parent:
+            qs = qs.filter(objectif_parent_id=parent)
+        return qs
+
+
+class KeyResultIndividuelViewSet(_RhBaseViewSet):
+    """NTHCM8 — résultats clés d'un OKR individuel (``?okr=``).
+
+    ``progression_pct`` est recalculée côté serveur à chaque sauvegarde.
+    """
+    queryset = KeyResultIndividuel.objects.select_related('okr').all()
+    serializer_class = KeyResultIndividuelSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        okr = self.request.query_params.get('okr')
+        if okr:
+            qs = qs.filter(okr_id=okr)
+        return qs
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+class EvaluationNeufBoxViewSet(_RhBaseViewSet):
+    """NTHCM10 — positionnements 9-box (``?campagne=``, ``?departement=``).
+
+    Société scopée + permissions RH fines. ``case_calculee`` est recalculée
+    par le modèle à chaque sauvegarde ; ``evalue_par`` est posé CÔTÉ SERVEUR.
+
+    Action :
+    * ``GET evaluations-neuf-box/grille/?campagne=&departement=`` —
+      répartition par case 1-9 (``selectors.grille_neuf_box``), toujours les
+      9 cases, un employé non positionné restant simplement absent.
+    """
+    queryset = EvaluationNeufBox.objects.select_related(
+        'employe', 'campagne').all()
+    serializer_class = EvaluationNeufBoxSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        campagne = params.get('campagne')
+        if campagne:
+            qs = qs.filter(campagne_id=campagne)
+        departement = params.get('departement')
+        if departement:
+            qs = qs.filter(employe__departement_id=departement)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            evalue_par=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(evalue_par=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='grille')
+    def grille(self, request):
+        return Response(selectors.grille_neuf_box(
+            request.user.company,
+            campagne_id=request.query_params.get('campagne'),
+            departement_id=request.query_params.get('departement')))
+
+
+# ── NTHCM12 — plans de succession par poste-clé ─────────────────────────────
+
+class PosteCleViewSet(_RhBaseViewSet):
+    """NTHCM12 — postes marqués CLÉS par le RH (``?criticite=``).
+
+    Actions :
+    * ``GET postes-cles/{id}/couverture/`` — couverture d'UN poste-clé
+      (``orphelin=True`` quand aucun successeur n'est identifié) ;
+    * ``GET postes-cles/couverture/`` — la même chose pour TOUS les
+      postes-clés, orphelins en tête.
+    """
+    queryset = PosteCle.objects.select_related('poste').all()
+    serializer_class = PosteCleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['poste__intitule', 'justification']
+    ordering_fields = ['criticite']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        criticite = self.request.query_params.get('criticite')
+        if criticite:
+            qs = qs.filter(criticite=criticite)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='couverture')
+    def couverture(self, request, pk=None):
+        poste_cle = self.get_object()
+        return Response(selectors.couverture_poste_cle(
+            poste_cle.company, poste_cle.id))
+
+    @action(detail=False, methods=['get'], url_path='couverture')
+    def couverture_globale(self, request):
+        return Response(
+            selectors.couverture_postes_cles(request.user.company))
+
+    @action(detail=False, methods=['get'], url_path='risque-succession')
+    def risque_succession(self, request):
+        """NTHCM13 — criticité du poste × flight-risk du titulaire.
+
+        ``?seuil=`` permet de simuler un autre seuil sans toucher aux
+        Paramètres RH (le défaut vient de
+        ``ReglageRH.seuil_risque_succession``, 60).
+        """
+        return Response(selectors.risque_succession(
+            request.user.company,
+            seuil=request.query_params.get('seuil')))
+
+
+class PlanSuccessionViewSet(_RhBaseViewSet):
+    """NTHCM12 — successeurs d'un poste-clé (``?poste_cle=``)."""
+    queryset = PlanSuccession.objects.select_related(
+        'poste_cle', 'successeur').all()
+    serializer_class = PlanSuccessionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        poste_cle = self.request.query_params.get('poste_cle')
+        if poste_cle:
+            qs = qs.filter(poste_cle_id=poste_cle)
+        return qs
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+class EnqueteEngagementViewSet(_RhBaseViewSet):
+    """NTHCM14 — enquêtes d'engagement multi-questions.
+
+    Administration réservée aux porteurs de ``rh_voir``/``rh_gerer`` (gate de
+    classe) ; RÉPONDRE est ouvert à tout employé authentifié de la société,
+    exactement comme le vote pulse XRH32.
+
+    Action :
+    * ``POST .../{id}/repondre/`` — une réponse par utilisateur (409 au
+      second envoi), anonyme ou nominative selon l'enquête.
+    """
+    queryset = EnqueteEngagement.objects.prefetch_related('reponses').all()
+    serializer_class = EnqueteEngagementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre']
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_permissions(self):
+        # NTHCM14 — répondre est ouvert à TOUT employé authentifié de la
+        # société (patron XRH32 ``repondre``) ; gérer les enquêtes reste
+        # soumis au gate de classe.
+        if self.action == 'repondre':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='repondre')
+    def repondre(self, request, pk=None):
+        enquete = self.get_object()
+        reponses = request.data.get('reponses')
+        if not isinstance(reponses, dict):
+            return Response(
+                {'reponses': ['Les réponses doivent être un objet '
+                              '{question: valeur}.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.repondre_enquete(
+                enquete, request.user, reponses=reponses)
+        except services.DejaRepondueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {'detail': 'Réponse enregistrée. Merci !'},
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='resultats')
+    def resultats(self, request, pk=None):
+        """NTHCM15 — moyenne et distribution PAR CATÉGORIE.
+
+        Masqué sous 5 réponses quand l'enquête est anonyme (même seuil que
+        le pulse XRH32). Réservé au gate de classe (Administrateur/
+        Responsable), comme les résultats du pulse.
+        """
+        enquete = self.get_object()
+        return Response(
+            selectors.resultats_enquete(enquete.company, enquete.id))
+
+
+class PlanActionEngagementViewSet(_RhBaseViewSet):
+    """NTHCM15 — plans d'action issus d'une enquête (``?enquete=``)."""
+    queryset = PlanActionEngagement.objects.select_related(
+        'enquete', 'responsable').all()
+    serializer_class = PlanActionEngagementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        enquete = params.get('enquete')
+        if enquete:
+            qs = qs.filter(enquete_id=enquete)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs

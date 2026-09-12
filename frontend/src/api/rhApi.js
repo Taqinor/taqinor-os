@@ -572,6 +572,21 @@ const rhApi = {
   getMonReglageRh: () => api.get('/rh/reglages/mon-reglage/'),
   updateMonReglageRh: (data) =>
     api.patch('/rh/reglages/mon-reglage/', data),
+
+  // ── NTHCM1 — ligne hiérarchique (rattachés directs) ──
+  getSubordonnes: (employeId) =>
+    api.get(`/rh/employes/${employeId}/subordonnes/`),
+
+  // ── NTHCM4 — postes budgétés vs pourvus (headcount) ──
+  getEffectifPoste: (posteId) =>
+    api.get(`/rh/postes/${posteId}/effectif/`),
+  getEffectifsPostes: () => api.get('/rh/postes/effectifs/'),
+
+  // ── NTFSM26 — équipe terrain par zone géographique (dispatch) ──
+  getEquipeTerrain: (params) =>
+    api.get('/rh/employes/equipe-terrain/', { params }),
+  getZonesIntervention: () =>
+    api.get('/rh/employes/zones-intervention/'),
 }
 
 export default rhApi
