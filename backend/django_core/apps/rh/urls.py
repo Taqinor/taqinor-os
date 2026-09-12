@@ -22,6 +22,7 @@ from .views import (
     CertificationViewSet,
     CycleRevisionSalarialeViewSet,
     EnveloppeManagerViewSet,
+    EvaluationNeufBoxViewSet,
     KeyResultIndividuelViewSet,
     KeyResultViewSet,
     ObjectifEntrepriseViewSet,
@@ -186,6 +187,8 @@ router.register(r'objectifs-entreprise', ObjectifEntrepriseViewSet)
 router.register(r'key-results', KeyResultViewSet)
 router.register(r'okr-individuels', OkrIndividuelViewSet)
 router.register(r'key-results-individuels', KeyResultIndividuelViewSet)
+# NTHCM10 — grille 9-box (performance × potentiel).
+router.register(r'evaluations-neuf-box', EvaluationNeufBoxViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

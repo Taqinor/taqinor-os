@@ -33,6 +33,7 @@ from .models import (
     CorrectionPointage,
     CycleRevisionSalariale,
     EnveloppeManager,
+    EvaluationNeufBox,
     KeyResult,
     KeyResultIndividuel,
     ObjectifEntreprise,
@@ -3223,3 +3224,37 @@ class OkrIndividuelSerializer(serializers.ModelSerializer):
 
     def validate_objectif_parent(self, value):
         return _meme_societe(self, value, "Objectif d'entreprise")
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+class EvaluationNeufBoxSerializer(serializers.ModelSerializer):
+    """NTHCM10 — positionnement 9-box d'un employé.
+
+    ``case_calculee`` est posée CÔTÉ SERVEUR depuis les deux axes et
+    ``evalue_par`` vient de la requête : les deux restent en lecture seule.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    axe_performance_display = serializers.CharField(
+        source='get_axe_performance_display', read_only=True)
+    axe_potentiel_display = serializers.CharField(
+        source='get_axe_potentiel_display', read_only=True)
+
+    class Meta:
+        model = EvaluationNeufBox
+        fields = [
+            'id', 'employe', 'employe_nom', 'campagne',
+            'axe_performance', 'axe_performance_display',
+            'axe_potentiel', 'axe_potentiel_display',
+            'case_calculee', 'notes', 'evalue_par', 'date_creation',
+        ]
+        read_only_fields = ['case_calculee', 'evalue_par', 'date_creation']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_campagne(self, value):
+        return _meme_societe(self, value, 'Campagne')

@@ -6721,3 +6721,117 @@ class KeyResultIndividuel(models.Model):
 
     def __str__(self):
         return self.libelle
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+def case_neuf_box(axe_performance, axe_potentiel):
+    """NTHCM10 — case 1-9 d'une grille 9-box à partir des DEUX axes.
+
+    Convention (documentée une fois, appliquée partout) : la case est
+    ``(potentiel - 1) × 3 + performance``, donc la ligne du bas (potentiel
+    limité) porte les cases 1-3 et la ligne du haut (potentiel élevé) les
+    cases 7-9 ; dans chaque ligne, la performance croît de gauche à droite.
+    Case 1 = performance faible + potentiel limité, case 9 = performance
+    forte + potentiel élevé.
+    """
+    perf = int(axe_performance or 0)
+    pot = int(axe_potentiel or 0)
+    perf = min(max(perf, 1), 3)
+    pot = min(max(pot, 1), 3)
+    return (pot - 1) * 3 + perf
+
+
+class EvaluationNeufBox(models.Model):
+    """NTHCM10 — positionnement d'un employé sur la grille 9-box.
+
+    Croise la PERFORMANCE (dérivable de ``EvaluationEmploye.note_globale``
+    mais saisissable à la main) et le POTENTIEL (jugement du manager/RH, non
+    dérivable). ``case_calculee`` est posée CÔTÉ SERVEUR depuis les deux axes
+    (:func:`case_neuf_box`) et ``evalue_par`` vient toujours de la requête.
+    """
+    class Performance(models.IntegerChoices):
+        FAIBLE = 1, 'Faible'
+        SOLIDE = 2, 'Solide'
+        FORT = 3, 'Fort'
+
+    class Potentiel(models.IntegerChoices):
+        LIMITE = 1, 'Limité'
+        MODERE = 2, 'Modéré'
+        ELEVE = 3, 'Élevé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un positionnement 9-box n'a aucun sens hors de sa société
+        related_name='rh_evaluations_neuf_box',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: le positionnement n'a plus d'objet sans son employé ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='evaluations_neuf_box',
+        verbose_name='Employé',
+    )
+    campagne = models.ForeignKey(
+        'CampagneEvaluation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evaluations_neuf_box',
+        verbose_name="Campagne d'évaluation",
+    )
+    axe_performance = models.PositiveSmallIntegerField(
+        choices=Performance.choices, default=Performance.SOLIDE,
+        verbose_name='Axe performance')
+    axe_potentiel = models.PositiveSmallIntegerField(
+        choices=Potentiel.choices, default=Potentiel.MODERE,
+        verbose_name='Axe potentiel')
+    case_calculee = models.PositiveSmallIntegerField(
+        default=5, verbose_name='Case (1-9)')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    evalue_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evaluations_neuf_box',
+        verbose_name='Évalué par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Évaluation 9-box'
+        verbose_name_plural = 'Évaluations 9-box'
+        ordering = ['employe__nom', 'employe__prenom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employe', 'campagne'],
+                name='rh_neufbox_employe_campagne_uniq'),
+            # PostgreSQL considère deux NULL comme DISTINCTS : sans cette
+            # contrainte partielle, un employé pourrait porter N
+            # positionnements HORS campagne. Une seule ligne « hors
+            # campagne » par employé.
+            models.UniqueConstraint(
+                fields=['employe'],
+                condition=models.Q(campagne__isnull=True),
+                name='rh_neufbox_employe_sans_camp_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'campagne'],
+                name='rh_neufbox_comp_camp_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Recalcule TOUJOURS ``case_calculee`` depuis les deux axes."""
+        self.case_calculee = case_neuf_box(
+            self.axe_performance, self.axe_potentiel)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            champs = set(update_fields)
+            champs.add('case_calculee')
+            kwargs['update_fields'] = sorted(champs)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.employe} — case {self.case_calculee}'

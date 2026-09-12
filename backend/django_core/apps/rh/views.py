@@ -57,6 +57,7 @@ from .models import (
     CorrectionPointage,
     CycleRevisionSalariale,
     EnveloppeManager,
+    EvaluationNeufBox,
     KeyResult,
     KeyResultIndividuel,
     ObjectifEntreprise,
@@ -144,6 +145,7 @@ from .serializers import (
     CorrectionPointageSerializer,
     CycleRevisionSalarialeSerializer,
     EnveloppeManagerSerializer,
+    EvaluationNeufBoxSerializer,
     KeyResultIndividuelSerializer,
     KeyResultSerializer,
     ObjectifEntrepriseSerializer,
@@ -6288,3 +6290,47 @@ class KeyResultIndividuelViewSet(_RhBaseViewSet):
         if okr:
             qs = qs.filter(okr_id=okr)
         return qs
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+class EvaluationNeufBoxViewSet(_RhBaseViewSet):
+    """NTHCM10 — positionnements 9-box (``?campagne=``, ``?departement=``).
+
+    Société scopée + permissions RH fines. ``case_calculee`` est recalculée
+    par le modèle à chaque sauvegarde ; ``evalue_par`` est posé CÔTÉ SERVEUR.
+
+    Action :
+    * ``GET evaluations-neuf-box/grille/?campagne=&departement=`` —
+      répartition par case 1-9 (``selectors.grille_neuf_box``), toujours les
+      9 cases, un employé non positionné restant simplement absent.
+    """
+    queryset = EvaluationNeufBox.objects.select_related(
+        'employe', 'campagne').all()
+    serializer_class = EvaluationNeufBoxSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        campagne = params.get('campagne')
+        if campagne:
+            qs = qs.filter(campagne_id=campagne)
+        departement = params.get('departement')
+        if departement:
+            qs = qs.filter(employe__departement_id=departement)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            evalue_par=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(evalue_par=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='grille')
+    def grille(self, request):
+        return Response(selectors.grille_neuf_box(
+            request.user.company,
+            campagne_id=request.query_params.get('campagne'),
+            departement_id=request.query_params.get('departement')))

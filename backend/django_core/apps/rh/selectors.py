@@ -3021,3 +3021,71 @@ def effectifs_postes(company):
     """
     postes = Poste.objects.filter(company=company).order_by('intitule')
     return [effectif_poste(company, poste.id) for poste in postes]
+
+
+# ── NTHCM10 — grille 9-box (performance × potentiel) ────────────────────────
+
+def grille_neuf_box(company, campagne_id=None, departement_id=None):
+    """NTHCM10 — répartition des employés positionnés, par case 1-9.
+
+    Renvoie ``{campagne_id, total, cases: [ {case, axe_performance,
+    axe_potentiel, libelle_performance, libelle_potentiel, nombre, employes:
+    [{employe_id, nom, prenom, poste, departement}]}, ... ]}`` — TOUJOURS les
+    9 cases (une case vide vaut ``nombre=0``), pour que l'écran matriciel
+    n'ait rien à inventer.
+
+    Un employé SANS positionnement est simplement ABSENT de la grille : ce
+    n'est pas une erreur, juste une case de moins. Lecture seule, scopée
+    société.
+    """
+    from .models import EvaluationNeufBox
+
+    positions = (
+        EvaluationNeufBox.objects
+        .filter(company=company)
+        .select_related('employe', 'employe__poste_ref',
+                        'employe__departement'))
+    if campagne_id:
+        positions = positions.filter(campagne_id=campagne_id)
+    if departement_id:
+        positions = positions.filter(employe__departement_id=departement_id)
+
+    par_case = {numero: [] for numero in range(1, 10)}
+    total = 0
+    for position in positions:
+        employe = position.employe
+        par_case.setdefault(position.case_calculee, []).append({
+            'employe_id': employe.id,
+            'nom': employe.nom,
+            'prenom': employe.prenom,
+            'poste': (employe.poste_ref.intitule if employe.poste_ref_id
+                      else employe.poste),
+            'departement': (employe.departement.nom
+                            if employe.departement_id else ''),
+            'evaluation_id': position.id,
+            'axe_performance': position.axe_performance,
+            'axe_potentiel': position.axe_potentiel,
+        })
+        total += 1
+
+    libelles_performance = dict(EvaluationNeufBox.Performance.choices)
+    libelles_potentiel = dict(EvaluationNeufBox.Potentiel.choices)
+    cases = []
+    for numero in range(1, 10):
+        performance = ((numero - 1) % 3) + 1
+        potentiel = ((numero - 1) // 3) + 1
+        employes = par_case.get(numero, [])
+        cases.append({
+            'case': numero,
+            'axe_performance': performance,
+            'axe_potentiel': potentiel,
+            'libelle_performance': libelles_performance.get(performance, ''),
+            'libelle_potentiel': libelles_potentiel.get(potentiel, ''),
+            'nombre': len(employes),
+            'employes': employes,
+        })
+    return {
+        'campagne_id': int(campagne_id) if campagne_id else None,
+        'total': total,
+        'cases': cases,
+    }
