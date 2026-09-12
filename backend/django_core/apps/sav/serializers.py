@@ -11,7 +11,7 @@ from .models import (
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
     EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
-    WorksheetMaintenanceModele, TicketWorksheet,
+    WorksheetMaintenanceModele, TicketWorksheet, Probleme,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -817,3 +817,61 @@ class PortailTicketCreateSerializer(serializers.Serializer):
             'invalid_choice': 'Priorité inconnue (basse, normale, haute ou '
                               'urgente).',
         })
+
+
+# ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────
+
+class ProblemeSerializer(serializers.ModelSerializer):
+    """NTSRV16 — un problème + le NOMBRE de tickets rattachés.
+
+    ``reference`` et ``company`` sont posés côté serveur (numérotation
+    fondation PRB-) : jamais lus du corps de la requête. Le rattachement des
+    tickets passe par les actions explicites ``lier-ticket`` /
+    ``delier-ticket``, jamais par une écriture de liste ici — sinon un PATCH
+    partiel détacherait silencieusement des incidents.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nb_tickets = serializers.SerializerMethodField()
+    anciennete_jours = serializers.SerializerMethodField()
+    impact = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Probleme
+        fields = [
+            'id', 'reference', 'titre', 'description', 'statut',
+            'statut_display', 'cause_racine', 'created_at', 'updated_at',
+            'nb_tickets', 'anciennete_jours', 'impact',
+        ]
+        read_only_fields = [
+            'id', 'reference', 'created_at', 'updated_at', 'statut_display',
+            'nb_tickets', 'anciennete_jours', 'impact',
+        ]
+
+    def get_nb_tickets(self, obj):
+        """Nombre de tickets rattachés — lit l'annotation de la vue liste
+        quand elle est là (zéro requête par ligne), sinon compte."""
+        annote = getattr(obj, 'nb_tickets_annote', None)
+        if annote is not None:
+            return annote
+        return obj.incidents.count()
+
+    def get_anciennete_jours(self, obj):
+        if not obj.created_at:
+            return 0
+        return max(0, (timezone.now() - obj.created_at).days)
+
+    def get_impact(self, obj):
+        """NTSRV16 — score d'impact = nb de tickets × ancienneté (jours).
+
+        Un problème d'un jour avec 10 tickets et un problème de 10 jours avec
+        1 ticket ne pèsent pas pareil dans une file d'analyse ; ce score les
+        départage. Ancienneté minimale de 1 jour pour qu'un problème tout
+        neuf mais massif ne soit pas écrasé à 0."""
+        return self.get_nb_tickets(obj) * max(1, self.get_anciennete_jours(obj))
+
+    def validate_titre(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Le titre du problème est obligatoire.')
+        return value

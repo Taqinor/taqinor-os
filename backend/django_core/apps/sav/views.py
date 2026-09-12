@@ -6,7 +6,8 @@ from django.db import transaction, IntegrityError
 from django.db.models import F, Q
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import filters, status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -27,7 +28,7 @@ from .models import (
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
     TicketActiviteAFaire, TicketFollower,
-    WorksheetMaintenanceModele, TicketWorksheet,
+    WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -48,7 +49,7 @@ from .serializers import (
     CategorieTicketSerializer,
     EquipeMaintenanceSerializer,
     CategorieEquipementSerializer,
-    TicketActiviteAFaireSerializer,
+    TicketActiviteAFaireSerializer, ProblemeSerializer,
     WorksheetMaintenanceModeleSerializer, TicketWorksheetSerializer,
 )
 
@@ -2692,6 +2693,198 @@ class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         super().perform_update(serializer)
+
+
+# ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────
+
+class ProblemeViewSet(CompanyScopedModelViewSet):
+    """NTSRV16 — CRUD des problèmes + rattachement/détachement des incidents.
+
+    Un « problème » regroupe N tickets qui partagent UNE cause racine. Les
+    deux machines d'états restent INDÉPENDANTES : passer un problème à
+    « résolu » ne touche jamais le statut des tickets liés (garanti par un
+    test). Le tri ``?ordering=impact`` classe par nb de tickets × ancienneté.
+    """
+    queryset = Probleme.objects.all()
+    serializer_class = ProblemeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'description', 'cause_racine']
+    ordering_fields = ['reference', 'titre', 'statut', 'created_at']
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        # Une garde déclarée par l'@action elle-même PRIME (sinon le kwarg du
+        # décorateur devient du code mort — même motif que TicketViewSet).
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
+        if self.action in READ_ACTIONS:
+            return [HasPermissionOrLegacy('sav_voir')()]
+        return [HasPermissionOrLegacy('sav_gerer')()]
+
+    def get_queryset(self):
+        from django.db.models import Case, Count, IntegerField, Value, When
+
+        qs = super().get_queryset().annotate(
+            nb_tickets_annote=Count('incidents', distinct=True))
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        # Tri par IMPACT (nb tickets × ancienneté) : le produit se calcule en
+        # Python sur une table de taille référentielle (quelques dizaines de
+        # lignes par société), puis l'ordre est REPROJETÉ en SQL via
+        # Case/When — la pagination DRF reste donc exacte, et aucune
+        # arithmétique de durée (non portable) n'est envoyée à la base.
+        ordering = (self.request.query_params.get('ordering') or '').strip()
+        if ordering in ('impact', '-impact'):
+            maintenant = timezone.now()
+            lignes = []
+            for probleme in qs:
+                jours = 1
+                if probleme.created_at:
+                    jours = max(1, (maintenant - probleme.created_at).days)
+                lignes.append(
+                    (probleme.pk, (probleme.nb_tickets_annote or 0) * jours))
+            lignes.sort(key=lambda ligne: (ligne[1], ligne[0]),
+                        reverse=ordering == '-impact')
+            if not lignes:
+                return qs
+            rang = Case(
+                *[When(pk=pk, then=Value(index))
+                  for index, (pk, _) in enumerate(lignes)],
+                default=Value(len(lignes)), output_field=IntegerField())
+            return qs.annotate(rang_impact=rang).order_by('rang_impact')
+        return qs
+
+    def perform_create(self, serializer):
+        """Référence ``PRB-YYYYMM-NNNN`` posée côté serveur, race-safe."""
+        company = self.request.user.company
+        create_with_reference(
+            Probleme, 'PRB', company,
+            lambda ref: serializer.save(reference=ref, company=company),
+        )
+
+    def _ticket_de_la_societe(self, request):
+        """Résout le ticket du corps, scopé société. Erreur FRANÇAISE qui
+        NOMME le champ fautif (jamais un « non enregistré » générique)."""
+        brut = request.data.get('ticket')
+        if brut in (None, ''):
+            raise ValidationError({'ticket': 'Indiquez le ticket à rattacher.'})
+        try:
+            ticket_id = int(brut)
+        except (TypeError, ValueError):
+            raise ValidationError({'ticket': 'Ticket inconnu.'})
+        ticket = Ticket.objects.filter(
+            pk=ticket_id, company=request.user.company).first()
+        if ticket is None:
+            raise ValidationError({'ticket': 'Ticket inconnu.'})
+        return ticket
+
+    @extend_schema(
+        request=inline_serializer('SavProblemeLierTicketRequest', {
+            'ticket': drf_serializers.IntegerField(),
+        }),
+        responses=inline_serializer('SavProblemeLierTicketResponse', {
+            'lien_id': drf_serializers.IntegerField(allow_null=True),
+            'cree': drf_serializers.BooleanField(),
+            'probleme': drf_serializers.CharField(),
+            'ticket': drf_serializers.CharField(),
+            'nb_tickets': drf_serializers.IntegerField(),
+        }))
+    @action(detail=True, methods=['post'], url_path='lier-ticket',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def lier_ticket(self, request, pk=None):
+        """Rattache UN ticket au problème. Idempotent : un second appel
+        renvoie le lien existant sans doublon (contrainte unique en base).
+
+        Le STATUT du ticket n'est jamais touché — seule une note de chatter
+        trace le rattachement."""
+        probleme = self.get_object()
+        ticket = self._ticket_de_la_societe(request)
+        lien = ProblemeIncident.objects.filter(
+            probleme=probleme, ticket=ticket).first()
+        cree = False
+        if lien is None:
+            try:
+                with transaction.atomic():
+                    lien = ProblemeIncident.objects.create(
+                        company=probleme.company, probleme=probleme,
+                        ticket=ticket)
+                cree = True
+            except IntegrityError:
+                # Course : un autre appel a créé le même lien entre-temps.
+                lien = ProblemeIncident.objects.filter(
+                    probleme=probleme, ticket=ticket).first()
+        if cree:
+            activity.log_note(
+                ticket, request.user,
+                f'Rattaché au problème {probleme.reference} — '
+                f'{probleme.titre}')
+        return Response({
+            'lien_id': lien.pk if lien else None,
+            'cree': cree,
+            'probleme': probleme.reference,
+            'ticket': ticket.reference,
+            'nb_tickets': probleme.incidents.count(),
+        })
+
+    @extend_schema(
+        request=inline_serializer('SavProblemeDelierTicketRequest', {
+            'ticket': drf_serializers.IntegerField(),
+        }),
+        responses=inline_serializer('SavProblemeDelierTicketResponse', {
+            'delie': drf_serializers.BooleanField(),
+            'probleme': drf_serializers.CharField(),
+            'ticket': drf_serializers.CharField(),
+            'nb_tickets': drf_serializers.IntegerField(),
+        }))
+    @action(detail=True, methods=['post'], url_path='delier-ticket',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def delier_ticket(self, request, pk=None):
+        """Détache un ticket du problème : supprime la LIGNE DE LIAISON,
+        jamais le ticket. Idempotent (détacher deux fois ne casse rien)."""
+        probleme = self.get_object()
+        ticket = self._ticket_de_la_societe(request)
+        supprimes, _ = ProblemeIncident.objects.filter(
+            probleme=probleme, ticket=ticket).delete()
+        return Response({
+            'delie': bool(supprimes),
+            'probleme': probleme.reference,
+            'ticket': ticket.reference,
+            'nb_tickets': probleme.incidents.count(),
+        })
+
+    @extend_schema(
+        responses=inline_serializer('SavProblemeTicketsResponse', {
+            'results': inline_serializer('SavProblemeTicketLigne', {
+                'id': drf_serializers.IntegerField(),
+                'reference': drf_serializers.CharField(),
+                'statut': drf_serializers.CharField(),
+                'priorite': drf_serializers.CharField(),
+                'client': drf_serializers.CharField(),
+                'date_ouverture': drf_serializers.DateField(allow_null=True),
+                'lie_le': drf_serializers.DateTimeField(),
+            }, many=True),
+        }))
+    @action(detail=True, methods=['get'], url_path='tickets',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def tickets(self, request, pk=None):
+        """Tous les tickets rattachés à ce problème, en UN appel (« voir en
+        un clic tous les tickets concernés »)."""
+        probleme = self.get_object()
+        lignes = (ProblemeIncident.objects
+                  .filter(probleme=probleme)
+                  .select_related('ticket', 'ticket__client')
+                  .order_by('-created_at', '-id'))
+        return Response({'results': [{
+            'id': ligne.ticket_id,
+            'reference': ligne.ticket.reference,
+            'statut': ligne.ticket.statut,
+            'priorite': ligne.ticket.priorite,
+            'client': getattr(ligne.ticket.client, 'nom', '') or '',
+            'date_ouverture': ligne.ticket.date_ouverture,
+            'lie_le': ligne.created_at,
+        } for ligne in lignes]})
 
 
 def sav_pareto_pannes(request):

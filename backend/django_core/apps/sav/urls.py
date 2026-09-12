@@ -11,7 +11,7 @@ from .views import (
     CauseDefaillanceViewSet, RemedeDefaillanceViewSet, ReponseTypeViewSet,
     CompatibilitePieceViewSet, CategorieTicketViewSet,
     EquipeMaintenanceViewSet, CategorieEquipementViewSet,
-    WorksheetMaintenanceModeleViewSet,
+    WorksheetMaintenanceModeleViewSet, ProblemeViewSet,
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
     sav_resume_par_equipe, sav_file_action, sav_file_attente,
 )
@@ -35,6 +35,8 @@ router.register(r'categories-ticket', CategorieTicketViewSet)
 router.register(r'equipes-maintenance', EquipeMaintenanceViewSet)
 router.register(r'categories-equipement', CategorieEquipementViewSet)
 router.register(r'worksheet-modeles', WorksheetMaintenanceModeleViewSet)
+# NTSRV16 — Gestion Problème (problème ↔ incidents).
+router.register(r'problemes', ProblemeViewSet)
 
 
 @api_view(['GET'])
