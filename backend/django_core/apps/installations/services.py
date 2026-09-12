@@ -1393,28 +1393,55 @@ def compute_chantier_readiness(installation):
 # consultatives. INTERRUPTEUR : une société sans étape configurée
 # (`stages_configures` False) garde EXACTEMENT le comportement historique.
 
-def _gate_check_checklist(installation):
-    """Toutes les étapes de checklist du chantier sont faites."""
+def _gate_check_checklist(installation, stage=None):
+    """Toutes les étapes de checklist du chantier sont faites.
+
+    CHT23 — ADDITIF : quand ``stage.checklist_pct_min`` (défaut 100) est
+    abaissé, un pourcentage de complétion suffit (« ≥ pct », comparaison en
+    entiers pour éviter tout arrondi flottant). Au défaut 100, le
+    comportement est OCTET POUR OCTET l'ancien (toutes faites, sinon la
+    même liste/le même message)."""
     items = ensure_checklist_items(installation)
     manquants = [it.libelle for it in items if not it.fait]
-    if manquants:
-        return ("Checklist incomplète : "
-                + ", ".join(manquants[:5])
-                + (" …" if len(manquants) > 5 else "") + ".")
-    return None
+    pct_min = getattr(stage, 'checklist_pct_min', 100) if stage is not None else 100
+    if pct_min is None or pct_min >= 100 or not items:
+        if manquants:
+            return ("Checklist incomplète : "
+                    + ", ".join(manquants[:5])
+                    + (" …" if len(manquants) > 5 else "") + ".")
+        return None
+    nb_faits = len(items) - len(manquants)
+    if nb_faits * 100 >= pct_min * len(items):
+        return None
+    return (
+        f"Checklist incomplète ({nb_faits}/{len(items)}, {pct_min}% requis) : "
+        + ", ".join(manquants[:5])
+        + (" …" if len(manquants) > 5 else "") + ".")
 
 
-def _gate_check_photos(installation):
-    """Les étapes de checklist à PHOTO OBLIGATOIRE (FG76) sont faites."""
+def _gate_check_photos(installation, stage=None):
+    """Les étapes de checklist à PHOTO OBLIGATOIRE (FG76) sont faites.
+
+    CHT23 — ADDITIF : quand ``stage.photos_min`` (défaut 0) est renseigné,
+    AJOUTE une contrainte de comptage RÉEL des photos déposées sur le
+    chantier (``records.Attachment`` via ``selectors.chantier_photos`` —
+    même source que ``PhotoChecklistMeta``/la galerie). Au défaut 0, le
+    comportement est OCTET POUR OCTET l'ancien."""
     items = ensure_checklist_items(installation)
     manquants = [it.libelle for it in items
                  if it.photo_obligatoire and not it.fait]
     if manquants:
         return ("Photos requises manquantes : " + ", ".join(manquants) + ".")
+    photos_min = getattr(stage, 'photos_min', 0) if stage is not None else 0
+    if photos_min:
+        from .selectors import chantier_photos
+        nb = chantier_photos(installation.company, installation.id).count()
+        if nb < photos_min:
+            return f"Photos insuffisantes : {nb}/{photos_min} requises."
     return None
 
 
-def _gate_check_series(installation):
+def _gate_check_series(installation, stage=None):
     """Au moins un n° de série / équipement relevé quand la checklist du
     chantier comporte une étape de capture de série (N9)."""
     items = ensure_checklist_items(installation)
@@ -1430,7 +1457,7 @@ def _gate_check_series(installation):
             "checklist du chantier en attend.")
 
 
-def _gate_check_tests(installation):
+def _gate_check_tests(installation, stage=None):
     """CH3 — une fiche de recette IEC 62446-1 PASSÉE (conforme / conforme avec
     réserves) est requise pour franchir le gate « Mise en service ».
 
@@ -1452,7 +1479,7 @@ def _gate_check_tests(installation):
     return "Fiche de recette IEC 62446-1 non enregistrée."
 
 
-def _gate_check_materiel(installation):
+def _gate_check_materiel(installation, stage=None):
     """Aucune pénurie sur le besoin matériel du chantier (FG77, appliqué)."""
     from apps.stock.services import compute_besoin_materiel
     besoins = compute_besoin_materiel(installation)
@@ -1464,7 +1491,7 @@ def _gate_check_materiel(installation):
     return None
 
 
-def _gate_check_dossier(installation):
+def _gate_check_dossier(installation, stage=None):
     """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
     if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
         return None
@@ -1476,7 +1503,7 @@ def _gate_check_dossier(installation):
             f"({installation.get_dossier_statut_display()}).")
 
 
-def _gate_check_pack(installation):
+def _gate_check_pack(installation, stage=None):
     """CH4 — le pack de remise client doit assembler ses pièces OBLIGATOIRES.
 
     Assemble (à blanc, sans persister) l'état du pack et rejette tant qu'une
@@ -1566,7 +1593,7 @@ def stage_gate_status(installation, stage):
     for flag, check in _GATE_CHECKS:
         if not getattr(stage, flag, False):
             continue
-        raison = check(installation)
+        raison = check(installation, stage)
         if raison:
             raisons.append(raison)
     if stage.bloquant:
