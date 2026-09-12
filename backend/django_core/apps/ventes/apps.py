@@ -52,6 +52,11 @@ class VentesConfig(AppConfig):
         # démarrage. Idempotent si ready() est appelé plusieurs fois.
         from .agent_actions import register_ventes_actions
         register_ventes_actions()
+        # NTDATA1 — déclare les datasets BI ventes (devis/factures/paiements)
+        # dans `core.data_explorer`, exactement comme `sav` le fait : c'est
+        # l'app propriétaire qui déclare, le noyau qui exécute. Idempotent.
+        from . import bi_datasets
+        bi_datasets.register_dataset()
         # YLEDG12 — abonne ventes à `payment_captured` (core FG370) : câble
         # les récepteurs du bus d'événements (M6). Import local, jamais
         # d'effet de bord à l'import du module.
