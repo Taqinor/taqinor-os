@@ -44,7 +44,13 @@ PLATFORM = {
         'ventes.regulatorydossier',
     ],
     'customfield_models': [],
-    'import_specs': [],
+    # NTMIG10 — Devis/Facture importables (en-têtes seulement — les lignes se
+    # rattachent via NTMIG11, un second fichier), écriture DÉLÉGUÉE à
+    # ``apps.ventes.services.creer_devis_import``/``creer_facture_import``
+    # (mapping d'en-têtes dans ``dataimport.FIELD_MAPS``, comme les autres
+    # cibles à mapping générique — voir ``apps/dataimport/test_arc32_registry_
+    # targets.py::HISTORICAL_TARGETS``).
+    'import_specs': ['devis', 'factures'],
     'agent_actions_module': '',
     'automation_state_fields': [],
     # PV82/ARC40 — provider KPI du domaine Ventes : un CALLABLE dotted résolu

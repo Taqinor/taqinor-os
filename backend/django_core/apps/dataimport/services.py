@@ -111,6 +111,46 @@ FIELD_MAPS = {
         'tel': 'telephone', 'cin': 'cin', 'poste': 'poste',
         'date_embauche': 'date_embauche', 'type_contrat': 'type_contrat',
     },
+    # NTMIG10 — Devis (EN-TÊTES seulement — les lignes se rattachent via
+    # NTMIG11, un second fichier). Écriture DÉLÉGUÉE à
+    # ``apps.ventes.services.creer_devis_import`` (jamais le modèle ``Devis``
+    # directement, même motif XFLT22 que ``vehicules``/``contrats``).
+    # Vocabulaire cible partagé avec les kits de migration
+    # (``apps.migration.kits`` NTMIG8/12) : un kit ne fait que TRADUIRE des
+    # en-têtes étrangers vers ces mêmes noms, déjà reconnus ici en IDENTITÉ.
+    'devis': {
+        'reference': 'reference_source',
+        'reference_source': 'reference_source', 'numero': 'reference_source',
+        'client_nom': 'client_nom', 'client': 'client_nom',
+        'client_email': 'client_email', 'email_client': 'client_email',
+        'client_external_id': 'client_external_id',
+        'statut': 'statut',
+        'date_creation': 'date_creation', 'date': 'date_creation',
+        'montant_ht_source': 'montant_ht_source',
+        'montant_ht': 'montant_ht_source',
+        'montant_ttc_source': 'montant_ttc_source',
+        'montant_ttc': 'montant_ttc_source',
+        'external_id': 'external_id', 'id_externe': 'external_id',
+    },
+    # NTMIG10 — Factures (EN-TÊTES seulement — lignes via NTMIG11). Écriture
+    # DÉLÉGUÉE à ``apps.ventes.services.creer_facture_import`` (``Facture``
+    # vit dans ``apps.facturation``, ODX17 ; ``ventes.services`` la crée déjà
+    # pour d'autres chemins — jamais un import direct ici, même motif
+    # XFLT22).
+    'factures': {
+        'reference': 'reference_source',
+        'reference_source': 'reference_source', 'numero': 'reference_source',
+        'client_nom': 'client_nom', 'client': 'client_nom',
+        'client_email': 'client_email', 'email_client': 'client_email',
+        'client_external_id': 'client_external_id',
+        'statut': 'statut', 'statut_paiement': 'statut_paiement',
+        'date_emission': 'date_emission', 'date': 'date_emission',
+        'montant_ht_source': 'montant_ht_source',
+        'montant_ht': 'montant_ht_source',
+        'montant_ttc_source': 'montant_ttc_source',
+        'montant_ttc': 'montant_ttc_source',
+        'external_id': 'external_id', 'id_externe': 'external_id',
+    },
     # NTEDU36 — Élèves (migration scolaire depuis Excel/ancien système).
     # Écriture DÉLÉGUÉE à ``apps.education.services.creer_eleve_import``
     # (jamais les modèles ``Eleve``/``Famille`` directement, motif XFLT22).
@@ -1179,6 +1219,45 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 elif statut == 'doublon':
                     skipped.append(
                         {'ligne': i, 'raison': 'doublon (matricule existe)'})
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
+
+        # NTMIG10 — Devis (en-têtes) : écriture DÉLÉGUÉE à
+        # ``apps.ventes.services.creer_devis_import`` (jamais le modèle
+        # ``Devis`` directement, motif XFLT22). ``external_id`` posé en
+        # ``ExternalRef`` comme ``leads``/``clients`` : c'est ce qui permet à
+        # NTMIG11 de rattacher les lignes au bon en-tête ensuite.
+        elif target == 'devis':
+            from apps.ventes.services import creer_devis_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                ext_id = f.pop('external_id', None)
+                statut, message, devis = creer_devis_import(
+                    company, f, external_system=external_system, user=user)
+                if statut == 'cree':
+                    created += 1
+                    if ext_id:
+                        _get_or_create_ref(
+                            company, external_system, ext_id, devis)
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
+
+        # NTMIG10 — Factures (en-têtes) : écriture DÉLÉGUÉE à
+        # ``apps.ventes.services.creer_facture_import`` (``Facture`` vit dans
+        # ``apps.facturation``, ODX17 ; jamais un import direct ici, motif
+        # XFLT22).
+        elif target == 'factures':
+            from apps.ventes.services import creer_facture_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                ext_id = f.pop('external_id', None)
+                statut, message, facture = creer_facture_import(
+                    company, f, external_system=external_system, user=user)
+                if statut == 'cree':
+                    created += 1
+                    if ext_id:
+                        _get_or_create_ref(
+                            company, external_system, ext_id, facture)
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
