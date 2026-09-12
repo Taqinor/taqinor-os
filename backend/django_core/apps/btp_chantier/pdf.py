@@ -179,9 +179,10 @@ def render_rapport_avancement_pdf(chantier, donnees):
           </tr>''' for rfi in donnees['rfi_en_cours']
     ) or '<tr><td colspan="4">Aucun RFI en cours.</td></tr>'
 
+    libelle_defaut = "point d'arrêt"
     points = ''.join(
         f'<li>{_esc(point.get("plan_nom", ""))} — '
-        f'{_esc(point.get("libelle") or point.get("nom") or "point d\'arrêt")}'
+        f'{_esc(point.get("libelle") or point.get("nom") or libelle_defaut)}'
         '</li>'
         for point in donnees['qhse_points_arret_bloquants']
     ) or '<li>Aucun point d\'arrêt bloquant.</li>'

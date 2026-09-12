@@ -36,7 +36,7 @@ export default function MonStockCamionnetteTab() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { Promise.resolve().then(load) }, [load])
 
   const signalerManquant = (produitId) => {
     setSignalingId(produitId)
