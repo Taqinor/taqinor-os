@@ -185,7 +185,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
         'pourcentage_consomme': serializers.FloatField(allow_null=True),
         'depassement': serializers.BooleanField(),
     }))
-    @action(detail=True, methods=['get'], url_path='budget')
+    @action(detail=True, methods=['get'], url_path='budget',
+            permission_classes=[AccesJuridique])
     def budget(self, request, pk=None):
         """Budget du dossier : engagé vs consommé vs alloué (NTJUR12).
 
@@ -218,7 +219,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
             'pourcentage_consomme': serializers.FloatField(allow_null=True),
         }, many=True),
     }))
-    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    @action(detail=False, methods=['get'], url_path='tableau-bord',
+            permission_classes=[AccesJuridique])
     def tableau_bord(self, request):
         """Agrégat juridique de la société (NTJUR12).
 
@@ -231,7 +233,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
     # ── NTJUR28 — export .xlsx assureur / due diligence ─────────────────────
 
     @extend_schema(responses={200: OpenApiTypes.BINARY})
-    @action(detail=False, methods=['get'], url_path='export')
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[AccesJuridique])
     def export(self, request):
         """Registre .xlsx des dossiers (revue d'assurance RC, due diligence).
 
@@ -289,7 +292,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
         'detail': serializers.CharField(),
         'auteur': serializers.CharField(),
     }, many=True))
-    @action(detail=True, methods=['get'], url_path='timeline')
+    @action(detail=True, methods=['get'], url_path='timeline',
+            permission_classes=[AccesJuridique])
     def timeline(self, request, pk=None):
         """Frise chronologique UNIQUE du dossier (NTJUR20).
 
@@ -302,7 +306,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
 
     # ── NTJUR2 — machine à états procédurale ────────────────────────────────
 
-    @action(detail=True, methods=['get'], url_path='statuts-suivants')
+    @action(detail=True, methods=['get'], url_path='statuts-suivants',
+            permission_classes=[AccesJuridique])
     def statuts_suivants(self, request, pk=None):
         """Statuts légalement atteignables depuis l'état courant (lecture)."""
         dossier = self.get_object()
@@ -315,7 +320,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
             ],
         })
 
-    @action(detail=True, methods=['post'], url_path='changer-statut')
+    @action(detail=True, methods=['post'], url_path='changer-statut',
+            permission_classes=[AccesJuridique])
     def changer_statut(self, request, pk=None):
         """Applique une transition GARDÉE. Corps : ``{statut, motif}``.
 
@@ -332,7 +338,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(DossierJuridiqueSerializer(dossier).data)
 
-    @action(detail=True, methods=['post'], url_path='clore')
+    @action(detail=True, methods=['post'], url_path='clore',
+            permission_classes=[AccesJuridique])
     def clore(self, request, pk=None):
         """Clôt le dossier. Corps : ``{statut_final, motif}``.
 
@@ -476,7 +483,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return etape, None
 
-    @action(detail=True, methods=['post'], url_path='lancer-approbation-mandat')
+    @action(detail=True, methods=['post'], url_path='lancer-approbation-mandat',
+            permission_classes=[AccesJuridique])
     def lancer_approbation_mandat(self, request, pk=None):
         """Instancie le workflow d'approbation d'un mandat (NTJUR19).
 
@@ -555,7 +563,8 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
         """
         return self._decider(request, services.rejeter_etape)
 
-    @action(detail=True, methods=['get'], url_path='etapes-approbation')
+    @action(detail=True, methods=['get'], url_path='etapes-approbation',
+            permission_classes=[AccesJuridique])
     def etapes_approbation(self, request, pk=None):
         """Étapes d'approbation de TOUS les mandats du dossier (lecture)."""
         dossier = self.get_object()
@@ -607,7 +616,8 @@ class MandatAvocatViewSet(_JuridiqueScopedApiKeyViewSet):
             qs = qs.filter(dossier_id=dossier_id)
         return qs
 
-    @action(detail=True, methods=['post'], url_path='activer')
+    @action(detail=True, methods=['post'], url_path='activer',
+            permission_classes=[RefuseCleApi])
     def activer(self, request, pk=None):
         """Active le mandat — refusé tant que l'approbation requise manque."""
         mandat = self.get_object()
@@ -649,7 +659,8 @@ class AudienceViewSet(_DossierScopedViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_audience', 'id']
 
-    @action(detail=True, methods=['post'], url_path='reporter')
+    @action(detail=True, methods=['post'], url_path='reporter',
+            permission_classes=[RefuseCleApi])
     def reporter(self, request, pk=None):
         """Reporte l'audience : l'ancienne devient ``reportee``, une NOUVELLE
         ligne est créée (l'historique de la première est préservé)."""
@@ -694,7 +705,8 @@ class DelaiPrescriptionViewSet(_DossierScopedViewSet):
             company=self.request.user.company,
             date_limite=self._date_limite(serializer, serializer.instance))
 
-    @action(detail=False, methods=['get'], url_path='expirants')
+    @action(detail=False, methods=['get'], url_path='expirants',
+            permission_classes=[RefuseCleApi])
     def expirants(self, request):
         """Délais encore ``en_cours`` dont la limite tombe dans ``?within=N``
         jours (défaut 30)."""
@@ -750,12 +762,14 @@ class NoteHonorairesViewSet(_DossierScopedViewSet):
         note.save(update_fields=['statut', 'updated_at'])
         return Response(NoteHonorairesSerializer(note).data)
 
-    @action(detail=True, methods=['post'], url_path='valider')
+    @action(detail=True, methods=['post'], url_path='valider',
+            permission_classes=[RefuseCleApi])
     def valider(self, request, pk=None):
         """Valide la note : elle entre alors dans le budget CONSOMMÉ."""
         return self._changer_statut(request, NoteHonoraires.Statut.VALIDEE)
 
-    @action(detail=True, methods=['post'], url_path='marquer-payee')
+    @action(detail=True, methods=['post'], url_path='marquer-payee',
+            permission_classes=[RefuseCleApi])
     def marquer_payee(self, request, pk=None):
         """Marque la note payée. Le paiement RÉEL reste un flux fournisseur
         (module achats) — cette action ne fait que tracer."""

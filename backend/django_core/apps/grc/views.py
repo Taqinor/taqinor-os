@@ -96,7 +96,8 @@ class ViolationDonneesViewSet(CompanyScopedModelViewSet):
         serializer.instance = creer_violation(
             self.request.user.company, **champs)
 
-    @action(detail=False, methods=['get'], url_path='echeance-depassee')
+    @action(detail=False, methods=['get'], url_path='echeance-depassee',
+            permission_classes=[IsAdminOrResponsableTier])
     def echeance_depassee(self, request):
         """Violations dont le délai de 72 h est dépassé sans notification."""
         from .selectors import violations_echeance_72h_depassee
@@ -104,7 +105,8 @@ class ViolationDonneesViewSet(CompanyScopedModelViewSet):
         qs = violations_echeance_72h_depassee(request.user.company)
         return Response({'results': self.get_serializer(qs, many=True).data})
 
-    @action(detail=True, methods=['post'], url_path='changer-statut')
+    @action(detail=True, methods=['post'], url_path='changer-statut',
+            permission_classes=[IsAdminOrResponsableTier])
     def changer_statut(self, request, pk=None):
         """Fait avancer la violation (``{"statut": "en_analyse"}``)."""
         from .services import (
@@ -120,7 +122,8 @@ class ViolationDonneesViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(violation).data)
 
     @action(detail=True, methods=['get', 'post'],
-            url_path='generer-dossier-notification')
+            url_path='generer-dossier-notification',
+            permission_classes=[IsAdminOrResponsableTier])
     def generer_dossier_notification(self, request, pk=None):
         """NTGRC7 — rend le dossier de notification CNDP en PDF.
 
@@ -152,7 +155,8 @@ class ViolationDonneesViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="notification-cndp-{nom}.pdf"')
         return reponse
 
-    @action(detail=True, methods=['post'], url_path='notifier-cndp')
+    @action(detail=True, methods=['post'], url_path='notifier-cndp',
+            permission_classes=[IsAdminOrResponsableTier])
     def notifier_cndp(self, request, pk=None):
         """Enregistre la notification CNDP (date + statut, ensemble)."""
         from .services import TransitionViolationInterdite
@@ -179,7 +183,8 @@ class LegalHoldViewSet(CompanyScopedModelViewSet):
     permission_classes = [IsAdminOrResponsableTier]
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsAdminOrResponsableTier])
     def lever(self, request, pk=None):
         """Lève le séquestre (les objets redeviennent purgeables)."""
         hold = self.get_object()
@@ -190,7 +195,8 @@ class LegalHoldViewSet(CompanyScopedModelViewSet):
         hold.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(hold).data)
 
-    @action(detail=False, methods=['get'], url_path='objets-sous-hold')
+    @action(detail=False, methods=['get'], url_path='objets-sous-hold',
+            permission_classes=[IsAdminOrResponsableTier])
     def objets_sous_hold(self, request):
         """Objets actuellement gelés, par type (GED comprise)."""
         from .selectors import objets_sous_hold as _couverture
@@ -218,7 +224,8 @@ class RisqueEntrepriseViewSet(CompanyScopedModelViewSet):
         champs.pop('reference', None)
         serializer.instance = creer_risque(self.request.user.company, **champs)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'],
+            permission_classes=[IsAdminOrResponsableTier])
     def matrice(self, request):
         """Grille 5×5 comptée par case (``?residuelle=1`` pour l'après-
         traitement). Les 25 cases sont toujours présentes."""
@@ -237,7 +244,8 @@ class PlanTraitementRisqueViewSet(CompanyScopedModelViewSet):
     serializer_class = PlanTraitementRisqueSerializer
     permission_classes = [IsAdminOrResponsableTier]
 
-    @action(detail=False, methods=['get'], url_path='en-retard')
+    @action(detail=False, methods=['get'], url_path='en-retard',
+            permission_classes=[IsAdminOrResponsableTier])
     def en_retard(self, request):
         """Plans dont l'échéance est passée et qui ne sont pas faits."""
         from .selectors import plans_en_retard
@@ -269,7 +277,8 @@ class RevueRisqueViewSet(CompanyScopedModelViewSet):
         serializer.instance = enregistrer_revue(
             self.request.user.company, risque, **champs)
 
-    @action(detail=False, methods=['get'], url_path='risques-a-revoir')
+    @action(detail=False, methods=['get'], url_path='risques-a-revoir',
+            permission_classes=[IsAdminOrResponsableTier])
     def risques_a_revoir(self, request):
         """Risques dont la revue est due (``?within=<jours>``)."""
         from .selectors import risques_a_revoir as _dus
@@ -330,7 +339,8 @@ class TestControleViewSet(CompanyScopedModelViewSet):
         test = serializer.save(company=self.request.user.company)
         ouvrir_risque_sur_deficience(test)
 
-    @action(detail=False, methods=['get'], url_path='controles-a-tester')
+    @action(detail=False, methods=['get'], url_path='controles-a-tester',
+            permission_classes=[IsAdminOrResponsableTier])
     def controles_a_tester(self, request):
         """Contrôles actifs dont le test est dû (``?within=<jours>``)."""
         from .selectors import controles_a_tester as _dus
@@ -377,7 +387,8 @@ class PolitiqueInterneViewSet(CompanyScopedModelViewSet):
     serializer_class = PolitiqueInterneSerializer
     permission_classes = [IsAdminOrResponsableTier]
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsAdminOrResponsableTier])
     def publier(self, request, pk=None):
         """Fige le contenu dans une version immuable et incrémente le n°."""
         from .services import PublicationImpossible, publier_politique
@@ -394,7 +405,8 @@ class PolitiqueInterneViewSet(CompanyScopedModelViewSet):
             'version': PolitiqueVersionSerializer(version).data,
         })
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[IsAdminOrResponsableTier])
     def versions(self, request, pk=None):
         """Historique IMMUABLE des versions publiées (plus récente d'abord)."""
         politique = self.get_object()
