@@ -110,7 +110,7 @@ class BadgeSertLaColonnePersisteeTests(TestCase):
             nom='Taqinor CRX22 badge', slug='taqinor-crx22-badge')
         self.role = Role.objects.create(
             company=self.company, nom='Commercial CRX22',
-            permissions=['crm_creer', 'crm_modifier'])
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
         self.user = User.objects.create_user(
             username='resp_crx22', password='x', company=self.company,
             role=self.role)
