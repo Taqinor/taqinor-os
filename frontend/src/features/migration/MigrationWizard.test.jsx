@@ -23,6 +23,7 @@ vi.mock('../../api/migrationApi', () => ({
     derogerLot: vi.fn(),
     terminerProjet: vi.fn(),
     rapportUrl: (id) => `/api/django/migration/projets-migration/${id}/rapport/`,
+    erreursCsvUrl: (jobId) => `/api/django/imports/jobs/${jobId}/erreurs.csv`,
   },
 }))
 
@@ -186,6 +187,55 @@ describe('MigrationWizard (NTMIG17)', () => {
 
     expect(await screen.findByText(/écarts bloquants/i)).toBeTruthy()
     expect(screen.getByText(/Aucun rapport\./)).toBeTruthy()
+  })
+
+  it('étape 4 — NTMIG18 affiche les totaux financiers et le lien CSV des erreurs', async () => {
+    mockLoad([lot({
+      statut: 'charge', source_lignes: 100, crees: 97, erreurs: 3,
+      import_job: 42,
+      dernier_rapport: {
+        id: 1, nb_source: 100, nb_cible_crees: 97, nb_cible_existants: 0,
+        nb_erreurs: 3, conforme: false,
+        total_financier_source: '15000.00', total_financier_cible: '14000.00',
+        ecart_financier: '-1000.00',
+        ecarts: [{ type: 'erreurs', detail: '3 ligne(s) en erreur.' }],
+      },
+    })])
+    withProviders(<MigrationWizard />)
+
+    await screen.findByText(/Étape 4/)
+    // Normalise l'espace que l'ICU du runtime peut choisir comme separateur
+    // de milliers fr-MA (insecable ou non) avant de comparer.
+    const totalEl = screen.getByText((_, el) => (
+      el?.tagName.toLowerCase() === 'p'
+      && el.textContent.includes('Total HT source')
+    ))
+    const texteTotal = totalEl.textContent.replace(/\s/g, ' ')
+    expect(texteTotal).toContain('15 000,00 MAD')
+    expect(texteTotal).toContain('14 000,00 MAD')
+    expect(texteTotal).toContain('-1 000,00 MAD')
+    const lien = screen.getByRole('link', {
+      name: /Télécharger le CSV des lignes en erreur/i,
+    })
+    expect(lien.getAttribute('href')).toBe(
+      '/api/django/imports/jobs/42/erreurs.csv')
+  })
+
+  it('étape 4 — NTMIG18 pas de lien CSV sans job de chargement', async () => {
+    mockLoad([lot({
+      statut: 'charge', erreurs: 3,
+      dernier_rapport: {
+        id: 1, nb_source: 1, nb_cible_crees: 0, nb_cible_existants: 0,
+        nb_erreurs: 3, conforme: false,
+        ecarts: [{ type: 'erreurs', detail: '3 ligne(s) en erreur.' }],
+      },
+    })])
+    withProviders(<MigrationWizard />)
+
+    await screen.findByText(/Étape 4/)
+    expect(screen.queryByRole('link', {
+      name: /Télécharger le CSV des lignes en erreur/i,
+    })).toBeNull()
   })
 
   it('propose le PV de migration en PDF', async () => {

@@ -7,7 +7,7 @@ import { Badge, Button, Card, Progress, buttonVariants, toast } from '../../ui'
 import { cn } from '../../lib/cn'
 import migrationApi from '../../api/migrationApi'
 import {
-  ENTITES, STATUTS_LOT, STATUTS_PROJET, errMessage, labelSource,
+  ENTITES, STATUTS_LOT, STATUTS_PROJET, errMessage, formatMAD, labelSource,
 } from './constants'
 
 /* ============================================================================
@@ -341,12 +341,31 @@ function LotCard({ lot, onChanged }) {
             {' '}mis à jour {rapport.nb_cible_existants} ·
             {' '}erreurs {rapport.nb_erreurs}
           </p>
+          {(rapport.total_financier_source != null
+            || rapport.total_financier_cible != null) && (
+            <p className="mt-1 text-muted-foreground">
+              Total HT source {formatMAD(rapport.total_financier_source)}
+              {' '}· cible {formatMAD(rapport.total_financier_cible)}
+              {' '}· écart {formatMAD(rapport.ecart_financier)}
+            </p>
+          )}
           {rapport.ecarts?.length > 0 && (
             <ul className="mt-1 list-disc pl-5 text-muted-foreground">
               {rapport.ecarts.map((e, i) => (
                 <li key={i}>{e.detail || e.type}</li>
               ))}
             </ul>
+          )}
+          {rapport.nb_erreurs > 0 && lot.import_job && (
+            <a
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'mt-2')}
+              href={migrationApi.erreursCsvUrl(lot.import_job)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <FileDown className="size-4" aria-hidden="true" />
+              {' '}Télécharger le CSV des lignes en erreur
+            </a>
           )}
           {!rapport.conforme && !lot.derogation_reconcile && (
             motif === null ? (

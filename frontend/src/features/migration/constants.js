@@ -24,7 +24,10 @@ export const STATUTS_LOT = {
   echoue: 'Échoué',
 }
 
-/* Entités migrables — miroir des cibles d'import du moteur dataimport. */
+/* Entités migrables — miroir des cibles d'import du moteur dataimport.
+   NTMIG3 — l'ordre de déclaration ici ne fait plus foi : le serveur retrie
+   topologiquement (clients/produits avant devis/factures) à chaque création
+   de lot, voir ``apps.migration.dependances.ordonner_lots``. */
 export const ENTITES = [
   { value: 'clients', label: 'Clients' },
   { value: 'leads', label: 'Prospects (leads)' },
@@ -32,6 +35,10 @@ export const ENTITES = [
   { value: 'fournisseurs', label: 'Fournisseurs' },
   { value: 'equipements', label: 'Équipements' },
   { value: 'vehicules', label: 'Véhicules' },
+  // NTMIG10 — en-têtes seulement (les lignes se rattachent via NTMIG11, un
+  // second fichier téléversé après le premier chargement).
+  { value: 'devis', label: 'Devis (en-têtes)' },
+  { value: 'factures', label: 'Factures (en-têtes)' },
 ]
 
 export function labelSource(value) {
@@ -62,6 +69,18 @@ export const SPECIALITES_PARTENAIRE = [
   { value: 'rh', label: 'RH & paie' },
   { value: 'migration', label: 'Migration de données' },
 ]
+
+/* NTMIG18 — montant MAD lisible pour le panneau de réconciliation ; ``null``
+   affiché « — » plutôt que « 0 » (le reconcile financier ne s'applique pas
+   tant qu'aucun kit ne déclare de colonnes montant, NTMIG7/8/12). */
+export function formatMAD(valeur) {
+  if (valeur === null || valeur === undefined || valeur === '') return '—'
+  const nombre = Number(valeur)
+  if (Number.isNaN(nombre)) return '—'
+  return `${nombre.toLocaleString('fr-MA', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  })} MAD`
+}
 
 /** Message d'erreur lisible depuis une erreur axios (jamais « [object Object] »). */
 export function errMessage(err, repli) {
