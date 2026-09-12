@@ -131,6 +131,11 @@ class ActionType(models.TextChoices):
     # NTEXT7 — suspend la séquence et la reprend plus tard (voir
     # ``AutomationScheduledStep`` + la tâche beat de reprise).
     WAIT = 'wait', 'Attendre (délai avant la suite)'
+    # NTEXT8 — calcule N expressions sûres (``core.formula``, AST — jamais
+    # ``eval``) et écrit chaque résultat dans un champ du registre FERMÉ
+    # ``actions.SET_FIELD_TARGETS`` (même garde que SET_FIELD — jamais
+    # company/prix_achat/un champ de machine à états).
+    SERVER_ACTION = 'server_action', 'Action serveur scriptée'
 
 
 class CanalMessage(models.TextChoices):
