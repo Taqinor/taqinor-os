@@ -89,6 +89,9 @@ vi.mock('../../api/visitesApi', () => ({
     uploadVisitePhoto: vi.fn(),
     deleteVisitePhoto: vi.fn(),
     patchVisiteMesures: vi.fn(),
+    // VTA11 — l'historique des visites du même lead (panneau en lecture seule
+    // monté par le wizard). Liste vide ici : ces cas testent le wizard.
+    getVisites: vi.fn(async () => ({ data: [] })),
   },
 }))
 

@@ -24,6 +24,7 @@ import {
 } from './visiteHelpers'
 import VisiteMesuresForm from './VisiteMesuresForm'
 import VisiteClientDevisPanel from './VisiteClientDevisPanel'
+import VisiteHistoriquePanel from './VisiteHistoriquePanel'
 
 // Une tuile photo — état/motif/guide TOUJOURS tels que renvoyés par le
 // serveur, jamais reformulés ici (RÈGLE fondateur : erreurs/motifs = texte
@@ -198,6 +199,8 @@ export default function VisiteWizardPage() {
       </div>
 
       <VisiteClientDevisPanel clientPanel={visite.client_panel} devis={visite.devis} />
+      {/* VTA11 — ce que ce client a DÉJÀ eu comme visites, en lecture seule. */}
+      <VisiteHistoriquePanel leadId={visite.lead} visiteCouranteId={visite.id} />
 
       <Tabs value={categorieActive} onValueChange={setCategorieActive} className="mt-3">
         <TabsList className="flex-wrap">
