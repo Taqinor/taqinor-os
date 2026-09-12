@@ -68,6 +68,14 @@ class UptimePctPeriodeTest(TestCase):
 
 class GenererSnapshotSocieteTest(TestCase):
     def setUp(self):
+        # ``core.metrics._http_by_tenant`` est un registre PROCESS-LOCAL (pas
+        # une table) : toute requete API d'un AUTRE test du meme processus y
+        # laisse un echantillon, sous un label derive de l'id societe — ou
+        # sous le label de repli « other » une fois le plafond de cardinalite
+        # atteint. Sans purge, « p95 sans mesure » lisait la mesure d'un
+        # voisin (100 ms observes en CI). Meme purge que P95LatencyMsTest.
+        metrics_infra._http_by_tenant.clear()
+        metrics_infra._http_real_companies.clear()
         self.company = Company.objects.create(nom='Acme', slug='acme-ntobs3b')
 
     def test_generates_and_upserts_snapshot(self):

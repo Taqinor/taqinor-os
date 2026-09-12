@@ -188,8 +188,14 @@ class MaintenanceWindowPermissionTest(TestCase):
             'termine_le': (now + timezone.timedelta(days=1, hours=1)).isoformat(),
             'description': 'Tentative système large.',
         }
+        # ``format='json'`` OBLIGATOIRE ici : le format par defaut du client DRF
+        # est multipart, et ``encode_multipart`` leve un TypeError sur une
+        # valeur None (« Cannot encode None for key 'company' ») — le test
+        # n'atteignait donc jamais la vue. L'assertion, elle, ne bouge pas :
+        # une societe posee a None dans le corps doit rester ignoree au profit
+        # de celle de l'utilisateur.
         resp = self._client(self.directeur).post(
-            '/api/django/core/maintenance-windows/', payload)
+            '/api/django/core/maintenance-windows/', payload, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['company'], self.company.id)
 
