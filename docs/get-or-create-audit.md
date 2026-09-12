@@ -66,7 +66,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/automation/views.py:513` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/btp_chantier/offline_ops.py:117` | update_or_create | JournalChantier.objects | chantier, company, date |
 | `backend/django_core/apps/btp_chantier/services.py:1387` | update_or_create | LotChecklistItem.objects | cle, lot |
-| `backend/django_core/apps/btp_chantier/views.py:1132` | get_or_create | ParametresBtpChantier.objects | company |
+| `backend/django_core/apps/btp_chantier/views.py:1164` | get_or_create | ParametresBtpChantier.objects | company |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
 | `backend/django_core/apps/chat/services.py:258` | get_or_create | UserChatStatus.objects | user |
 | `backend/django_core/apps/chat/services.py:433` | get_or_create | Conversation.objects | company, kind, name |
