@@ -3713,3 +3713,53 @@ class EtapeDunningLog(TenantModel):
 
     def __str__(self):
         return f'contrat {self.contrat_id} / étape {self.etape_id}'
+
+
+class ParametresAbonnement(TenantModel):
+    """Réglages « Facturation récurrente » d'une société — NTSUB24.
+
+    Les seuils et délais du groupe NTSUB étaient des CONSTANTES codées en dur,
+    tâche par tâche : J-3 avant fin d'essai (NTSUB5), 30 jours avant expiration
+    de carte (NTSUB9), 80 % d'un quota d'usage (NTSUB18). Une société ne
+    pouvait donc rien régler.
+
+    Singleton par société (contrainte d'unicité sur ``company``, accès
+    ``services.get_parametres_abonnement`` en get-or-create). Les VALEURS PAR
+    DÉFAUT sont EXACTEMENT les constantes historiques : une société qui n'a
+    jamais ouvert l'écran garde le comportement actuel à l'identique — aucune
+    régression. Hérite de ``core.models.TenantModel`` (company + horodatage).
+    """
+
+    jours_alerte_fin_essai = models.PositiveIntegerField(
+        default=3, verbose_name="Alerte avant fin d'essai (jours)",
+        help_text="NTSUB5 — nombre de jours avant la fin d'essai auquel le "
+                  'responsable est prévenu (défaut historique : 3).')
+    jours_alerte_expiration_carte = models.PositiveIntegerField(
+        default=30, verbose_name="Alerte avant expiration de carte (jours)",
+        help_text='NTSUB9 — délai de prévenance avant expiration du moyen de '
+                  'paiement (défaut historique : 30).')
+    seuil_alerte_usage_pct_defaut = models.PositiveIntegerField(
+        default=80, verbose_name="Seuil d'alerte d'usage par défaut (%)",
+        help_text="NTSUB18 — pourcentage du quota d'usage à partir duquel "
+                  'une alerte est levée (défaut historique : 80).')
+    sequence_dunning_defaut = models.ForeignKey(
+        'SequenceDunning',
+        # on_delete: SET_NULL — supprimer une séquence ne doit jamais effacer
+        # le réglage de la société ; elle repasse simplement « sans défaut ».
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parametres_par_defaut',
+        verbose_name='Séquence de dunning par défaut',
+    )
+
+    class Meta:
+        verbose_name = 'Paramètres abonnement'
+        verbose_name_plural = 'Paramètres abonnement'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='contrats_parametresabo_uniq_co'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres abonnement — société {self.company_id}'

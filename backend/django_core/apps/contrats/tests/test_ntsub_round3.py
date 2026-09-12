@@ -279,3 +279,114 @@ class RattacherPlanRetroactifTests(TestCase):
             f'/api/django/contrats/contrats/{self.contrat.id}/rattacher-plan/',
             {'plan': plan_c.id}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+
+class ParametresAbonnementTests(TestCase):
+    """NTSUB24 — réglages par société : défauts = comportement historique."""
+
+    def setUp(self):
+        self.co = make_company('ntsub24', 'NTSUB24 Co')
+        self.user = User.objects.create_user(
+            username='ntsub24-user', password='x', company=self.co,
+            role_legacy='admin')
+        self.api = auth(self.user)
+
+    def test_valeurs_par_defaut_egalent_les_constantes_historiques(self):
+        from apps.contrats import services
+
+        params = services.get_parametres_abonnement(self.co)
+        self.assertEqual(params.jours_alerte_fin_essai, 3)
+        self.assertEqual(params.jours_alerte_expiration_carte, 30)
+        self.assertEqual(params.seuil_alerte_usage_pct_defaut, 80)
+        self.assertIsNone(params.sequence_dunning_defaut_id)
+
+    def test_singleton_cree_paresseusement_une_seule_fois(self):
+        from apps.contrats import services
+        from apps.contrats.models import ParametresAbonnement
+
+        premier = services.get_parametres_abonnement(self.co)
+        second = services.get_parametres_abonnement(self.co)
+        self.assertEqual(premier.pk, second.pk)
+        self.assertEqual(
+            ParametresAbonnement.objects.filter(company=self.co).count(), 1)
+
+    def test_le_delai_regle_change_bien_le_declenchement_ntsub5(self):
+        from datetime import timedelta
+
+        from apps.contrats import services
+        from apps.contrats.models import (
+            AbonnementAddOnLigne, EssaiAbonnement)
+
+        today = date(2026, 6, 1)
+        contrat = Contrat.objects.create(
+            company=self.co, objet='Contrat en essai', montant=Decimal('500'),
+            type_contrat='om', statut='actif')
+        essai = EssaiAbonnement.objects.create(
+            company=self.co,
+            type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+            cible_id=contrat.id,
+            date_fin_essai=today + timedelta(days=7))
+
+        # Réglage par DÉFAUT (J-3) : rien ne se déclenche à J-7.
+        res = services.convertir_essais_expires(self.co, today=today)
+        self.assertEqual(res['alertes_j3'], 0)
+        essai.refresh_from_db()
+        self.assertFalse(essai.notifie_j3)
+
+        # Réglage porté à 7 jours : l'alerte part le même jour.
+        params = services.get_parametres_abonnement(self.co)
+        params.jours_alerte_fin_essai = 7
+        params.save(update_fields=['jours_alerte_fin_essai'])
+        res2 = services.convertir_essais_expires(self.co, today=today)
+        self.assertEqual(res2['alertes_j3'], 1)
+        essai.refresh_from_db()
+        self.assertTrue(essai.notifie_j3)
+
+    def test_endpoint_courant_get_puis_patch(self):
+        get = self.api.get(
+            '/api/django/contrats/parametres-abonnement/courant/')
+        self.assertEqual(get.status_code, 200)
+        self.assertEqual(get.data['jours_alerte_fin_essai'], 3)
+
+        patch = self.api.patch(
+            '/api/django/contrats/parametres-abonnement/courant/',
+            {'jours_alerte_fin_essai': 10}, format='json')
+        self.assertEqual(patch.status_code, 200)
+        self.assertEqual(patch.data['jours_alerte_fin_essai'], 10)
+
+    def test_seuil_d_usage_hors_bornes_refuse_en_nommant_le_champ(self):
+        resp = self.api.patch(
+            '/api/django/contrats/parametres-abonnement/courant/',
+            {'seuil_alerte_usage_pct_defaut': 250}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('seuil_alerte_usage_pct_defaut', resp.data)
+
+    def test_isolation_multi_tenant_des_reglages(self):
+        from apps.contrats import services
+
+        autre = make_company('ntsub24-b', 'NTSUB24 B')
+        user_b = User.objects.create_user(
+            username='ntsub24-user-b', password='x', company=autre,
+            role_legacy='admin')
+        params_a = services.get_parametres_abonnement(self.co)
+        params_a.jours_alerte_fin_essai = 15
+        params_a.save(update_fields=['jours_alerte_fin_essai'])
+
+        resp_b = auth(user_b).get(
+            '/api/django/contrats/parametres-abonnement/courant/')
+        self.assertEqual(resp_b.status_code, 200)
+        # La société B garde le DÉFAUT, jamais le réglage de A.
+        self.assertEqual(resp_b.data['jours_alerte_fin_essai'], 3)
+        self.assertNotEqual(resp_b.data['id'], params_a.id)
+
+    def test_sequence_dunning_d_une_autre_societe_refusee(self):
+        from apps.contrats.models import SequenceDunning
+
+        autre = make_company('ntsub24-c', 'NTSUB24 C')
+        sequence_c = SequenceDunning.objects.create(
+            company=autre, nom='Séquence hors société')
+        resp = self.api.patch(
+            '/api/django/contrats/parametres-abonnement/courant/',
+            {'sequence_dunning_defaut': sequence_c.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('sequence_dunning_defaut', resp.data)

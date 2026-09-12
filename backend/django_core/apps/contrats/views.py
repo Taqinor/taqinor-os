@@ -63,6 +63,7 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametresAbonnement,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -114,6 +115,7 @@ from .serializers import (
     ObligationSerializer,
     OrdreLocationSerializer,
     PalierUsageSerializer,
+    ParametresAbonnementSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
@@ -2938,6 +2940,34 @@ class ParametresLocationViewSet(_ContratsBaseViewSet):
                 ParametresLocationSerializer(parametres).data)
         serializer = ParametresLocationSerializer(
             parametres, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ParametresAbonnementViewSet(_ContratsBaseViewSet):
+    """Réglages « Facturation récurrente », SINGLETON par société — NTSUB24.
+
+    ``GET/PATCH /parametres-abonnement/courant/`` lit/modifie la ligne unique
+    de la société, CRÉÉE PARESSEUSEMENT au premier accès avec les valeurs par
+    défaut — qui sont exactement les constantes historiques (J-3 fin d'essai,
+    30 jours carte, 80 % d'usage). Une société qui n'ouvre jamais cet écran
+    garde donc le comportement actuel à l'identique.
+
+    ``company`` est posée CÔTÉ SERVEUR, jamais lue du corps de requête.
+    """
+    queryset = ParametresAbonnement.objects.all()
+    serializer_class = ParametresAbonnementSerializer
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres = services.get_parametres_abonnement(request.user.company)
+        if request.method == 'GET':
+            return Response(ParametresAbonnementSerializer(
+                parametres, context={'request': request}).data)
+        serializer = ParametresAbonnementSerializer(
+            parametres, data=request.data, partial=True,
+            context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

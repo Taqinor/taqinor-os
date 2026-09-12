@@ -5152,8 +5152,27 @@ def demarrer_essai_contrat(contrat, *, date_fin_essai, plan_apres_essai=None,
     return essai
 
 
-def convertir_essais_expires(company, *, today=None, alerte_j3_jours=3):
+def get_parametres_abonnement(company):
+    """NTSUB24 — Réglages « Facturation récurrente » de la société.
+
+    Singleton créé PARESSEUSEMENT au premier accès, avec les valeurs par
+    défaut du modèle — qui sont exactement les constantes historiques (J-3 fin
+    d'essai, 30 jours carte, 80 % d'usage). Une société qui n'a jamais ouvert
+    l'écran garde donc le comportement actuel à l'identique.
+    """
+    from .models import ParametresAbonnement
+
+    params, _ = ParametresAbonnement.objects.get_or_create(company=company)
+    return params
+
+
+def convertir_essais_expires(company, *, today=None, alerte_j3_jours=None):
     """Convertit les essais échus + notifie J-3 avant la fin — NTSUB5.
+
+    NTSUB24 — ``alerte_j3_jours`` vaut par défaut le réglage société
+    ``ParametresAbonnement.jours_alerte_fin_essai`` (lui-même à 3 tant que la
+    société ne l'a pas changé : comportement historique inchangé). Un appelant
+    peut toujours forcer une valeur explicite (tests, rejeu).
 
     Pour une société, à ``today`` (injectable pour les tests) :
 
@@ -5177,6 +5196,10 @@ def convertir_essais_expires(company, *, today=None, alerte_j3_jours=3):
 
     if today is None:
         today = timezone.localdate()
+    if alerte_j3_jours is None:
+        # NTSUB24 — réglage société (défaut 3 = constante historique).
+        alerte_j3_jours = get_parametres_abonnement(
+            company).jours_alerte_fin_essai
 
     total = {'convertis': 0, 'alertes_j3': 0}
 
