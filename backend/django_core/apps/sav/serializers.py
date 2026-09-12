@@ -624,7 +624,10 @@ class EquipeMaintenanceSerializer(serializers.ModelSerializer):
         model = EquipeMaintenance
         fields = [
             'id', 'nom', 'membres', 'membres_count', 'responsable',
-            'responsable_nom', 'actif', 'date_creation',
+            'responsable_nom', 'actif',
+            # NTSRV8 — capacité (vide = aucune limite, aucun débordement).
+            'capacite_max_tickets_ouverts',
+            'date_creation',
         ]
         read_only_fields = ['id', 'date_creation']
 

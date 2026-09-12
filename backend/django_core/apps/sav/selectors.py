@@ -1362,6 +1362,50 @@ def affectations_pour(user):
     return items
 
 
+# ── NTSRV8 — File d'attente par équipe + charge ─────────────────────────────
+
+def file_attente_equipe(equipe):
+    """NTSRV8 — tickets de ``equipe`` EN ATTENTE D'AFFECTATION (ouverts, non
+    annulés, sans technicien responsable), du plus ANCIEN au plus récent.
+
+    « Le plus ancien d'abord » est l'ordre de service : c'est lui qui risque
+    le dépassement de SLA. Lecture seule, naturellement scopée société (une
+    équipe appartient à une société)."""
+    if equipe is None:
+        return Ticket.objects.none()
+    return (Ticket.objects
+            .filter(equipe=equipe, annule=False,
+                    statut__in=Ticket.OPEN_STATUTS,
+                    technicien_responsable__isnull=True)
+            .select_related('client')
+            .order_by('date_ouverture', 'date_creation', 'id'))
+
+
+def charge_equipe(equipe):
+    """NTSRV8 — nombre de tickets OUVERTS (non annulés) portés par l'équipe."""
+    if equipe is None:
+        return 0
+    return Ticket.objects.filter(
+        equipe=equipe, annule=False,
+        statut__in=Ticket.OPEN_STATUTS).count()
+
+
+def charges_equipes(company):
+    """NTSRV8 — ``{equipe_id: nb tickets ouverts}`` pour les équipes ACTIVES
+    de la société, en UNE requête (jamais un count par équipe)."""
+    from django.db.models import Count, Q
+
+    return {
+        e.pk: e.nb_ouverts
+        for e in (EquipeMaintenance.objects
+                  .filter(company=company, actif=True)
+                  .annotate(nb_ouverts=Count(
+                      'tickets',
+                      filter=Q(tickets__annule=False,
+                               tickets__statut__in=Ticket.OPEN_STATUTS))))
+    }
+
+
 # ── NTSRV5 — Journal des appels SAV (filtrable en rapport) ──────────────────
 
 def journal_appels(company, *, date_debut=None, date_fin=None, issue=None,

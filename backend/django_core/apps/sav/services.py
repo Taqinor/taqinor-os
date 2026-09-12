@@ -1844,6 +1844,112 @@ def register_email_ticket_handler():
     register_handler(handler_ticket_entrant)
 
 
+# ── NTSRV8 — Débordement d'équipe : une PROPOSITION, jamais une action ──────
+
+def debordement_equipe(equipe):
+    """NTSRV8 — PROPOSE le transfert des tickets excédentaires d'une équipe
+    saturée vers l'équipe active la MOINS chargée. **N'ÉCRIT RIEN.**
+
+    Renvoie toujours un dict lisible :
+    ``{'equipe_id', 'equipe_nom', 'capacite', 'charge', 'excedent',
+    'equipe_cible_id', 'equipe_cible_nom', 'tickets_proposes': [...]}``.
+
+    ``excedent = 0`` (et ``tickets_proposes = []``) quand l'équipe n'a
+    déclaré AUCUNE capacité (``capacite_max_tickets_ouverts`` NULL) ou qu'elle
+    est sous sa capacité — c'est le comportement par défaut de tout le parc
+    existant. La réaffectation réelle passe par une ACTION explicite
+    (``tickets/{id}/reaffecter-equipe/``) : jamais un effet de bord de cette
+    lecture (critère d'acceptation NTSRV8).
+    """
+    from .models import EquipeMaintenance
+    from .selectors import charge_equipe, charges_equipes, file_attente_equipe
+
+    base = {
+        'equipe_id': getattr(equipe, 'pk', None),
+        'equipe_nom': getattr(equipe, 'nom', ''),
+        'capacite': getattr(equipe, 'capacite_max_tickets_ouverts', None),
+        'charge': 0,
+        'excedent': 0,
+        'equipe_cible_id': None,
+        'equipe_cible_nom': '',
+        'tickets_proposes': [],
+    }
+    if equipe is None:
+        return base
+
+    base['charge'] = charge_equipe(equipe)
+    capacite = equipe.capacite_max_tickets_ouverts
+    if not capacite:
+        return base  # aucune capacité déclarée → aucun débordement.
+
+    excedent = base['charge'] - capacite
+    if excedent <= 0:
+        return base
+
+    # Équipe cible = l'équipe ACTIVE la moins chargée (hors elle-même) qui
+    # n'est pas elle-même déjà saturée.
+    charges = charges_equipes(equipe.company)
+    charges.pop(equipe.pk, None)
+    cible = None
+    if charges:
+        autres = {e.pk: e for e in EquipeMaintenance.objects.filter(
+            pk__in=list(charges.keys()))}
+        candidates = []
+        for equipe_id, charge in charges.items():
+            autre = autres.get(equipe_id)
+            if autre is None:
+                continue
+            plafond = autre.capacite_max_tickets_ouverts
+            if plafond and charge >= plafond:
+                continue  # déjà saturée : on ne déplace pas le problème.
+            candidates.append((charge, equipe_id, autre))
+        if candidates:
+            candidates.sort(key=lambda item: (item[0], item[1]))
+            cible = candidates[0][2]
+
+    # Les tickets proposés sont les PLUS RÉCENTS de la file d'attente : les
+    # plus anciens restent où ils sont (leur SLA court déjà).
+    file_attente = list(file_attente_equipe(equipe))
+    proposes = list(reversed(file_attente))[:excedent]
+
+    base['excedent'] = excedent
+    if cible is not None:
+        base['equipe_cible_id'] = cible.pk
+        base['equipe_cible_nom'] = cible.nom
+    base['tickets_proposes'] = [{
+        'id': t.pk, 'reference': t.reference,
+        'client': getattr(t.client, 'nom', '') or '',
+        'date_ouverture': t.date_ouverture,
+        'sla_due_at': t.sla_due_at,
+    } for t in proposes]
+    return base
+
+
+def reaffecter_equipe(ticket, equipe, user=None):
+    """NTSRV8 — ACTION explicite : change l'équipe d'un ticket et le trace au
+    chatter. C'est le SEUL chemin d'écriture du débordement — la proposition
+    (``debordement_equipe``) n'écrit jamais.
+
+    Lève ``ValueError`` (message FR nommant le champ) si l'équipe cible
+    appartient à une autre société."""
+    from . import activity
+
+    if equipe is not None and equipe.company_id != ticket.company_id:
+        raise ValueError('equipe: équipe inconnue.')
+
+    ancienne = ticket.equipe
+    if ancienne is not None and equipe is not None and ancienne.pk == equipe.pk:
+        return ticket  # idempotent : déjà sur cette équipe.
+
+    ticket.equipe = equipe
+    ticket.save(update_fields=['equipe'])
+    activity.log_note(
+        ticket, user,
+        'Équipe réaffectée : '
+        f'{getattr(ancienne, "nom", "—")} → {getattr(equipe, "nom", "—")}')
+    return ticket
+
+
 # ── NTSRV3 — Canal WhatsApp entrant (GATED par clé, no-op sans clé) ─────────
 
 def whatsapp_api_key():

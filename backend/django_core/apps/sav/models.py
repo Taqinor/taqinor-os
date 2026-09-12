@@ -538,6 +538,17 @@ class EquipeMaintenance(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='equipes_maintenance_dirigees')
     actif = models.BooleanField(default=True)
+    # ── NTSRV8 — Capacité (nombre de tickets OUVERTS simultanés) ────────────
+    # OPTIONNELLE : NULL = aucune capacité déclarée → aucun débordement n'est
+    # jamais calculé pour cette équipe (comportement actuel inchangé). Au-delà
+    # de la capacité, le système PROPOSE un transfert — il ne réaffecte
+    # JAMAIS tout seul (critère d'acceptation NTSRV8).
+    capacite_max_tickets_ouverts = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Capacité (tickets ouverts)',
+        help_text='Nombre maximum de tickets ouverts simultanés pour cette '
+                  'équipe. Vide = aucune limite (aucune proposition de '
+                  'débordement).')
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

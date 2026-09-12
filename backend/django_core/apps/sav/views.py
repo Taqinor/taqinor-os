@@ -1322,6 +1322,32 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @action(detail=True, methods=['post'], url_path='reaffecter-equipe',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def reaffecter_equipe(self, request, pk=None):
+        """NTSRV8 — Réaffecte le ticket à une autre équipe de maintenance.
+
+        SEUL chemin d'écriture du débordement : la file d'attente
+        (``sav/file-attente/``) ne fait que PROPOSER — elle ne réaffecte
+        jamais en silence. ``equipe: null`` détache le ticket de son équipe."""
+        ticket = self.get_object()
+        from .services import reaffecter_equipe as _reaffecter
+
+        equipe_id = request.data.get('equipe', request.data.get('equipe_id'))
+        equipe = None
+        if equipe_id not in (None, ''):
+            equipe = EquipeMaintenance.objects.filter(
+                pk=equipe_id, company=request.user.company).first()
+            if equipe is None:
+                return Response({'equipe': 'Équipe inconnue.'}, status=400)
+        try:
+            _reaffecter(ticket, equipe, user=request.user)
+        except ValueError as exc:
+            champ, _, detail = str(exc).partition(': ')
+            return Response({champ: detail or str(exc)}, status=400)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
     @action(detail=True, methods=['post'], url_path='log-appel',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def log_appel(self, request, pk=None):
@@ -2725,6 +2751,46 @@ def sav_resume_par_equipe(request):
     company = request.user.company
     data = resume_par_equipe(company)
     return Response({'results': data})
+
+
+# ── NTSRV8 — File d'attente par équipe + PROPOSITION de débordement ─────────
+
+def sav_file_attente(request):
+    """NTSRV8 — File d'attente par équipe de maintenance et, quand une équipe
+    dépasse sa capacité déclarée, la PROPOSITION de transfert associée.
+
+    LECTURE PURE : aucune réaffectation n'est jamais exécutée ici. Le
+    transfert passe par l'action explicite
+    ``tickets/{id}/reaffecter-equipe/``. Réservé au tier responsable/admin
+    (vérifié côté urls.py)."""
+    from .selectors import charges_equipes, file_attente_equipe
+    from .services import debordement_equipe
+
+    company = request.user.company
+    charges = charges_equipes(company)
+    equipes = (EquipeMaintenance.objects
+               .filter(company=company, actif=True)
+               .order_by('nom'))
+    resultats = []
+    for equipe in equipes:
+        file_attente = list(file_attente_equipe(equipe))
+        proposition = debordement_equipe(equipe)
+        resultats.append({
+            'equipe_id': equipe.pk,
+            'equipe_nom': equipe.nom,
+            'capacite': equipe.capacite_max_tickets_ouverts,
+            'charge': charges.get(equipe.pk, 0),
+            'file_attente': [{
+                'id': t.pk, 'reference': t.reference,
+                'client': getattr(t.client, 'nom', '') or '',
+                'statut': t.statut, 'priorite': t.priorite,
+                'date_ouverture': t.date_ouverture,
+                'sla_due_at': t.sla_due_at,
+            } for t in file_attente],
+            # Toujours présent : `excedent=0` = rien à proposer.
+            'debordement': proposition,
+        })
+    return Response({'results': resultats})
 
 
 # ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────

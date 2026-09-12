@@ -13,7 +13,7 @@ from .views import (
     EquipeMaintenanceViewSet, CategorieEquipementViewSet,
     WorksheetMaintenanceModeleViewSet,
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
-    sav_resume_par_equipe, sav_file_action,
+    sav_resume_par_equipe, sav_file_action, sav_file_attente,
 )
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
@@ -72,6 +72,14 @@ def file_action_view(request):
     return sav_file_action(request)
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def file_attente_view(request):
+    """NTSRV8 — File d'attente par équipe + proposition de débordement.
+    LECTURE PURE (aucune réaffectation). Responsable/admin."""
+    return sav_file_attente(request)
+
+
 urlpatterns = [
     # ZSAV6 — DOIT précéder `include(router.urls)` : sinon le routeur
     # capturerait `file-action` comme un `pk` de détail sur `tickets/<pk>/`.
@@ -85,6 +93,8 @@ urlpatterns = [
     # WHATSAPP_BUSINESS_API_KEY n'est pas configurée.
     path('webhooks/whatsapp-inbound/', whatsapp_inbound_webhook,
          name='sav-whatsapp-inbound'),
+    # NTSRV8 — File d'attente par équipe (+ proposition de débordement).
+    path('file-attente/', file_attente_view, name='sav-file-attente'),
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),
