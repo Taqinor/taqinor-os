@@ -49,6 +49,8 @@ class DossierJuridiqueSerializer(serializers.ModelSerializer):
             # provision réellement comptabilisée est en lecture seule (elle
             # ne se pose que par l'action confirmée ``proposer-provision``).
             'montant_risque_estime', 'probabilite_risque',
+            # NTJUR12 — enveloppe budgétaire (éditable).
+            'budget_alloue',
             'provision_comptable_id',
             # NTJUR15 — état de la bannière « reprendre la provision ».
             'reprise_provision_proposee', 'reprise_provision_traitee',

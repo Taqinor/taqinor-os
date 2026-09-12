@@ -158,6 +158,12 @@ class DossierJuridique(TenantModel):
     provision_comptable_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='ID de la provision comptable')
+    # NTJUR12 — enveloppe budgétaire allouée au dossier. NULL = aucune
+    # enveloppe fixée : le pourcentage consommé est alors indéfini (jamais une
+    # division par zéro, jamais un 0 % trompeur).
+    budget_alloue = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Budget alloué')
     # ── NTJUR15 — bannière « reprendre la provision » à la clôture ─────────
     # PROPOSÉE à la clôture d'un dossier qui porte une provision ; jamais une
     # reprise automatique. ``traitee`` empêche la bannière de revenir à chaque

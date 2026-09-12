@@ -46,6 +46,112 @@ def dossier_par_id(company, dossier_id, user=None):
     return dossiers_visibles(company, user=user).filter(pk=dossier_id).first()
 
 
+# ── NTJUR12 — budget juridique : engagé vs consommé vs alloué ───────────────
+
+
+def budget_dossier(dossier):
+    """Budget d'un dossier : ``engage`` / ``consomme`` / ``budget_alloue``.
+
+    * ``engage``   — Σ des montants engagés par les mandats NON clos (forfait,
+      ou taux horaire × heures estimées ; un honoraire de RÉSULTAT n'engage
+      rien tant qu'il n'est pas dû — jamais un chiffre inventé) ;
+    * ``consomme`` — Σ TTC des notes d'honoraires ``validee``/``payee`` (une
+      note simplement ``recue`` n'est pas encore un engagement acté) ;
+    * ``pourcentage_consomme`` — ``None`` quand aucune enveloppe n'est fixée
+      ou qu'elle vaut 0 (division par zéro GARDÉE, patron
+      ``gestion_projet.selectors.couts_engages_vs_reels``) ;
+    * ``depassement`` — vrai dès que le consommé dépasse l'enveloppe.
+    """
+    from decimal import Decimal
+
+    from .models import MandatAvocat, NoteHonoraires
+
+    # Un mandat CLOS n'engage plus rien ; les autres (brouillon, en
+    # approbation, actif) comptent : le budget sert justement à voir venir un
+    # engagement avant qu'il ne soit activé.
+    mandats = MandatAvocat.objects.filter(dossier=dossier).exclude(
+        statut=MandatAvocat.Statut.CLOS)
+    engage = sum(
+        (m.montant_engage for m in mandats), Decimal('0')
+    ).quantize(Decimal('0.01'))
+    consomme = Decimal('0')
+    notes = NoteHonoraires.objects.filter(
+        mandat__dossier=dossier,
+        statut__in=(NoteHonoraires.Statut.VALIDEE,
+                    NoteHonoraires.Statut.PAYEE))
+    for note in notes:
+        consomme += note.montant_ttc or Decimal('0')
+    consomme = consomme.quantize(Decimal('0.01'))
+    alloue = dossier.budget_alloue
+    pourcentage = None
+    if alloue is not None and alloue > 0:
+        pourcentage = float(
+            (consomme / alloue * Decimal('100')).quantize(Decimal('0.01')))
+    return {
+        'dossier': dossier.id,
+        'reference': dossier.reference,
+        'budget_alloue': str(alloue) if alloue is not None else None,
+        'engage': str(engage),
+        'consomme': str(consomme),
+        'pourcentage_consomme': pourcentage,
+        'depassement': bool(alloue is not None and alloue > 0
+                            and consomme > alloue),
+    }
+
+
+def tableau_bord_juridique(company, user=None):
+    """Agrégat juridique de la société (NTJUR12).
+
+    Total engagé/consommé PAR NATURE de dossier + liste des dossiers en
+    dépassement (consommé > alloué). Le filtrage de confidentialité s'applique
+    à l'AGRÉGAT lui-même : un rôle non autorisé obtient des totaux qui
+    EXCLUENT les dossiers confidentiels — jamais de fuite par somme.
+    """
+    from decimal import Decimal
+
+    dossiers = list(dossiers_visibles(company, user=user))
+    par_nature = {}
+    depassements = []
+    total_engage = Decimal('0')
+    total_consomme = Decimal('0')
+    for dossier in dossiers:
+        budget = budget_dossier(dossier)
+        engage = Decimal(budget['engage'])
+        consomme = Decimal(budget['consomme'])
+        total_engage += engage
+        total_consomme += consomme
+        seau = par_nature.setdefault(
+            dossier.nature, {'nature': dossier.nature, 'nombre': 0,
+                             'engage': Decimal('0'),
+                             'consomme': Decimal('0')})
+        seau['nombre'] += 1
+        seau['engage'] += engage
+        seau['consomme'] += consomme
+        if budget['depassement']:
+            depassements.append({
+                'dossier': dossier.id,
+                'reference': dossier.reference,
+                'titre': dossier.titre,
+                'budget_alloue': budget['budget_alloue'],
+                'consomme': budget['consomme'],
+                'pourcentage_consomme': budget['pourcentage_consomme'],
+            })
+    return {
+        'nombre_dossiers': len(dossiers),
+        'total_engage': str(total_engage.quantize(Decimal('0.01'))),
+        'total_consomme': str(total_consomme.quantize(Decimal('0.01'))),
+        'par_nature': [
+            {**seau, 'engage': str(seau['engage']),
+             'consomme': str(seau['consomme'])}
+            for seau in sorted(par_nature.values(),
+                               key=lambda s: s['nature'])
+        ],
+        'depassements': sorted(
+            depassements, key=lambda d: d['pourcentage_consomme'] or 0,
+            reverse=True),
+    }
+
+
 # ── NTJUR19 — résolution de la règle d'approbation d'un engagement ──────────
 
 

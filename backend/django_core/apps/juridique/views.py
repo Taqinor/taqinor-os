@@ -15,7 +15,8 @@ permission au rôle d'un approbateur désigné bloque son bouton « Approuver »
 côté API immédiatement, sans toucher aux étapes en cours.
 """
 from django.contrib.auth import get_user_model
-from rest_framework import filters, status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -89,6 +90,56 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
                 company=company, reference=reference,
                 created_by=self.request.user),
             period='yearly')
+
+    # ── NTJUR12 — budget engagé / consommé / alloué ─────────────────────────
+
+    @extend_schema(responses=inline_serializer('JuridiqueBudgetDossier', {
+        'dossier': serializers.IntegerField(),
+        'reference': serializers.CharField(),
+        'budget_alloue': serializers.CharField(allow_null=True),
+        'engage': serializers.CharField(),
+        'consomme': serializers.CharField(),
+        'pourcentage_consomme': serializers.FloatField(allow_null=True),
+        'depassement': serializers.BooleanField(),
+    }))
+    @action(detail=True, methods=['get'], url_path='budget')
+    def budget(self, request, pk=None):
+        """Budget du dossier : engagé vs consommé vs alloué (NTJUR12).
+
+        Les montants sont des chaînes (``str(Decimal)``) — le schéma dit ce
+        que le serveur fait, jamais ce qu'on aimerait qu'il fasse.
+        """
+        dossier = self.get_object()
+        return Response(selectors.budget_dossier(dossier))
+
+    @extend_schema(responses=inline_serializer('JuridiqueTableauBord', {
+        'nombre_dossiers': serializers.IntegerField(),
+        'total_engage': serializers.CharField(),
+        'total_consomme': serializers.CharField(),
+        'par_nature': inline_serializer('JuridiqueTableauBordNature', {
+            'nature': serializers.CharField(),
+            'nombre': serializers.IntegerField(),
+            'engage': serializers.CharField(),
+            'consomme': serializers.CharField(),
+        }, many=True),
+        'depassements': inline_serializer('JuridiqueTableauBordDepassement', {
+            'dossier': serializers.IntegerField(),
+            'reference': serializers.CharField(),
+            'titre': serializers.CharField(),
+            'budget_alloue': serializers.CharField(allow_null=True),
+            'consomme': serializers.CharField(),
+            'pourcentage_consomme': serializers.FloatField(allow_null=True),
+        }, many=True),
+    }))
+    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    def tableau_bord(self, request):
+        """Agrégat juridique de la société (NTJUR12).
+
+        Le filtrage de confidentialité s'applique à l'agrégat : un rôle non
+        autorisé obtient des totaux EXCLUANT les dossiers confidentiels.
+        """
+        return Response(selectors.tableau_bord_juridique(
+            request.user.company, user=request.user))
 
     # ── NTJUR2 — machine à états procédurale ────────────────────────────────
 
