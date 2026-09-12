@@ -599,6 +599,13 @@ class WorkflowStepInstance(TimestampedModel):
         help_text='started + sla_heures ; vide si l\'étape n\'a pas de SLA.')
     decided_le = models.DateTimeField('Décidé le', null=True, blank=True)
     commentaire = models.TextField('Commentaire', blank=True, default='')
+    # NTWFL5 — marqueur anti-double-notification : posé par
+    # core.workflow.marquer_rappel_envoye() la PREMIÈRE fois qu'un rappel à
+    # mi-SLA est émis (core.workflow.etapes_a_mi_sla) ; vide = jamais relancée.
+    dernier_rappel_le = models.DateTimeField(
+        'Dernier rappel envoyé le', null=True, blank=True,
+        help_text='Vide = jamais relancée ; posé une seule fois (jamais '
+                  'un second rappel pour la même étape).')
 
     class Meta:
         verbose_name = 'Étape de workflow (instance)'

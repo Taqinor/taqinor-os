@@ -89,6 +89,8 @@ __all__ = [
     'register_delegation_resolver',
     'delegants_actifs_pour',
     'register_business_day_advance',
+    'etapes_a_mi_sla',
+    'marquer_rappel_envoye',
 ]
 
 
@@ -222,6 +224,18 @@ def etape_courante_de(instance):
     )
 
 
+def _emit_etape_activee(step, company):
+    """NTWFL5 — émet ``core.events.workflow_etape_activee`` (best-effort,
+    jamais bloquant : une notification cassée ne doit jamais empêcher le
+    moteur BPM d'avancer)."""
+    try:
+        from core.events import workflow_etape_activee
+        workflow_etape_activee.send(
+            sender='core.workflow', step=step, company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
 def _steps_apres(instance, ordre):
     """Étapes dont l'``ordre`` est strictement supérieur, triées."""
     return list(
@@ -272,6 +286,11 @@ def avancer(instance, now=None, _from_start=False):
             continue
 
         # Étape manuelle / par rôle en attente : on s'arrête ici.
+        # NTWFL5 — signale qu'une étape vient de devenir ACTIVE (comble
+        # YEVNT8 pour FG366 : aujourd'hui aucune notification ne part à la
+        # création). Émission SYNCHRONE, best-effort côté abonné (jamais
+        # bloquant pour le moteur BPM lui-même).
+        _emit_etape_activee(step, instance.company)
         return instance
 
 
@@ -372,6 +391,53 @@ def flag_overdue_steps(company, now):
     for step in overdue:
         escalader_etape(step, now=now)
     return overdue
+
+
+# ── NTWFL5 — relance à mi-SLA (comble YEVNT9 pour FG366) ────────────────────
+
+def etapes_a_mi_sla(company, now):
+    """Sélecteur : étapes ``en_attente`` dont AU MOINS 50 % du délai SLA
+    s'est écoulé depuis le départ de l'instance, jamais encore relancées.
+
+    ``now`` est OBLIGATOIRE (déterminisme). Une étape est éligible si : elle
+    est encore en attente, porte une ``sla_echeance`` (sans SLA configuré,
+    jamais de rappel), son instance est en cours et porte ``started_le``,
+    ``dernier_rappel_le`` est vide (jamais deux rappels pour la même étape)
+    et l'instant à mi-chemin entre ``started_le`` et ``sla_echeance`` est
+    déjà passé. Triée par échéance la plus proche d'abord."""
+    candidats = (
+        WorkflowStepInstance.objects.filter(
+            company=company,
+            statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+            sla_echeance__isnull=False,
+            dernier_rappel_le__isnull=True,
+            instance__statut=WorkflowInstance.STATUT_EN_COURS,
+            instance__started_le__isnull=False,
+        )
+        .select_related('instance')
+        .order_by('sla_echeance', 'id')
+    )
+    resultat = []
+    for step in candidats:
+        debut = step.instance.started_le
+        fin = step.sla_echeance
+        if fin <= debut:
+            continue
+        mi_chemin = debut + (fin - debut) / 2
+        if now >= mi_chemin:
+            resultat.append(step)
+    return resultat
+
+
+def marquer_rappel_envoye(step, now=None):
+    """Marque ``step`` comme relancée à l'instant ``now`` (défaut : maintenant).
+
+    Empêche tout second rappel pour la même étape (``etapes_a_mi_sla`` ne la
+    renverra plus, ``dernier_rappel_le`` n'étant plus vide)."""
+    moment = _resolve_now(now)
+    step.dernier_rappel_le = moment
+    step.save(update_fields=['dernier_rappel_le', 'updated_at'])
+    return step
 
 
 # ── XKB1 — boîte d'approbations centralisée (lecture cross-app) ──────────────

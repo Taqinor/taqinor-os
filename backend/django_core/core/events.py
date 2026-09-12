@@ -1047,6 +1047,19 @@ scm_rupture_imminente_detectee = django.dispatch.Signal()
 # ``scm.CyclePlanificationSOP``, déjà ``clos``), ``user`` (peut être None).
 scm_cycle_sop_cloture = django.dispatch.Signal()
 
+# NTWFL5 — Émis par ``core.workflow.avancer`` (moteur BPM FG366) exactement
+# quand une ``WorkflowStepInstance`` devient la nouvelle étape ACTIVE
+# (manuelle/par rôle, en attente de décision) — comble YEVNT8 pour FG366 :
+# aujourd'hui aucune notification ne part à la création d'une étape
+# d'approbation BPM (les 4 autres sources de l'agrégateur XKB1 sont déjà
+# câblées, voir ``apps/notifications/signals.py``). Émission best-effort,
+# jamais bloquante pour le moteur BPM. Arguments : ``step``
+# (``core.WorkflowStepInstance``, la nouvelle étape courante), ``company``.
+# Abonné dans ce repo : notifications (``apps/notifications/signals.py``,
+# notifie les managers de la société — ``core`` n'a aucune notion
+# d'assignation par utilisateur, seulement ``step_def.role_requis``).
+workflow_etape_activee = django.dispatch.Signal()
+
 # NTSCM39 — ADAPTATION DE PÉRIMÈTRE : le plan prévoit un 3ᵉ événement
 # ``scm.score_fournisseur_degrade`` (« émis par NTSCM23 ») — NTSCM23 (score
 # fournisseur) n'existe pas dans ``docs/plans/PLAN_SUPPLY.md`` (aucune tâche
