@@ -19,6 +19,139 @@ from core.ai.registry import get_provider
 from core.ai.schemas import get_schema
 
 
+# --- NTAI4 — Garde des sorties génératives ----------------------------------
+#
+# Une sortie de LLM n'est PAS une donnée : c'est une proposition de texte, qui
+# peut citer une table qui n'existe pas, déraper en registre, ou partir en
+# longueur. Ce garde est la dernière barrière avant qu'un texte généré
+# n'atteigne un écran — ou pire, un client.
+#
+# Il ne « corrige » jamais le fond (ce serait inventer) : il BLOQUE ce qui est
+# faux (référence hors périmètre), MASQUE ce qui est inacceptable (lexique) et
+# BORNE ce qui est trop long. Sans LLM configuré il n'y a pas de texte, donc
+# le garde est inerte — aucun coût, aucun effet.
+
+#: Longueur maximale d'une sortie générative (caractères). Surchargeable par
+#: ``settings.AI_GUARD_MAX_CHARS``.
+GUARD_MAX_CHARS = 6000
+
+#: Lexique de filtrage par défaut — volontairement COURT et non ambigu (des
+#: insultes, rien qui puisse rogner un texte commercial légitime). Une société
+#: l'étend par ``settings.AI_TOXIC_TERMS`` (liste de mots).
+GUARD_TOXIC_TERMS = (
+    'connard', 'connasse', 'salopard', 'enfoiré', 'enfoire',
+    'ta gueule', 'abruti', 'crétin', 'cretin',
+    # Darija translittérée — insultes courantes dans un message client.
+    'hmar', 'bhim', 'zbel',
+)
+
+#: Repère d'une référence technique « table.colonne » dans un texte généré.
+_RE_REFERENCE_TABLE = re.compile(r'\b([a-z][a-z0-9_]{2,})\.([a-z][a-z0-9_]{2,})\b')
+
+#: Repère d'une table citée en SQL (``FROM x``, ``JOIN x``).
+_RE_TABLE_SQL = re.compile(r'(?i)\b(?:from|join)\s+([a-z][a-z0-9_]{2,})\b')
+
+#: Marque de troncature (visible : l'utilisateur doit SAVOIR qu'il manque du
+#: texte, plutôt que de lire une phrase coupée net).
+GUARD_TRONCATURE = ' […]'
+
+
+@dataclass
+class GuardedOutput:
+    """Résultat du passage d'une sortie générative au garde (NTAI4)."""
+
+    texte: str = ''
+    bloque: bool = False
+    modifie: bool = False
+    motifs: list = field(default_factory=list)
+
+    @property
+    def utilisable(self) -> bool:
+        return not self.bloque and bool(self.texte)
+
+
+def _termes_toxiques() -> tuple:
+    """Lexique effectif : défaut + surcharge société (settings)."""
+    from django.conf import settings
+
+    surcharge = getattr(settings, 'AI_TOXIC_TERMS', None)
+    if surcharge is None:
+        return GUARD_TOXIC_TERMS
+    return tuple(str(t).strip().lower() for t in surcharge if str(t).strip())
+
+
+def _longueur_max() -> int:
+    from django.conf import settings
+
+    try:
+        return int(getattr(settings, 'AI_GUARD_MAX_CHARS', GUARD_MAX_CHARS))
+    except (TypeError, ValueError):
+        return GUARD_MAX_CHARS
+
+
+def tables_citees(texte: str) -> set:
+    """Tables techniques citées par un texte généré (``app.table``, ``FROM x``).
+
+    Sert au garde et reste utilisable seul (diagnostic). Ne comprend PAS le
+    SQL : elle repère des NOMS, ce qui suffit à détecter une citation hors
+    périmètre."""
+    trouvees = {f'{prefixe}.{suffixe}'
+                for prefixe, suffixe in _RE_REFERENCE_TABLE.findall(texte or '')}
+    trouvees.update(_RE_TABLE_SQL.findall(texte or ''))
+    return trouvees
+
+
+def guard_output(text: str, *, allowlist_tables=None,
+                 max_chars: int | None = None) -> GuardedOutput:
+    """Passe une sortie générative au garde avant affichage.
+
+    ``allowlist_tables`` : ensemble de noms de tables/modèles que la sortie a
+    le droit de citer. ``None`` (défaut) = la règle est DÉSACTIVÉE — un
+    brouillon de réponse client n'a aucune raison de parler de tables, et
+    inventer une allowlist ici bloquerait du texte correct. Fournie, toute
+    citation hors liste BLOQUE la sortie (même logique que le harnais NL→SQL,
+    qui refuse une requête touchant une table hors périmètre ; ce service
+    Django ne peut pas importer ce harnais, qui vit dans le service FastAPI).
+
+    Toujours appliqué : filtrage du lexique (masqué par ``***``) et borne de
+    longueur. Un texte vide ressort vide, sans motif — le garde est inerte sur
+    le chemin NO-OP."""
+    texte = text or ''
+    if not isinstance(texte, str) or not texte.strip():
+        return GuardedOutput(texte=texte or '')
+
+    motifs = []
+    bloque = False
+    modifie = False
+
+    if allowlist_tables is not None:
+        autorisees = {str(t).lower() for t in allowlist_tables}
+        inconnues = sorted(
+            ref for ref in tables_citees(texte)
+            if ref.lower() not in autorisees)
+        if inconnues:
+            bloque = True
+            motifs.append(
+                'référence hors périmètre : ' + ', '.join(inconnues[:5]))
+
+    for terme in _termes_toxiques():
+        motif_terme = re.compile(re.escape(terme), re.IGNORECASE)
+        if motif_terme.search(texte):
+            texte = motif_terme.sub('***', texte)
+            modifie = True
+    if modifie:
+        motifs.append('contenu inapproprié filtré')
+
+    limite = max_chars or _longueur_max()
+    if len(texte) > limite:
+        texte = texte[:limite].rstrip() + GUARD_TRONCATURE
+        modifie = True
+        motifs.append(f'sortie tronquée à {limite} caractères')
+
+    return GuardedOutput(texte=texte, bloque=bloque, modifie=modifie,
+                         motifs=motifs)
+
+
 # --- FG355 — OCR document (CIN / contrat) -----------------------------------
 
 def extract_document(*, content: bytes, mime_type: str, schema: str,
@@ -326,7 +459,8 @@ class ThreadSummary:
 
 
 def summarize_thread(messages: list[dict], *, context: str = '',
-                     max_tokens: int = 400) -> ThreadSummary:
+                     max_tokens: int = 400,
+                     allowlist_tables=None) -> ThreadSummary:
     """Synthétise en un clic un fil d'activité (lead / chantier / ticket).
 
     ``messages`` : entrées génériques (voir :func:`format_thread`) — core
@@ -355,8 +489,15 @@ def summarize_thread(messages: list[dict], *, context: str = '',
     prompt = thread if not context else f"Contexte : {context}\n\n{thread}"
     res = provider.complete(prompt=prompt, system=system, max_tokens=max_tokens)
     if res.ok and res.data.get('text'):
+        # NTAI4 — dernière barrière avant l'écran : une synthèse bloquée
+        # (référence hors périmètre) n'est PAS rendue à moitié.
+        garde = guard_output(res.data['text'].strip(),
+                             allowlist_tables=allowlist_tables)
+        if garde.bloque:
+            return ThreadSummary(ok=False, configured=True, summary='',
+                                 source=res.provider)
         return ThreadSummary(ok=True, configured=True,
-                             summary=res.data['text'].strip(),
+                             summary=garde.texte,
                              source=res.provider)
     return ThreadSummary(ok=False, configured=True, summary='',
                          source=res.provider)
@@ -389,7 +530,7 @@ class ReplyDraft:
 
 def draft_reply(messages: list[dict], *, channel: str = 'email',
                 context: str = '', instruction: str = '',
-                max_tokens: int = 400) -> ReplyDraft:
+                max_tokens: int = 400, allowlist_tables=None) -> ReplyDraft:
     """Propose un brouillon de réponse FR éditable à partir d'un fil.
 
     ``channel`` ∈ :data:`REPLY_CHANNELS` (``'email'``/``'whatsapp'``/``'sms'``)
@@ -423,8 +564,15 @@ def draft_reply(messages: list[dict], *, channel: str = 'email',
     prompt = '\n\n'.join(parts)
     res = provider.complete(prompt=prompt, system=system, max_tokens=max_tokens)
     if res.ok and res.data.get('text'):
-        return ReplyDraft(ok=True, configured=True,
-                          draft=res.data['text'].strip(),
+        # NTAI4 — un brouillon destiné à un CLIENT passe le garde avant d'être
+        # affiché : lexique filtré, longueur bornée, référence hors périmètre
+        # bloquée (jamais un demi-brouillon qu'on enverrait sans le relire).
+        garde = guard_output(res.data['text'].strip(),
+                             allowlist_tables=allowlist_tables)
+        if garde.bloque:
+            return ReplyDraft(ok=False, configured=True, draft='',
+                              channel=channel, source=res.provider)
+        return ReplyDraft(ok=True, configured=True, draft=garde.texte,
                           channel=channel, source=res.provider)
     return ReplyDraft(ok=False, configured=True, draft='',
                       channel=channel, source=res.provider)

@@ -71,6 +71,7 @@ from core.ai.services import (
     LIVECHAT_QUALIFICATION_SYSTEM_PROMPT,
     REPLY_CHANNELS,
     CampaignContentDraft,
+    GuardedOutput,
     LivechatQualificationExtract,
     MatchedLine,
     NextBestAction,
@@ -82,6 +83,7 @@ from core.ai.services import (
     extract_document,
     extract_livechat_qualification,
     format_thread,
+    guard_output,
     inspect_photo,
     match_ocr_lines,
     qualify_livechat_reply,
@@ -140,6 +142,9 @@ __all__ = [
     'CAMPAIGN_PROMPT_FORBIDDEN_TERMS',
     'build_campaign_prompt',
     'draft_campaign_content',
+    # Garde des sorties génératives (NTAI4)
+    'guard_output',
+    'GuardedOutput',
     # Journal d'usage & coût IA, budgets (NTAI1/NTAI2)
     'record_usage',
     'register_usage_sink',

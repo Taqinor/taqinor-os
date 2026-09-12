@@ -173,7 +173,15 @@ def generer_description_produit(*, company, produit_id, max_tokens=400) -> dict:
         raise AiCopiloteUnavailable(
             "Le fournisseur n'a pas produit de description exploitable.")
 
-    description, description_courte = _split_description(res.data['text'])
+    # NTAI4 — garde de sortie avant découpe : lexique filtré, longueur bornée.
+    from core.ai.services import guard_output
+
+    garde = guard_output(res.data['text'])
+    if garde.bloque:
+        raise AiCopiloteUnavailable(
+            "La description proposée a été écartée par le contrôle de sortie.")
+
+    description, description_courte = _split_description(garde.texte)
     return {
         'produit_id': produit.id,
         'description': description,
