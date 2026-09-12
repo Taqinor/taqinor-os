@@ -14984,6 +14984,102 @@ def export_simpl_is(company, exercice, *, is_reference=None,
     )
 
 
+# ── NTPRJ3 — Régularisation WIP/PCA auto-alimentée depuis les projets ──────
+
+def _dernier_jour_du_mois(annee, mois):
+    """Dernier jour calendaire du mois (sans dépendance externe)."""
+    import calendar
+    from datetime import date as _date
+
+    return _date(annee, mois, calendar.monthrange(annee, mois)[1])
+
+
+def _periode_projet(periode):
+    """Normalise ``'AAAA-MM'`` en ``(date_arrete, libelle)``. ValueError sinon."""
+    texte = str(periode or '').strip()
+    try:
+        annee_txt, mois_txt = texte.split('-')
+        annee, mois = int(annee_txt), int(mois_txt)
+        if not 1 <= mois <= 12:
+            raise ValueError
+    except (AttributeError, TypeError, ValueError):
+        raise ValueError(
+            "Période invalide : format attendu AAAA-MM (ex. 2026-03).")
+    return _dernier_jour_du_mois(annee, mois), f'{annee:04d}-{mois:02d}'
+
+
+def generer_regularisation_wip_projet(projet, periode, *, poster=True,
+                                      user=None):
+    """NTPRJ3 — Régularisation de cut-off DÉDUITE de l'avancement d'un projet.
+
+    Croise deux lectures cross-app de ``apps.gestion_projet.selectors``
+    (jamais un import de ses ``models``) :
+
+      * ``pnl_projet`` — pour le CA RÉELLEMENT émis (devis/factures rattachés
+        au projet) ;
+      * ``avancement_vs_facture`` — qui publie ``montant_avancement`` (revenu
+        constaté à l'avancement) et, à défaut de facture réelle,
+        ``montant_facture`` (projection « % jalons atteints × budget »).
+
+    L'écart ``revenu à l'avancement − facturé cumulé`` donne la nature :
+
+      * écart > 0 — on a PRODUIT plus qu'on n'a facturé → ``WIP`` (travaux en
+        cours portés à l'actif) ;
+      * écart < 0 — on a FACTURÉ en avance de la production → ``PCA``
+        (produits constatés d'avance) ;
+      * écart nul — rien à régulariser, aucune ligne créée.
+
+    La ligne est un ``TravauxEnCours`` (le modèle FG147, « Régularisation
+    (PCA / WIP) ») arrêté au DERNIER JOUR de ``periode`` ; le verrou de période
+    est respecté par ``constater_regularisation`` → ``creer_ecriture_od``, qui
+    REFUSE une écriture dans une période verrouillée.
+
+    IDEMPOTENT : ``chantier_ref`` porte la clé ``PROJ-<id>`` et une
+    régularisation existante pour ce projet ET cette date d'arrêté fait
+    renvoyer ``None`` — ré-exécuter la commande ne double jamais l'écriture.
+
+    Renvoie la régularisation créée, ou ``None`` (rien à régulariser / déjà
+    passée).
+    """
+    from apps.gestion_projet import selectors as projet_selectors
+
+    company = projet.company
+    date_arrete, libelle_periode = _periode_projet(periode)
+    chantier_ref = f'PROJ-{projet.pk}'
+
+    # Idempotence : une seule régularisation par projet + période.
+    if TravauxEnCours.objects.filter(
+            company=company, chantier_ref=chantier_ref,
+            date_arrete=date_arrete).exists():
+        return None
+
+    # Lectures CROSS-APP par sélecteurs (jamais les models de l'app projet).
+    pnl = projet_selectors.pnl_projet(company, projet)
+    avancement = projet_selectors.avancement_vs_facture(projet)
+
+    produit = avancement.get('montant_avancement') or Decimal('0')
+    # Le FACTURÉ de référence est le CA RÉELLEMENT émis quand le projet porte
+    # des devis/factures rattachés (``pnl_projet['revenu']``) ; à défaut on
+    # retombe sur la projection « % des jalons atteints × budget »
+    # (``avancement_vs_facture``). Un cut-off se compare à ce qui est
+    # réellement parti chez le client, pas à un pourcentage théorique.
+    facture_reel = pnl.get('revenu') or Decimal('0')
+    facture = (facture_reel if facture_reel > 0
+               else (avancement.get('montant_facture') or Decimal('0')))
+
+    ecart = produit - facture
+    if ecart == 0:
+        return None
+
+    nature = (TravauxEnCours.Nature.WIP if ecart > 0
+              else TravauxEnCours.Nature.PCA)
+    return constater_regularisation(
+        company, nature=nature, montant=abs(ecart), date_arrete=date_arrete,
+        libelle=(f'{projet.code or projet.nom} — régularisation '
+                 f'{libelle_periode} (avancement vs facturé)')[:200],
+        chantier_ref=chantier_ref, poster=poster, user=user)
+
+
 # ── NTTRE37 — Import CSV des plafonds de pouvoirs bancaires (en masse) ─────
 
 #: Un plafond à 0 signifie « aucune signature autorisée à ce titre », donc un
