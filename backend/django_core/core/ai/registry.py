@@ -117,6 +117,57 @@ def is_capability_configured(capability: str) -> bool:
     return getattr(provider, 'key', 'noop') != 'noop'
 
 
+def capabilities_status(company=None) -> list:
+    """NTAI6 — État RÉEL de chaque capacité IA pour une société.
+
+    Pour chaque capacité : le fournisseur sélectionné, s'il est réellement
+    configuré, POURQUOI il ne l'est pas le cas échéant, et — quand le journal
+    d'usage a des lignes (NTAI1) — le nombre d'appels, la latence médiane et la
+    dernière erreur rapportée.
+
+    AUCUN SECRET n'est exposé : on renvoie la CLÉ du fournisseur (« groq »),
+    jamais sa clé d'API. Sans société ou sans mesure, les champs de mesure
+    valent ``None`` — « pas de mesure » et « zéro appel » ne se confondent
+    pas."""
+    from core.ai.usage import capability_metrics
+
+    mesures = capability_metrics(company) if company is not None else {}
+    etat = []
+    for capability in sorted(_CAPABILITY_BASE):
+        choisi = _selected_key(capability)
+        provider = get_provider(capability)
+        actif = getattr(provider, 'key', 'noop')
+        configure = actif != 'noop'
+        if configure:
+            motif = ''
+        elif getattr(provider, 'raison', '') == 'budget_epuise':
+            # Le fournisseur EST configuré : c'est le budget qui l'a mis en
+            # veille (NTAI2). Le dire, plutôt que « aucun fournisseur ».
+            motif = ('Budget IA du mois épuisé — génération suspendue '
+                     'jusqu\'au relèvement du plafond.')
+        elif choisi == 'noop':
+            motif = 'Aucun fournisseur sélectionné pour cette capacité.'
+        elif choisi not in _REGISTRY.get(capability, {}):
+            motif = f'Fournisseur « {choisi} » inconnu du registre.'
+        else:
+            motif = (f'Fournisseur « {choisi} » sélectionné mais non '
+                     'configuré (clé absente).')
+        mesure = mesures.get(capability) or {}
+        etat.append({
+            'capacite': capability,
+            'fournisseur_choisi': choisi,
+            'fournisseur_actif': actif,
+            'label': getattr(provider, 'label', ''),
+            'configure': configure,
+            'motif': motif,
+            'appels': mesure.get('appels'),
+            'latence_p50_ms': mesure.get('latence_p50_ms'),
+            'derniere_erreur': mesure.get('derniere_erreur'),
+            'derniere_erreur_le': mesure.get('derniere_erreur_le'),
+        })
+    return etat
+
+
 def available_providers(capability: str | None = None) -> dict:
     """Liste les clés enregistrées (toutes capacités, ou une seule)."""
     if capability is not None:

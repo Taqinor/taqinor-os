@@ -8,7 +8,7 @@ Administrateur/Directeur.
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from .views import UsageView
+from .views import CapabilitiesView, UsageView
 from .viewsets import LlmBudgetViewSet, PromptTemplateViewSet
 
 # SimpleRouter (et non DefaultRouter) : ce préfixe ne doit pas gagner une vue
@@ -23,5 +23,8 @@ router.register(r'prompt-templates', PromptTemplateViewSet,
 urlpatterns = [
     # NTAI1 — agrégats d'usage & coût IA (par jour / feature / fournisseur).
     path('usage/', UsageView.as_view(), name='ai-governance-usage'),
+    # NTAI6 — état réel de chaque capacité IA (aucun secret exposé).
+    path('capabilities/', CapabilitiesView.as_view(),
+         name='ai-governance-capabilities'),
     path('', include(router.urls)),
 ]

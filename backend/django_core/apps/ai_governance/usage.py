@@ -176,6 +176,61 @@ def fenetre_par_defaut():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# NTAI6 — Métriques par capacité (santé des capacités IA)
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Nombre d'appels récents examinés pour la latence médiane (borne le coût de
+#: la lecture : une société active accumule vite des dizaines de milliers de
+#: lignes, et la médiane d'un échantillon récent dit mieux « comment ça va
+#: MAINTENANT » qu'une médiane historique).
+LATENCE_ECHANTILLON = 200
+
+
+def _mediane(valeurs) -> int | None:
+    valeurs = sorted(v for v in valeurs if v is not None)
+    if not valeurs:
+        return None
+    milieu = len(valeurs) // 2
+    if len(valeurs) % 2:
+        return int(valeurs[milieu])
+    return int((valeurs[milieu - 1] + valeurs[milieu]) / 2)
+
+
+def metriques_capacites(company) -> dict:
+    """``{capacité: {appels, latence_p50_ms, derniere_erreur, ...}}``.
+
+    Calculateur enregistré auprès de ``core.ai.usage.capability_metrics``.
+    Une capacité JAMAIS appelée est absente du dict : l'écran affiche « aucune
+    mesure » au lieu d'un zéro qui se lirait comme « tout va bien »."""
+    from .models import LlmUsageRecord
+
+    mesures = {}
+    base = LlmUsageRecord.objects.filter(company=company)
+    for capability in base.values_list('capability', flat=True).distinct():
+        lignes = base.filter(capability=capability)
+        latences = list(
+            lignes.filter(success=True)
+            .order_by('-created_at')
+            .values_list('latency_ms', flat=True)[:LATENCE_ECHANTILLON])
+        echec = lignes.filter(success=False).order_by('-created_at').first()
+        mesures[capability] = {
+            'appels': lignes.count(),
+            'latence_p50_ms': _mediane(latences),
+            'derniere_erreur': (echec.message or '') if echec else '',
+            'derniere_erreur_le': (echec.created_at.isoformat()
+                                   if echec else None),
+        }
+    return mesures
+
+
+def connect_stats_provider():
+    """Branche le calculateur de métriques sur la fondation (``apps.py``)."""
+    from core.ai.usage import register_usage_stats_provider
+
+    register_usage_stats_provider(metriques_capacites)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # NTAI2 — Budget mensuel + coupe-circuit
 # ─────────────────────────────────────────────────────────────────────────────
 

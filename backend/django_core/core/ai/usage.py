@@ -270,6 +270,35 @@ class BudgetStatus:
         }
 
 
+_STATS_PROVIDER = None
+
+
+def register_usage_stats_provider(fn):
+    """Enregistre le calculateur de métriques ``fn(company) -> dict``.
+
+    Utilisé par NTAI6 (tableau de santé des capacités) : ``core`` ne sait pas
+    lire le journal, il demande à l'app qui le détient."""
+    global _STATS_PROVIDER
+    _STATS_PROVIDER = fn
+    return fn
+
+
+def capability_metrics(company) -> dict:
+    """``{capacité: {appels, latence_p50_ms, derniere_erreur, derniere_erreur_le}}``.
+
+    Dict VIDE si aucun calculateur n'est enregistré ou si la société est
+    inconnue : l'écran affiche alors « aucune mesure », jamais un zéro
+    trompeur."""
+    if _STATS_PROVIDER is None or company is None:
+        return {}
+    try:
+        mesures = _STATS_PROVIDER(company)
+    except Exception:  # noqa: BLE001 — l'état des capacités ne casse jamais
+        logger.warning('core.ai.usage: métriques indisponibles', exc_info=True)
+        return {}
+    return mesures if isinstance(mesures, dict) else {}
+
+
 _BUDGET_PROVIDER = None
 
 

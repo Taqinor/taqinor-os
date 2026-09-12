@@ -17,7 +17,8 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
-from .serializers import (RechercheGlobaleRequeteSerializer,
+from .serializers import (CapacitesRequeteSerializer,
+                          RechercheGlobaleRequeteSerializer,
                           UsageRequeteSerializer)
 from .services import AiCopiloteUnavailable
 
@@ -114,6 +115,44 @@ class UsageView(GenericAPIView):
         return Response(agreger_usage(
             request.user.company, since=depuis,
             feature=request.query_params.get('feature') or ''))
+
+
+class CapabilitiesView(GenericAPIView):
+    """NTAI6 — ``GET /api/django/ai-governance/capabilities/``.
+
+    Pour chaque capacité IA (ocr/stt/vision_qa/llm) : le fournisseur
+    sélectionné, s'il est ACTIF, pourquoi il ne l'est pas, et ses mesures
+    (appels, latence médiane, dernière erreur) issues du journal NTAI1.
+
+    AUCUNE CLÉ N'EST EXPOSÉE : on renvoie le NOM du fournisseur, jamais son
+    secret. La lecture se fait dans le contexte de la société de l'appelant,
+    pour que l'état affiché soit celui qu'il obtiendrait réellement (budget
+    épuisé compris).
+    """
+
+    permission_classes = [IsAuthenticated, IsAdminOrResponsableTier]
+    serializer_class = CapacitesRequeteSerializer
+
+    @extend_schema(responses=inline_serializer('AiCapacitesEtat', {
+        'capacite': drf_serializers.CharField(),
+        'fournisseur_choisi': drf_serializers.CharField(),
+        'fournisseur_actif': drf_serializers.CharField(),
+        'label': drf_serializers.CharField(),
+        'configure': drf_serializers.BooleanField(),
+        'motif': drf_serializers.CharField(),
+        'appels': drf_serializers.IntegerField(allow_null=True),
+        'latence_p50_ms': drf_serializers.IntegerField(allow_null=True),
+        'derniere_erreur': drf_serializers.CharField(allow_blank=True),
+        'derniere_erreur_le': drf_serializers.CharField(allow_null=True),
+    }, many=True))
+    def get(self, request):
+        from core.ai.registry import capabilities_status
+        from core.ai.usage import usage_context
+
+        company = request.user.company
+        with usage_context(company_id=getattr(company, 'id', None),
+                           feature_key='ai.capabilities'):
+            return Response(capabilities_status(company))
 
 
 class DescriptionProduitView(UsageContexteMixin, APIView):

@@ -48,6 +48,11 @@ class AiGovernanceConfig(AppConfig):
         from .usage import connect_budget_provider
         connect_budget_provider()
 
+        # NTAI6 — métriques par capacité (latence, dernière erreur) pour le
+        # tableau de santé IA des Paramètres.
+        from .usage import connect_stats_provider
+        connect_stats_provider()
+
         # NTAI5 — déclare les défauts CODE des prompts puis branche le
         # résolveur de surcharges société. Sans surcharge enregistrée, chaque
         # copilote obtient exactement le prompt qu'il avait avant NTAI5.

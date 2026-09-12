@@ -139,6 +139,15 @@ class UsageRequeteSerializer(serializers.Serializer):
     feature = serializers.CharField(required=False, allow_blank=True)
 
 
+class CapacitesRequeteSerializer(serializers.Serializer):
+    """NTAI6 — requête (vide) de ``GET ai-governance/capabilities/``.
+
+    Déclaré pour que la vue soit une ``GenericAPIView`` à forme résolvable :
+    sans lui, drf-spectacular tombe en « unable to guess serializer » et la vue
+    ajouterait de la dette au cliquet R2 (`check_openapi_shapes`).
+    """
+
+
 class RechercheGlobaleRequeteSerializer(serializers.Serializer):
     """NTAI25 — corps de ``POST /api/django/ai/recherche-globale/``.
 
