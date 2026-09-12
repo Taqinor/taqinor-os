@@ -470,3 +470,34 @@ def creer_risque(company, **champs):
 
     return create_with_reference(
         RisqueEntreprise, RisqueEntreprise.REFERENCE_PREFIX, company, _save)
+
+
+# ── NTGRC15 — revues périodiques du risque ──────────────────────────────────
+
+def enregistrer_revue(company, risque, **champs):
+    """Enregistre une ``RevueRisque`` et AVANCE la cadence sur le risque.
+
+    La prochaine date de revue est poussée sur ``RisqueEntreprise`` par CE
+    service, jamais par l'appelant : la cadence vit à un seul endroit, sinon
+    la date du risque et celle de sa dernière revue finissent par diverger.
+    Une décision « clos » clôt aussi le risque — c'est ce que le mot veut
+    dire ; laisser un risque « ouvert » après l'avoir déclaré clos en revue
+    est exactement le genre d'écart qu'un auditeur relève.
+    """
+    from django.db import transaction
+
+    from .models import RevueRisque, RisqueEntreprise
+
+    with transaction.atomic():
+        revue = RevueRisque.objects.create(
+            company=company, risque=risque, **champs)
+        champs_maj = []
+        if revue.prochaine_revue:
+            risque.date_revue_prevue = revue.prochaine_revue
+            champs_maj.append('date_revue_prevue')
+        if revue.decision == RevueRisque.DECISION_CLOS:
+            risque.statut = RisqueEntreprise.STATUT_CLOS
+            champs_maj.append('statut')
+        if champs_maj:
+            risque.save(update_fields=champs_maj + ['updated_at'])
+    return revue

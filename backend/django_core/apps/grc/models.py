@@ -591,3 +591,51 @@ class PlanTraitementRisque(TenantModel):
 
     def __str__(self):
         return f'{self.action} ({self.get_statut_display()})'
+
+
+class RevueRisque(TenantModel):
+    """NTGRC15 — revue périodique d'un risque (cadence + journal).
+
+    Un registre des risques qu'on ne relit jamais devient une archive. Chaque
+    revue est une ligne IMMUABLE de journal : elle dit qui a regardé, quand,
+    ce qui a été décidé, et quand on regarde de nouveau. La date de prochaine
+    revue est POUSSÉE sur le risque par le service — sinon la cadence vivrait
+    dans deux endroits qui divergeraient.
+    """
+
+    DECISION_MAINTENU = 'maintenu'
+    DECISION_RECLASSE = 'reclasse'
+    DECISION_CLOS = 'clos'
+    DECISION_CHOICES = [
+        (DECISION_MAINTENU, 'Maintenu en l\'état'),
+        (DECISION_RECLASSE, 'Reclassé (cotation revue)'),
+        (DECISION_CLOS, 'Clos'),
+    ]
+
+    risque = models.ForeignKey(
+        RisqueEntreprise,
+        # on_delete: une revue n'existe que pour SON risque (journal).
+        on_delete=models.CASCADE,
+        related_name='revues', verbose_name='Risque')
+    date_revue = models.DateField('Date de la revue')
+    revu_par = models.CharField(
+        'Revu par', max_length=160, blank=True, default='')
+    decision = models.CharField(
+        'Décision', max_length=10, choices=DECISION_CHOICES,
+        default=DECISION_MAINTENU)
+    commentaire = models.TextField('Commentaire', blank=True, default='')
+    prochaine_revue = models.DateField(
+        'Prochaine revue', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Revue de risque'
+        verbose_name_plural = 'Revues de risque'
+        ordering = ['-date_revue', '-id']
+        indexes = [
+            models.Index(fields=['company', 'date_revue'],
+                         name='grc_revue_co_date_idx'),
+        ]
+
+    def __str__(self):
+        return (f'Revue {self.date_revue:%d/%m/%Y} — '
+                f'{self.get_decision_display()}')

@@ -12,12 +12,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     JournalDestruction, LegalHold, PlanTraitementRisque,
-    PolitiqueRetentionObjet, RisqueEntreprise, ViolationDonnees,
+    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, ViolationDonnees,
 )
 from .serializers import (
     JournalDestructionSerializer, LegalHoldSerializer,
     PlanTraitementRisqueSerializer, PolitiqueRetentionObjetSerializer,
-    RisqueEntrepriseSerializer, ViolationDonneesSerializer,
+    RevueRisqueSerializer, RisqueEntrepriseSerializer,
+    ViolationDonneesSerializer,
 )
 
 
@@ -240,3 +241,40 @@ class PlanTraitementRisqueViewSet(CompanyScopedModelViewSet):
 
         qs = plans_en_retard(request.user.company)
         return Response({'results': self.get_serializer(qs, many=True).data})
+
+
+class RevueRisqueViewSet(CompanyScopedModelViewSet):
+    """NTGRC15 — revues périodiques du risque (journal + cadence).
+
+    Créer une revue AVANCE la prochaine date de revue sur le risque, via le
+    service : la cadence vit à un seul endroit.
+    """
+
+    queryset = RevueRisque.objects.select_related('risque').all()
+    serializer_class = RevueRisqueSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    # Une revue est une ligne de JOURNAL : on en ajoute une, on ne réécrit pas
+    # l'histoire d'une revue déjà tenue.
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def perform_create(self, serializer):
+        from .services import enregistrer_revue
+
+        champs = dict(serializer.validated_data)
+        champs.pop('company', None)
+        risque = champs.pop('risque')
+        serializer.instance = enregistrer_revue(
+            self.request.user.company, risque, **champs)
+
+    @action(detail=False, methods=['get'], url_path='risques-a-revoir')
+    def risques_a_revoir(self, request):
+        """Risques dont la revue est due (``?within=<jours>``)."""
+        from .selectors import risques_a_revoir as _dus
+
+        try:
+            within = int(request.query_params.get('within') or 0)
+        except (TypeError, ValueError):
+            within = 0
+        qs = _dus(request.user.company, within=within)
+        return Response({
+            'results': RisqueEntrepriseSerializer(qs, many=True).data})

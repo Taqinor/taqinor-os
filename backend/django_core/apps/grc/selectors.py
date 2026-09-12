@@ -183,6 +183,27 @@ def matrice_risques(company, residuelle=False):
     return {'cases': cases, 'total': sum(c['nombre'] for c in cases)}
 
 
+def risques_a_revoir(company, within=0, aujourdhui=None):
+    """NTGRC15 — risques dont la revue est due (ou le sera sous ``within`` j).
+
+    ``date_revue_prevue`` vide = aucune cadence posée : le risque n'est pas
+    « en retard de revue », il n'a simplement jamais eu de rendez-vous — on ne
+    le fait pas remonter pour éviter de noyer les vraies échéances. Les
+    risques CLOS sont exclus.
+    """
+    from django.utils import timezone
+
+    from .models import RisqueEntreprise
+
+    jour = aujourdhui or timezone.now().date()
+    limite = jour + timezone.timedelta(days=max(0, int(within or 0)))
+    return (RisqueEntreprise.objects
+            .filter(company=company, date_revue_prevue__isnull=False,
+                    date_revue_prevue__lte=limite)
+            .exclude(statut=RisqueEntreprise.STATUT_CLOS)
+            .order_by('date_revue_prevue', 'id'))
+
+
 def plans_en_retard(company, aujourdhui=None):
     """NTGRC14 — plans de traitement dont l'échéance est passée et non faits.
 

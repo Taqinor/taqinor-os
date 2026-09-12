@@ -12,7 +12,7 @@ from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
     JournalDestructionViewSet, LegalHoldViewSet,
     PlanTraitementRisqueViewSet, PolitiqueRetentionObjetViewSet,
-    RisqueEntrepriseViewSet, ViolationDonneesViewSet,
+    RevueRisqueViewSet, RisqueEntrepriseViewSet, ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -34,6 +34,9 @@ router.register(r'risques-entreprise', RisqueEntrepriseViewSet,
 # NTGRC14 — plans de traitement du risque + suivi des retards.
 router.register(r'plans-traitement-risque', PlanTraitementRisqueViewSet,
                 basename='grc-plan-traitement-risque')
+# NTGRC15 — revues périodiques du risque (journal + cadence).
+router.register(r'revues-risque', RevueRisqueViewSet,
+                basename='grc-revue-risque')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

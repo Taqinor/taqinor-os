@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     JournalDestruction, LegalHold, PlanTraitementRisque,
-    PolitiqueRetentionObjet, RisqueEntreprise, ViolationDonnees,
+    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, ViolationDonnees,
 )
 
 
@@ -255,3 +255,41 @@ class PlanTraitementRisqueSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "L'avancement doit valoir entre 0 et 100 %.")
         return valeur
+
+
+class RevueRisqueSerializer(serializers.ModelSerializer):
+    """NTGRC15 — revue périodique d'un risque (journal + cadence)."""
+
+    decision_libelle = serializers.CharField(
+        source='get_decision_display', read_only=True)
+    risque_reference = serializers.CharField(
+        source='risque.reference', read_only=True)
+
+    class Meta:
+        model = RevueRisque
+        fields = [
+            'id', 'risque', 'risque_reference', 'date_revue', 'revu_par',
+            'decision', 'decision_libelle', 'commentaire', 'prochaine_revue',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if company is not None and 'risque' in fields:
+            fields['risque'].queryset = RisqueEntreprise.objects.filter(
+                company=company)
+        return fields
+
+    def validate(self, attrs):
+        revue = attrs.get('date_revue',
+                          getattr(self.instance, 'date_revue', None))
+        prochaine = attrs.get(
+            'prochaine_revue', getattr(self.instance, 'prochaine_revue', None))
+        if revue and prochaine and prochaine <= revue:
+            raise serializers.ValidationError({
+                'prochaine_revue': 'La prochaine revue doit être postérieure '
+                                   'à celle qu\'on enregistre.'})
+        return attrs
