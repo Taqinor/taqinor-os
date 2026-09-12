@@ -152,6 +152,76 @@ def tableau_bord_juridique(company, user=None):
     }
 
 
+# ── NTJUR48 — KPI juridiques (consommés en LECTURE par ``reporting``) ───────
+
+
+def kpis_juridiques(company, user=None, debut=None, fin=None):
+    """Les quatre KPI juridiques de la société (NTJUR48).
+
+    * ``juridique_dossiers_ouverts``      — dossiers NON clos ;
+    * ``juridique_montant_en_jeu_total``  — Σ des montants en jeu des dossiers
+      non clos ;
+    * ``juridique_taux_gain``             — dossiers ``clos_gagne`` / total des
+      dossiers clos sur la période, en % ; ``None`` si aucun dossier clos (un
+      0 % serait un mensonge, pas une absence) ;
+    * ``juridique_delai_moyen_resolution`` — moyenne des jours entre
+      ``date_ouverture`` et la clôture ; ``None`` si aucun dossier clos.
+
+    ``user`` applique le filtrage de CONFIDENTIALITÉ à l'agrégat : un rôle non
+    autorisé obtient des KPI qui EXCLUENT les dossiers confidentiels — jamais
+    de fuite par moyenne ni par compteur (cohérent avec NTJUR24).
+    ``debut``/``fin`` (dates) bornent la période de CLÔTURE pour le taux de
+    gain et le délai moyen.
+    """
+    from decimal import Decimal
+
+    from .models import DossierJuridique
+
+    qs = dossiers_visibles(company, user=user)
+    clos_valeurs = {str(s) for s in DossierJuridique.STATUTS_CLOS}
+    ouverts = [d for d in qs if d.statut not in clos_valeurs]
+    clos = [d for d in qs if d.statut in clos_valeurs]
+    if debut or fin:
+        bornes = []
+        for dossier in clos:
+            jour = dossier.updated_at.date() if dossier.updated_at else None
+            if jour is None:
+                continue
+            if debut and jour < debut:
+                continue
+            if fin and jour > fin:
+                continue
+            bornes.append(dossier)
+        clos = bornes
+
+    montant_total = sum(
+        (d.montant_en_jeu or Decimal('0') for d in ouverts), Decimal('0'))
+
+    taux_gain = None
+    if clos:
+        gagnes = sum(
+            1 for d in clos
+            if d.statut == DossierJuridique.Statut.CLOS_GAGNE)
+        taux_gain = round(gagnes * 100.0 / len(clos), 2)
+
+    delai_moyen = None
+    delais = [
+        (d.updated_at.date() - d.date_ouverture).days
+        for d in clos
+        if d.updated_at and d.date_ouverture
+    ]
+    if delais:
+        delai_moyen = round(sum(delais) / len(delais), 2)
+
+    return {
+        'juridique_dossiers_ouverts': len(ouverts),
+        'juridique_montant_en_jeu_total': montant_total.quantize(
+            Decimal('0.01')),
+        'juridique_taux_gain': taux_gain,
+        'juridique_delai_moyen_resolution': delai_moyen,
+    }
+
+
 # ── NTJUR20 — timeline unifiée du dossier ───────────────────────────────────
 
 

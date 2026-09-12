@@ -22,6 +22,14 @@ Catalogue fermé (``KpiAlerte.Kpi``) :
   * ``taux_service_scm`` (NTSCM46) — % de SKU sous politique de stock qui ne
                                 sont pas en rupture/à commander
                                 (``apps.scm.selectors.tableau_bord_executif``).
+  * ``juridique_dossiers_ouverts`` / ``juridique_montant_en_jeu_total`` /
+    ``juridique_taux_gain`` / ``juridique_delai_moyen_resolution`` (NTJUR48)
+                              — les quatre KPI du contentieux
+                                (``apps.juridique.selectors.kpis_juridiques``).
+                                Ils EXCLUENT toujours les dossiers
+                                confidentiels des agrégats visibles à un rôle
+                                non autorisé — le filtrage vit dans le
+                                sélecteur, jamais chez l'appelant.
 """
 from decimal import Decimal
 
@@ -120,6 +128,25 @@ def _compute_taux_service_scm(company):
     return Decimal(str(taux)) if taux is not None else None
 
 
+def _kpis_juridiques(company, user):
+    """NTJUR48 — les quatre KPI juridiques en UN seul appel au sélecteur de
+    ``apps.juridique`` (import paresseux — ``reporting`` reste un satellite,
+    aucun import de modèle métier). Le filtrage de CONFIDENTIALITÉ est porté
+    par le sélecteur : ``user`` décide, l'appelant n'a rien à deviner."""
+    from apps.juridique.selectors import kpis_juridiques
+    return kpis_juridiques(company, user=user)
+
+
+def _compute_juridique(company, user, cle):
+    """Extrait UNE des quatre valeurs. ``None`` (KPI ignoré, jamais un 0
+    trompeur) quand la métrique n'est pas définie — aucun dossier clos, par
+    exemple."""
+    valeur = _kpis_juridiques(company, user).get(cle)
+    if valeur is None:
+        return None
+    return Decimal(str(valeur))
+
+
 # SOL14 — module PROPRIÉTAIRE d'un KPI, quand il en a un. Un KPI dont le
 # module est éteint pour la société DÉGRADE PROPREMENT : valeur `None`, donc
 # aucun franchissement, aucune notification, et la tuile disparaît de l'écran
@@ -129,6 +156,12 @@ def _compute_taux_service_scm(company):
 KPI_MODULE = {
     KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT: 'douane',
     KpiAlerte.Kpi.TAUX_SERVICE_SCM: 'scm',
+    # NTJUR48 — module `juridique` éteint pour la société ⇒ dégradation propre
+    # (valeur None, aucune notification, tuile masquée).
+    KpiAlerte.Kpi.JURIDIQUE_DOSSIERS_OUVERTS: 'juridique',
+    KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: 'juridique',
+    KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: 'juridique',
+    KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: 'juridique',
 }
 
 
@@ -162,6 +195,17 @@ _KPI_COMPUTERS = {
         _compute_delai_moyen_dedouanement(company),
     KpiAlerte.Kpi.TAUX_SERVICE_SCM: lambda company, user:
         _compute_taux_service_scm(company),
+    # NTJUR48 — les quatre KPI juridiques passent le ``user`` au sélecteur :
+    # c'est LUI qui exclut les dossiers confidentiels de l'agrégat.
+    KpiAlerte.Kpi.JURIDIQUE_DOSSIERS_OUVERTS: lambda company, user:
+        _compute_juridique(company, user, 'juridique_dossiers_ouverts'),
+    KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: lambda company, user:
+        _compute_juridique(company, user, 'juridique_montant_en_jeu_total'),
+    KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: lambda company, user:
+        _compute_juridique(company, user, 'juridique_taux_gain'),
+    KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: lambda company, user:
+        _compute_juridique(company, user,
+                           'juridique_delai_moyen_resolution'),
 }
 
 
