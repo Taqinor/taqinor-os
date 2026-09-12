@@ -4104,6 +4104,10 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
         ordre.statut = OrdreVirement.STATUT_BROUILLON
         if date_execution is not None:
             ordre.date_execution = date_execution
+        elif ordre.date_execution is None:
+            # NTPAY23 — pré-remplissage depuis le réglage société (``None``
+            # tant qu'aucun jour n'est posé : comportement historique).
+            ordre.date_execution = date_execution_par_defaut(periode)
         if compte is not None:
             # Source unique : le compte de trésorerie pilote RIB + devise.
             ordre.compte_emetteur = compte
@@ -4188,6 +4192,10 @@ def _resoudre_compte_emetteur(company, compte_emetteur):
     (id inconnu / autre société = ignoré silencieusement, le repli texte
     s'applique).
     """
+    if compte_emetteur is None:
+        # NTPAY23 — repli sur le compte ÉMETTEUR réglé pour la société
+        # (``None`` tant qu'aucun n'est câblé : comportement historique).
+        compte_emetteur = parametrage_paie(company).compte_emetteur
     if compte_emetteur is None:
         return None
     # Instance déjà résolue : on vérifie seulement l'appartenance société.
@@ -5297,8 +5305,14 @@ def controle_ecarts(periode, *, seuil_pct=None):
     """
     from .models import BulletinPaie, ElementVariable
 
-    seuil = Decimal(seuil_pct) if seuil_pct is not None \
-        else SEUIL_ECART_NET_DEFAUT
+    if seuil_pct is not None:
+        seuil = Decimal(seuil_pct)
+    else:
+        # NTPAY23 — seuil de la société quand elle en a posé un ; sinon le
+        # défaut du moteur (jamais un seuil réinventé ici).
+        reglage = parametrage_paie(periode.company).seuil_ecart_net_pct
+        seuil = Decimal(reglage) if reglage is not None \
+            else SEUIL_ECART_NET_DEFAUT
 
     precedente = _periode_precedente(periode)
 
@@ -6373,6 +6387,40 @@ def etat_charges(periode):
         'total_patronal': total_patronal,
         'total_general': _q(total_salarial + total_patronal),
     }
+
+
+# ── NTPAY23 — Réglages globaux du module paie, par société ─────────────────
+
+def parametrage_paie(company):
+    """Réglages paie de la société (NTPAY23) — JAMAIS créés à la lecture.
+
+    Renvoie le ``ParametragePaieCompany`` de la société s'il existe, sinon une
+    instance NON SAUVEGARDÉE portant les défauts du modèle. Lire les réglages
+    ne doit rien écrire en base : une société qui n'a jamais rien réglé se
+    comporte EXACTEMENT comme avant NTPAY23.
+    """
+    from .models import ParametragePaieCompany
+
+    return (
+        ParametragePaieCompany.objects.filter(company=company).first()
+        or ParametragePaieCompany(company=company)
+    )
+
+
+def date_execution_par_defaut(periode):
+    """Date d'exécution pré-remplie du prochain ordre de virement (NTPAY23).
+
+    ``None`` tant que la société n'a pas posé son ``jour_virement_defaut`` —
+    aucun jour n'est inventé. Le jour est RABATTU sur le dernier jour du mois
+    quand il le dépasse (un « 31 » en février donne le 28/29).
+    """
+    from calendar import monthrange
+
+    jour = parametrage_paie(periode.company).jour_virement_defaut
+    if not jour:
+        return None
+    dernier = monthrange(periode.annee, periode.mois)[1]
+    return date(periode.annee, periode.mois, min(int(jour), dernier))
 
 
 # ── NTPAY22 — Checklist de clôture d'une période (wizard guidé) ────────────

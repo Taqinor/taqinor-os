@@ -43,6 +43,7 @@ export default function PaieParametres() {
           <TabsTrigger value="profils">Profils</TabsTrigger>
           <TabsTrigger value="mutuelle">Mutuelle</TabsTrigger>
           <TabsTrigger value="simulateur">Simulateur net/brut</TabsTrigger>
+          <TabsTrigger value="module">Réglages du module</TabsTrigger>
         </TabsList>
         <TabsContent value="parametres"><ParametresTab /></TabsContent>
         <TabsContent value="bareme"><BaremeTab /></TabsContent>
@@ -51,6 +52,8 @@ export default function PaieParametres() {
         <TabsContent value="profils"><ProfilsTab /></TabsContent>
         <TabsContent value="mutuelle"><MutuelleTab /></TabsContent>
         <TabsContent value="simulateur"><SimulateurTab /></TabsContent>
+        {/* NTPAY23 — réglages globaux du module paie, par société. */}
+        <TabsContent value="module"><ReglagesModuleTab /></TabsContent>
       </Tabs>
     </div>
   )
@@ -261,6 +264,109 @@ function ParametreDialog({ parametre, onClose, onSaved }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/* ── NTPAY23 — réglages globaux du module paie (un enregistrement/société).
+   « Non réglé » est une valeur de premier ordre : un champ laissé vide reste
+   NULL côté serveur et le comportement historique s'applique — on n'écrit
+   jamais un défaut plausible à la place du fondateur. ── */
+function ReglagesModuleTab() {
+  const [reglages, setReglages] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  const load = () =>
+    paieApi.getParametragePaie()
+      .then((r) => setReglages(r.data))
+      .catch(() => toast.error('Chargement des réglages paie impossible.'))
+      .finally(() => setLoading(false))
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    load()
+  }, [])
+
+  const champ = (cle) => (e) => setReglages(
+    (r) => ({ ...r, [cle]: e.target.value }))
+
+  const enregistrer = async (e) => {
+    e.preventDefault()
+    setErreur(null)
+    setSaving(true)
+    const corps = {
+      jour_virement_defaut: reglages.jour_virement_defaut || null,
+      gabarit_telepaiement_cnss: reglages.gabarit_telepaiement_cnss || '',
+      devise_defaut: reglages.devise_defaut || 'MAD',
+      seuil_ecart_net_pct: reglages.seuil_ecart_net_pct || null,
+      rappel_retroactif_automatique:
+        Boolean(reglages.rappel_retroactif_automatique),
+    }
+    try {
+      const { data } = await paieApi.saveParametragePaie(reglages.id, corps)
+      setReglages(data)
+      toast.success('Réglages du module paie enregistrés.')
+    } catch (e2) {
+      const payload = e2?.response?.data
+      setErreur(
+        payload?.jour_virement_defaut?.[0]
+        || payload?.devise_defaut?.[0]
+        || payload?.detail
+        || 'Enregistrement impossible.',
+      )
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <Card className="p-4"><Loading /></Card>
+  if (!reglages) return null
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <form onSubmit={enregistrer} className="flex max-w-xl flex-col gap-4"
+        noValidate>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="rg-jour">Jour de virement par défaut</Label>
+          <Input id="rg-jour" type="number" step="any"
+            value={reglages.jour_virement_defaut ?? ''}
+            onChange={champ('jour_virement_defaut')}
+            placeholder="vide = aucune date pré-remplie" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="rg-gabarit">Gabarit de télépaiement CNSS actif</Label>
+          <Input id="rg-gabarit"
+            value={reglages.gabarit_telepaiement_cnss ?? ''}
+            onChange={champ('gabarit_telepaiement_cnss')}
+            placeholder="vide = gabarit standard" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="rg-devise">Devise par défaut</Label>
+          <Input id="rg-devise" value={reglages.devise_defaut ?? 'MAD'}
+            onChange={champ('devise_defaut')} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="rg-seuil">Seuil d’alerte écart de net (%)</Label>
+          <Input id="rg-seuil" type="number" step="any"
+            value={reglages.seuil_ecart_net_pct ?? ''}
+            onChange={champ('seuil_ecart_net_pct')}
+            placeholder="vide = seuil standard du moteur" />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={Boolean(reglages.rappel_retroactif_automatique)}
+            onCheckedChange={(v) => setReglages(
+              (r) => ({ ...r, rappel_retroactif_automatique: Boolean(v) }))} />
+          Déclencher automatiquement le rappel rétroactif à la publication
+        </label>
+        {erreur && (
+          <p className="text-sm text-destructive" role="alert">{erreur}</p>
+        )}
+        <div>
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </Button>
+        </div>
+      </form>
+    </Card>
   )
 }
 

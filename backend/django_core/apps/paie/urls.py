@@ -12,6 +12,7 @@ from .views import (
     ElementVariableViewSet,
     LigneVirementViewSet,
     OrdreVirementViewSet,
+    ParametragePaieCompanyViewSet,
     ParametrePaieViewSet,
     PaysPaieViewSet,
     PeriodePaieViewSet,
@@ -48,6 +49,8 @@ router.register(r'echeances-declaratives', EcheanceDeclarativeViewSet)
 router.register(r'pays-paie', PaysPaieViewSet)
 # NTPAY3 — plan comptable paie (schéma de ventilation éditable).
 router.register(r'schemas-comptables-paie', SchemaComptablePaieViewSet)
+# NTPAY23 — réglages globaux du module paie, par société (un seul).
+router.register(r'parametrage', ParametragePaieCompanyViewSet)
 router.register(r'mes-bulletins', CoffreFortBulletinViewSet,
                 basename='coffrefort-bulletin')
 

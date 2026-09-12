@@ -39,6 +39,7 @@ from .models import (
     ElementVariable,
     LigneVirement,
     OrdreVirement,
+    ParametragePaieCompany,
     ParametrePaie,
     PaysPaie,
     PeriodePaie,
@@ -66,6 +67,7 @@ from .serializers import (
     PaysPaieSerializer,
     PeriodePaieSerializer,
     OrdreVirementSerializer,
+    ParametragePaieCompanySerializer,
     ProfilPaieSerializer,
     RegimeMutuelleSerializer,
     RubriqueEmployeSerializer,
@@ -141,6 +143,7 @@ from .services import (
     marquer_bulletin_paye,
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
+    parametrage_paie,
     parametre_en_vigueur,
     payer_ordre_virement,
     payer_organismes,
@@ -552,6 +555,37 @@ class PaysPaieViewSet(_PaieBaseViewSet):
         """Provisionne le pays de paie MAROC (idempotent)."""
         created = ensure_pays_paie_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
+
+
+class ParametragePaieCompanyViewSet(_PaieBaseViewSet):
+    """Réglages du module paie de la société (NTPAY23) — UN enregistrement.
+
+    CRUD company-scopé standard (``paie_voir`` lit, ``paie_gerer`` écrit) ; le
+    ``OneToOneField`` garantit en BASE qu'il n'y en a qu'un par société — une
+    seconde création rend un 400 explicite plutôt qu'une ``IntegrityError``.
+
+    ``GET courant/`` est le point d'entrée de l'écran : il rend les réglages
+    de la société, ou les DÉFAUTS (avec ``id: null``) tant que rien n'a été
+    réglé — une lecture n'écrit JAMAIS en base.
+    """
+    queryset = ParametragePaieCompany.objects.select_related(
+        'compte_emetteur').all()
+    serializer_class = ParametragePaieCompanySerializer
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        if ParametragePaieCompany.objects.filter(company=company).exists():
+            raise DRFValidationError({'detail': [
+                'Les réglages paie de cette société existent déjà : '
+                'modifiez-les au lieu d’en créer un second.']})
+        serializer.save(company=company)
+
+    @action(detail=False, methods=['get'], url_path='courant')
+    def courant(self, request):
+        """Réglages paie de la société, ou les défauts si rien n'est réglé."""
+        parametrage = parametrage_paie(request.user.company)
+        return Response(
+            self.get_serializer(parametrage).data, status=status.HTTP_200_OK)
 
 
 class SchemaComptablePaieViewSet(_PaieBaseViewSet):

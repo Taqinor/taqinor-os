@@ -22,6 +22,7 @@ from .models import (
     LigneBulletin,
     LigneVirement,
     OrdreVirement,
+    ParametragePaieCompany,
     ParametrePaie,
     PaysPaie,
     PeriodePaie,
@@ -880,3 +881,43 @@ class SchemaComptablePaieSerializer(serializers.ModelSerializer):
                             'cible.'],
                 })
         return attrs
+
+
+class ParametragePaieCompanySerializer(serializers.ModelSerializer):
+    """Réglages du module paie d'une société (NTPAY23), UN seul par société.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête) ;
+    l'unicité est garantie par le ``OneToOneField`` en base. Tous les réglages
+    numériques acceptent ``null`` : « non réglé » est une valeur de premier
+    ordre, qui laisse le comportement historique en place.
+    """
+    # SCA4 — le socle ``TenantModel`` expose ``created_at``/``updated_at`` ;
+    # l'API de la paie sert historiquement ``date_creation``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = ParametragePaieCompany
+        fields = [
+            'id', 'jour_virement_defaut', 'compte_emetteur',
+            'gabarit_telepaiement_cnss', 'devise_defaut',
+            'seuil_ecart_net_pct', 'rappel_retroactif_automatique',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_jour_virement_defaut(self, value):
+        if value is not None and not (1 <= int(value) <= 31):
+            raise serializers.ValidationError(
+                'Le jour de virement doit être compris entre 1 et 31.')
+        return value
+
+    def validate_devise_defaut(self, value):
+        code = (value or '').strip().upper()
+        if len(code) != 3 or not code.isalpha():
+            raise serializers.ValidationError(
+                'La devise doit être un code ISO de 3 lettres (ex. MAD).')
+        return code
+
+    def validate_compte_emetteur(self, value):
+        return _meme_societe(self, value, 'Compte émetteur')

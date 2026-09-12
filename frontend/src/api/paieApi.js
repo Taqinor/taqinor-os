@@ -28,6 +28,13 @@ const paieApi = {
     }),
   checklistCloture: (id) =>
     api.get(`/paie/periodes/${id}/checklist-cloture/`),
+  // NTPAY23 — réglages globaux du module paie (UN seul par société).
+  // `courant/` rend les défauts (id null) tant que rien n'a été réglé : une
+  // lecture n'écrit jamais en base.
+  getParametragePaie: () => api.get('/paie/parametrage/courant/'),
+  saveParametragePaie: (id, data) =>
+    id ? api.patch(`/paie/parametrage/${id}/`, data)
+      : api.post('/paie/parametrage/', data),
   importerElementsRh: (id) =>
     api.post(`/paie/periodes/${id}/importer-elements-rh/`),
   // Calcul (sans persister) du bulletin d'un profil : ?profil=&personnes_a_charge=

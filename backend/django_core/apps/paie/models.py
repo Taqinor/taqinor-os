@@ -2453,6 +2453,77 @@ class SchemaComptablePaie(TenantModel):
                 f'C{self.compte_credit or "—"}')
 
 
+# ── NTPAY23 — Réglages globaux du module paie, par société ─────────────────
+
+class ParametragePaieCompany(TenantModel):
+    """Réglages du module PAIE d'une société (NTPAY23) — UN seul par société.
+
+    Aucun modèle de configuration paie centralisé n'existait : le jour de
+    virement, le compte émetteur SIMT, le gabarit de télépaiement CNSS, la
+    devise par défaut, le seuil d'alerte d'écart M/M-1 et l'automatisation du
+    rappel rétroactif vivaient chacun dans un défaut codé en dur ou dans la
+    tête du gestionnaire.
+
+    ZÉRO CHIFFRE INVENTÉ : chaque réglage NUMÉRIQUE est NULLABLE et vaut
+    ``None`` tant que le fondateur ne l'a pas posé — le comportement reste
+    alors EXACTEMENT celui d'aujourd'hui (pas de date d'exécution pré-remplie,
+    seuil d'écart = ``services.SEUIL_ECART_NET_DEFAUT``). Le rappel
+    rétroactif automatique est à ``False`` par défaut : rien ne devient
+    automatique sans décision explicite.
+
+    ``company`` est redéclarée en ``OneToOneField`` (la docstring de
+    ``TenantModel`` sanctionne la redéclaration) : l'unicité « un seul
+    enregistrement par société » est ainsi garantie PAR LA BASE, jamais par
+    une convention applicative.
+    """
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``, dont
+    # la FK est ici resserrée en OneToOne.
+    company = models.OneToOneField(
+        'authentication.Company',
+        # on_delete: un réglage de module n'a aucun sens sans sa société —
+        # il disparaît avec elle (même règle que tout le reste de la paie).
+        on_delete=models.CASCADE,
+        related_name='paie_parametrage',
+        verbose_name='Société',
+    )
+    # Jour du mois pré-rempli comme date d'exécution du prochain ordre de
+    # virement. NULL = aucun pré-remplissage (comportement historique).
+    jour_virement_defaut = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Jour de virement par défaut')
+    # Compte bancaire ÉMETTEUR des virements SIMT — string-FK vers
+    # ``compta.CompteTresorerie`` (la paie n'importe jamais ``compta.models``).
+    compte_emetteur = models.ForeignKey(
+        'compta.CompteTresorerie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parametrages_paie',
+        verbose_name='Compte émetteur (trésorerie)',
+    )
+    # Clé du gabarit de télépaiement CNSS actif (NTPAY24). Vide = gabarit
+    # codé en dur, comportement actuel.
+    gabarit_telepaiement_cnss = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Gabarit de télépaiement CNSS actif')
+    devise_defaut = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise par défaut')
+    # Seuil d'alerte de variation de net M/M-1 (XPAI15). NULL = le défaut du
+    # moteur (``SEUIL_ECART_NET_DEFAUT``) — jamais un seuil réinventé ici.
+    seuil_ecart_net_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil d’alerte écart de net (%)')
+    rappel_retroactif_automatique = models.BooleanField(
+        default=False,
+        verbose_name='Rappel rétroactif automatique à la publication')
+
+    class Meta:
+        verbose_name = 'Paramétrage paie (société)'
+        verbose_name_plural = 'Paramétrages paie (sociétés)'
+
+    def __str__(self):
+        return f'Paramétrage paie — société #{self.company_id}'
+
+
 # ── NTPAY5 — Registre des dépôts déclaratifs & accusés (preuve) ────────────
 
 class DepotDeclaratif(TenantModel):
