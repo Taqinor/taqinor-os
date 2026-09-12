@@ -27,6 +27,8 @@ from .views import (
     KeyResultViewSet,
     ObjectifEntrepriseViewSet,
     OkrIndividuelViewSet,
+    PlanSuccessionViewSet,
+    PosteCleViewSet,
     PropositionRevisionViewSet,
     CompetenceEmployeViewSet,
     CompetenceRequiseViewSet,
@@ -189,6 +191,9 @@ router.register(r'okr-individuels', OkrIndividuelViewSet)
 router.register(r'key-results-individuels', KeyResultIndividuelViewSet)
 # NTHCM10 — grille 9-box (performance × potentiel).
 router.register(r'evaluations-neuf-box', EvaluationNeufBoxViewSet)
+# NTHCM12 — postes-clés & plans de succession.
+router.register(r'postes-cles', PosteCleViewSet)
+router.register(r'plans-succession', PlanSuccessionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

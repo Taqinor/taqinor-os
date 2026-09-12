@@ -62,6 +62,8 @@ from .models import (
     KeyResultIndividuel,
     ObjectifEntreprise,
     OkrIndividuel,
+    PlanSuccession,
+    PosteCle,
     PropositionRevision,
     DemandeAllocation,
     DemandeConge,
@@ -150,7 +152,10 @@ from .serializers import (
     KeyResultSerializer,
     ObjectifEntrepriseSerializer,
     OkrIndividuelSerializer,
+    PlanSuccessionSerializer,
+    PosteCleSerializer,
     PropositionRevisionSerializer,
+    ProposerRevisionSerializer,
     DemandeAllocationSerializer,
     DemandeCongeSerializer,
     DemandeRHSerializer,
@@ -6187,8 +6192,13 @@ class PropositionRevisionViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        # Sérialiseur d'ENTRÉE dédié (pas le ModelSerializer) : voir sa
+        # docstring — le validateur d'unicité (cycle, employe) refuserait une
+        # RE-proposition que le service traite en mise à jour.
+        entree = ProposerRevisionSerializer(
+            data=request.data, context=self.get_serializer_context())
+        entree.is_valid(raise_exception=True)
+        serializer = entree
         cycle = serializer.validated_data['cycle']
         employe = serializer.validated_data['employe']
         auteur_dossier = selectors.dossier_employe_for_user(
@@ -6334,3 +6344,53 @@ class EvaluationNeufBoxViewSet(_RhBaseViewSet):
             request.user.company,
             campagne_id=request.query_params.get('campagne'),
             departement_id=request.query_params.get('departement')))
+
+
+# ── NTHCM12 — plans de succession par poste-clé ─────────────────────────────
+
+class PosteCleViewSet(_RhBaseViewSet):
+    """NTHCM12 — postes marqués CLÉS par le RH (``?criticite=``).
+
+    Actions :
+    * ``GET postes-cles/{id}/couverture/`` — couverture d'UN poste-clé
+      (``orphelin=True`` quand aucun successeur n'est identifié) ;
+    * ``GET postes-cles/couverture/`` — la même chose pour TOUS les
+      postes-clés, orphelins en tête.
+    """
+    queryset = PosteCle.objects.select_related('poste').all()
+    serializer_class = PosteCleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['poste__intitule', 'justification']
+    ordering_fields = ['criticite']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        criticite = self.request.query_params.get('criticite')
+        if criticite:
+            qs = qs.filter(criticite=criticite)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='couverture')
+    def couverture(self, request, pk=None):
+        poste_cle = self.get_object()
+        return Response(selectors.couverture_poste_cle(
+            poste_cle.company, poste_cle.id))
+
+    @action(detail=False, methods=['get'], url_path='couverture')
+    def couverture_globale(self, request):
+        return Response(
+            selectors.couverture_postes_cles(request.user.company))
+
+
+class PlanSuccessionViewSet(_RhBaseViewSet):
+    """NTHCM12 — successeurs d'un poste-clé (``?poste_cle=``)."""
+    queryset = PlanSuccession.objects.select_related(
+        'poste_cle', 'successeur').all()
+    serializer_class = PlanSuccessionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        poste_cle = self.request.query_params.get('poste_cle')
+        if poste_cle:
+            qs = qs.filter(poste_cle_id=poste_cle)
+        return qs

@@ -6835,3 +6835,115 @@ class EvaluationNeufBox(models.Model):
 
     def __str__(self):
         return f'{self.employe} — case {self.case_calculee}'
+
+
+# ── NTHCM12 — plans de succession par poste-clé ─────────────────────────────
+
+class PosteCle(models.Model):
+    """NTHCM12 — poste marqué CRITIQUE par le RH (jamais automatiquement).
+
+    La criticité d'un poste est un JUGEMENT (perte de savoir-faire, unicité
+    de l'habilitation, exposition client) : elle est saisie explicitement,
+    jamais déduite d'un effectif ou d'un salaire. Un poste non marqué n'est
+    tout simplement pas un poste-clé.
+    """
+    class Criticite(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        HAUTE = 'haute', 'Haute'
+        CRITIQUE = 'critique', 'Critique'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un poste-clé n'a aucun sens hors de sa société
+        related_name='rh_postes_cles',
+        verbose_name='Société',
+    )
+    poste = models.ForeignKey(
+        Poste,
+        on_delete=models.CASCADE,  # on_delete: le marquage n'a plus d'objet sans le poste de référence qu'il qualifie
+        related_name='marquages_cles',
+        verbose_name='Poste',
+    )
+    criticite = models.CharField(
+        max_length=10, choices=Criticite.choices,
+        default=Criticite.MOYENNE, verbose_name='Criticité')
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Poste-clé'
+        verbose_name_plural = 'Postes-clés'
+        ordering = ['poste__intitule']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'poste'],
+                name='rh_postecle_comp_poste_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.poste} — {self.get_criticite_display()}'
+
+
+class PlanSuccession(models.Model):
+    """NTHCM12 — successeur identifié pour un poste-clé, avec sa readiness.
+
+    ``readiness`` dit QUAND le successeur serait opérationnel
+    (``pret_immediat`` / ``pret_1an`` / ``pret_3ans``) — c'est la donnée que
+    NTHCM13 croise avec le risque d'attrition du titulaire. Un poste-clé sans
+    aucune ligne est un « poste orphelin » signalé par la couverture.
+    """
+    class Rang(models.TextChoices):
+        PREMIER = 'premier', '1er choix'
+        SECOND = 'second', '2e choix'
+        BACKUP = 'backup', 'Backup'
+
+    class Readiness(models.TextChoices):
+        PRET_IMMEDIAT = 'pret_immediat', 'Prêt immédiatement'
+        PRET_1AN = 'pret_1an', 'Prêt sous 1 an'
+        PRET_3ANS = 'pret_3ans', 'Prêt sous 3 ans'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un plan de succession n'a aucun sens hors de sa société
+        related_name='rh_plans_succession',
+        verbose_name='Société',
+    )
+    poste_cle = models.ForeignKey(
+        PosteCle,
+        on_delete=models.CASCADE,  # on_delete: composition — un plan de succession n'existe QUE pour son poste-clé
+        related_name='plans_succession',
+        verbose_name='Poste-clé',
+    )
+    successeur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: le plan n'a plus d'objet sans son successeur ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='plans_succession',
+        verbose_name='Successeur',
+    )
+    rang = models.CharField(
+        max_length=10, choices=Rang.choices,
+        default=Rang.PREMIER, verbose_name='Rang')
+    readiness = models.CharField(
+        max_length=14, choices=Readiness.choices,
+        default=Readiness.PRET_1AN, verbose_name='Readiness')
+    plan_developpement = models.TextField(
+        blank=True, default='', verbose_name='Plan de développement')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plan de succession'
+        verbose_name_plural = 'Plans de succession'
+        ordering = ['poste_cle', 'rang']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['poste_cle', 'successeur'],
+                name='rh_plansucc_postecle_succ_uniq'),
+        ]
+
+    def __str__(self):
+        return (f'{self.poste_cle} ← {self.successeur} '
+                f'({self.get_rang_display()})')

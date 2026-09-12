@@ -38,6 +38,8 @@ from .models import (
     KeyResultIndividuel,
     ObjectifEntreprise,
     OkrIndividuel,
+    PlanSuccession,
+    PosteCle,
     PropositionRevision,
     DemandeAllocation,
     DemandeConge,
@@ -3143,6 +3145,31 @@ class PropositionRevisionSerializer(serializers.ModelSerializer):
         return _meme_societe(self, value, 'Employé')
 
 
+class ProposerRevisionSerializer(serializers.Serializer):
+    """NTHCM5 — ENTRÉE de ``propositions-revision`` (création).
+
+    Sérialiseur d'entrée dédié, volontairement PAS un ``ModelSerializer`` :
+    celui-ci hériterait du ``UniqueTogetherValidator`` de la contrainte
+    ``(cycle, employe)`` et refuserait en 400 une RE-proposition pour le même
+    employé, alors que ``services.proposer_revision`` la traite comme une
+    mise à jour (l'enveloppe n'est alors pas double-comptée).
+    """
+    cycle = serializers.PrimaryKeyRelatedField(
+        queryset=CycleRevisionSalariale.objects.all())
+    employe = serializers.PrimaryKeyRelatedField(
+        queryset=DossierEmploye.objects.all())
+    augmentation_pct_proposee = serializers.DecimalField(
+        max_digits=6, decimal_places=2, required=False, default=0)
+    justification = serializers.CharField(
+        required=False, allow_blank=True, default='')
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
 # ── NTHCM8 — OKR d'entreprise (cascade OPTIONNELLE) ─────────────────────────
 
 class KeyResultSerializer(serializers.ModelSerializer):
@@ -3258,3 +3285,69 @@ class EvaluationNeufBoxSerializer(serializers.ModelSerializer):
 
     def validate_campagne(self, value):
         return _meme_societe(self, value, 'Campagne')
+
+
+# ── NTHCM12 — plans de succession par poste-clé ─────────────────────────────
+
+class PosteCleSerializer(serializers.ModelSerializer):
+    """NTHCM12 — marquage explicite d'un poste comme CLÉ (jamais auto)."""
+    poste_intitule = serializers.CharField(
+        source='poste.intitule', read_only=True)
+    criticite_display = serializers.CharField(
+        source='get_criticite_display', read_only=True)
+
+    class Meta:
+        model = PosteCle
+        fields = [
+            'id', 'poste', 'poste_intitule', 'criticite',
+            'criticite_display', 'justification', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_poste(self, value):
+        """Poste de la société, et JAMAIS marqué deux fois.
+
+        La contrainte ``(company, poste)`` vit en base, mais ``company``
+        n'étant pas exposée, DRF ne peut pas en dériver de validateur : sans
+        ce contrôle explicite le doublon remonterait en 500 au lieu d'un 400
+        qui NOMME le champ fautif.
+        """
+        value = _poste_meme_societe(self, value)
+        request = self.context.get('request')
+        if value is None or request is None:
+            return value
+        doublons = PosteCle.objects.filter(
+            company_id=request.user.company_id, poste=value)
+        if self.instance is not None:
+            doublons = doublons.exclude(pk=self.instance.pk)
+        if doublons.exists():
+            raise serializers.ValidationError(
+                'Ce poste est déjà marqué comme poste-clé.')
+        return value
+
+
+class PlanSuccessionSerializer(serializers.ModelSerializer):
+    """NTHCM12 — successeur identifié pour un poste-clé, avec readiness."""
+    successeur_nom = serializers.SerializerMethodField()
+    rang_display = serializers.CharField(
+        source='get_rang_display', read_only=True)
+    readiness_display = serializers.CharField(
+        source='get_readiness_display', read_only=True)
+
+    class Meta:
+        model = PlanSuccession
+        fields = [
+            'id', 'poste_cle', 'successeur', 'successeur_nom',
+            'rang', 'rang_display', 'readiness', 'readiness_display',
+            'plan_developpement', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_successeur_nom(self, obj):
+        return f'{obj.successeur.nom} {obj.successeur.prenom}'
+
+    def validate_poste_cle(self, value):
+        return _meme_societe(self, value, 'Poste-clé')
+
+    def validate_successeur(self, value):
+        return _meme_societe(self, value, 'Successeur')

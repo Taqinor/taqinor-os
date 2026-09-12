@@ -3089,3 +3089,68 @@ def grille_neuf_box(company, campagne_id=None, departement_id=None):
         'total': total,
         'cases': cases,
     }
+
+
+# ── NTHCM12 — couverture des postes-clés (succession) ───────────────────────
+
+def couverture_poste_cle(company, poste_cle_id):
+    """NTHCM12 — couverture de succession d'UN poste-clé.
+
+    Renvoie ``{poste_cle_id, poste_id, poste_intitule, criticite,
+    nombre_successeurs, prets_immediat, orphelin, successeurs: [...]}``.
+    ``orphelin=True`` quand AUCUN successeur n'est identifié — c'est le
+    signalement attendu par le cockpit RH. ``None`` si le poste-clé n'existe
+    pas dans cette société (isolation). Lecture seule.
+    """
+    from .models import PlanSuccession, PosteCle
+
+    poste_cle = (
+        PosteCle.objects
+        .filter(company=company, id=poste_cle_id)
+        .select_related('poste')
+        .first())
+    if poste_cle is None:
+        return None
+
+    plans = (
+        PlanSuccession.objects
+        .filter(company=company, poste_cle=poste_cle)
+        .select_related('successeur')
+        .order_by('rang'))
+    successeurs = [{
+        'plan_id': plan.id,
+        'successeur_id': plan.successeur_id,
+        'successeur_nom': f'{plan.successeur.nom} {plan.successeur.prenom}',
+        'rang': plan.rang,
+        'readiness': plan.readiness,
+    } for plan in plans]
+    prets = [s for s in successeurs
+             if s['readiness'] == PlanSuccession.Readiness.PRET_IMMEDIAT]
+    return {
+        'poste_cle_id': poste_cle.id,
+        'poste_id': poste_cle.poste_id,
+        'poste_intitule': poste_cle.poste.intitule,
+        'criticite': poste_cle.criticite,
+        'nombre_successeurs': len(successeurs),
+        'prets_immediat': len(prets),
+        'orphelin': not successeurs,
+        'successeurs': successeurs,
+    }
+
+
+def couverture_postes_cles(company):
+    """NTHCM12 — couverture de TOUS les postes-clés, orphelins en tête.
+
+    Même forme que :func:`couverture_poste_cle` par ligne. L'ordre met les
+    postes SANS successeur d'abord : c'est l'information actionnable.
+    """
+    from .models import PosteCle
+
+    postes_cles = PosteCle.objects.filter(company=company).order_by(
+        'poste__intitule')
+    lignes = [couverture_poste_cle(company, poste_cle.id)
+              for poste_cle in postes_cles]
+    lignes = [ligne for ligne in lignes if ligne is not None]
+    lignes.sort(key=lambda ligne: (not ligne['orphelin'],
+                                   ligne['poste_intitule']))
+    return lignes
