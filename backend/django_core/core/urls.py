@@ -33,6 +33,7 @@ from .backup import mes_sauvegardes_view
 from .maintenance_windows import (
     MaintenanceWindowListCreateView, annuler_fenetre, fenetres_actives,
 )
+from .degraded_mode import degraded_mode_status_view
 from .trust_center import trust_center_public
 from .export_registry import (
     ExportReversibiliteHistoriqueView, declencher_export_reversibilite,
@@ -255,4 +256,8 @@ urlpatterns = router.urls + [
          name='maintenance-windows-annuler'),
     # NTOBS10 — page « Confiance » (trust center), publique.
     path('trust-center/', trust_center_public, name='trust-center-public'),
+    # NTOBS11 — mode dégradé par dépendance externe, publique (aucune donnée
+    # société, même politique que health/live|ready ci-dessus).
+    path('degraded-mode-status/', degraded_mode_status_view,
+         name='degraded-mode-status'),
 ]

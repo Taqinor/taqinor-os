@@ -78,6 +78,17 @@ const incidentsData = await fetchJson<{ results: IncidentPublicItem[] }>(
 );
 const incidents = incidentsData?.results ?? [];
 
+// NTOBS11 — mode dégradé par dépendance externe (impact humain lisible).
+interface DegradedModeEntry {
+  cle: string;
+  label: string;
+  statut: 'ok' | 'degraded' | 'down' | 'unknown';
+  impactees: string[];
+  continuent: string[];
+}
+const dependances = (await fetchJson<DegradedModeEntry[]>('/api/django/core/degraded-mode-status/')) ?? [];
+const dependancesEnPanne = dependances.filter((d) => d.statut === 'down' || d.statut === 'degraded');
+
 const STATUT_LABEL: Record<string, string> = {
   operational: 'Opérationnel',
   degraded: 'Dégradé',
@@ -148,6 +159,25 @@ function formatDate(iso: string | null): string {
         <p class="mt-3 text-xs text-encre-faint">
           Dernière vérification : {formatDate(statusData.generated_at)}
         </p>
+      </>
+    )}
+
+    {dependancesEnPanne.length > 0 && (
+      <>
+        <h2 class="mt-14 text-2xl font-semibold text-encre">Fonctionnalités impactées</h2>
+        <ul class="mt-6 space-y-4">
+          {dependancesEnPanne.map((dep) => (
+            <li class="rounded-lg border border-azur-900/15 bg-blanc px-5 py-4">
+              <p class="font-medium text-encre">{dep.label}</p>
+              {dep.impactees.length > 0 && (
+                <p class="mt-1 text-sm text-encre-soft">Impacté : {dep.impactees.join(', ')}</p>
+              )}
+              {dep.continuent.length > 0 && (
+                <p class="mt-1 text-sm text-encre-soft">Continue de fonctionner : {dep.continuent.join(', ')}</p>
+              )}
+            </li>
+          ))}
+        </ul>
       </>
     )}
 

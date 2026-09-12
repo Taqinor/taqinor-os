@@ -240,6 +240,12 @@ const coreApi = {
     create: (data) => api.post('/core/maintenance-windows/', data),
     annuler: (id) => api.post(`/core/maintenance-windows/${id}/annuler/`),
   },
+
+  // NTOBS11 — mode dégradé par dépendance externe (public, aucune donnée
+  // société — même endpoint que la page de statut publique).
+  degradedMode: {
+    getStatus: () => api.get('/core/degraded-mode-status/'),
+  },
 }
 
 export default coreApi
