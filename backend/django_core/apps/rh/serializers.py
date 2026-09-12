@@ -170,7 +170,10 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'id', 'user', 'matricule', 'nom', 'prenom', 'cin',
             'cnss', 'cimr', 'amo', 'situation_familiale',
             'situation_familiale_display', 'nombre_enfants', 'telephone',
-            'email', 'poste', 'poste_ref', 'departement', 'date_embauche',
+            'email', 'poste', 'poste_ref', 'departement',
+            # NTHCM1 — ligne hiérarchique (manager direct).
+            'manager',
+            'date_embauche',
             'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
             'statut', 'statut_display', 'cout_horaire',
@@ -211,6 +214,29 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
 
     def validate_poste_ref(self, value):
         return _poste_meme_societe(self, value)
+
+    def validate_manager(self, value):
+        """NTHCM1 — un manager d'une AUTRE société est refusé (400)."""
+        return _meme_societe(self, value, 'Manager')
+
+    def validate(self, attrs):
+        """NTHCM1 — rejette le cycle managérial (A→B→A) en invoquant
+        explicitement ``DossierEmploye.clean()`` (DRF n'appelle pas
+        ``full_clean()``), exactement comme ``DepartementSerializer``."""
+        if 'manager' not in attrs:
+            return attrs
+        company = (self.instance.company if self.instance
+                   else self.context['request'].user.company)
+        sonde = DossierEmploye(
+            pk=self.instance.pk if self.instance else None,
+            company=company,
+            manager=attrs.get('manager'),
+        )
+        try:
+            sonde.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'manager': exc.messages})
+        return attrs
 
 
 class AnnuaireEmployeSerializer(serializers.ModelSerializer):

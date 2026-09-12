@@ -272,6 +272,17 @@ class DossierEmploye(models.Model):
         related_name='employes',
         verbose_name='Département',
     )
+    # NTHCM1 — LIGNE HIÉRARCHIQUE réelle (« qui évalue/approuve »). Nullable :
+    # aucun défaut n'est inventé au backfill (la direction n'a pas de manager,
+    # et l'existant reste `manager=None` tant que le RH ne l'a pas renseigné).
+    # ``clean()`` rejette le cycle managérial ET le manager d'une AUTRE société.
+    manager = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='subordonnes',
+        verbose_name='Manager (hiérarchique)',
+    )
     # XRH8 — horaire de travail assigné (nullable : le seuil HS par défaut
     # 8 h/j s'applique tant qu'aucun horaire n'est assigné, cf.
     # ``selectors.horaire_actif``).
@@ -402,6 +413,40 @@ class DossierEmploye(models.Model):
                 name='rh_dossier_code_pointage_uniq',
             ),
         ]
+
+    def clean(self):
+        """NTHCM1 — garde-fous de la ligne hiérarchique ``manager``.
+
+        Même patron que ``Departement.clean()`` (XRH27) : on remonte TOUTE la
+        chaîne de managers, pas seulement le lien direct, pour qu'un cycle
+        A→B→A (ou plus long) soit rejeté. On refuse en plus un manager
+        appartenant à une AUTRE société (fuite de rattachement cross-tenant).
+        """
+        from django.core.exceptions import ValidationError
+
+        if self.manager_id is None:
+            return
+        if self.pk is not None and self.manager_id == self.pk:
+            raise ValidationError(
+                'Un employé ne peut pas être son propre manager.')
+
+        manager = self.manager
+        if (manager is not None and self.company_id is not None
+                and manager.company_id != self.company_id):
+            raise ValidationError(
+                'Le manager choisi appartient à une autre société.')
+
+        vus = set()
+        courant = manager
+        while courant is not None:
+            if self.pk is not None and courant.pk == self.pk:
+                raise ValidationError(
+                    'Cycle de hiérarchie détecté : cet employé est déjà un '
+                    'responsable du manager choisi.')
+            if courant.pk in vus:
+                break  # cycle préexistant ailleurs — n'empêche pas CE save
+            vus.add(courant.pk)
+            courant = courant.manager
 
     def __str__(self):
         return f'{self.matricule} — {self.nom} {self.prenom}'

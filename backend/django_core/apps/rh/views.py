@@ -440,6 +440,24 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             DossierActivitySerializer(
                 employe.activites.all(), many=True).data)
 
+    @action(detail=True, methods=['get'], url_path='subordonnes')
+    def subordonnes(self, request, pk=None):
+        """NTHCM1 — rattachés DIRECTS de cet employé (non récursif).
+
+        Société scopée deux fois : ``get_object()`` passe par le queryset du
+        ``TenantMixin``, puis le filtre reprend la société DE L'OBJET (et non
+        celle de la requête, ``None`` pour un superutilisateur plateforme).
+        """
+        employe = self.get_object()
+        directs = (
+            DossierEmploye.objects
+            .filter(company=employe.company, manager=employe)
+            .select_related('poste_ref', 'departement')
+            .order_by('nom', 'prenom'))
+        return Response(
+            DossierEmployeSerializer(
+                directs, many=True, context={'request': request}).data)
+
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
         """Note manuelle sur le chatter du dossier — auteur pris de la

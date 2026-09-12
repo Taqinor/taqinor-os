@@ -17,6 +17,9 @@ from .models import DossierActivity, DossierEmploye
 TRACKED_FIELDS = {
     'poste_ref': 'Poste',
     'departement': 'Département',
+    # NTHCM1 — le champ `manager` existe désormais : le rattachement
+    # hiérarchique est un changement d'emploi à part entière, donc suivi.
+    'manager': 'Manager',
     'statut': 'Statut',
     'type_contrat': 'Type de contrat',
     'contrat_date_debut': 'Début de contrat',
@@ -24,7 +27,7 @@ TRACKED_FIELDS = {
 }
 
 _CHOICE_FIELDS = {'statut', 'type_contrat'}
-_FK_FIELDS = {'poste_ref', 'departement'}
+_FK_FIELDS = {'poste_ref', 'departement', 'manager'}
 
 
 def _display(dossier, field, value):
