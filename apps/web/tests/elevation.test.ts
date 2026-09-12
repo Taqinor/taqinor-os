@@ -82,9 +82,11 @@ describe('prévisualisations supprimées', () => {
     // + 2 (methodologie-estimation W359, liens W350)
     // + 1 (equipe — QJ-EQUIPE 09/09/2026, marquage « appareil équipe » :
     //   utilitaire SSR noindex, hors sitemap via le filter d'astro.config).
+    // + 1 (confiance — NTOBS10 12/09/2026, trust center SSR prerender=false,
+    //   hors sitemap via le filter d'astro.config comme /equipe et /status).
     // Les études de cas, guides et articles de blog vivent en sous-dossier
     // (realisations/, guides/, blog/) et ne comptent pas ici.
-    expect(slugs.length).toBe(29);
+    expect(slugs.length).toBe(30);
   });
 
   it('le filtre sitemap ne référence plus /v2 ni /v3', () => {
