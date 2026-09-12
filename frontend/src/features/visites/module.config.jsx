@@ -49,7 +49,7 @@ const config = {
   nav: {
     icon: appGlyph(ClipboardCheck),
     label: 'VISITES',
-    accent: 'foret',
+    accent: 'success',
     items: [
       {
         to: '/visites',

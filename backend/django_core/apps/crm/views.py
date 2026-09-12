@@ -629,6 +629,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # requêtait ses lignes (N+1, ~2 requêtes/devis). String-FK cross-app.
         'devis', 'devis__lignes').all()
     serializer_class = LeadSerializer
+    # VTA4 (12/09/2026) — la frontière « pas d'accès CRM » est SERVEUR : la
+    # liste/lecture des leads exige désormais le code fin `crm_voir`. Sans
+    # cette ligne, ScopedPermission sans code = « authentifié suffit », et le
+    # rôle « Commercial terrain » (app Visites seule) lisait tout l'annuaire
+    # leads en appelant l'API directement — exactement ce que le fondateur a
+    # exclu. Les rôles legacy (sans Role fin) gardent leur accès historique
+    # (comportement OrLegacy de la garde).
+    read_permission = 'crm_voir'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     # WREF (fondateur 21/08) — client_ref = la référence remise au client :
     # stockée mais introuvable (3 recherches, 0 index). Depuis WREF2 c'est la
