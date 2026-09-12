@@ -36,6 +36,27 @@ def devis_id_du_chantier(company, chantier_id):
         'devis_id', flat=True).first()
 
 
+def devis_ids_des_chantiers(company, chantier_ids):
+    """CHT13-portefeuille — jumeau BATCH de ``devis_id_du_chantier`` : le
+    devis_id de PLUSIEURS chantiers en UNE requête, scopé société.
+
+    Renvoie ``{chantier_id: devis_id}`` — un chantier introuvable, hors
+    société, ou sans devis rattaché est simplement ABSENT du dict (jamais une
+    clé à ``None``). Point d'entrée cross-app en LECTURE SEULE (ex.
+    ``gestion_projet.selectors.tableau_portefeuille`` pour résoudre en masse
+    les ``ProjetChantier`` d'un portefeuille sans réintroduire le N+1 que la
+    vectorisation AUDV16 élimine) — jamais un import direct de
+    ``installations.models``."""
+    from .models import Installation
+    if not company or not chantier_ids:
+        return {}
+    return dict(
+        Installation.objects.filter(
+            pk__in=list(chantier_ids), company=company,
+            devis_id__isnull=False,
+        ).values_list('id', 'devis_id'))
+
+
 def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
     """YSERV10 — ``(id, client_id, date_reception)`` de chaque chantier
     RÉCEPTIONNÉ (``date_reception`` posé, jamais approximé) de ``company``,

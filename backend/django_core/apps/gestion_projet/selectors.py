@@ -2903,20 +2903,25 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
     # de N appels à `couts_engages_vs_reels`/`synthese_temps_projet`/
     # `_mo_affectations_deja_pointee`. CHT13 — le revenu est désormais RÉEL
     # (cohérent avec `_revenu_projet_cross_app`/FG295 : CA FACTURÉ, jamais un
-    # devis simplement accepté) pour le chemin ``ProjetLien`` type ``devis``
-    # (SEUL chemin de création aujourd'hui — `creer_projet_depuis_devis`,
-    # XPRJ21) : 2 requêtes groupées de plus (``ProjetLien`` puis
-    # ``montants_factures_par_devis`` en BATCH sur l'union des devis_id de
-    # TOUS les projets), toujours FIXE indépendamment de N. Le chemin
-    # ``ProjetChantier.chantier_id`` → devis (rattachement manuel SANS
-    # ``ProjetLien``, couvert par `_revenu_projet_cross_app` par-projet) N'EST
-    # PAS résolu ici : `installations.selectors.devis_id_du_chantier` ne
-    # renvoie qu'un id à la fois — le résoudre en boucle réintroduirait le
-    # N+1 que cette fonction élimine. Un projet UNIQUEMENT rattaché par
-    # ``ProjetChantier`` (sans ``ProjetLien`` sur le même devis) verrait donc
-    # sa marge portefeuille rester à 0 tant qu'aucun sélecteur BATCH
-    # chantier→devis n'existe côté ``installations`` — cas non exercé par le
-    # code actuel (CHT18, à venir, fait toujours co-créer les deux).
+    # devis simplement accepté), résolu par les DEUX chemins de
+    # `_revenu_projet_cross_app` (par-projet) — le chemin ``ProjetLien`` type
+    # ``devis`` (SEUL chemin de création aujourd'hui — `creer_projet_depuis_
+    # devis`, XPRJ21) ET le chemin ``ProjetChantier.chantier_id``
+    # (rattachement manuel SANS ``ProjetLien``) via le sélecteur BATCH
+    # ``installations.selectors.devis_ids_des_chantiers`` (jumeau de
+    # ``devis_id_du_chantier`` — UNE requête pour TOUS les chantiers de TOUS
+    # les projets filtrés, jamais une boucle par chantier). Sans ce second
+    # chemin, un projet UNIQUEMENT rattaché par ``ProjetChantier`` affichait
+    # une marge portefeuille à 0 alors que `pnl_projet` (par-projet)
+    # affichait le vrai revenu — la divergence interdite par CHT13. Les deux
+    # chemins sont UNIONNÉS (via les ``set``) AVANT le batch
+    # ``montants_factures_par_devis`` : un devis rattaché par les deux voies
+    # n'est compté qu'une fois. +4 requêtes groupées FIXES au total
+    # (``ProjetLien``, ``ProjetChantier``, ``devis_ids_des_chantiers``, puis
+    # ``montants_factures_par_devis``), toujours indépendantes de N.
+    from .models import ProjetChantier
+    from apps.installations.selectors import devis_ids_des_chantiers
+
     devis_ids_par_projet = {}
     tous_devis_ids = set()
     for row in ProjetLien.objects.filter(
@@ -2926,6 +2931,24 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         devis_ids_par_projet.setdefault(
             row['projet_id'], set()).add(row['cible_id'])
         tous_devis_ids.add(row['cible_id'])
+
+    chantier_ids_par_projet = {}
+    tous_chantier_ids = set()
+    for row in ProjetChantier.objects.filter(
+            company=company, projet_id__in=projet_ids,
+    ).values('projet_id', 'chantier_id'):
+        chantier_ids_par_projet.setdefault(
+            row['projet_id'], set()).add(row['chantier_id'])
+        tous_chantier_ids.add(row['chantier_id'])
+
+    devis_par_chantier = devis_ids_des_chantiers(company, tous_chantier_ids)
+    for projet_id, chantier_ids in chantier_ids_par_projet.items():
+        for chantier_id in chantier_ids:
+            devis_id = devis_par_chantier.get(chantier_id)
+            if devis_id is not None:
+                devis_ids_par_projet.setdefault(
+                    projet_id, set()).add(devis_id)
+                tous_devis_ids.add(devis_id)
 
     from apps.ventes.selectors import montants_factures_par_devis
     montants_par_devis = montants_factures_par_devis(

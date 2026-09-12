@@ -16,18 +16,24 @@ CLAUDE.md) :
     UNIQUE de ``creer_projet_depuis_devis``, XPRJ21, à ce jour) ;
   * ``ProjetChantier.chantier_id`` → devis via
     ``installations.selectors.devis_id_du_chantier`` — couvert par
-    ``_revenu_projet_cross_app``/``pnl_projet`` (par-projet) ; DÉLIBÉRÉMENT
-    PAS résolu dans le ``tableau_portefeuille`` vectorisé (aucun sélecteur
-    BATCH chantier→devis côté ``installations`` — le résoudre en boucle
-    réintroduirait le N+1 qu'AUDV16 a éliminé).
+    ``_revenu_projet_cross_app``/``pnl_projet`` (par-projet) ET, depuis le
+    correctif du trou documenté par CHT13/CHT14, par ``tableau_portefeuille``
+    vectorisé via le sélecteur BATCH ``installations.selectors.
+    devis_ids_des_chantiers`` (jumeau de ``devis_id_du_chantier`` — UNE
+    requête pour tous les chantiers de tous les projets filtrés, jamais une
+    boucle par chantier, donc sans réintroduire le N+1 qu'AUDV16 a éliminé).
 
 Couvre : revenu réel par devis+factures (ProjetLien) ; revenu réel par
 chantier rattaché (ProjetChantier, sans ProjetLien) ; étanchéité société sur
-les deux chemins ; projet sans lien → 0 inchangé (non-régression) ; portefeuille
-vectorisé = somme des projets avec nombre de requêtes FIXE indépendant de N ;
-contrat partagé (PACT10) — la forme RÉELLE de l'action ``portefeuille`` égale
-l'exemple committé dans ``contract_samples/tableau_portefeuille.json`` (le même
-fichier que le test frontend importe).
+les deux chemins ; projet sans lien → 0 inchangé (non-régression) ; un projet
+rattaché SEULEMENT par ``ProjetChantier`` affiche dans le portefeuille le
+MÊME revenu que ``pnl_projet`` (plus de divergence portefeuille/pnl_projet) ;
+un devis rattaché par les DEUX chemins n'est compté qu'une fois ; portefeuille
+vectorisé = somme des projets avec nombre de requêtes FIXE indépendant de N
+(scaling incluant des projets rattachés par chantier seul) ; contrat partagé
+(PACT10) — la forme RÉELLE de l'action ``portefeuille`` égale l'exemple
+committé dans ``contract_samples/tableau_portefeuille.json`` (le même fichier
+que le test frontend importe).
 
 Run :
     docker compose exec django_core python manage.py test \
@@ -272,6 +278,53 @@ class TableauPortefeuilleRevenuTests(TestCase):
         data = selectors.tableau_portefeuille(self.co)
         self.assertEqual(data['projets'][0]['marge_reelle'], Decimal('0'))
 
+    def test_projet_rattache_uniquement_par_chantier_meme_revenu_que_pnl(
+            self):
+        """CHT13/CHT14 — un projet rattaché SEULEMENT par ``ProjetChantier``
+        (sans ``ProjetLien``) doit afficher dans le portefeuille EXACTEMENT
+        le même revenu que ``pnl_projet`` (par-projet) : avant le correctif,
+        le portefeuille vectorisé ne résolvait pas ce chemin et affichait 0
+        pendant que ``pnl_projet`` affichait le vrai revenu — la divergence
+        que CHT13 interdit."""
+        projet = Projet.objects.create(
+            company=self.co, code='P-CHANTIER-SEUL', nom='Chantier seul')
+        devis = make_devis(self.co, self.client_obj)
+        chantier = make_chantier(self.co, devis=devis)
+        ProjetChantier.objects.create(
+            company=self.co, projet=projet, chantier_id=chantier.id)
+        make_facture(
+            self.co, self.client_obj, devis, montant_ht=900, montant_ttc=1080)
+
+        pnl = selectors.pnl_projet(self.co, projet)
+        data = selectors.tableau_portefeuille(self.co)
+        ligne = next(
+            row for row in data['projets'] if row['projet_id'] == projet.id)
+
+        self.assertEqual(pnl['revenu'], Decimal('900'))
+        self.assertEqual(ligne['marge_reelle'], pnl['marge_reelle'])
+        self.assertEqual(ligne['marge_reelle'], Decimal('900'))
+
+    def test_devis_rattache_par_les_deux_chemins_compte_une_fois(self):
+        """Un devis rattaché à la fois par ``ProjetLien`` ET par
+        ``ProjetChantier`` (même devis) ne doit être compté qu'UNE fois dans
+        le revenu portefeuille — jamais doublé."""
+        projet = Projet.objects.create(
+            company=self.co, code='P-DEUX-CHEMINS', nom='Deux chemins')
+        devis = make_devis(self.co, self.client_obj)
+        ProjetLien.objects.create(
+            company=self.co, projet=projet,
+            type_cible=ProjetLien.TypeCible.DEVIS, cible_id=devis.id)
+        chantier = make_chantier(self.co, devis=devis)
+        ProjetChantier.objects.create(
+            company=self.co, projet=projet, chantier_id=chantier.id)
+        make_facture(
+            self.co, self.client_obj, devis, montant_ht=400, montant_ttc=480)
+
+        data = selectors.tableau_portefeuille(self.co)
+        ligne = next(
+            row for row in data['projets'] if row['projet_id'] == projet.id)
+        self.assertEqual(ligne['marge_reelle'], Decimal('400'))
+
     def test_devis_cross_tenant_jamais_agrege(self):
         autre = make_company()
         autre_client = make_client_obj(autre)
@@ -291,18 +344,28 @@ class TableauPortefeuilleRevenuTests(TestCase):
         self.assertEqual(data['projets'][0]['marge_reelle'], Decimal('0'))
 
     def test_nombre_de_requetes_reste_fixe_avec_devis_factures(self):
-        """CHT13 — les 2 requêtes groupées ajoutées (``ProjetLien`` puis
+        """CHT13/CHT14 — les requêtes groupées ajoutées (``ProjetLien``,
+        ``ProjetChantier``, ``devis_ids_des_chantiers`` puis
         ``montants_factures_par_devis`` en BATCH) restent FIXES, comme le
         reste de la vectorisation AUDV16 : même compte pour 2 et pour 6
-        projets facturés (jamais une requête par projet)."""
+        projets facturés (jamais une requête par projet) — le scaling
+        alterne projets rattachés par ``ProjetLien`` et par ``ProjetChantier``
+        seul pour exercer les DEUX chemins."""
         def peupler(nb):
-            for _ in range(nb):
+            for i in range(nb):
                 projet = Projet.objects.create(
                     company=self.co, code=f'P-{next(_seq)}', nom='Projet')
                 devis = make_devis(self.co, self.client_obj)
-                ProjetLien.objects.create(
-                    company=self.co, projet=projet,
-                    type_cible=ProjetLien.TypeCible.DEVIS, cible_id=devis.id)
+                if i % 2 == 0:
+                    ProjetLien.objects.create(
+                        company=self.co, projet=projet,
+                        type_cible=ProjetLien.TypeCible.DEVIS,
+                        cible_id=devis.id)
+                else:
+                    chantier = make_chantier(self.co, devis=devis)
+                    ProjetChantier.objects.create(
+                        company=self.co, projet=projet,
+                        chantier_id=chantier.id)
                 make_facture(
                     self.co, self.client_obj, devis,
                     montant_ht=100, montant_ttc=120)
