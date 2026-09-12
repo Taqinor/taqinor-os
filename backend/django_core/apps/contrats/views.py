@@ -70,6 +70,7 @@ from .models import (
     PalierUsage,
     ParametreRenouvellement,
     ParametresAbonnement,
+    ParametresCLM,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -132,6 +133,7 @@ from .serializers import (
     PalierUsageSerializer,
     ParametreRenouvellementSerializer,
     ParametresAbonnementSerializer,
+    ParametresCLMSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
@@ -3593,6 +3595,34 @@ class ParametresAbonnementViewSet(_ContratsBaseViewSet):
             return Response(ParametresAbonnementSerializer(
                 parametres, context={'request': request}).data)
         serializer = ParametresAbonnementSerializer(
+            parametres, data=request.data, partial=True,
+            context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ParametresCLMViewSet(_ContratsBaseViewSet):
+    """Réglages du cycle de vie contractuel, SINGLETON par société — NTDOC29.
+
+    ``GET/PATCH /parametres-clm/courant/`` lit/modifie la ligne unique de la
+    société, CRÉÉE PARESSEUSEMENT au premier accès avec les valeurs par
+    défaut — qui reproduisent exactement le comportement d'avant (garde
+    stricte NTDOC4 active, négociation non obligatoire, aucune relance de
+    parapheur). Une société qui n'ouvre jamais cet écran ne voit rien changer.
+
+    ``company`` est posée CÔTÉ SERVEUR, jamais lue du corps de requête.
+    """
+    queryset = ParametresCLM.objects.all()
+    serializer_class = ParametresCLMSerializer
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres = services.get_parametres_clm(request.user.company)
+        if request.method == 'GET':
+            return Response(ParametresCLMSerializer(
+                parametres, context={'request': request}).data)
+        serializer = ParametresCLMSerializer(
             parametres, data=request.data, partial=True,
             context={'request': request})
         serializer.is_valid(raise_exception=True)

@@ -4079,6 +4079,77 @@ class ParametresAbonnement(TenantModel):
         return f'Paramètres abonnement — société {self.company_id}'
 
 
+class ParametresCLM(TenantModel):
+    """Réglages du cycle de vie contractuel (CLM) d'une société — NTDOC29.
+
+    Les règles du groupe NTDOC étaient des constantes de code : la clôture de
+    négociation EXIGEAIT que tous les commentaires de redline soient résolus
+    (NTDOC4), rien n'imposait de passer par une négociation avant de soumettre
+    un contrat, et la durée de vie d'une salle de données n'était réglable
+    nulle part. Ce singleton par société les rend paramétrables.
+
+    **Chaque valeur par défaut reproduit EXACTEMENT le comportement d'avant** :
+
+    - ``resolution_commentaires_obligatoire=True`` — la garde stricte de
+      NTDOC4, inchangée. La mettre à ``False`` ASSOUPLIT : on peut alors
+      clôturer une négociation avec des points encore ouverts.
+    - ``negociation_obligatoire_avant_signature=False`` — le chemin direct
+      ``brouillon → en_approbation`` reste ouvert, comme aujourd'hui. À
+      ``True``, la machine d'états (CONTRAT12) refuse ce raccourci : il faut
+      passer par ``en_negociation``.
+    - ``duree_defaut_expiration_salle_donnees_jours=30`` — durée de vie par
+      défaut proposée pour une salle de données (NTDOC11-16). Réglage STOCKÉ
+      en attendant l'app ``datarooms`` ; il ne pilote rien d'autre aujourd'hui.
+    - ``parapheur_notification_quotidienne=False`` — OPT-IN. Aucune relance
+      quotidienne du parapheur (NTDOC7) n'existe aujourd'hui ; l'activer sera
+      un geste explicite, jamais une surprise à la migration.
+
+    Singleton par société (contrainte d'unicité sur ``company``, accès
+    ``services.get_parametres_clm`` en get-or-create). Hérite de
+    ``core.models.TenantModel`` (company + horodatage).
+    """
+
+    resolution_commentaires_obligatoire = models.BooleanField(
+        default=True,
+        verbose_name='Résolution des commentaires obligatoire',
+        help_text='NTDOC4 — exiger que TOUS les commentaires de redline '
+                  'soient résolus avant de clôturer une négociation '
+                  '(comportement historique : activé).',
+    )
+    negociation_obligatoire_avant_signature = models.BooleanField(
+        default=False,
+        verbose_name='Négociation obligatoire avant approbation',
+        help_text='Interdire le passage direct « brouillon → en approbation » '
+                  ": un round de négociation devient obligatoire "
+                  '(comportement historique : désactivé).',
+    )
+    duree_defaut_expiration_salle_donnees_jours = models.PositiveIntegerField(
+        default=30,
+        verbose_name="Durée de vie par défaut d'une salle de données (jours)",
+        help_text='NTDOC11-16 — durée proposée à la création d\'une salle de '
+                  'données.',
+    )
+    parapheur_notification_quotidienne = models.BooleanField(
+        default=False,
+        verbose_name='Relance quotidienne du parapheur',
+        help_text='NTDOC7/NTDOC34 — envoyer au dirigeant un récapitulatif '
+                  'quotidien de son parapheur (comportement historique : '
+                  'aucune relance).',
+    )
+
+    class Meta:
+        verbose_name = 'Paramètres CLM'
+        verbose_name_plural = 'Paramètres CLM'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='contrats_parametresclm_uniq_co'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres CLM — société {self.company_id}'
+
+
 #: NTDOC20 — délai de prévenance appliqué à tout type de contrat NON réglé.
 #: C'est la valeur HISTORIQUE du semis d'alertes (``semer_alertes_echeances``
 #: ``within_days=30``) : la garder identique est ce qui rend la migration

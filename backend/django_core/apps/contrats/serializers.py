@@ -37,6 +37,7 @@ from .models import (
     PalierUsage,
     ParametreRenouvellement,
     ParametresAbonnement,
+    ParametresCLM,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -2064,6 +2065,33 @@ class ParametresAbonnementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Seuil d'alerte d'usage : saisissez un pourcentage entre 0 "
                 'et 100.')
+        return valeur
+
+
+class ParametresCLMSerializer(serializers.ModelSerializer):
+    """Réglages du cycle de vie contractuel de la société — NTDOC29.
+
+    ``company`` n'est JAMAIS exposée ni acceptée du corps : le singleton est
+    résolu côté serveur depuis l'utilisateur.
+    """
+
+    class Meta:
+        model = ParametresCLM
+        fields = [
+            'id',
+            'resolution_commentaires_obligatoire',
+            'negociation_obligatoire_avant_signature',
+            'duree_defaut_expiration_salle_donnees_jours',
+            'parapheur_notification_quotidienne',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_duree_defaut_expiration_salle_donnees_jours(self, valeur):
+        if valeur == 0:
+            raise serializers.ValidationError(
+                'Durée de vie d\'une salle de données : saisissez au moins '
+                '1 jour (une salle qui expire le jour même n\'a aucun sens).')
         return valeur
 
 

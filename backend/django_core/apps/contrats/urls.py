@@ -27,6 +27,7 @@ from .views import (
     PalierUsageViewSet,
     ParametreRenouvellementViewSet,
     ParametresAbonnementViewSet,
+    ParametresCLMViewSet,
     ParametresLocationViewSet,
     PartieContratViewSet,
     PieceConformiteViewSet,
@@ -70,6 +71,8 @@ router.register(r'parametres-location', ParametresLocationViewSet)
 router.register(r'parametres-abonnement', ParametresAbonnementViewSet)
 # NTDOC20 — délai de prévenance d'échéance par type de contrat.
 router.register(r'parametres-renouvellement', ParametreRenouvellementViewSet)
+# NTDOC29 — réglages du cycle de vie contractuel (singleton par société).
+router.register(r'parametres-clm', ParametresCLMViewSet)
 router.register(r'plans-abonnement', PlanAbonnementViewSet)
 router.register(r'addons-abonnement', AddOnAbonnementViewSet)
 router.register(r'addon-lignes', AbonnementAddOnLigneViewSet)

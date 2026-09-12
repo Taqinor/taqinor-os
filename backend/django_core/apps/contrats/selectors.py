@@ -104,6 +104,24 @@ def contrats_a_renouveler(company, within_days=30, today=None):
     )
 
 
+def reglages_clm(company):
+    """Réglages CLM EFFECTIFS d'une société (NTDOC29) — lecture pure.
+
+    Renvoie la ligne ``ParametresCLM`` de la société si elle existe, sinon une
+    instance NON PERSISTÉE portant les valeurs par défaut du modèle — qui
+    reproduisent exactement le comportement historique. Ce sélecteur n'écrit
+    donc JAMAIS en base (contrairement à ``services.get_parametres_clm``, qui
+    crée le singleton pour l'écran de réglage) : une garde de machine d'états
+    ne doit pas créer une ligne au passage.
+    """
+    from .models import ParametresCLM
+
+    params = ParametresCLM.objects.filter(company=company).first()
+    if params is not None:
+        return params
+    return ParametresCLM(company=company)
+
+
 def delais_renouvellement(company):
     """Délais de prévenance CONFIGURÉS par type de contrat (NTDOC20).
 

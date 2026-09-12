@@ -6184,6 +6184,12 @@ def cloturer_negociation(contrat, *, user=None):
     GARDE : TOUS les ``CommentaireRedline`` du contrat doivent être ``resolu``
     — il est impossible de clôturer avec un point ouvert.
 
+    NTDOC29 — cette garde est désormais RÉGLABLE par société
+    (``ParametresCLM.resolution_commentaires_obligatoire``). Elle est ACTIVE
+    par défaut : le comportement strict de NTDOC4 est inchangé pour toute
+    société qui n'a rien réglé. La désactiver ASSOUPLIT — on peut alors
+    clôturer avec des points encore ouverts (l'entrée de chatter le dit).
+
     Effets : les dépôts de contrepartie encore ouverts passent ``traite``,
     puis la transition ``en_negociation → en_approbation`` est appliquée par la
     MACHINE D'ÉTATS (qui porte en plus la garde « au moins deux parties »).
@@ -6198,7 +6204,10 @@ def cloturer_negociation(contrat, *, user=None):
             'négociation (action « demarrer-negociation »).')
 
     ouverts = _selectors.commentaires_redline_ouverts(contrat).count()
-    if ouverts:
+    exiger_resolution = bool(
+        _selectors.reglages_clm(contrat.company)
+        .resolution_commentaires_obligatoire)
+    if ouverts and exiger_resolution:
         raise NegociationError(
             f'Impossible de clôturer la négociation : {ouverts} '
             f'commentaire(s) de redline ne sont pas résolus.')
@@ -6214,11 +6223,33 @@ def cloturer_negociation(contrat, *, user=None):
     ).exclude(statut=DocumentContrepartie.Statut.TRAITE).update(
         statut=DocumentContrepartie.Statut.TRAITE)
 
+    message = 'clôture de la négociation'
+    if ouverts and not exiger_resolution:
+        # NTDOC29 — la société a assoupli la garde : on le TRACE, pour qu'un
+        # relecteur voie que des points étaient encore ouverts à la clôture.
+        message += (
+            f' ({ouverts} commentaire(s) encore ouvert(s) — résolution non '
+            'exigée par les réglages CLM)')
     journaliser_transition(
         contrat, field='statut', old_value=ancien,
-        new_value=contrat.statut, message='clôture de la négociation',
+        new_value=contrat.statut, message=message,
         auteur=user)
     return contrat
+
+
+def get_parametres_clm(company):
+    """NTDOC29 — Réglages CLM de la société (singleton, écran de réglage).
+
+    Créé PARESSEUSEMENT au premier accès avec les valeurs par défaut du
+    modèle — qui reproduisent EXACTEMENT le comportement d'avant (garde
+    stricte NTDOC4 active, négociation non obligatoire, aucune relance de
+    parapheur). Les GARDES, elles, lisent ``selectors.reglages_clm`` : une
+    lecture pure qui ne crée jamais de ligne au passage.
+    """
+    from .models import ParametresCLM
+
+    params, _ = ParametresCLM.objects.get_or_create(company=company)
+    return params
 
 
 def duree_retention_contreparties(company):
