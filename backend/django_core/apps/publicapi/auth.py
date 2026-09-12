@@ -140,11 +140,36 @@ class HasApiScope(permissions.BasePermission):
         return api_key.has_scope(required)
 
 
+# NTAPI6 — attribut posé sur la requête par le throttle et lu par
+# `public_response.PublicApiResponseMixin` pour écrire les en-têtes
+# `X-RateLimit-*` (et `Retry-After` sur 429). Passer par la requête plutôt
+# qu'un état d'instance : DRF instancie un throttle NEUF par requête, mais la
+# vue qui finalise la réponse n'y a aucun accès.
+RATE_LIMIT_STATE_ATTR = 'publicapi_rate_limit'
+
+
 class ApiKeyRateThrottle(SimpleRateThrottle):
-    """Limite le débit par CLÉ d'API (pas par IP).
+    """Limite le débit ET le VOLUME par CLÉ d'API (jamais par IP) — NTAPI6.
+
+    Deux bornes distinctes, toutes deux issues du plan de la société
+    (``core.ApiUsagePlan``, FG398 — jamais une valeur codée en dur ici) :
+
+    * le DÉBIT par minute (``quota_par_minute`` + ``quota_burst``), appliqué
+      par la mécanique DRF de fenêtre glissante ci-dessous ;
+    * le VOLUME jour/mois (``quota_par_jour`` / ``quota_par_mois``), vérifié
+      via le sélecteur de fondation ``core.api_usage.quota_depasse``.
 
     Sans clé reconnue, on ne throttle pas ici (la requête sera de toute façon
-    rejetée par l'auth/permission). Taux configurable via le scope « publicapi ».
+    rejetée par l'auth/permission) et AUCUN appel n'est compté — une requête
+    non authentifiée ne doit jamais consommer le quota d'une société.
+
+    Sans plan enregistré pour la société (cas nominal aujourd'hui), le
+    comportement reste EXACTEMENT l'historique : taux DRF du scope
+    « publicapi », aucune borne de volume, aucun en-tête de quota.
+
+    ``core`` est appelé par son module SÉLECTEUR (``core.api_usage``), jamais
+    par ses models — le sens de dépendance fondation → satellite reste
+    ``publicapi`` consomme ``core``.
     """
     scope = 'publicapi'
 
@@ -153,6 +178,94 @@ class ApiKeyRateThrottle(SimpleRateThrottle):
         if not isinstance(api_key, ApiKey):
             return None  # non throttlé ici
         return self.cache_format % {'scope': self.scope, 'ident': api_key.pk}
+
+    def allow_request(self, request, view):
+        api_key = getattr(request, 'auth', None)
+        if not isinstance(api_key, ApiKey):
+            return super().allow_request(request, view)
+
+        from core import api_usage
+
+        # 1) Débit/minute — borne du plan si elle existe, sinon le taux DRF.
+        limite_minute = _safe(api_usage.limite_par_minute, api_key)
+        if limite_minute:
+            self.rate = f'{limite_minute}/minute'
+            self.num_requests, self.duration = limite_minute, 60
+
+        # 2) Volume jour/mois — l'état sert AUSSI aux en-têtes, y compris quand
+        # la requête passe (« les en-têtes reflètent le compteur réel »).
+        etat = _safe(api_usage.etat_quota, api_key)
+        depasse = _safe(api_usage.quota_depasse, api_key) or False
+
+        if depasse:
+            # 429 + Retry-After = temps restant jusqu'à la réinitialisation de
+            # la fenêtre de volume (jamais la fenêtre de débit, qui n'est pas
+            # celle qui bloque).
+            self._quota_wait = (etat or {}).get('retry_after') or 60
+            _poser_etat(request, etat, depasse=True,
+                        retry_after=self._quota_wait)
+            # L'appel REFUSÉ est tout de même compté comme une erreur : sinon
+            # un client en boucle sur un quota dépassé n'apparaîtrait nulle
+            # part dans l'analytics d'usage de sa société.
+            _safe(api_usage.record_call, api_key, erreur=True)
+            return False
+
+        autorise = super().allow_request(request, view)
+        if autorise:
+            _safe(api_usage.record_call, api_key)
+            # Le compteur vient d'être incrémenté : refléter l'appel COURANT
+            # dans `remaining` plutôt que l'état lu juste avant (sinon le
+            # dernier appel autorisé annonce « il en reste 1 »).
+            if etat:
+                etat = dict(etat)
+                etat['remaining'] = max(0, etat['remaining'] - 1)
+            _poser_etat(request, etat, depasse=False, retry_after=None)
+        else:
+            # Refus de DÉBIT (fenêtre minute) : Retry-After vient de DRF.
+            _poser_etat(request, etat, depasse=True,
+                        retry_after=int(super().wait() or 1))
+        return autorise
+
+    def wait(self):
+        """Secondes à attendre — la fenêtre de VOLUME prime quand c'est elle
+        qui a bloqué (DRF ne connaît que sa fenêtre glissante de débit)."""
+        quota_wait = getattr(self, '_quota_wait', None)
+        if quota_wait:
+            return quota_wait
+        return super().wait()
+
+
+def _safe(fonction, *args, **kwargs):
+    """Appelle un sélecteur de quota sans jamais faire échouer la requête.
+
+    Le comptage d'usage est une COURTOISIE d'observabilité : une base
+    indisponible sur la table de compteurs ne doit pas transformer un GET
+    parfaitement légitime en 500 (et surtout pas fermer l'API publique)."""
+    try:
+        return fonction(*args, **kwargs)
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        import logging
+        logging.getLogger(__name__).exception(
+            'Quota API : %s a échoué (requête laissée passer)',
+            getattr(fonction, '__name__', fonction))
+        return None
+
+
+def _poser_etat(request, etat, *, depasse, retry_after):
+    """Mémorise l'état de quota sur la requête pour les en-têtes de réponse.
+
+    ``request`` est la ``Request`` DRF ; l'attribut est posé sur l'objet
+    ``HttpRequest` sous-jacent quand il existe, pour rester lisible depuis
+    ``finalize_response`` quelle que soit l'enveloppe utilisée."""
+    charge = {
+        'etat': etat,
+        'depasse': depasse,
+        'retry_after': retry_after,
+    }
+    setattr(request, RATE_LIMIT_STATE_ATTR, charge)
+    sous_jacent = getattr(request, '_request', None)
+    if sous_jacent is not None:
+        setattr(sous_jacent, RATE_LIMIT_STATE_ATTR, charge)
 
 
 class ApiKeyAuthenticationScheme(OpenApiAuthenticationExtension):
