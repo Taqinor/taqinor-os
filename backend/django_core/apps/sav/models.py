@@ -35,6 +35,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from core.models import TenantModel
+
 from .dateutils import add_months
 
 
@@ -67,6 +69,22 @@ class SavSlaSettings(models.Model):
     # OFF : comportement actuel (calendaire) inchangé tant que la société ne
     # l'active pas explicitement.
     sla_jours_ouvres = models.BooleanField(default=False)
+    # ── NTSRV11 — Fenêtre HORAIRE ouvrée (étend XSAV5) ──────────────────────
+    # XSAV5 n'exclut que les JOURS non ouvrés ; une échéance pouvait donc
+    # tomber à 21 h un vendredi. `horaires_ouvres` décrit la fenêtre
+    # intra-journée ({'jours': [0..6], 'debut': 'HH:MM', 'fin': 'HH:MM'},
+    # défaut lun-ven 8h-18h) et `sla_heures_ouvrees_actif` l'active. OFF par
+    # défaut : comportement actuel strictement inchangé.
+    horaires_ouvres = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Horaires ouvrés',
+        help_text="Fenêtre de travail : {'jours': [0=lundi … 6=dimanche], "
+                  "'debut': 'HH:MM', 'fin': 'HH:MM'}. Vide = lun-ven 8h-18h.")
+    sla_heures_ouvrees_actif = models.BooleanField(
+        default=False,
+        verbose_name='SLA en heures ouvrées',
+        help_text="Exclut aussi les HEURES hors plage du décompte SLA (pas "
+                  'seulement les jours). OFF = comportement actuel.')
     # ── XSAV6 — pré-alerte SLA (J-x) + escalade à la violation ──────────────
     # Nombre de jours AVANT sla_due_at où une pré-alerte est émise au
     # technicien assigné. 0 = pré-alerte désactivée (défaut : comportement
@@ -80,6 +98,15 @@ class SavSlaSettings(models.Model):
     # équilibrage de charge). Défaut OFF : comportement actuel inchangé (tout
     # ticket reste affecté à la main tant que la société ne l'active pas).
     affectation_auto_sav = models.BooleanField(default=False)
+    # NTSRV7 — restreint l'affectation auto (XSAV9) aux techniciens QUALIFIÉS
+    # quand la catégorie du ticket exige des compétences (NTSRV6). Défaut OFF
+    # = comportement XSAV9 strictement inchangé (round-robin par charge).
+    affectation_par_competence = models.BooleanField(
+        default=False,
+        verbose_name='Affectation auto par compétence',
+        help_text="Ne propose que des techniciens possédant les compétences "
+                  'exigées par la catégorie du ticket (repli sur la charge '
+                  'seule si aucun technicien qualifié).')
     # XSAV24 — auto-clôture des tickets RÉSOLU dormants (sans activité depuis
     # N jours). 0 (défaut) = OFF, comportement actuel inchangé : un ticket
     # résolu reste RÉSOLU indéfiniment tant que la société n'active pas ce
@@ -160,6 +187,63 @@ class SavSlaSettings(models.Model):
             p.get('response', self.sla_response_days),
             p.get('resolution', self.sla_resolution_days),
         )
+
+    # ── NTSRV11 — Fenêtre horaire ouvrée ────────────────────────────────────
+
+    #: Défaut reproduisant le calendrier ``core/calendar.py`` déjà utilisé
+    #: (semaine ouvrée marocaine), côté HEURES : lun-ven 8h-18h.
+    HORAIRES_OUVRES_DEFAUT = {
+        'jours': [0, 1, 2, 3, 4],  # 0 = lundi … 6 = dimanche (datetime.weekday)
+        'debut': '08:00',
+        'fin': '18:00',
+    }
+
+    def horaires_effectifs(self):
+        """NTSRV11 — fenêtre ouvrée NORMALISÉE de la société.
+
+        Toute clé absente ou invalide retombe sur le défaut (lun-ven 8h-18h) :
+        une configuration à moitié saisie ne casse jamais le calcul SLA."""
+        brut = self.horaires_ouvres if isinstance(self.horaires_ouvres, dict) else {}
+        defaut = self.HORAIRES_OUVRES_DEFAUT
+
+        jours = brut.get('jours')
+        if not isinstance(jours, (list, tuple)) or not jours:
+            jours = defaut['jours']
+        jours = sorted({int(j) for j in jours
+                        if isinstance(j, int) or str(j).isdigit()
+                        if 0 <= int(j) <= 6})
+        if not jours:
+            jours = list(defaut['jours'])
+
+        def _heure(cle):
+            valeur = brut.get(cle)
+            if isinstance(valeur, str) and ':' in valeur:
+                h, _, m = valeur.partition(':')
+                if h.strip().isdigit() and m.strip().isdigit():
+                    heures, minutes = int(h), int(m)
+                    if 0 <= heures <= 23 and 0 <= minutes <= 59:
+                        return f'{heures:02d}:{minutes:02d}'
+            return defaut[cle]
+
+        debut, fin = _heure('debut'), _heure('fin')
+        if debut >= fin:  # fenêtre vide/inversée → défaut (jamais un blocage).
+            debut, fin = defaut['debut'], defaut['fin']
+        return {'jours': jours, 'debut': debut, 'fin': fin}
+
+    def heures_for(self, priorite):
+        """NTSRV11 — SLA de résolution exprimé en HEURES pour cette priorité,
+        ou ``None`` (le SLA reste alors en JOURS — comportement actuel).
+
+        Clé optionnelle ``resolution_heures`` de ``sla_par_priorite`` : aucune
+        configuration existante ne la porte, donc rien ne change tant qu'une
+        société ne l'ajoute pas explicitement."""
+        par = self.sla_par_priorite or {}
+        valeur = (par.get(priorite) or {}).get('resolution_heures')
+        try:
+            heures = float(valeur)
+        except (TypeError, ValueError):
+            return None
+        return heures if heures > 0 else None
 
 
 # ── FG82 — Checklist de visite de maintenance ─────────────────────────────────
@@ -529,6 +613,17 @@ class EquipeMaintenance(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='equipes_maintenance_dirigees')
     actif = models.BooleanField(default=True)
+    # ── NTSRV8 — Capacité (nombre de tickets OUVERTS simultanés) ────────────
+    # OPTIONNELLE : NULL = aucune capacité déclarée → aucun débordement n'est
+    # jamais calculé pour cette équipe (comportement actuel inchangé). Au-delà
+    # de la capacité, le système PROPOSE un transfert — il ne réaffecte
+    # JAMAIS tout seul (critère d'acceptation NTSRV8).
+    capacite_max_tickets_ouverts = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Capacité (tickets ouverts)',
+        help_text='Nombre maximum de tickets ouverts simultanés pour cette '
+                  'équipe. Vide = aucune limite (aucune proposition de '
+                  'débordement).')
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -699,6 +794,15 @@ class Ticket(models.Model):
     # quand sla_due_at est recalculée (nouvelle échéance = nouveau cycle).
     sla_pre_alert_notifiee = models.BooleanField(default=False)
     sla_escalade_notifiee = models.BooleanField(default=False)
+    # NTSRV12 — idempotence des PALIERS d'escalade multi-niveaux : liste des
+    # ids de `EscaladeSlaNiveau` déjà notifiés pour ce ticket. NULL/vide = le
+    # ticket n'a encore franchi aucun palier (et, sans palier configuré, ce
+    # champ reste NULL à vie — comportement XSAV6 binaire inchangé). Le
+    # booléen `sla_escalade_notifiee` ci-dessus est CONSERVÉ tel quel : il
+    # gouverne toujours le chemin XSAV6, jamais réinterprété.
+    sla_escalade_paliers_notifies = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Paliers d\'escalade déjà notifiés')
 
     # ── XSAV11 — suivi des réouvertures ──────────────────────────────────────
     # Incrémenté CÔTÉ SERVEUR à chaque transition résolu/clôturé → statut
@@ -814,6 +918,33 @@ class Ticket(models.Model):
         verbose_name='Canal de résolution',
         help_text='Résolu à distance (téléphone/redémarrage) ou sur site '
                   '(déplacement). Vide = non renseigné (tickets anciens).',
+    )
+
+    # ── NTSRV1 — Canal d'OUVERTURE du ticket (par où la demande est entrée) ──
+    # Distinct de `canal_resolution` (YSERV12 — par où elle a été RÉSOLUE).
+    # Défaut `manuel` : tous les tickets existants (saisis au back-office)
+    # gardent exactement leur sémantique actuelle. Posé côté serveur par le
+    # producteur (handler e-mail entrant, portail public, webhook WhatsApp),
+    # jamais lu du corps d'une requête back-office.
+    class CanalOuverture(models.TextChoices):
+        MANUEL = 'manuel', 'Manuel (back-office)'
+        EMAIL = 'email', 'E-mail'
+        PORTAIL = 'portail', 'Portail client'
+        # NTSRV3 — canal SAV uniquement (webhook WhatsApp Business entrant,
+        # gated par clé). Ne remplace PAS le WhatsApp manuel wa.me utilisé
+        # pour les devis/factures.
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        # NTSRV5 — demande arrivée par TÉLÉPHONE. Trace manuelle structurée :
+        # aucune intégration PBX dans ce lot (elle exigerait un fournisseur
+        # tiers — GATED).
+        TELEPHONE = 'telephone', 'Téléphone'
+
+    canal_ouverture = models.CharField(
+        max_length=12, choices=CanalOuverture.choices,
+        default=CanalOuverture.MANUEL,
+        verbose_name="Canal d'ouverture",
+        help_text="Par quel canal la demande est arrivée (manuel, e-mail, "
+                  "portail client…).",
     )
 
     class Meta:
@@ -1044,6 +1175,28 @@ class TicketActivity(models.Model):
         CREATION = 'creation', 'Création'
         MODIFICATION = 'modification', 'Modification'
         NOTE = 'note', 'Note'
+        # NTSRV1 — un e-mail entrant/sortant rattaché au ticket est une
+        # interaction typée, pas une note libre (même patron que
+        # `crm.LeadActivity.Kind.EMAIL`).
+        EMAIL = 'email', 'E-mail'
+        # NTSRV3 — message WhatsApp entrant (canal SAV), même raison d'être.
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        # NTSRV5 — appel téléphonique loggé à la main (durée + issue).
+        APPEL = 'appel', 'Appel'
+
+    # NTSRV5 — issues d'un appel SAV. MÊME liste que
+    # `crm.LeadActivity.OUTCOMES` (FG30) : recopiée à l'identique plutôt
+    # qu'importée — `apps.sav.models` n'importe JAMAIS `apps.crm.models`
+    # (contrat import-linter `core-domain-models-decoupled`). Toute évolution
+    # de la liste CRM doit être répercutée ici volontairement.
+    OUTCOMES = [
+        ('', '—'),
+        ('joint', 'Joint'),
+        ('non_joint', 'Non joint'),
+        ('rappel', 'À rappeler'),
+        ('refuse', 'Refus'),
+        ('interesse', 'Intéressé'),
+    ]
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -1057,6 +1210,12 @@ class TicketActivity(models.Model):
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
     body = models.TextField(blank=True, null=True)
+    # ── NTSRV5 — trace structurée d'un appel SAV (jamais un PBX réel) ───────
+    outcome = models.CharField(
+        max_length=20, blank=True, default='', choices=OUTCOMES,
+        verbose_name="Résultat de l'interaction")
+    duree_minutes = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée (minutes)')
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ticket_activities')
@@ -2072,6 +2231,24 @@ class CategorieTicket(models.Model):
     ordre = models.PositiveIntegerField(default=0)
     actif = models.BooleanField(default=True)
 
+    # ── NTSRV6 — Compétences RH exigées par cette catégorie ─────────────────
+    # ADDITIF et OPTIONNEL : une catégorie SANS compétence définie garde
+    # exactement le comportement actuel (aucun filtre d'affectation). Le lien
+    # est un string-FK vers `rh.Competence` — `apps.sav.models` n'importe
+    # JAMAIS `apps.rh.models` ; la lecture du niveau des employés passe par
+    # `apps.rh.selectors` (règle de modularité CLAUDE.md).
+    competences_requises = models.ManyToManyField(
+        'rh.Competence', blank=True, related_name='categories_ticket_sav',
+        verbose_name='Compétences requises',
+        help_text='Compétences exigées pour traiter un ticket de cette '
+                  'catégorie (vide = aucune exigence, comportement actuel).')
+    niveau_competence_min = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name='Niveau minimum requis',
+        help_text='Niveau minimum attendu sur chaque compétence requise '
+                  '(échelle rh.CompetenceEmploye : 0 non acquis → 4 expert). '
+                  "Sans compétence requise, ce niveau n'est jamais consulté.")
+
     class Meta:
         ordering = ['ordre', 'libelle']
         unique_together = [('company', 'libelle')]
@@ -2080,6 +2257,11 @@ class CategorieTicket(models.Model):
 
     def __str__(self):
         return self.libelle
+
+    def competences_requises_ids(self):
+        """NTSRV6 — ids des compétences exigées (liste vide = aucune
+        exigence → comportement d'affectation actuel strictement inchangé)."""
+        return list(self.competences_requises.values_list('id', flat=True))
 
 
 # ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
@@ -2184,3 +2366,139 @@ class TicketWorksheet(models.Model):
         self.complete_par = user
         self.complete_le = timezone.now()
         self.save(update_fields=['complete', 'complete_par', 'complete_le'])
+
+
+# ── NTSRV12 — Paliers d'escalade SLA configurables ──────────────────────────
+
+class EscaladeSlaNiveau(TenantModel):
+    """NTSRV12 — UN palier d'escalade SLA d'une société (ex. J+0 →
+    responsable technicien, J+1 → directeur).
+
+    XSAV6 ne savait faire qu'un BINAIRE : une pré-alerte, puis UNE escalade.
+    Ce référentiel permet plusieurs paliers ordonnés, chacun avec son délai
+    après l'échéance et son destinataire. **Aucun palier configuré = aucun
+    changement** : le balayage garde exactement le comportement XSAV6.
+
+    Destinataire : ``notifier_utilisateur`` (une personne précise) sinon
+    ``notifier_role`` (tous les comptes actifs de ce palier de rôle) sinon les
+    destinataires par défaut de l'événement (``resolve_recipients``).
+    """
+    # ARC1 — socle ``TenantModel`` (FK company + created_at/updated_at) ; le
+    # champ est REDÉCLARÉ à l'identique uniquement pour nommer l'accesseur
+    # inverse (motif documenté dans la docstring de ``core.models.TenantModel``).
+    company = models.ForeignKey(
+        # on_delete: cascade de tenant standard.
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='escalades_sla_sav', verbose_name='Société')
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(
+        default=0, verbose_name='Ordre',
+        help_text='Ordre de parcours des paliers (croissant).')
+    seuil_jours_apres_echeance = models.PositiveIntegerField(
+        default=0, verbose_name='Seuil (jours après échéance)',
+        help_text='0 = le jour de l’échéance (J+0), 1 = le lendemain (J+1)…')
+    notifier_role = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Notifier le rôle',
+        help_text="Palier de rôle à notifier (ex. « responsable », "
+                  '« admin »). Ignoré si un utilisateur est désigné.')
+    notifier_utilisateur = models.ForeignKey(
+        # on_delete: SET_NULL — la suppression d'un compte ne casse pas la
+        # configuration d'escalade (le palier retombe sur le rôle/défaut).
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='escalades_sla_sav',
+        verbose_name='Notifier l’utilisateur')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ``created_at`` / ``updated_at`` viennent du socle ``TenantModel``.
+
+    class Meta:
+        verbose_name = 'Palier d’escalade SLA'
+        verbose_name_plural = 'Paliers d’escalade SLA'
+        ordering = ['ordre', 'seuil_jours_apres_echeance', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'ordre'],
+                name='sav_escaladeslaniveau_ordre_uniq'),
+        ]
+
+    def __str__(self):
+        return (self.libelle
+                or f'Palier J+{self.seuil_jours_apres_echeance}')
+
+
+# ── NTSRV1 — Fil e-mail d'un ticket (threading RFC 5322) ─────────────────────
+
+class TicketEmailThread(TenantModel):
+    """NTSRV1 — UN message e-mail (entrant ou sortant) rattaché à un ticket.
+
+    C'est la MÉMOIRE de threading : elle mémorise le ``message_id`` de chaque
+    message vu et le ``thread_root`` du fil (1er ``References``, sinon
+    ``In-Reply-To``, sinon le ``Message-ID`` lui-même — calculé par
+    ``core.email_intake.InboundMessage.thread_root``). Une réponse du client
+    retombe ainsi sur le MÊME ticket au lieu d'en créer un second.
+
+    ⚠ Aucune connexion IMAP ne vit dans ``apps.sav`` : la récupération et le
+    parsing sont faits par le REGISTRE générique ``core/email_intake.py``
+    (FG373), auquel ``apps/sav/apps.py ready()`` abonne simplement un handler.
+
+    ``message_id`` est unique PAR SOCIÉTÉ (deux tenants peuvent recevoir une
+    copie du même message) et sert de garde d'IDEMPOTENCE : un re-poll IMAP
+    ou une redélivrance ne crée jamais ni doublon de ligne ni second ticket.
+    """
+    class Direction(models.TextChoices):
+        ENTRANT = 'entrant', 'Entrant'
+        SORTANT = 'sortant', 'Sortant'
+
+    # ARC1 — socle ``TenantModel`` (FK company + created_at/updated_at) ; le
+    # champ est REDÉCLARÉ pour nommer l'accesseur inverse ET rester
+    # NULLABLE comme ``Ticket.company`` (un fil ne peut pas être plus strict
+    # que le ticket qu'il documente). Motif documenté dans la docstring de
+    # ``core.models.TenantModel``.
+    company = models.ForeignKey(
+        # on_delete: cascade de tenant standard — un fil e-mail n'existe pas
+        # hors de sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_email_threads')
+    ticket = models.ForeignKey(
+        # on_delete: le fil appartient au ticket ; sans lui il ne dit plus
+        # rien.
+        Ticket, on_delete=models.CASCADE, related_name='emails')
+    message_id = models.CharField(
+        max_length=255, verbose_name='Message-ID')
+    in_reply_to = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='In-Reply-To')
+    thread_root = models.CharField(
+        max_length=255, blank=True, default='', db_index=True,
+        verbose_name='Racine du fil')
+    expediteur = models.CharField(
+        max_length=254, blank=True, default='', verbose_name='Expéditeur')
+    destinataire = models.CharField(
+        max_length=254, blank=True, default='', verbose_name='Destinataire')
+    sujet = models.CharField(max_length=255, blank=True, default='')
+    corps_brut = models.TextField(blank=True, default='')
+    # Pièces jointes déposées dans le magasin MinIO existant
+    # (``records.Attachment``) : on ne garde ici que la LISTE de leurs ids —
+    # jamais un second magasin de fichiers.
+    pieces_jointes = models.JSONField(null=True, blank=True)
+    direction = models.CharField(
+        max_length=8, choices=Direction.choices,
+        default=Direction.ENTRANT)
+    date_reception = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = 'Message e-mail de ticket'
+        verbose_name_plural = 'Messages e-mail de ticket'
+        ordering = ['date_reception', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'message_id'],
+                name='sav_ticketemailthread_msgid_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'thread_root'],
+                         name='sav_email_thread_root_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.direction} {self.message_id} (ticket {self.ticket_id})'

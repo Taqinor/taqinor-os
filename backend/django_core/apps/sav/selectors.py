@@ -1360,3 +1360,179 @@ def affectations_pour(user):
             'urgency': urgency,
         })
     return items
+
+
+# ── NTSRV11 — Échéance SLA en HEURES ouvrées (étend XSAV5) ──────────────────
+
+def combiner_heure_locale(jour, hhmm):
+    """NTSRV11 — ``datetime`` LOCAL (naïf) au jour + heure ``'HH:MM'`` donnés.
+
+    Convention assumée du module : ce calcul d'horaires d'ouverture raisonne
+    en HEURE MURALE locale et ne produit jamais d'horodatage stocké — seule
+    la DATE de l'échéance finit en base (``Ticket.sla_due_at``, un
+    ``DateField``). ``datetime.combine`` (même patron que
+    ``apps/adsengine/rule_backtest.py``) plutôt qu'un constructeur
+    ``datetime(y, m, d, …)``."""
+    from datetime import datetime, time
+
+    heures, minutes = (int(x) for x in hhmm.split(':'))
+    return datetime.combine(jour, time(heures, minutes))
+
+
+def _bornes_du_jour(jour, horaires):
+    """``(début, fin)`` de la fenêtre ouvrée pour ``jour`` (heure locale)."""
+    return (combiner_heure_locale(jour, horaires['debut']),
+            combiner_heure_locale(jour, horaires['fin']))
+
+
+def _jour_ouvre(jour, horaires, extra_holidays=None):
+    """Vrai si ``jour`` est ouvré : dans les jours de la fenêtre ET non férié
+    (``core.calendar`` — mêmes fériés marocains que XSAV5)."""
+    if jour.weekday() not in horaires['jours']:
+        return False
+    try:
+        from core.calendar import is_holiday
+        return not is_holiday(jour, extra_holidays)
+    except Exception:  # noqa: BLE001 — calendrier indisponible : jour ouvré.
+        return True
+
+
+def ajouter_heures_ouvrees(depart, heures, horaires, extra_holidays=None,
+                           max_jours=730):
+    """NTSRV11 — ajoute ``heures`` d'OUVERTURE à ``depart`` (datetime naïf,
+    heure locale) en ne consommant que le temps DANS la fenêtre ouvrée.
+
+    C'est ce que XSAV5 ne savait pas faire : il n'excluait que les JOURS
+    non ouvrés, si bien qu'un ticket ouvert un vendredi 17 h avec 4 h de SLA
+    échéait le vendredi à 21 h — hors horaires. Ici, le reliquat repart à
+    l'ouverture du jour ouvré suivant.
+
+    ``max_jours`` est un garde-fou (fenêtre pathologique) : au-delà, on rend
+    le curseur courant plutôt que de boucler indéfiniment."""
+    from datetime import timedelta
+
+    restant = timedelta(hours=float(heures or 0))
+    courant = depart
+    if restant <= timedelta(0):
+        return courant
+
+    jours_parcourus = 0
+    while jours_parcourus <= max_jours:
+        jour = courant.date()
+        if not _jour_ouvre(jour, horaires, extra_holidays):
+            suivant = jour + timedelta(days=1)
+            courant, _ = _bornes_du_jour(suivant, horaires)
+            jours_parcourus += 1
+            continue
+
+        debut, fin = _bornes_du_jour(jour, horaires)
+        if courant < debut:
+            courant = debut
+        if courant >= fin:
+            suivant = jour + timedelta(days=1)
+            courant, _ = _bornes_du_jour(suivant, horaires)
+            jours_parcourus += 1
+            continue
+
+        disponible = fin - courant
+        if disponible >= restant:
+            return courant + restant
+        restant -= disponible
+        suivant = jour + timedelta(days=1)
+        courant, _ = _bornes_du_jour(suivant, horaires)
+        jours_parcourus += 1
+    return courant
+
+
+def echeance_sla_heures_ouvrees(company, depart, heures):
+    """NTSRV11 — échéance SLA (datetime local naïf) en heures ouvrées, ou
+    ``None`` quand la société n'a pas activé ``sla_heures_ouvrees_actif``.
+
+    ``None`` = comportement actuel inchangé : l'appelant garde son calcul en
+    jours (XSAV5/FG81)."""
+    from .models import SavSlaSettings
+
+    reglage = SavSlaSettings.get(company)
+    if not reglage.sla_heures_ouvrees_actif:
+        return None
+    return ajouter_heures_ouvrees(
+        depart, heures, reglage.horaires_effectifs())
+
+
+# ── NTSRV8 — File d'attente par équipe + charge ─────────────────────────────
+
+def file_attente_equipe(equipe):
+    """NTSRV8 — tickets de ``equipe`` EN ATTENTE D'AFFECTATION (ouverts, non
+    annulés, sans technicien responsable), du plus ANCIEN au plus récent.
+
+    « Le plus ancien d'abord » est l'ordre de service : c'est lui qui risque
+    le dépassement de SLA. Lecture seule, naturellement scopée société (une
+    équipe appartient à une société)."""
+    if equipe is None:
+        return Ticket.objects.none()
+    return (Ticket.objects
+            .filter(equipe=equipe, annule=False,
+                    statut__in=Ticket.OPEN_STATUTS,
+                    technicien_responsable__isnull=True)
+            .select_related('client')
+            .order_by('date_ouverture', 'date_creation', 'id'))
+
+
+def charge_equipe(equipe):
+    """NTSRV8 — nombre de tickets OUVERTS (non annulés) portés par l'équipe."""
+    if equipe is None:
+        return 0
+    return Ticket.objects.filter(
+        equipe=equipe, annule=False,
+        statut__in=Ticket.OPEN_STATUTS).count()
+
+
+def charges_equipes(company):
+    """NTSRV8 — ``{equipe_id: nb tickets ouverts}`` pour les équipes ACTIVES
+    de la société, en UNE requête (jamais un count par équipe)."""
+    from django.db.models import Count, Q
+
+    return {
+        e.pk: e.nb_ouverts
+        for e in (EquipeMaintenance.objects
+                  .filter(company=company, actif=True)
+                  .annotate(nb_ouverts=Count(
+                      'tickets',
+                      filter=Q(tickets__annule=False,
+                               tickets__statut__in=Ticket.OPEN_STATUTS))))
+    }
+
+
+# ── NTSRV5 — Journal des appels SAV (filtrable en rapport) ──────────────────
+
+def journal_appels(company, *, date_debut=None, date_fin=None, issue=None,
+                   technicien_id=None):
+    """NTSRV5 — Appels SAV loggés (``TicketActivity`` ``kind='appel'``),
+    filtrables par période, issue et acteur.
+
+    C'est ce qui rend l'appel « filtrable en rapport » : une ligne par appel
+    avec sa durée et son issue, scopée société. Lecture seule ; aucun champ
+    interne (coût, prix d'achat) n'y figure jamais."""
+    qs = (TicketActivity.objects
+          .filter(company=company, kind=TicketActivity.Kind.APPEL)
+          .select_related('ticket', 'user')
+          .order_by('-created_at'))
+    if date_debut is not None:
+        qs = qs.filter(created_at__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(created_at__date__lte=date_fin)
+    if issue:
+        qs = qs.filter(outcome=issue)
+    if technicien_id:
+        qs = qs.filter(user_id=technicien_id)
+    return [{
+        'id': a.pk,
+        'ticket_id': a.ticket_id,
+        'ticket_reference': a.ticket.reference,
+        'duree_minutes': a.duree_minutes,
+        'issue': a.outcome,
+        'issue_label': dict(TicketActivity.OUTCOMES).get(a.outcome, a.outcome),
+        'utilisateur': getattr(a.user, 'username', None),
+        'created_at': a.created_at,
+        'notes': a.body,
+    } for a in qs]

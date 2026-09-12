@@ -1989,6 +1989,38 @@ def ecarts_competences(employe):
     return ecarts
 
 
+def employes_avec_competence(company, competence_ids, niveau_min=1):
+    """NTSRV7 — ids des COMPTES UTILISATEUR dont le dossier RH atteint
+    ``niveau_min`` sur TOUTES les compétences demandées.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.sav`` s'en sert pour
+    n'affecter un ticket qu'à un technicien qualifié) — l'appelant n'importe
+    jamais ``apps.rh.models``. Renvoie un ``set`` d'ids utilisateur ; les
+    dossiers sans compte utilisateur relié sont naturellement absents.
+
+    ``competence_ids`` vide → ``set()`` : l'appelant doit alors garder son
+    comportement d'origine (aucune exigence = aucun filtre), jamais
+    interpréter ce vide comme « personne n'est qualifié ».
+    """
+    from .models import CompetenceEmploye
+
+    ids = [c for c in (competence_ids or []) if c]
+    if company is None or not ids:
+        return set()
+
+    lignes = (CompetenceEmploye.objects
+              .filter(company=company, competence_id__in=ids,
+                      niveau__gte=niveau_min,
+                      employe__user_id__isnull=False)
+              .values_list('employe__user_id', 'competence_id'))
+    par_user = {}
+    for user_id, competence_id in lignes:
+        par_user.setdefault(user_id, set()).add(competence_id)
+    requises = set(ids)
+    return {user_id for user_id, couvertes in par_user.items()
+            if requises.issubset(couvertes)}
+
+
 def candidats_internes(company, poste_id):
     """XRH15 — classe les employés d'un poste par COUVERTURE de son profil
     requis (décroissante). Couverture = proportion (0..1) des compétences
