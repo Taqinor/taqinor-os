@@ -90,6 +90,23 @@ def module_actif(company, module, *, defaut=True):
     return acces_module_autorise(company, module)
 
 
+def modules_manquants(company, modules):
+    """NTEXT15 — sous-ensemble de ``modules`` INACTIFS pour ``company``
+    (ordre d'entrée préservé, dédupliqué). Sert à un appelant (ex. une
+    dépendance de package d'extension) qui veut nommer PRÉCISÉMENT le(s)
+    module(s) manquant(s) plutôt que refuser sans détail. ``modules``
+    vide/None ⇒ liste vide. Ne lève jamais (``module_actif`` ne lève pas)."""
+    vus = set()
+    out = []
+    for module in modules or []:
+        if not module or module in vus:
+            continue
+        vus.add(module)
+        if not module_actif(company, module):
+            out.append(module)
+    return out
+
+
 def modules_desactives(company):
     """Ensemble des clés de modules INDISPONIBLES pour la société.
 
