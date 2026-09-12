@@ -163,6 +163,10 @@ const CustomObjectRecordsPage = lazy(() => import('../customobjects/CustomObject
 // moitié frontend manquante, écran de gouvernance Directeur/Admin (reflète
 // `IsAdminOrResponsableTier` côté serveur, `corbeille/` + `{id}/restaurer/`).
 const CorbeillePage = lazy(() => import('../../pages/parametres/CorbeillePage'))
+// NTUX27 — Réglages UX par tenant (`apps.uxviews.UxParametres`, backend déjà
+// complet, singleton société) : moitié frontend manquante, Directeur/Admin
+// uniquement (reflète `IsAdminOrResponsableTier` côté serveur en écriture).
+const UxParametresPage = lazy(() => import('../../pages/parametres/UxParametresPage'))
 
 const config = {
   key: 'parametres',
@@ -215,6 +219,8 @@ const config = {
       { to: '/parametres/plans-commission', label: 'Plans de commission', icon: <BadgePercent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX7 — corbeille transverse (nav ET route ensemble, motif PACT150).
       { to: '/parametres/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTUX27 — réglages UX par tenant (nav ET route ensemble, motif PACT150).
+      { to: '/parametres/ux', label: 'UX', icon: <Settings size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -237,6 +243,7 @@ const config = {
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés
