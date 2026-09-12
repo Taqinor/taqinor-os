@@ -163,6 +163,9 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
 
         La société est TOUJOURS celle de l'appelant (jamais lue du corps), et
         la référence passe par ``core.numbering`` — jamais ``count() + 1``.
+        ``monotonic=True`` : un numéro de dossier déjà communiqué (avocat,
+        partie adverse, tribunal) ne doit JAMAIS être réattribué, même si le
+        dossier qui le portait est supprimé.
         """
         from core.numbering import create_with_reference
 
@@ -172,7 +175,7 @@ class DossierJuridiqueViewSet(_JuridiqueScopedApiKeyViewSet):
             lambda reference: serializer.save(
                 company=company, reference=reference,
                 created_by=self.request.user),
-            period='yearly')
+            period='yearly', monotonic=True)
 
     # ── NTJUR12 — budget engagé / consommé / alloué ─────────────────────────
 
@@ -747,14 +750,19 @@ class NoteHonorairesViewSet(_DossierScopedViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Référence anti-collision posée côté serveur (``NHJ-AAAAMM-NNNN``)."""
+        """Référence anti-collision posée côté serveur (``NHJ-AAAAMM-NNNN``).
+
+        ``monotonic=True`` (cf. ``DossierJuridiqueViewSet.perform_create``) :
+        un numéro de note d'honoraires ne se recycle pas après suppression.
+        """
         from core.numbering import create_with_reference
 
         company = self.request.user.company
         create_with_reference(
             NoteHonoraires, 'NHJ', company,
             lambda reference: serializer.save(
-                company=company, reference=reference))
+                company=company, reference=reference),
+            monotonic=True)
 
     def _changer_statut(self, request, cible):
         note = self.get_object()

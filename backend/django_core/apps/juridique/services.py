@@ -31,6 +31,9 @@ def creer_dossier(company, *, user=None, **champs):
     ``core.numbering.create_with_reference`` gère la course entre deux
     créations simultanées (le perdant prend simplement le numéro suivant).
     La société est TOUJOURS celle passée par l'appelant (posée côté serveur).
+    ``monotonic=True`` : le numéro est RÉSERVÉ dans un compteur persistant, il
+    ne recule donc jamais après la suppression d'un dossier — un numéro déjà
+    communiqué à un avocat ou à un tribunal ne se réattribue pas.
     """
     from core.numbering import create_with_reference
 
@@ -44,7 +47,8 @@ def creer_dossier(company, *, user=None, **champs):
             company=company, reference=reference, created_by=user, **champs)
 
     return create_with_reference(
-        DossierJuridique, 'JUR', company, _save, period='yearly')
+        DossierJuridique, 'JUR', company, _save, period='yearly',
+        monotonic=True)
 
 
 @transaction.atomic
@@ -294,7 +298,8 @@ def creer_note_honoraires(mandat, **champs):
     """Crée une note d'honoraires avec une référence anti-collision (NTJUR11).
 
     Référence ``NHJ-AAAAMM-NNNN`` via ``core.numbering`` — jamais
-    ``count() + 1``.
+    ``count() + 1``, et ``monotonic=True`` (le numéro ne se recycle pas après
+    la suppression d'une note).
     """
     from core.numbering import create_with_reference
 
@@ -309,7 +314,7 @@ def creer_note_honoraires(mandat, **champs):
             **champs)
 
     return create_with_reference(
-        NoteHonoraires, 'NHJ', mandat.company, _save)
+        NoteHonoraires, 'NHJ', mandat.company, _save, monotonic=True)
 
 
 # ───────────────────────────────────────────────────────────────────────────
