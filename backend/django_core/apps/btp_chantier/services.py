@@ -796,6 +796,141 @@ def verifier_ppsps_avant_demarrage(*, company, chantier_id, sous_traitant_id,
     return False
 
 
+# ── NTCON20 — Export « dossier chantier » consolidé ────────────────────────
+
+def export_dossier_btp(chantier):
+    """NTCON20 — ZIP consolidant le dossier d'un chantier (archivage légal
+    loi 09-08 / litige). Réutilise le PATTERN d'export ZIP de XKB17
+    (``kb.services.export_articles_zip``) : ``zipfile`` + ``records.storage.
+    fetch_attachment`` (import fonction-local, ``records`` est une app de
+    FONDATION).
+
+    Contenu, STRICTEMENT scopé au chantier ET à sa société — jamais une pièce
+    d'un autre chantier ni d'une autre société :
+
+    * ``manifeste.txt`` — inventaire daté du dossier ;
+    * ``journal-chantier.pdf`` — journal complet (NTCON6) ;
+    * ``reserves/reserves-levees.csv`` + ``reserves/<id>/<fichier>`` — réserves
+      LEVÉES (NTCON1/2) avec leurs preuves photo ;
+    * ``visas/visas-approuves.csv`` — visas approuvés (NTCON5) ;
+    * ``dgd/<reference>.pdf`` — décomptes généraux (NTCON9) ;
+    * ``ppsps/ppsps-<id>.txt`` — PPSPS validés + signataires (NTCON16).
+
+    Renvoie les octets du ZIP.
+    """
+    import csv
+    import io
+    import zipfile
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+    from apps.records.storage import fetch_attachment
+
+    from .models import (
+        DecompteGeneral, JournalChantier, PPSPSChantier, ReserveChantier,
+        VisaDocument,
+    )
+    from .pdf import render_dgd_pdf, render_journal_chantier_pdf
+
+    company = chantier.company
+    buffer = io.BytesIO()
+
+    def _csv(entetes, lignes):
+        sortie = io.StringIO()
+        writer = csv.writer(sortie, delimiter=';')
+        writer.writerow(entetes)
+        writer.writerows(lignes)
+        return sortie.getvalue()
+
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # ── Journal de chantier (NTCON6) ────────────────────────────────
+        entrees = JournalChantier.objects.filter(
+            chantier=chantier, company=company).order_by('date')
+        try:
+            zf.writestr(
+                'journal-chantier.pdf',
+                render_journal_chantier_pdf(chantier, entrees))
+        except Exception:  # pragma: no cover - défensif (WeasyPrint absent)
+            logger.warning(
+                'btp_chantier: journal PDF absent du dossier %s',
+                chantier.pk, exc_info=True)
+
+        # ── Réserves LEVÉES + preuves (NTCON1/2) ────────────────────────
+        reserves = ReserveChantier.objects.filter(
+            chantier=chantier, company=company,
+            statut=ReserveChantier.Statut.LEVEE).order_by('id')
+        zf.writestr('reserves/reserves-levees.csv', _csv(
+            ['id', 'lot', 'gravite', 'description', 'date_levee'],
+            [[r.id, r.lot, r.gravite, r.description, r.date_levee or '']
+             for r in reserves]))
+        ct_reserve = ContentType.objects.get_for_model(ReserveChantier)
+        for reserve in reserves:
+            preuves = Attachment.objects.filter(
+                content_type=ct_reserve, object_id=reserve.id,
+                company=company)
+            for preuve in preuves:
+                data, erreur = fetch_attachment(preuve.file_key)
+                if erreur or data is None:
+                    continue
+                zf.writestr(
+                    f'reserves/{reserve.id}/{preuve.filename}', data)
+
+        # ── Visas approuvés (NTCON5) ────────────────────────────────────
+        visas = VisaDocument.objects.filter(
+            chantier=chantier, company=company,
+            statut__in=[
+                VisaDocument.Statut.APPROUVE_SANS_RESERVE,
+                VisaDocument.Statut.APPROUVE_AVEC_OBSERVATIONS,
+            ]).order_by('id')
+        zf.writestr('visas/visas-approuves.csv', _csv(
+            ['reference', 'type', 'document_ged_id', 'statut', 'date_revue'],
+            [[v.reference, v.type_visa, v.document_ged_id, v.statut,
+              v.date_revue or ''] for v in visas]))
+
+        # ── DGD (NTCON9) ────────────────────────────────────────────────
+        decomptes = DecompteGeneral.objects.filter(
+            chantier=chantier, company=company).order_by('id')
+        for dgd in decomptes:
+            try:
+                zf.writestr(f'dgd/{dgd.reference}.pdf', render_dgd_pdf(dgd))
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'btp_chantier: DGD PDF %s absent du dossier',
+                    dgd.reference, exc_info=True)
+
+        # ── PPSPS validés + signataires (NTCON16) ───────────────────────
+        for ppsps in PPSPSChantier.objects.filter(
+                chantier=chantier, company=company,
+                date_validation__isnull=False).order_by('id'):
+            lignes = [
+                f'PPSPS #{ppsps.pk} — {ppsps.titre or "sans titre"}',
+                f'Validé le : {ppsps.date_validation}',
+                f'Document GED : {ppsps.document_ged_id or "—"}',
+                'Signataires :',
+            ]
+            for signature in ppsps.signatures.select_related('sous_traitant'):
+                lignes.append(
+                    f'  - {signature.sous_traitant.nom} — '
+                    f'{signature.signataire_nom} '
+                    f'({signature.date_signature:%Y-%m-%d})')
+            zf.writestr(
+                f'ppsps/ppsps-{ppsps.pk}.txt', '\n'.join(lignes) + '\n')
+
+        # ── Manifeste ───────────────────────────────────────────────────
+        zf.writestr('manifeste.txt', '\n'.join([
+            f'Dossier de chantier — {chantier}',
+            f'Chantier : #{chantier.pk}',
+            f'Export du : {timezone.localdate()}',
+            f'Entrées de journal : {entrees.count()}',
+            f'Réserves levées : {reserves.count()}',
+            f'Visas approuvés : {visas.count()}',
+            f'Décomptes généraux : {decomptes.count()}',
+        ]) + '\n')
+
+    return buffer.getvalue()
+
+
 # ── NTCON19 — Checklist de réception de lot ────────────────────────────────
 
 #: Étapes de réception proposées par défaut quand aucune n'est fournie —

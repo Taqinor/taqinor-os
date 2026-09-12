@@ -943,6 +943,26 @@ class AbonnementRapportPhotoViewSet(
         return qs
 
 
+class ChantierExportDossierBtpView(APIView):
+    """NTCON20 — ``chantiers/<id>/export-dossier-btp/`` : ZIP consolidant le
+    dossier du chantier (journal, réserves levées + preuves, visas approuvés,
+    DGD, PPSPS signés). Archivage légal loi 09-08 / litige."""
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        from django.http import HttpResponse
+
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        zip_bytes = services.export_dossier_btp(chantier)
+        response = HttpResponse(zip_bytes, content_type='application/zip')
+        response['Content-Disposition'] = (
+            f'attachment; filename="dossier-chantier-{chantier_id}.zip"')
+        return response
+
+
 class ChantierIntervenantsView(APIView):
     """NTCON17 — ``chantiers/<id>/intervenants/`` : registre de coordination
     SPS/CISSCT (sous-traitants actifs + attestations, PPSPS signé, effectifs

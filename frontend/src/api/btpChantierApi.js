@@ -173,6 +173,13 @@ const btpChantierApi = {
       api.patch(`/btp-chantier/abonnements-rapport-photo/${id}/`, data),
   },
 
+  // NTCON20 — ZIP « dossier chantier » consolidé (archivage légal/litige) :
+  // journal, réserves levées + preuves, visas approuvés, DGD, PPSPS signés.
+  exportDossierBtp: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/export-dossier-btp/`, {
+      responseType: 'blob',
+    }),
+
   // NTCON17 — registre des intervenants (coordination SPS/CISSCT) : lecture
   // seule, agrège sous-traitants actifs + attestations + PPSPS + effectifs.
   intervenants: (chantierId) =>

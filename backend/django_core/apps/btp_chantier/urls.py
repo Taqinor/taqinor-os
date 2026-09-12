@@ -4,8 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AbonnementRapportPhotoViewSet, AvenantChantierViewSet,
     ChantierDebourseVsFactureView,
-    ChantierIntervenantsView, ChantierPenalitesParLotView,
-    ChantierPlanningLotsView,
+    ChantierExportDossierBtpView, ChantierIntervenantsView,
+    ChantierPenalitesParLotView, ChantierPlanningLotsView,
     DecompteGeneralViewSet, DiffusionPlanViewSet,
     JournalChantierViewSet, LotViewSet, PPSPSChantierViewSet,
     ReserveChantierViewSet, RFIViewSet, VisaDocumentViewSet,
@@ -46,6 +46,10 @@ urlpatterns = [
         'chantiers/<int:chantier_id>/debourse-vs-facture/',
         ChantierDebourseVsFactureView.as_view(),
         name='btp-chantier-debourse-vs-facture'),
+    path(
+        'chantiers/<int:chantier_id>/export-dossier-btp/',
+        ChantierExportDossierBtpView.as_view(),
+        name='btp-chantier-export-dossier'),
     path(
         'chantiers/<int:chantier_id>/intervenants/',
         ChantierIntervenantsView.as_view(),
