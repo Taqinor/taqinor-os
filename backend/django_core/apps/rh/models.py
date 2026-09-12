@@ -6505,3 +6505,219 @@ class PropositionRevision(models.Model):
 
     def __str__(self):
         return f'{self.employe} — +{self.augmentation_pct_proposee} %'
+
+
+# ── NTHCM8 — OKR d'entreprise (cascade OPTIONNELLE, cycle trimestriel) ──────
+
+def progression_key_result(valeur_actuelle, valeur_cible):
+    """NTHCM8 — progression d'un key result en %, BORNÉE à ``[0, 100]``.
+
+    Cible nulle/absente ⇒ ``0`` (aucune progression calculable, jamais une
+    division par zéro ni un 100 % inventé). Une valeur actuelle négative est
+    ramenée à 0, une valeur au-delà de la cible est plafonnée à 100.
+    """
+    cible = valeur_cible or Decimal('0')
+    if cible <= 0:
+        return Decimal('0.00')
+    actuelle = valeur_actuelle or Decimal('0')
+    pct = (actuelle / cible) * Decimal('100')
+    if pct < 0:
+        pct = Decimal('0')
+    elif pct > 100:
+        pct = Decimal('100')
+    return pct.quantize(Decimal('0.01'))
+
+
+class ObjectifEntreprise(models.Model):
+    """NTHCM8 — objectif d'ENTREPRISE d'une période (cycle OKR trimestriel).
+
+    Distinct de ``ObjectifIndividuel`` (FG190), qui est un objectif posé à
+    l'ENTRETIEN annuel : ici on modélise le cycle OKR continu (Workday/
+    Lattice), avec ses ``KeyResult`` mesurables et des ``OkrIndividuel``
+    éventuellement rattachés (cascade TOUJOURS optionnelle).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un objectif d'entreprise n'a aucun sens hors de sa société
+        related_name='rh_objectifs_entreprise',
+        verbose_name='Société',
+    )
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    periode = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Période')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    proprietaire = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='objectifs_entreprise',
+        verbose_name='Propriétaire',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Objectif d'entreprise"
+        verbose_name_plural = "Objectifs d'entreprise"
+        ordering = ['-periode', 'titre']
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='rh_objent_comp_per_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.periode})' if self.periode else self.titre
+
+
+class KeyResult(models.Model):
+    """NTHCM8 — résultat clé mesurable d'un ``ObjectifEntreprise``."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un key result n'a aucun sens hors de sa société
+        related_name='rh_key_results',
+        verbose_name='Société',
+    )
+    objectif = models.ForeignKey(
+        ObjectifEntreprise,
+        on_delete=models.CASCADE,  # on_delete: composition — un key result n'existe QUE dans son objectif
+        related_name='key_results',
+        verbose_name='Objectif',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    valeur_cible = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur cible')
+    valeur_actuelle = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur actuelle')
+    unite = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Unité')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Résultat clé'
+        verbose_name_plural = 'Résultats clés'
+        ordering = ['objectif', 'libelle']
+
+    @property
+    def progression_pct(self):
+        """Progression bornée 0-100 (lecture — jamais stockée ici)."""
+        return progression_key_result(self.valeur_actuelle, self.valeur_cible)
+
+    def __str__(self):
+        return self.libelle
+
+
+class OkrIndividuel(models.Model):
+    """NTHCM8 — OKR d'un employé sur une période.
+
+    ``objectif_parent`` est NULLABLE : la cascade vers un objectif
+    d'entreprise est TOUJOURS optionnelle (un OKR purement individuel reste
+    parfaitement valide). Rattaché, l'OKR alimentera le rollup de son parent
+    (NTHCM9).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un OKR individuel n'a aucun sens hors de sa société
+        related_name='rh_okr_individuels',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: l'OKR n'a plus d'objet sans son employé ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='okr_individuels',
+        verbose_name='Employé',
+    )
+    periode = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Période')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    objectif_parent = models.ForeignKey(
+        ObjectifEntreprise,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='okr_rattaches',
+        verbose_name="Objectif d'entreprise (optionnel)",
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'OKR individuel'
+        verbose_name_plural = 'OKR individuels'
+        ordering = ['-periode', 'titre']
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='rh_okrind_comp_per_idx'),
+        ]
+
+    @property
+    def progression_pct(self):
+        """Moyenne (bornée 0-100) des progressions de ses key results ;
+        ``0`` quand l'OKR n'en porte aucun."""
+        lignes = list(self.key_results.all())
+        if not lignes:
+            return Decimal('0.00')
+        total = sum(
+            (ligne.progression_pct for ligne in lignes), Decimal('0'))
+        return (total / Decimal(len(lignes))).quantize(Decimal('0.01'))
+
+    def __str__(self):
+        return f'{self.titre} — {self.employe}'
+
+
+class KeyResultIndividuel(models.Model):
+    """NTHCM8 — résultat clé mesurable d'un ``OkrIndividuel``.
+
+    ``progression_pct`` est CALCULÉE côté serveur à chaque sauvegarde
+    (``valeur_actuelle / valeur_cible``, bornée 0-100) et stockée pour rester
+    filtrable/agrégeable — jamais lue du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un key result individuel n'a aucun sens hors de sa société
+        related_name='rh_key_results_individuels',
+        verbose_name='Société',
+    )
+    okr = models.ForeignKey(
+        OkrIndividuel,
+        on_delete=models.CASCADE,  # on_delete: composition — un key result n'existe QUE dans son OKR
+        related_name='key_results',
+        verbose_name='OKR',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    valeur_cible = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur cible')
+    valeur_actuelle = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur actuelle')
+    unite = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Unité')
+    progression_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Progression (%)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Résultat clé individuel'
+        verbose_name_plural = 'Résultats clés individuels'
+        ordering = ['okr', 'libelle']
+
+    def save(self, *args, **kwargs):
+        """Recalcule TOUJOURS ``progression_pct`` côté serveur."""
+        self.progression_pct = progression_key_result(
+            self.valeur_actuelle, self.valeur_cible)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            champs = set(update_fields)
+            champs.add('progression_pct')
+            kwargs['update_fields'] = sorted(champs)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.libelle

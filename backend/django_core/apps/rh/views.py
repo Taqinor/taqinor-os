@@ -57,6 +57,10 @@ from .models import (
     CorrectionPointage,
     CycleRevisionSalariale,
     EnveloppeManager,
+    KeyResult,
+    KeyResultIndividuel,
+    ObjectifEntreprise,
+    OkrIndividuel,
     PropositionRevision,
     DemandeAllocation,
     DemandeConge,
@@ -140,6 +144,10 @@ from .serializers import (
     CorrectionPointageSerializer,
     CycleRevisionSalarialeSerializer,
     EnveloppeManagerSerializer,
+    KeyResultIndividuelSerializer,
+    KeyResultSerializer,
+    ObjectifEntrepriseSerializer,
+    OkrIndividuelSerializer,
     PropositionRevisionSerializer,
     DemandeAllocationSerializer,
     DemandeCongeSerializer,
@@ -6202,3 +6210,81 @@ class PropositionRevisionViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             self.get_serializer(proposition).data,
             status=status.HTTP_201_CREATED)
+
+
+# ── NTHCM8 — OKR d'entreprise (cascade OPTIONNELLE) ─────────────────────────
+
+class ObjectifEntrepriseViewSet(_RhBaseViewSet):
+    """NTHCM8 — objectifs d'ENTREPRISE d'une période (``?periode=T1-2027``).
+
+    Société scopée + permissions RH fines (``rh_voir``/``rh_gerer``).
+    """
+    queryset = ObjectifEntreprise.objects.select_related(
+        'proprietaire').prefetch_related('key_results').all()
+    serializer_class = ObjectifEntrepriseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'periode']
+    ordering_fields = ['periode', 'titre']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode=periode)
+        return qs
+
+
+class KeyResultViewSet(_RhBaseViewSet):
+    """NTHCM8 — résultats clés d'un objectif d'entreprise (``?objectif=``)."""
+    queryset = KeyResult.objects.select_related('objectif').all()
+    serializer_class = KeyResultSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        objectif = self.request.query_params.get('objectif')
+        if objectif:
+            qs = qs.filter(objectif_id=objectif)
+        return qs
+
+
+class OkrIndividuelViewSet(_RhBaseViewSet):
+    """NTHCM8 — OKR individuels (``?employe=``, ``?periode=``, ``?parent=``).
+
+    ``objectif_parent`` reste OPTIONNEL : un OKR sans parent est valide.
+    """
+    queryset = OkrIndividuel.objects.select_related(
+        'employe', 'objectif_parent').prefetch_related('key_results').all()
+    serializer_class = OkrIndividuelSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'periode']
+    ordering_fields = ['periode', 'titre']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        periode = params.get('periode')
+        if periode:
+            qs = qs.filter(periode=periode)
+        parent = params.get('parent')
+        if parent:
+            qs = qs.filter(objectif_parent_id=parent)
+        return qs
+
+
+class KeyResultIndividuelViewSet(_RhBaseViewSet):
+    """NTHCM8 — résultats clés d'un OKR individuel (``?okr=``).
+
+    ``progression_pct`` est recalculée côté serveur à chaque sauvegarde.
+    """
+    queryset = KeyResultIndividuel.objects.select_related('okr').all()
+    serializer_class = KeyResultIndividuelSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        okr = self.request.query_params.get('okr')
+        if okr:
+            qs = qs.filter(okr_id=okr)
+        return qs

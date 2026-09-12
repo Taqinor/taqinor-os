@@ -22,6 +22,10 @@ from .views import (
     CertificationViewSet,
     CycleRevisionSalarialeViewSet,
     EnveloppeManagerViewSet,
+    KeyResultIndividuelViewSet,
+    KeyResultViewSet,
+    ObjectifEntrepriseViewSet,
+    OkrIndividuelViewSet,
     PropositionRevisionViewSet,
     CompetenceEmployeViewSet,
     CompetenceRequiseViewSet,
@@ -177,6 +181,11 @@ router.register(r'attributions-badge', AttributionBadgeViewSet)
 router.register(r'cycles-revision', CycleRevisionSalarialeViewSet)
 router.register(r'enveloppes-manager', EnveloppeManagerViewSet)
 router.register(r'propositions-revision', PropositionRevisionViewSet)
+# NTHCM8 — OKR d'entreprise + OKR individuels (cascade OPTIONNELLE).
+router.register(r'objectifs-entreprise', ObjectifEntrepriseViewSet)
+router.register(r'key-results', KeyResultViewSet)
+router.register(r'okr-individuels', OkrIndividuelViewSet)
+router.register(r'key-results-individuels', KeyResultIndividuelViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -33,6 +33,10 @@ from .models import (
     CorrectionPointage,
     CycleRevisionSalariale,
     EnveloppeManager,
+    KeyResult,
+    KeyResultIndividuel,
+    ObjectifEntreprise,
+    OkrIndividuel,
     PropositionRevision,
     DemandeAllocation,
     DemandeConge,
@@ -3136,3 +3140,86 @@ class PropositionRevisionSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+# ── NTHCM8 — OKR d'entreprise (cascade OPTIONNELLE) ─────────────────────────
+
+class KeyResultSerializer(serializers.ModelSerializer):
+    """NTHCM8 — résultat clé d'un objectif d'entreprise.
+
+    ``progression_pct`` est une PROPRIÉTÉ dérivée (actuelle/cible, bornée
+    0-100) — lecture seule, jamais écrite par le client.
+    """
+    progression_pct = serializers.DecimalField(
+        max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = KeyResult
+        fields = [
+            'id', 'objectif', 'libelle', 'valeur_cible', 'valeur_actuelle',
+            'unite', 'progression_pct', 'date_creation',
+        ]
+        read_only_fields = ['progression_pct', 'date_creation']
+
+    def validate_objectif(self, value):
+        return _meme_societe(self, value, 'Objectif')
+
+
+class ObjectifEntrepriseSerializer(serializers.ModelSerializer):
+    """NTHCM8 — objectif d'entreprise + ses résultats clés (lecture)."""
+    key_results = KeyResultSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ObjectifEntreprise
+        fields = [
+            'id', 'titre', 'periode', 'description', 'proprietaire',
+            'key_results', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_proprietaire(self, value):
+        return _meme_societe(self, value, 'Propriétaire')
+
+
+class KeyResultIndividuelSerializer(serializers.ModelSerializer):
+    """NTHCM8 — résultat clé d'un OKR individuel.
+
+    ``progression_pct`` est recalculée CÔTÉ SERVEUR à chaque sauvegarde
+    (``KeyResultIndividuel.save``) : lecture seule ici.
+    """
+    class Meta:
+        model = KeyResultIndividuel
+        fields = [
+            'id', 'okr', 'libelle', 'valeur_cible', 'valeur_actuelle',
+            'unite', 'progression_pct', 'date_creation',
+        ]
+        read_only_fields = ['progression_pct', 'date_creation']
+
+    def validate_okr(self, value):
+        return _meme_societe(self, value, 'OKR')
+
+
+class OkrIndividuelSerializer(serializers.ModelSerializer):
+    """NTHCM8 — OKR d'un employé. ``objectif_parent`` reste OPTIONNEL."""
+    key_results = KeyResultIndividuelSerializer(many=True, read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    progression_pct = serializers.DecimalField(
+        max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = OkrIndividuel
+        fields = [
+            'id', 'employe', 'employe_nom', 'periode', 'titre',
+            'objectif_parent', 'key_results', 'progression_pct',
+            'date_creation',
+        ]
+        read_only_fields = ['progression_pct', 'date_creation']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_objectif_parent(self, value):
+        return _meme_societe(self, value, "Objectif d'entreprise")
