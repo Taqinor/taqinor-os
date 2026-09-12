@@ -4,6 +4,7 @@ import crmApi from '../../../api/crmApi'
 import aiGovernanceApi from '../../../api/aiGovernanceApi'
 import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import LeadMaturiteBadge from './LeadMaturiteBadge'
+import FavoriButton from '../../../features/uxviews/FavoriButton'
 import { Spinner, EmptyState, Button, toast } from '../../../ui'
 import { frenchError } from '../../../lib/frenchError'
 
@@ -108,6 +109,8 @@ export default function LeadDetailPage() {
         {/* NTMKT18/19 — score de maturité marketing (chaud/tiède/froid),
             invisible si le module est désactivé pour la société. */}
         <LeadMaturiteBadge leadId={id} />
+        {/* NTUX12 — épingler la fiche dans les favoris */}
+        <FavoriButton modele="crm.lead" objectId={id} />
         <select value={canal} onChange={(e) => setCanal(e.target.value)} aria-label="Canal du brouillon">
           {CANAL_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
