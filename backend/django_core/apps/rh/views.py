@@ -6776,6 +6776,28 @@ class ParcoursFormationViewSet(_RhBaseViewSet):
             qs = qs.filter(actif=(actif == '1'))
         return qs
 
+    @action(detail=True, methods=['get'],
+            url_path='correlation-performance')
+    def correlation_performance(self, request, pk=None):
+        """NTHCM29 — évolution des notes avant/après la complétion.
+
+        Lecture seule, jamais causale : le libellé prudent est servi par le
+        sélecteur pour qu'aucun écran ne réinvente une formulation qui
+        conclurait. ``?fenetre_mois=`` (défaut 6).
+        """
+        parcours = self.get_object()
+        try:
+            fenetre = int(request.query_params.get('fenetre_mois', 6))
+        except (TypeError, ValueError):
+            fenetre = 6
+        if fenetre < 1:
+            return Response(
+                {'detail': 'La fenêtre doit valoir au moins 1 mois.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            selectors.correlation_formation_performance(
+                request.user.company, parcours.pk, fenetre_mois=fenetre))
+
 
 class EtapeParcoursViewSet(_RhBaseViewSet):
     """NTHCM17 — étapes d'un parcours (``?parcours=``)."""

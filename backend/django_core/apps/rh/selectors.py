@@ -3706,6 +3706,111 @@ def taux_absenteisme(company, debut, fin, departement_id=None):
     }
 
 
+#: NTHCM29 — taille d'échantillon minimale pour AFFICHER une évolution.
+#: Sous 3 employés complétés, la « moyenne avant/après » ne dit rien : elle
+#: serait lue comme un résultat alors que c'est du bruit (et, sur une équipe
+#: minuscule, elle ré-identifierait la personne évaluée).
+SEUIL_ECHANTILLON_CORRELATION = 3
+
+#: Libellé prudent EXIGÉ par la tâche : on observe une évolution, on
+#: n'affirme aucune causalité. Servi tel quel à l'UI pour qu'aucun écran ne
+#: réinvente une formulation qui, elle, conclurait.
+LIBELLE_NON_CAUSAL = 'Évolution observée, non causale.'
+
+
+def correlation_formation_performance(company, parcours_id, fenetre_mois=6):
+    """NTHCM29 — évolution des notes AVANT/APRÈS la complétion d'un parcours.
+
+    Pour chaque employé ayant TERMINÉ le parcours (``date_completion``
+    renseignée), on moyenne ses ``EvaluationEmploye.note_globale`` dans la
+    fenêtre AVANT (``fenetre_mois`` mois précédant la complétion) puis dans la
+    fenêtre APRÈS, et on compare les moyennes d'ensemble.
+
+    CE QUE CE SÉLECTEUR NE FAIT PAS. Il n'affirme aucune causalité : la
+    formation n'est qu'un événement daté parmi d'autres. La réponse porte
+    ``libelle`` = « Évolution observée, non causale. » pour que l'écran ne
+    réinvente pas une formulation qui, elle, conclurait.
+
+    MASQUÉ sous ``SEUIL_ECHANTILLON_CORRELATION`` employés comparables
+    (``masque=True``, moyennes ``None``) : sous 3 personnes, une moyenne
+    avant/après n'est que du bruit — et sur une équipe minuscule elle
+    ré-identifierait l'évaluée. Un employé qui n'a de notes que d'un seul côté
+    n'est pas comparable : il est compté à part, jamais comblé par un zéro.
+
+    Lecture pure : aucune écriture, aucune migration.
+    """
+    from .models import EvaluationEmploye, ProgressionParcours
+
+    progressions = ProgressionParcours.objects.filter(
+        company=company, parcours_id=parcours_id,
+        statut=ProgressionParcours.Statut.TERMINE,
+        date_completion__isnull=False,
+    ).select_related('employe')
+
+    avants, apres = [], []
+    comparables = 0
+    nb_termine = 0
+    for progression in progressions:
+        nb_termine += 1
+        completion = progression.date_completion
+        debut_avant = _reculer_mois(completion, fenetre_mois)
+        fin_apres = _avancer_mois(completion, fenetre_mois)
+        notes = list(
+            EvaluationEmploye.objects.filter(
+                company=company, employe_id=progression.employe_id,
+                note_globale__isnull=False,
+                date_entretien__isnull=False,
+                date_entretien__gte=debut_avant,
+                date_entretien__lte=fin_apres,
+            ).values_list('date_entretien', 'note_globale'))
+        notes_avant = [float(n) for d, n in notes if d < completion]
+        notes_apres = [float(n) for d, n in notes if d >= completion]
+        if not notes_avant or not notes_apres:
+            continue
+        comparables += 1
+        avants.append(sum(notes_avant) / len(notes_avant))
+        apres.append(sum(notes_apres) / len(notes_apres))
+
+    masque = comparables < SEUIL_ECHANTILLON_CORRELATION
+    moyenne_avant = (
+        None if masque else round(sum(avants) / len(avants), 2))
+    moyenne_apres = (
+        None if masque else round(sum(apres) / len(apres), 2))
+    return {
+        'parcours_id': int(parcours_id),
+        'fenetre_mois': fenetre_mois,
+        'nb_employes_termine': nb_termine,
+        'nb_employes_comparables': comparables,
+        'seuil_echantillon': SEUIL_ECHANTILLON_CORRELATION,
+        'masque': masque,
+        'moyenne_avant': moyenne_avant,
+        'moyenne_apres': moyenne_apres,
+        'ecart': (None if masque
+                  else round(moyenne_apres - moyenne_avant, 2)),
+        'libelle': LIBELLE_NON_CAUSAL,
+    }
+
+
+def _reculer_mois(une_date, mois):
+    """``une_date`` moins ``mois`` mois calendaires (stdlib uniquement)."""
+    return _decaler_mois(une_date, -mois)
+
+
+def _avancer_mois(une_date, mois):
+    """``une_date`` plus ``mois`` mois calendaires (stdlib uniquement)."""
+    return _decaler_mois(une_date, mois)
+
+
+def _decaler_mois(une_date, mois):
+    import calendar
+
+    total = une_date.month - 1 + mois
+    annee = une_date.year + total // 12
+    moiscible = total % 12 + 1
+    jour = min(une_date.day, calendar.monthrange(annee, moiscible)[1])
+    return une_date.replace(year=annee, month=moiscible, day=jour)
+
+
 def comparaison_absenteisme(company, debut, fin, departement_id):
     """NTHCM28 — taux d'UN département vs celui de la société entière."""
     return {
