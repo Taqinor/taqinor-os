@@ -1550,3 +1550,292 @@ def journal_appels(company, *, date_debut=None, date_fin=None, issue=None,
         'created_at': a.created_at,
         'notes': a.body,
     } for a in qs]
+
+
+# ── NTSRV17 — Regroupements suggérés (candidats à un Problème NTSRV16) ──────
+
+def tickets_candidats_probleme(company, fenetre_jours=30, *, seuil=3):
+    """NTSRV17 — regroupe les tickets OUVERTS qui sentent la panne SYSTÉMIQUE.
+
+    Similarité VOLONTAIREMENT SIMPLE et explicable (jamais un modèle
+    statistique opaque qu'un agent ne saurait pas contester) : même produit
+    d'équipement + même ``cause`` XSAV14 + au moins ``seuil`` occurrences dans
+    la fenêtre. Un ticket sans équipement OU sans cause codifiée ne peut pas
+    être regroupé — on ne devine rien.
+
+    ⚠ AUCUNE CRÉATION : ce sélecteur ne crée JAMAIS de ``Probleme``. Il
+    PROPOSE ; l'agent valide (NTSRV31). Les tickets déjà rattachés à un
+    problème sont exclus — un regroupement déjà traité n'est pas reproposé.
+
+    La fenêtre porte sur ``date_creation`` (toujours renseignée), pas sur
+    ``date_ouverture`` (nullable sur les tickets anciens).
+
+    Returns:
+        liste de dicts, du regroupement le plus lourd au plus léger :
+        ``{produit_id, produit_nom, cause_id, cause_libelle, titre_suggere,
+        nb_tickets, tickets: [{id, reference, statut, priorite,
+        date_ouverture, client}]}``.
+    """
+    from datetime import timedelta
+
+    try:
+        fenetre = max(1, int(fenetre_jours))
+    except (TypeError, ValueError):
+        fenetre = 30
+    try:
+        minimum = max(2, int(seuil))
+    except (TypeError, ValueError):
+        minimum = 3
+    depuis = timezone.now() - timedelta(days=fenetre)
+
+    qs = (Ticket.objects
+          .filter(company=company, annule=False,
+                  statut__in=Ticket.OPEN_STATUTS,
+                  date_creation__gte=depuis,
+                  equipement__produit__isnull=False,
+                  cause__isnull=False)
+          .exclude(problemes_lies__isnull=False)
+          .select_related('client', 'cause', 'equipement__produit')
+          .order_by('date_creation', 'id'))
+
+    groupes = {}
+    for ticket in qs:
+        produit = ticket.equipement.produit
+        cle = (produit.pk, ticket.cause_id)
+        groupe = groupes.get(cle)
+        if groupe is None:
+            groupe = groupes[cle] = {
+                'produit_id': produit.pk,
+                'produit_nom': produit.nom,
+                'cause_id': ticket.cause_id,
+                'cause_libelle': getattr(ticket.cause, 'nom', '') or '',
+                'tickets': [],
+            }
+        groupe['tickets'].append({
+            'id': ticket.pk,
+            'reference': ticket.reference,
+            'statut': ticket.statut,
+            'priorite': ticket.priorite,
+            'date_ouverture': ticket.date_ouverture,
+            'client': getattr(ticket.client, 'nom', '') or '',
+        })
+
+    resultats = []
+    for groupe in groupes.values():
+        if len(groupe['tickets']) < minimum:
+            continue
+        groupe['nb_tickets'] = len(groupe['tickets'])
+        # Titre PRÉ-REMPLI de l'assistant NTSRV31 : équipement + cause, jamais
+        # une formule inventée — les deux morceaux viennent des données.
+        libelle = groupe['cause_libelle']
+        groupe['titre_suggere'] = (
+            f"{groupe['produit_nom']} — {libelle}" if libelle
+            else groupe['produit_nom'])
+        resultats.append(groupe)
+    resultats.sort(key=lambda g: (-g['nb_tickets'], g['produit_nom']))
+    return resultats
+
+
+# ── NTSRV24 — Résolution au premier contact (FCR) ───────────────────────────
+
+#: Nombre d'échanges client TOLÉRÉS pour rester « premier contact ». UN
+#: aller-retour = le message du client + LA réponse de l'équipe, donc 2
+#: entrées de chatter. Au-delà, ce n'est plus un premier contact.
+FCR_ECHANGES_MAX = 2
+
+#: Genres d'activité qui comptent comme un ÉCHANGE AVEC LE CLIENT. Les notes
+#: internes et les lignes de modification de champ n'en sont pas : compter un
+#: changement de priorité comme un aller-retour fausserait le taux.
+FCR_KINDS_ECHANGE = (
+    TicketActivity.Kind.EMAIL,
+    TicketActivity.Kind.WHATSAPP,
+    TicketActivity.Kind.APPEL,
+)
+
+
+def taux_resolution_premier_contact(company, *, date_debut=None,
+                                    date_fin=None):
+    """NTSRV24 — taux de résolution au premier contact (FCR) de la société.
+
+    Un ticket compte en FCR s'il est CLÔTURÉ **et** :
+      * il n'est jamais repassé à un statut ouvert après une résolution —
+        mesuré par ``reopen_count`` (compteur XSAV11 posé CÔTÉ SERVEUR à
+        chaque transition résolu/clôturé → ouvert). On ne relit pas les
+        libellés du chatter pour ça : ce sont des textes d'affichage
+        traduits, donc un critère fragile ;
+      * il n'a pas eu plus d'UN aller-retour client, mesuré par le nombre
+        d'entrées de chatter e-mail/WhatsApp/appel (``FCR_ECHANGES_MAX``).
+
+    PÉRIODE : bornes inclusives sur ``date_creation`` (toujours renseignée,
+    contrairement à ``date_resolution``). Les tickets encore OUVERTS et les
+    tickets ANNULÉS de la période sont EXCLUS du dénominateur — un ticket en
+    cours n'a ni réussi ni raté son premier contact ; il est simplement pas
+    encore jugeable (c'est le critère d'acceptation de NTSRV24).
+
+    Renvoie ``taux_fcr=None`` (jamais une division par zéro) quand aucun
+    ticket clôturé n'existe sur la période.
+    """
+    from django.db.models import Count
+
+    qs = Ticket.objects.filter(company=company, annule=False)
+    if date_debut is not None:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+
+    clotures = list(qs.filter(statut=Ticket.Statut.CLOTURE)
+                    .only('id', 'reference', 'reopen_count',
+                          'technicien_responsable_id')
+                    .order_by('reference', 'id'))
+    nb_periode = qs.count()
+
+    echanges = dict(
+        TicketActivity.objects
+        .filter(ticket_id__in=[t.pk for t in clotures],
+                kind__in=FCR_KINDS_ECHANGE)
+        .values('ticket_id')
+        .annotate(nb=Count('id'))
+        .values_list('ticket_id', 'nb'))
+
+    lignes = []
+    nb_fcr = 0
+    exclusions = {'reouverture': 0, 'echanges_multiples': 0}
+    for ticket in clotures:
+        nb_echanges = echanges.get(ticket.pk, 0)
+        reouvert = (ticket.reopen_count or 0) > 0
+        trop_d_echanges = nb_echanges > FCR_ECHANGES_MAX
+        fcr = not reouvert and not trop_d_echanges
+        if fcr:
+            nb_fcr += 1
+            motif = ''
+        elif reouvert:
+            # Un ticket qui cumule les deux défauts n'est compté QUE dans la
+            # réouverture : sinon les motifs ne sommeraient plus au nombre
+            # d'exclusions.
+            exclusions['reouverture'] += 1
+            motif = 'Rouvert après résolution'
+        else:
+            exclusions['echanges_multiples'] += 1
+            motif = 'Plus d’un aller-retour client'
+        lignes.append({
+            'ticket_id': ticket.pk,
+            'reference': ticket.reference,
+            'fcr': fcr,
+            'motif': motif,
+            'reopen_count': ticket.reopen_count or 0,
+            'nb_echanges_client': nb_echanges,
+        })
+
+    nb_clotures = len(clotures)
+    taux = (round(100.0 * nb_fcr / nb_clotures, 1)
+            if nb_clotures else None)
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'nb_tickets_periode': nb_periode,
+        'nb_clotures': nb_clotures,
+        'nb_non_clotures_exclus': nb_periode - nb_clotures,
+        'nb_fcr': nb_fcr,
+        'taux_fcr': taux,
+        'echanges_max': FCR_ECHANGES_MAX,
+        'exclusions': exclusions,
+        'tickets': lignes,
+    }
+
+
+# ── NTSRV27 — Charge et performance par agent ───────────────────────────────
+
+def performance_agent(company, *, date_debut=None, date_fin=None):
+    """NTSRV27 — charge et performance par technicien sur la période.
+
+    Par agent : nombre de tickets TRAITÉS (résolus/clôturés), délai moyen de
+    résolution, CSAT moyen reçu, taux de respect du SLA.
+
+    ⚠ JAMAIS UN CLASSEMENT. La liste est triée ALPHABÉTIQUEMENT, pas par
+    volume : un tableau trié par performance EST un classement, et ces
+    chiffres ne sont pas destinés à une émulation publique (l'accès est
+    limité au tier responsable/admin côté route, cohérent avec la garde
+    existante ``journal_activite_voir``).
+
+    GARDE DIVISION PAR ZÉRO (critère d'acceptation) : la liste est construite
+    À PARTIR des tickets de la période, donc un agent sans aucun ticket n'y
+    figure simplement pas ; et chaque moyenne vaut ``None`` — jamais 0 — quand
+    son dénominateur est vide (aucun CSAT reçu, aucun ticket porteur d'une
+    échéance SLA, aucune date de résolution exploitable).
+
+    PÉRIODE : bornes inclusives sur ``date_resolution`` (la date à laquelle le
+    travail a été fait), comme ``taux_resolution_a_distance`` (YSERV12).
+    """
+    qs = Ticket.objects.filter(
+        company=company, annule=False,
+        statut__in=(Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE))
+    if date_debut is not None:
+        qs = qs.filter(date_resolution__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_resolution__lte=date_fin)
+
+    tickets = list(qs.select_related('technicien_responsable'))
+    csats = dict(
+        TicketSatisfaction.objects
+        .filter(ticket_id__in=[t.pk for t in tickets])
+        .values_list('ticket_id', 'note'))
+
+    seaux = {}
+    for ticket in tickets:
+        agent_id = ticket.technicien_responsable_id
+        seau = seaux.get(agent_id)
+        if seau is None:
+            seau = seaux[agent_id] = {
+                'agent_id': agent_id,
+                'agent_nom': (
+                    getattr(ticket.technicien_responsable, 'username', None)
+                    or 'Non assigné'),
+                'nb_tickets_traites': 0,
+                'delais': [],
+                'notes': [],
+                'sla_total': 0,
+                'sla_respectes': 0,
+            }
+        seau['nb_tickets_traites'] += 1
+        if ticket.date_resolution and ticket.date_creation:
+            jours = (ticket.date_resolution
+                     - timezone.localtime(ticket.date_creation).date()).days
+            if jours >= 0:
+                seau['delais'].append(jours)
+        note = csats.get(ticket.pk)
+        if note is not None:
+            seau['notes'].append(note)
+        # Respect du SLA : mesuré seulement quand le ticket porte une
+        # échéance ET une date de résolution ; les autres sont exclus du
+        # dénominateur plutôt que comptés « respectés » par défaut.
+        if ticket.sla_due_at and ticket.date_resolution:
+            seau['sla_total'] += 1
+            if ticket.date_resolution <= ticket.sla_due_at:
+                seau['sla_respectes'] += 1
+
+    def _moyenne(valeurs, chiffres=1):
+        if not valeurs:
+            return None
+        return round(sum(valeurs) / len(valeurs), chiffres)
+
+    agents = []
+    for seau in seaux.values():
+        agents.append({
+            'agent_id': seau['agent_id'],
+            'agent_nom': seau['agent_nom'],
+            'nb_tickets_traites': seau['nb_tickets_traites'],
+            'delai_resolution_moyen_jours': _moyenne(seau['delais']),
+            'csat_moyen': _moyenne(seau['notes'], 2),
+            'nb_csat': len(seau['notes']),
+            'nb_tickets_avec_sla': seau['sla_total'],
+            'taux_respect_sla': (
+                round(100.0 * seau['sla_respectes'] / seau['sla_total'], 1)
+                if seau['sla_total'] else None),
+        })
+    agents.sort(key=lambda a: a['agent_nom'].lower())
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'nb_tickets_traites': len(tickets),
+        'agents': agents,
+    }

@@ -8,7 +8,9 @@ import userEvent from '@testing-library/user-event'
    (type/depuis/jusqua), le toggle "Inclure les éléments restaurés", et la
    restauration (confirmation → POST → mise à jour de la ligne). */
 
-const api = vi.hoisted(() => ({ listCorbeille: vi.fn(), restaurer: vi.fn() }))
+const api = vi.hoisted(() => ({
+  listCorbeille: vi.fn(), restaurer: vi.fn(), exportXlsx: vi.fn(),
+}))
 vi.mock('../../api/trashApi', () => ({ default: api }))
 
 const confirmMock = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
@@ -17,6 +19,13 @@ const toastSuccess = vi.hoisted(() => vi.fn())
 vi.mock('../../ui/confirm', () => ({
   toast: { success: (...a) => toastSuccess(...a), error: (...a) => toastError(...a) },
   useConfirmDialog: () => ({ confirm: confirmMock, confirmDelete: confirmMock }),
+}))
+
+// NTUX24 — export .xlsx : mêmes mocks que VuesConfigurationPage.test.jsx.
+const downloadBlobMock = vi.hoisted(() => vi.fn())
+vi.mock('../../utils/downloadBlob', () => ({
+  downloadBlob: (...a) => downloadBlobMock(...a),
+  stampedFilename: (base, ext) => `${base}.${ext}`,
 }))
 
 import CorbeillePage from './CorbeillePage'
@@ -31,6 +40,7 @@ const ELEMENT = {
 beforeEach(() => {
   api.listCorbeille.mockResolvedValue({ data: { count: 1, results: [ELEMENT] } })
   api.restaurer.mockResolvedValue({ data: { restaure: true, element: { ...ELEMENT, restaure_le: '2026-09-01T00:00:00Z' } } })
+  api.exportXlsx.mockResolvedValue({ data: new Blob(['x']) })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -129,5 +139,88 @@ describe('CorbeillePage — NTUX7', () => {
     api.listCorbeille.mockRejectedValue(new Error('boom'))
     render(<CorbeillePage />)
     expect(await screen.findByText('Corbeille indisponible')).toBeInTheDocument()
+  })
+
+  // ── NTUX24 — export .xlsx du journal ────────────────────────────────────
+  it('« Exporter le journal » appelle exportXlsx avec les MÊMES filtres que la liste, puis télécharge', async () => {
+    const user = userEvent.setup()
+    render(<CorbeillePage />)
+    await waitFor(() => expect(api.listCorbeille).toHaveBeenCalled())
+    await user.type(screen.getByLabelText('Type'), 'Devis')
+    await user.click(screen.getByRole('button', { name: 'Filtrer' }))
+    await waitFor(() => expect(api.listCorbeille).toHaveBeenLastCalledWith(
+      { page: 1, type: 'Devis' }))
+
+    await user.click(screen.getByRole('button', { name: 'Exporter le journal' }))
+    await waitFor(() => expect(api.exportXlsx).toHaveBeenCalledWith({ type: 'Devis' }))
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledWith(
+      expect.any(Blob), 'journal-corbeille.xlsx'))
+  })
+
+  it('échec de l’export : toast d’erreur, jamais un crash', async () => {
+    api.exportXlsx.mockRejectedValue(new Error('boom'))
+    const user = userEvent.setup()
+    render(<CorbeillePage />)
+    await screen.findByTestId('corbeille-table')
+    await user.click(screen.getByRole('button', { name: 'Exporter le journal' }))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Export impossible.'))
+  })
+
+  // ── NTUX26 — restauration en masse ──────────────────────────────────────
+  describe('restauration en masse', () => {
+    const ELEMENT_2 = {
+      id: 5, modele: 'crm.lead', type_libelle: 'Lead', libelle_snapshot: 'Sara K',
+      supprime_par_nom: 'reda', supprime_le: '2026-08-21T10:00:00Z',
+      expire_le: '2026-09-20T10:00:00Z', restaure_le: null,
+      avertissement_restauration: "Le responsable d'origine n'existe plus.",
+    }
+
+    beforeEach(() => {
+      api.listCorbeille.mockResolvedValue({ data: { count: 2, results: [ELEMENT, ELEMENT_2] } })
+    })
+
+    it('sélectionner deux éléments puis confirmer restaure les DEUX (en boucle, jamais en masse SQL)', async () => {
+      api.restaurer.mockImplementation((id) => Promise.resolve(
+        { data: { restaure: true, element: { id, restaure_le: '2026-09-01T00:00:00Z' } } },
+      ))
+      const user = userEvent.setup()
+      render(<CorbeillePage />)
+      await screen.findByTestId('corbeille-table')
+
+      await user.click(screen.getByRole('checkbox', { name: /Sélectionner Ali Ben/ }))
+      await user.click(screen.getByRole('checkbox', { name: /Sélectionner Sara K/ }))
+      await user.click(screen.getByRole('button', { name: 'Restaurer la sélection (2)' }))
+      // L'aperçu affiche l'avertissement AVANT toute confirmation.
+      expect(await screen.findByText(/n'existe plus/)).toBeInTheDocument()
+      expect(api.restaurer).not.toHaveBeenCalled()
+
+      await user.click(screen.getByRole('button', { name: 'Restaurer la sélection' }))
+      await waitFor(() => expect(api.restaurer).toHaveBeenCalledWith(3))
+      await waitFor(() => expect(api.restaurer).toHaveBeenCalledWith(5))
+      await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('2 élément(s) restauré(s).'))
+    })
+
+    it('« Tout sélectionner » sélectionne tous les éléments restaurables', async () => {
+      const user = userEvent.setup()
+      render(<CorbeillePage />)
+      await screen.findByTestId('corbeille-table')
+      await user.click(screen.getByRole('checkbox', { name: 'Sélectionner tous les éléments restaurables' }))
+      expect(screen.getByRole('button', { name: 'Restaurer la sélection (2)' })).toBeInTheDocument()
+    })
+
+    it('un échec partiel n\'empêche jamais la restauration des autres éléments', async () => {
+      api.restaurer.mockImplementation((id) => (id === 3
+        ? Promise.reject({ response: { data: { detail: 'Cet élément a déjà été restauré.' } } })
+        : Promise.resolve({ data: { restaure: true, element: { id, restaure_le: '2026-09-01T00:00:00Z' } } })))
+      const user = userEvent.setup()
+      render(<CorbeillePage />)
+      await screen.findByTestId('corbeille-table')
+      await user.click(screen.getByRole('checkbox', { name: 'Sélectionner tous les éléments restaurables' }))
+      await user.click(screen.getByRole('button', { name: 'Restaurer la sélection (2)' }))
+      await user.click(screen.getByRole('button', { name: 'Restaurer la sélection' }))
+      await waitFor(() => expect(screen.getByTestId('rmd-result')).toBeInTheDocument())
+      expect(screen.getByText(/1 élément restauré/)).toBeInTheDocument()
+      expect(screen.getByText(/1 échec/)).toBeInTheDocument()
+    })
   })
 })

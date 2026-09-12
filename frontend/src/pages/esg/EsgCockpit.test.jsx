@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render as rtlRender, screen, fireEvent, waitFor, within }
+  from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+
+// NTESG18 — le cockpit navigue désormais vers l'assistant de clôture
+// (`useNavigate`) : il lui faut un Router, comme dans l'application
+// réelle où il est toujours monté sous le routeur de module.
+const render = (ui) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>)
 
 const PERIODES = [
   { id: 1, libelle: 'Exercice 2025', date_debut: '2025-01-01', date_fin: '2025-12-31', statut: 'brouillon' },

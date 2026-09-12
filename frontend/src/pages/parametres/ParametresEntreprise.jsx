@@ -54,6 +54,7 @@ import ApiWebhooksSection from './ApiWebhooksSection'
 import AvanceSection from './AvanceSection'
 import SecuriteCompteSection from './SecuriteCompteSection'
 import TraductionsSection from './TraductionsSection'
+import I18nCoverageSection from './I18nCoverageSection'
 import ConfidentialiteSection from './ConfidentialiteSection'
 import ApplicationsSection from './ApplicationsSection'
 import MarketplaceSection from './MarketplaceSection'
@@ -74,6 +75,8 @@ const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du comp
 // N94 — onglet « Traductions » (surcharges d'interface par langue, sans code).
 // Ajouté localement, même logique que l'onglet N96 (hors peConstants.TABS).
 const TRADUCTIONS_TAB = { key: 'traductions', label: 'Traductions', group: 'avance' }
+// NTI18N28 — rapport de couverture i18n (lecture seule), à côté de « Traductions ».
+const I18N_COUVERTURE_TAB = { key: 'i18n_couverture', label: 'Couverture i18n', group: 'avance' }
 // XPLT23 — onglet « Confidentialité » (registre CNDP + demandes de personnes
 // concernées). Ajouté localement, même logique que N96/N94.
 const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité', group: 'equipe' }
@@ -134,7 +137,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -1027,6 +1030,8 @@ export default function ParametresEntreprise() {
           {tab === 'securite_compte' && <SecuriteCompteSection />}
           {/* N94 — traductions d'interface éditables par langue (autonome). */}
           {tab === 'traductions' && <TraductionsSection />}
+          {/* NTI18N28 — rapport de couverture i18n (lecture seule, autonome). */}
+          {tab === 'i18n_couverture' && <I18nCoverageSection />}
           {/* XPLT23 — registre CNDP + demandes de personnes concernées (autonome). */}
           {tab === 'confidentialite' && <ConfidentialiteSection />}
           {/* ODX5 — catalogue de modules (admin-gated, autonome). */}

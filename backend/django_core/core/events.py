@@ -1104,3 +1104,56 @@ workflow_etape_activee = django.dispatch.Signal()
 # statut ``clos_*`` atteint), ``montant_final`` (Decimal — le montant en jeu
 # arrêté), ``user`` (peut être ``None``).
 dossier_juridique_clos = django.dispatch.Signal()
+
+# ── NTCON31 — Événements du vertical BTP/EPC (apps.btp_chantier) ────────────
+# Les quatre gestes que la MOE/le client externe attend d'être notifiés. Émis
+# par ``apps.btp_chantier.services`` (le SEUL point d'écriture d'état du
+# module), abonnés par ``apps.publicapi`` (webhook sortant, voir
+# ``apps/publicapi/btp_event_receivers.py``) — jamais un import direct
+# ``btp_chantier`` → ``publicapi`` : l'app émet sur le bus, sans savoir qui
+# écoute (même patron que ``scm_rupture_imminente_detectee`` ci-dessus).
+
+# Émis EXACTEMENT quand une ``ReserveChantier`` passe à ``levee``
+# (``services.lever_reserve``, APRÈS la capture de la signature et la
+# transition). Arguments : ``reserve``, ``company``, ``user`` (le leveur,
+# peut être ``None``).
+btp_reserve_levee = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand un ``RFI`` reçoit sa réponse et passe à ``repondu``
+# (``services.repondre_rfi``). Arguments : ``rfi``, ``company``, ``reponse``
+# (la ``RFIReponse`` créée), ``user`` (l'auteur, peut être ``None``).
+btp_rfi_repondu = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand un ``VisaDocument`` est APPROUVÉ (sans réserve ou
+# avec observations — jamais sur un refus : l'événement s'appelle
+# ``visa.approuve``). Arguments : ``visa``, ``company``, ``user`` (le
+# revuseur, peut être ``None``).
+btp_visa_approuve = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand un ``DecompteGeneral`` devient ``definitif``
+# (``services.finaliser_dgd``) — le verrouillage du décompte, le moment que
+# la MOE et la comptabilité du client attendent. Arguments : ``dgd``,
+# ``company``, ``user`` (peut être ``None``).
+btp_dgd_finalise = django.dispatch.Signal()
+
+# ── NTUX32 — Événements des objets UX (apps.uxviews / apps.trash) ───────────
+# Émis par les apps NTUX (le SEUL point d'écriture de leur état), abonnés par
+# ``apps.publicapi`` (webhook sortant, voir
+# ``apps/publicapi/uxviews_event_receivers.py``) — jamais un import direct
+# ``uxviews``/``trash`` → ``publicapi`` : l'app émet sur le bus, sans savoir
+# qui écoute (même patron que ``btp_reserve_levee`` ci-dessus).
+
+# Émis EXACTEMENT quand une ``SavedView`` (NTUX1) est CRÉÉE ou SUPPRIMÉE avec
+# ``visibilite=EQUIPE`` (jamais sur une simple modification de filtres — ça,
+# c'est NTUX39/notifications). Arguments : ``view`` (l'instance ``SavedView``
+# — peut être un objet déjà supprimé de la base, ne lire que ses attributs
+# scalaires), ``company``, ``user`` (peut être ``None``),
+# ``action`` (``'partagee'`` ou ``'suppression'``).
+saved_view_shared = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand ``apps.trash.services.restaurer`` restaure avec succès
+# la cible d'une entrée de corbeille (NTUX7) — jamais sur une restauration
+# refusée/déjà faite. Arguments : ``element`` (l'``ElementSupprime`` fermé),
+# ``obj`` (l'objet métier restauré, peut être ``None`` si la cible avait
+# disparu), ``company``, ``user`` (peut être ``None``).
+record_restored = django.dispatch.Signal()

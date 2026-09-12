@@ -280,7 +280,10 @@ class ManagementEndpointTests(TestCase):
         # chantiers/produits).
         # NTSCM38 (14/08/2026) ajoute les 2 surfaces SCM en lecture seule
         # (prévisions de demande, politiques de stock) — 7 au total.
-        self.assertEqual(len(data['endpoints']), 7)
+        # NTCON31 a ajouté 4 ressources BTP/EPC (montées de longue date mais
+        # jamais documentées ici jusqu'à NTUX33 — comblé au passage) ; NTUX33
+        # ajoute 2 ressources UX (vues sauvegardées, favoris) — 13 au total.
+        self.assertEqual(len(data['endpoints']), 13)
         self.assertIn('authentification', data)
         self.assertIn('Api-Key', data['authentification']['entete'])
         self.assertIn('scopes', data)

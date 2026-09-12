@@ -8,13 +8,23 @@ désactivés vise le bon module.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .public_views import deposer_demande_droit, suivre_demande_droit
+from .public_views import (
+    deposer_demande_droit, questionnaire_public, suivre_demande_droit,
+)
 from .views import (
-    ControleInterneViewSet, DeficienceControleViewSet,
-    JournalDestructionViewSet, LegalHoldViewSet, PlanTraitementRisqueViewSet,
+    AnalyseImpactDPIAViewSet,
+    AttestationPolitiqueViewSet, CadreConformiteViewSet,
+    ControleInterneViewSet,
+    DeficienceControleViewSet, ExigenceCadreViewSet, FluxDonneesViewSet,
+    JournalDestructionViewSet, LegalHoldViewSet,
+    IncidentSecuriteViewSet, ModeleQuestionnaireViewSet,
+    PlanTraitementRisqueViewSet,
     PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
-    RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
-    ViolationDonneesViewSet,
+    QuestionnaireFournisseurViewSet, ReponseQuestionnaireViewSet,
+    RevueRisqueViewSet, RisqueEntrepriseViewSet, SousTraitantRGPDViewSet,
+    TestControleViewSet,
+    ViolationDonneesViewSet, dossier_conformite, e_discovery,
+    score_conformite, tableau_bord_dpo,
 )
 
 router = DefaultRouter()
@@ -51,6 +61,34 @@ router.register(r'deficiences-controle', DeficienceControleViewSet,
 # NTGRC19 — référentiel des politiques internes versionnées.
 router.register(r'politiques-internes', PolitiqueInterneViewSet,
                 basename='grc-politique-interne')
+# NTGRC20 — attestations de lecture des politiques (preuve loi 53-05).
+router.register(r'attestations-politique', AttestationPolitiqueViewSet,
+                basename='grc-attestation-politique')
+# NTGRC22 — questionnaires de conformité fournisseurs + leurs réponses.
+router.register(r'questionnaires-fournisseur', QuestionnaireFournisseurViewSet,
+                basename='grc-questionnaire-fournisseur')
+router.register(r'reponses-questionnaire', ReponseQuestionnaireViewSet,
+                basename='grc-reponse-questionnaire')
+# NTGRC23 — trames réutilisables + instanciation d'un questionnaire.
+router.register(r'modeles-questionnaire', ModeleQuestionnaireViewSet,
+                basename='grc-modele-questionnaire')
+# NTGRC25 — registre des incidents de sécurité (≠ violations de données).
+router.register(r'incidents-securite', IncidentSecuriteViewSet,
+                basename='grc-incident-securite')
+# NTGRC27 — analyses d'impact (AIPD) des traitements à haut risque.
+router.register(r'analyses-dpia', AnalyseImpactDPIAViewSet,
+                basename='grc-analyse-dpia')
+# NTGRC30 — cartographie des flux de données (+ transferts hors Maroc).
+router.register(r'flux-donnees', FluxDonneesViewSet,
+                basename='grc-flux-donnees')
+# NTGRC33 — cadres de conformité multi-référentiels + exigences mappées.
+router.register(r'cadres-conformite', CadreConformiteViewSet,
+                basename='grc-cadre-conformite')
+router.register(r'exigences-cadre', ExigenceCadreViewSet,
+                basename='grc-exigence-cadre')
+# NTGRC35 — sous-traitants RGPD (art. 28) + suivi des clauses.
+router.register(r'sous-traitants-rgpd', SousTraitantRGPDViewSet,
+                basename='grc-sous-traitant-rgpd')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit
@@ -60,5 +98,18 @@ urlpatterns = [
          name='grc-demande-droit-depot'),
     path('public/demande-droit/<str:token>/', suivre_demande_droit,
          name='grc-demande-droit-suivi'),
+    # NTGRC24 — portail PUBLIC du fournisseur : il répond à SON questionnaire
+    # sans compte, par un jeton opaque à durée de vie bornée.
+    path('public/questionnaire/<str:token>/', questionnaire_public,
+         name='grc-questionnaire-public'),
+    # NTGRC28 — cockpit de conformité du DPO (7 compteurs en un appel).
+    path('tableau-bord-dpo/', tableau_bord_dpo, name='grc-tableau-bord-dpo'),
+    # NTGRC29 — score de maturité conformité (total + détail pondéré).
+    path('score-conformite/', score_conformite, name='grc-score-conformite'),
+    # NTGRC31 — recherche e-discovery transverse (+ séquestre des résultats).
+    path('e-discovery/', e_discovery, name='grc-e-discovery'),
+    # NTGRC32 — dossier de conformité (ZIP + manifeste SHA-256 vérifiable).
+    path('dossier-conformite/', dossier_conformite,
+         name='grc-dossier-conformite'),
     path('', include(router.urls)),
 ]

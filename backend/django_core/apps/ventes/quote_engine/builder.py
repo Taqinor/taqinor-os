@@ -713,7 +713,21 @@ DEFAULT_PDF_OPTIONS = {
     # ``None`` = appel interne (ERP, Celery) : le moteur retombe sur
     # ``ShareLink.for_devis`` — comportement historique, byte-identique.
     'share_token': None,
+    # NTI18N4 — langue de sortie DÉJÀ RÉSOLUE par l'appelant (voir
+    # ``apps.parametres.i18n_resolver.resolve_langue_sortie`` —
+    # ``DevisViewSet.proposal`` la calcule systématiquement avant d'appeler ce
+    # moteur). ``None`` = appelant historique qui ne la passe pas encore
+    # (Celery, generer-pdf) : le moteur retombe sur son comportement FR actuel,
+    # byte-identique. Le moteur ne fait QUE RECEVOIR cette valeur — il choisit
+    # son propre gabarit de libellés (NTI18N5), jamais de second moteur.
+    'langue_sortie': None,
 }
+
+#: Valeurs acceptées pour ``langue_sortie`` — mêmes 3 langues que le cadre
+#: i18n léger frontend (fr/en/ar). Toute autre valeur retombe sur ``None``
+#: (comportement FR historique), jamais une langue arbitraire transmise au
+#: moteur.
+LANGUES_SORTIE_PDF = ('fr', 'en', 'ar')
 
 #: Valeurs acceptées pour ``variante_option`` (liste blanche STRICTE — tout le
 #: reste retombe sur ``None``, c'est-à-dire le document complet du commercial).
@@ -755,6 +769,10 @@ def clean_pdf_options(raw) -> dict:
             None if _annexe is None else bool(_annexe))
     if raw.get('payment_mode') in ('standard', 'custom'):
         opts['payment_mode'] = raw['payment_mode']
+    # NTI18N4 — langue de sortie déjà résolue par l'appelant (whitelist
+    # stricte, jamais une valeur arbitraire transmise plus loin).
+    if raw.get('langue_sortie') in LANGUES_SORTIE_PDF:
+        opts['langue_sortie'] = raw['langue_sortie']
     # Agricole toggles — booleans default True; current_fuel a small enum.
     for _flag in ('show_subsidy', 'show_fuel_comparison', 'show_environmental',
                   'show_schematic', 'show_water_yield'):

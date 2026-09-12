@@ -16,6 +16,7 @@ import PrechargementTournee from '../../features/offlinesync/PrechargementTourne
 import PresentationModeBanner from './PresentationModeBanner'
 import TrialExpiredBanner from './TrialExpiredBanner'
 import ImpersonationBanner from './ImpersonationBanner'
+import MaintenanceBanner from '../../ui/MaintenanceBanner'
 import coreApi from '../../api/coreApi'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 
@@ -144,6 +145,9 @@ export default function Layout({ children }) {
             assisté doit toujours savoir qu'un tiers agit dans son espace
             (rend null hors session d'impersonation). */}
         <ImpersonationBanner />
+        {/* NTOBS9 — bandeau des fenêtres de maintenance planifiées/en cours
+            (rend null tant qu'aucune fenêtre n'est pertinente). */}
+        <MaintenanceBanner />
         {/* M61 — Bannière hors-ligne visible sur tous les écrans authentifiés.
             Inerte tant que la connexion est présente (rend null en ligne). */}
         <OfflineBanner />

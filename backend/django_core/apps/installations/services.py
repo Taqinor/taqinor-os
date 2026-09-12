@@ -4675,6 +4675,48 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
     return etape
 
 
+def _notifier_prochaine_etape_approbation_achat(demande):
+    """NTP2P45 — notifie IMMÉDIATEMENT (jamais d'attente du prochain cycle
+    beat) les responsables/admins quand une NOUVELLE étape d'approbation
+    devient active, après décision de la précédente.
+
+    ``EtapeApprobationAchat`` est instanciée en bloc via ``bulk_create``
+    (aucun signal ``post_save`` ne se déclenche — cf.
+    ``apps.notifications.signals``, docstring de tête) : l'étape 1 est déjà
+    couverte par la notification SOUMISE existante (VX99,
+    ``demande_achat_post_save``, posée dans la MÊME requête que la
+    soumission). Le trou réel — jusqu'ici totalement silencieux — est
+    l'étape 2..N : rien ne notifiait le passage à l'étape suivante après
+    l'approbation de la précédente. Best-effort, jamais bloquant."""
+    try:
+        etape = prochaine_etape_approbation_achat(demande)
+        if etape is None or etape.niveau <= 1:
+            return
+        from apps.notifications.models import EventType
+        from apps.notifications.services import (
+            notify_many, resolve_recipients, resolve_recipients_reason,
+        )
+        recipients = resolve_recipients(
+            demande.company, EventType.APPROVAL_REQUESTED)
+        reason = resolve_recipients_reason(
+            demande.company, EventType.APPROVAL_REQUESTED)
+        notify_many(
+            recipients, EventType.APPROVAL_REQUESTED,
+            title=(f'Étape {etape.niveau} à approuver — réquisition '
+                   f'{demande.reference}'),
+            body=(f'La réquisition {demande.reference} attend votre '
+                  f'approbation (étape {etape.niveau}).\n'
+                  f'Montant estimé : {demande.montant_estime} DH.\n'
+                  f'Objet : {demande.objet}'),
+            link='/approbations?source=installations',
+            company=demande.company, reason=reason)
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P45: notification étape suivante échouée (demande %s)',
+            getattr(demande, 'pk', '?'), exc_info=True)
+
+
 def approuver_etape_achat(etape, *, approbateur, commentaire=''):
     """Approuve une étape ; bascule la demande ``approuvee`` à la dernière.
 
@@ -4703,6 +4745,11 @@ def approuver_etape_achat(etape, *, approbateur, commentaire=''):
                             'motif_refus': None})
             except TransitionRefusee as exc:
                 raise ApprobationAchatError(str(exc))
+        else:
+            # NTP2P45 — la demande reste en attente : notifie IMMÉDIATEMENT
+            # l'étape suivante devenue active (cf. docstring de
+            # ``_notifier_prochaine_etape_approbation_achat``).
+            _notifier_prochaine_etape_approbation_achat(demande)
     return etape
 
 

@@ -79,5 +79,8 @@ and makes no commit). Fixing those items stays the job of `work on error plan`.
 
 ---
 
+
+- [ ] ERR-NTCON35-LEVER-RESERVE — **Lever une réserve chantier est IMPOSSIBLE dans l'UI** : `btp_chantier.services.lever_reserve` exige une pièce jointe photo `phase='apres'`, mais l'écran `frontend/src/features/btp_chantier/ReservesChantier.jsx` n'offre AUCUN téléversement de photo (son commentaire l.141 le reconnaît : « Le serveur refuse sans photo ») — le bouton « Lever » ne peut jamais aboutir. Découvert par la lane NTCON35 (12/09/2026, drain NT). Correctif attendu : ajouter la capture/le téléversement de photo « après » au dialogue de levée (réutiliser CameraCapture/le pipeline photos chantier existant), + test e2e du parcours complet. Files: frontend/src/features/btp_chantier/ReservesChantier.jsx, backend/django_core/apps/btp_chantier/tests. (ROUTINE) «model: sonnet»
+
 ## DONE LOG (agent appends one plain-language line per fixed task)
 - 2026-09-06 — **ERR114** : le débordement historique (CTA signature poussé en page 4 par les fontes de l'image prod) était déjà absorbé par les retouches depuis juillet — la CLASSE du défaut est fermée par une garde de pagination auto-calibrée : le renderer compare pages logiques vs feuilles imprimées et re-rend UNE fois en rythme compact page 3 (26,8 mm récupérés, aucun bloc supprimé, jamais de régression — le 1er rendu est servi si la compaction n'aide pas). Prouvé dans l'image prod (A/B sur le commit du constat : 4→3 pages ; 6/6 tests). CONSTATS ANNEXES pour le fondateur : 4 goldens YTEST10 périmés vs HEAD (11-61 % de dérive, update_pdf_baselines à rejouer sur une base migrée) ; BASELINE_CASES agricole_pompage_full déclare 4 pages pour 1 rendue (QJR236/DV1 jamais répercuté).

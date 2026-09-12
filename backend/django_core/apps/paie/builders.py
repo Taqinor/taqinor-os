@@ -208,6 +208,9 @@ def bulletin_context(bulletin):
         'cimr': _fmt(bulletin.cimr_salariale),
         'ir': _fmt(bulletin.ir),
         'net_a_payer': _fmt(bulletin.net_a_payer),
+        # NTPAY13 — devise FIGÉE du bulletin (pays du profil). Aucune
+        # conversion : un bulletin EUR s'imprime en EUR, un MA reste en MAD.
+        'devise': escape(getattr(bulletin, 'devise', '') or 'MAD'),
     }
 
 
@@ -253,8 +256,12 @@ def _entete_employeur_html(employeur):
 
 
 def _bloc_lignes_html(titre, lignes, *, sous_total=None,
-                      libelle_sous_total=None):
-    """Un bloc « titre + tableau typé/signé (+ sous-total) » du bulletin."""
+                      libelle_sous_total=None, devise='MAD'):
+    """Un bloc « titre + tableau typé/signé (+ sous-total) » du bulletin.
+
+    NTPAY13 — ``devise`` est le code ISO imprimé en tête de colonne (``MAD``
+    par défaut : tout appelant historique reste à l'identique).
+    """
     if not lignes:
         return ''
     corps = ''.join(_LIGNE_TPL_DETAIL.format(**ligne) for ligne in lignes)
@@ -266,7 +273,7 @@ def _bloc_lignes_html(titre, lignes, *, sous_total=None,
     return (
         f'<h2>{escape(titre)}</h2>'
         '<table><thead><tr><th>Code</th><th>Libellé</th><th>Type</th>'
-        '<th>Montant (MAD)</th></tr></thead>'
+        f'<th>Montant ({devise or "MAD"})</th></tr></thead>'
         f'<tbody>{corps}</tbody></table>')
 
 
@@ -278,11 +285,13 @@ def render_bulletin_html(bulletin):
     Brut → Total des retenues → Net imposable → IR → Net à payer.
     """
     ctx = bulletin_context(bulletin)
-    gains_html = _bloc_lignes_html('Gains', ctx['gains'])
+    gains_html = _bloc_lignes_html(
+        'Gains', ctx['gains'], devise=ctx['devise'])
     retenues_html = _bloc_lignes_html(
         'Retenues salariales', ctx['retenues'],
         sous_total=f"-{ctx['total_retenues']}",
-        libelle_sous_total='Total des retenues salariales')
+        libelle_sous_total='Total des retenues salariales',
+        devise=ctx['devise'])
     patronal_html = ''
     if ctx['patronal']:
         corps = ''.join(
@@ -294,9 +303,10 @@ def render_bulletin_html(bulletin):
             '<p>Charges patronales — information, NON déduites de votre net '
             'à payer.</p>'
             '<table><thead><tr><th>Code</th><th>Libellé</th>'
-            '<th>Montant (MAD)</th></tr></thead>'
+            f"<th>Montant ({ctx['devise']})</th></tr></thead>"
             f'<tbody>{corps}</tbody></table>'
-            f"<p>Total charges patronales : {ctx['total_patronal']} MAD</p>"
+            f"<p>Total charges patronales : {ctx['total_patronal']} "
+            f"{ctx['devise']}</p>"
             '</div>')
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <style>{_BULLETIN_STYLE}</style></head><body>
@@ -326,9 +336,9 @@ def render_bulletin_html(bulletin):
     <tr><td>Impôt sur le revenu (IR)</td>
         <td style="text-align:right">-{ctx['ir']}</td></tr>
     <tr class="net"><td>Net à payer</td>
-        <td style="text-align:right">{ctx['net_a_payer']} MAD</td></tr>
+        <td style="text-align:right">{ctx['net_a_payer']} {ctx['devise']}</td></tr>
   </table>
-  <p class="total">Net à payer : {ctx['net_a_payer']} MAD</p>
+  <p class="total">Net à payer : {ctx['net_a_payer']} {ctx['devise']}</p>
   {patronal_html}
 </body></html>"""
 
@@ -799,6 +809,135 @@ def render_certificat_travail_pdf(profil, *, date_entree, date_sortie,
         emplois=emplois, employeur=employeur, today=today))
 
 
+# ── NTPAY15 — Lettre d'offre / proposition d'embauche ──────────────────────
+
+#: Montants de la simulation NTPAY14 qui ne doivent JAMAIS atteindre le
+#: candidat : le coût interne de l'employeur (charges patronales, provisions,
+#: coût total chargé) est une donnée de gestion, exactement comme
+#: ``Produit.prix_achat`` l'est pour un devis client.
+CLES_COUT_INTERNE = (
+    'charges_patronales', 'cout_total_employeur', 'provisions',
+    'cnss_patronale', 'amo_patronale', 'allocations_familiales',
+    'formation_professionnelle', 'mutuelle_patronale',
+)
+
+MENTION_LEGALE_OFFRE = (
+    'La présente proposition est régie par le Code du travail marocain '
+    '(loi n° 65-99). Elle ne vaut pas contrat de travail : l’embauche ne sera '
+    'effective qu’à la signature du contrat et sous réserve des formalités '
+    'd’usage (visite médicale d’embauche, immatriculation CNSS).')
+
+
+def lettre_offre_context(simulation, *, poste, candidat='', avantages=None,
+                         periode_essai='', date_prise_poste=None,
+                         employeur=None, today=None):
+    """Contexte d'une lettre d'offre, DÉRIVÉ d'une simulation (NTPAY15).
+
+    ``simulation`` est le dict de ``services.simuler_cout_embauche``. Seuls le
+    BRUT et le NET proposés en sont repris : le coût employeur (charges
+    patronales, provisions, coût total chargé) reste STRICTEMENT interne et
+    n'apparaît nulle part dans le document remis au candidat.
+
+    Rien n'est inventé : un champ non renseigné (avantages, période d'essai,
+    date de prise de poste) est simplement ABSENT du document — jamais une
+    valeur par défaut plausible.
+    """
+    if today is None:
+        today = date.today()
+    avantages = [a for a in (avantages or []) if str(a).strip()]
+    return {
+        'candidat': escape(str(candidat or '').strip()),
+        'poste': escape(str(poste or '').strip()),
+        'brut': _fmt(simulation['brut']),
+        'net': _fmt(simulation['net_a_payer']),
+        'devise': escape(str(simulation.get('devise') or 'MAD')),
+        'avantages': [escape(str(a).strip()) for a in avantages],
+        'periode_essai': escape(str(periode_essai or '').strip()),
+        'date_prise_poste': escape(_date_fr(date_prise_poste))
+        if date_prise_poste else '',
+        'employeur': employeur or {'nom': '', 'adresse': '', 'mentions': []},
+        'today': escape(_date_fr(today)),
+    }
+
+
+def render_lettre_offre_html(simulation, *, poste, candidat='',
+                             avantages=None, periode_essai='',
+                             date_prise_poste=None, employeur=None,
+                             today=None):
+    """HTML de la lettre d'offre / proposition d'embauche (NTPAY15).
+
+    Document RH-facing remis au CANDIDAT : intitulé du poste, rémunération
+    brute ET nette proposée, avantages, période d'essai, mentions légales.
+    Le coût employeur n'y figure JAMAIS (cf. ``CLES_COUT_INTERNE``).
+    """
+    ctx = lettre_offre_context(
+        simulation, poste=poste, candidat=candidat, avantages=avantages,
+        periode_essai=periode_essai, date_prise_poste=date_prise_poste,
+        employeur=employeur, today=today)
+    if not ctx['poste']:
+        raise ValueError(
+            'Intitulé du poste requis : une lettre d’offre sans poste ne veut '
+            'rien dire.')
+    destinataire = (f"<p><strong>À l’attention de :</strong> "
+                    f"{ctx['candidat']}</p>") if ctx['candidat'] else ''
+    avantages_html = ''
+    if ctx['avantages']:
+        items = ''.join(f'<li>{a}</li>' for a in ctx['avantages'])
+        avantages_html = f'<h2>Avantages</h2><ul>{items}</ul>'
+    essai_html = (
+        f"<p><strong>Période d’essai :</strong> {ctx['periode_essai']}</p>"
+        if ctx['periode_essai'] else '')
+    prise_poste_html = (
+        f"<p><strong>Date de prise de poste envisagée :</strong> "
+        f"{ctx['date_prise_poste']}</p>"
+        if ctx['date_prise_poste'] else '')
+    entete = _entete_employeur_html(ctx['employeur'])
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 12px; color: #222; margin: 40px; }}
+  h1 {{ font-size: 18px; text-align: center; }}
+  h2 {{ font-size: 13px; margin: 16px 0 4px; }}
+  table {{ margin: 14px 0; border-collapse: collapse; }}
+  td {{ padding: 4px 12px 4px 0; }}
+  .remuneration td {{ font-size: 13px; }}
+  .mention {{ margin-top: 18px; font-size: 11px; color: #444; }}
+  .date {{ text-align: right; margin-top: 36px; }}
+</style></head><body>
+  {entete}
+  <h1>Proposition d’embauche</h1>
+  {destinataire}
+  <p>Nous avons le plaisir de vous proposer le poste de
+     <strong>{ctx['poste']}</strong> au sein de notre société.</p>
+  {prise_poste_html}
+  <h2>Rémunération proposée</h2>
+  <table class="remuneration">
+    <tr><td><strong>Salaire brut mensuel :</strong></td>
+        <td>{ctx['brut']} {ctx['devise']}</td></tr>
+    <tr><td><strong>Net à payer mensuel estimé :</strong></td>
+        <td>{ctx['net']} {ctx['devise']}</td></tr>
+  </table>
+  <p>Le net indiqué est une estimation calculée sur les barèmes sociaux et
+     fiscaux en vigueur ; il varie avec votre situation personnelle
+     (personnes à charge, affiliations).</p>
+  {avantages_html}
+  {essai_html}
+  <p class="mention">{escape(MENTION_LEGALE_OFFRE)}</p>
+  <p class="date">Fait le {ctx['today']}.</p>
+</body></html>"""
+
+
+def render_lettre_offre_pdf(simulation, *, poste, candidat='', avantages=None,
+                            periode_essai='', date_prise_poste=None,
+                            company=None, employeur=None, today=None):
+    """Lettre d'offre → octets PDF (NTPAY15)."""
+    if employeur is None:
+        employeur = employeur_context(company)
+    return _html_to_pdf(render_lettre_offre_html(
+        simulation, poste=poste, candidat=candidat, avantages=avantages,
+        periode_essai=periode_essai, date_prise_poste=date_prise_poste,
+        employeur=employeur, today=today))
+
+
 def render_bordereau_cnss_html(bordereau, employeur, *, today=None):
     """HTML du bordereau de PAIEMENT des cotisations CNSS (NTPAY4).
 
@@ -863,6 +1002,267 @@ def render_bordereau_cnss_pdf(periode, *, bordereau=None, today=None):
         bordereau = services.bordereau_paiement_cnss(periode)
     return _html_to_pdf(render_bordereau_cnss_html(
         bordereau, employeur_context(periode.company), today=today))
+
+
+# ── NTPAY18 — État des charges sociales & fiscales (document de synthèse) ──
+
+def _taux_txt(valeur):
+    """« 4,48 % » — ou « — » quand il n'y a PAS un taux unique à afficher.
+
+    CIMR et mutuelle ont un taux propre à chaque adhérent/régime : imprimer
+    une moyenne serait un chiffre inventé.
+    """
+    if valeur in (None, ''):
+        return '—'
+    return f'{_fmt(valeur)} %'
+
+
+def render_etat_charges_html(etat, employeur, *, today=None):
+    """HTML de l'état des charges sociales et fiscales (NTPAY18).
+
+    ``etat`` = le dict de ``services.etat_charges`` (5 organismes + les
+    charges annexes recouvrées par la CNSS). Tous les montants viennent des
+    bulletins VALIDÉS de la période — un brouillon n'y figure jamais.
+    """
+    if today is None:
+        today = date.today()
+    devise = escape(str(etat.get('devise') or 'MAD'))
+    lignes = ''.join(
+        f"<tr><td>{escape(str(org['libelle']))}</td>"
+        f"<td>{_fmt(org['base'])}</td>"
+        f"<td>{escape(_taux_txt(org['taux_salarial']))}</td>"
+        f"<td>{escape(_taux_txt(org['taux_patronal']))}</td>"
+        f"<td>{_fmt(org['salarial'])}</td>"
+        f"<td>{_fmt(org['patronal'])}</td>"
+        f"<td>{_fmt(org['total'])}</td></tr>"
+        for org in etat['organismes'])
+    annexes = ''.join(
+        f"<tr class=\"annexe\"><td>{escape(str(annexe['libelle']))}</td>"
+        f"<td>{_fmt(annexe['base'])}</td><td>—</td>"
+        f"<td>{escape(_taux_txt(annexe['taux_patronal']))}</td>"
+        f"<td>{_fmt(0)}</td>"
+        f"<td>{_fmt(annexe['patronal'])}</td>"
+        f"<td>{_fmt(annexe['patronal'])}</td></tr>"
+        for annexe in etat.get('charges_annexes', []))
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th, td {{ border: 1px solid #999; padding: 4px 6px; text-align: right; }}
+  th:nth-child(1), td:nth-child(1) {{ text-align: left; }}
+  tfoot td {{ font-weight: 700; }}
+  .annexe td:nth-child(1) {{ font-style: italic; }}
+  .date {{ text-align: right; margin-top: 20px; }}
+</style></head><body>
+  {_entete_employeur_html(employeur)}
+  <h1>État des charges sociales et fiscales —
+    {etat['mois']:02d}/{etat['annee']}</h1>
+  <p>Effectif retenu : {etat['nombre_salaries']} salarié(s) —
+     bulletins VALIDÉS uniquement. Montants en {devise}.</p>
+  <table>
+    <thead><tr><th>Organisme</th><th>Base</th><th>Taux salarial</th>
+      <th>Taux patronal</th><th>Part salariale</th><th>Part patronale</th>
+      <th>Total à verser</th></tr></thead>
+    <tbody>{lignes}{annexes}</tbody>
+    <tfoot><tr><td>Total général</td><td></td><td></td><td></td>
+      <td>{_fmt(etat['total_salarial'])}</td>
+      <td>{_fmt(etat['total_patronal'])}</td>
+      <td>{_fmt(etat['total_general'])}</td></tr></tfoot>
+  </table>
+  <p class="date">Édité le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_etat_charges_pdf(periode, *, etat=None, today=None):
+    """État des charges sociales et fiscales → octets PDF (NTPAY18).
+
+    ``etat`` évite un recalcul quand l'appelant l'a déjà (l'endpoint sert le
+    JSON et le PDF depuis le même calcul).
+    """
+    from . import services  # import paresseux : services importe déjà builders
+
+    if etat is None:
+        etat = services.etat_charges(periode)
+    return _html_to_pdf(render_etat_charges_html(
+        etat, employeur_context(periode.company), today=today))
+
+
+# ── NTPAY20 — Registre annuel des rémunérations (obligation légale) ────────
+
+def registre_remunerations_context(company, annee):
+    """Cumuls annuels par salarié pour le registre légal (NTPAY20).
+
+    Lit les ``CumulAnnuel`` (déjà alimentés par
+    ``services.recalculer_cumul_annuel``) de l'année : un salarié n'y figure
+    que s'il a été PAYÉ dans l'année — aucune ligne n'est fabriquée pour un
+    profil sans cumul, et aucun montant n'est recalculé ici.
+
+    Renvoie ``{'annee', 'lignes': [...], 'totaux': {...},
+    'nombre_salaries'}``.
+    """
+    from .models import CumulAnnuel
+
+    cumuls = (
+        CumulAnnuel.objects
+        .filter(company=company, annee=annee)
+        .select_related('profil', 'profil__employe')
+        .order_by('profil__employe__nom', 'profil__employe__prenom',
+                  'profil_id')
+    )
+    champs = ('brut', 'net_a_payer', 'ir', 'cnss_salariale', 'amo_salariale')
+    lignes = []
+    totaux = {champ: Decimal('0.00') for champ in champs}
+    for cumul in cumuls:
+        employe = getattr(cumul.profil, 'employe', None)
+        ligne = {
+            'profil_id': cumul.profil_id,
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': f'{employe.nom} {employe.prenom}'.strip()
+            if employe else f'Profil #{cumul.profil_id}',
+            'nombre_bulletins': cumul.nombre_bulletins,
+        }
+        for champ in champs:
+            valeur = Decimal(getattr(cumul, champ) or 0)
+            ligne[champ] = valeur
+            totaux[champ] += valeur
+        lignes.append(ligne)
+    return {
+        'annee': annee,
+        'lignes': lignes,
+        'totaux': totaux,
+        'nombre_salaries': len(lignes),
+    }
+
+
+def render_registre_remunerations_html(registre, employeur, *, today=None):
+    """HTML du registre annuel des rémunérations (NTPAY20).
+
+    Document de CONTRÔLE (inspection du travail), distinct du bulletin
+    individuel : une ligne par salarié avec ses cumuls annuels brut / net /
+    IR / CNSS / AMO, tels quels — jamais reconstitués.
+    """
+    if today is None:
+        today = date.today()
+    lignes = ''.join(
+        f"<tr><td>{escape(str(ligne['matricule']))}</td>"
+        f"<td>{escape(str(ligne['nom']))}</td>"
+        f"<td>{ligne['nombre_bulletins']}</td>"
+        f"<td>{_fmt(ligne['brut'])}</td>"
+        f"<td>{_fmt(ligne['cnss_salariale'])}</td>"
+        f"<td>{_fmt(ligne['amo_salariale'])}</td>"
+        f"<td>{_fmt(ligne['ir'])}</td>"
+        f"<td>{_fmt(ligne['net_a_payer'])}</td></tr>"
+        for ligne in registre['lignes'])
+    corps = lignes or (
+        '<tr><td colspan="8">Aucune rémunération enregistrée pour cette '
+        'année.</td></tr>')
+    totaux = registre['totaux']
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 10px; color: #222; margin: 26px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th, td {{ border: 1px solid #999; padding: 3px 5px; text-align: right; }}
+  th:nth-child(1), td:nth-child(1),
+  th:nth-child(2), td:nth-child(2) {{ text-align: left; }}
+  tfoot td {{ font-weight: 700; }}
+  .date {{ text-align: right; margin-top: 18px; }}
+</style></head><body>
+  {_entete_employeur_html(employeur)}
+  <h1>Registre annuel des rémunérations — {registre['annee']}</h1>
+  <p>{registre['nombre_salaries']} salarié(s) rémunéré(s) sur l’année.</p>
+  <table>
+    <thead><tr><th>Matricule</th><th>Salarié</th><th>Bulletins</th>
+      <th>Brut</th><th>CNSS</th><th>AMO</th><th>IR</th>
+      <th>Net à payer</th></tr></thead>
+    <tbody>{corps}</tbody>
+    <tfoot><tr><td>Total</td><td></td><td></td>
+      <td>{_fmt(totaux['brut'])}</td>
+      <td>{_fmt(totaux['cnss_salariale'])}</td>
+      <td>{_fmt(totaux['amo_salariale'])}</td>
+      <td>{_fmt(totaux['ir'])}</td>
+      <td>{_fmt(totaux['net_a_payer'])}</td></tr></tfoot>
+  </table>
+  <p class="date">Édité le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_registre_remunerations_pdf(company, annee, *, registre=None,
+                                      today=None):
+    """Registre annuel des rémunérations → octets PDF (NTPAY20)."""
+    if registre is None:
+        registre = registre_remunerations_context(company, annee)
+    return _html_to_pdf(render_registre_remunerations_html(
+        registre, employeur_context(company), today=today))
+
+
+# ── NTPAY19 — Rapport « Masse salariale » (PDF) ────────────────────────────
+
+LIBELLES_GROUPEMENT_MASSE = {
+    'departement': 'Département',
+    'site': 'Site / zone',
+}
+
+
+def _fenetre_txt(rapport):
+    debut, fin = rapport['periode_debut'], rapport['periode_fin']
+    return (f"{debut['mois']:02d}/{debut['annee']} → "
+            f"{fin['mois']:02d}/{fin['annee']}")
+
+
+def render_masse_salariale_html(rapport, employeur, *, today=None):
+    """HTML du rapport de masse salariale (NTPAY19).
+
+    ``rapport`` = le dict de ``services.rapport_masse_salariale``. Les totaux
+    proviennent des bulletins VALIDÉS de la fenêtre — jamais d'une projection.
+    """
+    if today is None:
+        today = date.today()
+    entete_groupe = escape(LIBELLES_GROUPEMENT_MASSE.get(
+        rapport['group_by'], 'Groupe'))
+    lignes = ''.join(
+        f"<tr><td>{escape(str(groupe['libelle']))}</td>"
+        f"<td>{groupe['effectif']}</td>"
+        f"<td>{_fmt(groupe['brut'])}</td>"
+        f"<td>{_fmt(groupe['charges_patronales'])}</td>"
+        f"<td>{_fmt(groupe['cout_total'])}</td></tr>"
+        for groupe in rapport['groupes'])
+    totaux = rapport['totaux']
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th, td {{ border: 1px solid #999; padding: 4px 6px; text-align: right; }}
+  th:nth-child(1), td:nth-child(1) {{ text-align: left; }}
+  tfoot td {{ font-weight: 700; }}
+  .date {{ text-align: right; margin-top: 20px; }}
+</style></head><body>
+  {_entete_employeur_html(employeur)}
+  <h1>Masse salariale — {escape(_fenetre_txt(rapport))}</h1>
+  <p>{rapport['nombre_bulletins']} bulletin(s) validé(s) sur
+     {rapport['nombre_periodes']} période(s).</p>
+  <table>
+    <thead><tr><th>{entete_groupe}</th><th>Effectif</th><th>Brut</th>
+      <th>Charges patronales</th><th>Coût total</th></tr></thead>
+    <tbody>{lignes}</tbody>
+    <tfoot><tr><td>Total</td><td>{totaux['effectif']}</td>
+      <td>{_fmt(totaux['brut'])}</td>
+      <td>{_fmt(totaux['charges_patronales'])}</td>
+      <td>{_fmt(totaux['cout_total'])}</td></tr></tfoot>
+  </table>
+  <p class="date">Édité le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_masse_salariale_pdf(rapport, *, company=None, employeur=None,
+                               today=None):
+    """Rapport de masse salariale → octets PDF (NTPAY19)."""
+    if employeur is None:
+        employeur = employeur_context(company)
+    return _html_to_pdf(render_masse_salariale_html(
+        rapport, employeur, today=today))
 
 
 def render_historique_carriere_html(historique, *, today=None):

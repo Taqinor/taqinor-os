@@ -36,3 +36,33 @@ describe('G128 — TimePicker tokenisé', () => {
     expect(field.className).not.toMatch(/text-white|bg-nuit|bg-white/)
   })
 })
+
+/* NTI18N6 — une date (jj/mm/aaaa) reste lisible de gauche à droite même en
+   contexte RTL (mêmes chiffres, même convention que NumberInput/
+   CurrencyInput) : le libellé affiché ET la grille du calendrier portent
+   `dir="ltr"` explicite, indépendamment de l'ancêtre RTL. */
+describe('NTI18N6 — DatePicker, chiffres LTR même en contexte RTL', () => {
+  it('le libellé de date affiché porte dir="ltr"', () => {
+    render(
+      <div dir="rtl">
+        <DatePicker value="2026-06-21" clearable={false} />
+      </div>,
+    )
+    const trigger = screen.getByRole('button')
+    const label = trigger.querySelector('span')
+    expect(label).toHaveAttribute('dir', 'ltr')
+  })
+
+  it('la grille calendrier ouverte porte dir="ltr"', async () => {
+    render(
+      <div dir="rtl">
+        <DatePicker value={null} />
+      </div>,
+    )
+    screen.getByRole('button').click()
+    const grid = await screen.findByRole('grid')
+    // `dir="ltr"` est posé sur le conteneur PARENT immédiat de la grille
+    // (voir DatePicker.jsx `CalendarGrid`), pas sur le `role="grid"` lui-même.
+    expect(grid.closest('[dir="ltr"]')).not.toBeNull()
+  })
+})

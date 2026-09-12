@@ -128,3 +128,139 @@ AUTOMATION_TEMPLATES = [
         'requires_approval': False,
     },
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTEXT33 — CATALOGUE de recettes INSTALLABLES (distinct d'AUTOMATION_TEMPLATES
+# ci-dessus, qui ne fait que préremplir un formulaire). Une recette listée ici
+# est MATÉRIALISÉE par ``installer_modele`` en une VRAIE ``AutomationRule``
+# (multi-étapes via ``steps`` — NTEXT4/NTEXT6/NTEXT7 réutilisés, jamais un
+# second moteur d'automatisation). ``parametres_requis`` liste les clés que
+# l'appelant DOIT fournir à l'installation (ex. ``user_id`` pour une
+# assignation) — l'installation refuse (erreur FR) s'il en manque.
+CATALOGUE_MODELES = [
+    {
+        'code': 'relance_j3_devis_sans_reponse',
+        'nom': 'Relance J+3 devis sans réponse',
+        'description': (
+            "Envoie un email de relance 3 jours après la date de validité "
+            "d'un devis resté sans réponse (déclencheur générique "
+            "« échéance de champ », champ date_validite du devis)."
+        ),
+        'trigger_type': 'date_echeance_champ',
+        'trigger_config': {
+            'model': 'ventes.devis', 'champ': 'date_validite',
+            'offset_jours': 3,
+        },
+        'steps': [
+            {'action_type': 'send_email', 'action_config': {
+                'subject': 'Votre devis {reference} — toujours disponible ?',
+                'body': (
+                    'Bonjour {client_nom},\n\nVotre devis {reference} '
+                    "est-il toujours d'actualité ? N'hésitez pas à nous "
+                    'contacter pour toute question.\n\nCordialement.'
+                ),
+            }},
+        ],
+        'requires_approval': False,
+    },
+    {
+        'code': 'alerte_stock_bas_bcf',
+        'nom': 'Alerte stock bas → BCF',
+        'description': (
+            "Crée une activité « Préparer un Bon de Commande Fournisseur » "
+            "dès qu'un produit passe sous son seuil d'alerte (préparation "
+            'manuelle du BCF — aucune commande fournisseur automatique).'
+        ),
+        'trigger_type': 'stock_below_threshold',
+        'trigger_config': {},
+        'steps': [
+            {'action_type': 'create_activity', 'action_config': {
+                'body': 'Préparer un Bon de Commande Fournisseur : produit '
+                        "sous le seuil d'alerte.",
+            }},
+        ],
+        'requires_approval': False,
+    },
+    {
+        'code': 'nouveau_lead_assignation',
+        'nom': 'Nouveau lead → assignation',
+        'description': (
+            "Assigne automatiquement un nouveau lead au responsable désigné "
+            "à l'installation (paramètre requis : user_id)."
+        ),
+        'trigger_type': 'lead_stage_change',
+        'trigger_config': {'stage': 'NEW'},
+        'steps': [
+            {'action_type': 'assign_record', 'action_config': {}},
+        ],
+        'requires_approval': False,
+        'parametres_requis': ['user_id'],
+    },
+]
+
+
+def modele_par_code(code):
+    """NTEXT33 — le modèle installable désigné par ``code``, ou ``None``."""
+    for modele in CATALOGUE_MODELES:
+        if modele.get('code') == code:
+            return modele
+    return None
+
+
+class ParametreManquant(ValueError):
+    """NTEXT33 — un paramètre requis par la recette n'a pas été fourni à
+    l'installation. Aucun effet de bord : levée AVANT toute création."""
+
+
+def installer_modele(company, code, *, params=None):
+    """NTEXT33 — matérialise le modèle ``code`` en une VRAIE
+    ``AutomationRule`` (+ ``AutomationStep`` s'il y en a plus d'une) pour
+    ``company``. IDEMPOTENT : ``get_or_create`` sur ``(company, nom)`` — une
+    ré-installation ne duplique pas la règle. Renvoie ``(rule, cree)`` ;
+    ``rule`` est ``None`` si ``code`` est inconnu (``cree`` alors ``False``).
+    """
+    from .models import AutomationRule, AutomationStep
+
+    modele = modele_par_code(code)
+    if modele is None:
+        return None, False
+
+    params = dict(params or {})
+    requis = modele.get('parametres_requis') or []
+    manquants = [p for p in requis if not params.get(p)]
+    if manquants:
+        raise ParametreManquant(
+            f"Paramètre(s) requis manquant(s) pour installer "
+            f"« {modele['nom']} » : {', '.join(manquants)}.")
+
+    steps = [dict(s) for s in modele.get('steps') or []]
+    if steps and requis:
+        # Les paramètres requis alimentent le PREMIER step (seul cas actuel
+        # du catalogue — une future recette à plusieurs cibles paramétrées
+        # étendrait ce mapping, jamais en dur ailleurs).
+        steps[0] = {
+            'action_type': steps[0]['action_type'],
+            'action_config': {**steps[0].get('action_config', {}),
+                              **{p: params[p] for p in requis}},
+        }
+    premiere = steps[0] if steps else {
+        'action_type': modele.get('action_type', 'create_activity'),
+        'action_config': modele.get('action_config') or {},
+    }
+
+    rule, cree = AutomationRule.objects.get_or_create(
+        company=company, nom=modele['nom'],
+        defaults={
+            'trigger_type': modele['trigger_type'],
+            'trigger_config': dict(modele.get('trigger_config') or {}),
+            'action_type': premiere['action_type'],
+            'action_config': dict(premiere.get('action_config') or {}),
+            'requires_approval': modele.get('requires_approval', False),
+        })
+    if cree:
+        for idx, step in enumerate(steps[1:], start=2):
+            AutomationStep.objects.create(
+                rule=rule, ordre=idx, action_type=step['action_type'],
+                action_config=dict(step.get('action_config') or {}))
+    return rule, cree

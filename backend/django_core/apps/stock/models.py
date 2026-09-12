@@ -230,6 +230,21 @@ class Fournisseur(models.Model):
         help_text="Fournisseur archivé : masqué des listes, ses prix d'achat "
                   'et son historique sont conservés.')
 
+    # NTP2P21 — champ libre configurable : frais de livraison FORFAITAIRE
+    # estimés PAR COMMANDE chez ce fournisseur, utilisé UNIQUEMENT pour
+    # chiffrer l'économie potentielle d'une suggestion de consolidation de
+    # BCF brouillon (``selectors.suggestions_consolidation_bcf``). Vide (par
+    # défaut) = aucune estimation chiffrée n'est proposée — jamais un
+    # montant inventé (la suggestion reste visible, seul le chiffrage est
+    # omis).
+    frais_livraison_estimes = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de livraison estimés (MAD/commande)',
+        help_text='Estimation forfaitaire des frais de livraison par '
+                  'commande chez ce fournisseur — sert uniquement à '
+                  "chiffrer l'économie d'une consolidation de bons de "
+                  'commande. Vide = aucun chiffrage proposé.')
+
     class Meta:
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"
@@ -480,6 +495,14 @@ class AchatsParametres(models.Model):
     # d'une note de frais escaladée la valider en direction. OFF par défaut :
     # les petites structures à un seul décideur ne sont pas cassées.
     sod_stricte = models.BooleanField(default=False)
+    # NTP2P31 — quand actif, l'escalade direction d'une note de frais
+    # (NTP2P11, `PlafondNoteFrais.escalade_direction_au_dela_de`) notifie
+    # IMMÉDIATEMENT le valideur direction (NTP2P45) au lieu d'attendre une
+    # relecture manuelle. OFF par défaut : le calcul d'escalade lui-même
+    # (posé sur la note + journalisé au chatter) reste comportement
+    # historique inchangé, actif dès qu'un plafond est configuré — ce réglage
+    # ne pilote QUE la notification immédiate, jamais le calcul.
+    plafond_notes_frais_actif = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

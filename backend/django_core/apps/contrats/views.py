@@ -23,7 +23,9 @@ Bibliothèque de gabarits/modèles de contrats. Scopé société (TenantMixin).
 Action ``/instancier/`` crée un ``Contrat`` pré-rempli depuis le gabarit.
 """
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, status, viewsets
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -41,6 +43,8 @@ from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
 from .models import (
+    DELAI_RENOUVELLEMENT_DEFAUT,
+    DELAIS_RENOUVELLEMENT_SUGGERES,
     AbonnementAddOnLigne,
     AddOnAbonnement,
     AlerteContrat,
@@ -64,7 +68,9 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametreRenouvellement,
     ParametresAbonnement,
+    ParametresCLM,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -82,6 +88,7 @@ from .serializers import (
     AjouterClausesManquantesSerializer,
     AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
+    AssignerEtapeSerializer,
     AvenantSerializer,
     CautionSerializer,
     ChangerPlanSerializer,
@@ -124,7 +131,9 @@ from .serializers import (
     ObligationSerializer,
     OrdreLocationSerializer,
     PalierUsageSerializer,
+    ParametreRenouvellementSerializer,
     ParametresAbonnementSerializer,
+    ParametresCLMSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
@@ -144,6 +153,7 @@ from .serializers import (
     SequenceDunningSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
+    SignerLotParapheurSerializer,
     VersionContratSerializer,
 )
 
@@ -426,6 +436,35 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             ContratSerializer(
                 qs, many=True, context={'request': request}).data)
 
+    @action(detail=False, methods=['get'], url_path='pipeline-renouvellement')
+    def pipeline_renouvellement(self, request):
+        """Pipeline TRIMESTRIEL des renouvellements, groupé par mois (NTDOC19).
+
+        `?trimestre=1..4` et `?annee=` (défaut : le trimestre calendaire
+        courant). RÉUTILISE ``contrats_a_renouveler`` (CONTRAT21) — aucune
+        donnée n'est recalculée ni dupliquée. Chaque contrat porte l'avancement
+        RÉEL de la démarche (aucune action / notifié / en négociation NTDOC4 /
+        renouvelé / résilié) et le drapeau ``preavis_depasse`` (CONTRAT20 :
+        date limite de préavis déjà passée) — l'urgence à traiter en premier.
+
+        Lecture seule : ne change aucun statut. Le pipeline est borné au
+        queryset de l'appelant (filtre de confidentialité hérité), pour qu'un
+        contrat confidentiel ne fuite jamais par un agrégat.
+        """
+        try:
+            resultat = selectors.pipeline_renouvellements(
+                request.user.company,
+                trimestre=request.query_params.get('trimestre'),
+                annee=request.query_params.get('annee'),
+                ids_autorises=list(
+                    self.get_queryset().values_list('id', flat=True)),
+            )
+        except (TypeError, ValueError) as exc:
+            return Response(
+                {'detail': str(exc) or "Trimestre ou année invalide."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
     @action(detail=False, methods=['get'], url_path='tableau-de-bord')
     def tableau_de_bord(self, request):
         """Tableau de bord des contrats (CONTRAT33).
@@ -458,6 +497,81 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             'mrr_par_responsable': {
                 str(k): _money(v)
                 for k, v in data['mrr_par_responsable'].items()},
+            # NTDOC6 — carte « Déviations » (clé ADDITIVE).
+            'deviations': data['deviations'],
+        })
+
+    # ── NTDOC6 — Déviations de clauses obligatoires ───────────────────────
+
+    @extend_schema(responses=inline_serializer('ContratsDeviations', {
+        'count': drf_serializers.IntegerField(),
+        'results': inline_serializer('ContratsDeviationsLigne', {
+            'contrat': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(),
+            'objet': drf_serializers.CharField(),
+            'type_contrat': drf_serializers.CharField(),
+            'statut': drf_serializers.CharField(),
+            'nb_deviations': drf_serializers.IntegerField(),
+        }, many=True),
+    }))
+    @action(detail=False, methods=['get'], url_path='deviations')
+    def deviations(self, request):
+        """Contrats en DÉVIATION de clause obligatoire (NTDOC6) — lecture seule.
+
+        Alimente la carte « Déviations » du tableau de bord contrats
+        (CONTRAT33). Une déviation = une clause que la bibliothèque déclare
+        obligatoire pour ce type de contrat (NTDOC5) dont le texte a été
+        ÉDITÉ sur le contrat. Une clause facultative surchargée n'apparaît
+        jamais. Le détail par clause est exposé par
+        ``contrats/<id>/deviations/``. Aucune écriture, aucun statut touché.
+        """
+        lignes = selectors.contrats_en_deviation(request.user.company)
+        # Le filtre de confidentialité de ``get_queryset`` (CONTRAT6) reste la
+        # référence : un contrat que l'utilisateur ne peut pas voir ne peut
+        # pas apparaître dans sa carte de déviations.
+        visibles = set(self.get_queryset().values_list('id', flat=True))
+        lignes = [ligne for ligne in lignes if ligne['contrat'] in visibles]
+        return Response({'count': len(lignes), 'results': lignes})
+
+    @extend_schema(responses=inline_serializer('ContratDeviationsDetail', {
+        'contrat': drf_serializers.IntegerField(),
+        'type_contrat': drf_serializers.CharField(),
+        'count': drf_serializers.IntegerField(),
+        'results': inline_serializer('ContratDeviationsDetailLigne', {
+            'clause_contrat': drf_serializers.IntegerField(),
+            'clause_source': drf_serializers.IntegerField(),
+            'titre': drf_serializers.CharField(),
+            'titre_source': drf_serializers.CharField(),
+            'ordre': drf_serializers.IntegerField(),
+            'type_clause': drf_serializers.CharField(),
+            'texte_source': drf_serializers.CharField(),
+            'texte_surcharge': drf_serializers.CharField(),
+            'diff': drf_serializers.CharField(),
+            'lignes_ajoutees': drf_serializers.IntegerField(),
+            'lignes_supprimees': drf_serializers.IntegerField(),
+        }, many=True),
+    }))
+    # ``url_name`` EXPLICITE : sans lui, l'action de liste et celle de détail
+    # partagent le même nom de route (``contrat-deviations``) et le reverse()
+    # de Django n'en résout plus qu'une.
+    @action(detail=True, methods=['get'], url_path='deviations',
+            url_name='deviations-contrat')
+    def deviations_contrat(self, request, pk=None):
+        """Détail des déviations de clauses d'UN contrat (NTDOC6).
+
+        Pour chaque clause obligatoire surchargée : le texte de la
+        bibliothèque, le texte du contrat et leur diff unifié (``difflib``,
+        bibliothèque standard). Un contrat sans déviation renvoie une liste
+        vide — jamais une erreur. Lecture seule ; la société est garantie par
+        ``get_object``.
+        """
+        contrat = self.get_object()
+        deviations = services.detecter_deviations(contrat)
+        return Response({
+            'contrat': contrat.id,
+            'type_contrat': contrat.type_contrat,
+            'count': len(deviations),
+            'results': deviations,
         })
 
     @action(detail=False, methods=['get'], url_path='mrr-mouvements')
@@ -1368,6 +1482,163 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             'contrat': contrat.id,
             'statut': contrat.statut,
             'etapes': etapes,
+        })
+
+    # ── NTDOC7 — Parapheur électronique du dirigeant ──────────────────────
+
+    # Forme DÉCLARÉE : sans elle, le schéma documenterait le
+    # ``serializer_class`` du ViewSet (``ContratSerializer``) alors que cette
+    # action rend une ÉTAPE — un schéma qui ment est pire qu'un schéma vide.
+    @extend_schema(request=AssignerEtapeSerializer,
+                   responses=EtapeApprobationSerializer)
+    @action(detail=True, methods=['post'], url_path='assigner-etape')
+    def assigner_etape(self, request, pk=None):
+        """Assigne NOMINATIVEMENT une étape d'approbation (NTDOC7).
+
+        Corps : ``etape`` (id, requis) et ``assigne_a`` (id d'utilisateur, ou
+        ``null`` pour retirer l'assignation). L'étape entre alors dans le
+        parapheur de cette personne. N'approuve ni ne rejette RIEN : le statut
+        de l'étape et l'ordre du workflow restent inchangés. 404 sur une étape
+        d'un autre contrat ou un utilisateur d'une autre société (jamais une
+        fuite d'existence), 400 sur une étape déjà décidée.
+        """
+        contrat = self.get_object()
+        body = AssignerEtapeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        etape = contrat.etapes_approbation.filter(
+            id=body.validated_data['etape']).first()
+        if etape is None:
+            return Response(
+                {'detail': "Étape d'approbation introuvable pour ce contrat."},
+                status=status.HTTP_404_NOT_FOUND)
+
+        destinataire = None
+        destinataire_id = body.validated_data.get('assigne_a')
+        if destinataire_id:
+            from django.contrib.auth import get_user_model
+
+            destinataire = get_user_model().objects.filter(
+                id=destinataire_id, company=request.user.company).first()
+            if destinataire is None:
+                return Response(
+                    {'detail': 'Utilisateur introuvable pour cette société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.assigner_etape(
+                etape, assigne_a=destinataire, auteur=request.user)
+        except services.ApprobationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            EtapeApprobationSerializer(
+                etape, context={'request': request}).data)
+
+    # Forme DÉCLARÉE (PACT7/R2) : ces deux endpoints AGRÈGENT (une file
+    # unifiée, un rapport par item) — leur schéma publie donc la liste exacte
+    # des clés, jamais « un objet ». Un schéma vide ne protège rien.
+    @extend_schema(responses=inline_serializer('ContratsParapheur', {
+        'count': drf_serializers.IntegerField(),
+        'results': inline_serializer('ContratsParapheurItem', {
+            'type': drf_serializers.CharField(),
+            'contrat': drf_serializers.IntegerField(),
+            'contrat_reference': drf_serializers.CharField(),
+            'contrat_objet': drf_serializers.CharField(),
+            'statut': drf_serializers.CharField(),
+            'echeance': drf_serializers.DateField(allow_null=True),
+            'etape': drf_serializers.IntegerField(allow_null=True),
+            'niveau': drf_serializers.IntegerField(allow_null=True),
+            'libelle': drf_serializers.CharField(),
+        }, many=True),
+    }))
+    @action(detail=False, methods=['get'], url_path='parapheur')
+    def parapheur(self, request):
+        """File UNIFIÉE « ce qui m'attend » du parapheur (NTDOC7).
+
+        Lecture seule, scopée société : en une seule liste triée par échéance
+        (la plus proche d'abord), les contrats dont la signature INTERNE
+        (rôle ``prestataire``) manque encore ET les ``EtapeApprobation``
+        ``en_attente`` nominativement assignées à l'utilisateur courant. Ne
+        pose AUCUN statut, ne signe rien. Un contrat signé entre-temps par un
+        tiers disparaît de la file au rechargement suivant.
+        """
+        items = selectors.items_parapheur(request.user)
+        return Response({
+            'count': len(items),
+            'results': items,
+        })
+
+    @extend_schema(
+        request=SignerLotParapheurSerializer,
+        responses=inline_serializer('ContratsParapheurSignerLot', {
+            'nb_signes': drf_serializers.IntegerField(),
+            'nb_echecs': drf_serializers.IntegerField(),
+            'resultats': inline_serializer('ContratsParapheurResultat', {
+                'contrat': drf_serializers.IntegerField(),
+                'ok': drf_serializers.BooleanField(),
+                'detail': drf_serializers.CharField(),
+                'contrat_signe': drf_serializers.BooleanField(),
+                'contrat_actif': drf_serializers.BooleanField(),
+            }, many=True),
+        }))
+    @action(detail=False, methods=['post'], url_path='parapheur/signer-lot')
+    def parapheur_signer_lot(self, request):
+        """Signe EN LOT les contrats cochés dans le parapheur (NTDOC7).
+
+        Corps : ``contrats`` (liste d'identifiants) et ``signataire_nom`` (nom
+        dactylographié tapé UNE fois — loi 53-05). Le rôle
+        (``prestataire``), l'utilisateur agissant, la société et les preuves
+        (IP, user agent) sont posés CÔTÉ SERVEUR. Chaque item réutilise
+        ``signer_contrat`` (CONTRAT16) — jamais une logique de signature
+        parallèle.
+
+        **JAMAIS TOUT-OU-RIEN** : un contrat signé entre-temps par un tiers
+        (ou sorti de l'état signable) est RAPPORTÉ en échec dans
+        ``resultats`` pendant que les autres se signent normalement. La
+        réponse est donc 200 même en échec partiel ; seul un lot
+        intrinsèquement invalide (aucun contrat) rend 400.
+        """
+        body = SignerLotParapheurSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            rapport = services.signer_lot_parapheur(
+                request.user,
+                body.validated_data['contrats'],
+                signataire_nom=body.validated_data['signataire_nom'],
+                ip_adresse=_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            )
+        except services.ParapheurError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(rapport)
+
+    @action(detail=True, methods=['get'], url_path='matrice-obligations')
+    def matrice_obligations(self, request, pk=None):
+        """Matrice des obligations : redevable × statut (NTDOC18).
+
+        Lecture seule. Chaque ligne porte ses obligations sérialisées, avec le
+        drapeau ``preuve_manquante`` (obligation RÉALISÉE sans document GED
+        lié). Une obligation « faite » sans preuve RESTE valide : la matrice la
+        signale visuellement, elle ne la refuse jamais.
+        """
+        contrat = self.get_object()
+        matrice = selectors.matrice_obligations(contrat)
+        return Response({
+            'total': matrice['total'],
+            'preuves_manquantes': matrice['preuves_manquantes'],
+            'lignes': [
+                {
+                    'redevable': ligne['redevable'],
+                    'redevable_display': ligne['redevable_display'],
+                    'statut': ligne['statut'],
+                    'statut_display': ligne['statut_display'],
+                    'preuves_manquantes': ligne['preuves_manquantes'],
+                    'obligations': ObligationSerializer(
+                        ligne['obligations'], many=True,
+                        context={'request': request}).data,
+                }
+                for ligne in matrice['lignes']
+            ],
         })
 
     @action(detail=True, methods=['get'], url_path='clauses-manquantes')
@@ -3392,6 +3663,71 @@ class ParametresAbonnementViewSet(_ContratsBaseViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ParametresCLMViewSet(_ContratsBaseViewSet):
+    """Réglages du cycle de vie contractuel, SINGLETON par société — NTDOC29.
+
+    ``GET/PATCH /parametres-clm/courant/`` lit/modifie la ligne unique de la
+    société, CRÉÉE PARESSEUSEMENT au premier accès avec les valeurs par
+    défaut — qui reproduisent exactement le comportement d'avant (garde
+    stricte NTDOC4 active, négociation non obligatoire, aucune relance de
+    parapheur). Une société qui n'ouvre jamais cet écran ne voit rien changer.
+
+    ``company`` est posée CÔTÉ SERVEUR, jamais lue du corps de requête.
+    """
+    queryset = ParametresCLM.objects.all()
+    serializer_class = ParametresCLMSerializer
+
+    @extend_schema(request=ParametresCLMSerializer,
+                   responses=ParametresCLMSerializer)
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres = services.get_parametres_clm(request.user.company)
+        if request.method == 'GET':
+            return Response(ParametresCLMSerializer(
+                parametres, context={'request': request}).data)
+        serializer = ParametresCLMSerializer(
+            parametres, data=request.data, partial=True,
+            context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ParametreRenouvellementViewSet(_ContratsBaseViewSet):
+    """Délai de prévenance d'échéance PAR type de contrat — NTDOC20.
+
+    CRUD scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR,
+    jamais lue du corps de requête. Une seule ligne par (société, type).
+
+    Un type de contrat SANS ligne garde le délai historique du semis
+    d'alertes : supprimer une ligne rend donc son comportement d'avant.
+    L'action ``suggestions/`` expose les délais RECOMMANDÉS par type
+    (maintenance 90 j, location 30 j…) pour préremplir l'écran Paramètres —
+    ce sont des propositions, jamais des valeurs déjà appliquées.
+    """
+    queryset = ParametreRenouvellement.objects.all()
+    serializer_class = ParametreRenouvellementSerializer
+
+    @extend_schema(responses=inline_serializer(
+        'ContratsDelaisRenouvellementSuggestions', {
+            'defaut': drf_serializers.IntegerField(),
+            'suggestions': drf_serializers.DictField(
+                child=drf_serializers.IntegerField()),
+        }))
+    @action(detail=False, methods=['get'], url_path='suggestions')
+    def suggestions(self, request):
+        """Délais RECOMMANDÉS par type de contrat (NTDOC20) — lecture seule.
+
+        ``defaut`` est le délai appliqué à tout type non réglé (celui du semis
+        historique). ``suggestions`` sert à préremplir l'écran ; rien n'est
+        écrit tant que l'utilisateur n'enregistre pas.
+        """
+        return Response({
+            'defaut': DELAI_RENOUVELLEMENT_DEFAUT,
+            'suggestions': dict(DELAIS_RENOUVELLEMENT_SUGGERES),
+        })
 
 
 # ---------------------------------------------------------------------------

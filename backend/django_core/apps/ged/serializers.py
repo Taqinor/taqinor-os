@@ -905,11 +905,39 @@ class ModeleDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ModeleDocument
         fields = [
-            'id', 'nom', 'description', 'categorie', 'corps_html',
+            'id', 'nom', 'description', 'categorie', 'corps_html', 'sections',
             'cabinet_cible', 'dossier_cible', 'actif',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate_sections(self, valeur):
+        """NTDOC21 — Valide la STRUCTURE des sections conditionnelles.
+
+        Une section est un objet ``{titre?, corps_html?, conditions?}`` ; son
+        arbre de conditions est validé par ``core.rules`` (FG367) AVANT
+        persistance — un arbre malformé est refusé ici plutôt que d'être
+        silencieusement évalué à False au rendu."""
+        from core.rules import validate_condition_group
+
+        if valeur in (None, ''):
+            return []
+        if not isinstance(valeur, list):
+            raise serializers.ValidationError(
+                "Les sections doivent être une liste d'objets.")
+        for index, section in enumerate(valeur):
+            if not isinstance(section, dict):
+                raise serializers.ValidationError(
+                    f"Section #{index + 1} : un objet est attendu.")
+            conditions = section.get('conditions')
+            if not conditions:
+                continue
+            erreurs = validate_condition_group(conditions)
+            if erreurs:
+                raise serializers.ValidationError(
+                    f"Section #{index + 1} — conditions invalides : "
+                    f"{' ; '.join(erreurs)}")
+        return valeur
 
 
 class JournalAccesSerializer(serializers.ModelSerializer):

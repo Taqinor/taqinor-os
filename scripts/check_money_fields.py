@@ -72,15 +72,10 @@ RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
 # ble, lui, est arrondi au centime au moment de la facturation.
 DECIMAL_PLACES_ALLOWLIST = {
     "backend/django_core/apps/gestion_projet/models.py:103",
-    # backend-lint-fast batch 2 (12/09/2026) — recalibre depuis :724 : le
-    # champ n'a pas bouge de sens, seul models.py a grossi au-dessus de lui
-    # (bug class #34, ECOSYSTEM : un ancrage ligne dans un allowlist derive
-    # des lors qu'un fichier modele bouge ; on recale sur PREUVE de contenu,
-    # jamais en elargissant l'heuristique partagee).
-    "backend/django_core/apps/stock/models.py:765",
-    "backend/django_core/apps/btp_chantier/models.py:812",
-    "backend/django_core/apps/btp_chantier/models.py:1136",
-    "backend/django_core/apps/contrats/models.py:4085",
+    "backend/django_core/apps/stock/models.py:788",
+    "backend/django_core/apps/btp_chantier/models.py:831",
+    "backend/django_core/apps/btp_chantier/models.py:1169",
+    "backend/django_core/apps/contrats/models.py:4268",
 }
 
 FLOAT_LIKE = {"FloatField"}

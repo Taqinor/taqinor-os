@@ -30,6 +30,53 @@ def alertes_rfi_retard_task():
         return 0
 
 
+@shared_task(name='btp_chantier.archiver_reserves_levees')
+def archiver_reserves_levees_task():
+    """NTCON27 — archive (drapeau, jamais suppression) les réserves levées
+    depuis plus de N mois (réglage par société, défaut 24). Idempotente :
+    une réserve déjà archivée est exclue du balayage. Renvoie le nombre de
+    réserves archivées."""
+    from .services import archiver_reserves_levees
+    try:
+        return archiver_reserves_levees()['archivees']
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'btp_chantier.archiver_reserves_levees: échec du balayage',
+            exc_info=True)
+        return 0
+
+
+@shared_task(name='btp_chantier.recalculer_penalites_lots')
+def recalculer_penalites_lots_task():
+    """NTCON28 — fige le cache d'exposition aux pénalités (NTCON15) pour les
+    chantiers ayant au moins un lot en retard actif, pour que le cockpit lise
+    au lieu de recalculer. Renvoie le nombre de lots mis en cache."""
+    from .services import recalculer_penalites_lots
+    try:
+        return recalculer_penalites_lots()['lots']
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'btp_chantier.recalculer_penalites_lots: échec du balayage',
+            exc_info=True)
+        return 0
+
+
+@shared_task(name='btp_chantier.alertes_visas_en_attente')
+def alertes_visas_en_attente_task():
+    """NTCON37 — relance le revuseur d'un visa en retard de revue ET son
+    manager hiérarchique. Idempotente : une seule relance par jour et par
+    visa ; un visa décidé n'est jamais examiné. Renvoie le nombre de
+    relances envoyées."""
+    from .services import alerter_visas_en_attente
+    try:
+        return alerter_visas_en_attente()['alertes_envoyees']
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'btp_chantier.alertes_visas_en_attente: échec du balayage',
+            exc_info=True)
+        return 0
+
+
 @shared_task(name='btp_chantier.rapport_photo_hebdo')
 def rapport_photo_hebdo_task():
     """NTCON18 — envoie le photo-rapport hebdomadaire aux chantiers ABONNÉS

@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from apps.parametres.models import CompanyProfile
 from authentication.services import sieges_utilises
 
-from .auth import ApiKeyAuthentication, ApiKeyRateThrottle, HasApiScope
+from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, HasApiScope
 from .constants import SCOPE_READ_LICENCE
 from .public_response import PublicApiResponseMixin
 
@@ -20,7 +20,7 @@ class PublicLicenceStatutView(PublicApiResponseMixin, APIView):
     """``GET /api/public/v1/licence/statut/`` — statut de licence de la
     société porteuse de la clé."""
 
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [HasApiScope]
     throttle_classes = [ApiKeyRateThrottle]
     required_scope = SCOPE_READ_LICENCE

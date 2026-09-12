@@ -95,14 +95,59 @@ def _supprimer_reference(reference, company=None):
         return False
 
 
+class PackageIncompatible(ValueError):
+    """NTEXT15 — dépendance de module manquante ou version installée
+    incompatible : ``installer_package`` n'a RIEN créé/modifié (levée avant
+    toute matérialisation)."""
+
+
+def _verifier_compatibilite(company, package):
+    """NTEXT15 — refuse (erreur FR) si un module requis par le manifest est
+    désactivé pour ``company``, ou si une install ANTÉRIEURE de CE package
+    est d'une version incompatible avec ``min_version``. Réutilise les
+    registres FERMÉS existants — aucun nouveau moteur de dépendances :
+    ``core.feature_flags.module_actif`` (via ``modules_manquants``) et un
+    simple comparateur sémantique (``core.modules.version_compatible``)."""
+    from core.feature_flags import modules_manquants
+    from core.modules import version_compatible
+    from .models import ExtensionInstall
+
+    manifest = package.manifest or {}
+    depends = manifest.get('depends') or []
+    if isinstance(depends, (list, tuple)):
+        manquants = modules_manquants(company, depends)
+        if manquants:
+            raise PackageIncompatible(
+                f"Impossible d'installer « {package.nom} » : "
+                f"module(s) requis désactivé(s) : {', '.join(manquants)}.")
+
+    min_version = manifest.get('min_version')
+    if min_version:
+        existante = ExtensionInstall.objects.filter(
+            company=company, package=package).first()
+        if existante is not None and not version_compatible(
+                existante.version, min_version):
+            raise PackageIncompatible(
+                f"Impossible d'installer « {package.nom} » : version "
+                f"installée ({existante.version or 'inconnue'}) "
+                f"incompatible — au moins la version {min_version} est "
+                "requise.")
+
+
 # ── Installation / désinstallation ─────────────────────────────────────────
 
 def installer_package(company, package):
     """Installe ``package`` sur ``company`` et renvoie l'``ExtensionInstall``.
 
     IDEMPOTENT : ré-appeler reprend la même installation et ne recrée rien.
+
+    NTEXT15 — refuse D'ABORD (``PackageIncompatible``, erreur FR, AUCUN effet
+    de bord) si une dépendance de module est désactivée ou si une install
+    antérieure de ce package est d'une version incompatible.
     """
     from .models import ExtensionInstall
+
+    _verifier_compatibilite(company, package)
 
     install, _cree = ExtensionInstall.objects.get_or_create(
         company=company, package=package,

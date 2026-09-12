@@ -75,10 +75,14 @@ class ReserveChantierSerializer(serializers.ModelSerializer):
             'gravite', 'statut', 'responsable_leve', 'date_limite',
             'created_by', 'created_at', 'updated_at',
             'date_levee', 'leve_par', 'motif_contestation', 'historique',
+            # NTCON27 — état d'archivage, posé UNIQUEMENT par le balayage
+            # planifié (lecture seule côté API).
+            'archivee', 'archivee_le',
         ]
         read_only_fields = [
             'id', 'statut', 'created_by', 'created_at', 'updated_at',
             'date_levee', 'leve_par', 'motif_contestation', 'historique',
+            'archivee', 'archivee_le',
         ]
 
     def validate_localisation_plan(self, value):
@@ -352,7 +356,9 @@ class ParametresBtpChantierSerializer(serializers.ModelSerializer):
             'id', 'delai_reponse_rfi_defaut_jours',
             'delai_revue_visa_defaut_jours', 'guard_ppsps_bloquant',
             'guard_checklist_lot_bloquant', 'lots_types_defaut',
-            'taux_penalite_retard_defaut_pmil', 'updated_at',
+            'taux_penalite_retard_defaut_pmil',
+            # NTCON27 — ancienneté d'archivage des réserves levées (mois).
+            'delai_archivage_reserves_levees_mois', 'updated_at',
         ]
         read_only_fields = ['id', 'updated_at']
 

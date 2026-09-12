@@ -1,0 +1,3174 @@
+{
+  "generated_at": "2026-09-12T09:21:48+00:00",
+  "gated_modules_excluded": [
+    "agriculture",
+    "education",
+    "hospitality",
+    "immobilier",
+    "mrp",
+    "sante"
+  ],
+  "total_components": 438,
+  "migrated_components": 9,
+  "coverage_pct": 2.1,
+  "domains": {
+    "admin": {
+      "total": 8,
+      "migrated": 0,
+      "hardcoded_strings": 113,
+      "pct": 0.0
+    },
+    "adminops": {
+      "total": 7,
+      "migrated": 0,
+      "hardcoded_strings": 29,
+      "pct": 0.0
+    },
+    "adsengine": {
+      "total": 24,
+      "migrated": 0,
+      "hardcoded_strings": 260,
+      "pct": 0.0
+    },
+    "ao": {
+      "total": 10,
+      "migrated": 0,
+      "hardcoded_strings": 102,
+      "pct": 0.0
+    },
+    "assurances": {
+      "total": 6,
+      "migrated": 0,
+      "hardcoded_strings": 57,
+      "pct": 0.0
+    },
+    "btp_chantier": {
+      "total": 12,
+      "migrated": 1,
+      "hardcoded_strings": 141,
+      "pct": 8.3
+    },
+    "compta": {
+      "total": 34,
+      "migrated": 1,
+      "hardcoded_strings": 357,
+      "pct": 2.9
+    },
+    "contrats": {
+      "total": 10,
+      "migrated": 0,
+      "hardcoded_strings": 212,
+      "pct": 0.0
+    },
+    "core": {
+      "total": 10,
+      "migrated": 0,
+      "hardcoded_strings": 82,
+      "pct": 0.0
+    },
+    "cpq": {
+      "total": 4,
+      "migrated": 0,
+      "hardcoded_strings": 42,
+      "pct": 0.0
+    },
+    "credit": {
+      "total": 8,
+      "migrated": 0,
+      "hardcoded_strings": 70,
+      "pct": 0.0
+    },
+    "crm": {
+      "total": 19,
+      "migrated": 1,
+      "hardcoded_strings": 116,
+      "pct": 5.3
+    },
+    "entites": {
+      "total": 2,
+      "migrated": 0,
+      "hardcoded_strings": 10,
+      "pct": 0.0
+    },
+    "esg": {
+      "total": 3,
+      "migrated": 0,
+      "hardcoded_strings": 39,
+      "pct": 0.0
+    },
+    "fiscal": {
+      "total": 3,
+      "migrated": 0,
+      "hardcoded_strings": 24,
+      "pct": 0.0
+    },
+    "flotte": {
+      "total": 9,
+      "migrated": 0,
+      "hardcoded_strings": 154,
+      "pct": 0.0
+    },
+    "fpa": {
+      "total": 7,
+      "migrated": 0,
+      "hardcoded_strings": 72,
+      "pct": 0.0
+    },
+    "ged": {
+      "total": 11,
+      "migrated": 0,
+      "hardcoded_strings": 251,
+      "pct": 0.0
+    },
+    "gestion_projet": {
+      "total": 10,
+      "migrated": 0,
+      "hardcoded_strings": 145,
+      "pct": 0.0
+    },
+    "ia": {
+      "total": 1,
+      "migrated": 0,
+      "hardcoded_strings": 1,
+      "pct": 0.0
+    },
+    "innovation": {
+      "total": 8,
+      "migrated": 0,
+      "hardcoded_strings": 51,
+      "pct": 0.0
+    },
+    "installations": {
+      "total": 27,
+      "migrated": 1,
+      "hardcoded_strings": 508,
+      "pct": 3.7
+    },
+    "juridique": {
+      "total": 1,
+      "migrated": 0,
+      "hardcoded_strings": 1,
+      "pct": 0.0
+    },
+    "kb": {
+      "total": 2,
+      "migrated": 0,
+      "hardcoded_strings": 16,
+      "pct": 0.0
+    },
+    "litiges": {
+      "total": 1,
+      "migrated": 0,
+      "hardcoded_strings": 6,
+      "pct": 0.0
+    },
+    "logistique": {
+      "total": 5,
+      "migrated": 0,
+      "hardcoded_strings": 32,
+      "pct": 0.0
+    },
+    "magasin": {
+      "total": 6,
+      "migrated": 0,
+      "hardcoded_strings": 33,
+      "pct": 0.0
+    },
+    "marketing": {
+      "total": 25,
+      "migrated": 0,
+      "hardcoded_strings": 133,
+      "pct": 0.0
+    },
+    "migration": {
+      "total": 3,
+      "migrated": 0,
+      "hardcoded_strings": 13,
+      "pct": 0.0
+    },
+    "offlinesync": {
+      "total": 5,
+      "migrated": 0,
+      "hardcoded_strings": 20,
+      "pct": 0.0
+    },
+    "paie": {
+      "total": 9,
+      "migrated": 0,
+      "hardcoded_strings": 139,
+      "pct": 0.0
+    },
+    "parametres": {
+      "total": 24,
+      "migrated": 1,
+      "hardcoded_strings": 167,
+      "pct": 4.2
+    },
+    "portail": {
+      "total": 1,
+      "migrated": 0,
+      "hardcoded_strings": 6,
+      "pct": 0.0
+    },
+    "pos": {
+      "total": 7,
+      "migrated": 0,
+      "hardcoded_strings": 78,
+      "pct": 0.0
+    },
+    "qhse": {
+      "total": 8,
+      "migrated": 0,
+      "hardcoded_strings": 307,
+      "pct": 0.0
+    },
+    "reporting": {
+      "total": 18,
+      "migrated": 0,
+      "hardcoded_strings": 238,
+      "pct": 0.0
+    },
+    "rh": {
+      "total": 25,
+      "migrated": 1,
+      "hardcoded_strings": 342,
+      "pct": 4.0
+    },
+    "sav": {
+      "total": 10,
+      "migrated": 1,
+      "hardcoded_strings": 241,
+      "pct": 10.0
+    },
+    "scm": {
+      "total": 9,
+      "migrated": 0,
+      "hardcoded_strings": 46,
+      "pct": 0.0
+    },
+    "stock": {
+      "total": 17,
+      "migrated": 1,
+      "hardcoded_strings": 372,
+      "pct": 5.9
+    },
+    "tiers": {
+      "total": 1,
+      "migrated": 0,
+      "hardcoded_strings": 7,
+      "pct": 0.0
+    },
+    "transport": {
+      "total": 3,
+      "migrated": 0,
+      "hardcoded_strings": 24,
+      "pct": 0.0
+    },
+    "veille_ao": {
+      "total": 4,
+      "migrated": 0,
+      "hardcoded_strings": 24,
+      "pct": 0.0
+    },
+    "ventes": {
+      "total": 14,
+      "migrated": 1,
+      "hardcoded_strings": 336,
+      "pct": 7.1
+    },
+    "voip": {
+      "total": 3,
+      "migrated": 0,
+      "hardcoded_strings": 14,
+      "pct": 0.0
+    },
+    "workflow": {
+      "total": 4,
+      "migrated": 0,
+      "hardcoded_strings": 30,
+      "pct": 0.0
+    }
+  },
+  "priority_targets": [
+    {
+      "path": "frontend/src/features/qhse/Risques.jsx",
+      "domain": "qhse",
+      "hardcoded_strings": 100
+    },
+    {
+      "path": "frontend/src/pages/ventes/FactureList.jsx",
+      "domain": "ventes",
+      "hardcoded_strings": 82
+    },
+    {
+      "path": "frontend/src/pages/sav/TicketsPage.jsx",
+      "domain": "sav",
+      "hardcoded_strings": 75
+    },
+    {
+      "path": "frontend/src/pages/ventes/DevisList.jsx",
+      "domain": "ventes",
+      "hardcoded_strings": 69
+    },
+    {
+      "path": "frontend/src/features/adsengine/ReportsScreen.jsx",
+      "domain": "adsengine",
+      "hardcoded_strings": 63
+    },
+    {
+      "path": "frontend/src/features/qhse/IsoQhse.jsx",
+      "domain": "qhse",
+      "hardcoded_strings": 62
+    },
+    {
+      "path": "frontend/src/features/rh/Recrutement.jsx",
+      "domain": "rh",
+      "hardcoded_strings": 60
+    },
+    {
+      "path": "frontend/src/pages/stock/StockList.jsx",
+      "domain": "stock",
+      "hardcoded_strings": 57
+    },
+    {
+      "path": "frontend/src/pages/ventes/DevisGenerator.jsx",
+      "domain": "ventes",
+      "hardcoded_strings": 57
+    },
+    {
+      "path": "frontend/src/features/paie/PaieParametres.jsx",
+      "domain": "paie",
+      "hardcoded_strings": 55
+    },
+    {
+      "path": "frontend/src/features/qhse/Inspections.jsx",
+      "domain": "qhse",
+      "hardcoded_strings": 54
+    },
+    {
+      "path": "frontend/src/pages/stock/BonsCommandeFournisseur.jsx",
+      "domain": "stock",
+      "hardcoded_strings": 53
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/ApprobationPage.jsx",
+      "domain": "ged",
+      "hardcoded_strings": 52
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/RetentionPage.jsx",
+      "domain": "ged",
+      "hardcoded_strings": 50
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/RisquesPage.jsx",
+      "domain": "gestion_projet",
+      "hardcoded_strings": 50
+    },
+    {
+      "path": "frontend/src/pages/stock/FournisseurFiche360.jsx",
+      "domain": "stock",
+      "hardcoded_strings": 50
+    },
+    {
+      "path": "frontend/src/features/rh/Competences.jsx",
+      "domain": "rh",
+      "hardcoded_strings": 45
+    },
+    {
+      "path": "frontend/src/pages/installations/PlanificationPage.jsx",
+      "domain": "installations",
+      "hardcoded_strings": 44
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/ChecklistPage.jsx",
+      "domain": "ged",
+      "hardcoded_strings": 43
+    },
+    {
+      "path": "frontend/src/features/installations/SousTraitanceChantier.jsx",
+      "domain": "installations",
+      "hardcoded_strings": 43
+    },
+    {
+      "path": "frontend/src/features/flotte/EntretienScreen.jsx",
+      "domain": "flotte",
+      "hardcoded_strings": 42
+    },
+    {
+      "path": "frontend/src/features/contrats/ContratDetail.jsx",
+      "domain": "contrats",
+      "hardcoded_strings": 41
+    },
+    {
+      "path": "frontend/src/features/qhse/NonConformites.jsx",
+      "domain": "qhse",
+      "hardcoded_strings": 38
+    },
+    {
+      "path": "frontend/src/pages/Journal.jsx",
+      "domain": "parametres",
+      "hardcoded_strings": 38
+    },
+    {
+      "path": "frontend/src/features/flotte/CarburantScreen.jsx",
+      "domain": "flotte",
+      "hardcoded_strings": 37
+    },
+    {
+      "path": "frontend/src/features/paie/PaieDeclarations.jsx",
+      "domain": "paie",
+      "hardcoded_strings": 37
+    },
+    {
+      "path": "frontend/src/pages/Rapports.jsx",
+      "domain": "reporting",
+      "hardcoded_strings": 37
+    },
+    {
+      "path": "frontend/src/features/adsengine/DashboardScreen.jsx",
+      "domain": "adsengine",
+      "hardcoded_strings": 36
+    },
+    {
+      "path": "frontend/src/features/compta/pages/TresoreriePage.jsx",
+      "domain": "compta",
+      "hardcoded_strings": 36
+    },
+    {
+      "path": "frontend/src/pages/installations/AteliersPage.jsx",
+      "domain": "installations",
+      "hardcoded_strings": 36
+    },
+    {
+      "path": "frontend/src/features/contrats/EcheancesPage.jsx",
+      "domain": "contrats",
+      "hardcoded_strings": 35
+    },
+    {
+      "path": "frontend/src/pages/sav/SavSlaReportPage.jsx",
+      "domain": "sav",
+      "hardcoded_strings": 35
+    },
+    {
+      "path": "frontend/src/features/contrats/AbonnementsPage.jsx",
+      "domain": "contrats",
+      "hardcoded_strings": 34
+    },
+    {
+      "path": "frontend/src/pages/sav/SavParametresPage.jsx",
+      "domain": "sav",
+      "hardcoded_strings": 33
+    },
+    {
+      "path": "frontend/src/pages/approbations/ApprobationsPage.jsx",
+      "domain": "reporting",
+      "hardcoded_strings": 32
+    },
+    {
+      "path": "frontend/src/pages/sav/ContratsMaintenance.jsx",
+      "domain": "sav",
+      "hardcoded_strings": 32
+    },
+    {
+      "path": "frontend/src/features/rh/Portail.jsx",
+      "domain": "rh",
+      "hardcoded_strings": 31
+    },
+    {
+      "path": "frontend/src/pages/installations/ParcInstallePage.jsx",
+      "domain": "installations",
+      "hardcoded_strings": 31
+    },
+    {
+      "path": "frontend/src/pages/stock/FournisseursStock.jsx",
+      "domain": "stock",
+      "hardcoded_strings": 30
+    },
+    {
+      "path": "frontend/src/features/ao/economie/EconomieDirecteur.jsx",
+      "domain": "ao",
+      "hardcoded_strings": 29
+    },
+    {
+      "path": "frontend/src/features/qhse/Environnement.jsx",
+      "domain": "qhse",
+      "hardcoded_strings": 29
+    },
+    {
+      "path": "frontend/src/pages/stock/FacturesFournisseur.jsx",
+      "domain": "stock",
+      "hardcoded_strings": 29
+    },
+    {
+      "path": "frontend/src/features/credit/PolicesAssuranceCreditPage.jsx",
+      "domain": "credit",
+      "hardcoded_strings": 28
+    },
+    {
+      "path": "frontend/src/features/flotte/ConducteursScreen.jsx",
+      "domain": "flotte",
+      "hardcoded_strings": 28
+    },
+    {
+      "path": "frontend/src/pages/sav/EquipementsPage.jsx",
+      "domain": "sav",
+      "hardcoded_strings": 28
+    },
+    {
+      "path": "frontend/src/features/installations/PrixNegocies.jsx",
+      "domain": "installations",
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/pages/stock/OcrStockImport.jsx",
+      "domain": "stock",
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/pages/ventes/ListesPrixPage.jsx",
+      "domain": "ventes",
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/pages/ventes/RelancesPage.jsx",
+      "domain": "ventes",
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/pages/admin/SecuriteIdentitePage.jsx",
+      "domain": "admin",
+      "hardcoded_strings": 26
+    }
+  ],
+  "components": [
+    {
+      "path": "frontend/src/features/admin/DemoWizard.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/adminops/AdminSettingsPage.jsx",
+      "domain": "adminops",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/adminops/AdoptionPage.jsx",
+      "domain": "adminops",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/adminops/ConfigPackagesPage.jsx",
+      "domain": "adminops",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/adminops/DiagnosticPage.jsx",
+      "domain": "adminops",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/adminops/HealthScorePage.jsx",
+      "domain": "adminops",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/adminops/LicencesPage.jsx",
+      "domain": "adminops",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/adminops/SandboxPage.jsx",
+      "domain": "adminops",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/adsengine/ActionsLogScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/adsengine/AdDetailScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/features/adsengine/ApprovalsScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/adsengine/BacklogScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/adsengine/BrandKitScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/adsengine/BriefScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/adsengine/CampaignsScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/features/adsengine/ChantierImportScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/adsengine/CommentsInboxScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/adsengine/ComparatorScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/adsengine/ConnectionScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/adsengine/ConsentScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/adsengine/CreativeLibraryScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/adsengine/DashboardScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 36
+    },
+    {
+      "path": "frontend/src/features/adsengine/ExperimentsScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/adsengine/FactTableScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/features/adsengine/FlightPlanScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/adsengine/InstagramScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/adsengine/ReportsScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 63
+    },
+    {
+      "path": "frontend/src/features/adsengine/RulesScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/adsengine/SimulationScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/adsengine/TodayScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/adsengine/TreeScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/adsengine/VeilleScreen.jsx",
+      "domain": "adsengine",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/ao/AffaireDetail.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/features/ao/AffaireForm.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/features/ao/AffairesList.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/ao/bibliotheque/BibliothequePage.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/ao/calepinage/VariantesListPage.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/ao/DashboardPage.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/features/ao/dossier/DossierPage.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/ao/economie/EconomieDirecteur.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 29
+    },
+    {
+      "path": "frontend/src/features/ao/PiecesAdministratives.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/features/ao/toiture/ToituresPage.jsx",
+      "domain": "ao",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/assurances/ExigencesMarche.jsx",
+      "domain": "assurances",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/assurances/PoliceDetail.jsx",
+      "domain": "assurances",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/assurances/PoliceForm.jsx",
+      "domain": "assurances",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/assurances/PolicesList.jsx",
+      "domain": "assurances",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/assurances/SinistresPage.jsx",
+      "domain": "assurances",
+      "migrated": false,
+      "hardcoded_strings": 22
+    },
+    {
+      "path": "frontend/src/features/assurances/TableauBordAssurances.jsx",
+      "domain": "assurances",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/AvenantsChantier.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/ChantierBtpCockpit.jsx",
+      "domain": "btp_chantier",
+      "migrated": true,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/ClotureChantierBtpWizard.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/DecompteGeneral.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 21
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/DiffusionPlans.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/JournalChantier.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 22
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/NouveauChantierBtpWizard.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/ParametresBtp.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/PlanningLots.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/ReservesChantier.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 21
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/RFI.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/btp_chantier/VisasDocuments.jsx",
+      "domain": "btp_chantier",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/compta/pages/AllocationsEngagementsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ApprobationsConfigPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ApprobationsRibPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/compta/pages/BalanceOuverturePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/compta/pages/BudgetsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ChargesAvancePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/compta/pages/CloturePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 25
+    },
+    {
+      "path": "frontend/src/features/compta/pages/CockpitPage.jsx",
+      "domain": "compta",
+      "migrated": true,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/features/compta/pages/CodesPromotionPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ComparateursPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ConsolidationGroupePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 21
+    },
+    {
+      "path": "frontend/src/features/compta/pages/DevisesPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/compta/pages/DocumentsPropositionPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ECataloguePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EcheanciersPaiementPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EcrituresPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EcrituresRecurrentesPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EffetsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EmpruntsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EngagementsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EtatsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/features/compta/pages/EtatsPersonnalisesPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/compta/pages/FiscaliteAvanceePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/compta/pages/FiscalitePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/compta/pages/GuidedSellingPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ImmobilisationsAvanceesPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 21
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ImmobilisationsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/compta/pages/NotesDeFraisPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/compta/pages/PlanComptablePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/compta/pages/RapprochementsComptePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/compta/pages/RapprochementsPage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 19
+    },
+    {
+      "path": "frontend/src/features/compta/pages/ReferentielsAnalytiquePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 21
+    },
+    {
+      "path": "frontend/src/features/compta/pages/RevenuIfrs15Page.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 18
+    },
+    {
+      "path": "frontend/src/features/compta/pages/TresoreriePage.jsx",
+      "domain": "compta",
+      "migrated": false,
+      "hardcoded_strings": 36
+    },
+    {
+      "path": "frontend/src/features/contrats/AbonnementsPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 34
+    },
+    {
+      "path": "frontend/src/features/contrats/ConfigLocationPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/contrats/ContratDetail.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 41
+    },
+    {
+      "path": "frontend/src/features/contrats/ContratsList.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/contrats/DashboardPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/contrats/DunningPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/features/contrats/EcheancesPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 35
+    },
+    {
+      "path": "frontend/src/features/contrats/FinancesPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 23
+    },
+    {
+      "path": "frontend/src/features/contrats/LocationPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 25
+    },
+    {
+      "path": "frontend/src/features/contrats/ModelesPage.jsx",
+      "domain": "contrats",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/features/core/ExplorateurDonneesPage.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/features/cpq/CompatibilitePage.jsx",
+      "domain": "cpq",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/cpq/ConfigurateurPage.jsx",
+      "domain": "cpq",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/cpq/OffresGroupeesPage.jsx",
+      "domain": "cpq",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/cpq/ParametresCpqPage.jsx",
+      "domain": "cpq",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/credit/ConditionsSegmentScreen.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/credit/DerogationsPage.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/credit/ExpositionCreditPage.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/credit/FicheCreditClientPage.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/credit/ImportLimitesCreditPage.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/credit/PolicesAssuranceCreditPage.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 28
+    },
+    {
+      "path": "frontend/src/features/credit/ReglagesCreditPage.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/credit/SegmentsClientPage.jsx",
+      "domain": "credit",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/crm/ConcurrentsPerte.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/features/crm/Partenaires.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/customobjects/CustomObjectRecordsPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/entites/EntitesPage.jsx",
+      "domain": "entites",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/entites/GroupePage.jsx",
+      "domain": "entites",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/flotte/AnalyseCoutsScreen.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 23
+    },
+    {
+      "path": "frontend/src/features/flotte/CarburantScreen.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 37
+    },
+    {
+      "path": "frontend/src/features/flotte/ConducteursScreen.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 28
+    },
+    {
+      "path": "frontend/src/features/flotte/ConformiteScreen.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/flotte/EntretienScreen.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 42
+    },
+    {
+      "path": "frontend/src/features/flotte/FlotteCockpit.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/flotte/InspectionsScreen.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/flotte/VehiculesList.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/flotte/ZonesRappelsScreen.jsx",
+      "domain": "flotte",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/ApprobationPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 52
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/ChecklistPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 43
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/CoffresPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/CorbeillePage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/PlanificationsPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/ReglesAclPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/ReglesDossierPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 20
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/RetentionPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 50
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/RoutagesPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/ged/advanced/TagsPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 19
+    },
+    {
+      "path": "frontend/src/features/ged/NumeriserPage.jsx",
+      "domain": "ged",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/BudgetPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/PlanningPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/PortefeuillePage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/ProjetDetailPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/ProjetsPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/RessourcesPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/RisquesPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 50
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/TachesPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/pages/TempsPage.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/gestion_projet/ParametresAvances.jsx",
+      "domain": "gestion_projet",
+      "migrated": false,
+      "hardcoded_strings": 20
+    },
+    {
+      "path": "frontend/src/features/innovation/CampagnesInnovationPage.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 20
+    },
+    {
+      "path": "frontend/src/features/innovation/IdeeDetail.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/innovation/IdeesCartePage.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/innovation/IdeesPage.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/innovation/InnovationDashboard.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/innovation/MesIdeesPage.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/innovation/ProposerIdeePage.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/features/innovation/RetoursProduitPage.jsx",
+      "domain": "innovation",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/features/installations/DocumentsProjet.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/installations/ParametrageKits.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 24
+    },
+    {
+      "path": "frontend/src/features/installations/PrixNegocies.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/features/installations/RFQ.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 21
+    },
+    {
+      "path": "frontend/src/features/installations/SousTraitanceChantier.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 43
+    },
+    {
+      "path": "frontend/src/features/installations/SuiviImport.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 22
+    },
+    {
+      "path": "frontend/src/features/installations/SuiviProjetChantier.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/features/juridique/JuridiquePage.jsx",
+      "domain": "juridique",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/kb/KbPage.jsx",
+      "domain": "kb",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/kb/KbParcoursPage.jsx",
+      "domain": "kb",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/litiges/LitigesPage.jsx",
+      "domain": "litiges",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/logistique/ComptageCyclesScreen.jsx",
+      "domain": "logistique",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/logistique/LivraisonsPlanningScreen.jsx",
+      "domain": "logistique",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/logistique/LogistiqueCockpit.jsx",
+      "domain": "logistique",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/logistique/RetoursScreen.jsx",
+      "domain": "logistique",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/logistique/TransfertsScreen.jsx",
+      "domain": "logistique",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/magasin/BinTreeScreen.jsx",
+      "domain": "magasin",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/magasin/ColisageScreen.jsx",
+      "domain": "magasin",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/features/magasin/EntrepotConsultScreen.jsx",
+      "domain": "magasin",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/magasin/MagasinCockpit.jsx",
+      "domain": "magasin",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/magasin/PickListScreen.jsx",
+      "domain": "magasin",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/magasin/PutAwayScreen.jsx",
+      "domain": "magasin",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/marketing/AttributionReport.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/marketing/AvisClients.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/marketing/CampagneDetail.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/marketing/CampagnesList.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/features/marketing/CampagneWizard.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/marketing/EnqueteResultats.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/marketing/EnquetesList.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/marketing/EnquetesNps.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/marketing/EnqueteWizard.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/marketing/EvenementDetail.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/marketing/EvenementsList.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/marketing/FideliteList.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/marketing/FormulairesIntakeList.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/marketing/JournalAppelsScreen.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/features/marketing/ListesDiffusion.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/marketing/MarketingCalendarScreen.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/marketing/MarketingDashboard.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/marketing/MarketingParametres.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/features/marketing/MessagesWhatsapp.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/marketing/SegmentsList.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/marketing/SequenceDetail.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/marketing/SequencesList.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/marketing/SequenceWizard.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/marketing/SupportsOffline.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/marketing/UtmBuilder.jsx",
+      "domain": "marketing",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/migration/MigrationProjetsList.jsx",
+      "domain": "migration",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/migration/MigrationWizard.jsx",
+      "domain": "migration",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/migration/PartenairesCertifiesPage.jsx",
+      "domain": "migration",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/offlinesync/mobile/CockpitHome.jsx",
+      "domain": "offlinesync",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/offlinesync/mobile/CommercialHome.jsx",
+      "domain": "offlinesync",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx",
+      "domain": "offlinesync",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/offlinesync/mobile/EquipeTerrainHome.jsx",
+      "domain": "offlinesync",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/offlinesync/SyncConflictsPanel.jsx",
+      "domain": "offlinesync",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/paie/BulletinDetail.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/features/paie/BulletinList.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/paie/MesBulletins.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/paie/PaieDeclarations.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 37
+    },
+    {
+      "path": "frontend/src/features/paie/PaieParametres.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 55
+    },
+    {
+      "path": "frontend/src/features/paie/PaieRunWizard.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/paie/PaysPaie.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/paie/PlanComptablePaie.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/features/paie/TypesEntreePonctuelle.jsx",
+      "domain": "paie",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/parametres/DomaineEnvoi.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/parametres/IaCapacites.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/parametres/IaDiagnostic.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/parametres/Playbooks.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/parametres/TaxeSejourHospitality.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/parametres/Territoires.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/portail/admin/PortailAdminPage.jsx",
+      "domain": "portail",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/pos/CaisseScreen.jsx",
+      "domain": "pos",
+      "migrated": false,
+      "hardcoded_strings": 24
+    },
+    {
+      "path": "frontend/src/features/pos/ConfigMaterielScreen.jsx",
+      "domain": "pos",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/pos/DashboardRetail.jsx",
+      "domain": "pos",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/pos/DashboardScreen.jsx",
+      "domain": "pos",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/pos/EcranClient.jsx",
+      "domain": "pos",
+      "migrated": false,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/features/pos/RetraitsScreen.jsx",
+      "domain": "pos",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/features/pos/SessionScreen.jsx",
+      "domain": "pos",
+      "migrated": false,
+      "hardcoded_strings": 19
+    },
+    {
+      "path": "frontend/src/features/qhse/CheckinsSecurite.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/features/qhse/Environnement.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 29
+    },
+    {
+      "path": "frontend/src/features/qhse/Inspections.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 54
+    },
+    {
+      "path": "frontend/src/features/qhse/IsoQhse.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 62
+    },
+    {
+      "path": "frontend/src/features/qhse/NonConformites.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 38
+    },
+    {
+      "path": "frontend/src/features/qhse/NotationFinChantier.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/qhse/QhseCockpit.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/qhse/Risques.jsx",
+      "domain": "qhse",
+      "migrated": false,
+      "hardcoded_strings": 100
+    },
+    {
+      "path": "frontend/src/features/reporting/RapportBuilderPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/features/reporting/RapportPeriodePage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/rh/Competences.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 45
+    },
+    {
+      "path": "frontend/src/features/rh/Conges.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/rh/DemandesAllocation.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/rh/DemandesRh.jsx",
+      "domain": "rh",
+      "migrated": true,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/features/rh/DepotsBulletinsPaie.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/rh/ElementsVariablesPaie.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/rh/EmployeDetail.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/features/rh/EmployeList.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/rh/EntretiensSortie.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/rh/FermeturesCollectives.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/rh/GrillesSalariales.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/rh/HorairesTravail.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/rh/Hse.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 25
+    },
+    {
+      "path": "frontend/src/features/rh/JoursBloquesConge.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/rh/ModelesIntegration.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/features/rh/ParcoursEmploye.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/features/rh/Portail.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 31
+    },
+    {
+      "path": "frontend/src/features/rh/PresentsChantier.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/rh/PrimesIndemnites.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/features/rh/Recrutement.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 60
+    },
+    {
+      "path": "frontend/src/features/rh/ReglagesRh.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/rh/RhCockpit.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/features/rh/Temps.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/features/rh/VehiculesPermis.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/features/transport/OrdresTransportScreen.jsx",
+      "domain": "transport",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/features/veille_ao/AcheteursCibles.jsx",
+      "domain": "veille_ao",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/features/veille_ao/AvisDetail.jsx",
+      "domain": "veille_ao",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/veille_ao/AvisList.jsx",
+      "domain": "veille_ao",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/features/veille_ao/ParametresVeille.jsx",
+      "domain": "veille_ao",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/features/voip/MesIdentifiantsPage.jsx",
+      "domain": "voip",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/features/voip/VoipJournalPage.jsx",
+      "domain": "voip",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/features/voip/VoipParametresPage.jsx",
+      "domain": "voip",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/workflow/FormBuilder.jsx",
+      "domain": "workflow",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/features/workflow/TachesPlanifieesScreen.jsx",
+      "domain": "workflow",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/features/workflow/WorkflowDesigner.jsx",
+      "domain": "workflow",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/features/workflow/WorkflowsScreen.jsx",
+      "domain": "workflow",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/activities/MesActivitesPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/pages/admin/GouvernanceAccesPage.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 20
+    },
+    {
+      "path": "frontend/src/pages/admin/ImpersonationConsentement.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/admin/ImpersonationWizard.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/admin/RolesManagement.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/pages/admin/SecuriteIdentitePage.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 26
+    },
+    {
+      "path": "frontend/src/pages/admin/TenantsConsole.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/pages/admin/UsersManagement.jsx",
+      "domain": "admin",
+      "migrated": false,
+      "hardcoded_strings": 18
+    },
+    {
+      "path": "frontend/src/pages/aide/LexiquePage.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/approbations/ApprobationsPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 32
+    },
+    {
+      "path": "frontend/src/pages/CalendarPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/CartePage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/crm/ClientList.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/crm/CrmCockpit.jsx",
+      "domain": "crm",
+      "migrated": true,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/pages/crm/defis/DefisPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/crm/forecast/ForecastPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/crm/leads/LeadDetailPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/crm/leads/LeadsPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/pages/crm/ParrainagePage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/crm/RelancesSuiviPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/crm/SiteProfilePage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/crm/visites/CalageToitPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/crm/visites/VisiteBureauEtudesPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/pages/crm/visites/VisitesListPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/crm/visites/VisiteWizardPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/pages/crm/WebsiteLeadPayloadsPage.jsx",
+      "domain": "crm",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/pages/Dashboard.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/pages/dispatch/EquipePage.jsx",
+      "domain": "rh",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/esg/EsgCockpit.jsx",
+      "domain": "esg",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/pages/esg/FacteursEmission.jsx",
+      "domain": "esg",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/pages/esg/MatriceMaterialite.jsx",
+      "domain": "esg",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/pages/fiscal/BeneficiairesEffectifsPage.jsx",
+      "domain": "fiscal",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/pages/fiscal/ConformiteFiscale.jsx",
+      "domain": "fiscal",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/fiscal/TransmissionsDGIPage.jsx",
+      "domain": "fiscal",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/fpa/AdministrationPage.jsx",
+      "domain": "fpa",
+      "migrated": false,
+      "hardcoded_strings": 18
+    },
+    {
+      "path": "frontend/src/pages/fpa/DashboardPage.jsx",
+      "domain": "fpa",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/fpa/PrevisionsPage.jsx",
+      "domain": "fpa",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/pages/fpa/SaisiePage.jsx",
+      "domain": "fpa",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/fpa/ScenariosPage.jsx",
+      "domain": "fpa",
+      "migrated": false,
+      "hardcoded_strings": 19
+    },
+    {
+      "path": "frontend/src/pages/fpa/SoumissionsBudgetPage.jsx",
+      "domain": "fpa",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/fpa/VariancePage.jsx",
+      "domain": "fpa",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/pages/ged/DocumentsPage.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/pages/home/HomeMenu.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/pages/ia/AgentActions.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 11
+    },
+    {
+      "path": "frontend/src/pages/ia/AgentChat.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/ia/IaCockpit.jsx",
+      "domain": "ia",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/pages/ia/OcrUpload.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/installations/ApprovisionnementPage.jsx",
+      "domain": "installations",
+      "migrated": true,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/pages/installations/AstreintesPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 22
+    },
+    {
+      "path": "frontend/src/pages/installations/AteliersPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 36
+    },
+    {
+      "path": "frontend/src/pages/installations/DemandesAchatList.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 25
+    },
+    {
+      "path": "frontend/src/pages/installations/InstallationsPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/pages/installations/ParcInstallePage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 31
+    },
+    {
+      "path": "frontend/src/pages/installations/PlanificationPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 44
+    },
+    {
+      "path": "frontend/src/pages/installations/SuiviGpsPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/pages/interventions/InterventionsPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 24
+    },
+    {
+      "path": "frontend/src/pages/interventions/MaJourneePage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/Journal.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 38
+    },
+    {
+      "path": "frontend/src/pages/messaging/ChatPage.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/monitoring/AbonnementsPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 20
+    },
+    {
+      "path": "frontend/src/pages/monitoring/CleaningsPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 12
+    },
+    {
+      "path": "frontend/src/pages/monitoring/ClientPortalPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/monitoring/Co2Page.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/monitoring/FleetPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/monitoring/OmAnalyticsPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/monitoring/OmReportPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/pages/monitoring/ProductionPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 26
+    },
+    {
+      "path": "frontend/src/pages/monitoring/WarrantiesPage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 24
+    },
+    {
+      "path": "frontend/src/pages/onboarding/DemarrageWizard.jsx",
+      "domain": "core",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/pages/outillage/OutillagePage.jsx",
+      "domain": "installations",
+      "migrated": false,
+      "hardcoded_strings": 19
+    },
+    {
+      "path": "frontend/src/pages/parametres/AbonnementsParametresPage.jsx",
+      "domain": "parametres",
+      "migrated": true,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/pages/parametres/AchatsParametresPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/parametres/CorbeillePage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/parametres/DouaneParametresPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/parametres/ExportSauvegarde.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/parametres/GammesMarquesPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/parametres/KpiAlertesPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/pages/parametres/NotificationsPreferences.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/parametres/ParametresEntreprise.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/parametres/PiecesJointesPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/parametres/PlansCommissionPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/pages/parametres/TiersDoublonsPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/pages/parametres/TransportParametresPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 3
+    },
+    {
+      "path": "frontend/src/pages/parametres/UxParametresPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/parametres/VuesConfigurationPage.jsx",
+      "domain": "parametres",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/Rapports.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 37
+    },
+    {
+      "path": "frontend/src/pages/reporting/ArchiveChantierPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 0
+    },
+    {
+      "path": "frontend/src/pages/reporting/ArchiveClientPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/pages/reporting/BalanceAgeePage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/reporting/ClasseurPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/pages/reporting/ClasseursListPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/pages/reporting/CohortsPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/reporting/CommercialDashboard.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 23
+    },
+    {
+      "path": "frontend/src/pages/reporting/DashboardConfigPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 20
+    },
+    {
+      "path": "frontend/src/pages/reporting/DashboardSharePage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/pages/reporting/FieldServiceReportPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/reporting/QuoteToCashPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/reporting/SavSlaPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 16
+    },
+    {
+      "path": "frontend/src/pages/reporting/TechnicienScorecardPage.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/pages/reporting.jsx",
+      "domain": "reporting",
+      "migrated": false,
+      "hardcoded_strings": 25
+    },
+    {
+      "path": "frontend/src/pages/sav/ContratsMaintenance.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 32
+    },
+    {
+      "path": "frontend/src/pages/sav/EquipementsPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 28
+    },
+    {
+      "path": "frontend/src/pages/sav/KbArticlesPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/sav/SavActionBoardPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/sav/SavAlarmesPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/sav/SavCockpitPage.jsx",
+      "domain": "sav",
+      "migrated": true,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/sav/SavParametresPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 33
+    },
+    {
+      "path": "frontend/src/pages/sav/SavSlaReportPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 35
+    },
+    {
+      "path": "frontend/src/pages/sav/TicketsPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 75
+    },
+    {
+      "path": "frontend/src/pages/sav/WarrantyClaimsPage.jsx",
+      "domain": "sav",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/pages/scm/CycleSopPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/scm/CycleSopWizardPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/pages/scm/CyclesSopListPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 2
+    },
+    {
+      "path": "frontend/src/pages/scm/PolitiqueStockDetailPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/scm/PolitiqueStockWizardPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/pages/scm/ReapproPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 10
+    },
+    {
+      "path": "frontend/src/pages/scm/ScmDashboardPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 1
+    },
+    {
+      "path": "frontend/src/pages/scm/ScmParametresPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/scm/TransfertsSuggeresPage.jsx",
+      "domain": "scm",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/pages/stock/BonsCommandeFournisseur.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 53
+    },
+    {
+      "path": "frontend/src/pages/stock/CategoriesStock.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/pages/stock/CockpitEntrepot.jsx",
+      "domain": "stock",
+      "migrated": true,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/stock/ConditionnementsProduit.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/stock/FacturesFournisseur.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 29
+    },
+    {
+      "path": "frontend/src/pages/stock/FournisseurFiche360.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 50
+    },
+    {
+      "path": "frontend/src/pages/stock/FournisseursStock.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 30
+    },
+    {
+      "path": "frontend/src/pages/stock/InventairesAnnuels.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/stock/LotsEntrepot.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/stock/ModelesBcf.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 17
+    },
+    {
+      "path": "frontend/src/pages/stock/MouvementsPage.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/pages/stock/OcrStockImport.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 14
+    },
+    {
+      "path": "frontend/src/pages/stock/ReceptionsFournisseur.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 22
+    },
+    {
+      "path": "frontend/src/pages/stock/RetoursFournisseur.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/pages/stock/RevalorisationsStock.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 9
+    },
+    {
+      "path": "frontend/src/pages/stock/StockList.jsx",
+      "domain": "stock",
+      "migrated": false,
+      "hardcoded_strings": 57
+    },
+    {
+      "path": "frontend/src/pages/tiers/TiersPage.jsx",
+      "domain": "tiers",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/transport/CreerOrdreTransportWizard.jsx",
+      "domain": "transport",
+      "migrated": false,
+      "hardcoded_strings": 13
+    },
+    {
+      "path": "frontend/src/pages/transport/TableauBordLogistique.jsx",
+      "domain": "transport",
+      "migrated": false,
+      "hardcoded_strings": 7
+    },
+    {
+      "path": "frontend/src/pages/ventes/AvoirsPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/pages/ventes/BonCommandeList.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 23
+    },
+    {
+      "path": "frontend/src/pages/ventes/Conception3DPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 4
+    },
+    {
+      "path": "frontend/src/pages/ventes/DevisActionBoardPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 5
+    },
+    {
+      "path": "frontend/src/pages/ventes/DevisGenerator.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 57
+    },
+    {
+      "path": "frontend/src/pages/ventes/DevisList.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 69
+    },
+    {
+      "path": "frontend/src/pages/ventes/DossiersReglementairesPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/ventes/FactureList.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 82
+    },
+    {
+      "path": "frontend/src/pages/ventes/ListesPrixPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/pages/ventes/MandatsPaiementPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 6
+    },
+    {
+      "path": "frontend/src/pages/ventes/PaiementsPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 15
+    },
+    {
+      "path": "frontend/src/pages/ventes/RelancesPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 27
+    },
+    {
+      "path": "frontend/src/pages/ventes/RemisesEncaissementPage.jsx",
+      "domain": "ventes",
+      "migrated": false,
+      "hardcoded_strings": 8
+    },
+    {
+      "path": "frontend/src/pages/ventes/VentesCockpit.jsx",
+      "domain": "ventes",
+      "migrated": true,
+      "hardcoded_strings": 0
+    }
+  ]
+}

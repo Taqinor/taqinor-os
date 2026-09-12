@@ -233,6 +233,20 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         data['secret'] = instance.secret
         return _no_store(Response(data))
 
+    @action(detail=True, methods=['post'])
+    def reactiver(self, request, pk=None):
+        """NTAPI11 — réactivation MANUELLE d'un webhook auto-désactivé.
+
+        Rien ne remet un endpoint mort en service tout seul : une remise
+        automatique relancerait exactement la boucle d'échecs qu'on vient
+        d'arrêter. Ce clic est l'unique chemin, et il efface la traçabilité de
+        désactivation (raison + horodatage). Toujours scopé société via
+        ``get_object()``."""
+        instance = self.get_object()  # lève 404 si mauvaise société
+        from .webhook_health import reactiver_webhook
+        reactiver_webhook(instance, user=request.user)
+        return Response(WebhookSerializer(instance).data)
+
     @action(detail=True, methods=['get'])
     def deliveries(self, request, pk=None):
         """Liste des 50 dernières livraisons de ce webhook (historique/diagnostic)."""

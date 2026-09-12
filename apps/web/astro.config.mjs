@@ -86,7 +86,10 @@ export default defineConfig({
       // tokenisée (/proposition/) et le marquage d'appareil équipe (/equipe —
       // QJ-EQUIPE 09/09/2026, utilitaire SSR noindex) restent des tunnels
       // privés hors sitemap — jamais destinés à l'indexation.
-      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/internal\/|\/proposition\/|\/embed\/|\/equipe\/?$/.test(page)
+      // /status et /confiance (NTOBS1/NTOBS10, 12/09/2026) sont des pages SSR
+      // (prerender=false, contenu lu au vol depuis l'API) : aucun fichier
+      // statique dans dist/, donc hors sitemap comme /equipe.
+      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/internal\/|\/proposition\/|\/embed\/|\/equipe\/?$|\/confiance\/?$|\/status(\/|$)/.test(page)
     }),
     workersDevRedirect()
   ]

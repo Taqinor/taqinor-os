@@ -82,6 +82,19 @@ def public_api_reference():
                 "La société est déduite de la clé : il n'existe aucun moyen de "
                 "lire les données d'une autre société."
             ),
+            # NTAPI19 — second schéma accepté, en PLUS de la clé d'API (jamais
+            # à sa place : aucune intégration existante n'est touchée).
+            'oauth2': (
+                "Alternative recommandée pour une intégration d'entreprise : "
+                "`POST /api/public/v1/oauth/token/` (grant "
+                "`client_credentials`) échange, une fois, `client_id` + "
+                "`client_secret` contre un jeton COURT, présenté ensuite en "
+                "`Authorization: Bearer <jeton>`. Un secret permanent ne "
+                "circule donc plus à chaque appel. Les scopes du jeton sont "
+                "ceux du client (ou le sous-ensemble demandé via `scope`) ; "
+                "retirer un scope au client prend effet IMMÉDIATEMENT, sans "
+                "attendre l'expiration des jetons déjà émis."
+            ),
         },
         'scopes': [
             {'code': code, 'libelle': libelle}
@@ -174,6 +187,73 @@ def public_api_reference():
                 'tri': ['id', 'revise_le'],
                 'updated_since': 'revise_le',
             },
+            {
+                # NTCON31 — vertical BTP/EPC : quatre ressources déjà montées
+                # (`public_urls.py`) mais jamais documentées jusqu'ici (garde
+                # NTAPI42/NTAPI20 muette faute d'un test qui les recensait
+                # explicitement) — comblé en même temps que NTUX33 puisque
+                # les deux ajouts partagent le même routeur et les mêmes
+                # tests de cohérence.
+                'chemin': '/api/public/v1/btp/reserves/',
+                'scope': 'read:btp',
+                'description': "Réserves de chantier (punch-list), NTCON1/2.",
+                'filtres': ['chantier', 'statut', 'gravite', 'lot', 'archivee'],
+                'tri': ['created_at', 'updated_at', 'id'],
+                'updated_since': 'updated_at',
+            },
+            {
+                'chemin': '/api/public/v1/btp/rfi/',
+                'scope': 'read:btp',
+                'description': "RFI (Request For Information) de chantier, NTCON3.",
+                'filtres': ['chantier', 'statut', 'numero'],
+                'tri': ['created_at', 'numero', 'id'],
+                'updated_since': 'created_at',
+            },
+            {
+                'chemin': '/api/public/v1/btp/visas/',
+                'scope': 'read:btp',
+                'description': "Visas de documents techniques de chantier, NTCON5.",
+                'filtres': ['chantier', 'statut', 'type_visa', 'reference'],
+                'tri': ['created_at', 'date_soumission', 'id'],
+                'updated_since': 'created_at',
+            },
+            {
+                'chemin': '/api/public/v1/btp/decomptes-generaux/',
+                'scope': 'read:btp',
+                'description': (
+                    "Décomptes généraux de chantier (montants CONTRACTUELS "
+                    "uniquement — marché, avenants, situations, solde ; "
+                    "jamais un coût interne), NTCON9/10."
+                ),
+                'filtres': ['chantier', 'statut', 'reference'],
+                'tri': ['created_at', 'updated_at', 'id'],
+                'updated_since': 'updated_at',
+            },
+            {
+                'chemin': '/api/public/v1/saved-views/',
+                'scope': 'read:vues',
+                'description': (
+                    "NTUX33 — vues sauvegardées (NTUX1). Sans ?owner=, "
+                    "uniquement les vues déjà partagées à l'équipe ; avec "
+                    "?owner=<id>, les vues de CET utilisateur (personnelles "
+                    "incluses — le paramètre est le proxy de son consentement)."
+                ),
+                'filtres': ['ecran', 'owner'],
+                'tri': ['id', 'ecran', 'nom'],
+                'updated_since': 'updated_at',
+            },
+            {
+                'chemin': '/api/public/v1/favoris/',
+                'scope': 'read:favoris',
+                'description': (
+                    "NTUX33 — favoris épinglés (NTUX12), STRICTEMENT "
+                    "personnels : ?owner=<id> est OBLIGATOIRE (400 sans lui), "
+                    "c'est le consentement explicite de l'utilisateur."
+                ),
+                'filtres': ['owner'],
+                'tri': ['id', 'ordre'],
+                'updated_since': 'updated_at',
+            },
         ],
         'endpoints_ecriture': {
             'description': (
@@ -202,6 +282,31 @@ def public_api_reference():
                     'methode': 'POST',
                     'scope': 'activities:write',
                     'description': "Ajoute une note (chatter) sur un lead.",
+                },
+                {
+                    'chemin': '/api/public/v1/devis-write/',
+                    'methode': 'POST',
+                    'scope': 'devis:write',
+                    'description': (
+                        "NTAPI18 — crée un devis BROUILLON rattaché à un lead "
+                        "existant (corps : `lead`, plus `numero`/`montant_ht`/"
+                        "`montant_tva`/`montant_ttc`/`date` en aide à la "
+                        "saisie). Le client est résolu côté serveur depuis le "
+                        "lead, sans doublon. Aucune ligne n'est créée et aucun "
+                        "statut aval n'est touché : le devis reste `brouillon` "
+                        "et le PDF client reste servi par `/proposal`."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/tickets-write/',
+                    'methode': 'POST',
+                    'scope': 'tickets:write',
+                    'description': (
+                        "NTAPI18 — ouvre un ticket SAV correctif (corps : "
+                        "`client`, `description`, `installation` optionnelle). "
+                        "Toutes les entités liées sont bornées à la société de "
+                        "la clé."
+                    ),
                 },
             ],
         },
@@ -281,6 +386,42 @@ def public_api_reference():
                     'request_body': False,
                     'query_token_auth': True,
                     'response_csv': True,
+                },
+                {
+                    'chemin': '/api/public/v1/events/',
+                    'methode': 'GET',
+                    'description': (
+                        "NTAPI17 — flux d'évènements consommable par CURSEUR "
+                        "(`?after=<sequence>&limit=<n>`), alimenté par les "
+                        "mêmes signaux que les webhooks. Pendant PULL du push : "
+                        "pour une intégration qui ne peut pas exposer d'URL "
+                        "publique, et comme filet de rattrapage. Scope "
+                        "`read:events` pour ouvrir le canal ; chaque évènement "
+                        "reste filtré par le scope de lecture de SA famille "
+                        "(`lead.*` → `read:leads`, `facture.*` → "
+                        "`read:factures`…) — le flux n'est jamais un "
+                        "contournement des scopes de lecture."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                },
+                {
+                    'chemin': '/api/public/v1/oauth/token/',
+                    'methode': 'POST',
+                    'description': (
+                        "NTAPI19 — échange `client_id`/`client_secret` contre "
+                        "un jeton COURT (grant `client_credentials`). Corps : "
+                        "`grant_type=client_credentials`, `client_id`, "
+                        "`client_secret`, `scope` optionnel (sous-ensemble). "
+                        "Le jeton s'utilise ensuite en "
+                        "`Authorization: Bearer <jeton>` sur TOUS les "
+                        "endpoints publics, en alternative à "
+                        "`Authorization: Api-Key <clé>`. Identifiants "
+                        "invalides → 401, message identique quel que soit le "
+                        "motif."
+                    ),
+                    'success_status': '200',
+                    'request_body': True,
                 },
             ],
         },

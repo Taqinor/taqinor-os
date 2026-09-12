@@ -2057,6 +2057,23 @@ def demandes_achat_en_attente(company):
             .order_by('date_besoin', 'id'))
 
 
+def demandes_achat_soumises_depuis(company, seuil_date):
+    """NTP2P30 — TOUTES les ``DemandeAchat`` SOUMISE (approbation directe OU
+    plan d'approbation NTP2P2 en cours — contrairement à
+    ``demandes_achat_en_attente``, XKB1, qui exclut volontairement les
+    secondes) dont la dernière modification remonte à ``seuil_date`` ou
+    avant. Point d'entrée cross-app SANCTIONNÉ pour le wizard de clôture de
+    fin de mois achats (``stock.selectors.checklist_cloture_achats``) : lit
+    ICI, jamais un import direct de ``installations.models`` depuis
+    ``stock``. LECTURE SEULE."""
+    from .models import DemandeAchat
+    return list(
+        DemandeAchat.objects.filter(
+            company=company, statut=DemandeAchat.Statut.SOUMISE,
+            updated_at__date__lte=seuil_date,
+        ).select_related('chantier', 'programme').order_by('updated_at'))
+
+
 # ── XSTK22 — suivi de livraison côté client (portail FG228) ─────────────────
 
 def livraisons_client_portail(company, client_id):

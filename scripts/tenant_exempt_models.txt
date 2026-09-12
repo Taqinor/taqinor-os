@@ -41,3 +41,7 @@ adminops.LectureAnnonce
 # éteint). Reviewed global-by-design 2026-08-05.
 adminops.DemandeInscription
 adminops.PlanLicence
+# NTOBS15 — abonné PUBLIC de la page de statut (e-mail + jeton opaque, double
+# opt-in). S'abonne aux incidents SYSTÈME (company=None) : aucun tenant
+# propriétaire par conception — l'e-mail est l'identité, le jeton est l'accès.
+statuspage.StatusSubscriber

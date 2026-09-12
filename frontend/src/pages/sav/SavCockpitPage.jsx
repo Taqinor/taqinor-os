@@ -7,6 +7,8 @@ import { ModuleHero, ModuleDashboard } from '../../ui/module'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button } from '../../ui'
 import useResource from '../../hooks/useResource'
 import savApi from '../../api/savApi'
+// NTI18N1 — rollout i18n : premier écran SAV migré (sous-titre du cockpit).
+import { useT } from '../../i18n'
 
 /* ============================================================================
    ODY19 — Cockpit Après-vente (`/sav/cockpit`).
@@ -60,6 +62,7 @@ const QUICK_LINKS = [
 ]
 
 export default function SavCockpitPage() {
+  const t = useT()
   const { data, loading, error } = useResource(
     () => savApi.getSavFileAction(),
     undefined,
@@ -88,7 +91,7 @@ export default function SavCockpitPage() {
         title="Après-vente"
         subtitle={
           loading
-            ? 'Tickets SAV, équipements et contrats de maintenance'
+            ? t('sav.cockpit.subtitle', null, 'Tickets SAV, équipements et contrats de maintenance')
             : `${totalCount} ticket${totalCount > 1 ? 's' : ''} ouvert${totalCount > 1 ? 's' : ''} à traiter`
         }
         actions={(

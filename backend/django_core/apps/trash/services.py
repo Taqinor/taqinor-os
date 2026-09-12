@@ -7,6 +7,8 @@ import logging
 
 from django.utils import timezone
 
+from core.events import record_restored
+
 from .models import ElementSupprime
 from .registry import restaurateur
 
@@ -125,6 +127,16 @@ def restaurer(element, *, user=None, now=None):
         obj = _restauration_generique(element)
     element.restaure_le = now or timezone.now()
     element.save(update_fields=['restaure_le', 'updated_at'])
+    # NTUX32 — webhook sortant (jamais sur le no-op « déjà restauré » ci-dessus,
+    # géré par apps/publicapi/uxviews_event_receivers.py). Best-effort : un
+    # abonné qui casse ne doit jamais faire échouer la restauration.
+    try:
+        record_restored.send(
+            sender=ElementSupprime, element=element, obj=obj,
+            company=element.company, user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.exception(
+            'record_restored: envoi du signal échoué (%s)', element.pk)
     return obj
 
 

@@ -428,3 +428,45 @@ def planifier_appreciations():
         'rh.planifier_appreciations: dry_run=%s, %s évaluation(s) '
         'concernée(s)', not apply, concernees)
     return {'dry_run': not apply, 'nb_a_creer': concernees}
+
+
+@shared_task(name='rh.rappels_parcours_formation')
+def rappels_parcours_formation():
+    """NTHCM19 — relance quotidienne des parcours obligatoires non terminés.
+
+    Fine enveloppe planifiable de ``manage.py rappels_parcours_formation`` :
+    toute la logique (délai société, dédoublonnage quotidien par ``link``,
+    employés sans compte) vit dans la commande, testée là-bas. Non destructif
+    (elle n'écrit qu'une notification) : appliqué directement, sans dry-run.
+    """
+    from django.core.management import call_command
+
+    try:
+        call_command('rappels_parcours_formation', verbosity=0)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'rh.rappels_parcours_formation: échec du balayage', exc_info=True)
+        return {'ok': False}
+    logger.info('rh.rappels_parcours_formation: balayage terminé')
+    return {'ok': True}
+
+
+@shared_task(name='rh.notifier_taches_integration_sortie')
+def notifier_taches_integration_sortie():
+    """NTHCM25 — rappel quotidien des tâches d'on/offboarding en retard.
+
+    Fine enveloppe planifiable de la commande du même nom : la déduplication
+    « un rappel par jour et par tâche » vit là-bas, testée là-bas. Non
+    destructif (elle n'écrit qu'une notification) : appliqué directement.
+    """
+    from django.core.management import call_command
+
+    try:
+        call_command('notifier_taches_integration_sortie', verbosity=0)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'rh.notifier_taches_integration_sortie: échec du balayage',
+            exc_info=True)
+        return {'ok': False}
+    logger.info('rh.notifier_taches_integration_sortie: balayage terminé')
+    return {'ok': True}

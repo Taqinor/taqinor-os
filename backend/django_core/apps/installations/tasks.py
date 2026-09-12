@@ -238,3 +238,106 @@ def generer_interventions_recurrentes_task():
                 'installations.generer_interventions_recurrentes: échec '
                 'société %s', company.id, exc_info=True)
     return total
+
+
+def _deja_notifie_aujourdhui(event_type, titre, recipient=None):
+    """Vrai si CETTE notification (même événement, même titre, même
+    destinataire) a déjà été créée aujourd'hui.
+
+    ``stock.tasks._deja_notifie_aujourdhui`` clé sur le ``link`` parce que
+    là-bas le lien EST une clé de dédoublonnage stable, passée telle quelle à
+    ``notify_many``. Ici le lien posé est la ROUTE RÉELLE de l'écran (WIR176 —
+    ``/chantiers/consultations``), donc identique pour toutes les relances et
+    jamais égal à la clé calculée : la garde ne trouvait rien et chaque passage
+    re-notifiait. Le TITRE, lui, nomme la RFQ ET le fournisseur — c'est-à-dire
+    exactement la consultation relancée."""
+    from apps.notifications.models import Notification
+    today = casablanca_today()
+    try:
+        qs = Notification.objects.filter(
+            event_type=event_type, title=titre, created_at__date=today)
+        if recipient is not None:
+            qs = qs.filter(recipient=recipient)
+        return qs.exists()
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+@shared_task(name='installations.relancer_rfq_en_attente')
+def relancer_rfq_en_attente_task():
+    """NTP2P33 — pour CHAQUE société active, notifie l'acheteur (créateur de
+    la RFQ, repli managers) des ``RFQConsultation`` non répondues
+    (``a_repondu`` False, i.e. ``offre`` non posée) dont la RFQ approche sa
+    ``date_limite_reponse`` (J-2) ET n'est pas révoquée.
+
+    Réutilise le pattern ``stock.tasks.relancer_bcf_en_retard_task`` (même
+    garde d'idempotence par lien) — EMPRUNTE l'``EventType`` achats existant
+    ``BCF_RELANCE_PROPOSEE`` (« brouillon de relance proposé ») plutôt que
+    d'ajouter une valeur ``EventType`` non déclarée : ``apps.notifications``
+    est hors périmètre de cette lane (même choix que
+    ``stock.alerter_surcapacite_zones_task``, qui emprunte ``STOCK_LOW``).
+    Le libellé de la notification, lui, nomme explicitement la RFQ.
+
+    Idempotent : au plus une notification par jour par consultation. Best-
+    effort par société et par consultation. Renvoie
+    ``{company_id: nb_consultations_notifiees}``."""
+    from datetime import timedelta
+
+    from authentication.selectors import active_companies
+
+    from .models_rfq import RFQ, RFQConsultation
+
+    today = casablanca_today()
+    cible = today + timedelta(days=2)
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        try:
+            consultations = list(
+                RFQConsultation.objects.filter(
+                    company=company, revoque=False, offre__isnull=True,
+                    rfq__statut=RFQ.Statut.ENVOYEE,
+                    rfq__date_limite_reponse=cible,
+                ).select_related('rfq', 'rfq__created_by', 'fournisseur'))
+        except Exception:  # noqa: BLE001 — société suivante
+            logger.warning(
+                'installations.relancer_rfq_en_attente: échec calcul '
+                'société %s', company.id, exc_info=True)
+            continue
+        count = 0
+        for consultation in consultations:
+            acheteur = consultation.rfq.created_by
+            if acheteur is None:
+                continue
+            fournisseur_nom = (
+                consultation.fournisseur.nom
+                if consultation.fournisseur_id else '')
+            titre = (f'RFQ {consultation.rfq.reference} — '
+                     f'{fournisseur_nom} n\'a pas répondu')
+            # Idempotence du jour : la clé est le TITRE (RFQ + fournisseur =
+            # la consultation), pas le lien — celui-ci est la route réelle de
+            # l'écran, la même pour toutes les relances (cf. la garde).
+            if _deja_notifie_aujourdhui(
+                    'bcf_relance_proposee', titre, recipient=acheteur):
+                continue
+            try:
+                from apps.notifications.models import EventType
+                from apps.notifications.services import notify
+                notify(
+                    acheteur, EventType.BCF_RELANCE_PROPOSEE,
+                    title=titre,
+                    body=(f'La date limite de réponse de la RFQ '
+                          f'{consultation.rfq.reference} approche (J-2) et '
+                          f'{fournisseur_nom or "ce fournisseur"} n\'a pas '
+                          'encore répondu. Une relance est recommandée.'),
+                    # WIR176 — route réelle du module (`RFQ.jsx`), pas un
+                    # chemin `/installations/...` fabriqué.
+                    link='/chantiers/consultations',
+                    company=company)
+                count += 1
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.warning(
+                    'installations.relancer_rfq_en_attente: notification '
+                    'échouée (consultation %s)', consultation.pk,
+                    exc_info=True)
+        result[company.id] = count
+    return result

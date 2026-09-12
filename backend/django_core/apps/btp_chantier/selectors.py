@@ -15,11 +15,24 @@ from .models import RFI, Lot, ReserveChantier
 
 # ── NTCON1 — Réserves de chantier ───────────────────────────────────────────
 
-def reserves_filtrees(qs, *, lot=None, statut=None, gravite=None, chantier_id=None):
-    """Applique les filtres optionnels ``?lot=&statut=&gravite=&chantier=``.
+#: NTCON27 — valeurs de ``?archivee=`` interprétées comme « oui ».
+_VRAI = frozenset({'1', 'true', 'True', 'oui', 'yes', 'on'})
+#: …et comme « non » (permet de redemander explicitement les actives).
+_FAUX = frozenset({'0', 'false', 'False', 'non', 'no', 'off'})
+
+
+def reserves_filtrees(qs, *, lot=None, statut=None, gravite=None,
+                      chantier_id=None, archivee=None):
+    """Applique les filtres optionnels ``?lot=&statut=&gravite=&chantier=``
+    (+ ``?archivee=`` — NTCON27).
 
     ``qs`` est déjà scopé société par l'appelant (``TenantMixin``). Lecture
     seule, ne modifie jamais le queryset d'origine.
+
+    NTCON27 — les réserves ARCHIVÉES sortent des listes par défaut (``archivee``
+    absent ⇒ ``archivee=False``). Elles restent atteignables par un filtre
+    EXPLICITE ``?archivee=1`` (ou ``?archivee=all`` pour les deux) : rien n'est
+    supprimé, tout reste consultable.
     """
     if lot not in (None, ''):
         qs = qs.filter(lot__icontains=lot)
@@ -29,7 +42,153 @@ def reserves_filtrees(qs, *, lot=None, statut=None, gravite=None, chantier_id=No
         qs = qs.filter(gravite=gravite)
     if chantier_id not in (None, ''):
         qs = qs.filter(chantier_id=chantier_id)
+    if archivee in (None, ''):
+        qs = qs.filter(archivee=False)
+    elif isinstance(archivee, bool):
+        qs = qs.filter(archivee=archivee)
+    elif str(archivee) in _VRAI:
+        qs = qs.filter(archivee=True)
+    elif str(archivee) in _FAUX:
+        qs = qs.filter(archivee=False)
+    # Toute autre valeur (``all``, ``toutes``…) = aucun filtre : les deux.
     return qs
+
+
+def _q_levee_avant(seuil):
+    """``date_levee < seuil`` OU (``date_levee`` absente ET ``updated_at``
+    < seuil) — facteur commun de ``reserves_archivables``."""
+    from django.db.models import Q
+    return (Q(date_levee__lt=seuil)
+            | Q(date_levee__isnull=True, updated_at__lt=seuil))
+
+
+def reserves_archivables(company=None, *, maintenant=None):
+    """NTCON27 — réserves LEVÉES dont l'ancienneté dépasse le réglage société.
+
+    Le seuil est lu par société (``ParametresBtpChantier.
+    delai_archivage_reserves_levees_mois``, défaut 24 via
+    ``services.config_btp``) : la fonction renvoie un dictionnaire
+    ``{company_id: queryset}`` plutôt qu'un seul queryset, parce que deux
+    sociétés peuvent avoir deux seuils différents et qu'un seuil global serait
+    faux pour l'une des deux.
+
+    L'ancienneté est comptée depuis ``date_levee`` quand elle existe (la date
+    de la preuve), sinon depuis ``updated_at`` — une réserve marquée levée sans
+    passer par le service n'échappe pas au balayage.
+    """
+    from datetime import timedelta
+
+    from .services import config_btp
+
+    maintenant = maintenant or timezone.now()
+    base = ReserveChantier.objects.filter(
+        statut=ReserveChantier.Statut.LEVEE, archivee=False)
+    if company is not None:
+        base = base.filter(company=company)
+        companies = [company]
+    else:
+        Company = ReserveChantier._meta.get_field('company').related_model
+        companies = list(
+            Company.objects.filter(
+                pk__in=base.values_list('company_id', flat=True).distinct()))
+
+    resultat = {}
+    for societe in companies:
+        mois = config_btp(societe).get(
+            'delai_archivage_reserves_levees_mois') or 24
+        # 1 mois ≈ 30 jours : la règle est une politique de rétention, pas un
+        # calcul comptable — inutile d'introduire une dépendance calendaire.
+        seuil = maintenant - timedelta(days=30 * int(mois))
+        resultat[societe.pk] = base.filter(company=societe).filter(
+            _q_levee_avant(seuil))
+    return resultat
+
+
+# ── NTCON30 — export CSV/XLSX pour reporting externe MOE/client ────────────
+
+#: En-têtes de l'export des réserves. AUCUN coût interne : ni ``prix_achat``,
+#: ni déboursé, ni exposition aux pénalités — un MOE/client lit ce fichier.
+COLONNES_EXPORT_RESERVES = (
+    'Numéro', 'Chantier', 'Lot', 'Description', 'Gravité', 'Statut',
+    'Responsable', 'Date limite', 'Date de levée',
+)
+
+#: En-têtes de l'export des RFI (« priorité » = impact déclaré du RFI).
+COLONNES_EXPORT_RFI = (
+    'Numéro', 'Chantier', 'Question', 'Priorité', 'Statut', 'Destinataire',
+    'Date limite de réponse', 'Date de réponse',
+)
+
+
+def _nom_utilisateur(user):
+    """Nom affichable d'un utilisateur, ou chaîne vide."""
+    if user is None:
+        return ''
+    complet = (getattr(user, 'get_full_name', lambda: '')() or '').strip()
+    return complet or getattr(user, 'username', '') or ''
+
+
+def _priorite_rfi(rfi):
+    """« Priorité » lisible d'un RFI, DÉRIVÉE de ses impacts déclarés.
+
+    Le modèle NTCON3 ne porte pas de champ ``priorite`` : l'inventer côté
+    export serait un chiffre sorti de nulle part. On dérive donc un libellé
+    des DEUX impacts que le RFI déclare déjà (coût, délai) — et « Normale »
+    quand il n'en déclare aucun.
+    """
+    marques = []
+    if rfi.impact_cout:
+        marques.append('coût')
+    if rfi.impact_delai_jours:
+        marques.append(f'délai {rfi.impact_delai_jours} j')
+    return f"Impact {' + '.join(marques)}" if marques else 'Normale'
+
+
+def export_reserves(qs):
+    """NTCON30 — ``(en-têtes, lignes)`` de l'export des réserves.
+
+    ``qs`` est DÉJÀ scopé société + filtré par l'appelant. Lecture seule.
+    """
+    lignes = []
+    for reserve in qs.select_related(
+            'chantier', 'responsable_leve').order_by('id'):
+        lignes.append([
+            reserve.pk,
+            str(reserve.chantier) if reserve.chantier_id else '',
+            reserve.lot or '',
+            reserve.description or '',
+            reserve.get_gravite_display(),
+            reserve.get_statut_display(),
+            _nom_utilisateur(reserve.responsable_leve),
+            reserve.date_limite.isoformat() if reserve.date_limite else '',
+            (reserve.date_levee.date().isoformat()
+             if reserve.date_levee else ''),
+        ])
+    return list(COLONNES_EXPORT_RESERVES), lignes
+
+
+def export_rfi(qs):
+    """NTCON30 — ``(en-têtes, lignes)`` de l'export des RFI (lecture seule)."""
+    lignes = []
+    for rfi in qs.select_related(
+            'chantier', 'destinataire_user').prefetch_related(
+                'reponses').order_by('numero', 'id'):
+        premiere = min(
+            (r.date_creation for r in rfi.reponses.all()), default=None)
+        destinataire = (_nom_utilisateur(rfi.destinataire_user)
+                        or rfi.destinataire_texte or '')
+        lignes.append([
+            rfi.numero,
+            str(rfi.chantier) if rfi.chantier_id else '',
+            rfi.question or '',
+            _priorite_rfi(rfi),
+            rfi.get_statut_display(),
+            destinataire,
+            (rfi.date_limite_reponse.isoformat()
+             if rfi.date_limite_reponse else ''),
+            premiere.date().isoformat() if premiere else '',
+        ])
+    return list(COLONNES_EXPORT_RFI), lignes
 
 
 def reserves_actives_bloquantes(company, chantier=None):
@@ -70,6 +229,32 @@ def rfi_en_retard(company=None, *, chantier=None):
     qs = RFI.objects.filter(
         statut=RFI.Statut.OUVERT,
         date_limite_reponse__lt=timezone.localdate())
+    if company is not None:
+        qs = qs.filter(company=company)
+    if chantier is not None:
+        qs = qs.filter(chantier=chantier)
+    return qs
+
+
+# ── NTCON5/NTCON37 — Visas de documents ─────────────────────────────────────
+
+def visas_en_retard(company=None, *, chantier=None, aujourdhui=None):
+    """NTCON37 — visas SOUMIS ou EN REVUE dont la date limite est dépassée.
+
+    Un visa DÉCIDÉ (approuvé sans réserve, approuvé avec observations, refusé)
+    n'est jamais retenu : la relance s'arrête d'elle-même à la décision, sans
+    drapeau supplémentaire à gérer.
+
+    ``company=None`` (défaut) balaie TOUTES les sociétés — usage sweep Celery
+    beat (``alertes_visas_en_attente``) ; un appelant scopé société passe
+    explicitement la sienne. Même contrat que ``rfi_en_retard`` (NTCON4).
+    """
+    from .models import VisaDocument
+
+    qs = VisaDocument.objects.filter(
+        statut__in=[VisaDocument.Statut.SOUMIS,
+                    VisaDocument.Statut.EN_REVUE],
+        date_limite__lt=(aujourdhui or timezone.localdate()))
     if company is not None:
         qs = qs.filter(company=company)
     if chantier is not None:
@@ -507,6 +692,147 @@ def penalites_retard_par_lot(chantier, date_reference=None):
         'lots': resultats,
         'total_exposition': total,
     }
+
+
+def kpis_btp(company):
+    """NTCON34 — les quatre KPI BTP du reporting transverse, en UN appel.
+
+    Chaque valeur réutilise un sélecteur EXISTANT du module — aucune seconde
+    formule :
+
+    * ``btp_reserves_ouvertes``      — réserves actives (ouverte/en cours/
+      contestée) non archivées (NTCON1/2/27) ;
+    * ``btp_rfi_en_retard``          — ``rfi_en_retard`` (NTCON3/4) ;
+    * ``btp_visas_en_attente``       — visas soumis ou en revue (NTCON5) ;
+    * ``btp_penalites_cumulees_periode`` — Σ des expositions par lot
+      (``penalites_retard_par_lot``, NTCON15) sur les chantiers de la société.
+
+    ``None`` plutôt que ``0`` quand la société n'a AUCUN objet de ce type :
+    un 0 affirmerait « rien en retard » là où la vraie réponse est « ce module
+    n'est pas utilisé ici » (règle : jamais un chiffre trompeur).
+    """
+    from decimal import Decimal
+
+    from .models import VisaDocument
+
+    reserves_qs = ReserveChantier.objects.filter(company=company)
+    rfi_qs = RFI.objects.filter(company=company)
+    visas_qs = VisaDocument.objects.filter(company=company)
+    lots_qs = Lot.objects.filter(company=company)
+
+    reserves_ouvertes = (
+        reserves_qs.filter(
+            archivee=False,
+            statut__in=[ReserveChantier.Statut.OUVERTE,
+                        ReserveChantier.Statut.EN_COURS,
+                        ReserveChantier.Statut.CONTESTEE]).count()
+        if reserves_qs.exists() else None)
+
+    rfi_retard = (rfi_en_retard(company).count()
+                  if rfi_qs.exists() else None)
+
+    visas_attente = (
+        visas_qs.filter(
+            statut__in=[VisaDocument.Statut.SOUMIS,
+                        VisaDocument.Statut.EN_REVUE]).count()
+        if visas_qs.exists() else None)
+
+    penalites = None
+    if lots_qs.exists():
+        penalites = Decimal('0')
+        Chantier = Lot._meta.get_field('chantier').related_model
+        ids = lots_qs.values_list('chantier_id', flat=True).distinct()
+        for site in Chantier.objects.filter(pk__in=ids):
+            penalites += penalites_retard_par_lot(site)['total_exposition']
+
+    return {
+        'btp_reserves_ouvertes': reserves_ouvertes,
+        'btp_rfi_en_retard': rfi_retard,
+        'btp_visas_en_attente': visas_attente,
+        'btp_penalites_cumulees_periode': penalites,
+    }
+
+
+def chantiers_avec_lot_en_retard(company=None, *, date_reference=None):
+    """NTCON28 — chantiers portant AU MOINS un lot en retard ACTIF.
+
+    « En retard actif » = jalon contractuel, échéance ``date_fin_prevue``
+    dépassée, lot NON terminé. C'est le seul périmètre que le balayage
+    quotidien a besoin de recalculer : un chantier dont aucun lot n'a glissé
+    a une exposition inchangée, la recalculer coûterait une requête pour rien.
+
+    Renvoie un queryset de ``Lot`` (pas de chantiers) : l'appelant regroupe
+    lui-même par ``chantier_id``.
+    """
+    date_reference = date_reference or timezone.localdate()
+    qs = Lot.objects.filter(
+        jalon_contractuel=True,
+        date_fin_prevue__lt=date_reference,
+    ).exclude(statut=Lot.Statut.TERMINE)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs
+
+
+def penalites_par_lot_cache_ou_calcul(chantier, *, max_age_heures=36,
+                                      maintenant=None):
+    """NTCON28 — exposition aux pénalités SERVIE DEPUIS LE CACHE quand il est
+    frais, recalculée sinon.
+
+    Le cockpit (NTCON21) relançait le calcul NTCON15 à chaque GET. Le balayage
+    quotidien fige le résultat sur ``Lot.penalite_calculee_cache`` ; cette
+    fonction le sert tel quel si TOUS les lots du chantier portent un cache de
+    moins de ``max_age_heures`` (36 h = une journée + une marge, pour qu'un
+    balayage manqué ne serve jamais un chiffre périmé en silence).
+
+    Sinon elle retombe sur ``penalites_retard_par_lot`` — best-effort : un
+    balayage qui n'a jamais tourné ne casse aucun écran, il coûte juste le
+    calcul. La réponse porte ``source`` (``'cache'`` / ``'calcul'``) et
+    ``calcule_le`` pour que l'écran puisse DIRE d'où vient le chiffre plutôt
+    que d'afficher une valeur d'âge inconnu.
+    """
+    from datetime import timedelta
+
+    maintenant = maintenant or timezone.now()
+    lots = list(Lot.objects.filter(chantier=chantier).order_by('ordre', 'id'))
+    limite = maintenant - timedelta(hours=max_age_heures)
+
+    frais = bool(lots) and all(
+        lot.penalite_calculee_cache is not None
+        and lot.penalite_calculee_le is not None
+        and lot.penalite_calculee_le >= limite
+        for lot in lots)
+
+    if not frais:
+        paye = penalites_retard_par_lot(chantier)
+        paye['source'] = 'calcul'
+        paye['calcule_le'] = maintenant
+        return paye
+
+    total = sum(
+        (_decimal(lot.penalite_calculee_cache.get('exposition'))
+         for lot in lots),
+        _decimal(0))
+    return {
+        'chantier_id': chantier.pk,
+        'date_reference': lots[0].penalite_calculee_cache.get(
+            'date_reference'),
+        'lots': [dict(lot.penalite_calculee_cache) for lot in lots],
+        'total_exposition': total,
+        'source': 'cache',
+        'calcule_le': max(lot.penalite_calculee_le for lot in lots),
+    }
+
+
+def _decimal(valeur):
+    """``Decimal`` tolérant (le cache JSON stocke des chaînes)."""
+    from decimal import Decimal, InvalidOperation
+    if valeur in (None, ''):
+        return Decimal('0')
+    try:
+        return Decimal(str(valeur))
+    except (InvalidOperation, ValueError):
+        return Decimal('0')
 
 
 # ── NTCON22 — Rapport d'avancement de chantier sur une période ─────────────

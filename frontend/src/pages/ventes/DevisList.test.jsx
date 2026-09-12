@@ -110,6 +110,10 @@ import { toast } from '../../ui'
 // uniquement — aucune assertion n'est modifiée.
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { formatMAD } from '../../lib/format'
+// NTI18N12 — bascule de locale réelle pour le bloc de tests « calendrier
+// hégirien » en fin de fichier (I18nProvider n'est PAS monté ailleurs dans
+// ce fichier : useI18n() y retombe sur son repli hors-provider, locale='fr').
+import { I18nProvider } from '../../i18n'
 
 // Réducteurs minimaux : seules les tranches lues par l'écran (ventes + auth).
 // QG10 — l'écran lit aussi auth.role_nom + auth.permissions (useHasPermission).
@@ -1151,5 +1155,64 @@ describe('DevisList — WIR188 : banniere credit a l’acceptation', () => {
     const banniere = await screen.findByTestId('credit-warning-banner')
     expect(banniere).toHaveAttribute('data-mode', 'blocage')
     expect(await screen.findByTestId('credit-derogation-wizard')).toBeInTheDocument()
+  })
+})
+
+// NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
+// remplacement, jamais stocké), uniquement quand locale=ar ET la préférence
+// utilisateur `calendrier_hegirien` est active. Rendu isolé (I18nProvider +
+// un store minimal portant `auth.user`, que `makeStore`/`renderList`
+// ci-dessus ne portent pas) — ni l'un ni l'autre n'est modifié.
+describe('DevisList — calendrier hégirien (NTI18N12)', () => {
+  // Midi UTC (pas minuit) : le jour calendaire ISO reste 2026-03-15 quel que
+  // soit le fuseau de la machine qui exécute ce test.
+  const DEVIS_HEGIRIEN = [{
+    id: 1, reference: 'DEV-2026-03-0001', client_nom: 'ACME', statut: 'envoye',
+    date_creation: '2026-03-15T12:00:00Z', total_ttc: 12000, nb_options: 1, version: 1,
+  }]
+
+  function renderWithLocale(locale, calendrierHegirien) {
+    try { window.localStorage.setItem('taqinor.locale', locale) } catch { /* noop */ }
+    const store = configureStore({
+      reducer: {
+        ventes: (state = { devis: DEVIS_HEGIRIEN, loading: false, error: null }) => state,
+        auth: (state = {
+          role: 'admin', role_nom: 'Directeur', permissions: [],
+          user: { calendrier_hegirien: calendrierHegirien },
+        }) => state,
+      },
+    })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/devis']}>
+          <I18nProvider>
+            <ThemeProvider>
+              <DevisList />
+            </ThemeProvider>
+          </I18nProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+  }
+
+  afterEach(() => {
+    try { window.localStorage.removeItem('taqinor.locale') } catch { /* noop */ }
+  })
+
+  it('affiche la date hégirienne EN PLUS de la grégorienne quand locale=ar ET la préférence est active', () => {
+    renderWithLocale('ar', true)
+    // Valeur RÉELLE calculée par le calendrier umalqura d'Intl (même moteur
+    // qu'en production) — voir lib/hijriDate.test.mjs pour la preuve isolée.
+    expect(screen.getByText('26 Ramadan 1447 (2026-03-15)')).toBeInTheDocument()
+  })
+
+  it("n'affiche PAS l'hégirien si la préférence est désactivée (même en arabe)", () => {
+    renderWithLocale('ar', false)
+    expect(screen.queryByText(/Ramadan/)).not.toBeInTheDocument()
+  })
+
+  it("n'affiche PAS l'hégirien en français même si la préférence est active", () => {
+    renderWithLocale('fr', true)
+    expect(screen.queryByText(/Ramadan/)).not.toBeInTheDocument()
   })
 })

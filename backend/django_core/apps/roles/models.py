@@ -115,6 +115,27 @@ ALL_PERMISSIONS = [
     'sav_gerer',
     'sav_export',
     'sav_reassign',
+    # ── NTSRV39 — trois gestes SAV plus fins que `sav_gerer` ────────────────
+    # `sav_probleme_gerer` : créer/modifier un PROBLÈME (NTSRV16) et y
+    # rattacher des incidents. Un technicien traite ses tickets, il ne
+    # déclare pas la cause racine d'un parc — c'est un geste de responsable.
+    'sav_probleme_gerer',
+    # `sav_nps_voir` / `sav_sentiment_ia_voir` : lecture du NPS transactionnel
+    # (NTSRV14) et du badge de sentiment IA (NTSRV13). Catalogués ICI, en
+    # amont de ces deux tâches, pour la raison exacte de la règle WIR169 : un
+    # code posé sur un viewset sans entrée au catalogue rend 403 pour TOUS
+    # les rôles fins. Ils sont donc prêts le jour où ces écrans arrivent, et
+    # ces tâches n'auront pas à rouvrir `apps/roles`.
+    'sav_nps_voir',
+    'sav_sentiment_ia_voir',
+    # NTSRV40 — envoyer une REPONSE EXTERNE au client depuis un ticket
+    # (e-mail NTSRV1, et le jour ou il existera l'envoi WhatsApp NTSRV3).
+    # Distinct de `sav_gerer` : un agent en formation travaille ses tickets
+    # (assignation, notes INTERNES) sans pouvoir ecrire au client.
+    # Accorde par defaut a TOUS les roles systeme qui portaient deja
+    # `sav_gerer` — aucun acces existant n'est retire ; un Administrateur le
+    # retire au role de l'agent en formation depuis Parametres -> Roles.
+    'sav_repondre_client_externe',
     'parametres_voir',
     'parametres_modifier',
     'users_voir',
@@ -222,6 +243,16 @@ ALL_PERMISSIONS = [
     # ``get_queryset`` du ViewSet (NTJUR1).
     'juridique_voir',
     'juridique_gerer',
+    # ── NTDOC11 — Salles de données (apps/datarooms), même patron YRBAC3 :
+    #   * ``datarooms_voir``  — lecture des salles et de leur contenu ;
+    #   * ``datarooms_gerer`` — création/modification, ajout et retrait de
+    #     documents, invitation et révocation de viewers, fermeture.
+    # Module NEUF : comme ``juridique_*`` ci-dessus, il n'est mappé sur AUCUN
+    # rôle Responsable/Commercial/Technicien/Viewer — une due diligence reste à
+    # la direction, qui les porte par héritage d'``ALL_PERMISSIONS``. Aucun
+    # accès existant n'est retiré : l'app n'existait pas.
+    'datarooms_voir',
+    'datarooms_gerer',
     # NTJUR39 — ENGAGER UNE DÉPENSE n'est pas « écrire dans le module ».
     # ``juridique_gerer_mandats`` est REQUISE, EN PLUS de ``juridique_gerer``,
     # pour créer/modifier un ``MandatAvocat`` ou une ``NoteHonoraires``, et
@@ -434,6 +465,49 @@ ALL_PERMISSIONS = [
     'assurances_gerer',
     'douane_responsable',
     'transport_responsable',
+    # NTCON26 — permissions FINES par geste engageant du vertical BTP/EPC.
+    # ``btp_gerer`` ouvre TOUT en écriture : lever une réserve, approuver un
+    # visa, approuver un avenant qui engage le budget et finaliser un décompte
+    # général définitif relevaient du même code, alors que sur un chantier réel
+    # ces gestes appartiennent à des personnes différentes (conducteur de
+    # travaux / MOE / direction). Ces six codes sont exigés EN PLUS de
+    # ``btp_gerer`` sur l'action correspondante (cf.
+    # ``apps/btp_chantier/permissions.py``) — le repli légacy des comptes SANS
+    # rôle fin reste intact, aucun accès existant n'est retiré.
+    # Les clés sont écrites en pointé dans le plan (``btp.reserve.creer``…) ;
+    # le registre du dépôt est en souligné sans exception, on garde la
+    # convention du dépôt (correspondance 1:1 documentée dans
+    # ``apps/btp_chantier/permissions.py``).
+    'btp_reserve_creer',
+    'btp_reserve_lever',
+    'btp_rfi_repondre',
+    'btp_visa_approuver',
+    'btp_avenant_approuver',
+    'btp_dgd_finaliser',
+    # NTUX31 — permissions FINES par rôle sur les vues sauvegardées et la
+    # corbeille transverse. Avant ce code, l'accès à `/parametres/corbeille`
+    # (NTUX7) et à `definir-par-defaut-role`/le partage d'équipe (NTUX1/2)
+    # dépendait UNIQUEMENT du palier grossier hérité (`IsAdminOrResponsableTier`
+    # / `IsResponsableOrAdmin`) — non administrable au cas par cas dans la
+    # matrice de rôles. Ces cinq codes s'ajoutent EN PLUS de ces gardes
+    # (jamais à leur place, même patron que NTCON26) : un compte HÉRITÉ sans
+    # rôle fin garde exactement son accès (repli légacy de
+    # `core.permissions._user_has_or_legacy`) ; un rôle FIN doit désormais
+    # porter le code pour que la case puisse être décochée dans l'éditeur de
+    # rôles sans toucher au code. Le plan écrit les clés en pointé
+    # (``ux.vue.partager_equipe``…) ; le registre du dépôt reste en souligné,
+    # correspondance 1:1 documentée dans ``apps/uxviews/permissions.py`` et
+    # ``apps/trash/permissions.py`` :
+    #   ux.vue.partager_equipe      -> ux_vue_partager_equipe
+    #   ux.vue.definir_defaut_role  -> ux_vue_definir_defaut_role
+    #   ux.corbeille.consulter      -> ux_corbeille_consulter
+    #   ux.corbeille.restaurer      -> ux_corbeille_restaurer
+    #   ux.edition_masse.executer   -> ux_edition_masse_executer
+    'ux_vue_partager_equipe',
+    'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter',
+    'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -485,6 +559,8 @@ PERMISSION_MODULE = {
     **{c: 'kb' for c in ALL_PERMISSIONS if c.startswith('kb_')},
     # NTJUR1 — clé de manifeste ``juridique`` (apps/juridique).
     **{c: 'juridique' for c in ALL_PERMISSIONS if c.startswith('juridique_')},
+    # NTDOC11 — clé de manifeste ``datarooms`` (apps/datarooms).
+    **{c: 'datarooms' for c in ALL_PERMISSIONS if c.startswith('datarooms_')},
     **{c: 'rh' for c in ALL_PERMISSIONS if c.startswith('rh_')},
     **{c: 'fpa' for c in ALL_PERMISSIONS if c.startswith('fpa_')},
     **{c: 'ged' for c in ALL_PERMISSIONS if c.startswith('ged_')},
@@ -493,8 +569,10 @@ PERMISSION_MODULE = {
     **{c: 'veille_ao' for c in ALL_PERMISSIONS if c.startswith('veille_ao_')},
     **{c: 'cpq' for c in ALL_PERMISSIONS if c.startswith('cpq_')},
     **{c: 'scm' for c in ALL_PERMISSIONS if c.startswith('scm_')},
-    'btp_voir': 'btp_chantier',
-    'btp_gerer': 'btp_chantier',
+    # NTCON26 — tous les codes `btp_*` appartiennent au module `btp_chantier`
+    # (le préfixe diffère de la clé de module : d'où cette dérivation explicite
+    # plutôt qu'une entrée par code).
+    **{c: 'btp_chantier' for c in ALL_PERMISSIONS if c.startswith('btp_')},
     **{c: 'assurances' for c in ALL_PERMISSIONS if c.startswith('assurances_')},
     'douane_responsable': 'douane',
     'transport_responsable': 'transport',
@@ -566,6 +644,12 @@ RESPONSABLE_PERMISSIONS = [
     'equipement_voir',
     'sav_voir',
     'sav_gerer',
+    # NTSRV39 — palier responsable : déclare les problèmes (cause racine) et
+    # lit NPS/sentiment. Comportement historique préservé (ce rôle avait déjà
+    # l'accès complet au SAV).
+    'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
     'parametres_voir',
     'users_voir',
     'reporting_voir',
@@ -623,8 +707,18 @@ RESPONSABLE_PERMISSIONS = [
     # BTP/assurances et les deux réglages douane/transport, dont les viewsets
     # annoncent explicitement ce palier.
     'btp_voir', 'btp_gerer',
+    # NTCON26 — le Responsable porte les six gestes engageants du chantier
+    # (c'est le palier que les viewsets BTP annoncent depuis NTCON1).
+    'btp_reserve_creer', 'btp_reserve_lever', 'btp_rfi_repondre',
+    'btp_visa_approuver', 'btp_avenant_approuver', 'btp_dgd_finaliser',
     'assurances_voir', 'assurances_gerer',
     'douane_responsable', 'transport_responsable',
+    # NTUX31 — le Responsable passait déjà `IsAdminOrResponsableTier`/
+    # `IsResponsableOrAdmin` sur la corbeille, le partage d'équipe et
+    # `definir-par-defaut-role` : les cinq codes fins préservent cet accès.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -683,6 +777,8 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
     'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
     'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
     'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
     # YRBAC3 — comportement historique préservé (accès complet via l'ancien
@@ -708,6 +804,11 @@ COMMERCIAL_RESP_PERMISSIONS = [
     # pour ce rôle (même exclusion que marge_voir/prix_achat_voir).
     'cpq_regles_gerer', 'cpq_prix_contractuels_gerer',
     'cpq_approbation_approuver',
+    # NTUX31 — palier « responsable » (porte `users_voir`, passe déjà
+    # `IsAdminOrResponsableTier`) : préserve l'accès corbeille/vues existant.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
     SCOPE_SUBTREE,
 ]
 
@@ -739,6 +840,14 @@ COMMERCIAL_PERMISSIONS = [
     # VAO12 — veille AO en LECTURE : un commercial doit voir passer les avis
     # (c'est le but du module) ; le réglage reste au palier responsable.
     'veille_ao_voir',
+    # NTUX31 — ce rôle a déjà des permissions d'écriture (crm_creer…), donc
+    # `is_responsable` (repli légacy de `IsResponsableOrAdmin`) est déjà vrai
+    # pour lui : sans ce code, `definir-par-defaut-role`/le partage d'équipe
+    # RÉGRESSERAIENT pour un rôle Commercial fin. PAS `ux_corbeille_*`/
+    # `ux_edition_masse_executer` : la corbeille et l'édition en masse restent
+    # au palier `IsAdminOrResponsableTier` (Responsable+), jamais ouvertes au
+    # Commercial de base — comportement inchangé.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     SCOPE_TEAM,
 ]
 
@@ -774,6 +883,12 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'intervention_gerer', 'technicien_assign',
     'equipement_voir', 'equipement_gerer', 'sav_voir', 'sav_gerer',
     'sav_export', 'sav_reassign',
+    # NTSRV39 — c'est LE « Responsable SAV » de l'ERP : il déclare les
+    # problèmes (NTSRV16) et lit NPS/sentiment. Le Technicien de base ne les
+    # porte PAS (il garde l'accès ticket standard `sav_voir`/`sav_gerer`).
+    'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
     # QG4 — `stock_creer` retiré : la création de produits est réservée aux
     # rôles Directeur + Commercial responsable (décision Reda).
     'stock_voir', 'stock_modifier', 'stock_mouvement',
@@ -799,6 +914,17 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # écriture (palier « responsable » du module.config BTP). Les assurances
     # restent hors de sa portée (gouvernance).
     'btp_voir', 'btp_gerer',
+    # NTCON26 — séparation des tâches : le conducteur de travaux pose et lève
+    # les réserves et répond aux RFI (son métier quotidien) ; les trois gestes
+    # ENGAGEANTS (approuver un visa, approuver un avenant qui touche le budget,
+    # finaliser un décompte général définitif) montent d'un cran et restent au
+    # palier Responsable/direction — c'est précisément l'objet de NTCON26.
+    'btp_reserve_creer', 'btp_reserve_lever', 'btp_rfi_repondre',
+    # NTUX31 — palier « responsable » (porte `users_voir`) : préserve l'accès
+    # corbeille/vues existant.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
     # VTA4 — le feu vert calepinage est un arbitrage TECHNIQUE : le responsable
     # technique le porte au même titre que le commercial responsable.
     # `visites_voir` vient AVEC : `visites_valider` seul donnerait un rôle qui
@@ -814,6 +940,10 @@ TECHNICIEN_RESP_PERMISSIONS = [
 TECHNICIEN_PERMISSIONS = [
     'installation_voir', 'installation_gerer', 'intervention_gerer',
     'equipement_voir', 'sav_voir', 'sav_gerer',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`) : aucun
+    # acces retire. C'est CE code qu'un Administrateur enleve au role d'un
+    # agent en formation pour le limiter aux notes internes.
+    'sav_repondre_client_externe',
     'stock_voir', 'stock_mouvement',
     'parametres_voir', 'reporting_voir',
     'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
@@ -833,6 +963,10 @@ TECHNICIEN_PERMISSIONS = [
     # les réserves et le journal de chantier au palier « normal ». Jamais
     # ``btp_gerer`` pour ce rôle (RFI/visas/avenants/DGD restent responsable+).
     'btp_voir',
+    # NTUX31 — même motif que Commercial (base) : `is_responsable` est déjà
+    # vrai pour ce rôle via ses permissions d'écriture existantes. PAS
+    # `ux_corbeille_*`/`ux_edition_masse_executer` — restent Responsable+.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     SCOPE_TEAM,
 ]
 
@@ -854,6 +988,13 @@ VIEWER_PERMISSIONS = [
     'ged_voir',
     # ENG — accès en lecture seule (pas de gestion ni approbation).
     'adsengine_view',
+    # NTUX31 — délibérément ABSENT : les cinq codes fins ne sont ni `_voir` ni
+    # `records_scope_*`, les ajouter ferait basculer `is_responsable` à Vrai
+    # pour ce rôle STRICTEMENT lecture seule (cf. `_role_grants_write`) — un
+    # effet de bord qui ouvrirait tout endpoint gardé `IsResponsableOrAdmin`
+    # ailleurs dans le dépôt, bien au-delà du périmètre UX. Un Viewer n'avait de
+    # toute façon jamais accès à la corbeille/au partage d'équipe (palier
+    # normal).
     SCOPE_TEAM,
 ]
 

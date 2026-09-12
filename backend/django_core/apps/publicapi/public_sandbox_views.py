@@ -9,7 +9,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .auth import ApiKeyAuthentication, ApiKeyRateThrottle
+from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle
 from .constants import ENV_TEST
 from .models import ApiKey
 from .public_response import PublicApiResponseMixin
@@ -28,7 +28,7 @@ class SandboxResetView(PublicApiResponseMixin, APIView):
     """``POST /api/public/v1/sandbox/reset/`` — remet le bac à sable de la clé
     appelante à son état initial (efface puis reseed les données de démo).
     Une clé `live` reçoit 403 — elle n'a jamais accès au bac à sable."""
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [IsTestApiKey]
     throttle_classes = [ApiKeyRateThrottle]
 

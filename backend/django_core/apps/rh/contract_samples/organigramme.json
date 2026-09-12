@@ -1,0 +1,84 @@
+{
+  "endpoint": "GET /api/django/rh/employes/organigramme/",
+  "pourquoi": "NTHCM2 — organigramme hiérarchique imbriqué, consommé par l'écran RH → « Organigramme ». Source de vérité : apps/rh/views.py::DossierEmployeViewSet.organigramme, qui délègue tout à apps/rh/selectors.py::arbre_hierarchique. La réponse est un OBJET (jamais une liste nue) : `racines` est la liste des employés sans manager (ou la racine demandée via ?racine=), `effectif` un ENTIER (employés non sortis de la société), `profondeur_max` la borne anti-boucle et `recherche` le terme normalisé effectivement appliqué. Chaque nœud porte `subordonnes` (liste imbriquée, même forme), `nb_rapports_directs` (ENTIER = longueur de `subordonnes` tant que le nœud n'est pas tronqué), `tronque` (BOOLÉEN posé quand la profondeur max est atteinte ou qu'un cycle legacy est détecté — l'écran affiche alors la coupure au lieu de boucler), `correspond` (BOOLÉEN : ce nœud matche ?q=) et `sur_chemin` (BOOLÉEN : ce nœud OU un de ses descendants matche — c'est ce drapeau qui fait déplier l'arbre jusqu'au nœud trouvé). `photo` est une URL PRÉSIGNÉE ou une chaîne VIDE : aucune URL n'est fabriquée quand le compte n'a pas d'avatar (l'écran affiche alors les initiales). Les employés SORTIS sont exclus ; un employé dont le manager est hors périmètre (sorti, autre société) devient une racine plutôt que de disparaître. NTHCM3 — `matriciel` est un BOOLEEN (le parametre ?inclure_matriciel=1 a-t-il ete demande) et chaque noeud porte TOUJOURS la cle `rattachements_fonctionnels` : une LISTE, vide tant que le matriciel n'est pas demande, sinon les rattachements ACTIFS du jour ({id, manager_fonctionnel_id, manager_fonctionnel, role_fonctionnel}). La cle est toujours presente pour que la forme d'un noeud reste stable — l'ecran teste son contenu, jamais son existence. Cette seconde ligne est rendue en POINTILLES, jamais melangee a la hierarchie qui reste seule a evaluer/approuver.",
+  "exemple": {
+    "racines": [
+      {
+        "id": 1,
+        "employe": "Alami Sara",
+        "matricule": "EMP-001",
+        "poste": "Directrice générale",
+        "departement": "Direction",
+        "photo": "",
+        "nb_rapports_directs": 2,
+        "tronque": false,
+        "correspond": false,
+        "sur_chemin": true,
+        "subordonnes": [
+          {
+            "id": 2,
+            "employe": "Bennani Youssef",
+            "matricule": "EMP-002",
+            "poste": "Chef de chantier",
+            "departement": "Travaux",
+            "photo": "",
+            "nb_rapports_directs": 1,
+            "tronque": false,
+            "correspond": true,
+            "sur_chemin": true,
+            "subordonnes": [
+              {
+                "id": 3,
+                "employe": "Cherkaoui Imane",
+                "matricule": "EMP-003",
+                "poste": "Poseuse PV",
+                "departement": "Travaux",
+                "photo": "",
+                "nb_rapports_directs": 0,
+                "tronque": false,
+                "correspond": false,
+                "sur_chemin": false,
+                "subordonnes": [],
+                "rattachements_fonctionnels": [
+                  {
+                    "id": 7,
+                    "manager_fonctionnel_id": 9,
+                    "manager_fonctionnel": "El Fassi Nawal",
+                    "role_fonctionnel": "QHSE"
+                  }
+                ]
+              }
+            ],
+            "rattachements_fonctionnels": []
+          },
+          {
+            "id": 4,
+            "employe": "Doukkali Omar",
+            "matricule": "EMP-004",
+            "poste": "Commercial",
+            "departement": "Commercial",
+            "photo": "",
+            "nb_rapports_directs": 0,
+            "tronque": false,
+            "correspond": false,
+            "sur_chemin": false,
+            "subordonnes": [],
+            "rattachements_fonctionnels": []
+          }
+        ],
+        "rattachements_fonctionnels": []
+      }
+    ],
+    "effectif": 4,
+    "profondeur_max": 12,
+    "recherche": "bennani",
+    "matriciel": true
+  },
+  "exemple_vide": {
+    "racines": [],
+    "effectif": 0,
+    "profondeur_max": 12,
+    "recherche": "",
+    "matriciel": false
+  }
+}

@@ -1017,3 +1017,702 @@ class PolitiqueVersion(TenantModel):
 
     def __str__(self):
         return f'{self.politique_id} v{self.numero}'
+
+
+class AttestationPolitique(TenantModel):
+    """NTGRC20 — attestation de LECTURE d'une politique, par un employé.
+
+    Une politique publiée que personne n'a lue ne protège de rien : c'est
+    l'attestation qui transforme un document en obligation opposable. Elle
+    porte donc le NUMÉRO DE VERSION attesté — « j'ai lu la charte » ne veut
+    rien dire, « j'ai lu la v3 du 12/09 » en veut un, parce que la v3 est
+    figée (``PolitiqueVersion``, NTGRC19) et ne peut plus bouger.
+
+    Loi 53-05 (échange électronique de données juridiques, Maroc) : la preuve
+    d'un engagement électronique simple repose sur l'identification de son
+    auteur et l'intégrité de l'acte. On conserve donc, CÔTÉ SERVEUR
+    uniquement : le NOM SAISI par l'attestant (son geste de signature), un
+    instantané de son nom d'affichage, l'horodatage serveur, et l'IP/le
+    user-agent du poste. Rien de tout cela n'est lu du corps de la requête —
+    une preuve qu'on peut s'envoyer à soi-même n'est pas une preuve.
+
+    L'employé est désigné par un identifiant TEXTE (``employe_ref``, l'id du
+    ``rh.DossierEmploye``) : ``grc`` n'importe jamais les modèles de ``rh``,
+    et l'attestation survit à la clôture du dossier — c'est précisément ce
+    qu'un auditeur vient vérifier trois ans plus tard.
+    """
+
+    politique = models.ForeignKey(
+        PolitiqueInterne,
+        # on_delete: une attestation n'existe que pour SA politique ; la
+        # politique supprimée, l'attestation n'atteste plus de rien.
+        on_delete=models.CASCADE,
+        related_name='attestations', verbose_name='Politique')
+    version_attestee = models.PositiveIntegerField(
+        'Version attestée',
+        help_text='Numéro de la version FIGÉE que la personne déclare avoir '
+                  'lue (jamais 0 : une politique non publiée ne s\'atteste '
+                  'pas).')
+    employe_ref = models.CharField(
+        'Dossier employé', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du rh.DossierEmploye (string-FK).')
+    attestant_nom = models.CharField(
+        'Attestant', max_length=160, blank=True, default='',
+        help_text="Instantané du nom d'affichage (survit au départ).")
+    nom_saisi = models.CharField(
+        'Nom saisi (loi 53-05)', max_length=160, blank=True, default='',
+        help_text='Nom tapé par la personne au moment d\'attester — son '
+                  'geste de signature électronique simple.')
+    date_attestation = models.DateTimeField(
+        'Date d\'attestation', null=True, blank=True,
+        help_text='Horodatage SERVEUR, posé à la création.')
+    preuve = models.JSONField(
+        'Preuve', default=dict, blank=True,
+        help_text='IP et user-agent du poste attestant, posés côté serveur.')
+
+    class Meta:
+        verbose_name = 'Attestation de politique'
+        verbose_name_plural = 'Attestations de politique'
+        ordering = ['-date_attestation', '-id']
+        constraints = [
+            # Une personne n'atteste qu'UNE FOIS une version donnée : sans
+            # cette unicité, un double clic gonflerait le taux d'attestation
+            # au-dessus de 100 %. La condition écarte les lignes sans dossier
+            # employé (attestation saisie pour un tiers non salarié), que
+            # Postgres ne doit pas agréger sur la chaîne vide.
+            models.UniqueConstraint(
+                fields=['politique', 'version_attestee', 'employe_ref'],
+                condition=~models.Q(employe_ref=''),
+                name='grc_attestation_pol_ver_emp'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'politique'],
+                         name='grc_attestation_co_pol_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Horodate CÔTÉ SERVEUR à la création (jamais une date du client)."""
+        if self.date_attestation is None:
+            self.date_attestation = timezone.now()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (f'{self.attestant_nom or self.employe_ref or "?"} — '
+                f'politique {self.politique_id} v{self.version_attestee}')
+
+
+class QuestionnaireFournisseur(TenantModel):
+    """NTGRC22 — questionnaire de conformité adressé à un fournisseur.
+
+    Le maillon manquant de la conformité : une société peut avoir un RoPA
+    impeccable et un sous-traitant qui stocke ses données n'importe où. L'art.
+    28 du RGPD (et la loi 09-08 côté marocain) impose de s'assurer des
+    garanties du sous-traitant — ce questionnaire est la trace de cette
+    diligence, avec sa date, ses réponses et son score.
+
+    Le fournisseur est désigné par un identifiant TEXTE
+    (``fournisseur_ref`` = id du ``stock.Fournisseur``) : ``grc`` n'importe
+    jamais ``stock.models`` et le questionnaire survit à la fiche fournisseur.
+
+    ``statut`` ne s'écrit PAS au champ : il bouge par le service
+    (``changer_statut_questionnaire``) ou automatiquement quand toutes les
+    réponses sont renseignées — un questionnaire déclaré « complet » alors que
+    la moitié des questions est vide ne prouverait rien.
+    """
+
+    TYPE_SECURITE = 'securite'
+    TYPE_RGPD = 'rgpd'
+    TYPE_QUALITE = 'qualite'
+    TYPE_RSE = 'rse'
+    TYPE_CHOICES = [
+        (TYPE_SECURITE, 'Sécurité'),
+        (TYPE_RGPD, 'RGPD / données personnelles'),
+        (TYPE_QUALITE, 'Qualité'),
+        (TYPE_RSE, 'RSE'),
+    ]
+
+    STATUT_ENVOYE = 'envoye'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_COMPLETE = 'complete'
+    STATUT_VALIDE = 'valide'
+    STATUT_REFUSE = 'refuse'
+    STATUT_CHOICES = [
+        (STATUT_ENVOYE, 'Envoyé'),
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_COMPLETE, 'Complété'),
+        (STATUT_VALIDE, 'Validé'),
+        (STATUT_REFUSE, 'Refusé'),
+    ]
+
+    fournisseur_ref = models.CharField(
+        'Fournisseur', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du stock.Fournisseur (string-FK).')
+    type = models.CharField(
+        'Type', max_length=10, choices=TYPE_CHOICES, default=TYPE_RGPD)
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_ENVOYE)
+    date_envoi = models.DateField('Date d\'envoi', null=True, blank=True)
+    date_echeance = models.DateField('Échéance', null=True, blank=True)
+    score = models.PositiveIntegerField(
+        'Score de conformité (%)', default=0,
+        help_text='Part des réponses CONFORMES sur le total des questions, '
+                  'recalculée serveur — jamais saisie.')
+    evaluateur = models.CharField(
+        'Évaluateur', max_length=160, blank=True, default='')
+    # NTGRC23 — modèle d'origine (identifiant texte : un questionnaire envoyé
+    # ne doit pas changer de contenu parce qu'on a édité son modèle après coup,
+    # et il survit à la suppression de celui-ci).
+    modele_ref = models.CharField(
+        'Modèle d\'origine', max_length=64, blank=True, default='')
+    # ── NTGRC24 — portail PUBLIC fournisseur (répondre sans compte) ──────────
+    # Jeton OPAQUE, distinct de l'identifiant : un fournisseur ouvre SON
+    # questionnaire et rien d'autre ; aucune énumération possible, aucun id
+    # interne exposé. NULL tant qu'aucun lien public n'a été émis (plusieurs
+    # NULL restent autorisés par l'unicité Postgres).
+    token_acces = models.CharField(
+        'Jeton d\'accès public', max_length=64, null=True, blank=True,
+        unique=True,
+        help_text='Jeton opaque du portail fournisseur (jamais l\'id réel).')
+    token_expire_le = models.DateTimeField(
+        'Expiration du lien public', null=True, blank=True,
+        help_text='Passée cette date le lien ne répond plus : un lien de '
+                  'collecte de données qui vit éternellement est une porte '
+                  'ouverte.')
+    date_soumission = models.DateTimeField(
+        'Soumis le', null=True, blank=True,
+        help_text='Horodatage SERVEUR de la soumission publique.')
+    preuve_soumission = models.JSONField(
+        'Preuve de soumission', default=dict, blank=True,
+        help_text='IP et user-agent du fournisseur, posés côté serveur.')
+
+    class Meta:
+        verbose_name = 'Questionnaire fournisseur'
+        verbose_name_plural = 'Questionnaires fournisseurs'
+        ordering = ['-date_envoi', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_questionnaire_co_st_idx'),
+            models.Index(fields=['company', 'fournisseur_ref'],
+                         name='grc_questionnaire_co_frn_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.get_type_display()} — fournisseur '
+                f'{self.fournisseur_ref or "?"} '
+                f'({self.get_statut_display()})')
+
+
+class ReponseQuestionnaire(TenantModel):
+    """NTGRC22 — une question et la réponse du fournisseur.
+
+    ``conforme`` est un booléen NULLABLE à trois états VOULUS : ``True``
+    (conforme), ``False`` (non conforme), ``None`` (pas encore évalué). Forcer
+    un défaut ``False`` ferait passer une question non évaluée pour un écart —
+    et un questionnaire vide afficherait 100 % de non-conformité.
+    """
+
+    questionnaire = models.ForeignKey(
+        QuestionnaireFournisseur,
+        # on_delete: une réponse n'existe que dans SON questionnaire.
+        on_delete=models.CASCADE,
+        related_name='reponses', verbose_name='Questionnaire')
+    ordre = models.PositiveIntegerField('Ordre', default=0)
+    question = models.TextField('Question')
+    obligatoire = models.BooleanField('Obligatoire', default=True)
+    reponse = models.TextField('Réponse', blank=True, default='')
+    conforme = models.BooleanField(
+        'Conforme', null=True, blank=True,
+        help_text='Vide = pas encore évalué (surtout pas « non conforme »).')
+    commentaire = models.TextField('Commentaire', blank=True, default='')
+    piece_key = models.CharField(
+        'Pièce justificative', max_length=255, blank=True, default='',
+        help_text='Clé de stockage (MinIO/GED) de la preuve fournie.')
+
+    class Meta:
+        verbose_name = 'Réponse de questionnaire'
+        verbose_name_plural = 'Réponses de questionnaire'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'questionnaire'],
+                         name='grc_reponseq_co_quest_idx'),
+        ]
+
+    @property
+    def est_repondue(self):
+        """Une question est répondue dès qu'elle porte un texte non vide."""
+        return bool((self.reponse or '').strip())
+
+    def __str__(self):
+        return f'Q{self.ordre} — {self.question[:60]}'
+
+
+class ModeleQuestionnaire(TenantModel):
+    """NTGRC23 — trame réutilisable d'un questionnaire fournisseur.
+
+    Personne ne réécrit trente questions RGPD à chaque nouveau sous-traitant :
+    on instancie une trame. Les questions vivent dans un champ JSON — une
+    liste de ``{intitule, obligatoire, type_reponse}`` — parce qu'un modèle
+    est un DOCUMENT, pas un mini-schéma relationnel : on l'édite d'un bloc et
+    on ne requête jamais « toutes les questions de tous les modèles ».
+
+    L'instanciation COPIE les questions dans le questionnaire (NTGRC22) :
+    éditer le modèle après coup ne doit pas réécrire un questionnaire déjà
+    envoyé — le fournisseur aurait répondu à autre chose que ce qu'on lit.
+    """
+
+    TYPE_CHOICES = QuestionnaireFournisseur.TYPE_CHOICES
+
+    code = models.CharField(
+        'Code', max_length=80,
+        help_text='Clé stable du modèle (seed idempotent).')
+    nom = models.CharField('Nom', max_length=200)
+    type = models.CharField(
+        'Type', max_length=10, choices=TYPE_CHOICES,
+        default=QuestionnaireFournisseur.TYPE_RGPD)
+    questions = models.JSONField(
+        'Questions', default=list, blank=True,
+        help_text='Liste de {intitule, obligatoire, type_reponse} — ex. '
+                  '[{"intitule": "Où hébergez-vous les données ?", '
+                  '"obligatoire": true, "type_reponse": "texte"}].')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Modèle de questionnaire'
+        verbose_name_plural = 'Modèles de questionnaire'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='grc_modelequestionnaire_co_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_display()})'
+
+
+class IncidentSecurite(TenantModel):
+    """NTGRC25 — registre des incidents de SÉCURITÉ.
+
+    DISTINCT de ``ViolationDonnees`` (NTGRC6), et la distinction n'est pas
+    cosmétique : un ordinateur portable chiffré perdu est un incident de
+    sécurité SANS violation de données ; un email envoyé à la mauvaise liste
+    est une violation de données SANS incident technique. Confondre les deux
+    fait soit déclencher des notifications CNDP inutiles, soit rater celles
+    qui sont dues.
+
+    Quand un incident touche EFFECTIVEMENT des données personnelles, on
+    l'ESCALADE : l'action dédiée crée la ``ViolationDonnees`` correspondante
+    et la relie par un identifiant TEXTE — le registre réglementaire garde sa
+    propre horloge de 72 h, calée sur SA date de détection.
+    """
+
+    #: Préfixe des références (INC-YYYYMM-0001), race-safe via `core.numbering`.
+    REFERENCE_PREFIX = 'INC'
+
+    TYPE_PHISHING = 'phishing'
+    TYPE_MALWARE = 'malware'
+    TYPE_ACCES_NON_AUTORISE = 'acces_non_autorise'
+    TYPE_PERTE_MATERIEL = 'perte_materiel'
+    TYPE_DENI_SERVICE = 'deni_service'
+    TYPE_AUTRE = 'autre'
+    TYPE_CHOICES = [
+        (TYPE_PHISHING, 'Hameçonnage'),
+        (TYPE_MALWARE, 'Logiciel malveillant'),
+        (TYPE_ACCES_NON_AUTORISE, 'Accès non autorisé'),
+        (TYPE_PERTE_MATERIEL, 'Perte ou vol de matériel'),
+        (TYPE_DENI_SERVICE, 'Déni de service'),
+        (TYPE_AUTRE, 'Autre'),
+    ]
+
+    SEVERITE_FAIBLE = 'faible'
+    SEVERITE_MOYENNE = 'moyenne'
+    SEVERITE_ELEVEE = 'elevee'
+    SEVERITE_CRITIQUE = 'critique'
+    SEVERITE_CHOICES = [
+        (SEVERITE_FAIBLE, 'Faible'),
+        (SEVERITE_MOYENNE, 'Moyenne'),
+        (SEVERITE_ELEVEE, 'Élevée'),
+        (SEVERITE_CRITIQUE, 'Critique'),
+    ]
+
+    STATUT_OUVERT = 'ouvert'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_RESOLU = 'resolu'
+    STATUT_CLOS = 'clos'
+    STATUT_CHOICES = [
+        (STATUT_OUVERT, 'Ouvert'),
+        (STATUT_EN_COURS, 'En cours de traitement'),
+        (STATUT_RESOLU, 'Résolu'),
+        (STATUT_CLOS, 'Clos'),
+    ]
+
+    reference = models.CharField('Référence', max_length=40, blank=True,
+                                 default='')
+    titre = models.CharField('Titre', max_length=200)
+    type = models.CharField(
+        'Type', max_length=20, choices=TYPE_CHOICES, default=TYPE_AUTRE)
+    severite = models.CharField(
+        'Sévérité', max_length=10, choices=SEVERITE_CHOICES,
+        default=SEVERITE_MOYENNE)
+    date_detection = models.DateTimeField(
+        'Date de détection',
+        help_text='Moment où l\'incident a été CONNU.')
+    systemes_touches = models.JSONField(
+        'Systèmes touchés', default=list, blank=True,
+        help_text='Ex. ["messagerie", "erp", "poste-comptabilite"].')
+    description = models.TextField('Description', blank=True, default='')
+    impact = models.TextField('Impact constaté', blank=True, default='')
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_OUVERT)
+    assigne = models.CharField(
+        'Assigné à', max_length=160, blank=True, default='')
+    violation_donnees_ref = models.CharField(
+        'Violation de données liée', max_length=64, blank=True, default='',
+        help_text='Identifiant texte de la grc.ViolationDonnees créée par '
+                  'escalade (vide tant qu\'aucune donnée personnelle n\'est '
+                  'concernée).')
+
+    class Meta:
+        verbose_name = 'Incident de sécurité'
+        verbose_name_plural = 'Registre des incidents de sécurité'
+        ordering = ['-date_detection', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='grc_incidentsecurite_co_ref'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_incident_co_statut_idx'),
+            models.Index(fields=['company', 'severite'],
+                         name='grc_incident_co_sever_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "INC"} — {self.titre}'
+
+
+# NTGRC26 — la chronologie (« chatter ») d'un incident n'a PAS son modèle ici.
+#
+# Elle vit sur la primitive PLATEFORME ``records.Activity`` (ARC8), écrite par
+# ``records.services.log_activity`` / ``log_note`` et lue par
+# ``records.services.chatter_qs``. Ce dépôt a mesuré le coût de l'alternative :
+# TREIZE modèles ``*Activity`` maison quasi identiques
+# (``crm.LeadActivity``, ``sav.TicketActivity``, ``contrats.ContratActivity``…)
+# qu'il faut ensuite converger un par un. Un quatorzième n'apporterait rien
+# qu'une table de plus et un composant frontend de plus. La garde
+# ``scripts/check_platform.py`` (ARC8) gèle cette décision.
+
+
+class AnalyseImpactDPIA(TenantModel):
+    """NTGRC27 — analyse d'impact relative à la protection des données (AIPD).
+
+    Art. 35 RGPD (et pratique CNDP côté loi 09-08) : un traitement susceptible
+    d'engendrer un risque élevé exige une analyse d'impact AVANT sa mise en
+    œuvre. Le registre des traitements (``core.RegistreTraitement``) dit CE
+    QU'ON FAIT ; l'AIPD dit CE QU'ON RISQUE et CE QU'ON A FAIT POUR LE RÉDUIRE.
+
+    Le traitement est désigné par un identifiant TEXTE (``traitement_ref``) —
+    jamais une FK vers ``core.models`` : ``core`` est la couche FONDATION,
+    ``grc`` la lit par son ``selectors.py``, et l'analyse survit à la
+    disparition de la ligne du registre (c'est une pièce d'archive).
+
+    ``necessite_dpia`` à ``False`` est une décision ASSUMÉE et tracée (« pas
+    de DPIA requise, et voici pourquoi ») : une case vide, elle, ne prouve
+    rien du tout.
+    """
+
+    RISQUE_ACCEPTABLE = 'acceptable'
+    RISQUE_ELEVE = 'eleve'
+    RISQUE_CHOICES = [
+        (RISQUE_ACCEPTABLE, 'Acceptable'),
+        (RISQUE_ELEVE, 'Élevé'),
+    ]
+
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_VALIDEE = 'validee'
+    STATUT_A_REVISER = 'a_reviser'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_VALIDEE, 'Validée'),
+        (STATUT_A_REVISER, 'À réviser'),
+    ]
+
+    traitement_ref = models.CharField(
+        'Traitement', max_length=64,
+        help_text='Identifiant texte du core.RegistreTraitement (string-FK).')
+    necessite_dpia = models.BooleanField(
+        'AIPD nécessaire', default=True,
+        help_text='Décision ASSUMÉE : « non » doit être justifié dans '
+                  'l\'avis du DPO.')
+    critere_declencheur = models.JSONField(
+        'Critères déclencheurs', default=list, blank=True,
+        help_text='Ex. ["donnees_sensibles", "profilage", "surveillance", '
+                  '"grande_echelle"].')
+    risques_identifies = models.JSONField(
+        'Risques identifiés', default=list, blank=True,
+        help_text='Liste de {risque, gravite, vraisemblance} ou de libellés.')
+    mesures_attenuation = models.TextField(
+        'Mesures d\'atténuation', blank=True, default='')
+    risque_residuel = models.CharField(
+        'Risque résiduel', max_length=12, choices=RISQUE_CHOICES,
+        default=RISQUE_ACCEPTABLE)
+    avis_dpo = models.TextField('Avis du DPO', blank=True, default='')
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_BROUILLON)
+    date_validation = models.DateTimeField(
+        'Date de validation', null=True, blank=True,
+        help_text='Posée CÔTÉ SERVEUR à la validation.')
+
+    class Meta:
+        verbose_name = 'Analyse d\'impact (AIPD)'
+        verbose_name_plural = 'Analyses d\'impact (AIPD)'
+        ordering = ['traitement_ref', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_dpia_co_statut_idx'),
+            models.Index(fields=['company', 'traitement_ref'],
+                         name='grc_dpia_co_trait_idx'),
+        ]
+
+    def __str__(self):
+        return (f'AIPD traitement {self.traitement_ref} '
+                f'({self.get_statut_display()})')
+
+
+class FluxDonnees(TenantModel):
+    """NTGRC30 — cartographie d'un FLUX de données personnelles.
+
+    Le registre des traitements dit POURQUOI on traite ; la cartographie dit
+    OÙ les données VONT. C'est la différence entre une déclaration et une
+    carte : le jour où l'on doit répondre « quelles données sortent du Maroc
+    et sous quelle garantie ? », seule la carte répond.
+
+    ``transfert_hors_maroc`` est un drapeau ASSUMÉ, pas une déduction du nom
+    de pays : « Casablanca » écrit dans une case libre ne prouve rien, et
+    déduire la localisation d'une chaîne de caractères produirait exactement
+    le genre de faux négatif qu'un contrôle sanctionne.
+    """
+
+    DESTINATION_INTERNE = 'interne'
+    DESTINATION_SOUS_TRAITANT = 'sous_traitant'
+    DESTINATION_TIERS = 'tiers'
+    DESTINATION_CHOICES = [
+        (DESTINATION_INTERNE, 'Service interne'),
+        (DESTINATION_SOUS_TRAITANT, 'Sous-traitant'),
+        (DESTINATION_TIERS, 'Tiers (destinataire autonome)'),
+    ]
+
+    GARANTIE_AUCUNE = ''
+    GARANTIE_CCT = 'cct'
+    GARANTIE_ADEQUATION = 'adequation'
+    GARANTIE_DEROGATION = 'derogation'
+    GARANTIE_CHOICES = [
+        (GARANTIE_AUCUNE, '— aucune garantie déclarée'),
+        (GARANTIE_CCT, 'Clauses contractuelles types'),
+        (GARANTIE_ADEQUATION, 'Décision d\'adéquation'),
+        (GARANTIE_DEROGATION, 'Dérogation (consentement, contrat…)'),
+    ]
+
+    traitement_ref = models.CharField(
+        'Traitement', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du core.RegistreTraitement (string-FK).')
+    source = models.CharField(
+        'Source', max_length=160,
+        help_text='Application ou système d\'origine (ex. « ERP — CRM »).')
+    destination = models.CharField(
+        'Type de destination', max_length=15, choices=DESTINATION_CHOICES,
+        default=DESTINATION_INTERNE)
+    destinataire = models.CharField(
+        'Destinataire', max_length=200, blank=True, default='',
+        help_text='Nom du service, du sous-traitant ou du tiers.')
+    categories_donnees = models.JSONField(
+        'Catégories de données', default=list, blank=True,
+        help_text='Ex. ["identite", "contact", "donnees_bancaires"].')
+    transfert_hors_maroc = models.BooleanField(
+        'Transfert hors Maroc', default=False,
+        help_text='Déclaré explicitement — jamais déduit du nom du pays.')
+    pays_destination = models.CharField(
+        'Pays de destination', max_length=80, blank=True, default='')
+    garanties = models.CharField(
+        'Garanties du transfert', max_length=12, choices=GARANTIE_CHOICES,
+        blank=True, default=GARANTIE_AUCUNE)
+    volume_estime = models.CharField(
+        'Volume estimé', max_length=120, blank=True, default='',
+        help_text='Ordre de grandeur (ex. « ~5 000 enregistrements/mois »).')
+
+    class Meta:
+        verbose_name = 'Flux de données'
+        verbose_name_plural = 'Cartographie des flux de données'
+        ordering = ['source', 'id']
+        indexes = [
+            models.Index(fields=['company', 'transfert_hors_maroc'],
+                         name='grc_flux_co_horsmaroc_idx'),
+            models.Index(fields=['company', 'traitement_ref'],
+                         name='grc_flux_co_trait_idx'),
+        ]
+
+    def __str__(self):
+        cible = self.destinataire or self.get_destination_display()
+        return f'{self.source} → {cible}'
+
+
+class CadreConformite(TenantModel):
+    """NTGRC33 — référentiel de conformité suivi par la société.
+
+    Une même organisation répond rarement à un seul cadre : la loi 09-08 est
+    obligatoire au Maroc, l'ISO 27001 est demandée par les grands donneurs
+    d'ordre, le RGPD s'impose dès qu'un client est européen. Les EXIGENCES se
+    recouvrent largement — et c'est précisément le point : un contrôle interne
+    couvre souvent trois cadres à la fois, et c'est le mapping qui évite de
+    refaire trois fois le même travail.
+    """
+
+    CODE_ISO27001 = 'ISO27001'
+    CODE_LOI_09_08 = 'loi_09-08'
+    CODE_RGPD = 'RGPD'
+    CODE_SOX_LITE = 'SOX_lite'
+    CODE_ISO27701 = 'ISO27701'
+    CODE_CHOICES = [
+        (CODE_ISO27001, 'ISO/IEC 27001'),
+        (CODE_LOI_09_08, 'Loi 09-08 (Maroc)'),
+        (CODE_RGPD, 'RGPD (UE 2016/679)'),
+        (CODE_SOX_LITE, 'SOX allégé'),
+        (CODE_ISO27701, 'ISO/IEC 27701'),
+    ]
+
+    code = models.CharField(
+        'Code', max_length=20, choices=CODE_CHOICES)
+    intitule = models.CharField('Intitulé', max_length=200)
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Cadre de conformité'
+        verbose_name_plural = 'Cadres de conformité'
+        ordering = ['code', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='grc_cadreconformite_co_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_code_display()}'
+
+
+class ExigenceCadre(TenantModel):
+    """NTGRC33 — une exigence d'un cadre, et le contrôle qui la couvre.
+
+    ``statut_couverture`` a TROIS états voulus : couvert, PARTIEL, non
+    couvert. Le partiel n'est pas une coquetterie — c'est l'état réel de la
+    plupart des exigences, et le réduire à un booléen ferait afficher soit un
+    faux 100 %, soit un zéro décourageant.
+    """
+
+    COUVERTURE_COUVERT = 'couvert'
+    COUVERTURE_PARTIEL = 'partiel'
+    COUVERTURE_NON = 'non_couvert'
+    COUVERTURE_CHOICES = [
+        (COUVERTURE_COUVERT, 'Couvert'),
+        (COUVERTURE_PARTIEL, 'Partiellement couvert'),
+        (COUVERTURE_NON, 'Non couvert'),
+    ]
+
+    cadre = models.ForeignKey(
+        CadreConformite,
+        # on_delete: une exigence n'existe que dans SON cadre.
+        on_delete=models.CASCADE,
+        related_name='exigences', verbose_name='Cadre')
+    code_exigence = models.CharField('Code de l\'exigence', max_length=40)
+    intitule = models.CharField('Intitulé', max_length=300)
+    controle_ref = models.CharField(
+        'Contrôle couvrant', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du grc.ControleInterne (string-FK).')
+    statut_couverture = models.CharField(
+        'Couverture', max_length=12, choices=COUVERTURE_CHOICES,
+        default=COUVERTURE_NON)
+
+    class Meta:
+        verbose_name = 'Exigence de cadre'
+        verbose_name_plural = 'Exigences de cadre'
+        ordering = ['code_exigence', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cadre', 'code_exigence'],
+                name='grc_exigencecadre_cadre_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut_couverture'],
+                         name='grc_exigence_co_couv_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.code_exigence} — {self.intitule[:60]}'
+
+
+class SousTraitantRGPD(TenantModel):
+    """NTGRC35 — sous-traitant au sens de l'art. 28 RGPD / loi 09-08.
+
+    Un « fournisseur » et un « sous-traitant de données » ne sont pas la même
+    chose : le loueur de nacelles n'est pas sous-traitant, l'hébergeur et le
+    cabinet de paie le sont. D'où une table dédiée plutôt qu'un drapeau sur la
+    fiche fournisseur : la liste des sous-traitants est un DOCUMENT que l'on
+    produit à l'autorité, avec ses finalités, sa localisation de données et
+    ses clauses.
+
+    Deux références TEXTE, toutes deux facultatives : le fournisseur
+    (``stock.Fournisseur`` — tous les sous-traitants ne sont pas des
+    fournisseurs référencés) et le questionnaire de conformité
+    (``grc.QuestionnaireFournisseur``, NTGRC22) qui porte la diligence faite.
+    """
+
+    RISQUE_FAIBLE = 'faible'
+    RISQUE_MOYEN = 'moyen'
+    RISQUE_ELEVE = 'eleve'
+    RISQUE_CHOICES = [
+        (RISQUE_FAIBLE, 'Faible'),
+        (RISQUE_MOYEN, 'Moyen'),
+        (RISQUE_ELEVE, 'Élevé'),
+    ]
+
+    nom = models.CharField('Nom', max_length=200)
+    fournisseur_ref = models.CharField(
+        'Fournisseur', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du stock.Fournisseur (string-FK), '
+                  'quand le sous-traitant est aussi un fournisseur référencé.')
+    finalites = models.JSONField(
+        'Finalités', default=list, blank=True,
+        help_text='Ce pour quoi il traite les données POUR NOUS — ex. '
+                  '["hébergement", "paie"].')
+    categories_donnees = models.JSONField(
+        'Catégories de données', default=list, blank=True)
+    localisation_donnees = models.CharField(
+        'Localisation des données', max_length=200, blank=True, default='',
+        help_text='Pays/région où les données sont effectivement stockées.')
+    clause_signee = models.BooleanField(
+        'Clause de sous-traitance signée', default=False)
+    date_clause = models.DateField(
+        'Date de la clause', null=True, blank=True)
+    questionnaire_ref = models.CharField(
+        'Questionnaire de conformité', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du grc.QuestionnaireFournisseur '
+                  '(string-FK).')
+    niveau_risque = models.CharField(
+        'Niveau de risque', max_length=8, choices=RISQUE_CHOICES,
+        default=RISQUE_MOYEN)
+
+    class Meta:
+        verbose_name = 'Sous-traitant (RGPD)'
+        verbose_name_plural = 'Sous-traitants (RGPD / art. 28)'
+        ordering = ['nom', 'id']
+        indexes = [
+            models.Index(fields=['company', 'clause_signee'],
+                         name='grc_soustraitant_co_cla_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'clause signée' if self.clause_signee else 'SANS clause'
+        return f'{self.nom} ({etat})'

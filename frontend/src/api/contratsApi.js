@@ -35,6 +35,12 @@ const contratsApi = {
   // par zéro gardée) ; 400 si `debut` postérieur à `fin`.
   getMetriquesSaas: (params) =>
     api.get('/contrats/contrats/metriques-saas/', { params }),
+  // NTDOC6 — déviations de clauses OBLIGATOIRES (lecture seule). La liste
+  // alimente la carte « Déviations » du tableau de bord ; le détail d'un
+  // contrat rend le diff bibliothèque ↔ texte surchargé.
+  getDeviations: () => api.get('/contrats/contrats/deviations/'),
+  getDeviationsContrat: (id) =>
+    api.get(`/contrats/contrats/${id}/deviations/`),
   campagneRevision: (data) =>
     api.post('/contrats/contrats/campagne-revision/', data),
   campagneRevisionRollback: (data) =>

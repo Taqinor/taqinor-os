@@ -142,6 +142,18 @@ const PERMISSION_GROUPS = [
       { code: 'records_scope_sous_arbre', label: 'Limiter à mon sous-arbre' },
     ],
   },
+  {
+    // NTUX31 — permissions fines sur les vues sauvegardées et la corbeille
+    // transverse (NTUX1/2/7), en plus du palier grossier hérité déjà en place.
+    label: 'UX — vues & corbeille',
+    codes: [
+      { code: 'ux_vue_partager_equipe', label: "Partager une vue à l'équipe" },
+      { code: 'ux_vue_definir_defaut_role', label: 'Définir une vue par défaut de rôle' },
+      { code: 'ux_corbeille_consulter', label: 'Consulter la corbeille' },
+      { code: 'ux_corbeille_restaurer', label: 'Restaurer depuis la corbeille' },
+      { code: 'ux_edition_masse_executer', label: 'Exécuter une édition en masse' },
+    ],
+  },
 ]
 
 const EMPTY_FORM = { nom: '', permissions: [] }

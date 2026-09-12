@@ -69,6 +69,74 @@ test('formatDateTime: variante long= « 18 juin 2026, 14:05 »', () => {
   assert.equal(formatDateTime(null, { long: true }), '—')
 })
 
+// NTI18N10 — `timeZone` optionnel : omis, comportement historique inchangé
+// (fuseau de l'environnement d'exécution) ; fourni, l'heure affichée suit
+// EXPLICITEMENT le fuseau demandé (fuseau de la société), déterministe quel
+// que soit le fuseau de la machine qui exécute ce test.
+test('formatDateTime: timeZone optionnel fait bien basculer le rendu', () => {
+  const iso = '2026-06-18T14:05:00Z'
+  // Africa/Dakar est TOUJOURS UTC+0 (jamais de DST, cf. l'énoncé NTI18N10) :
+  // l'heure locale Dakar est donc identique à l'heure UTC de l'ISO ci-dessus.
+  assert.match(
+    formatDateTime(iso, { timeZone: 'Africa/Dakar' }), /18\/06\/2026 14:05/)
+  // Un fuseau clairement différent (Asia/Tokyo, UTC+9 fixe, jamais de DST)
+  // prouve que l'option change réellement le rendu plutôt que de l'ignorer.
+  assert.match(
+    formatDateTime(iso, { timeZone: 'Asia/Tokyo' }), /18\/06\/2026 23:05/)
+})
+
+test('formatDate: timeZone optionnel peut faire basculer le jour calendaire', () => {
+  // Juste avant minuit UTC : en Asia/Tokyo (UTC+9) c'est déjà le lendemain,
+  // alors qu'en Africa/Dakar (UTC+0) c'est encore le même jour.
+  const iso = '2026-06-18T23:30:00Z'
+  assert.equal(formatDate(iso, { timeZone: 'Asia/Tokyo' }), '19/06/2026')
+  assert.equal(formatDate(iso, { timeZone: 'Africa/Dakar' }), '18/06/2026')
+})
+
+// NTI18N11 — `locale` optionnel sur formatNumber/formatMAD/formatPercent/
+// formatDate/formatDateTime : OMIS, comportement FR historique verrouillé
+// (déjà couvert par tous les tests ci-dessus, qui n'y passent jamais cette
+// option) ; FOURNI, reformate selon la locale d'INTERFACE ciblée (fr/en/ar),
+// immédiatement (Intl est synchrone — critère d'acceptation littéral).
+test("NTI18N11 — sans `locale`, le comportement FR par défaut est BYTE-IDENTIQUE", () => {
+  assert.equal(norm(formatNumber(1234567)), norm(formatNumber(1234567, { locale: undefined })))
+  assert.equal(formatDate('2026-06-18'), formatDate('2026-06-18', {}))
+  assert.equal(norm(formatMAD(1234.5)), norm(formatMAD(1234.5, {})))
+})
+
+test('NTI18N11 — formatNumber : virgule milliers + point décimal en `en`, espace + virgule en `fr`', () => {
+  assert.equal(norm(formatNumber(1234567.89, { locale: 'fr' })), '1 234 567,89')
+  assert.equal(formatNumber(1234567.89, { locale: 'en' }), '1,234,567.89')
+})
+
+test('NTI18N11 — formatNumber : chiffres OCCIDENTAUX en `ar` (jamais arabo-indiens par défaut)', () => {
+  const rendu = formatNumber(1234, { locale: 'ar' })
+  assert.match(rendu, /^[0-9,.\s  ]+$/, `attendu des chiffres occidentaux, reçu « ${rendu} »`)
+  assert.doesNotMatch(rendu, /[٠-٩]/, 'aucun chiffre arabo-indien (U+0660-0669) par défaut')
+})
+
+test('NTI18N11 — formatMAD/formatPercent respectent aussi `locale` (séparateurs, jamais le suffixe)', () => {
+  assert.equal(formatMAD(1234.5, { locale: 'en' }), '1,234.50 MAD')
+  assert.equal(formatPercent(19, { locale: 'en' }), '19 %')
+})
+
+test('NTI18N11 — formatDate : mm/dd/yyyy en `en`, jj/mm/aaaa en `fr` (même valeur)', () => {
+  assert.equal(formatDate('2026-06-18', { locale: 'fr' }), '18/06/2026')
+  assert.equal(formatDate('2026-06-18', { locale: 'en' }), '06/18/2026')
+})
+
+test('NTI18N11 — formatDateTime : reformate montants ET dates selon `locale`, sans rien recharger', () => {
+  const iso = '2026-06-18T14:05:00Z'
+  // Rendu synchrone (aucune promesse/attente) : la « bascule immédiate » du
+  // critère d'acceptation est structurelle (Intl), pas seulement observée ici.
+  const fr = formatDateTime(iso, { locale: 'fr', timeZone: 'UTC' })
+  const en = formatDateTime(iso, { locale: 'en', timeZone: 'UTC' })
+  assert.equal(fr, '18/06/2026 14:05')
+  // en-US : ordre mm/dd/yyyy + horloge 12 h AM/PM (convention Intl 'en-US'
+  // par défaut pour `hour: '2-digit'`, jamais forcée manuellement ici).
+  assert.equal(en, '06/18/2026, 02:05 PM')
+})
+
 // VX30 — timeAgo() extrait de TicketsPage.jsx en util partagé (bandeau de
 // fraîcheur du mur de flotte + chatter tickets).
 test('timeAgo: instant / minutes / heures / repli date', () => {

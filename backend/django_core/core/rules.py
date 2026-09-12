@@ -225,6 +225,51 @@ def validate_condition_group(group: Any, *, _path: str = 'root') -> list[str]:
     return errors
 
 
+# NTEXT29 — catalogue DOCUMENTÉ (libellé FR + exemple) des opérateurs de
+# FEUILLE ci-dessus, socle serveur d'un éditeur de conditions no-code
+# réutilisable (partagé par XPLT15 — conditions de champ custom, NTEXT5 —
+# branches d'automatisation, NTEXT21 — condition d'onglet). Généré à la MAIN
+# à partir de ``LEAF_OPERATORS`` : aucun changement de l'évaluateur, juste sa
+# description. Un opérateur non listé ici n'est jamais accepté par
+# ``validate_condition_group``.
+OPERATEURS_CATALOGUE = [
+    {'operateur': 'eq', 'symbole': '=', 'libelle': 'Égal à',
+     'exemple': "statut = 'accepte'"},
+    {'operateur': 'ne', 'symbole': '≠', 'libelle': 'Différent de',
+     'exemple': "statut ≠ 'refuse'"},
+    {'operateur': 'gt', 'symbole': '>', 'libelle': 'Supérieur à',
+     'exemple': 'montant > 1000'},
+    {'operateur': 'gte', 'symbole': '≥', 'libelle': 'Supérieur ou égal à',
+     'exemple': 'montant ≥ 1000'},
+    {'operateur': 'lt', 'symbole': '<', 'libelle': 'Inférieur à',
+     'exemple': 'montant < 1000'},
+    {'operateur': 'lte', 'symbole': '≤', 'libelle': 'Inférieur ou égal à',
+     'exemple': 'montant ≤ 1000'},
+    {'operateur': 'in', 'symbole': 'dans', 'libelle': 'Valeur dans une liste',
+     'exemple': "priorite dans ['haute', 'urgente']"},
+    {'operateur': 'not_in', 'symbole': 'pas dans',
+     'libelle': "Valeur absente d'une liste",
+     'exemple': "priorite pas dans ['basse']"},
+    {'operateur': 'contains', 'symbole': 'contient',
+     'libelle': 'Contient (texte ou liste)',
+     'exemple': "tags contient 'urgent'"},
+    {'operateur': 'startswith', 'symbole': 'commence par',
+     'libelle': 'Le texte commence par',
+     'exemple': "reference commence par 'DEV-'"},
+    {'operateur': 'exists', 'symbole': 'vide / rempli',
+     'libelle': 'Présence du champ (rempli ou vide)',
+     'exemple': 'relance_date vide'},
+]
+
+
+def catalogue_operateurs():
+    """NTEXT29 — copie du catalogue documenté des opérateurs de feuille.
+
+    Endpoint : ``GET core/regles/operateurs/``. N'expose QUE ce qui est
+    listé ici — jamais un opérateur hors de ``LEAF_OPERATORS``."""
+    return [dict(o) for o in OPERATEURS_CATALOGUE]
+
+
 @dataclass
 class ActionStep:
     """Une action à exécuter, dans l'ordre, par l'appelant.

@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import CustomFieldDef, CustomObjectDef, CustomRecord
+from .models import (
+    CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
+)
 
 # XPLT15 — clés reconnues du JSON `conditions` (visible/requis/lecture seule).
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
@@ -17,11 +19,24 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         model = CustomFieldDef
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
                   'obligatoire', 'visible_liste', 'ordre', 'actif',
-                  'relation_module', 'conditions', 'ia_prompt', 'verrouille']
+                  'relation_module', 'conditions', 'ia_prompt', 'verrouille',
+                  'formule', 'rollup_config']
         # NTEXT38 — le verrou ne se pose/retire QUE par les actions dédiées
         # ``verrouiller``/``deverrouiller`` (auditées) : un PATCH ordinaire ne
         # doit jamais pouvoir le retirer en passant.
         read_only_fields = ['verrouille']
+
+    def to_representation(self, instance):
+        # NTEXT9 — expose le niveau (masque/lecture/edition) applicable au
+        # DEMANDEUR courant, pour que le générateur de formulaire (frontend)
+        # désactive/masque le champ sans second appel. Absent de contexte
+        # (pas de request/user) ⇒ 'edition', comportement actuel inchangé.
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        tier = getattr(getattr(request, 'user', None), 'menu_tier', None)
+        from .services import niveau_pour_role
+        rep['niveau_role'] = niveau_pour_role(instance, tier)
+        return rep
 
     def validate_module(self, value):
         from .models import CustomFieldDef as _CFD
@@ -96,6 +111,27 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'code': 'Code non modifiable : des enregistrements '
                              'portent déjà ce champ.'})
+
+        # NTEXT1 — un champ CALCULÉ exige une formule sûre, jamais saisie :
+        # validée contre les codes des champs FRÈRES (même société+module),
+        # et rejetée si elle référence un placeholder interdit (prix_achat…).
+        if type_ == CustomFieldDef.FieldType.FORMULA:
+            formule = attrs.get('formule', getattr(instance, 'formule', ''))
+            module_value = attrs.get(
+                'module', getattr(instance, 'module', None))
+            request = self.context.get('request')
+            company = getattr(instance, 'company', None) or getattr(
+                getattr(request, 'user', None), 'company', None)
+            siblings_qs = CustomFieldDef.objects.filter(
+                company=company, module=module_value)
+            if instance is not None:
+                siblings_qs = siblings_qs.exclude(pk=instance.pk)
+            sibling_codes = list(
+                siblings_qs.values_list('code', flat=True))
+            from .services import valider_formule_definition
+            ok, erreur = valider_formule_definition(formule, sibling_codes)
+            if not ok:
+                raise serializers.ValidationError({'formule': erreur})
 
         # XPLT15 — valide la STRUCTURE des arbres de conditions à la
         # définition (jamais évaluée ici — juste refusée si mal formée).
@@ -177,6 +213,13 @@ def validate_custom_data(module, company, data):
         company=company, module=module, actif=True)}
     clean = {}
     for code, d in defs.items():
+        # NTEXT1/NTEXT28 — un champ CALCULÉ (FORMULA/ROLLUP) n'est JAMAIS
+        # saisi : toute valeur soumise sous son code est ignorée (jamais
+        # persistée), la vraie valeur se calcule à la LECTURE (cf.
+        # `services.calculer_champs_formule`/`calculer_champs_rollup`).
+        if d.type in (CustomFieldDef.FieldType.FORMULA,
+                      CustomFieldDef.FieldType.ROLLUP):
+            continue
         val = data.get(code)
         if val in (None, ''):
             required = d.obligatoire
@@ -285,6 +328,35 @@ def _validate_fichier_value(field_def, val):
     raise ValidationError({field_def.code: 'Fichier attendu.'})
 
 
+class FieldRolePermissionSerializer(serializers.ModelSerializer):
+    """NTEXT9 — permission de champ par palier de rôle (admin)."""
+
+    # SCA4 — le socle ``TenantModel`` horodate en ``created_at``/
+    # ``updated_at`` ; l'API expose ``date_creation``/``date_modification``
+    # (convention de l'app), jamais deux noms pour la même donnée.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+    date_modification = serializers.DateTimeField(
+        source='updated_at', read_only=True)
+
+    class Meta:
+        model = FieldRolePermission
+        fields = ['id', 'field_def', 'role_tier', 'niveau',
+                  'date_creation', 'date_modification']
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        field_def = attrs.get(
+            'field_def', getattr(self.instance, 'field_def', None))
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if field_def is not None and company is not None \
+                and field_def.company_id != company.id:
+            raise serializers.ValidationError(
+                {'field_def': 'Champ introuvable pour votre société.'})
+        return attrs
+
+
 # --- XPLT16 — objets personnalisés no-code ----------------------------------
 
 class CustomObjectDefSerializer(serializers.ModelSerializer):
@@ -314,3 +386,20 @@ class CustomRecordSerializer(serializers.ModelSerializer):
         if objet is None or company is None:
             return value
         return validate_custom_data(objet.field_module, company, value)
+
+    def to_representation(self, instance):
+        # NTEXT1 — les champs FORMULA se calculent à la LECTURE et se
+        # fusionnent dans `data` pour l'API, SANS jamais être persistés
+        # (`instance.data` en base ne les porte pas — cf. `validate_data`,
+        # qui ne nettoie que les définitions non-FORMULA soumises).
+        # NTEXT28 — même principe pour les champs ROLLUP, agrégés sur CET
+        # enregistrement (son propre id = la cible de `cle_liaison`).
+        rep = super().to_representation(instance)
+        from .services import calculer_champs_formule, calculer_champs_rollup
+        calcules = calculer_champs_formule(
+            instance.objet.field_module, instance.company, instance.data)
+        calcules.update(calculer_champs_rollup(
+            instance.objet.field_module, instance.company, instance.pk))
+        if calcules:
+            rep['data'] = {**rep.get('data', {}), **calcules}
+        return rep

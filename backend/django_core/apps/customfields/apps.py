@@ -24,3 +24,10 @@ class CustomfieldsConfig(AppConfig):
         # du module) pour éviter tout effet de bord au chargement des apps.
         from . import registry
         registry.register_from_platform_manifests()
+        # NTEXT21 — contenu d'un onglet custom 'objet_custom_lie' (bouton/
+        # onglet UI déclaratifs, core.ui_extensions) : même patron de
+        # registre que registry.py ci-dessus, mais pour ``core`` (aucune app
+        # métier n'y est importée).
+        from core.ui_extensions import register_onglet_resolver
+        from .services import resoudre_objet_custom_lie
+        register_onglet_resolver('objet_custom_lie', resoudre_objet_custom_lie)

@@ -327,11 +327,38 @@ app.conf.beat_schedule = {
         'task': 'dataquality.evaluer_qualite_donnees',
         'schedule': crontab(hour=5, minute=45),
     },
+    # NTDATA42 — signale les points aberrants des séries de métriques nommées
+    # (z-score sur `core.anomaly` → `core.AnomalyFlag`). HEBDOMADAIRE : les
+    # séries sont MENSUELLES, un balayage quotidien re-scorerait les mêmes
+    # points douze fois par mois pour rien. Aucun seuil à configurer, aucune
+    # notification — un AnomalyFlag se consulte.
+    'semantic-detecter-anomalies-metriques': {
+        'task': 'semantic.detecter_anomalies_metriques',
+        'schedule': crontab(hour=4, minute=45, day_of_week=1),
+    },
+    # NTDATA24 — recalcule les golden records (fiches consolidées) de chaque
+    # société. HEBDOMADAIRE : la passe relit toutes les fiches des trois
+    # entités et rejoue la détection de doublons, et l'identité consolidée d'un
+    # client ne change pas d'un jour à l'autre. Dimanche très tôt (créneau
+    # creux, avant la semaine) ; aucune source n'est mutée — c'est une VUE.
+    'dataquality-consolider-golden-records': {
+        'task': 'dataquality.consolider_golden_records',
+        'schedule': crontab(hour=4, minute=15, day_of_week=0),
+    },
     # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
     # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
     'reporting-controle-integrite-hebdo': {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
+    },
+    # NTGRC34 — rappels d'échéances GRC (DSR, violations 72 h, revues de
+    # risque, contrôles à tester, politiques non attestées). Quotidien, tôt :
+    # le DPO doit voir ses échéances AVANT sa journée, pas après. Idempotent
+    # (une notification par échéance et par jour), donc un double tick ne
+    # produit jamais de doublon.
+    'grc-rappels-echeances': {
+        'task': 'grc.rappels_grc',
+        'schedule': crontab(hour=6, minute=30),
     },
     # YSUBS1 — facturation récurrente auto (échéanciers contrats +
     # maintenance SAV dus), quotidien (heure creuse).
@@ -457,6 +484,22 @@ app.conf.beat_schedule = {
         'task': 'rh.planifier_appreciations',
         'schedule': crontab(hour=4, minute=10, day_of_week=1),
     },
+    # NTHCM19 — relance des parcours de formation OBLIGATOIRES non terminés
+    # au-delà du délai société (ReglageRH.rappel_parcours_apres_jours, défaut
+    # 14 j), quotidien. Dédoublonné par jour et par parcours : deux passages
+    # le même jour ne relancent jamais deux fois la même personne.
+    'rh-rappels-parcours-formation': {
+        'task': 'rh.rappels_parcours_formation',
+        'schedule': crontab(hour=8, minute=10),
+    },
+    # NTHCM25 — rappel quotidien des tâches d'intégration/sortie ASSIGNÉES et
+    # echues (la revocation d'acces IT en tete des risques). Dedoublonne par
+    # jour et par tache : deux passages le meme jour ne relancent jamais deux
+    # fois le meme acteur.
+    'rh-notifier-taches-integration-sortie': {
+        'task': 'rh.notifier_taches_integration_sortie',
+        'schedule': crontab(hour=8, minute=20),
+    },
     # YSERV5 — génération automatique des visites préventives dues (opt-in
     # par société via SavSlaSettings.generation_auto_visites), quotidien.
     'sav-generer-visites-dues-quotidien': {
@@ -466,18 +509,37 @@ app.conf.beat_schedule = {
     # WIR30 — pré-alerte SLA (J-x) + escalade à la violation (XSAV6,
     # apps/sav/views.py scan_sla_pre_alerts_and_escalations), bâtie/testée
     # mais jamais planifiée jusqu'ici. DISTINCT de scan_sla_breaches
-    # (planifiée séparément par NTSRV38). OFF par défaut par société
+    # (planifiée séparément juste en dessous). OFF par défaut par société
     # (sla_warning_days=0, escalade_activee=False) : no-op tant qu'aucun
     # réglage n'est activé.
+    # NTSRV38 — cadence relevée de quotidienne à TOUTES LES 15 MINUTES : les
+    # paliers d'escalade multi-niveaux (NTSRV12) vivent dans cette fonction,
+    # et un palier « J+1 → direction » n'a aucun sens s'il n'est rescanné
+    # qu'une fois par jour. Le balayage est idempotent par ticket et deux
+    # exécutions concurrentes sont exclues par un verrou (apps/sav/tasks.py).
     'sav-scan-sla-pre-alerts-and-escalations': {
         'task': 'sav.scan_sla_pre_alerts_and_escalations_quotidien',
-        'schedule': crontab(hour=7, minute=42),
+        'schedule': crontab(minute='*/15'),
+    },
+    # NTSRV38 — violation SLA (FG81, apps/sav/views.py scan_sla_breaches) :
+    # bâtie et testée mais SANS aucune entrée beat jusqu'ici (elle ne tournait
+    # qu'à la demande). Décalée de 7 minutes sur le quart d'heure pour ne pas
+    # balayer les tickets en même temps que la tâche ci-dessus. OFF par
+    # société tant que sla_breach_enabled est False (défaut).
+    'sav-scan-sla-breaches-quart-heure': {
+        'task': 'sav.scan_sla_breaches_quart_heure',
+        'schedule': crontab(minute='7,22,37,52'),
     },
     # XFSM21 — météo J+3 sur les poses planifiées (Open-Meteo, gratuit,
     # sans clé), quotidien, heure creuse matinale.
     'installations-meteo-planning-j3': {
         'task': 'installations.meteo_planning_j3',
         'schedule': crontab(hour=6, minute=30),
+    },
+    # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
+    'installations-relancer-rfq-en-attente': {
+        'task': 'installations.relancer_rfq_en_attente',
+        'schedule': crontab(hour=7, minute=15),
     },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
@@ -524,6 +586,12 @@ app.conf.beat_schedule = {
     'stock-notifier-documents-fournisseur-expirants': {
         'task': 'stock.notifier_documents_fournisseur_expirants',
         'schedule': crontab(hour=6, minute=37),
+    },
+    # NTP2P34 — recalcule quotidiennement le score de risque (NTP2P8) de
+    # tous les fournisseurs actifs ; calcul pur, aucun cache à invalider.
+    'stock-recompute-scores-risque': {
+        'task': 'stock.recompute_scores_risque',
+        'schedule': crontab(hour=6, minute=45),
     },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
@@ -1000,6 +1068,15 @@ app.conf.beat_schedule = {
         'task': 'core.escalate_workflow_sla',
         'schedule': crontab(minute=20),
     },
+    # NTDATA26 — exécute les extraits planifiés DUS (`ScheduledExport.cron`).
+    # HORAIRE : le grain de planification des extraits EST l'heure (le champ
+    # minute du cron est accepté puis ignoré, comme pour les abonnements de
+    # rapport). Idempotent : un extrait déjà passé dans l'heure courante n'est
+    # jamais renvoyé. Destination non configurée = no-op propre horodaté.
+    'core-executer-exports-planifies': {
+        'task': 'core.executer_exports_planifies',
+        'schedule': crontab(minute=35),
+    },
     # WIR25 (XACC8) — génère les écritures dues des abonnements récurrents
     # (loyers/abonnements) en brouillon, quotidien, heure creuse. Idempotent
     # par période (rejouer le même jour ne crée rien) ; no-op sans abonnement.
@@ -1194,6 +1271,67 @@ app.conf.beat_schedule = {
     'btp-chantier-rapport-photo-hebdo': {
         'task': 'btp_chantier.rapport_photo_hebdo',
         'schedule': crontab(day_of_week=1, hour=7, minute=35),
+    },
+    # NTPAY25 — rappel PROACTIF des échéances déclaratives de paie à J-7/J-3/
+    # J-0. `notifier_echeances_en_retard` (XPAI6) ne prévenait qu'APRÈS la
+    # date limite : on découvrait le retard une fois dépassé. Tôt le matin,
+    # avant la journée de travail. Idempotent par échéance ET par jour-seuil
+    # (marqueur de chatter `records`) — voir `apps/paie/tasks.py`.
+    'paie-rappeler-echeances-declaratives': {
+        'task': 'paie.rappeler_echeances_declaratives',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # NTPAY26 — recalcul des cumuls annuels EN DÉRIVE, le 2 du mois la nuit
+    # (J+1 de la clôture mensuelle : les bulletins de la veille sont figés).
+    # Ne touche QUE les cumuls divergents, avec une ligne d'ajustement tracée.
+    'paie-recalculer-cumuls-annuels': {
+        'task': 'paie.recalculer_cumuls_annuels',
+        'schedule': crontab(day_of_month=2, hour=2, minute=20),
+    },
+    # NTCON27 — archivage MENSUEL (1er du mois) des réserves levées depuis
+    # plus de N mois (réglage par société, défaut 24). Drapeau, jamais une
+    # suppression : la signature de levée reste une preuve opposable.
+    'btp-chantier-archiver-reserves-levees': {
+        'task': 'btp_chantier.archiver_reserves_levees',
+        'schedule': crontab(day_of_month=1, hour=3, minute=40),
+    },
+    # NTCON28 — recalcul QUOTIDIEN du cache d'exposition aux pénalités par lot
+    # (le cockpit NTCON21 lit ce cache au lieu de relancer le calcul NTCON15 à
+    # chaque GET). Tôt le matin, avant les alertes RFI.
+    'btp-chantier-recalculer-penalites-lots': {
+        'task': 'btp_chantier.recalculer_penalites_lots',
+        'schedule': crontab(hour=4, minute=10),
+    },
+    # NTCON37 — relance QUOTIDIENNE des visas en attente de revue dont
+    # l'échéance est dépassée (revuseur + son manager). Juste après les
+    # alertes RFI, même schéma qu'NTCON4.
+    'btp-chantier-alertes-visas-en-attente': {
+        'task': 'btp_chantier.alertes_visas_en_attente',
+        'schedule': crontab(hour=7, minute=31),
+    },
+    # NTOBS1 — rafraîchit les composants publics de la page de statut depuis
+    # `core.health.check_services()` (best-effort, jamais bloquant). Toutes
+    # les 5 minutes — la Done criteria de NTOBS1 exige qu'un composant marqué
+    # `degraded` apparaisse publiquement en ≤5 min.
+    'statuspage-rafraichir-composants': {
+        'task': 'statuspage.rafraichir_composants',
+        'schedule': crontab(minute='*/5'),
+    },
+    # NTOBS3 — snapshot SLA mensuel (uptime + P95) de toutes les sociétés,
+    # le 1er du mois (le mois qui vient de se terminer).
+    'core-generer-sla-mensuel': {
+        'task': 'core.generer_sla_mensuel',
+        'schedule': crontab(day_of_month=1, hour=3, minute=15),
+    },
+    # NTOBS9 — notifie 24h/1h avant une fenêtre de maintenance planifiée.
+    'core-notifier-fenetres-maintenance': {
+        'task': 'core.notifier_fenetres_maintenance',
+        'schedule': crontab(minute='*/15'),
+    },
+    # NTOBS13 — notifie chaque société franchissant 80%/100% d'un quota mesuré.
+    'core-notifier-seuils-usage': {
+        'task': 'core.notifier_seuils_usage',
+        'schedule': crontab(hour=7, minute=10),
     },
 }
 

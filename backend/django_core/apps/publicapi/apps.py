@@ -27,6 +27,17 @@ class PublicApiConfig(AppConfig):
         # un import direct `apps.scm` -> `apps.publicapi`.
         from . import scm_event_receivers
         scm_event_receivers.connect()
+        # NTCON31 — abonnés aux évènements BTP/EPC du bus `core.events`
+        # (`btp_reserve_levee`/`btp_rfi_repondu`/`btp_visa_approuve`/
+        # `btp_dgd_finalise`), jamais un import direct `apps.btp_chantier`
+        # -> `apps.publicapi`.
+        from . import btp_event_receivers
+        btp_event_receivers.connect()
+        # NTUX32 — abonnés aux évènements des objets UX du bus `core.events`
+        # (`saved_view_shared`/`record_restored`), jamais un import direct
+        # `apps.uxviews`/`apps.trash` -> `apps.publicapi`.
+        from . import uxviews_event_receivers
+        uxviews_event_receivers.connect()
         # YOPSB11 — archivage par lots du journal WebhookDelivery (registre
         # partagé YOPSB10). Fenêtre founder-configurable via
         # WEBHOOK_DELIVERY_ARCHIVE_DAYS (défaut 0 = OFF, comportement inchangé).
@@ -42,4 +53,14 @@ class PublicApiConfig(AppConfig):
                              DEFAULT_WEBHOOK_DELIVERY_ARCHIVE_DAYS),
                 apply_,
             ),
+        )
+        # NTAPI17 — rétention du flux d'évènements, bornée PAR SOCIÉTÉ par son
+        # plan (`ApiUsagePlan.retention_livraisons_jours`, NTAPI7) : le flux est
+        # le même matériau qu'une livraison webhook et suit donc la même borne,
+        # jamais une seconde notion de rétention à régler ailleurs. Société sans
+        # plan → `API_EVENT_RETENTION_DAYS` (défaut 0 = OFF, rien n'est purgé).
+        from .events_feed import purger_evenements
+        register_retention_policy(
+            'publicapi_api_event_retention',
+            lambda now, apply_: purger_evenements(now, apply_),
         )

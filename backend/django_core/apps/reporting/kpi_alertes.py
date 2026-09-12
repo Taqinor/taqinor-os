@@ -49,19 +49,24 @@ class KpiAlerteSerializer(serializers.ModelSerializer):
     # « catalogue »), pour que l'écran n'ait pas à re-interroger semantic.
     metric_cle = serializers.CharField(
         source='metric_definition.cle', read_only=True, default='')
+    # NTDATA41 — libellé FR du mode de détection (seuil / variation / anomalie).
+    mode_detection_label = serializers.CharField(
+        source='get_mode_detection_display', read_only=True)
 
     class Meta:
         model = KpiAlerte
         # company posée côté serveur — jamais lue du corps.
         fields = [
             'id', 'nom', 'source', 'kpi', 'kpi_label', 'metric_definition',
-            'metric_cle', 'operateur', 'operateur_label',
+            'metric_cle', 'mode_detection', 'mode_detection_label',
+            'operateur', 'operateur_label',
             'seuil', 'destinataire_role', 'destinataires_utilisateurs',
             'actif', 'deja_notifie', 'derniere_valeur',
             'derniere_evaluation_le', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'kpi_label', 'metric_cle', 'operateur_label',
+            'id', 'kpi_label', 'metric_cle', 'mode_detection_label',
+            'operateur_label',
             'deja_notifie', 'derniere_valeur', 'derniere_evaluation_le',
             'created_at', 'updated_at',
         ]
@@ -93,6 +98,18 @@ class KpiAlerteSerializer(serializers.ModelSerializer):
         elif not kpi:
             raise serializers.ValidationError({
                 'kpi': 'Choisissez le KPI à surveiller.'})
+        # NTDATA41 — même règle que `KpiAlerte.clean()`, portée au CHAMP.
+        mode = attrs.get('mode_detection',
+                         getattr(instance, 'mode_detection', None)
+                         or KpiAlerte.ModeDetection.SEUIL)
+        if (mode != KpiAlerte.ModeDetection.SEUIL
+                and source != KpiAlerte.Source.METRIQUE):
+            raise serializers.ValidationError({
+                'mode_detection':
+                    'La détection « %s » compare une trajectoire : elle exige '
+                    'une métrique nommée (les KPI du catalogue ne rendent que '
+                    'leur valeur du jour).'
+                    % dict(KpiAlerte.ModeDetection.choices)[mode]})
         return attrs
 
 
@@ -162,6 +179,23 @@ def _compute_taux_service_scm(company):
     return Decimal(str(taux)) if taux is not None else None
 
 
+def _kpis_btp(company):
+    """NTCON34 — les quatre KPI BTP en UN seul appel au sélecteur de
+    ``apps.btp_chantier`` (import paresseux — ``reporting`` reste un
+    satellite, aucun import de modèle métier)."""
+    from apps.btp_chantier.selectors import kpis_btp
+    return kpis_btp(company)
+
+
+def _compute_btp(company, cle):
+    """Extrait UNE des quatre valeurs. ``None`` (KPI ignoré, jamais un 0
+    trompeur) quand la société n'a aucun objet BTP de ce type."""
+    valeur = _kpis_btp(company).get(cle)
+    if valeur is None:
+        return None
+    return Decimal(str(valeur))
+
+
 def _kpis_juridiques(company, user):
     """NTJUR48 — les quatre KPI juridiques en UN seul appel au sélecteur de
     ``apps.juridique`` (import paresseux — ``reporting`` reste un satellite,
@@ -196,6 +230,12 @@ KPI_MODULE = {
     KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: 'juridique',
     KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: 'juridique',
     KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: 'juridique',
+    # NTCON34 — module `btp_chantier` éteint pour la société ⇒ dégradation
+    # propre (valeur None, aucune notification, tuile masquée).
+    KpiAlerte.Kpi.BTP_RESERVES_OUVERTES: 'btp_chantier',
+    KpiAlerte.Kpi.BTP_RFI_EN_RETARD: 'btp_chantier',
+    KpiAlerte.Kpi.BTP_VISAS_EN_ATTENTE: 'btp_chantier',
+    KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: 'btp_chantier',
 }
 
 
@@ -240,6 +280,17 @@ _KPI_COMPUTERS = {
     KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: lambda company, user:
         _compute_juridique(company, user,
                            'juridique_delai_moyen_resolution'),
+    # NTCON34 — les quatre KPI BTP (aucun ne dépend du `user` : ce sont des
+    # agrégats d'exécution de chantier, pas des données à confidentialité
+    # variable comme le juridique).
+    KpiAlerte.Kpi.BTP_RESERVES_OUVERTES: lambda company, user:
+        _compute_btp(company, 'btp_reserves_ouvertes'),
+    KpiAlerte.Kpi.BTP_RFI_EN_RETARD: lambda company, user:
+        _compute_btp(company, 'btp_rfi_en_retard'),
+    KpiAlerte.Kpi.BTP_VISAS_EN_ATTENTE: lambda company, user:
+        _compute_btp(company, 'btp_visas_en_attente'),
+    KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: lambda company, user:
+        _compute_btp(company, 'btp_penalites_cumulees_periode'),
 }
 
 
@@ -268,6 +319,64 @@ def _compute_metrique(alerte, user):
     if valeur is None:
         return None
     return Decimal(str(valeur))
+
+
+# ── NTDATA41 — détection sur la TRAJECTOIRE (variation / anomalie) ─────────
+#
+# Le mode `seuil` (défaut, et toutes les alertes existantes) compare la VALEUR
+# du jour. Les deux modes ajoutés comparent une DÉRIVÉE de la métrique :
+#
+#   * `variation` — le Δ % entre les DEUX DERNIÈRES PÉRIODES COMPLÈTES. La
+#     période EN COURS est exclue : le 3 du mois elle contient trois jours et
+#     afficherait mécaniquement une chute de ~90 %, donc une alerte tous les
+#     débuts de mois ;
+#   * `anomalie` — le z-score du DERNIER point face à sa propre série, via
+#     `core.anomaly.scan_for_outliers` (le scorer EXISTANT, jamais une seconde
+#     statistique). Le `seuil` est alors le nombre d'écarts-types.
+#
+# UNE DÉRIVÉE NON CALCULABLE NE DÉCLENCHE RIEN. Moins de deux périodes, une
+# période précédente à zéro (« +∞ % » n'est pas un nombre), une série trop
+# courte pour un z-score : la valeur rendue est `None`, donc aucun
+# franchissement — jamais un 0 qui ferait passer une absence de mesure pour une
+# stabilité.
+
+
+def _compute_variation(alerte, user):
+    """Δ % de la métrique entre les deux dernières périodes complètes."""
+    from apps.semantic import selectors as semantic_selectors
+
+    pourcentage, _courante, _precedente = semantic_selectors.variation_pct(
+        alerte.company, user, alerte.metric_definition.cle)
+    if pourcentage is None:
+        return None
+    return Decimal(str(round(pourcentage, 2)))
+
+
+def _compute_anomalie(alerte, user):
+    """|z-score| du DERNIER point de la série de la métrique.
+
+    Rend `None` — donc aucun franchissement — quand la série est trop courte
+    ou plate pour que `core.anomaly` se prononce : c'est exactement le
+    garde-fou anti-faux-positif du scorer, on ne le contourne pas.
+    """
+    from apps.semantic import selectors as semantic_selectors
+    from core.anomaly import scan_for_outliers
+
+    points = semantic_selectors.periodes_completes(
+        semantic_selectors.serie_temporelle(
+            alerte.company, user, alerte.metric_definition.cle))
+    if len(points) < 2:
+        return None
+    series = [{'id': index, 'value': point['valeur']}
+              for index, point in enumerate(points)]
+    dernier = len(points) - 1
+    # `z_threshold=0` : on veut le SCORE du dernier point, pas le verdict du
+    # scorer — c'est le `seuil` de l'alerte qui tranche, pas un seuil codé ici.
+    candidats = scan_for_outliers(series, z_threshold=0.0, min_points=2)
+    for candidat in candidats:
+        if candidat.subject_id == str(dernier):
+            return Decimal(str(round(abs(candidat.score), 4)))
+    return None
 
 
 def _resolve_representative_user(company):
@@ -319,7 +428,19 @@ def evaluate_kpi_alerte(alerte, *, now=None):
         return None, False, False
 
     try:
-        if est_metrique:
+        # NTDATA41 — le MODE décide de ce qui est comparé au seuil : la valeur
+        # du jour (défaut historique), sa variation, ou son écart à l'habitude.
+        mode = getattr(alerte, 'mode_detection', KpiAlerte.ModeDetection.SEUIL)
+        if mode == KpiAlerte.ModeDetection.VARIATION and est_metrique:
+            valeur = _compute_variation(alerte, user)
+        elif mode == KpiAlerte.ModeDetection.ANOMALIE and est_metrique:
+            valeur = _compute_anomalie(alerte, user)
+        elif mode != KpiAlerte.ModeDetection.SEUIL:
+            # Mode de trajectoire sur une source SANS historique : le modèle
+            # l'interdit à la création ; une alerte ancienne mal formée ne doit
+            # pas pour autant se déclencher sur un chiffre inventé.
+            valeur = None
+        elif est_metrique:
             valeur = _compute_metrique(alerte, user)
         else:
             valeur = computer(alerte.company, user)
@@ -345,6 +466,20 @@ def evaluate_kpi_alerte(alerte, *, now=None):
     return valeur, franchi, notifie
 
 
+def _libelle_surveille(alerte):
+    """Ce que l'alerte surveille, en clair — jamais une chaîne vide.
+
+    Source « catalogue » : le libellé du KPI. Source « métrique » : le libellé
+    de la définition (ou sa clé). Repli : le nom donné à l'alerte.
+    """
+    if alerte.source == KpiAlerte.Source.METRIQUE:
+        definition = alerte.metric_definition
+        if definition is not None:
+            return definition.libelle or definition.cle
+        return alerte.nom or 'métrique supprimée'
+    return alerte.get_kpi_display() or alerte.nom or 'KPI'
+
+
 def _notify_kpi_alerte(alerte, valeur):
     """Notifie les destinataires configurés (rôle legacy + utilisateurs
     précis). Réutilise ``apps.notifications.services.notify`` — best-effort,
@@ -352,10 +487,26 @@ def _notify_kpi_alerte(alerte, valeur):
     from apps.notifications.services import notify
     from apps.notifications.models import EventType
 
-    title = f'Alerte KPI : {alerte.get_kpi_display()}'
-    body = (f'{alerte.get_kpi_display()} a franchi le seuil '
-            f'({alerte.get_operateur_display()} {alerte.seuil}) : '
-            f'valeur actuelle {valeur}.')
+    # NTDATA41 — le message NOMME ce qui est surveillé et ce qui a été comparé.
+    # Une alerte de source « métrique » n'a pas de `kpi` : `get_kpi_display()`
+    # y rendait une chaîne VIDE (« Alerte KPI :  »), et les deux modes de
+    # trajectoire sont métrique-seulement — toutes leurs notifications auraient
+    # été anonymes.
+    sujet = _libelle_surveille(alerte)
+    mode = getattr(alerte, 'mode_detection', KpiAlerte.ModeDetection.SEUIL)
+    if mode == KpiAlerte.ModeDetection.VARIATION:
+        mesure = (f'sa variation vs la période précédente est de {valeur} % '
+                  f'(seuil : {alerte.get_operateur_display()} '
+                  f'{alerte.seuil} %)')
+    elif mode == KpiAlerte.ModeDetection.ANOMALIE:
+        mesure = (f"son écart à l'habitude est de {valeur} écart(s)-type(s) "
+                  f'(seuil : {alerte.get_operateur_display()} '
+                  f'{alerte.seuil})')
+    else:
+        mesure = (f'valeur actuelle {valeur} (seuil : '
+                  f'{alerte.get_operateur_display()} {alerte.seuil})')
+    title = f'Alerte KPI : {sujet}'
+    body = f'{sujet} — {mesure}.'
 
     recipients = list(alerte.destinataires_utilisateurs.all())
     if alerte.destinataire_role:

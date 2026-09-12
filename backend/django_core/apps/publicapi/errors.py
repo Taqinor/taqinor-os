@@ -116,8 +116,9 @@ def _type_for(code: str, status_code) -> str:
 
 
 def _doc_url(code: str) -> str:
-    # NTAPI4 (catalogue d'erreurs consultable) exposera `/api/public/v1/errors/`
-    # — l'ancre stable par code est déjà utilisable en avance de phase.
+    # NTAPI4 — `/api/public/v1/errors/` sert le catalogue consultable ; l'ancre
+    # par code y est garantie présente (test de cohérence dans les deux sens :
+    # `error_catalog.py` DÉRIVE ses codes de `_KNOWN_CODES` ci-dessus).
     return f'/api/public/v1/errors/#{code}'
 
 

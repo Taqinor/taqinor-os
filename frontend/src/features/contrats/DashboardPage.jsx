@@ -138,6 +138,9 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* NTDOC6 — déviations de clauses obligatoires. */}
+      {!loading && !error && <DeviationsCard />}
+
       {/* NTSUB12/WIR252 — métriques SaaS niveau investisseur. */}
       {!loading && !error && <MetriquesSaasCard />}
 
@@ -293,6 +296,94 @@ function MetriquesSaasCard() {
               </p>
             )}
           </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// NTDOC6 — carte « Déviations » : les contrats dont une clause déclarée
+// OBLIGATOIRE pour leur type (NTDOC5) a été éditée. Additive : elle s'ajoute
+// au tableau de bord existant sans en refondre aucune partie. Lecture seule ;
+// le détail (diff bibliothèque ↔ texte du contrat) s'ouvre à la demande.
+function DeviationsCard() {
+  const [lignes, setLignes] = useState([])
+  const [ouvert, setOuvert] = useState(null)
+  const [detail, setDetail] = useState(null)
+  const [err, setErr] = useState(null)
+
+  const charger = async () => {
+    try {
+      const r = await contratsApi.getDeviations()
+      setLignes(r.data?.results ?? [])
+    } catch {
+      setErr('Déviations indisponibles.')
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (lecture seule)
+    charger()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage
+
+  const ouvrir = async (contratId) => {
+    if (ouvert === contratId) { setOuvert(null); setDetail(null); return }
+    setOuvert(contratId)
+    setDetail(null)
+    try {
+      const r = await contratsApi.getDeviationsContrat(contratId)
+      setDetail(r.data)
+    } catch {
+      setDetail({ results: [] })
+    }
+  }
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold">
+        <AlertTriangle className="size-4 text-warning" aria-hidden="true" /> Déviations de clauses
+        {lignes.length > 0 && <Badge tone="warning">{lignes.length}</Badge>}
+      </h3>
+      {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+      {!err && lignes.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Aucune déviation — toutes les clauses obligatoires sont conformes à la bibliothèque.
+        </p>
+      ) : (
+        <SimpleTable
+          emptyText="Aucune déviation."
+          rows={lignes.slice(0, 8)}
+          columns={[
+            { header: 'Contrat', cell: (c) => c.reference || `#${c.contrat}` },
+            { header: 'Objet', cell: (c) => c.objet || '—' },
+            { header: 'Clauses déviantes', cell: (c) => <Badge tone="warning">{formatNumber(c.nb_deviations)}</Badge> },
+            {
+              header: '',
+              align: 'right',
+              cell: (c) => (
+                <Button size="sm" variant="outline" onClick={() => ouvrir(c.contrat)}>
+                  {ouvert === c.contrat ? 'Masquer' : 'Voir l’écart'}
+                </Button>
+              ),
+            },
+          ]}
+        />
+      )}
+      {ouvert != null && (
+        <div className="mt-4 flex flex-col gap-3">
+          {detail == null && <p className="text-sm text-muted-foreground">Chargement de l’écart…</p>}
+          {detail?.results?.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucun écart à afficher.</p>
+          )}
+          {(detail?.results ?? []).map((d) => (
+            <div key={d.clause_contrat} className="rounded-lg border bg-muted/30 p-3">
+              <p className="font-display text-sm font-semibold">{d.titre}</p>
+              <p className="text-xs text-muted-foreground">
+                +{formatNumber(d.lignes_ajoutees)} / −{formatNumber(d.lignes_supprimees)} ligne(s)
+              </p>
+              <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs">{d.diff}</pre>
+            </div>
+          ))}
         </div>
       )}
     </Card>

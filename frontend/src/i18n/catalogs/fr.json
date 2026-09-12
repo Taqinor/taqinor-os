@@ -162,5 +162,17 @@
   "client.langue_document.label": "Langue des documents",
   "client.langue_document.help": "Langue des factures et devis générés pour ce client.",
   "client.langue_document.fr": "Français",
-  "client.langue_document.ar": "Arabe"
+  "client.langue_document.ar": "Arabe",
+
+  "crm.cockpit.subtitle": "Pistes, clients, activités et carte commerciale",
+  "ventes.cockpit.subtitle": "Devis, bons de commande, facturation et relances",
+  "sav.cockpit.subtitle": "Tickets SAV, équipements et contrats de maintenance",
+  "stock.cockpit.title": "Tableau de bord entrepôt",
+  "stock.cockpit.subtitle": "Remplissage, vagues en retard, comptages dus, expéditions et péremptions.",
+  "chantiers.debourse.reserve": "Réservé aux responsables (donnée interne).",
+  "chantiers.approvisionnement.title": "Approvisionnement avancé",
+  "chantiers.approvisionnement.subtitle": "Seuils et approbations BCF, contrats-cadre, commandes d'appel, contrats de prix fournisseur et réceptions non facturées.",
+  "rh.demandes.title": "Guichet des demandes",
+  "compta.exports.title": "Où trouver mes exports",
+  "parametres.abonnements.section": "Facturation récurrente"
 }

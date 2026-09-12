@@ -1809,6 +1809,16 @@ class RegistreTraitement(TimestampedModel):
     date_recepisse = models.DateField(
         'Date de récépissé CNDP', null=True, blank=True)
     actif = models.BooleanField('Actif', default=True)
+    # NTGRC27 — drapeau de HAUT RISQUE (art. 35 RGPD / loi 09-08) : le
+    # traitement porte-t-il des données SENSIBLES (santé, biométrie, opinions,
+    # infractions…) ? C'est ce drapeau qui rend une analyse d'impact (AIPD)
+    # exigible. Défaut ``False`` : aucun traitement existant ne devient
+    # rétroactivement « à haut risque » — c'est une décision humaine, pas une
+    # migration.
+    donnees_sensibles = models.BooleanField(
+        'Données sensibles / haut risque', default=False,
+        help_text='Coché, le traitement exige une analyse d\'impact (AIPD) '
+                  'validée.')
 
     class Meta:
         verbose_name = 'Traitement CNDP'
@@ -2065,6 +2075,73 @@ class ApiUsageRecord(TimestampedModel):
     def __str__(self):
         return f'Usage clé {self.api_key_id} le {self.jour} ' \
                f'({self.nb_requetes} req.)'
+
+
+class ApiDeprecation(TimestampedModel):
+    """NTAPI2 — politique de dépréciation d'un endpoint de l'API publique.
+
+    Une ligne = « CE motif de chemin, sur CETTE version, est déprécié depuis
+    ``deprecated_at`` et cesse de fonctionner le ``sunset_at`` ». Le mixin DRF
+    ``publicapi.deprecation.ApiDeprecationHeadersMixin`` pose alors les en-têtes
+    RFC 8594 (``Deprecation: true``, ``Sunset: <date HTTP>``,
+    ``Link: <doc>; rel="deprecation"``) sur TOUTE réponse de cet endpoint.
+
+    ``company`` NULL = annonce GLOBALE (tous les tenants) ; renseignée = annonce
+    ciblée sur une société (ex. migration négociée avec un gros intégrateur).
+    C'est la seule raison pour laquelle ce modèle n'hérite pas de
+    ``TenantModel`` (qui impose une société obligatoire) : la portée globale est
+    le cas NOMINAL d'une dépréciation d'API publique. ``core`` reste fondation —
+    aucune référence à une app métier (le motif de chemin est une simple
+    chaîne, jamais une route importée).
+
+    ``endpoint_pattern`` est un motif de chemin style glob (``fnmatch``) comparé
+    au chemin COMPLET de la requête, ex. ``/api/public/v1/leads/*`` ou
+    ``/api/public/v1/produits/``. Jamais une expression régulière (une saisie
+    admin hostile ne doit pas pouvoir faire exploser le temps de réponse).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant (societe) — une annonce ciblée meurt avec sa société
+        null=True, blank=True,
+        related_name='api_deprecations', verbose_name='Société',
+        help_text='Vide = annonce globale (toutes les sociétés).')
+
+    version = models.CharField(
+        'Version', max_length=10, default='v1',
+        help_text="Version de l'API publique concernée (ex. « v1 »).")
+    endpoint_pattern = models.CharField(
+        'Motif de chemin', max_length=200,
+        help_text=(
+            'Motif glob comparé au chemin complet, ex. '
+            '« /api/public/v1/leads/* ».'))
+    deprecated_at = models.DateTimeField(
+        'Déprécié le',
+        help_text="Date d'annonce de la dépréciation.")
+    sunset_at = models.DateTimeField(
+        'Fin de vie le',
+        help_text="Date à laquelle l'endpoint cesse de répondre (RFC 8594).")
+    message = models.TextField(
+        'Message', blank=True, default='',
+        help_text='Explication FR affichée aux intégrateurs (migration à faire).')
+    doc_url = models.CharField(
+        'Lien de documentation', max_length=300, blank=True, default='',
+        help_text=(
+            "Cible de l'en-tête « Link: <…>; rel=\"deprecation\" ». Vide = "
+            "la référence publique par défaut."))
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = "Dépréciation d'API"
+        verbose_name_plural = "Dépréciations d'API"
+        ordering = ['-sunset_at', 'id']
+        indexes = [
+            models.Index(fields=['version', 'actif'],
+                         name='core_apidepr_ver_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.version} {self.endpoint_pattern} → sunset {self.sunset_at}'
 
 
 # ---------------------------------------------------------------------------
@@ -2959,3 +3036,38 @@ from core.sharing import SharingRule  # noqa: E402,F401
 # ``core/field_permissions.py`` (même pattern d'éclatement), réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
 from core.field_permissions import FieldPermissionRule  # noqa: E402,F401
+
+# NTEXT20/NTEXT21 — Points d'extension UI (boutons + onglets custom) :
+# ``UiActionBouton``/``UiOngletCustom`` définis dans ``core/ui_extensions.py``
+# (même pattern d'éclatement), réexportés ici en tout dernier pour la
+# découverte Django (app_label 'core', migrations).
+from core.ui_extensions import UiActionBouton, UiOngletCustom  # noqa: E402,F401
+
+# NTOBS3/NTOBS4 — Rapport SLA mensuel + barème de crédits : ``SlaSnapshot``/
+# ``SlaCreditPolicy`` définis dans ``core/sla.py`` (même pattern
+# d'éclatement), réexportés ici en tout dernier pour la découverte Django
+# (app_label 'core', migrations).
+from core.sla import SlaCreditPolicy, SlaSnapshot  # noqa: E402,F401
+
+# NTOBS6 — liens de téléchargement tokenisés : ``SignedDownload`` défini dans
+# ``core/signed_download.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.signed_download import SignedDownload  # noqa: E402,F401
+
+# NTOBS7 — historique des exports de réversibilité : ``ExportReversibiliteRun``
+# défini dans ``core/export_registry.py`` (même pattern d'éclatement),
+# réexporté ici en tout dernier pour la découverte Django (app_label 'core',
+# migrations).
+from core.export_registry import ExportReversibiliteRun  # noqa: E402,F401
+
+# NTOBS9 — fenêtres de maintenance planifiées : ``MaintenanceWindow`` défini
+# dans ``core/maintenance_windows.py`` (nommage distinct de ``core/
+# maintenance.py``, NTPLT55, une fonctionnalité totalement différente — le
+# mode lecture-seule global) — même pattern d'éclatement, réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.maintenance_windows import MaintenanceWindow  # noqa: E402,F401
+
+# NTOBS10 — page « Confiance » (trust center) : ``TrustCenterEntry`` défini
+# dans ``core/trust_center.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.trust_center import TrustCenterEntry  # noqa: E402,F401

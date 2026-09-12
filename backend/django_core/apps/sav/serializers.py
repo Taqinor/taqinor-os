@@ -11,7 +11,7 @@ from .models import (
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
     EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
-    WorksheetMaintenanceModele, TicketWorksheet,
+    WorksheetMaintenanceModele, TicketWorksheet, Probleme,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -478,6 +478,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'generation_auto_visites', 'visites_avance_jours',
             # ZMFG6 — feuilles de maintenance (worksheets).
             'worksheets_maintenance_actifs',
+            # NTSRV23 — enquête CSAT détaillée (OFF = formulaire inchangé).
+            'csat_detaille_actif',
             'date_modification',
         ]
         read_only_fields = ['date_modification']
@@ -542,8 +544,11 @@ class KbArticleSerializer(serializers.ModelSerializer):
 class TicketSatisfactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TicketSatisfaction
-        fields = ['id', 'ticket', 'note', 'commentaire', 'date_creation']
-        read_only_fields = ['id', 'ticket', 'date_creation']
+        # NTSRV23 — `sous_notes` est LECTURE SEULE ici : la saisie se fait sur
+        # la page publique (share_token), jamais depuis le back-office.
+        fields = ['id', 'ticket', 'note', 'commentaire', 'sous_notes',
+                  'date_creation']
+        read_only_fields = ['id', 'ticket', 'sous_notes', 'date_creation']
 
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
@@ -735,9 +740,34 @@ class ReponseTypeSerializer(serializers.ModelSerializer):
         model = ReponseType
         fields = [
             'id', 'titre', 'corps', 'nouveau_statut', 'archived',
+            # NTSRV34 — canaux autorisés (vide = tous, comportement d'origine).
+            'canaux_autorises',
             'date_creation',
         ]
         read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_canaux_autorises(self, value):
+        """NTSRV34 — refuse un canal inconnu au lieu de l'avaler en silence.
+
+        ``None`` et ``[]`` restent acceptés tels quels : ils veulent dire
+        « aucune restriction » (comportement XSAV23 inchangé)."""
+        if value in (None, ''):
+            return None
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Attendu : une liste de canaux.')
+        inconnus = sorted({c for c in value if c not in ReponseType.CANAUX})
+        if inconnus:
+            raise serializers.ValidationError(
+                f'Canal inconnu : {", ".join(inconnus)}. Valeurs possibles : '
+                f'{", ".join(ReponseType.CANAUX)}.')
+        # Dédoublonne en conservant l'ordre de saisie.
+        vus, sortie = set(), []
+        for canal in value:
+            if canal not in vus:
+                vus.add(canal)
+                sortie.append(canal)
+        return sortie
 
 
 # ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
@@ -817,3 +847,61 @@ class PortailTicketCreateSerializer(serializers.Serializer):
             'invalid_choice': 'Priorité inconnue (basse, normale, haute ou '
                               'urgente).',
         })
+
+
+# ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────
+
+class ProblemeSerializer(serializers.ModelSerializer):
+    """NTSRV16 — un problème + le NOMBRE de tickets rattachés.
+
+    ``reference`` et ``company`` sont posés côté serveur (numérotation
+    fondation PRB-) : jamais lus du corps de la requête. Le rattachement des
+    tickets passe par les actions explicites ``lier-ticket`` /
+    ``delier-ticket``, jamais par une écriture de liste ici — sinon un PATCH
+    partiel détacherait silencieusement des incidents.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nb_tickets = serializers.SerializerMethodField()
+    anciennete_jours = serializers.SerializerMethodField()
+    impact = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Probleme
+        fields = [
+            'id', 'reference', 'titre', 'description', 'statut',
+            'statut_display', 'cause_racine', 'created_at', 'updated_at',
+            'nb_tickets', 'anciennete_jours', 'impact',
+        ]
+        read_only_fields = [
+            'id', 'reference', 'created_at', 'updated_at', 'statut_display',
+            'nb_tickets', 'anciennete_jours', 'impact',
+        ]
+
+    def get_nb_tickets(self, obj) -> int:
+        """Nombre de tickets rattachés — lit l'annotation de la vue liste
+        quand elle est là (zéro requête par ligne), sinon compte."""
+        annote = getattr(obj, 'nb_tickets_annote', None)
+        if annote is not None:
+            return annote
+        return obj.incidents.count()
+
+    def get_anciennete_jours(self, obj) -> int:
+        if not obj.created_at:
+            return 0
+        return max(0, (timezone.now() - obj.created_at).days)
+
+    def get_impact(self, obj) -> int:
+        """NTSRV16 — score d'impact = nb de tickets × ancienneté (jours).
+
+        Un problème d'un jour avec 10 tickets et un problème de 10 jours avec
+        1 ticket ne pèsent pas pareil dans une file d'analyse ; ce score les
+        départage. Ancienneté minimale de 1 jour pour qu'un problème tout
+        neuf mais massif ne soit pas écrasé à 0."""
+        return self.get_nb_tickets(obj) * max(1, self.get_anciennete_jours(obj))
+
+    def validate_titre(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Le titre du problème est obligatoire.')
+        return value

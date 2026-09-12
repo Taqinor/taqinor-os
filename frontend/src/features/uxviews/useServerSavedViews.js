@@ -12,6 +12,9 @@ import rolesApi from '../../api/rolesApi'
 // (`hooks/useSavedViews.js`) vers l'API serveur, au premier montage d'un
 // écran qui adopte ce hook (jamais bloquant, jamais rejouée après succès).
 import { migrateLocalSavedViewsForEcran } from './migrateLocalSavedViews'
+// NTUX21 — ordre d'affichage des vues PERSONNELLES (glisser-déposer),
+// persisté en localStorage (jamais côté serveur, contrairement aux favoris).
+import { applyOrder, readOrder, writeOrder } from './personalViewOrder'
 
 const PREF_PREFIX = 'taqinor.uxviews.pref.'
 
@@ -46,12 +49,15 @@ function writePref(ecran, viewId) {
  *   createView(payload) / renameView(id, nom) / duplicateView(view) / deleteView(id)
  *   setDefaultForMyRole(view) — Directeur/Admin uniquement (403 sinon) : résout l'id du
  *     rôle courant via /roles/ (le frontend ne connaît que `role_nom`, cf. authSlice.js)
+ *   reorderMine(orderedIds) — NTUX21 : réordonne « Mes vues » (localStorage, par écran)
  */
 export function useServerSavedViews(ecran) {
   const [views, setViews] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [prefId, setPrefId] = useState(() => readPref(ecran))
+  // NTUX21 — ordre d'affichage perso (glisser-déposer), localStorage.
+  const [ordrePerso, setOrdrePerso] = useState(() => readOrder(ecran))
 
   const userId = useSelector((s) => s.auth.user?.id)
   const roleNom = useSelector((s) => s.auth.role_nom)
@@ -70,6 +76,8 @@ export function useServerSavedViews(ecran) {
   useEffect(() => { refresh() }, [refresh])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture préférence locale au montage / changement d'écran
   useEffect(() => { setPrefId(readPref(ecran)) }, [ecran])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture ordre local au montage / changement d'écran
+  useEffect(() => { setOrdrePerso(readOrder(ecran)) }, [ecran])
 
   // NTUX1 — migration best-effort des vues localStorage historiques de CET
   // écran, une seule fois (drapeau posé par le module) : si des vues ont
@@ -82,8 +90,21 @@ export function useServerSavedViews(ecran) {
       .catch(() => { /* best-effort — ne bloque jamais l'écran */ })
   }, [ecran, refresh])
 
-  const mine = useMemo(() => views.filter((v) => String(v.owner) === String(userId)), [views, userId])
+  const mineBrutes = useMemo(
+    () => views.filter((v) => String(v.owner) === String(userId)), [views, userId])
+  // NTUX21 — ordre perso appliqué UNIQUEMENT à « Mes vues » (jamais aux vues
+  // d'équipe, dont l'ordre reste celui du serveur — `SavedView.Meta.ordering`).
+  const mine = useMemo(
+    () => applyOrder(mineBrutes, ordrePerso), [mineBrutes, ordrePerso])
   const team = useMemo(() => views.filter((v) => String(v.owner) !== String(userId)), [views, userId])
+
+  // NTUX21 — glisser-déposer : `orderedIds` = les ids de `mine` dans leur
+  // NOUVEL ordre. Persisté en localStorage (jamais côté serveur) et adopté
+  // immédiatement (jamais besoin d'un aller-retour réseau).
+  const reorderMine = useCallback((orderedIds) => {
+    writeOrder(ecran, orderedIds)
+    setOrdrePerso(orderedIds)
+  }, [ecran])
 
   // Vue par défaut du RÔLE courant — recalculée à chaque changement de
   // `roleNom` (ex. un changement de rôle réassigné par un admin) : aucune
@@ -140,6 +161,7 @@ export function useServerSavedViews(ecran) {
     defaultRoleView, activeView,
     applyView, refresh,
     createView, renameView, duplicateView, deleteView, setDefaultForMyRole,
+    reorderMine,
   }
 }
 

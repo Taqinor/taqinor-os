@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CatalogueIndicateurESGViewSet, DocumentPolitiqueESGViewSet,
     FacteurEmissionReferenceViewSet, ObjectifESGTrajectoireViewSet,
-    PartiePrenanteESGViewSet, PeriodeReportingESGViewSet,
+    ParametresESGView, PartiePrenanteESGViewSet, PeriodeReportingESGViewSet,
 )
 
 router = DefaultRouter()
@@ -25,5 +25,9 @@ router.register(
     basename='esg-facteur-emission')
 
 urlpatterns = [
+    # NTESG20 — déclaré AVANT le routeur (aucune collision aujourd'hui, mais
+    # c'est la convention du dépôt pour une route fixe voisine d'un routeur).
+    path('parametres-esg/', ParametresESGView.as_view(),
+         name='esg-parametres'),
     path('', include(router.urls)),
 ]

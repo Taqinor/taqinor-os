@@ -17,7 +17,7 @@ beforeAll(() => {
   }
 })
 
-const { getMetriquesSaas } = vi.hoisted(() => ({
+const { getMetriquesSaas, getDeviations, getDeviationsContrat } = vi.hoisted(() => ({
   getMetriquesSaas: vi.fn(() => Promise.resolve({ data: {
     arr_bridge: {
       arr_debut: '100000.00', new: '5000.00', expansion: '2000.00',
@@ -26,6 +26,11 @@ const { getMetriquesSaas } = vi.hoisted(() => ({
     quick_ratio: '4.67',
     rule_of_40: { croissance_arr_pct: '5.50', marge_pct: '30.00', rule_of_40: '35.50' },
   } })),
+  // NTDOC6 — carte « Déviations ». Par défaut AUCUNE déviation : les tests
+  // NTSUB12 ci-dessous comptent les « — » et l'unique role="alert" de la
+  // page, la carte ne doit donc rien ajouter tant qu'elle n'est pas le sujet.
+  getDeviations: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
+  getDeviationsContrat: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
 }))
 
 vi.mock('../../api/contratsApi', () => ({
@@ -40,6 +45,8 @@ vi.mock('../../api/contratsApi', () => ({
     getExceptionsFacturation: () => Promise.resolve({ data: [] }),
     getCohortesRetention: () => Promise.resolve({ data: { cohortes: {} } }),
     getMetriquesSaas,
+    getDeviations,
+    getDeviationsContrat,
   },
 }))
 
@@ -118,5 +125,53 @@ describe('DashboardPage — Métriques SaaS (NTSUB12/WIR252)', () => {
     await waitFor(() => expect(getMetriquesSaas).toHaveBeenLastCalledWith({
       debut: '2026-01-01', fin: '2026-06-30',
     }))
+  })
+})
+
+/* NTDOC6 — carte « Déviations de clauses » : additive au tableau de bord
+   existant. Un contrat dont une clause OBLIGATOIRE a été surchargée y
+   apparaît ; sans déviation, la carte le dit au lieu de rester vide. */
+describe('DashboardPage — Déviations de clauses (NTDOC6)', () => {
+  it('annonce explicitement l’absence de déviation', async () => {
+    renderPage()
+    expect(await screen.findByText('Déviations de clauses')).toBeInTheDocument()
+    await waitFor(() => expect(getDeviations).toHaveBeenCalled())
+    expect(screen.getByText(/Aucune déviation/)).toBeInTheDocument()
+  })
+
+  it('liste les contrats déviants et ouvre le diff à la demande', async () => {
+    getDeviations.mockResolvedValueOnce({ data: {
+      count: 1,
+      results: [{
+        contrat: 7, reference: 'CT-2026-007', objet: 'Maintenance annuelle',
+        type_contrat: 'maintenance', statut: 'en_approbation', nb_deviations: 2,
+      }],
+    } })
+    getDeviationsContrat.mockResolvedValueOnce({ data: {
+      contrat: 7, type_contrat: 'maintenance', count: 1,
+      results: [{
+        clause_contrat: 31, clause_source: 5, titre: 'Responsabilité',
+        titre_source: 'Responsabilité', ordre: 1, type_clause: 'juridique',
+        texte_source: 'Le prestataire répond de…',
+        texte_surcharge: 'Le prestataire ne répond pas de…',
+        diff: '--- bibliothèque\n+++ contrat\n-Le prestataire répond de…\n+Le prestataire ne répond pas de…',
+        lignes_ajoutees: 1, lignes_supprimees: 1,
+      }],
+    } })
+    renderPage()
+
+    expect(await screen.findByText('CT-2026-007')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Voir l’écart/ }))
+    await waitFor(() => expect(getDeviationsContrat).toHaveBeenCalledWith(7))
+    expect(await screen.findByText('Responsabilité')).toBeInTheDocument()
+  })
+
+  it('dégrade proprement quand l’endpoint échoue', async () => {
+    getDeviations.mockRejectedValueOnce(new Error('boom'))
+    renderPage()
+    await waitFor(() =>
+      expect(screen.getByText('Déviations indisponibles.')).toBeInTheDocument())
+    // Le reste du tableau de bord reste rendu (pas de crash global).
+    expect(screen.getByText('Tableau de bord des contrats')).toBeInTheDocument()
   })
 })

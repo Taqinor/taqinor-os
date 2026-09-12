@@ -5,7 +5,7 @@ from .actions import (
 )
 from .models import (
     ActionType, ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
-    AutomationApproval, AutomationRule, AutomationRun,
+    AutomationApproval, AutomationRule, AutomationRuleVersion, AutomationRun,
     IncomingWebhookTrigger, TriggerType, record_state_change_targets,
 )
 
@@ -131,6 +131,19 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
                     f'passer par le service métier. Champs déclarés : '
                     f'{couples}.'),
             })
+
+
+class AutomationRuleVersionSerializer(serializers.ModelSerializer):
+    """NTEXT30 — un snapshot en lecture seule (jamais éditable : une version
+    se RESTAURE, elle ne se modifie pas en place)."""
+    auteur_username = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+
+    class Meta:
+        model = AutomationRuleVersion
+        fields = ['id', 'rule', 'version', 'snapshot', 'auteur_username',
+                  'date_creation']
+        read_only_fields = fields
 
 
 class AutomationRunSerializer(serializers.ModelSerializer):

@@ -13,6 +13,10 @@ import { useConfirmDialog } from '../../ui/confirm'
 import { formatNumber, formatDate, formatDateTime } from '../../lib/format'
 import { rowsToCSV, exportFileName } from '../../ui/datatable/csv.js'
 import rhApi from '../../api/rhApi'
+// NTI18N10 — horodatages de pointage affichés dans le fuseau de la SOCIÉTÉ
+// (critère d'acceptation littéral : une société basée à Dakar), pas celui du
+// poste qui consulte l'écran.
+import useCompanyTimeZone from '../../hooks/useCompanyTimeZone'
 
 /* ============================================================================
    UX24 — Temps & présence.
@@ -60,6 +64,7 @@ function debutMois() {
 
 export default function Temps() {
   const { confirmDelete } = useConfirmDialog()
+  const fuseauHoraire = useCompanyTimeZone()
   const [vue, setVue] = useState('pointages')
   const [pointages, setPointages] = useState([])
   const [roster, setRoster] = useState([])
@@ -224,7 +229,7 @@ export default function Temps() {
       width: 160,
       searchable: false,
       accessor: (p) => p.heure_arrivee || '',
-      cell: (v) => (v ? formatDateTime(v) : '—'),
+      cell: (v) => (v ? formatDateTime(v, { timeZone: fuseauHoraire }) : '—'),
     },
     {
       id: 'depart',
@@ -232,7 +237,7 @@ export default function Temps() {
       width: 160,
       searchable: false,
       accessor: (p) => p.heure_depart || '',
-      cell: (v) => (v ? formatDateTime(v) : '—'),
+      cell: (v) => (v ? formatDateTime(v, { timeZone: fuseauHoraire }) : '—'),
     },
     {
       id: 'duree',
@@ -250,7 +255,7 @@ export default function Temps() {
       accessor: (p) => p.type_pointage_display || p.type_pointage || '',
       cell: (v) => v || '—',
     },
-  ], [])
+  ], [fuseauHoraire])
 
   const pointageActions = (p) => {
     const actions = []
@@ -509,6 +514,7 @@ export default function Temps() {
 
 /* ── XRH11 — Historique IMMUABLE des corrections d'un pointage (lecture) ── */
 function HistoriqueCorrectionsDialog({ pointage, onClose }) {
+  const fuseauHoraire = useCompanyTimeZone()
   const [lignes, setLignes] = useState([])
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState(null)
@@ -548,7 +554,7 @@ function HistoriqueCorrectionsDialog({ pointage, onClose }) {
                 <div className="text-xs text-muted-foreground">
                   Motif : {c.motif || '—'}
                   {c.auteur_nom ? ` · ${c.auteur_nom}` : ''}
-                  {c.date_creation ? ` · ${formatDateTime(c.date_creation)}` : ''}
+                  {c.date_creation ? ` · ${formatDateTime(c.date_creation, { timeZone: fuseauHoraire })}` : ''}
                 </div>
               </li>
             ))}

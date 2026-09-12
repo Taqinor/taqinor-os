@@ -304,6 +304,90 @@ def _set_field(rule, instance, company, context, user):
         return Status.FAILED, f'Mise à jour échouée : {exc}'
 
 
+# NTEXT8 — champs JAMAIS lus dans le contexte d'une action serveur scriptée,
+# même garde que les prompts IA (customfields.services.
+# FORBIDDEN_PROMPT_PLACEHOLDERS) + la société : une expression ne doit jamais
+# pouvoir lire ni, a fortiori, recopier une donnée sensible ailleurs.
+_SERVER_ACTION_FORBIDDEN_CONTEXT_FIELDS = (
+    'prix_achat', 'marge', 'cout_horaire', 'company', 'company_id',
+)
+
+
+def _server_action_context(instance, context):
+    """NTEXT8 — contexte de LECTURE d'une action serveur scriptée : les
+    champs natifs de l'instance (hors champs interdits/relations) + son
+    ``custom_data`` éventuel, complétés par le ``context`` de déclenchement.
+    Purement en mémoire — jamais persisté, jamais réinjecté ailleurs."""
+    out = {}
+    meta = getattr(instance, '_meta', None)
+    if meta is not None:
+        for f in meta.concrete_fields:
+            if f.is_relation or f.attname in _SERVER_ACTION_FORBIDDEN_CONTEXT_FIELDS:
+                continue
+            try:
+                out[f.attname] = getattr(instance, f.attname)
+            except Exception:  # pragma: no cover - défensif
+                continue
+    custom_data = getattr(instance, 'custom_data', None)
+    if isinstance(custom_data, dict):
+        out.update({k: v for k, v in custom_data.items()
+                    if k not in _SERVER_ACTION_FORBIDDEN_CONTEXT_FIELDS})
+    out.update({k: v for k, v in (context or {}).items()
+               if k not in _SERVER_ACTION_FORBIDDEN_CONTEXT_FIELDS})
+    return out
+
+
+def _server_action(rule, instance, company, context, user):
+    """NTEXT8 — action serveur SCRIPTÉE sûre (CEL-style, jamais du Python).
+
+    ``action_config = {'expressions': [{'field': 'x', 'value': '<formule>'}]}``
+    — chaque expression est évaluée par ``core.formula`` (AST sûr, JAMAIS
+    ``eval``, aucune boucle, aucun import, aucun accès système : le parseur
+    ne les reconnaît simplement pas) sur le contexte de LECTURE de
+    l'enregistrement, puis écrite dans un champ du MÊME registre fermé que
+    SET_FIELD (``SET_FIELD_TARGETS`` / ``set_field_autorise`` — AUD821) :
+    jamais company/prix_achat ni un champ de machine à états. Une expression
+    invalide, ou ciblant un champ hors registre, est simplement IGNORÉE (les
+    autres continuent) — jamais d'exception qui remonte."""
+    from core.formula import FormulaError, evaluer_formule
+
+    cfg = rule.action_config or {}
+    expressions = cfg.get('expressions')
+    if not isinstance(expressions, list) or not expressions:
+        return Status.NOOP, 'Aucune expression : action ignorée.'
+
+    eval_context = _server_action_context(instance, context)
+    cle_modele = _model_key(instance)
+    updates = {}
+    for expr in expressions:
+        if not isinstance(expr, dict):
+            continue
+        field = expr.get('field')
+        expression = expr.get('value')
+        if not field or not expression or not _has_field(instance, field):
+            continue
+        if field in ('company', 'company_id', 'prix_achat'):
+            continue
+        if not set_field_autorise(cle_modele, field):
+            continue
+        try:
+            updates[field] = evaluer_formule(expression, eval_context)
+        except FormulaError:
+            continue
+
+    if not updates:
+        return Status.NOOP, (
+            'Aucune expression valide/autorisée : action ignorée.')
+    try:
+        for field, value in updates.items():
+            setattr(instance, field, value)
+        instance.save(update_fields=list(updates.keys()))
+        return Status.SUCCESS, (
+            f"Champ(s) calculé(s) : {', '.join(sorted(updates))}.")
+    except Exception as exc:
+        return Status.FAILED, f'Action serveur échouée : {exc}'
+
+
 def _create_sav_ticket(rule, instance, company, context, user):
     """Crée un ticket SAV pour le client de l'enregistrement déclencheur."""
     cfg = rule.action_config or {}
@@ -522,4 +606,5 @@ _HANDLERS = {
     ActionType.CREATE_CUSTOM_RECORD: _create_custom_record,
     ActionType.FOR_EACH: _for_each,
     ActionType.WAIT: _wait,
+    ActionType.SERVER_ACTION: _server_action,
 }

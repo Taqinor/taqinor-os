@@ -87,6 +87,20 @@ const parametresApi = {
   updateRealisation: (id, data) =>
     api.patch(`/parametres/realisations/${id}/`, data),
   deleteRealisation: (id) => api.delete(`/parametres/realisations/${id}/`),
+  // NTOBS5 — écran self-service « Sauvegardes » (Paramètres → Fiabilité) :
+  // lecture seule des BackupRun déjà produits par le moteur interne (YOPSB1/2),
+  // scopé côté serveur sur la société de l'appelant.
+  getMesSauvegardes: () => api.get('/core/mes-sauvegardes/'),
+  // NTOBS6/NTOBS7 — export de réversibilité complet (Directeur/Administrateur
+  // déclenche, tout le monde de la société consulte l'historique).
+  declencherExportReversibilite: (datasets) =>
+    api.post('/core/export-reversibilite/', datasets ? { datasets } : {}),
+  getHistoriqueExportReversibilite: () =>
+    api.get('/core/export-reversibilite/historique/'),
+  // NTOBS8 — page « Limites & usage » unifiée (lecture seule, scopé société).
+  getUsageLimites: () => api.get('/core/usage-limites/'),
+  // NTOBS3/NTOBS16 — rapport SLA mensuel (historique 12 mois, scopé société).
+  getSlaSnapshots: () => api.get('/core/sla/'),
 }
 
 export default parametresApi

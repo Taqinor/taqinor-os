@@ -277,6 +277,11 @@ INSTALLED_APPS = [
     # budget et provisions PROPOSÉES. Distincte de `litiges` (réclamation
     # client) et de `contrats` (CLM) — string-FK uniquement vers elles.
     'apps.juridique',
+    # Groupe NTDOC (P2) — Salles de données sécurisées : collections
+    # thématiques de documents GED ouvertes à des viewers NOMMÉS (lien et
+    # expiration par personne, filigrane par viewer, journal de consultation).
+    # Ne duplique aucun document : string-FK vers `ged` uniquement.
+    'apps.datarooms',
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).
@@ -375,6 +380,10 @@ INSTALLED_APPS = [
     # `core` (RegistreTraitement/ConsentRecord/DataSubjectRequest + registres
     # `core.dsr` et `core.retention`) — ne le duplique jamais.
     'apps.grc',
+    # Groupe NTOBS — page de statut publique multi-région (composants +
+    # incidents + post-mortems + historique 90j). Aucun modèle métier
+    # importé : lit `core.health.check_services()` via un job beat.
+    'apps.statuspage',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
@@ -709,6 +718,12 @@ REST_FRAMEWORK = {
         # ouverture de session chat public (par IP).
         'public_sharelink': '30/minute',
         'public_livechat': '30/minute',
+        # NTAPI19 — émission d'un jeton OAuth2 client_credentials. SEULE
+        # surface de l'API publique où un secret peut être deviné (l'endpoint
+        # s'authentifie lui-même) : throttle par IP volontairement serré, très
+        # au-dessus d'un usage légitime (un client échange son secret une fois
+        # par heure, pas 20 fois par minute).
+        'publicapi_oauth_token': '20/minute',
         # NTRET3 — PIN de verrouillage rapide caissier (POS). Cette entrée
         # existe uniquement pour que ``SimpleRateThrottle.get_rate()`` ne lève
         # pas ``ImproperlyConfigured`` (le scope doit être présent) — la
@@ -1096,6 +1111,10 @@ CELERY_TASK_ROUTES = {
     'reporting.controle_integrite': {'queue': 'scheduled'},
     # NTDATA15 — évaluation quotidienne des règles de qualité de données.
     'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
+    # NTDATA24 — consolidation hebdomadaire des golden records.
+    'dataquality.consolider_golden_records': {'queue': 'scheduled'},
+    # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
+    'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
     'core.dispatch_outbox': {'queue': 'scheduled'},
@@ -1116,11 +1135,15 @@ CELERY_TASK_ROUTES = {
     'chat.retention_sweep': {'queue': 'scheduled'},
     'installations.rappel_rdv_j1': {'queue': 'scheduled'},
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
+    # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
+    'installations.relancer_rfq_en_attente': {'queue': 'scheduled'},
     'rh.alertes_expiration': {'queue': 'scheduled'},
     'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
     # WIR30 — pré-alerte SLA (J-x) + escalade à la violation.
     'sav.scan_sla_pre_alerts_and_escalations_quotidien': {'queue': 'scheduled'},
+    # NTSRV38 — violation SLA (FG81) rescannée au quart d'heure.
+    'sav.scan_sla_breaches_quart_heure': {'queue': 'scheduled'},
     # WIR50 — commandes périodiques de sécurité/gouvernance (break-glass échu,
     # comptes dormants, escalade SLA workflow) planifiées au beat.
     'identity.revoke_expired_break_glass': {'queue': 'scheduled'},
@@ -1128,6 +1151,8 @@ CELERY_TASK_ROUTES = {
     # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées.
     'authentication.purger_societes_demo_expirees': {'queue': 'scheduled'},
     'core.escalate_workflow_sla': {'queue': 'scheduled'},
+    # NTDATA26 — exécution horaire des extraits planifiés dus.
+    'core.executer_exports_planifies': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     # ASG2 / AGEN8 — Assumption Engine : oubli hebdo des posteriors + auto-pause
     # « rayon d'explosion » des créas générées (beat) → queue planifiée.
@@ -1157,6 +1182,8 @@ CELERY_TASK_ROUTES = {
     'stock.notifier_bcf_en_retard_buyer': {'queue': 'scheduled'},
     # NTP2P20 — pieces d'onboarding fournisseur (NTP2P7) expirant sous 30 j.
     'stock.notifier_documents_fournisseur_expirants': {'queue': 'scheduled'},
+    # NTP2P34 — recalcul quotidien des scores de risque fournisseur (NTP2P8).
+    'stock.recompute_scores_risque': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
     'ventes.pre_echeance_reminders': {'queue': 'scheduled'},
@@ -1300,6 +1327,13 @@ CELERY_TASK_ROUTES = {
         'queue': 'scheduled'},                                     # XPRJ22
     'gestion_projet.rappels_timesheets': {'queue': 'scheduled'},   # XPRJ7
     'btp_chantier.alertes_rfi_retard': {'queue': 'scheduled'},     # NTCON4
+    # NTCON18/NTCON27 — les deux autres balayages BTP planifiés (le premier
+    # manquait : sans entrée il retombait sur `default`, qu'aucun worker
+    # `-Q scheduled` ne consomme).
+    'btp_chantier.rapport_photo_hebdo': {'queue': 'scheduled'},    # NTCON18
+    'btp_chantier.archiver_reserves_levees': {'queue': 'scheduled'},  # NTCON27
+    'btp_chantier.recalculer_penalites_lots': {'queue': 'scheduled'},  # NTCON28
+    'btp_chantier.alertes_visas_en_attente': {'queue': 'scheduled'},  # NTCON37
     # Batch AUDV/AOF/WIR (2026-09-06) — 10 tâches ajoutées au beat_schedule
     # sans route explicite (garde core/tests/test_celery_task_routes.py) :
     # chacune un balayage/relance planifié, aucune n'est déclenchée par un
@@ -1314,14 +1348,14 @@ CELERY_TASK_ROUTES = {
     'rh.planifier_appreciations': {'queue': 'scheduled'},
     'qhse.relancer_derogations': {'queue': 'scheduled'},
     'qhse.relancer_audits_planifies_en_retard': {'queue': 'scheduled'},
-    # Vague 1 drain NT (2026-09-12) — 4 tâches ajoutées au beat_schedule sans
+    # Vague 1 drain NT (2026-09-12) — 3 tâches ajoutées au beat_schedule sans
     # route explicite (garde core/tests/test_celery_task_routes.py) :
-    # rapport photo hebdomadaire de chantier BTP ; NTSUB27 précalcul nocturne
-    # des métriques SaaS ; NTSUB26 purge mensuelle des compteurs d'usage
-    # facturés ; NTDOC32 purge des dépôts contrepartie archivés. Toutes des
-    # balayages/recalculs planifiés, aucun déclenché par un événement
-    # synchrone utilisateur.
-    'btp_chantier.rapport_photo_hebdo': {'queue': 'scheduled'},
+    # NTSUB27 précalcul nocturne des métriques SaaS ; NTSUB26 purge mensuelle
+    # des compteurs d'usage facturés ; NTDOC32 purge des dépôts contrepartie
+    # archivés. Toutes des balayages/recalculs planifiés, aucun déclenché par
+    # un événement synchrone utilisateur.
+    # (Le rapport photo hebdomadaire BTP était listé ici une SECONDE fois —
+    # doublon de clé retiré, il garde sa route NTCON18 déclarée plus haut.)
     'contrats.recalculer_metriques_saas_cache_daily': {'queue': 'scheduled'},
     'contrats.purger_compteurs_usage_factures_monthly': {'queue': 'scheduled'},
     'contrats.purger_contreparties_archivees': {'queue': 'scheduled'},
@@ -1338,6 +1372,28 @@ CELERY_TASK_ROUTES = {
     '*.backfill_*': {'queue': 'bulk'},
     '*.seed_*': {'queue': 'bulk'},
     '*.export_bulk_*': {'queue': 'bulk'},
+    # NTPAY25 — rappel des échéances déclaratives de paie (beat quotidien
+    # 06h45). Toute tâche du beat_schedule DOIT être routée explicitement vers
+    # `scheduled` (garde core/tests/test_celery_task_routes.py).
+    'paie.rappeler_echeances_declaratives': {'queue': 'scheduled'},
+    # NTPAY26 — recalcul des cumuls annuels en dérive (beat mensuel).
+    'paie.recalculer_cumuls_annuels': {'queue': 'scheduled'},
+    # NTOBS1 — rafraîchissement 5 min des composants publics de statut.
+    'statuspage.rafraichir_composants': {'queue': 'scheduled'},
+    # NTOBS3 — snapshot SLA mensuel de toutes les sociétés.
+    'core.generer_sla_mensuel': {'queue': 'scheduled'},
+    # NTOBS9 — notification 24h/1h avant une fenêtre de maintenance.
+    'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
+    # NTOBS13 — notification de seuil de quota (80%/100%), beat quotidien.
+    'core.notifier_seuils_usage': {'queue': 'scheduled'},
+    # NTGRC21 — relance des attestations de conformité non signées (beat).
+    'grc.rappels_grc': {'queue': 'scheduled'},
+    # NTRH — rappels de parcours de formation + tâches d'intégration/sortie
+    # (beat quotidien). Toute tâche du beat_schedule DOIT être routée
+    # explicitement vers `scheduled` (garde core/tests/test_celery_task_routes)
+    # sinon elle retombe sur `default` et partage la file interactive.
+    'rh.rappels_parcours_formation': {'queue': 'scheduled'},
+    'rh.notifier_taches_integration_sortie': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
@@ -1580,6 +1636,13 @@ GED_MAIL_INTAKE_ENABLED = os.environ.get('GED_MAIL_INTAKE_ENABLED', '0') == '1'
 # via pyHanko, l'est SANS horodatage TSA). Le founder configurera l'URL d'une
 # TSA (ex. un service conforme loi 43-20) pour activer ce volet.
 GED_TSA_URL = os.environ.get('GED_TSA_URL', '')
+
+# NTDOC22 — TSA de SECOURS (liste séparée par des virgules), essayées DANS
+# L'ORDRE après `GED_TSA_URL` : la première qui répond gagne. Vide par défaut →
+# comportement XGED5 strictement inchangé. Si toutes échouent, le document est
+# scellé PAdES SANS horodatage plutôt que de rester non scellé (l'horodatage
+# est un plus, jamais un préalable bloquant).
+GED_TSA_URLS = os.environ.get('GED_TSA_URLS', '')
 
 # Security headers (safe in all environments)
 SECURE_CONTENT_TYPE_NOSNIFF = True

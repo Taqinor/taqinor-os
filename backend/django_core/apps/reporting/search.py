@@ -212,6 +212,75 @@ def _spec_campagne(co, q):
         'sublabel': c.status or ''}
 
 
+# NTEXT35 — recherche globale sur les OBJETS PERSONNALISÉS (customfields).
+# DIFFÉRENT de ``_SEARCH_SPECS`` ci-dessous (liste STATIQUE de modèles
+# natifs, un groupe fixe par entrée) : le nombre d'objets personnalisés est
+# DYNAMIQUE par société, donc UN GROUPE PAR OBJET ACTIF est construit à
+# CHAQUE recherche (adapter générique, jamais un modèle natif câblé en dur).
+_CUSTOM_RECORD_SCAN_MAX = 500  # borne anti-DoS : par OBJET, jamais global.
+_CUSTOM_RECORD_RESULTS_PER_GROUP = 6  # même PER que les groupes natifs.
+
+
+def _custom_record_label(record):
+    """Premier texte non vide de ``data`` (dénormalisation la plus lisible
+    disponible sans connaître le schéma de l'objet) — repli sur ``#id``."""
+    for value in (record.data or {}).values():
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return f'#{record.pk}'
+
+
+def _custom_object_visible(user, code):
+    """Même garde que ``CustomRecordViewSet._check_object_permission`` :
+    superuser ou compte hérité sans rôle fin (compat) voit tout ; sinon la
+    permission ``custom_object.<code>.voir`` fait foi."""
+    if user.is_superuser or getattr(user, 'role', None) is None:
+        return True
+    return user.has_erp_permission(f'custom_object.{code}.voir')
+
+
+def _custom_record_groups(user, co, q):
+    """NTEXT35 — un groupe de résultats PAR objet personnalisé ACTIF dont
+    ``q`` apparaît dans une valeur de ``data``, filtré par la permission
+    ``custom_object.<code>.voir``. Scan Python borné (``JSONField`` — pas de
+    lookup ``icontains`` portable dessus) : jamais plus de
+    ``_CUSTOM_RECORD_SCAN_MAX`` enregistrements PAR objet."""
+    from apps.customfields.models import CustomObjectDef, CustomRecord
+
+    company = co.get('company')
+    if company is None:
+        return []
+    terme = q.lower()
+    groups = []
+    for objet in CustomObjectDef.objects.filter(
+            company=company, actif=True).order_by('libelle'):
+        if not _custom_object_visible(user, objet.code):
+            continue
+        candidats = []
+        qs = CustomRecord.objects.filter(
+            company=company, objet=objet
+        ).order_by('-date_creation')[:_CUSTOM_RECORD_SCAN_MAX]
+        for record in qs:
+            data = record.data or {}
+            if any(terme in str(v).lower() for v in data.values()):
+                candidats.append(record)
+        if not candidats:
+            continue
+        items = [
+            {'id': r.pk, 'label': _custom_record_label(r),
+             'sublabel': objet.libelle}
+            for r in candidats[:_CUSTOM_RECORD_RESULTS_PER_GROUP]
+        ]
+        group = {'type': f'custom:{objet.code}', 'label': objet.libelle,
+                 'results': items}
+        if len(candidats) > _CUSTOM_RECORD_RESULTS_PER_GROUP:
+            group['more'] = True
+            group['more_count'] = (
+                len(candidats) - _CUSTOM_RECORD_RESULTS_PER_GROUP)
+        groups.append(group)
+    return groups
+
+
 # Registre LOCAL des specs de recherche, LISTE ORDONNÉE de couples
 # ``('app.model', spec_builder)`` — clé minuscule, alignée sur
 # ``core.platform`` / ``records.ALLOWED_TARGETS``. L'ORDRE est EXACTEMENT
@@ -298,6 +367,10 @@ def global_search(request):
             continue
         type_key, label_fr, qs, mapper = spec_builder(co, q)
         add(type_key, label_fr, qs, mapper)
+
+    # NTEXT35 — objets personnalisés : un groupe par objet actif, jamais un
+    # modèle natif câblé en dur (adapter générique, permission par objet).
+    groups.extend(_custom_record_groups(request.user, co, q))
 
     return Response({'query': q, 'groups': groups})
 

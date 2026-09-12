@@ -1,0 +1,263 @@
+---
+/**
+ * /status — page de statut publique TAQINOR OS (NTOBS1).
+ *
+ * Page SSR (prerender=false, même patron que /suivi/[token]) qui lit l'état
+ * des composants publics et l'historique d'incidents 90 jours depuis le
+ * backend :
+ *   GET /api/django/statuspage/public/            (composants + statut global)
+ *   GET /api/django/statuspage/public/incidents/   (historique paginé 90 j)
+ *
+ * Aucune donnée société n'est exposée par ces deux endpoints (filtrés côté
+ * serveur sur company=None) — cette page est purement système. Le récit de
+ * chaque incident (titre/mises à jour/post-mortem) est TOUJOURS rédigé par le
+ * fondateur côté backend ; on l'affiche tel quel, jamais reformulé ni
+ * complété ici (règle « checked-facts-only »).
+ */
+export const prerender = false;
+
+import Layout from '../../layouts/Layout.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+
+interface ComponentStatusPublic {
+  nom: string;
+  region: string;
+  statut: 'operational' | 'degraded' | 'partial_outage' | 'major_outage';
+  derniere_verification: string | null;
+}
+
+interface IncidentUpdatePublic {
+  statut: string;
+  message: string;
+  horodatage: string;
+}
+
+interface IncidentPublicItem {
+  id: number;
+  titre: string;
+  severite: string;
+  statut: string;
+  region: string;
+  composants: string[];
+  debute_le: string;
+  resolu_le: string | null;
+  updates: IncidentUpdatePublic[];
+  postmortem_markdown: string;
+  postmortem_publie_le: string | null;
+}
+
+interface StatusResponse {
+  overall_status: string;
+  composants: ComponentStatusPublic[];
+  generated_at: string;
+}
+
+const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const SSR_FETCH_TIMEOUT_MS = 8000;
+
+async function fetchJson<T>(path: string): Promise<T | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE.replace(/\/+$/, '')}${path}`, {
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const statusData = await fetchJson<StatusResponse>('/api/django/statuspage/public/');
+const incidentsData = await fetchJson<{ results: IncidentPublicItem[] }>(
+  '/api/django/statuspage/public/incidents/',
+);
+const incidents = incidentsData?.results ?? [];
+
+// NTOBS11 — mode dégradé par dépendance externe (impact humain lisible).
+interface DegradedModeEntry {
+  cle: string;
+  label: string;
+  statut: 'ok' | 'degraded' | 'down' | 'unknown';
+  impactees: string[];
+  continuent: string[];
+}
+const dependances = (await fetchJson<DegradedModeEntry[]>('/api/django/core/degraded-mode-status/')) ?? [];
+const dependancesEnPanne = dependances.filter((d) => d.statut === 'down' || d.statut === 'degraded');
+
+// NTOBS14 — frise d'uptime 90 jours (agrégats pré-calculés, jamais un
+// recalcul de logs bruts à chaque affichage).
+interface UptimeJour { date: string; statut: string; pct: number }
+const uptimeParComposant = (await fetchJson<Record<string, UptimeJour[]>>(
+  '/api/django/statuspage/public/uptime-90j/',
+)) ?? {};
+
+const UPTIME_COULEUR: Record<string, string> = {
+  operational: 'bg-ok-600',
+  degraded: 'bg-brass-600',
+  partial_outage: 'bg-alert-300',
+  major_outage: 'bg-alert-600',
+};
+
+const STATUT_LABEL: Record<string, string> = {
+  operational: 'Opérationnel',
+  degraded: 'Dégradé',
+  partial_outage: 'Panne partielle',
+  major_outage: 'Panne majeure',
+};
+// Palette du site (Tailwind v4 @theme, apps/web/src/styles/global.css) —
+// jamais les couleurs par défaut de Tailwind (slate/emerald/…), absentes du
+// thème custom de ce site.
+const STATUT_COLOR: Record<string, string> = {
+  operational: 'text-ok-600',
+  degraded: 'text-brass-600',
+  partial_outage: 'text-alert-600',
+  major_outage: 'text-alert-600',
+};
+
+const overallStatus = statusData?.overall_status ?? null;
+const composants = statusData?.composants ?? [];
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString('fr-FR', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+}
+---
+
+<Layout
+  title="Statut du service | Taqinor"
+  description="État en temps réel des services Taqinor (API, PDF devis, stockage documents, notifications, IA) et historique des incidents."
+>
+  <section class="mx-auto max-w-3xl bg-blanc-azur px-5 py-16 text-encre">
+    <Breadcrumb tone="dark" items={[{ label: 'Accueil', href: '/' }, { label: 'Statut du service' }]} />
+
+    <h1 class="mt-6 text-3xl font-semibold text-encre">Statut du service</h1>
+
+    {!statusData ? (
+      <p class="mt-6 rounded-lg border border-alert-300 bg-alert-50 px-4 py-3 text-alert-600">
+        Statut momentanément indisponible. Veuillez réessayer dans un instant.
+      </p>
+    ) : (
+      <>
+        <p class="mt-4 text-lg">
+          État global :{' '}
+          <span class={`font-semibold ${STATUT_COLOR[overallStatus ?? ''] ?? 'text-encre-soft'}`}>
+            {STATUT_LABEL[overallStatus ?? ''] ?? overallStatus}
+          </span>
+        </p>
+
+        <ul class="mt-8 divide-y divide-azur-900/15 rounded-lg border border-azur-900/15 bg-blanc">
+          {composants.map((c) => (
+            <li class="flex items-center justify-between px-4 py-3">
+              <span class="text-encre">
+                {c.nom}
+                {c.region ? <span class="ml-2 text-sm text-encre-faint">({c.region})</span> : null}
+              </span>
+              <span class={`text-sm font-medium ${STATUT_COLOR[c.statut] ?? 'text-encre-soft'}`}>
+                {STATUT_LABEL[c.statut] ?? c.statut}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <p class="mt-3 text-xs text-encre-faint">
+          Dernière vérification : {formatDate(statusData.generated_at)}
+        </p>
+
+        {Object.keys(uptimeParComposant).length > 0 && (
+          <div class="mt-8 space-y-4">
+            {Object.entries(uptimeParComposant).map(([composant, jours]) => (
+              <div>
+                <p class="text-sm font-medium text-encre">{composant}</p>
+                <div class="mt-1 flex gap-px" title={`${jours.length} jours`}>
+                  {jours.map((j) => (
+                    <span
+                      class={`h-6 w-1 rounded-sm ${UPTIME_COULEUR[j.statut] ?? 'bg-lune'}`}
+                      title={`${j.date} — ${j.statut} (${j.pct}% disponible)`}
+                    ></span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <p class="text-xs text-encre-faint">90 derniers jours</p>
+          </div>
+        )}
+      </>
+    )}
+
+    {dependancesEnPanne.length > 0 && (
+      <>
+        <h2 class="mt-14 text-2xl font-semibold text-encre">Fonctionnalités impactées</h2>
+        <ul class="mt-6 space-y-4">
+          {dependancesEnPanne.map((dep) => (
+            <li class="rounded-lg border border-azur-900/15 bg-blanc px-5 py-4">
+              <p class="font-medium text-encre">{dep.label}</p>
+              {dep.impactees.length > 0 && (
+                <p class="mt-1 text-sm text-encre-soft">Impacté : {dep.impactees.join(', ')}</p>
+              )}
+              {dep.continuent.length > 0 && (
+                <p class="mt-1 text-sm text-encre-soft">Continue de fonctionner : {dep.continuent.join(', ')}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      </>
+    )}
+
+    <h2 class="mt-14 text-2xl font-semibold text-encre">Historique des incidents (90 jours)</h2>
+
+    {incidents.length === 0 ? (
+      <p class="mt-4 text-encre-soft">Aucun incident au cours des 90 derniers jours.</p>
+    ) : (
+      <ul class="mt-6 space-y-6">
+        {incidents.map((inc) => (
+          <li class="rounded-lg border border-azur-900/15 bg-blanc px-5 py-4">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 class="text-lg font-medium text-encre">{inc.titre}</h3>
+              <span class="text-sm text-encre-faint">{formatDate(inc.debute_le)}</span>
+            </div>
+            <p class="mt-1 text-sm text-encre-soft">
+              Sévérité : {inc.severite} — Statut : {inc.statut}
+              {inc.region ? ` — Région : ${inc.region}` : ''}
+            </p>
+
+            {inc.updates.length > 0 && (
+              <ol class="mt-3 space-y-2 border-l-2 border-azur-900/15 pl-4">
+                {inc.updates.map((u) => (
+                  <li>
+                    <span class="text-xs text-encre-faint">{formatDate(u.horodatage)}</span>
+                    <p class="text-sm text-encre-soft">{u.message}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            {inc.postmortem_markdown ? (
+              <div class="mt-4 rounded-md bg-blanc-azur px-4 py-3">
+                <p class="text-sm font-semibold text-encre">Post-mortem</p>
+                <p class="mt-1 whitespace-pre-line text-sm text-encre-soft">{inc.postmortem_markdown}</p>
+              </div>
+            ) : null}
+
+            <a
+              class="mt-3 inline-block text-sm text-azur-700 underline"
+              href={`/status/${inc.id}`}
+            >
+              Voir le détail
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+</Layout>

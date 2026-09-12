@@ -57,7 +57,10 @@ export const DialogContent = forwardRef(function DialogContent(
         {children}
         {showClose && (
           <DialogPrimitive.Close
-            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-ring"
+            // NTI18N2 — `end-3` (inset-inline-end) plutôt que `right-3` : en
+            // RTL le bouton de fermeture doit migrer au bord GAUCHE, pas
+            // rester ancré à droite (côté « départ » du texte en arabe).
+            className="absolute end-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-ring"
             aria-label="Fermer"
           >
             <X className="size-4" />
@@ -69,7 +72,9 @@ export const DialogContent = forwardRef(function DialogContent(
 })
 
 export function DialogHeader({ className, ...props }) {
-  return <div className={cn('flex flex-col gap-1 pr-6', className)} {...props} />
+  // NTI18N2 — `pe-6` (padding-inline-end) : réserve l'espace du bouton de
+  // fermeture (désormais `end-3`) du côté qui lui correspond selon `dir`.
+  return <div className={cn('flex flex-col gap-1 pe-6', className)} {...props} />
 }
 export function DialogFooter({ className, ...props }) {
   return (

@@ -207,3 +207,30 @@ def dependents(key, manifests=None):
         other for other, manifest in manifests.items()
         if key in manifest['depends']
     }
+
+
+def _version_tuple(version):
+    """Éclate une version ``'X.Y.Z'`` en tuple d'entiers, tolérant (jamais
+    lever) : une valeur absente ou un segment non numérique vaut 0."""
+    out = []
+    for part in str(version or '').split('.'):
+        try:
+            out.append(int(part))
+        except (TypeError, ValueError):
+            out.append(0)
+    while len(out) < 3:
+        out.append(0)
+    return tuple(out[:3])
+
+
+def version_compatible(version_installee, version_min):
+    """NTEXT15 — vrai si ``version_installee`` >= ``version_min`` (comparaison
+    sémantique ``X.Y.Z``, tolérante à un format non standard — jamais lever).
+
+    ``version_min`` absent/vide ⇒ toujours compatible (pas d'exigence posée).
+    Une ``version_installee`` absente/malformée vaut ``(0, 0, 0)`` : elle
+    n'est compatible qu'avec un ``version_min`` lui-même nul.
+    """
+    if not version_min:
+        return True
+    return _version_tuple(version_installee) >= _version_tuple(version_min)

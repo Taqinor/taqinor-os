@@ -174,16 +174,17 @@ def rapport_partage_public(request, token):
     if report is None:
         return Response({'detail': 'Lien invalide ou expiré.'},
                         status=status.HTTP_404_NOT_FOUND)
-    from .scheduled_reports import render_report_xlsx
-    contenu, titre = render_report_xlsx(report)
+    # NTDATA37 — la cible peut être un tableau de bord (PDF) ou une requête
+    # sauvegardée (XLSX) : c'est le RENDU qui dit son nom de fichier et son
+    # type MIME. Servir un PDF sous un nom .xlsx ne s'ouvrirait nulle part.
+    from .scheduled_reports import MIME_XLSX, rendre_rapport
+    contenu, titre, nom_fichier, type_mime = rendre_rapport(report)
     if contenu is None:
         return Response({'detail': 'Rapport indisponible.'},
                         status=status.HTTP_404_NOT_FOUND)
-    reponse = HttpResponse(
-        contenu,
-        content_type='application/vnd.openxmlformats-officedocument.'
-                     'spreadsheetml.sheet')
+    reponse = HttpResponse(contenu, content_type=type_mime or MIME_XLSX)
     reponse['Content-Disposition'] = (
-        f'attachment; filename="{report.target_kind}.xlsx"')
+        'attachment; filename="%s"'
+        % (nom_fichier or f'{report.target_kind}.xlsx'))
     reponse['X-Rapport'] = titre or report.target_kind
     return reponse

@@ -57,6 +57,13 @@ def enregistrer_usage(api_key, *, erreur=False, when=None):
     return record
 
 
+# NTAPI6 — nom demandé par le plan pour l'enregistreur consommé par le throttle
+# de ``publicapi``. Alias STRICT de ``enregistrer_usage`` (jamais une seconde
+# implémentation qui pourrait diverger) : l'app publique câble ``record_call``,
+# le reste du dépôt garde le nom FR historique.
+record_call = enregistrer_usage
+
+
 def usage_jour(company, jour=None):
     """Nombre total de requêtes de la société pour un jour donné."""
     jour = jour or timezone.now().date()
@@ -96,6 +103,91 @@ def quota_depasse(api_key, when=None):
 def plan_pour_societe_id(company_id):
     """Plan de quota par identifiant de société (sans création)."""
     return ApiUsagePlan.objects.filter(company_id=company_id).first()
+
+
+# ── NTAPI6 — état de quota exposé en en-têtes `X-RateLimit-*` ────────────────
+#
+# Le plan borne TROIS fenêtres : minute (débit), jour et mois (volume). Les
+# en-têtes standards n'en décrivent qu'UNE — on expose donc systématiquement la
+# PLUS CONTRAIGNANTE (celle dont il reste le moins), pour qu'un client qui
+# respecte l'en-tête ne se prenne jamais un 429 surprise sur une autre fenêtre.
+# 0 = illimité (fenêtre ignorée), exactement comme `quota_depasse`.
+
+def _fin_du_mois(ref):
+    """Premier instant du mois SUIVANT (borne de réinitialisation mensuelle)."""
+    from datetime import datetime, time as dt_time
+
+    jour = ref.date().replace(day=1)
+    mois_suivant = (jour.replace(day=28) + timedelta(days=4)).replace(day=1)
+    naive = datetime.combine(mois_suivant, dt_time.min)
+    return timezone.make_aware(naive, ref.tzinfo) if timezone.is_aware(ref) \
+        else naive
+
+
+def _fin_du_jour(ref):
+    """Premier instant du jour SUIVANT (borne de réinitialisation journalière)."""
+    from datetime import datetime, time as dt_time
+
+    naive = datetime.combine(ref.date() + timedelta(days=1), dt_time.min)
+    return timezone.make_aware(naive, ref.tzinfo) if timezone.is_aware(ref) \
+        else naive
+
+
+def etat_quota(api_key, when=None):
+    """État de quota de VOLUME de la société d'une clé, prêt pour les en-têtes.
+
+    Renvoie ``None`` quand aucune borne de volume ne s'applique (pas de plan,
+    plan inactif, ou quotas à 0 = illimité) — l'appelant retombe alors sur la
+    fenêtre de DÉBIT du throttle DRF, seule limite en vigueur.
+
+    Sinon un dict ``{'limit', 'remaining', 'reset', 'retry_after',
+    'fenetre'}`` où ``reset`` est un epoch (secondes) et ``retry_after`` le
+    nombre de secondes à attendre. ``remaining`` n'est jamais négatif.
+    """
+    when = when or timezone.now()
+    plan = plan_pour_societe_id(api_key.company_id)
+    if plan is None or not plan.actif:
+        return None
+
+    fenetres = []
+    if plan.quota_par_jour:
+        fenetres.append((
+            'jour', plan.quota_par_jour,
+            usage_jour(api_key.company, when.date()), _fin_du_jour(when)))
+    if plan.quota_par_mois:
+        fenetres.append((
+            'mois', plan.quota_par_mois,
+            usage_mois(api_key.company, when), _fin_du_mois(when)))
+    if not fenetres:
+        return None
+
+    # La plus contraignante = celle dont il reste le moins.
+    nom, limite, consomme, reset_at = min(
+        fenetres, key=lambda f: f[1] - f[2])
+    restant = max(0, limite - consomme)
+    retry_after = max(1, int((reset_at - when).total_seconds()))
+    return {
+        'limit': limite,
+        'remaining': restant,
+        'reset': int(reset_at.timestamp()),
+        'retry_after': retry_after,
+        'fenetre': nom,
+    }
+
+
+def limite_par_minute(api_key):
+    """Débit/minute du plan de la société (``None`` = pas de borne propre).
+
+    NTAPI6 — le throttle DRF de ``publicapi`` lit CETTE valeur plutôt qu'un
+    taux codé en dur : le plan (``ApiUsagePlan``) est la source de vérité des
+    limites, comme le dit sa docstring. ``quota_burst`` s'ajoute à la borne
+    (marge de rafale tolérée). 0 = illimité → ``None`` (le taux DRF configuré
+    reste en vigueur, comportement historique).
+    """
+    plan = plan_pour_societe_id(api_key.company_id)
+    if plan is None or not plan.actif or not plan.quota_par_minute:
+        return None
+    return plan.quota_par_minute + (plan.quota_burst or 0)
 
 
 def analytics(company, depuis=None, jusqu_a=None):

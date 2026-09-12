@@ -7,7 +7,8 @@ versions de document sont numérotées + déduppées via `services`.
 """
 from django.db import models
 from django.http import HttpResponse
-from rest_framework import filters, mixins, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, mixins, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
     action, api_view, parser_classes, permission_classes, throttle_classes,
 )
@@ -4019,6 +4020,49 @@ class PublicSignatureRateThrottle(SimpleRateThrottle):
         }
 
 
+class PublicSignatureTokenThrottle(SimpleRateThrottle):
+    """NTDOC9 — Limite de débit PAR JETON (indépendante de l'IP).
+
+    `PublicSignatureRateThrottle` (XGED1) borne le couple IP+jeton : un
+    attaquant qui fait tourner ses adresses IP (proxies, botnet) martèle donc
+    le MÊME lien de signature sans jamais être ralenti. Ce second throttle
+    ferme ce trou en comptant les appels du jeton lui-même. Volontairement plus
+    haut que l'usage humain d'une cérémonie de signature (quelques dizaines
+    d'appels au maximum) : un signataire légitime n'est jamais impacté.
+
+    Même patron que `automation._WebhookTokenThrottle` (débit par token) — le
+    taux est écrit ici plutôt que dans `DEFAULT_THROTTLE_RATES`, comme ses
+    jumeaux GED (`PublicPartageRateThrottle`, `PublicSignatureRateThrottle`).
+    """
+    scope = 'public_ged_signature_token'
+    rate = '20/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        return self.cache_format % {'scope': self.scope, 'ident': token}
+
+
+def _signature_verrouillee_reponse():
+    """NTDOC9 — 429 explicite quand un jeton est verrouillé pour abus."""
+    return _ged_noindex(Response(
+        {'detail': "Trop de tentatives échouées sur ce lien. Il est "
+                   "temporairement verrouillé, réessayez dans quelques "
+                   "minutes."},
+        status=status.HTTP_429_TOO_MANY_REQUESTS))
+
+
+def _signature_echec(request, token, reponse, *, document=None):
+    """NTDOC9 — Trace la tentative échouée (compteur + `JournalAcces`) puis
+    renvoie telle quelle la réponse d'erreur métier de l'appelant."""
+    services.enregistrer_echec_signature_publique(
+        token, document=document,
+        adresse_ip=services._adresse_ip_requete(request))
+    return reponse
+
+
 def _signature_publique_payload(demande):
     """XGED1/XGED3 — Représentation JSON publique d'une demande (jamais de
     données d'une autre société ; aucun prix d'achat/marge — cette demande ne
@@ -4038,7 +4082,7 @@ def _signature_publique_payload(demande):
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
-@throttle_classes([PublicSignatureRateThrottle])
+@throttle_classes([PublicSignatureRateThrottle, PublicSignatureTokenThrottle])
 def public_signature(request, token):
     """XGED1 — Cérémonie de signature PUBLIQUE (sans login), loi 53-05.
 
@@ -4057,7 +4101,15 @@ def public_signature(request, token):
       - 400 : consentement/signature manquants (signer) ou motif vide (refuser).
       - 200 : succès (GET consultation, ou POST signer/refuser).
 
+    NTDOC9 — en plus du throttle IP+jeton (XGED1) et du throttle PAR JETON,
+    une série de `SIGNATURE_ABUS_MAX_ECHECS` tentatives échouées consécutives
+    verrouille temporairement le lien (429 explicite) ; chaque échec est tracé
+    dans `JournalAcces`.
+
     Ne touche NI `contrats.SignatureContrat` NI `/proposal` (rule #4)."""
+    if services.signature_publique_verrouillee(token):
+        return _signature_verrouillee_reponse()
+
     statut, demande = services.resolve_signature_publique(token)
 
     if statut == services.SIGNATURE_PUBLIQUE_INTROUVABLE:
@@ -4074,6 +4126,11 @@ def public_signature(request, token):
              'statut': demande.statut},
             status=status.HTTP_410_GONE))
 
+    ip = services._adresse_ip_requete(request)
+    # NTDOC9 — motif « une IP, plusieurs sociétés » : évalué sur un jeton
+    # RÉSOLU (donc une société réelle), best-effort, n'altère jamais la réponse.
+    services.surveiller_reutilisation_suspecte(ip, demande.company)
+
     if request.method == 'GET':
         return _ged_noindex(
             Response(_signature_publique_payload(demande),
@@ -4081,7 +4138,6 @@ def public_signature(request, token):
 
     # POST — signer ou refuser.
     action_demandee = (request.data.get('action') or '').strip().lower()
-    ip = services._adresse_ip_requete(request)
     ua = (request.META.get('HTTP_USER_AGENT') or '')[:512]
 
     if action_demandee == 'refuser':
@@ -4090,8 +4146,10 @@ def public_signature(request, token):
                 demande, motif=request.data.get('motif'),
                 adresse_ip=ip, user_agent=ua)
         except ValueError as exc:
-            return _ged_noindex(Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+            return _signature_echec(request, token, _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)),
+                document=demande.document)
+        services.reinitialiser_echecs_signature(token)
         return _ged_noindex(
             Response(_signature_publique_payload(demande),
                      status=status.HTTP_200_OK))
@@ -4110,21 +4168,81 @@ def public_signature(request, token):
                 adresse_ip=ip, user_agent=ua,
                 valeurs_champs=request.data.get('valeurs_champs'))
         except ValueError as exc:
-            return _ged_noindex(Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+            return _signature_echec(request, token, _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)),
+                document=demande.document)
+        services.reinitialiser_echecs_signature(token)
         return _ged_noindex(
             Response(_signature_publique_payload(demande),
                      status=status.HTTP_200_OK))
 
-    return _ged_noindex(Response(
+    return _signature_echec(request, token, _ged_noindex(Response(
         {'detail': "Action inconnue : 'signer' ou 'refuser' attendu."},
-        status=status.HTTP_400_BAD_REQUEST))
+        status=status.HTTP_400_BAD_REQUEST)), document=demande.document)
+
+
+class PublicVerificationCertificatThrottle(SimpleRateThrottle):
+    """NTDOC10 — Débit de l'endpoint PUBLIC de vérification de certificat.
+
+    Lecture seule et sans secret réutilisable (l'empreinte est publiée sur le
+    certificat lui-même), mais on borne quand même le balayage d'empreintes."""
+    scope = 'public_ged_verif_certificat'
+    rate = '60/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request)}
+
+
+@extend_schema(responses=inline_serializer('VerifierCertificatReponse', {
+    'integre': drf_serializers.BooleanField(),
+    'type': drf_serializers.CharField(required=False),
+    'statut': drf_serializers.CharField(required=False),
+    'date_signature': drf_serializers.DateTimeField(
+        required=False, allow_null=True),
+    'nombre_signataires': drf_serializers.IntegerField(required=False),
+    'hash_document': drf_serializers.CharField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+}))
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicVerificationCertificatThrottle])
+def verifier_certificat(request, empreinte):
+    """NTDOC10 — Vérifie PUBLIQUEMENT l'intégrité d'un certificat de complétion.
+
+    `GET /api/django/ged/verifier-certificat/<empreinte>/` (AllowAny, lecture
+    seule) : l'empreinte SHA-256 imprimée sur le certificat (et encodée dans
+    son QR) est l'UNIQUE clé. L'intégrité est RECALCULÉE à chaque appel — une
+    demande modifiée depuis l'émission ne se vérifie plus.
+
+    Ne renvoie JAMAIS le contenu du document ni son nom : uniquement le fait
+    que le certificat est authentique, son statut, sa date de signature, le
+    nombre de signataires et le hash du document (celui-là même que le porteur
+    du certificat peut comparer à son propre fichier).
+
+    Codes : 200 « intègre » ; 404 « non trouvé » (empreinte inconnue, mal
+    formée, ou certificat qui ne correspond plus à l'état de la demande)."""
+    resultat = services.verifier_empreinte_certificat(empreinte)
+    if resultat is None:
+        return _ged_noindex(Response(
+            {'integre': False,
+             'detail': "Aucun certificat ne correspond à cette empreinte."},
+            status=status.HTTP_404_NOT_FOUND))
+    return _ged_noindex(Response(resultat, status=status.HTTP_200_OK))
 
 
 class PublicSignataireRateThrottle(PublicSignatureRateThrottle):
     """XGED2 — Même limite de débit que la cérémonie mono-partie, sur le
     jeton PROPRE à un destinataire du circuit multi-signataires."""
     scope = 'public_ged_signataire'
+
+
+class PublicSignataireTokenThrottle(PublicSignatureTokenThrottle):
+    """NTDOC9 — Débit PAR JETON destinataire (indépendant de l'IP)."""
+    scope = 'public_ged_signataire_token'
 
 
 def _signataire_publique_payload(signataire):
@@ -4150,7 +4268,7 @@ def _signataire_publique_payload(signataire):
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
-@throttle_classes([PublicSignataireRateThrottle])
+@throttle_classes([PublicSignataireRateThrottle, PublicSignataireTokenThrottle])
 def public_signataire(request, token):
     """XGED2 — Cérémonie de signature PUBLIQUE d'UN destinataire du circuit
     multi-signataires (`SignataireDemande.token`), distincte du jeton de la
@@ -4160,7 +4278,13 @@ def public_signataire(request, token):
     `GET /api/django/ged/signataire/<token>/` consulte ; `POST` avec
     `{"action": "signer"|"refuser", …}` (mêmes champs que `public_signature`).
     Un signataire qui n'est PAS encore `notifie` (séquentiel, pas son tour) ne
-    peut ni signer ni refuser (403 explicite, jamais un blocage silencieux)."""
+    peut ni signer ni refuser (403 explicite, jamais un blocage silencieux).
+
+    NTDOC9 — mêmes protections anti-abus que `public_signature` : débit par
+    jeton, verrou temporaire après échecs consécutifs, trace `JournalAcces`."""
+    if services.signature_publique_verrouillee(token):
+        return _signature_verrouillee_reponse()
+
     signataire = (SignataireDemande.objects
                   .select_related(
                       'demande', 'demande__document', 'demande__document__company')
@@ -4185,15 +4309,19 @@ def public_signataire(request, token):
              'statut': signataire.statut},
             status=status.HTTP_410_GONE))
 
+    # NTDOC9 — motif « une IP, plusieurs sociétés », best-effort.
+    services.surveiller_reutilisation_suspecte(
+        services._adresse_ip_requete(request), demande.document.company)
+
     if request.method == 'GET':
         return _ged_noindex(
             Response(_signataire_publique_payload(signataire),
                      status=status.HTTP_200_OK))
 
     if signataire.statut != SIGNATAIRE_NOTIFIE:
-        return _ged_noindex(Response(
+        return _signature_echec(request, token, _ged_noindex(Response(
             {'detail': "Ce n'est pas encore votre tour de signer."},
-            status=status.HTTP_403_FORBIDDEN))
+            status=status.HTTP_403_FORBIDDEN)), document=demande.document)
 
     action_demandee = (request.data.get('action') or '').strip().lower()
     if action_demandee == 'refuser':
@@ -4201,8 +4329,10 @@ def public_signataire(request, token):
             signataire = services.refuser_signataire(
                 signataire, motif=request.data.get('motif'))
         except ValueError as exc:
-            return _ged_noindex(Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+            return _signature_echec(request, token, _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)),
+                document=demande.document)
+        services.reinitialiser_echecs_signature(token)
         return _ged_noindex(
             Response(_signataire_publique_payload(signataire),
                      status=status.HTTP_200_OK))
@@ -4218,8 +4348,11 @@ def public_signataire(request, token):
             signataire = services.valider_code_otp_signataire(
                 signataire, request.data.get('code'))
         except ValueError as exc:
-            return _ged_noindex(Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+            # Un code OTP erroné est LE signal d'un balayage : il compte.
+            return _signature_echec(request, token, _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)),
+                document=demande.document)
+        services.reinitialiser_echecs_signature(token)
         return _ged_noindex(
             Response(_signataire_publique_payload(signataire),
                      status=status.HTTP_200_OK))
@@ -4234,13 +4367,15 @@ def public_signataire(request, token):
                 adresse_ip=services._adresse_ip_requete(request),
                 user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512])
         except ValueError as exc:
-            return _ged_noindex(Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+            return _signature_echec(request, token, _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)),
+                document=demande.document)
+        services.reinitialiser_echecs_signature(token)
         return _ged_noindex(
             Response(_signataire_publique_payload(signataire),
                      status=status.HTTP_200_OK))
 
-    return _ged_noindex(Response(
+    return _signature_echec(request, token, _ged_noindex(Response(
         {'detail': "Action inconnue : 'signer', 'refuser', 'envoyer-code' ou "
                    "'valider-code' attendu."},
-        status=status.HTTP_400_BAD_REQUEST))
+        status=status.HTTP_400_BAD_REQUEST)), document=demande.document)

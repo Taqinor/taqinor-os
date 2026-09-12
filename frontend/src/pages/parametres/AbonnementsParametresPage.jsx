@@ -11,6 +11,8 @@
 import { useEffect, useState } from 'react'
 import { Save } from 'lucide-react'
 import api from '../../api/axios'
+// NTI18N1 — rollout i18n : premier écran Paramètres migré.
+import { useT } from '../../i18n'
 import {
   Button, Card, Input, Label, Skeleton, toast,
 } from '../../ui'
@@ -30,6 +32,7 @@ function messageErreur(err, repli) {
 }
 
 export default function AbonnementsParametresPage() {
+  const t = useT()
   const [params, setParams] = useState(null)
   const [sequences, setSequences] = useState([])
   const [loading, setLoading] = useState(true)
@@ -79,7 +82,7 @@ export default function AbonnementsParametresPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h2>Facturation récurrente</h2>
+        <h2>{t('parametres.abonnements.section', null, 'Facturation récurrente')}</h2>
       </div>
 
       {loading || !params ? (

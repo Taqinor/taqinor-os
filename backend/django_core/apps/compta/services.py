@@ -5147,7 +5147,50 @@ def soumettre_note_frais(note):
     note.save(update_fields=['statut', 'motif_rejet', 'escalade_direction',
                              'warning_delai'])
     _journaliser_soumission_note_frais(note)
+    if note.escalade_direction:
+        _notifier_escalade_direction_note_frais(note)
     return note
+
+
+def _notifier_escalade_direction_note_frais(note):
+    """NTP2P45 — notifie IMMÉDIATEMENT (jamais d'attente du prochain cycle
+    beat) les administrateurs (repli direction — aucun rôle ``role_legacy``
+    dédié n'existe) quand une note de frais est escaladée (NTP2P11).
+
+    Gated par ``stock.AchatsParametres.plafond_notes_frais_actif`` (NTP2P31,
+    OFF par défaut) : sans activation, l'escalade reste posée sur la note +
+    journalisée au chatter (comportement historique NTP2P11 inchangé), sans
+    notification immédiate — jamais une régression pour une escalade déjà
+    active en production avant ce réglage. Lu cross-app via
+    ``stock.selectors`` uniquement. Best-effort, jamais bloquant."""
+    try:
+        from apps.stock.selectors import plafond_notes_frais_actif
+        if not plafond_notes_frais_actif(note.company):
+            return
+        from django.contrib.auth import get_user_model
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify_many
+        User = get_user_model()
+        recipients = list(User.objects.filter(
+            company=note.company, is_active=True, role_legacy='admin'))
+        if not recipients:
+            recipients = list(User.objects.filter(
+                company=note.company, is_active=True,
+                role_legacy__in=['admin', 'responsable']))
+        if not recipients:
+            return
+        notify_many(
+            recipients, EventType.APPROVAL_REQUESTED,
+            title=f'Note de frais à valider en direction — {note.reference}',
+            body=(f'La note {note.reference} ({note.montant} MAD) dépasse '
+                  'le seuil configuré et exige une validation direction.'),
+            link='/comptabilite/notes-de-frais',
+            company=note.company, reason='manager')
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P45: notification escalade direction échouée (note %s)',
+            getattr(note, 'pk', '?'), exc_info=True)
 
 
 def _journaliser_soumission_note_frais(note):

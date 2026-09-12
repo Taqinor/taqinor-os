@@ -19,6 +19,13 @@ const kbApi = {
   createArticle: (data) => api.post('/kb/articles/', data),
   updateArticle: (id, data) => api.patch(`/kb/articles/${id}/`, data),
   removeArticle: (id) => api.delete(`/kb/articles/${id}/`),
+  // NTSRV19/NTSRV30 — brouillon d'article pré-rempli depuis un ticket SAV
+  // résolu. Le corps porte les faits DÉJÀ saisis sur le ticket
+  // ({ticket_id, type_panne, equipement, description, cause, remede,
+  // derniere_note}) : le serveur ne lit jamais apps.sav, l'appelant — qui a
+  // déjà chargé le ticket — les lui fournit. Réponse : l'article créé.
+  creerArticleDepuisTicket: (data) =>
+    api.post('/kb/articles/creer-depuis-ticket/', data),
 
   // ── Cycle de vie / versionnement (POST, aucun corps requis) ──
   publier: (id) => api.post(`/kb/articles/${id}/publier/`),

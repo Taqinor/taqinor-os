@@ -113,6 +113,29 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     def validate_seuil_regime_anre_kwc(self, value):
         return self._validate_non_negative(value, 'Le seuil ANRE (kWc)')
 
+    # NTI18N10 — validation contre le registre IANA réel (zoneinfo, stdlib
+    # depuis Python 3.9, déjà utilisé par le runtime — aucune dépendance
+    # nouvelle) plutôt qu'une liste `choices=` figée : couvre TOUS les fuseaux
+    # IANA valides sans maintenance manuelle d'une énumération.
+    # NTI18N19 — validateur MA formalisé (framework extensible par
+    # pack_pays, apps/parametres/tax_id_validators.py). `pack_pays`
+    # (NTI18N16) n'existe pas encore (GATED-founder) : 'MA' est passé en dur
+    # en attendant — comportement historique, puisque toute société
+    # actuelle EST marocaine. Jamais bloquant pour un champ vide.
+    def validate_ice(self, value):
+        from .tax_id_validators import validate_tax_id
+        resultat = validate_tax_id('MA', 'ice', value)
+        if not resultat['valide']:
+            raise serializers.ValidationError(resultat['message'])
+        return value
+
+    def validate_fuseau_horaire(self, value):
+        import zoneinfo
+        if value not in zoneinfo.available_timezones():
+            raise serializers.ValidationError(
+                f'Fuseau horaire inconnu : « {value} ».')
+        return value
+
     # ── ERR55 — forme des champs JSON. Une forme corrompue (liste, scalaire,
     # clés/valeurs invalides) casserait la numérotation ou l'échéancier en
     # silence. NULL reste autorisé (= repli sur le défaut historique).

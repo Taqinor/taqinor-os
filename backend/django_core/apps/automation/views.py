@@ -10,7 +10,8 @@ côté serveur, jamais lus du corps de requête.
 """
 from django.utils import timezone
 
-from rest_framework import filters, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -23,14 +24,15 @@ from authentication.permissions import (
 from . import engine, services
 from .models import (
     ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
-    AutomationApproval, AutomationRule, AutomationRun,
-    IncomingWebhookTrigger,
+    AutomationApproval, AutomationRule, AutomationRuleVersion, AutomationRun,
+    IncomingWebhookTrigger, creer_version_automation_rule,
+    restaurer_version_automation_rule,
 )
 from .serializers import (
     ApprovalDelegationSerializer, ApprovalRequestSerializer,
     ApprovalRequestTypeSerializer, AutomationApprovalSerializer,
-    AutomationRuleSerializer, AutomationRunSerializer,
-    IncomingWebhookTriggerSerializer,
+    AutomationRuleSerializer, AutomationRuleVersionSerializer,
+    AutomationRunSerializer, IncomingWebhookTriggerSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -104,6 +106,11 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         old_enabled = serializer.instance.enabled
         old_nom = serializer.instance.nom
+        # NTEXT30 — snapshot l'état COURANT (avant modif) sous le prochain
+        # rang de version, pour que « restaurer » puisse y revenir plus
+        # tard. Best-effort : ne bloque jamais l'écriture de la règle.
+        creer_version_automation_rule(
+            serializer.instance, auteur=self.request.user)
         super().perform_update(serializer)
         instance = serializer.instance
         if instance.enabled != old_enabled or instance.nom != old_nom:
@@ -181,6 +188,47 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
             context=contexte if isinstance(contexte, dict) else None,
             user=request.user)
         return Response({'effets': effets, 'simulation': True})
+
+
+class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTEXT30 — historique des versions d'une règle. Lecture seule ; scopé
+    société via ``rule__company`` (le modèle lui-même ne porte pas de FK
+    ``company`` directe — une version n'existe que par sa règle, TenantMixin
+    ne s'applique donc pas tel quel). ``?rule=<id>`` filtre sur une règle."""
+    queryset = AutomationRuleVersion.objects.select_related(
+        'rule', 'auteur').all()
+    serializer_class = AutomationRuleVersionSerializer
+    permission_classes = [IsAdminRole]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if user.company_id:
+            qs = qs.filter(rule__company=user.company)
+        elif not user.is_superuser:
+            qs = qs.none()
+        rule = self.request.query_params.get('rule')
+        if rule:
+            qs = qs.filter(rule_id=rule)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def restaurer(self, request, pk=None):
+        """NTEXT30 — recrée EXACTEMENT la config de CETTE version sur sa
+        règle (nom/trigger/action/steps). Journalisée comme une modification
+        de règle ordinaire (Journal des paramètres + plateforme)."""
+        version_row = self.get_object()
+        rule = restaurer_version_automation_rule(version_row)
+        try:
+            from apps.customfields.audit_plateforme import journaliser_plateforme
+            journaliser_plateforme(
+                company=getattr(request.user, 'company', None),
+                user=request.user, cible='regle', identifiant=rule.pk,
+                libelle="Règle d'automatisation restaurée",
+                old=f'version {version_row.version}', new=rule.nom)
+        except Exception:
+            pass
+        return Response(AutomationRuleSerializer(rule).data)
 
 
 class AutomationRunViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -494,3 +542,78 @@ def automation_templates(request):
     automatique. Lecture seule, tout rôle authentifié."""
     from .templates import AUTOMATION_TEMPLATES
     return Response(AUTOMATION_TEMPLATES)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTEXT33 — Catalogue de MODÈLES d'automatisation INSTALLABLES (distinct du
+# préset ci-dessus qui ne fait que préremplir un formulaire) : installer un
+# modèle MATÉRIALISE une VRAIE ``AutomationRule`` prête à activer.
+
+@extend_schema(responses=inline_serializer('ModelesCatalogueReponse', {
+    'modeles': drf_serializers.ListField(child=inline_serializer(
+        'ModeleCatalogue', {
+            'code': drf_serializers.CharField(),
+            'nom': drf_serializers.CharField(),
+            'description': drf_serializers.CharField(),
+            'trigger_type': drf_serializers.CharField(),
+            'trigger_config': drf_serializers.JSONField(),
+            'requires_approval': drf_serializers.BooleanField(),
+            'parametres_requis': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
+            'deja_installe': drf_serializers.BooleanField(),
+        })),
+}))
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def modeles_catalogue(request):
+    """NTEXT33 — liste les recettes installables + leur état d'installation
+    pour la société du demandeur (``deja_installe`` évite un second appel)."""
+    from .templates import CATALOGUE_MODELES
+
+    company = request.user.company
+    installes = set()
+    if company is not None:
+        installes = set(
+            AutomationRule.objects.filter(
+                company=company,
+                nom__in=[m['nom'] for m in CATALOGUE_MODELES]
+            ).values_list('nom', flat=True))
+    return Response({
+        'modeles': [
+            {**{k: v for k, v in modele.items() if k != 'steps'},
+             'deja_installe': modele['nom'] in installes}
+            for modele in CATALOGUE_MODELES
+        ],
+    })
+
+
+@extend_schema(
+    # Corps LIBRE : les clés attendues dépendent de la recette (`code`) —
+    # ce sont ses propres `parametres_requis`, voir templates.CATALOGUE_MODELES.
+    request=None,
+    responses=inline_serializer('InstallerModeleReponse', {
+        'rule': AutomationRuleSerializer(),
+        'cree': drf_serializers.BooleanField(),
+    }))
+@api_view(['POST'])
+@permission_classes([IsAdminRole])
+def installer_modele_catalogue(request, code=None):
+    """NTEXT33 — installe la recette ``code`` pour la société du demandeur
+    (admin). Corps optionnel : les ``parametres_requis`` de la recette
+    (ex. ``{"user_id": 12}`` pour une assignation)."""
+    from .templates import ParametreManquant, installer_modele
+
+    try:
+        rule, cree = installer_modele(
+            request.user.company, code,
+            params=request.data if isinstance(request.data, dict) else {})
+    except ParametreManquant as exc:
+        return Response({'detail': str(exc)}, status=400)
+    if rule is None:
+        return Response(
+            {'detail': f'Modèle « {code} » inconnu du catalogue.'},
+            status=404)
+    return Response({
+        'rule': AutomationRuleSerializer(rule).data,
+        'cree': cree,
+    }, status=201 if cree else 200)

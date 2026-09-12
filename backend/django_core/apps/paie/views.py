@@ -14,7 +14,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
 from django.utils.dateparse import parse_date
 
-from rest_framework import filters, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import (
@@ -36,8 +37,10 @@ from .models import (
     CumulAnnuel,
     EcheanceDeclarative,
     ElementVariable,
+    GabaritDeclaratif,
     LigneVirement,
     OrdreVirement,
+    ParametragePaieCompany,
     ParametrePaie,
     PaysPaie,
     PeriodePaie,
@@ -60,11 +63,13 @@ from .serializers import (
     DepotDeclaratifSerializer,
     EcheanceDeclarativeSerializer,
     ElementVariableSerializer,
+    GabaritDeclaratifSerializer,
     LigneVirementSerializer,
     ParametrePaieSerializer,
     PaysPaieSerializer,
     PeriodePaieSerializer,
     OrdreVirementSerializer,
+    ParametragePaieCompanySerializer,
     ProfilPaieSerializer,
     RegimeMutuelleSerializer,
     RubriqueEmployeSerializer,
@@ -88,6 +93,7 @@ from .services import (
     avertissements_periode,
     calculer_bulletin,
     changer_statut,
+    checklist_cloture,
     cloturer_periode_paie,
     commit_reprise_cumuls,
     controle_completude,
@@ -112,6 +118,7 @@ from .services import (
     ensure_rubriques_standard,
     ensure_schema_comptable_standard,
     ensure_structures_standard,
+    etat_charges as etat_charges_detaille,
     etat_des_charges,
     expirer_regimes_echus,
     etat_ir_9421,
@@ -138,6 +145,7 @@ from .services import (
     marquer_bulletin_paye,
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
+    parametrage_paie,
     parametre_en_vigueur,
     payer_ordre_virement,
     payer_organismes,
@@ -153,8 +161,10 @@ from .services import (
     rejeter_ligne_virement,
     saisies_arret_du_bulletin,
     simuler_bulletin,
+    simuler_cout_embauche,
     synchroniser_salaire,
     valider_bulletin,
+    verifier_cloture_autorisee,
 )
 
 
@@ -294,6 +304,207 @@ class BaremeIRViewSet(_RappelRetroactifMixin, _PaieBaseViewSet):
     search_fields = ['libelle']
     ordering_fields = ['date_effet', 'id']
 
+    # NTPAY21 — le jeton d'aperçu est SIGNÉ (pas de table, pas de migration) :
+    # il prouve que l'étape « aperçu d'impact » a bien été jouée pour CE
+    # barème, et il périme au bout d'une heure.
+    _SEL_APERCU_BAREME = 'paie.wizard-publication-bareme'
+    _DUREE_JETON_APERCU_S = 3600
+
+    @staticmethod
+    def _jeton_apercu(bareme):
+        from django.core.signing import TimestampSigner
+
+        signer = TimestampSigner(salt=BaremeIRViewSet._SEL_APERCU_BAREME)
+        return signer.sign(f'{bareme.company_id}:{bareme.id}')
+
+    @classmethod
+    def _jeton_apercu_valide(cls, bareme, jeton):
+        from django.core.signing import BadSignature, TimestampSigner
+
+        if not jeton:
+            return False
+        signer = TimestampSigner(salt=cls._SEL_APERCU_BAREME)
+        try:
+            valeur = signer.unsign(jeton, max_age=cls._DUREE_JETON_APERCU_S)
+        except BadSignature:
+            # ``SignatureExpired`` hérite de ``BadSignature`` : un jeton
+            # périmé comme un jeton forgé renvoient tous deux « invalide ».
+            return False
+        return valeur == f'{bareme.company_id}:{bareme.id}'
+
+    @extend_schema(responses=inline_serializer('PaieWizardPublicationBareme', {
+        'etape': serializers.CharField(),
+        'bareme': serializers.DictField(),
+        'impact': serializers.DictField(required=False),
+        'periodes_impactees': serializers.ListField(
+            child=serializers.DictField(), required=False),
+        'jeton_apercu': serializers.CharField(required=False),
+        'rappel': serializers.DictField(required=False, allow_null=True),
+    }))
+    @action(detail=True, methods=['post'], url_path='wizard-publication')
+    def wizard_publication(self, request, pk=None):
+        """Wizard guidé de publication d'un barème (NTPAY21).
+
+        Enchaîne les briques existantes en UN parcours, dans cet ordre :
+
+        1. ``etape='apercu'`` — comparateur d'impact (NTPAY17) + périodes déjà
+           figées que la publication rend périmées (NTPAY1). Renvoie un
+           ``jeton_apercu`` signé, valable une heure ;
+        2. ``etape='publication'`` — exige ce jeton (sinon 400 : on ne publie
+           pas un barème sans avoir vu son impact) ET
+           ``valide_par_fondateur=True`` (la case est obligatoire avant
+           activation). Option ``declencher_rappel`` + ``periode_cible`` :
+           enchaîne le rappel rétroactif NTPAY1.
+
+        Écriture → gate ``paie_gerer`` (mixin ``_PaieVoirOuGerer``).
+        """
+        bareme = self.get_object()
+        etape = (request.data.get('etape') or 'apercu').strip()
+        entete = {
+            'id': bareme.id, 'libelle': bareme.libelle,
+            'date_effet': bareme.date_effet,
+            'valide_par_fondateur': bareme.valide_par_fondateur,
+        }
+
+        periodes = self._periodes_impactees(request)
+        periodes_json = [
+            {'id': p.id, 'annee': p.annee, 'mois': p.mois,
+             'statut': p.statut, 'type_run': p.type_run}
+            for p in periodes
+        ]
+
+        if etape == 'apercu':
+            ancien = (
+                BaremeIR.objects
+                .filter(company=request.user.company, pays=bareme.pays,
+                        date_effet__lt=bareme.date_effet)
+                .order_by('-date_effet')
+                .first()
+            )
+            impact = None
+            if ancien is not None:
+                impact = paie_selectors.comparer_baremes(
+                    request.user.company, ancien, bareme)
+            return Response({
+                'etape': 'apercu',
+                'bareme': entete,
+                'impact': impact,
+                'periodes_impactees': periodes_json,
+                'jeton_apercu': self._jeton_apercu(bareme),
+            }, status=status.HTTP_200_OK)
+
+        if etape != 'publication':
+            raise DRFValidationError({'etape': [
+                "Étape inconnue : utilisez « apercu » puis « publication »."]})
+
+        if not self._jeton_apercu_valide(
+                bareme, request.data.get('jeton_apercu')):
+            raise DRFValidationError({'jeton_apercu': [
+                "Aperçu d'impact non joué (ou expiré) : rejouez l'étape "
+                '« apercu » avant de publier ce barème.']})
+
+        if not request.data.get('valide_par_fondateur'):
+            raise DRFValidationError({'valide_par_fondateur': [
+                'Validation du fondateur obligatoire : cochez la case avant '
+                "d'activer ce barème."]})
+
+        bareme.valide_par_fondateur = True
+        bareme.save(update_fields=['valide_par_fondateur'])
+
+        rappel = None
+        if request.data.get('declencher_rappel'):
+            periode_id = request.data.get('periode_cible')
+            if not periode_id:
+                raise DRFValidationError({'periode_cible': [
+                    'Champ requis pour déclencher le rappel rétroactif : '
+                    'indiquez la période OUVERTE qui le portera.']})
+            try:
+                periode_cible = PeriodePaie.objects.get(
+                    company=request.user.company, pk=periode_id)
+            except (PeriodePaie.DoesNotExist, ValueError, TypeError):
+                raise DRFValidationError({'periode_cible': [
+                    'Période introuvable dans votre société.']})
+            try:
+                resultat = appliquer_rappel_retroactif(
+                    periode_cible, periodes,
+                    motif=(request.data.get('motif') or ''))
+            except DjangoValidationError as exc:
+                raise DRFValidationError({'periode_cible': exc.messages})
+            rappel = {
+                'periode_cible': periode_cible.id,
+                'periodes_regularisees': [p.id for p in resultat['periodes']],
+                'bulletins': [b.id for b in resultat['bulletins']],
+                'nombre_salaries': resultat['nombre_salaries'],
+                'total_ecart_ir': str(resultat['total_ecart_ir']),
+                'total_ecart_net': str(resultat['total_ecart_net']),
+            }
+
+        entete['valide_par_fondateur'] = True
+        return Response({
+            'etape': 'publication',
+            'bareme': entete,
+            'periodes_impactees': periodes_json,
+            'rappel': rappel,
+        }, status=status.HTTP_200_OK)
+
+    @extend_schema(responses=inline_serializer('PaieComparaisonBaremes', {
+        'ancien': serializers.DictField(allow_null=True),
+        'nouveau': serializers.DictField(allow_null=True),
+        'nombre_profils': serializers.IntegerField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+        'totaux': serializers.DictField(),
+    }))
+    @action(detail=True, methods=['get'], url_path='comparer')
+    def comparer(self, request, pk=None):
+        """Aperçu d'IMPACT du barème avant publication (NTPAY17).
+
+        Le barème de l'URL est le NOUVEAU jeu ; ``?ancien=<id>`` désigne celui
+        auquel le comparer (défaut : le barème actif précédent, c'est-à-dire
+        la plus récente date d'effet strictement antérieure, même pays).
+        ``?profils=1,2,3`` restreint l'échantillon (défaut : les profils
+        actifs, plafonnés). Aucune persistance — rien n'est publié ici.
+        """
+        nouveau = self.get_object()
+        ancien_id = request.query_params.get('ancien')
+        if ancien_id:
+            ancien = BaremeIR.objects.filter(
+                company=request.user.company, pk=ancien_id).first()
+            if ancien is None:
+                return Response(
+                    {'detail': 'Barème « ancien » inconnu pour cette '
+                     'société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        else:
+            ancien = (
+                BaremeIR.objects
+                .filter(company=request.user.company, pays=nouveau.pays,
+                        date_effet__lt=nouveau.date_effet)
+                .order_by('-date_effet')
+                .first()
+            )
+            if ancien is None:
+                return Response(
+                    {'detail': 'Aucun barème antérieur à comparer : '
+                     'précisez « ancien ».'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        profils = None
+        brut_profils = request.query_params.get('profils')
+        if brut_profils:
+            try:
+                profils = [int(x) for x in brut_profils.split(',') if x]
+            except ValueError:
+                return Response(
+                    {'detail': 'Paramètre "profils" invalide (ids séparés '
+                     'par des virgules).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            paie_selectors.comparer_baremes(
+                request.user.company, ancien, nouveau,
+                echantillon_profils=profils),
+            status=status.HTTP_200_OK)
+
 
 class RubriqueViewSet(_PaieBaseViewSet):
     """Catalogue des rubriques de paie paramétrables (PAIE6).
@@ -346,6 +557,52 @@ class PaysPaieViewSet(_PaieBaseViewSet):
         """Provisionne le pays de paie MAROC (idempotent)."""
         created = ensure_pays_paie_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
+
+
+class GabaritDeclaratifViewSet(_PaieBaseViewSet):
+    """Gabarits éditables des fichiers réglementaires (NTPAY24).
+
+    CRUD company-scopé standard (``paie_voir`` lit, ``paie_gerer`` écrit).
+    Sans gabarit ACTIF pour un type, la génération garde le gabarit codé en
+    dur : activer une ligne ici est le SEUL moyen de changer la structure
+    d'un fichier, et c'est un geste explicite.
+    """
+    queryset = GabaritDeclaratif.objects.all()
+    serializer_class = GabaritDeclaratifSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['type_fichier', 'version']
+    ordering_fields = ['type_fichier', 'date_effet', 'id']
+
+
+class ParametragePaieCompanyViewSet(_PaieBaseViewSet):
+    """Réglages du module paie de la société (NTPAY23) — UN enregistrement.
+
+    CRUD company-scopé standard (``paie_voir`` lit, ``paie_gerer`` écrit) ; le
+    ``OneToOneField`` garantit en BASE qu'il n'y en a qu'un par société — une
+    seconde création rend un 400 explicite plutôt qu'une ``IntegrityError``.
+
+    ``GET courant/`` est le point d'entrée de l'écran : il rend les réglages
+    de la société, ou les DÉFAUTS (avec ``id: null``) tant que rien n'a été
+    réglé — une lecture n'écrit JAMAIS en base.
+    """
+    queryset = ParametragePaieCompany.objects.select_related(
+        'compte_emetteur').all()
+    serializer_class = ParametragePaieCompanySerializer
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        if ParametragePaieCompany.objects.filter(company=company).exists():
+            raise DRFValidationError({'detail': [
+                'Les réglages paie de cette société existent déjà : '
+                'modifiez-les au lieu d’en créer un second.']})
+        serializer.save(company=company)
+
+    @action(detail=False, methods=['get'], url_path='courant')
+    def courant(self, request):
+        """Réglages paie de la société, ou les défauts si rien n'est réglé."""
+        parametrage = parametrage_paie(request.user.company)
+        return Response(
+            self.get_serializer(parametrage).data, status=status.HTTP_200_OK)
 
 
 class SchemaComptablePaieViewSet(_PaieBaseViewSet):
@@ -456,6 +713,201 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         profil.refresh_from_db()
         return Response(
             self.get_serializer(profil).data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses=inline_serializer('PaieSimulationEmbauche', {
+        'brut': serializers.DecimalField(max_digits=16, decimal_places=2),
+        'net_a_payer': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'net_imposable': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'ir': serializers.DecimalField(max_digits=16, decimal_places=2),
+        'charges_patronales': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'cout_total_employeur': serializers.DecimalField(
+            max_digits=16, decimal_places=2),
+        'devise': serializers.CharField(),
+        'provisions': inline_serializer('PaieSimulationEmbaucheProvisions', {
+            'gratification': serializers.DecimalField(
+                max_digits=16, decimal_places=2),
+            'conges_payes': serializers.DecimalField(
+                max_digits=16, decimal_places=2),
+            'ifc': serializers.DecimalField(max_digits=16, decimal_places=2),
+            'total': serializers.DecimalField(
+                max_digits=16, decimal_places=2),
+        }),
+        'lignes': inline_serializer(
+            'PaieSimulationEmbaucheLigne', many=True, fields={
+                'code': serializers.CharField(),
+                'libelle': serializers.CharField(),
+                'type': serializers.CharField(),
+                'montant': serializers.DecimalField(
+                    max_digits=16, decimal_places=2),
+            }),
+        'avertissements': serializers.ListField(
+            child=serializers.CharField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='simulation-embauche')
+    def simulation_embauche(self, request):
+        """Coût complet d'une EMBAUCHE FUTURE, sans aucun profil (NTPAY14).
+
+        XPAI16 rejoue le moteur sur un profil EXISTANT ; ici rien n'existe
+        encore. Paramètres de requête : ``brut`` **ou** ``net_cible``
+        (exactement un des deux, requis), ``pays`` (id d'un ``PaysPaie`` de la
+        société, facultatif), ``personnes_a_charge``, ``affilie_cnss`` /
+        ``affilie_amo`` / ``affilie_cimr`` (booléens, défauts vrai/vrai/faux),
+        ``taux_cimr``, ``regime_mutuelle`` (id d'un ``RegimeMutuelle`` de la
+        société), ``regime_plafond_mensuel`` (plafond exonéré du régime
+        stagiaire/ANAPEC/TAHFIZ), ``jours_travail_mensuel`` /
+        ``heures_travail_mensuel``, ``anciennete_annees``, ``date`` (défaut
+        aujourd'hui — fixe les barèmes en vigueur).
+
+        Gatée EXPLICITEMENT ``salaires_voir`` (donnée sensible, au-delà de
+        ``paie_voir`` — AUD716) : la simulation EXPOSE un brut et un net.
+        Aucune écriture en base.
+        """
+        resultat, erreur = self._simulation_embauche_depuis_requete(request)
+        if erreur is not None:
+            return erreur
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    def _simulation_embauche_depuis_requete(self, request):
+        """NTPAY14 — simulation depuis les paramètres de requête.
+
+        Renvoie ``(resultat, None)`` ou ``(None, reponse_erreur)``. Partagé
+        par l'endpoint JSON et par la lettre d'offre NTPAY15, qui rejoue la
+        MÊME simulation — jamais une seconde lecture des paramètres.
+        """
+        from authentication.permissions import HasPermission
+
+        if not HasPermission('salaires_voir')().has_permission(request, self):
+            # Contrat de la fonction : TOUJOURS un couple
+            # ``(resultat, reponse_erreur)``. Un ``Response`` nu ici serait
+            # depaquete par l'appelant (``resultat, erreur = ...``) et
+            # remonterait en 500 au lieu du 403 attendu.
+            return None, Response(
+                {'detail': 'Permission « salaires_voir » requise.'},
+                status=status.HTTP_403_FORBIDDEN)
+
+        company = request.user.company
+        params = request.query_params
+
+        def _bool_param(nom, defaut):
+            valeur = params.get(nom)
+            if valeur is None:
+                return defaut
+            return valeur.lower() in ('1', 'true', 'vrai')
+
+        def _decimal_param(nom, defaut=None):
+            valeur = params.get(nom)
+            if valeur in (None, ''):
+                return defaut
+            return Decimal(valeur)
+
+        try:
+            brut = _decimal_param('brut')
+            net_cible = _decimal_param('net_cible')
+            pac = int(params.get('personnes_a_charge', 0) or 0)
+            taux_cimr = _decimal_param('taux_cimr', Decimal('0'))
+            plafond_regime = _decimal_param(
+                'regime_plafond_mensuel', Decimal('0'))
+            anciennete = _decimal_param('anciennete_annees', Decimal('0'))
+            jours = params.get('jours_travail_mensuel') or None
+            heures = params.get('heures_travail_mensuel') or None
+            jours = int(jours) if jours else None
+            heures = int(heures) if heures else None
+        except (InvalidOperation, ValueError, TypeError):
+            return None, Response(
+                {'detail': 'Paramètre numérique invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        le_jour = parse_date(params.get('date') or '') or None
+
+        pays = None
+        if params.get('pays'):
+            pays = PaysPaie.objects.filter(
+                company=company, pk=params.get('pays')).first()
+            if pays is None:
+                return None, Response(
+                    {'detail': 'Pays de paie inconnu pour cette société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+
+        regime_mutuelle = None
+        if params.get('regime_mutuelle'):
+            regime_mutuelle = RegimeMutuelle.objects.filter(
+                company=company, pk=params.get('regime_mutuelle')).first()
+            if regime_mutuelle is None:
+                return None, Response(
+                    {'detail': 'Régime de mutuelle inconnu pour cette '
+                     'société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            resultat = simuler_cout_embauche(
+                company, brut=brut, net_cible=net_cible, le_jour=le_jour,
+                pays=pays, personnes_a_charge=pac,
+                affilie_cnss=_bool_param('affilie_cnss', True),
+                affilie_amo=_bool_param('affilie_amo', True),
+                affilie_cimr=_bool_param('affilie_cimr', False),
+                taux_cimr=taux_cimr, regime_mutuelle=regime_mutuelle,
+                regime_plafond_mensuel=plafond_regime,
+                jours_travail_mensuel=jours, heures_travail_mensuel=heures,
+                anciennete_annees=anciennete)
+        except ValueError as exc:
+            return None, Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return resultat, None
+
+    @action(detail=False, methods=['get'], url_path='lettre-offre')
+    def lettre_offre(self, request):
+        """Lettre d'offre / proposition d'embauche PDF (NTPAY15).
+
+        Rejoue la simulation NTPAY14 (mêmes paramètres de requête) puis en
+        tire un document RH-facing : intitulé du ``poste`` (requis),
+        ``candidat``, ``avantages`` (séparés par ``;``), ``periode_essai``,
+        ``date_prise_poste``. Le coût employeur (charges patronales,
+        provisions, coût chargé) n'y figure JAMAIS.
+
+        Gatée ``salaires_voir`` comme la simulation dont elle dérive.
+        """
+        from authentication.permissions import HasPermission
+
+        if not HasPermission('salaires_voir')().has_permission(request, self):
+            return Response(
+                {'detail': 'Permission "salaires_voir" requise.'},
+                status=status.HTTP_403_FORBIDDEN)
+
+        poste = (request.query_params.get('poste') or '').strip()
+        if not poste:
+            return Response(
+                {'detail': 'Paramètre "poste" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        simulation, erreur = self._simulation_embauche_depuis_requete(request)
+        if erreur is not None:
+            return erreur
+
+        avantages = [
+            a.strip()
+            for a in (request.query_params.get('avantages') or '').split(';')
+            if a.strip()
+        ]
+        try:
+            pdf = builders.render_lettre_offre_pdf(
+                simulation, poste=poste,
+                candidat=request.query_params.get('candidat', ''),
+                avantages=avantages,
+                periode_essai=request.query_params.get('periode_essai', ''),
+                date_prise_poste=parse_date(
+                    request.query_params.get('date_prise_poste') or ''),
+                company=request.user.company)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return _pdf_response(pdf, 'lettre_offre.pdf')
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):
@@ -796,6 +1248,107 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = serializer.save(company=self.request.user.company)
         generer_echeances_periode(periode)
 
+    @extend_schema(responses=inline_serializer('PaieConformite', {
+        'today': serializers.DateField(),
+        'conforme': serializers.BooleanField(),
+        'echeances_en_retard': serializers.ListField(
+            child=serializers.DictField()),
+        'echeances_a_venir': serializers.ListField(
+            child=serializers.DictField()),
+        'depots_manquants': serializers.ListField(
+            child=serializers.DictField()),
+        'baremes_non_valides': serializers.ListField(
+            child=serializers.DictField()),
+        'periodes_en_retard': serializers.ListField(
+            child=serializers.DictField()),
+        'alertes_pre_run': serializers.ListField(
+            child=serializers.DictField()),
+    }))
+    @extend_schema(responses=inline_serializer('PaieMasseSalariale', {
+        'group_by': serializers.CharField(),
+        'periode_debut': serializers.DictField(),
+        'periode_fin': serializers.DictField(),
+        'nombre_periodes': serializers.IntegerField(),
+        'nombre_bulletins': serializers.IntegerField(),
+        'groupes': serializers.ListField(child=serializers.DictField()),
+        'totaux': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'],
+            url_path='rapports/masse-salariale')
+    def rapport_masse_salariale_action(self, request):
+        """Rapport de masse salariale par département ou par site (NTPAY19).
+
+        Paramètres : ``debut`` et ``fin`` au format ``AAAA-MM`` (requis),
+        ``group_by`` ∈ {``departement``, ``site``} (défaut ``departement``),
+        ``export`` ∈ {``csv``, ``pdf``}. Lecture seule, bulletins VALIDÉS
+        uniquement, gate ``paie_voir``.
+        """
+        debut = request.query_params.get('debut')
+        fin = request.query_params.get('fin')
+        if not debut or not fin:
+            return Response(
+                {'detail': 'Paramètres "debut" et "fin" requis '
+                 '(format AAAA-MM).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        group_by = request.query_params.get('group_by', 'departement')
+        try:
+            rapport = paie_selectors.rapport_masse_salariale(
+                request.user.company, debut, fin, group_by=group_by)
+        except (ValueError, TypeError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        export = request.query_params.get('export')
+        if export == 'pdf':
+            try:
+                pdf = builders.render_masse_salariale_pdf(
+                    rapport, company=request.user.company)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(pdf, f'masse_salariale_{debut}_{fin}.pdf')
+        if export == 'csv':
+            return self._export_masse_salariale_csv(rapport, debut, fin)
+        return Response(rapport, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_masse_salariale_csv(rapport, debut, fin):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([f'Masse salariale {debut} - {fin}'])
+        writer.writerow([])
+        writer.writerow([
+            'Groupe', 'Effectif', 'Brut', 'Charges patronales', 'Coût total'])
+        for groupe in rapport['groupes']:
+            writer.writerow([
+                groupe['libelle'], groupe['effectif'], groupe['brut'],
+                groupe['charges_patronales'], groupe['cout_total']])
+        totaux = rapport['totaux']
+        writer.writerow([])
+        writer.writerow([
+            'Total', totaux['effectif'], totaux['brut'],
+            totaux['charges_patronales'], totaux['cout_total']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="masse_salariale_{debut}_{fin}.csv"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='conformite')
+    def conformite(self, request):
+        """État de conformité paie de la société, en un seul écran (NTPAY16).
+
+        Réunit les échéances déclaratives en retard/à venir (XPAI6), les
+        preuves de dépôt manquantes (NTPAY5), les barèmes non validés par le
+        fondateur, les périodes ouvertes en retard de clôture (ZPAI12) et les
+        avertissements pré-run bloquants (ZPAI2). Lecture seule, gate
+        ``paie_voir`` (méthode sûre → mixin ``_PaieVoirOuGerer``).
+        """
+        return Response(
+            paie_selectors.cockpit_conformite_paie(request.user.company),
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='echeances')
     def echeances(self, request, pk=None):
         """Liste les échéances déclaratives de la période (XPAI6)."""
@@ -835,6 +1388,15 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """
         periode = self.get_object()
         valider = request.data.get('valider_brouillons', True)
+        # NTPAY22 — checklist guidée : un point en ⚠️ exige un motif
+        # d'acquittement EXPLICITE, jamais un simple clic.
+        try:
+            verifier_cloture_autorisee(
+                periode,
+                motif_acquittement=request.data.get(
+                    'motif_acquittement', ''))
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.message_dict)
         try:
             cloturer_periode_paie(
                 periode, valider_brouillons=bool(valider))
@@ -843,6 +1405,26 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(periode).data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses=inline_serializer(
+        'PaieChecklistCloture', many=True, fields={
+            'code': serializers.CharField(),
+            'libelle': serializers.CharField(),
+            'statut': serializers.CharField(),
+            'detail': serializers.CharField(),
+        }))
+    @action(detail=True, methods=['get'], url_path='checklist-cloture')
+    def checklist_cloture_action(self, request, pk=None):
+        """Points de contrôle avant clôture de la période (NTPAY22).
+
+        Avances et saisies-arrêt du mois retenues, écarts M/M-1 sans anomalie,
+        échéances déclaratives à jour, ordre de virement généré. Chaque point
+        ressort ``ok`` ou ``alerte`` ; un point en alerte n'est franchissable
+        qu'avec un ``motif_acquittement`` à la clôture. Lecture seule.
+        """
+        periode = self.get_object()
+        return Response(
+            checklist_cloture(periode), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='run-gratification')
     def run_gratification(self, request, pk=None):
@@ -1061,13 +1643,36 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
 
     @action(detail=True, methods=['get'], url_path='etat-charges')
     def etat_charges(self, request, pk=None):
-        """État consolidé des charges sociales par organisme (XPAI5).
+        """État consolidé des charges sociales par organisme (XPAI5/NTPAY18).
 
-        ``?export=csv`` renvoie le fichier CSV au lieu du JSON.
+        ``?export=csv`` renvoie le fichier CSV (forme XPAI5, inchangée).
+
+        NTPAY18 — ``?detail=1`` renvoie l'état DÉTAILLÉ (5 organismes CNSS /
+        AMO / IR / CIMR / mutuelle avec base, taux, parts salariale et
+        patronale, plus les charges annexes recouvrées par la CNSS) et
+        ``?export=pdf`` en imprime le document de synthèse. Le JSON par défaut
+        reste celui d'XPAI5 — aucune régression pour ses appelants.
         """
         periode = self.get_object()
+        export = request.query_params.get('export')
+        detaille = request.query_params.get('detail') in ('1', 'true', 'vrai')
+
+        if export == 'pdf' or detaille:
+            etat = etat_charges_detaille(periode)
+            if export == 'pdf':
+                try:
+                    pdf = builders.render_etat_charges_pdf(periode, etat=etat)
+                except RuntimeError as exc:
+                    return Response(
+                        {'detail': str(exc)},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                return _pdf_response(
+                    pdf,
+                    f'etat_charges_{periode.annee}_{periode.mois:02d}.pdf')
+            return Response(etat, status=status.HTTP_200_OK)
+
         data = etat_des_charges(periode)
-        if request.query_params.get('export') == 'csv':
+        if export == 'csv':
             return self._export_etat_charges_csv(data)
         return Response(data, status=status.HTTP_200_OK)
 
@@ -1997,6 +2602,41 @@ class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,
     serializer_class = CumulAnnuelSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['annee', 'profil', 'date_calcul', 'id']
+
+    @extend_schema(responses=inline_serializer('PaieRegistreRemunerations', {
+        'annee': serializers.IntegerField(),
+        'nombre_salaries': serializers.IntegerField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+        'totaux': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='registre-remunerations')
+    def registre_remunerations(self, request):
+        """Registre ANNUEL des rémunérations (NTPAY20, obligation légale).
+
+        Paramètre ``annee`` requis. Une ligne par salarié rémunéré dans
+        l'année, avec ses cumuls brut / CNSS / AMO / IR / net lus tels quels
+        dans ``CumulAnnuel`` — jamais recalculés ici. ``?export=pdf`` imprime
+        le document de contrôle (inspection du travail). Gate ``paie_voir``.
+        """
+        try:
+            annee = int(request.query_params.get('annee'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre "annee" requis (et valide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        registre = builders.registre_remunerations_context(
+            request.user.company, annee)
+        if request.query_params.get('export') == 'pdf':
+            try:
+                pdf = builders.render_registre_remunerations_pdf(
+                    request.user.company, annee, registre=registre)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(
+                pdf, f'registre_remunerations_{annee}.pdf')
+        return Response(registre, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='recalculer')
     def recalculer(self, request):

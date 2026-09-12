@@ -27,6 +27,7 @@ from .models import (
     CauserieParticipant,
     CauserieSecurite,
     Certification,
+    CheckInOkr,
     Competence,
     CompetenceEmploye,
     CompetenceRequise,
@@ -70,6 +71,8 @@ from .models import (
     EmargementEpi,
     EvaluationEmploye,
     EpiCatalogue,
+    EtapeParcours,
+    FeedbackContinu,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -84,13 +87,16 @@ from .models import (
     ObjectifIndividuel,
     OrdreMission,
     OuverturePoste,
+    ParcoursFormation,
     PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    ProgressionParcours,
     QuizFormation,
+    RattachementFonctionnel,
     Remuneration,
     ReponsePulse,
     RetourFeedback360,
@@ -188,6 +194,11 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'manager',
             # NTFSM26 — zone géographique d'intervention (champ libre).
             'zone_intervention',
+            # NTHCM27 — genre déclaré : sert UNIQUEMENT l'analytics diversité
+            # agrégée (`analytics/diversite/`), jamais une décision
+            # individuelle. Sans ce champ en écriture ici, il resterait
+            # inatteignable et l'analytics serait vide à jamais.
+            'genre',
             'date_embauche',
             'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
@@ -405,20 +416,45 @@ class PosteSerializer(serializers.ModelSerializer):
 
 
 class ElementSortieSerializer(serializers.ModelSerializer):
-    """Élément de checklist d'offboarding (FG161). ``employe`` même société."""
+    """Élément de checklist d'offboarding (FG161). ``employe`` même société.
+
+    NTHCM24 — ``acteur_type`` dit QUI porte la tâche ; ``assigne_a`` est
+    RÉSOLU côté serveur quand il n'est pas fourni (vue), et ``en_retard`` est
+    calculé, jamais stocké.
+    """
     type_element_display = serializers.CharField(
         source='get_type_element_display', read_only=True)
+    acteur_type_display = serializers.CharField(
+        source='get_acteur_type_display', read_only=True)
+    assigne_a_nom = serializers.SerializerMethodField()
+    en_retard = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ElementSortie
         fields = [
             'id', 'employe', 'libelle', 'type_element', 'type_element_display',
-            'recupere', 'date_recuperation', 'note', 'date_creation',
+            'recupere', 'date_recuperation', 'note',
+            'acteur_type', 'acteur_type_display', 'assigne_a',
+            'assigne_a_nom', 'echeance', 'en_retard', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['en_retard', 'date_creation']
+
+    def get_assigne_a_nom(self, obj) -> str:
+        if obj.assigne_a_id is None:
+            return ''
+        return (obj.assigne_a.get_full_name()
+                or obj.assigne_a.username or '')
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+    def validate_assigne_a(self, value):
+        """Réassignation possible, mais JAMAIS vers une autre société."""
+        request = self.context.get('request')
+        if value is not None and request is not None:
+            if value.company_id != request.user.company_id:
+                raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
 
 
 class EntretienSortieSerializer(serializers.ModelSerializer):
@@ -506,11 +542,21 @@ class ReponsePulseSerializer(serializers.ModelSerializer):
 
 
 class ElementIntegrationSerializer(serializers.ModelSerializer):
-    """Ligne gabarit d'un modèle d'intégration (XRH4)."""
+    """Ligne gabarit d'un modèle d'intégration (XRH4).
+
+    NTHCM23 — ``acteur_type`` + ``delai_jours`` décrivent QUI portera la
+    tâche et SOUS COMBIEN DE JOURS après l'embauche.
+    """
+    acteur_type_display = serializers.CharField(
+        source='get_acteur_type_display', read_only=True)
 
     class Meta:
         model = ElementIntegration
-        fields = ['id', 'modele', 'libelle', 'ordre', 'date_creation']
+        fields = [
+            'id', 'modele', 'libelle', 'ordre',
+            'acteur_type', 'acteur_type_display', 'delai_jours',
+            'date_creation',
+        ]
         read_only_fields = ['date_creation']
 
     def validate_modele(self, value):
@@ -538,18 +584,43 @@ class ModeleIntegrationSerializer(serializers.ModelSerializer):
 
 
 class ElementIntegrationEmployeSerializer(serializers.ModelSerializer):
-    """Ligne de checklist d'intégration d'un employé (XRH4)."""
+    """Ligne de checklist d'intégration d'un employé (XRH4).
+
+    NTHCM23 — ``acteur_type`` / ``assigne_a`` / ``echeance`` sont RÉSOLUS à
+    l'instanciation côté serveur ; ``en_retard`` est calculé (jamais stocké).
+    ``assigne_a`` reste modifiable par le RH (réassignation manuelle), mais
+    ``en_retard`` ne l'est évidemment pas.
+    """
+    acteur_type_display = serializers.CharField(
+        source='get_acteur_type_display', read_only=True)
+    assigne_a_nom = serializers.SerializerMethodField()
+    en_retard = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ElementIntegrationEmploye
         fields = [
             'id', 'employe', 'libelle', 'ordre', 'fait', 'fait_par', 'date',
-            'date_creation',
+            'acteur_type', 'acteur_type_display', 'assigne_a',
+            'assigne_a_nom', 'echeance', 'en_retard', 'date_creation',
         ]
-        read_only_fields = ['fait_par', 'date', 'date_creation']
+        read_only_fields = ['fait_par', 'date', 'en_retard', 'date_creation']
+
+    def get_assigne_a_nom(self, obj) -> str:
+        if obj.assigne_a_id is None:
+            return ''
+        return (obj.assigne_a.get_full_name()
+                or obj.assigne_a.username or '')
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+    def validate_assigne_a(self, value):
+        """Réassignation possible, mais JAMAIS vers une autre société."""
+        request = self.context.get('request')
+        if value is not None and request is not None:
+            if value.company_id != request.user.company_id:
+                raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
 
 
 class TypeAbsenceSerializer(serializers.ModelSerializer):
@@ -3501,3 +3572,271 @@ class PlanActionEngagementSerializer(serializers.ModelSerializer):
 
     def validate_responsable(self, value):
         return _meme_societe(self, value, 'Responsable')
+
+
+class FeedbackContinuSerializer(serializers.ModelSerializer):
+    """NTHCM16 — feedback continu adressé à un collègue.
+
+    ``de`` (l'auteur) est LECTURE SEULE : il est résolu côté serveur depuis le
+    dossier de l'appelant, jamais lu du corps — sinon n'importe qui signerait
+    au nom d'un autre.
+    """
+    de_nom = serializers.SerializerMethodField()
+    pour_nom = serializers.SerializerMethodField()
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = FeedbackContinu
+        fields = [
+            'id', 'de', 'de_nom', 'pour', 'pour_nom',
+            'type', 'type_display', 'message',
+            'visible_par_pour', 'partage_avec_manager', 'date_creation',
+        ]
+        read_only_fields = ['de', 'date_creation']
+
+    def get_de_nom(self, obj) -> str:
+        if obj.de_id is None:
+            return ''
+        return f'{obj.de.nom} {obj.de.prenom}'
+
+    def get_pour_nom(self, obj) -> str:
+        if obj.pour_id is None:
+            return ''
+        return f'{obj.pour.nom} {obj.pour.prenom}'
+
+    def validate_pour(self, value):
+        return _meme_societe(self, value, 'Destinataire')
+
+
+class CheckInOkrSerializer(serializers.ModelSerializer):
+    """NTHCM9 — check-in d'avancement sur un OKR individuel.
+
+    ``auteur``, ``valeurs_snapshot`` et ``date`` sont posés CÔTÉ SERVEUR par
+    ``services.enregistrer_checkin_okr`` : un check-in ne s'antidate pas et ne
+    se signe pas au nom d'un autre.
+    """
+    auteur_nom = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = CheckInOkr
+        fields = [
+            'id', 'okr', 'commentaire', 'valeurs_snapshot',
+            'auteur', 'auteur_nom', 'date', 'date_creation',
+        ]
+        read_only_fields = [
+            'valeurs_snapshot', 'auteur', 'date', 'date_creation']
+
+    def get_auteur_nom(self, obj) -> str:
+        if obj.auteur_id is None:
+            return ''
+        return obj.auteur.get_full_name() or obj.auteur.username or ''
+
+    def validate_okr(self, value):
+        return _meme_societe(self, value, 'OKR')
+
+
+class RattachementFonctionnelSerializer(serializers.ModelSerializer):
+    """NTHCM3 — ligne fonctionnelle (dotted-line), distincte de la hiérarchie."""
+    employe_nom = serializers.SerializerMethodField()
+    manager_fonctionnel_nom = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = RattachementFonctionnel
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'manager_fonctionnel', 'manager_fonctionnel_nom',
+            'role_fonctionnel', 'date_debut', 'date_fin', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_employe_nom(self, obj) -> str:
+        if obj.employe_id is None:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_manager_fonctionnel_nom(self, obj) -> str:
+        if obj.manager_fonctionnel_id is None:
+            return ''
+        return (f'{obj.manager_fonctionnel.nom} '
+                f'{obj.manager_fonctionnel.prenom}')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_manager_fonctionnel(self, value):
+        return _meme_societe(self, value, 'Manager fonctionnel')
+
+    def validate(self, attrs):
+        """Auto-rattachement et fenêtre incohérente : règles du MODÈLE."""
+        attrs = super().validate(attrs)
+        donnees = {}
+        for champ in ('employe', 'manager_fonctionnel',
+                      'date_debut', 'date_fin'):
+            if self.instance is not None:
+                donnees[champ] = getattr(self.instance, champ)
+            if champ in attrs:
+                donnees[champ] = attrs[champ]
+        lien = RattachementFonctionnel(**donnees)
+        try:
+            lien.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+
+class EtapeParcoursSerializer(serializers.ModelSerializer):
+    """NTHCM17 — étape ordonnée d'un parcours de formation."""
+    type_contenu_display = serializers.CharField(
+        source='get_type_contenu_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = EtapeParcours
+        fields = [
+            'id', 'parcours', 'ordre', 'titre',
+            'type_contenu', 'type_contenu_display',
+            'session_ref', 'quiz_ref', 'document_kb_id', 'url_externe',
+            'obligatoire_pour_completer', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_parcours(self, value):
+        return _meme_societe(self, value, 'Parcours')
+
+    def validate_session_ref(self, value):
+        return _meme_societe(self, value, 'Session')
+
+    def validate_quiz_ref(self, value):
+        return _meme_societe(self, value, 'Quiz')
+
+    def validate(self, attrs):
+        """Le pointeur renseigné doit correspondre au type — règle du MODÈLE.
+
+        On instancie l'``EtapeParcours`` non sauvegardée et on appelle son
+        ``clean()`` : la règle vit à UN seul endroit (le modèle), l'API ne la
+        recopie pas.
+        """
+        attrs = super().validate(attrs)
+        donnees = {}
+        if self.instance is not None:
+            for champ in ('parcours', 'type_contenu', 'session_ref',
+                          'quiz_ref', 'document_kb_id', 'url_externe'):
+                donnees[champ] = getattr(self.instance, champ)
+        donnees.update(attrs)
+        etape = EtapeParcours(**{
+            cle: valeur for cle, valeur in donnees.items()
+            if cle in {'parcours', 'type_contenu', 'session_ref', 'quiz_ref',
+                       'document_kb_id', 'url_externe'}
+        })
+        try:
+            etape.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+
+class ParcoursFormationSerializer(serializers.ModelSerializer):
+    """NTHCM17 — référentiel d'un parcours (ses étapes en lecture)."""
+    etapes = EtapeParcoursSerializer(many=True, read_only=True)
+    nombre_etapes = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = ParcoursFormation
+        fields = [
+            'id', 'titre', 'description', 'obligatoire',
+            'poste_cible', 'departement_cible', 'actif',
+            # NTHCM21 — titre délivré à la complétion.
+            'habilitation_type', 'certification_type', 'validite_mois',
+            'etapes', 'nombre_etapes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nombre_etapes(self, obj) -> int:
+        return obj.etapes.count()
+
+    def validate(self, attrs):
+        """NTHCM21 — un seul titre délivré : la règle vit dans le MODÈLE."""
+        attrs = super().validate(attrs)
+        donnees = {}
+        for champ in ('habilitation_type', 'certification_type',
+                      'validite_mois'):
+            if self.instance is not None:
+                donnees[champ] = getattr(self.instance, champ)
+            if champ in attrs:
+                donnees[champ] = attrs[champ]
+        parcours = ParcoursFormation(
+            habilitation_type=donnees.get('habilitation_type') or '',
+            certification_type=donnees.get('certification_type') or '',
+            validite_mois=donnees.get('validite_mois'))
+        try:
+            parcours.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+    def validate_poste_cible(self, value):
+        return _poste_meme_societe(self, value)
+
+    def validate_departement_cible(self, value):
+        return _meme_societe(self, value, 'Département')
+
+
+class ProgressionParcoursSerializer(serializers.ModelSerializer):
+    """NTHCM17 — avancement d'un employé sur un parcours.
+
+    ``statut`` / ``pourcentage`` / ``date_completion`` / ``etapes_completees``
+    sont DÉRIVÉS (``services.recalculer_progression_parcours``) : aucun d'eux
+    n'est écrivable depuis le corps — sinon un employé poserait « 100 % » sans
+    avoir rien lu.
+    """
+    parcours_titre = serializers.CharField(
+        source='parcours.titre', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    etapes_completees = serializers.PrimaryKeyRelatedField(
+        many=True, read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = ProgressionParcours
+        fields = [
+            'id', 'parcours', 'parcours_titre', 'employe', 'employe_nom',
+            'etapes_completees', 'statut', 'statut_display',
+            'pourcentage', 'date_completion', 'date_creation',
+        ]
+        read_only_fields = [
+            'etapes_completees', 'statut', 'pourcentage', 'date_completion',
+            'date_creation',
+        ]
+
+    def get_employe_nom(self, obj) -> str:
+        if obj.employe_id is None:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_parcours(self, value):
+        return _meme_societe(self, value, 'Parcours')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')

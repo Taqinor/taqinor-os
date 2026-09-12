@@ -22,6 +22,18 @@ class SavedReport(models.Model):
         SALES = 'sales', 'Ventes'
         STOCK = 'stock', 'Stock'
         SERVICE = 'service', 'Service'
+        # NTDATA38 — un abonnement peut viser ce que l'utilisateur a CONSTRUIT
+        # lui-même, pas seulement les 3 rapports figés : un tableau de bord
+        # (rendu PDF) ou une requête sauvegardée (rendue XLSX). La cible est
+        # désignée par `cible_id` — un identifiant, jamais un FK dur : le
+        # rapport survit à la suppression de sa cible (il devient simplement
+        # inexécutable, et l'historique d'envoi le dit).
+        DASHBOARD = 'dashboard', 'Tableau de bord'
+        QUERY = 'query', 'Requête sauvegardée'
+
+    #: NTDATA37 — cibles qui exigent un `cible_id` (les 3 rapports figés n'en
+    #: ont pas : ils sont définis par leur seul `target_kind`).
+    KINDS_AVEC_CIBLE = ('dashboard', 'query')
 
     class Schedule(models.TextChoices):
         NONE = 'none', 'Aucune'
@@ -42,6 +54,17 @@ class SavedReport(models.Model):
     definition = models.JSONField(default=dict, blank=True)
     target_kind = models.CharField(
         max_length=20, choices=TargetKind.choices, default=TargetKind.SALES)
+    # NTDATA37 — identifiant de la CIBLE quand `target_kind` en exige une
+    # (`core.Dashboard` ou `core.SavedQuery`). NULL = les 3 rapports figés
+    # historiques : aucun abonnement existant ne change. Identifiant NU et pas
+    # FK : `reporting` est un satellite qui ne doit pas imposer une cascade de
+    # suppression à `core`, et un rapport dont la cible a disparu doit survivre
+    # pour que son historique d'envois reste lisible.
+    cible_id = models.PositiveIntegerField(
+        'Cible', null=True, blank=True,
+        help_text='Identifiant du tableau de bord ou de la requête '
+                  'sauvegardée visée. Vide pour les rapports Ventes / Stock / '
+                  'Service.')
     schedule = models.CharField(
         max_length=10, choices=Schedule.choices, default=Schedule.NONE)
     # NTDATA38 — fenêtre d'envoi. `heure_envoi` NULL = comportement HISTORIQUE
@@ -131,6 +154,41 @@ class SavedReport(models.Model):
         """AUD803 — vrai tant que le lien public de ce rapport n'est pas
         révoqué. Consulté par ``diffusion_views.resolve_report_token``."""
         return self.partage_revoque_le is None
+
+    # ── NTDATA37 — cible construite par l'utilisateur (dashboard / requête) ──
+    def clean(self):
+        """Un abonnement dit CLAIREMENT ce qu'il envoie.
+
+        Erreur portée par le CHAMP fautif : une cible ``dashboard``/``query``
+        SANS ``cible_id`` n'a rien à rendre — l'accepter produirait un
+        abonnement qui échoue silencieusement chaque semaine.
+        """
+        from django.core.exceptions import ValidationError
+
+        if (self.target_kind in self.KINDS_AVEC_CIBLE
+                and self.cible_id is None):
+            raise ValidationError({
+                'cible_id': 'Choisissez le %s à envoyer.'
+                            % self.get_target_kind_display().lower()})
+
+    def resoudre_cible(self):
+        """La ``core.Dashboard``/``core.SavedQuery`` visée, DANS la société.
+
+        Renvoie ``None`` quand le rapport ne vise pas de cible, quand la cible
+        a été supprimée, ou quand elle appartient à une autre société — jamais
+        d'exception : un abonnement dont la cible a disparu doit rester
+        consultable (et son historique d'envois lisible) plutôt que de faire
+        tomber l'écran.
+        """
+        from core.models import Dashboard, SavedQuery
+
+        modeles = {self.TargetKind.DASHBOARD: Dashboard,
+                   self.TargetKind.QUERY: SavedQuery}
+        modele = modeles.get(self.target_kind)
+        if modele is None or self.cible_id is None:
+            return None
+        return modele.objects.filter(pk=self.cible_id,
+                                     company=self.company).first()
 
 
 class AccesRapportPartage(TenantModel):
@@ -252,6 +310,12 @@ ALL_DASHBOARD_CARDS = [
     # WIR100 — KPI fédérés (ARC40) : tuiles agrégées des providers
     # `kpi_providers` des modules actifs (GET /reporting/reports/kpi-federes/).
     'kpi_federes',
+    # NTDATA21 — « Santé des données » : complétude globale, règles BLOQUANTES
+    # en violation, doublons en attente de décision
+    # (GET /dataquality/sante/). La carte se MASQUE d'elle-même tant que la
+    # société n'a déclaré aucune règle de qualité (`disponible=false`) : trois
+    # zéros ressembleraient à un bon bulletin.
+    'sante_donnees',
 ]
 
 # Ensembles de cartes par défaut selon le palier de rôle (menu_tier).
@@ -397,6 +461,21 @@ class KpiAlerte(models.Model):
         JURIDIQUE_DELAI_MOYEN_RESOLUTION = (
             'juridique_delai_moyen_resolution',
             'Juridique — délai moyen de résolution (jours)')
+        # NTCON34 — KPI du vertical BTP/EPC (``apps.btp_chantier.selectors.
+        # kpis_btp``, lu SANS importer aucun modèle de cette app). Chaque
+        # valeur réutilise un sélecteur EXISTANT (NTCON1/2 réserves, NTCON3/4
+        # RFI en retard, NTCON5 visas, NTCON15 pénalités par lot) — aucune
+        # seconde formule. Une société sans objet BTP renvoie ``None`` (KPI
+        # ignoré) plutôt qu'un 0 qui affirmerait « rien en retard ».
+        BTP_RESERVES_OUVERTES = (
+            'btp_reserves_ouvertes', 'BTP — réserves ouvertes')
+        BTP_RFI_EN_RETARD = (
+            'btp_rfi_en_retard', 'BTP — RFI en retard de réponse')
+        BTP_VISAS_EN_ATTENTE = (
+            'btp_visas_en_attente', 'BTP — visas en attente de revue')
+        BTP_PENALITES_CUMULEES_PERIODE = (
+            'btp_penalites_cumulees_periode',
+            'BTP — exposition cumulée aux pénalités de retard (MAD)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'
@@ -417,6 +496,28 @@ class KpiAlerte(models.Model):
 
         CATALOGUE = 'catalogue', 'KPI du catalogue'
         METRIQUE = 'metrique', 'Métrique nommée (couche sémantique)'
+
+    class ModeDetection(models.TextChoices):
+        """NTDATA41 — CE QUI est comparé au seuil.
+
+        ``SEUIL`` est le DÉFAUT et le comportement historique EXACT : la valeur
+        courante du KPI. Les deux autres modes comparent une DÉRIVÉE de la
+        métrique, ce qui n'a de sens que sur une trajectoire — ils exigent donc
+        une métrique nommée (le catalogue fermé rend des agrégats
+        instantanés, sans historique lisible).
+
+        * ``VARIATION`` — le Δ % entre les DEUX DERNIÈRES PÉRIODES COMPLÈTES.
+          « Une chute de MRR > 20 % » s'écrit alors : opérateur ``<``, seuil
+          ``-20``. La période EN COURS est exclue : le 3 du mois elle contient
+          trois jours et afficherait mécaniquement une chute de ~90 %.
+        * ``ANOMALIE`` — l'écart standardisé (z-score, ``core.anomaly``) du
+          DERNIER point face à sa propre série. Le ``seuil`` est alors le
+          nombre d'écarts-types au-delà duquel on alerte.
+        """
+
+        SEUIL = 'seuil', 'Seuil sur la valeur'
+        VARIATION = 'variation', 'Variation vs période précédente (%)'
+        ANOMALIE = 'anomalie', "Écart à l'habitude (z-score)"
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -442,6 +543,12 @@ class KpiAlerte(models.Model):
         'semantic.MetricDefinition', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='alertes_kpi',
         verbose_name='Métrique nommée')
+    # NTDATA41 — ce qui est comparé au seuil : la valeur (défaut, historique),
+    # sa variation, ou son écart à l'habitude. ADDITIF : toutes les alertes
+    # existantes restent en `seuil` et se comportent à l'identique.
+    mode_detection = models.CharField(
+        max_length=12, choices=ModeDetection.choices,
+        default=ModeDetection.SEUIL, verbose_name='Mode de détection')
     operateur = models.CharField(
         max_length=10, choices=Operateur.choices, default=Operateur.SUP)
     seuil = models.DecimalField(max_digits=14, decimal_places=2)
@@ -499,6 +606,18 @@ class KpiAlerte(models.Model):
                     "Cette métrique appartient à une autre société.")
         elif not self.kpi:
             erreurs['kpi'] = 'Choisissez le KPI à surveiller.'
+        # NTDATA41 — variation et anomalie lisent une TRAJECTOIRE. Le catalogue
+        # fermé rend des agrégats instantanés (le DSO d'aujourd'hui, l'encours
+        # d'aujourd'hui) : il n'a pas d'historique à comparer. Refuser ici est
+        # plus honnête que de laisser créer une alerte qui ne se déclenchera
+        # jamais et que personne ne saura expliquer.
+        if (self.mode_detection != self.ModeDetection.SEUIL
+                and self.source != self.Source.METRIQUE):
+            erreurs['mode_detection'] = (
+                'La détection « %s » compare une trajectoire : elle exige une '
+                'métrique nommée (les KPI du catalogue ne rendent que leur '
+                'valeur du jour).'
+                % self.get_mode_detection_display())
         if erreurs:
             raise ValidationError(erreurs)
 

@@ -9,6 +9,12 @@ beforeEach(() => {
   window.localStorage.clear()
   document.documentElement.removeAttribute('dir')
   document.documentElement.removeAttribute('lang')
+  // NTI18N7 — le <link> de police arabe est injecté dans <head> (hors de
+  // l'arbre React démonté par `cleanup()`) : sans ce retrait explicite, un
+  // test antérieur qui passe par 'ar' laisserait le <link> visible aux tests
+  // suivants dans ce même fichier (jsdom ne réinitialise pas <head> entre
+  // les `it()` d'un même fichier).
+  document.getElementById('nti18n7-arabic-font')?.remove()
 })
 afterEach(() => cleanup())
 
@@ -91,5 +97,30 @@ describe('N93 i18n — RTL', () => {
     expect(document.documentElement.dir).toBe('rtl')
     act(() => { screen.getByTestId('to-en').click() })
     expect(document.documentElement.dir).toBe('ltr')
+  })
+})
+
+// NTI18N7 — police arabe auto-hébergée, chargée PARESSEUSEMENT : seulement au
+// passage en 'ar', jamais au chargement FR/EN par défaut.
+describe('NTI18N7 i18n — police arabe paresseuse', () => {
+  const fontLinkId = 'nti18n7-arabic-font'
+
+  it('ne charge PAS la police arabe par défaut (FR)', () => {
+    renderProbe()
+    expect(document.getElementById(fontLinkId)).toBeNull()
+  })
+
+  it('ne charge PAS la police arabe en passant en anglais', () => {
+    renderProbe()
+    act(() => { screen.getByTestId('to-en').click() })
+    expect(document.getElementById(fontLinkId)).toBeNull()
+  })
+
+  it('charge la police arabe (auto-hébergée) au passage en arabe', () => {
+    renderProbe()
+    act(() => { screen.getByTestId('to-ar').click() })
+    const link = document.getElementById(fontLinkId)
+    expect(link).not.toBeNull()
+    expect(link.getAttribute('href')).toBe('/fonts/arabic.css')
   })
 })

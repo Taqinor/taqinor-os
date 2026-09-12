@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 
 from apps.scm.models import PolitiqueStock, PrevisionDemande
 
-from .auth import ApiKeyAuthentication, ApiKeyRateThrottle, HasApiScope
+from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, HasApiScope
 from .constants import SCOPE_READ_SCM
 from .public_response import PublicApiResponseMixin
 from .public_serializers import (
@@ -73,7 +73,7 @@ class PublicScmTableauBordReapproView(PublicApiResponseMixin, APIView):
     réappro consolidé (NTSCM7) de la société porteuse de la clé. Jamais
     ``prix_achat_unitaire`` (retiré de chaque ligne)."""
 
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [HasApiScope]
     throttle_classes = [ApiKeyRateThrottle]
     required_scope = SCOPE_READ_SCM

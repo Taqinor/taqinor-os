@@ -35,7 +35,9 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametreRenouvellement,
     ParametresAbonnement,
+    ParametresCLM,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -789,6 +791,9 @@ class EtapeApprobationSerializer(serializers.ModelSerializer):
             'id', 'contrat', 'regle', 'niveau',
             'niveau_approbation', 'niveau_approbation_display',
             'approbateur', 'statut', 'statut_display',
+            # NTDOC7 — destinataire NOMMÉ de l'étape (file du parapheur). Posé
+            # par l'action ``assigner-etape``, jamais en POST direct.
+            'assigne_a',
             'decision_le', 'commentaire', 'date_creation',
         ]
         read_only_fields = fields
@@ -803,6 +808,19 @@ class DeciderEtapeSerializer(serializers.Serializer):
     etape = serializers.IntegerField(min_value=1)
     commentaire = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=False)
+
+
+class AssignerEtapeSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/assigner-etape/ (NTDOC7).
+
+    ``etape`` désigne l'étape (id) à assigner ; ``assigne_a`` l'utilisateur
+    destinataire (id) — ``null`` retire l'assignation et sort l'étape du
+    parapheur, sans jamais la décider. La société est garantie par le contrat
+    (posée côté serveur).
+    """
+    etape = serializers.IntegerField(min_value=1)
+    assigne_a = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True)
 
 
 class SignatureContratSerializer(serializers.ModelSerializer):
@@ -848,6 +866,30 @@ class SignerContratSerializer(serializers.Serializer):
         choices=SignatureContrat.RoleSignataire.choices)
     methode = serializers.ChoiceField(
         choices=SignatureContrat.Methode.choices, required=False)
+
+    def validate_signataire_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le nom du signataire est requis (loi 53-05).')
+        return value
+
+
+class SignerLotParapheurSerializer(serializers.Serializer):
+    """Corps de POST /contrats/parapheur/signer-lot/ (NTDOC7).
+
+    Le dirigeant tape son nom UNE fois (loi 53-05) et coche les contrats à
+    parapher. Le rôle de signature (``prestataire``), l'utilisateur agissant,
+    la société et les preuves (IP, user agent) sont posés CÔTÉ SERVEUR —
+    jamais lus du corps de requête. Le rapport est rendu ITEM PAR ITEM : un
+    contrat en conflit n'annule jamais le reste du lot.
+    """
+    contrats = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        help_text='Identifiants des contrats à parapher.',
+    )
+    signataire_nom = serializers.CharField(max_length=255)
 
     def validate_signataire_nom(self, value):
         value = (value or '').strip()
@@ -1058,18 +1100,40 @@ class ObligationSerializer(serializers.ModelSerializer):
         source='get_redevable_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # NTDOC18 — la matrice affiche un badge « preuve manquante » : le calcul
+    # vit sur le modèle, l'écran n'a aucune règle métier à deviner.
+    preuve_manquante = serializers.BooleanField(read_only=True)
+    preuve_document_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = Obligation
         fields = [
             'id', 'contrat', 'jalon', 'intitule', 'description', 'redevable',
             'redevable_display', 'date_echeance', 'statut', 'statut_display',
-            'date_realisation', 'ordre', 'date_creation',
+            'date_realisation', 'preuve_document', 'preuve_document_nom',
+            'preuve_manquante', 'ordre', 'date_creation',
         ]
         read_only_fields = [
             'date_realisation', 'redevable_display', 'statut_display',
-            'date_creation',
+            'preuve_manquante', 'preuve_document_nom', 'date_creation',
         ]
+
+    def get_preuve_document_nom(self, obj) -> str:
+        return getattr(obj.preuve_document, 'nom', '') or ''
+
+    def validate_preuve_document(self, document):
+        """NTDOC18 — la preuve doit appartenir à la société de l'appelant.
+
+        FK cross-app écrivable : sans cette garde, DRF accepterait la clé
+        primaire d'un document de la société VOISINE (AUD601)."""
+        if document is None:
+            return document
+        request = self.context.get('request')
+        if request is not None and document.company_id != getattr(
+                request.user, 'company_id', None):
+            raise serializers.ValidationError(
+                "Ce document n'appartient pas à votre société.")
+        return document
 
     def validate_contrat(self, contrat):
         """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
@@ -2023,4 +2087,64 @@ class ParametresAbonnementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Seuil d'alerte d'usage : saisissez un pourcentage entre 0 "
                 'et 100.')
+        return valeur
+
+
+class ParametresCLMSerializer(serializers.ModelSerializer):
+    """Réglages du cycle de vie contractuel de la société — NTDOC29.
+
+    ``company`` n'est JAMAIS exposée ni acceptée du corps : le singleton est
+    résolu côté serveur depuis l'utilisateur.
+    """
+
+    class Meta:
+        model = ParametresCLM
+        fields = [
+            'id',
+            'resolution_commentaires_obligatoire',
+            'negociation_obligatoire_avant_signature',
+            'duree_defaut_expiration_salle_donnees_jours',
+            'parapheur_notification_quotidienne',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_duree_defaut_expiration_salle_donnees_jours(self, valeur):
+        if valeur == 0:
+            raise serializers.ValidationError(
+                'Durée de vie d\'une salle de données : saisissez au moins '
+                '1 jour (une salle qui expire le jour même n\'a aucun sens).')
+        return valeur
+
+
+class ParametreRenouvellementSerializer(serializers.ModelSerializer):
+    """Délai de prévenance d'échéance par type de contrat — NTDOC20.
+
+    ``company`` n'est JAMAIS exposée ni acceptée du corps : elle est posée
+    côté serveur (``perform_create``). Une seule ligne par (société, type) :
+    un doublon est refusé en français plutôt qu'en ``IntegrityError``.
+    """
+    type_contrat_display = serializers.CharField(
+        source='get_type_contrat_display', read_only=True)
+
+    class Meta:
+        model = ParametreRenouvellement
+        fields = [
+            'id', 'type_contrat', 'type_contrat_display',
+            'delai_avant_echeance_jours', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_type_contrat(self, valeur):
+        request = self.context.get('request')
+        if request is None:
+            return valeur
+        existant = ParametreRenouvellement.objects.filter(
+            company=request.user.company, type_contrat=valeur)
+        if self.instance is not None:
+            existant = existant.exclude(pk=self.instance.pk)
+        if existant.exists():
+            raise serializers.ValidationError(
+                'Un délai est déjà réglé pour ce type de contrat : modifiez '
+                'la ligne existante plutôt que d\'en créer une seconde.')
         return valeur

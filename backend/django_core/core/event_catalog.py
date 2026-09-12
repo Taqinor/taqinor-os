@@ -304,6 +304,30 @@ CATALOG = {
     'dossier_juridique_clos': _e(
         'Un dossier juridique (DossierJuridique) est clôturé.',
         ['dossier', 'company', 'resultat', 'montant_final', 'user']),
+    # NTCON31 — les quatre gestes du vertical BTP/EPC attendus par la MOE et le
+    # client externe (abonné : webhook sortant ``apps.publicapi``). Émis par
+    # ``apps.btp_chantier.services`` via son aide ``_emettre(<nom>, **kwargs)``
+    # — clés reprises À L'IDENTIQUE des appels réels.
+    'btp_reserve_levee': _e(
+        'Une réserve de chantier passe à « levée » (signature capturée).',
+        ['reserve', 'company', 'user']),
+    'btp_rfi_repondu': _e(
+        'Un RFI reçoit sa réponse et passe à « répondu ».',
+        ['rfi', 'company', 'reponse', 'user']),
+    'btp_visa_approuve': _e(
+        'Un visa de document est APPROUVÉ (jamais sur un refus).',
+        ['visa', 'company', 'user']),
+    'btp_dgd_finalise': _e(
+        'Un décompte général et définitif devient « définitif » (verrouillé).',
+        ['dgd', 'company', 'user']),
+    # NTUX32 — objets UX exposés au webhook sortant (``apps.publicapi``).
+    'saved_view_shared': _e(
+        'Une vue enregistrée d\'ÉQUIPE est créée ou supprimée (jamais sur '
+        'une simple modification de filtres).',
+        ['view', 'company', 'user', 'action']),
+    'record_restored': _e(
+        'Une entrée de corbeille est restaurée avec succès.',
+        ['element', 'obj', 'company', 'user']),
 }
 
 

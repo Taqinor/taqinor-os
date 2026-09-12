@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   Wallet, FileText, SlidersHorizontal, Banknote, ReceiptText, ListPlus, BookOpen,
-  Globe,
+  Globe, ShieldCheck,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -30,6 +30,8 @@ const TypesEntreePonctuelle = lazy(() => import('./TypesEntreePonctuelle.jsx'))
 const PlanComptablePaie = lazy(() => import('./PlanComptablePaie.jsx'))
 // NTPAY12 — pays de paie (moteur multi-pays NTPAY7), activation + moteur.
 const PaysPaie = lazy(() => import('./PaysPaie.jsx'))
+// NTPAY16 — cockpit de conformité paie (échéances, preuves, barèmes, clôtures).
+const ConformitePaie = lazy(() => import('./ConformitePaie.jsx'))
 
 const ICON = { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' }
 const PALIER = ['responsable', 'admin']
@@ -61,6 +63,8 @@ export default {
         icon: <BookOpen {...ICON} />, roles: PALIER },
       { to: '/paie/pays', label: 'Pays de paie',
         icon: <Globe {...ICON} />, roles: PALIER },
+      { to: '/paie/conformite', label: 'Conformité',
+        icon: <ShieldCheck {...ICON} />, roles: PALIER },
       // UX14 — self-service : visible pour TOUS les rôles.
       { to: '/paie/mes-bulletins', label: 'Mes bulletins',
         icon: <ReceiptText {...ICON} />, roles: TOUS },
@@ -72,6 +76,7 @@ export default {
     ['/paie/declarations', 'Déclarations & virements'],
     ['/paie/types-entree-ponctuelle', 'Types d’entrées ponctuelles'],
     ['/paie/plan-comptable', 'Plan comptable paie'],
+    ['/paie/conformite', 'Conformité paie'],
     ['/paie/pays', 'Pays de paie'],
     ['/paie/parametres', 'Paramètres de paie'],
     ['/paie/bulletins', 'Bulletins de paie'],
@@ -87,6 +92,7 @@ export default {
     { path: '/paie/types-entree-ponctuelle', component: TypesEntreePonctuelle, roles: PALIER },
     { path: '/paie/plan-comptable', component: PlanComptablePaie, roles: PALIER },
     { path: '/paie/pays', component: PaysPaie, roles: PALIER },
+    { path: '/paie/conformite', component: ConformitePaie, roles: PALIER },
     // Route self-service : pas de `roles` → authLoader (tout utilisateur connecté).
     { path: '/paie/mes-bulletins', component: MesBulletins },
   ],

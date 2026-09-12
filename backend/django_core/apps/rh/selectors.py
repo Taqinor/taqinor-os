@@ -4,6 +4,7 @@ Lectures cadrées société : chaque sélecteur exige la ``company`` de l'appela
 et ne renvoie jamais de données hors de sa société.
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 
@@ -2021,6 +2022,34 @@ def employes_avec_competence(company, competence_ids, niveau_min=1):
             if requises.issubset(couvertes)}
 
 
+def competences_par_code(company, codes):
+    """NTSRV43 — résout des CODES de compétence en ids, scopé société.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.sav`` importe en masse les
+    compétences exigées par catégorie de ticket depuis un tableur, où l'humain
+    saisit un CODE, pas un id) — l'appelant n'importe jamais
+    ``apps.rh.models``.
+
+    Renvoie ``{code normalisé (minuscules, sans espaces) : id}``. Un code
+    absent du référentiel est simplement ABSENT du dictionnaire : c'est à
+    l'appelant de rapporter la ligne fautive, jamais à ce sélecteur de créer
+    une compétence au passage.
+    """
+    from .models import Competence
+
+    voulus = {str(c).strip().lower() for c in (codes or []) if str(c).strip()}
+    if company is None or not voulus:
+        return {}
+    resolus = {}
+    for code, pk in (Competence.objects
+                     .filter(company=company)
+                     .values_list('code', 'id')):
+        normalise = (code or '').strip().lower()
+        if normalise in voulus:
+            resolus[normalise] = pk
+    return resolus
+
+
 def candidats_internes(company, poste_id):
     """XRH15 — classe les employés d'un poste par COUVERTURE de son profil
     requis (décroissante). Couverture = proportion (0..1) des compétences
@@ -3486,3 +3515,752 @@ def zones_intervention(company):
         .values_list('zone_intervention', flat=True)
         .distinct())
     return sorted(set(valeurs))
+
+
+def rollup_okr_entreprise(company, periode=None, objectif_id=None):
+    """NTHCM9 — avancement d'un objectif d'ENTREPRISE, remonté de ses OKR.
+
+    Pour chaque ``ObjectifEntreprise`` (de la ``periode`` demandée, ou tous) :
+
+    * ``progression_okr_pct`` — MOYENNE des ``OkrIndividuel.progression_pct``
+      rattachés (``objectif_parent``). Un objectif SANS OKR rattaché renvoie
+      ``None``, jamais ``0`` : « personne n'y contribue encore » et « tout le
+      monde est à 0 % » sont deux situations opposées, on ne les confond pas ;
+    * ``progression_key_results_pct`` — la mesure PROPRE de l'objectif
+      (moyenne de ses ``KeyResult``), qui reste la source si la cascade n'est
+      pas utilisée ;
+    * ``nombre_contributeurs`` — le nombre d'employés DISTINCTS porteurs d'un
+      OKR rattaché (pas le nombre d'OKR : deux OKR du même employé ne font
+      pas deux contributeurs).
+
+    Lecture pure, scopée société.
+    """
+    from .models import ObjectifEntreprise, OkrIndividuel
+
+    objectifs = ObjectifEntreprise.objects.filter(company=company)
+    if objectif_id:
+        objectifs = objectifs.filter(pk=objectif_id)
+    if periode:
+        objectifs = objectifs.filter(periode=periode)
+    objectifs = objectifs.prefetch_related('key_results').order_by(
+        '-periode', 'titre')
+
+    lignes = []
+    for objectif in objectifs:
+        okrs = list(
+            OkrIndividuel.objects
+            .filter(company=company, objectif_parent=objectif)
+            .prefetch_related('key_results'))
+        progressions = [okr.progression_pct for okr in okrs]
+        contributeurs = {okr.employe_id for okr in okrs}
+
+        propres = [kr.progression_pct for kr in objectif.key_results.all()]
+        lignes.append({
+            'objectif_id': objectif.id,
+            'titre': objectif.titre,
+            'periode': objectif.periode,
+            'progression_okr_pct': (
+                None if not progressions
+                else (sum(progressions) / len(progressions)).quantize(
+                    Decimal('0.01'))),
+            'progression_key_results_pct': (
+                None if not propres
+                else (sum(propres) / len(propres)).quantize(Decimal('0.01'))),
+            'nombre_contributeurs': len(contributeurs),
+            'nombre_okr_rattaches': len(okrs),
+        })
+    return lignes
+
+
+def _okrs_pour_tableau(queryset):
+    """NTHCM9 — forme d'affichage d'un OKR dans le tableau de bord.
+
+    Fonction à part (et non une closure) pour que la forme d'une LIGNE ne se
+    confonde jamais avec celle de l'ENVELOPPE renvoyée par
+    ``tableau_okr_employe`` — ni pour un lecteur, ni pour la garde
+    ``check_api_shapes`` qui dérive le contrat du code.
+    """
+    return [
+        {
+            'id': okr.id,
+            'titre': okr.titre,
+            'periode': okr.periode,
+            'employe_id': okr.employe_id,
+            'employe': f'{okr.employe.nom} {okr.employe.prenom}',
+            'objectif_parent_id': okr.objectif_parent_id,
+            'progression_pct': okr.progression_pct,
+        }
+        for okr in queryset
+    ]
+
+
+def tableau_okr_employe(company, employe, periode=None):
+    """NTHCM9 — MES OKR, ceux de MON ÉQUIPE, et le rollup entreprise.
+
+    Trois portées DISTINCTES, jamais mélangées :
+
+    * ``mes_okr`` — les OKR de ``employe`` ;
+    * ``equipe`` — ceux de ses subordonnés DIRECTS (``manager``, NTHCM1). Un
+      non-manager reçoit une liste VIDE, pas une erreur ;
+    * ``entreprise`` — le rollup ``rollup_okr_entreprise``.
+
+    ``employe`` est ``None`` quand le compte appelant n'a pas de dossier RH :
+    ``mes_okr`` et ``equipe`` sont alors vides, le rollup reste servi.
+    """
+    from .models import OkrIndividuel
+
+    base = OkrIndividuel.objects.filter(company=company).select_related(
+        'employe').prefetch_related('key_results')
+    if periode:
+        base = base.filter(periode=periode)
+
+    if employe is None:
+        mes_okr, equipe = [], []
+    else:
+        mes_okr = _okrs_pour_tableau(base.filter(employe=employe))
+        equipe = _okrs_pour_tableau(base.filter(employe__manager=employe))
+
+    return {
+        'mes_okr': mes_okr,
+        'equipe': equipe,
+        'entreprise': rollup_okr_entreprise(company, periode=periode),
+        'periode': periode or '',
+        'est_manager': bool(equipe),
+    }
+
+
+#: NTHCM6 — tranches de l'histogramme de calibration, en POINTS DE % (bornes
+#: basses incluses, la dernière est ouverte). Vocabulaire FERMÉ : l'écran ne
+#: choisit pas ses tranches, sinon deux écrans liraient deux distributions.
+TRANCHES_CALIBRATION = (
+    ('0', Decimal('0'), Decimal('0')),
+    ('0-2', Decimal('0'), Decimal('2')),
+    ('2-4', Decimal('2'), Decimal('4')),
+    ('4-6', Decimal('4'), Decimal('6')),
+    ('6+', Decimal('6'), None),
+)
+
+
+def _tranche_calibration(pourcentage):
+    """Étiquette de tranche d'un pourcentage d'augmentation."""
+    valeur = pourcentage or Decimal('0')
+    if valeur <= 0:
+        return '0'
+    for etiquette, borne_basse, borne_haute in TRANCHES_CALIBRATION[1:]:
+        if borne_haute is None:
+            return etiquette
+        if borne_basse < valeur <= borne_haute:
+            return etiquette
+    return TRANCHES_CALIBRATION[-1][0]
+
+
+def calibration_cycle_revision(company, cycle_id):
+    """NTHCM6 — vue RH d'ENSEMBLE d'un cycle : toutes les propositions.
+
+    Un manager ne voit que SON équipe (NTHCM5) ; le RH, lui, doit comparer
+    les managers entre eux avant de figer — c'est tout l'objet de la
+    calibration. Renvoie :
+
+    * ``propositions`` — TOUTES celles du cycle, tous managers confondus,
+      avec le manager hiérarchique de chaque employé (NTHCM1) ;
+    * ``distribution`` — l'histogramme par tranche de % d'augmentation, sur
+      le vocabulaire FERMÉ ``TRANCHES_CALIBRATION`` (aucune tranche inventée
+      côté écran) ;
+    * ``par_manager`` — enveloppe ALLOUÉE vs CONSOMMÉE par manager, et le
+      dépassement éventuel ;
+    * ``cycle`` — son identité + son statut (l'écran sait s'il est déjà clos).
+
+    Les propositions REJETÉES apparaissent dans la liste (le RH doit voir ce
+    qui a été écarté) mais ne consomment AUCUNE enveloppe — même règle que
+    ``services.enveloppe_consommee``, jamais recopiée ici.
+
+    Lecture pure : ce sélecteur ne fige rien (c'est
+    ``services.valider_calibration_cycle`` qui le fait).
+    """
+    from . import services
+    from .models import (
+        CycleRevisionSalariale, EnveloppeManager, PropositionRevision,
+    )
+
+    cycle = CycleRevisionSalariale.objects.filter(
+        company=company, pk=cycle_id).first()
+    if cycle is None:
+        return None
+
+    propositions = list(
+        PropositionRevision.objects
+        .filter(company=company, cycle=cycle)
+        .select_related('employe', 'employe__manager')
+        .order_by('employe__nom', 'employe__prenom'))
+
+    distribution = {etiquette: 0 for etiquette, _, _ in TRANCHES_CALIBRATION}
+    lignes = []
+    for proposition in propositions:
+        etiquette = _tranche_calibration(
+            proposition.augmentation_pct_proposee)
+        distribution[etiquette] += 1
+        manager = proposition.employe.manager
+        lignes.append({
+            'id': proposition.id,
+            'employe_id': proposition.employe_id,
+            'employe': (f'{proposition.employe.nom} '
+                        f'{proposition.employe.prenom}'),
+            'manager_id': proposition.employe.manager_id,
+            'manager': (f'{manager.nom} {manager.prenom}'
+                        if manager else ''),
+            'augmentation_pct_proposee': proposition.augmentation_pct_proposee,
+            'statut': proposition.statut,
+            'tranche': etiquette,
+        })
+
+    par_manager = []
+    enveloppes = (
+        EnveloppeManager.objects
+        .filter(company=company, cycle=cycle)
+        .select_related('manager')
+        .order_by('manager__nom', 'manager__prenom'))
+    for enveloppe in enveloppes:
+        consommee = services.enveloppe_consommee(cycle, enveloppe.manager)
+        allouee = enveloppe.enveloppe_pct or Decimal('0')
+        par_manager.append({
+            'manager_id': enveloppe.manager_id,
+            'manager': (f'{enveloppe.manager.nom} '
+                        f'{enveloppe.manager.prenom}'),
+            'enveloppe_allouee_pct': allouee,
+            'enveloppe_consommee_pct': consommee,
+            'depassement': consommee > allouee,
+        })
+
+    return {
+        'cycle': {
+            'id': cycle.id,
+            'libelle': cycle.libelle,
+            'periode': cycle.periode,
+            'statut': cycle.statut,
+            'clos': cycle.statut == CycleRevisionSalariale.Statut.CLOS,
+        },
+        'propositions': lignes,
+        'distribution': [
+            {'tranche': etiquette, 'nombre': distribution[etiquette]}
+            for etiquette, _, _ in TRANCHES_CALIBRATION],
+        'par_manager': par_manager,
+        'nb_propositions': len(lignes),
+    }
+
+
+#: NTHCM2 — profondeur MAXIMALE d'un organigramme rendu. Garde anti-boucle
+#: DOUBLE avec le suivi des ancêtres : ``DossierEmploye.clean()`` (NTHCM1)
+#: refuse un cycle à la saisie, mais des données LEGACY importées peuvent en
+#: porter un — l'écran ne doit jamais partir en boucle infinie pour autant.
+PROFONDEUR_MAX_ORGANIGRAMME = 12
+
+
+def arbre_hierarchique(company, racine_id=None, q=None,
+                       inclure_matriciel=False, aujourdhui=None):
+    """NTHCM2 — organigramme imbriqué de la société (lecture pure).
+
+    Part des employés SANS manager (les racines réelles), ou d'une ``racine_id``
+    donnée. Chaque nœud porte l'identité d'affichage (nom, poste, département,
+    photo présignée quand le compte en a une), son nombre de rapports directs
+    et ses ``subordonnes`` imbriqués.
+
+    CYCLE-SAFE PAR CONSTRUCTION. Deux gardes indépendantes : le suivi des
+    ancêtres du chemin courant (un employé déjà rencontré en remontant n'est
+    jamais redescendu) ET ``PROFONDEUR_MAX_ORGANIGRAMME``. Un nœud coupé porte
+    ``tronque=True`` — visible dans l'UI, jamais un silence.
+
+    RECHERCHE (``q``). Le nœud qui correspond porte ``correspond=True`` ; tout
+    ANCÊTRE d'une correspondance porte ``sur_chemin=True`` — c'est ce drapeau
+    qui permet à l'écran de déplier jusqu'au nœud trouvé sans deviner.
+
+    Les employés SORTIS sont exclus (un organigramme montre l'organisation
+    d'aujourd'hui) ; un employé dont le manager est hors périmètre (sorti, ou
+    d'une autre société) devient une racine plutôt que de disparaître.
+
+    MATRICIEL (NTHCM3, ``inclure_matriciel``). La clé
+    ``rattachements_fonctionnels`` est TOUJOURS présente (forme de nœud
+    stable, contrat PACT10) : vide par défaut, remplie des rattachements
+    ACTIFS à ``aujourdhui`` quand on la demande. Ces liens sont une SECONDE
+    ligne, en pointillés côté écran — jamais mélangée à la hiérarchie, qui
+    reste seule à évaluer/approuver.
+    """
+    from authentication.avatars import presign_avatar
+
+    jour = aujourdhui or timezone.localdate()
+
+    employes = list(
+        DossierEmploye.objects
+        .filter(company=company)
+        .exclude(statut=DossierEmploye.Statut.SORTI)
+        .select_related('poste_ref', 'departement', 'user')
+        .order_by('nom', 'prenom', 'id'))
+    index = {employe.id: employe for employe in employes}
+    enfants_de = {}
+    for employe in employes:
+        if employe.manager_id in index:
+            enfants_de.setdefault(employe.manager_id, []).append(employe)
+
+    if racine_id:
+        try:
+            racine = index.get(int(racine_id))
+        except (TypeError, ValueError):
+            racine = None
+        racines = [racine] if racine is not None else []
+    else:
+        racines = [employe for employe in employes
+                   if employe.manager_id not in index]
+
+    terme = (q or '').strip().lower()
+
+    # NTHCM3 — rattachements fonctionnels ACTIFS, indexés par employé. Une
+    # seule requête pour tout l'arbre (jamais une par nœud).
+    matriciel = {}
+    if inclure_matriciel:
+        from .models import RattachementFonctionnel
+
+        liens = (
+            RattachementFonctionnel.objects
+            .filter(company=company, employe_id__in=index.keys())
+            .select_related('manager_fonctionnel')
+            .order_by('role_fonctionnel', 'id'))
+        for lien in liens:
+            if not lien.actif_le(jour):
+                continue
+            manager = lien.manager_fonctionnel
+            matriciel.setdefault(lien.employe_id, []).append({
+                'id': lien.id,
+                'manager_fonctionnel_id': lien.manager_fonctionnel_id,
+                'manager_fonctionnel': (
+                    f'{manager.nom} {manager.prenom}'.strip()
+                    if manager else ''),
+                'role_fonctionnel': lien.role_fonctionnel,
+            })
+
+    def _photo(employe):
+        utilisateur = employe.user
+        cle = getattr(utilisateur, 'avatar_key', '') if utilisateur else ''
+        if not cle:
+            return ''
+        try:
+            return presign_avatar(cle) or ''
+        except Exception:  # pragma: no cover - défensif (stockage indisponible)
+            return ''
+
+    def _noeud(employe, profondeur, ancetres):
+        directs = enfants_de.get(employe.id, [])
+        tronque = (
+            profondeur >= PROFONDEUR_MAX_ORGANIGRAMME
+            or employe.id in ancetres)
+        subordonnes = []
+        if not tronque:
+            chemin = ancetres | {employe.id}
+            subordonnes = [
+                _noeud(enfant, profondeur + 1, chemin) for enfant in directs]
+
+        correspond = bool(terme) and terme in ' '.join(filter(None, [
+            employe.nom, employe.prenom, employe.matricule,
+            employe.poste_ref.intitule if employe.poste_ref_id else '',
+            employe.poste,
+        ])).lower()
+        sur_chemin = correspond or any(
+            enfant['sur_chemin'] for enfant in subordonnes)
+
+        return {
+            'id': employe.id,
+            'employe': f'{employe.nom} {employe.prenom}'.strip(),
+            'matricule': employe.matricule,
+            'poste': (employe.poste_ref.intitule if employe.poste_ref_id
+                      else employe.poste or ''),
+            'departement': (employe.departement.nom
+                            if employe.departement_id else ''),
+            'photo': _photo(employe),
+            'nb_rapports_directs': len(directs),
+            'tronque': tronque,
+            'correspond': correspond,
+            'sur_chemin': sur_chemin,
+            # NTHCM3 — clé TOUJOURS présente (forme de nœud stable) :
+            # vide tant que le matriciel n'est pas demandé.
+            'rattachements_fonctionnels': matriciel.get(employe.id, []),
+            'subordonnes': subordonnes,
+        }
+
+    return {
+        'racines': [_noeud(racine, 0, frozenset()) for racine in racines],
+        'effectif': len(employes),
+        'profondeur_max': PROFONDEUR_MAX_ORGANIGRAMME,
+        'recherche': terme,
+        'matriciel': bool(inclure_matriciel),
+    }
+
+
+#: NTHCM27 — seuil d'anonymat : un segment de moins de 5 personnes n'est
+#: JAMAIS chiffré (même règle que le pulse XRH32/eNPS et les enquêtes
+#: NTHCM15). En dessous, l'effectif d'une petite équipe permettrait de
+#: ré-identifier quelqu'un par recoupement.
+SEUIL_ANONYMAT_DIVERSITE = 5
+
+
+def analytics_diversite(company, departement_id=None, *, aujourdhui=None):
+    """NTHCM27 — répartition démographique AGRÉGÉE, jamais nominative.
+
+    Renvoie, pour l'effectif NON SORTI de la société (optionnellement d'un
+    département) :
+
+    * ``repartition_genre`` — un segment par valeur déclarée + « non
+      renseigné », chaque segment CHIFFRÉ seulement s'il atteint
+      ``SEUIL_ANONYMAT_DIVERSITE`` (sinon ``effectif=None`` + ``masque=True``) ;
+    * ``anciennete_moyenne_annees`` — moyenne sur les dossiers QUI ONT une
+      date d'embauche (les autres sont exclus, jamais comptés à zéro), elle
+      aussi masquée sous le seuil ;
+    * ``tranches_age`` — VIDE et ``age_disponible=False`` : le dossier employé
+      ne porte AUCUNE date de naissance dans ce dépôt. On l'exclut proprement
+      plutôt que d'inventer un âge.
+
+    AUCUN champ nominatif (nom, prénom, matricule, e-mail, identifiant de
+    dossier) ne figure dans la réponse — c'est la raison d'être de cet
+    endpoint et un test d'exhaustivité le vérifie (patron XRH28).
+    """
+    today = aujourdhui or timezone.localdate()
+    qs = DossierEmploye.objects.filter(company=company).exclude(
+        statut=DossierEmploye.Statut.SORTI)
+    if departement_id:
+        qs = qs.filter(departement_id=departement_id)
+
+    effectif = qs.count()
+
+    libelles = dict(DossierEmploye.Genre.choices)
+    comptes = {cle: 0 for cle in libelles}
+    comptes[''] = 0
+    for valeur in qs.values_list('genre', flat=True):
+        cle = valeur if valeur in comptes else ''
+        comptes[cle] += 1
+
+    repartition = []
+    for cle, nombre in comptes.items():
+        masque = nombre < SEUIL_ANONYMAT_DIVERSITE
+        repartition.append({
+            'genre': cle,
+            'libelle': libelles.get(cle, 'Non renseigné'),
+            'effectif': None if masque else nombre,
+            'part_pct': (
+                None if masque or not effectif
+                else round(100 * nombre / effectif, 1)),
+            'masque': masque,
+        })
+
+    dates = [d for d in qs.values_list('date_embauche', flat=True) if d]
+    if len(dates) < SEUIL_ANONYMAT_DIVERSITE:
+        anciennete = None
+        anciennete_masquee = True
+    else:
+        anciennete = round(
+            sum((today - d).days for d in dates) / len(dates) / 365.25, 1)
+        anciennete_masquee = False
+
+    return {
+        'effectif': effectif,
+        'departement_id': int(departement_id) if departement_id else None,
+        'seuil_anonymat': SEUIL_ANONYMAT_DIVERSITE,
+        'repartition_genre': repartition,
+        'anciennete_moyenne_annees': anciennete,
+        'anciennete_masquee': anciennete_masquee,
+        'nb_dates_embauche_connues': len(dates),
+        'tranches_age': [],
+        'age_disponible': False,
+        'age_indisponible_raison': (
+            "Le dossier employé ne porte pas de date de naissance : la "
+            "tranche d'âge est exclue plutôt qu'estimée."),
+    }
+
+
+#: NTHCM28 — mots-clés qui classent un ``TypeAbsence`` de la société en
+#: « maladie ». Volontairement une HEURISTIQUE sur le référentiel RÉEL de la
+#: société (``code``/``libelle``) : ce dépôt ne pose aucun type « maladie »
+#: statutaire (``seed_types_absence`` sème MAT/PAT/MAR/NAI/DEC/CIRC/AT/MAP),
+#: et inventer une catégorie que le terrain n'a pas serait pire que de lire
+#: ce qu'il a écrit. Tout le reste est compté en « congé ».
+MOTS_CLES_MALADIE = ('MAL', 'MALADIE', 'SICK')
+
+
+def _est_type_maladie(type_absence):
+    if type_absence is None:
+        return False
+    texte = f'{type_absence.code} {type_absence.libelle}'.upper()
+    return any(mot in texte for mot in MOTS_CLES_MALADIE)
+
+
+def _jours_absence_dans_fenetre(demande, debut, fin):
+    """Jours décomptés d'une demande, BORNÉS à la fenêtre demandée.
+
+    On ne prend jamais ``demande.jours`` tel quel : une demande à cheval sur
+    la fenêtre gonflerait le taux du mois. On recompte l'intersection avec la
+    MÊME règle que la demande (jours ouvrés si son type le requiert, sinon
+    jours calendaires) — jamais un prorata approximatif.
+    """
+    from . import holidays
+
+    d_debut = max(demande.date_debut, debut)
+    d_fin = min(demande.date_fin, fin)
+    if d_debut > d_fin:
+        return 0
+    type_absence = demande.type_absence
+    if type_absence is not None and type_absence.decompte_jours_ouvres:
+        return holidays.working_days(d_debut, d_fin)
+    return holidays.calendar_days(d_debut, d_fin)
+
+
+def taux_absenteisme(company, debut, fin, departement_id=None):
+    """NTHCM28 — taux d'absentéisme UNIFIÉ (congés + maladie + AT + injustifié).
+
+    Les briques existaient séparément (``DemandeConge`` FG163,
+    ``AccidentTravail`` FG181, ``IncidentPresence`` FG171) sans qu'aucune vue
+    ne donne le taux GLOBAL. Ici :
+
+    * NUMÉRATEUR — jours d'absence de la période, ventilés par motif :
+      ``conge`` / ``maladie`` (demandes VALIDÉES, bornées à la fenêtre),
+      ``accident_travail`` (jours d'arrêt d'un AT survenu dans la fenêtre),
+      ``non_justifie`` (un ``IncidentPresence`` d'absence injustifiée NON
+      régularisé = 1 jour) ;
+    * DÉNOMINATEUR — effectif PRÉSENT sur la période × jours ouvrés de la
+      période.
+
+    Division par zéro GARDÉE : une période sans jour ouvré ou une société sans
+    effectif renvoie ``taux_pct=None`` (jamais 0 %, qui se lirait comme un
+    excellent résultat alors qu'il n'y a rien à mesurer).
+
+    La ventilation par motif SOMME exactement au total (un test le prouve), et
+    le découpage MENSUEL est calculé sur les mêmes règles. Aucune migration :
+    c'est une lecture pure.
+    """
+    from . import holidays
+
+    if departement_id:
+        employes = DossierEmploye.objects.filter(
+            company=company, departement_id=departement_id)
+    else:
+        employes = DossierEmploye.objects.filter(company=company)
+    # Effectif PRÉSENT sur la période : ni embauché après la fin, ni sorti
+    # avant le début. Un dossier sans date d'embauche est compté présent
+    # (c'est l'existant : la date n'est pas obligatoire).
+    presents = employes.exclude(date_embauche__gt=fin).exclude(
+        date_sortie__lt=debut)
+    ids_presents = list(presents.values_list('id', flat=True))
+    effectif = len(ids_presents)
+    jours_ouvres = holidays.working_days(debut, fin)
+
+    motifs = {'conge': 0.0, 'maladie': 0.0,
+              'accident_travail': 0.0, 'non_justifie': 0.0}
+    par_mois = {}
+
+    def _ajouter(mois, motif, jours):
+        if not jours:
+            return
+        motifs[motif] += jours
+        seau = par_mois.setdefault(
+            mois, {'mois': mois, 'jours': 0.0,
+                   'conge': 0.0, 'maladie': 0.0,
+                   'accident_travail': 0.0, 'non_justifie': 0.0})
+        seau[motif] += jours
+        seau['jours'] += jours
+
+    demandes = DemandeConge.objects.filter(
+        company=company, employe_id__in=ids_presents,
+        statut=DemandeConge.Statut.VALIDEE,
+        date_debut__lte=fin, date_fin__gte=debut,
+    ).select_related('type_absence')
+    for demande in demandes:
+        jours = float(_jours_absence_dans_fenetre(demande, debut, fin))
+        motif = 'maladie' if _est_type_maladie(demande.type_absence) \
+            else 'conge'
+        _ajouter(max(demande.date_debut, debut).strftime('%Y-%m'),
+                 motif, jours)
+
+    accidents = AccidentTravail.objects.filter(
+        company=company, employe_id__in=ids_presents, arret_travail=True,
+        date_accident__gte=debut, date_accident__lte=fin)
+    for accident in accidents:
+        _ajouter(accident.date_accident.strftime('%Y-%m'),
+                 'accident_travail', float(accident.nb_jours_arret or 0))
+
+    incidents = IncidentPresence.objects.filter(
+        company=company, employe_id__in=ids_presents,
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE,
+        justifie=False, date__gte=debut, date__lte=fin)
+    for incident in incidents:
+        _ajouter(incident.date.strftime('%Y-%m'), 'non_justifie', 1.0)
+
+    total_jours = sum(motifs.values())
+    denominateur = effectif * jours_ouvres
+    taux = (round(100 * total_jours / denominateur, 2)
+            if denominateur else None)
+
+    return {
+        'debut': debut,
+        'fin': fin,
+        'departement_id': int(departement_id) if departement_id else None,
+        'effectif': effectif,
+        'jours_ouvres_periode': jours_ouvres,
+        'jours_absence_total': round(total_jours, 2),
+        'taux_pct': taux,
+        'par_motif': {cle: round(valeur, 2)
+                      for cle, valeur in motifs.items()},
+        'par_mois': [
+            {cle: (round(valeur, 2) if isinstance(valeur, float) else valeur)
+             for cle, valeur in seau.items()}
+            for seau in sorted(par_mois.values(), key=lambda s: s['mois'])],
+    }
+
+
+#: NTHCM29 — taille d'échantillon minimale pour AFFICHER une évolution.
+#: Sous 3 employés complétés, la « moyenne avant/après » ne dit rien : elle
+#: serait lue comme un résultat alors que c'est du bruit (et, sur une équipe
+#: minuscule, elle ré-identifierait la personne évaluée).
+SEUIL_ECHANTILLON_CORRELATION = 3
+
+#: Libellé prudent EXIGÉ par la tâche : on observe une évolution, on
+#: n'affirme aucune causalité. Servi tel quel à l'UI pour qu'aucun écran ne
+#: réinvente une formulation qui, elle, conclurait.
+LIBELLE_NON_CAUSAL = 'Évolution observée, non causale.'
+
+
+def correlation_formation_performance(company, parcours_id, fenetre_mois=6):
+    """NTHCM29 — évolution des notes AVANT/APRÈS la complétion d'un parcours.
+
+    Pour chaque employé ayant TERMINÉ le parcours (``date_completion``
+    renseignée), on moyenne ses ``EvaluationEmploye.note_globale`` dans la
+    fenêtre AVANT (``fenetre_mois`` mois précédant la complétion) puis dans la
+    fenêtre APRÈS, et on compare les moyennes d'ensemble.
+
+    CE QUE CE SÉLECTEUR NE FAIT PAS. Il n'affirme aucune causalité : la
+    formation n'est qu'un événement daté parmi d'autres. La réponse porte
+    ``libelle`` = « Évolution observée, non causale. » pour que l'écran ne
+    réinvente pas une formulation qui, elle, conclurait.
+
+    MASQUÉ sous ``SEUIL_ECHANTILLON_CORRELATION`` employés comparables
+    (``masque=True``, moyennes ``None``) : sous 3 personnes, une moyenne
+    avant/après n'est que du bruit — et sur une équipe minuscule elle
+    ré-identifierait l'évaluée. Un employé qui n'a de notes que d'un seul côté
+    n'est pas comparable : il est compté à part, jamais comblé par un zéro.
+
+    Lecture pure : aucune écriture, aucune migration.
+    """
+    from .models import EvaluationEmploye, ProgressionParcours
+
+    progressions = ProgressionParcours.objects.filter(
+        company=company, parcours_id=parcours_id,
+        statut=ProgressionParcours.Statut.TERMINE,
+        date_completion__isnull=False,
+    ).select_related('employe')
+
+    avants, apres = [], []
+    comparables = 0
+    nb_termine = 0
+    for progression in progressions:
+        nb_termine += 1
+        completion = progression.date_completion
+        debut_avant = _reculer_mois(completion, fenetre_mois)
+        fin_apres = _avancer_mois(completion, fenetre_mois)
+        notes = list(
+            EvaluationEmploye.objects.filter(
+                company=company, employe_id=progression.employe_id,
+                note_globale__isnull=False,
+                date_entretien__isnull=False,
+                date_entretien__gte=debut_avant,
+                date_entretien__lte=fin_apres,
+            ).values_list('date_entretien', 'note_globale'))
+        notes_avant = [float(n) for d, n in notes if d < completion]
+        notes_apres = [float(n) for d, n in notes if d >= completion]
+        if not notes_avant or not notes_apres:
+            continue
+        comparables += 1
+        avants.append(sum(notes_avant) / len(notes_avant))
+        apres.append(sum(notes_apres) / len(notes_apres))
+
+    masque = comparables < SEUIL_ECHANTILLON_CORRELATION
+    moyenne_avant = (
+        None if masque else round(sum(avants) / len(avants), 2))
+    moyenne_apres = (
+        None if masque else round(sum(apres) / len(apres), 2))
+    return {
+        'parcours_id': int(parcours_id),
+        'fenetre_mois': fenetre_mois,
+        'nb_employes_termine': nb_termine,
+        'nb_employes_comparables': comparables,
+        'seuil_echantillon': SEUIL_ECHANTILLON_CORRELATION,
+        'masque': masque,
+        'moyenne_avant': moyenne_avant,
+        'moyenne_apres': moyenne_apres,
+        'ecart': (None if masque
+                  else round(moyenne_apres - moyenne_avant, 2)),
+        'libelle': LIBELLE_NON_CAUSAL,
+    }
+
+
+def _reculer_mois(une_date, mois):
+    """``une_date`` moins ``mois`` mois calendaires (stdlib uniquement)."""
+    return _decaler_mois(une_date, -mois)
+
+
+def _avancer_mois(une_date, mois):
+    """``une_date`` plus ``mois`` mois calendaires (stdlib uniquement)."""
+    return _decaler_mois(une_date, mois)
+
+
+def _decaler_mois(une_date, mois):
+    import calendar
+
+    total = une_date.month - 1 + mois
+    annee = une_date.year + total // 12
+    moiscible = total % 12 + 1
+    jour = min(une_date.day, calendar.monthrange(annee, moiscible)[1])
+    return une_date.replace(year=annee, month=moiscible, day=jour)
+
+
+def comparaison_absenteisme(company, debut, fin, departement_id):
+    """NTHCM28 — taux d'UN département vs celui de la société entière."""
+    return {
+        'departement': taux_absenteisme(
+            company, debut, fin, departement_id=departement_id),
+        'societe': taux_absenteisme(company, debut, fin),
+    }
+
+
+def offboarding_en_retard(company, *, aujourdhui=None):
+    """NTHCM24 — tâches de SORTIE dont l'échéance est dépassée, par criticité.
+
+    Une révocation d'accès tardive est un risque de SÉCURITÉ (un ancien
+    salarié qui garde ses accès) : les tâches portées par l'INFORMATIQUE
+    remontent donc EN TÊTE, puis le reste, chaque groupe trié du retard le
+    plus ancien au plus récent.
+
+    Ne remonte QUE ce qui est réellement en retard : une tâche déjà récupérée,
+    ou sans échéance, n'y figure jamais. ``aujourdhui`` est injectable (test
+    déterministe) — la lecture d'horloge n'a lieu qu'ici, à défaut.
+    """
+    from .models import ActeurTache, ElementSortie
+
+    today = aujourdhui or timezone.localdate()
+    lignes = (
+        ElementSortie.objects
+        .filter(company=company, recupere=False, echeance__lt=today)
+        .select_related('employe', 'assigne_a')
+        .order_by('echeance', 'id'))
+    resultat = []
+    for ligne in lignes:
+        resultat.append({
+            'id': ligne.id,
+            'employe_id': ligne.employe_id,
+            'employe': f'{ligne.employe.nom} {ligne.employe.prenom}',
+            'libelle': ligne.libelle,
+            'type_element': ligne.type_element,
+            'acteur_type': ligne.acteur_type,
+            'assigne_a_id': ligne.assigne_a_id,
+            'echeance': ligne.echeance,
+            'jours_de_retard': (today - ligne.echeance).days,
+            'critique': ligne.acteur_type == ActeurTache.IT,
+        })
+    # Tri STABLE : les tâches IT d'abord, l'ordre par ancienneté de retard
+    # (déjà posé par le queryset) étant préservé à l'intérieur de chaque
+    # groupe.
+    resultat.sort(key=lambda ligne: 0 if ligne['critique'] else 1)
+    return resultat

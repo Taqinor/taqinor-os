@@ -8,13 +8,14 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
-from datetime import timedelta
+from datetime import date, timedelta
 
-from django.db.models import ExpressionWrapper, F, fields
+from django.db.models import Exists, ExpressionWrapper, F, OuterRef, fields
 from django.utils import timezone
 
 from .models import (
     AddOnAbonnement,
+    AlerteContrat,
     Avenant,
     Contrat,
     ContratActivity,
@@ -102,6 +103,42 @@ def contrats_a_renouveler(company, within_days=30, today=None):
         .filter(date_fin__gte=today, date_fin__lte=limite)
         .order_by('date_fin', 'id')
     )
+
+
+def reglages_clm(company):
+    """Réglages CLM EFFECTIFS d'une société (NTDOC29) — lecture pure.
+
+    Renvoie la ligne ``ParametresCLM`` de la société si elle existe, sinon une
+    instance NON PERSISTÉE portant les valeurs par défaut du modèle — qui
+    reproduisent exactement le comportement historique. Ce sélecteur n'écrit
+    donc JAMAIS en base (contrairement à ``services.get_parametres_clm``, qui
+    crée le singleton pour l'écran de réglage) : une garde de machine d'états
+    ne doit pas créer une ligne au passage.
+    """
+    from .models import ParametresCLM
+
+    params = ParametresCLM.objects.filter(company=company).first()
+    if params is not None:
+        return params
+    return ParametresCLM(company=company)
+
+
+def delais_renouvellement(company):
+    """Délais de prévenance CONFIGURÉS par type de contrat (NTDOC20).
+
+    Renvoie ``{type_contrat: jours}`` pour les seuls types que la société a
+    RÉELLEMENT réglés. Un dict VIDE (cas de toute société qui n'a jamais
+    ouvert l'écran Paramètres) laisse ``semer_alertes_echeances`` sur sa
+    fenêtre historique — comportement strictement inchangé.
+    """
+    from .models import ParametreRenouvellement
+
+    return {
+        row['type_contrat']: row['delai_avant_echeance_jours']
+        for row in ParametreRenouvellement.objects
+        .filter(company=company)
+        .values('type_contrat', 'delai_avant_echeance_jours')
+    }
 
 
 def versions_contrat(contrat):
@@ -385,6 +422,222 @@ def liens_for_contrat(contrat):
         contrat=contrat, company=contrat.company).order_by('id')
 
 
+# ── NTDOC19 — Pipeline de renouvellement trimestriel ───────────────────────
+#
+# Vocabulaire FERMÉ de l'avancement de la DÉMARCHE de renouvellement. Il est
+# volontairement DISJOINT de ``Contrat.statut`` (machine d'états CONTRAT12) et
+# du funnel ``STAGES.py`` (rule #2) : il décrit où en est l'ACTION commerciale,
+# pas l'état documentaire du contrat.
+PIPELINE_AUCUNE_ACTION = 'aucune_action'
+PIPELINE_NOTIFIE = 'notifie'
+PIPELINE_EN_NEGOCIATION = 'en_negociation'
+PIPELINE_RENOUVELE = 'renouvele'
+PIPELINE_RESILIE = 'resilie'
+
+PIPELINE_LIBELLES = {
+    PIPELINE_AUCUNE_ACTION: 'Aucune action',
+    PIPELINE_NOTIFIE: 'Notifié',
+    PIPELINE_EN_NEGOCIATION: 'En négociation',
+    PIPELINE_RENOUVELE: 'Renouvelé',
+    PIPELINE_RESILIE: 'Résilié',
+}
+
+
+def _bornes_trimestre(trimestre, annee):
+    """NTDOC19 — (premier jour, dernier jour) d'un trimestre CALENDAIRE."""
+    premier_mois = 3 * (trimestre - 1) + 1
+    debut = date(annee, premier_mois, 1)
+    if premier_mois + 3 > 12:
+        fin = date(annee + 1, 1, 1) - timedelta(days=1)
+    else:
+        fin = date(annee, premier_mois + 3, 1) - timedelta(days=1)
+    return debut, fin
+
+
+def _avancement_renouvellement(contrat, debut_trimestre, alertes_envoyees,
+                               contrats_resilies):
+    """NTDOC19 — Avancement de la démarche pour UN contrat.
+
+    Dérivé UNIQUEMENT de données réelles (statut, résiliation enregistrée,
+    alerte réellement envoyée, date de dernier renouvellement) — jamais d'un
+    défaut inventé. Ordre de priorité : résilié > renouvelé > en négociation >
+    notifié > aucune action."""
+    if (contrat.statut == Contrat.Statut.RESILIE
+            or contrat.pk in contrats_resilies):
+        return PIPELINE_RESILIE
+    if (contrat.date_dernier_renouvellement is not None
+            and contrat.date_dernier_renouvellement >= debut_trimestre):
+        return PIPELINE_RENOUVELE
+    if contrat.statut == Contrat.Statut.EN_NEGOCIATION:
+        return PIPELINE_EN_NEGOCIATION
+    if contrat.pk in alertes_envoyees:
+        return PIPELINE_NOTIFIE
+    return PIPELINE_AUCUNE_ACTION
+
+
+def pipeline_renouvellements(company, trimestre=None, annee=None, today=None,
+                             ids_autorises=None):
+    """NTDOC19 — Pipeline trimestriel des renouvellements, groupé par MOIS.
+
+    RÉUTILISE ``contrats_a_renouveler`` (CONTRAT21) comme source unique — rien
+    n'est recalculé ni dupliqué : on lui demande simplement la fenêtre qui
+    couvre le trimestre demandé, puis on borne au premier jour du trimestre.
+    Conséquence assumée de cette réutilisation : un contrat déjà ``resilie`` ou
+    ``expire`` n'est plus « à renouveler » et sort du pipeline — l'état
+    ``resilie`` visible ici est celui d'un contrat DÉNONCÉ (résiliation
+    enregistrée) encore en cours.
+
+    Le PRÉAVIS contractuel (CONTRAT20) est signalé : un contrat dont la date
+    limite de préavis (``date_fin − preavis_jours``) est déjà passée ressort
+    ``preavis_depasse`` — c'est l'urgence à traiter en premier.
+
+    ``trimestre``/``annee`` par défaut : le trimestre calendaire courant.
+    ``today`` est injectable pour les tests. ``ids_autorises`` (optionnel)
+    restreint le pipeline aux contrats que l'APPELANT a le droit de voir — la
+    vue y passe son propre queryset filtré par confidentialité (YRBAC3), pour
+    qu'un contrat confidentiel ne fuite jamais par un agrégat.
+
+    Renvoie ``{'annee', 'trimestre', 'debut', 'fin', 'total',
+    'preavis_depasses', 'mois': [...], 'par_avancement': {...}}``."""
+    if today is None:
+        today = timezone.localdate()
+    annee = int(annee) if annee else today.year
+    trimestre = int(trimestre) if trimestre else ((today.month - 1) // 3) + 1
+    if trimestre < 1 or trimestre > 4:
+        raise ValueError("Le trimestre doit être compris entre 1 et 4.")
+
+    debut, fin = _bornes_trimestre(trimestre, annee)
+    # Fenêtre passée à CONTRAT21 : de today jusqu'à la fin du trimestre. Un
+    # trimestre entièrement passé donne une fenêtre vide — jamais une erreur.
+    within = (fin - today).days
+    candidats = contrats_a_renouveler(
+        company, within_days=max(within, 0), today=today
+    ).filter(date_fin__gte=debut, date_fin__lte=fin)
+    if ids_autorises is not None:
+        candidats = candidats.filter(id__in=list(ids_autorises))
+    contrats = list(candidats)
+
+    ids = [c.pk for c in contrats]
+    alertes_envoyees = set(
+        AlerteContrat.objects.filter(
+            company=company, contrat_id__in=ids,
+            statut=AlerteContrat.Statut.ENVOYEE,
+            type_alerte__in=[AlerteContrat.TypeAlerte.PREAVIS,
+                             AlerteContrat.TypeAlerte.ECHEANCE],
+        ).values_list('contrat_id', flat=True))
+    contrats_resilies = set(
+        Resiliation.objects.filter(
+            company=company, contrat_id__in=ids,
+        ).exclude(statut=Resiliation.Statut.ANNULEE)
+        .values_list('contrat_id', flat=True))
+
+    mois = {}
+    par_avancement = {cle: 0 for cle in PIPELINE_LIBELLES}
+    preavis_depasses = 0
+    for contrat in contrats:
+        avancement = _avancement_renouvellement(
+            contrat, debut, alertes_envoyees, contrats_resilies)
+        par_avancement[avancement] += 1
+        limite_preavis = None
+        if contrat.date_fin and contrat.preavis_jours:
+            limite_preavis = contrat.date_fin - timedelta(
+                days=contrat.preavis_jours)
+        depasse = bool(limite_preavis and limite_preavis < today
+                       and not contrat.preavis_traite)
+        if depasse:
+            preavis_depasses += 1
+        mois.setdefault(contrat.date_fin.month, []).append({
+            'contrat_id': contrat.pk,
+            'reference': contrat.reference,
+            'objet': contrat.objet,
+            'date_fin': contrat.date_fin,
+            'preavis_jours': contrat.preavis_jours,
+            'limite_preavis': limite_preavis,
+            'preavis_depasse': depasse,
+            'tacite_reconduction': contrat.tacite_reconduction,
+            'avancement': avancement,
+            'avancement_display': PIPELINE_LIBELLES[avancement],
+        })
+
+    return {
+        'annee': annee,
+        'trimestre': trimestre,
+        'debut': debut,
+        'fin': fin,
+        'total': len(contrats),
+        'preavis_depasses': preavis_depasses,
+        'par_avancement': par_avancement,
+        'mois': [
+            {'mois': numero, 'contrats': mois[numero]}
+            for numero in sorted(mois)
+        ],
+    }
+
+
+def matrice_obligations(contrat):
+    """NTDOC18 — Matrice des obligations d'un contrat : redevable × statut.
+
+    Lecture seule et purement DESCRIPTIVE : elle regroupe les ``Obligation``
+    existantes (CONTRAT26) par partie redevable puis par statut, et compte les
+    « preuves manquantes » (obligation RÉALISÉE sans ``preuve_document``). Une
+    obligation sans preuve reste parfaitement valide — la matrice la signale,
+    elle ne l'interdit jamais.
+
+    Renvoie ``{'lignes': [...], 'total': n, 'preuves_manquantes': n}`` où
+    chaque ligne est un couple (redevable, statut) avec ses obligations."""
+    obligations = list(obligations_contrat(contrat))
+    groupes = {}
+    for obligation in obligations:
+        cle = (obligation.redevable, obligation.statut)
+        groupe = groupes.setdefault(cle, {
+            'redevable': obligation.redevable,
+            'redevable_display': obligation.get_redevable_display(),
+            'statut': obligation.statut,
+            'statut_display': obligation.get_statut_display(),
+            'obligations': [],
+            'preuves_manquantes': 0,
+        })
+        groupe['obligations'].append(obligation)
+        if obligation.preuve_manquante:
+            groupe['preuves_manquantes'] += 1
+    lignes = sorted(groupes.values(),
+                    key=lambda g: (g['redevable'], g['statut']))
+    return {
+        'lignes': lignes,
+        'total': len(obligations),
+        'preuves_manquantes': sum(
+            1 for o in obligations if o.preuve_manquante),
+    }
+
+
+def contrat_card(contrat_id, company):
+    """NTDOC15 — fiche-carte LECTURE SEULE d'un contrat, scopée société.
+
+    Même contrat de sortie que ``crm.selectors.lead_card`` et
+    ``installations.selectors.chantier_card`` : ``{label, subtitle, url}``, ou
+    None si le contrat n'appartient pas à la société (jamais d'accès
+    cross-tenant). C'est le point d'entrée cross-app pour qu'une autre app
+    (ex. une salle de données créée depuis un contrat) affiche un libellé sans
+    jamais importer ``apps.contrats.models``."""
+    contrat = Contrat.objects.filter(pk=contrat_id, company=company).first()
+    if contrat is None:
+        return None
+    parties = []
+    try:
+        parties.append(contrat.get_type_contrat_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    try:
+        parties.append(contrat.get_statut_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    return {
+        'label': f'{contrat.reference} — {contrat.objet}'.strip(' —'),
+        'subtitle': ' · '.join(p for p in parties if p),
+        'url': f'/contrats/{contrat.pk}',
+    }
+
+
 def _label_devis(company, cible_id):
     """Libellé enrichi d'un devis via ``ventes.selectors`` (ou None).
 
@@ -648,7 +901,10 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
     - ``mrr_combine`` : MRR contrats + ``sav.ContratMaintenance`` facturables,
       SANS double-comptage (``mrr_combine`` — XCTR13) ;
     - ``mrr_par_responsable`` : ventilation du MRR par responsable (XCTR10,
-      clé ``id`` du responsable, ``'sans_responsable'`` si non renseigné).
+      clé ``id`` du responsable, ``'sans_responsable'`` si non renseigné) ;
+    - ``deviations`` : nombre de contrats portant au moins une déviation de
+      clause obligatoire (NTDOC6 — carte ADDITIVE, aucune clé existante
+      renommée ni retirée).
     """
     from decimal import Decimal
 
@@ -682,6 +938,9 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
         'mrr_combine': mrr_combine(company),
         'exceptions_facturation': exceptions_facturation_count(company),
         'mrr_par_responsable': mrr_par_responsable(company),
+        # NTDOC6 — carte « Déviations » (ADDITIVE : aucune clé existante n'est
+        # renommée ni retirée, le tableau de bord n'est pas refondu).
+        'deviations': len(contrats_en_deviation(company)),
     }
 
 
@@ -1826,6 +2085,59 @@ def clauses_obligatoires_manquantes(contrat):
 
 
 # ---------------------------------------------------------------------------
+# NTDOC6 — Déviations de clauses obligatoires (carte du tableau de bord)
+# ---------------------------------------------------------------------------
+
+
+def contrats_candidats_deviation(company):
+    """Contrats susceptibles de porter une déviation (NTDOC6) — PRÉ-FILTRE.
+
+    Restreint le balayage aux contrats qui portent AU MOINS une clause
+    résolue ``surchargee`` adossée à une clause-source : sans ça, aucune
+    déviation n'est possible par construction. Le verdict final (la clause
+    est-elle obligatoire pour CE type, et le texte diffère-t-il vraiment ?)
+    reste à ``services.detecter_deviations`` — ce sélecteur ne fait que
+    borner le travail. Lecture seule, scopé société.
+    """
+    return (
+        Contrat.objects
+        .filter(company=company,
+                clauses_resolues__surchargee=True,
+                clauses_resolues__clause__isnull=False)
+        .distinct()
+        .order_by('id')
+    )
+
+
+def contrats_en_deviation(company):
+    """Contrats portant AU MOINS une déviation de clause obligatoire (NTDOC6).
+
+    Renvoie une LISTE de dicts ``{'contrat', 'reference', 'objet',
+    'type_contrat', 'statut', 'nb_deviations'}``, la plus déviante d'abord.
+    Lecture seule ; le détail par clause s'obtient avec
+    ``services.detecter_deviations(contrat)``.
+    """
+    from . import services
+
+    resultats = []
+    for contrat in contrats_candidats_deviation(company).prefetch_related(
+            'clauses_resolues__clause'):
+        deviations = services.detecter_deviations(contrat)
+        if not deviations:
+            continue
+        resultats.append({
+            'contrat': contrat.id,
+            'reference': contrat.reference or '',
+            'objet': contrat.objet or '',
+            'type_contrat': contrat.type_contrat,
+            'statut': contrat.statut,
+            'nb_deviations': len(deviations),
+        })
+    resultats.sort(key=lambda r: (-r['nb_deviations'], r['contrat']))
+    return resultats
+
+
+# ---------------------------------------------------------------------------
 # NTDOC26 — Wizard guidé « Ouvrir une négociation » (pure agrégation lecture)
 # ---------------------------------------------------------------------------
 #
@@ -2126,3 +2438,138 @@ def releve_abonnement(contrat, debut=None, fin=None):
         'total_paiements': sum(
             (_D(str(p['montant'] or 0)) for p in paiements), _D('0')),
     }
+
+
+# ---------------------------------------------------------------------------
+# NTDOC7 — Parapheur électronique du dirigeant (file « ce qui m'attend »)
+# ---------------------------------------------------------------------------
+#
+# Une SEULE liste unifiée pour la personne qui paraphe : les contrats dont la
+# signature INTERNE (rôle ``prestataire``) manque encore, ET les étapes
+# d'approbation ``en_attente`` qui lui sont nominativement assignées
+# (``EtapeApprobation.assigne_a``). Lecture seule : ce module ne pose aucun
+# statut, ne signe rien, n'approuve rien.
+
+
+def _role_interne():
+    """Rôle de signature porté par la société elle-même (côté prestataire).
+
+    C'est CE rôle qu'un dirigeant appose depuis son parapheur — jamais celui
+    du client, qui signe par ses propres voies (lien public, cérémonie GED).
+    Aucune constante dupliquée : la valeur vient du modèle.
+    """
+    return SignatureContrat.RoleSignataire.PRESTATAIRE
+
+
+def contrats_en_attente_de_parapheur(company, *, statuts=None):
+    """Contrats de la société dont la signature INTERNE manque (NTDOC7).
+
+    Un contrat entre dans le parapheur quand il est parvenu au stade où la
+    signature est attendue (``en_approbation`` par défaut — l'unique statut
+    depuis lequel la machine d'états CONTRAT12 autorise ``→ signe``) et
+    qu'AUCUNE ``SignatureContrat`` de rôle ``prestataire`` n'a encore été
+    posée. Un contrat signé entre-temps par un tiers SORT donc de la file au
+    prochain appel, sans aucune écriture.
+
+    ``statuts`` est injectable (tests / futur élargissement). Ordonné par
+    urgence : ``date_fin`` la plus proche d'abord, les contrats sans échéance
+    en dernier. Lecture seule, scopé société.
+    """
+    if statuts is None:
+        statuts = [Contrat.Statut.EN_APPROBATION]
+    deja_signe = SignatureContrat.objects.filter(
+        company=company,
+        contrat=OuterRef('pk'),
+        role_signataire=_role_interne(),
+    )
+    return (
+        Contrat.objects.filter(company=company, statut__in=list(statuts))
+        .annotate(signe_en_interne=Exists(deja_signe))
+        .filter(signe_en_interne=False)
+        .order_by(F('date_fin').asc(nulls_last=True), 'id')
+    )
+
+
+def etapes_en_attente_pour(user):
+    """Étapes d'approbation ``en_attente`` ASSIGNÉES à ``user`` (NTDOC7).
+
+    Scopé société (celle de l'utilisateur) : une étape d'une autre société
+    n'apparaît jamais, même si le FK ``assigne_a`` pointait vers lui. Les
+    étapes non assignées (``assigne_a`` NULL — tout l'existant) ne remontent
+    JAMAIS ici : la file du parapheur est nominative, le workflow historique
+    reste inchangé. Ordonné par échéance du contrat puis par niveau d'étape.
+    """
+    company = getattr(user, 'company', None)
+    if company is None:
+        return EtapeApprobation.objects.none()
+    return (
+        EtapeApprobation.objects
+        .filter(company=company, assigne_a=user,
+                statut=EtapeApprobation.Statut.EN_ATTENTE)
+        .select_related('contrat')
+        .order_by(F('contrat__date_fin').asc(nulls_last=True),
+                  'niveau', 'id')
+    )
+
+
+def items_parapheur(user):
+    """File UNIFIÉE du parapheur d'un utilisateur (NTDOC7) — lecture seule.
+
+    Fusionne les deux natures d'attente en une seule liste triée par échéance
+    (la plus proche d'abord, les items sans échéance en dernier) :
+
+    - ``type='signature'`` — un contrat dont la signature interne
+      (``prestataire``) manque encore ;
+    - ``type='approbation'`` — une ``EtapeApprobation`` ``en_attente``
+      nominativement assignée à cet utilisateur.
+
+    Chaque item porte ``contrat``/``contrat_reference``/``contrat_objet``,
+    l'``echeance`` qui sert au tri, et ``etape`` (l'id de l'étape, ``None``
+    pour un item de signature). Aucune écriture, aucun statut touché.
+    """
+    company = getattr(user, 'company', None)
+    if company is None:
+        return []
+
+    items = []
+    for contrat in contrats_en_attente_de_parapheur(company):
+        items.append({
+            'type': 'signature',
+            'contrat': contrat.id,
+            'contrat_reference': contrat.reference or '',
+            'contrat_objet': contrat.objet or '',
+            'statut': contrat.statut,
+            'echeance': contrat.date_fin,
+            'etape': None,
+            'niveau': None,
+            'libelle': 'Signature du prestataire attendue',
+        })
+    for etape in etapes_en_attente_pour(user):
+        items.append({
+            'type': 'approbation',
+            'contrat': etape.contrat_id,
+            'contrat_reference': etape.contrat.reference or '',
+            'contrat_objet': etape.contrat.objet or '',
+            'statut': etape.contrat.statut,
+            'echeance': etape.contrat.date_fin,
+            'etape': etape.id,
+            'niveau': etape.niveau,
+            'libelle': (
+                f'Approbation niveau {etape.niveau} '
+                f'({etape.get_niveau_approbation_display()})'
+            ),
+        })
+
+    # Tri unifié par urgence : échéance la plus proche d'abord, les items sans
+    # échéance en dernier (une date absente ne doit jamais passer devant une
+    # date réelle). Départage stable par contrat puis par étape.
+    def _cle(item):
+        echeance = item['echeance']
+        return (
+            echeance is None,
+            echeance or date.max,
+            item['contrat'],
+            item['etape'] or 0,
+        )
+
+    return sorted(items, key=_cle)

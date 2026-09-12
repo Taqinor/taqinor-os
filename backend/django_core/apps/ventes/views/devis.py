@@ -3131,6 +3131,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
+            # NTI18N4 — langue de sortie du document, INDÉPENDANTE de la
+            # langue d'interface de qui génère le PDF. `?langue=` écrase la
+            # résolution auto (priorité : explicite > Client.langue_document
+            # > repli société [NTI18N34, pas encore construit] > FR). Le
+            # moteur reçoit toujours une valeur DÉJÀ résolue — jamais un
+            # second moteur, jamais de logique de langue dupliquée ici.
+            from apps.parametres.i18n_resolver import resolve_langue_sortie
+            raw['langue_sortie'] = resolve_langue_sortie(
+                langue_explicite=request.query_params.get('langue'),
+                client=devis.client, company=devis.company)
             # ERR74 — /proposal is a safe GET: render + stream, but do NOT
             # persist fichier_pdf on every call (persist=False). The single
             # engine picks the residential (redesigned) or legacy renderer.

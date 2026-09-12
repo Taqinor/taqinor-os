@@ -16,8 +16,18 @@ lecture, ``PublicWriteAPIView`` en écriture) — jamais dupliqué par vue :
   (demandée) vs « ce que le serveur sert » (épinglée par clé). NTAPI2 cible ses
   annonces de dépréciation sur la première.
 """
+from .auth import RATE_LIMIT_STATE_ATTR
+from .deprecation import ApiDeprecationHeadersMixin
 from .errors import public_api_exception_handler
 from .versioning import version_demandee
+
+# NTAPI6 — en-têtes de quota standards, posés sur CHAQUE réponse publique dès
+# qu'un plan borne le volume de la société (sans plan : aucun en-tête, contrat
+# historique inchangé).
+RATE_LIMIT_LIMIT_HEADER = 'X-RateLimit-Limit'
+RATE_LIMIT_REMAINING_HEADER = 'X-RateLimit-Remaining'
+RATE_LIMIT_RESET_HEADER = 'X-RateLimit-Reset'
+RETRY_AFTER_HEADER = 'Retry-After'
 
 # NTAPI5 — en-tête de version épinglée par clé.
 API_VERSION_HEADER = 'X-Taqinor-Api-Version'
@@ -27,7 +37,7 @@ API_VERSION_HEADER = 'X-Taqinor-Api-Version'
 DEFAULT_API_VERSION = 'v1'
 
 
-class PublicApiResponseMixin:
+class PublicApiResponseMixin(ApiDeprecationHeadersMixin):
     """À placer EN PREMIER dans le MRO (avant la base DRF) sur toute vue
     montée sous ``/api/public/v1/``."""
 
@@ -52,4 +62,34 @@ class PublicApiResponseMixin:
         expire_le = getattr(api_key, 'expire_le', None)
         if expire_le:
             response['Deprecation'] = expire_le.isoformat()
+        # NTAPI6 — en-têtes de quota, reflet du COMPTEUR RÉEL de la société.
+        self._poser_entetes_quota(request, response)
+        # NTAPI2 — annonce de dépréciation de L'ENDPOINT (RFC 8594). Posée
+        # APRÈS NTAPI23 : quand les deux s'appliquent, l'annonce d'endpoint
+        # gagne (signal le plus fort, seul format conforme à la RFC). Sans
+        # annonce, rien n'est touché — comportement historique inchangé.
+        response = self.poser_entetes_deprecation(request, response)
+        return response
+
+    def _poser_entetes_quota(self, request, response):
+        """NTAPI6 — `X-RateLimit-Limit/Remaining/Reset` (+ `Retry-After` sur
+        429) depuis l'état mémorisé par `ApiKeyRateThrottle`.
+
+        Aucun en-tête quand aucune borne de VOLUME ne s'applique : inventer un
+        « quota » là où le plan n'en fixe aucun tromperait le client sur une
+        limite qui n'existe pas. `Retry-After` n'est écrasé que si DRF ne l'a
+        pas déjà posé (il le fait sur un refus de DÉBIT — sa valeur est alors
+        la bonne)."""
+        charge = getattr(request, RATE_LIMIT_STATE_ATTR, None)
+        if not charge:
+            return response
+        etat = charge.get('etat')
+        if etat:
+            response[RATE_LIMIT_LIMIT_HEADER] = str(etat['limit'])
+            response[RATE_LIMIT_REMAINING_HEADER] = str(etat['remaining'])
+            response[RATE_LIMIT_RESET_HEADER] = str(etat['reset'])
+        retry_after = charge.get('retry_after')
+        if (charge.get('depasse') and retry_after
+                and RETRY_AFTER_HEADER not in response):
+            response[RETRY_AFTER_HEADER] = str(int(retry_after))
         return response

@@ -101,6 +101,101 @@ def rapport_intervention_pdf(ticket):
     return _html_to_pdf(html)
 
 
+def _chatter_payload(ticket):
+    """NTSRV28 — historique COMPLET du chatter, du plus ancien au plus récent.
+
+    Le classeur d'intervention se lit dans l'ordre chronologique, pas dans
+    l'ordre d'affichage écran (``TicketActivity.Meta.ordering`` = récent
+    d'abord)."""
+    from .models import TicketActivity
+
+    lignes = (ticket.activites
+              .select_related('user')
+              .order_by('created_at', 'id'))
+    rows = []
+    kinds = dict(TicketActivity.Kind.choices)
+    outcomes = dict(TicketActivity.OUTCOMES)
+    for entree in lignes:
+        if entree.kind == TicketActivity.Kind.MODIFICATION:
+            texte = (f'{entree.field_label or entree.field} : '
+                     f'{entree.old_value or "—"} → {entree.new_value or "—"}')
+        else:
+            texte = entree.body or ''
+        rows.append({
+            'date': entree.created_at,
+            'genre': kinds.get(entree.kind, entree.kind),
+            'auteur': getattr(entree.user, 'username', None) or '—',
+            'texte': texte,
+            'issue': outcomes.get(entree.outcome, '') if entree.outcome else '',
+            'duree_minutes': entree.duree_minutes,
+        })
+    return rows
+
+
+def _signature_payload(ticket):
+    """NTSRV28 — signature client la plus récente parmi les interventions
+    liées (FG69), ou ``None`` (section omise du PDF).
+
+    Lecture par la CHAÎNE DE FK (``ticket.interventions``) — jamais un import
+    des modèles ``installations``."""
+    meilleure = None
+    for itv in ticket.interventions.all():
+        if not getattr(itv, 'signature_client', None):
+            continue
+        quand = getattr(itv, 'signe_le', None)
+        if meilleure is None or (
+                quand and meilleure['signe_le']
+                and quand > meilleure['signe_le']) or (
+                quand and not meilleure['signe_le']):
+            meilleure = {
+                'image': itv.signature_client,
+                'nom': getattr(itv, 'signataire_nom', '') or '',
+                'signe_le': quand,
+            }
+    return meilleure
+
+
+def fiche_synthese_ticket_pdf(ticket):
+    """NTSRV28 — Fiche de synthèse INTERNE d'un ticket SAV (octets PDF).
+
+    Usage : classeur physique d'intervention, transmission assurance /
+    garantie. Rendue par WeasyPrint — la MÊME pile que le PDF facture legacy
+    (``apps.ventes.utils.pdf``) et surtout PAS le moteur premium réservé aux
+    devis client (règle #4). Un test (NTSRV28) vérifie que le nom de ce
+    paquet n'apparaît NULLE PART dans ce fichier, pas même en commentaire :
+    c'est volontaire, on ne le cite donc pas ici.
+
+    ⚠ AUCUN prix d'achat, AUCUNE marge : la fiche ne contient que des
+    désignations, des quantités et l'historique. ``Ticket.cout`` lui-même est
+    volontairement ABSENT (c'est un coût interne, et une fiche transmise à un
+    assureur n'a pas à le porter) — un test le verrouille.
+    """
+    context = _company_context(company=ticket.company)
+    client = ticket.client
+    equipement = ticket.equipement
+    context.update({
+        'ticket': ticket,
+        'client': client,
+        'client_nom': (f"{client.nom} {client.prenom or ''}".strip()
+                       if client else ''),
+        'installation_reference': (ticket.installation.reference
+                                   if ticket.installation else ''),
+        'equipement': equipement,
+        'cause_nom': getattr(ticket.cause, 'nom', '') or '',
+        'remede_nom': getattr(ticket.remede, 'nom', '') or '',
+        'categorie_nom': getattr(ticket.categorie, 'libelle', '') or '',
+        'statut_label': ticket.get_statut_display(),
+        'priorite_label': ticket.get_priorite_display(),
+        'chatter': _chatter_payload(ticket),
+        'interventions': _interventions_payload(ticket),
+        'pieces': _pieces_payload(ticket),
+        'worksheet': _worksheet_payload(ticket),
+        'signature': _signature_payload(ticket),
+    })
+    html = _render_html('sav_fiche_ticket.html', context)
+    return _html_to_pdf(html)
+
+
 def rapport_maintenance_pdf(contrat, visite_date=None):
     """N47 — rapport court de visite de maintenance (PDF, à la demande).
 

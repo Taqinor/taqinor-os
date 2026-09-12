@@ -106,8 +106,19 @@ def arabic_font_face_css():
     return ''.join(faces)
 
 
-def document_langue(client):
-    """Langue du document pour ce client — 'ar' ou 'fr' (défaut historique).
-    Best-effort : un client sans champ (anciens objets en mémoire) retombe
-    sur 'fr', jamais d'exception."""
-    return getattr(client, 'langue_document', None) or 'fr'
+def document_langue(client, *, langue_explicite=None, company=None):
+    """Langue du document — 'ar' ou 'fr' pour ce dictionnaire (voir
+    ``libelle`` ci-dessous), pas plus large ('en' retomberait déjà
+    silencieusement sur le FR faute d'entrée dans ``LIBELLES``).
+
+    NTI18N4 — délègue désormais à la résolution PARTAGÉE
+    ``apps.parametres.i18n_resolver.resolve_langue_sortie`` (priorité :
+    explicite > ``Client.langue_document`` > repli société > FR), qui
+    GÉNÉRALISE cette fonction (ajout du repli société et de l'override
+    explicite, absents avant cette tâche) sans changer sa signature
+    historique : un appel ``document_langue(client)`` reste identique
+    caractère pour caractère pour tout appelant existant. Best-effort :
+    aucune exception ne remonte jamais (comportement historique préservé)."""
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
+    return resolve_langue_sortie(
+        langue_explicite=langue_explicite, client=client, company=company)

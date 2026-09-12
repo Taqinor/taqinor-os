@@ -173,3 +173,47 @@ class UxParametres(TenantModel):
         """Réglages de la société, créés au défaut à la première lecture."""
         parametres, _ = cls.objects.get_or_create(company=company)
         return parametres
+
+
+class EcranRecent(TenantModel):
+    """NTUX39 — dernière consultation d'un écran par un utilisateur.
+
+    Substitut SERVEUR du widget « Récents » (NTUX11, `RecentEntitiesWidget.jsx`
+    / `readRecentEntities()`) : ce widget vit EXCLUSIVEMENT en localStorage
+    (clé `taqinor.cmdk.recent`, jamais transmise au serveur) — le backend n'a
+    donc AUCUN moyen de lire cet historique-là. Cette table est le SEUL
+    signal équivalent disponible côté serveur, mise à jour (upsert) à chaque
+    `GET saved-views/?ecran=` (`SavedViewViewSet.list`, déclenché par tout
+    utilisateur qui charge le sélecteur de vue d'un écran, NTUX2). UNE ligne
+    par (company, owner, ecran) — jamais un journal qui grossirait sans borne
+    (donc pas un nouveau modèle de « follow » générique : narrow, borné,
+    un seul usage).
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: composition — sans son propriétaire, la ligne n'a
+        # plus de sens (donnée strictement personnelle).
+        on_delete=models.CASCADE,
+        related_name='ecrans_recents',
+    )
+    ecran = models.CharField(max_length=80)
+    # `auto_now` : bumped à CHAQUE upsert, jamais posé à la main.
+    consulte_le = models.DateTimeField('Consulté le', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Écran consulté récemment'
+        verbose_name_plural = 'Écrans consultés récemment'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'owner', 'ecran'],
+                name='uxviews_ecran_recent_unique_par_utilisateur',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'ecran', 'consulte_le'],
+                         name='uxviews_ecran_recent_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.owner_id} — {self.ecran}'

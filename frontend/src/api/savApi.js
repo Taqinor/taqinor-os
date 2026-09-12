@@ -229,6 +229,25 @@ const savApi = {
     : api.post('/sav/remedes-defaillance/', data),
   deleteRemedeDefaillance: (id) => api.delete(`/sav/remedes-defaillance/${id}/`),
 
+  // ── NTSRV16/NTSRV17/NTSRV31 — Gestion Problème (problème ↔ incidents) ──
+  // `?ordering=-impact` trie par nb de tickets × ancienneté (calculé serveur).
+  getProblemes: (params) => api.get('/sav/problemes/', { params }),
+  saveProbleme: (id, data) => id
+    ? api.patch(`/sav/problemes/${id}/`, data)
+    : api.post('/sav/problemes/', data),
+  deleteProbleme: (id) => api.delete(`/sav/problemes/${id}/`),
+  getProblemeTickets: (id) => api.get(`/sav/problemes/${id}/tickets/`),
+  lierTicketProbleme: (id, ticket) =>
+    api.post(`/sav/problemes/${id}/lier-ticket/`, { ticket }),
+  delierTicketProbleme: (id, ticket) =>
+    api.post(`/sav/problemes/${id}/delier-ticket/`, { ticket }),
+  // NTSRV17 — regroupements SUGGÉRÉS (lecture pure, ne crée jamais rien).
+  getRegroupementsSuggeres: (params) =>
+    api.get('/sav/problemes/regroupements-suggeres/', { params }),
+  // NTSRV31 — crée le problème + rattache les tickets cochés en UN appel.
+  creerProblemeDepuisRegroupement: (data) =>
+    api.post('/sav/problemes/creer-depuis-regroupement/', data),
+
   // ZSAV2 — catégories de ticket (Paramètres + filtre liste).
   getCategoriesTicket: (params) => api.get('/sav/categories-ticket/', { params }),
   saveCategorieTicket: (id, data) => id

@@ -23,6 +23,7 @@ MULTI-TENANT : ``MetricDefinition`` hérite de ``core.models.TenantModel``
 (FK ``company`` + horodatage) ; ``cle`` est unique PAR SOCIÉTÉ — deux sociétés
 peuvent avoir chacune leur ``marge_brute``, jamais la même ligne.
 """
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -179,3 +180,89 @@ class MetricDefinition(TenantModel):
         livre) plutôt que dans une requête sur un dataset."""
         return bool(isinstance(self.mesure, dict)
                     and self.mesure.get('adapter'))
+
+    # NTDATA9 — la SURFACE VERSIONNÉE : ce dont un changement modifie le
+    # CHIFFRE, et rien d'autre. Renommer une métrique ou changer ses décimales
+    # d'affichage ne change aucune valeur — figer une version à chaque retouche
+    # cosmétique noierait l'historique qui doit expliquer « pourquoi la marge
+    # brute de mars ne vaut plus la même chose qu'en février ».
+    SURFACE_VERSIONNEE = ('dataset', 'mesure', 'filtres', 'unite')
+
+    def instantane(self):
+        """L'état versionnable de la définition (dict JSON-able)."""
+        return {
+            'dataset': self.dataset,
+            'mesure': self.mesure if isinstance(self.mesure, dict) else {},
+            'filtres': self.filtres if isinstance(self.filtres, dict) else {},
+            'unite': self.unite,
+        }
+
+
+class MetricDefinitionVersion(TenantModel):
+    """NTDATA9 — l'instantané IMMUABLE d'une définition, à un moment donné.
+
+    LE PROBLÈME QU'IL RÈGLE. Une métrique est une DÉFINITION PARTAGÉE : quand
+    quelqu'un corrige la formule de « marge brute », tous les tableaux de bord,
+    rapports et alertes qui la référencent changent ensemble — c'est le but de
+    la couche sémantique. Mais alors un chiffre imprimé le mois dernier cesse
+    d'être reproductible, et personne ne peut dire CE QUI a changé ni QUAND.
+
+    CE QUE C'EST. Une ligne par état successif de la définition : le dataset,
+    la mesure, les filtres et l'unité, figés — jamais modifiés ensuite. Le
+    numéro est incrémental PAR MÉTRIQUE, calculé côté serveur sous verrou
+    (dernier + 1, JAMAIS ``count()+1`` : une version supprimée ferait
+    collisionner le compteur — c'est le précédent de production de
+    ``apps/ventes/utils/references.py``).
+
+    CE QUE CE N'EST PAS. Ni un journal d'audit (qui a regardé quoi), ni un
+    mécanisme de restauration : on ne « revient » pas à une version, on la
+    LIT pour comprendre un chiffre passé.
+    """
+
+    metric_definition = models.ForeignKey(
+        MetricDefinition, on_delete=models.CASCADE,  # on_delete: composition
+        related_name='versions', verbose_name='Métrique')
+    version = models.PositiveIntegerField(
+        default=1, verbose_name='Numéro de version')
+    # Le LIBELLÉ est figé lui aussi — pas parce qu'il change le chiffre, mais
+    # pour qu'une version relue dans un an porte le nom qu'elle avait alors.
+    libelle = models.CharField(max_length=150, blank=True, default='',
+                               verbose_name='Libellé')
+    dataset = models.CharField(max_length=80, blank=True, default='',
+                               verbose_name='Dataset')
+    mesure = models.JSONField(default=dict, blank=True,
+                              verbose_name='Mesure')
+    filtres = models.JSONField(default=dict, blank=True,
+                               verbose_name='Filtres de la définition')
+    unite = models.CharField(max_length=10, blank=True, default='',
+                             verbose_name='Unité')
+    # SET_NULL : désactiver un compte ne doit jamais effacer l'historique des
+    # définitions — la version reste lisible, son auteur devient inconnu.
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='metric_definition_versions',
+        verbose_name='Auteur')
+    date_creation = models.DateTimeField(auto_now_add=True,
+                                         verbose_name='Figée le')
+
+    class Meta:
+        verbose_name = 'Version de définition de métrique'
+        verbose_name_plural = 'Versions de définitions de métriques'
+        ordering = ['-version', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'metric_definition', 'version'],
+                name='uniq_metricversion_co_def_version'),
+        ]
+
+    def __str__(self):
+        return '%s v%s' % (self.metric_definition_id, self.version)
+
+    def instantane(self):
+        """L'état figé, au MÊME format que ``MetricDefinition.instantane()``."""
+        return {
+            'dataset': self.dataset,
+            'mesure': self.mesure if isinstance(self.mesure, dict) else {},
+            'filtres': self.filtres if isinstance(self.filtres, dict) else {},
+            'unite': self.unite,
+        }

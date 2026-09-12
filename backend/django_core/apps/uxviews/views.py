@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.db.models import Q
 from rest_framework import generics, permissions
@@ -10,13 +11,17 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.events import saved_view_shared
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import FavoriUtilisateur, SavedView, UxParametres
+from .models import EcranRecent, FavoriUtilisateur, SavedView, UxParametres
+from .permissions import PeutDefinirVueDefautRole, PeutPartagerVueEquipe
 from .serializers import (
     FavoriUtilisateurSerializer, SavedViewSerializer, UxParametresSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _is_valid_configuration(configuration):
@@ -36,6 +41,29 @@ def _is_valid_configuration(configuration):
         if not isinstance(filtres, dict) or not isinstance(filtres.get('conditions'), list):
             return False
     return True
+
+
+# NTUX35 — champs CONVENTIONNELS servant d'identifiant métier STABLE entre
+# environnements (jamais l'`object_id` brut, qui diffère). Testés dans cet
+# ordre ; le premier PRÉSENT ET NON VIDE sur l'instance cible est retenu.
+# Générique : aucune app métier n'est importée ici, seule une introspection
+# `getattr` par nom de champ conventionnel (`reference` — Devis/Facture/
+# BonCommande/Ticket… ; `numero` ; `sku` — Produit ; `email` — Lead/Client).
+_CHAMPS_IDENTIFIANT_CANDIDATS = ('reference', 'numero', 'sku', 'email', 'code')
+
+
+def _identifiant_metier(instance):
+    """(champ, valeur) du premier champ candidat non vide sur `instance`, ou
+    (None, None) si aucun ne correspond (ex. un `Chantier` sans référence
+    propre) — la ligne export reste alors identifiée par son seul libellé,
+    et l'import la marquera « non résolue » plutôt que d'inventer une clé."""
+    if instance is None:
+        return None, None
+    for champ in _CHAMPS_IDENTIFIANT_CANDIDATS:
+        valeur = getattr(instance, champ, None)
+        if valeur:
+            return champ, str(valeur)
+    return None, None
 
 
 class SavedViewViewSet(CompanyScopedModelViewSet):
@@ -59,11 +87,33 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             Q(owner=user) | Q(visibilite=SavedView.Visibilite.EQUIPE),
         )
 
+    def list(self, request, *args, **kwargs):
+        # NTUX39 — marque CET utilisateur comme ayant consulté `ecran`
+        # MAINTENANT (`EcranRecent`, substitut serveur de NTUX11 — le widget
+        # « Récents » vit en localStorage, jamais transmis au serveur). Une
+        # ligne par (company, owner, ecran), best-effort : jamais bloquant.
+        ecran = request.query_params.get('ecran')
+        if ecran:
+            try:
+                EcranRecent.objects.update_or_create(
+                    company=request.user.company, owner=request.user, ecran=ecran)
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.exception(
+                    'EcranRecent: mise à jour échouée (%s, %s)',
+                    request.user.pk, ecran)
+        return super().list(request, *args, **kwargs)
+
     def get_permissions(self):
         # NTUX23/34 — les actions de gouvernance de l'écran `/parametres/vues`
         # (liste TOUTE la company, export xlsx, import CSV) sont réservées
         # Directeur/Admin, comme `definir_par_defaut_role` (NTUX2).
-        if self.action in ('definir_par_defaut_role', 'toutes_company', 'export_xlsx', 'importer'):
+        # NTUX31 — `definir_par_defaut_role` exige EN PLUS la permission fine
+        # `ux.vue.definir_defaut_role`, administrable dans l'éditeur de rôles
+        # (jamais à la place du palier existant — un compte hérité sans rôle
+        # fin garde son accès via le repli légacy de `_user_has_or_legacy`).
+        if self.action == 'definir_par_defaut_role':
+            return [IsResponsableOrAdmin(), PeutDefinirVueDefautRole()]
+        if self.action in ('toutes_company', 'export_xlsx', 'importer'):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
@@ -84,11 +134,22 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'visibilite': (
                 "Le partage de vues à l'équipe est désactivé pour votre société."
             )})
+        # NTUX31 — permission fine EN PLUS du réglage société ci-dessus (jamais
+        # à sa place) : un rôle fin doit porter `ux.vue.partager_equipe` pour
+        # partager une vue ; un compte hérité sans rôle fin garde son accès
+        # actuel via le repli légacy de `PeutPartagerVueEquipe`.
+        if not PeutPartagerVueEquipe().has_permission(self.request, self):
+            raise PermissionDenied(
+                "Permission « ux.vue.partager_equipe » requise pour partager "
+                "une vue à l'équipe.")
 
     def perform_create(self, serializer):
         self._verifier_partage_autorise(serializer)
         self._verifier_limite_vues()
-        serializer.save(company=self.request.user.company, owner=self.request.user)
+        instance = serializer.save(
+            company=self.request.user.company, owner=self.request.user)
+        if instance.visibilite == SavedView.Visibilite.EQUIPE:
+            self._emettre_saved_view_shared(instance, 'partagee')
 
     def _verifier_limite_vues(self):
         """NTUX28 — refuse la création au-delà de `max_vues_par_utilisateur`
@@ -114,7 +175,56 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         ):
             raise PermissionDenied("Vous ne pouvez modifier que vos propres vues.")
         self._verifier_partage_autorise(serializer, instance=instance)
-        serializer.save()
+        etait_equipe = instance.visibilite == SavedView.Visibilite.EQUIPE
+        ancienne_configuration = instance.configuration
+        updated = serializer.save()
+        # NTUX39 — notifie SEULEMENT si la vue ÉTAIT et RESTE partagée à
+        # l'équipe ET que ses filtres/colonnes (`configuration`) ont changé
+        # (jamais sur le partage initial, déjà couvert par NTUX32
+        # `saved_view_shared`, ni sur un simple renommage).
+        if (etait_equipe and updated.visibilite == SavedView.Visibilite.EQUIPE
+                and updated.configuration != ancienne_configuration):
+            self._notifier_vue_equipe_modifiee(updated)
+
+    def _notifier_vue_equipe_modifiee(self, view):
+        """NTUX39 — notifie les utilisateurs ayant consulté récemment (30
+        derniers jours, `EcranRecent`) l'écran de cette vue — jamais toute la
+        société, jamais le propriétaire qui vient de la modifier."""
+        try:
+            from datetime import timedelta
+
+            from django.contrib.auth import get_user_model
+            from django.utils import timezone
+
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+
+            seuil = timezone.now() - timedelta(days=30)
+            destinataire_ids = (
+                EcranRecent.objects
+                .filter(company=view.company, ecran=view.ecran,
+                        consulte_le__gte=seuil)
+                .exclude(owner_id=self.request.user.id)
+                .values_list('owner_id', flat=True)
+            )
+            destinataires = list(
+                get_user_model().objects.filter(pk__in=destinataire_ids))
+            if not destinataires:
+                return
+            notify_many(
+                destinataires, EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE,
+                title=f'La vue « {view.nom} » a changé',
+                body=(
+                    f"Les filtres/colonnes de la vue d'équipe « {view.nom} » "
+                    f'(écran {view.ecran}) ont été modifiés par '
+                    f'{self.request.user.get_full_name() or self.request.user.username}.'
+                ),
+                company=view.company,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.exception(
+                'saved_view_shared: notification de modification échouée (%s)',
+                view.pk)
 
     def perform_destroy(self, instance):
         # Garde-fou NTUX2 : une vue par défaut de rôle ne peut être supprimée
@@ -127,7 +237,22 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             )
         if instance.owner_id != self.request.user.id and not instance.est_defaut_role:
             raise PermissionDenied("Vous ne pouvez supprimer que vos propres vues.")
+        etait_equipe = instance.visibilite == SavedView.Visibilite.EQUIPE
         instance.delete()
+        if etait_equipe:
+            self._emettre_saved_view_shared(instance, 'suppression')
+
+    def _emettre_saved_view_shared(self, instance, action):
+        """NTUX32 — webhook sortant (voir
+        ``apps/publicapi/uxviews_event_receivers.py``). Best-effort : un
+        abonné qui casse ne doit jamais faire échouer la requête d'origine."""
+        try:
+            saved_view_shared.send(
+                sender=SavedView, view=instance, company=self.request.user.company,
+                user=self.request.user, action=action)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.exception('saved_view_shared: envoi du signal échoué (%s)',
+                             instance.pk)
 
     @action(detail=True, methods=['post'], url_path='definir-par-defaut-role')
     def definir_par_defaut_role(self, request, pk=None):
@@ -162,6 +287,23 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         instance.est_defaut_role = True
         instance.visibilite = SavedView.Visibilite.EQUIPE
         instance.save(update_fields=['role', 'est_defaut_role', 'visibilite', 'updated_at'])
+        # NTUX38 — traçabilité audit d'une action UX sensible (modèle
+        # `audit.AuditLog` existant, jamais un nouveau journal ; import
+        # fonction-local, même patron que `authentication/views.py`).
+        # Requête dédiée pour le nom du rôle : `instance.role` a été mis en
+        # cache par `select_related('role')` du queryset AVANT la réaffectation
+        # de `role_id` ci-dessus — le lire ici renverrait l'ANCIEN rôle.
+        from apps.audit.models import AuditLog
+        from apps.audit.recorder import record as audit_record
+        from apps.roles.models import Role
+        role_nom = Role.objects.filter(pk=role_id).values_list(
+            'nom', flat=True).first() or role_id
+        audit_record(
+            AuditLog.Action.UPDATE, instance=instance, user=request.user,
+            company=instance.company,
+            detail=(
+                f'Vue par défaut du rôle « {role_nom} » définie sur '
+                f'« {instance.ecran} » : « {instance.nom} ».'))
         return Response(SavedViewSerializer(instance).data)
 
     @action(detail=False, methods=['get'], url_path='toutes-company')
@@ -363,6 +505,91 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                 element.save(update_fields=['ordre', 'updated_at'])
         return Response(
             FavoriUtilisateurSerializer(self.get_queryset(), many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='export-csv')
+    def export_csv(self, request):
+        """NTUX35 — export CSV de MES favoris (jamais ceux d'un collègue, cf.
+        `get_queryset` ci-dessus) — pour transférer manuellement les favoris
+        d'un utilisateur qui change de compte (démission, reprise de
+        portefeuille). Colonnes : `type`, `champ_identifiant`, `identifiant`,
+        `libelle` — JAMAIS l'`object_id` brut, qui diffère d'un environnement
+        à l'autre (cf. `importer` ci-dessous, qui résout par ces colonnes)."""
+        import csv
+
+        from django.http import HttpResponse
+
+        favoris = self.get_queryset().select_related('content_type').order_by('ordre')
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="favoris.csv"'
+        writer = csv.writer(response)
+        writer.writerow(['type', 'champ_identifiant', 'identifiant', 'libelle'])
+        for favori in favoris:
+            cible = favori.cible
+            champ, valeur = _identifiant_metier(cible)
+            writer.writerow([
+                favori.cle_modele, champ or '', valeur or '',
+                str(cible) if cible is not None else '',
+            ])
+        return response
+
+    @action(detail=False, methods=['post'], url_path='importer', parser_classes=[MultiPartParser])
+    def importer(self, request):
+        """NTUX35 — import CSV/XLSX des favoris d'un utilisateur qui change de
+        compte (démission/reprise de portefeuille) — un acte manuel explicite,
+        jamais un transfert automatique. Résout chaque ligne par son
+        IDENTIFIANT MÉTIER (`champ_identifiant` + `identifiant`, ex. la
+        référence d'un devis), jamais par `object_id` brut (qui diffère d'un
+        environnement à l'autre — c'est tout le problème que ce format
+        résout). Une ligne dont le champ/la valeur ne résout à AUCUN
+        enregistrement de LA SOCIÉTÉ de l'appelant est ignorée SILENCIEUSEMENT
+        (jamais une erreur bloquante) ; leur nombre est rapporté. Épingler une
+        cible déjà favorite est un no-op (même dédoublonnage que la création
+        directe, cf. `perform_create`/`get_or_create` ci-dessous)."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.dataimport.parsing import iter_rows, normalize_header
+
+        fichier = request.FILES.get('fichier')
+        if not fichier:
+            raise ValidationError({'fichier': 'Un fichier CSV ou XLSX est requis.'})
+
+        _headers, raw_rows = iter_rows(fichier.read(), fichier.name)
+        rows = [
+            {normalize_header(k): v for k, v in row.items()}
+            for row in raw_rows
+        ]
+
+        importes = 0
+        non_resolues = 0
+        for row in rows:
+            type_cible = str(row.get('type') or '').strip()
+            champ = str(row.get('champ_identifiant') or '').strip()
+            valeur = str(row.get('identifiant') or '').strip()
+            content_type = None
+            if type_cible and '.' in type_cible:
+                app_label, _, modele_nom = type_cible.partition('.')
+                content_type = ContentType.objects.filter(
+                    app_label=app_label, model=modele_nom).first()
+            modele = content_type.model_class() if content_type else None
+            cible = None
+            if modele is not None and champ and valeur:
+                manager = getattr(modele, 'all_objects', modele._default_manager)
+                try:
+                    cible = manager.filter(
+                        company=request.user.company, **{champ: valeur}).first()
+                except Exception:  # noqa: BLE001 — champ inconnu sur ce modèle
+                    cible = None
+            if cible is None:
+                non_resolues += 1
+                continue
+            FavoriUtilisateur.objects.get_or_create(
+                company=request.user.company, owner=request.user,
+                content_type=content_type, object_id=cible.pk,
+                defaults={'ordre': self._prochain_ordre()},
+            )
+            importes += 1
+
+        return Response({'importes': importes, 'non_resolues': non_resolues})
 
 
 class UxParametresView(generics.RetrieveUpdateAPIView):

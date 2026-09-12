@@ -173,6 +173,24 @@ def _produit_saved(sender, instance, created, **kwargs):
 _produit_saved = _safe(_produit_saved)
 
 
+def _custom_record_saved(sender, instance, created, **kwargs):
+    """NTEXT27 — un ``CustomRecord`` (enregistrement d'un objet personnalisé
+    XPLT16) créé OU modifié. Le ``trigger_config={'object_code': 'x'}``
+    d'une règle filtre sur l'objet précis (comparaison dans
+    ``engine._trigger_matches`` — la garde anti-récursion existante
+    (``engine._GUARD``) s'applique déjà à ``evaluate``, rien de spécifique
+    ici)."""
+    objet = getattr(instance, 'objet', None)
+    object_code = getattr(objet, 'code', None)
+    if not object_code:
+        return
+    evaluate(TriggerType.CUSTOM_RECORD_SAVED, instance, instance.company,
+             context={'object_code': object_code, 'created': created})
+
+
+_custom_record_saved = _safe(_custom_record_saved)
+
+
 def connect():
     """Branche tous les signaux (appelé par AutomationConfig.ready())."""
     from django.apps import apps as django_apps
@@ -222,3 +240,11 @@ def connect():
                          dispatch_uid='automation_pre_produit')
         post_save.connect(_produit_saved, sender=Produit,
                           dispatch_uid='automation_post_produit')
+
+    # NTEXT27 — customfields est une app FONDATION (exemptée de la frontière
+    # cross-app métier, cf. CLAUDE.md) : résolution par CHAÎNE comme les
+    # autres modèles ci-dessus, même patron, aucune exception.
+    CustomRecord = model('customfields', 'CustomRecord')
+    if CustomRecord is not None:
+        post_save.connect(_custom_record_saved, sender=CustomRecord,
+                          dispatch_uid='automation_post_customrecord')

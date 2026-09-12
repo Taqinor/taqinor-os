@@ -227,6 +227,17 @@ class DossierEmploye(models.Model):
         DIVORCE = 'divorce', 'Divorcé(e)'
         VEUF = 'veuf', 'Veuf(ve)'
 
+    class Genre(models.TextChoices):
+        """NTHCM27 — genre déclaré, pour le SEUL reporting diversité agrégé.
+
+        Vide (défaut, valeur de tous les dossiers existants) = non renseigné :
+        il apparaît comme tel dans la répartition, jamais réparti d'office
+        dans une catégorie inventée.
+        """
+        FEMME = 'femme', 'Femme'
+        HOMME = 'homme', 'Homme'
+        AUTRE = 'autre', 'Autre'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -256,6 +267,12 @@ class DossierEmploye(models.Model):
     situation_familiale = models.CharField(
         max_length=12, choices=SituationFamiliale.choices,
         blank=True, default='', verbose_name='Situation familiale')
+    # NTHCM27 — alimente UNIQUEMENT l'analytics diversité AGRÉGÉE (jamais une
+    # liste nominative, jamais une décision individuelle). Vide par défaut :
+    # aucun genre n'est déduit ni inventé pour les dossiers existants.
+    genre = models.CharField(
+        max_length=6, choices=Genre.choices,
+        blank=True, default='', verbose_name='Genre')
     nombre_enfants = models.PositiveIntegerField(
         default=0, verbose_name="Nombre d'enfants")
     telephone = models.CharField(
@@ -666,6 +683,23 @@ class DocumentEmploye(models.Model):
         return f'{self.employe.matricule} — {self.get_type_document_display()}'
 
 
+class ActeurTache(models.TextChoices):
+    """NTHCM23/24 — QUI porte une tâche d'intégration ou de sortie.
+
+    XRH4/FG161 ne connaissaient qu'un « fait / pas fait » SANS propriétaire :
+    personne n'était responsable d'une ligne, donc personne ne pouvait voir
+    « MES tâches ». Ce vocabulaire FERMÉ nomme les quatre acteurs réels d'un
+    on/offboarding, et conditionne la résolution automatique de ``assigne_a``.
+
+    Partagé par les deux checklists (entrée ET sortie) : un seul vocabulaire,
+    une seule règle de résolution.
+    """
+    RH = 'rh', 'RH'
+    MANAGER = 'manager', 'Manager'
+    IT = 'it', 'Informatique'
+    EMPLOYE = 'employe_lui_meme', "L'employé lui-même"
+
+
 class ElementSortie(models.Model):
     """Checklist d'offboarding (FG161) — un élément à récupérer au départ.
 
@@ -707,6 +741,22 @@ class ElementSortie(models.Model):
         null=True, blank=True, verbose_name='Date de récupération')
     note = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Note')
+    # NTHCM24 — symétrique de NTHCM23 côté SORTIE. L'IT porte ici les tâches
+    # CRITIQUES (révocation d'accès, récupération de matériel) : une
+    # révocation tardive est un risque de sécurité, d'où le tri par criticité
+    # du rapport ``selectors.offboarding_en_retard``.
+    acteur_type = models.CharField(
+        max_length=16, choices=ActeurTache.choices,
+        default=ActeurTache.RH, verbose_name='Acteur')
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_taches_sortie',
+        verbose_name='Assignée à',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -715,6 +765,14 @@ class ElementSortie(models.Model):
         verbose_name_plural = 'Éléments de sortie'
         ordering = ['type_element', 'libelle']
         indexes = [models.Index(fields=['company', 'employe'])]
+
+    @property
+    def en_retard(self):
+        """NTHCM24 — échéance dépassée ET élément pas encore récupéré."""
+        if self.recupere or self.echeance is None:
+            return False
+        from django.utils import timezone
+        return self.echeance < timezone.localdate()
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.libelle}'
@@ -786,6 +844,15 @@ class ElementIntegration(models.Model):
     )
     libelle = models.CharField(max_length=160, verbose_name='Libellé')
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    # NTHCM23 — PROPRIÉTAIRE de la tâche + échéance RELATIVE à l'embauche.
+    # Défaut ``rh`` + ``0`` jour : c'est EXACTEMENT le comportement historique
+    # (tout retombait sur le RH, sans échéance), donc aucune ligne existante
+    # ne change de sens.
+    acteur_type = models.CharField(
+        max_length=16, choices=ActeurTache.choices,
+        default=ActeurTache.RH, verbose_name='Acteur')
+    delai_jours = models.PositiveIntegerField(
+        default=0, verbose_name="Échéance (jours après l'embauche)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -832,6 +899,22 @@ class ElementIntegrationEmploye(models.Model):
     )
     date = models.DateTimeField(
         null=True, blank=True, verbose_name='Date de réalisation')
+    # NTHCM23 — acteur + destinataire RÉSOLU + échéance CALCULÉE, posés à
+    # l'instanciation (``services.instancier_integration``). ``assigne_a``
+    # nullable : une tâche IT sans contact IT configuré reste NON-ASSIGNÉE —
+    # c'est un signal, jamais une assignation par défaut inventée.
+    acteur_type = models.CharField(
+        max_length=16, choices=ActeurTache.choices,
+        default=ActeurTache.RH, verbose_name='Acteur')
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_taches_integration',
+        verbose_name='Assignée à',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -840,6 +923,18 @@ class ElementIntegrationEmploye(models.Model):
         verbose_name_plural = "Éléments d'intégration (employé)"
         ordering = ['ordre', 'libelle']
         indexes = [models.Index(fields=['company', 'employe'])]
+
+    @property
+    def en_retard(self):
+        """NTHCM23 — échéance dépassée ET tâche pas faite.
+
+        Une tâche SANS échéance n'est jamais en retard (elle n'en a pas), et
+        une tâche faite ne l'est plus, quelle qu'ait été son échéance.
+        """
+        if self.fait or self.echeance is None:
+            return False
+        from django.utils import timezone
+        return self.echeance < timezone.localdate()
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.libelle}'
@@ -4855,6 +4950,23 @@ class ReglageRH(models.Model):
     # « risque de vacance critique ». Défaut 60.
     seuil_risque_succession = models.PositiveSmallIntegerField(
         default=60, verbose_name='Seuil de risque succession (0-100)')
+    # NTHCM19 — délai (jours) après l'assignation d'un parcours OBLIGATOIRE
+    # au-delà duquel `manage.py rappels_parcours_formation` relance l'employé
+    # qui ne l'a pas terminé. Défaut 14 jours (deux semaines).
+    rappel_parcours_apres_jours = models.PositiveIntegerField(
+        default=14, verbose_name='Rappel parcours obligatoire après (jours)')
+    # NTHCM23/24 — destinataire par défaut des tâches d'on/offboarding
+    # portées par l'INFORMATIQUE (création puis révocation des accès,
+    # matériel). ``None`` = aucun contact IT configuré : les tâches IT restent
+    # alors NON-ASSIGNÉES et sont signalées comme telles, jamais retombées en
+    # silence sur quelqu'un d'autre.
+    contact_it_defaut = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_contact_it_par_defaut',
+        verbose_name='Contact informatique par défaut',
+    )
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 
@@ -7141,3 +7253,480 @@ class PlanActionEngagement(TenantModel):
 
     def __str__(self):
         return f'{self.categorie_ciblee or "Action"} — {self.get_statut_display()}'
+
+
+class FeedbackContinu(TenantModel):
+    """NTHCM16 — feedback court, adressé, HORS de tout cycle formel.
+
+    Distinct des deux voisins qui existent déjà :
+
+    * ``AttributionBadge`` (ZRH14) est LUDIQUE et public (un badge, pas un
+      message) ;
+    * ``RetourFeedback360`` (ZRH9) est le 360° FORMEL, rattaché à une
+      ``CampagneEvaluation``.
+
+    Ici : n'importe quel collaborateur écrit à tout moment un mot de
+    reconnaissance, un axe d'amélioration ou une note de coaching à un
+    collègue. Deux drapeaux gouvernent sa VISIBILITÉ, jamais élargie
+    implicitement :
+
+    * ``visible_par_pour`` (défaut ``True``) — le destinataire le lit dans
+      son historique ; à ``False`` le message reste une note de l'auteur ;
+    * ``partage_avec_manager`` (défaut ``False``) — le manager HIÉRARCHIQUE
+      du destinataire (``DossierEmploye.manager``, NTHCM1) le voit en plus.
+
+    ``de`` est posé CÔTÉ SERVEUR (dossier de l'appelant) : personne ne signe
+    au nom d'un autre. L'auto-adressage est refusé (``clean()``).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    class Type(models.TextChoices):
+        RECONNAISSANCE = 'reconnaissance', 'Reconnaissance'
+        AXE_AMELIORATION = 'axe_amelioration', "Axe d'amélioration"
+        COACHING = 'coaching', 'Coaching'
+
+    de = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — l'auteur est un champ d'IDENTITÉ (un feedback « de personne » n'a plus de sens, et un SET_NULL sur un champ d'identité est refusé par `check_on_delete`). Un dossier n'est supprimable que vierge de toute pièce légale (AUD721) : ses mots partent avec lui.
+        related_name='feedbacks_envoyes',
+        verbose_name='Auteur',
+    )
+    pour = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: composition — le feedback n'existe que pour son destinataire ; sans lui il n'a plus ni portée ni lecteur.
+        related_name='feedbacks_recus',
+        verbose_name='Destinataire',
+    )
+    type = models.CharField(
+        max_length=20, choices=Type.choices,
+        default=Type.RECONNAISSANCE, verbose_name='Type')
+    message = models.TextField(verbose_name='Message')
+    visible_par_pour = models.BooleanField(
+        default=True, verbose_name='Visible par le destinataire')
+    partage_avec_manager = models.BooleanField(
+        default=False, verbose_name='Partagé avec le manager')
+
+    class Meta:
+        verbose_name = 'Feedback continu'
+        verbose_name_plural = 'Feedbacks continus'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'pour'],
+                name='rh_feedcont_comp_pour_idx'),
+            models.Index(
+                fields=['company', 'de'],
+                name='rh_feedcont_comp_de_idx'),
+        ]
+
+    def clean(self):
+        """Auto-adressage refusé + les deux dossiers de la MÊME société."""
+        from django.core.exceptions import ValidationError
+
+        if self.de_id and self.pour_id and self.de_id == self.pour_id:
+            raise ValidationError(
+                "On ne peut pas s'adresser un feedback à soi-même.")
+        if self.company_id is None:
+            return
+        for champ, libelle in (('de', 'Auteur'), ('pour', 'Destinataire')):
+            dossier = getattr(self, champ, None)
+            if dossier is not None and dossier.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : ce dossier appartient à une autre société.')
+
+    def __str__(self):
+        return f'{self.get_type_display()} → {self.pour_id}'
+
+
+class CheckInOkr(TenantModel):
+    """NTHCM9 — point d'avancement LÉGER sur un OKR individuel.
+
+    Entre deux revues formelles, un OKR se pilote par des check-ins hebdo ou
+    bi-mensuels : un commentaire court + les valeurs du moment. Le check-in
+    est le SEUL endroit où l'on écrit « où j'en suis » — les
+    ``KeyResultIndividuel`` sont mis à jour PAR lui
+    (``services.enregistrer_checkin_okr``), et l'historique des check-ins
+    conserve la trajectoire (un ``valeur_actuelle`` écrasé ne dirait rien du
+    chemin parcouru).
+
+    ``valeurs_snapshot`` est une map ``{key_result_id: valeur}`` — figée au
+    moment du check-in, jamais recalculée après coup.
+
+    ``auteur`` est posé CÔTÉ SERVEUR. ``company`` héritée du socle
+    ``core.models.TenantModel`` (SCA4).
+    """
+    okr = models.ForeignKey(
+        'OkrIndividuel',
+        on_delete=models.CASCADE,  # on_delete: composition — un check-in ne décrit que SON okr ; sans lui il ne mesure plus rien.
+        related_name='checkins',
+        verbose_name='OKR',
+    )
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    valeurs_snapshot = models.JSONField(
+        blank=True, default=dict, verbose_name='Valeurs au moment du check-in')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_checkins_okr',
+        verbose_name='Auteur',
+    )
+    date = models.DateField(verbose_name='Date du check-in')
+
+    class Meta:
+        verbose_name = 'Check-in OKR'
+        verbose_name_plural = 'Check-ins OKR'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'okr'],
+                name='rh_checkinokr_comp_okr_idx'),
+        ]
+
+    def __str__(self):
+        return f'Check-in {self.date} — OKR {self.okr_id}'
+
+
+class RattachementFonctionnel(TenantModel):
+    """NTHCM3 — ligne FONCTIONNELLE (dotted-line), distincte de la hiérarchie.
+
+    ``DossierEmploye.manager`` (NTHCM1) est la ligne HIÉRARCHIQUE : celle qui
+    ÉVALUE et APPROUVE, unique par employé. Un poseur rattaché à un chef de
+    chantier peut pourtant dépendre FONCTIONNELLEMENT du responsable QHSE sur
+    son domaine — sans que celui-ci l'évalue.
+
+    C'est cette seconde ligne, VOLONTAIREMENT multiple : un employé peut
+    porter N rattachements fonctionnels actifs en même temps. La fenêtre
+    ``date_debut``/``date_fin`` (toutes deux facultatives) permet un
+    rattachement temporaire (mission, projet) sans le supprimer ensuite.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4).
+    """
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: composition — le rattachement ne décrit que ce collaborateur ; sans lui il ne rattache plus rien.
+        related_name='rattachements_fonctionnels',
+        verbose_name='Employé',
+    )
+    manager_fonctionnel = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — le manager fonctionnel est un champ d'IDENTITÉ du lien (un rattachement « vers personne » n'a plus de sens, et `check_on_delete` refuse un SET_NULL sur un champ d'identité).
+        related_name='rattaches_fonctionnels',
+        verbose_name='Manager fonctionnel',
+    )
+    role_fonctionnel = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Rôle fonctionnel')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin')
+
+    class Meta:
+        verbose_name = 'Rattachement fonctionnel'
+        verbose_name_plural = 'Rattachements fonctionnels'
+        ordering = ['employe', 'role_fonctionnel']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_rattfonc_comp_emp_idx'),
+        ]
+
+    def clean(self):
+        """Pas d'auto-rattachement, pas de cross-tenant, fenêtre cohérente."""
+        from django.core.exceptions import ValidationError
+
+        if self.employe_id and self.manager_fonctionnel_id \
+                and self.employe_id == self.manager_fonctionnel_id:
+            raise ValidationError(
+                'Un employé ne peut pas être son propre manager fonctionnel.')
+        if self.date_debut and self.date_fin and self.date_fin < self.date_debut:
+            raise ValidationError(
+                'La date de fin est antérieure à la date de début.')
+        if self.company_id is None:
+            return
+        for champ, libelle in (('employe', 'Employé'),
+                               ('manager_fonctionnel', 'Manager fonctionnel')):
+            dossier = getattr(self, champ, None)
+            if dossier is not None and dossier.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : ce dossier appartient à une autre société.')
+
+    def actif_le(self, jour):
+        """Vrai si le rattachement couvre ``jour`` (bornes incluses).
+
+        Une borne absente = ouverte de ce côté : un rattachement sans aucune
+        date est actif en permanence (le cas courant).
+        """
+        if self.date_debut and jour < self.date_debut:
+            return False
+        if self.date_fin and jour > self.date_fin:
+            return False
+        return True
+
+    def __str__(self):
+        return (f'{self.employe_id} → {self.manager_fonctionnel_id} '
+                f'({self.role_fonctionnel or "fonctionnel"})')
+
+
+class ParcoursFormation(TenantModel):
+    """NTHCM17 — PARCOURS de formation : une suite ORDONNÉE d'étapes.
+
+    Ce qui manquait : ``SessionFormation``/``InscriptionFormation`` (FG187/188)
+    gèrent une session ISOLÉE et ``QuizFormation`` (XRH34) un quiz ISOLÉ —
+    rien ne chaînait « 2 quiz + 1 session + 1 doc » en un cursus suivi de bout
+    en bout avec un pourcentage d'avancement (360Learning/BambooHR).
+
+    ``obligatoire`` + ``poste_cible``/``departement_cible`` décrivent le
+    CIBLAGE (qui doit le suivre). L'assignation automatique à l'embauche est
+    NTHCM19 — ici on ne pose que le référentiel.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    obligatoire = models.BooleanField(
+        default=False, verbose_name='Obligatoire')
+    poste_cible = models.ForeignKey(
+        'Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parcours_formation',
+        verbose_name='Poste ciblé',
+    )
+    departement_cible = models.ForeignKey(
+        Departement,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parcours_formation',
+        verbose_name='Département ciblé',
+    )
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ── NTHCM21 — titre délivré à la complétion du parcours ──────────────
+    # Le dépôt n'a PAS de « référentiel » de titres : ``Habilitation``
+    # (FG173) et ``Certification`` (FG174) sont déjà les lignes PAR EMPLOYÉ,
+    # identifiées par leur TYPE. Le parcours vise donc un type dans l'une ou
+    # l'autre famille — jamais les deux (``clean()``) —, exactement comme
+    # ``QuizFormation.habilitation_type`` + ``validite_mois`` (XRH34), dont
+    # le mécanisme de prolongation est RÉUTILISÉ, pas redupliqué.
+    habilitation_type = models.CharField(
+        max_length=10, blank=True, default='',
+        choices=Habilitation.TypeHabilitation.choices,
+        verbose_name="Habilitation délivrée")
+    certification_type = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=Certification.TypeCertification.choices,
+        verbose_name='Certification délivrée')
+    validite_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Validité du titre délivré (mois)')
+
+    class Meta:
+        verbose_name = 'Parcours de formation'
+        verbose_name_plural = 'Parcours de formation'
+        ordering = ['-obligatoire', 'titre']
+        indexes = [
+            models.Index(
+                fields=['company', 'obligatoire'],
+                name='rh_parcform_comp_oblig_idx'),
+        ]
+
+    def clean(self):
+        """Ciblage dans la société + UN SEUL titre délivré (NTHCM21)."""
+        from django.core.exceptions import ValidationError
+
+        if self.habilitation_type and self.certification_type:
+            raise ValidationError(
+                'Un parcours délivre soit une habilitation, soit une '
+                'certification — jamais les deux.')
+        if (self.habilitation_type or self.certification_type) \
+                and not self.validite_mois:
+            raise ValidationError(
+                'Un parcours qui délivre un titre doit préciser sa validité '
+                'en mois.')
+
+        if self.company_id is None:
+            return
+        for champ, libelle in (('poste_cible', 'Poste ciblé'),
+                               ('departement_cible', 'Département ciblé')):
+            cible = getattr(self, champ, None)
+            if cible is not None and cible.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : cette référence appartient à une autre '
+                    'société.')
+
+    def __str__(self):
+        return self.titre
+
+
+class EtapeParcours(TenantModel):
+    """NTHCM17 — une étape ORDONNÉE d'un ``ParcoursFormation``.
+
+    ``type_contenu`` décide QUEL pointeur est renseigné — un seul, jamais
+    deux (``clean()``) :
+
+    * ``session`` → ``session_ref`` (``SessionFormation``, FG187) ;
+    * ``quiz`` → ``quiz_ref`` (``QuizFormation``, XRH34) ;
+    * ``document_kb`` → ``document_kb_id`` — un ENTIER volontairement, pas une
+      FK : la base de connaissances vit dans l'app ``kb`` et la frontière
+      inter-apps se lit par son ``selectors``, jamais par un import de ses
+      modèles ;
+    * ``lien_externe`` → ``url_externe``.
+
+    ``obligatoire_pour_completer`` distingue le contenu EXIGÉ (il conditionne
+    le passage à ``termine``) de l'annexe recommandée.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4).
+    """
+    class TypeContenu(models.TextChoices):
+        SESSION = 'session', 'Session de formation'
+        QUIZ = 'quiz', 'Quiz'
+        DOCUMENT_KB = 'document_kb', 'Document (base de connaissances)'
+        LIEN_EXTERNE = 'lien_externe', 'Lien externe'
+
+    parcours = models.ForeignKey(
+        ParcoursFormation,
+        on_delete=models.CASCADE,  # on_delete: composition — une étape n'existe que dans son parcours ; sans lui elle n'a plus ni ordre ni sens.
+        related_name='etapes',
+        verbose_name='Parcours',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    type_contenu = models.CharField(
+        max_length=14, choices=TypeContenu.choices,
+        default=TypeContenu.SESSION, verbose_name='Type de contenu')
+    session_ref = models.ForeignKey(
+        SessionFormation,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='etapes_parcours',
+        verbose_name='Session liée',
+    )
+    quiz_ref = models.ForeignKey(
+        QuizFormation,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='etapes_parcours',
+        verbose_name='Quiz lié',
+    )
+    document_kb_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Document KB (identifiant)')
+    url_externe = models.URLField(
+        blank=True, default='', verbose_name='Lien externe')
+    obligatoire_pour_completer = models.BooleanField(
+        default=True, verbose_name='Obligatoire pour compléter')
+
+    class Meta:
+        verbose_name = 'Étape de parcours'
+        verbose_name_plural = 'Étapes de parcours'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'parcours'],
+                name='rh_etapeparc_comp_parc_idx'),
+        ]
+
+    def clean(self):
+        """Le pointeur RENSEIGNÉ doit correspondre au ``type_contenu``."""
+        from django.core.exceptions import ValidationError
+
+        if self.type_contenu == self.TypeContenu.SESSION:
+            if self.session_ref_id is None:
+                raise ValidationError(
+                    'Une étape de type « session » doit désigner une session '
+                    'de formation.')
+        elif self.type_contenu == self.TypeContenu.QUIZ:
+            if self.quiz_ref_id is None:
+                raise ValidationError(
+                    'Une étape de type « quiz » doit désigner un quiz.')
+        elif self.type_contenu == self.TypeContenu.DOCUMENT_KB:
+            if self.document_kb_id is None:
+                raise ValidationError(
+                    'Une étape de type « document » doit désigner un document '
+                    'de la base de connaissances.')
+        elif self.type_contenu == self.TypeContenu.LIEN_EXTERNE:
+            if not (self.url_externe or '').strip():
+                raise ValidationError(
+                    'Une étape de type « lien externe » doit porter une URL.')
+
+        if self.company_id is None:
+            return
+        for champ, libelle in (('parcours', 'Parcours'),
+                               ('session_ref', 'Session liée'),
+                               ('quiz_ref', 'Quiz lié')):
+            cible = getattr(self, champ, None)
+            if cible is not None and cible.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : cette référence appartient à une autre '
+                    'société.')
+
+    def __str__(self):
+        return f'{self.ordre}. {self.titre}'
+
+
+class ProgressionParcours(TenantModel):
+    """NTHCM17 — avancement d'UN employé sur UN parcours.
+
+    ``etapes_completees`` est la source de vérité ; ``pourcentage``,
+    ``statut`` et ``date_completion`` en sont DÉRIVÉS par
+    ``services.recalculer_progression_parcours`` (jamais posés à la main
+    depuis le corps d'une requête).
+
+    Une seule progression par (parcours, employé) — cocher deux fois la même
+    étape ne crée jamais de doublon, et ré-assigner un parcours déjà assigné
+    est un no-op (NTHCM19).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4).
+    """
+    class Statut(models.TextChoices):
+        NON_COMMENCE = 'non_commence', 'Non commencé'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    parcours = models.ForeignKey(
+        ParcoursFormation,
+        on_delete=models.CASCADE,  # on_delete: composition — la progression ne décrit que ce parcours ; sans lui elle ne mesure plus rien.
+        related_name='progressions',
+        verbose_name='Parcours',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — l'employé est un champ d'IDENTITÉ (un SET_NULL dé-scoperait la ligne, refusé par `check_on_delete`). Un dossier n'est supprimable que vierge de toute pièce légale (AUD721).
+        related_name='progressions_parcours',
+        verbose_name='Employé',
+    )
+    etapes_completees = models.ManyToManyField(
+        EtapeParcours,
+        blank=True,
+        related_name='progressions',
+        verbose_name='Étapes complétées',
+    )
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.NON_COMMENCE, verbose_name='Statut')
+    pourcentage = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Avancement (%)')
+    date_completion = models.DateField(
+        null=True, blank=True, verbose_name='Date de complétion')
+
+    class Meta:
+        verbose_name = 'Progression de parcours'
+        verbose_name_plural = 'Progressions de parcours'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'parcours', 'employe'],
+                name='rh_progparc_comp_parc_emp_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_progparc_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe_id} — {self.parcours_id} ({self.pourcentage}%)'

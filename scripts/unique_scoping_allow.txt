@@ -37,3 +37,8 @@ backend/django_core/core/models.py::IdempotencyKey.cle
 # identifying slug is necessarily globally unique (scoping it to "company"
 # would be scoping the tenant table to itself). Reviewed safe 2026-09-06.
 backend/django_core/authentication/models.py::Company.slug
+# statuspage.StatusSubscriber.email: abonné PUBLIC de la page de statut
+# (NTOBS15) — l'e-mail EST l'identité (pas de company par conception, il
+# s'abonne aux incidents SYSTÈME company=None) ; l'unicité globale est le
+# comportement voulu (un e-mail = un abonnement). Reviewed safe 2026-09-12.
+backend/django_core/apps/statuspage/models.py::StatusSubscriber.email

@@ -54,6 +54,21 @@ class SuiviDemandeThrottle(AnonRateThrottle):
         return self.rate
 
 
+class QuestionnairePublicThrottle(AnonRateThrottle):
+    """NTGRC24 — quota du portail fournisseur (lecture + soumission).
+
+    Un fournisseur remplit un questionnaire, il ne le rejoue pas cent fois :
+    30 appels par heure laissent largement la place à un aller-retour de
+    brouillon tout en fermant la porte à un robot.
+    """
+
+    scope = 'grc_questionnaire_public'
+    rate = '30/hour'
+
+    def get_rate(self):
+        return self.rate
+
+
 def _client_ip(request):
     """IP du déposant (proxy-aware, best-effort) — preuve de dépôt."""
     transmis = request.META.get('HTTP_X_FORWARDED_FOR', '')
@@ -143,3 +158,74 @@ def suivre_demande_droit(request, token):
             {'detail': 'Demande introuvable pour ce jeton de suivi.'},
             status=status.HTTP_404_NOT_FOUND)
     return Response(suivi)
+
+
+@extend_schema(
+    request=inline_serializer('QuestionnairePublicRequete', {
+        'reponses': drf_serializers.ListField(
+            child=drf_serializers.JSONField(), required=False),
+    }),
+    responses=inline_serializer('QuestionnairePublicReponse', {
+        'type': drf_serializers.CharField(),
+        'type_libelle': drf_serializers.CharField(),
+        'statut': drf_serializers.CharField(),
+        'date_echeance': drf_serializers.CharField(allow_null=True),
+        'expire_le': drf_serializers.CharField(allow_null=True),
+        'soumis_le': drf_serializers.CharField(allow_null=True),
+        'questions': drf_serializers.ListField(child=inline_serializer(
+            'QuestionnairePublicQuestion', {
+                'ordre': drf_serializers.IntegerField(),
+                'question': drf_serializers.CharField(),
+                'obligatoire': drf_serializers.BooleanField(),
+                'reponse': drf_serializers.CharField(allow_null=True),
+                'commentaire': drf_serializers.CharField(allow_null=True),
+            })),
+    }))
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([QuestionnairePublicThrottle])
+def questionnaire_public(request, token):
+    """NTGRC24 — portail PUBLIC de réponse à un questionnaire fournisseur.
+
+    ``GET`` renvoie les questions (et les réponses déjà saisies) ; ``POST``
+    enregistre ``{"reponses": [{"ordre": 1, "reponse": "...", "commentaire":
+    "..."}]}``, horodate CÔTÉ SERVEUR, conserve l'IP en preuve et fait passer
+    le questionnaire à « complété » dès que toutes les questions obligatoires
+    sont renseignées.
+
+    Le jeton EST la clé : il est lié à une seule société, donc aucun accès
+    inter-tenant n'est possible. Aucune donnée interne n'est exposée (ni
+    score, ni évaluateur, ni identifiant technique).
+    """
+    from .services import (
+        LienQuestionnaireInvalide, questionnaire_par_token,
+        soumettre_questionnaire_public, vue_publique_questionnaire,
+    )
+
+    try:
+        questionnaire = questionnaire_par_token(token)
+    except LienQuestionnaireInvalide as exc:
+        return Response({'detail': str(exc)}, status=exc.code)
+
+    if request.method == 'GET':
+        return Response(vue_publique_questionnaire(questionnaire))
+
+    donnees = request.data or {}
+    reponses = donnees.get('reponses')
+    if not isinstance(reponses, list):
+        return Response(
+            {'reponses': 'Envoyez une LISTE de {ordre, reponse}.'},
+            status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        questionnaire = soumettre_questionnaire_public(
+            questionnaire, reponses,
+            preuve={
+                'ip': _client_ip(request),
+                'user_agent': (
+                    request.META.get('HTTP_USER_AGENT') or '')[:512],
+                'canal': 'portail_fournisseur',
+            })
+    except LienQuestionnaireInvalide as exc:
+        return Response({'detail': str(exc)}, status=exc.code)
+    return Response(vue_publique_questionnaire(questionnaire))

@@ -162,5 +162,17 @@
   "client.langue_document.label": "Document language",
   "client.langue_document.help": "Language of invoices and quotes generated for this client.",
   "client.langue_document.fr": "French",
-  "client.langue_document.ar": "Arabic"
+  "client.langue_document.ar": "Arabic",
+
+  "crm.cockpit.subtitle": "Leads, clients, activities and sales map",
+  "ventes.cockpit.subtitle": "Quotes, purchase orders, invoicing and follow-ups",
+  "sav.cockpit.subtitle": "Support tickets, equipment and maintenance contracts",
+  "stock.cockpit.title": "Warehouse dashboard",
+  "stock.cockpit.subtitle": "Fill rate, late waves, counts due, shipments and expirations.",
+  "chantiers.debourse.reserve": "Restricted to managers (internal data).",
+  "chantiers.approvisionnement.title": "Advanced procurement",
+  "chantiers.approvisionnement.subtitle": "Thresholds and approvals, framework agreements, call-off orders, supplier price agreements and unbilled receipts.",
+  "rh.demandes.title": "Requests desk",
+  "compta.exports.title": "Where to find my exports",
+  "parametres.abonnements.section": "Recurring billing"
 }

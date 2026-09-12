@@ -33,8 +33,14 @@ PLATFORM = {
     # ARC30 — cible chatter/records historique (records.ALLOWED_TARGETS).
     'record_targets': ['sav.ticket'],
     'customfield_models': [],
-    # ARC32 — cible d'import Équipements (parc SAV, clé FIELD_MAPS FG14).
-    'import_specs': ['equipements'],
+    # ARC32 — cibles d'import : ``equipements`` (parc SAV, clé FIELD_MAPS
+    # FG14, lue par l'import générique) et ``sav_categorie_competence``
+    # (NTSRV43) qui est une cible à LECTEUR PROPRE, comme ``obstacles`` /
+    # ``chaines`` / ``avis`` d'``apps.ao`` : son écriture n'est pas une
+    # création de fiche à plat mais le peuplement d'un ManyToMany
+    # (``CategorieTicket.competences_requises``), donc elle vit dans
+    # ``apps/sav/imports.py`` et reste DEHORS de ``dataimport.FIELD_MAPS``.
+    'import_specs': ['equipements', 'sav_categorie_competence'],
     'agent_actions_module': '',
     # ARC34 — statut Ticket automatisable par une règle no-code
     # RECORD_STATE_CHANGE (whitelist registre ; émission via services).

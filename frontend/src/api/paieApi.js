@@ -19,10 +19,22 @@ const paieApi = {
   deletePeriode: (id) => api.delete(`/paie/periodes/${id}/`),
   changerStatutPeriode: (id, statut) =>
     api.post(`/paie/periodes/${id}/changer-statut/`, { statut }),
-  cloturerPeriode: (id, validerBrouillons = true) =>
+  // NTPAY22 — `motifAcquittement` est EXIGÉ par le serveur dès qu'un point de
+  // la checklist de clôture est en ⚠️ (jamais un simple clic).
+  cloturerPeriode: (id, validerBrouillons = true, motifAcquittement = '') =>
     api.post(`/paie/periodes/${id}/cloturer/`, {
       valider_brouillons: validerBrouillons,
+      motif_acquittement: motifAcquittement,
     }),
+  checklistCloture: (id) =>
+    api.get(`/paie/periodes/${id}/checklist-cloture/`),
+  // NTPAY23 — réglages globaux du module paie (UN seul par société).
+  // `courant/` rend les défauts (id null) tant que rien n'a été réglé : une
+  // lecture n'écrit jamais en base.
+  getParametragePaie: () => api.get('/paie/parametrage/courant/'),
+  saveParametragePaie: (id, data) =>
+    id ? api.patch(`/paie/parametrage/${id}/`, data)
+      : api.post('/paie/parametrage/', data),
   importerElementsRh: (id) =>
     api.post(`/paie/periodes/${id}/importer-elements-rh/`),
   // Calcul (sans persister) du bulletin d'un profil : ?profil=&personnes_a_charge=
@@ -120,6 +132,14 @@ const paieApi = {
     id ? api.patch(`/paie/baremes/${id}/`, data)
       : api.post('/paie/baremes/', data),
   deleteBareme: (id) => api.delete(`/paie/baremes/${id}/`),
+  // NTPAY21 — wizard de publication guidé : aperçu d'impact (NTPAY17) +
+  // périodes impactées (NTPAY1), puis publication avec la case fondateur.
+  apercuPublicationBareme: (id) =>
+    api.post(`/paie/baremes/${id}/wizard-publication/`, { etape: 'apercu' }),
+  publierBareme: (id, data) =>
+    api.post(`/paie/baremes/${id}/wizard-publication/`, {
+      etape: 'publication', ...data,
+    }),
 
   // ── Rubriques (catalogue paramétrable) ──
   getRubriques: (params) => api.get('/paie/rubriques/', { params }),

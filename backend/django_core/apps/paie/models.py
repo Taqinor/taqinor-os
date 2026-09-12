@@ -863,6 +863,12 @@ class PeriodePaie(models.Model):
         verbose_name='Statut')
     date_paiement = models.DateField(
         null=True, blank=True, verbose_name='Date de paiement')
+    # NTPAY13 — DEVISE du run. Défaut ``MAD`` : toutes les périodes existantes
+    # restent marocaines au centime près. Un run d'un pays non-MA porte la
+    # devise de ce pays (``PaysPaie.devise``) — AUCUNE conversion de change
+    # n'est jamais faite : chaque pays reste dans sa propre monnaie.
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
     date_cloture = models.DateTimeField(
         null=True, blank=True, verbose_name='Clôturée le')
     # ZPAI12 — Marqueur d'idempotence de l'alerte de clôture en retard (façon
@@ -1223,6 +1229,12 @@ class BulletinPaie(models.Model):
     statut = models.CharField(
         max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
         verbose_name='Statut')
+    # NTPAY13 — DEVISE du bulletin, FIGÉE au snapshot comme les montants.
+    # Défaut ``MAD`` (tous les bulletins existants) ; dérivée du pays du profil
+    # (``ProfilPaie.pays.devise``) à défaut de la période. Jamais de conversion
+    # de change : un bulletin EUR s'affiche et se vire en EUR.
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
     # PAIE36 — Nature du bulletin + lien vers le bulletin d'origine corrigé.
     type_bulletin = models.CharField(
         max_length=14, choices=TYPE_BULLETIN_CHOICES, default=TYPE_NORMAL,
@@ -2439,6 +2451,137 @@ class SchemaComptablePaie(TenantModel):
             self.rubrique.code if self.rubrique_id else '?')
         return (f'{cible} → D{self.compte_debit or "—"} / '
                 f'C{self.compte_credit or "—"}')
+
+
+# ── NTPAY24 — Gabarits de fichiers réglementaires versionnés ───────────────
+
+class GabaritDeclaratif(TenantModel):
+    """Gabarit ÉDITABLE d'un fichier réglementaire (NTPAY24), company-scopé.
+
+    Les gabarits de génération (SIMT XPAI8, télépaiement CNSS NTPAY4) sont
+    codés en dur dans ``services`` : le jour où l'organisme change une
+    longueur de champ, il faut un DÉPLOIEMENT. Ce modèle permet d'ajuster la
+    structure sans livrer de code.
+
+    REPLI STRICT : sans gabarit ACTIF pour un type, la génération utilise le
+    gabarit codé en dur — la sortie est identique à aujourd'hui, à l'octet
+    près. Un gabarit custom ne s'applique donc jamais par accident.
+
+    ``structure_json`` décrit un format à LONGUEURS FIXES sous la forme
+    ``{"entete": [["champ", longueur, "L"|"R"], …], "ligne": [[…], …]}`` — les
+    mêmes triplets que les constantes ``GABARIT_*`` de ``services``. Un champ
+    inconnu du générateur sort simplement VIDE (rempli) : on ne fabrique
+    jamais une donnée pour satisfaire un gabarit. ``template_text`` reste
+    disponible pour un futur format purement textuel.
+    """
+    TYPE_SIMT = 'simt'
+    TYPE_TELEPAIEMENT_CNSS = 'telepaiement_cnss'
+    TYPE_CHOICES = [
+        (TYPE_SIMT, 'Virement SIMT (banque)'),
+        (TYPE_TELEPAIEMENT_CNSS, 'Télépaiement CNSS'),
+    ]
+
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``.
+    type_fichier = models.CharField(
+        max_length=24, choices=TYPE_CHOICES, verbose_name='Type de fichier')
+    version = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Version')
+    structure_json = models.JSONField(
+        null=True, blank=True, verbose_name='Structure (longueurs fixes)')
+    template_text = models.TextField(
+        blank=True, default='', verbose_name='Gabarit texte')
+    actif = models.BooleanField(default=False, verbose_name='Actif')
+    date_effet = models.DateField(verbose_name="Date d'effet")
+
+    class Meta:
+        verbose_name = 'Gabarit déclaratif'
+        verbose_name_plural = 'Gabarits déclaratifs'
+        ordering = ['type_fichier', '-date_effet', '-id']
+        constraints = [
+            # Un seul gabarit ACTIF par (société, type, date d'effet) : deux
+            # versions actives au même jour rendraient la résolution
+            # arbitraire.
+            models.UniqueConstraint(
+                fields=['company', 'type_fichier', 'date_effet'],
+                condition=models.Q(actif=True),
+                name='uniq_gabarit_declaratif_actif_par_date',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.get_type_fichier_display()} '
+                f'{self.version or self.date_effet}')
+
+
+# ── NTPAY23 — Réglages globaux du module paie, par société ─────────────────
+
+class ParametragePaieCompany(TenantModel):
+    """Réglages du module PAIE d'une société (NTPAY23) — UN seul par société.
+
+    Aucun modèle de configuration paie centralisé n'existait : le jour de
+    virement, le compte émetteur SIMT, le gabarit de télépaiement CNSS, la
+    devise par défaut, le seuil d'alerte d'écart M/M-1 et l'automatisation du
+    rappel rétroactif vivaient chacun dans un défaut codé en dur ou dans la
+    tête du gestionnaire.
+
+    ZÉRO CHIFFRE INVENTÉ : chaque réglage NUMÉRIQUE est NULLABLE et vaut
+    ``None`` tant que le fondateur ne l'a pas posé — le comportement reste
+    alors EXACTEMENT celui d'aujourd'hui (pas de date d'exécution pré-remplie,
+    seuil d'écart = ``services.SEUIL_ECART_NET_DEFAUT``). Le rappel
+    rétroactif automatique est à ``False`` par défaut : rien ne devient
+    automatique sans décision explicite.
+
+    ``company`` est redéclarée en ``OneToOneField`` (la docstring de
+    ``TenantModel`` sanctionne la redéclaration) : l'unicité « un seul
+    enregistrement par société » est ainsi garantie PAR LA BASE, jamais par
+    une convention applicative.
+    """
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``, dont
+    # la FK est ici resserrée en OneToOne.
+    company = models.OneToOneField(
+        'authentication.Company',
+        # on_delete: un réglage de module n'a aucun sens sans sa société —
+        # il disparaît avec elle (même règle que tout le reste de la paie).
+        on_delete=models.CASCADE,
+        related_name='paie_parametrage',
+        verbose_name='Société',
+    )
+    # Jour du mois pré-rempli comme date d'exécution du prochain ordre de
+    # virement. NULL = aucun pré-remplissage (comportement historique).
+    jour_virement_defaut = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Jour de virement par défaut')
+    # Compte bancaire ÉMETTEUR des virements SIMT — string-FK vers
+    # ``compta.CompteTresorerie`` (la paie n'importe jamais ``compta.models``).
+    compte_emetteur = models.ForeignKey(
+        'compta.CompteTresorerie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parametrages_paie',
+        verbose_name='Compte émetteur (trésorerie)',
+    )
+    # Clé du gabarit de télépaiement CNSS actif (NTPAY24). Vide = gabarit
+    # codé en dur, comportement actuel.
+    gabarit_telepaiement_cnss = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Gabarit de télépaiement CNSS actif')
+    devise_defaut = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise par défaut')
+    # Seuil d'alerte de variation de net M/M-1 (XPAI15). NULL = le défaut du
+    # moteur (``SEUIL_ECART_NET_DEFAUT``) — jamais un seuil réinventé ici.
+    seuil_ecart_net_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil d’alerte écart de net (%)')
+    rappel_retroactif_automatique = models.BooleanField(
+        default=False,
+        verbose_name='Rappel rétroactif automatique à la publication')
+
+    class Meta:
+        verbose_name = 'Paramétrage paie (société)'
+        verbose_name_plural = 'Paramétrages paie (sociétés)'
+
+    def __str__(self):
+        return f'Paramétrage paie — société #{self.company_id}'
 
 
 # ── NTPAY5 — Registre des dépôts déclaratifs & accusés (preuve) ────────────

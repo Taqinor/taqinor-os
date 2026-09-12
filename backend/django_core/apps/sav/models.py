@@ -151,6 +151,17 @@ class SavSlaSettings(models.Model):
                   'technicien sur les tickets (parité Odoo « Custom '
                   'Maintenance Worksheets »).',
     )
+    # ── NTSRV23 — Enquête CSAT enrichie (sous-notes rapidité/courtoisie/
+    # résolution). OFF par défaut : le formulaire public reste STRICTEMENT
+    # celui d'aujourd'hui (une seule note globale + commentaire) tant qu'une
+    # société ne l'active pas.
+    csat_detaille_actif = models.BooleanField(
+        default=False,
+        verbose_name='Enquête CSAT détaillée',
+        help_text='Ajoute au formulaire public trois sous-notes optionnelles '
+                  '(rapidité, courtoisie, résolution). OFF = formulaire '
+                  'actuel inchangé.',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1813,7 +1824,26 @@ class TicketSatisfaction(models.Model):
     note = models.PositiveSmallIntegerField(
         help_text='Note de satisfaction 1 (très insatisfait) à 5 (très satisfait).')
     commentaire = models.TextField(blank=True, default='')
+    # ── NTSRV23 — Sous-notes détaillées (toutes OPTIONNELLES) ──────────────
+    # ``{'rapidite': 1-5, 'courtoisie': 1-5, 'resolution': 1-5}`` — chaque clé
+    # est facultative, et la note GLOBALE ci-dessus reste la seule obligatoire
+    # (rétro-compatible : toutes les réponses déjà enregistrées gardent
+    # ``None`` ici et aucun rapport existant ne change). Collectées seulement
+    # quand ``SavSlaSettings.csat_detaille_actif`` est ON.
+    sous_notes = models.JSONField(
+        null=True, blank=True, verbose_name='Sous-notes détaillées',
+        help_text="{'rapidite': 1-5, 'courtoisie': 1-5, 'resolution': 1-5} — "
+                  'toutes optionnelles (NTSRV23).')
     date_creation = models.DateTimeField(auto_now_add=True)
+
+    #: NTSRV23 — clés acceptées dans ``sous_notes`` (liste FERMÉE : une clé
+    #: inconnue est refusée, jamais stockée en silence).
+    SOUS_NOTES_CLES = ('rapidite', 'courtoisie', 'resolution')
+    SOUS_NOTES_LIBELLES = {
+        'rapidite': 'Rapidité',
+        'courtoisie': 'Courtoisie',
+        'resolution': 'Qualité de la résolution',
+    }
 
     class Meta:
         verbose_name = 'Satisfaction ticket SAV (CSAT)'
@@ -1902,6 +1932,18 @@ class ReponseType(models.Model):
         max_length=12, blank=True, default='',
         help_text='Statut optionnel appliqué au ticket à l\'insertion.')
     archived = models.BooleanField(default=False)
+    # ── NTSRV34 — Canaux autorisés pour cette macro ─────────────────────────
+    # Le plan décrit « un ManyToMany optionnel vers un choix simple » : il n'y
+    # a PAS de modèle cible à référencer (les quatre canaux sont un ENUM figé,
+    # pas des données de société), donc la liste est stockée telle quelle —
+    # une table de jointure pour quatre codes constants serait du poids mort.
+    # VIDE ou NULL = tous les canaux, EXACTEMENT le comportement d'aujourd'hui
+    # (aucune macro existante n'est restreinte par cette migration).
+    canaux_autorises = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Canaux autorisés',
+        help_text="Liste de canaux ('email', 'whatsapp', 'portail', "
+                  "'interne'). Vide = macro proposée sur TOUS les canaux.")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1915,6 +1957,47 @@ class ReponseType(models.Model):
 
     # Placeholders whitelistés — tout autre `{...}` reste tel quel.
     PLACEHOLDERS = ('client', 'reference', 'technicien', 'date')
+
+    # ── NTSRV34 — canaux de réponse (whitelist figée) ───────────────────────
+    #: Les quatre canaux sur lesquels une macro peut être proposée. `interne`
+    #: couvre tout ce qui n'est pas une conversation client entrante
+    #: (saisie back-office `manuel`, appel `telephone`).
+    CANAUX = ('email', 'whatsapp', 'portail', 'interne')
+
+    #: Canal d'OUVERTURE du ticket (``Ticket.CanalOuverture``) -> canal de
+    #: réponse. Tout canal non listé retombe sur `interne`.
+    CANAL_PAR_OUVERTURE = {
+        'email': 'email',
+        'whatsapp': 'whatsapp',
+        'portail': 'portail',
+        'manuel': 'interne',
+        'telephone': 'interne',
+    }
+
+    @classmethod
+    def canal_de_ticket(cls, ticket):
+        """NTSRV34 — canal de RÉPONSE déduit du canal d'ouverture du ticket."""
+        ouverture = getattr(ticket, 'canal_ouverture', '') or 'manuel'
+        return cls.CANAL_PAR_OUVERTURE.get(ouverture, 'interne')
+
+    def canaux_normalises(self):
+        """Liste de canaux valides déclarée sur cette macro (jamais None).
+
+        Tolère une valeur héritée mal formée (chaîne, dict, code inconnu) :
+        elle se lit comme « aucune restriction », jamais comme une erreur qui
+        ferait disparaître la macro de tous les sélecteurs."""
+        valeur = self.canaux_autorises
+        if not isinstance(valeur, (list, tuple)):
+            return []
+        return [c for c in valeur if c in self.CANAUX]
+
+    def autorise_canal(self, canal):
+        """True si la macro est proposable sur ``canal``.
+
+        Une macro SANS restriction (liste vide/NULL) est autorisée partout —
+        c'est le comportement historique, préservé tel quel."""
+        canaux = self.canaux_normalises()
+        return not canaux or canal in canaux
 
     def rendu(self, *, client='', reference='', technicien='', date=''):
         """Rend le corps avec les placeholders whitelistés substitués.
@@ -2502,3 +2585,108 @@ class TicketEmailThread(TenantModel):
 
     def __str__(self):
         return f'{self.direction} {self.message_id} (ticket {self.ticket_id})'
+
+
+# ── NTSRV16 — Gestion Problème (Problem Management) ──────────────────────────
+
+class Probleme(TenantModel):
+    """NTSRV16 — UN problème de fond derrière PLUSIEURS tickets récurrents.
+
+    Exemple : « l'onduleur X tombe en défaut au-delà de 45 °C » — 12 tickets
+    distincts, une seule cause racine. Le problème porte l'ANALYSE (cause
+    racine, statut d'investigation) ; les tickets gardent la leur.
+
+    ⚠ DEUX MACHINES D'ÉTATS INDÉPENDANTES : résoudre un problème ne touche
+    JAMAIS le statut des tickets liés (même règle que partout ailleurs dans
+    ce dépôt). Chaque ticket reste clos par son propre technicien, à son
+    propre rythme.
+
+    La référence ``PRB-YYYYMM-NNNN`` est produite par la numérotation
+    fondation (``core.numbering`` via ``apps.ventes.utils.references`` :
+    plus-haut-utilisé+1 par société+mois, savepoint + retry) — JAMAIS un
+    ``count()+1`` (il a collisionné en production).
+    """
+    class Statut(models.TextChoices):
+        IDENTIFIE = 'identifie', 'Identifié'
+        EN_ANALYSE = 'en_analyse', 'En analyse'
+        RESOLU = 'resolu', 'Résolu'
+
+    # ARC1 — socle ``TenantModel`` (FK company + created_at/updated_at) ; le
+    # champ est REDÉCLARÉ à l'identique uniquement pour nommer l'accesseur
+    # inverse (motif documenté dans la docstring de ``core.models.TenantModel``).
+    company = models.ForeignKey(
+        # on_delete: cascade de tenant standard — un problème n'existe pas
+        # hors de sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='problemes_sav', verbose_name='Société')
+    reference = models.CharField(max_length=50, verbose_name='Référence')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    description = models.TextField(blank=True, default='')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.IDENTIFIE,
+        verbose_name='Statut')
+    cause_racine = models.TextField(
+        blank=True, default='', verbose_name='Cause racine')
+    # Le lien vers les tickets passe par la table de liaison EXPLICITE
+    # ``ProblemeIncident`` : ``probleme.tickets`` donne les tickets,
+    # ``probleme.incidents`` les lignes de liaison elles-mêmes.
+    tickets = models.ManyToManyField(
+        Ticket, through='ProblemeIncident', related_name='problemes',
+        blank=True, verbose_name='Tickets liés')
+
+    class Meta:
+        verbose_name = 'Problème SAV'
+        verbose_name_plural = 'Problèmes SAV'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='sav_probleme_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='sav_probleme_statut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} — {self.titre}'
+
+    @property
+    def est_resolu(self):
+        return self.statut == self.Statut.RESOLU
+
+
+class ProblemeIncident(TenantModel):
+    """NTSRV16 — UN ticket rattaché à UN problème (table de liaison M2M).
+
+    Table de liaison EXPLICITE (jamais une M2M auto-générée) : elle porte sa
+    propre société et son horodatage, donc « depuis quand ce ticket est-il
+    rattaché » reste traçable et le scoping multi-tenant reste lisible.
+    """
+    # ARC1 — socle ``TenantModel``, redéclaré pour nommer l'accesseur inverse.
+    company = models.ForeignKey(
+        # on_delete: cascade de tenant standard.
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='problemes_incidents_sav', verbose_name='Société')
+    probleme = models.ForeignKey(
+        # on_delete: la ligne de liaison n'a aucun sens sans son problème.
+        Probleme, on_delete=models.CASCADE, related_name='incidents',
+        verbose_name='Problème')
+    ticket = models.ForeignKey(
+        # on_delete: la ligne de liaison n'a aucun sens sans son ticket.
+        # Délier supprime la LIGNE DE LIAISON, jamais le ticket lui-même.
+        Ticket, on_delete=models.CASCADE, related_name='problemes_lies',
+        verbose_name='Ticket')
+
+    class Meta:
+        verbose_name = 'Incident rattaché à un problème'
+        verbose_name_plural = 'Incidents rattachés à un problème'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['probleme', 'ticket'],
+                name='sav_problemeincident_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.probleme_id} ← ticket {self.ticket_id}'

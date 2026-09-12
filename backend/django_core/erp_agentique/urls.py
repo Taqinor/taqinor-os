@@ -117,6 +117,8 @@ _APP_URLS = [
     path('litiges/', include('apps.litiges.urls')),
     # Groupe NTJUR — Affaires juridiques (contentieux d'entreprise).
     path('juridique/', include('apps.juridique.urls')),
+    # Groupe NTDOC (P2) — Salles de données sécurisées (data rooms).
+    path('datarooms/', include('apps.datarooms.urls')),
     # Groupe NTESG — Reporting ESG/durabilité consolidé.
     path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
@@ -224,6 +226,16 @@ _APP_URLS = [
     # Groupe NTDATA — qualité de données : règles de validation, rapport de
     # conformité, complétude par module et dédoublonnage cross-module.
     path('dataquality/', include('apps.dataquality.urls')),
+    # Groupe NTDATA — couche sémantique : historique figé des définitions de
+    # métriques (NTDATA9) et lignage « d'où vient ce chiffre » (NTDATA43). Le
+    # segment est IDENTIQUE à la clé de manifeste (`semantic`) : le gatage 404
+    # des modules désactivés vise le bon module sans entrée PREFIX_TO_MODULE.
+    path('semantic/', include('apps.semantic.urls')),
+    # Groupe NTOBS — page de statut publique (composants + incidents publics).
+    # Contient ses PROPRES routes publiques AllowAny sous `public/` (même
+    # patron que `apps.sav`/`apps.ventes` : un `permission_classes` par vue,
+    # pas un préfixe `api/django/public/` séparé — cf. NTOBS1).
+    path('statuspage/', include('apps.statuspage.urls')),
 ]
 
 urlpatterns = [

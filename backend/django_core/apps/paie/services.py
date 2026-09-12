@@ -1966,16 +1966,10 @@ def mutuelle_du_profil(profil, brut):
     adhesion = getattr(profil, 'adhesion_mutuelle', None)
     if adhesion is None or not adhesion.actif:
         return Decimal('0.00'), Decimal('0.00'), False
-    regime = adhesion.regime
-    if regime is None or not regime.actif:
-        return Decimal('0.00'), Decimal('0.00'), False
-    if regime.mode == regime.MODE_POURCENTAGE:
-        salariale = Decimal(brut or 0) * Decimal(regime.part_salariale or 0) / Decimal('100')
-        patronale = Decimal(brut or 0) * Decimal(regime.part_patronale or 0) / Decimal('100')
-    else:
-        salariale = Decimal(regime.part_salariale or 0)
-        patronale = Decimal(regime.part_patronale or 0)
-    return _q(salariale), _q(patronale), bool(regime.deductible_net_imposable)
+    # NTPAY14 — le CALCUL lui-même vit dans ``cotisations_mutuelle_regime``
+    # (pur, sans profil) : le simulateur d'embauche et le bulletin partagent
+    # ainsi la même règle, jamais deux formules parallèles.
+    return cotisations_mutuelle_regime(adhesion.regime, brut)
 
 
 # ── XPAI18 — Régimes stagiaire / ANAPEC / TAHFIZ (exonération IR) ──────────
@@ -2696,6 +2690,29 @@ def moteur_du_profil(profil):
     return moteur
 
 
+# ── NTPAY13 — Devise du bulletin / du run (multi-pays, sans change) ────────
+
+#: Devise de repli quand aucun pays n'est rattaché — le Maroc reste le défaut
+#: historique (tous les profils d'avant NTPAY7 ont ``pays = NULL``).
+DEVISE_DEFAUT = 'MAD'
+
+
+def devise_du_profil(profil, *, periode=None):
+    """Devise de paie d'un profil (NTPAY13) — jamais une conversion.
+
+    Priorité : la devise du PAYS du profil (``ProfilPaie.pays.devise``), à
+    défaut celle de la ``periode`` fournie, à défaut ``MAD``. Un profil sans
+    pays — c'est-à-dire tous ceux d'avant NTPAY7 — reste donc payé en MAD,
+    exactement comme aujourd'hui.
+    """
+    pays = getattr(profil, 'pays', None)
+    devise_pays = (getattr(pays, 'devise', '') or '').strip().upper()
+    if devise_pays:
+        return devise_pays
+    devise_periode = (getattr(periode, 'devise', '') or '').strip().upper()
+    return devise_periode or DEVISE_DEFAUT
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé — DISPATCHER pays (NTPAY7).
 
@@ -2870,6 +2887,285 @@ def brut_pour_net_cible(net_cible, *, parametre, bareme,
     return resultat
 
 
+# ── NTPAY14 — Simulateur de COÛT D'EMBAUCHE (loaded cost, sans profil) ─────
+
+#: Norme mensuelle de jours/heures utilisée quand l'appelant n'en donne pas —
+#: STRICTEMENT les mêmes défauts que ``ProfilPaie`` (``taux_journalier_profil``
+#: / ``taux_horaire_base_profil``) : aucune valeur inventée ici.
+JOURS_TRAVAIL_MENSUEL_DEFAUT = 26
+HEURES_TRAVAIL_MENSUEL_DEFAUT = 191
+
+
+class _SansProfil:
+    """Porteur minimal de ``pays`` pour réutiliser ``devise_du_profil``.
+
+    NTPAY14 simule une embauche : il n'existe AUCUN ``ProfilPaie``. Plutôt que
+    de dupliquer la règle de devise (NTPAY13), on lui passe un porteur nu.
+    """
+
+    def __init__(self, pays):
+        self.pays = pays
+
+
+def cotisations_mutuelle_regime(regime, brut):
+    """Parts mutuelle salariale/patronale d'un RÉGIME pour un brut (XPAI3).
+
+    Cœur PUR (sans adhésion ni profil) de ``mutuelle_du_profil`` : pourcentage
+    du brut ou montant fixe selon ``regime.mode``. Renvoie
+    ``(salariale, patronale, deductible)``. ``(0, 0, False)`` si le régime est
+    absent ou inactif.
+    """
+    if regime is None or not regime.actif:
+        return Decimal('0.00'), Decimal('0.00'), False
+    if regime.mode == regime.MODE_POURCENTAGE:
+        salariale = Decimal(brut or 0) * Decimal(
+            regime.part_salariale or 0) / Decimal('100')
+        patronale = Decimal(brut or 0) * Decimal(
+            regime.part_patronale or 0) / Decimal('100')
+    else:
+        salariale = Decimal(regime.part_salariale or 0)
+        patronale = Decimal(regime.part_patronale or 0)
+    return _q(salariale), _q(patronale), bool(regime.deductible_net_imposable)
+
+
+def _net_embauche(brut, *, parametre, bareme, personnes_a_charge=0,
+                  affilie_cnss=True, affilie_amo=True, affilie_cimr=False,
+                  taux_cimr=Decimal('0'), regime_mutuelle=None,
+                  montant_exonere_plafond=Decimal('0')):
+    """Brut → net PUR d'une embauche simulée (NTPAY14), zéro accès en écriture.
+
+    Réplique EXACTEMENT l'enchaînement de ``calculer_bulletin_ma`` pour un brut
+    donné (CNSS / AMO / CIMR / mutuelle / frais professionnels / exonération de
+    régime / IR), sans proration ni élément variable. Renvoie un dict des
+    composantes salariales.
+    """
+    brut = _q(Decimal(brut or 0))
+    cnss = cnss_salariale(parametre, brut, affilie_cnss)
+    amo = amo_salariale(parametre, brut, affilie_amo)
+    cimr = cimr_salariale(brut, affilie_cimr, taux_cimr)
+    mutuelle_sal, mutuelle_pat, mutuelle_deductible = \
+        cotisations_mutuelle_regime(regime_mutuelle, brut)
+
+    frais_pro = Decimal('0')
+    if parametre:
+        if brut <= Decimal(parametre.seuil_frais_pro or 0):
+            frais_pro = brut * Decimal(
+                parametre.taux_frais_pro_bas) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_bas or 0)
+        else:
+            frais_pro = brut * Decimal(
+                parametre.taux_frais_pro_haut) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_haut or 0)
+        if plafond and frais_pro > plafond:
+            frais_pro = plafond
+    frais_pro = _q(frais_pro)
+
+    net_imposable = brut - cnss - amo - cimr - frais_pro
+    if mutuelle_deductible:
+        net_imposable -= mutuelle_sal
+    if net_imposable < 0:
+        net_imposable = Decimal('0')
+    net_imposable = _q(net_imposable)
+
+    # XPAI18 — la fraction du net imposable sous le plafond du régime sort de
+    # la base IR ; l'excédent reste imposable (même règle que le moteur).
+    plafond_regime = Decimal(montant_exonere_plafond or 0)
+    montant_exonere = _q(min(net_imposable, plafond_regime)) \
+        if plafond_regime > 0 else Decimal('0.00')
+    base_ir = net_imposable - montant_exonere
+    if base_ir < 0:
+        base_ir = Decimal('0')
+    ir = Decimal('0')
+    if bareme and parametre:
+        ir = compute_ir(base_ir, bareme, parametre, personnes_a_charge)
+    ir = _q(ir)
+
+    net_a_payer = _q(brut - cnss - amo - cimr - ir - mutuelle_sal)
+    return {
+        'brut': brut,
+        'cnss_salariale': cnss,
+        'amo_salariale': amo,
+        'cimr_salariale': cimr,
+        'mutuelle_salariale': mutuelle_sal,
+        'mutuelle_patronale': mutuelle_pat,
+        'frais_professionnels': frais_pro,
+        'net_imposable': net_imposable,
+        'montant_exonere_regime': montant_exonere,
+        'ir': ir,
+        'net_a_payer': net_a_payer,
+    }
+
+
+def simuler_cout_embauche(company, *, brut=None, net_cible=None, le_jour=None,
+                          pays=None, personnes_a_charge=0,
+                          affilie_cnss=True, affilie_amo=True,
+                          affilie_cimr=False, taux_cimr=Decimal('0'),
+                          regime_mutuelle=None,
+                          regime_plafond_mensuel=Decimal('0'),
+                          jours_travail_mensuel=None,
+                          heures_travail_mensuel=None,
+                          anciennete_annees=Decimal('0'),
+                          tolerance=Decimal('0.01')):
+    """Coût complet d'une EMBAUCHE FUTURE, sans aucun ``ProfilPaie`` (NTPAY14).
+
+    XPAI16 rejoue le moteur sur un profil EXISTANT ; ici, rien n'existe encore.
+    L'appelant donne un ``brut`` **ou** un ``net_cible`` (exactement un des
+    deux), les affiliations, le nombre de personnes à charge et le plafond
+    mensuel du régime d'exonération éventuel ; la fonction renvoie le net,
+    l'IR, les charges patronales, les provisions (gratification, congés payés,
+    IFC) et le COÛT TOTAL EMPLOYEUR, avec la ventilation ligne à ligne.
+
+    **Aucune écriture en base** : ni ``ProfilPaie``, ni ``BulletinPaie``, ni
+    ``ElementVariable``. Les barèmes/paramètres lus sont ceux RÉELLEMENT en
+    vigueur pour la société (et le ``pays`` fourni, NTPAY7/8) — jamais un taux
+    inventé : sans jeu en vigueur, les cotisations et l'IR ressortent à 0 et
+    l'avertissement de ``avertissements_parametre_paie`` est remonté.
+
+    L'IFC (indemnité de fin de carrière) vaut 0 à l'embauche : le barème
+    art. 53 est nul à ancienneté nulle. ``anciennete_annees`` permet de voir la
+    provision à une ancienneté projetée.
+
+    Renvoie ``{'brut', 'net_a_payer', 'ir', ..., 'charges_patronales',
+    'provisions': {...}, 'cout_total_employeur', 'lignes': [...],
+    'avertissements': [...]}``.
+    """
+    if (brut is None) == (net_cible is None):
+        raise ValueError(
+            'Fournir exactement un des deux : brut OU net_cible.')
+
+    if le_jour is None:
+        le_jour = timezone.localdate()
+    parametre = parametre_en_vigueur(company, le_jour, pays=pays)
+    bareme = bareme_en_vigueur(company, le_jour, pays=pays)
+
+    jours = Decimal(max(1, int(
+        jours_travail_mensuel or JOURS_TRAVAIL_MENSUEL_DEFAUT)))
+    heures = Decimal(max(1, int(
+        heures_travail_mensuel or HEURES_TRAVAIL_MENSUEL_DEFAUT)))
+
+    commun = dict(
+        parametre=parametre, bareme=bareme,
+        personnes_a_charge=personnes_a_charge,
+        affilie_cnss=affilie_cnss, affilie_amo=affilie_amo,
+        affilie_cimr=affilie_cimr, taux_cimr=taux_cimr,
+        regime_mutuelle=regime_mutuelle,
+        montant_exonere_plafond=regime_plafond_mensuel,
+    )
+
+    if net_cible is not None:
+        # Bissection sur le MÊME calcul que le brut direct (le net est une
+        # fonction croissante du brut) — aucune formule parallèle.
+        cible = Decimal(net_cible or 0)
+        if cible <= 0:
+            raise ValueError('net_cible doit être strictement positif.')
+        basse, haute = Decimal('0'), cible * Decimal('3')
+        for _ in range(10):
+            if _net_embauche(haute, **commun)['net_a_payer'] >= cible:
+                break
+            haute *= 2
+        resultat = _net_embauche(haute, **commun)
+        for _ in range(100):
+            milieu = _q((basse + haute) / 2)
+            resultat = _net_embauche(milieu, **commun)
+            ecart = resultat['net_a_payer'] - cible
+            if abs(ecart) <= tolerance:
+                break
+            if ecart < 0:
+                basse = milieu
+            else:
+                haute = milieu
+    else:
+        resultat = _net_embauche(brut, **commun)
+
+    brut_retenu = resultat['brut']
+
+    # Charges PATRONALES (jamais déduites du net du salarié).
+    cnss_pat = cnss_patronale(parametre, brut_retenu, affilie_cnss)
+    amo_pat = amo_patronale(parametre, brut_retenu, affilie_amo)
+    alloc_fam = allocations_familiales_patronale(
+        parametre, brut_retenu, affilie_cnss)
+    formation_pro = formation_professionnelle_patronale(
+        parametre, brut_retenu, affilie_cnss)
+    mutuelle_pat = resultat['mutuelle_patronale']
+    charges_patronales = _q(
+        cnss_pat + amo_pat + alloc_fam + formation_pro + mutuelle_pat)
+
+    # Provisions (engagements sociaux mensuels), mêmes règles que XPAI20/PAIE25.
+    taux_jour = _q(brut_retenu / jours)
+    taux_heure = (brut_retenu / heures).quantize(
+        Decimal('0.000001'), rounding=ROUND_HALF_UP)
+    provision_gratification = _q(brut_retenu / Decimal('12'))
+    provision_conges = _q(JOURS_CP_ACQUIS_PAR_MOIS * taux_jour)
+    provision_ifc = _q(
+        indemnite_licenciement_art53(anciennete_annees, taux_heure)
+        / Decimal('12'))
+    total_provisions = _q(
+        provision_gratification + provision_conges + provision_ifc)
+
+    cout_total = _q(brut_retenu + charges_patronales + total_provisions)
+
+    lignes = [
+        ('BRUT', 'Brut mensuel', 'gain', brut_retenu),
+        ('CNSS_SAL', 'CNSS (part salariale)', 'cotisation',
+         resultat['cnss_salariale']),
+        ('AMO_SAL', 'AMO (part salariale)', 'cotisation',
+         resultat['amo_salariale']),
+        ('CIMR_SAL', 'CIMR (part salariale)', 'cotisation',
+         resultat['cimr_salariale']),
+        ('MUTUELLE_SAL', 'Mutuelle (part salariale)', 'retenue',
+         resultat['mutuelle_salariale']),
+        ('IR', 'Impôt sur le revenu', 'retenue', resultat['ir']),
+        ('CNSS_PAT', 'CNSS (part patronale)', 'patronal', cnss_pat),
+        ('AMO_PAT', 'AMO (part patronale)', 'patronal', amo_pat),
+        ('ALLOC_FAM', 'Allocations familiales', 'patronal', alloc_fam),
+        ('FORMATION_PRO', 'Taxe de formation professionnelle', 'patronal',
+         formation_pro),
+        ('MUTUELLE_PAT', 'Mutuelle (part patronale)', 'patronal',
+         mutuelle_pat),
+        ('PROV_GRATIF', 'Provision gratification (13e mois)', 'provision',
+         provision_gratification),
+        ('PROV_CP', 'Provision congés payés', 'provision', provision_conges),
+        ('PROV_IFC', 'Provision indemnité de fin de carrière', 'provision',
+         provision_ifc),
+    ]
+
+    return {
+        'brut': brut_retenu,
+        'net_a_payer': resultat['net_a_payer'],
+        'net_imposable': resultat['net_imposable'],
+        'montant_exonere_regime': resultat['montant_exonere_regime'],
+        'ir': resultat['ir'],
+        'frais_professionnels': resultat['frais_professionnels'],
+        'cnss_salariale': resultat['cnss_salariale'],
+        'amo_salariale': resultat['amo_salariale'],
+        'cimr_salariale': resultat['cimr_salariale'],
+        'mutuelle_salariale': resultat['mutuelle_salariale'],
+        'cnss_patronale': cnss_pat,
+        'amo_patronale': amo_pat,
+        'allocations_familiales': alloc_fam,
+        'formation_professionnelle': formation_pro,
+        'mutuelle_patronale': mutuelle_pat,
+        'charges_patronales': charges_patronales,
+        'provisions': {
+            'gratification': provision_gratification,
+            'conges_payes': provision_conges,
+            'ifc': provision_ifc,
+            'total': total_provisions,
+        },
+        'cout_total_employeur': cout_total,
+        'devise': devise_du_profil(_SansProfil(pays)),
+        'lignes': [
+            {'code': code, 'libelle': libelle, 'type': type_ligne,
+             'montant': montant}
+            for code, libelle, type_ligne, montant in lignes
+            if montant != 0 or code == 'BRUT'
+        ],
+        'avertissements': avertissements_parametre_paie(
+            company, le_jour, contexte="Simulation d'embauche",
+            parametre=parametre),
+    }
+
+
 # ── PAIE17 — Bulletin de paie matérialisé (snapshot immuable une fois validé) ─
 
 def generer_bulletin(profil, periode, personnes_a_charge=0):
@@ -2916,6 +3212,9 @@ def generer_bulletin(profil, periode, personnes_a_charge=0):
                 company=periode.company, periode=periode, profil=profil)
 
         bulletin.personnes_a_charge = max(0, int(personnes_a_charge or 0))
+        # NTPAY13 — la devise est FIGÉE au snapshot comme les montants : elle
+        # vient du pays du profil, à défaut de la période, à défaut MAD.
+        bulletin.devise = devise_du_profil(profil, periode=periode)
         for champ in BulletinPaie.SNAPSHOT_FIELDS:
             if champ == 'personnes_a_charge':
                 continue
@@ -3719,6 +4018,39 @@ def controler_coherence_cnss(periode):
     return divergences
 
 
+def devise_virement_periode(periode):
+    """Devise de l'ordre de virement d'une période (NTPAY13).
+
+    Dérivée des bulletins VALIDÉS payables par virement de la période : si
+    tous partagent la même devise, c'est celle-là ; aucune période ⇒ la devise
+    du run (``PeriodePaie.devise``, ``MAD`` par défaut). Un fichier de
+    virement bancaire ne porte QU'UNE devise : deux devises dans le même run
+    lèvent une ``ValidationError`` en français plutôt que de convertir en
+    douce (aucune conversion de change n'existe dans l'ERP).
+    """
+    from django.core.exceptions import ValidationError
+
+    from .models import BulletinPaie, ProfilPaie
+
+    devises = set(
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE,
+                profil__mode_paiement=ProfilPaie.MODE_PAIEMENT_VIREMENT)
+        .exclude(net_a_payer__lte=0)
+        .values_list('devise', flat=True)
+    )
+    devises = {(d or '').strip().upper() or DEVISE_DEFAUT for d in devises}
+    if not devises:
+        return (periode.devise or DEVISE_DEFAUT).strip().upper()
+    if len(devises) > 1:
+        raise ValidationError({'devise': [
+            'Les bulletins de cette période sont libellés dans plusieurs '
+            f'devises ({", ".join(sorted(devises))}) : un ordre de virement '
+            "n'en porte qu'une. Séparez les runs par pays."]})
+    return devises.pop()
+
+
 def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
                            compte_emetteur=None):
     """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
@@ -3747,6 +4079,14 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
         periode.company, date(periode.annee, periode.mois, 1),
         contexte='Ordre de virement')
 
+    # NTPAY23 — sans compte explicite, repli sur le compte ÉMETTEUR réglé
+    # pour la société (``None`` tant qu'aucun n'est câblé : comportement
+    # historique). Le repli s'arrête ICI : les chemins de RÈGLEMENT
+    # (``payer_ordre_virement``/``payer_organismes``) continuent d'exiger un
+    # compte EXPLICITE — on ne choisit jamais tout seul le compte d'où part
+    # l'argent.
+    if compte_emetteur is None:
+        compte_emetteur = parametrage_paie(periode.company).compte_emetteur
     compte = _resoudre_compte_emetteur(periode.company, compte_emetteur)
 
     with transaction.atomic():
@@ -3772,6 +4112,10 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
         ordre.statut = OrdreVirement.STATUT_BROUILLON
         if date_execution is not None:
             ordre.date_execution = date_execution
+        elif ordre.date_execution is None:
+            # NTPAY23 — pré-remplissage depuis le réglage société (``None``
+            # tant qu'aucun jour n'est posé : comportement historique).
+            ordre.date_execution = date_execution_par_defaut(periode)
         if compte is not None:
             # Source unique : le compte de trésorerie pilote RIB + devise.
             ordre.compte_emetteur = compte
@@ -3781,6 +4125,10 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
                 ordre.devise = compte.devise
         elif rib_emetteur:
             ordre.rib_emetteur = rib_emetteur
+        if compte is None or not compte.devise:
+            # NTPAY13 — sans compte de trésorerie câblé, la devise de l'ordre
+            # est celle des bulletins qu'il paie (jamais une conversion).
+            ordre.devise = devise_virement_periode(periode)
         if not ordre.libelle:
             ordre.libelle = f'Virement salaires {periode.mois:02d}/{periode.annee}'
         ordre.save()
@@ -3960,6 +4308,72 @@ GABARIT_SIMT_LIGNE = [
 ]
 
 
+# ── NTPAY24 — Résolution d'un gabarit éditable (repli sur le codé en dur) ──
+
+def gabarit_actif(company, type_fichier, *, le_jour=None):
+    """``GabaritDeclaratif`` ACTIF d'un type pour une société (NTPAY24).
+
+    Le plus récent dont la ``date_effet`` est atteinte. ``None`` — le cas
+    NORMAL — signifie « garder le gabarit codé en dur ».
+    """
+    from .models import GabaritDeclaratif
+
+    if company is None:
+        return None
+    if le_jour is None:
+        le_jour = timezone.localdate()
+    return (
+        GabaritDeclaratif.objects
+        .filter(company=company, type_fichier=type_fichier, actif=True,
+                date_effet__lte=le_jour)
+        .order_by('-date_effet', '-id')
+        .first()
+    )
+
+
+def _structure_valide(brut):
+    """``[[champ, longueur, 'L'|'R'], …]`` → liste de triplets, ou ``None``.
+
+    Une structure MAL FORMÉE est IGNORÉE (repli sur le codé en dur) plutôt
+    que de produire un fichier bancaire incohérent : mieux vaut le format
+    d'hier qu'un format inventé.
+    """
+    if not isinstance(brut, (list, tuple)) or not brut:
+        return None
+    triplets = []
+    for item in brut:
+        if not isinstance(item, (list, tuple)) or len(item) != 3:
+            return None
+        champ, longueur, remplissage = item
+        if not isinstance(champ, str) or not champ:
+            return None
+        try:
+            longueur = int(longueur)
+        except (TypeError, ValueError):
+            return None
+        if longueur <= 0 or remplissage not in ('L', 'R'):
+            return None
+        triplets.append((champ, longueur, remplissage))
+    return triplets
+
+
+def structure_gabarit(company, type_fichier, defaut_entete, defaut_ligne, *,
+                      le_jour=None):
+    """``(entete, ligne)`` à utiliser pour un fichier à longueurs fixes.
+
+    NTPAY24 — le gabarit ACTIF de la société prime ; sans gabarit actif (ou
+    avec une structure mal formée), les constantes codées en dur sont rendues
+    TELLES QUELLES : la sortie reste identique à l'octet près.
+    """
+    gabarit = gabarit_actif(company, type_fichier, le_jour=le_jour)
+    structure = getattr(gabarit, 'structure_json', None)
+    if not isinstance(structure, dict):
+        return defaut_entete, defaut_ligne
+    entete = _structure_valide(structure.get('entete')) or defaut_entete
+    ligne = _structure_valide(structure.get('ligne')) or defaut_ligne
+    return entete, ligne
+
+
 def _formater_champ_simt(valeur, longueur, remplissage):
     """Formate un champ à LONGUEUR FIXE (gabarit SIMT) : tronque si trop
     long, complète sinon (espaces à droite pour 'L', zéros à gauche pour
@@ -3992,9 +4406,17 @@ def fichier_virement_paie_simt(ordre):
     manquant). N'affecte JAMAIS le CSV existant. Renvoie ``{'lignes': [str,
     …] (longueur fixe), 'total', 'nb_lignes'}``.
     """
+    from .models import GabaritDeclaratif
+
     base = fichier_virement_paie(ordre)  # valide + lève ValueError au besoin
     emetteur = base['emetteur']
     date_execution = ordre.date_execution or date.today()
+
+    # NTPAY24 — gabarit ÉDITABLE de la société ; sans gabarit actif, ce sont
+    # exactement les constantes ci-dessus (sortie inchangée).
+    gabarit_entete, gabarit_ligne = structure_gabarit(
+        ordre.company, GabaritDeclaratif.TYPE_SIMT,
+        GABARIT_SIMT_ENTETE, GABARIT_SIMT_LIGNE)
 
     total_centimes = int(_q(base['total']) * 100)
     entete = _formater_enregistrement_simt({
@@ -4005,7 +4427,7 @@ def fichier_virement_paie_simt(ordre):
         'devise': ordre.devise or 'MAD',
         'nombre_lignes': base['nb_lignes'],
         'total_centimes': total_centimes,
-    }, GABARIT_SIMT_ENTETE)
+    }, gabarit_entete)
 
     lignes_txt = [entete]
     for ligne in ordre.lignes.all():
@@ -4017,7 +4439,7 @@ def fichier_virement_paie_simt(ordre):
             'montant_centimes': montant_centimes,
             'reference': ligne.reference or '',
             'motif': f'Salaire {ligne.reference}'.strip(),
-        }, GABARIT_SIMT_LIGNE))
+        }, gabarit_ligne))
 
     return {
         'lignes': lignes_txt,
@@ -4961,8 +5383,14 @@ def controle_ecarts(periode, *, seuil_pct=None):
     """
     from .models import BulletinPaie, ElementVariable
 
-    seuil = Decimal(seuil_pct) if seuil_pct is not None \
-        else SEUIL_ECART_NET_DEFAUT
+    if seuil_pct is not None:
+        seuil = Decimal(seuil_pct)
+    else:
+        # NTPAY23 — seuil de la société quand elle en a posé un ; sinon le
+        # défaut du moteur (jamais un seuil réinventé ici).
+        reglage = parametrage_paie(periode.company).seuil_ecart_net_pct
+        seuil = Decimal(reglage) if reglage is not None \
+            else SEUIL_ECART_NET_DEFAUT
 
     precedente = _periode_precedente(periode)
 
@@ -5870,6 +6298,407 @@ def etat_des_charges(periode):
     }
 
 
+# ── NTPAY18 — État des charges sociales & fiscales (5 organismes, détaillé) ─
+
+def _somme_lignes(periode, codes):
+    """Somme des ``LigneBulletin`` de ces ``codes`` sur les bulletins VALIDÉS.
+
+    Les lignes sont la matérialisation du snapshot : les sommer revient au
+    même que sommer les champs du bulletin, à ceci près que la MUTUELLE n'a
+    pas de champ dédié (XPAI3) — elle n'existe QUE sous forme de lignes.
+    """
+    from django.db.models import Sum
+
+    from .models import BulletinPaie, LigneBulletin
+
+    total = (
+        LigneBulletin.objects
+        .filter(company=periode.company,
+                bulletin__periode=periode,
+                bulletin__statut=BulletinPaie.STATUT_VALIDE,
+                code__in=codes)
+        .aggregate(total=Sum('montant'))['total']
+    )
+    return _q(total or 0)
+
+
+def etat_charges(periode):
+    """État DÉTAILLÉ des charges sociales et fiscales d'une période (NTPAY18).
+
+    Distinct de ``etat_des_charges`` (XPAI5), qui agrège en 3 postes pour le
+    rapprochement comptable et le règlement : celui-ci est le DOCUMENT de
+    synthèse périodique, avec ses CINQ organismes — CNSS, AMO, IR, CIMR,
+    mutuelle — et pour chacun la base, les taux, la part salariale, la part
+    patronale et le total à verser.
+
+    Les montants sont ceux des bulletins VALIDÉS de la période (un brouillon
+    n'est jamais compté) ; les TAUX sont ceux du ``ParametrePaie`` en vigueur
+    au 1ᵉʳ du mois. Un taux propre à chaque salarié (CIMR) ou à chaque régime
+    (mutuelle) n'est PAS affiché : il n'y en a pas UN — ``None`` plutôt qu'une
+    moyenne inventée.
+
+    Les allocations familiales et la taxe de formation professionnelle sont
+    100 % patronales et recouvrées par la CNSS : elles sortent en
+    ``charges_annexes`` (jamais fondues dans le taux CNSS, qui deviendrait
+    faux) mais ENTRENT dans ``total_patronal``/``total_general`` — le total du
+    document est bien ce qu'il y a à verser.
+    """
+    from .models import BulletinPaie
+
+    registre = livre_de_paie(periode)
+    totaux = registre['totaux']
+    parametre = parametre_en_vigueur(
+        periode.company, date(periode.annee, periode.mois, 1))
+
+    bulletins = list(
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        # ``adhesion_mutuelle`` est un OneToOne INVERSE : sans ce
+        # ``select_related``, l'assiette mutuelle coûterait une requête par
+        # bulletin (N+1 sur un état de période entière).
+        .select_related('profil', 'profil__adhesion_mutuelle')
+    )
+    plafond_cnss = Decimal(getattr(parametre, 'plafond_cnss', 0) or 0)
+    # Assiette CNSS = brut PLAFONNÉ par tête (jamais le total plafonné).
+    base_cnss = _q(sum(
+        ((min(Decimal(b.brut or 0), plafond_cnss) if plafond_cnss
+          else Decimal(b.brut or 0))
+         for b in bulletins if b.profil.affilie_cnss),
+        Decimal('0')))
+    # Allocations familiales & taxe de formation pro : assiette NON plafonnée
+    # des affiliés CNSS (cf. ``allocations_familiales_patronale``).
+    base_brut_cnss = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins if b.profil.affilie_cnss),
+        Decimal('0')))
+    base_amo = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins if b.profil.affilie_amo),
+        Decimal('0')))
+    base_cimr = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins if b.profil.affilie_cimr),
+        Decimal('0')))
+    base_mutuelle = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins
+         if getattr(getattr(b.profil, 'adhesion_mutuelle', None), 'actif',
+                    False)),
+        Decimal('0')))
+
+    mutuelle_sal = _somme_lignes(periode, ['MUTUELLE_SAL'])
+    mutuelle_pat = _somme_lignes(periode, ['MUTUELLE_PAT'])
+
+    def _taux(nom):
+        valeur = getattr(parametre, nom, None) if parametre else None
+        return Decimal(valeur) if valeur is not None else None
+
+    organismes = [
+        {
+            'code': 'cnss', 'libelle': 'CNSS',
+            'base': base_cnss,
+            'taux_salarial': _taux('taux_cnss_salarial'),
+            'taux_patronal': _taux('taux_cnss_patronal'),
+            'salarial': totaux['cnss_salariale'],
+            'patronal': totaux['cnss_patronale'],
+        },
+        {
+            'code': 'amo', 'libelle': 'AMO',
+            'base': base_amo,
+            'taux_salarial': _taux('taux_amo_salarial'),
+            'taux_patronal': _taux('taux_amo_patronal'),
+            'salarial': totaux['amo_salariale'],
+            'patronal': totaux['amo_patronale'],
+        },
+        {
+            'code': 'ir', 'libelle': 'IR (retenue à la source)',
+            # Base de l'IR = net imposable ; le taux est PROGRESSIF par
+            # tranche — il n'y a pas UN taux à afficher.
+            'base': totaux['net_imposable'],
+            'taux_salarial': None, 'taux_patronal': None,
+            'salarial': totaux['ir'], 'patronal': Decimal('0.00'),
+        },
+        {
+            'code': 'cimr', 'libelle': 'CIMR',
+            'base': base_cimr,
+            # Le taux CIMR est PROPRE À CHAQUE ADHÉRENT (PAIE20).
+            'taux_salarial': None, 'taux_patronal': None,
+            'salarial': totaux['cimr_salariale'], 'patronal': Decimal('0.00'),
+        },
+        {
+            'code': 'mutuelle', 'libelle': 'Mutuelle / prévoyance',
+            'base': base_mutuelle,
+            # Le taux dépend du RÉGIME de chaque adhérent (XPAI3).
+            'taux_salarial': None, 'taux_patronal': None,
+            'salarial': mutuelle_sal, 'patronal': mutuelle_pat,
+        },
+    ]
+    for organisme in organismes:
+        organisme['total'] = _q(
+            organisme['salarial'] + organisme['patronal'])
+
+    charges_annexes = [
+        {
+            'code': 'allocations_familiales',
+            'libelle': 'Allocations familiales (CNSS)',
+            'base': base_brut_cnss,
+            'taux_patronal': _taux('taux_allocations_familiales'),
+            'patronal': totaux['allocations_familiales'],
+        },
+        {
+            'code': 'formation_professionnelle',
+            'libelle': 'Taxe de formation professionnelle (CNSS)',
+            'base': base_brut_cnss,
+            'taux_patronal': _taux('taux_formation_pro'),
+            'patronal': totaux['formation_professionnelle'],
+        },
+    ]
+
+    total_salarial = _q(sum(
+        (o['salarial'] for o in organismes), Decimal('0')))
+    total_patronal = _q(
+        sum((o['patronal'] for o in organismes), Decimal('0'))
+        + sum((a['patronal'] for a in charges_annexes), Decimal('0')))
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'statut_periode': periode.statut,
+        'devise': (periode.devise or DEVISE_DEFAUT),
+        'nombre_salaries': registre['nombre_salaries'],
+        'organismes': organismes,
+        'charges_annexes': charges_annexes,
+        'total_salarial': total_salarial,
+        'total_patronal': total_patronal,
+        'total_general': _q(total_salarial + total_patronal),
+    }
+
+
+# ── NTPAY23 — Réglages globaux du module paie, par société ─────────────────
+
+def parametrage_paie(company):
+    """Réglages paie de la société (NTPAY23) — JAMAIS créés à la lecture.
+
+    Renvoie le ``ParametragePaieCompany`` de la société s'il existe, sinon une
+    instance NON SAUVEGARDÉE portant les défauts du modèle. Lire les réglages
+    ne doit rien écrire en base : une société qui n'a jamais rien réglé se
+    comporte EXACTEMENT comme avant NTPAY23.
+    """
+    from .models import ParametragePaieCompany
+
+    return (
+        ParametragePaieCompany.objects.filter(company=company).first()
+        or ParametragePaieCompany(company=company)
+    )
+
+
+def date_execution_par_defaut(periode):
+    """Date d'exécution pré-remplie du prochain ordre de virement (NTPAY23).
+
+    ``None`` tant que la société n'a pas posé son ``jour_virement_defaut`` —
+    aucun jour n'est inventé. Le jour est RABATTU sur le dernier jour du mois
+    quand il le dépasse (un « 31 » en février donne le 28/29).
+    """
+    from calendar import monthrange
+
+    jour = parametrage_paie(periode.company).jour_virement_defaut
+    if not jour:
+        return None
+    dernier = monthrange(periode.annee, periode.mois)[1]
+    return date(periode.annee, periode.mois, min(int(jour), dernier))
+
+
+# ── NTPAY22 — Checklist de clôture d'une période (wizard guidé) ────────────
+
+def checklist_cloture(periode, *, today=None):
+    """Contrôles à passer AVANT de clôturer une période (NTPAY22).
+
+    La clôture existait déjà (``cloturer_periode_paie``) mais sans la moindre
+    liste de contrôle : on fermait un mois sans savoir qu'une avance n'avait
+    pas été retenue, qu'un écart M/M-1 n'avait été regardé par personne, qu'une
+    échéance déclarative était en retard ou que le virement n'avait pas été
+    généré.
+
+    Renvoie une liste ORDONNÉE de dicts
+    ``{'code', 'libelle', 'statut': 'ok'|'alerte', 'detail', 'items'}``.
+    Lecture seule — aucune écriture, aucune clôture. ``today`` est injectable
+    (tests déterministes).
+    """
+    from django.utils import timezone as dj_timezone
+
+    from .models import (
+        AvanceSalarie, BulletinPaie, EcheanceDeclarative, OrdreVirement,
+        ProfilPaie, SaisieArret,
+    )
+
+    if today is None:
+        today = dj_timezone.localdate()
+    company = periode.company
+
+    profils_payes = set(
+        BulletinPaie.objects
+        .filter(company=company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .values_list('profil_id', flat=True)
+    )
+
+    # 1. Avances en cours dont la retenue du mois n'a PAS été jouée (le profil
+    #    n'a aucun bulletin validé sur la période).
+    avances_en_attente = [
+        {'id': avance.id, 'profil_id': avance.profil_id,
+         'libelle': avance.libelle or avance.get_type_display()}
+        for avance in AvanceSalarie.objects
+        .filter(company=company, actif=True)
+        .select_related('profil')
+        if avance.solde_restant > 0 and avance.profil_id not in profils_payes
+    ]
+
+    # 2. Saisies-arrêt EN COURS dans le même cas.
+    saisies_en_attente = [
+        {'id': saisie.id, 'profil_id': saisie.profil_id,
+         'creancier': saisie.creancier or saisie.get_type_display()}
+        for saisie in SaisieArret.objects
+        .filter(company=company, actif=True,
+                statut=SaisieArret.STATUT_EN_COURS)
+        if saisie.profil_id not in profils_payes
+    ]
+
+    # 3. Écarts M/M-1 (XPAI15) — toute anomalie détectée est à acquitter.
+    #    SAUF au tout premier run : sans mois précédent COMPARABLE, « salarié
+    #    nouveau » est vrai de tout le monde et ne dit rien. On ne transforme
+    #    pas un premier mois de paie en mur d'alertes.
+    ecarts = controle_ecarts(periode)
+    precedente = _periode_precedente(periode)
+    comparable = precedente is not None and BulletinPaie.objects.filter(
+        company=company, periode=precedente,
+        statut=BulletinPaie.STATUT_VALIDE).exists()
+    anomalies_ecarts = (
+        len(ecarts['salaries_manquants']) + len(ecarts['salaries_nouveaux'])
+        + len(ecarts['variations_net']) + len(ecarts['hs_anormales'])
+    ) if comparable else 0
+
+    # 4. Échéances déclaratives de la période en retard (NTPAY16).
+    echeances_en_retard = [
+        {'id': e.id, 'type': e.type_echeance,
+         'libelle': e.get_type_echeance_display(),
+         'date_limite': e.date_limite}
+        for e in EcheanceDeclarative.objects
+        .filter(company=company, periode=periode, date_limite__lt=today)
+        .exclude(statut__in=[EcheanceDeclarative.STATUT_DEPOSEE,
+                             EcheanceDeclarative.STATUT_PAYEE])
+    ]
+
+    # 5. Ordre de virement : exigé SEULEMENT s'il y a quelque chose à virer.
+    a_virer = BulletinPaie.objects.filter(
+        company=company, periode=periode,
+        statut=BulletinPaie.STATUT_VALIDE,
+        profil__mode_paiement=ProfilPaie.MODE_PAIEMENT_VIREMENT,
+    ).exclude(net_a_payer__lte=0).exists()
+    ordre = OrdreVirement.objects.filter(
+        company=company, periode=periode).first()
+    virement_ok = (not a_virer) or (
+        ordre is not None and ordre.nombre_lignes > 0)
+
+    return [
+        {
+            'code': 'avances_traitees',
+            'libelle': 'Avances du mois retenues',
+            'statut': 'alerte' if avances_en_attente else 'ok',
+            'detail': (
+                f'{len(avances_en_attente)} avance(s) en cours sans bulletin '
+                'validé sur la période.'
+                if avances_en_attente
+                else 'Toutes les avances en cours ont été retenues.'),
+            'items': avances_en_attente,
+        },
+        {
+            'code': 'saisies_traitees',
+            'libelle': 'Saisies-arrêt du mois retenues',
+            'statut': 'alerte' if saisies_en_attente else 'ok',
+            'detail': (
+                f'{len(saisies_en_attente)} saisie(s) en cours sans bulletin '
+                'validé sur la période.'
+                if saisies_en_attente
+                else 'Toutes les saisies en cours ont été retenues.'),
+            'items': saisies_en_attente,
+        },
+        {
+            'code': 'ecarts_acquittes',
+            'libelle': 'Écarts M/M-1 sans anomalie',
+            'statut': 'alerte' if anomalies_ecarts else 'ok',
+            'detail': (
+                f'{anomalies_ecarts} anomalie(s) d’écart détectée(s) : '
+                'salariés manquants/nouveaux, variations de net ou heures '
+                'supplémentaires anormales.'
+                if anomalies_ecarts
+                else ('Aucun écart anormal par rapport au mois précédent.'
+                      if comparable
+                      else 'Aucun mois précédent comparable.')),
+            'items': ecarts,
+        },
+        {
+            'code': 'echeances_a_jour',
+            'libelle': 'Échéances déclaratives du mois',
+            'statut': 'alerte' if echeances_en_retard else 'ok',
+            'detail': (
+                f'{len(echeances_en_retard)} échéance(s) dépassée(s) sans '
+                'dépôt.'
+                if echeances_en_retard
+                else 'Aucune échéance déclarative en retard.'),
+            'items': echeances_en_retard,
+        },
+        {
+            'code': 'virement_genere',
+            'libelle': 'Ordre de virement généré',
+            'statut': 'ok' if virement_ok else 'alerte',
+            'detail': (
+                'Aucun net à virer sur cette période.' if not a_virer
+                else ('Ordre de virement généré.' if virement_ok
+                      else 'Aucun ordre de virement pour cette période.')),
+            'items': ([] if ordre is None else [{
+                'id': ordre.id, 'statut': ordre.statut,
+                'nombre_lignes': ordre.nombre_lignes}]),
+        },
+    ]
+
+
+def verifier_cloture_autorisee(periode, *, motif_acquittement='',
+                               today=None):
+    """Garde de clôture GUIDÉE (NTPAY22) — l'acquittement est explicite.
+
+    Rejoue ``checklist_cloture`` : s'il reste au moins un point en ⚠️, la
+    clôture n'est autorisée QUE si un ``motif_acquittement`` non vide est
+    fourni — jamais un simple clic. Lève une ``ValidationError`` en FRANÇAIS
+    qui NOMME les points en attente.
+
+    Renvoie la liste des points en alerte (vide quand tout est vert). N'écrit
+    rien : la clôture elle-même reste ``cloturer_periode_paie``, inchangée
+    pour ses appelants programmatiques.
+    """
+    from django.core.exceptions import ValidationError
+
+    items = checklist_cloture(periode, today=today)
+    alertes = [item for item in items if item['statut'] == 'alerte']
+    if alertes and not (motif_acquittement or '').strip():
+        libelles = ', '.join(item['libelle'] for item in alertes)
+        raise ValidationError({'motif_acquittement': [
+            f'Points de contrôle non acquittés ({libelles}) : saisissez un '
+            'motif d’acquittement pour clôturer malgré tout.']})
+    return alertes
+
+
+# ── NTPAY19 — Rapport « Masse salariale » (délégué au sélecteur) ───────────
+
+def rapport_masse_salariale(company, periode_debut, periode_fin, *,
+                            group_by='departement'):
+    """Synthèse de masse salariale par département/site (NTPAY19).
+
+    Le CALCUL est une LECTURE PURE : il vit dans ``selectors`` (règle de
+    séparation lectures/écritures de l'app). Cette fonction n'est que le point
+    d'entrée historique côté ``services`` — elle ne duplique rien.
+    """
+    from . import selectors as paie_selectors
+
+    return paie_selectors.rapport_masse_salariale(
+        company, periode_debut, periode_fin, group_by=group_by)
+
+
 # ── NTPAY4 — Télépaiement CNSS : bordereau + fichier de règlement ───────────
 
 # Jour LIMITE de règlement des cotisations CNSS (cadre marocain : avant le 10
@@ -5995,9 +6824,16 @@ def fichier_telepaiement_cnss(periode, *, bordereau=None):
     reste à confirmer auprès de l'organisme. Renvoie ``{'lignes': [str, …],
     'total', 'nb_lignes', 'date_limite'}``. Lecture seule.
     """
+    from .models import GabaritDeclaratif
+
     if bordereau is None:
         bordereau = bordereau_paiement_cnss(periode)
     company = periode.company
+    # NTPAY24 — gabarit ÉDITABLE de la société ; sans gabarit actif, ce sont
+    # exactement les constantes ci-dessus (sortie inchangée).
+    gabarit_entete, gabarit_ligne = structure_gabarit(
+        company, GabaritDeclaratif.TYPE_TELEPAIEMENT_CNSS,
+        GABARIT_TELEPAIEMENT_CNSS_ENTETE, GABARIT_TELEPAIEMENT_CNSS_LIGNE)
     total_centimes = int(_q(bordereau['total_general']) * 100)
     entete = _formater_enregistrement_simt({
         'type_enregistrement': 'E',
@@ -6008,7 +6844,7 @@ def fichier_telepaiement_cnss(periode, *, bordereau=None):
         'date_limite': bordereau['date_limite'].strftime('%Y%m%d'),
         'nombre_organismes': len(bordereau['organismes']),
         'total_centimes': total_centimes,
-    }, GABARIT_TELEPAIEMENT_CNSS_ENTETE)
+    }, gabarit_entete)
 
     lignes = [entete]
     for organisme in bordereau['organismes']:
@@ -6018,7 +6854,7 @@ def fichier_telepaiement_cnss(periode, *, bordereau=None):
             'salarial_centimes': int(_q(organisme['salarial']) * 100),
             'patronal_centimes': int(_q(organisme['patronal']) * 100),
             'total_centimes': int(_q(organisme['total']) * 100),
-        }, GABARIT_TELEPAIEMENT_CNSS_LIGNE))
+        }, gabarit_ligne))
 
     return {
         'lignes': lignes,
@@ -6812,6 +7648,9 @@ def generer_bulletin_stc(profil, periode, *, motif='', mois_preavis=1,
         bulletin.type_bulletin = BulletinPaie.TYPE_STC
         bulletin.motif = resultat.get('motif', '') or motif
         bulletin.personnes_a_charge = max(0, int(personnes_a_charge or 0))
+        # NTPAY13 — même devise que tout bulletin (pays du profil, sinon
+        # période, sinon MAD).
+        bulletin.devise = devise_du_profil(profil, periode=periode)
         for champ in BulletinPaie.SNAPSHOT_FIELDS:
             if champ == 'personnes_a_charge':
                 continue

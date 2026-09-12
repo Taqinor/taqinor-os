@@ -1,0 +1,25 @@
+{
+  "endpoint": "GET /api/django/esg/parametres-esg/",
+  "pourquoi": "NTESG20 — réglages ESG par société (singleton par tenant) : seuil d'alerte de dérive de trajectoire (consommé par NTESG10), pilote ESG destinataire par défaut des alertes, fréquence de reporting (informatif, rappelé par l'assistant de clôture NTESG18) et pondération du badge de maturité (consommée par NTESG15). PACT10 : la forme est déclarée ICI pour que l'écran `Paramètres > ESG` et le serveur ne l'inventent pas chacun de leur côté.",
+  "avertissement_forme": "La ligne est CRÉÉE À LA DEMANDE côté serveur : un GET renvoie toujours les réglages effectifs (défauts du module inclus), jamais un 404 ni un objet vide — un tenant neuf voit exactement ce qui s'applique. `ponderation_badge_maturite` porte EXACTEMENT les trois clés `couverture`/`cibles`/`trajectoire` et doit sommer à 100 : la validation vit dans `ParametresESG.clean()` (serveur), la garde de l'écran n'en est que le doublon confortable. `pilote_esg` est un id d'utilisateur de la MÊME société (ou null) ; `pilote_esg_nom` est un libellé de lecture seule. PATCH est réservé aux administrateurs (403 sinon).",
+  "exemple": {
+    "id": 3,
+    "seuil_alerte_derive_pct": 15,
+    "pilote_esg": 42,
+    "pilote_esg_nom": "Meryem Alaoui",
+    "frequence_reporting": "trimestrielle",
+    "frequence_reporting_display": "Trimestrielle",
+    "ponderation_badge_maturite": { "couverture": 50, "cibles": 25, "trajectoire": 25 },
+    "updated_at": "2026-09-12T09:20:00Z"
+  },
+  "exemple_vide": {
+    "id": 4,
+    "seuil_alerte_derive_pct": 10,
+    "pilote_esg": null,
+    "pilote_esg_nom": "",
+    "frequence_reporting": "annuelle",
+    "frequence_reporting_display": "Annuelle",
+    "ponderation_badge_maturite": {},
+    "updated_at": "2026-09-12T09:20:00Z"
+  }
+}

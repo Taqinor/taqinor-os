@@ -38,7 +38,10 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole
 
-__all__ = ['FormuleTestView', 'LIMITE_MAX_LIGNES']
+__all__ = [
+    'FormuleTestView', 'FormuleFonctionsView', 'FormuleValiderView',
+    'LIMITE_MAX_LIGNES',
+]
 
 #: Borne dure du banc d'essai (jamais un export déguisé).
 LIMITE_MAX_LIGNES = 20
@@ -163,3 +166,58 @@ class FormuleTestView(APIView):
             'colonnes': colonnes,
             'lignes': resultats,
         })
+
+
+class FormuleFonctionsView(APIView):
+    """NTEXT22 — catalogue documenté des fonctions/opérateurs sûrs de
+    ``core.formula`` (libellé FR + exemple), pour alimenter un éditeur de
+    formule assisté (autocomplétion). Lecture seule, aucun changement du
+    moteur — n'expose que ce que ``core.formula.FONCTIONS_CATALOGUE``/
+    ``OPERATEURS_CATALOGUE`` décrivent."""
+
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(responses=inline_serializer('FormuleFonctionsReponse', {
+        'fonctions': drf_serializers.JSONField(),
+        'operateurs': drf_serializers.JSONField(),
+    }))
+    def get(self, request):
+        from core.formula import catalogue_fonctions
+        return Response(catalogue_fonctions())
+
+
+class FormuleValiderView(APIView):
+    """NTEXT23 — validateur d'expression de formule (dry-run).
+
+    ``POST core/formule/valider/`` — corps ``{"expression": "...",
+    "variables": ["quantite", "prix_unitaire"]}``. Délègue ENTIÈREMENT à
+    ``core.formula.valider_formule`` (AST sûr, jamais ``eval``) : AUCUN
+    effet de bord, rien n'est évalué pour de vrai ni enregistré. Sert les
+    éditeurs de champ calculé (NTEXT1), d'action serveur (NTEXT8) et de
+    mesure formule de pivot — un seul moteur de validation, jamais dupliqué.
+    """
+
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(
+        request=inline_serializer('FormuleValiderRequete', {
+            'expression': drf_serializers.CharField(),
+            'variables': drf_serializers.JSONField(required=False),
+        }),
+        responses=inline_serializer('FormuleValiderReponse', {
+            'ok': drf_serializers.BooleanField(),
+            'erreur': drf_serializers.CharField(),
+        }))
+    def post(self, request):
+        from core.formula import valider_formule
+
+        donnees = request.data if isinstance(request.data, dict) else {}
+        expression = donnees.get('expression')
+        variables = donnees.get('variables') or []
+        if not isinstance(variables, list):
+            variables = []
+        if not isinstance(expression, str) or not expression.strip():
+            return Response(
+                {'ok': False, 'erreur': "L'expression à valider est requise."})
+        ok, erreur = valider_formule(expression, variables)
+        return Response({'ok': ok, 'erreur': erreur})

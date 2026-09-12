@@ -103,6 +103,16 @@ class ReserveChantier(TenantModel):
     motif_contestation = models.TextField(
         blank=True, default='', verbose_name='Motif de contestation')
 
+    # ── NTCON27 — archivage des réserves levées anciennes ───────────────────
+    # JAMAIS une suppression physique : la réserve levée porte une signature
+    # (``SignatureBtp``) et un historique de transitions qui sont des PREUVES
+    # de réception. On pose un drapeau, cohérent avec la politique
+    # soft-delete du dépôt (``core.SoftDeleteQuerySet``).
+    archivee = models.BooleanField(
+        default=False, verbose_name='Archivée')
+    archivee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Archivée le')
+
     class Meta:
         verbose_name = 'Réserve de chantier'
         verbose_name_plural = 'Réserves de chantier'
@@ -110,6 +120,11 @@ class ReserveChantier(TenantModel):
         indexes = [
             models.Index(fields=['company', 'chantier', 'statut']),
             models.Index(fields=['company', 'lot']),
+            # NTCON27 — PAS d'index dédié sur ``archivee`` : le filtre par
+            # défaut est toujours combiné à ``company`` (+ ``statut``), déjà
+            # couvert ci-dessus, et un AddIndex sur une table PEUPLÉE prend un
+            # verrou d'écriture bloquant (garde `check_safe_migrations`
+            # YOPSB6) pour un gain nul sur un booléen à deux valeurs.
         ]
 
     def __str__(self):
@@ -369,6 +384,10 @@ class VisaDocument(TenantModel):
         default=10, verbose_name='Délai de revue (jours ouvrés)')
     date_limite = models.DateField(
         null=True, blank=True, verbose_name='Date limite de revue')
+    # NTCON37 — idempotence du sweep de relance : une seule relance par jour
+    # et par visa (même patron que ``RFI.derniere_alerte_retard``, NTCON4).
+    derniere_relance_retard = models.DateField(
+        null=True, blank=True, verbose_name='Dernière relance de revue')
     nb_resoumissions = models.PositiveIntegerField(
         default=0, verbose_name='Nombre de resoumissions')
     created_at = models.DateTimeField(
@@ -824,6 +843,20 @@ class Lot(TenantModel):
         'gestion_projet.Tache', through='LotTache', blank=True,
         related_name='btp_lots', verbose_name='Tâches rattachées')
 
+    # ── NTCON28 — cache dénormalisé de l'exposition aux pénalités ───────────
+    # Le cockpit (NTCON21) affichait la pénalité de CHAQUE lot en relançant le
+    # calcul NTCON15 à chaque GET. Le balayage quotidien
+    # (``recalculer_penalites_lots``) fige ici le résultat + son horodatage,
+    # pour que l'écran LISE au lieu de RECALCULER. Le cache ne remplace jamais
+    # le calcul : il en est une photo datée, et le décompte DÉFINITIF reste à
+    # établir à la réception du lot.
+    penalite_calculee_cache = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Exposition aux pénalités (cache)')
+    penalite_calculee_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Exposition aux pénalités calculée le')
+
     class Meta:
         verbose_name = 'Lot de chantier'
         verbose_name_plural = 'Lots de chantier'
@@ -1136,6 +1169,11 @@ class ParametresBtpChantier(TenantModel):
     taux_penalite_retard_defaut_pmil = models.DecimalField(
         max_digits=6, decimal_places=3, null=True, blank=True,
         verbose_name='Taux de pénalité de retard par défaut (‰/jour)')
+    # NTCON27 — ancienneté à partir de laquelle une réserve LEVÉE sort des
+    # listes actives (drapeau ``archivee``, jamais une suppression).
+    delai_archivage_reserves_levees_mois = models.PositiveIntegerField(
+        default=24,
+        verbose_name='Archiver les réserves levées après (mois)')
 
     class Meta:
         verbose_name = 'Réglages BTP'

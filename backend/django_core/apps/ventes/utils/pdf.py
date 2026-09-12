@@ -292,8 +292,11 @@ def generate_facture_pdf(facture_id):
 
     # XSAL13 — rendu arabe RTL quand Client.langue_document == 'ar'. Défaut
     # FR octet-identique : langue absente/non-AR → 'fr', gabarit inchangé.
+    # NTI18N4 — `company=` ajoute le repli société (NTI18N34, pas encore
+    # construit) à la chaîne de résolution : sans effet tant que ce champ
+    # n'existe pas, prêt dès qu'il arrivera.
     from .libelles_ar import document_langue, libelle, arabic_font_face_css
-    langue = document_langue(facture.client)
+    langue = document_langue(facture.client, company=facture.company)
     context['langue_document'] = langue
     context['L'] = lambda cle: libelle(cle, langue)
     context['arabic_font_face_css'] = arabic_font_face_css() if langue == 'ar' else ''

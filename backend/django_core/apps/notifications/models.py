@@ -203,6 +203,14 @@ class EventType(models.TextChoices):
     # gestionnaires paie que le run peut passer à la génération de l'ordre de
     # virement / la clôture.
     PAIE_RUN_PRET = 'paie_run_pret', 'Run de paie prêt (validé)'
+    # NTPAY25 — même cas que PAIE_RIB_DIVERGENCE (ARC39) : la tâche de rappel
+    # des échéances déclaratives appelait déjà ``notify_many(...,
+    # 'paie_echeance_rappel', ...)`` sans que le type soit enregistré, donc
+    # ``notify()`` journalisait « type d'événement inconnu » et ne persistait
+    # AUCUNE notification in-app. Enregistrement de l'événement existant ;
+    # aucun changement de comportement de l'appelant.
+    PAIE_ECHEANCE_RAPPEL = (
+        'paie_echeance_rappel', 'Échéance déclarative paie à déposer')
     # VX213 — handoffs AVAL (exécution) longtemps muets. (a) un chantier est
     # créé depuis un devis accepté et assigné à un technicien ; (b) un chantier
     # est réassigné à un NOUVEAU technicien : dans les deux cas l'installateur
@@ -306,6 +314,13 @@ class EventType(models.TextChoices):
     # corbeille transverse, NTUX29). Jamais de suppression automatique du favori.
     UXVIEWS_FAVORIS_OBSOLETES = (
         'uxviews_favoris_obsoletes', 'Favoris pointant vers des éléments supprimés')
+    # NTUX39 — une vue sauvegardée PARTAGÉE À L'ÉQUIPE (`uxviews.SavedView`,
+    # NTUX1) est modifiée par son propriétaire (filtres/colonnes) : notifie
+    # les utilisateurs qui l'ont consultée récemment (`uxviews.EcranRecent`,
+    # substitut serveur de NTUX11 — le widget « Récents » vit en localStorage,
+    # jamais transmis au serveur), jamais toute la société.
+    UXVIEWS_VUE_EQUIPE_MODIFIEE = (
+        'uxviews_vue_equipe_modifiee', "Vue d'équipe modifiée")
     # NTLOG38 — rappel J-3 (beat quotidien) sur une `transport.EtapeTransport`
     # dont `date_prevue` est dépassée et `statut_etape` != fait : notifie le
     # responsable transport (motif `apps.sav.tasks._responsables`), une
@@ -370,6 +385,26 @@ class EventType(models.TextChoices):
     CONSENTEMENT_RETIRE_TRAITE = (
         'consentement_retire_traite',
         'Traitement d\'une personne ayant retiré son consentement')
+    # NTAPI11 — un endpoint webhook SORTANT (apps.publicapi.Webhook) accumule
+    # assez d'échecs consécutifs pour être considéré MORT : il est
+    # automatiquement désactivé, et l'admin du tenant en est averti. La
+    # réactivation reste un geste MANUEL explicite — jamais une remise en
+    # service automatique vers une cible qui a cessé de répondre.
+    API_WEBHOOK_DESACTIVE = (
+        'api_webhook_desactive', 'Webhook désactivé automatiquement')
+    # NTOBS6 — l'export de réversibilité complet d'un tenant (ZIP CSV+fichiers,
+    # core.export_registry) devient téléchargeable : notifie le demandeur avec
+    # le lien tokenisé (7 jours, core.signed_download).
+    EXPORT_REVERSIBILITE_PRET = (
+        'export_reversibilite_pret', 'Export de vos données prêt')
+    # NTOBS9 — une fenêtre de maintenance planifiée (core.MaintenanceWindow)
+    # approche (24h/1h avant) ou est annulée : notifie les admins concernés.
+    MAINTENANCE_WINDOW_ANNOUNCED = (
+        'maintenance_window_announced', 'Fenêtre de maintenance annoncée')
+    # NTOBS13 — une ressource mesurée (core.usage_limits) franchit 80% ou
+    # 100% de son quota : notifie les admins du tenant concerné.
+    USAGE_QUOTA_SEUIL_FRANCHI = (
+        'usage_quota_seuil_franchi', 'Seuil de quota atteint')
     # VTA7 — « une visite t'est assignée ». Clé DISTINCTE des deux bords du feu
     # vert : c'est le seul message qui arrive AVANT la visite, au commercial
     # terrain, et qui doit atterrir dans sa journée. La fondre avec

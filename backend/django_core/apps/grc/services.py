@@ -597,3 +597,835 @@ def publier_politique(politique, auteur=''):
         politique.save(update_fields=[
             'version', 'statut', 'date_publication', 'updated_at'])
     return version
+
+
+# ── NTGRC20 — attestation de lecture d'une politique ────────────────────────
+
+class AttestationImpossible(ValueError):
+    """Attestation refusée (politique non publiée, nom manquant…).
+
+    Traduite en 400 par la vue — jamais 500 — et le message NOMME le champ
+    fautif, comme partout ailleurs dans le dépôt.
+    """
+
+    def __init__(self, message, champ='detail'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def preuve_requete(request):
+    """Preuve technique d'un geste (IP + user-agent), posée CÔTÉ SERVEUR.
+
+    Jamais lue du corps de la requête : une preuve que l'appelant fournit
+    lui-même ne prouve rien. Best-effort — un en-tête manquant donne une
+    chaîne vide, jamais une exception.
+    """
+    if request is None:
+        return {}
+    meta = getattr(request, 'META', {}) or {}
+    transmis = meta.get('HTTP_X_FORWARDED_FOR', '')
+    if transmis:
+        ip = transmis.split(',')[0].strip()[:45]
+    else:
+        ip = (meta.get('REMOTE_ADDR') or '')[:45]
+    return {
+        'ip': ip,
+        'user_agent': (meta.get('HTTP_USER_AGENT') or '')[:512],
+        'atteste_le': timezone.now().isoformat(),
+    }
+
+
+def attester_politique(company, politique, *, employe_ref='', nom_saisi='',
+                       attestant_nom='', preuve=None):
+    """Enregistre l'attestation de lecture de la VERSION COURANTE.
+
+    Renvoie ``(attestation, creee)``. IDEMPOTENT : ré-attester la même version
+    renvoie la ligne existante sans en créer une seconde (un double clic ne
+    doit pas gonfler le taux d'attestation — c'est le genre d'écart qu'un
+    auditeur repère immédiatement).
+
+    Refus explicites, chacun nommant son champ :
+      * politique non publiée (``version`` = 0) — on n'atteste pas un
+        brouillon, qui peut encore changer sous les yeux du lecteur ;
+      * ``nom_saisi`` vide — c'est le geste de signature (loi 53-05) ; sans
+        lui il n'y a qu'un clic anonyme.
+    """
+    from .models import AttestationPolitique, PolitiqueInterne
+
+    version = int(getattr(politique, 'version', 0) or 0)
+    if politique.statut != PolitiqueInterne.STATUT_PUBLIEE or version < 1:
+        raise AttestationImpossible(
+            'Cette politique n\'est pas publiée : il n\'y a pas encore de '
+            'version figée à attester.', champ='politique')
+    nom_saisi = (nom_saisi or '').strip()
+    if not nom_saisi:
+        raise AttestationImpossible(
+            'Saisissez votre nom pour attester avoir lu cette politique '
+            '(loi 53-05).', champ='nom_saisi')
+
+    employe_ref = str(employe_ref or '').strip()[:64]
+    if employe_ref:
+        existante = AttestationPolitique.objects.filter(
+            company=company, politique=politique, version_attestee=version,
+            employe_ref=employe_ref).first()
+        if existante is not None:
+            return existante, False
+
+    attestation = AttestationPolitique.objects.create(
+        company=company,
+        politique=politique,
+        version_attestee=version,
+        employe_ref=employe_ref,
+        attestant_nom=(attestant_nom or nom_saisi)[:160],
+        nom_saisi=nom_saisi[:160],
+        preuve=preuve or {},
+    )
+    return attestation, True
+
+
+# ── NTGRC22 — questionnaires de conformité fournisseurs ─────────────────────
+
+class TransitionQuestionnaireInterdite(ValueError):
+    """Transition de statut illégale sur un ``QuestionnaireFournisseur``.
+
+    Traduite en 400 par la vue (jamais 500) ; le message NOMME les deux
+    statuts, en français.
+    """
+
+
+def _transitions_questionnaire(statut):
+    from .models import QuestionnaireFournisseur as Q
+
+    table = {
+        Q.STATUT_ENVOYE: {Q.STATUT_EN_COURS, Q.STATUT_COMPLETE,
+                          Q.STATUT_REFUSE},
+        Q.STATUT_EN_COURS: {Q.STATUT_COMPLETE, Q.STATUT_REFUSE},
+        # On ne valide/refuse qu'un questionnaire COMPLET : juger sur des
+        # réponses manquantes, c'est juger sur rien.
+        Q.STATUT_COMPLETE: {Q.STATUT_VALIDE, Q.STATUT_REFUSE},
+        # Terminaux : on renvoie un NOUVEAU questionnaire, on ne rouvre pas
+        # celui sur lequel un avis a déjà été rendu.
+        Q.STATUT_VALIDE: set(),
+        Q.STATUT_REFUSE: set(),
+    }
+    return table.get(statut, set())
+
+
+def changer_statut_questionnaire(questionnaire, cible):
+    """Fait avancer un questionnaire fournisseur (garde de transition)."""
+    from .models import QuestionnaireFournisseur
+
+    libelles = dict(QuestionnaireFournisseur.STATUT_CHOICES)
+    if cible not in libelles:
+        raise TransitionQuestionnaireInterdite(
+            f'Statut « {cible} » inconnu pour un questionnaire fournisseur.')
+    if cible not in _transitions_questionnaire(questionnaire.statut):
+        raise TransitionQuestionnaireInterdite(
+            'Transition impossible : un questionnaire « '
+            f'{libelles.get(questionnaire.statut, questionnaire.statut)} » ne '
+            f'peut pas passer à « {libelles[cible]} ».')
+    questionnaire.statut = cible
+    questionnaire.save(update_fields=['statut', 'updated_at'])
+    return questionnaire
+
+
+def recalculer_questionnaire(questionnaire):
+    """Recalcule le SCORE et, s'il y a lieu, fait passer le questionnaire à
+    « complété ».
+
+    * score = part des réponses CONFORMES sur le TOTAL des questions (0-100).
+      Le dénominateur est le total, pas le nombre de questions évaluées :
+      sinon une seule question conforme sur trente afficherait 100 %.
+    * « complété » dès que toutes les questions OBLIGATOIRES portent une
+      réponse non vide. Un questionnaire déjà validé ou refusé n'est jamais
+      rétrogradé — un avis rendu ne se défait pas parce qu'on a retouché une
+      ligne.
+
+    Renvoie le questionnaire rafraîchi.
+    """
+    from .models import QuestionnaireFournisseur
+
+    reponses = list(questionnaire.reponses.all())
+    total = len(reponses)
+    conformes = sum(1 for r in reponses if r.conforme is True)
+    score = int(round(100.0 * conformes / total)) if total else 0
+
+    champs = []
+    if questionnaire.score != score:
+        questionnaire.score = score
+        champs.append('score')
+
+    obligatoires = [r for r in reponses if r.obligatoire]
+    a_repondre = obligatoires or reponses
+    complet = bool(a_repondre) and all(r.est_repondue for r in a_repondre)
+    if complet and questionnaire.statut in (
+            QuestionnaireFournisseur.STATUT_ENVOYE,
+            QuestionnaireFournisseur.STATUT_EN_COURS):
+        questionnaire.statut = QuestionnaireFournisseur.STATUT_COMPLETE
+        champs.append('statut')
+    elif (not complet
+            and questionnaire.statut == QuestionnaireFournisseur.STATUT_ENVOYE
+            and any(r.est_repondue for r in reponses)):
+        questionnaire.statut = QuestionnaireFournisseur.STATUT_EN_COURS
+        champs.append('statut')
+
+    if champs:
+        questionnaire.save(update_fields=champs + ['updated_at'])
+    return questionnaire
+
+
+# ── NTGRC23 — modèles de questionnaire + instanciation ──────────────────────
+
+def questions_du_modele(modele):
+    """Normalise les questions d'un modèle en une liste EXPLOITABLE.
+
+    Accepte les deux écritures rencontrées en vrai : une liste de dicts
+    ``{intitule, obligatoire, type_reponse}`` ou une liste de chaînes (une
+    trame saisie vite fait). Une entrée sans intitulé est ignorée — instancier
+    une question vide ne produirait qu'une ligne que personne ne peut remplir.
+    """
+    brut = modele.questions if isinstance(modele.questions, list) else []
+    normalisees = []
+    for entree in brut:
+        if isinstance(entree, str):
+            intitule, obligatoire = entree.strip(), True
+        elif isinstance(entree, dict):
+            intitule = str(entree.get('intitule') or '').strip()
+            obligatoire = entree.get('obligatoire', True)
+            obligatoire = True if obligatoire is None else bool(obligatoire)
+        else:
+            continue
+        if not intitule:
+            continue
+        normalisees.append({'intitule': intitule,
+                            'obligatoire': obligatoire})
+    return normalisees
+
+
+def instancier_questionnaire(modele, fournisseur_ref='', *, date_envoi=None,
+                             date_echeance=None, evaluateur=''):
+    """Crée un ``QuestionnaireFournisseur`` prérempli depuis un modèle.
+
+    Les questions sont COPIÉES (pas référencées) : éditer le modèle plus tard
+    ne réécrit pas un questionnaire déjà envoyé. La société est celle du
+    modèle — jamais lue du corps d'une requête.
+    """
+    from django.db import transaction
+
+    from .models import QuestionnaireFournisseur, ReponseQuestionnaire
+
+    questions = questions_du_modele(modele)
+    with transaction.atomic():
+        questionnaire = QuestionnaireFournisseur.objects.create(
+            company=modele.company,
+            fournisseur_ref=str(fournisseur_ref or '').strip()[:64],
+            type=modele.type,
+            statut=QuestionnaireFournisseur.STATUT_ENVOYE,
+            date_envoi=date_envoi or timezone.now().date(),
+            date_echeance=date_echeance,
+            evaluateur=(evaluateur or '')[:160],
+            modele_ref=str(modele.pk),
+        )
+        ReponseQuestionnaire.objects.bulk_create([
+            ReponseQuestionnaire(
+                company=modele.company,
+                questionnaire=questionnaire,
+                ordre=rang,
+                question=question['intitule'],
+                obligatoire=question['obligatoire'],
+            )
+            for rang, question in enumerate(questions, start=1)
+        ])
+    return questionnaire
+
+
+# ── NTGRC24 — portail PUBLIC fournisseur (répondre sans compte) ─────────────
+
+#: Durée de vie par défaut d'un lien public de questionnaire, en jours.
+DELAI_LIEN_QUESTIONNAIRE_JOURS = 30
+
+
+class LienQuestionnaireInvalide(Exception):
+    """Jeton inconnu, expiré, ou questionnaire déjà arbitré.
+
+    Porte un ``code`` HTTP suggéré (404 / 410 / 409) : la vue le traduit tel
+    quel. Un fournisseur honnête doit pouvoir distinguer « ce lien a expiré »
+    de « ce lien n'existe pas » — les jetons font 32 octets d'entropie, il n'y
+    a rien à énumérer, et le silence ne protégerait que notre confort.
+    """
+
+    def __init__(self, message, code=404):
+        super().__init__(message)
+        self.code = code
+
+
+def emettre_lien_questionnaire(questionnaire, jours=None):
+    """Émet (ou renouvelle) le jeton d'accès public d'un questionnaire.
+
+    Renouveler INVALIDE l'ancien lien : c'est le comportement attendu quand on
+    « relance » un fournisseur après un départ de contact. Renvoie le
+    questionnaire rafraîchi.
+    """
+    jours = DELAI_LIEN_QUESTIONNAIRE_JOURS if jours is None else int(jours)
+    questionnaire.token_acces = secrets.token_urlsafe(32)[:64]
+    questionnaire.token_expire_le = timezone.now() + timezone.timedelta(
+        days=max(1, jours))
+    questionnaire.save(update_fields=[
+        'token_acces', 'token_expire_le', 'updated_at'])
+    return questionnaire
+
+
+def questionnaire_par_token(token, now=None):
+    """Résout un questionnaire par son jeton public, ou lève.
+
+    Aucune société n'est demandée : le jeton EST la clé, et il est déjà lié à
+    une seule société — aucun accès inter-tenant n'est donc possible (on ne
+    peut pas « deviner » le jeton d'un autre tenant).
+    """
+    from .models import QuestionnaireFournisseur
+
+    token = (token or '').strip()
+    if not token:
+        raise LienQuestionnaireInvalide(
+            'Lien de questionnaire invalide.', code=404)
+    questionnaire = QuestionnaireFournisseur.objects.filter(
+        token_acces=token).first()
+    if questionnaire is None:
+        raise LienQuestionnaireInvalide(
+            'Lien de questionnaire invalide.', code=404)
+    maintenant = now or timezone.now()
+    if (questionnaire.token_expire_le
+            and questionnaire.token_expire_le < maintenant):
+        raise LienQuestionnaireInvalide(
+            'Ce lien a expiré. Demandez-en un nouveau à votre contact.',
+            code=410)
+    return questionnaire
+
+
+def vue_publique_questionnaire(questionnaire):
+    """Contenu PUBLIC d'un questionnaire : ses questions, rien d'autre.
+
+    Volontairement SANS identifiants internes, sans fournisseur_ref, sans
+    score et sans évaluateur : le fournisseur répond à des questions, il n'a
+    pas à voir la notation interne que l'on fait de lui. Les questions sont
+    désignées par leur ``ordre``, stable et non énumérable.
+    """
+    return {
+        'type': questionnaire.type,
+        'type_libelle': questionnaire.get_type_display(),
+        'statut': questionnaire.statut,
+        'date_echeance': (questionnaire.date_echeance.isoformat()
+                          if questionnaire.date_echeance else None),
+        'expire_le': (questionnaire.token_expire_le.isoformat()
+                      if questionnaire.token_expire_le else None),
+        'soumis_le': (questionnaire.date_soumission.isoformat()
+                      if questionnaire.date_soumission else None),
+        'questions': [
+            {
+                'ordre': reponse.ordre,
+                'question': reponse.question,
+                'obligatoire': reponse.obligatoire,
+                'reponse': reponse.reponse,
+                'commentaire': reponse.commentaire,
+            }
+            for reponse in questionnaire.reponses.all()
+        ],
+    }
+
+
+def soumettre_questionnaire_public(questionnaire, reponses, *, preuve=None,
+                                   now=None):
+    """Enregistre les réponses déposées par le fournisseur, sans compte.
+
+    ``reponses`` est une liste de ``{ordre, reponse, commentaire}``. Un
+    ``ordre`` inconnu est IGNORÉ (jamais une création de question par le
+    fournisseur : il répond, il ne rédige pas le questionnaire). ``conforme``
+    n'est JAMAIS écrit ici — c'est l'évaluation interne, elle n'appartient pas
+    au répondant.
+
+    Le statut est ensuite recalculé : « complété » dès que toutes les
+    questions obligatoires portent une réponse. L'horodatage et l'IP sont
+    posés CÔTÉ SERVEUR.
+    """
+    from django.db import transaction
+
+    from .models import QuestionnaireFournisseur
+
+    if questionnaire.statut in (QuestionnaireFournisseur.STATUT_VALIDE,
+                                QuestionnaireFournisseur.STATUT_REFUSE):
+        raise LienQuestionnaireInvalide(
+            'Ce questionnaire a déjà été arbitré : il n\'est plus '
+            'modifiable.', code=409)
+
+    par_ordre = {r.ordre: r for r in questionnaire.reponses.all()}
+    a_sauver = []
+    for entree in (reponses or []):
+        if not isinstance(entree, dict):
+            continue
+        try:
+            ordre = int(entree.get('ordre'))
+        except (TypeError, ValueError):
+            continue
+        cible = par_ordre.get(ordre)
+        if cible is None:
+            continue
+        cible.reponse = str(entree.get('reponse') or '')
+        cible.commentaire = str(entree.get('commentaire') or '')
+        a_sauver.append(cible)
+
+    maintenant = now or timezone.now()
+    with transaction.atomic():
+        for cible in a_sauver:
+            cible.save(update_fields=['reponse', 'commentaire', 'updated_at'])
+        questionnaire.date_soumission = maintenant
+        questionnaire.preuve_soumission = preuve or {}
+        questionnaire.save(update_fields=[
+            'date_soumission', 'preuve_soumission', 'updated_at'])
+        recalculer_questionnaire(questionnaire)
+    questionnaire.refresh_from_db()
+    return questionnaire
+
+
+# ── NTGRC25 — incidents de sécurité (distincts des violations) ──────────────
+
+class TransitionIncidentInterdite(ValueError):
+    """Transition de statut illégale sur un ``IncidentSecurite``.
+
+    Traduite en 400 par la vue (jamais 500) ; le message NOMME les deux
+    statuts, en français.
+    """
+
+
+class EscaladeImpossible(ValueError):
+    """Escalade refusée (incident déjà escaladé…). Traduite en 400/409."""
+
+
+def creer_incident(company, **champs):
+    """Crée un ``IncidentSecurite`` avec sa référence INC race-safe.
+
+    Numérotation par ``core.numbering`` (plus-haut-utilisé + 1 par société et
+    par mois) — JAMAIS ``count() + 1``, qui entre en collision dès qu'une
+    ligne est supprimée.
+    """
+    from core.numbering import create_with_reference
+
+    from .models import IncidentSecurite
+
+    def _save(reference):
+        return IncidentSecurite.objects.create(
+            company=company, reference=reference, **champs)
+
+    return create_with_reference(
+        IncidentSecurite, IncidentSecurite.REFERENCE_PREFIX, company, _save)
+
+
+def _transitions_incident(statut):
+    from .models import IncidentSecurite as Inc
+
+    table = {
+        Inc.STATUT_OUVERT: {Inc.STATUT_EN_COURS, Inc.STATUT_RESOLU,
+                            Inc.STATUT_CLOS},
+        Inc.STATUT_EN_COURS: {Inc.STATUT_RESOLU, Inc.STATUT_CLOS},
+        Inc.STATUT_RESOLU: {Inc.STATUT_CLOS, Inc.STATUT_EN_COURS},
+        # Terminal : un incident clos ne se rouvre pas — on en ouvre un
+        # nouveau, qui repart avec sa propre chronologie.
+        Inc.STATUT_CLOS: set(),
+    }
+    return table.get(statut, set())
+
+
+def changer_statut_incident(incident, cible, user=None):
+    """Fait avancer un incident de sécurité (garde de transition)."""
+    from .models import IncidentSecurite
+
+    libelles = dict(IncidentSecurite.STATUT_CHOICES)
+    if cible not in libelles:
+        raise TransitionIncidentInterdite(
+            f'Statut « {cible} » inconnu pour un incident de sécurité.')
+    if cible not in _transitions_incident(incident.statut):
+        raise TransitionIncidentInterdite(
+            'Transition impossible : un incident « '
+            f'{libelles.get(incident.statut, incident.statut)} » ne peut pas '
+            f'passer à « {libelles[cible]} ».')
+    ancien = incident.statut
+    incident.statut = cible
+    incident.save(update_fields=['statut', 'updated_at'])
+    journaliser_transition_incident(incident, ancien, cible, user=user)
+    return incident
+
+
+def journaliser_transition_incident(incident, ancien, nouveau, user=None):
+    """NTGRC26 — écrit la transition de statut dans le chatter PLATEFORME.
+
+    Appelée par le service de transition, de sorte qu'AUCUN changement de
+    statut ne puisse échapper au journal — un chatter branché sur la vue rate
+    toujours les changements faits par un autre chemin de code.
+
+    Écrit dans ``records.Activity`` via ``records.services.log_activity``
+    (ARC8), jamais dans un modèle de chronologie maison : ce dépôt en compte
+    déjà treize à converger, un quatorzième serait de la dette pure.
+
+    Best-effort : une chronologie qui échoue ne doit pas faire échouer le
+    traitement de l'incident lui-même.
+    """
+    from .models import IncidentSecurite
+
+    libelles = dict(IncidentSecurite.STATUT_CHOICES)
+    try:
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+
+        return log_activity(
+            incident, Activity.Kind.MODIFICATION, user=user,
+            field='statut', field_label='Statut',
+            old_value=libelles.get(ancien, ancien),
+            new_value=libelles.get(nouveau, nouveau),
+            company=incident.company)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'incident
+        logger.exception(
+            'grc: chronologie d\'incident impossible (%s)',
+            getattr(incident, 'pk', None))
+        return None
+
+
+def noter_incident(incident, detail, user=None):
+    """NTGRC26 — ajoute une NOTE manuelle à la chronologie d'un incident.
+
+    L'auteur et la société sont posés CÔTÉ SERVEUR par
+    ``records.services.log_note`` — jamais lus du corps de la requête.
+    """
+    from apps.records.services import log_note
+
+    detail = (detail or '').strip()
+    if not detail:
+        raise ValueError('La note est vide.')
+    return log_note(incident, user, detail, company=incident.company)
+
+
+def chronologie_incident(incident):
+    """NTGRC26 — timeline du chatter de l'incident (plus récent d'abord)."""
+    from apps.records.services import chatter_qs
+
+    return chatter_qs(incident, company=incident.company)
+
+
+def escalader_incident_en_violation(incident, **champs):
+    """Crée la ``ViolationDonnees`` correspondant à un incident, et la relie.
+
+    Appelée quand l'incident touche EFFECTIVEMENT des données personnelles.
+    La violation naît avec SA propre date de détection (celle de l'incident
+    par défaut) : c'est elle qui fait courir le délai légal de 72 h.
+
+    IDEMPOTENT : un incident déjà escaladé ne crée pas une seconde violation
+    (deux dossiers réglementaires pour un même fait, c'est exactement ce qu'un
+    contrôleur relève). Le lien est un identifiant TEXTE, comme partout dans
+    ce module.
+    """
+    if (incident.violation_donnees_ref or '').strip():
+        raise EscaladeImpossible(
+            'Cet incident a déjà été escaladé en violation de données '
+            f'(référence {incident.violation_donnees_ref}).')
+
+    champs.setdefault('date_detection', incident.date_detection)
+    champs.setdefault('date_incident', incident.date_detection)
+    champs.setdefault('gravite', incident.severite)
+    champs.setdefault(
+        'risque_personnes',
+        (incident.impact or '').strip()
+        or f'Escalade de l\'incident {incident.reference}.')
+    champs.setdefault('mesures_prises', (incident.description or '').strip())
+
+    violation = creer_violation(incident.company, **champs)
+    incident.violation_donnees_ref = str(violation.pk)
+    incident.save(update_fields=['violation_donnees_ref', 'updated_at'])
+    return violation
+
+
+# ── NTGRC27 — analyses d'impact (AIPD) ──────────────────────────────────────
+
+class ValidationDPIAImpossible(ValueError):
+    """Validation d'AIPD refusée. Traduite en 400 par la vue, jamais 500."""
+
+    def __init__(self, message, champ='detail'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def valider_dpia(analyse, quand=None):
+    """Valide une AIPD : statut et date de validation bougent ENSEMBLE.
+
+    Refusé si le risque résiduel est ÉLEVÉ sans avis du DPO : une analyse qui
+    conclut « risque élevé » et que personne n'a arbitrée est précisément le
+    cas où l'autorité doit être consultée — la valider en silence serait
+    l'inverse de ce que sert une AIPD.
+    """
+    from .models import AnalyseImpactDPIA
+
+    if (analyse.necessite_dpia
+            and not (analyse.mesures_attenuation or '').strip()):
+        raise ValidationDPIAImpossible(
+            'Décrivez les mesures d\'atténuation avant de valider '
+            'l\'analyse.', champ='mesures_attenuation')
+    if (analyse.risque_residuel == AnalyseImpactDPIA.RISQUE_ELEVE
+            and not (analyse.avis_dpo or '').strip()):
+        raise ValidationDPIAImpossible(
+            'Un risque résiduel élevé exige l\'avis du DPO (et, le cas '
+            'échéant, la consultation de la CNDP).', champ='avis_dpo')
+
+    analyse.statut = AnalyseImpactDPIA.STATUT_VALIDEE
+    analyse.date_validation = quand or timezone.now()
+    analyse.save(update_fields=['statut', 'date_validation', 'updated_at'])
+    return analyse
+
+
+def demander_revision_dpia(analyse):
+    """Repasse une AIPD en « à réviser » (le traitement a changé)."""
+    from .models import AnalyseImpactDPIA
+
+    analyse.statut = AnalyseImpactDPIA.STATUT_A_REVISER
+    analyse.save(update_fields=['statut', 'updated_at'])
+    return analyse
+
+
+# ── NTGRC31 — e-discovery : mise sous séquestre des résultats ───────────────
+
+#: Périmètres e-discovery qu'un séquestre transverse sait réellement GELER.
+#: Le journal d'activité en est absent À DESSEIN : il est déjà protégé par sa
+#: propre rétention plancher (``audit.selectors.AUDIT_RETENTION_FLOOR_DAYS``)
+#: et une ligne de journal ne « s'anonymise » pas. Prétendre la geler ici
+#: écrirait un périmètre que rien n'applique — pire qu'un périmètre absent.
+TYPES_GELABLES = ('crm_client', 'crm_lead')
+
+
+def placer_resultats_sous_hold(company, resultats, *, nom, motif=None,
+                               demandeur='', base_juridique=''):
+    """NTGRC31 — crée un ``LegalHold`` couvrant les résultats d'une recherche.
+
+    ``resultats`` est le dict ``{type_objet: [{id, …}]}`` renvoyé par
+    ``rechercher_e_discovery``. Seuls les types RÉELLEMENT gelables entrent
+    dans le périmètre (``TYPES_GELABLES``) ; les autres sont ignorés et le
+    séquestre ne prétend pas les couvrir.
+
+    Renvoie ``(hold, types_ignores)`` — ou ``(None, types_ignores)`` si aucun
+    résultat gelable : créer un séquestre vide donnerait l'illusion d'une
+    protection inexistante.
+    """
+    from .models import LegalHold
+
+    perimetre = []
+    ignores = []
+    for type_objet, lignes in sorted((resultats or {}).items()):
+        ids = sorted({
+            ligne.get('id') for ligne in (lignes or [])
+            if isinstance(ligne, dict) and ligne.get('id') is not None
+        })
+        if not ids:
+            continue
+        if type_objet not in TYPES_GELABLES:
+            ignores.append(type_objet)
+            continue
+        perimetre.append({'type_objet': type_objet, 'filtre': {'ids': ids}})
+
+    if not perimetre:
+        return None, ignores
+
+    hold = LegalHold.objects.create(
+        company=company,
+        nom=(nom or 'Séquestre e-discovery')[:160],
+        motif=motif or LegalHold.MOTIF_LITIGE,
+        perimetre=perimetre,
+        date_debut=timezone.now().date(),
+        statut=LegalHold.STATUT_ACTIF,
+        demandeur=(demandeur or '')[:160],
+        base_juridique=base_juridique or '',
+    )
+    return hold, ignores
+
+
+# ── NTGRC32 — dossier de conformité pour un auditeur externe ────────────────
+
+#: Les SIX exports du dossier, dans l'ordre où un auditeur les demande.
+#: L'ordre est stable : un dossier dont la composition change d'un export à
+#: l'autre est impossible à comparer d'une année sur l'autre.
+EXPORTS_DOSSIER = (
+    'registre-traitements.csv',
+    'registre-risques.csv',
+    'tests-controle.csv',
+    'politiques-publiees.csv',
+    'journal-destruction.csv',
+    'violations-donnees.csv',
+)
+
+
+def _csv(entetes, lignes):
+    """Rend un CSV UTF-8 (avec BOM) — Excel marocain l'ouvre sans mojibake."""
+    import csv
+    import io
+
+    tampon = io.StringIO()
+    writer = csv.writer(tampon, delimiter=';', lineterminator='\n')
+    writer.writerow(entetes)
+    for ligne in lignes:
+        writer.writerow(['' if v is None else v for v in ligne])
+    return ('﻿' + tampon.getvalue()).encode('utf-8')
+
+
+def _iso(valeur):
+    return valeur.isoformat() if valeur else ''
+
+
+def exports_dossier_conformite(company):
+    """Les six exports du dossier, en mémoire : ``{nom_fichier: bytes}``.
+
+    RÈGLE ABSOLUE de contenu : aucun PRIX D'ACHAT (il n'apparaît dans aucun
+    de ces registres et ne doit jamais y entrer), et aucune DONNÉE
+    PERSONNELLE BRUTE non nécessaire — le journal de destruction n'expose que
+    des identifiants techniques et des EMPREINTES, le registre des violations
+    des catégories et des comptes. Un dossier d'audit qui recopie les données
+    qu'on vient d'effacer serait lui-même le manquement.
+    """
+    from core.models import RegistreTraitement
+
+    from .models import (
+        ControleInterne, JournalDestruction, PolitiqueInterne,
+        RisqueEntreprise, TestControle, ViolationDonnees,
+    )
+
+    fichiers = {}
+
+    fichiers['registre-traitements.csv'] = _csv(
+        ['code', 'finalite', 'base_legale', 'categories_donnees',
+         'categories_personnes', 'destinataires', 'duree_conservation',
+         'donnees_sensibles', 'numero_recepisse', 'actif'],
+        [
+            [t.code, t.finalite, t.base_legale, t.categories_donnees,
+             t.categories_personnes, t.destinataires, t.duree_conservation,
+             'oui' if t.donnees_sensibles else 'non', t.numero_recepisse,
+             'oui' if t.actif else 'non']
+            for t in RegistreTraitement.objects.filter(
+                company=company).order_by('code', 'id')
+        ])
+
+    fichiers['registre-risques.csv'] = _csv(
+        ['reference', 'titre', 'categorie', 'proprietaire', 'probabilite',
+         'impact', 'criticite_inherente', 'reponse', 'criticite_residuelle',
+         'statut', 'date_revue_prevue'],
+        [
+            [r.reference, r.titre, r.get_categorie_display(), r.proprietaire,
+             r.probabilite, r.impact, r.criticite_inherente,
+             r.get_reponse_display(), r.criticite_residuelle,
+             r.get_statut_display(), _iso(r.date_revue_prevue)]
+            for r in RisqueEntreprise.objects.filter(
+                company=company).order_by('reference', 'id')
+        ])
+
+    controles = {
+        c.pk: c for c in ControleInterne.objects.filter(company=company)}
+    fichiers['tests-controle.csv'] = _csv(
+        ['controle_code', 'controle_intitule', 'date_prevue', 'date_realisee',
+         'testeur', 'resultat', 'echantillon_taille', 'conclusion'],
+        [
+            [(controles.get(t.controle_id).code
+              if controles.get(t.controle_id) else ''),
+             (controles.get(t.controle_id).intitule
+              if controles.get(t.controle_id) else ''),
+             _iso(t.date_prevue), _iso(t.date_realisee), t.testeur,
+             t.get_resultat_display(), t.echantillon_taille, t.conclusion]
+            for t in TestControle.objects.filter(
+                company=company).order_by('date_prevue', 'id')
+        ])
+
+    fichiers['politiques-publiees.csv'] = _csv(
+        ['titre', 'categorie', 'version', 'date_publication', 'proprietaire',
+         'cible'],
+        [
+            [p.titre, p.get_categorie_display(), p.version,
+             _iso(p.date_publication), p.proprietaire,
+             p.get_cible_display()]
+            for p in PolitiqueInterne.objects.filter(
+                company=company, statut=PolitiqueInterne.STATUT_PUBLIEE
+            ).order_by('titre', 'id')
+        ])
+
+    fichiers['journal-destruction.csv'] = _csv(
+        ['horodatage', 'type_objet', 'objet_ref', 'action', 'motif',
+         'executee_par', 'empreinte_avant'],
+        [
+            [_iso(j.created_at), j.type_objet, j.objet_ref,
+             j.get_action_display(), j.motif, j.executee_par,
+             j.empreinte_avant]
+            for j in JournalDestruction.objects.filter(
+                company=company).order_by('created_at', 'id')
+        ])
+
+    fichiers['violations-donnees.csv'] = _csv(
+        ['reference', 'date_detection', 'date_incident', 'nature',
+         'gravite', 'nombre_personnes_estime', 'echeance_72h',
+         'date_notification_cndp', 'statut'],
+        [
+            [v.reference, _iso(v.date_detection), _iso(v.date_incident),
+             v.get_nature_display(), v.get_gravite_display(),
+             v.nombre_personnes_estime, _iso(v.date_echeance_72h),
+             _iso(v.date_notification_cndp), v.get_statut_display()]
+            for v in ViolationDonnees.objects.filter(
+                company=company).order_by('date_detection', 'id')
+        ])
+
+    return fichiers
+
+
+def empreinte_globale(entrees):
+    """SHA-256 VÉRIFIABLE de l'ensemble du dossier.
+
+    Calculée sur une chaîne canonique ``nom:sha256`` triée par nom : un
+    auditeur qui recalcule l'empreinte de chaque fichier peut REFAIRE ce
+    calcul et comparer. Une empreinte qu'on ne peut pas reproduire ne prouve
+    rien — c'est tout l'intérêt de publier la recette.
+    """
+    canon = '\n'.join(
+        f"{entree['nom']}:{entree['sha256']}"
+        for entree in sorted(entrees, key=lambda e: e['nom']))
+    return hashlib.sha256(canon.encode('utf-8')).hexdigest()
+
+
+def construire_dossier_conformite(company, now=None):
+    """NTGRC32 — ZIP horodaté + manifeste SHA-256, prêt pour un auditeur.
+
+    Renvoie ``(octets_zip, manifeste)``. Le manifeste liste les SIX exports
+    avec leur taille et leur empreinte, plus une ``empreinte_globale``
+    reproductible (voir :func:`empreinte_globale`).
+    """
+    import io
+    import json
+    import zipfile
+
+    maintenant = now or timezone.now()
+    fichiers = exports_dossier_conformite(company)
+
+    entrees = [
+        {
+            'nom': nom,
+            'taille_octets': len(fichiers[nom]),
+            'sha256': hashlib.sha256(fichiers[nom]).hexdigest(),
+        }
+        for nom in EXPORTS_DOSSIER
+    ]
+    manifeste = {
+        'societe': getattr(company, 'nom', '') or '',
+        'genere_le': maintenant.isoformat(),
+        'algorithme': 'sha256',
+        'fichiers': entrees,
+        'empreinte_globale': empreinte_globale(entrees),
+        'note': ('Empreinte globale = SHA-256 de la chaîne « nom:sha256 » de '
+                 'chaque fichier, triée par nom et jointe par retours à la '
+                 'ligne. Recalculable par l\'auditeur.'),
+    }
+
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for nom in EXPORTS_DOSSIER:
+            archive.writestr(nom, fichiers[nom])
+        archive.writestr(
+            'manifeste.json',
+            json.dumps(manifeste, ensure_ascii=False, indent=2))
+    return tampon.getvalue(), manifeste

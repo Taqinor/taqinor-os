@@ -7,6 +7,7 @@ import {
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
   Ship, Route, Layers, Repeat, Trash2,
+  Leaf, DatabaseBackup, HardDriveDownload, Gauge, Cable,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -104,11 +105,35 @@ const Playbooks = lazy(() => import('./Playbooks'))
 // WIR8 — Paramètres → Hôtellerie : taxe de séjour (singleton société, réservé
 // responsable/admin — reflète `IsResponsableOrAdmin` côté backend).
 const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
+// NTOBS5 — Paramètres → Fiabilité → Sauvegardes : lecture seule du statut
+// des sauvegardes/drills déjà produits (YOPSB1/2). Nav ET route ensemble
+// (motif PACT150 : ne jamais répéter l'oubli de menu d'AchatsParametresPage).
+const SauvegardesPage = lazy(() => import('../../pages/parametres/SauvegardesPage'))
+// NTOBS7 — Paramètres → Fiabilité → Export de réversibilité (complète NTOBS6).
+// Nav ET route ensemble (motif PACT150).
+const ExportReversibilitePage = lazy(() => import('../../pages/parametres/ExportReversibilitePage'))
+// NTOBS8 — Paramètres → Fiabilité → Limites & usage. Nav ET route ensemble
+// (motif PACT150).
+const LimitesUsagePage = lazy(() => import('../../pages/parametres/LimitesUsagePage'))
+// NTOBS11 — Paramètres → Fiabilité → État des dépendances. Nav ET route
+// ensemble (motif PACT150).
+const EtatDependancesPage = lazy(() => import('../../pages/parametres/EtatDependancesPage'))
+// NTOBS16 — Paramètres → Fiabilité → SLA (destination du badge Dashboard).
+// Nav ET route ensemble (motif PACT150).
+const SlaReportPage = lazy(() => import('../../pages/parametres/SlaReportPage'))
 // WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
 // société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
 // `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
 const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
+// NTP2P30 — wizard de clôture de fin de mois achats (agrégateur lecture
+// seule, atteint depuis /parametres/achats — même patron que /parametres/
+// objets-personnalises pour ses écrans « Enregistrements » : pas d'entrée
+// de menu séparée, la route suffit à le rendre atteignable).
+const ClotureAchatsWizardPage = lazy(() => import('../../pages/parametres/ClotureAchatsWizardPage'))
+// NTESG20 — réglages ESG de la société (seuil de dérive, pilote,
+// fréquence, pondération du badge de maturité). Nav ET route ensemble.
+const ParametresEsgPage = lazy(() => import('../../pages/parametres/ParametresEsgPage'))
 // PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
 // (`ventes.ParametresGammes`, singleton par société) : bascule une/deux
 // gammes, libellés renommables, marque préférée par gamme ET par rôle de
@@ -213,6 +238,8 @@ const config = {
       // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
       // entrée de menu, écran réel de 182 lignes invisible pour toujours.
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTESG20 — nav ET route ensemble (voir commentaire du lazy import).
+      { to: '/parametres/esg', label: 'ESG / RSE', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // PVMRQ — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
       { to: '/parametres/gammes', label: 'Gammes & marques', icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTLOG36 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
@@ -232,6 +259,16 @@ const config = {
       { to: '/parametres/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX27 — réglages UX par tenant (nav ET route ensemble, motif PACT150).
       { to: '/parametres/ux', label: 'UX', icon: <Settings size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS5 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/sauvegardes', label: 'Sauvegardes', icon: <DatabaseBackup size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS7 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/export-reversibilite', label: 'Export de réversibilité', icon: <HardDriveDownload size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS8 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/limites-usage', label: 'Limites & usage', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS11 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/etat-dependances', label: 'État des dépendances', icon: <Cable size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS16 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/sla', label: 'SLA', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -245,6 +282,8 @@ const config = {
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/achats/cloture', component: ClotureAchatsWizardPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/esg', component: ParametresEsgPage, roles: ['admin'] },
     { path: '/parametres/gammes', component: GammesMarquesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
@@ -257,6 +296,11 @@ const config = {
     { path: '/parametres/abonnements', component: AbonnementsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/sauvegardes', component: SauvegardesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/export-reversibilite', component: ExportReversibilitePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/etat-dependances', component: EtatDependancesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/sla', component: SlaReportPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés

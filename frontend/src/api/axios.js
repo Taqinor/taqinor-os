@@ -9,7 +9,7 @@ import { originFrom } from './origin'
 import { errorMessageFrom, toastError } from '../lib/toast'
 // NTADM26 — entité active (filtre d'affichage, module pur sans React ici).
 import { lireEntiteActive } from '../lib/entiteActive'
-import { emitSessionExpired } from '../providers/session-bridge'
+import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
 import { refreshSession } from './refreshCoordinator'
@@ -70,6 +70,16 @@ api.interceptors.response.use(
       !isAuthEndpoint
     ) {
       originalRequest._retry = true
+      // Course pré-auth → post-auth (e2e auth.setup, run 34698649953 du
+      // 12/09/2026) : un 401 PRÉ-connexion (les providers globaux de /login
+      // tirent des endpoints authentifiés) déclenche ce refresh ; l'utilisateur
+      // se connecte PENDANT qu'il est en vol ; l'échec 401 du refresh retombe
+      // APRÈS le login réussi — et les gardes du bridge passent alors (plus sur
+      // /login, session active) : la session NEUVE était « expirée » à tort.
+      // On fige donc l'état de session AVANT le refresh : s'il a basculé
+      // faux→vrai pendant le vol, ce refresh appartenait au monde d'avant — on
+      // rejoue la requête avec les cookies frais au lieu d'expirer la session.
+      const sessionAvantRefresh = sessionEstActive()
       try {
         // Le cookie refresh_token est envoye automatiquement par le navigateur.
         // VX161 — promesse de refresh PARTAGÉE (avec iaApi.js) : N 401
@@ -79,6 +89,9 @@ api.interceptors.response.use(
         return api(originalRequest)
       } catch {
         // Refresh echoue : la session est reellement expiree.
+      }
+      if (!sessionAvantRefresh && sessionEstActive()) {
+        return api(originalRequest)
       }
       // L57 — Ré-authentification gracieuse EN PLACE (pas de rechargement dur,
       // l'état des formulaires ouverts est préservé). Le SessionProvider écoute

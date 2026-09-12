@@ -27,7 +27,9 @@ from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .auth import ApiKeyAuthentication, ApiKeyRateThrottle, QueryTokenAuthentication
+from .auth import (
+    PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, QueryTokenAuthentication,
+)
 from .bulk import (
     BulkJobError, create_export_job, create_import_job, relancer_job,
     _export_registry, _serialize_row,
@@ -84,7 +86,7 @@ class _BulkPostAPIView(PublicApiResponseMixin, APIView):
     `required_scope` fixe (dépend de l'entité demandée — vérifié dans
     `post()`, comme `PublicWriteAPIView` le fait pour son propre scope
     fixe)."""
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [AllowAny]
     throttle_classes = [ApiKeyRateThrottle]
 
@@ -159,7 +161,7 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
     Un job n'est JAMAIS visible hors de la société de la clé
     (``get_queryset``) — cross-tenant impossible quelle que soit la clé
     utilisée, aucun scope métier supplémentaire requis (``HasAnyApiKey``)."""
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [HasAnyApiKey]
     throttle_classes = [ApiKeyRateThrottle]
     serializer_class = BulkJobSerializer
