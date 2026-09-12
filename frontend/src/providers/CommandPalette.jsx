@@ -11,6 +11,7 @@
 //   (a) l'événement window `taqinor:command-palette` (clic du bouton ⌘K du Header)
 //   (b) un raccourci global ⌘K / Ctrl+K.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
@@ -18,6 +19,20 @@ import {
 import {
   filterActions, filterCreateActions, filterContextActions, readRecentEntities, pushRecentEntity,
 } from './commandActions'
+// NTUX9 — actions contextuelles résolues par ÉCRAN (route active), au-delà de
+// la fiche LeadWorkspace montée (LW26 ci-dessous) : « Générer le PDF du devis
+// ouvert » sur /ventes/devis?devis=, « Changer le stage » sur /crm/leads?lead=
+// (« Créer un devis »/« Nouveau lead » restent dans la section « Créer »
+// globale, cf. features/uxviews/contextActions.js). Réutilise les MÊMES
+// endpoints que le reste de l'app (ventesApi.getProposalPdf = même chemin
+// /proposal que l'action catalogue agent `ventes.devis.proposal_pdf`,
+// apps/agent/registry.py) — aucune logique métier dupliquée.
+import { contextActionsForRoute, nextStageFor } from '../features/uxviews/contextActions'
+import ventesApi from '../api/ventesApi'
+import crmApi from '../api/crmApi'
+import { PIPELINE_STAGES } from '../features/crm/stages'
+import { downloadBlob, stampedFilename } from '../utils/downloadBlob'
+import { toast } from '../ui/confirm'
 // VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
 // (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
 import { ROUTE, TYPE_LABEL, TYPE_ACCENT, pathForType, useEntitySearch } from '../lib/search/entityRoutes'
@@ -46,6 +61,7 @@ export function CommandPalette() {
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const navigate = useCrossAppNavigate()
+  const location = useLocation()
   // ODY27 — source UNIQUE de la visibilité des apps (ODY1), zéro liste locale.
   const { isPathVisible } = useAppVisibility()
 
@@ -66,9 +82,47 @@ export function CommandPalette() {
   // que la palette est fermée). `failed` renommé `error` au point d'usage pour
   // ne rien changer au reste du composant.
   const { groups, loading, failed: error } = useEntitySearch(term, { enabled: open })
-  // LW26 — actions contextuelles de la fiche ouverte, filtrées comme les
-  // autres sections d'actions (libellé, insensible à la casse — pas de puce).
-  const contextRows = useMemo(() => filterContextActions(contextActions, term), [contextActions, term])
+
+  // NTUX9 — « Générer le PDF du devis ouvert » : télécharge SANS navigation
+  // (même endpoint que le reste de l'app, `ventesApi.getProposalPdf`).
+  const downloadDevisProposal = useCallback((devisId) => {
+    ventesApi.getProposalPdf(devisId)
+      .then((res) => downloadBlob(res.data, stampedFilename(`devis-${devisId}`, 'pdf')))
+      .catch(() => toast.error('PDF indisponible pour ce devis.'))
+  }, [])
+
+  // NTUX9 — « Changer le stage du lead sélectionné » : avance à l'étape
+  // suivante du funnel (miroir STAGES.py — `features/crm/stages.js`), jamais
+  // un stage inventé côté client. No-op explicite (toast) si le lead est déjà
+  // à la dernière étape active.
+  const changeLeadStage = useCallback((leadId) => {
+    crmApi.getLead(leadId)
+      .then((res) => {
+        const next = nextStageFor(res.data?.stage, PIPELINE_STAGES)
+        if (!next) {
+          toast.error('Ce lead est déjà à la dernière étape active du funnel.')
+          return null
+        }
+        return crmApi.updateLead(leadId, { stage: next })
+      })
+      .then((res) => { if (res) toast.success('Étape du lead mise à jour.') })
+      .catch(() => toast.error("Changement d'étape impossible."))
+  }, [])
+
+  // NTUX9 — actions contextuelles résolues par ÉCRAN (route active), fusionnées
+  // avec les actions « Fiche ouverte » (LW26) dans la même section ci-dessous.
+  const routeContextActions = useMemo(() => contextActionsForRoute(
+    { pathname: location.pathname, searchParams: new URLSearchParams(location.search) },
+    { downloadDevisProposal, changeLeadStage },
+  ), [location.pathname, location.search, downloadDevisProposal, changeLeadStage])
+
+  // LW26/NTUX9 — actions contextuelles (fiche ouverte + écran actif),
+  // filtrées comme les autres sections d'actions (libellé, insensible à la
+  // casse — pas de puce).
+  const contextRows = useMemo(
+    () => filterContextActions([...contextActions, ...routeContextActions], term),
+    [contextActions, routeContextActions, term],
+  )
   // ODY27 — une commande de navigation vers une app absente est RETIRÉE (pas
   // grisée) : la palette ne propose jamais une destination qui répondrait
   // « App non activée ». Un chemin transverse (hors app) reste toujours offert.
