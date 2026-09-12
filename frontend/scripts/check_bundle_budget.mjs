@@ -189,7 +189,10 @@ const PER_CHUNK_BUDGET_KB = 350
 // Recalé au réel + petite marge (~15 Ko), pas au palier généreux habituel :
 // aucun chunk individuel ne dépasse son budget dédié (PER_CHUNK_BUDGET_KB
 // + budgets vendors restent les vrais garde-fous de poids).
-const TOTAL_BUDGET_KB = 3640
+// 2026-09-12 — 3640 -> 3700. Batch 3 du drain NT (~185 tâches) intégré :
+// mesuré 3687.4 Ko en CI (run 34705188854). Recalé au réel + marge ~13 Ko
+// (classe #85) ; les budgets par chunk et vendors restent les garde-fous.
+const TOTAL_BUDGET_KB = 3700
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -300,7 +303,9 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // l'arbre mergé ; recalage au réel combiné + marge (classe #85). Croissance
 // une-route-un-chunk ; le budget gzip + PER_CHUNK_BUDGET_KB (350) restent
 // les vrais garde-fous de poids.
-export const MAX_CHUNK_COUNT = 815
+// 2026-09-12 : 815 -> 835 (mesure réelle 826, batch 3 du drain NT sur l'arbre
+// intégré, run 34705188854). Croissance une-route-un-chunk (classe #85).
+export const MAX_CHUNK_COUNT = 835
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
