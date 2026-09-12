@@ -64,6 +64,7 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametresAbonnement,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -123,6 +124,7 @@ from .serializers import (
     ObligationSerializer,
     OrdreLocationSerializer,
     PalierUsageSerializer,
+    ParametresAbonnementSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
@@ -510,7 +512,12 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
 
         Filtres ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : mois courant).
         Lecture seule, scopée société. Div-by-zéro gardée (Quick Ratio /
-        croissance ARR renvoient ``null`` si indéfinis)."""
+        croissance ARR renvoient ``null`` si indéfinis).
+
+        NTSUB27 — sur la plage « mois calendaire » (le défaut du tableau de
+        bord), la réponse est servie depuis le CACHE nocturne s'il a moins de
+        24 h (``depuis_cache: true``). Un cache absent ou périmé ne bloque
+        JAMAIS : on recalcule à la volée, exactement comme avant."""
         from datetime import date as _date
 
         from django.utils import timezone as _tz
@@ -532,24 +539,9 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 status=status.HTTP_400_BAD_REQUEST)
 
         company = request.user.company
-        bridge = selectors.arr_bridge(company, debut, fin)
-        qr = selectors.quick_ratio(company, debut, fin)
-        ro40 = selectors.rule_of_40(company, debut, fin)
-        return Response({
-            'arr_bridge': {k: _money(v) for k, v in bridge.items()},
-            'quick_ratio': str(qr) if qr is not None else None,
-            'rule_of_40': {
-                'croissance_arr_pct': (
-                    str(ro40['croissance_arr_pct'])
-                    if ro40['croissance_arr_pct'] is not None else None),
-                'marge_pct': (
-                    str(ro40['marge_pct'])
-                    if ro40['marge_pct'] is not None else None),
-                'rule_of_40': (
-                    str(ro40['rule_of_40'])
-                    if ro40['rule_of_40'] is not None else None),
-            },
-        })
+        payload, depuis_cache = selectors.metriques_saas_avec_cache(
+            company, debut, fin)
+        return Response({**payload, 'depuis_cache': depuis_cache})
 
     @action(detail=False, methods=['get'], url_path='cohortes-retention')
     def cohortes_retention(self, request):
@@ -780,6 +772,89 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
         contrat = self.get_object()
         pdf_bytes = services.rendre_contrat_pdf(contrat)
         filename = (contrat.reference or f'contrat-{contrat.id}') + '.pdf'
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=['post'], url_path='rattacher-plan')
+    def rattacher_plan(self, request, pk=None):
+        """NTSUB23 — Rattache rétroactivement le contrat à un plan catalogue.
+
+        Corps : ``{"plan": <id>, "appliquer_prix": false}``. Par DÉFAUT
+        (``appliquer_prix`` absent ou faux) seule la FK est posée, à titre de
+        CLASSIFICATION : aucun montant existant n'est modifié, aucun avenant
+        n'est créé. Cocher ``appliquer_prix`` applique le prix du plan en
+        créant un ``Avenant`` (XCTR6, prorata). La société est garantie par
+        ``get_object`` et le plan est validé comme appartenant à cette société.
+        """
+        contrat = self.get_object()
+        plan_id = request.data.get('plan')
+        if not plan_id:
+            return Response(
+                {'plan': "Plan d'abonnement : champ obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        plan = PlanAbonnement.objects.filter(
+            company=request.user.company, pk=plan_id).first()
+        if plan is None:
+            return Response(
+                {'plan': "Plan d'abonnement introuvable pour cette société."},
+                status=status.HTTP_404_NOT_FOUND)
+        appliquer = request.data.get('appliquer_prix') in (
+            True, 'true', 'True', '1', 1, 'oui')
+        try:
+            resultat = services.rattacher_plan_retroactif(
+                contrat, plan, appliquer, auteur=request.user)
+        except (services.ChangementPlanError, services.AvenantError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'contrat': resultat['contrat'].id,
+            'plan': plan.id,
+            'plan_code': plan.code,
+            'ancien_montant': resultat['ancien_montant'],
+            'nouveau_montant': resultat['nouveau_montant'],
+            'delta': resultat['delta'],
+            'prix_applique': resultat['prix_applique'],
+            'avenant': getattr(resultat['avenant'], 'id', None),
+            'prorata': resultat['prorata'],
+        })
+
+    @action(detail=True, methods=['get'], url_path='releve-pdf')
+    def releve_pdf(self, request, pk=None):
+        """NTSUB20 — Relevé d'abonnement imprimable (état RÉCAPITULATIF).
+
+        Query ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (les deux optionnels).
+        Liste les échéances de la période, les add-ons facturés (NTSUB2), les
+        compteurs d'usage relevés (NTSUB4) et les paiements reçus (lus via
+        ``apps.ventes.selectors``). C'est un état des lieux pour un client
+        B2B : NI un devis NI une facture, aucun statut modifié, aucune écriture
+        — le moteur de devis premium ``/proposal`` (rule #4) n'est donc pas
+        concerné et cette route ne s'y substitue jamais. Rendu WeasyPrint
+        générique ; 503 explicite si WeasyPrint est indisponible.
+
+        La société est garantie par ``get_object`` (queryset scopé société).
+        """
+        from .pdf_location import generate_releve_abonnement_pdf
+
+        contrat = self.get_object()
+        params = request.query_params
+        try:
+            releve = selectors.releve_abonnement(
+                contrat, params.get('debut') or None,
+                params.get('fin') or None)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': "Période invalide : « debut » et « fin » doivent "
+                           'être au format AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            pdf_bytes = generate_releve_abonnement_pdf(contrat, releve)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        filename = (
+            f"releve-{contrat.reference or contrat.id}.pdf".replace('/', '-'))
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
@@ -3286,6 +3361,34 @@ class ParametresLocationViewSet(_ContratsBaseViewSet):
                 ParametresLocationSerializer(parametres).data)
         serializer = ParametresLocationSerializer(
             parametres, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ParametresAbonnementViewSet(_ContratsBaseViewSet):
+    """Réglages « Facturation récurrente », SINGLETON par société — NTSUB24.
+
+    ``GET/PATCH /parametres-abonnement/courant/`` lit/modifie la ligne unique
+    de la société, CRÉÉE PARESSEUSEMENT au premier accès avec les valeurs par
+    défaut — qui sont exactement les constantes historiques (J-3 fin d'essai,
+    30 jours carte, 80 % d'usage). Une société qui n'ouvre jamais cet écran
+    garde donc le comportement actuel à l'identique.
+
+    ``company`` est posée CÔTÉ SERVEUR, jamais lue du corps de requête.
+    """
+    queryset = ParametresAbonnement.objects.all()
+    serializer_class = ParametresAbonnementSerializer
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres = services.get_parametres_abonnement(request.user.company)
+        if request.method == 'GET':
+            return Response(ParametresAbonnementSerializer(
+                parametres, context={'request': request}).data)
+        serializer = ParametresAbonnementSerializer(
+            parametres, data=request.data, partial=True,
+            context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

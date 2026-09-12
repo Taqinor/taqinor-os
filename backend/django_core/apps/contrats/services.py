@@ -4785,6 +4785,59 @@ def changer_plan_contrat(contrat, nouveau_plan, *, type_changement='immediat',
     return {'avenant': avenant, 'prorata': prorata}
 
 
+@transaction.atomic
+def rattacher_plan_retroactif(contrat, plan, appliquer_prix=False,
+                              *, auteur=None):
+    """NTSUB23 — Rattache RÉTROACTIVEMENT un contrat à un plan catalogue.
+
+    Les contrats créés AVANT NTSUB1 n'ont pas de ``plan_abonnement`` : ce
+    service les rattache SANS jamais toucher à l'argent par défaut.
+
+    * ``appliquer_prix=False`` (DÉFAUT) — pose UNIQUEMENT la FK
+      ``plan_abonnement``, à titre de CLASSIFICATION. Le ``montant`` du
+      contrat, son ``plan_recurrent``, ses échéances et son statut restent
+      strictement inchangés ; aucun avenant n'est créé.
+    * ``appliquer_prix=True`` (coche EXPLICITE de l'utilisateur) — délègue à
+      ``changer_plan_contrat`` (NTSUB7) : l'écart de prix devient un
+      ``Avenant`` (XCTR6) et, pour un upgrade immédiat, le prorata est appliqué
+      à la prochaine échéance non facturée. Une seule implémentation du
+      changement tarifant — jamais une seconde copie de la règle ici.
+
+    Renvoie ``{'contrat', 'plan', 'ancien_montant', 'nouveau_montant',
+    'delta', 'prix_applique', 'avenant', 'prorata'}``.
+    """
+    if plan is None:
+        raise ChangementPlanError("Le plan d'abonnement est obligatoire.")
+    if plan.company_id != contrat.company_id:
+        raise ChangementPlanError(
+            "Ce plan d'abonnement n'appartient pas à la société du contrat.")
+
+    ancien_montant = contrat.montant or Decimal('0')
+    delta = (plan.prix_base or Decimal('0')) - ancien_montant
+
+    if not appliquer_prix:
+        # CLASSIFICATION SEULE : on ne touche QUE la FK.
+        contrat.plan_abonnement = plan
+        contrat.save(update_fields=['plan_abonnement'])
+        return {
+            'contrat': contrat, 'plan': plan,
+            'ancien_montant': ancien_montant,
+            'nouveau_montant': ancien_montant,
+            'delta': delta, 'prix_applique': False,
+            'avenant': None, 'prorata': None,
+        }
+
+    resultat = changer_plan_contrat(contrat, plan, auteur=auteur)
+    contrat.refresh_from_db()
+    return {
+        'contrat': contrat, 'plan': plan,
+        'ancien_montant': ancien_montant,
+        'nouveau_montant': contrat.montant or Decimal('0'),
+        'delta': delta, 'prix_applique': True,
+        'avenant': resultat['avenant'], 'prorata': resultat['prorata'],
+    }
+
+
 # ---------------------------------------------------------------------------
 # NTSUB2 — Add-ons (options payantes) : montant facturable d'une période
 # ---------------------------------------------------------------------------
@@ -5099,8 +5152,169 @@ def demarrer_essai_contrat(contrat, *, date_fin_essai, plan_apres_essai=None,
     return essai
 
 
-def convertir_essais_expires(company, *, today=None, alerte_j3_jours=3):
+def recalculer_metriques_saas_cache(company, *, today=None):
+    """NTSUB27 — Précalcule les métriques SaaS du mois courant en cache.
+
+    Appelle le MÊME constructeur que l'endpoint
+    (``selectors.metriques_saas``) — jamais une seconde formule — et pose le
+    résultat dans ``MetriquesSaasCache`` pour ``(company, période)``, avec
+    ``calcule_le``. Une exécution répétée le même jour RAFRAÎCHIT la ligne (le
+    cache est une PHOTO, jamais un cumul).
+
+    ``prevision_mrr`` reste NULL tant que NTSUB13 n'est pas branché : le cache
+    ne fabrique aucun chiffre qui n'existe pas.
+
+    Renvoie le ``MetriquesSaasCache`` mis à jour.
+    """
+    from decimal import InvalidOperation
+
+    from . import selectors
+    from .models import MetriquesSaasCache
+
+    if today is None:
+        today = timezone.localdate()
+    debut = today.replace(day=1)
+    payload = selectors.metriques_saas(company, debut, today)
+    quick_ratio = None
+    if payload.get('quick_ratio') is not None:
+        try:
+            quick_ratio = Decimal(str(payload['quick_ratio']))
+        except (InvalidOperation, TypeError, ValueError):
+            quick_ratio = None
+    periode = f'{today.year:04d}-{today.month:02d}'
+    cache, _ = MetriquesSaasCache.objects.update_or_create(
+        company=company, periode=periode,
+        defaults={
+            'arr_bridge': payload['arr_bridge'],
+            'quick_ratio': quick_ratio,
+            'rule_of_40': payload['rule_of_40'],
+            'calcule_le': timezone.now(),
+        })
+    return cache
+
+
+#: NTSUB26 — âge minimum (en mois) d'une période avant purge du détail brut.
+RETENTION_COMPTEURS_USAGE_MOIS = 24
+
+
+def _periode_est_facturee(company, compteur):
+    """NTSUB26 — la période d'un relevé d'usage a-t-elle DÉJÀ été facturée ?
+
+    Vrai si une ``LigneEcheance`` du contrat ciblé, dont ``date_echeance``
+    tombe DANS la période du relevé, porte une facture émise
+    (``facture_id`` renseigné) ou est marquée ``payee``. Une cible hors
+    ``contrat`` (maintenance SAV) n'a pas d'échéancier dans cette app : elle
+    est donc considérée NON facturée et n'est jamais purgée ici.
+    """
+    from django.db.models import Q
+
+    from .models import AbonnementAddOnLigne, LigneEcheance
+
+    if compteur.type_cible != AbonnementAddOnLigne.TypeCible.CONTRAT:
+        return False
+    lignes = LigneEcheance.objects.filter(
+        company=company,
+        echeancier__contrat_id=compteur.cible_id,
+        date_echeance__gte=compteur.periode_debut,
+        date_echeance__lte=compteur.periode_fin)
+    return lignes.filter(
+        Q(facture_id__isnull=False)
+        | Q(statut=LigneEcheance.Statut.PAYEE)).exists()
+
+
+@transaction.atomic
+def purger_compteurs_usage_factures(company, *, today=None,
+                                    retention_mois=None):
+    """NTSUB26 — Agrège puis purge les relevés d'usage anciens ET facturés.
+
+    Pour une société, à ``today`` (injectable — aucune horloge implicite dans
+    les tests) : tout ``CompteurUsage`` dont la période s'est terminée il y a
+    PLUS de ``retention_mois`` mois (défaut 24) ET dont la période a DÉJÀ été
+    facturée (``_periode_est_facturee``) est fondu dans un
+    ``CompteurUsageArchive`` ``(company, code_compteur, periode)`` puis
+    SUPPRIMÉ. Une période récente ou non facturée n'est jamais touchée.
+
+    L'agrégat vaut EXACTEMENT la somme des quantités purgées (et ``nb_lignes``
+    leur compte) : re-jouer la purge n'ajoute rien puisqu'il ne reste plus de
+    relevé brut, et un archivage ultérieur sur la même période s'ADDITIONNE
+    par ``F()`` (jamais un read-modify-write).
+
+    Renvoie ``{'archives': int, 'lignes_purgees': int, 'quantite': Decimal}``.
+    """
+    from datetime import timedelta
+
+    from django.db.models import F
+
+    from .models import CompteurUsage, CompteurUsageArchive
+
+    if today is None:
+        today = timezone.localdate()
+    if retention_mois is None:
+        retention_mois = RETENTION_COMPTEURS_USAGE_MOIS
+    # Borne : dernier jour couvert par la rétention (approximation mensuelle
+    # volontairement CONSERVATRICE — 30 jours/mois garde plutôt trop que pas
+    # assez de détail).
+    limite = today - timedelta(days=30 * int(retention_mois))
+
+    total = {'archives': 0, 'lignes_purgees': 0, 'quantite': Decimal('0')}
+    candidats = CompteurUsage.objects.filter(
+        company=company, periode_fin__lt=limite).order_by('id')
+
+    agregats = {}
+    a_supprimer = []
+    for compteur in candidats:
+        if not _periode_est_facturee(company, compteur):
+            continue  # période non facturée → jamais purgée
+        cle = (compteur.code_compteur,
+               f'{compteur.periode_debut.year:04d}-'
+               f'{compteur.periode_debut.month:02d}')
+        bucket = agregats.setdefault(
+            cle, {'quantite': Decimal('0'), 'nb': 0})
+        bucket['quantite'] += compteur.quantite or Decimal('0')
+        bucket['nb'] += 1
+        a_supprimer.append(compteur.pk)
+
+    for (code, periode), bucket in agregats.items():
+        archive, cree = CompteurUsageArchive.objects.get_or_create(
+            company=company, code_compteur=code, periode=periode,
+            defaults={'quantite_totale': bucket['quantite'],
+                      'nb_lignes': bucket['nb']})
+        if not cree:
+            CompteurUsageArchive.objects.filter(pk=archive.pk).update(
+                quantite_totale=F('quantite_totale') + bucket['quantite'],
+                nb_lignes=F('nb_lignes') + bucket['nb'])
+        total['archives'] += 1
+        total['quantite'] += bucket['quantite']
+
+    if a_supprimer:
+        CompteurUsage.objects.filter(
+            company=company, pk__in=a_supprimer).delete()
+        total['lignes_purgees'] = len(a_supprimer)
+
+    return total
+
+
+def get_parametres_abonnement(company):
+    """NTSUB24 — Réglages « Facturation récurrente » de la société.
+
+    Singleton créé PARESSEUSEMENT au premier accès, avec les valeurs par
+    défaut du modèle — qui sont exactement les constantes historiques (J-3 fin
+    d'essai, 30 jours carte, 80 % d'usage). Une société qui n'a jamais ouvert
+    l'écran garde donc le comportement actuel à l'identique.
+    """
+    from .models import ParametresAbonnement
+
+    params, _ = ParametresAbonnement.objects.get_or_create(company=company)
+    return params
+
+
+def convertir_essais_expires(company, *, today=None, alerte_j3_jours=None):
     """Convertit les essais échus + notifie J-3 avant la fin — NTSUB5.
+
+    NTSUB24 — ``alerte_j3_jours`` vaut par défaut le réglage société
+    ``ParametresAbonnement.jours_alerte_fin_essai`` (lui-même à 3 tant que la
+    société ne l'a pas changé : comportement historique inchangé). Un appelant
+    peut toujours forcer une valeur explicite (tests, rejeu).
 
     Pour une société, à ``today`` (injectable pour les tests) :
 
@@ -5124,6 +5338,10 @@ def convertir_essais_expires(company, *, today=None, alerte_j3_jours=3):
 
     if today is None:
         today = timezone.localdate()
+    if alerte_j3_jours is None:
+        # NTSUB24 — réglage société (défaut 3 = constante historique).
+        alerte_j3_jours = get_parametres_abonnement(
+            company).jours_alerte_fin_essai
 
     total = {'convertis': 0, 'alertes_j3': 0}
 

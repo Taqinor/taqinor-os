@@ -15,6 +15,8 @@ import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// NTTRE24 — assistant guidé « Nouveau rapprochement bancaire » (3 étapes).
+import RapprochementWizard from '../components/RapprochementWizard.jsx'
 
 /* ============================================================================
    UX9 — Rapprochements, budgets & clôtures.
@@ -633,6 +635,8 @@ export default function RapprochementsPage() {
   // ── Actions par ligne / onglet ──
   // EZ12 — rapprochement dont on veut les suggestions, depuis la LISTE.
   const [suggestionsFor, setSuggestionsFor] = useState(null)
+  // NTTRE24 — assistant guidé « Nouveau rapprochement bancaire » (3 étapes).
+  const [wizardOuvert, setWizardOuvert] = useState(false)
 
   const rowActions = (row) => {
     switch (tab) {
@@ -706,13 +710,20 @@ export default function RapprochementsPage() {
     <div className="page">
       <div className="page-header">
         <h2>Rapprochements & clôtures</h2>
-        {canCreate && (
-          <div className="page-header-actions">
+        <div className="page-header-actions">
+          {/* NTTRE24 — le parcours complet import → suggestions → pointage,
+              sans quitter l'assistant. */}
+          {tab === 'bancaires' && (
+            <Button onClick={() => setWizardOuvert(true)}>
+              <Wand2 /> Assistant : nouveau rapprochement
+            </Button>
+          )}
+          {canCreate && (
             <Button onClick={() => setDialog({ row: null })}>
               <Plus /> {createLabel}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="mb-3">
@@ -761,6 +772,15 @@ export default function RapprochementsPage() {
           rapprochement={detailFor}
           onClose={() => setDetailFor(null)}
           onSaved={list.reload}
+        />
+      )}
+
+      {/* NTTRE24 — assistant 3 étapes : compte+période → import (format
+          détecté) → aperçu des suggestions puis pointage et clôture. */}
+      {wizardOuvert && (
+        <RapprochementWizard
+          onClose={() => { setWizardOuvert(false); list.reload() }}
+          onCreated={list.reload}
         />
       )}
     </div>

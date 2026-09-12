@@ -904,6 +904,11 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         Solde par compte/caisse + total (depuis les comptes de trésorerie et le
         grand livre), enrichi d'une projection nette indicative (AR/AP/paie/TVA).
         Lecture seule, scopée société, Admin/Responsable uniquement.
+
+        NTTRE17 — la réponse porte EN PLUS ``cash_du_jour`` (solde arrêté au
+        jour J, delta vs la veille, 3 prochaines échéances) : ajout strictement
+        ADDITIF sur cet endpoint existant, pour que la carte « Cash
+        aujourd'hui » du cockpit s'affiche sans AUCUNE requête supplémentaire.
         """
         periode = self._periode(request)
         company = request.user.company
@@ -917,6 +922,7 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'comptes': position['comptes'],
             'total': position['total'],
             'projection': projection,
+            'cash_du_jour': selectors.cash_aujourdhui(company),
         })
 
     @action(detail=False, methods=['get'], url_path='frais-bancaires')
@@ -933,6 +939,103 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             debut=params.get('debut') or None,
             fin=params.get('fin') or None)
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='journal-tresorerie')
+    def journal_tresorerie(self, request):
+        """NTTRE21 — Journal chronologique d'un compte de trésorerie.
+
+        Query ``?compte=<id>`` (obligatoire), ``?debut=``/``?fin=`` et
+        ``?export=pdf``. Tous les mouvements du compte sur la période, quelle
+        que soit leur origine (virement interne, effet, campagne de règlement
+        postée, écriture manuelle), avec le solde courant ligne à ligne — le
+        solde de clôture est, par construction, le solde GL du compte à la date
+        de fin. Rendu WeasyPrint (document INTERNE ; le moteur de devis premium
+        n'est pas concerné). Le paramètre de sortie est ``export`` et non
+        ``format``, réservé par DRF. Lecture seule, scopée société.
+        """
+        params = request.query_params
+        compte_id = params.get('compte')
+        if not compte_id:
+            return Response(
+                {'compte': "Compte de trésorerie : paramètre obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        compte = CompteTresorerie.objects.filter(
+            company=request.user.company, pk=compte_id).first()
+        if compte is None:
+            return Response(
+                {'compte': 'Compte de trésorerie introuvable pour cette '
+                           'société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            data = selectors.journal_tresorerie(
+                request.user.company, compte,
+                params.get('debut') or None, params.get('fin') or None,
+                validees_seulement=params.get('validees') == '1')
+        except ValueError:
+            return Response(
+                {'detail': "Période invalide : 'debut' et 'fin' doivent être "
+                           'au format AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if params.get('export') == 'pdf':
+            from .pdf_etats import render_journal_tresorerie_pdf
+            result = self._pdf_or_503(lambda: render_journal_tresorerie_pdf(
+                data, self._company_profile(request)))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'journal_tresorerie.pdf')
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='situation-effets')
+    def situation_effets(self, request):
+        """NTTRE22 — Situation des effets en portefeuille (état imprimable).
+
+        Tous les ``Effet`` par sens/statut ET par tranche d'échéance
+        (< 30 j / 30-60 j / 60-90 j / > 90 j) avec le total de chaque tranche.
+        ``?date=AAAA-MM-JJ`` (défaut aujourd'hui), ``?sens=recevoir|payer``.
+        ``?export=pdf`` télécharge l'état (WeasyPrint, document INTERNE — le
+        moteur de devis premium n'est pas concerné). Le paramètre de sortie est
+        ``export`` et non ``format`` : ``format`` est RÉSERVÉ par DRF pour la
+        négociation de contenu (un ``?format=pdf`` renverrait 406 avant même
+        d'atteindre cette vue), convention déjà en place sur tous les autres
+        exports de ce ViewSet. Lecture seule, scopée société.
+        """
+        date_reference = request.query_params.get('date') or None
+        try:
+            data = selectors.situation_effets(
+                request.user.company, date_reference=date_reference,
+                sens=request.query_params.get('sens') or None)
+        except ValueError:
+            return Response(
+                {'detail': "Le paramètre 'date' est invalide "
+                           '(format attendu : AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_situation_effets_pdf
+            result = self._pdf_or_503(lambda: render_situation_effets_pdf(
+                data, self._company_profile(request)))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'situation_effets.pdf')
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='qualite-rapprochements')
+    def qualite_rapprochements(self, request):
+        """NTTRE20 — Écart résiduel des rapprochements clôturés, par mois.
+
+        Nombre de lignes de relevé restées ``non_pointee`` à la clôture de
+        chaque rapprochement ``rapproche``, regroupé par mois de fin de
+        période. ``?nb_mois=`` (défaut 12, borné 1-60). Lecture seule sur des
+        données déjà en base, scopée société, Admin/Responsable.
+        """
+        nb_mois = request.query_params.get('nb_mois')
+        try:
+            nb_mois = int(nb_mois) if nb_mois else 12
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Le paramètre 'nb_mois' doit être un entier."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.qualite_rapprochements(
+            request.user.company, nb_mois=nb_mois))
 
     @action(detail=False, methods=['get'], url_path='previsionnel-tresorerie')
     def previsionnel_tresorerie(self, request):
@@ -954,6 +1057,25 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             date_debut=request.query_params.get('date_debut') or None,
             nb_semaines=max(1, min(nb_semaines, 52)),
             scenario=request.query_params.get('scenario') or None)
+        if request.query_params.get('export') == 'xlsx':
+            # NTTRE19 — classeur « prévisionnel banquier » : une COLONNE par
+            # semaine de l'horizon (13 par défaut) et une ligne par agrégat,
+            # dont la ligne « Solde projeté ». Aucun recalcul : les cellules
+            # reprennent telles quelles les chiffres déjà servis à l'écran.
+            from apps.records.xlsx import build_xlsx_response
+            semaines = data['semaines']
+            headers = ['Ligne'] + [
+                f"S{s['index']} — {s['date_debut'].strftime('%d/%m/%Y')}"
+                for s in semaines]
+            rows = [
+                ['Encaissements'] + [s['entrees'] for s in semaines],
+                ['Décaissements'] + [s['sorties'] for s in semaines],
+                ['Flux net'] + [s['flux_net'] for s in semaines],
+                ['Solde projeté'] + [s['solde_fin'] for s in semaines],
+            ]
+            return build_xlsx_response(
+                'previsionnel-tresorerie.xlsx', headers, rows,
+                sheet_title='Prévisionnel')
         return Response(data)
 
     @action(detail=False, methods=['get'], url_path='balance-agee-fournisseurs')
@@ -3731,15 +3853,56 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return super().destroy(request, *args, **kwargs)
 
+    @action(detail=False, methods=['get'])
+    def apercu(self, request):
+        """NTTRE25 — Aperçu AVANT création d'une campagne de règlement.
+
+        Query ``?date_limite=`` (échéance max), ``?fournisseur=``,
+        ``?montant_max=`` (plafond par échéance), ``?compte=`` (compte payeur).
+        Renvoie les dettes éligibles (même sélection que ``proposer``), leur
+        total, et l'impact prévisionnel sur le solde du compte payeur — avec
+        ``alerte_seuil`` non nul si ce compte passerait sous son
+        ``seuil_alerte_bas`` (NTTRE8). LECTURE SEULE : ne crée rien.
+        """
+        from decimal import Decimal
+
+        params = request.query_params
+        montant_max = params.get('montant_max') or None
+        if montant_max is not None:
+            try:
+                Decimal(str(montant_max))
+            except (ArithmeticError, TypeError, ValueError):
+                return Response(
+                    {'montant_max': 'Montant maximum : saisissez un nombre.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data = selectors.apercu_campagne_paiement(
+                request.user.company,
+                date_limite=params.get('date_limite') or None,
+                fournisseur_id=params.get('fournisseur') or None,
+                montant_max=montant_max,
+                compte_tresorerie_id=params.get('compte') or None)
+        except (ValueError, TypeError):
+            return Response(
+                {'date_limite': "Échéance maximum : date invalide "
+                                '(format attendu : AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(data)
+
     @action(detail=True, methods=['post'])
     def proposer(self, request, pk=None):
         """YLEDG8 — Remplit la campagne BROUILLON depuis les échéances
         fournisseur dues (``?date_limite=YYYY-MM-DD`` optionnel). Idempotent :
-        n'ajoute jamais deux fois la même facture fournisseur."""
+        n'ajoute jamais deux fois la même facture fournisseur.
+
+        NTTRE25 — accepte aussi ``fournisseur`` et ``montant_max`` (filtres de
+        l'assistant guidé) ; sans eux, comportement strictement inchangé."""
         run = self.get_object()  # scopé société par TenantMixin.
         try:
             services.proposer_lignes_payment_run(
-                run, date_limite=request.data.get('date_limite') or None)
+                run, date_limite=request.data.get('date_limite') or None,
+                fournisseur_id=request.data.get('fournisseur') or None,
+                montant_max=request.data.get('montant_max') or None)
         except DjangoValidationError as exc:
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
@@ -3909,11 +4072,90 @@ class PouvoirBancaireViewSet(_ComptaBaseViewSet):
     def get_permissions(self):
         # NTTRE32 — la modification des signataires exige une permission dédiée
         # (distincte de la gestion trésorerie générique) ; la lecture reste
-        # ouverte à Admin/Responsable.
+        # ouverte à Admin/Responsable. NTTRE37 — l'import CSV des plafonds est
+        # une ÉCRITURE sur les habilitations : même palier que le CRUD (une
+        # @action d'écriture qui retomberait sur la permission de LECTURE est
+        # exactement le trou que cette liste existe pour fermer).
         if self.action in (
-                'create', 'update', 'partial_update', 'destroy', 'revoquer'):
+                'create', 'update', 'partial_update', 'destroy', 'revoquer',
+                'import_csv'):
             return [HasPermissionOrLegacy('compta_gerer_pouvoirs_bancaires')()]
         return super().get_permissions()
+
+    @action(detail=False, methods=['post'], url_path='import-csv',
+            parser_classes=[MultiPartParser, FormParser])
+    def import_csv(self, request):
+        """NTTRE37 — Mise à jour en MASSE des plafonds par CSV/XLSX.
+
+        Corps multipart : ``fichier`` (CSV/XLSX). Colonnes : ``cin`` (ou
+        ``titulaire``) + ``plafond_signature_seul`` et/ou
+        ``plafond_signature_conjointe``. ``apercu=true`` : aperçu SANS RIEN
+        ÉCRIRE. ``ecraser=true`` : opt-in explicite pour remplacer un plafond
+        déjà non nul (défaut = remplissage seul).
+
+        ADDITIF : aucun ``PouvoirBancaire`` n'est créé par cet import et aucun
+        autre champ n'est touché ; un titulaire absent du référentiel est
+        rejeté en ligne d'erreur dans le rapport. La société est TOUJOURS celle
+        du serveur, jamais lue du corps.
+        """
+        fichier = request.FILES.get('fichier')
+        if fichier is None:
+            return Response(
+                {'fichier': 'Fichier manquant (champ « fichier »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        vrai = ('1', 'true', 'True', 'oui', True)
+        rapport = services.importer_plafonds_pouvoirs_csv(
+            request.user.company, fichier.read(), fichier.name,
+            user=request.user,
+            apercu=request.data.get('apercu') in vrai,
+            ecraser=request.data.get('ecraser') in vrai)
+        return Response(rapport)
+
+    @action(detail=True, methods=['get'])
+    def certificat(self, request, pk=None):
+        """NTTRE23 — Certificat PDF d'un pouvoir bancaire (pour la banque).
+
+        Document remis à la banque lors d'un changement de signataire :
+        identité du titulaire, compte couvert, plafonds seul/conjoint et
+        période de validité. Un pouvoir ``revoque`` sort BARRÉ, avec la
+        mention « POUVOIR RÉVOQUÉ » — il ne peut jamais passer pour valide.
+        Rendu WeasyPrint (document INTERNE/bancaire : le moteur de devis
+        premium n'est pas concerné), 503 explicite si WeasyPrint est absent.
+        Scopé société par ``TenantMixin`` (404 hors société).
+        """
+        pouvoir = self.get_object()
+        compte = pouvoir.compte_tresorerie
+        data = {
+            'titulaire_nom': pouvoir.titulaire_nom,
+            'titulaire_cin': pouvoir.titulaire_cin,
+            'compte_libelle': getattr(compte, 'libelle', ''),
+            'compte_banque': getattr(compte, 'banque', ''),
+            'compte_rib': getattr(compte, 'rib', ''),
+            'plafond_signature_seul': pouvoir.plafond_signature_seul,
+            'plafond_signature_conjointe': pouvoir.plafond_signature_conjointe,
+            'date_debut': pouvoir.date_debut,
+            'date_fin': pouvoir.date_fin,
+            'statut': pouvoir.statut,
+            'statut_libelle': pouvoir.get_statut_display(),
+            'revoque': pouvoir.statut == PouvoirBancaire.Statut.REVOQUE,
+        }
+        # Entête société (facultative) : même repli tolérant qu'ailleurs.
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            profile = None
+        from .pdf_etats import render_certificat_pouvoir_pdf
+        try:
+            pdf = render_certificat_pouvoir_pdf(data, profile)
+        except RuntimeError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"certificat_pouvoir_{pouvoir.pk}.pdf"')
+        return resp
 
     @action(detail=True, methods=['post'])
     def revoquer(self, request, pk=None):

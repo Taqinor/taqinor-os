@@ -35,6 +35,7 @@ from .models import (
     Obligation,
     OrdreLocation,
     PalierUsage,
+    ParametresAbonnement,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
@@ -1988,3 +1989,38 @@ class ModifierCommentaireRedlineSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'Le commentaire ne peut pas être vide.')
         return value
+
+
+class ParametresAbonnementSerializer(serializers.ModelSerializer):
+    """Réglages « Facturation récurrente » de la société — NTSUB24.
+
+    ``company`` n'est JAMAIS exposée ni acceptée du corps : le singleton est
+    résolu côté serveur depuis l'utilisateur. ``sequence_dunning_defaut`` est
+    validée comme appartenant à la même société (``validate_*`` ci-dessous —
+    même app, donc hors périmètre de la garde cross-app, mais l'isolation
+    multi-tenant vaut aussi entre sociétés d'une même app).
+    """
+
+    class Meta:
+        model = ParametresAbonnement
+        fields = [
+            'id', 'jours_alerte_fin_essai', 'jours_alerte_expiration_carte',
+            'seuil_alerte_usage_pct_defaut', 'sequence_dunning_defaut',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_sequence_dunning_defaut(self, sequence):
+        request = self.context.get('request')
+        if (sequence is not None and request is not None
+                and sequence.company_id != request.user.company_id):
+            raise serializers.ValidationError(
+                "Séquence de dunning : elle n'appartient pas à votre société.")
+        return sequence
+
+    def validate_seuil_alerte_usage_pct_defaut(self, valeur):
+        if valeur > 100:
+            raise serializers.ValidationError(
+                "Seuil d'alerte d'usage : saisissez un pourcentage entre 0 "
+                'et 100.')
+        return valeur

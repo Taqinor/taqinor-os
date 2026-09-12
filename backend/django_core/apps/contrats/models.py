@@ -4008,3 +4008,144 @@ class CommentaireRedline(TenantModel):
     def __str__(self):
         etat = 'résolu' if self.resolu else 'ouvert'
         return f'Contrat {self.contrat_id} — commentaire {etat}'
+
+
+class ParametresAbonnement(TenantModel):
+    """Réglages « Facturation récurrente » d'une société — NTSUB24.
+
+    Les seuils et délais du groupe NTSUB étaient des CONSTANTES codées en dur,
+    tâche par tâche : J-3 avant fin d'essai (NTSUB5), 30 jours avant expiration
+    de carte (NTSUB9), 80 % d'un quota d'usage (NTSUB18). Une société ne
+    pouvait donc rien régler.
+
+    Singleton par société (contrainte d'unicité sur ``company``, accès
+    ``services.get_parametres_abonnement`` en get-or-create). Les VALEURS PAR
+    DÉFAUT sont EXACTEMENT les constantes historiques : une société qui n'a
+    jamais ouvert l'écran garde le comportement actuel à l'identique — aucune
+    régression. Hérite de ``core.models.TenantModel`` (company + horodatage).
+    """
+
+    jours_alerte_fin_essai = models.PositiveIntegerField(
+        default=3, verbose_name="Alerte avant fin d'essai (jours)",
+        help_text="NTSUB5 — nombre de jours avant la fin d'essai auquel le "
+                  'responsable est prévenu (défaut historique : 3).')
+    jours_alerte_expiration_carte = models.PositiveIntegerField(
+        default=30, verbose_name="Alerte avant expiration de carte (jours)",
+        help_text='NTSUB9 — délai de prévenance avant expiration du moyen de '
+                  'paiement (défaut historique : 30).')
+    seuil_alerte_usage_pct_defaut = models.PositiveIntegerField(
+        default=80, verbose_name="Seuil d'alerte d'usage par défaut (%)",
+        help_text="NTSUB18 — pourcentage du quota d'usage à partir duquel "
+                  'une alerte est levée (défaut historique : 80).')
+    sequence_dunning_defaut = models.ForeignKey(
+        'SequenceDunning',
+        # on_delete: SET_NULL — supprimer une séquence ne doit jamais effacer
+        # le réglage de la société ; elle repasse simplement « sans défaut ».
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parametres_par_defaut',
+        verbose_name='Séquence de dunning par défaut',
+    )
+
+    class Meta:
+        verbose_name = 'Paramètres abonnement'
+        verbose_name_plural = 'Paramètres abonnement'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='contrats_parametresabo_uniq_co'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres abonnement — société {self.company_id}'
+
+
+class CompteurUsageArchive(TenantModel):
+    """Synthèse d'usage conservée APRÈS purge des relevés bruts — NTSUB26.
+
+    Les ``CompteurUsage`` ingérés s'accumulent ligne à ligne et indéfiniment ;
+    une société à fort volume (télémétrie, API) sature la table au fil des
+    années. La purge mensuelle
+    (``scheduled.purger_compteurs_usage_factures``) agrège en UNE ligne par
+    ``(company, code_compteur, periode)`` les relevés d'une période DÉJÀ
+    FACTURÉE et vieille de plus de 24 mois, puis supprime le détail brut. Une
+    période non facturée ou récente n'est JAMAIS touchée.
+
+    ``periode`` est le mois de rattachement au format ``AAAA-MM`` (déduit du
+    début de période du relevé). ``nb_lignes`` conserve le nombre de relevés
+    fondus dans l'agrégat : c'est ce qui rend la purge vérifiable a posteriori.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    code_compteur = models.CharField(
+        max_length=100, verbose_name='Code du compteur')
+    periode = models.CharField(
+        max_length=7, verbose_name='Période (AAAA-MM)')
+    quantite_totale = models.DecimalField(
+        max_digits=18, decimal_places=4, default=Decimal('0'),
+        verbose_name='Quantité totale')
+    nb_lignes = models.PositiveIntegerField(
+        default=0, verbose_name='Relevés fondus dans l’agrégat')
+
+    class Meta:
+        verbose_name = "Archive de compteur d'usage"
+        verbose_name_plural = "Archives de compteurs d'usage"
+        ordering = ['-periode', 'code_compteur', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code_compteur', 'periode'],
+                name='contrats_compteurarch_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='contrats_compteurarch_co_pe'),
+        ]
+
+    def __str__(self):
+        return (f'{self.code_compteur} [{self.periode}] = '
+                f'{self.quantite_totale} ({self.nb_lignes} relevé(s))')
+
+
+class MetriquesSaasCache(TenantModel):
+    """Agrégats SaaS PRÉCALCULÉS pour le tableau de bord — NTSUB27.
+
+    NTSUB12 (ARR bridge, Quick Ratio, Rule of 40) recalcule TOUT à la volée à
+    chaque ouverture du cockpit : coûteux sur un historique de plusieurs
+    années. Un job nocturne remplit cette table une fois par société et par
+    ``periode`` (mois, ``AAAA-MM``) ; l'endpoint lit le cache s'il a moins de
+    24 h et RETOMBE SILENCIEUSEMENT sur le calcul à la volée sinon — un cache
+    absent, périmé ou incomplet ne bloque JAMAIS le tableau de bord.
+
+    ``prevision_mrr`` est prévu pour NTSUB13 (prévision de MRR) et reste NULL
+    tant que ce scorer n'est pas branché : le cache ne fabrique aucun chiffre.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    periode = models.CharField(
+        max_length=7, verbose_name='Période (AAAA-MM)')
+    arr_bridge = models.JSONField(
+        default=dict, blank=True, verbose_name='ARR bridge')
+    quick_ratio = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        verbose_name='Quick Ratio')
+    rule_of_40 = models.JSONField(
+        default=dict, blank=True, verbose_name='Rule of 40')
+    prevision_mrr = models.JSONField(
+        null=True, blank=True, verbose_name='Prévision de MRR (NTSUB13)')
+    calcule_le = models.DateTimeField(verbose_name='Calculé le')
+
+    class Meta:
+        verbose_name = 'Cache de métriques SaaS'
+        verbose_name_plural = 'Caches de métriques SaaS'
+        ordering = ['-periode', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode'],
+                name='contrats_metriquessaas_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Métriques SaaS {self.periode} — société {self.company_id}'

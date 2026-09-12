@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
-import { Plus, Pencil, RefreshCw, BookOpen, Send, Landmark } from 'lucide-react'
+import { Plus, Pencil, RefreshCw, BookOpen, Send, Landmark, Download } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Segmented, Card, EmptyState, toast,
@@ -8,12 +8,18 @@ import {
   Input, Label,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+// NTTRE20 — kit graphique marque (recharts + tokens) pour la courbe d'écart
+// résiduel des rapprochements clôturés.
+import { AreaSansAxe, ChartFrame } from '../../../ui/charts'
 // APX33 — le tableau PARTAGÉ de la compta (tri + export CSV) remplace les
 // tables écrites à la main.
 import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// NTTRE21 — journal de trésorerie imprimable (carte autonome, hors `pages/`
+// pour ne pas gonfler cet écran déjà dense).
+import JournalTresorerieCard from '../components/JournalTresorerieCard.jsx'
 // WIR254 — l'analyse des frais bancaires réutilise le rendu générique
 // d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
 import { EtatRender } from './EtatsPage.jsx'
@@ -167,6 +173,62 @@ function FraisBancairesCard() {
   )
 }
 
+/* NTTRE20 — Historique visuel des rapprochements CLÔTURÉS : par mois, le
+   nombre de lignes de relevé restées « non pointées » à la clôture. Indicateur
+   de QUALITÉ du rapprochement dans le temps (une courbe qui remonte signale
+   des clôtures de plus en plus permissives). Lecture seule sur des données
+   déjà en base — aucun calcul côté écran. */
+function QualiteRapprochementsCard() {
+  const [data, setData] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    comptaApi.etats.qualiteRapprochements()
+      .then((res) => { if (vivant) setData(res.data) })
+      .catch(() => { if (vivant) setData(null) })
+    return () => { vivant = false }
+  }, [])
+
+  const mois = data?.mois || []
+  const points = mois.map((m) => ({
+    label: m.mois,
+    value: Number(m.lignes_non_pointees) || 0,
+    rapprochements: Number(m.rapprochements) || 0,
+  }))
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 font-display text-base font-semibold">
+        Qualité des rapprochements clôturés
+      </h3>
+      {!points.length ? (
+        <EmptyState
+          title="Aucun rapprochement clôturé"
+          description="La courbe apparaîtra dès le premier rapprochement clôturé."
+        />
+      ) : (
+        <ChartFrame
+          label="Lignes de relevé restées non pointées à la clôture, par mois"
+          columns={[
+            { key: 'label', header: 'Mois' },
+            { key: 'rapprochements', header: 'Rapprochements clôturés', align: 'right' },
+            { key: 'value', header: 'Lignes non pointées', align: 'right' },
+          ]}
+          rows={points}
+          getRowKey={(p) => p.label}
+        >
+          <AreaSansAxe
+            data={points}
+            tone="warning"
+            height={180}
+            name="Lignes non pointées"
+          />
+        </ChartFrame>
+      )}
+    </Card>
+  )
+}
+
 // Onglet lecture seule : position consolidée + prévisionnel roulant.
 function PositionPanel() {
   const [position, setPosition] = useState(null)
@@ -189,6 +251,17 @@ function PositionPanel() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => load(), [load])
+
+  // NTTRE19 — export du prévisionnel 13 semaines en classeur pour le banquier.
+  const exporterXlsx = async () => {
+    try {
+      const res = await comptaApi.etats.previsionnelTresorerieXlsx()
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, 'previsionnel-tresorerie.xlsx')
+    } catch {
+      toast.error('Export du prévisionnel indisponible.')
+    }
+  }
 
   if (loading) {
     return <p className="py-8 text-center text-sm text-muted-foreground">Chargement…</p>
@@ -236,7 +309,14 @@ function PositionPanel() {
       </Card>
 
       <Card className="p-4 sm:p-5">
-        <h3 className="mb-3 font-display text-base font-semibold">Prévisionnel roulant (13 semaines)</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="font-display text-base font-semibold">Prévisionnel roulant (13 semaines)</h3>
+          {/* NTTRE19 — classeur .xlsx pour le banquier : une colonne par
+              semaine + la ligne « Solde projeté », mêmes chiffres qu'ici. */}
+          <Button variant="outline" size="sm" onClick={exporterXlsx}>
+            <Download className="size-4" /> Exporter (xlsx)
+          </Button>
+        </div>
         {/* WIR182 — NTTRE18 : bandeau d'alerte quand le solde projeté passe
             sous zéro (`date_rupture_estimee`, apps/compta/selectors.py). */}
         {previsionnel?.date_rupture_estimee && (
@@ -295,6 +375,13 @@ function PositionPanel() {
       </Card>
 
       <RibInvalidesCard />
+
+      {/* NTTRE21 — journal chronologique d'un compte + export PDF. Les comptes
+          déjà chargés par la position consolidée alimentent le sélecteur : pas
+          d'appel supplémentaire pour lister les comptes. */}
+      <JournalTresorerieCard comptes={comptes} />
+
+      <QualiteRapprochementsCard />
 
       <FraisBancairesCard />
     </div>

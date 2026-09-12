@@ -25,6 +25,7 @@ from .views import (
     ObligationViewSet,
     OrdreLocationViewSet,
     PalierUsageViewSet,
+    ParametresAbonnementViewSet,
     ParametresLocationViewSet,
     PartieContratViewSet,
     PieceConformiteViewSet,
@@ -64,6 +65,8 @@ router.register(r'ordres-location', OrdreLocationViewSet)
 router.register(r'plans-recurrents', PlanRecurrentViewSet)
 router.register(r'motifs-resiliation', MotifResiliationViewSet)
 router.register(r'parametres-location', ParametresLocationViewSet)
+# NTSUB24 — réglages « Facturation récurrente » (singleton par société).
+router.register(r'parametres-abonnement', ParametresAbonnementViewSet)
 router.register(r'plans-abonnement', PlanAbonnementViewSet)
 router.register(r'addons-abonnement', AddOnAbonnementViewSet)
 router.register(r'addon-lignes', AbonnementAddOnLigneViewSet)

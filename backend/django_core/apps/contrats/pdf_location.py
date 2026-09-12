@@ -73,6 +73,32 @@ def generate_bon_enlevement_pdf(ordre):
     return _html_to_pdf(html)
 
 
+def render_releve_abonnement_html(contrat, releve):
+    """NTSUB20 — HTML du relevé d'abonnement (état RÉCAPITULATIF).
+
+    ``releve`` = dict déjà calculé par
+    ``apps.contrats.selectors.releve_abonnement`` (aucun recalcul ici). Ce
+    document n'est NI un devis NI une facture : il est rendu par le WeasyPrint
+    générique de l'app, JAMAIS par le moteur de devis premium ``/proposal``
+    (rule #4). Testable sans WeasyPrint (HTML pur).
+    """
+    from apps.crm.selectors import client_label
+
+    context = _company_context(contrat.company)
+    context['releve'] = releve
+    client_id = getattr(contrat, 'client_id', None)
+    nom = client_label(contrat.company, client_id) if client_id else ''
+    context['client_nom'] = nom or (
+        f'Client #{client_id}' if client_id else '—')
+    return get_template('releve_abonnement.html').render(context)
+
+
+def generate_releve_abonnement_pdf(contrat, releve):
+    """NTSUB20 — PDF du relevé d'abonnement (voir
+    ``render_releve_abonnement_html``). Aucun statut modifié par le rendu."""
+    return _html_to_pdf(render_releve_abonnement_html(contrat, releve))
+
+
 def generate_bon_restitution_pdf(ordre):
     """PDF « bon de restitution » d'un ``OrdreLocation`` — ZCTR5.
 

@@ -5815,3 +5815,408 @@ def cautions_a_restituer(company, *, within=None, today=None):
         'date_echeance': c.date_echeance,
         'date_mainlevee': c.date_mainlevee,
     } for c in qs]
+
+
+# ── NTTRE17 — Bloc « Cash aujourd'hui » du cockpit ──────────────────────────
+
+def cash_aujourdhui(company, *, aujourd_hui=None):
+    """NTTRE17 — Solde consolidé du jour, delta vs la veille, 3 échéances.
+
+    Bloc COMPACT destiné à la carte mobile du tableau de bord : la trésorerie
+    consolidée multi-comptes arrêtée au jour J (même calcul que
+    ``position_tresorerie``), l'écart avec ce même solde arrêté la veille, et
+    les 3 prochaines échéances de trésorerie (effets ouverts + campagnes de
+    règlement non postées) en montant SIGNÉ (+ encaissement / − décaissement).
+
+    Publié DANS la réponse de ``etats/position-tresorerie/`` (clé
+    ``cash_du_jour``) : la carte du cockpit n'a ainsi AUCUNE requête à émettre
+    au-delà de cet appel déjà existant, et aucun nouvel endpoint n'est créé.
+    Lecture seule, scopée société.
+    """
+    from .models import PaymentRun
+
+    jour = _as_date(aujourd_hui) or timezone.localdate()
+    veille = jour - timedelta(days=1)
+    total_jour = position_tresorerie(company, date_fin=jour)['total']
+    total_veille = position_tresorerie(company, date_fin=veille)['total']
+
+    echeances = []
+    effets = Effet.objects.filter(
+        company=company, date_echeance__gte=jour,
+        statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS,
+                    Effet.Statut.ESCOMPTE],
+    ).order_by('date_echeance', 'id')[:3]
+    for effet in effets:
+        montant = effet.montant or Decimal('0')
+        echeances.append({
+            'source': 'effet',
+            'id': effet.id,
+            'libelle': (effet.numero or effet.tireur
+                        or effet.get_type_effet_display()),
+            'date': effet.date_echeance,
+            'montant': (montant if effet.sens == Effet.Sens.RECEVOIR
+                        else -montant),
+        })
+    runs = PaymentRun.objects.filter(
+        company=company, date_paiement__gte=jour, posted=False,
+    ).exclude(
+        statut=PaymentRun.Statut.POSTEE).order_by('date_paiement', 'id')[:3]
+    for run in runs:
+        echeances.append({
+            'source': 'payment_run',
+            'id': run.id,
+            'libelle': run.reference or f'Campagne de règlement #{run.id}',
+            'date': run.date_paiement,
+            # Une campagne de règlement est toujours un DÉCAISSEMENT.
+            'montant': -(run.total or Decimal('0')),
+        })
+    echeances.sort(key=lambda e: (e['date'], e['source'], e['id']))
+    return {
+        'date': jour,
+        'total': total_jour,
+        'total_veille': total_veille,
+        'delta_veille': total_jour - total_veille,
+        'prochaines_echeances': echeances[:3],
+    }
+
+
+# ── NTTRE20 — Qualité des rapprochements clôturés dans le temps ─────────────
+
+def qualite_rapprochements(company, *, nb_mois=12, today=None):
+    """NTTRE20 — Écart résiduel des rapprochements CLÔTURÉS, mois par mois.
+
+    Pour chaque rapprochement passé au statut ``rapproche``, compte les lignes
+    de relevé restées ``non_pointee`` à la clôture — l'écart résiduel accepté.
+    Les rapprochements sont regroupés par mois de fin de période
+    (``date_fin``), sur les ``nb_mois`` derniers mois. Indicateur de QUALITÉ du
+    rapprochement dans le temps : une courbe qui remonte signale des clôtures
+    de plus en plus permissives.
+
+    Renvoie ``{'mois': [{'mois': 'AAAA-MM', 'rapprochements': n,
+    'lignes_non_pointees': n}], 'total_lignes_non_pointees': n}``, du plus
+    ancien au plus récent. Lecture seule, scopée société, aucune écriture.
+    """
+    from django.db.models import Count
+
+    from .models import LigneReleve
+
+    fin = _as_date(today) or timezone.localdate()
+    nb_mois = max(1, min(int(nb_mois or 12), 60))
+    # Premier jour du mois situé nb_mois − 1 mois avant le mois courant.
+    mois_index = fin.year * 12 + (fin.month - 1) - (nb_mois - 1)
+    debut = date(mois_index // 12, mois_index % 12 + 1, 1)
+
+    rapprochements = list(RapprochementBancaire.objects.filter(
+        company=company,
+        statut=RapprochementBancaire.Statut.RAPPROCHE,
+        date_fin__gte=debut, date_fin__lte=fin,
+    ).values_list('id', 'date_fin'))
+    non_pointees = {
+        agg['rapprochement_id']: agg['n']
+        for agg in LigneReleve.objects.filter(
+            company=company,
+            statut=LigneReleve.Statut.NON_POINTEE,
+            rapprochement_id__in=[r[0] for r in rapprochements],
+        ).values('rapprochement_id').annotate(n=Count('id'))
+    }
+
+    buckets = {}
+    for i in range(nb_mois):
+        idx = mois_index + i
+        cle = f'{idx // 12:04d}-{idx % 12 + 1:02d}'
+        buckets[cle] = {'mois': cle, 'rapprochements': 0,
+                        'lignes_non_pointees': 0}
+    for rap_id, date_fin in rapprochements:
+        cle = f'{date_fin.year:04d}-{date_fin.month:02d}'
+        bucket = buckets.get(cle)
+        if bucket is None:  # pragma: no cover - hors fenêtre demandée.
+            continue
+        bucket['rapprochements'] += 1
+        bucket['lignes_non_pointees'] += non_pointees.get(rap_id, 0)
+    mois = [buckets[cle] for cle in sorted(buckets)]
+    return {
+        'mois': mois,
+        'total_lignes_non_pointees': sum(
+            m['lignes_non_pointees'] for m in mois),
+    }
+
+
+# ── NTTRE22 — Situation des effets en portefeuille (état imprimable) ───────
+
+#: Tranches d'échéance de l'état des effets, en jours depuis la date demandée.
+TRANCHES_EFFETS = (
+    ('moins_30', 'Moins de 30 jours', None, 30),
+    ('de_30_a_60', 'De 30 à 60 jours', 30, 60),
+    ('de_60_a_90', 'De 60 à 90 jours', 60, 90),
+    ('plus_90', 'Plus de 90 jours', 90, None),
+)
+
+
+def situation_effets(company, *, date_reference=None, sens=None):
+    """NTTRE22 — Situation des effets : par statut/sens ET par tranche.
+
+    Liste TOUS les ``Effet`` de la société (chèques, traites, billets), en
+    double lecture :
+
+    * ``groupes`` — par ``sens`` (à recevoir / à payer) puis par ``statut``
+      (portefeuille / remis / escompté / endossé / encaissé / payé / impayé),
+      avec le total du groupe ;
+    * ``tranches`` — par distance de l'échéance à ``date_reference``
+      (< 30 j / 30-60 j / 60-90 j / > 90 j), avec le total de la tranche.
+
+    Le total d'une tranche est, par construction, la somme des montants des
+    effets qui y tombent à la date demandée. Lecture seule, scopée société.
+    """
+    reference = _as_date(date_reference) or timezone.localdate()
+    qs = Effet.objects.filter(company=company)
+    if sens:
+        qs = qs.filter(sens=sens)
+    effets = list(qs.order_by('sens', 'statut', 'date_echeance', 'id'))
+
+    def _ligne(effet):
+        return {
+            'id': effet.id,
+            'sens': effet.sens,
+            'sens_libelle': effet.get_sens_display(),
+            'statut': effet.statut,
+            'statut_libelle': effet.get_statut_display(),
+            'type_effet': effet.type_effet,
+            'type_libelle': effet.get_type_effet_display(),
+            'numero': effet.numero,
+            'tireur': effet.tireur,
+            'banque': effet.banque,
+            'date_echeance': effet.date_echeance,
+            'jours_restants': (effet.date_echeance - reference).days,
+            'montant': effet.montant or Decimal('0'),
+            'date_protet': effet.date_protet,
+        }
+
+    groupes = {}
+    for effet in effets:
+        cle = (effet.sens, effet.statut)
+        groupe = groupes.setdefault(cle, {
+            'sens': effet.sens,
+            'sens_libelle': effet.get_sens_display(),
+            'statut': effet.statut,
+            'statut_libelle': effet.get_statut_display(),
+            'effets': [],
+            'nb': 0,
+            'total': Decimal('0'),
+        })
+        groupe['effets'].append(_ligne(effet))
+        groupe['nb'] += 1
+        groupe['total'] += effet.montant or Decimal('0')
+
+    tranches = [{
+        'code': code, 'libelle': libelle, 'nb': 0, 'total': Decimal('0'),
+        'effets': [],
+    } for code, libelle, _min, _max in TRANCHES_EFFETS]
+    par_code = {t['code']: t for t in tranches}
+    for effet in effets:
+        jours = (effet.date_echeance - reference).days
+        for code, _libelle, borne_min, borne_max in TRANCHES_EFFETS:
+            if ((borne_min is None or jours >= borne_min)
+                    and (borne_max is None or jours < borne_max)):
+                tranche = par_code[code]
+                tranche['effets'].append(_ligne(effet))
+                tranche['nb'] += 1
+                tranche['total'] += effet.montant or Decimal('0')
+                break
+
+    total_general = sum(
+        (e.montant or Decimal('0') for e in effets), Decimal('0'))
+    return {
+        'date_reference': reference,
+        'groupes': [groupes[cle] for cle in sorted(groupes)],
+        'tranches': tranches,
+        'nb_effets': len(effets),
+        'total_general': total_general,
+    }
+
+
+# ── NTTRE25 — Aperçu d'une campagne de règlement avant création ────────────
+
+def apercu_campagne_paiement(company, *, date_limite=None, fournisseur_id=None,
+                             montant_max=None, compte_tresorerie_id=None):
+    """NTTRE25 — Dettes éligibles + impact prévisionnel sur le compte payeur.
+
+    LECTURE SEULE, préalable à la création d'une campagne : reprend la MÊME
+    sélection que ``services.proposer_lignes_payment_run``
+    (``services.dettes_eligibles_campagne``) et la croise avec le solde courant
+    du compte payeur choisi et son ``seuil_alerte_bas`` (NTTRE8).
+
+    Renvoie ``{'dettes': [...], 'nb_dettes', 'total', 'compte': {...} | None,
+    'alerte_seuil': {...} | None}``. ``alerte_seuil`` est non nul dès que le
+    solde projeté (solde courant − total de la campagne) passerait SOUS le
+    seuil d'alerte bas du compte : c'est l'avertissement que l'assistant rend
+    bloquant avant confirmation. Aucune écriture, rien n'est créé ici.
+    """
+    from . import services as _svc
+
+    dettes = _svc.dettes_eligibles_campagne(
+        company, date_limite=date_limite, fournisseur_id=fournisseur_id,
+        montant_max=montant_max)
+    total = sum(
+        (Decimal(d['montant'] or 0) for d in dettes), Decimal('0'))
+
+    compte = None
+    alerte = None
+    if compte_tresorerie_id:
+        treso = CompteTresorerie.objects.filter(
+            company=company, id=compte_tresorerie_id).first()
+        if treso is not None:
+            solde = (treso.solde_initial or Decimal('0')) + solde_compte(
+                company, treso.compte_comptable)
+            projete = solde - total
+            compte = {
+                'id': treso.id,
+                'libelle': treso.libelle,
+                'solde_actuel': solde,
+                'solde_projete': projete,
+                'seuil_alerte_bas': treso.seuil_alerte_bas,
+                'seuil_alerte_decouvert': treso.seuil_alerte_decouvert,
+            }
+            seuil = treso.seuil_alerte_bas
+            if seuil is not None and projete < seuil and solde >= seuil:
+                alerte = {
+                    'motif': 'seuil_alerte_bas',
+                    'message': (
+                        f'Après cette campagne, le compte « {treso.libelle} » '
+                        f'passerait à {projete} MAD, sous son seuil d\'alerte '
+                        f'bas de {seuil} MAD.'),
+                    'solde_projete': projete,
+                    'seuil': seuil,
+                }
+            elif seuil is not None and projete < seuil:
+                alerte = {
+                    'motif': 'seuil_alerte_bas',
+                    'message': (
+                        f'Le compte « {treso.libelle} » est DÉJÀ sous son '
+                        f'seuil d\'alerte bas ({seuil} MAD) et passerait à '
+                        f'{projete} MAD après cette campagne.'),
+                    'solde_projete': projete,
+                    'seuil': seuil,
+                }
+    return {
+        'dettes': [{
+            'facture_id': d['facture_id'],
+            'fournisseur_id': d['fournisseur_id'],
+            'fournisseur_nom': d['fournisseur_nom'],
+            'reference': d['reference'],
+            'montant': d['montant'],
+            'date_echeance': d['date_echeance'],
+        } for d in dettes],
+        'nb_dettes': len(dettes),
+        'total': total,
+        'compte': compte,
+        'alerte_seuil': alerte,
+    }
+
+
+# ── NTTRE21 — Journal de trésorerie (rapport imprimable) ───────────────────
+
+#: NTTRE21 — nature LISIBLE d'un mouvement, déduite de ``source_type`` de
+#: l'écriture qui l'a produit. Une nature inconnue est rendue telle quelle
+#: plutôt que masquée : mieux vaut un mot technique visible qu'un mouvement
+#: muet sur un journal qu'un banquier relit.
+NATURES_JOURNAL_TRESORERIE = {
+    'virement_interne': 'Virement interne',
+    'effet_encaissement': 'Effet encaissé',
+    'effet_paiement': 'Effet payé',
+    'effet_escompte': 'Effet escompté',
+    'effet_apurement_escompte': "Apurement d'escompte",
+    'effet_rejet': 'Effet rejeté',
+    'effet_frais_rejet': 'Frais de rejet',
+    'bordereau_remise': 'Bordereau de remise',
+    'payment_run': 'Campagne de règlement',
+    'paiement': 'Encaissement client',
+    'paiement_fournisseur': 'Règlement fournisseur',
+    'mouvement_caisse': 'Mouvement de caisse',
+    'echeance_emprunt': "Échéance d'emprunt",
+}
+
+
+def journal_tresorerie(company, compte, debut=None, fin=None, *,
+                       validees_seulement=False):
+    """NTTRE21 — Journal chronologique d'un ``CompteTresorerie``.
+
+    Liste, dans l'ordre, TOUS les mouvements du compte sur la période — quelle
+    que soit leur origine (virement interne, effet encaissé/payé, ligne de
+    campagne de règlement postée, écriture manuelle du compte 5xxx) — avec un
+    SOLDE COURANT recalculé ligne à ligne à partir du solde d'ouverture.
+
+    UNE SEULE source : les ``LigneEcriture`` du compte comptable de classe 5
+    rattaché. Chaque mouvement est ENRICHI de sa nature (``source_type`` de
+    l'écriture, cf. ``NATURES_JOURNAL_TRESORERIE``) plutôt que relu une
+    seconde fois depuis son modèle d'origine — deux lectures parallèles
+    (GL + effets + virements + campagnes) double-compteraient chaque mouvement
+    déjà posté, et le solde de clôture ne collerait plus au grand livre.
+
+    Par construction : ``solde_cloture`` == solde GL du compte à ``fin``
+    (``solde_initial`` du compte + mouvements GL jusqu'à cette date).
+
+    Renvoie ``{'compte', 'date_debut', 'date_fin', 'solde_ouverture',
+    'mouvements': [{'date', 'piece', 'journal', 'libelle', 'nature',
+    'debit', 'credit', 'solde'}], 'total_debit', 'total_credit',
+    'solde_cloture'}``. Lecture seule, scopée société.
+    """
+    debut = _as_date(debut)
+    fin = _as_date(fin)
+    compte_gl = compte.compte_comptable
+
+    # Solde d'OUVERTURE : solde initial du compte de trésorerie + tout le grand
+    # livre ANTÉRIEUR à ``debut`` (rien si la période est ouverte à gauche).
+    solde = compte.solde_initial or Decimal('0')
+    if debut is not None:
+        solde += solde_compte(
+            company, compte_gl, date_fin=debut - timedelta(days=1),
+            validees_seulement=validees_seulement)
+    solde_ouverture = solde
+
+    lignes = _lignes_qs(
+        company, date_debut=debut, date_fin=fin,
+        validees_seulement=validees_seulement,
+    ).filter(compte=compte_gl).order_by(
+        'ecriture__date_ecriture', 'ecriture_id', 'id')
+
+    mouvements = []
+    total_debit = Decimal('0')
+    total_credit = Decimal('0')
+    for ligne in lignes:
+        debit = ligne.debit or Decimal('0')
+        credit = ligne.credit or Decimal('0')
+        solde += debit - credit
+        total_debit += debit
+        total_credit += credit
+        ecriture = ligne.ecriture
+        source = ecriture.source_type or ''
+        mouvements.append({
+            'ligne_id': ligne.id,
+            'date': ecriture.date_ecriture,
+            'piece': ecriture.reference or f'#{ecriture.id}',
+            'journal': getattr(ecriture.journal, 'code', '') or '',
+            'libelle': ligne.libelle or ecriture.libelle or '',
+            'nature': NATURES_JOURNAL_TRESORERIE.get(source, source or 'Écriture'),
+            'source_type': source,
+            'source_id': ecriture.source_id,
+            'debit': debit,
+            'credit': credit,
+            'solde': solde,
+        })
+
+    return {
+        'compte': {
+            'id': compte.id,
+            'libelle': compte.libelle,
+            'banque': compte.banque,
+            'numero_compte': getattr(compte_gl, 'numero', ''),
+        },
+        'date_debut': debut,
+        'date_fin': fin,
+        'solde_ouverture': solde_ouverture,
+        'mouvements': mouvements,
+        'nb_mouvements': len(mouvements),
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'solde_cloture': solde,
+    }

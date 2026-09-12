@@ -73,6 +73,30 @@ const comptaApi = {
       api.get('/compta/etats/position-tresorerie/', { params }),
     previsionnelTresorerie: (params) =>
       api.get('/compta/etats/previsionnel-tresorerie/', { params }),
+    // NTTRE19 — le même état, en classeur .xlsx pour le banquier (13 colonnes
+    // semaine + ligne « Solde projeté »). Fichier → `responseType: 'blob'`.
+    previsionnelTresorerieXlsx: (params) =>
+      api.get('/compta/etats/previsionnel-tresorerie/',
+        { params: { export: 'xlsx', ...params }, responseType: 'blob' }),
+    // NTTRE20 — qualité des rapprochements clôturés (lignes restées non
+    // pointées à la clôture), mois par mois.
+    qualiteRapprochements: (params) =>
+      api.get('/compta/etats/qualite-rapprochements/', { params }),
+    // NTTRE21 — journal de trésorerie d'un compte (mouvements + solde courant).
+    // `compte` est obligatoire. PDF via `?export=pdf`.
+    journalTresorerie: (params) =>
+      api.get('/compta/etats/journal-tresorerie/', { params }),
+    journalTresoreriePdf: (params) =>
+      api.get('/compta/etats/journal-tresorerie/',
+        { params: { export: 'pdf', ...params }, responseType: 'blob' }),
+    // NTTRE22 — situation des effets (par statut/sens et par tranche
+    // d'échéance). JSON par défaut, PDF via `?export=pdf` (jamais `?format=`,
+    // réservé par DRF).
+    situationEffets: (params) =>
+      api.get('/compta/etats/situation-effets/', { params }),
+    situationEffetsPdf: (params) =>
+      api.get('/compta/etats/situation-effets/',
+        { params: { export: 'pdf', ...params }, responseType: 'blob' }),
     balanceAgeeFournisseurs: (params) =>
       api.get('/compta/etats/balance-agee-fournisseurs/', { params }),
     releveFournisseur: (tiersId, params) =>
@@ -320,6 +344,12 @@ const comptaApi = {
       api.get(`/compta/rapprochements/${id}/suggestions-apprises/`, { params }),
     accepterSuggestions: (id) =>
       api.post(`/compta/rapprochements/${id}/accepter-suggestions/`),
+    // NTTRE1-3 / NTTRE24 — import d'un relevé au format normalisé. Le format
+    // (`cfonb120`/`mt940`/`camt053`) est DÉTECTÉ par l'assistant puis passé au
+    // serveur ; le corps est un multipart portant le fichier `releve`.
+    importReleve: (id, formData, format) =>
+      api.post(`/compta/rapprochements/${id}/import-releve/`, formData,
+        { params: { format } }),
     cloturer: (id) => api.post(`/compta/rapprochements/${id}/cloturer/`),
     // XACC30 — OCR d'un relevé (PDF/scan, gated) : extraction (multipart
     // { releve }) puis acceptation explicite ({ accepter: '1', lignes }).
@@ -416,6 +446,10 @@ const comptaApi = {
     apurerEscompte: (id, data) =>
       api.post(`/compta/effets/${id}/apurer-escompte/`, data),
     endosser: (id, data) => api.post(`/compta/effets/${id}/endosser/`, data),
+    // NTTRE7 / NTTRE26 — protêt (acte d'huissier) sur un effet IMPAYÉ : ne
+    // change pas le statut, enregistre la date et les frais pour l'audit.
+    constaterProtet: (id, data) =>
+      api.post(`/compta/effets/${id}/constater-protet/`, data),
     // AUDV02 — échéancier + TOTAUX ouverts par sens. Les totaux portent
     // toujours sur le portefeuille ENTIER (`portefeuille` + `remis`) : un
     // filtre d'affichage (`sens`/`statut`) ne change QUE la liste, jamais le
@@ -430,6 +464,9 @@ const comptaApi = {
   // ── FG133/134 — Campagnes de règlement fournisseurs ──
   paymentRuns: {
     ...resource('payment-runs'),
+    // NTTRE25 — aperçu AVANT création : dettes éligibles + impact sur le solde
+    // du compte payeur + alerte de franchissement du seuil bas. Lecture seule.
+    apercu: (params) => api.get('/compta/payment-runs/apercu/', { params }),
     proposer: (id, data) => api.post(`/compta/payment-runs/${id}/proposer/`, data),
     figer: (id) => api.post(`/compta/payment-runs/${id}/figer/`),
     poster: (id) => api.post(`/compta/payment-runs/${id}/poster/`),
