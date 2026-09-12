@@ -26,9 +26,9 @@ from .serializers import (
     AbonnementRapportPhotoSerializer, AvenantChantierPublicSerializer,
     AvenantChantierSerializer, DecompteGeneralSerializer,
     DiffusionPlanSerializer, JournalChantierSerializer, LotSerializer,
-    PPSPSChantierSerializer, PPSPSSignatureSerializer,
-    ReserveChantierSerializer, RFISerializer, SignatureBtpSerializer,
-    VisaDocumentSerializer,
+    LotChecklistItemSerializer, PPSPSChantierSerializer,
+    PPSPSSignatureSerializer, ReserveChantierSerializer, RFISerializer,
+    SignatureBtpSerializer, VisaDocumentSerializer,
 )
 
 
@@ -760,6 +760,73 @@ class LotViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
         return selectors.lots_filtres(
             qs, chantier_id=p.get('chantier'), statut=p.get('statut'),
             jalon=p.get('jalon'))
+
+    def perform_update(self, serializer):
+        """NTCON19 — soft-guard : un lot ne passe ``termine`` que si sa
+        checklist de réception est 100 % cochée (403/400 explicite sinon)."""
+        from rest_framework.exceptions import ValidationError
+
+        instance = self.get_object()
+        nouveau_statut = serializer.validated_data.get('statut')
+        if (nouveau_statut == Lot.Statut.TERMINE
+                and instance.statut != Lot.Statut.TERMINE):
+            try:
+                services.verifier_checklist_avant_reception(instance)
+            except services.TransitionInvalide as exc:
+                raise ValidationError({'statut': str(exc)})
+        super().perform_update(serializer)
+
+    @action(detail=True, methods=['get', 'post'],
+            permission_classes=[ScopedPermission])
+    def checklist(self, request, pk=None):
+        """NTCON19 — checklist de RÉCEPTION du lot (distincte de la checklist
+        d'exécution du chantier). POST ``{"etapes": [{cle, libelle, ordre?,
+        obligatoire?}, …]}`` (liste vide/absente = modèle par défaut)."""
+        lot = self.get_object()
+        if request.method.lower() == 'post':
+            try:
+                services.definir_checklist_lot(
+                    lot, request.data.get('etapes'))
+            except services.TransitionInvalide as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        etat = services.etat_checklist_lot(lot)
+        etat['etapes'] = LotChecklistItemSerializer(
+            lot.checklist.all(), many=True).data
+        return Response(etat)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def cocher(self, request, pk=None):
+        """NTCON19 — coche/décoche une étape : ``{"cle": "...", "fait": true}``."""
+        lot = self.get_object()
+        cle = (request.data.get('cle') or '').strip()
+        if not cle:
+            return Response(
+                {'cle': 'cle est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fait = request.data.get('fait', True)
+        try:
+            item = services.cocher_item_checklist_lot(
+                lot, cle=cle, user=request.user, fait=bool(fait))
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LotChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def terminer(self, request, pk=None):
+        """NTCON19 — réceptionne le lot (guard checklist + ``date_fin_reelle``
+        qui FIGE le retard pris en compte par NTCON15)."""
+        lot = self.get_object()
+        try:
+            services.terminer_lot(lot, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        lot.refresh_from_db()
+        return Response(LotSerializer(lot).data)
 
     @action(detail=True, methods=['get', 'post'],
             permission_classes=[ScopedPermission])

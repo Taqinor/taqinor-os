@@ -1035,3 +1035,51 @@ class AbonnementRapportPhoto(TenantModel):
 
     def __str__(self):
         return f'Photo-rapport chantier {self.chantier_id}'
+
+
+# ── NTCON19 — Checklist de réception de LOT ────────────────────────────────
+
+class LotChecklistItem(TenantModel):
+    """Étape de la checklist de RÉCEPTION d'un ``Lot`` (NTCON19).
+
+    Réplique le PATTERN d'``installations.ChantierChecklistItem`` (clé +
+    libellé + ordre + fait/fait_par/fait_le, unicité par parent+clé) SANS
+    importer ``installations.models`` ni toucher sa chaîne de migrations : la
+    checklist de réception d'un LOT est un objet DISTINCT de la checklist
+    d'exécution du CHANTIER (qui reste entièrement gérée par ``installations``,
+    inchangée). Un lot ne peut passer ``termine`` que si toutes ses étapes
+    ``obligatoire`` sont cochées — soft-guard paramétrable
+    (``services.config_btp`` → ``guard_checklist_lot_bloquant``, NTCON25).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_lot_checklist_items', verbose_name='Société')
+    lot = models.ForeignKey(
+        Lot, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='checklist', verbose_name='Lot')
+    cle = models.CharField(max_length=40, verbose_name='Clé')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    obligatoire = models.BooleanField(
+        default=True, verbose_name='Obligatoire pour la réception')
+    fait = models.BooleanField(default=False, verbose_name='Fait')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_lot_checklist_faits',
+        verbose_name='Fait par')
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+
+    class Meta:
+        verbose_name = 'Étape de checklist de réception (lot)'
+        verbose_name_plural = 'Étapes de checklist de réception (lot)'
+        ordering = ['ordre', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['lot', 'cle'], name='btp_lot_checklist_cle_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.lot_id} · {self.libelle} · {"✓" if self.fait else "—"}'

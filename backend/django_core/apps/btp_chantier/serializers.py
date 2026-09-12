@@ -7,8 +7,8 @@ from rest_framework import serializers
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
     AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier,
-    AbonnementRapportPhoto, Lot, PPSPSChantier, PPSPSSignature, SignatureBtp,
-    VisaDocument,
+    AbonnementRapportPhoto, Lot, LotChecklistItem, PPSPSChantier,
+    PPSPSSignature, SignatureBtp, VisaDocument,
 )
 
 
@@ -341,6 +341,21 @@ class LotSerializer(serializers.ModelSerializer):
                     '« exécuté en interne » — décochez la case.'),
             })
         return attrs
+
+
+# ── NTCON19 — Checklist de réception de lot ────────────────────────────────
+
+class LotChecklistItemSerializer(serializers.ModelSerializer):
+    fait_par_nom = serializers.CharField(
+        source='fait_par.username', read_only=True, default='')
+
+    class Meta:
+        model = LotChecklistItem
+        fields = [
+            'id', 'cle', 'libelle', 'ordre', 'obligatoire', 'fait',
+            'fait_par', 'fait_par_nom', 'fait_le',
+        ]
+        read_only_fields = fields
 
 
 # ── NTCON16 — PPSPS de chantier + signatures sous-traitant ─────────────────

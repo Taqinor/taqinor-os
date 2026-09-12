@@ -796,6 +796,139 @@ def verifier_ppsps_avant_demarrage(*, company, chantier_id, sous_traitant_id,
     return False
 
 
+# ── NTCON19 — Checklist de réception de lot ────────────────────────────────
+
+#: Étapes de réception proposées par défaut quand aucune n'est fournie —
+#: modèle de départ ÉDITABLE, jamais imposé (chaque lot garde les siennes).
+CHECKLIST_RECEPTION_DEFAUT = [
+    ('conformite_execution', "Conformité d'exécution vérifiée"),
+    ('reserves_levees', 'Réserves du lot levées'),
+    ('essais_realises', 'Essais / mise en service réalisés'),
+    ('doe_remis', "Dossier des ouvrages exécutés (DOE) remis"),
+    ('nettoyage', 'Nettoyage et repli de chantier'),
+]
+
+
+@transaction.atomic
+def definir_checklist_lot(lot, etapes=None):
+    """NTCON19 — (RE)définit les étapes de réception d'un ``Lot``.
+
+    ``etapes`` : liste de dicts ``{cle, libelle, ordre?, obligatoire?}``.
+    ``None``/vide applique ``CHECKLIST_RECEPTION_DEFAUT``. Les étapes DÉJÀ
+    cochées conservent leur état (on ne « décoche » jamais un contrôle
+    réalisé) ; les étapes absentes de la nouvelle liste sont retirées.
+    """
+    from .models import LotChecklistItem
+
+    if not etapes:
+        etapes = [
+            {'cle': cle, 'libelle': libelle, 'ordre': rang}
+            for rang, (cle, libelle) in enumerate(
+                CHECKLIST_RECEPTION_DEFAUT, start=1)
+        ]
+
+    cles = []
+    for rang, etape in enumerate(etapes, start=1):
+        if not isinstance(etape, dict):
+            raise TransitionInvalide(
+                'etapes : chaque étape doit être un objet '
+                '{cle, libelle, ordre?, obligatoire?}.')
+        cle = (etape.get('cle') or '').strip()
+        libelle = (etape.get('libelle') or '').strip()
+        if not cle or not libelle:
+            raise TransitionInvalide(
+                'etapes : « cle » et « libelle » sont obligatoires pour '
+                'chaque étape.')
+        if cle in cles:
+            raise TransitionInvalide(
+                f'etapes : clé en double « {cle} ».')
+        cles.append(cle)
+        LotChecklistItem.objects.update_or_create(
+            lot=lot, cle=cle,
+            defaults={
+                'company': lot.company,
+                'libelle': libelle,
+                'ordre': etape.get('ordre') or rang,
+                'obligatoire': bool(etape.get('obligatoire', True)),
+            })
+    LotChecklistItem.objects.filter(lot=lot).exclude(cle__in=cles).delete()
+    return list(LotChecklistItem.objects.filter(lot=lot))
+
+
+def cocher_item_checklist_lot(lot, *, cle, user, fait=True):
+    """NTCON19 — coche/décoche une étape de réception (auteur + horodatage
+    posés CÔTÉ SERVEUR)."""
+    from .models import LotChecklistItem
+
+    item = LotChecklistItem.objects.filter(lot=lot, cle=cle).first()
+    if item is None:
+        raise TransitionInvalide(
+            f'cle : étape « {cle} » inconnue sur ce lot.')
+    item.fait = bool(fait)
+    item.fait_par = user if fait else None
+    item.fait_le = timezone.now() if fait else None
+    item.save(update_fields=['fait', 'fait_par', 'fait_le', 'updated_at'])
+    return item
+
+
+def etat_checklist_lot(lot):
+    """NTCON19 — état de la checklist de réception : ``{total, faits,
+    obligatoires_restants, complete}`` (lecture seule).
+
+    ``complete`` vaut True quand AUCUNE étape obligatoire ne reste à cocher —
+    un lot sans checklist est donc « complet » (rien n'est exigé tant que rien
+    n'a été défini).
+    """
+    from .models import LotChecklistItem
+
+    items = list(LotChecklistItem.objects.filter(lot=lot))
+    restants = [i.libelle for i in items if i.obligatoire and not i.fait]
+    return {
+        'total': len(items),
+        'faits': sum(1 for i in items if i.fait),
+        'obligatoires_restants': restants,
+        'complete': not restants,
+    }
+
+
+def verifier_checklist_avant_reception(lot):
+    """NTCON19 — soft-guard « checklist de réception 100 % cochée » avant le
+    passage d'un ``Lot`` à ``termine``.
+
+    Selon ``config_btp(company)['guard_checklist_lot_bloquant']`` :
+    ``True`` → ``TransitionInvalide`` nommant les étapes restantes,
+    ``False`` → simple AVERTISSEMENT journalisé. Renvoie ``True`` si la
+    réception est autorisée sans réserve, ``False`` si elle n'est qu'avertie.
+    """
+    etat = etat_checklist_lot(lot)
+    if etat['complete']:
+        return True
+    restants = ', '.join(etat['obligatoires_restants'])
+    message = (
+        f'Checklist de réception incomplète pour le lot « {lot.nom} » — '
+        f'étape(s) restante(s) : {restants}.')
+    if config_btp(lot.company).get('guard_checklist_lot_bloquant', True):
+        raise TransitionInvalide(message)
+    logger.warning('btp_chantier: %s (guard en mode avertissement)', message)
+    return False
+
+
+def terminer_lot(lot, *, user, date_fin_reelle=None):
+    """NTCON19 — réceptionne un lot (statut → ``termine``) APRÈS le soft-guard
+    de checklist. Pose ``date_fin_reelle`` (aujourd'hui par défaut) : c'est
+    elle qui FIGE le retard pris en compte par NTCON15."""
+    from .models import Lot
+
+    if lot.statut == Lot.Statut.TERMINE:
+        raise TransitionInvalide(
+            f'Lot « {lot.nom} » : déjà terminé.')
+    verifier_checklist_avant_reception(lot)
+    lot.statut = Lot.Statut.TERMINE
+    lot.date_fin_reelle = date_fin_reelle or timezone.localdate()
+    lot.save(update_fields=['statut', 'date_fin_reelle', 'updated_at'])
+    return lot
+
+
 # ── NTCON18 — Photo-rapport hebdomadaire (opt-in par chantier) ─────────────
 
 #: Plafond de photos embarquées dans un photo-rapport (PDF raisonnable).
