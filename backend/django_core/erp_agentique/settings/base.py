@@ -272,6 +272,11 @@ INSTALLED_APPS = [
     # est DÉLÉGUÉ à apps.dataimport (jamais un 2e importateur) ; aucune
     # écriture SQL vers Odoo (règle #1).
     'apps.migration',
+    # Groupe NTJUR — Affaires juridiques (contentieux/précontentieux) :
+    # dossiers, parties, audiences, prescriptions, conseils externes,
+    # budget et provisions PROPOSÉES. Distincte de `litiges` (réclamation
+    # client) et de `contrats` (CLM) — string-FK uniquement vers elles.
+    'apps.juridique',
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).

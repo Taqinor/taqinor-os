@@ -203,6 +203,20 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── NTJUR1 — Affaires juridiques (apps/juridique), même patron YRBAC3 que
+    # ``contrat_*``/``litige_*`` ci-dessus. Deux codes DISJOINTS :
+    #   * ``juridique_voir``  — lecture des dossiers (GET/HEAD/OPTIONS) ;
+    #   * ``juridique_gerer`` — écriture (POST/PUT/PATCH/DELETE + actions).
+    # Module NEUF : comme ``ao_*`` (AOF2), ``rh_*`` (WIR172) et ``fpa_*``
+    # (WIR173), ils ne sont mappés sur AUCUN rôle Responsable/Commercial/
+    # Technicien/Viewer ci-dessous — un dossier contentieux (licenciement,
+    # litige actionnaire) reste à la direction, qui les porte par héritage
+    # d'``ALL_PERMISSIONS``. Aucun accès existant n'est retiré : l'app n'existait
+    # pas. Le filtrage de CONFIDENTIALITÉ (dossiers ``confidentiel`` invisibles
+    # hors palier administrateur) est une garde SUPPLÉMENTAIRE, posée dans le
+    # ``get_queryset`` du ViewSet (NTJUR1).
+    'juridique_voir',
+    'juridique_gerer',
     # ── WIR172 — Ressources humaines (apps/rh), même patron YRBAC3. Le module
     # RH n'avait AUCUNE permission fine : ``_RhBaseViewSet`` était gardé par le
     # grossier ``IsResponsableOrAdmin``, qui passe dès qu'un rôle accorde UNE
@@ -442,6 +456,8 @@ PERMISSION_MODULE = {
     'litige_voir': 'litiges',
     'litige_gerer': 'litiges',
     **{c: 'kb' for c in ALL_PERMISSIONS if c.startswith('kb_')},
+    # NTJUR1 — clé de manifeste ``juridique`` (apps/juridique).
+    **{c: 'juridique' for c in ALL_PERMISSIONS if c.startswith('juridique_')},
     **{c: 'rh' for c in ALL_PERMISSIONS if c.startswith('rh_')},
     **{c: 'fpa' for c in ALL_PERMISSIONS if c.startswith('fpa_')},
     **{c: 'ged' for c in ALL_PERMISSIONS if c.startswith('ged_')},
