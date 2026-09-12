@@ -15,7 +15,7 @@ from core.events import saved_view_shared
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import FavoriUtilisateur, SavedView, UxParametres
+from .models import EcranRecent, FavoriUtilisateur, SavedView, UxParametres
 from .permissions import PeutDefinirVueDefautRole, PeutPartagerVueEquipe
 from .serializers import (
     FavoriUtilisateurSerializer, SavedViewSerializer, UxParametresSerializer,
@@ -63,6 +63,22 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         return qs.filter(
             Q(owner=user) | Q(visibilite=SavedView.Visibilite.EQUIPE),
         )
+
+    def list(self, request, *args, **kwargs):
+        # NTUX39 — marque CET utilisateur comme ayant consulté `ecran`
+        # MAINTENANT (`EcranRecent`, substitut serveur de NTUX11 — le widget
+        # « Récents » vit en localStorage, jamais transmis au serveur). Une
+        # ligne par (company, owner, ecran), best-effort : jamais bloquant.
+        ecran = request.query_params.get('ecran')
+        if ecran:
+            try:
+                EcranRecent.objects.update_or_create(
+                    company=request.user.company, owner=request.user, ecran=ecran)
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.exception(
+                    'EcranRecent: mise à jour échouée (%s, %s)',
+                    request.user.pk, ecran)
+        return super().list(request, *args, **kwargs)
 
     def get_permissions(self):
         # NTUX23/34 — les actions de gouvernance de l'écran `/parametres/vues`
@@ -136,7 +152,56 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         ):
             raise PermissionDenied("Vous ne pouvez modifier que vos propres vues.")
         self._verifier_partage_autorise(serializer, instance=instance)
-        serializer.save()
+        etait_equipe = instance.visibilite == SavedView.Visibilite.EQUIPE
+        ancienne_configuration = instance.configuration
+        updated = serializer.save()
+        # NTUX39 — notifie SEULEMENT si la vue ÉTAIT et RESTE partagée à
+        # l'équipe ET que ses filtres/colonnes (`configuration`) ont changé
+        # (jamais sur le partage initial, déjà couvert par NTUX32
+        # `saved_view_shared`, ni sur un simple renommage).
+        if (etait_equipe and updated.visibilite == SavedView.Visibilite.EQUIPE
+                and updated.configuration != ancienne_configuration):
+            self._notifier_vue_equipe_modifiee(updated)
+
+    def _notifier_vue_equipe_modifiee(self, view):
+        """NTUX39 — notifie les utilisateurs ayant consulté récemment (30
+        derniers jours, `EcranRecent`) l'écran de cette vue — jamais toute la
+        société, jamais le propriétaire qui vient de la modifier."""
+        try:
+            from datetime import timedelta
+
+            from django.contrib.auth import get_user_model
+            from django.utils import timezone
+
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+
+            seuil = timezone.now() - timedelta(days=30)
+            destinataire_ids = (
+                EcranRecent.objects
+                .filter(company=view.company, ecran=view.ecran,
+                        consulte_le__gte=seuil)
+                .exclude(owner_id=self.request.user.id)
+                .values_list('owner_id', flat=True)
+            )
+            destinataires = list(
+                get_user_model().objects.filter(pk__in=destinataire_ids))
+            if not destinataires:
+                return
+            notify_many(
+                destinataires, EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE,
+                title=f'La vue « {view.nom} » a changé',
+                body=(
+                    f"Les filtres/colonnes de la vue d'équipe « {view.nom} » "
+                    f'(écran {view.ecran}) ont été modifiés par '
+                    f'{self.request.user.get_full_name() or self.request.user.username}.'
+                ),
+                company=view.company,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.exception(
+                'saved_view_shared: notification de modification échouée (%s)',
+                view.pk)
 
     def perform_destroy(self, instance):
         # Garde-fou NTUX2 : une vue par défaut de rôle ne peut être supprimée

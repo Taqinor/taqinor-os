@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 
-from .models import FavoriUtilisateur, SavedView, UxParametres
+from .models import EcranRecent, FavoriUtilisateur, SavedView, UxParametres
 
 User = get_user_model()
 
@@ -373,6 +373,96 @@ class NTUX31PermissionsFinesTests(TestCase):
         resp = auth(self.user_avec_code).post(
             f'{self.BASE}{view.id}/definir-par-defaut-role/')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+
+class NTUX39EcranRecentEtNotificationTests(TestCase):
+    """NTUX39 — `EcranRecent` (substitut serveur de NTUX11) + notification de
+    suivi quand une vue d'équipe consultée récemment change de filtres."""
+    BASE = '/api/django/uxviews/saved-views/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv39-a', 'A')
+        self.directeur = make_user(self.co_a, 'uxv39-directeur', role_legacy='responsable')
+        self.commercial1 = make_user(self.co_a, 'uxv39-com1', role_legacy='normal')
+        self.commercial2 = make_user(self.co_a, 'uxv39-com2', role_legacy='normal')
+
+    def test_listing_an_ecran_marks_it_recent_for_the_caller(self):
+        self.assertFalse(
+            EcranRecent.objects.filter(owner=self.commercial1, ecran='crm.leads').exists())
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        self.assertTrue(
+            EcranRecent.objects.filter(
+                company=self.co_a, owner=self.commercial1, ecran='crm.leads').exists())
+
+    def test_listing_twice_upserts_a_single_row(self):
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        self.assertEqual(
+            EcranRecent.objects.filter(owner=self.commercial1, ecran='crm.leads').count(), 1)
+
+    def test_modifying_team_view_filters_notifies_recent_viewers_not_the_whole_company(self):
+        from apps.notifications.models import EventType, Notification
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
+            visibilite=SavedView.Visibilite.EQUIPE, configuration={'filtres': {}},
+        )
+        # commercial1 a consulté l'écran récemment ; commercial2 jamais.
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/',
+            {'configuration': {'filtres': {'stage': 'nouveau'}}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.commercial1,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.commercial2,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+        # Jamais l'auteur de la modification lui-même.
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.directeur,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+
+    def test_renaming_without_changing_configuration_does_not_notify(self):
+        from apps.notifications.models import EventType, Notification
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
+            visibilite=SavedView.Visibilite.EQUIPE, configuration={'filtres': {}},
+        )
+        auth(self.commercial1).get(self.BASE, {'ecran': 'crm.leads'})
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/', {'nom': 'Équipe (renommée)'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
+
+    def test_stale_ecran_recent_beyond_30_days_is_not_notified(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.notifications.models import EventType, Notification
+
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
+            visibilite=SavedView.Visibilite.EQUIPE, configuration={'filtres': {}},
+        )
+        ancien = EcranRecent.objects.create(
+            company=self.co_a, owner=self.commercial1, ecran='crm.leads')
+        EcranRecent.objects.filter(pk=ancien.pk).update(
+            consulte_le=timezone.now() - timedelta(days=45))
+
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/',
+            {'configuration': {'filtres': {'stage': 'nouveau'}}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.commercial1,
+            event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
 
 
 class NTUX38AuditTraceTests(TestCase):
