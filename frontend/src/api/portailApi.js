@@ -68,6 +68,14 @@ const portailApi = {
       api.post('/portail/mes-demandes-sav/consulter-article-kb/',
         { article_id: articleId }),
   },
+  // NTPRT35 — widget « Satisfaction » : le serveur ne renvoie une enquête que
+  // tant qu'elle est SANS réponse. Une fois répondue, `enquete` est null —
+  // c'est ce qui garantit « une fois par événement », sans état local.
+  satisfaction: {
+    enAttente: () => api.get('/portail/satisfaction/'),
+    repondre: (payload) =>
+      api.post('/portail/satisfaction/repondre/', payload),
+  },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au
   // rattachement du compte connecté.

@@ -143,3 +143,43 @@ def score_maturite_valeur(company, lead_id):
     from . import services as marketing_services
     score = marketing_services.recalculer_score_maturite(company, lead_id)
     return score.valeur if score is not None else 0
+
+
+# ── NTPRT35 — Enquête de satisfaction EN ATTENTE d'un client portail ────────
+
+def enquete_satisfaction_en_attente(company, client_id):
+    """NTPRT35 — l'enquête (FG238) que CE client n'a pas encore renseignée.
+
+    Point d'entrée cross-app LECTURE SEULE de ``apps.portail`` (jamais un
+    import de ``apps.marketing.models`` depuis portail). Renvoie un dict, ou
+    ``None`` quand il n'y a rien à demander.
+
+    « Une fois par événement » (critère d'acceptation) tient SANS aucun
+    compteur de session : une enquête est créée par ÉVÉNEMENT (un chantier
+    réceptionné = une enquête, contrainte d'unicité AUD618), et répondre la
+    fait passer à ``REPONDUE`` — donc hors de ce sélecteur pour toujours. Le
+    prompt ne peut pas se rejouer à la connexion suivante.
+
+    La plus ANCIENNE d'abord : si deux chantiers ont été réceptionnés, on
+    demande d'abord son avis sur celui qu'il a vu en premier.
+    """
+    if company is None or not client_id:
+        return None
+
+    from .models import EnqueteNPS
+
+    enquete = (EnqueteNPS.objects
+               .filter(company=company, client_id=client_id,
+                       statut=EnqueteNPS.Statut.ENVOYEE)
+               .order_by('envoyee_le', 'id')
+               .first())
+    if enquete is None:
+        return None
+    return {
+        'id': enquete.id,
+        # Référence opaque : le client sait DE QUEL chantier on parle, jamais
+        # ce que le dossier interne contient.
+        'chantier_id': enquete.chantier_id,
+        'envoyee_le': (enquete.envoyee_le.isoformat()
+                       if enquete.envoyee_le else None),
+    }
