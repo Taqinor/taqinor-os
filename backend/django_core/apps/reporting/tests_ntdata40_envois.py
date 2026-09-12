@@ -89,8 +89,12 @@ class JournalDiffusionTests(TestCase):
         ANYMAIL={'SENDINBLUE_API_KEY': 'test-key'})
     def test_rendu_impossible_trace_un_echec(self):
         rapport = self._rapport()
-        with mock.patch('apps.reporting.scheduled_reports.render_report_xlsx',
-                        return_value=(None, None)):
+        # NTDATA37 — la boucle d'envoi appelle `rendre_rapport` (qui rend AUSSI
+        # le nom de fichier et le type MIME) ; `render_report_xlsx` n'est plus
+        # qu'un adaptateur pour les appelants historiques. Patcher l'ancien
+        # point d'entrée ne simulait donc plus aucune panne de rendu.
+        with mock.patch('apps.reporting.scheduled_reports.rendre_rapport',
+                        return_value=(None, None, None, None)):
             self.assertEqual(_lancer(), 0)
         envoi = EnvoiRapport.objects.get(saved_report=rapport)
         self.assertEqual(envoi.statut, 'echec')
