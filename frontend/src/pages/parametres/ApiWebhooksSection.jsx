@@ -239,7 +239,7 @@ function DocsReference() {
 }
 
 // NTAPI21 — console de docs interactive (Redoc-like, self-contained, 100 %
-// local). Rend l'OpenAPI 3.1 (NTAPI20, `/api/public/openapi.json`) en
+// local). Rend l'OpenAPI 3.1 (NTAPI20, `/api/public/v1/openapi.json`) en
 // référence lisible et permet un « essai » côté client : l'appel de
 // démonstration passe par la SESSION admin (jamais une clé API brute) vers
 // le bac à sable NTAPI27, renvoyant une VRAIE réponse (jamais de données
@@ -318,7 +318,7 @@ function InteractiveConsole() {
             </div>
             <div className="rounded-lg border border-border p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium">Essai de démonstration — <code>GET /api/public/leads/</code> (bac à sable)</p>
+                <p className="text-xs font-medium">Essai de démonstration — <code>GET /api/public/v1/leads/</code> (bac à sable)</p>
                 <Button type="button" size="sm" onClick={essayer} disabled={trying}>
                   <Play className="size-4" /> {trying ? 'Essai…' : 'Essayer'}
                 </Button>
@@ -515,7 +515,7 @@ export default function ApiWebhooksSection() {
           <SectionTitle icon={<KeyRound className="size-4" />} label="Clés d'API" />
           <p className="mb-3 text-sm text-muted-foreground">
             Les clés permettent à un système externe de lire vos données via l'API
-            publique (<code>/api/public/</code>). Chaque clé est limitée aux droits
+            publique (<code>/api/public/v1/</code>). Chaque clé est limitée aux droits
             cochés. La clé complète n'est affichée qu'à la création.
           </p>
 

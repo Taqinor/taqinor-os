@@ -248,14 +248,19 @@ urlpatterns = [
     path('api/django/public/sav/', include('apps.sav.public_urls')),
     # XPLT4 — Webhook entrant générique (token dans l'URL) — sans login.
     path('api/django/public/', include('apps.automation.public_urls')),
-    # N89 — API publique REST par clé d'API (données read-only).
-    path('api/public/', include('apps.publicapi.public_urls')),
     # NTAPI20 — document OpenAPI 3.1 (aucune auth requise, document de
-    # découverte). Chemin littéral MINIMAL sous le futur préfixe versionné
-    # (NTAPI1, pas encore construit) : n'anticipe PAS l'alias/dépréciation
-    # complet, juste le chemin dont NTAPI20 a besoin.
+    # découverte). Déclaré AVANT le routeur versionné : chemin littéral, il ne
+    # doit jamais être capté par une route de ressource.
     path('api/public/v1/openapi.json', PublicOpenApiSchemaView.as_view(),
          name='public-openapi-v1'),
+    # N89 — API publique REST par clé d'API. NTAPI1 — montée sous le PRÉFIXE DE
+    # VERSION ; l'urlconf incluse est elle-même version-agnostique.
+    path('api/public/v1/', include('apps.publicapi.public_urls')),
+    # NTAPI1 — alias de compatibilité 12 mois : toute la racine historique NON
+    # versionnée redirige définitivement vers v1 (301 en lecture, 308 en
+    # écriture pour ne pas perdre le corps). DOIT rester en DERNIER de la
+    # famille `api/public/` — c'est un attrape-tout.
+    path('api/public/', include('apps.publicapi.legacy_urls')),
     # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.
     path('api/django/public/pos/', include('apps.pos.public_urls')),
     # XCTR14 — Portail client : « Mes contrats & abonnements » — sans login.

@@ -1,4 +1,4 @@
-"""NTAPI16 — Suivi de job `GET /api/public/jobs/<id>/` + liste paginée.
+"""NTAPI16 — Suivi de job `GET /api/public/v1/jobs/<id>/` + liste paginée.
 
 Couvre : statut/progression %/compteurs/liens, `Retry-After` conseillé tant
 que `en_cours`, liste paginée, cross-tenant impossible (déjà couvert côté
@@ -46,7 +46,7 @@ class Ntapi16JobTrackingTests(TestCase):
             company=self.co_b, api_key=self.api_key_b, type=BulkJob.TYPE_EXPORT,
             entite='leads', params={})
 
-        resp = _client(self.raw_a).get('/api/public/jobs/')
+        resp = _client(self.raw_a).get('/api/public/v1/jobs/')
         self.assertEqual(resp.status_code, 200)
         results = resp.data['results'] if 'results' in resp.data else resp.data
         self.assertEqual(len(results), 1)
@@ -56,7 +56,7 @@ class Ntapi16JobTrackingTests(TestCase):
             company=self.co_a, api_key=self.api_key_a, type=BulkJob.TYPE_EXPORT,
             entite='leads', params={}, total=10, traites=5, statut=BulkJob.STATUT_EN_COURS)
 
-        resp = _client(self.raw_a).get(f'/api/public/jobs/{job.id}/')
+        resp = _client(self.raw_a).get(f'/api/public/v1/jobs/{job.id}/')
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['progression_pct'], 50)
@@ -73,7 +73,7 @@ class Ntapi16JobTrackingTests(TestCase):
                 storage, 'get_minio_client') as get_client:
             get_client.return_value.generate_presigned_url.return_value = (
                 'https://minio/x')
-            resp = _client(self.raw_a).get(f'/api/public/jobs/{job.id}/')
+            resp = _client(self.raw_a).get(f'/api/public/v1/jobs/{job.id}/')
 
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn('Retry-After', resp.headers)
@@ -83,11 +83,11 @@ class Ntapi16JobTrackingTests(TestCase):
         job_b = BulkJob.objects.create(
             company=self.co_b, api_key=self.api_key_b, type=BulkJob.TYPE_EXPORT,
             entite='leads', params={})
-        resp = _client(self.raw_a).get(f'/api/public/jobs/{job_b.id}/')
+        resp = _client(self.raw_a).get(f'/api/public/v1/jobs/{job_b.id}/')
         self.assertEqual(resp.status_code, 404)
 
     def test_no_api_key_is_401(self):
-        resp = APIClient().get('/api/public/jobs/')
+        resp = APIClient().get('/api/public/v1/jobs/')
         self.assertEqual(resp.status_code, 401)
 
     def test_jobs_endpoint_accepts_any_scope_not_only_read_leads(self):
@@ -98,5 +98,5 @@ class Ntapi16JobTrackingTests(TestCase):
         BulkJob.objects.create(
             company=self.co_a, api_key=api_key, type=BulkJob.TYPE_EXPORT,
             entite='produits', params={})
-        resp = _client(raw).get('/api/public/jobs/')
+        resp = _client(raw).get('/api/public/v1/jobs/')
         self.assertEqual(resp.status_code, 200)

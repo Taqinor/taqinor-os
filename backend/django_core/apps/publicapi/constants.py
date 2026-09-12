@@ -109,6 +109,23 @@ EVENT_CHOICES = [
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 
 
+# ── NTAPI1 — versions servies de l'API publique ─────────────────────────────
+# Source UNIQUE des versions montées : le routeur (`public_urls.py`), l'alias
+# legacy (`legacy_urls.py`), la résolution de version (`versioning.py`) et la
+# doc (`docs.py`) lisent TOUS ces constantes — jamais une chaîne 'v1' en dur.
+PUBLIC_API_DEFAULT_VERSION = 'v1'
+PUBLIC_API_VERSIONS = ['v1']
+# Racine historique NON versionnée, conservée 12 mois comme alias 301 → v1
+# (aucune clé existante cassée : elle suit simplement la redirection).
+PUBLIC_API_LEGACY_BASE = '/api/public/'
+# Racine canonique versionnée (celle que la doc et l'OpenAPI annoncent).
+PUBLIC_API_BASE = f'{PUBLIC_API_LEGACY_BASE}{PUBLIC_API_DEFAULT_VERSION}/'
+# Fin de vie ANNONCÉE de l'alias non versionné (12 mois après NTAPI1). Lue par
+# `legacy_urls.py` pour poser un en-tête `Sunset` sur chaque redirection : une
+# intégration qui n'a pas migré le voit dans ses propres logs.
+PUBLIC_API_LEGACY_SUNSET = '2027-09-12'
+
+
 # ── NTAPI26 — environnement d'une clé (préfixe distinct, isolation bac à
 # sable) ───────────────────────────────────────────────────────────────────
 ENV_TEST = 'test'

@@ -53,15 +53,15 @@ class Ntapi23KeyRotationTests(TestCase):
 
     def test_both_keys_work_during_grace_period(self):
         new_key, new_raw = self.old_key.rotate(grace_jours=7)
-        resp_old = _key_client(self.old_raw).get('/api/public/leads/')
-        resp_new = _key_client(new_raw).get('/api/public/leads/')
+        resp_old = _key_client(self.old_raw).get('/api/public/v1/leads/')
+        resp_new = _key_client(new_raw).get('/api/public/v1/leads/')
         self.assertEqual(resp_old.status_code, 200)
         self.assertEqual(resp_new.status_code, 200)
 
     def test_deprecation_header_on_old_key_only(self):
         new_key, new_raw = self.old_key.rotate(grace_jours=7)
-        resp_old = _key_client(self.old_raw).get('/api/public/leads/')
-        resp_new = _key_client(new_raw).get('/api/public/leads/')
+        resp_old = _key_client(self.old_raw).get('/api/public/v1/leads/')
+        resp_new = _key_client(new_raw).get('/api/public/v1/leads/')
         self.assertIn('Deprecation', resp_old)
         self.assertNotIn('Deprecation', resp_new)
 
@@ -71,7 +71,7 @@ class Ntapi23KeyRotationTests(TestCase):
         # Simule l'échéance dépassée.
         self.old_key.expire_le = timezone.now() - timedelta(seconds=1)
         self.old_key.save(update_fields=['expire_le'])
-        resp = _key_client(self.old_raw).get('/api/public/leads/')
+        resp = _key_client(self.old_raw).get('/api/public/v1/leads/')
         self.assertEqual(resp.status_code, 401)
 
     def test_new_key_keeps_working_after_old_key_expires(self):
@@ -79,7 +79,7 @@ class Ntapi23KeyRotationTests(TestCase):
         self.old_key.refresh_from_db()
         self.old_key.expire_le = timezone.now() - timedelta(seconds=1)
         self.old_key.save(update_fields=['expire_le'])
-        resp = _key_client(new_raw).get('/api/public/leads/')
+        resp = _key_client(new_raw).get('/api/public/v1/leads/')
         self.assertEqual(resp.status_code, 200)
 
     def test_cross_tenant_rotation_impossible_via_endpoint(self):
@@ -104,9 +104,9 @@ class Ntapi23KeyRotationTests(TestCase):
         new_raw = resp.data['key']
         # Les deux clés fonctionnent pendant la période de grâce.
         self.assertEqual(
-            _key_client(self.old_raw).get('/api/public/leads/').status_code, 200)
+            _key_client(self.old_raw).get('/api/public/v1/leads/').status_code, 200)
         self.assertEqual(
-            _key_client(new_raw).get('/api/public/leads/').status_code, 200)
+            _key_client(new_raw).get('/api/public/v1/leads/').status_code, 200)
 
     def test_rotate_endpoint_cross_tenant_404(self):
         other_co = _company('ntapi23-other2', 'NTAPI23 Other 2')

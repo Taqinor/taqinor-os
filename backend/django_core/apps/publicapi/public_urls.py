@@ -1,7 +1,14 @@
-"""Routes de l'API publique de DONNÉES (N89), montées sous /api/public/.
+"""Routes de l'API publique de DONNÉES (N89), montées sous /api/public/v1/.
 
 Distinct de `apps.ventes.public_urls` (liens PDF tokenisés sous
 /api/django/public/) : ici c'est l'API REST de données par clé d'API.
+
+NTAPI1 — cette urlconf est VERSION-AGNOSTIQUE : elle est montée par l'urlconf
+racine sous le préfixe de version (`/api/public/v1/`), jamais l'inverse. Aucune
+route ne réécrit `v1/` en dur — les chemins servis restent EXACTEMENT les mêmes
+qu'avant (`/api/public/v1/licence/statut/`, `/api/public/v1/scm/…` étaient déjà
+écrits avec le segment `v1/` en dur ici ; il vient désormais du mont). La racine
+historique SANS version reste servie 12 mois par `legacy_urls.py` (301/308 → v1).
 """
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
@@ -33,15 +40,16 @@ router.register(r'chantiers', PublicChantierViewSet, basename='public-chantier')
 router.register(r'produits', PublicProduitViewSet, basename='public-produit')
 # NTAPI16/43 — suivi + reprise des jobs bulk (list/retrieve + action `relancer`).
 router.register(r'jobs', PublicJobViewSet, basename='public-job')
-# NTSCM38 — planification supply chain (apps.scm), scope `read:scm`. Préfixe
-# `v1/scm/…` (comme `v1/licence/…`, NTADM42) plutôt que la racine des
-# ressources historiques (leads/devis/…) — même routeur, mêmes garanties
-# testées par `tests_ntapi42_contract_consistency`.
+# NTSCM38 — planification supply chain (apps.scm), scope `read:scm`. Sous-préfixe
+# `scm/…` (comme `licence/…`, NTADM42) plutôt que la racine des ressources
+# historiques (leads/devis/…) — même routeur, mêmes garanties testées par
+# `tests_ntapi42_contract_consistency`. NTAPI1 — le segment de version vient du
+# mont racine, plus du préfixe écrit ici : le chemin servi est inchangé.
 router.register(
-    r'v1/scm/previsions-demande', PublicPrevisionDemandeViewSet,
+    r'scm/previsions-demande', PublicPrevisionDemandeViewSet,
     basename='public-scm-prevision-demande')
 router.register(
-    r'v1/scm/politiques-stock', PublicPolitiqueStockViewSet,
+    r'scm/politiques-stock', PublicPolitiqueStockViewSet,
     basename='public-scm-politique-stock')
 
 urlpatterns = [
@@ -69,10 +77,10 @@ urlpatterns = [
     path('changelog/', PublicChangelogView.as_view(),
          name='public-changelog'),
     # NTADM42 — statut de licence (plan/modules/sièges) de la société de la clé.
-    path('v1/licence/statut/', PublicLicenceStatutView.as_view(),
+    path('licence/statut/', PublicLicenceStatutView.as_view(),
          name='public-licence-statut'),
     # NTSCM38 — tableau de bord réappro consolidé (NTSCM7), objet unique.
-    path('v1/scm/tableau-bord-reappro/', PublicScmTableauBordReapproView.as_view(),
+    path('scm/tableau-bord-reappro/', PublicScmTableauBordReapproView.as_view(),
          name='public-scm-tableau-bord-reappro'),
     path('', include(router.urls)),
 ]

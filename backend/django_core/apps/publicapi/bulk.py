@@ -2,10 +2,10 @@
 
 Machinerie PARTAGÉE par les endpoints qui manipulent un `BulkJob` :
 
-  * `POST /api/public/exports/`            (NTAPI14) — crée + lance un export.
-  * `POST /api/public/imports/`            (NTAPI15) — crée + lance un import.
-  * `GET  /api/public/jobs/…`              (NTAPI16) — suivi (statut/%/liens).
-  * `POST /api/public/jobs/<id>/relancer/` (NTAPI43) — reprise sur curseur.
+  * `POST /api/public/v1/exports/`            (NTAPI14) — crée + lance un export.
+  * `POST /api/public/v1/imports/`            (NTAPI15) — crée + lance un import.
+  * `GET  /api/public/v1/jobs/…`              (NTAPI16) — suivi (statut/%/liens).
+  * `POST /api/public/v1/jobs/<id>/relancer/` (NTAPI43) — reprise sur curseur.
 
 Traitement HORS requête (Celery, `tasks.py`) mais chaque fonction `run_*` est
 un pur appelable synchrone (testable sans broker — la tâche Celery n'est

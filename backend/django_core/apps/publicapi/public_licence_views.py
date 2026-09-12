@@ -1,5 +1,5 @@
 """NTADM42 — API publique LECTURE SEULE « statut de licence », sous
-/api/public/. Authentifiée par clé d'API (scope ``read:licence``), scopée à
+/api/public/v1/. Authentifiée par clé d'API (scope ``read:licence``), scopée à
 la société de la clé (jamais un paramètre client). Renvoie SEULEMENT
 ``plan_code``/``modules_inclus``/``sieges_max``/``sieges_utilises`` — aucun
 champ interne (prix, historique de changement de plan)."""

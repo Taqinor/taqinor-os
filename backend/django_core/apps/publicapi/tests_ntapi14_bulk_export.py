@@ -1,4 +1,4 @@
-"""NTAPI14 — Export bulk asynchrone `POST /api/public/exports/`.
+"""NTAPI14 — Export bulk asynchrone `POST /api/public/v1/exports/`.
 
 Couvre : création d'un `BulkJob` (statut initial `en_file`), scope requis
 DÉPENDANT de l'entité (jamais un scope fixe), traitement synchrone
@@ -87,14 +87,14 @@ class Ntapi14ExportEndpointTests(_MinioMixin, TestCase):
     def test_post_without_scope_is_403(self):
         _api_key, raw = _key(self.co, [])  # aucun scope
         resp = _client(raw).post(
-            '/api/public/exports/', {'entite': 'leads'}, format='json')
+            '/api/public/v1/exports/', {'entite': 'leads'}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_post_with_scope_returns_202_and_job(self):
         _api_key, raw = _key(self.co, [SCOPE_READ_LEADS])
         with mock.patch.object(bulk, '_dispatch_export'):
             resp = _client(raw).post(
-                '/api/public/exports/', {'entite': 'leads'}, format='json')
+                '/api/public/v1/exports/', {'entite': 'leads'}, format='json')
         self.assertEqual(resp.status_code, 202)
         self.assertIn('id', resp.data)
         self.assertEqual(resp.data['statut'], BulkJob.STATUT_EN_FILE)
@@ -105,14 +105,14 @@ class Ntapi14ExportEndpointTests(_MinioMixin, TestCase):
         # read:stock requis) — jamais un scope bulk générique qui court-circuite.
         _api_key, raw = _key(self.co, [SCOPE_READ_LEADS])
         resp = _client(raw).post(
-            '/api/public/exports/', {'entite': 'produits'}, format='json')
+            '/api/public/v1/exports/', {'entite': 'produits'}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_produits_scope_can_export_produits(self):
         _api_key, raw = _key(self.co, [SCOPE_READ_STOCK])
         with mock.patch.object(bulk, '_dispatch_export'):
             resp = _client(raw).post(
-                '/api/public/exports/', {'entite': 'produits'}, format='json')
+                '/api/public/v1/exports/', {'entite': 'produits'}, format='json')
         self.assertEqual(resp.status_code, 202)
 
 
@@ -162,6 +162,6 @@ class Ntapi14RunExportJobTests(_MinioMixin, TestCase):
     def test_run_export_job_unknown_job_is_noop(self):
         bulk.run_export_job(999999)  # ne lève jamais
 
-    # Le suivi cross-tenant (`GET /api/public/jobs/<id>/`) est couvert par
+    # Le suivi cross-tenant (`GET /api/public/v1/jobs/<id>/`) est couvert par
     # `tests_ntapi16_job_tracking.py` (NTAPI16 — endpoint pas encore monté
     # dans cette tâche NTAPI14).

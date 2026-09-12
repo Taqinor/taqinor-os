@@ -78,28 +78,28 @@ class ApiKeyAuthTests(TestCase):
             scopes=[SCOPE_READ_LEADS, SCOPE_READ_DEVIS])
 
     def test_valid_key_reads_leads(self):
-        resp = key_client(self.raw_a).get('/api/public/leads/')
+        resp = key_client(self.raw_a).get('/api/public/v1/leads/')
         self.assertEqual(resp.status_code, 200)
         names = [r['nom'] for r in rows(resp)]
         self.assertEqual(names, ['Alpha'])
 
     def test_no_key_is_rejected(self):
-        resp = APIClient().get('/api/public/leads/')
+        resp = APIClient().get('/api/public/v1/leads/')
         self.assertIn(resp.status_code, (401, 403))
 
     def test_bad_key_is_rejected(self):
-        resp = key_client('tqk_does_not_exist').get('/api/public/leads/')
+        resp = key_client('tqk_does_not_exist').get('/api/public/v1/leads/')
         self.assertEqual(resp.status_code, 401)
 
     def test_disabled_key_is_rejected(self):
         self.key_a.enabled = False
         self.key_a.save(update_fields=['enabled'])
-        resp = key_client(self.raw_a).get('/api/public/leads/')
+        resp = key_client(self.raw_a).get('/api/public/v1/leads/')
         self.assertEqual(resp.status_code, 401)
 
     def test_company_scoping_no_cross_tenant(self):
         # La clé A ne voit JAMAIS le lead de la société B.
-        resp = key_client(self.raw_a).get('/api/public/leads/')
+        resp = key_client(self.raw_a).get('/api/public/v1/leads/')
         ids = [r['id'] for r in rows(resp)]
         self.assertIn(self.lead_a.id, ids)
         self.assertNotIn(self.lead_b.id, ids)
@@ -107,13 +107,13 @@ class ApiKeyAuthTests(TestCase):
     def test_scope_gating(self):
         # Clé sans read:factures → 403 sur /factures/, 200 sur /leads/.
         self.assertEqual(
-            key_client(self.raw_a).get('/api/public/leads/').status_code, 200)
+            key_client(self.raw_a).get('/api/public/v1/leads/').status_code, 200)
         self.assertEqual(
-            key_client(self.raw_a).get('/api/public/factures/').status_code, 403)
+            key_client(self.raw_a).get('/api/public/v1/factures/').status_code, 403)
 
     def test_last_used_at_updated(self):
         self.assertIsNone(self.key_a.last_used_at)
-        key_client(self.raw_a).get('/api/public/leads/')
+        key_client(self.raw_a).get('/api/public/v1/leads/')
         self.key_a.refresh_from_db()
         self.assertIsNotNone(self.key_a.last_used_at)
 
@@ -139,7 +139,7 @@ class NoBuyPriceTests(TestCase):
             scopes=[SCOPE_READ_DEVIS])
 
     def test_no_prix_achat_in_devis_payload(self):
-        resp = key_client(self.raw).get('/api/public/devis/')
+        resp = key_client(self.raw).get('/api/public/v1/devis/')
         self.assertEqual(resp.status_code, 200)
         blob = json.dumps(resp.data)
         # Jamais de prix d'achat / marge ; le prix de vente (900) est OK.
@@ -172,7 +172,7 @@ class CompletenessReadTests(TestCase):
 
     def test_all_endpoints_ok(self):
         for path in ('leads', 'devis', 'factures', 'chantiers'):
-            resp = key_client(self.raw).get(f'/api/public/{path}/')
+            resp = key_client(self.raw).get(f'/api/public/v1/{path}/')
             self.assertEqual(resp.status_code, 200, path)
             self.assertEqual(len(rows(resp)), 1, path)
 
@@ -689,33 +689,33 @@ class PublicApiFilterTests(TestCase):
             scopes=[SCOPE_READ_LEADS, SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS])
 
     def test_whitelisted_field_filter(self):
-        resp = key_client(self.raw).get('/api/public/leads/?stage=SIGNED')
+        resp = key_client(self.raw).get('/api/public/v1/leads/?stage=SIGNED')
         self.assertEqual(resp.status_code, 200)
         noms = [r['nom'] for r in rows(resp)]
         self.assertEqual(noms, ['Signé'])
 
     def test_second_whitelisted_filter(self):
         resp = key_client(self.raw).get(
-            '/api/public/factures/?statut=payee')
+            '/api/public/v1/factures/?statut=payee')
         self.assertEqual(resp.status_code, 200)
         refs = [r['reference'] for r in rows(resp)]
         self.assertEqual(refs, ['FA-P'])
 
     def test_unknown_filter_is_400_not_500(self):
         # Un paramètre hors liste blanche est refusé proprement (400).
-        resp = key_client(self.raw).get('/api/public/leads/?secret=x')
+        resp = key_client(self.raw).get('/api/public/v1/leads/?secret=x')
         self.assertEqual(resp.status_code, 400)
 
     def test_ordering_whitelisted(self):
         resp = key_client(self.raw).get(
-            '/api/public/leads/?ordering=date_creation')
+            '/api/public/v1/leads/?ordering=date_creation')
         self.assertEqual(resp.status_code, 200)
         noms = [r['nom'] for r in rows(resp)]
         self.assertEqual(noms, ['Neuf', 'Signé'])
 
     def test_ordering_non_whitelisted_is_ignored(self):
         # Champ non listé → OrderingFilter natif l'ignore (pas de 500/fuite).
-        resp = key_client(self.raw).get('/api/public/leads/?ordering=email')
+        resp = key_client(self.raw).get('/api/public/v1/leads/?ordering=email')
         self.assertEqual(resp.status_code, 200)
 
     def test_updated_since_filters_incrementally(self):
@@ -724,37 +724,37 @@ class PublicApiFilterTests(TestCase):
         # Tout est récent : un seuil futur ne renvoie rien.
         future = (timezone.now() + timedelta(days=1)).isoformat()
         resp = key_client(self.raw).get(
-            f'/api/public/leads/?updated_since={future}')
+            f'/api/public/v1/leads/?updated_since={future}')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(rows(resp)), 0)
         # Un seuil passé renvoie les deux leads.
         past = (timezone.now() - timedelta(days=1)).isoformat()
         resp2 = key_client(self.raw).get(
-            f'/api/public/leads/?updated_since={past}')
+            f'/api/public/v1/leads/?updated_since={past}')
         self.assertEqual(len(rows(resp2)), 2)
 
     def test_updated_since_accepts_plain_date(self):
         resp = key_client(self.raw).get(
-            '/api/public/leads/?updated_since=2000-01-01')
+            '/api/public/v1/leads/?updated_since=2000-01-01')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(rows(resp)), 2)
 
     def test_updated_since_invalid_is_400(self):
         resp = key_client(self.raw).get(
-            '/api/public/leads/?updated_since=pas-une-date')
+            '/api/public/v1/leads/?updated_since=pas-une-date')
         self.assertEqual(resp.status_code, 400)
 
     def test_chantier_exposes_date_modification(self):
         Installation.objects.create(
             company=self.co, reference='CH-F', client=self.client_obj)
-        resp = key_client(self.raw).get('/api/public/chantiers/')
+        resp = key_client(self.raw).get('/api/public/v1/chantiers/')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('date_modification', rows(resp)[0])
 
     def test_filter_stays_company_scoped(self):
         other = make_company('flt-b', 'FLT B')
         Lead.objects.create(company=other, nom='Étranger', stage='SIGNED')
-        resp = key_client(self.raw).get('/api/public/leads/?stage=SIGNED')
+        resp = key_client(self.raw).get('/api/public/v1/leads/?stage=SIGNED')
         noms = [r['nom'] for r in rows(resp)]
         self.assertNotIn('Étranger', noms)
 
@@ -917,17 +917,17 @@ class PublicStockScopeTests(TestCase):
             company=self.co_a, label='leads', scopes=[SCOPE_READ_LEADS])
 
     def test_scoped_key_reads_products(self):
-        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        resp = key_client(self.raw_stock).get('/api/public/v1/produits/')
         self.assertEqual(resp.status_code, 200)
         skus = [r['sku'] for r in rows(resp)]
         self.assertIn('PAN-450', skus)
 
     def test_other_scope_key_is_403(self):
-        resp = key_client(self.raw_leads).get('/api/public/produits/')
+        resp = key_client(self.raw_leads).get('/api/public/v1/produits/')
         self.assertEqual(resp.status_code, 403)
 
     def test_no_cost_field_ever_leaks(self):
-        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        resp = key_client(self.raw_stock).get('/api/public/v1/produits/')
         payload = json.dumps(rows(resp))
         self.assertNotIn('prix_achat', payload)
         self.assertNotIn('prix_vente', payload)
@@ -938,27 +938,27 @@ class PublicStockScopeTests(TestCase):
         self.assertEqual(set(row.keys()), expected_fields)
 
     def test_categorie_exposed_as_label(self):
-        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        resp = key_client(self.raw_stock).get('/api/public/v1/produits/')
         row = next(r for r in rows(resp) if r['sku'] == 'PAN-450')
         self.assertEqual(row['categorie'], 'Panneaux')
 
     def test_archived_product_not_exposed(self):
-        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        resp = key_client(self.raw_stock).get('/api/public/v1/produits/')
         skus = [r['sku'] for r in rows(resp)]
         self.assertNotIn('OLD-1', skus)
 
     def test_cross_tenant_isolation(self):
-        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        resp = key_client(self.raw_stock).get('/api/public/v1/produits/')
         skus = [r['sku'] for r in rows(resp)]
         self.assertNotIn('OND-B', skus)
 
     def test_filter_by_sku(self):
-        resp = key_client(self.raw_stock).get('/api/public/produits/?sku=PAN-450')
+        resp = key_client(self.raw_stock).get('/api/public/v1/produits/?sku=PAN-450')
         skus = [r['sku'] for r in rows(resp)]
         self.assertEqual(skus, ['PAN-450'])
 
     def test_unknown_filter_is_400(self):
-        resp = key_client(self.raw_stock).get('/api/public/produits/?prix_achat=1')
+        resp = key_client(self.raw_stock).get('/api/public/v1/produits/?prix_achat=1')
         self.assertEqual(resp.status_code, 400)
 
 
@@ -1076,7 +1076,7 @@ class PublicWriteScopeTests(TestCase):
 
     def test_write_scoped_key_creates_lead(self):
         resp = key_client(self.raw_write).post(
-            '/api/public/leads-write/', {'nom': 'Nouveau Lead'}, format='json')
+            '/api/public/v1/leads-write/', {'nom': 'Nouveau Lead'}, format='json')
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.data['nom'], 'Nouveau Lead')
         self.assertTrue(
@@ -1084,7 +1084,7 @@ class PublicWriteScopeTests(TestCase):
 
     def test_read_only_key_is_403_on_write(self):
         resp = key_client(self.raw_ro).post(
-            '/api/public/leads-write/', {'nom': 'Refusé'}, format='json')
+            '/api/public/v1/leads-write/', {'nom': 'Refusé'}, format='json')
         self.assertEqual(resp.status_code, 403)
         self.assertFalse(Lead.objects.filter(nom='Refusé').exists())
 
@@ -1093,7 +1093,7 @@ class PublicWriteScopeTests(TestCase):
         # ignorée : `create_lead_from_public_api` ne lit jamais `company` du
         # payload — la vue le force depuis la clé.
         resp = key_client(self.raw_write).post(
-            '/api/public/leads-write/',
+            '/api/public/v1/leads-write/',
             {'nom': 'Forcé', 'company': self.co_b.id}, format='json')
         self.assertEqual(resp.status_code, 201)
         lead = Lead.objects.get(nom='Forcé')
@@ -1101,25 +1101,25 @@ class PublicWriteScopeTests(TestCase):
 
     def test_missing_nom_is_400(self):
         resp = key_client(self.raw_write).post(
-            '/api/public/leads-write/', {}, format='json')
+            '/api/public/v1/leads-write/', {}, format='json')
         self.assertEqual(resp.status_code, 400)
 
     def test_invalid_stage_is_400(self):
         resp = key_client(self.raw_write).post(
-            '/api/public/leads-write/',
+            '/api/public/v1/leads-write/',
             {'nom': 'Mauvais stage', 'stage': 'NOT_A_STAGE'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
     def test_stage_from_stages_py_accepted(self):
         resp = key_client(self.raw_write).post(
-            '/api/public/leads-write/',
+            '/api/public/v1/leads-write/',
             {'nom': 'Contacté direct', 'stage': 'CONTACTED'}, format='json')
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.data['stage'], 'CONTACTED')
 
     def test_update_own_lead(self):
         resp = key_client(self.raw_write).patch(
-            f'/api/public/leads-write/{self.lead_a.id}/',
+            f'/api/public/v1/leads-write/{self.lead_a.id}/',
             {'ville': 'Marrakech'}, format='json')
         self.assertEqual(resp.status_code, 200)
         self.lead_a.refresh_from_db()
@@ -1127,7 +1127,7 @@ class PublicWriteScopeTests(TestCase):
 
     def test_update_cross_tenant_lead_is_404(self):
         resp = key_client(self.raw_write).patch(
-            f'/api/public/leads-write/{self.lead_b.id}/',
+            f'/api/public/v1/leads-write/{self.lead_b.id}/',
             {'ville': 'Ailleurs'}, format='json')
         self.assertEqual(resp.status_code, 404)
         self.lead_b.refresh_from_db()
@@ -1135,7 +1135,7 @@ class PublicWriteScopeTests(TestCase):
 
     def test_create_activity_on_own_lead(self):
         resp = key_client(self.raw_write).post(
-            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            f'/api/public/v1/leads-write/{self.lead_a.id}/activites/',
             {'body': 'Appelé, intéressé.'}, format='json')
         self.assertEqual(resp.status_code, 201)
         self.assertTrue(
@@ -1143,13 +1143,13 @@ class PublicWriteScopeTests(TestCase):
 
     def test_create_activity_on_cross_tenant_lead_is_404(self):
         resp = key_client(self.raw_write).post(
-            f'/api/public/leads-write/{self.lead_b.id}/activites/',
+            f'/api/public/v1/leads-write/{self.lead_b.id}/activites/',
             {'body': 'Ne devrait pas passer.'}, format='json')
         self.assertEqual(resp.status_code, 404)
 
     def test_create_activity_read_only_key_is_403(self):
         resp = key_client(self.raw_ro).post(
-            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            f'/api/public/v1/leads-write/{self.lead_a.id}/activites/',
             {'body': 'x'}, format='json')
         self.assertEqual(resp.status_code, 403)
 
@@ -1158,7 +1158,7 @@ class PublicWriteScopeTests(TestCase):
         key_leads_only, raw_leads_only = ApiKey.issue(
             company=self.co_a, label='leads-only', scopes=[SCOPE_WRITE_LEADS])
         resp = key_client(raw_leads_only).post(
-            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            f'/api/public/v1/leads-write/{self.lead_a.id}/activites/',
             {'body': 'x'}, format='json')
         self.assertEqual(resp.status_code, 403)
 
@@ -1178,7 +1178,7 @@ class PublicWriteIdempotencyTests(TestCase):
         headers = {}
         if idem_key is not None:
             headers['HTTP_IDEMPOTENCY_KEY'] = idem_key
-        return api.post('/api/public/leads-write/', body, format='json', **headers)
+        return api.post('/api/public/v1/leads-write/', body, format='json', **headers)
 
     def test_replay_same_key_same_body_no_duplicate(self):
         resp1 = self._post({'nom': 'Idem Lead'}, idem_key='abc-123')
@@ -1212,7 +1212,7 @@ class PublicWriteIdempotencyTests(TestCase):
             company=self.co, label='autre', scopes=[SCOPE_WRITE_LEADS])
         resp1 = self._post({'nom': 'Partagé'}, idem_key='shared-key')
         resp2 = key_client(other_raw).post(
-            '/api/public/leads-write/', {'nom': 'Partagé'}, format='json',
+            '/api/public/v1/leads-write/', {'nom': 'Partagé'}, format='json',
             HTTP_IDEMPOTENCY_KEY='shared-key')
         self.assertEqual(resp1.status_code, 201)
         self.assertEqual(resp2.status_code, 201)

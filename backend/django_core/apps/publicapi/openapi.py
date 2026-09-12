@@ -28,7 +28,7 @@ OPENAPI_VERSION = '3.1.0'
 # utilisé par `_bulk_operation` pour ne jamais dépendre d'un nom fixe.
 _PATH_PLACEHOLDER_RE = re.compile(r'<(\w+)>')
 
-# Enveloppe d'erreur NTAPI3 (Stripe-like) — dédiée à /api/public/, distincte
+# Enveloppe d'erreur NTAPI3 (Stripe-like) — dédiée à /api/public/v1/, distincte
 # du contrat interne YAPIC3.
 _ERROR_SCHEMA_NAME = 'ErrorEnvelope'
 _ERROR_SCHEMA = {

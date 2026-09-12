@@ -57,7 +57,7 @@ class HasJobOperationScope(BasePermission):
     STRICTEMENT lecture seule, ou le token pull NTAPI30 qui traîne dans une
     cellule Google Sheets — pouvait relancer un job d'import et provoquer des
     ÉCRITURES qu'elle n'a pas le droit de demander à
-    ``POST /api/public/imports/``. On exige donc ici exactement le scope que la
+    ``POST /api/public/v1/imports/``. On exige donc ici exactement le scope que la
     création de ce job exigeait (``IMPORT_SCOPE_BY_ENTITY`` /
     ``EXPORT_SCOPE_BY_ENTITY``) : la reprise ne peut jamais dépasser les droits
     de la clé qui la demande.
@@ -103,7 +103,7 @@ class _BulkPostAPIView(PublicApiResponseMixin, APIView):
 
 
 class PublicExportCreateView(_BulkPostAPIView):
-    """POST /api/public/exports/ (NTAPI14) — lance un export bulk asynchrone.
+    """POST /api/public/v1/exports/ (NTAPI14) — lance un export bulk asynchrone.
 
     Corps : ``{"entite": "leads", "format": "csv"|"jsonl", "filtres": {...}}``.
     Réutilise STRICTEMENT les serializers publics (jamais de prix d'achat) —
@@ -126,7 +126,7 @@ class PublicExportCreateView(_BulkPostAPIView):
 
 
 class PublicImportCreateView(_BulkPostAPIView):
-    """POST /api/public/imports/ (NTAPI15) — lance un import bulk asynchrone
+    """POST /api/public/v1/imports/ (NTAPI15) — lance un import bulk asynchrone
     (leads/activités). Multipart : champ fichier ``file`` (CSV/JSONL, détecté
     par l'extension) + champs ``entite``/``mode``/``dedup_key``.
 
@@ -153,8 +153,8 @@ class PublicImportCreateView(_BulkPostAPIView):
 
 
 class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
-    """GET /api/public/jobs/ + /jobs/<id>/ (NTAPI16) — suivi d'un BulkJob.
-    POST /api/public/jobs/<id>/relancer/ (NTAPI43) — reprise sur curseur.
+    """GET /api/public/v1/jobs/ + /jobs/<id>/ (NTAPI16) — suivi d'un BulkJob.
+    POST /api/public/v1/jobs/<id>/relancer/ (NTAPI43) — reprise sur curseur.
 
     Un job n'est JAMAIS visible hors de la société de la clé
     (``get_queryset``) — cross-tenant impossible quelle que soit la clé
@@ -194,7 +194,7 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
 
 
 class PublicCsvPullExportView(PublicApiResponseMixin, APIView):
-    """GET /api/public/exports/<entite>.csv?token=<clé> (NTAPI30) — export
+    """GET /api/public/v1/exports/<entite>.csv?token=<clé> (NTAPI30) — export
     live SYNCHRONE en CSV, exploitable par ``=IMPORTDATA()`` de Google
     Sheets/Excel Web (rafraîchi côté tableur à chaque recalcul — le tableur
     ne fait qu'un GET brut, aucun en-tête custom possible, d'où le token en
