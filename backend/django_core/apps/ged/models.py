@@ -2333,12 +2333,17 @@ ACCES_APERCU = 'apercu'          # aperçu inline authentifié (GED14)
 ACCES_TELECHARGEMENT = 'telechargement'  # téléchargement (proxy)
 ACCES_PUBLIC = 'public'          # accès via lien public tokenisé (GED20)
 ACCES_CONSULTATION = 'consultation'      # ouverture de la fiche document
+# NTDOC9 — tentative PUBLIQUE échouée (consentement manquant, code erroné,
+# tour non venu…) sur un lien de signature tokenisé. Tracée ici pour que
+# l'abus laisse une trace auditable au même endroit que les accès légitimes.
+ACCES_TENTATIVE_KO = 'tentative_ko'
 
 ACCES_TYPE_CHOICES = [
     (ACCES_APERCU, 'Aperçu'),
     (ACCES_TELECHARGEMENT, 'Téléchargement'),
     (ACCES_PUBLIC, 'Accès public (lien)'),
     (ACCES_CONSULTATION, 'Consultation'),
+    (ACCES_TENTATIVE_KO, 'Tentative publique échouée'),
 ]
 
 

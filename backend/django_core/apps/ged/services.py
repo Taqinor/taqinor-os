@@ -5627,3 +5627,165 @@ def router_document_module(source, *, company, file, filename='',
         assign_tag(document, tag, created_by=uploaded_by)
 
     return document
+
+
+# ── NTDOC9 — Durcissement anti-abus des liens de signature PUBLICS ──────────
+#
+# Trois protections indépendantes, toutes best-effort (jamais bloquantes pour
+# un signataire légitime) :
+#   1. verrou temporaire d'un JETON après N tentatives ÉCHOUÉES consécutives
+#      (consentement manquant, code OTP erroné, tour non venu…) ;
+#   2. trace de chaque tentative échouée dans `JournalAcces` (GED35 réutilisé,
+#      type `tentative_ko`) — l'abus laisse une piste auditable ;
+#   3. détection d'un même client (IP) qui touche des jetons appartenant à
+#      PLUSIEURS sociétés différentes en rafale → notification best-effort des
+#      administrateurs de la société visée.
+#
+# Le compteur/verrou vit dans le CACHE (jamais en base) : il est volontairement
+# éphémère, à la fois pour ne rien accumuler et pour qu'un redémarrage rende la
+# main plutôt que de laisser un signataire enfermé.
+
+SIGNATURE_ABUS_MAX_ECHECS = 5
+SIGNATURE_ABUS_VERROU_SECONDES = 15 * 60
+SIGNATURE_ABUS_FENETRE_SECONDES = 10 * 60
+# Au-delà de ce nombre de sociétés DIFFÉRENTES touchées par la même IP dans la
+# fenêtre, le motif est considéré comme suspect (un signataire légitime ne
+# signe jamais pour 3 sociétés distinctes en 10 minutes).
+SIGNATURE_ABUS_SOCIETES_SEUIL = 3
+
+
+def _cle_echecs_signature(token):
+    return f'ged:sig:echecs:{token}'
+
+
+def _cle_verrou_signature(token):
+    return f'ged:sig:verrou:{token}'
+
+
+def _cle_societes_ip_signature(adresse_ip):
+    return f'ged:sig:ip-societes:{adresse_ip}'
+
+
+def signature_publique_verrouillee(token):
+    """NTDOC9 — True si ce jeton est temporairement verrouillé pour abus.
+
+    Best-effort : un cache indisponible renvoie False (on ne bloque JAMAIS un
+    signataire légitime à cause d'une panne d'infrastructure)."""
+    if not token:
+        return False
+    try:
+        from django.core.cache import cache
+        return bool(cache.get(_cle_verrou_signature(str(token))))
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return False
+
+
+def reinitialiser_echecs_signature(token):
+    """NTDOC9 — Remet à zéro le compteur d'échecs CONSÉCUTIFS d'un jeton.
+
+    Appelé dès qu'une action publique aboutit (signature/refus valides) : seule
+    une série ININTERROMPUE d'échecs déclenche le verrou."""
+    if not token:
+        return
+    try:
+        from django.core.cache import cache
+        cache.delete(_cle_echecs_signature(str(token)))
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
+
+def enregistrer_echec_signature_publique(token, *, document=None,
+                                         adresse_ip=None):
+    """NTDOC9 — Compte une tentative ÉCHOUÉE sur un jeton de signature public.
+
+    - trace l'échec dans `JournalAcces` (GED35, type `tentative_ko`) quand le
+      document est connu — jamais de fuite de contenu, seulement l'événement ;
+    - incrémente le compteur d'échecs consécutifs (cache) ;
+    - pose un verrou temporaire de `SIGNATURE_ABUS_VERROU_SECONDES` dès que
+      `SIGNATURE_ABUS_MAX_ECHECS` est atteint.
+
+    Renvoie `(nombre_echecs, verrouille)`. Ne lève jamais."""
+    from .models import ACCES_TENTATIVE_KO
+
+    if document is not None:
+        journaliser_acces(document, utilisateur=None,
+                          type_acces=ACCES_TENTATIVE_KO,
+                          adresse_ip=adresse_ip)
+    if not token:
+        return 0, False
+    cle = _cle_echecs_signature(str(token))
+    try:
+        from django.core.cache import cache
+        # `add` puis `incr` : n'écrase jamais un compteur concurrent.
+        cache.add(cle, 0, SIGNATURE_ABUS_VERROU_SECONDES)
+        try:
+            echecs = cache.incr(cle)
+        except ValueError:  # la clé a expiré entre `add` et `incr`.
+            cache.set(cle, 1, SIGNATURE_ABUS_VERROU_SECONDES)
+            echecs = 1
+        verrouille = echecs >= SIGNATURE_ABUS_MAX_ECHECS
+        if verrouille:
+            cache.set(_cle_verrou_signature(str(token)), True,
+                      SIGNATURE_ABUS_VERROU_SECONDES)
+        return echecs, verrouille
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return 0, False
+
+
+def _administrateurs_societe(company):
+    """NTDOC9 — Administrateurs actifs d'une société (queryset, best-effort).
+
+    Lecture de `authentication` uniquement (app de fondation) : aucune
+    dépendance vers une app métier."""
+    from authentication.models import CustomUser
+    try:
+        return CustomUser.objects.filter(
+            company=company, is_active=True).filter(
+                models.Q(role_legacy='admin') | models.Q(is_superuser=True)
+        ).distinct()
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return CustomUser.objects.none()
+
+
+def surveiller_reutilisation_suspecte(adresse_ip, company):
+    """NTDOC9 — Détecte une même IP touchant des jetons de sociétés DIFFÉRENTES.
+
+    Mémorise (cache, fenêtre glissante) les identifiants de société vus depuis
+    cette IP ; au-delà de `SIGNATURE_ABUS_SOCIETES_SEUIL` sociétés distinctes,
+    notifie best-effort les administrateurs de la société courante. Une seule
+    notification par fenêtre et par IP (pas de bruit en rafale).
+
+    Renvoie True si le motif a été jugé suspect. Ne lève jamais."""
+    company_id = getattr(company, 'pk', None)
+    if not adresse_ip or not company_id:
+        return False
+    try:
+        from django.core.cache import cache
+        cle = _cle_societes_ip_signature(adresse_ip)
+        vues = cache.get(cle) or []
+        if company_id not in vues:
+            vues = list(vues) + [company_id]
+            cache.set(cle, vues, SIGNATURE_ABUS_FENETRE_SECONDES)
+        if len(vues) < SIGNATURE_ABUS_SOCIETES_SEUIL:
+            return False
+        cle_alerte = f'{cle}:alerte'
+        if cache.get(cle_alerte):
+            return True
+        cache.set(cle_alerte, True, SIGNATURE_ABUS_FENETRE_SECONDES)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return False
+
+    try:
+        from apps.notifications.models import EventType as ET
+        from apps.notifications.services import notify
+        for admin in _administrateurs_societe(company):
+            notify(
+                admin, ET.SECURITY_ALERT,
+                'Usage suspect des liens de signature publics',
+                body=("Une même adresse IP a ouvert des liens de signature de "
+                      "plusieurs sociétés différentes en quelques minutes. "
+                      "Vérifiez les demandes de signature en cours."),
+                company=company)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+    return True
