@@ -33,6 +33,7 @@ from .backup import mes_sauvegardes_view
 from .maintenance_windows import (
     MaintenanceWindowListCreateView, annuler_fenetre, fenetres_actives,
 )
+from .trust_center import trust_center_public
 from .export_registry import (
     ExportReversibiliteHistoriqueView, declencher_export_reversibilite,
     telecharger_export_reversibilite,
@@ -252,4 +253,6 @@ urlpatterns = router.urls + [
          name='maintenance-windows-actives'),
     path('maintenance-windows/<int:pk>/annuler/', annuler_fenetre,
          name='maintenance-windows-annuler'),
+    # NTOBS10 — page « Confiance » (trust center), publique.
+    path('trust-center/', trust_center_public, name='trust-center-public'),
 ]

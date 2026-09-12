@@ -3056,3 +3056,8 @@ from core.export_registry import ExportReversibiliteRun  # noqa: E402,F401
 # mode lecture-seule global) — même pattern d'éclatement, réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
 from core.maintenance_windows import MaintenanceWindow  # noqa: E402,F401
+
+# NTOBS10 — page « Confiance » (trust center) : ``TrustCenterEntry`` défini
+# dans ``core/trust_center.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.trust_center import TrustCenterEntry  # noqa: E402,F401

@@ -1,0 +1,106 @@
+---
+/**
+ * /confiance — page « Confiance » (trust center, NTOBS10).
+ *
+ * Page SSR (prerender=false, même patron que /status/index.astro) qui lit
+ * GET /api/django/core/trust-center/ (public, AllowAny). RÈGLE ABSOLUE
+ * (checked-facts-only) : le contenu vient EXCLUSIVEMENT du backend
+ * (core.trust_center, seedé avec des faits vérifiés) — cette page n'ajoute
+ * ni ne reformule aucune allégation, elle affiche le texte serveur tel quel.
+ */
+export const prerender = false;
+
+import Layout from '../layouts/Layout.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+
+interface TrustCenterEntry {
+  id: number;
+  categorie: 'certification' | 'sous_traitant' | 'localisation_donnees' | 'politique';
+  titre: string;
+  description: string;
+  document_key: string;
+  dernier_audit_le: string | null;
+}
+
+const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const SSR_FETCH_TIMEOUT_MS = 8000;
+
+async function fetchEntries(): Promise<TrustCenterEntry[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE.replace(/\/+$/, '')}/api/django/core/trust-center/`, {
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    return (await res.json()) as TrustCenterEntry[];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const entries = await fetchEntries();
+
+const CATEGORIE_LABEL: Record<string, string> = {
+  certification: 'Certifications',
+  sous_traitant: 'Sous-traitants',
+  localisation_donnees: 'Localisation des données',
+  politique: 'Politiques',
+};
+const ORDRE_CATEGORIES = ['localisation_donnees', 'sous_traitant', 'certification', 'politique'];
+
+const groupes = ORDRE_CATEGORIES
+  .map((cat) => ({ cat, label: CATEGORIE_LABEL[cat], items: entries.filter((e) => e.categorie === cat) }))
+  .filter((g) => g.items.length > 0);
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+---
+
+<Layout
+  title="Confiance | Taqinor"
+  description="Hébergement, sous-traitants et localisation des données de la plateforme Taqinor."
+>
+  <section class="mx-auto max-w-3xl bg-blanc-azur px-5 py-16 text-encre">
+    <Breadcrumb tone="dark" items={[{ label: 'Accueil', href: '/' }, { label: 'Confiance' }]} />
+
+    <h1 class="mt-6 text-3xl font-semibold text-encre">Confiance</h1>
+    <p class="mt-3 text-sm text-encre-soft">
+      Où vivent vos données, qui les traite, et sous quelles conditions.
+    </p>
+
+    {groupes.length === 0 ? (
+      <p class="mt-8 text-encre-soft">Informations momentanément indisponibles.</p>
+    ) : (
+      groupes.map((groupe) => (
+        <div class="mt-10">
+          <h2 class="text-xl font-semibold text-encre">{groupe.label}</h2>
+          <ul class="mt-4 space-y-4">
+            {groupe.items.map((entry) => (
+              <li class="rounded-lg border border-azur-900/15 bg-blanc px-5 py-4">
+                <p class="font-medium text-encre">{entry.titre}</p>
+                {entry.description ? (
+                  <p class="mt-1 text-sm text-encre-soft">{entry.description}</p>
+                ) : null}
+                {entry.dernier_audit_le ? (
+                  <p class="mt-2 text-xs text-encre-faint">
+                    Dernier audit : {formatDate(entry.dernier_audit_le)}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    )}
+  </section>
+</Layout>
