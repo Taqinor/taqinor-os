@@ -8,8 +8,9 @@ from rest_framework import serializers
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
     JournalDestruction, LegalHold, PlanTraitementRisque, PolitiqueInterne,
-    PolitiqueRetentionObjet, PolitiqueVersion, RevueRisque, RisqueEntreprise,
-    TestControle, ViolationDonnees,
+    PolitiqueRetentionObjet, PolitiqueVersion, QuestionnaireFournisseur,
+    ReponseQuestionnaire, RevueRisque, RisqueEntreprise, TestControle,
+    ViolationDonnees,
 )
 
 
@@ -566,3 +567,101 @@ class AttestationPolitiqueSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce dossier employé n'existe pas pour votre société.")
         return valeur
+
+
+class ReponseQuestionnaireSerializer(serializers.ModelSerializer):
+    """NTGRC22 — une question du questionnaire et la réponse du fournisseur."""
+
+    class Meta:
+        model = ReponseQuestionnaire
+        fields = [
+            'id', 'questionnaire', 'ordre', 'question', 'obligatoire',
+            'reponse', 'conforme', 'commentaire', 'piece_key',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if company is not None and 'questionnaire' in fields:
+            fields['questionnaire'].queryset = (
+                QuestionnaireFournisseur.objects.filter(company=company))
+        return fields
+
+    def validate_question(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                "L'intitulé de la question est obligatoire.")
+        return valeur
+
+
+class QuestionnaireFournisseurSerializer(serializers.ModelSerializer):
+    """NTGRC22 — questionnaire de conformité adressé à un fournisseur.
+
+    ``statut`` et ``score`` sont en LECTURE SEULE : le premier bouge par le
+    service de transition (ou automatiquement quand toutes les réponses sont
+    renseignées), le second se recalcule — les laisser écrivables permettrait
+    d'annoncer « validé, 100 % » sur un questionnaire vide.
+    """
+
+    type_libelle = serializers.CharField(
+        source='get_type_display', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nombre_questions = serializers.SerializerMethodField()
+    nombre_reponses = serializers.SerializerMethodField()
+
+    class Meta:
+        model = QuestionnaireFournisseur
+        fields = [
+            'id', 'fournisseur_ref', 'type', 'type_libelle', 'statut',
+            'statut_libelle', 'date_envoi', 'date_echeance', 'score',
+            'evaluateur', 'nombre_questions', 'nombre_reponses',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'score', 'created_at', 'updated_at']
+
+    def get_nombre_questions(self, obj):
+        return obj.reponses.count()
+
+    def get_nombre_reponses(self, obj):
+        return sum(1 for r in obj.reponses.all() if r.est_repondue)
+
+    def validate_fournisseur_ref(self, valeur):
+        """Le fournisseur doit appartenir à la société de l'appelant.
+
+        Vérifié par le SELECTOR de ``stock`` — aucun import de ses modèles.
+        Une référence texte non validée serait une porte inter-tenant.
+        """
+        valeur = str(valeur or '').strip()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if not valeur or company is None:
+            return valeur
+        from apps.stock.selectors import get_fournisseur_by_id
+
+        try:
+            fournisseur_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence fournisseur doit être un identifiant '
+                'numérique.')
+        if get_fournisseur_by_id(company, fournisseur_id) is None:
+            raise serializers.ValidationError(
+                "Ce fournisseur n'existe pas pour votre société.")
+        return valeur
+
+    def validate(self, attrs):
+        envoi = attrs.get('date_envoi',
+                          getattr(self.instance, 'date_envoi', None))
+        echeance = attrs.get('date_echeance',
+                             getattr(self.instance, 'date_echeance', None))
+        if envoi and echeance and echeance < envoi:
+            raise serializers.ValidationError({
+                'date_echeance': "L'échéance ne peut pas précéder la date "
+                                 "d'envoi."})
+        return attrs

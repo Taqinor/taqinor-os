@@ -13,8 +13,9 @@ from .views import (
     AttestationPolitiqueViewSet, ControleInterneViewSet,
     DeficienceControleViewSet, JournalDestructionViewSet, LegalHoldViewSet,
     PlanTraitementRisqueViewSet, PolitiqueInterneViewSet,
-    PolitiqueRetentionObjetViewSet, RevueRisqueViewSet,
-    RisqueEntrepriseViewSet, TestControleViewSet, ViolationDonneesViewSet,
+    PolitiqueRetentionObjetViewSet, QuestionnaireFournisseurViewSet,
+    ReponseQuestionnaireViewSet, RevueRisqueViewSet, RisqueEntrepriseViewSet,
+    TestControleViewSet, ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -54,6 +55,11 @@ router.register(r'politiques-internes', PolitiqueInterneViewSet,
 # NTGRC20 — attestations de lecture des politiques (preuve loi 53-05).
 router.register(r'attestations-politique', AttestationPolitiqueViewSet,
                 basename='grc-attestation-politique')
+# NTGRC22 — questionnaires de conformité fournisseurs + leurs réponses.
+router.register(r'questionnaires-fournisseur', QuestionnaireFournisseurViewSet,
+                basename='grc-questionnaire-fournisseur')
+router.register(r'reponses-questionnaire', ReponseQuestionnaireViewSet,
+                basename='grc-reponse-questionnaire')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

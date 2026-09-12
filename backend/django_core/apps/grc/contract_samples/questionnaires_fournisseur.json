@@ -1,0 +1,74 @@
+{
+  "endpoint": "GET /api/django/grc/questionnaires-fournisseur/{id}/",
+  "endpoints_lies": [
+    "GET /api/django/grc/questionnaires-fournisseur/{id}/reponses/",
+    "POST /api/django/grc/questionnaires-fournisseur/{id}/changer-statut/",
+    "GET|POST|PATCH /api/django/grc/reponses-questionnaire/"
+  ],
+  "pourquoi": "NTGRC22/NTGRC23 — contrat PARTAGÉ du moteur de questionnaires de conformité fournisseurs, déposé EN PREMIER parce que deux moitiés le consomment sans partager de fichier : l'écran GRC et, dans une autre file, NTESG8/NTESG17 (collecte ESG auprès des fournisseurs) qui réutilisent ce moteur au lieu d'en inventer un second. Trois invariants que personne ne doit re-dériver : (1) `statut` et `score` sont en LECTURE SEULE — le statut bouge par `changer-statut/` ou passe seul à `complete` quand toutes les questions OBLIGATOIRES portent une réponse non vide, le score est recalculé serveur = part des réponses CONFORMES sur le TOTAL des questions (0-100, entier) ; (2) `conforme` est un booléen à TROIS états — `true`, `false`, `null` (= pas encore évalué, JAMAIS un défaut `false` qui ferait passer une question non évaluée pour un écart) ; (3) `fournisseur_ref` est une CHAÎNE (id du `stock.Fournisseur`, string-FK vérifiée scopée société), jamais un objet imbriqué.",
+  "exemple": {
+    "id": 12,
+    "fournisseur_ref": "88",
+    "type": "rgpd",
+    "type_libelle": "RGPD / données personnelles",
+    "statut": "complete",
+    "statut_libelle": "Complété",
+    "date_envoi": "2026-09-01",
+    "date_echeance": "2026-09-30",
+    "score": 67,
+    "evaluateur": "DPO",
+    "nombre_questions": 3,
+    "nombre_reponses": 3,
+    "created_at": "2026-09-01T09:00:00Z",
+    "updated_at": "2026-09-12T10:30:00Z"
+  },
+  "exemple_reponses": {
+    "results": [
+      {
+        "id": 101,
+        "questionnaire": 12,
+        "ordre": 1,
+        "question": "Où sont hébergées les données personnelles que vous traitez pour notre compte ?",
+        "obligatoire": true,
+        "reponse": "Datacenter Casablanca (Maroc).",
+        "conforme": true,
+        "commentaire": "",
+        "piece_key": "",
+        "created_at": "2026-09-01T09:00:00Z",
+        "updated_at": "2026-09-12T10:30:00Z"
+      },
+      {
+        "id": 102,
+        "questionnaire": 12,
+        "ordre": 2,
+        "question": "Une clause de sous-traitance (art. 28 RGPD / loi 09-08) est-elle signée ?",
+        "obligatoire": true,
+        "reponse": "Oui, signée le 12/03/2026.",
+        "conforme": true,
+        "commentaire": "",
+        "piece_key": "ged/contrats/clause-st-88.pdf",
+        "created_at": "2026-09-01T09:00:00Z",
+        "updated_at": "2026-09-12T10:30:00Z"
+      },
+      {
+        "id": 103,
+        "questionnaire": 12,
+        "ordre": 3,
+        "question": "Transférez-vous des données hors du Maroc ?",
+        "obligatoire": true,
+        "reponse": "Sauvegardes répliquées en France.",
+        "conforme": false,
+        "commentaire": "Garanties à documenter (CCT).",
+        "piece_key": "",
+        "created_at": "2026-09-01T09:00:00Z",
+        "updated_at": "2026-09-12T10:30:00Z"
+      }
+    ]
+  },
+  "exemple_erreur_transition": {
+    "statut": "Transition impossible : un questionnaire « Envoyé » ne peut pas passer à « Validé »."
+  },
+  "exemple_erreur_fournisseur": {
+    "fournisseur_ref": "Ce fournisseur n'existe pas pour votre société."
+  }
+}

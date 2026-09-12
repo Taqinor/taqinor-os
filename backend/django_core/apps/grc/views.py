@@ -14,15 +14,16 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
     JournalDestruction, LegalHold, PlanTraitementRisque, PolitiqueInterne,
-    PolitiqueRetentionObjet, RevueRisque, RisqueEntreprise, TestControle,
-    ViolationDonnees,
+    PolitiqueRetentionObjet, QuestionnaireFournisseur, ReponseQuestionnaire,
+    RevueRisque, RisqueEntreprise, TestControle, ViolationDonnees,
 )
 from .serializers import (
     AttestationPolitiqueSerializer, ControleInterneSerializer,
     DeficienceControleSerializer, JournalDestructionSerializer,
     LegalHoldSerializer, PlanTraitementRisqueSerializer,
     PolitiqueInterneSerializer, PolitiqueRetentionObjetSerializer,
-    PolitiqueVersionSerializer, RevueRisqueSerializer,
+    PolitiqueVersionSerializer, QuestionnaireFournisseurSerializer,
+    ReponseQuestionnaireSerializer, RevueRisqueSerializer,
     RisqueEntrepriseSerializer, TestControleSerializer,
     ViolationDonneesSerializer,
 )
@@ -506,3 +507,91 @@ class AttestationPolitiqueViewSet(CompanyScopedModelViewSet):
             return Response({exc.champ: str(exc)}, status=400)
         return Response(self.get_serializer(attestation).data,
                         status=201 if creee else 200)
+
+
+class QuestionnaireFournisseurViewSet(CompanyScopedModelViewSet):
+    """NTGRC22 — questionnaires de conformité adressés aux fournisseurs."""
+
+    queryset = QuestionnaireFournisseur.objects.prefetch_related(
+        'reponses').all()
+    serializer_class = QuestionnaireFournisseurSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = (params.get('statut') or '').strip()
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_q = (params.get('type') or '').strip()
+        if type_q:
+            qs = qs.filter(type=type_q)
+        fournisseur = (params.get('fournisseur_ref') or '').strip()
+        if fournisseur:
+            qs = qs.filter(fournisseur_ref=fournisseur)
+        return qs
+
+    @action(detail=True, methods=['get'])
+    def reponses(self, request, pk=None):
+        """Les questions/réponses du questionnaire, dans leur ordre."""
+        questionnaire = self.get_object()
+        return Response({'results': ReponseQuestionnaireSerializer(
+            questionnaire.reponses.all(), many=True).data})
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """Fait avancer le questionnaire (``{"statut": "valide"}``)."""
+        from .services import (
+            TransitionQuestionnaireInterdite, changer_statut_questionnaire,
+        )
+
+        questionnaire = self.get_object()
+        cible = (request.data.get('statut') or '').strip()
+        try:
+            changer_statut_questionnaire(questionnaire, cible)
+        except TransitionQuestionnaireInterdite as exc:
+            return Response({'statut': str(exc)}, status=400)
+        return Response(self.get_serializer(questionnaire).data)
+
+
+class ReponseQuestionnaireViewSet(CompanyScopedModelViewSet):
+    """NTGRC22 — réponses d'un questionnaire fournisseur.
+
+    Chaque écriture RECALCULE le questionnaire porteur (score + passage
+    automatique à « complété ») : le score ne peut pas diverger de ses
+    réponses, parce que personne ne l'écrit à la main.
+    """
+
+    queryset = ReponseQuestionnaire.objects.select_related(
+        'questionnaire').all()
+    serializer_class = ReponseQuestionnaireSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        questionnaire = (
+            self.request.query_params.get('questionnaire') or '').strip()
+        if questionnaire.isdigit():
+            qs = qs.filter(questionnaire_id=int(questionnaire))
+        return qs
+
+    def _recalculer(self, reponse):
+        from .services import recalculer_questionnaire
+
+        if reponse is not None and reponse.questionnaire_id:
+            recalculer_questionnaire(reponse.questionnaire)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._recalculer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._recalculer(serializer.instance)
+
+    def perform_destroy(self, instance):
+        questionnaire = instance.questionnaire
+        super().perform_destroy(instance)
+        from .services import recalculer_questionnaire
+
+        recalculer_questionnaire(questionnaire)

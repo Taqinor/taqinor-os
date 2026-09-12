@@ -1099,3 +1099,124 @@ class AttestationPolitique(TenantModel):
     def __str__(self):
         return (f'{self.attestant_nom or self.employe_ref or "?"} — '
                 f'politique {self.politique_id} v{self.version_attestee}')
+
+
+class QuestionnaireFournisseur(TenantModel):
+    """NTGRC22 — questionnaire de conformité adressé à un fournisseur.
+
+    Le maillon manquant de la conformité : une société peut avoir un RoPA
+    impeccable et un sous-traitant qui stocke ses données n'importe où. L'art.
+    28 du RGPD (et la loi 09-08 côté marocain) impose de s'assurer des
+    garanties du sous-traitant — ce questionnaire est la trace de cette
+    diligence, avec sa date, ses réponses et son score.
+
+    Le fournisseur est désigné par un identifiant TEXTE
+    (``fournisseur_ref`` = id du ``stock.Fournisseur``) : ``grc`` n'importe
+    jamais ``stock.models`` et le questionnaire survit à la fiche fournisseur.
+
+    ``statut`` ne s'écrit PAS au champ : il bouge par le service
+    (``changer_statut_questionnaire``) ou automatiquement quand toutes les
+    réponses sont renseignées — un questionnaire déclaré « complet » alors que
+    la moitié des questions est vide ne prouverait rien.
+    """
+
+    TYPE_SECURITE = 'securite'
+    TYPE_RGPD = 'rgpd'
+    TYPE_QUALITE = 'qualite'
+    TYPE_RSE = 'rse'
+    TYPE_CHOICES = [
+        (TYPE_SECURITE, 'Sécurité'),
+        (TYPE_RGPD, 'RGPD / données personnelles'),
+        (TYPE_QUALITE, 'Qualité'),
+        (TYPE_RSE, 'RSE'),
+    ]
+
+    STATUT_ENVOYE = 'envoye'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_COMPLETE = 'complete'
+    STATUT_VALIDE = 'valide'
+    STATUT_REFUSE = 'refuse'
+    STATUT_CHOICES = [
+        (STATUT_ENVOYE, 'Envoyé'),
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_COMPLETE, 'Complété'),
+        (STATUT_VALIDE, 'Validé'),
+        (STATUT_REFUSE, 'Refusé'),
+    ]
+
+    fournisseur_ref = models.CharField(
+        'Fournisseur', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du stock.Fournisseur (string-FK).')
+    type = models.CharField(
+        'Type', max_length=10, choices=TYPE_CHOICES, default=TYPE_RGPD)
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_ENVOYE)
+    date_envoi = models.DateField('Date d\'envoi', null=True, blank=True)
+    date_echeance = models.DateField('Échéance', null=True, blank=True)
+    score = models.PositiveIntegerField(
+        'Score de conformité (%)', default=0,
+        help_text='Part des réponses CONFORMES sur le total des questions, '
+                  'recalculée serveur — jamais saisie.')
+    evaluateur = models.CharField(
+        'Évaluateur', max_length=160, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Questionnaire fournisseur'
+        verbose_name_plural = 'Questionnaires fournisseurs'
+        ordering = ['-date_envoi', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_questionnaire_co_st_idx'),
+            models.Index(fields=['company', 'fournisseur_ref'],
+                         name='grc_questionnaire_co_frn_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.get_type_display()} — fournisseur '
+                f'{self.fournisseur_ref or "?"} '
+                f'({self.get_statut_display()})')
+
+
+class ReponseQuestionnaire(TenantModel):
+    """NTGRC22 — une question et la réponse du fournisseur.
+
+    ``conforme`` est un booléen NULLABLE à trois états VOULUS : ``True``
+    (conforme), ``False`` (non conforme), ``None`` (pas encore évalué). Forcer
+    un défaut ``False`` ferait passer une question non évaluée pour un écart —
+    et un questionnaire vide afficherait 100 % de non-conformité.
+    """
+
+    questionnaire = models.ForeignKey(
+        QuestionnaireFournisseur,
+        # on_delete: une réponse n'existe que dans SON questionnaire.
+        on_delete=models.CASCADE,
+        related_name='reponses', verbose_name='Questionnaire')
+    ordre = models.PositiveIntegerField('Ordre', default=0)
+    question = models.TextField('Question')
+    obligatoire = models.BooleanField('Obligatoire', default=True)
+    reponse = models.TextField('Réponse', blank=True, default='')
+    conforme = models.BooleanField(
+        'Conforme', null=True, blank=True,
+        help_text='Vide = pas encore évalué (surtout pas « non conforme »).')
+    commentaire = models.TextField('Commentaire', blank=True, default='')
+    piece_key = models.CharField(
+        'Pièce justificative', max_length=255, blank=True, default='',
+        help_text='Clé de stockage (MinIO/GED) de la preuve fournie.')
+
+    class Meta:
+        verbose_name = 'Réponse de questionnaire'
+        verbose_name_plural = 'Réponses de questionnaire'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'questionnaire'],
+                         name='grc_reponseq_co_quest_idx'),
+        ]
+
+    @property
+    def est_repondue(self):
+        """Une question est répondue dès qu'elle porte un texte non vide."""
+        return bool((self.reponse or '').strip())
+
+    def __str__(self):
+        return f'Q{self.ordre} — {self.question[:60]}'

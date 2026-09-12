@@ -681,3 +681,94 @@ def attester_politique(company, politique, *, employe_ref='', nom_saisi='',
         preuve=preuve or {},
     )
     return attestation, True
+
+
+# ── NTGRC22 — questionnaires de conformité fournisseurs ─────────────────────
+
+class TransitionQuestionnaireInterdite(ValueError):
+    """Transition de statut illégale sur un ``QuestionnaireFournisseur``.
+
+    Traduite en 400 par la vue (jamais 500) ; le message NOMME les deux
+    statuts, en français.
+    """
+
+
+def _transitions_questionnaire(statut):
+    from .models import QuestionnaireFournisseur as Q
+
+    table = {
+        Q.STATUT_ENVOYE: {Q.STATUT_EN_COURS, Q.STATUT_COMPLETE,
+                          Q.STATUT_REFUSE},
+        Q.STATUT_EN_COURS: {Q.STATUT_COMPLETE, Q.STATUT_REFUSE},
+        # On ne valide/refuse qu'un questionnaire COMPLET : juger sur des
+        # réponses manquantes, c'est juger sur rien.
+        Q.STATUT_COMPLETE: {Q.STATUT_VALIDE, Q.STATUT_REFUSE},
+        # Terminaux : on renvoie un NOUVEAU questionnaire, on ne rouvre pas
+        # celui sur lequel un avis a déjà été rendu.
+        Q.STATUT_VALIDE: set(),
+        Q.STATUT_REFUSE: set(),
+    }
+    return table.get(statut, set())
+
+
+def changer_statut_questionnaire(questionnaire, cible):
+    """Fait avancer un questionnaire fournisseur (garde de transition)."""
+    from .models import QuestionnaireFournisseur
+
+    libelles = dict(QuestionnaireFournisseur.STATUT_CHOICES)
+    if cible not in libelles:
+        raise TransitionQuestionnaireInterdite(
+            f'Statut « {cible} » inconnu pour un questionnaire fournisseur.')
+    if cible not in _transitions_questionnaire(questionnaire.statut):
+        raise TransitionQuestionnaireInterdite(
+            'Transition impossible : un questionnaire « '
+            f'{libelles.get(questionnaire.statut, questionnaire.statut)} » ne '
+            f'peut pas passer à « {libelles[cible]} ».')
+    questionnaire.statut = cible
+    questionnaire.save(update_fields=['statut', 'updated_at'])
+    return questionnaire
+
+
+def recalculer_questionnaire(questionnaire):
+    """Recalcule le SCORE et, s'il y a lieu, fait passer le questionnaire à
+    « complété ».
+
+    * score = part des réponses CONFORMES sur le TOTAL des questions (0-100).
+      Le dénominateur est le total, pas le nombre de questions évaluées :
+      sinon une seule question conforme sur trente afficherait 100 %.
+    * « complété » dès que toutes les questions OBLIGATOIRES portent une
+      réponse non vide. Un questionnaire déjà validé ou refusé n'est jamais
+      rétrogradé — un avis rendu ne se défait pas parce qu'on a retouché une
+      ligne.
+
+    Renvoie le questionnaire rafraîchi.
+    """
+    from .models import QuestionnaireFournisseur
+
+    reponses = list(questionnaire.reponses.all())
+    total = len(reponses)
+    conformes = sum(1 for r in reponses if r.conforme is True)
+    score = int(round(100.0 * conformes / total)) if total else 0
+
+    champs = []
+    if questionnaire.score != score:
+        questionnaire.score = score
+        champs.append('score')
+
+    obligatoires = [r for r in reponses if r.obligatoire]
+    a_repondre = obligatoires or reponses
+    complet = bool(a_repondre) and all(r.est_repondue for r in a_repondre)
+    if complet and questionnaire.statut in (
+            QuestionnaireFournisseur.STATUT_ENVOYE,
+            QuestionnaireFournisseur.STATUT_EN_COURS):
+        questionnaire.statut = QuestionnaireFournisseur.STATUT_COMPLETE
+        champs.append('statut')
+    elif (not complet
+            and questionnaire.statut == QuestionnaireFournisseur.STATUT_ENVOYE
+            and any(r.est_repondue for r in reponses)):
+        questionnaire.statut = QuestionnaireFournisseur.STATUT_EN_COURS
+        champs.append('statut')
+
+    if champs:
+        questionnaire.save(update_fields=champs + ['updated_at'])
+    return questionnaire
