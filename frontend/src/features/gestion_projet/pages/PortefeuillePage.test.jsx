@@ -1,44 +1,35 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import PortefeuillePage from './PortefeuillePage'
 
 /* AUDV16 (PROJ36/PROJ26) — écran Portefeuille : `tableau_portefeuille` était
-   déjà câblé backend + client API mais aucun écran ne l'appelait. */
+   déjà câblé backend + client API mais aucun écran ne l'appelait.
 
-const PORTEFEUILLE = {
-  nb_projets: 2,
-  total_marge_reelle: '-1500.00',
-  total_charge: '20',
-  total_retards: 2,
-  total_risques: 1,
-  note_satisfaction_moyenne: 4.5,
-  projets: [
-    {
-      projet_id: 10, code: 'P-1', nom: 'Villa Fès', statut: 'en_cours',
-      avancement_pct: 40, nb_retards: 2, nb_risques: 1,
-      marge_reelle: '-1500.00', charge_totale: '10',
-      derniere_sante: 'orange', note_satisfaction: 4.5,
-      politique_facturation: 'forfait',
-    },
-    {
-      projet_id: 11, code: 'P-2', nom: 'Riad Marrakech', statut: 'planifie',
-      avancement_pct: 0, nb_retards: 0, nb_risques: 0,
-      marge_reelle: '0.00', charge_totale: '10',
-      derniere_sante: null, note_satisfaction: null,
-      politique_facturation: 'forfait',
-    },
-  ],
-}
+   CHT13 — le revenu n'est plus câblé à 0 : la marge réelle affichée ici
+   reflète désormais le CA FACTURÉ réel. Contrat partagé (PACT10) : la charge
+   utile vient du MÊME fichier que le backend affirme (`apps/gestion_projet/
+   contract_samples/tableau_portefeuille.json`) — jamais un objet inventé à
+   la main (l'ancien mock local divergeait déjà du fil réseau réel : il
+   portait `note_satisfaction`/`politique_facturation` par ligne, des clés
+   que l'action `portefeuille` n'a jamais sérialisées). */
+
+// PACT10 — l'exemple committé, lu depuis le fichier réel (jamais recopié).
+const PORTEFEUILLE = exempleContrat('gestion_projet', 'tableau_portefeuille')
 
 vi.mock('../../../api/gestionProjetApi', () => ({
   default: {
-    getPortefeuille: vi.fn(() => Promise.resolve({ data: PORTEFEUILLE })),
+    getPortefeuille: vi.fn(),
   },
 }))
+
+beforeEach(() => {
+  gestionProjetApi.getPortefeuille.mockResolvedValue({ data: PORTEFEUILLE })
+})
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -59,6 +50,33 @@ describe('PortefeuillePage', () => {
     // Totaux portefeuille (bandeau KPI).
     const totalRetards = screen.getByText('Retards cumulés').closest('div')
     expect(within(totalRetards).getByText('2')).toBeInTheDocument()
+  })
+
+  it('affiche la marge réelle avec les nouveaux chiffres (revenu réel CHT13)', async () => {
+    withProviders(<PortefeuillePage />)
+    await waitFor(() => expect(gestionProjetApi.getPortefeuille).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getAllByText('Villa Fès').length).toBeGreaterThan(0))
+
+    // Villa Fès (P-1) a désormais une marge réelle POSITIVE (2500.00, exemple
+    // du contrat CHT13) — avant CHT13 le revenu était TOUJOURS 0 donc la
+    // marge réelle ne pouvait jamais être positive. `\s` tolère l'espace fine
+    // insécable d'Intl.NumberFormat('fr-FR').
+    const margePositive = screen.getAllByText((_content, node) => (
+      node.tagName === 'SPAN' && /^2\s*500,00\s*MAD$/.test(node.textContent)))
+    expect(margePositive.length).toBeGreaterThan(0)
+    expect(margePositive[0]).not.toHaveClass('text-destructive')
+
+    // Riad Marrakech (P-2) reste négative (-1500.00) : les deux cas cohabitent.
+    const margeNegative = screen.getAllByText((_content, node) => (
+      node.tagName === 'SPAN' && /^-1\s*500,00\s*MAD$/.test(node.textContent)))
+    expect(margeNegative.length).toBeGreaterThan(0)
+    expect(margeNegative[0]).toHaveClass('text-destructive')
+
+    // Bandeau « Marge réelle cumulée » : 1000.00 (somme 2500 − 1500), donc
+    // non-négatif — avant CHT13 le total ne pouvait jamais être positif.
+    const bandeau = screen.getByText('Marge réelle cumulée').closest('div')
+    expect(within(bandeau).getByText((_content, node) => (
+      /^1\s*000,00\s*MAD$/.test(node.textContent)))).toBeInTheDocument()
   })
 
   it('re-filtre par statut', async () => {

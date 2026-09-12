@@ -2241,29 +2241,77 @@ def consommation_matiere_vs_bom(projet):
 
 # ── P&L de projet consolidé (PROJ26 — interne/admin) ─────────────────────────
 def _revenu_projet_cross_app(projet):
-    """Revenu (CA) RÉEL d'un projet via les apps cibles (ou dégrade).
+    """Revenu (CA) RÉEL d'un projet via les apps cibles (CHT13).
 
-    Agrège le chiffre d'affaires des devis/factures rattachés au projet
-    (``ProjetLien`` type devis/facture) en passant par un sélecteur de l'app
-    ``ventes`` — SANS jamais importer ses ``models``/``views`` (frontière
-    cross-app, CLAUDE.md ; import fonction-local). Aucune app cible n'expose
-    aujourd'hui de sélecteur de MONTANT par projet exploitable → DÉGRADE :
-    revenu à 0 + note (nb de liens devis/facture). Aucune exception ne remonte.
+    Le revenu est le CA FACTURÉ — cohérent avec FG295
+    (``installations.selectors.projet_pnl``, qui pose la même règle pour les
+    programmes chantier) : un devis simplement accepté n'est pas un revenu
+    tant qu'aucune facture client n'a été émise dessus. Les devis du projet
+    sont résolus par DEUX chemins, jamais un import de ``ventes``/
+    ``installations`` ``models`` (frontière cross-app, CLAUDE.md ; imports
+    fonction-locaux) :
+      • ``ProjetLien`` type ``devis`` → ``cible_id`` EST le devis_id (chemin
+        UNIQUE de ``creer_projet_depuis_devis``, XPRJ21, à ce jour) ;
+      • ``ProjetChantier.chantier_id`` → devis résolu via
+        ``installations.selectors.devis_id_du_chantier`` (CHT12) —
+        rattachement MANUEL d'un chantier existant, potentiellement sans
+        ``ProjetLien``.
+    Les montants HT sont lus en BATCH via
+    ``ventes.selectors.montants_factures_par_devis`` (CHT12 ; exclut les
+    factures ANNULÉE). Un ``ProjetLien`` type ``facture`` — TypeCible partagé
+    et ambigu avec ``_LIENS_DEPENSE`` où il désigne une facture FOURNISSEUR ;
+    jamais créé côté revenu CLIENT aujourd'hui — n'a pas de chemin de
+    résolution : il est compté dans la note seulement, son montant reste
+    indisponible.
 
-    Renvoie ``(revenu: Decimal, note: str)``.
+    Renvoie ``(revenu_ht: Decimal, note: str)``. Aucune exception ne remonte
+    (dégrade proprement à 0).
     """
-    nb_liens_revenu = ProjetLien.objects.filter(
-        projet=projet, company=projet.company,
-        type_cible__in=(
-            ProjetLien.TypeCible.DEVIS,
-            ProjetLien.TypeCible.FACTURE)).count()
-    if nb_liens_revenu:
+    from .models import ProjetChantier
+
+    company = projet.company
+    devis_ids = set(
+        ProjetLien.objects.filter(
+            projet=projet, company=company,
+            type_cible=ProjetLien.TypeCible.DEVIS,
+        ).values_list('cible_id', flat=True))
+
+    from apps.installations.selectors import devis_id_du_chantier
+    chantier_ids = list(
+        ProjetChantier.objects.filter(
+            projet=projet, company=company,
+        ).values_list('chantier_id', flat=True))
+    for chantier_id in chantier_ids:
+        devis_id = devis_id_du_chantier(company, chantier_id)
+        if devis_id is not None:
+            devis_ids.add(devis_id)
+
+    nb_liens_facture = ProjetLien.objects.filter(
+        projet=projet, company=company,
+        type_cible=ProjetLien.TypeCible.FACTURE,
+    ).count()
+
+    if not devis_ids:
+        if nb_liens_facture:
+            note = (
+                f"{nb_liens_facture} facture(s) rattachée(s) sans devis "
+                "résolvable : montant non disponible — revenu à 0.")
+        else:
+            note = "Aucun devis/facture rattaché — revenu à 0."
+        return Decimal('0'), note
+
+    from apps.ventes.selectors import montants_factures_par_devis
+    montants = montants_factures_par_devis(list(devis_ids), company)
+    revenu = sum((m['ht'] for m in montants.values()), Decimal('0'))
+    if montants:
         note = (
-            f"{nb_liens_revenu} devis/facture(s) rattaché(s) : montant non "
-            "disponible (aucun sélecteur cross-app) — revenu à 0.")
+            f"Revenu réel (factures HT) : {len(montants)} devis facturé(s) "
+            f"sur {len(devis_ids)} devis rattaché(s).")
     else:
-        note = "Aucun devis/facture rattaché — revenu à 0."
-    return Decimal('0'), note
+        note = (
+            f"{len(devis_ids)} devis rattaché(s), aucune facture émise — "
+            "revenu à 0.")
+    return revenu, note
 
 
 def _mo_affectations_deja_pointee(projet):
@@ -2311,8 +2359,10 @@ def pnl_projet(company, projet):
     Donnée 100 % INTERNE de pilotage — JAMAIS exposée au client final (rejoint
     ``budget_total``, ``cout_horaire``). Consolide :
 
-      • ``revenu``   — CA des devis/factures rattachés (``ProjetLien``) via un
-        sélecteur ``ventes`` ; dégrade à 0 + note (frontière cross-app).
+      • ``revenu``   — CA FACTURÉ réel (CHT13) des devis rattachés au projet
+        (``ProjetLien`` type devis + ``ProjetChantier`` → devis) via les
+        sélecteurs ``ventes``/``installations`` ; dégrade à 0 + note quand
+        rien n'est rattaché ou rien n'est encore facturé (frontière cross-app).
       • ``cout_budget`` — total prévisionnel du budget de référence (PROJ21).
       • ``cout_reel``   — réel consolidé : main-d'œuvre des affectations
         (PROJ22) + coût figé des timesheets (PROJ24) + matériel/sous-traitance
@@ -2849,15 +2899,38 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         dernier_point_par_projet.setdefault(point.projet_id, point)
 
     # ── Marge réelle (P&L PROJ26, AUD329) : même formule que `pnl_projet`,
-    # calculée pour TOUS les projets à partir de 3 requêtes groupées au lieu
+    # calculée pour TOUS les projets à partir de requêtes groupées au lieu
     # de N appels à `couts_engages_vs_reels`/`synthese_temps_projet`/
-    # `_mo_affectations_deja_pointee`. IMPORTANT — le revenu est ici toujours
-    # 0 (comme le fait `_revenu_projet_cross_app`, qui DÉGRADE
-    # inconditionnellement tant qu'aucune app cible n'expose de sélecteur de
-    # montant par projet) : si cette dégradation change un jour pour exposer
-    # un vrai revenu cross-app, CE court-circuit doit être mis à jour en
-    # même temps, sous peine de faire diverger silencieusement la marge du
-    # portefeuille de l'action `pnl` par-projet.
+    # `_mo_affectations_deja_pointee`. CHT13 — le revenu est désormais RÉEL
+    # (cohérent avec `_revenu_projet_cross_app`/FG295 : CA FACTURÉ, jamais un
+    # devis simplement accepté) pour le chemin ``ProjetLien`` type ``devis``
+    # (SEUL chemin de création aujourd'hui — `creer_projet_depuis_devis`,
+    # XPRJ21) : 2 requêtes groupées de plus (``ProjetLien`` puis
+    # ``montants_factures_par_devis`` en BATCH sur l'union des devis_id de
+    # TOUS les projets), toujours FIXE indépendamment de N. Le chemin
+    # ``ProjetChantier.chantier_id`` → devis (rattachement manuel SANS
+    # ``ProjetLien``, couvert par `_revenu_projet_cross_app` par-projet) N'EST
+    # PAS résolu ici : `installations.selectors.devis_id_du_chantier` ne
+    # renvoie qu'un id à la fois — le résoudre en boucle réintroduirait le
+    # N+1 que cette fonction élimine. Un projet UNIQUEMENT rattaché par
+    # ``ProjetChantier`` (sans ``ProjetLien`` sur le même devis) verrait donc
+    # sa marge portefeuille rester à 0 tant qu'aucun sélecteur BATCH
+    # chantier→devis n'existe côté ``installations`` — cas non exercé par le
+    # code actuel (CHT18, à venir, fait toujours co-créer les deux).
+    devis_ids_par_projet = {}
+    tous_devis_ids = set()
+    for row in ProjetLien.objects.filter(
+            company=company, projet_id__in=projet_ids,
+            type_cible=ProjetLien.TypeCible.DEVIS,
+    ).values('projet_id', 'cible_id'):
+        devis_ids_par_projet.setdefault(
+            row['projet_id'], set()).add(row['cible_id'])
+        tous_devis_ids.add(row['cible_id'])
+
+    from apps.ventes.selectors import montants_factures_par_devis
+    montants_par_devis = montants_factures_par_devis(
+        list(tous_devis_ids), company)
+
     cout_timesheets_par_projet = {
         row['projet_id']: row['s'] or Decimal('0')
         for row in Timesheet.objects.filter(
@@ -2945,7 +3018,13 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         cout_timesheets = cout_timesheets_par_projet.get(
             projet.id, Decimal('0'))
         cout_reel = cout_affectations - mo_deja_pointee + cout_timesheets
-        marge_reelle = Decimal('0') - cout_reel
+        # CHT13 — CA FACTURÉ réel (voir la note ci-dessus) des devis
+        # rattachés par ProjetLien, jamais un simple total de devis accepté.
+        revenu_ht = sum(
+            (montants_par_devis.get(devis_id, {'ht': Decimal('0')})['ht']
+             for devis_id in devis_ids_par_projet.get(projet.id, ())),
+            Decimal('0'))
+        marge_reelle = revenu_ht - cout_reel
 
         charge = charge_par_projet.get(projet.id, Decimal('0'))
         dernier_point = dernier_point_par_projet.get(projet.id)
