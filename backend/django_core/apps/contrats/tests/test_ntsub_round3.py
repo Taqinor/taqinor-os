@@ -38,6 +38,17 @@ def auth(user):
     return api
 
 
+def make_plan_recurrent(company, nom='Mensuel'):
+    """Cadence ZCTR1 — OBLIGATOIRE sur ``PlanAbonnement.plan_recurrent``
+    (FK non nullable) : une offre du catalogue porte toujours sa cadence de
+    facturation. Même fabrique que ``test_ntsub1_4_catalogue_paliers``."""
+    from apps.contrats.models import PlanRecurrent
+
+    return PlanRecurrent.objects.create(
+        company=company, nom=nom, unite=PlanRecurrent.Unite.MENSUEL,
+        intervalle=1)
+
+
 class ReleveAbonnementTests(TestCase):
     """NTSUB20 — le relevé liste EXACTEMENT la période demandée."""
 
@@ -198,6 +209,7 @@ class RattacherPlanRetroactifTests(TestCase):
             type_contrat='om', statut='actif')
         self.plan = PlanAbonnement.objects.create(
             company=self.co, code='PREMIUM', nom='Offre Premium',
+            plan_recurrent=make_plan_recurrent(self.co, nom='Plan-PREMIUM'),
             prix_base=Decimal('1500'))
 
     def test_sans_appliquer_le_prix_aucun_montant_ne_bouge(self):
@@ -235,6 +247,7 @@ class RattacherPlanRetroactifTests(TestCase):
         autre = make_company('ntsub23-b', 'NTSUB23 B')
         plan_b = PlanAbonnement.objects.create(
             company=autre, code='AUTRE', nom='Offre B',
+            plan_recurrent=make_plan_recurrent(autre, nom='Plan-AUTRE'),
             prix_base=Decimal('900'))
         with self.assertRaises(services.ChangementPlanError):
             services.rattacher_plan_retroactif(self.contrat, plan_b, False)
@@ -274,6 +287,7 @@ class RattacherPlanRetroactifTests(TestCase):
         autre = make_company('ntsub23-c', 'NTSUB23 C')
         plan_c = PlanAbonnement.objects.create(
             company=autre, code='HORS', nom='Offre hors société',
+            plan_recurrent=make_plan_recurrent(autre, nom='Plan-HORS'),
             prix_base=Decimal('10'))
         resp = self.api.post(
             f'/api/django/contrats/contrats/{self.contrat.id}/rattacher-plan/',
