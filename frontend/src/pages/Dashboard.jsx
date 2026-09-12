@@ -21,6 +21,9 @@ const CashAujourdhuiCard = lazy(() => import('../features/compta/CashAujourdhuiC
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
+// NTUX12 — favoris épinglés par utilisateur (autonome : ne rend rien sans
+// favori), même patron que RecentEntitiesWidget ci-dessus.
+const FavorisWidget = lazy(() => import('../features/uxviews/FavorisWidget'))
 // WIR144 — tuiles KPI crédit fédérées (kpi_providers) sur le cockpit direction.
 const CreditKpiCards = lazy(() => import('../features/credit/CreditKpiCards'))
 // NTIDE50 — tuiles KPI innovation fédérées (kpi_providers) : « Idées cette
@@ -1444,6 +1447,11 @@ export function Component() {
           {/* NTUX11 — Récents (autonome : ne rend rien sans entité récente). */}
           <Suspense fallback={null}>
             <RecentEntitiesWidget />
+          </Suspense>
+
+          {/* NTUX12 — Favoris épinglés (autonome : ne rend rien sans favori). */}
+          <Suspense fallback={null}>
+            <FavorisWidget />
           </Suspense>
 
           {/* FG8 — Flux d'activités planifiées (records.Activity).
