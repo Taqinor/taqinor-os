@@ -24,24 +24,7 @@ import { Sparkles, ListChecks, PenLine } from 'lucide-react'
 import aiGovernanceApi from '../../api/aiGovernanceApi'
 import { Button, Spinner, Textarea } from '../../ui'
 import { queryAgent } from './store/iaSlice'
-
-/** Correspondance URL → fiche. Étendre ici quand un écran détail apparaît. */
-const ROUTES_FICHE = [
-  { motif: /^\/crm\/leads\/(\d+)/, contentType: 'crm.lead' },
-  { motif: /^\/contrats\/(\d+)/, contentType: 'contrats.contrat' },
-]
-
-/**
- * Déduit `{ contentType, objectId }` d'un chemin, ou `null`.
- * Pure (aucun accès React) — c'est ce qui la rend testable seule.
- */
-export function ficheDepuisChemin(pathname) {
-  for (const { motif, contentType } of ROUTES_FICHE) {
-    const trouve = motif.exec(pathname || '')
-    if (trouve) return { contentType, objectId: Number(trouve[1]) }
-  }
-  return null
-}
+import { ficheDepuisChemin } from './ficheDepuisChemin'
 
 /** Message d'indisponibilité : 503 = pas de clé, le reste = erreur réelle. */
 function messageIndisponible(erreur) {
