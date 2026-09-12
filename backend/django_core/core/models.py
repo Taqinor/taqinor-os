@@ -3042,3 +3042,32 @@ from core.field_permissions import FieldPermissionRule  # noqa: E402,F401
 # (même pattern d'éclatement), réexportés ici en tout dernier pour la
 # découverte Django (app_label 'core', migrations).
 from core.ui_extensions import UiActionBouton, UiOngletCustom  # noqa: E402,F401
+
+# NTOBS3/NTOBS4 — Rapport SLA mensuel + barème de crédits : ``SlaSnapshot``/
+# ``SlaCreditPolicy`` définis dans ``core/sla.py`` (même pattern
+# d'éclatement), réexportés ici en tout dernier pour la découverte Django
+# (app_label 'core', migrations).
+from core.sla import SlaCreditPolicy, SlaSnapshot  # noqa: E402,F401
+
+# NTOBS6 — liens de téléchargement tokenisés : ``SignedDownload`` défini dans
+# ``core/signed_download.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.signed_download import SignedDownload  # noqa: E402,F401
+
+# NTOBS7 — historique des exports de réversibilité : ``ExportReversibiliteRun``
+# défini dans ``core/export_registry.py`` (même pattern d'éclatement),
+# réexporté ici en tout dernier pour la découverte Django (app_label 'core',
+# migrations).
+from core.export_registry import ExportReversibiliteRun  # noqa: E402,F401
+
+# NTOBS9 — fenêtres de maintenance planifiées : ``MaintenanceWindow`` défini
+# dans ``core/maintenance_windows.py`` (nommage distinct de ``core/
+# maintenance.py``, NTPLT55, une fonctionnalité totalement différente — le
+# mode lecture-seule global) — même pattern d'éclatement, réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.maintenance_windows import MaintenanceWindow  # noqa: E402,F401
+
+# NTOBS10 — page « Confiance » (trust center) : ``TrustCenterEntry`` défini
+# dans ``core/trust_center.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.trust_center import TrustCenterEntry  # noqa: E402,F401

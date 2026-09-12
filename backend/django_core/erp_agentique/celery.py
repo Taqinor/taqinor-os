@@ -1309,6 +1309,30 @@ app.conf.beat_schedule = {
         'task': 'btp_chantier.alertes_visas_en_attente',
         'schedule': crontab(hour=7, minute=31),
     },
+    # NTOBS1 — rafraîchit les composants publics de la page de statut depuis
+    # `core.health.check_services()` (best-effort, jamais bloquant). Toutes
+    # les 5 minutes — la Done criteria de NTOBS1 exige qu'un composant marqué
+    # `degraded` apparaisse publiquement en ≤5 min.
+    'statuspage-rafraichir-composants': {
+        'task': 'statuspage.rafraichir_composants',
+        'schedule': crontab(minute='*/5'),
+    },
+    # NTOBS3 — snapshot SLA mensuel (uptime + P95) de toutes les sociétés,
+    # le 1er du mois (le mois qui vient de se terminer).
+    'core-generer-sla-mensuel': {
+        'task': 'core.generer_sla_mensuel',
+        'schedule': crontab(day_of_month=1, hour=3, minute=15),
+    },
+    # NTOBS9 — notifie 24h/1h avant une fenêtre de maintenance planifiée.
+    'core-notifier-fenetres-maintenance': {
+        'task': 'core.notifier_fenetres_maintenance',
+        'schedule': crontab(minute='*/15'),
+    },
+    # NTOBS13 — notifie chaque société franchissant 80%/100% d'un quota mesuré.
+    'core-notifier-seuils-usage': {
+        'task': 'core.notifier_seuils_usage',
+        'schedule': crontab(hour=7, minute=10),
+    },
 }
 
 

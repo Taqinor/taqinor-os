@@ -373,6 +373,10 @@ INSTALLED_APPS = [
     # `core` (RegistreTraitement/ConsentRecord/DataSubjectRequest + registres
     # `core.dsr` et `core.retention`) — ne le duplique jamais.
     'apps.grc',
+    # Groupe NTOBS — page de statut publique multi-région (composants +
+    # incidents + post-mortems + historique 90j). Aucun modèle métier
+    # importé : lit `core.health.check_services()` via un job beat.
+    'apps.statuspage',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
@@ -1367,6 +1371,14 @@ CELERY_TASK_ROUTES = {
     'paie.rappeler_echeances_declaratives': {'queue': 'scheduled'},
     # NTPAY26 — recalcul des cumuls annuels en dérive (beat mensuel).
     'paie.recalculer_cumuls_annuels': {'queue': 'scheduled'},
+    # NTOBS1 — rafraîchissement 5 min des composants publics de statut.
+    'statuspage.rafraichir_composants': {'queue': 'scheduled'},
+    # NTOBS3 — snapshot SLA mensuel de toutes les sociétés.
+    'core.generer_sla_mensuel': {'queue': 'scheduled'},
+    # NTOBS9 — notification 24h/1h avant une fenêtre de maintenance.
+    'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
+    # NTOBS13 — notification de seuil de quota (80%/100%), beat quotidien.
+    'core.notifier_seuils_usage': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en

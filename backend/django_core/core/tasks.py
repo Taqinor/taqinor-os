@@ -222,3 +222,168 @@ def executer_exports_planifies_task():
                 len(recap))
     return recap
     return {'ok': True}
+
+
+@shared_task(name='core.generer_sla_mensuel')
+def generer_sla_mensuel_task():
+    """NTOBS3 — génère le snapshot SLA mensuel de toutes les sociétés actives
+    (planifié le 1er du mois). Enveloppe fine de la commande homonyme."""
+    from django.core.management import call_command
+
+    call_command('generer_sla_mensuel')
+    logger.info('core.generer_sla_mensuel: génération terminée.')
+    return {'ok': True}
+
+
+REVERSIBILITE_BUCKET = 'erp-reversibilite'
+
+
+def _marquer_run(run_id, **champs):
+    """NTOBS7 — met à jour l'``ExportReversibiliteRun`` d'historique, si son
+    id a été fourni (best-effort, jamais bloquant : NTOBS6 seul — sans
+    ``run_id`` — reste valide)."""
+    if not run_id:
+        return
+    try:
+        from .export_registry import ExportReversibiliteRun
+        ExportReversibiliteRun.objects.filter(pk=run_id).update(**champs)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception(
+            'core._marquer_run: échec mise à jour run %s.', run_id)
+
+
+@shared_task(name='core.export_reversibilite_tenant')
+def export_reversibilite_tenant(
+        company_id, demande_par_id=None, datasets=None, run_id=None):
+    """NTOBS6/NTOBS7 — construit le ZIP de réversibilité complet d'une
+    société (CSV par dataset enregistré, ``core.export_registry`` — JAMAIS
+    ``prix_achat``/champ interne-only), notifie le demandeur avec un lien
+    tokenisé expirant sous 7 jours (``core.signed_download``), et fait
+    progresser l'``ExportReversibiliteRun`` d'historique (``run_id``,
+    optionnel — NTOBS7).
+
+    ``datasets`` (NTOBS20, hors périmètre de ce lot) : optionnel, sous-liste
+    de noms de datasets — absence = comportement par défaut (tout)."""
+    import io
+    import json
+    import zipfile
+
+    from django.utils import timezone as dj_timezone
+
+    from authentication.models import Company
+
+    from . import export_registry, signed_download
+    from .export_registry import ExportReversibiliteRun
+
+    try:
+        company = Company.objects.get(pk=company_id)
+    except Company.DoesNotExist:
+        logger.warning(
+            'core.export_reversibilite_tenant: société %s introuvable.',
+            company_id)
+        _marquer_run(run_id, statut=ExportReversibiliteRun.Statut.ECHEC)
+        return {'ok': False}
+
+    fichiers, comptes = export_registry.export_all_datasets(company)
+    if datasets:
+        fichiers = {
+            nom: contenu for nom, contenu in fichiers.items()
+            if nom[:-4] in datasets  # nom = '<dataset>.csv'
+        }
+        comptes = {k: v for k, v in comptes.items() if k in datasets}
+
+    manifest = {
+        'company_id': company.id,
+        'genere_le': dj_timezone.now().isoformat(),
+        'datasets': comptes,
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for nom, contenu in fichiers.items():
+            zf.writestr(nom, contenu)
+        zf.writestr(
+            'manifest.json',
+            json.dumps(manifest, indent=2, ensure_ascii=False))
+    taille = buf.tell()
+    buf.seek(0)
+
+    from .backup import _minio_client
+
+    object_key = (
+        f'{company.id}/export-{dj_timezone.now():%Y%m%d%H%M%S}.zip')
+    try:
+        client = _minio_client()
+        try:
+            client.head_bucket(Bucket=REVERSIBILITE_BUCKET)
+        except Exception:  # noqa: BLE001 — best-effort, bucket peut-être absent
+            try:
+                client.create_bucket(Bucket=REVERSIBILITE_BUCKET)
+            except Exception:  # noqa: BLE001
+                pass
+        client.put_object(
+            Bucket=REVERSIBILITE_BUCKET, Key=object_key, Body=buf.getvalue())
+    except Exception:  # noqa: BLE001 — jamais bloquant, journalisé
+        logger.exception(
+            'core.export_reversibilite_tenant: échec upload MinIO '
+            '(société %s).', company.id)
+        _marquer_run(run_id, statut=ExportReversibiliteRun.Statut.ECHEC)
+        return {'ok': False}
+
+    lien = signed_download.creer_lien(
+        company, REVERSIBILITE_BUCKET, object_key, taille_octets=taille)
+    _marquer_run(
+        run_id, statut=ExportReversibiliteRun.Statut.PRET,
+        fichier_key=object_key, taille_octets=taille, token=lien.token,
+        expire_le=lien.expire_le)
+
+    if demande_par_id:
+        try:
+            from authentication.models import CustomUser
+
+            from . import notify_registry
+
+            demandeur = CustomUser.objects.filter(pk=demande_par_id).first()
+            if demandeur:
+                # 'export_reversibilite_pret' reflète apps.notifications.
+                # models.EventType.EXPORT_REVERSIBILITE_PRET — passé en
+                # string littéral, jamais un import d'apps.notifications
+                # (contrat import-linter core-foundation-is-a-base-layer).
+                notify_registry.notify(
+                    demandeur, 'export_reversibilite_pret',
+                    'Votre export de données est prêt',
+                    body='Le lien expire dans 7 jours.',
+                    link=f'/api/django/core/export-reversibilite/'
+                         f'telecharger/{lien.token}/',
+                    company=company,
+                )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.exception(
+                'core.export_reversibilite_tenant: notification échouée '
+                '(société %s).', company.id)
+
+    return {'ok': True, 'token': lien.token, 'taille_octets': taille}
+
+
+@shared_task(name='core.notifier_fenetres_maintenance')
+def notifier_fenetres_maintenance_task():
+    """NTOBS9 — notifie 24h/1h avant une fenêtre de maintenance planifiée
+    (beat toutes les 15 min). Enveloppe fine de
+    ``core.maintenance_windows`` (nommage distinct de ``core.maintenance``,
+    NTPLT55, une fonctionnalité totalement différente)."""
+    from . import maintenance_windows
+
+    n = maintenance_windows.notifier_fenetres_a_venir()
+    logger.info('core.notifier_fenetres_maintenance: %d notification(s).', n)
+    return {'notifies': n}
+
+
+@shared_task(name='core.notifier_seuils_usage')
+def notifier_seuils_usage_task():
+    """NTOBS13 — notifie chaque société franchissant 80%/100% d'un quota
+    mesuré (beat quotidien). Enveloppe fine de ``core.usage_limits``."""
+    from . import usage_limits
+
+    n = usage_limits.notifier_seuils_usage()
+    logger.info('core.notifier_seuils_usage: %d notification(s).', n)
+    return {'notifies': n}

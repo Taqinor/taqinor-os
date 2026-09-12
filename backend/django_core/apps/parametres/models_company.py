@@ -812,6 +812,21 @@ class CompanyProfile(models.Model):
                   "bloquer d'action. Assignation réservée au founder.",
     )
 
+    # ── NTOBS5 — RTO annoncé (écran self-service « Sauvegardes ») ──────────
+    # Valeur INFORMATIVE éditable par le fondateur (Paramètres → Fiabilité),
+    # PAS un engagement technique automatisé : le RPO affiché à côté vient
+    # directement de la fréquence RÉELLE du beat de sauvegarde
+    # (`core.dump_database`, planifié 03:00 quotidien) — seul ce champ-ci est
+    # une valeur DÉCLARÉE plutôt que mesurée, donc explicitement nullable
+    # (vide = non communiqué, jamais un défaut forfaitaire affiché comme réel).
+    rto_annonce_heures = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='RTO annoncé (heures)',
+        help_text="Temps de restauration cible annoncé au client (heures), "
+                  'texte informatif — pas un engagement technique '
+                  'automatisé. Vide = non communiqué.',
+    )
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

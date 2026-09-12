@@ -7,7 +7,7 @@ import {
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
   Ship, Route, Layers, Repeat, Trash2,
-  Leaf,
+  Leaf, DatabaseBackup, HardDriveDownload, Gauge, Cable,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -105,6 +105,22 @@ const Playbooks = lazy(() => import('./Playbooks'))
 // WIR8 — Paramètres → Hôtellerie : taxe de séjour (singleton société, réservé
 // responsable/admin — reflète `IsResponsableOrAdmin` côté backend).
 const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
+// NTOBS5 — Paramètres → Fiabilité → Sauvegardes : lecture seule du statut
+// des sauvegardes/drills déjà produits (YOPSB1/2). Nav ET route ensemble
+// (motif PACT150 : ne jamais répéter l'oubli de menu d'AchatsParametresPage).
+const SauvegardesPage = lazy(() => import('../../pages/parametres/SauvegardesPage'))
+// NTOBS7 — Paramètres → Fiabilité → Export de réversibilité (complète NTOBS6).
+// Nav ET route ensemble (motif PACT150).
+const ExportReversibilitePage = lazy(() => import('../../pages/parametres/ExportReversibilitePage'))
+// NTOBS8 — Paramètres → Fiabilité → Limites & usage. Nav ET route ensemble
+// (motif PACT150).
+const LimitesUsagePage = lazy(() => import('../../pages/parametres/LimitesUsagePage'))
+// NTOBS11 — Paramètres → Fiabilité → État des dépendances. Nav ET route
+// ensemble (motif PACT150).
+const EtatDependancesPage = lazy(() => import('../../pages/parametres/EtatDependancesPage'))
+// NTOBS16 — Paramètres → Fiabilité → SLA (destination du badge Dashboard).
+// Nav ET route ensemble (motif PACT150).
+const SlaReportPage = lazy(() => import('../../pages/parametres/SlaReportPage'))
 // WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
 // société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
@@ -243,6 +259,16 @@ const config = {
       { to: '/parametres/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX27 — réglages UX par tenant (nav ET route ensemble, motif PACT150).
       { to: '/parametres/ux', label: 'UX', icon: <Settings size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS5 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/sauvegardes', label: 'Sauvegardes', icon: <DatabaseBackup size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS7 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/export-reversibilite', label: 'Export de réversibilité', icon: <HardDriveDownload size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS8 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/limites-usage', label: 'Limites & usage', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS11 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/etat-dependances', label: 'État des dépendances', icon: <Cable size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS16 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/sla', label: 'SLA', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -270,6 +296,11 @@ const config = {
     { path: '/parametres/abonnements', component: AbonnementsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/sauvegardes', component: SauvegardesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/export-reversibilite', component: ExportReversibilitePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/etat-dependances', component: EtatDependancesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/sla', component: SlaReportPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés

@@ -29,8 +29,23 @@ from .drill_api import DrillDownView
 from .formule_api import (
     FormuleFonctionsView, FormuleTestView, FormuleValiderView,
 )
+from .backup import mes_sauvegardes_view
+from .maintenance_windows import (
+    MaintenanceWindowListCreateView, annuler_fenetre, fenetres_actives,
+)
+from .degraded_mode import degraded_mode_status_view
+from .trust_center import trust_center_public
+from .export_registry import (
+    ExportReversibiliteHistoriqueView, declencher_export_reversibilite,
+    telecharger_export_reversibilite,
+)
 from .rules_api import RegleOperateursView, RegleValiderView
+from .sla import (
+    SlaCreditsDusListView, SlaSnapshotListView, sla_credit_statut,
+    sla_export_pdf,
+)
 from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
+from .usage_limits import usage_view
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
     ApiUsagePlanViewSet,
@@ -202,4 +217,47 @@ urlpatterns = router.urls + [
     # scoping société + plafond de lignes ; jamais de SQL brut).
     path('data-explorer/run/', DataExplorerRunView.as_view(),
          name='data-explorer-run'),
+    # NTOBS3 — rapport SLA mensuel par tenant (uptime + P95), scopé société.
+    path('sla/', SlaSnapshotListView.as_view(), name='sla-list'),
+    path('sla/<str:periode>/export-pdf/', sla_export_pdf,
+         name='sla-export-pdf'),
+    # NTOBS4 — crédits SLA dus (Directeur/Administrateur, cross-tenant).
+    path('sla/credits/', SlaCreditsDusListView.as_view(),
+         name='sla-credits-dus'),
+    path('sla/credits/<int:pk>/statut/', sla_credit_statut,
+         name='sla-credit-statut'),
+    # NTOBS5 — écran self-service « Sauvegardes » (lecture seule des
+    # BackupRun déjà produits par YOPSB1/2), scopé société.
+    path('mes-sauvegardes/', mes_sauvegardes_view, name='mes-sauvegardes'),
+    # NTOBS6 — export de réversibilité complet (Directeur/Administrateur) +
+    # téléchargement tokenisé public (le jeton EST l'authentification).
+    path('export-reversibilite/', declencher_export_reversibilite,
+         name='export-reversibilite-declencher'),
+    path('export-reversibilite/telecharger/<str:token>/',
+         telecharger_export_reversibilite,
+         name='export-reversibilite-telecharger'),
+    # NTOBS7 — historique des exports (scopé société).
+    path('export-reversibilite/historique/',
+         ExportReversibiliteHistoriqueView.as_view(),
+         name='export-reversibilite-historique'),
+    # NTOBS8 — page « Limites & usage » unifiée (lecture seule, scopé société).
+    # NOTE : `usage/` est DÉJÀ pris par `TenantUsageSnapshotViewSet` (NTPLT6,
+    # router ci-dessus, SUPERUSER only, sémantique différente — metering
+    # d'exploitation, pas le quota self-service du tenant) ; ce endpoint
+    # prend donc `usage-limites/` pour ne rien casser côté NTPLT6.
+    path('usage-limites/', usage_view, name='usage-limites-summary'),
+    # NTOBS9 — fenêtres de maintenance (création/annulation Directeur,
+    # cross-tenant ; lecture des fenêtres actives pour la bannière shell).
+    path('maintenance-windows/', MaintenanceWindowListCreateView.as_view(),
+         name='maintenance-windows'),
+    path('maintenance-windows/actives/', fenetres_actives,
+         name='maintenance-windows-actives'),
+    path('maintenance-windows/<int:pk>/annuler/', annuler_fenetre,
+         name='maintenance-windows-annuler'),
+    # NTOBS10 — page « Confiance » (trust center), publique.
+    path('trust-center/', trust_center_public, name='trust-center-public'),
+    # NTOBS11 — mode dégradé par dépendance externe, publique (aucune donnée
+    # société, même politique que health/live|ready ci-dessus).
+    path('degraded-mode-status/', degraded_mode_status_view,
+         name='degraded-mode-status'),
 ]

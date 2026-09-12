@@ -226,6 +226,11 @@ _APP_URLS = [
     # segment est IDENTIQUE à la clé de manifeste (`semantic`) : le gatage 404
     # des modules désactivés vise le bon module sans entrée PREFIX_TO_MODULE.
     path('semantic/', include('apps.semantic.urls')),
+    # Groupe NTOBS — page de statut publique (composants + incidents publics).
+    # Contient ses PROPRES routes publiques AllowAny sous `public/` (même
+    # patron que `apps.sav`/`apps.ventes` : un `permission_classes` par vue,
+    # pas un préfixe `api/django/public/` séparé — cf. NTOBS1).
+    path('statuspage/', include('apps.statuspage.urls')),
 ]
 
 urlpatterns = [

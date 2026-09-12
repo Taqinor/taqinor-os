@@ -37,6 +37,9 @@ from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from . import data_explorer
 from .models import BackupRun
@@ -716,3 +719,89 @@ def purger_backups(now=None, apply_=False):
         'supprimes': len(a_purger),
         'dry_run': False,
     }
+
+
+# ---------------------------------------------------------------------------
+# NTOBS5 — Écran self-service « Sauvegardes » pour l'admin tenant.
+#
+# LECTURE SEULE des ``BackupRun`` déjà produits par YOPSB1/2 — jamais un
+# nouveau moteur. Pour les runs SYSTÈME-WIDE (``company=None`` — dump complet
+# + drill), on n'expose QUE date + statut (jamais l'artefact/manifeste
+# interne) ; pour les exports propres à la société, l'accès est déjà scopé
+# par construction (filtre ``company=company``).
+# ---------------------------------------------------------------------------
+
+def _rpo_planifie_label():
+    """RPO affiché = dérivé de la VRAIE planification beat de
+    ``core.dump_database`` (jamais une valeur écrite en dur qui pourrait
+    diverger du planning réel). ``None`` si la lecture échoue — jamais un
+    texte inventé en repli."""
+    try:
+        from erp_agentique.celery import app as celery_app
+        entry = celery_app.conf.beat_schedule.get('core-dump-database')
+        if not entry:
+            return None
+        schedule = entry['schedule']
+        heure = sorted(schedule.hour)[0] if schedule.hour else 0
+        minute = sorted(schedule.minute)[0] if schedule.minute else 0
+        return f'quotidien, {heure:02d}:{minute:02d}'
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return None
+
+
+def _run_resume(run):
+    if run is None:
+        return None
+    return {
+        'date': (run.termine_le or run.created_at).isoformat(),
+        'statut': run.statut,
+    }
+
+
+def resume_sauvegardes(company):
+    """NTOBS5 — résumé self-service pour l'admin tenant.
+
+    Renvoie ``{derniere_sauvegarde, dernier_drill, rpo_planifie,
+    rto_annonce_heures}`` — chaque champ ``None`` quand la donnée n'existe
+    pas encore (jamais un défaut forfaitaire affiché comme réel)."""
+    from django.db.models import Q
+
+    derniere_sauvegarde = (
+        BackupRun.objects
+        .filter(
+            Q(kind=BackupRun.KIND_EXPORT, company=company) |
+            Q(kind=BackupRun.KIND_DB_DUMP, company__isnull=True),
+            statut=BackupRun.STATUT_TERMINE, purge_is_deleted=False,
+        )
+        .order_by('-termine_le', '-created_at')
+        .first()
+    )
+    dernier_drill = (
+        BackupRun.objects
+        .filter(kind=BackupRun.KIND_RESTORE_DRILL, company__isnull=True)
+        .order_by('-termine_le', '-created_at')
+        .first()
+    )
+
+    rto_annonce_heures = None
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+        if profile is not None:
+            rto_annonce_heures = profile.rto_annonce_heures
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+
+    return {
+        'derniere_sauvegarde': _run_resume(derniere_sauvegarde),
+        'dernier_drill': _run_resume(dernier_drill),
+        'rpo_planifie': _rpo_planifie_label(),
+        'rto_annonce_heures': rto_annonce_heures,
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def mes_sauvegardes_view(request):
+    """GET /api/django/core/mes-sauvegardes/ — scopé société de l'appelant."""
+    return Response(resume_sauvegardes(request.user.company))
