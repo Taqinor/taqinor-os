@@ -186,13 +186,15 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
-        elif self.action == 'prix_fournisseurs':
+        elif self.action in ('prix_fournisseurs', 'historique_prix'):
             # AUD213 — cette action ne renvoie QUE des prix d'ACHAT (et leurs
             # paliers) : même gate `prix_achat_voir` que le ViewSet dédié et
             # que le champ `prix_achat` de `ProduitSerializer`. Sans ce cas
             # explicite elle retombait sur `IsAdminRole` (`get_permissions`
             # prime sur le `permission_classes` de l'@action), qu'un rôle
             # « roles_gerer » SANS `prix_achat_voir` franchissait.
+            # NTP2P18 — `historique_prix` porte le même risque (prix reçus
+            # historiques), même garde.
             return [HasPermissionOrLegacy('prix_achat_voir')()]
         elif self.action in (
                 'analyse_achats', 'analyse_achats_export_xlsx',
@@ -435,6 +437,24 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'produit_cible_quantite_stock': result['produit_cible'].quantite_stock,
             'numero_lot': result['numero_lot'],
         })
+
+    @action(detail=True, methods=['get'], url_path='historique-prix',
+            permission_classes=[HasPermissionOrLegacy('prix_achat_voir')])
+    def historique_prix(self, request, *args, **kwargs):
+        """NTP2P18 — historique des prix reçus de ce produit chez UN
+        fournisseur (``?fournisseur=<id>``, obligatoire), avec écart vs le
+        catalogue courant et alerte de dérive. Donnée INTERNE (prix d'achat),
+        même garde que ``prix-fournisseurs``."""
+        from .. import selectors as stock_selectors
+
+        produit = self.get_object()
+        fournisseur_id = request.query_params.get('fournisseur')
+        if not fournisseur_id:
+            return Response(
+                {'detail': 'Le paramètre ?fournisseur= est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(stock_selectors.historique_prix_fournisseur(
+            request.user.company, produit.id, fournisseur_id))
 
     @action(detail=True, methods=['get'], url_path='prix-fournisseurs',
             permission_classes=[HasPermissionOrLegacy('prix_achat_voir')])

@@ -2319,6 +2319,72 @@ def tableau_bord_achats(company, debut=None, fin=None):
     }
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P18 — Historique de prix négocié par fournisseur/produit
+# ══════════════════════════════════════════════════════════════════════════
+
+def historique_prix_fournisseur(company, produit_id, fournisseur_id):
+    """NTP2P18 — série temporelle des prix RÉELLEMENT reçus (lignes de BCF
+    réceptionnées, ``quantite_recue > 0``) pour ce couple produit×fournisseur,
+    avec écart vs le prix catalogue courant (``PrixFournisseur.prix_achat``).
+
+    Alerte (``dernier_prix_alerte``) quand le DERNIER prix reçu dépasse le
+    catalogue de plus du seuil configuré — réutilise
+    ``AchatsParametres.seuil_deviation_prix_pct`` (XPUR13, déjà le seuil
+    « écart % vs dernier prix/prix moyen d'achat » utilisé sur les lignes de
+    BCF) plutôt que d'ajouter un second réglage quasi identique. 0 (défaut) =
+    désactivé, comportement historique inchangé (aucune alerte). Lecture
+    seule ; ``prix_achat`` reste une donnée INTERNE (jamais client-facing)."""
+    from decimal import Decimal
+    from .models import AchatsParametres, LigneBonCommandeFournisseur, PrixFournisseur
+
+    lignes = list(
+        LigneBonCommandeFournisseur.objects.filter(
+            bon_commande__company=company,
+            bon_commande__fournisseur_id=fournisseur_id,
+            produit_id=produit_id, quantite_recue__gt=0,
+        ).select_related('bon_commande')
+        .order_by('bon_commande__date_creation', 'id'))
+
+    catalogue = PrixFournisseur.objects.filter(
+        company=company, produit_id=produit_id,
+        fournisseur_id=fournisseur_id).first()
+    prix_catalogue = catalogue.prix_achat if catalogue else None
+
+    seuil = AchatsParametres.for_company(company).seuil_deviation_prix_pct \
+        or Decimal('0')
+
+    historique = []
+    for ligne in lignes:
+        ecart_pct = None
+        if prix_catalogue:
+            ecart_pct = round(float(
+                (ligne.prix_achat_unitaire - prix_catalogue)
+                / prix_catalogue * 100), 2)
+        historique.append({
+            'bon_commande_id': ligne.bon_commande_id,
+            'reference': ligne.bon_commande.reference,
+            'date': ligne.bon_commande.date_creation,
+            'prix_recu': ligne.prix_achat_unitaire,
+            'ecart_vs_catalogue_pct': ecart_pct,
+        })
+
+    dernier_prix_alerte = False
+    if historique and seuil and prix_catalogue:
+        dernier_ecart = historique[-1]['ecart_vs_catalogue_pct']
+        if dernier_ecart is not None and dernier_ecart > float(seuil):
+            dernier_prix_alerte = True
+
+    return {
+        'produit_id': produit_id,
+        'fournisseur_id': fournisseur_id,
+        'prix_catalogue_actuel': prix_catalogue,
+        'seuil_alerte_pct': seuil,
+        'historique': historique,
+        'dernier_prix_alerte': dernier_prix_alerte,
+    }
+
+
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.
