@@ -22,6 +22,18 @@ class SavedReport(models.Model):
         SALES = 'sales', 'Ventes'
         STOCK = 'stock', 'Stock'
         SERVICE = 'service', 'Service'
+        # NTDATA38 — un abonnement peut viser ce que l'utilisateur a CONSTRUIT
+        # lui-même, pas seulement les 3 rapports figés : un tableau de bord
+        # (rendu PDF) ou une requête sauvegardée (rendue XLSX). La cible est
+        # désignée par `cible_id` — un identifiant, jamais un FK dur : le
+        # rapport survit à la suppression de sa cible (il devient simplement
+        # inexécutable, et l'historique d'envoi le dit).
+        DASHBOARD = 'dashboard', 'Tableau de bord'
+        QUERY = 'query', 'Requête sauvegardée'
+
+    #: NTDATA37 — cibles qui exigent un `cible_id` (les 3 rapports figés n'en
+    #: ont pas : ils sont définis par leur seul `target_kind`).
+    KINDS_AVEC_CIBLE = ('dashboard', 'query')
 
     class Schedule(models.TextChoices):
         NONE = 'none', 'Aucune'
@@ -42,6 +54,17 @@ class SavedReport(models.Model):
     definition = models.JSONField(default=dict, blank=True)
     target_kind = models.CharField(
         max_length=20, choices=TargetKind.choices, default=TargetKind.SALES)
+    # NTDATA37 — identifiant de la CIBLE quand `target_kind` en exige une
+    # (`core.Dashboard` ou `core.SavedQuery`). NULL = les 3 rapports figés
+    # historiques : aucun abonnement existant ne change. Identifiant NU et pas
+    # FK : `reporting` est un satellite qui ne doit pas imposer une cascade de
+    # suppression à `core`, et un rapport dont la cible a disparu doit survivre
+    # pour que son historique d'envois reste lisible.
+    cible_id = models.PositiveIntegerField(
+        'Cible', null=True, blank=True,
+        help_text='Identifiant du tableau de bord ou de la requête '
+                  'sauvegardée visée. Vide pour les rapports Ventes / Stock / '
+                  'Service.')
     schedule = models.CharField(
         max_length=10, choices=Schedule.choices, default=Schedule.NONE)
     # NTDATA38 — fenêtre d'envoi. `heure_envoi` NULL = comportement HISTORIQUE
@@ -131,6 +154,41 @@ class SavedReport(models.Model):
         """AUD803 — vrai tant que le lien public de ce rapport n'est pas
         révoqué. Consulté par ``diffusion_views.resolve_report_token``."""
         return self.partage_revoque_le is None
+
+    # ── NTDATA37 — cible construite par l'utilisateur (dashboard / requête) ──
+    def clean(self):
+        """Un abonnement dit CLAIREMENT ce qu'il envoie.
+
+        Erreur portée par le CHAMP fautif : une cible ``dashboard``/``query``
+        SANS ``cible_id`` n'a rien à rendre — l'accepter produirait un
+        abonnement qui échoue silencieusement chaque semaine.
+        """
+        from django.core.exceptions import ValidationError
+
+        if (self.target_kind in self.KINDS_AVEC_CIBLE
+                and self.cible_id is None):
+            raise ValidationError({
+                'cible_id': 'Choisissez le %s à envoyer.'
+                            % self.get_target_kind_display().lower()})
+
+    def resoudre_cible(self):
+        """La ``core.Dashboard``/``core.SavedQuery`` visée, DANS la société.
+
+        Renvoie ``None`` quand le rapport ne vise pas de cible, quand la cible
+        a été supprimée, ou quand elle appartient à une autre société — jamais
+        d'exception : un abonnement dont la cible a disparu doit rester
+        consultable (et son historique d'envois lisible) plutôt que de faire
+        tomber l'écran.
+        """
+        from core.models import Dashboard, SavedQuery
+
+        modeles = {self.TargetKind.DASHBOARD: Dashboard,
+                   self.TargetKind.QUERY: SavedQuery}
+        modele = modeles.get(self.target_kind)
+        if modele is None or self.cible_id is None:
+            return None
+        return modele.objects.filter(pk=self.cible_id,
+                                     company=self.company).first()
 
 
 class AccesRapportPartage(TenantModel):

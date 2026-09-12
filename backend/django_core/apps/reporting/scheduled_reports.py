@@ -105,32 +105,198 @@ _RENDERERS = {
 }
 
 
-def render_report_xlsx(report):
-    """Rend un SavedReport en octets .xlsx (builder partagé). None si échec."""
+# ── NTDATA37 — cibles CONSTRUITES par l'utilisateur (dashboard / requête) ───
+#
+# Les 3 rapports ci-dessus sont FIGÉS : leur contenu est écrit en Python. Un
+# abonnement doit aussi pouvoir viser ce que l'utilisateur a bâti lui-même —
+# un tableau de bord (NTDATA32) ou une requête sauvegardée (FG382).
+#
+# DEUX FORMATS, choisis par la NATURE de la cible et pas par une préférence :
+# un tableau de bord est une MISE EN PAGE (plusieurs blocs, des titres) → PDF ;
+# une requête est un TABLEAU (des lignes, des colonnes) → XLSX, qu'on ouvre et
+# qu'on retrie.
+#
+# RIEN N'EST INVENTÉ : les deux rendus rejouent la cible via
+# `core.data_explorer` / `core.dashboard_data`, avec le scoping société et la
+# liste blanche de champs que ces moteurs imposent déjà. Un widget en erreur
+# est RENDU COMME TEL dans le PDF — jamais remplacé par un tableau vide qui
+# laisserait croire qu'il n'y avait rien à voir.
+
+MIME_XLSX = ('application/vnd.openxmlformats-officedocument'
+             '.spreadsheetml.sheet')
+MIME_PDF = 'application/pdf'
+
+#: Feuille de style du PDF de tableau de bord. CONSTANTE séparée (et jamais
+#: interpolée) : elle contient des « % » — `width:100%` — qui casseraient un
+#: formatage `%`, exactement ce que flake8 F509/F507 a attrapé ici.
+_STYLE_PDF = (
+    'body{font-family:sans-serif;font-size:11px}'
+    'h1{font-size:16px}h2{font-size:13px;margin:12px 0 4px}'
+    'table{border-collapse:collapse;width:100%}'
+    'th,td{border:1px solid #ccc;padding:3px 5px;text-align:left}'
+    '.erreur{color:#a00}.vide{color:#666;font-style:italic}'
+)
+
+
+def _echappe(valeur):
+    """Échappe une valeur pour l'insérer dans le HTML du PDF."""
+    from django.utils.html import escape
+    return escape('' if valeur is None else str(valeur))
+
+
+def rendre_dashboard_html(report, dashboard):
+    """Le HTML du PDF d'un tableau de bord (fonction PURE, testable seule).
+
+    Un widget en ERREUR est affiché AVEC son message : un tableau de bord qui
+    tait un widget cassé ment par omission. Un widget sans ligne affiche
+    « aucune donnée » plutôt qu'un cadre vide.
+    """
+    from core.dashboard_data import executer_dashboard
+
+    donnees = executer_dashboard(dashboard, report.company, report.owner)
+    blocs = []
+    for widget in donnees['widgets']:
+        titre = _echappe(widget.get('titre') or widget.get('id') or '')
+        if widget.get('erreur'):
+            blocs.append(
+                '<section><h2>%s</h2><p class="erreur">%s</p></section>'
+                % (titre, _echappe(widget['erreur'])))
+            continue
+        lignes = widget.get('rows') or []
+        if not lignes:
+            blocs.append(
+                '<section><h2>%s</h2><p class="vide">Aucune donnée sur la '
+                'période.</p></section>' % titre)
+            continue
+        colonnes = list(lignes[0].keys())
+        entete = ''.join('<th>%s</th>' % _echappe(c) for c in colonnes)
+        corps = ''.join(
+            '<tr>%s</tr>' % ''.join(
+                '<td>%s</td>' % _echappe(ligne.get(c)) for c in colonnes)
+            for ligne in lignes)
+        blocs.append(
+            '<section><h2>%s</h2><table><thead><tr>%s</tr></thead>'
+            '<tbody>%s</tbody></table></section>' % (titre, entete, corps))
+    titre_page = _echappe(dashboard.titre or report.name)
+    return ('<html><head><meta charset="utf-8"><style>' + _STYLE_PDF
+            + '</style></head><body><h1>' + titre_page + '</h1>'
+            + ''.join(blocs) + '</body></html>')
+
+
+def _rendre_dashboard(report):
+    """``(bytes, titre, filename, content_type)`` du PDF d'un dashboard."""
+    dashboard = report.resoudre_cible()
+    if dashboard is None:
+        return None, None, None, None
+    html = rendre_dashboard_html(report, dashboard)
+    try:
+        from core.pdf import render_pdf
+        contenu = render_pdf(html=html, company=report.company)
+    except Exception:  # pragma: no cover - dépend de WeasyPrint
+        logger.warning('email_saved_reports: rendu PDF du dashboard %s en '
+                       'échec (rapport %s)', dashboard.pk, report.pk,
+                       exc_info=True)
+        return None, None, None, None
+    titre = dashboard.titre or report.name
+    return contenu, titre, f'{_nom_fichier(titre)}.pdf', MIME_PDF
+
+
+def _rendre_saved_query(report):
+    """``(bytes, titre, filename, content_type)`` du XLSX d'une requête."""
+    from core import data_explorer
+
+    requete = report.resoudre_cible()
+    if requete is None:
+        return None, None, None, None
+    try:
+        lignes = data_explorer.run_query(
+            requete.dataset, report.company, report.owner,
+            requete.spec or {})
+    except Exception:
+        logger.warning('email_saved_reports: exécution de la requête %s en '
+                       'échec (rapport %s)', requete.pk, report.pk,
+                       exc_info=True)
+        return None, None, None, None
+    entetes = list(lignes[0].keys()) if lignes else []
+    tableau = [[ligne.get(c, '') for c in entetes] for ligne in lignes]
+    titre = requete.titre or report.name
+    try:
+        from apps.records.xlsx import workbook_bytes
+        contenu = workbook_bytes(entetes, tableau, sheet_title=titre[:31])
+    except Exception:  # pragma: no cover - dépend d'openpyxl
+        logger.warning('email_saved_reports: sérialisation xlsx en échec '
+                       '(rapport %s)', report.pk, exc_info=True)
+        return None, None, None, None
+    return contenu, titre, f'{_nom_fichier(titre)}.xlsx', MIME_XLSX
+
+
+def _nom_fichier(base):
+    """Nom de fichier sûr dérivé d'un titre (jamais vide)."""
+    sur = ''.join(c for c in (base or '') if c.isalnum() or c in ('-', '_'))
+    return sur or 'rapport'
+
+
+def _rendre_legacy(report):
+    """Les 3 rapports FIGÉS — rendu inchangé, au format .xlsx."""
     renderer = _RENDERERS.get(report.target_kind)
     if renderer is None:
-        return None, None
+        return None, None, None, None
     try:
         headers, rows = renderer(report)
     except Exception:  # pragma: no cover - défensif (modèle/requête)
         logger.warning('email_saved_reports: rendu %r en échec (rapport %s)',
                        report.target_kind, report.pk, exc_info=True)
-        return None, None
+        return None, None, None, None
     try:
         from apps.records.xlsx import workbook_bytes
         title = report.get_target_kind_display()
-        return workbook_bytes(headers, rows, sheet_title=title), title
+        return (workbook_bytes(headers, rows, sheet_title=title), title,
+                f'{report.target_kind}.xlsx', MIME_XLSX)
     except Exception:  # pragma: no cover - dépend d'openpyxl
         logger.warning('email_saved_reports: sérialisation xlsx en échec '
                        '(rapport %s)', report.pk, exc_info=True)
-        return None, None
+        return None, None, None, None
 
 
-def _send_report_email(report, content, title):
-    """Envoie le .xlsx aux destinataires via le backend configuré.
+def rendre_rapport(report):
+    """NTDATA37 — rend N'IMPORTE QUELLE cible : ``(bytes, titre, nom, mime)``.
+
+    ``(None, None, None, None)`` quand la cible est introuvable ou le rendu
+    impossible — l'appelant journalise alors un envoi en échec AVEC son motif,
+    plutôt que d'envoyer une pièce jointe vide.
+    """
+    from .models import SavedReport
+
+    if report.target_kind == SavedReport.TargetKind.DASHBOARD:
+        return _rendre_dashboard(report)
+    if report.target_kind == SavedReport.TargetKind.QUERY:
+        return _rendre_saved_query(report)
+    return _rendre_legacy(report)
+
+
+def render_report_xlsx(report):
+    """Rend un SavedReport en octets .xlsx (builder partagé). None si échec.
+
+    CONTRAT HISTORIQUE CONSERVÉ (deux valeurs, format .xlsx) pour les appelants
+    d'avant NTDATA37. Les nouvelles cibles passent par :func:`rendre_rapport`,
+    qui rend AUSSI le nom de fichier et le type MIME — un PDF de dashboard
+    servi en .xlsx ne s'ouvrirait nulle part.
+    """
+    contenu, titre, _nom, _mime = _rendre_legacy(report)
+    return contenu, titre
+
+
+def _send_report_email(report, content, title, filename=None,
+                       content_type=None):
+    """Envoie la pièce jointe aux destinataires via le backend configuré.
 
     NO-OP (renvoie False) si l'email n'est pas configuré ou sans destinataire.
-    Best-effort : toute exception est capturée, jamais propagée."""
+    Best-effort : toute exception est capturée, jamais propagée.
+
+    NTDATA37 — ``filename``/``content_type`` sont facultatifs et retombent sur
+    le .xlsx historique : un appelant d'avant ce lot obtient EXACTEMENT le même
+    message. Un PDF de tableau de bord servi sous un nom .xlsx ne s'ouvrirait
+    nulle part, d'où ces deux paramètres."""
     recipients = report.recipient_list()
     if not recipients or not _is_email_configured():
         return False
@@ -146,10 +312,9 @@ def _send_report_email(report, content, title):
         msg = EmailMessage(
             subject=subject, body=body, from_email=from_email,
             to=recipients, connection=connection)
-        filename = f'{report.target_kind}.xlsx'
         msg.attach(
-            filename, content,
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            filename or f'{report.target_kind}.xlsx', content,
+            content_type or MIME_XLSX)
         msg.send(fail_silently=True)
         return True
     except Exception:  # pragma: no cover - dépend du backend réel
@@ -295,13 +460,18 @@ def email_saved_reports():
                                   "Email non configuré (aucune clé d'envoi) — "
                                   'aucun message envoyé.')
                 continue
-            content, title = render_report_xlsx(report)
+            # NTDATA37 — la cible peut être un dashboard (PDF) ou une requête
+            # sauvegardée (XLSX) en plus des 3 rapports figés ; le rendu dit
+            # lui-même sous quel nom et quel type MIME il part.
+            content, title, filename, content_type = rendre_rapport(report)
             if content is None:
                 journaliser_envoi(report, 'email', destinataires, 'echec',
-                                  'Rendu du rapport impossible (format ou '
-                                  'données indisponibles).')
+                                  'Rendu du rapport impossible (cible '
+                                  'introuvable, format ou données '
+                                  'indisponibles).')
                 continue
-            if _send_report_email(report, content, title):
+            if _send_report_email(report, content, title, filename,
+                                  content_type):
                 report.last_sent_at = now
                 report.save(update_fields=['last_sent_at'])
                 sent += 1

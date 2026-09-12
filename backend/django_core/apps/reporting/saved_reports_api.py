@@ -24,6 +24,8 @@ class SavedReportSerializer(serializers.ModelSerializer):
         # company + owner posés côté serveur — jamais lus du corps.
         fields = [
             'id', 'name', 'definition', 'target_kind', 'target_kind_label',
+            # NTDATA37 — identifiant du dashboard / de la requête visée.
+            'cible_id',
             'schedule', 'schedule_label', 'heure_envoi', 'jour_du_mois',
             'canal', 'recipients', 'destinataires_whatsapp', 'pinned',
             'last_sent_at', 'created_at', 'updated_at',
@@ -32,6 +34,35 @@ class SavedReportSerializer(serializers.ModelSerializer):
             'id', 'target_kind_label', 'schedule_label', 'last_sent_at',
             'created_at', 'updated_at',
         ]
+
+    def validate(self, attrs):
+        """NTDATA37 — la règle du modèle, rendue au CHAMP fautif.
+
+        La CIBLE est cherchée DANS LA SOCIÉTÉ de l'appelant : le corps de
+        requête ne peut pas faire pointer un abonnement vers le tableau de
+        bord du tenant voisin (il partirait par email chaque semaine).
+        """
+        instance = getattr(self, 'instance', None)
+        kind = attrs.get('target_kind',
+                         getattr(instance, 'target_kind', None)
+                         or SavedReport.TargetKind.SALES)
+        cible = attrs.get('cible_id', getattr(instance, 'cible_id', None))
+        if kind in SavedReport.KINDS_AVEC_CIBLE:
+            if cible is None:
+                raise serializers.ValidationError({
+                    'cible_id': 'Choisissez le %s à envoyer.'
+                                % dict(SavedReport.TargetKind.choices)[
+                                    kind].lower()})
+            requete = self.context.get('request')
+            company = getattr(getattr(requete, 'user', None), 'company', None)
+            if company is not None:
+                sonde = SavedReport(company=company, target_kind=kind,
+                                    cible_id=cible)
+                if sonde.resoudre_cible() is None:
+                    raise serializers.ValidationError({
+                        'cible_id': "Cette cible n'existe pas dans votre "
+                                    'société.'})
+        return attrs
 
 
 class SavedReportViewSet(TenantMixin, viewsets.ModelViewSet):
