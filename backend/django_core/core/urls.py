@@ -26,7 +26,11 @@ from .dashboard_partage import (
     dashboard_tv,
 )
 from .drill_api import DrillDownView
-from .formule_api import FormuleTestView
+from .formule_api import (
+    FormuleFonctionsView, FormuleTestView, FormuleValiderView,
+)
+from .rules_api import RegleOperateursView, RegleValiderView
+from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
     ApiUsagePlanViewSet,
@@ -143,6 +147,11 @@ router.register(r'dashboards-partages-internes',
 # NTEXT16 — vues de liste personnalisées (?cible=crm.lead), partageables
 # prive/equipe/societe et toujours bornées à la société.
 router.register(r'vues', VuePersonnaliseeViewSet, basename='vue-personnalisee')
+# NTEXT20/NTEXT21 — points d'extension UI déclaratifs (?cible=crm.lead) :
+# boutons custom (déclenchent une automatisation/webhook/action serveur) et
+# onglets custom (objet personnalisé lié / rapport / HTML).
+router.register(r'ui-boutons', UiActionBoutonViewSet, basename='ui-bouton')
+router.register(r'ui-onglets', UiOngletCustomViewSet, basename='ui-onglet')
 
 urlpatterns = router.urls + [
     # XPLT10 — accès public lecture seule (aucune identité de confiance,
@@ -165,6 +174,19 @@ urlpatterns = router.urls + [
     # NTEXT37 — banc d'essai d'une expression sur des données réelles
     # (lecture seule, borné, scopé société).
     path('formule/tester/', FormuleTestView.as_view(), name='formule-tester'),
+    # NTEXT22 — catalogue documenté des fonctions/opérateurs sûrs (éditeur
+    # de formule assisté).
+    path('formule/fonctions/', FormuleFonctionsView.as_view(),
+         name='formule-fonctions'),
+    # NTEXT23 — validateur d'expression (dry-run, aucun effet de bord).
+    path('formule/valider/', FormuleValiderView.as_view(),
+         name='formule-valider'),
+    # NTEXT29 — socle serveur de l'éditeur no-code de conditions (arbre
+    # ET/OU/NON), partagé par XPLT15/NTEXT5/NTEXT21.
+    path('regles/operateurs/', RegleOperateursView.as_view(),
+         name='regle-operateurs'),
+    path('regles/valider/', RegleValiderView.as_view(),
+         name='regle-valider'),
     # NTDATA33 — drill-down d'une cellule de pivot jusqu'aux enregistrements
     # (liste blanche + scoping société de data_explorer, liens profonds).
     path('data-explorer/drill/', DrillDownView.as_view(),

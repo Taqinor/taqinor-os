@@ -39,6 +39,14 @@ class CustomFieldDef(models.Model):
         # masse). Le prompt admin vit dans `ia_prompt` ; la génération elle-
         # même n'écrit dans custom_data QUE sur action explicite utilisateur.
         IA = 'ia', 'Champ IA'
+        # NTEXT1 — valeur CALCULÉE à la lecture depuis `formule` (jamais
+        # saisie, jamais persistée dans custom_data). Cf. `services.
+        # calculer_champs_formule` / `core.formula.evaluer_formule`.
+        FORMULA = 'formula', 'Champ calculé (formule)'
+        # NTEXT28 — agrégat d'objets personnalisés LIÉS (rollup), calculé à
+        # la lecture depuis `rollup_config`. Cf. `services.
+        # evaluer_champ_rollup` / `core.pivot._aggregate`.
+        ROLLUP = 'rollup', 'Agrégat (rollup)'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -84,6 +92,18 @@ class CustomFieldDef(models.Model):
     # auditée). Le verrou ne bloque QUE la structure : la saisie de valeurs
     # dans `custom_data` reste totalement libre.
     verrouille = models.BooleanField('Verrouillé', default=False)
+    # NTEXT1 — expression du champ calculé (type=formula). Ignoré pour tout
+    # autre type. Évaluée à CHAQUE LECTURE via `core.formula.evaluer_formule`
+    # sur les autres champs custom de l'enregistrement — jamais persistée
+    # dans `custom_data`/`data`, jamais saisie par l'utilisateur.
+    formule = models.TextField('Formule', blank=True, default='')
+    # NTEXT28 — configuration du champ ROLLUP (type=rollup). Ignoré pour tout
+    # autre type. Forme :
+    # ``{'objet_lie': 'x', 'cle_liaison': 'devis_id', 'agg': 'sum',
+    #    'champ': 'montant'}`` — jamais saisie par l'utilisateur, calculée à
+    # CHAQUE LECTURE (`services.evaluer_champ_rollup`).
+    rollup_config = models.JSONField(
+        'Configuration rollup', null=True, blank=True)
 
     class Meta:
         ordering = ['module', 'ordre', 'libelle']
@@ -93,6 +113,57 @@ class CustomFieldDef(models.Model):
 
     def __str__(self):
         return f'{self.module}.{self.code}'
+
+
+class FieldRolePermission(models.Model):
+    """NTEXT9 — visibilité/édition d'UN ``CustomFieldDef``, PAR PALIER de rôle.
+
+    ``role_tier`` reprend le même vocabulaire que ``core.VuePersonnalisee.
+    role_tier`` (« normal » / « responsable » / « admin » — source de vérité
+    ``authentication.role_tiers``, exposée par ``CustomUser.menu_tier``) :
+    aucune app de fondation n'importe l'app métier ``roles`` pour autant, le
+    palier reste une simple CHAÎNE opaque ici, comme partout ailleurs dans la
+    plateforme.
+
+    Défaut SANS LIGNE pour un (champ, palier) donné = comportement ACTUEL
+    inchangé : le champ reste visible ET éditable (voir
+    ``services.niveau_pour_role``, qui retombe sur ``EDITION`` en l'absence
+    de ligne)."""
+
+    class Niveau(models.TextChoices):
+        MASQUE = 'masque', 'Masqué'
+        LECTURE = 'lecture', 'Lecture seule'
+        EDITION = 'edition', 'Édition'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: une permission de champ n'a aucun sens hors de sa société — la société supprimée, la ligne l'est aussi
+        related_name='field_role_permissions')
+    field_def = models.ForeignKey(
+        CustomFieldDef,
+        on_delete=models.CASCADE,  # on_delete: une permission n'existe QUE pour son champ (composition, même patron que CustomRecord.objet) ; supprimer le champ supprime ses permissions
+        related_name='role_permissions')
+    role_tier = models.CharField(
+        'Palier de rôle', max_length=40,
+        help_text="« normal », « responsable » ou « admin » "
+                  "(authentication.role_tiers).")
+    niveau = models.CharField(
+        max_length=10, choices=Niveau.choices, default=Niveau.EDITION)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Permission de champ par rôle'
+        verbose_name_plural = 'Permissions de champ par rôle'
+        unique_together = [('field_def', 'role_tier')]
+        indexes = [
+            models.Index(fields=['company', 'field_def', 'role_tier'],
+                         name='customfields_fieldrole_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.field_def_id}:{self.role_tier}={self.niveau}'
 
 
 class CustomObjectDef(models.Model):

@@ -17,7 +17,8 @@ import logging
 import threading
 
 from .models import (
-    ActionType, AutomationApproval, AutomationRule, AutomationRun, TriggerType,
+    ActionType, AutomationApproval, AutomationRule, AutomationRun,
+    AutomationStep, TriggerType,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,16 @@ def _trigger_matches(rule, instance, context):
             from core.rules import evaluate_condition_group
             return evaluate_condition_group(conditions, ctx)
         return True
+
+    if rule.trigger_type == TriggerType.CUSTOM_RECORD_SAVED:
+        # NTEXT27 — ``object_code`` posé dans le contexte par le signal
+        # (``signals._custom_record_saved``) : vide ⇒ matche tout objet
+        # personnalisé de la société (comportement générique par défaut,
+        # cohérent avec les autres déclencheurs sans config).
+        wanted = cfg.get('object_code')
+        if not wanted:
+            return True
+        return ctx.get('object_code') == wanted
 
     # DEVIS_ACCEPTED / FACTURE_OVERDUE / WARRANTY_EXPIRING / MAINTENANCE_DUE /
     # STOCK_BELOW_THRESHOLD : la condition est déjà tranchée par l'émetteur du
@@ -343,16 +354,108 @@ def run_action(rule, instance, company, *, context=None, user=None):
     return _run_steps(rule, steps, 0, instance, company, context, user)
 
 
+def _instance_field_context(instance):
+    """NTEXT5 — valeurs des champs concrets de l'instance, pour l'évaluation
+    de conditions de step. Ignore les champs relationnels. Contrairement à
+    ``_json_safe`` (qui sert à GELER un contexte en JSON pour persistance),
+    les valeurs restent NATIVES (``Decimal``/``date``…) : ``core.rules``
+    compare des types Python natifs, jamais une chaîne stringifiée. Purement
+    en mémoire, jamais persisté. Ne lève jamais."""
+    out = {}
+    if instance is None:
+        return out
+    try:
+        for f in instance._meta.concrete_fields:
+            if f.is_relation:
+                continue
+            try:
+                out[f.attname] = getattr(instance, f.attname)
+            except Exception:  # pragma: no cover - défensif
+                continue
+    except Exception:  # pragma: no cover - défensif
+        pass
+    return out
+
+
+def _step_eval_context(instance, context):
+    """NTEXT5 — contexte d'évaluation d'une condition de step : les champs de
+    l'enregistrement, complétés/écrasés par le ``context`` de déclenchement
+    (plus spécifique à l'événement — priorité sur les champs bruts)."""
+    ctx = _instance_field_context(instance)
+    ctx.update(context or {})
+    return ctx
+
+
+def _resolve_step_skips(steps, instance, context):
+    """NTEXT5 — pour chaque étape, la raison de l'IGNORER avant exécution, ou
+    absente si elle s'exécute. Deux mécanismes, appliqués dans l'ordre :
+
+    1) BRANCHE : à ``ordre`` égal, un groupe complet ``si``+``sinon`` est
+       mutuellement exclusif — seule la branche gagnante s'exécute (« si »
+       gagne si AU MOINS UNE de ses conditions est vraie, sinon « sinon »
+       gagne). Un groupe sans les deux branches ne déclenche aucune exclusion
+       (chaque étape suit alors sa seule condition individuelle).
+    2) CONDITION individuelle : une étape (de n'importe quelle branche, y
+       compris « toujours ») dont la ``condition`` est fausse est ignorée.
+
+    Pur, sans effet de bord — calculé une fois avant de dérouler/reprendre la
+    séquence. Ne lève jamais.
+    """
+    from itertools import groupby
+
+    from core.rules import evaluate_condition_group
+
+    eval_ctx = _step_eval_context(instance, context)
+    skips = {}
+
+    for _ordre, group_iter in groupby(steps, key=lambda s: s.ordre):
+        group = list(group_iter)
+        si_steps = [s for s in group if s.branche == AutomationStep.Branche.SI]
+        sinon_steps = [
+            s for s in group if s.branche == AutomationStep.Branche.SINON]
+        if not si_steps or not sinon_steps:
+            continue  # pas un groupe SI/SINON complet : pas d'exclusion.
+        si_matched = any(
+            evaluate_condition_group(s.condition, eval_ctx) if s.condition
+            else True
+            for s in si_steps)
+        if si_matched:
+            for s in sinon_steps:
+                skips[s.pk] = 'Branche « sinon » non retenue.'
+        else:
+            for s in si_steps:
+                skips[s.pk] = 'Branche « si » non retenue.'
+
+    for s in steps:
+        if s.pk in skips:
+            continue
+        if s.condition and not evaluate_condition_group(s.condition, eval_ctx):
+            skips[s.pk] = 'Condition non remplie : étape ignorée.'
+    return skips
+
+
 def _run_steps(rule, steps, start_index, instance, company, context, user):
     """Exécute la séquence ``steps`` à partir du rang ``start_index``.
 
     NTEXT7 — une étape ``WAIT`` SUSPEND la séquence : l'échéance de reprise est
     écrite (``AutomationScheduledStep``) et la boucle s'arrête là ; le reste de
     la séquence repartira depuis le rang suivant.
+
+    NTEXT5 — avant d'exécuter chaque étape, sa branche/condition est vérifiée
+    (``_resolve_step_skips``, calculé UNE FOIS sur toute la séquence, cohérent
+    avec une reprise après ``WAIT``) ; une étape ignorée journalise un run
+    ``skipped`` motivé et NE STOPPE PAS la séquence.
     """
     result = (AutomationRun.Status.NOOP, '')
+    skips = _resolve_step_skips(steps, instance, context)
     for index in range(start_index, len(steps)):
         step = steps[index]
+        skip_reason = skips.get(step.pk)
+        if skip_reason:
+            _log_run(rule, company, instance,
+                     AutomationRun.Status.SKIPPED, skip_reason)
+            result = (AutomationRun.Status.SKIPPED, skip_reason)
+            continue
         if step.action_type == ActionType.WAIT:
             return _schedule_resume(
                 rule, step, index + 1, instance, company, context)

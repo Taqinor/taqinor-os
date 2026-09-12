@@ -412,3 +412,31 @@ def archiver_anciens(now, jours, apply_=True):
         AutomationRun, AutomationRunArchive, _automation_run_to_archive,
         cutoff_field='timestamp', now=now, jours=jours, apply_=apply_,
     )
+
+
+def declencher_bouton_ui(company, ref, target_model, target_id, user=None):
+    """NTEXT20 — gestionnaire enregistré auprès de
+    ``core.ui_extensions.register_trigger_handler('automation', ...)``
+    (depuis ``AutomationConfig.ready()``) : un ``core.UiActionBouton`` de
+    type ``automation`` désigne une ``AutomationRule`` (``ref`` = son id) et
+    déclenche son exécution IMMÉDIATE et RÉELLE (pas un dry-run — cf.
+    ``simulation.simuler_regle`` pour ça) sur l'enregistrement ciblé, avec la
+    MÊME résolution que l'action ``simuler`` (NTEXT31). Renvoie
+    ``(ok, message)`` : ``ok`` est faux uniquement sur un échec dur (règle/
+    cible introuvable, ou l'action a réellement échoué) — un ``skipped``/
+    ``noop`` légitime (module désactivé, action sans effet…) reste ``ok``."""
+    from . import engine
+    from .models import AutomationRule, AutomationRun
+
+    rule = AutomationRule.objects.filter(
+        company=company, pk=ref, enabled=True).first()
+    if rule is None:
+        return False, 'Règle introuvable ou désactivée.'
+    instance = engine._resolve_target(target_model, target_id, company)
+    if instance is None:
+        return False, (
+            f"Aucun enregistrement « {target_model} » d'identifiant "
+            f'{target_id} dans cette société.')
+    status, message = engine.run_action(
+        rule, instance, company, user=user)
+    return status != AutomationRun.Status.FAILED, message

@@ -23,7 +23,10 @@ from __future__ import annotations
 import ast
 import operator
 
-__all__ = ['FormulaError', 'evaluer_formule', 'valider_formule']
+__all__ = [
+    'FormulaError', 'evaluer_formule', 'valider_formule',
+    'catalogue_fonctions', 'FONCTIONS_CATALOGUE', 'OPERATEURS_CATALOGUE',
+]
 
 
 class FormulaError(Exception):
@@ -154,6 +157,66 @@ def evaluer_formule(expression, context=None):
     except SyntaxError as exc:
         raise FormulaError(f'Syntaxe invalide : {exc.msg}')
     return _eval_node(tree, context)
+
+
+# NTEXT22 — catalogue DOCUMENTÉ (libellé FR + exemple) des fonctions/
+# opérateurs SÛRS ci-dessus, pour un éditeur de formule assisté
+# (autocomplétion). Généré à la MAIN à partir de _SAFE_FUNCS/_BIN_OPS/
+# _CMP_OPS/_UNARY_OPS : aucun changement du moteur, seulement sa description
+# — toute fonction non listée dans _SAFE_FUNCS n'apparaît jamais ici.
+FONCTIONS_CATALOGUE = [
+    {'nom': 'abs', 'signature': 'abs(x)', 'libelle': 'Valeur absolue',
+     'exemple': 'abs(-5) = 5'},
+    {'nom': 'min', 'signature': 'min(a, b, ...)',
+     'libelle': 'Plus petite valeur', 'exemple': 'min(3, 7) = 3'},
+    {'nom': 'max', 'signature': 'max(a, b, ...)',
+     'libelle': 'Plus grande valeur', 'exemple': 'max(3, 7) = 7'},
+    {'nom': 'round', 'signature': 'round(x, n=0)', 'libelle': 'Arrondi',
+     'exemple': 'round(3.567, 2) = 3.57'},
+    {'nom': 'int', 'signature': 'int(x)',
+     'libelle': 'Conversion en nombre entier', 'exemple': 'int(3.9) = 3'},
+    {'nom': 'float', 'signature': 'float(x)',
+     'libelle': 'Conversion en nombre décimal', 'exemple': 'float(3) = 3.0'},
+    {'nom': 'len', 'signature': 'len(x)',
+     'libelle': 'Longueur (texte)', 'exemple': "len('abc') = 3"},
+]
+
+OPERATEURS_CATALOGUE = [
+    {'symbole': '+', 'libelle': 'Addition', 'exemple': '2 + 3 = 5'},
+    {'symbole': '-', 'libelle': 'Soustraction', 'exemple': '5 - 2 = 3'},
+    {'symbole': '*', 'libelle': 'Multiplication', 'exemple': '4 * 3 = 12'},
+    {'symbole': '/', 'libelle': 'Division', 'exemple': '10 / 4 = 2.5'},
+    {'symbole': '//', 'libelle': 'Division entière',
+     'exemple': '10 // 4 = 2'},
+    {'symbole': '%', 'libelle': 'Modulo (reste)', 'exemple': '10 % 3 = 1'},
+    {'symbole': '**', 'libelle': 'Puissance', 'exemple': '2 ** 3 = 8'},
+    {'symbole': '==', 'libelle': 'Égal à', 'exemple': "statut == 'accepte'"},
+    {'symbole': '!=', 'libelle': 'Différent de',
+     'exemple': "statut != 'refuse'"},
+    {'symbole': '>', 'libelle': 'Supérieur à', 'exemple': 'montant > 1000'},
+    {'symbole': '>=', 'libelle': 'Supérieur ou égal',
+     'exemple': 'montant >= 1000'},
+    {'symbole': '<', 'libelle': 'Inférieur à', 'exemple': 'montant < 1000'},
+    {'symbole': '<=', 'libelle': 'Inférieur ou égal',
+     'exemple': 'montant <= 1000'},
+    {'symbole': 'and', 'libelle': 'ET logique',
+     'exemple': 'a > 0 and b > 0'},
+    {'symbole': 'or', 'libelle': 'OU logique', 'exemple': 'a > 0 or b > 0'},
+    {'symbole': 'not', 'libelle': 'NON logique', 'exemple': 'not actif'},
+    {'symbole': 'if / else', 'libelle': 'Condition (ternaire)',
+     'exemple': "'haute' if montant > 1000 else 'normale'"},
+]
+
+
+def catalogue_fonctions():
+    """NTEXT22 — copie du catalogue documenté (fonctions + opérateurs).
+
+    Endpoint : ``GET core/formule/fonctions/``. N'expose QUE ce qui est
+    listé ici — jamais une fonction non whitelistée par ``_SAFE_FUNCS``."""
+    return {
+        'fonctions': [dict(f) for f in FONCTIONS_CATALOGUE],
+        'operateurs': [dict(o) for o in OPERATEURS_CATALOGUE],
+    }
 
 
 def valider_formule(expression, variables=None):

@@ -1,10 +1,16 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import CustomFieldDefViewSet, CustomObjectDefViewSet, CustomRecordViewSet
+from .views import (
+    CustomFieldDefViewSet, CustomObjectDefViewSet, CustomRecordViewSet,
+    FieldRolePermissionViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'definitions', CustomFieldDefViewSet)
 router.register(r'objects', CustomObjectDefViewSet, basename='customobjectdef')
+# NTEXT9 — permissions de champ par palier de rôle (admin).
+router.register(r'permissions-role', FieldRolePermissionViewSet,
+                basename='fieldrolepermission')
 
 # XPLT16 — CRUD dynamique des enregistrements d'un objet personnalisé.
 # object_code est un SlugField : le convertisseur <slug:...> le contraint
