@@ -478,6 +478,14 @@ class AchatsParametres(models.Model):
     # d'une note de frais escaladée la valider en direction. OFF par défaut :
     # les petites structures à un seul décideur ne sont pas cassées.
     sod_stricte = models.BooleanField(default=False)
+    # NTP2P31 — quand actif, l'escalade direction d'une note de frais
+    # (NTP2P11, `PlafondNoteFrais.escalade_direction_au_dela_de`) notifie
+    # IMMÉDIATEMENT le valideur direction (NTP2P45) au lieu d'attendre une
+    # relecture manuelle. OFF par défaut : le calcul d'escalade lui-même
+    # (posé sur la note + journalisé au chatter) reste comportement
+    # historique inchangé, actif dès qu'un plafond est configuré — ce réglage
+    # ne pilote QUE la notification immédiate, jamais le calcul.
+    plafond_notes_frais_actif = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

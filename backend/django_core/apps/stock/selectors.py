@@ -1971,6 +1971,22 @@ def onboarding_fournisseur_obligatoire(company):
     return bool(params and params.onboarding_fournisseur_obligatoire)
 
 
+def plafond_notes_frais_actif(company):
+    """NTP2P31 — la notification IMMÉDIATE du valideur direction est-elle
+    activée (NTP2P45) quand une note de frais est escaladée (NTP2P11) ?
+
+    OFF par défaut : le calcul d'escalade lui-même (posé sur la note +
+    journalisé au chatter) reste comportement historique inchangé — ce
+    réglage pilote UNIQUEMENT la notification immédiate, jamais le calcul.
+    Lu cross-app par ``apps.compta.services`` via ce sélecteur, jamais un
+    import direct de ``stock.models``."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.plafond_notes_frais_actif)
+
+
 def progression_onboarding(dossier):
     """Avancement d'un dossier : pièces requises reçues / total requis.
 

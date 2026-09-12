@@ -27,6 +27,10 @@ const emptyForm = {
   budget_departement_actif: false,
   onboarding_fournisseur_obligatoire: false,
   sod_stricte: false,
+  // NTP2P31 — notification immédiate du valideur direction (NTP2P45) sur
+  // une note de frais escaladée (NTP2P11). N'affecte jamais le calcul
+  // d'escalade lui-même.
+  plafond_notes_frais_actif: false,
 }
 
 function frErr(err, fallback = 'Une erreur est survenue.') {
@@ -59,6 +63,7 @@ export default function AchatsParametresPage() {
           budget_departement_actif: !!data.budget_departement_actif,
           onboarding_fournisseur_obligatoire: !!data.onboarding_fournisseur_obligatoire,
           sod_stricte: !!data.sod_stricte,
+          plafond_notes_frais_actif: !!data.plafond_notes_frais_actif,
         })
       })
       .catch(() => toast.error('Chargement des paramètres achats impossible.'))
@@ -164,8 +169,18 @@ export default function AchatsParametresPage() {
               Séparation des tâches : interdire au créateur d&apos;approuver sa
               propre demande ou note de frais escaladée (NTP2P37)
             </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch
+                id="ap-plafond-notes-frais-actif"
+                aria-label="Notifier immédiatement la direction sur une note de frais escaladée"
+                checked={form.plafond_notes_frais_actif}
+                onCheckedChange={(v) => setField('plafond_notes_frais_actif', v)}
+              />
+              Notifier immédiatement le valideur direction quand une note de
+              frais dépasse le seuil d&apos;escalade (NTP2P11/NTP2P45)
+            </label>
             <p className="text-xs text-muted-foreground">
-              Les trois sont désactivés par défaut : tant qu&apos;ils le sont,
+              Les quatre sont désactivés par défaut : tant qu&apos;ils le sont,
               le cycle achats reste exactement celui d&apos;avant.
             </p>
           </CardContent>
