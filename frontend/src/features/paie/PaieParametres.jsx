@@ -901,7 +901,13 @@ function ProfilDialog({ profil, onClose, onSaved }) {
   }, [])
 
   useEffect(() => {
-    paieApi.getPaysPaie()
+    // L'appel est différé dans un `.then()` (jamais lancé nu) : un appelant
+    // dont l'API ne connaît pas encore cette route lève alors une exception
+    // ASYNCHRONE que le `.catch()` encaisse, au lieu d'une exception
+    // SYNCHRONE dans l'effet qui ferait tomber tout le dialogue (le
+    // sélecteur pays est optionnel — un profil sans lui reste marocain).
+    Promise.resolve()
+      .then(() => paieApi.getPaysPaie())
       .then((r) => setPaysOptions(
         listOf(r.data).filter((p) => p.actif && p.moteur_disponible)))
       .catch(() => setPaysOptions([]))
