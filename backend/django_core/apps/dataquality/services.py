@@ -233,6 +233,52 @@ def evaluer_regles(company, entite=None, *, user=None):
     return resultats
 
 
+# ── NTDATA17 — DÉDOUBLONNAGE CLIENTS ────────────────────────────────────────
+#
+# La détection PROPOSE des groupes ; elle ne fusionne jamais (deux clients au
+# même numéro peuvent être un père et son fils). La fusion supervisée vit dans
+# `crm.services.merge_clients` (NTDATA18).
+#
+# AUCUN IMPORT DE `crm.models` : les fiches sont lues par le dataset
+# `crm_clients` (déjà scopé société par l'app propriétaire) et les clés de
+# rapprochement viennent des points d'entrée sanctionnés de `crm.selectors` —
+# si le CRM change sa règle de téléphone, la détection suit toute seule.
+
+
+def doublons_clients(company, user=None):
+    """Groupes de ``crm.Client`` qui désignent probablement la même personne.
+
+    Rapprochement par téléphone normalisé (clé marocaine du CRM), email en
+    minuscules, ICE, et nom normalisé approché. Renvoie des groupes
+    ``{ids, score, motifs, libelles}`` — le score est la confiance du
+    DÉTECTEUR, jamais une mesure métier.
+    """
+    from apps.crm.selectors import (
+        normalize_email_key, normalize_name_key, normalize_phone_key,
+    )
+    from core import data_explorer
+
+    from .dedoublonnage import grouper_doublons
+
+    try:
+        lignes = data_explorer.run_query(
+            'crm_clients', company, user,
+            {'select': ['id', 'nom', 'telephone', 'email', 'ice'],
+             'limit': LIMITE_LECTURE})
+    except data_explorer.DatasetInconnu:
+        return []
+    return grouper_doublons(
+        lignes,
+        criteres=('ice', 'telephone', 'email', 'nom'),
+        normaliseurs={
+            'ice': lambda v: (str(v or '').strip() or None),
+            'telephone': normalize_phone_key,
+            'email': normalize_email_key,
+            'nom': lambda v: normalize_name_key(v),
+        },
+    )
+
+
 def rapport_qualite(company, entite=None):
     """Le DERNIER résultat de chaque règle active — la photo du moment.
 

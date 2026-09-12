@@ -2,7 +2,9 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import CompletudeView, RapportQualiteView, RegleQualiteViewSet
+from .views import (
+    CompletudeView, DoublonsView, RapportQualiteView, RegleQualiteViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'regles', RegleQualiteViewSet, basename='regle-qualite')
@@ -12,5 +14,9 @@ urlpatterns = [
     path('rapport/', RapportQualiteView.as_view(), name='qualite-rapport'),
     # NTDATA16 — complétude des champs critiques, par entité métier.
     path('completude/', CompletudeView.as_view(), name='qualite-completude'),
+    # NTDATA17/19 — groupes de doublons candidats (clients / fournisseurs /
+    # produits). LECTURE SEULE : rien n'est jamais fusionné ici.
+    path('doublons/<str:entite>/', DoublonsView.as_view(),
+         name='qualite-doublons'),
     path('', include(router.urls)),
 ]

@@ -128,6 +128,28 @@ def normalize_phone_key(value):
     return crm_services.normalize_phone(value)
 
 
+def normalize_email_key(value):
+    """NTDATA17 — clé email normalisée EXPOSÉE aux autres apps.
+
+    Même point d'entrée sanctionné que :func:`normalize_phone_key` : délègue à
+    ``services.normalize_email`` pour qu'une autre app (la qualité de données,
+    par exemple) rapproche EXACTEMENT comme le CRM, sans importer ni
+    ``crm.services`` ni ``crm.models``. Lecture pure, aucun accès base."""
+    from . import services as crm_services
+    return crm_services.normalize_email(value)
+
+
+def normalize_name_key(nom, prenom=None, societe=None):
+    """NTDATA17 — clé de NOM normalisée EXPOSÉE aux autres apps.
+
+    Délègue à ``services.normalize_name`` (accents retirés, minuscules, mots
+    triés, ponctuation écrasée). Rend une chaîne VIDE quand le nom est trop
+    court pour rapprocher quoi que ce soit — c'est la garde du CRM, et elle
+    doit valoir pour tous ses lecteurs. Lecture pure, aucun accès base."""
+    from . import services as crm_services
+    return crm_services.normalize_name(nom, prenom, societe)
+
+
 def find_lead_id_by_phone(company, phone):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que

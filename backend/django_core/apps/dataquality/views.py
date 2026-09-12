@@ -11,7 +11,7 @@ responsable/admin : un rapport de qualité expose des identifiants de fiches
 non conformes.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -113,3 +113,41 @@ class CompletudeView(APIView):
     def get(self, request):
         return Response(selectors.completude_module(
             request.user.company, request.user))
+
+
+class DoublonsView(APIView):
+    """NTDATA17/19 — groupes de fiches qui désignent probablement la même
+    entité (``/dataquality/doublons/<entite>/``).
+
+    Entités : ``clients``, ``fournisseurs``, ``produits``. LECTURE SEULE —
+    rien n'est fusionné ici : la fusion est une décision humaine, exposée
+    séparément.
+    """
+
+    permission_classes = [IsResponsableOrAdmin]
+
+    #: Entité d'URL → détecteur. Une entité inconnue est un 404 explicite.
+    DETECTEURS = {
+        'clients': 'doublons_clients',
+        'fournisseurs': 'doublons_fournisseurs',
+        'produits': 'doublons_produits',
+    }
+
+    @extend_schema(
+        responses=inline_serializer('DoublonsReponse', {
+            'entite': serializers.CharField(),
+            'nb_groupes': serializers.IntegerField(),
+            'groupes': serializers.JSONField(),
+        }))
+    def get(self, request, entite=None):
+        nom_detecteur = self.DETECTEURS.get(entite)
+        detecteur = getattr(services, nom_detecteur or '', None)
+        if detecteur is None:
+            return Response(
+                {'detail': "Entité inconnue : « %s ». Entités disponibles : "
+                           '%s.' % (entite, ', '.join(sorted(
+                               self.DETECTEURS)))},
+                status=status.HTTP_404_NOT_FOUND)
+        groupes = detecteur(request.user.company, request.user)
+        return Response({'entite': entite, 'nb_groupes': len(groupes),
+                         'groupes': groupes})
