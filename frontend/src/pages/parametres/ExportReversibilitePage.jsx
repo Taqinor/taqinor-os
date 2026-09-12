@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, HardDriveDownload } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
+import { formatDateTime } from '../../lib/format'
 import {
   Badge, Button, Card, CardContent, Spinner, toast,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -30,15 +31,11 @@ const STATUT_TONE = {
   echec: 'danger',
 }
 
+// VX75 — jamais un formatage de date natif hors lib/format.js : la locale et
+// le fuseau société passent par le point unique formatDateTime.
 function formatDate(iso) {
   if (!iso) return ''
-  try {
-    return new Date(iso).toLocaleString('fr-FR', {
-      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
+  return formatDateTime(iso, { long: true })
 }
 
 function formatTaille(octets) {

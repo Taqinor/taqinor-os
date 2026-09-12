@@ -6,7 +6,7 @@ import { originFrom } from './origin'
 // Ré-authentification gracieuse partagée avec le client principal (axios.js) :
 // on émet l'événement « session expirée » plutôt que de recharger durement la
 // page, ce qui préserve l'état des formulaires OCR/agent en cours.
-import { emitSessionExpired } from '../providers/session-bridge'
+import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec axios.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
 import { refreshSession } from './refreshCoordinator'
@@ -44,6 +44,11 @@ iaApi_instance.interceptors.response.use(
     const originalRequest = error.config || {}
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
+      // Course pré-auth → post-auth (cf. axios.js, e2e auth.setup du
+      // 12/09/2026) : si une session est APPARUE pendant le refresh (login
+      // abouti entre le 401 pré-auth et l'échec du refresh), on rejoue avec
+      // les cookies frais au lieu d'expirer la session naissante.
+      const sessionAvantRefresh = sessionEstActive()
       try {
         // VX161 — promesse de refresh PARTAGÉE (avec axios.js) : N 401
         // simultanés (mix des deux instances) n'émettent qu'UN SEUL POST refresh.
@@ -51,6 +56,9 @@ iaApi_instance.interceptors.response.use(
         return iaApi_instance(originalRequest)
       } catch {
         // Refresh echoue : la session est reellement expiree.
+      }
+      if (!sessionAvantRefresh && sessionEstActive()) {
+        return iaApi_instance(originalRequest)
       }
       // Ré-authentification gracieuse EN PLACE (pas de rechargement dur) —
       // identique au client principal : le SessionProvider affiche un modal de

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { DatabaseBackup, ShieldCheck } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { Badge, Card, CardContent, Spinner } from '../../ui'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    NTOBS5 — Paramètres → Fiabilité → Sauvegardes. Écran self-service LECTURE
@@ -18,15 +19,11 @@ function joursDepuis(iso) {
   return Math.floor(ms / (1000 * 60 * 60 * 24))
 }
 
+// VX75 — jamais un formatage de date natif hors lib/format.js : la locale et
+// le fuseau société passent par le point unique formatDateTime.
 function formatDate(iso) {
   if (!iso) return null
-  try {
-    return new Date(iso).toLocaleString('fr-FR', {
-      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
+  return formatDateTime(iso, { long: true })
 }
 
 function StatutBadge({ statut }) {
