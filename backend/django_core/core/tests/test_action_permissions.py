@@ -72,7 +72,12 @@ UNGUARDED_ACTION_BASELINE = {
     # cross-tenant), pas FINE-gardés par action → dette coarse figée, comme
     # accessreview/chat. À fine-grainer plus tard (YRBAC3).
     "assurances": 12,
-    "automation": 1,
+    # Vague 3 drain NT (2026-09-12) — 1 -> 2 : `AutomationRuleVersionViewSet.
+    # restaurer` (NTEXT30, versionnement des règles) rejoint `Incoming
+    # WebhookTriggerViewSet.rotate`. Les DEUX classes portent
+    # `permission_classes = [IsAdminRole]` (admin only) ; le scanner ne crédite
+    # que les gardes PAR action → dette coarse apparente, pas un trou réel.
+    "automation": 2,
     # WIR157 ajoute 1 @action (`RetentionPolicyViewSet.historique` — journal
     # des purges de rétention, traçabilité CNDP) : gardée au niveau CLASSE par
     # `permission_classes = [IsAuthenticated, IsAdminRole]` (admin only, comme
@@ -150,7 +155,27 @@ UNGUARDED_ACTION_BASELINE = {
     # `ParametresAbonnementViewSet.courant`. Vérifié classe par classe (les 16
     # nouvelles + les 56 déjà en base = 72 exactement) : dette coarse
     # apparente, pas un trou réel.
-    "contrats": 72,
+    # Vague 3 drain NT (2026-09-12) — 72 -> 81 : 9 @action de plus, TOUTES sur
+    # des viewsets héritant du MÊME `_ContratsBaseViewSet` déjà décrit
+    # ci-dessus (`WriteScopedPermissionMixin` : `contrat_voir` en lecture,
+    # `contrat_gerer` sur toute écriture, actions custom comprises) + company-
+    # scopé (`TenantMixin`). Vérifié classe par classe en relisant chaque
+    # viewset de `apps/contrats/views.py` : aucune ne se passe de la base.
+    # Dette coarse apparente, pas un trou réel.
+    "contrats": 81,
+    # Vague 3 drain NT (2026-09-12) — app NEUVE, 0 -> 4 : `PropositionFusion
+    # ViewSet` (3 @action) et `GoldenRecordViewSet` (1) portent toutes deux
+    # `permission_classes = [IsResponsableOrAdmin]` + `TenantMixin` (queryset
+    # scopé société). Dette coarse apparente, pas un trou réel.
+    "dataquality": 4,
+    # Vague 3 drain NT (2026-09-12) — app NEUVE, 0 -> 9 : `SalleDeDonnees
+    # ViewSet` (8 @action) et `AccesSalleDonneesViewSet` (1) héritent de
+    # `CompanyScopedModelViewSet` et déclarent la paire
+    # `read_permission='datarooms_voir'` / `write_permission='datarooms_gerer'`
+    # — `ScopedPermission` route donc la garde par méthode HTTP, actions custom
+    # comprises. Le scanner ne crédite que les gardes PAR action : dette
+    # coarse apparente, pas un trou réel.
+    "datarooms": 9,
     # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
     # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
     # (Administrateur only) + company-scopées (CompanyScopedModelViewSet) ; les
@@ -188,6 +213,13 @@ UNGUARDED_ACTION_BASELINE = {
     # YRBAC3). Les deux autres ``dupliquer`` du même lot (crm/ventes) sont, eux,
     # fine-gardés ``permission_classes=[IsResponsableOrAdmin]``.
     "gestion_projet": 71,
+    # Vague 3 drain NT (2026-09-12) — app NEUVE, 0 -> 16 : les 8 viewsets GRC
+    # (politiques, questionnaires fournisseur, modèles, incidents de sécurité,
+    # DPIA, sous-traitants RGPD, cadres de conformité, flux de données)
+    # héritent TOUS de `CompanyScopedModelViewSet` ET portent
+    # `permission_classes = [IsAdminOrResponsableTier]` au niveau CLASSE.
+    # Vérifié classe par classe : dette coarse apparente, pas un trou réel.
+    "grc": 16,
     "installations": 4,
     # NTSRV19 — 34 -> 35 : `KbArticleViewSet.creer_depuis_ticket` (POST,
     # pré-remplit un article KB depuis un ticket SAV résolu) rejoint les 30
@@ -242,11 +274,22 @@ UNGUARDED_ACTION_BASELINE = {
     # bordereau_cnss`, `EcheanceDeclarativeViewSet.depots` (hérite
     # `_PaieVoirOuGerer` directement). Vérifié classe par classe : dette
     # coarse apparente, pas un trou réel.
-    "paie": 80,
+    # Vague 3 drain NT (2026-09-12) — 80 -> 89 : 9 @action de plus sur des
+    # viewsets qui héritent tous de `_PaieBaseViewSet` (`_PaieVoirOuGerer` :
+    # `paie_voir`/`paie_gerer`, repli `IsResponsableOrAdmin`) ou du mixin
+    # partagé `_RappelRetroactifMixin` monté sur ces mêmes bases, + company-
+    # scopés (`TenantMixin`). Vérifié classe par classe : dette coarse
+    # apparente, pas un trou réel.
+    "paie": 89,
     "pos": 5,
     # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
     # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.
-    "publicapi": 7,
+    # Vague 3 drain NT (2026-09-12) — 7 -> 8 : +1 @action sur `WebhookViewSet`,
+    # qui hérite `_CompanyScopedMixin` (`permission_classes =
+    # [IsAdminOrResponsableTier]` + queryset filtré sur la société de
+    # l'appelant). Le scanner ne lit que le CORPS de la classe portant
+    # l'@action, jamais ses bases : garde bien présente, dette apparente.
+    "publicapi": 8,
     # WIR115/124/127 ajoutent 3 @action (check-out check-in, écritures ITP,
     # création environnement) — TOUTES gardées au niveau CLASSE par
     # `_QhseBaseViewSet` (WriteScopedPermissionMixin, `write_permission='qhse_gerer'`
@@ -295,12 +338,23 @@ UNGUARDED_ACTION_BASELINE = {
     # `permission_classes = [HasPermission('salaires_voir')]`, paie SENSIBLE,
     # refus 403 sans cette permission). Dette coarse apparente, vérifiée
     # classe par classe, pas un trou réel.
-    "rh": 112,
+    # Vague 3 drain NT (2026-09-12) — 112 -> 121 : 9 @action de plus, sur des
+    # viewsets héritant de `_RhBaseViewSet` (WIR172 : `WriteScopedPermission
+    # Mixin`, `rh_voir` en lecture / `rh_gerer` sur toute écriture — les
+    # @action non sûres comprises) + company-scopés, ou portant leur propre
+    # `permission_classes = [IsResponsableOrAdmin]`. Vérifié classe par classe
+    # dans `apps/rh/views.py` : dette coarse apparente, pas un trou réel.
+    "rh": 121,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
     # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
     # ne fait que DÉCROÎTRE).
     "roles": 0,
-    "stock": 3,
+    # Vague 3 drain NT (2026-09-12) — 3 -> 4 : `AchatsParametresViewSet.
+    # checklist_cloture` (NTP2P30), LECTURE SEULE agrégée par les selectors
+    # achats sur la société de l'appelant, sur une classe
+    # `permission_classes = [IsAnyRole]` (lecture interne, posture documentée
+    # du viewset ; son PATCH, lui, exige `stock_modifier`). Dette apparente.
+    "stock": 4,
     # AUDV22 — +1 @action `verifier_doublon` de TiersViewSet (recherche
     # EXACTE anti-doublon ICE/email avant création Client/Fournisseur) :
     # gardée au niveau CLASSE par `ScopedPermission` (`read_permission=None`
