@@ -23,6 +23,8 @@ from django.db import models
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import (
@@ -389,6 +391,7 @@ def _sla_pdf_html(snapshot, company):
 </body></html>"""
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sla_export_pdf(request, periode):
@@ -449,6 +452,11 @@ class SlaCreditsDusListView(generics.ListAPIView):
         )
 
 
+@extend_schema(
+    request=inline_serializer('SlaCreditStatutRequete', {
+        'statut': serializers.CharField(),
+    }),
+    responses=SlaSnapshotSerializer)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
 def sla_credit_statut(request, pk):

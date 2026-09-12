@@ -15,6 +15,7 @@ bas de ``core/models.py`` — même éclatement que ``core/sla.py``.
 from __future__ import annotations
 
 from django.db import models
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -60,6 +61,7 @@ class TrustCenterEntrySerializer(serializers.ModelSerializer):
         ]
 
 
+@extend_schema(responses=TrustCenterEntrySerializer(many=True))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def trust_center_public(request):

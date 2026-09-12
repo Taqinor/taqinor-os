@@ -160,6 +160,27 @@ def suivre_demande_droit(request, token):
     return Response(suivi)
 
 
+@extend_schema(
+    request=inline_serializer('QuestionnairePublicRequete', {
+        'reponses': drf_serializers.ListField(
+            child=drf_serializers.JSONField(), required=False),
+    }),
+    responses=inline_serializer('QuestionnairePublicReponse', {
+        'type': drf_serializers.CharField(),
+        'type_libelle': drf_serializers.CharField(),
+        'statut': drf_serializers.CharField(),
+        'date_echeance': drf_serializers.CharField(allow_null=True),
+        'expire_le': drf_serializers.CharField(allow_null=True),
+        'soumis_le': drf_serializers.CharField(allow_null=True),
+        'questions': drf_serializers.ListField(child=inline_serializer(
+            'QuestionnairePublicQuestion', {
+                'ordre': drf_serializers.IntegerField(),
+                'question': drf_serializers.CharField(),
+                'obligatoire': drf_serializers.BooleanField(),
+                'reponse': drf_serializers.CharField(allow_null=True),
+                'commentaire': drf_serializers.CharField(allow_null=True),
+            })),
+    }))
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([QuestionnairePublicThrottle])

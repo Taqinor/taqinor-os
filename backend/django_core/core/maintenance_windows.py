@@ -19,6 +19,7 @@ from datetime import timedelta
 
 from django.db import models
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission, IsAuthenticated
@@ -172,6 +173,7 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
             serializer.save(company=self.request.user.company)
 
 
+@extend_schema(request=None, responses=MaintenanceWindowSerializer)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
 def annuler_fenetre(request, pk):
@@ -199,6 +201,7 @@ def _notifier_annulation(fenetre):
         )
 
 
+@extend_schema(responses=MaintenanceWindowSerializer(many=True))
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def fenetres_actives(request):

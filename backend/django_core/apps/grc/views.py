@@ -4,6 +4,7 @@ Tout viewset hérite de ``core.viewsets.CompanyScopedModelViewSet`` (ARC2) :
 queryset filtré sur ``request.user.company`` et ``company`` imposée côté
 serveur dans ``perform_create``/``perform_update``, jamais lue du corps.
 """
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import (
@@ -1054,6 +1055,29 @@ def _periode_depuis_requete(donnees):
     return fenetre
 
 
+@extend_schema(
+    request=inline_serializer('EDiscoveryRequete', {
+        'terme': serializers.CharField(),
+        'apps': serializers.ListField(
+            child=serializers.CharField(), required=False),
+        'debut': serializers.CharField(required=False),
+        'fin': serializers.CharField(required=False),
+        'legal_hold': serializers.JSONField(required=False),
+    }),
+    responses=inline_serializer('EDiscoveryReponse', {
+        'terme': serializers.CharField(),
+        'apps': serializers.ListField(child=serializers.CharField()),
+        'periode': serializers.JSONField(),
+        # Groupé par périmètre demandé (clés variables selon `apps`) : voir
+        # `grc.selectors.rechercher_e_discovery`.
+        'resultats': serializers.JSONField(),
+        'total': serializers.IntegerField(),
+        'perimetres_omis': serializers.ListField(child=serializers.CharField()),
+        'genere_le': serializers.CharField(),
+        'types_ignores': serializers.ListField(
+            child=serializers.CharField(), required=False),
+        'legal_hold': serializers.JSONField(required=False, allow_null=True),
+    }))
 @api_view(['GET', 'POST'])
 @permission_classes([IsAdminOrResponsableTier])
 def e_discovery(request):
@@ -1111,6 +1135,7 @@ def e_discovery(request):
     return Response(resultat, status=201 if hold is not None else 200)
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def dossier_conformite(request):
@@ -1134,6 +1159,18 @@ def dossier_conformite(request):
     return reponse
 
 
+@extend_schema(responses=inline_serializer('ScoreConformiteReponse', {
+    'score': serializers.FloatField(),
+    'details': serializers.ListField(child=inline_serializer(
+        'ScoreConformiteCritere', {
+            'critere': serializers.CharField(),
+            'libelle': serializers.CharField(),
+            'score': serializers.FloatField(),
+            'poids': serializers.FloatField(),
+            'commentaire': serializers.CharField(),
+        })),
+    'calcule_le': serializers.CharField(allow_null=True),
+}))
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def score_conformite(request):

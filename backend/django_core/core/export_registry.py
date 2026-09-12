@@ -29,6 +29,8 @@ from django.conf import settings
 from django.db import models
 from django.http import Http404, HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -221,6 +223,16 @@ class ExportReversibiliteThrottle(UserRateThrottle):
     rate = '3/hour'
 
 
+class ExportReversibiliteRunSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExportReversibiliteRun
+        fields = [
+            'id', 'statut', 'taille_octets', 'token', 'expire_le',
+            'created_at',
+        ]
+
+
+@extend_schema(request=None, responses={202: ExportReversibiliteRunSerializer})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @throttle_classes([ExportReversibiliteThrottle])
@@ -245,15 +257,6 @@ def declencher_export_reversibilite(request):
         status=status.HTTP_202_ACCEPTED)
 
 
-class ExportReversibiliteRunSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ExportReversibiliteRun
-        fields = [
-            'id', 'statut', 'taille_octets', 'token', 'expire_le',
-            'created_at',
-        ]
-
-
 class ExportReversibiliteHistoriqueView(generics.ListAPIView):
     """GET /api/django/core/export-reversibilite/historique/ — scopé société."""
 
@@ -269,6 +272,7 @@ class ExportReversibiliteHistoriqueView(generics.ListAPIView):
         )
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def telecharger_export_reversibilite(request, token):

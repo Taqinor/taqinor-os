@@ -14,9 +14,19 @@ le miroir texte.
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+
+_DegradedModeEntreeSerializer = inline_serializer('DegradedModeEntree', {
+    'cle': drf_serializers.CharField(),
+    'label': drf_serializers.CharField(),
+    'statut': drf_serializers.CharField(),
+    'impactees': drf_serializers.ListField(child=drf_serializers.CharField()),
+    'continuent': drf_serializers.ListField(child=drf_serializers.CharField()),
+}).__class__
 
 # Registre STATIQUE (dict pur) — jamais en DB, jamais généré dynamiquement :
 # chaque entrée est une description humaine, écrite une fois, relue à chaque
@@ -139,6 +149,7 @@ def degraded_mode_status():
     return resultat
 
 
+@extend_schema(responses=_DegradedModeEntreeSerializer(many=True))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def degraded_mode_status_view(request):
