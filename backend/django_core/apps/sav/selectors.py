@@ -1360,3 +1360,38 @@ def affectations_pour(user):
             'urgency': urgency,
         })
     return items
+
+
+# ── NTSRV5 — Journal des appels SAV (filtrable en rapport) ──────────────────
+
+def journal_appels(company, *, date_debut=None, date_fin=None, issue=None,
+                   technicien_id=None):
+    """NTSRV5 — Appels SAV loggés (``TicketActivity`` ``kind='appel'``),
+    filtrables par période, issue et acteur.
+
+    C'est ce qui rend l'appel « filtrable en rapport » : une ligne par appel
+    avec sa durée et son issue, scopée société. Lecture seule ; aucun champ
+    interne (coût, prix d'achat) n'y figure jamais."""
+    qs = (TicketActivity.objects
+          .filter(company=company, kind=TicketActivity.Kind.APPEL)
+          .select_related('ticket', 'user')
+          .order_by('-created_at'))
+    if date_debut is not None:
+        qs = qs.filter(created_at__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(created_at__date__lte=date_fin)
+    if issue:
+        qs = qs.filter(outcome=issue)
+    if technicien_id:
+        qs = qs.filter(user_id=technicien_id)
+    return [{
+        'id': a.pk,
+        'ticket_id': a.ticket_id,
+        'ticket_reference': a.ticket.reference,
+        'duree_minutes': a.duree_minutes,
+        'issue': a.outcome,
+        'issue_label': dict(TicketActivity.OUTCOMES).get(a.outcome, a.outcome),
+        'utilisateur': getattr(a.user, 'username', None),
+        'created_at': a.created_at,
+        'notes': a.body,
+    } for a in qs]

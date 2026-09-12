@@ -76,6 +76,18 @@ def log_note(ticket: Ticket, user, body: str) -> TicketActivity:
     )
 
 
+def log_appel(ticket: Ticket, user, body: str, *, outcome='',
+              duree_minutes=None) -> TicketActivity:
+    """NTSRV5 — journalise un APPEL SAV (durée + issue) comme interaction
+    typée du chatter (``kind='appel'``). Trace MANUELLE structurée : aucune
+    intégration PBX (elle exigerait un fournisseur tiers — GATED)."""
+    return TicketActivity.objects.create(
+        company=ticket.company, ticket=ticket, user=user,
+        kind=TicketActivity.Kind.APPEL, body=body,
+        outcome=outcome or '', duree_minutes=duree_minutes,
+    )
+
+
 def log_whatsapp(ticket: Ticket, user, body: str) -> TicketActivity:
     """NTSRV3 — journalise un message WhatsApp (canal SAV) comme interaction
     TYPÉE du chatter (``kind='whatsapp'``)."""

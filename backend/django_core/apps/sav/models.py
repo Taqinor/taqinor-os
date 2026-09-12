@@ -830,6 +830,10 @@ class Ticket(models.Model):
         # gated par clé). Ne remplace PAS le WhatsApp manuel wa.me utilisé
         # pour les devis/factures.
         WHATSAPP = 'whatsapp', 'WhatsApp'
+        # NTSRV5 — demande arrivée par TÉLÉPHONE. Trace manuelle structurée :
+        # aucune intégration PBX dans ce lot (elle exigerait un fournisseur
+        # tiers — GATED).
+        TELEPHONE = 'telephone', 'Téléphone'
 
     canal_ouverture = models.CharField(
         max_length=12, choices=CanalOuverture.choices,
@@ -1073,6 +1077,22 @@ class TicketActivity(models.Model):
         EMAIL = 'email', 'E-mail'
         # NTSRV3 — message WhatsApp entrant (canal SAV), même raison d'être.
         WHATSAPP = 'whatsapp', 'WhatsApp'
+        # NTSRV5 — appel téléphonique loggé à la main (durée + issue).
+        APPEL = 'appel', 'Appel'
+
+    # NTSRV5 — issues d'un appel SAV. MÊME liste que
+    # `crm.LeadActivity.OUTCOMES` (FG30) : recopiée à l'identique plutôt
+    # qu'importée — `apps.sav.models` n'importe JAMAIS `apps.crm.models`
+    # (contrat import-linter `core-domain-models-decoupled`). Toute évolution
+    # de la liste CRM doit être répercutée ici volontairement.
+    OUTCOMES = [
+        ('', '—'),
+        ('joint', 'Joint'),
+        ('non_joint', 'Non joint'),
+        ('rappel', 'À rappeler'),
+        ('refuse', 'Refus'),
+        ('interesse', 'Intéressé'),
+    ]
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -1086,6 +1106,12 @@ class TicketActivity(models.Model):
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
     body = models.TextField(blank=True, null=True)
+    # ── NTSRV5 — trace structurée d'un appel SAV (jamais un PBX réel) ───────
+    outcome = models.CharField(
+        max_length=20, blank=True, default='', choices=OUTCOMES,
+        verbose_name="Résultat de l'interaction")
+    duree_minutes = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée (minutes)')
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ticket_activities')

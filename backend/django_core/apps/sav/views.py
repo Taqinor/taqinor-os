@@ -20,7 +20,7 @@ from apps.ventes.utils.references import create_with_reference
 
 from . import activity
 from .models import (
-    Equipement, Ticket, PieceConsommee,
+    Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
@@ -1317,6 +1317,57 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 f'Première réponse enregistrée le {at.strftime("%d/%m/%Y %H:%M")}')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='log-appel',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def log_appel(self, request, pk=None):
+        """NTSRV5 — Enregistre un APPEL SAV au chatter (durée, notes, issue).
+
+        Trace MANUELLE structurée — aucune intégration PBX dans ce lot (elle
+        exigerait un fournisseur tiers, GATED). La liste d'issues est celle
+        de ``crm.LeadActivity`` (joint / non joint / à rappeler / refus /
+        intéressé). Erreurs en français, nommant le champ fautif."""
+        ticket = self.get_object()
+
+        issue = (request.data.get('issue')
+                 or request.data.get('outcome') or '').strip()
+        issues_valides = {code for code, _ in TicketActivity.OUTCOMES}
+        if issue not in issues_valides:
+            return Response(
+                {'issue': 'Issue inconnue (joint, non_joint, rappel, refuse, '
+                          'interesse, ou vide).'}, status=400)
+
+        duree_brute = request.data.get('duree_minutes',
+                                       request.data.get('duree'))
+        duree = None
+        if duree_brute not in (None, ''):
+            try:
+                duree = int(duree_brute)
+            except (TypeError, ValueError):
+                duree = -1
+            if duree < 0:
+                return Response(
+                    {'duree_minutes': 'Durée invalide : un nombre de minutes '
+                                      '(entier positif) est attendu.'},
+                    status=400)
+
+        notes = (request.data.get('notes') or '').strip()[:4000]
+        libelle = dict(TicketActivity.OUTCOMES).get(issue, issue)
+        corps = 'Appel téléphonique'
+        if duree is not None:
+            corps += f' — {duree} min'
+        if issue:
+            corps += f' — issue : {libelle}'
+        if notes:
+            corps += f'\n\n{notes}'
+
+        entree = activity.log_appel(
+            ticket, request.user, corps, outcome=issue, duree_minutes=duree)
+        return Response({
+            'id': entree.pk, 'kind': entree.kind, 'body': entree.body,
+            'issue': entree.outcome, 'duree_minutes': entree.duree_minutes,
+            'created_at': entree.created_at,
+        }, status=201)
 
     @action(detail=True, methods=['post'], url_path='repondre-email',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])

@@ -125,16 +125,25 @@ class EquipementSerializer(serializers.ModelSerializer):
 
 class TicketActivitySerializer(serializers.ModelSerializer):
     user_nom = serializers.SerializerMethodField()
+    # NTSRV5 — libellé FR de l'issue d'appel ('' pour toute autre entrée).
+    outcome_label = serializers.SerializerMethodField()
 
     class Meta:
         model = TicketActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
             'body', 'user_nom', 'created_at',
+            # NTSRV5 — trace structurée d'un appel (vide sur toutes les
+            # entrées non-appel : comportement inchangé côté UI).
+            'outcome', 'outcome_label', 'duree_minutes',
         ]
+        read_only_fields = ['outcome', 'duree_minutes']
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+    def get_outcome_label(self, obj):
+        return dict(TicketActivity.OUTCOMES).get(obj.outcome, '') or ''
 
 
 # ── ZSAV3 — Activités planifiées à échéance sur le ticket ────────────────────
