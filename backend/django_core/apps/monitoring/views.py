@@ -178,6 +178,18 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         window = min(int(request.query_params.get('window_days', 365)), 1825)
         return Response(fleet_overview(company, window_days=window))
 
+    @action(detail=False, methods=['get'], url_path='benchmark',
+            permission_classes=[IsAnyRole])
+    def benchmark(self, request):
+        """NTNRG33 — classement RELATIF du parc par PR (percentile), jamais
+        un seuil absolu. ?window_days=365 (défaut)."""
+        from .selectors import benchmark_parc
+        company = request.user.company
+        if company is None:
+            return Response({'systems_ranked': 0, 'systems': []})
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(benchmark_parc(company, window_days=window))
+
     @action(detail=True, methods=['get'], url_path='om-metrics',
             permission_classes=[IsAnyRole])
     def om_metrics(self, request, pk=None):

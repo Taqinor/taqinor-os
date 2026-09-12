@@ -292,6 +292,64 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     }
 
 
+def benchmark_parc(company, *, window_days=365, today=None):
+    """NTNRG33 — classement RELATIF du parc par PR (percentile), jamais un
+    seuil ABSOLU : un site à 75 % de PR peut être normal sous un climat
+    local — c'est le classement relatif au parc de la société qui révèle
+    les vrais sous-performants. 100 % lecture.
+
+    Un système SANS attendu exploitable (``expected_annual_kwh`` absent et
+    non estimable) est exclu du classement (PR non calculable). Avec MOINS
+    de 2 systèmes classables, aucun classement n'est trompeur : ``rang`` et
+    ``percentile`` restent ``None`` pour chacun (système isolé = pas de
+    comparaison possible).
+    """
+    today = today or timezone.localdate()
+    since = today - timedelta(days=window_days)
+
+    configs = list(MonitoringConfig.objects
+                   .filter(company=company)
+                   .select_related('installation'))
+
+    entries = []
+    for config in configs:
+        inst = config.installation
+        if not getattr(inst, 'parc_actif', True):
+            continue
+        expected = _expected_recent_kwh(inst, config, window_days)
+        if not expected or expected <= 0:
+            continue
+        prod = (ProductionReading.objects
+                .filter(installation=inst, date__gte=since, date__lte=today)
+                .aggregate(total=Sum('energy_kwh'))['total'] or Decimal('0'))
+        prod = Decimal(str(prod))
+        pr_pct = _q((prod / expected) * Decimal('100'))
+        entries.append({
+            'installation': inst.id,
+            'reference': getattr(inst, 'reference', None),
+            'pr_pct': pr_pct,
+            'rang': None,
+            'percentile': None,
+        })
+
+    n = len(entries)
+    if n >= 2:
+        # Meilleur PR d'abord (rang 1 = le plus performant du parc).
+        entries.sort(key=lambda e: e['pr_pct'], reverse=True)
+        for idx, entry in enumerate(entries):
+            entry['rang'] = idx + 1
+            # Part du parc que ce système égale ou dépasse (100 % = le
+            # meilleur du parc, ~1/n % = le moins performant).
+            entry['percentile'] = _q(
+                (Decimal(n - idx) / Decimal(n)) * Decimal('100'))
+
+    return {
+        'window_days': window_days,
+        'systems_ranked': n,
+        'systems': entries,
+    }
+
+
 def usage_kwh_periode(company, installation, periode_debut, periode_fin):
     """XCTR16 — kWh supervisés (``ProductionReading``) d'un système sur une
     période [``periode_debut``, ``periode_fin``) — borne de fin EXCLUSIVE pour
