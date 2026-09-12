@@ -2053,3 +2053,80 @@ def _valider_ligne_lot(donnees, company):
         champs['ordre'] = int(ordre)
 
     return champs
+
+
+# ── NTCON37 — relance des visas en attente de revue ─────────────────────────
+
+def _manager_de(user):
+    """Compte du MANAGER hiérarchique de ``user``, ou ``None``.
+
+    Lecture cross-app SANCTIONNÉE : passe par ``rh.selectors.
+    dossier_employe_for_user`` (le point d'entrée que ``rh`` expose déjà aux
+    autres modules) puis suit ``DossierEmploye.manager`` — jamais un import de
+    ``rh.models``. ``None`` dès qu'un maillon manque (compte sans fiche RH,
+    manager non renseigné, manager sans compte) : la relance part alors au
+    seul revuseur, jamais une erreur.
+    """
+    if user is None:
+        return None
+    try:
+        from apps.rh import selectors as rh_selectors
+        dossier = rh_selectors.dossier_employe_for_user(
+            getattr(user, 'company', None), getattr(user, 'pk', None))
+        if dossier is None or dossier.manager_id is None:
+            return None
+        return getattr(dossier.manager, 'user', None)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('btp_chantier: manager hiérarchique non résolu',
+                       exc_info=True)
+        return None
+
+
+def alerter_visas_en_attente(*, aujourdhui=None):
+    """NTCON37 — relance les visas dont l'échéance de revue est dépassée.
+
+    Notifie le ``revu_par`` désigné ET son manager hiérarchique (lu via
+    ``rh.selectors``), exactement comme NTCON4 le fait pour les RFI. Un visa
+    DÉCIDÉ n'est jamais examiné : le sélecteur ``selectors.visas_en_retard``
+    ne retient que ``soumis``/``en_revue``, donc la relance s'arrête d'elle-même
+    à l'approbation ou au refus.
+
+    IDEMPOTENT : une seule relance par jour et par visa
+    (``VisaDocument.derniere_relance_retard`` comparée à la date du jour).
+
+    Renvoie ``{'examines': n, 'alertes_envoyees': n}``.
+    """
+    from .selectors import visas_en_retard
+
+    today = aujourdhui or timezone.localdate()
+    examines = 0
+    envoyees = 0
+    for visa in visas_en_retard(aujourdhui=today).select_related(
+            'chantier', 'revu_par', 'soumis_par'):
+        examines += 1
+        if visa.derniere_relance_retard == today:
+            continue  # déjà relancé aujourd'hui — idempotent
+        titre = f'Visa {visa.reference} en attente de revue'
+        corps = (
+            f'Visa {visa.reference} ({visa.chantier}) — échéance de revue '
+            f'{visa.date_limite} dépassée, statut « '
+            f'{visa.get_statut_display()} ».')
+        lien = f'/btp/visas/{visa.id}'
+        destinataires = {visa.revu_par} - {None}
+        manager = _manager_de(visa.revu_par)
+        if manager is not None and manager != visa.revu_par:
+            destinataires.add(manager)
+        if not destinataires:
+            # Aucun revuseur désigné : la revue est routée à l'équipe
+            # (NTCON33) — un visa en retard ne reste jamais sans destinataire.
+            _notifier_equipe_btp(
+                visa.company, 'APPROVAL_REMINDER', titre, corps, link=lien)
+        for user in destinataires:
+            _notifier_btp(
+                user, 'APPROVAL_REMINDER', titre, corps,
+                company=visa.company, link=lien)
+        with transaction.atomic():
+            visa.derniere_relance_retard = today
+            visa.save(update_fields=['derniere_relance_retard'])
+        envoyees += 1
+    return {'examines': examines, 'alertes_envoyees': envoyees}

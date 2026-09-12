@@ -384,6 +384,10 @@ class VisaDocument(TenantModel):
         default=10, verbose_name='Délai de revue (jours ouvrés)')
     date_limite = models.DateField(
         null=True, blank=True, verbose_name='Date limite de revue')
+    # NTCON37 — idempotence du sweep de relance : une seule relance par jour
+    # et par visa (même patron que ``RFI.derniere_alerte_retard``, NTCON4).
+    derniere_relance_retard = models.DateField(
+        null=True, blank=True, verbose_name='Dernière relance de revue')
     nb_resoumissions = models.PositiveIntegerField(
         default=0, verbose_name='Nombre de resoumissions')
     created_at = models.DateTimeField(

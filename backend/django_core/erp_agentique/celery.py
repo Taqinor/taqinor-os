@@ -1209,6 +1209,13 @@ app.conf.beat_schedule = {
         'task': 'btp_chantier.recalculer_penalites_lots',
         'schedule': crontab(hour=4, minute=10),
     },
+    # NTCON37 — relance QUOTIDIENNE des visas en attente de revue dont
+    # l'échéance est dépassée (revuseur + son manager). Juste après les
+    # alertes RFI, même schéma qu'NTCON4.
+    'btp-chantier-alertes-visas-en-attente': {
+        'task': 'btp_chantier.alertes_visas_en_attente',
+        'schedule': crontab(hour=7, minute=31),
+    },
 }
 
 

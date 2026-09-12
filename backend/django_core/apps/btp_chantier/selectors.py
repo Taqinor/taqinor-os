@@ -236,6 +236,32 @@ def rfi_en_retard(company=None, *, chantier=None):
     return qs
 
 
+# ── NTCON5/NTCON37 — Visas de documents ─────────────────────────────────────
+
+def visas_en_retard(company=None, *, chantier=None, aujourdhui=None):
+    """NTCON37 — visas SOUMIS ou EN REVUE dont la date limite est dépassée.
+
+    Un visa DÉCIDÉ (approuvé sans réserve, approuvé avec observations, refusé)
+    n'est jamais retenu : la relance s'arrête d'elle-même à la décision, sans
+    drapeau supplémentaire à gérer.
+
+    ``company=None`` (défaut) balaie TOUTES les sociétés — usage sweep Celery
+    beat (``alertes_visas_en_attente``) ; un appelant scopé société passe
+    explicitement la sienne. Même contrat que ``rfi_en_retard`` (NTCON4).
+    """
+    from .models import VisaDocument
+
+    qs = VisaDocument.objects.filter(
+        statut__in=[VisaDocument.Statut.SOUMIS,
+                    VisaDocument.Statut.EN_REVUE],
+        date_limite__lt=(aujourdhui or timezone.localdate()))
+    if company is not None:
+        qs = qs.filter(company=company)
+    if chantier is not None:
+        qs = qs.filter(chantier=chantier)
+    return qs
+
+
 # ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
 
 def situations_incluses_hors_societe(situation_ids, company):

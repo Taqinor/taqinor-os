@@ -61,6 +61,22 @@ def recalculer_penalites_lots_task():
         return 0
 
 
+@shared_task(name='btp_chantier.alertes_visas_en_attente')
+def alertes_visas_en_attente_task():
+    """NTCON37 — relance le revuseur d'un visa en retard de revue ET son
+    manager hiérarchique. Idempotente : une seule relance par jour et par
+    visa ; un visa décidé n'est jamais examiné. Renvoie le nombre de
+    relances envoyées."""
+    from .services import alerter_visas_en_attente
+    try:
+        return alerter_visas_en_attente()['alertes_envoyees']
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'btp_chantier.alertes_visas_en_attente: échec du balayage',
+            exc_info=True)
+        return 0
+
+
 @shared_task(name='btp_chantier.rapport_photo_hebdo')
 def rapport_photo_hebdo_task():
     """NTCON18 — envoie le photo-rapport hebdomadaire aux chantiers ABONNÉS
