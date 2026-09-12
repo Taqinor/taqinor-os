@@ -18,10 +18,10 @@ d'appel synchrone côté public.
 from django.db import models
 from django.utils import timezone
 
-from core.models import TimestampedModel
+from core.models import TenantModel, TimestampedModel
 
 
-class ComponentStatus(TimestampedModel):
+class ComponentStatus(TenantModel):
     """Statut courant d'un composant public (rafraîchi par le beat 5 min).
 
     ``company`` NULL = composant SYSTÈME, partagé entre tous les tenants (le
@@ -37,6 +37,10 @@ class ComponentStatus(TimestampedModel):
         PARTIAL_OUTAGE = 'partial_outage', 'Panne partielle'
         MAJOR_OUTAGE = 'major_outage', 'Panne majeure'
 
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel`` (FK
+    # company + created_at/updated_at) : la nullabilité et le related_name
+    # PRÉ-EXISTANTS de ce champ sont conservés, donc redéclarés ici (le socle
+    # pose ``company`` obligatoire).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='statuspage_composants',
@@ -65,7 +69,7 @@ class ComponentStatus(TimestampedModel):
         return f'{self.nom} ({self.region or "global"}) — {self.statut}'
 
 
-class IncidentPublic(TimestampedModel):
+class IncidentPublic(TenantModel):
     """Incident public affichable sur la page de statut.
 
     Rédigé par le fondateur — ``titre``/updates/post-mortem ne sont JAMAIS
@@ -84,6 +88,9 @@ class IncidentPublic(TimestampedModel):
         MONITORING = 'monitoring', 'Sous surveillance'
         RESOLVED = 'resolved', 'Résolu'
 
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel`` : la
+    # nullabilité et le related_name PRÉ-EXISTANTS sont conservés (redéclarés
+    # ici, le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='statuspage_incidents',
@@ -150,7 +157,7 @@ class IncidentUpdate(TimestampedModel):
         return f'Update {self.incident_id} @ {self.horodatage}'
 
 
-class UptimeDayBucket(TimestampedModel):
+class UptimeDayBucket(TenantModel):
     """NTOBS14 — agrégat quotidien PRÉ-CALCULÉ d'un composant (frise 90 jours).
 
     Peuplé de façon INCRÉMENTALE par le même job beat 5 min que
@@ -162,6 +169,9 @@ class UptimeDayBucket(TimestampedModel):
     jour`` est un pourcentage MESURÉ par échantillonnage (288 ticks/jour au
     maximum), jamais un chiffre inventé."""
 
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel`` : la
+    # nullabilité et le related_name PRÉ-EXISTANTS sont conservés (redéclarés
+    # ici, le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='statuspage_uptime_buckets',
