@@ -1386,6 +1386,14 @@ CELERY_TASK_ROUTES = {
     'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
     # NTOBS13 — notification de seuil de quota (80%/100%), beat quotidien.
     'core.notifier_seuils_usage': {'queue': 'scheduled'},
+    # NTGRC21 — relance des attestations de conformité non signées (beat).
+    'grc.rappels_grc': {'queue': 'scheduled'},
+    # NTRH — rappels de parcours de formation + tâches d'intégration/sortie
+    # (beat quotidien). Toute tâche du beat_schedule DOIT être routée
+    # explicitement vers `scheduled` (garde core/tests/test_celery_task_routes)
+    # sinon elle retombe sur `default` et partage la file interactive.
+    'rh.rappels_parcours_formation': {'queue': 'scheduled'},
+    'rh.notifier_taches_integration_sortie': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
