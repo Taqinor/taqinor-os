@@ -50,6 +50,25 @@ def _notifier_btp(user, event_type_name, titre, corps, *, company=None, link=Non
         return None
 
 
+def _emettre(signal_nom, **kwargs):
+    """NTCON31 — émet un événement du bus ``core.events`` (best-effort).
+
+    Le bus est le SEUL canal vers les abonnés externes (webhooks
+    ``apps.publicapi``) : ``btp_chantier`` n'importe JAMAIS ``publicapi``, il
+    émet et ignore qui écoute. Une exception d'un abonné ne doit jamais
+    remonter dans la transaction métier qui vient de réussir.
+    """
+    try:
+        from core import events
+        signal = getattr(events, signal_nom, None)
+        if signal is None:
+            return
+        signal.send(sender=None, **kwargs)
+    except Exception:  # noqa: BLE001 - best-effort, jamais bloquant
+        logger.warning('btp_chantier: emission %s echouee', signal_nom,
+                       exc_info=True)
+
+
 @transaction.atomic
 def _transitionner_reserve(reserve, nouveau_statut, *, auteur, motif=''):
     """Change le statut d'une réserve et journalise la transition (NTCON2)."""
@@ -121,6 +140,9 @@ def lever_reserve(reserve, *, user, signature_nom, ip_adresse='', user_agent='')
             reserve.created_by, 'APPROVAL_DECIDED', 'Réserve levée',
             f'Réserve #{reserve.id} a été levée par {user}.',
             company=reserve.company, link=f'/btp/reserves/{reserve.id}')
+    # NTCON31 — `reserve.levee` sur le bus (abonné : webhook publicapi).
+    _emettre('btp_reserve_levee', reserve=reserve, company=reserve.company,
+             user=user)
     return signature
 
 
@@ -198,6 +220,9 @@ def repondre_rfi(rfi, *, auteur, texte):
         _notifier_btp(
             rfi.pose_par, 'APPROVAL_DECIDED', f'RFI #{rfi.numero} répondu',
             texte[:200], company=rfi.company, link=f'/btp/rfi/{rfi.id}')
+    # NTCON31 — `rfi.repondu` sur le bus (abonné : webhook publicapi).
+    _emettre('btp_rfi_repondu', rfi=rfi, company=rfi.company,
+             reponse=reponse, user=auteur)
     return reponse
 
 
@@ -290,8 +315,13 @@ def approuver_visa(visa, *, user, avec_observations=False, observations=''):
     statut = (
         VisaDocument.Statut.APPROUVE_AVEC_OBSERVATIONS if avec_observations
         else VisaDocument.Statut.APPROUVE_SANS_RESERVE)
-    return _decider_visa(
+    decide = _decider_visa(
         visa, user=user, nouveau_statut=statut, observations=observations)
+    # NTCON31 — `visa.approuve` sur le bus (abonné : webhook publicapi).
+    # JAMAIS émis sur un refus : l'événement s'appelle « approuvé ».
+    _emettre('btp_visa_approuve', visa=decide, company=decide.company,
+             user=user)
+    return decide
 
 
 def refuser_visa(visa, *, user, observations=''):
@@ -560,6 +590,8 @@ def finaliser_dgd(dgd, *, user):
     dgd.finalise_par = user
     dgd.save(update_fields=[
         'statut', 'date_finalisation', 'finalise_par', 'updated_at'])
+    # NTCON31 — `dgd.finalise` sur le bus (abonné : webhook publicapi).
+    _emettre('btp_dgd_finalise', dgd=dgd, company=dgd.company, user=user)
     return dgd
 
 

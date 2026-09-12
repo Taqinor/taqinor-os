@@ -31,6 +31,10 @@ from .public_scm_views import (
     PublicPolitiqueStockViewSet, PublicPrevisionDemandeViewSet,
     PublicScmTableauBordReapproView,
 )
+from .public_btp_views import (
+    PublicDecompteGeneralViewSet, PublicRFIViewSet,
+    PublicReserveChantierViewSet, PublicVisaDocumentViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'leads', PublicLeadViewSet, basename='public-lead')
@@ -51,6 +55,18 @@ router.register(
 router.register(
     r'scm/politiques-stock', PublicPolitiqueStockViewSet,
     basename='public-scm-politique-stock')
+# NTCON31 — vertical BTP/EPC (apps.btp_chantier), scope `read:btp`. Sous-préfixe
+# `btp/…` (même choix que `scm/…` et `licence/…`) : même routeur, mêmes
+# garanties testées par `tests_ntapi42_contract_consistency`.
+router.register(
+    r'btp/reserves', PublicReserveChantierViewSet,
+    basename='public-btp-reserve')
+router.register(r'btp/rfi', PublicRFIViewSet, basename='public-btp-rfi')
+router.register(
+    r'btp/visas', PublicVisaDocumentViewSet, basename='public-btp-visa')
+router.register(
+    r'btp/decomptes-generaux', PublicDecompteGeneralViewSet,
+    basename='public-btp-dgd')
 
 urlpatterns = [
     # XPLT5 — écriture (scopes leads:write / activities:write), distincte du

@@ -1089,3 +1089,34 @@ workflow_etape_activee = django.dispatch.Signal()
 # statut ``clos_*`` atteint), ``montant_final`` (Decimal — le montant en jeu
 # arrêté), ``user`` (peut être ``None``).
 dossier_juridique_clos = django.dispatch.Signal()
+
+# ── NTCON31 — Événements du vertical BTP/EPC (apps.btp_chantier) ────────────
+# Les quatre gestes que la MOE/le client externe attend d'être notifiés. Émis
+# par ``apps.btp_chantier.services`` (le SEUL point d'écriture d'état du
+# module), abonnés par ``apps.publicapi`` (webhook sortant, voir
+# ``apps/publicapi/btp_event_receivers.py``) — jamais un import direct
+# ``btp_chantier`` → ``publicapi`` : l'app émet sur le bus, sans savoir qui
+# écoute (même patron que ``scm_rupture_imminente_detectee`` ci-dessus).
+
+# Émis EXACTEMENT quand une ``ReserveChantier`` passe à ``levee``
+# (``services.lever_reserve``, APRÈS la capture de la signature et la
+# transition). Arguments : ``reserve``, ``company``, ``user`` (le leveur,
+# peut être ``None``).
+btp_reserve_levee = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand un ``RFI`` reçoit sa réponse et passe à ``repondu``
+# (``services.repondre_rfi``). Arguments : ``rfi``, ``company``, ``reponse``
+# (la ``RFIReponse`` créée), ``user`` (l'auteur, peut être ``None``).
+btp_rfi_repondu = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand un ``VisaDocument`` est APPROUVÉ (sans réserve ou
+# avec observations — jamais sur un refus : l'événement s'appelle
+# ``visa.approuve``). Arguments : ``visa``, ``company``, ``user`` (le
+# revuseur, peut être ``None``).
+btp_visa_approuve = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand un ``DecompteGeneral`` devient ``definitif``
+# (``services.finaliser_dgd``) — le verrouillage du décompte, le moment que
+# la MOE et la comptabilité du client attendent. Arguments : ``dgd``,
+# ``company``, ``user`` (peut être ``None``).
+btp_dgd_finalise = django.dispatch.Signal()

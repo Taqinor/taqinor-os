@@ -27,6 +27,12 @@ class PublicApiConfig(AppConfig):
         # un import direct `apps.scm` -> `apps.publicapi`.
         from . import scm_event_receivers
         scm_event_receivers.connect()
+        # NTCON31 — abonnés aux évènements BTP/EPC du bus `core.events`
+        # (`btp_reserve_levee`/`btp_rfi_repondu`/`btp_visa_approuve`/
+        # `btp_dgd_finalise`), jamais un import direct `apps.btp_chantier`
+        # -> `apps.publicapi`.
+        from . import btp_event_receivers
+        btp_event_receivers.connect()
         # YOPSB11 — archivage par lots du journal WebhookDelivery (registre
         # partagé YOPSB10). Fenêtre founder-configurable via
         # WEBHOOK_DELIVERY_ARCHIVE_DAYS (défaut 0 = OFF, comportement inchangé).

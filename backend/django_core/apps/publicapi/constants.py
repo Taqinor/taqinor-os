@@ -31,6 +31,15 @@ SCOPE_READ_SCM = 'read:scm'
 # préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici.
 SCOPE_READ_JURIDIQUE = 'juridique:read'
 
+# NTCON31 — vertical BTP/EPC (apps.btp_chantier) en LECTURE SEULE : réserves
+# de chantier, RFI, visas de documents et décomptes généraux, pour une MOE ou
+# un maître d'ouvrage externe qui suit l'exécution depuis son propre outil.
+# AUCUNE donnée de coût INTERNE n'est exposée par ce scope : ni déboursé
+# (NTCON11), ni exposition aux pénalités (NTCON15), ni prix d'achat. Le DGD
+# expose ses montants CONTRACTUELS (marché, avenants, situations, solde) —
+# ce sont les chiffres que le client signe, pas la marge de l'entreprise.
+SCOPE_READ_BTP = 'read:btp'
+
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
 # viennent de STAGES.py (jamais hardcodés).
@@ -48,6 +57,8 @@ SCOPE_CHOICES = [
     (SCOPE_READ_SCM, 'Lire la planification supply chain (prévisions, politiques de stock, réappro)'),
     (SCOPE_READ_JURIDIQUE,
      'Lire les dossiers juridiques non confidentiels et leur budget'),
+    (SCOPE_READ_BTP,
+     'Lire le suivi de chantier BTP (réserves, RFI, visas, décomptes)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
 ]
@@ -95,6 +106,13 @@ EVENT_SIEGES_QUOTA_ATTEINT = 'sieges.quota_atteint'
 # depuis `core.events` par `apps/publicapi/scm_event_receivers.py`.
 EVENT_SCM_RUPTURE_IMMINENTE = 'scm.rupture_imminente_detectee'
 EVENT_SCM_CYCLE_SOP_CLOTURE = 'scm.cycle_sop_cloture'
+# NTCON31 — évènements du vertical BTP/EPC (apps.btp_chantier), consommés
+# depuis `core.events` par `apps/publicapi/btp_event_receivers.py` (jamais un
+# import direct `btp_chantier` -> `publicapi`).
+EVENT_BTP_RESERVE_LEVEE = 'reserve.levee'
+EVENT_BTP_RFI_REPONDU = 'rfi.repondu'
+EVENT_BTP_VISA_APPROUVE = 'visa.approuve'
+EVENT_BTP_DGD_FINALISE = 'dgd.finalise'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -115,6 +133,10 @@ EVENT_CHOICES = [
     (EVENT_SIEGES_QUOTA_ATTEINT, 'Sièges — quota atteint'),
     (EVENT_SCM_RUPTURE_IMMINENTE, 'Supply chain — rupture imminente détectée'),
     (EVENT_SCM_CYCLE_SOP_CLOTURE, 'Supply chain — cycle S&OP clôturé'),
+    (EVENT_BTP_RESERVE_LEVEE, 'BTP — réserve levée'),
+    (EVENT_BTP_RFI_REPONDU, 'BTP — RFI répondu'),
+    (EVENT_BTP_VISA_APPROUVE, 'BTP — visa approuvé'),
+    (EVENT_BTP_DGD_FINALISE, 'BTP — décompte général finalisé'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 
