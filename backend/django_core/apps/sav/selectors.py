@@ -1727,3 +1727,101 @@ def taux_resolution_premier_contact(company, *, date_debut=None,
         'exclusions': exclusions,
         'tickets': lignes,
     }
+
+
+# ── NTSRV27 — Charge et performance par agent ───────────────────────────────
+
+def performance_agent(company, *, date_debut=None, date_fin=None):
+    """NTSRV27 — charge et performance par technicien sur la période.
+
+    Par agent : nombre de tickets TRAITÉS (résolus/clôturés), délai moyen de
+    résolution, CSAT moyen reçu, taux de respect du SLA.
+
+    ⚠ JAMAIS UN CLASSEMENT. La liste est triée ALPHABÉTIQUEMENT, pas par
+    volume : un tableau trié par performance EST un classement, et ces
+    chiffres ne sont pas destinés à une émulation publique (l'accès est
+    limité au tier responsable/admin côté route, cohérent avec la garde
+    existante ``journal_activite_voir``).
+
+    GARDE DIVISION PAR ZÉRO (critère d'acceptation) : la liste est construite
+    À PARTIR des tickets de la période, donc un agent sans aucun ticket n'y
+    figure simplement pas ; et chaque moyenne vaut ``None`` — jamais 0 — quand
+    son dénominateur est vide (aucun CSAT reçu, aucun ticket porteur d'une
+    échéance SLA, aucune date de résolution exploitable).
+
+    PÉRIODE : bornes inclusives sur ``date_resolution`` (la date à laquelle le
+    travail a été fait), comme ``taux_resolution_a_distance`` (YSERV12).
+    """
+    qs = Ticket.objects.filter(
+        company=company, annule=False,
+        statut__in=(Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE))
+    if date_debut is not None:
+        qs = qs.filter(date_resolution__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_resolution__lte=date_fin)
+
+    tickets = list(qs.select_related('technicien_responsable'))
+    csats = dict(
+        TicketSatisfaction.objects
+        .filter(ticket_id__in=[t.pk for t in tickets])
+        .values_list('ticket_id', 'note'))
+
+    seaux = {}
+    for ticket in tickets:
+        agent_id = ticket.technicien_responsable_id
+        seau = seaux.get(agent_id)
+        if seau is None:
+            seau = seaux[agent_id] = {
+                'agent_id': agent_id,
+                'agent_nom': (
+                    getattr(ticket.technicien_responsable, 'username', None)
+                    or 'Non assigné'),
+                'nb_tickets_traites': 0,
+                'delais': [],
+                'notes': [],
+                'sla_total': 0,
+                'sla_respectes': 0,
+            }
+        seau['nb_tickets_traites'] += 1
+        if ticket.date_resolution and ticket.date_creation:
+            jours = (ticket.date_resolution
+                     - timezone.localtime(ticket.date_creation).date()).days
+            if jours >= 0:
+                seau['delais'].append(jours)
+        note = csats.get(ticket.pk)
+        if note is not None:
+            seau['notes'].append(note)
+        # Respect du SLA : mesuré seulement quand le ticket porte une
+        # échéance ET une date de résolution ; les autres sont exclus du
+        # dénominateur plutôt que comptés « respectés » par défaut.
+        if ticket.sla_due_at and ticket.date_resolution:
+            seau['sla_total'] += 1
+            if ticket.date_resolution <= ticket.sla_due_at:
+                seau['sla_respectes'] += 1
+
+    def _moyenne(valeurs, chiffres=1):
+        if not valeurs:
+            return None
+        return round(sum(valeurs) / len(valeurs), chiffres)
+
+    agents = []
+    for seau in seaux.values():
+        agents.append({
+            'agent_id': seau['agent_id'],
+            'agent_nom': seau['agent_nom'],
+            'nb_tickets_traites': seau['nb_tickets_traites'],
+            'delai_resolution_moyen_jours': _moyenne(seau['delais']),
+            'csat_moyen': _moyenne(seau['notes'], 2),
+            'nb_csat': len(seau['notes']),
+            'nb_tickets_avec_sla': seau['sla_total'],
+            'taux_respect_sla': (
+                round(100.0 * seau['sla_respectes'] / seau['sla_total'], 1)
+                if seau['sla_total'] else None),
+        })
+    agents.sort(key=lambda a: a['agent_nom'].lower())
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'nb_tickets_traites': len(tickets),
+        'agents': agents,
+    }

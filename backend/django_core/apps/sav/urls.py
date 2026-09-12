@@ -14,7 +14,7 @@ from .views import (
     WorksheetMaintenanceModeleViewSet, ProblemeViewSet,
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
     sav_resume_par_equipe, sav_file_action, sav_file_attente,
-    sav_fcr_insight,
+    sav_fcr_insight, sav_performance_agent_insight,
 )
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
@@ -90,6 +90,16 @@ def fcr_insight_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
+def performance_agent_view(request):
+    """NTSRV27 — Charge et performance par agent. Responsable/admin
+    UNIQUEMENT : ces chiffres ne sont jamais un classement public/gamifié
+    (même palier d'accès que le journal d'activité). Servi sous
+    `sav/insights/` pour la même raison que `sav-fcr` ci-dessus."""
+    return sav_performance_agent_insight(request)
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
 def file_attente_view(request):
     """NTSRV8 — File d'attente par équipe + proposition de débordement.
     LECTURE PURE (aucune réaffectation). Responsable/admin."""
@@ -122,4 +132,7 @@ urlpatterns = [
          name='sav-resume-equipe'),
     # NTSRV24 — résolution au premier contact (JSON + ?export=xlsx).
     path('insights/sav-fcr/', fcr_insight_view, name='sav-fcr'),
+    # NTSRV27 — charge et performance par agent (JSON + ?export=xlsx).
+    path('insights/sav-performance-agent/', performance_agent_view,
+         name='sav-performance-agent'),
 ]

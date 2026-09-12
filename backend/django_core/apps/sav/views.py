@@ -2989,6 +2989,39 @@ def sav_fcr_insight(request):
     return Response(data)
 
 
+def sav_performance_agent_insight(request):
+    """NTSRV27 — Charge et performance par agent.
+
+    ``?date_debut=&date_fin=`` (bornes inclusives, optionnelles) et
+    ``?export=xlsx``. JAMAIS un classement public/gamifié : la liste arrive
+    triée alphabétiquement du sélecteur, et l'accès est réservé au tier
+    responsable/admin (vérifié côté urls.py)."""
+    from .selectors import performance_agent
+
+    bornes = _bornes_periode(request)
+    data = performance_agent(
+        request.user.company,
+        date_debut=bornes['date_debut'], date_fin=bornes['date_fin'])
+
+    if (request.query_params.get('export') or '').lower() == 'xlsx':
+        from apps.records.xlsx import build_xlsx_response
+
+        entetes = ['Agent', 'Tickets traités', 'Résolution moyenne (jours)',
+                   'CSAT moyen', 'Respect SLA (%)']
+        lignes = [[
+            ligne['agent_nom'],
+            ligne['nb_tickets_traites'],
+            ligne['delai_resolution_moyen_jours'],
+            ligne['csat_moyen'],
+            ligne['taux_respect_sla'],
+        ] for ligne in data['agents']]
+        return build_xlsx_response(
+            'sav-performance-agent.xlsx', entetes, lignes,
+            sheet_title='Performance agent')
+
+    return Response(data)
+
+
 def sav_pareto_pannes(request):
     """XSAV14 — Pareto des pannes par modèle de produit (ou fournisseur).
 
