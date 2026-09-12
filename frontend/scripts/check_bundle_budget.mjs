@@ -295,12 +295,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // 2026-09-06 : 760 -> 770. Batch 3 AUD/MRY — 6 écrans/panneaux code-splittés
 // de plus (mesuré 763).
 // 2026-09-10 : 770 -> 778. Groupe VT — écrans visite code-splittés (mesuré 773).
-// 2026-09-12 : 778 -> 800. Vague 1 drain NT (mesuré 787) + lot CHT/NTPRT
+// 2026-09-12 : 778 -> 800 puis 815 (mesure reelle 807 sur b2 integre). Vague 1 drain NT (mesuré 787) + lot CHT/NTPRT
 // PR #668 (mesuré 781 seul) fusionnés — les deux lots s'additionnent sur
 // l'arbre mergé ; recalage au réel combiné + marge (classe #85). Croissance
 // une-route-un-chunk ; le budget gzip + PER_CHUNK_BUDGET_KB (350) restent
 // les vrais garde-fous de poids.
-export const MAX_CHUNK_COUNT = 800
+export const MAX_CHUNK_COUNT = 815
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
