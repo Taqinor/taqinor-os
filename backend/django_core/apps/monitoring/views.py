@@ -294,6 +294,45 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             f'attachment; filename="rapport-garantie-{ref}.pdf"')
         return resp
 
+    @action(detail=True, methods=['get'], url_path='attestation-carbone-pdf',
+            permission_classes=[IsAnyRole])
+    def attestation_carbone_pdf(self, request, pk=None):
+        """NTNRG26 — attestation carbone PDF certifiable de CE système
+        (au-delà du portail JSON FG286/288) : méthodologie affichée, distincte
+        du certificat RE générique FG287 (``apps.ventes``). ?since=&until=
+        (YYYY-MM-DD, optionnels). Sans relevé sur la période : message propre
+        dans le PDF, jamais une erreur."""
+        from .report_carbon import render_carbon_report_pdf_site
+        config = self.get_object()
+        since = request.query_params.get('since') or None
+        until = request.query_params.get('until') or None
+        pdf = render_carbon_report_pdf_site(
+            config.installation, since=since, until=until)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        ref = config.installation.reference or config.installation_id
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation-carbone-{ref}.pdf"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='attestation-carbone-client-pdf',
+            permission_classes=[IsAnyRole])
+    def attestation_carbone_client_pdf(self, request):
+        """NTNRG26 — attestation carbone CONSOLIDÉE (multi-sites) pour un
+        client (FG288). ?client=ID requis. Sans relevé sur la période :
+        message propre dans le PDF, jamais une erreur."""
+        from .report_carbon import render_carbon_report_pdf_client
+        company = request.user.company
+        client_id = request.query_params.get('client')
+        if company is None or not client_id:
+            return Response(
+                {'detail': 'client requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        pdf = render_carbon_report_pdf_client(company, client_id)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation-carbone-client-{client_id}.pdf"')
+        return resp
+
 
 class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG283 — nettoyages de panneaux (bornes pour l'estimation de salissure).
