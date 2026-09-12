@@ -315,12 +315,16 @@ def journaliser_consultation(acces, document, *, type_acces=None,
 
     Réutilise `ged.services.journaliser_acces` (GED35) — aucun nouveau modèle
     de journal n'est créé. L'entrée est taguée avec la référence du VIEWER
-    d'origine. Best-effort : l'audit ne bloque jamais une lecture."""
+    d'origine. Le type d'accès par défaut est lu chez la GED
+    (`ged.selectors.type_acces_public`) : cette app ne connaît JAMAIS
+    `ged.models`. Best-effort : l'audit ne bloque jamais une lecture."""
+    from apps.ged.selectors import type_acces_public
     from apps.ged.services import journaliser_acces
 
     try:
         return journaliser_acces(
-            document, utilisateur=None, type_acces=type_acces,
+            document, utilisateur=None,
+            type_acces=type_acces or type_acces_public(),
             adresse_ip=adresse_ip, source_ref=reference_acces(acces))
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
         return None
@@ -486,9 +490,8 @@ def journal_de_salle(salle):
 
     refs = [f'datarooms.acces:{pk}' for pk in
             acces_de_salle(salle).values_list('pk', flat=True)]
-    if not refs:
-        from apps.ged.models import JournalAcces
-        return JournalAcces.objects.none()
+    # Aucune référence ⇒ `source_ref__in=[]` filtre déjà tout : on garde le
+    # MÊME queryset (vide) plutôt que d'importer `ged.models` pour un `none()`.
     return journal_acces_for_company(
         salle.company, source_refs=refs).order_by('created_at', 'id')
 

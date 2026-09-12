@@ -397,10 +397,8 @@ def public_salle_document(request, token, document_id):
     services.marquer_consultation(acces)
     # NTDOC14 — trace l'accès dans le journal GED (GED35 réutilisé), tagué avec
     # le VIEWER d'origine : c'est ce qui rend le rapport attribuable.
-    from apps.ged.models import ACCES_PUBLIC
     services.journaliser_consultation(
-        acces, ligne.document, type_acces=ACCES_PUBLIC,
-        adresse_ip=_adresse_ip(request))
+        acces, ligne.document, adresse_ip=_adresse_ip(request))
     disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
     reponse = HttpResponse(data, content_type=mime)
     reponse['Content-Disposition'] = (
