@@ -390,3 +390,142 @@ class ParametresAbonnementTests(TestCase):
             {'sequence_dunning_defaut': sequence_c.id}, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('sequence_dunning_defaut', resp.data)
+
+
+class PurgeCompteursUsageTests(TestCase):
+    """NTSUB26 — purge : seulement ANCIEN **et** FACTURÉ, agrégat exact."""
+
+    AUJOURDHUI = date(2026, 6, 15)
+
+    def setUp(self):
+        self.co = make_company('ntsub26', 'NTSUB26 Co')
+        self.contrat = Contrat.objects.create(
+            company=self.co, objet='Abonnement télémétrie',
+            montant=Decimal('500'), type_contrat='om', statut='actif')
+        self.echeancier = EcheancierContrat.objects.create(
+            company=self.co, contrat=self.contrat,
+            periodicite=EcheancierContrat.Periodicite.MENSUELLE)
+        self.numero = 0
+
+    def _compteur(self, debut, fin, quantite, code='api'):
+        return CompteurUsage.objects.create(
+            company=self.co,
+            type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+            cible_id=self.contrat.id, code_compteur=code,
+            periode_debut=debut, periode_fin=fin,
+            quantite=Decimal(quantite))
+
+    def _facturer(self, jour):
+        """Échéance FACTURÉE couvrant ``jour`` (facture_id renseigné)."""
+        self.numero += 1
+        return LigneEcheance.objects.create(
+            company=self.co, echeancier=self.echeancier, numero=self.numero,
+            date_echeance=jour, montant=Decimal('500'),
+            facture_id=1000 + self.numero)
+
+    def test_agregat_egal_a_la_somme_des_lignes_purgees(self):
+        from apps.contrats import services
+        from apps.contrats.models import CompteurUsageArchive
+
+        # Deux relevés du même mois (janvier 2024), facturés, > 24 mois.
+        self._compteur(date(2024, 1, 1), date(2024, 1, 15), '120')
+        self._compteur(date(2024, 1, 16), date(2024, 1, 31), '80')
+        self._facturer(date(2024, 1, 10))
+        self._facturer(date(2024, 1, 20))
+
+        res = services.purger_compteurs_usage_factures(
+            self.co, today=self.AUJOURDHUI)
+        self.assertEqual(res['lignes_purgees'], 2)
+        self.assertEqual(res['archives'], 1)
+        archive = CompteurUsageArchive.objects.get(
+            company=self.co, code_compteur='api', periode='2024-01')
+        self.assertEqual(archive.quantite_totale, Decimal('200'))
+        self.assertEqual(archive.nb_lignes, 2)
+        self.assertEqual(
+            CompteurUsage.objects.filter(company=self.co).count(), 0)
+
+    def test_periode_non_facturee_jamais_purgee(self):
+        from apps.contrats import services
+        from apps.contrats.models import CompteurUsageArchive
+
+        self._compteur(date(2024, 2, 1), date(2024, 2, 29), '500')
+        # Une échéance existe mais n'est NI facturée NI payée.
+        self.numero += 1
+        LigneEcheance.objects.create(
+            company=self.co, echeancier=self.echeancier, numero=self.numero,
+            date_echeance=date(2024, 2, 10), montant=Decimal('500'))
+
+        res = services.purger_compteurs_usage_factures(
+            self.co, today=self.AUJOURDHUI)
+        self.assertEqual(res['lignes_purgees'], 0)
+        self.assertFalse(CompteurUsageArchive.objects.exists())
+        self.assertEqual(
+            CompteurUsage.objects.filter(company=self.co).count(), 1)
+
+    def test_periode_recente_jamais_purgee_meme_facturee(self):
+        from apps.contrats import services
+
+        self._compteur(date(2026, 3, 1), date(2026, 3, 31), '42')
+        self._facturer(date(2026, 3, 10))
+        res = services.purger_compteurs_usage_factures(
+            self.co, today=self.AUJOURDHUI)
+        self.assertEqual(res['lignes_purgees'], 0)
+        self.assertEqual(
+            CompteurUsage.objects.filter(company=self.co).count(), 1)
+
+    def test_echeance_payee_compte_comme_facturee(self):
+        from apps.contrats import services
+
+        self._compteur(date(2024, 3, 1), date(2024, 3, 31), '15')
+        self.numero += 1
+        LigneEcheance.objects.create(
+            company=self.co, echeancier=self.echeancier, numero=self.numero,
+            date_echeance=date(2024, 3, 5), montant=Decimal('500'),
+            statut=LigneEcheance.Statut.PAYEE)
+        res = services.purger_compteurs_usage_factures(
+            self.co, today=self.AUJOURDHUI)
+        self.assertEqual(res['lignes_purgees'], 1)
+
+    def test_rejouer_la_purge_ne_double_pas_l_agregat(self):
+        from apps.contrats import services
+        from apps.contrats.models import CompteurUsageArchive
+
+        self._compteur(date(2024, 1, 1), date(2024, 1, 31), '90')
+        self._facturer(date(2024, 1, 10))
+        services.purger_compteurs_usage_factures(
+            self.co, today=self.AUJOURDHUI)
+        services.purger_compteurs_usage_factures(
+            self.co, today=self.AUJOURDHUI)
+        archive = CompteurUsageArchive.objects.get(company=self.co)
+        self.assertEqual(archive.quantite_totale, Decimal('90'))
+        self.assertEqual(archive.nb_lignes, 1)
+
+    def test_isolation_societe(self):
+        from apps.contrats import services
+        from apps.contrats.models import CompteurUsageArchive
+
+        autre = make_company('ntsub26-b', 'NTSUB26 B')
+        contrat_b = Contrat.objects.create(
+            company=autre, objet='Autre', montant=Decimal('100'),
+            type_contrat='om', statut='actif')
+        ech_b = EcheancierContrat.objects.create(
+            company=autre, contrat=contrat_b,
+            periodicite=EcheancierContrat.Periodicite.MENSUELLE)
+        LigneEcheance.objects.create(
+            company=autre, echeancier=ech_b, numero=1,
+            date_echeance=date(2024, 1, 10), montant=Decimal('100'),
+            facture_id=999)
+        CompteurUsage.objects.create(
+            company=autre,
+            type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+            cible_id=contrat_b.id, code_compteur='api',
+            periode_debut=date(2024, 1, 1), periode_fin=date(2024, 1, 31),
+            quantite=Decimal('7'))
+
+        services.purger_compteurs_usage_factures(
+            self.co, today=self.AUJOURDHUI)
+        # Le relevé de la société B est intact et n'a produit aucune archive.
+        self.assertEqual(
+            CompteurUsage.objects.filter(company=autre).count(), 1)
+        self.assertFalse(
+            CompteurUsageArchive.objects.filter(company=autre).exists())

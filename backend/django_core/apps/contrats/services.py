@@ -5152,6 +5152,107 @@ def demarrer_essai_contrat(contrat, *, date_fin_essai, plan_apres_essai=None,
     return essai
 
 
+#: NTSUB26 — âge minimum (en mois) d'une période avant purge du détail brut.
+RETENTION_COMPTEURS_USAGE_MOIS = 24
+
+
+def _periode_est_facturee(company, compteur):
+    """NTSUB26 — la période d'un relevé d'usage a-t-elle DÉJÀ été facturée ?
+
+    Vrai si une ``LigneEcheance`` du contrat ciblé, dont ``date_echeance``
+    tombe DANS la période du relevé, porte une facture émise
+    (``facture_id`` renseigné) ou est marquée ``payee``. Une cible hors
+    ``contrat`` (maintenance SAV) n'a pas d'échéancier dans cette app : elle
+    est donc considérée NON facturée et n'est jamais purgée ici.
+    """
+    from django.db.models import Q
+
+    from .models import AbonnementAddOnLigne, LigneEcheance
+
+    if compteur.type_cible != AbonnementAddOnLigne.TypeCible.CONTRAT:
+        return False
+    lignes = LigneEcheance.objects.filter(
+        company=company,
+        echeancier__contrat_id=compteur.cible_id,
+        date_echeance__gte=compteur.periode_debut,
+        date_echeance__lte=compteur.periode_fin)
+    return lignes.filter(
+        Q(facture_id__isnull=False)
+        | Q(statut=LigneEcheance.Statut.PAYEE)).exists()
+
+
+@transaction.atomic
+def purger_compteurs_usage_factures(company, *, today=None,
+                                    retention_mois=None):
+    """NTSUB26 — Agrège puis purge les relevés d'usage anciens ET facturés.
+
+    Pour une société, à ``today`` (injectable — aucune horloge implicite dans
+    les tests) : tout ``CompteurUsage`` dont la période s'est terminée il y a
+    PLUS de ``retention_mois`` mois (défaut 24) ET dont la période a DÉJÀ été
+    facturée (``_periode_est_facturee``) est fondu dans un
+    ``CompteurUsageArchive`` ``(company, code_compteur, periode)`` puis
+    SUPPRIMÉ. Une période récente ou non facturée n'est jamais touchée.
+
+    L'agrégat vaut EXACTEMENT la somme des quantités purgées (et ``nb_lignes``
+    leur compte) : re-jouer la purge n'ajoute rien puisqu'il ne reste plus de
+    relevé brut, et un archivage ultérieur sur la même période s'ADDITIONNE
+    par ``F()`` (jamais un read-modify-write).
+
+    Renvoie ``{'archives': int, 'lignes_purgees': int, 'quantite': Decimal}``.
+    """
+    from datetime import timedelta
+
+    from django.db.models import F
+
+    from .models import CompteurUsage, CompteurUsageArchive
+
+    if today is None:
+        today = timezone.localdate()
+    if retention_mois is None:
+        retention_mois = RETENTION_COMPTEURS_USAGE_MOIS
+    # Borne : dernier jour couvert par la rétention (approximation mensuelle
+    # volontairement CONSERVATRICE — 30 jours/mois garde plutôt trop que pas
+    # assez de détail).
+    limite = today - timedelta(days=30 * int(retention_mois))
+
+    total = {'archives': 0, 'lignes_purgees': 0, 'quantite': Decimal('0')}
+    candidats = CompteurUsage.objects.filter(
+        company=company, periode_fin__lt=limite).order_by('id')
+
+    agregats = {}
+    a_supprimer = []
+    for compteur in candidats:
+        if not _periode_est_facturee(company, compteur):
+            continue  # période non facturée → jamais purgée
+        cle = (compteur.code_compteur,
+               f'{compteur.periode_debut.year:04d}-'
+               f'{compteur.periode_debut.month:02d}')
+        bucket = agregats.setdefault(
+            cle, {'quantite': Decimal('0'), 'nb': 0})
+        bucket['quantite'] += compteur.quantite or Decimal('0')
+        bucket['nb'] += 1
+        a_supprimer.append(compteur.pk)
+
+    for (code, periode), bucket in agregats.items():
+        archive, cree = CompteurUsageArchive.objects.get_or_create(
+            company=company, code_compteur=code, periode=periode,
+            defaults={'quantite_totale': bucket['quantite'],
+                      'nb_lignes': bucket['nb']})
+        if not cree:
+            CompteurUsageArchive.objects.filter(pk=archive.pk).update(
+                quantite_totale=F('quantite_totale') + bucket['quantite'],
+                nb_lignes=F('nb_lignes') + bucket['nb'])
+        total['archives'] += 1
+        total['quantite'] += bucket['quantite']
+
+    if a_supprimer:
+        CompteurUsage.objects.filter(
+            company=company, pk__in=a_supprimer).delete()
+        total['lignes_purgees'] = len(a_supprimer)
+
+    return total
+
+
 def get_parametres_abonnement(company):
     """NTSUB24 — Réglages « Facturation récurrente » de la société.
 

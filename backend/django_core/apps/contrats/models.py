@@ -3763,3 +3763,51 @@ class ParametresAbonnement(TenantModel):
 
     def __str__(self):
         return f'Paramètres abonnement — société {self.company_id}'
+
+
+class CompteurUsageArchive(TenantModel):
+    """Synthèse d'usage conservée APRÈS purge des relevés bruts — NTSUB26.
+
+    Les ``CompteurUsage`` ingérés s'accumulent ligne à ligne et indéfiniment ;
+    une société à fort volume (télémétrie, API) sature la table au fil des
+    années. La purge mensuelle
+    (``scheduled.purger_compteurs_usage_factures``) agrège en UNE ligne par
+    ``(company, code_compteur, periode)`` les relevés d'une période DÉJÀ
+    FACTURÉE et vieille de plus de 24 mois, puis supprime le détail brut. Une
+    période non facturée ou récente n'est JAMAIS touchée.
+
+    ``periode`` est le mois de rattachement au format ``AAAA-MM`` (déduit du
+    début de période du relevé). ``nb_lignes`` conserve le nombre de relevés
+    fondus dans l'agrégat : c'est ce qui rend la purge vérifiable a posteriori.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    code_compteur = models.CharField(
+        max_length=100, verbose_name='Code du compteur')
+    periode = models.CharField(
+        max_length=7, verbose_name='Période (AAAA-MM)')
+    quantite_totale = models.DecimalField(
+        max_digits=18, decimal_places=4, default=Decimal('0'),
+        verbose_name='Quantité totale')
+    nb_lignes = models.PositiveIntegerField(
+        default=0, verbose_name='Relevés fondus dans l’agrégat')
+
+    class Meta:
+        verbose_name = "Archive de compteur d'usage"
+        verbose_name_plural = "Archives de compteurs d'usage"
+        ordering = ['-periode', 'code_compteur', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code_compteur', 'periode'],
+                name='contrats_compteurarch_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='contrats_compteurarch_co_pe'),
+        ]
+
+    def __str__(self):
+        return (f'{self.code_compteur} [{self.periode}] = '
+                f'{self.quantite_totale} ({self.nb_lignes} relevé(s))')

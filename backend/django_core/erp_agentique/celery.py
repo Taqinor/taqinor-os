@@ -358,6 +358,13 @@ app.conf.beat_schedule = {
         'task': 'contrats.cloturer_contrats_impayes_daily',
         'schedule': crontab(hour=8, minute=20),
     },
+    # NTSUB26 — purge MENSUELLE des relevés d'usage bruts d'une période DÉJÀ
+    # FACTURÉE et vieille de plus de 24 mois (agrégés d'abord en une ligne de
+    # synthèse). Le 1er du mois, heure creuse.
+    'contrats-purger-compteurs-usage-factures-monthly': {
+        'task': 'contrats.purger_compteurs_usage_factures_monthly',
+        'schedule': crontab(hour=3, minute=40, day_of_month=1),
+    },
     # XKB27 — envoie les messages chat programmés dus + notifie les rappels
     # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
     # qu'un message programmé parte proche de l'heure choisie, sans surcharger
