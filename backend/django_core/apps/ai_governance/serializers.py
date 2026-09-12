@@ -35,6 +35,19 @@ class DocumentAiJobSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class UsageRequeteSerializer(serializers.Serializer):
+    """NTAI1 — paramètres de ``GET /api/django/ai-governance/usage/``.
+
+    Déclaré pour que la vue soit une ``GenericAPIView`` à forme RÉSOLVABLE :
+    sans lui, drf-spectacular tombe en « unable to guess serializer » et la vue
+    ajouterait de la dette au cliquet R2 (`check_openapi_shapes`), qui ne peut
+    que décroître.
+    """
+
+    since = serializers.DateField(required=False)
+    feature = serializers.CharField(required=False, allow_blank=True)
+
+
 class RechercheGlobaleRequeteSerializer(serializers.Serializer):
     """NTAI25 — corps de ``POST /api/django/ai/recherche-globale/``.
 

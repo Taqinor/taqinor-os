@@ -35,3 +35,9 @@ class AiGovernanceConfig(AppConfig):
         # no-op complet tant que ``AI_DOCUMENT_JOBS_ENABLED`` est éteint.
         from .receivers import connect_receivers
         connect_receivers()
+
+        # NTAI1 — branche le puits du journal d'usage IA sur la fondation
+        # ``core.ai.usage`` : core mesure, cette app persiste. Sans cette
+        # inscription, ``record_usage`` est un no-op complet (aucune ligne).
+        from .usage import connect_usage_sink
+        connect_usage_sink()

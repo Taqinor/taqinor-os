@@ -4,10 +4,84 @@ MULTI-TENANT : tout modèle ici hérite de ``core.models.TenantModel`` (FK
 ``company`` + horodatage) — la société est TOUJOURS posée côté serveur, jamais
 lue d'un corps de requête.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
+
+
+class LlmUsageRecord(TenantModel):
+    """NTAI1 — Une ligne par appel RÉEL à une capacité IA.
+
+    Sert à répondre, par société, à « qui consomme l'IA, combien, et à quel
+    coût ». Écrite best-effort par le puits enregistré dans
+    ``apps.py::ready()`` depuis la fondation ``core.ai.usage``.
+
+    INVARIANTS :
+
+      * **Aucune donnée métier.** Ni prompt, ni réponse, ni identifiant d'objet :
+        seulement des MÉTRIQUES. Le journal ne peut pas devenir un second
+        magasin de données clients.
+      * **Société posée côté serveur.** Elle vient du contexte d'appel
+        (``core.ai.usage.usage_context``), jamais d'un corps de requête ; sans
+        société connue, aucune ligne n'est écrite.
+      * **Coût jamais inventé.** ``cout_tarife=False`` signifie « aucun tarif
+        configuré pour ce fournisseur » : ``cost_estimated`` vaut alors 0 mais
+        c'est un coût INCONNU, pas un coût nul — et l'agrégat le dit.
+      * **Chemin NO-OP muet.** Sans fournisseur configuré, rien n'est appelé
+        donc rien n'est journalisé (aucune ligne parasite).
+    """
+
+    CAPACITE_CHOICES = [
+        ('ocr', 'OCR (document)'),
+        ('stt', 'Transcription audio'),
+        ('vision_qa', 'Contrôle vision'),
+        ('llm', 'Génération de texte'),
+    ]
+
+    capability = models.CharField(
+        max_length=20, choices=CAPACITE_CHOICES,
+        help_text='Capacité IA appelée.')
+    provider = models.CharField(
+        max_length=60, help_text='Clé du fournisseur ayant servi l\'appel.')
+    feature_key = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Feature appelante (ex. « ai.rediger ») — texte libre posé '
+                  'par la couche appelante, jamais par le client.')
+    prompt_tokens = models.PositiveIntegerField(default=0)
+    completion_tokens = models.PositiveIntegerField(default=0)
+    cost_estimated = models.DecimalField(
+        max_digits=12, decimal_places=6, default=Decimal('0'),
+        help_text='Coût estimé en MAD — significatif UNIQUEMENT si '
+                  '« cout_tarife » est vrai.')
+    cout_tarife = models.BooleanField(
+        default=False,
+        help_text='Un tarif était configuré pour ce fournisseur au moment de '
+                  'l\'appel ; sinon le coût est inconnu (et non nul).')
+    latency_ms = models.PositiveIntegerField(default=0)
+    success = models.BooleanField(default=True)
+    message = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Message d\'erreur du fournisseur (jamais le contenu du '
+                  'prompt).')
+
+    class Meta:
+        verbose_name = "Usage d'une capacité IA"
+        verbose_name_plural = "Usages des capacités IA"
+        ordering = ['-created_at', '-id']
+        indexes = [
+            # Noms EXPLICITES (≤30 car.) : sans eux Django dérive un hash qui
+            # diverge du nom écrit à la main dans la migration.
+            models.Index(fields=['company', '-created_at'],
+                         name='ai_gov_usage_co_date_idx'),
+            models.Index(fields=['company', 'feature_key'],
+                         name='ai_gov_usage_co_feat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.capability}/{self.provider} ({self.created_at:%Y-%m-%d})'
 
 
 class DriftSnapshot(TenantModel):

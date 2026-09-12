@@ -188,6 +188,10 @@ _APP_URLS = [
     # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
     # implicite ; 503 douce sans clé LLM/STT configurée).
     path('ai/', include('apps.ai_governance.urls')),
+    # Groupe NTAI — gouvernance IA (journal d'usage & coûts, budgets, état des
+    # capacités). Surfaces d'ADMINISTRATION, réservées au palier
+    # Administrateur/Directeur — distinctes des copilotes ci-dessus.
+    path('ai-governance/', include('apps.ai_governance.urls_gouvernance')),
     # Groupe NTAI — conversations commerciales enregistrées (upload d'un appel
     # + transcription asynchrone key-gated). Le segment est IDENTIQUE à la clé
     # de manifeste (`conversation_ai`, avec underscore) : le gatage 404 des

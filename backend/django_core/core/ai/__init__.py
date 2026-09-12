@@ -56,6 +56,14 @@ from core.ai.search import (
     register_embedding_provider,
     register_indexable,
 )
+from core.ai.usage import (
+    BudgetStatus,
+    budget_status,
+    record_usage,
+    register_budget_provider,
+    register_usage_sink,
+    usage_context,
+)
 from core.ai.services import (
     CAMPAIGN_PROMPT_FORBIDDEN_TERMS,
     DEFAULT_PHOTO_QA_CHECKLIST,
@@ -132,6 +140,13 @@ __all__ = [
     'CAMPAIGN_PROMPT_FORBIDDEN_TERMS',
     'build_campaign_prompt',
     'draft_campaign_content',
+    # Journal d'usage & coût IA, budgets (NTAI1/NTAI2)
+    'record_usage',
+    'register_usage_sink',
+    'usage_context',
+    'budget_status',
+    'register_budget_provider',
+    'BudgetStatus',
     # Index sémantique cross-module (NTAI24)
     'SPECS_PAR_DEFAUT',
     'index_enabled',

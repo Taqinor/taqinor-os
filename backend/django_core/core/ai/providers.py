@@ -16,8 +16,17 @@ le sélectionne ET que sa configuration (clé) est présente. Sinon : NO-OP.
 """
 from __future__ import annotations
 
+import functools
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+#: Méthode « utile » de chaque capacité — celle qui déclenche un appel RÉEL et
+#: donc une ligne de journal d'usage (NTAI1).
+CAPABILITY_METHODS = ('extract', 'transcribe', 'inspect', 'complete')
 
 
 @dataclass
@@ -42,12 +51,77 @@ class AIResult:
         return cls(ok=False, configured=False, data={}, error=None, provider=provider)
 
 
+def _instrumenter(methode):
+    """Enveloppe une méthode de capacité : mesure + journal d'usage (NTAI1).
+
+    Le chemin NO-OP (``key == 'noop'``) est laissé STRICTEMENT intact : aucun
+    chronomètre, aucun journal — un fournisseur qui ne fait rien ne consomme
+    rien. Pour un fournisseur RÉEL, l'appel est chronométré et une ligne
+    best-effort est écrite (voir :mod:`core.ai.usage`) ; le journal ne peut ni
+    modifier le résultat ni faire échouer l'appel.
+    """
+
+    @functools.wraps(methode)
+    def _enveloppe(self, *args, **kwargs):
+        if getattr(self, 'key', 'noop') == 'noop':
+            return methode(self, *args, **kwargs)
+
+        from core.ai.usage import record_usage, tokens_from_result
+
+        debut = time.monotonic()
+        try:
+            resultat = methode(self, *args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 — on journalise PUIS on relance
+            try:
+                record_usage(
+                    capability=getattr(self, 'capability', 'llm'),
+                    provider=getattr(self, 'key', 'noop'),
+                    latency_ms=int((time.monotonic() - debut) * 1000),
+                    success=False, error=str(exc))
+            except Exception:  # noqa: BLE001 — le journal ne masque rien
+                logger.warning('core.ai: usage non journalisé', exc_info=True)
+            raise
+
+        try:
+            prompt_tokens, completion_tokens = tokens_from_result(resultat)
+            record_usage(
+                capability=getattr(self, 'capability', 'llm'),
+                provider=getattr(self, 'key', 'noop'),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=int((time.monotonic() - debut) * 1000),
+                success=bool(getattr(resultat, 'ok', False)),
+                error=str(getattr(resultat, 'error', '') or ''))
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('core.ai: usage non journalisé', exc_info=True)
+        return resultat
+
+    _enveloppe.__ai_instrumente__ = True
+    return _enveloppe
+
+
 class _BaseProvider:
-    """Base commune : ``key`` identifie le fournisseur dans le registre."""
+    """Base commune : ``key`` identifie le fournisseur dans le registre.
+
+    NTAI1 — toute sous-classe (y compris un fournisseur tiers futur, ou un
+    double de test) voit ses méthodes de capacité instrumentées AUTOMATIQUEMENT
+    à la création de la classe : la mesure ne dépend donc pas de la discipline
+    de l'auteur du fournisseur.
+    """
 
     key = 'base'
     label = 'Fournisseur'
     capability = 'base'
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for nom in CAPABILITY_METHODS:
+            methode = cls.__dict__.get(nom)
+            if methode is None or not callable(methode):
+                continue
+            if getattr(methode, '__ai_instrumente__', False):
+                continue  # déjà enveloppée (héritage d'une classe instrumentée)
+            setattr(cls, nom, _instrumenter(methode))
 
     def is_configured(self) -> bool:
         """Un fournisseur n'est ACTIF que s'il est configuré.
