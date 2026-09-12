@@ -17,6 +17,8 @@ Découplage : aucune importation d'app domaine ici — seulement l'infra Celery
 via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
     api_view,
@@ -26,6 +28,7 @@ from rest_framework.decorators import (
 )
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from authentication.permissions import (
     IsAdminOrResponsableTier,
@@ -428,7 +431,12 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def datasets(self, request):
-        return Response(data_explorer.list_datasets())
+        # NTDATA5 — le catalogue porte désormais, par champ, un `label` FR et
+        # un `type` (dimension/mesure/temps) sous la clé `champs` ; `fields`
+        # (liste de noms) est conservé tel quel pour les consommateurs
+        # historiques. L'acteur est transmis : un champ sous permission que ce
+        # lecteur ne peut pas interroger n'est plus proposé (AUD801).
+        return Response(data_explorer.list_datasets(request.user))
 
     def _execute(self, dataset, spec):
         from .formula import FormulaError
@@ -457,6 +465,39 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': "Champ « dataset » requis."},
                             status=status.HTTP_400_BAD_REQUEST)
         return self._execute(dataset, (request.data or {}).get('spec') or {})
+
+
+class DataExplorerDatasetsView(APIView):
+    """NTDATA5 — catalogue BI des datasets + schéma détaillé d'un dataset.
+
+      * ``GET core/data-explorer/datasets/``        — tous les datasets, chaque
+        champ portant son ``label`` FR et son ``type``
+        (``dimension``/``mesure``/``temps``) ;
+      * ``GET core/data-explorer/datasets/<name>/`` — le schéma détaillé d'UN
+        dataset, avec les listes prêtes à l'emploi ``mesures`` /
+        ``dimensions`` / ``temps`` (le front sait alors quoi proposer à
+        l'agrégation et quoi proposer au croisement).
+
+    Lecture seule, authentifiée. Les champs sous permission que le lecteur n'a
+    pas le droit d'interroger ne lui sont jamais PROPOSÉS non plus (AUD801) :
+    l'acteur est transmis au catalogue.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses=inline_serializer('DataExplorerCatalogue', {
+            'datasets': drf_serializers.JSONField(),
+        }))
+    def get(self, request, name=None):
+        if name:
+            try:
+                return Response(
+                    data_explorer.describe_dataset(name, request.user))
+            except data_explorer.DatasetInconnu as exc:
+                return Response({'detail': str(exc)},
+                                status=status.HTTP_404_NOT_FOUND)
+        return Response({'datasets': data_explorer.list_datasets(request.user)})
 
 
 class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):

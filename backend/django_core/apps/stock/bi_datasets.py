@@ -67,6 +67,35 @@ BCF_FIELDS = [
 ]
 BCF_GATED = {'montant': 'can_view_buy_prices'}
 
+# NTDATA5 — libellé FR + nature par champ (dimension / mesure / temps).
+PRODUITS_FIELD_META = {
+    'id': {'label': 'Produits', 'type': 'mesure'},
+    'categorie': {'label': 'Catégorie (id)', 'type': 'dimension'},
+    'categorie__nom': {'label': 'Catégorie', 'type': 'dimension'},
+    'marque': {'label': 'Marque', 'type': 'dimension'},
+    'quantite_stock': {'label': 'Quantité en stock', 'type': 'mesure'},
+    'seuil_alerte': {'label': "Seuil d'alerte", 'type': 'mesure'},
+    'est_low_stock': {'label': 'Stock bas', 'type': 'dimension'},
+    'prix_achat': {'label': "Prix d'achat", 'type': 'mesure'},
+    'valeur_achat': {'label': "Valeur d'achat du stock", 'type': 'mesure'},
+}
+MOUVEMENTS_FIELD_META = {
+    'id': {'label': 'Mouvements', 'type': 'mesure'},
+    'type': {'label': 'Type de mouvement', 'type': 'dimension'},
+    'mois': {'label': 'Mois', 'type': 'temps'},
+    'produit_categorie': {'label': 'Catégorie du produit',
+                          'type': 'dimension'},
+    'quantite': {'label': 'Quantité', 'type': 'mesure'},
+}
+BCF_FIELD_META = {
+    'id': {'label': 'Bons de commande', 'type': 'mesure'},
+    'fournisseur': {'label': 'Fournisseur (id)', 'type': 'dimension'},
+    'fournisseur__nom': {'label': 'Fournisseur', 'type': 'dimension'},
+    'statut': {'label': 'Statut', 'type': 'dimension'},
+    'mois': {'label': 'Mois de commande', 'type': 'temps'},
+    'montant': {'label': "Montant d'achat", 'type': 'mesure'},
+}
+
 
 def produits_queryset(company, user):
     """Queryset ``stock.Produit`` DÉJÀ scopé société (archivés exclus).
@@ -158,10 +187,10 @@ def register_dataset():
 
     data_explorer.register_dataset(
         PRODUITS_DATASET, 'Produits', PRODUITS_FIELDS, produits_queryset,
-        gated_fields=PRODUITS_GATED)
+        gated_fields=PRODUITS_GATED, field_meta=PRODUITS_FIELD_META)
     data_explorer.register_dataset(
         MOUVEMENTS_DATASET, 'Mouvements de stock', MOUVEMENTS_FIELDS,
-        mouvements_queryset)
+        mouvements_queryset, field_meta=MOUVEMENTS_FIELD_META)
     data_explorer.register_dataset(
         BCF_DATASET, 'Bons de commande fournisseur', BCF_FIELDS,
-        bcf_queryset, gated_fields=BCF_GATED)
+        bcf_queryset, gated_fields=BCF_GATED, field_meta=BCF_FIELD_META)

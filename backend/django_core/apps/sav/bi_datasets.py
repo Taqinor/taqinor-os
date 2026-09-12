@@ -70,6 +70,33 @@ CONTRATS_FIELDS = [
     'id', 'statut', 'actif', 'frequence', 'mois_renouvellement',
     'valeur_annuelle', 'prix',
 ]
+# NTDATA5 — libellé FR + nature par champ (dimension / mesure / temps).
+CONTRATS_FIELD_META = {
+    'id': {'label': 'Contrats', 'type': 'mesure'},
+    'statut': {'label': 'Statut', 'type': 'dimension'},
+    'actif': {'label': 'Actif', 'type': 'dimension'},
+    'frequence': {'label': 'Fréquence', 'type': 'dimension'},
+    'mois_renouvellement': {'label': 'Mois de renouvellement',
+                            'type': 'temps'},
+    'valeur_annuelle': {'label': 'Valeur annuelle', 'type': 'mesure'},
+    'prix': {'label': 'Prix par période', 'type': 'mesure'},
+}
+# NTDATA5 — métadonnées des champs de `sav_tickets` (rétro-compatible : un
+# champ absent resterait une dimension portant son nom).
+FIELD_META = {
+    'id': {'label': 'Tickets', 'type': 'mesure'},
+    'statut': {'label': 'Statut', 'type': 'dimension'},
+    'priorite': {'label': 'Priorité', 'type': 'dimension'},
+    'type': {'label': 'Type', 'type': 'dimension'},
+    'technicien_responsable_id': {'label': 'Technicien (id)',
+                                  'type': 'dimension'},
+    'technicien_responsable__username': {'label': 'Technicien',
+                                         'type': 'dimension'},
+    'mois_ouverture': {'label': "Mois d'ouverture", 'type': 'temps'},
+    'cout': {'label': 'Coût interne', 'type': 'mesure'},
+    'delai_resolution_jours': {'label': 'Délai de résolution',
+                               'type': 'mesure'},
+}
 
 
 def sav_contrats_queryset(company, user):
@@ -125,7 +152,7 @@ def register_dataset():
     from core import data_explorer
     data_explorer.register_dataset(
         DATASET_NAME, 'Tickets SAV', FIELDS, sav_tickets_queryset,
-        gated_fields=GATED_FIELDS)
+        gated_fields=GATED_FIELDS, field_meta=FIELD_META)
     data_explorer.register_dataset(
         CONTRATS_DATASET_NAME, 'Contrats de maintenance', CONTRATS_FIELDS,
-        sav_contrats_queryset)
+        sav_contrats_queryset, field_meta=CONTRATS_FIELD_META)

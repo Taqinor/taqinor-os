@@ -52,6 +52,40 @@ FACTURES_FIELDS = [
 PAIEMENTS_DATASET = 'ventes_paiements'
 PAIEMENTS_FIELDS = ['id', 'mode', 'statut', 'mois', 'montant']
 
+# NTDATA5 — métadonnées BI par champ (libellé FR + nature). Un champ absent de
+# ces dicts reste une DIMENSION portant son propre nom : rétro-compatible.
+DEVIS_FIELD_META = {
+    'id': {'label': 'Devis', 'type': 'mesure'},
+    'statut': {'label': 'Statut', 'type': 'dimension'},
+    'market_mode': {'label': 'Marché', 'type': 'dimension'},
+    'mois_creation': {'label': 'Mois de création', 'type': 'temps'},
+    'responsable': {'label': 'Responsable', 'type': 'dimension'},
+    'responsable_id': {'label': 'Responsable (id)', 'type': 'dimension'},
+    'canal': {'label': 'Canal du lead', 'type': 'dimension'},
+    'kwc': {'label': 'Puissance (kWc)', 'type': 'mesure'},
+    'prix_par_kwc': {'label': 'Prix par kWc (TTC)', 'type': 'mesure'},
+    'is_active': {'label': 'Version active', 'type': 'dimension'},
+}
+FACTURES_FIELD_META = {
+    'id': {'label': 'Factures', 'type': 'mesure'},
+    'statut': {'label': 'Statut', 'type': 'dimension'},
+    'type_facture': {'label': 'Type de facture', 'type': 'dimension'},
+    'mois_emission': {'label': "Mois d'émission", 'type': 'temps'},
+    'montant_ht': {'label': 'Montant HT', 'type': 'mesure'},
+    'montant_tva': {'label': 'TVA', 'type': 'mesure'},
+    'montant_ttc': {'label': 'Montant TTC', 'type': 'mesure'},
+    'montant_paye': {'label': 'Montant payé', 'type': 'mesure'},
+    'reste_du': {'label': 'Reste dû', 'type': 'mesure'},
+    'echue_bool': {'label': 'Échue', 'type': 'dimension'},
+}
+PAIEMENTS_FIELD_META = {
+    'id': {'label': 'Paiements', 'type': 'mesure'},
+    'mode': {'label': 'Mode de règlement', 'type': 'dimension'},
+    'statut': {'label': 'Statut', 'type': 'dimension'},
+    'mois': {'label': 'Mois', 'type': 'temps'},
+    'montant': {'label': 'Montant', 'type': 'mesure'},
+}
+
 # Motif POSIX d'un nombre décimal — groupe NON capturant, sinon
 # ``substring(texte, motif)`` de Postgres rendrait la capture (la partie
 # décimale) au lieu du nombre entier.
@@ -169,8 +203,11 @@ def register_dataset():
     from core import data_explorer
 
     data_explorer.register_dataset(
-        DEVIS_DATASET, 'Devis', DEVIS_FIELDS, devis_queryset)
+        DEVIS_DATASET, 'Devis', DEVIS_FIELDS, devis_queryset,
+        field_meta=DEVIS_FIELD_META)
     data_explorer.register_dataset(
-        FACTURES_DATASET, 'Factures', FACTURES_FIELDS, factures_queryset)
+        FACTURES_DATASET, 'Factures', FACTURES_FIELDS, factures_queryset,
+        field_meta=FACTURES_FIELD_META)
     data_explorer.register_dataset(
-        PAIEMENTS_DATASET, 'Paiements', PAIEMENTS_FIELDS, paiements_queryset)
+        PAIEMENTS_DATASET, 'Paiements', PAIEMENTS_FIELDS, paiements_queryset,
+        field_meta=PAIEMENTS_FIELD_META)

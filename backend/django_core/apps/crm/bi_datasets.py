@@ -33,6 +33,29 @@ LEADS_FIELDS = [
 CLIENTS_DATASET = 'crm_clients'
 CLIENTS_FIELDS = ['id', 'ville', 'mois_creation', 'type']
 
+# NTDATA5 — libellé FR + nature par champ. Le LIBELLÉ d'une étape n'est PAS
+# écrit ici (règle #2) : `stage` porte le libellé générique « Étape » et les
+# valeurs sont traduites par `stage_labels()`, lu depuis STAGES.py.
+LEADS_FIELD_META = {
+    'id': {'label': 'Pistes', 'type': 'mesure'},
+    'stage': {'label': 'Étape', 'type': 'dimension'},
+    'canal': {'label': 'Canal', 'type': 'dimension'},
+    'priorite': {'label': 'Priorité', 'type': 'dimension'},
+    'ville': {'label': 'Ville', 'type': 'dimension'},
+    'mois_creation': {'label': 'Mois de création', 'type': 'temps'},
+    'type_installation': {'label': "Type d'installation",
+                          'type': 'dimension'},
+    'perdu_bool': {'label': 'Perdu', 'type': 'dimension'},
+    'motif_perte': {'label': 'Motif de perte', 'type': 'dimension'},
+    'owner_username': {'label': 'Responsable', 'type': 'dimension'},
+}
+CLIENTS_FIELD_META = {
+    'id': {'label': 'Clients', 'type': 'mesure'},
+    'ville': {'label': 'Ville', 'type': 'dimension'},
+    'mois_creation': {'label': 'Mois de création', 'type': 'temps'},
+    'type': {'label': 'Type de client', 'type': 'dimension'},
+}
+
 
 def stage_labels():
     """Libellés FR des étapes, LUS depuis ``STAGES.py`` (jamais recopiés)."""
@@ -81,6 +104,8 @@ def register_dataset():
     from core import data_explorer
 
     data_explorer.register_dataset(
-        LEADS_DATASET, 'Pistes (leads)', LEADS_FIELDS, leads_queryset)
+        LEADS_DATASET, 'Pistes (leads)', LEADS_FIELDS, leads_queryset,
+        field_meta=LEADS_FIELD_META)
     data_explorer.register_dataset(
-        CLIENTS_DATASET, 'Clients', CLIENTS_FIELDS, clients_queryset)
+        CLIENTS_DATASET, 'Clients', CLIENTS_FIELDS, clients_queryset,
+        field_meta=CLIENTS_FIELD_META)

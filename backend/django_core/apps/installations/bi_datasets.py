@@ -22,6 +22,20 @@ CHANTIERS_FIELDS = [
     'installateur', 'type_installation', 'annule',
 ]
 
+# NTDATA5 — libellé FR + nature par champ (dimension / mesure / temps).
+CHANTIERS_FIELD_META = {
+    'id': {'label': 'Chantiers', 'type': 'mesure'},
+    'statut': {'label': 'Statut', 'type': 'dimension'},
+    'ville': {'label': 'Ville du site', 'type': 'dimension'},
+    'kwc': {'label': 'Puissance installée (kWc)', 'type': 'mesure'},
+    'mois_signature': {'label': 'Mois de signature', 'type': 'temps'},
+    'mois_reception': {'label': 'Mois de réception', 'type': 'temps'},
+    'installateur': {'label': 'Installateur', 'type': 'dimension'},
+    'type_installation': {'label': "Type d'installation",
+                          'type': 'dimension'},
+    'annule': {'label': 'Annulé', 'type': 'dimension'},
+}
+
 
 def chantiers_queryset(company, user):
     """Queryset ``installations.Installation`` DÉJÀ scopé société."""
@@ -44,4 +58,5 @@ def register_dataset():
     from core import data_explorer
 
     data_explorer.register_dataset(
-        CHANTIERS_DATASET, 'Chantiers', CHANTIERS_FIELDS, chantiers_queryset)
+        CHANTIERS_DATASET, 'Chantiers', CHANTIERS_FIELDS, chantiers_queryset,
+        field_meta=CHANTIERS_FIELD_META)
