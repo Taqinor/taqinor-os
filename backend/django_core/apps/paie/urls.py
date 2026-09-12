@@ -10,6 +10,7 @@ from .views import (
     CumulAnnuelViewSet,
     EcheanceDeclarativeViewSet,
     ElementVariableViewSet,
+    GabaritDeclaratifViewSet,
     LigneVirementViewSet,
     OrdreVirementViewSet,
     ParametragePaieCompanyViewSet,
@@ -51,6 +52,8 @@ router.register(r'pays-paie', PaysPaieViewSet)
 router.register(r'schemas-comptables-paie', SchemaComptablePaieViewSet)
 # NTPAY23 — réglages globaux du module paie, par société (un seul).
 router.register(r'parametrage', ParametragePaieCompanyViewSet)
+# NTPAY24 — gabarits éditables des fichiers réglementaires (SIMT / CNSS).
+router.register(r'gabarits-declaratifs', GabaritDeclaratifViewSet)
 router.register(r'mes-bulletins', CoffreFortBulletinViewSet,
                 basename='coffrefort-bulletin')
 

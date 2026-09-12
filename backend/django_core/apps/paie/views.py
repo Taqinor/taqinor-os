@@ -37,6 +37,7 @@ from .models import (
     CumulAnnuel,
     EcheanceDeclarative,
     ElementVariable,
+    GabaritDeclaratif,
     LigneVirement,
     OrdreVirement,
     ParametragePaieCompany,
@@ -62,6 +63,7 @@ from .serializers import (
     DepotDeclaratifSerializer,
     EcheanceDeclarativeSerializer,
     ElementVariableSerializer,
+    GabaritDeclaratifSerializer,
     LigneVirementSerializer,
     ParametrePaieSerializer,
     PaysPaieSerializer,
@@ -555,6 +557,21 @@ class PaysPaieViewSet(_PaieBaseViewSet):
         """Provisionne le pays de paie MAROC (idempotent)."""
         created = ensure_pays_paie_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
+
+
+class GabaritDeclaratifViewSet(_PaieBaseViewSet):
+    """Gabarits éditables des fichiers réglementaires (NTPAY24).
+
+    CRUD company-scopé standard (``paie_voir`` lit, ``paie_gerer`` écrit).
+    Sans gabarit ACTIF pour un type, la génération garde le gabarit codé en
+    dur : activer une ligne ici est le SEUL moyen de changer la structure
+    d'un fichier, et c'est un geste explicite.
+    """
+    queryset = GabaritDeclaratif.objects.all()
+    serializer_class = GabaritDeclaratifSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['type_fichier', 'version']
+    ordering_fields = ['type_fichier', 'date_effet', 'id']
 
 
 class ParametragePaieCompanyViewSet(_PaieBaseViewSet):

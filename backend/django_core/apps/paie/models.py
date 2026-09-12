@@ -2453,6 +2453,66 @@ class SchemaComptablePaie(TenantModel):
                 f'C{self.compte_credit or "—"}')
 
 
+# ── NTPAY24 — Gabarits de fichiers réglementaires versionnés ───────────────
+
+class GabaritDeclaratif(TenantModel):
+    """Gabarit ÉDITABLE d'un fichier réglementaire (NTPAY24), company-scopé.
+
+    Les gabarits de génération (SIMT XPAI8, télépaiement CNSS NTPAY4) sont
+    codés en dur dans ``services`` : le jour où l'organisme change une
+    longueur de champ, il faut un DÉPLOIEMENT. Ce modèle permet d'ajuster la
+    structure sans livrer de code.
+
+    REPLI STRICT : sans gabarit ACTIF pour un type, la génération utilise le
+    gabarit codé en dur — la sortie est identique à aujourd'hui, à l'octet
+    près. Un gabarit custom ne s'applique donc jamais par accident.
+
+    ``structure_json`` décrit un format à LONGUEURS FIXES sous la forme
+    ``{"entete": [["champ", longueur, "L"|"R"], …], "ligne": [[…], …]}`` — les
+    mêmes triplets que les constantes ``GABARIT_*`` de ``services``. Un champ
+    inconnu du générateur sort simplement VIDE (rempli) : on ne fabrique
+    jamais une donnée pour satisfaire un gabarit. ``template_text`` reste
+    disponible pour un futur format purement textuel.
+    """
+    TYPE_SIMT = 'simt'
+    TYPE_TELEPAIEMENT_CNSS = 'telepaiement_cnss'
+    TYPE_CHOICES = [
+        (TYPE_SIMT, 'Virement SIMT (banque)'),
+        (TYPE_TELEPAIEMENT_CNSS, 'Télépaiement CNSS'),
+    ]
+
+    # SCA4 — socle multi-société hérité de ``core.models.TenantModel``.
+    type_fichier = models.CharField(
+        max_length=24, choices=TYPE_CHOICES, verbose_name='Type de fichier')
+    version = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Version')
+    structure_json = models.JSONField(
+        null=True, blank=True, verbose_name='Structure (longueurs fixes)')
+    template_text = models.TextField(
+        blank=True, default='', verbose_name='Gabarit texte')
+    actif = models.BooleanField(default=False, verbose_name='Actif')
+    date_effet = models.DateField(verbose_name="Date d'effet")
+
+    class Meta:
+        verbose_name = 'Gabarit déclaratif'
+        verbose_name_plural = 'Gabarits déclaratifs'
+        ordering = ['type_fichier', '-date_effet', '-id']
+        constraints = [
+            # Un seul gabarit ACTIF par (société, type, date d'effet) : deux
+            # versions actives au même jour rendraient la résolution
+            # arbitraire.
+            models.UniqueConstraint(
+                fields=['company', 'type_fichier', 'date_effet'],
+                condition=models.Q(actif=True),
+                name='uniq_gabarit_declaratif_actif_par_date',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.get_type_fichier_display()} '
+                f'{self.version or self.date_effet}')
+
+
 # ── NTPAY23 — Réglages globaux du module paie, par société ─────────────────
 
 class ParametragePaieCompany(TenantModel):

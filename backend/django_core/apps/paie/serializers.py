@@ -19,6 +19,7 @@ from .models import (
     DepotDeclaratif,
     EcheanceDeclarative,
     ElementVariable,
+    GabaritDeclaratif,
     LigneBulletin,
     LigneVirement,
     OrdreVirement,
@@ -921,3 +922,46 @@ class ParametragePaieCompanySerializer(serializers.ModelSerializer):
 
     def validate_compte_emetteur(self, value):
         return _meme_societe(self, value, 'Compte émetteur')
+
+
+class GabaritDeclaratifSerializer(serializers.ModelSerializer):
+    """Gabarit éditable d'un fichier réglementaire (NTPAY24), company-scopé.
+
+    ``company`` posée côté serveur. La ``structure_json`` est VALIDÉE ici (et
+    pas seulement au moment de générer) : un gabarit mal formé serait
+    silencieusement ignoré côté service — autant le refuser tout de suite, en
+    nommant le champ fautif.
+    """
+    type_fichier_libelle = serializers.CharField(
+        source='get_type_fichier_display', read_only=True)
+    # SCA4 — cf. ``DepotDeclaratifSerializer``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = GabaritDeclaratif
+        fields = [
+            'id', 'type_fichier', 'type_fichier_libelle', 'version',
+            'structure_json', 'template_text', 'actif', 'date_effet',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation', 'type_fichier_libelle']
+
+    def validate_structure_json(self, value):
+        from .services import _structure_valide
+
+        if value in (None, ''):
+            return None
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                'La structure doit être un objet {"entete": [...], '
+                '"ligne": [...]}.')
+        for cle in ('entete', 'ligne'):
+            brut = value.get(cle)
+            if brut in (None, []):
+                continue
+            if _structure_valide(brut) is None:
+                raise serializers.ValidationError(
+                    f'Bloc « {cle} » invalide : attendu une liste de '
+                    '[nom du champ, longueur > 0, "L" ou "R"].')
+        return value

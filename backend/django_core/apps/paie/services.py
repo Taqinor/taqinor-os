@@ -4304,6 +4304,72 @@ GABARIT_SIMT_LIGNE = [
 ]
 
 
+# ── NTPAY24 — Résolution d'un gabarit éditable (repli sur le codé en dur) ──
+
+def gabarit_actif(company, type_fichier, *, le_jour=None):
+    """``GabaritDeclaratif`` ACTIF d'un type pour une société (NTPAY24).
+
+    Le plus récent dont la ``date_effet`` est atteinte. ``None`` — le cas
+    NORMAL — signifie « garder le gabarit codé en dur ».
+    """
+    from .models import GabaritDeclaratif
+
+    if company is None:
+        return None
+    if le_jour is None:
+        le_jour = timezone.localdate()
+    return (
+        GabaritDeclaratif.objects
+        .filter(company=company, type_fichier=type_fichier, actif=True,
+                date_effet__lte=le_jour)
+        .order_by('-date_effet', '-id')
+        .first()
+    )
+
+
+def _structure_valide(brut):
+    """``[[champ, longueur, 'L'|'R'], …]`` → liste de triplets, ou ``None``.
+
+    Une structure MAL FORMÉE est IGNORÉE (repli sur le codé en dur) plutôt
+    que de produire un fichier bancaire incohérent : mieux vaut le format
+    d'hier qu'un format inventé.
+    """
+    if not isinstance(brut, (list, tuple)) or not brut:
+        return None
+    triplets = []
+    for item in brut:
+        if not isinstance(item, (list, tuple)) or len(item) != 3:
+            return None
+        champ, longueur, remplissage = item
+        if not isinstance(champ, str) or not champ:
+            return None
+        try:
+            longueur = int(longueur)
+        except (TypeError, ValueError):
+            return None
+        if longueur <= 0 or remplissage not in ('L', 'R'):
+            return None
+        triplets.append((champ, longueur, remplissage))
+    return triplets
+
+
+def structure_gabarit(company, type_fichier, defaut_entete, defaut_ligne, *,
+                      le_jour=None):
+    """``(entete, ligne)`` à utiliser pour un fichier à longueurs fixes.
+
+    NTPAY24 — le gabarit ACTIF de la société prime ; sans gabarit actif (ou
+    avec une structure mal formée), les constantes codées en dur sont rendues
+    TELLES QUELLES : la sortie reste identique à l'octet près.
+    """
+    gabarit = gabarit_actif(company, type_fichier, le_jour=le_jour)
+    structure = getattr(gabarit, 'structure_json', None)
+    if not isinstance(structure, dict):
+        return defaut_entete, defaut_ligne
+    entete = _structure_valide(structure.get('entete')) or defaut_entete
+    ligne = _structure_valide(structure.get('ligne')) or defaut_ligne
+    return entete, ligne
+
+
 def _formater_champ_simt(valeur, longueur, remplissage):
     """Formate un champ à LONGUEUR FIXE (gabarit SIMT) : tronque si trop
     long, complète sinon (espaces à droite pour 'L', zéros à gauche pour
@@ -4336,9 +4402,17 @@ def fichier_virement_paie_simt(ordre):
     manquant). N'affecte JAMAIS le CSV existant. Renvoie ``{'lignes': [str,
     …] (longueur fixe), 'total', 'nb_lignes'}``.
     """
+    from .models import GabaritDeclaratif
+
     base = fichier_virement_paie(ordre)  # valide + lève ValueError au besoin
     emetteur = base['emetteur']
     date_execution = ordre.date_execution or date.today()
+
+    # NTPAY24 — gabarit ÉDITABLE de la société ; sans gabarit actif, ce sont
+    # exactement les constantes ci-dessus (sortie inchangée).
+    gabarit_entete, gabarit_ligne = structure_gabarit(
+        ordre.company, GabaritDeclaratif.TYPE_SIMT,
+        GABARIT_SIMT_ENTETE, GABARIT_SIMT_LIGNE)
 
     total_centimes = int(_q(base['total']) * 100)
     entete = _formater_enregistrement_simt({
@@ -4349,7 +4423,7 @@ def fichier_virement_paie_simt(ordre):
         'devise': ordre.devise or 'MAD',
         'nombre_lignes': base['nb_lignes'],
         'total_centimes': total_centimes,
-    }, GABARIT_SIMT_ENTETE)
+    }, gabarit_entete)
 
     lignes_txt = [entete]
     for ligne in ordre.lignes.all():
@@ -4361,7 +4435,7 @@ def fichier_virement_paie_simt(ordre):
             'montant_centimes': montant_centimes,
             'reference': ligne.reference or '',
             'motif': f'Salaire {ligne.reference}'.strip(),
-        }, GABARIT_SIMT_LIGNE))
+        }, gabarit_ligne))
 
     return {
         'lignes': lignes_txt,
@@ -6743,9 +6817,16 @@ def fichier_telepaiement_cnss(periode, *, bordereau=None):
     reste à confirmer auprès de l'organisme. Renvoie ``{'lignes': [str, …],
     'total', 'nb_lignes', 'date_limite'}``. Lecture seule.
     """
+    from .models import GabaritDeclaratif
+
     if bordereau is None:
         bordereau = bordereau_paiement_cnss(periode)
     company = periode.company
+    # NTPAY24 — gabarit ÉDITABLE de la société ; sans gabarit actif, ce sont
+    # exactement les constantes ci-dessus (sortie inchangée).
+    gabarit_entete, gabarit_ligne = structure_gabarit(
+        company, GabaritDeclaratif.TYPE_TELEPAIEMENT_CNSS,
+        GABARIT_TELEPAIEMENT_CNSS_ENTETE, GABARIT_TELEPAIEMENT_CNSS_LIGNE)
     total_centimes = int(_q(bordereau['total_general']) * 100)
     entete = _formater_enregistrement_simt({
         'type_enregistrement': 'E',
@@ -6756,7 +6837,7 @@ def fichier_telepaiement_cnss(periode, *, bordereau=None):
         'date_limite': bordereau['date_limite'].strftime('%Y%m%d'),
         'nombre_organismes': len(bordereau['organismes']),
         'total_centimes': total_centimes,
-    }, GABARIT_TELEPAIEMENT_CNSS_ENTETE)
+    }, gabarit_entete)
 
     lignes = [entete]
     for organisme in bordereau['organismes']:
@@ -6766,7 +6847,7 @@ def fichier_telepaiement_cnss(periode, *, bordereau=None):
             'salarial_centimes': int(_q(organisme['salarial']) * 100),
             'patronal_centimes': int(_q(organisme['patronal']) * 100),
             'total_centimes': int(_q(organisme['total']) * 100),
-        }, GABARIT_TELEPAIEMENT_CNSS_LIGNE))
+        }, gabarit_ligne))
 
     return {
         'lignes': lignes,
