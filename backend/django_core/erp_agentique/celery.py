@@ -1195,6 +1195,22 @@ app.conf.beat_schedule = {
         'task': 'btp_chantier.rapport_photo_hebdo',
         'schedule': crontab(day_of_week=1, hour=7, minute=35),
     },
+    # NTPAY25 — rappel PROACTIF des échéances déclaratives de paie à J-7/J-3/
+    # J-0. `notifier_echeances_en_retard` (XPAI6) ne prévenait qu'APRÈS la
+    # date limite : on découvrait le retard une fois dépassé. Tôt le matin,
+    # avant la journée de travail. Idempotent par échéance ET par jour-seuil
+    # (marqueur de chatter `records`) — voir `apps/paie/tasks.py`.
+    'paie-rappeler-echeances-declaratives': {
+        'task': 'paie.rappeler_echeances_declaratives',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # NTPAY26 — recalcul des cumuls annuels EN DÉRIVE, le 2 du mois la nuit
+    # (J+1 de la clôture mensuelle : les bulletins de la veille sont figés).
+    # Ne touche QUE les cumuls divergents, avec une ligne d'ajustement tracée.
+    'paie-recalculer-cumuls-annuels': {
+        'task': 'paie.recalculer_cumuls_annuels',
+        'schedule': crontab(day_of_month=2, hour=2, minute=20),
+    },
 }
 
 

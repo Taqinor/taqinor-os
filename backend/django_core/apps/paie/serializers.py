@@ -19,9 +19,11 @@ from .models import (
     DepotDeclaratif,
     EcheanceDeclarative,
     ElementVariable,
+    GabaritDeclaratif,
     LigneBulletin,
     LigneVirement,
     OrdreVirement,
+    ParametragePaieCompany,
     ParametrePaie,
     PaysPaie,
     PeriodePaie,
@@ -460,6 +462,8 @@ class PeriodePaieSerializer(serializers.ModelSerializer):
         model = PeriodePaie
         fields = [
             'id', 'annee', 'mois', 'type_run', 'libelle', 'statut',
+            # NTPAY13 — devise du run (MAD par défaut, jamais convertie).
+            'devise',
             'date_paiement', 'date_cloture', 'date_creation',
         ]
         read_only_fields = ['statut', 'date_cloture', 'date_creation']
@@ -609,6 +613,9 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
         model = BulletinPaie
         fields = [
             'id', 'periode', 'profil', 'pays_code', 'pays_devise', 'statut',
+            # NTPAY13 — devise FIGÉE du bulletin (≠ ``pays_devise``, qui reflète
+            # le pays ACTUEL du profil : le bulletin garde la sienne).
+            'devise',
             'type_bulletin', 'rectifie', 'motif', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
@@ -875,3 +882,86 @@ class SchemaComptablePaieSerializer(serializers.ModelSerializer):
                             'cible.'],
                 })
         return attrs
+
+
+class ParametragePaieCompanySerializer(serializers.ModelSerializer):
+    """Réglages du module paie d'une société (NTPAY23), UN seul par société.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête) ;
+    l'unicité est garantie par le ``OneToOneField`` en base. Tous les réglages
+    numériques acceptent ``null`` : « non réglé » est une valeur de premier
+    ordre, qui laisse le comportement historique en place.
+    """
+    # SCA4 — le socle ``TenantModel`` expose ``created_at``/``updated_at`` ;
+    # l'API de la paie sert historiquement ``date_creation``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = ParametragePaieCompany
+        fields = [
+            'id', 'jour_virement_defaut', 'compte_emetteur',
+            'gabarit_telepaiement_cnss', 'devise_defaut',
+            'seuil_ecart_net_pct', 'rappel_retroactif_automatique',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_jour_virement_defaut(self, value):
+        if value is not None and not (1 <= int(value) <= 31):
+            raise serializers.ValidationError(
+                'Le jour de virement doit être compris entre 1 et 31.')
+        return value
+
+    def validate_devise_defaut(self, value):
+        code = (value or '').strip().upper()
+        if len(code) != 3 or not code.isalpha():
+            raise serializers.ValidationError(
+                'La devise doit être un code ISO de 3 lettres (ex. MAD).')
+        return code
+
+    def validate_compte_emetteur(self, value):
+        return _meme_societe(self, value, 'Compte émetteur')
+
+
+class GabaritDeclaratifSerializer(serializers.ModelSerializer):
+    """Gabarit éditable d'un fichier réglementaire (NTPAY24), company-scopé.
+
+    ``company`` posée côté serveur. La ``structure_json`` est VALIDÉE ici (et
+    pas seulement au moment de générer) : un gabarit mal formé serait
+    silencieusement ignoré côté service — autant le refuser tout de suite, en
+    nommant le champ fautif.
+    """
+    type_fichier_libelle = serializers.CharField(
+        source='get_type_fichier_display', read_only=True)
+    # SCA4 — cf. ``DepotDeclaratifSerializer``.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = GabaritDeclaratif
+        fields = [
+            'id', 'type_fichier', 'type_fichier_libelle', 'version',
+            'structure_json', 'template_text', 'actif', 'date_effet',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation', 'type_fichier_libelle']
+
+    def validate_structure_json(self, value):
+        from .services import _structure_valide
+
+        if value in (None, ''):
+            return None
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                'La structure doit être un objet {"entete": [...], '
+                '"ligne": [...]}.')
+        for cle in ('entete', 'ligne'):
+            brut = value.get(cle)
+            if brut in (None, []):
+                continue
+            if _structure_valide(brut) is None:
+                raise serializers.ValidationError(
+                    f'Bloc « {cle} » invalide : attendu une liste de '
+                    '[nom du champ, longueur > 0, "L" ou "R"].')
+        return value
