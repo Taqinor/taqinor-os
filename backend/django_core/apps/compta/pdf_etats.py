@@ -423,6 +423,60 @@ def render_situation_effets_pdf(data, company_profile=None, *, today=None):
         html=render_situation_effets_html(data, company_profile, today=today))
 
 
+# ── NTTRE21 — Journal de trésorerie ────────────────────────────────────────
+
+def render_journal_tresorerie_html(data, company_profile=None, *, today=None):
+    """HTML du journal de trésorerie (``selectors.journal_tresorerie``).
+
+    Solde d'ouverture, un mouvement par ligne avec sa NATURE et le solde
+    courant, puis les totaux et le solde de clôture. Aucun recalcul ici : tous
+    les chiffres viennent du sélecteur (donc du grand livre).
+    """
+    if today is None:
+        today = date.today()
+    entete = _entete_societe_html(company_profile)
+    compte = data.get('compte') or {}
+    periode_txt = _periode_txt(data.get('date_debut'), data.get('date_fin'))
+
+    rows = ''.join(
+        f"<tr><td>{escape(str(m.get('date', '')))}</td>"
+        f"<td>{escape(str(m.get('piece') or '—'))}</td>"
+        f"<td>{escape(str(m.get('journal') or '—'))}</td>"
+        f"<td>{escape(str(m.get('libelle') or '—'))}</td>"
+        f"<td>{escape(str(m.get('nature') or '—'))}</td>"
+        f"<td class=\"montant\">{_fmt(m.get('debit'))}</td>"
+        f"<td class=\"montant\">{_fmt(m.get('credit'))}</td>"
+        f"<td class=\"montant\">{_fmt(m.get('solde'))}</td></tr>"
+        for m in data.get('mouvements', [])
+    )
+    intitule = escape(str(compte.get('libelle') or ''))
+    numero = escape(str(compte.get('numero_compte') or ''))
+    corps = f"""
+    <h2>{intitule}{f' — compte {numero}' if numero else ''}</h2>
+    <table><thead><tr><th>Date</th><th>Pièce</th><th>Journal</th>
+    <th>Libellé</th><th>Nature</th>
+    <th class="montant">Débit</th><th class="montant">Crédit</th>
+    <th class="montant">Solde</th></tr></thead>
+    <tbody>
+    <tr class="total-row"><td colspan="7">Solde d'ouverture</td>
+    <td class="montant">{_fmt(data.get('solde_ouverture'))}</td></tr>
+    {rows}
+    <tr class="total-row"><td colspan="5">Totaux de la période
+    ({data.get('nb_mouvements', 0)} mouvement(s))</td>
+    <td class="montant">{_fmt(data.get('total_debit'))}</td>
+    <td class="montant">{_fmt(data.get('total_credit'))}</td>
+    <td class="montant"></td></tr>
+    <tr class="total-row"><td colspan="7">Solde de clôture</td>
+    <td class="montant">{_fmt(data.get('solde_cloture'))}</td></tr>
+    </tbody></table>"""
+    return _wrap(entete, 'Journal de trésorerie', periode_txt, corps, today)
+
+
+def render_journal_tresorerie_pdf(data, company_profile=None, *, today=None):
+    return render_pdf(
+        html=render_journal_tresorerie_html(data, company_profile, today=today))
+
+
 # ── NTTRE23 — Certificat de pouvoir bancaire ───────────────────────────────
 
 def render_certificat_pouvoir_html(data, company_profile=None, *, today=None):

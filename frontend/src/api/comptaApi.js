@@ -82,6 +82,13 @@ const comptaApi = {
     // pointées à la clôture), mois par mois.
     qualiteRapprochements: (params) =>
       api.get('/compta/etats/qualite-rapprochements/', { params }),
+    // NTTRE21 — journal de trésorerie d'un compte (mouvements + solde courant).
+    // `compte` est obligatoire. PDF via `?export=pdf`.
+    journalTresorerie: (params) =>
+      api.get('/compta/etats/journal-tresorerie/', { params }),
+    journalTresoreriePdf: (params) =>
+      api.get('/compta/etats/journal-tresorerie/',
+        { params: { export: 'pdf', ...params }, responseType: 'blob' }),
     // NTTRE22 — situation des effets (par statut/sens et par tranche
     // d'échéance). JSON par défaut, PDF via `?export=pdf` (jamais `?format=`,
     // réservé par DRF).

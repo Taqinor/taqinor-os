@@ -6111,3 +6111,112 @@ def apercu_campagne_paiement(company, *, date_limite=None, fournisseur_id=None,
         'compte': compte,
         'alerte_seuil': alerte,
     }
+
+
+# ── NTTRE21 — Journal de trésorerie (rapport imprimable) ───────────────────
+
+#: NTTRE21 — nature LISIBLE d'un mouvement, déduite de ``source_type`` de
+#: l'écriture qui l'a produit. Une nature inconnue est rendue telle quelle
+#: plutôt que masquée : mieux vaut un mot technique visible qu'un mouvement
+#: muet sur un journal qu'un banquier relit.
+NATURES_JOURNAL_TRESORERIE = {
+    'virement_interne': 'Virement interne',
+    'effet_encaissement': 'Effet encaissé',
+    'effet_paiement': 'Effet payé',
+    'effet_escompte': 'Effet escompté',
+    'effet_apurement_escompte': "Apurement d'escompte",
+    'effet_rejet': 'Effet rejeté',
+    'effet_frais_rejet': 'Frais de rejet',
+    'bordereau_remise': 'Bordereau de remise',
+    'payment_run': 'Campagne de règlement',
+    'paiement': 'Encaissement client',
+    'paiement_fournisseur': 'Règlement fournisseur',
+    'mouvement_caisse': 'Mouvement de caisse',
+    'echeance_emprunt': "Échéance d'emprunt",
+}
+
+
+def journal_tresorerie(company, compte, debut=None, fin=None, *,
+                       validees_seulement=False):
+    """NTTRE21 — Journal chronologique d'un ``CompteTresorerie``.
+
+    Liste, dans l'ordre, TOUS les mouvements du compte sur la période — quelle
+    que soit leur origine (virement interne, effet encaissé/payé, ligne de
+    campagne de règlement postée, écriture manuelle du compte 5xxx) — avec un
+    SOLDE COURANT recalculé ligne à ligne à partir du solde d'ouverture.
+
+    UNE SEULE source : les ``LigneEcriture`` du compte comptable de classe 5
+    rattaché. Chaque mouvement est ENRICHI de sa nature (``source_type`` de
+    l'écriture, cf. ``NATURES_JOURNAL_TRESORERIE``) plutôt que relu une
+    seconde fois depuis son modèle d'origine — deux lectures parallèles
+    (GL + effets + virements + campagnes) double-compteraient chaque mouvement
+    déjà posté, et le solde de clôture ne collerait plus au grand livre.
+
+    Par construction : ``solde_cloture`` == solde GL du compte à ``fin``
+    (``solde_initial`` du compte + mouvements GL jusqu'à cette date).
+
+    Renvoie ``{'compte', 'date_debut', 'date_fin', 'solde_ouverture',
+    'mouvements': [{'date', 'piece', 'journal', 'libelle', 'nature',
+    'debit', 'credit', 'solde'}], 'total_debit', 'total_credit',
+    'solde_cloture'}``. Lecture seule, scopée société.
+    """
+    debut = _as_date(debut)
+    fin = _as_date(fin)
+    compte_gl = compte.compte_comptable
+
+    # Solde d'OUVERTURE : solde initial du compte de trésorerie + tout le grand
+    # livre ANTÉRIEUR à ``debut`` (rien si la période est ouverte à gauche).
+    solde = compte.solde_initial or Decimal('0')
+    if debut is not None:
+        solde += solde_compte(
+            company, compte_gl, date_fin=debut - timedelta(days=1),
+            validees_seulement=validees_seulement)
+    solde_ouverture = solde
+
+    lignes = _lignes_qs(
+        company, date_debut=debut, date_fin=fin,
+        validees_seulement=validees_seulement,
+    ).filter(compte=compte_gl).order_by(
+        'ecriture__date_ecriture', 'ecriture_id', 'id')
+
+    mouvements = []
+    total_debit = Decimal('0')
+    total_credit = Decimal('0')
+    for ligne in lignes:
+        debit = ligne.debit or Decimal('0')
+        credit = ligne.credit or Decimal('0')
+        solde += debit - credit
+        total_debit += debit
+        total_credit += credit
+        ecriture = ligne.ecriture
+        source = ecriture.source_type or ''
+        mouvements.append({
+            'ligne_id': ligne.id,
+            'date': ecriture.date_ecriture,
+            'piece': ecriture.reference or f'#{ecriture.id}',
+            'journal': getattr(ecriture.journal, 'code', '') or '',
+            'libelle': ligne.libelle or ecriture.libelle or '',
+            'nature': NATURES_JOURNAL_TRESORERIE.get(source, source or 'Écriture'),
+            'source_type': source,
+            'source_id': ecriture.source_id,
+            'debit': debit,
+            'credit': credit,
+            'solde': solde,
+        })
+
+    return {
+        'compte': {
+            'id': compte.id,
+            'libelle': compte.libelle,
+            'banque': compte.banque,
+            'numero_compte': getattr(compte_gl, 'numero', ''),
+        },
+        'date_debut': debut,
+        'date_fin': fin,
+        'solde_ouverture': solde_ouverture,
+        'mouvements': mouvements,
+        'nb_mouvements': len(mouvements),
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'solde_cloture': solde,
+    }

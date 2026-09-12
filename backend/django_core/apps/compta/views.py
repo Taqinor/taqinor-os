@@ -940,6 +940,51 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             fin=params.get('fin') or None)
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='journal-tresorerie')
+    def journal_tresorerie(self, request):
+        """NTTRE21 — Journal chronologique d'un compte de trésorerie.
+
+        Query ``?compte=<id>`` (obligatoire), ``?debut=``/``?fin=`` et
+        ``?export=pdf``. Tous les mouvements du compte sur la période, quelle
+        que soit leur origine (virement interne, effet, campagne de règlement
+        postée, écriture manuelle), avec le solde courant ligne à ligne — le
+        solde de clôture est, par construction, le solde GL du compte à la date
+        de fin. Rendu WeasyPrint (document INTERNE ; le moteur de devis premium
+        n'est pas concerné). Le paramètre de sortie est ``export`` et non
+        ``format``, réservé par DRF. Lecture seule, scopée société.
+        """
+        params = request.query_params
+        compte_id = params.get('compte')
+        if not compte_id:
+            return Response(
+                {'compte': "Compte de trésorerie : paramètre obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        compte = CompteTresorerie.objects.filter(
+            company=request.user.company, pk=compte_id).first()
+        if compte is None:
+            return Response(
+                {'compte': 'Compte de trésorerie introuvable pour cette '
+                           'société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            data = selectors.journal_tresorerie(
+                request.user.company, compte,
+                params.get('debut') or None, params.get('fin') or None,
+                validees_seulement=params.get('validees') == '1')
+        except ValueError:
+            return Response(
+                {'detail': "Période invalide : 'debut' et 'fin' doivent être "
+                           'au format AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if params.get('export') == 'pdf':
+            from .pdf_etats import render_journal_tresorerie_pdf
+            result = self._pdf_or_503(lambda: render_journal_tresorerie_pdf(
+                data, self._company_profile(request)))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'journal_tresorerie.pdf')
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='situation-effets')
     def situation_effets(self, request):
         """NTTRE22 — Situation des effets en portefeuille (état imprimable).

@@ -204,6 +204,105 @@ class PrevisionnelXlsxTests(TestCase):
         self.assertEqual(self._feuille(resp.content).max_column, 5)
 
 
+class JournalTresorerieTests(TestCase):
+    """NTTRE21 — journal chronologique + solde de clôture = solde GL."""
+
+    def setUp(self):
+        self.co = make_company('nttre21', 'NTTRE21 Co')
+        services.seed_plan_comptable(self.co)
+        services.seed_journaux(self.co)
+        self.banque = CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE', banque='BMCE Bank', solde_initial=Decimal('1000'),
+            compte_comptable=services.get_compte(self.co, '5141'))
+        self.user = User.objects.create_user(
+            username='nttre21-user', password='x', company=self.co,
+            role_legacy='responsable')
+        self.api = auth(self.user)
+
+    def test_solde_de_cloture_egale_le_solde_gl_a_la_date_de_fin(self):
+        ecriture_banque(self.co, '300', date(2026, 2, 5))
+        ecriture_banque(self.co, '200', date(2026, 2, 20))
+        # Hors période : ne doit PAS entrer dans le journal de février.
+        ecriture_banque(self.co, '999', date(2026, 3, 3))
+
+        fin = date(2026, 2, 28)
+        data = selectors.journal_tresorerie(
+            self.co, self.banque, date(2026, 2, 1), fin)
+        solde_gl = (self.banque.solde_initial
+                    + selectors.solde_compte(
+                        self.co, self.banque.compte_comptable, date_fin=fin))
+        self.assertEqual(data['solde_cloture'], solde_gl)
+        self.assertEqual(data['solde_cloture'], Decimal('1500'))
+        self.assertEqual(data['nb_mouvements'], 2)
+
+    def test_solde_courant_recalcule_ligne_a_ligne(self):
+        ecriture_banque(self.co, '300', date(2026, 2, 5))
+        ecriture_banque(self.co, '200', date(2026, 2, 20))
+        data = selectors.journal_tresorerie(
+            self.co, self.banque, date(2026, 2, 1), date(2026, 2, 28))
+        self.assertEqual(data['solde_ouverture'], Decimal('1000'))
+        soldes = [m['solde'] for m in data['mouvements']]
+        self.assertEqual(soldes, [Decimal('1300'), Decimal('1500')])
+        self.assertEqual(data['total_debit'], Decimal('500'))
+        self.assertEqual(data['total_credit'], Decimal('0'))
+
+    def test_solde_ouverture_reprend_l_anteriorite(self):
+        ecriture_banque(self.co, '400', date(2026, 1, 10))
+        data = selectors.journal_tresorerie(
+            self.co, self.banque, date(2026, 2, 1), date(2026, 2, 28))
+        self.assertEqual(data['solde_ouverture'], Decimal('1400'))
+        self.assertEqual(data['nb_mouvements'], 0)
+        self.assertEqual(data['solde_cloture'], Decimal('1400'))
+
+    def test_nature_du_mouvement_nommee_depuis_la_source(self):
+        autre = CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.CAISSE,
+            libelle='Caisse', compte_comptable=services.get_compte(self.co, '5161'))
+        services.enregistrer_virement(
+            self.co, compte_source=self.banque, compte_destination=autre,
+            date_virement=date(2026, 2, 10), montant=Decimal('250'),
+            libelle='Alimentation caisse', poster=True)
+        data = selectors.journal_tresorerie(
+            self.co, self.banque, date(2026, 2, 1), date(2026, 2, 28))
+        natures = [m['nature'] for m in data['mouvements']]
+        self.assertIn('Virement interne', natures)
+
+    def test_html_imprimable_porte_les_soldes(self):
+        from apps.compta.pdf_etats import render_journal_tresorerie_html
+
+        ecriture_banque(self.co, '300', date(2026, 2, 5))
+        data = selectors.journal_tresorerie(
+            self.co, self.banque, date(2026, 2, 1), date(2026, 2, 28))
+        html = render_journal_tresorerie_html(
+            data, None, today=date(2026, 3, 1))
+        self.assertIn('Journal de trésorerie', html)
+        self.assertIn("Solde d'ouverture", html)
+        self.assertIn('Solde de clôture', html)
+        self.assertIn('1 300,00', html)
+
+    def test_endpoint_exige_un_compte_et_scope_la_societe(self):
+        sans_compte = self.api.get(
+            '/api/django/compta/etats/journal-tresorerie/')
+        self.assertEqual(sans_compte.status_code, 400)
+        self.assertIn('compte', sans_compte.data)
+
+        ok = self.api.get(
+            '/api/django/compta/etats/journal-tresorerie/'
+            f'?compte={self.banque.id}')
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.data['compte']['libelle'], 'BMCE')
+
+        autre = make_company('nttre21-b', 'NTTRE21 B')
+        user_b = User.objects.create_user(
+            username='nttre21-user-b', password='x', company=autre,
+            role_legacy='responsable')
+        cross = auth(user_b).get(
+            '/api/django/compta/etats/journal-tresorerie/'
+            f'?compte={self.banque.id}')
+        self.assertEqual(cross.status_code, 404)
+
+
 class QualiteRapprochementsTests(TestCase):
     """NTTRE20 — lignes restées non pointées à la clôture, mois par mois."""
 

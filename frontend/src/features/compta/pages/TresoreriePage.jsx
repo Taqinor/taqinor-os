@@ -17,6 +17,9 @@ import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// NTTRE21 — journal de trésorerie imprimable (carte autonome, hors `pages/`
+// pour ne pas gonfler cet écran déjà dense).
+import JournalTresorerieCard from '../components/JournalTresorerieCard.jsx'
 // WIR254 — l'analyse des frais bancaires réutilise le rendu générique
 // d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
 import { EtatRender } from './EtatsPage.jsx'
@@ -372,6 +375,11 @@ function PositionPanel() {
       </Card>
 
       <RibInvalidesCard />
+
+      {/* NTTRE21 — journal chronologique d'un compte + export PDF. Les comptes
+          déjà chargés par la position consolidée alimentent le sélecteur : pas
+          d'appel supplémentaire pour lister les comptes. */}
+      <JournalTresorerieCard comptes={comptes} />
 
       <QualiteRapprochementsCard />
 
