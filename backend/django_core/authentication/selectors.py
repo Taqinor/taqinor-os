@@ -143,6 +143,11 @@ def comptes_dormants(company, seuil_jours):
 _MOBILE_HOME_EXACT = {
     'Directeur': '/mobile/cockpit',
     'Administrateur': '/mobile/cockpit',
+    # VTA6 — le « Commercial terrain » n'a QUE l'app Visites (liste blanche
+    # `app_visites_voir`) : son accueil mobile est « Ma journée ». Entrée
+    # EXACTE, lue avant les préfixes — sans elle il retomberait sur le préfixe
+    # « Commercial » → `/mobile/commercial`, un écran qu'il ne voit pas.
+    'Commercial terrain': '/visites',
 }
 _MOBILE_HOME_PREFIX = (
     ('Technicien', '/ma-journee'),
@@ -171,4 +176,8 @@ def default_mobile_home_route(user):
 # Whitelist stricte des routes mobile persistables (défense en profondeur :
 # jamais une route arbitraire écrite depuis le corps de requête).
 MOBILE_HOME_ALLOWED_ROUTES = frozenset(
-    {'', '/ma-journee', '/mobile/commercial', '/mobile/cockpit'})
+    # VTA6 — `/visites` : l'accueil « Ma journée » de l'app Visites terrain.
+    # À NE PAS confondre avec `/ma-journee`, la journée des TECHNICIENS
+    # (post-vente), qui appartient à `apps.installations` — deux métiers, deux
+    # routes, jamais fusionnées.
+    {'', '/ma-journee', '/mobile/commercial', '/mobile/cockpit', '/visites'})

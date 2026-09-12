@@ -61,6 +61,10 @@ CATALOG = {
         'La conception 3D d\'un devis est finalisée (création depuis un '
         'calepinage ou resynchronisation réussie) — aucun statut ne bouge.',
         ['devis', 'user']),
+    'visite_validee': _e(
+        'Une visite technique terrain reçoit le feu vert du bureau '
+        'd\'études — aucun statut de funnel ne bouge.',
+        ['visite', 'lead_id', 'user', 'recap']),
     'devis_refused': _e(
         'Un devis passe à « refusé ».',
         ['devis', 'user', 'motif_refus', 'marquer_lead_perdu']),
