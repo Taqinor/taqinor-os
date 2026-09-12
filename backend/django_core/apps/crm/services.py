@@ -7024,51 +7024,39 @@ def journaliser_visite(visite, user, moment, detail=''):
         return None
 
 
-# ── VT3/VT12 — RETOUR DU FEU VERT SUR LA FICHE LEAD ──────────────────────────
+# ── VT3/VT12/VTA5 — RETOUR DU FEU VERT SUR LA FICHE LEAD ─────────────────────
 #
-# VTA3 — les DEUX transitions (``valider``/``renvoyer``) et la notification du
-# commercial ont déménagé dans ``apps.visites.services`` avec le reste du
-# module. Ce qui reste ICI est ce qui ÉCRIT SUR LE LEAD — donc du ressort du
-# CRM : le chatter (``journaliser_visite``, plus haut) et le retour du feu vert
-# sur la fiche. L'app visites les appelle en import PARESSEUX via ce module,
-# conformément à la frontière M3 (une écriture cross-app passe par le
-# ``services.py`` de l'app cible). VTA5 remplacera ces deux appels directs par
-# un abonnement à l'événement ``visite_validee`` du bus ``core.events``.
+# VTA5 — l'app ``visites`` n'appelle PLUS ce retour : elle ÉMET
+# ``visite_validee`` (bus ``core.events``) et c'est ``apps/crm/receivers.py``
+# qui s'abonne et appelle cette fonction avec le récap DÉJÀ calculé par le
+# selector de l'app visites. Le CRM n'a donc plus rien à recalculer, et
+# ``visites`` ne fait plus aucun écrit sur ``crm.Lead``.
 
 
-def ecrire_retour_lead_visite(visite):
+def ecrire_retour_lead_visite(lead, recap):
     """VT12 — le feu vert REDESCEND sur la fiche lead.
 
     Le lead est la fiche que tout le monde ouvre : après le feu vert, il porte
     lui-même ``visite_effectuee=True`` et un récap COURT dans ``visite_notes``
-    (uniquement des mesures RÉELLEMENT saisies — jamais un défaut inventé).
+    (uniquement des mesures RÉELLEMENT saisies — jamais un défaut inventé ;
+    c'est ``visites.selectors.recap_visite_terrain`` qui compose la phrase,
+    unique source de vérité, et elle arrive ici toute faite).
 
     Deux prudences : le récap est APPENDU (une note déjà écrite à la main n'est
     jamais écrasée) et il n'est écrit qu'une fois (une re-validation ne le
     duplique pas). Rien de tout ceci ne double le chatter : la note
     ``journaliser_visite(..., 'validee')`` reste l'unique trace d'historique.
-
-    VTA3 — PUBLIQUE (et non plus ``_``-préfixée) : depuis que la visite vit
-    dans ``apps.visites``, c'est le point d'entrée de service par lequel
-    l'app visites redescend le feu vert sur le lead (frontière M3 : une
-    écriture cross-app passe par le ``services.py`` de l'app CIBLE).
     """
-    # Frontière M3 : le récap est calculé par le selector de l'app
-    # VISITES (import paresseux), jamais par un modèle importé.
-    from apps.visites import selectors as visites_selectors
-
-    lead = visite.lead
     if lead is None:
         return None
-    recap = visites_selectors.recap_visite_terrain(visite)
     existantes = (lead.visite_notes or '').strip()
     champs = []
     if not lead.visite_effectuee:
         lead.visite_effectuee = True
         champs.append('visite_effectuee')
-    if recap not in existantes:
-        lead.visite_notes = f'{existantes}\n{recap}'.strip() if existantes \
-            else recap
+    if recap and recap not in existantes:
+        lead.visite_notes = (f'{existantes}\n{recap}'.strip()
+                             if existantes else recap)
         champs.append('visite_notes')
     if champs:
         lead.save(update_fields=champs)

@@ -9,12 +9,16 @@ action lui est demandée, avec le motif). Ces deux transitions ne portent
 AUCUN jugement automatisé : c'est un humain qui décide, le code se contente
 d'enregistrer sa décision et de la faire savoir.
 
-FRONTIÈRE M3 — tout ce qui ÉCRIT SUR LE LEAD (le chatter ``LeadActivity`` et
-le retour du feu vert sur la fiche) reste du ressort du CRM et passe par
-``apps.crm.services`` en import PARESSEUX ; cette app n'importe JAMAIS
-``apps.crm.models``. VTA5 remplacera ces appels directs par l'émission de
-l'événement ``visite_validee`` sur le bus ``core.events``, auquel le CRM
-s'abonnera dans son propre ``receivers.py``.
+FRONTIÈRE M3 — cette app n'importe JAMAIS ``apps.crm.models`` et n'écrit
+JAMAIS sur ``crm.Lead`` :
+
+* le FEU VERT est publié comme ÉVÉNEMENT ``visite_validee`` (bus
+  ``core.events``, M6) ; c'est ``apps.crm.receivers`` qui décide ce qu'il
+  inscrit sur la fiche lead. Le ``lead_id`` voyage en entier, le récap est
+  pré-calculé par le selector de cette app ;
+* le chatter des AUTRES moments (création / terminée / à refaire) passe par
+  ``journaliser_visite`` ci-dessous, qui délègue au ``services.py`` du CRM en
+  import paresseux — le journal d'un lead appartient au lead.
 """
 
 
@@ -28,24 +32,48 @@ def _notifier_commercial_visite(visite, event_type, titre, corps):
 
         return notify(
             destinataire, event_type, titre, body=corps,
-            link=f'/crm/visites/{visite.pk}', company=visite.company)
+            link=f'/visites/{visite.pk}', company=visite.company)
     except Exception:  # pragma: no cover - défensif
         return None
 
 
+def journaliser_visite(visite, user, moment, detail=''):
+    """Pose la note de chatter du ``moment`` sur le LEAD de la visite.
+
+    Le chatter d'un lead (``crm.LeadActivity``) est le journal COMMUN de tout
+    ce qui lui arrive : la visite y écrit ses moments plutôt que d'ouvrir un
+    second historique (la dette des 13 chatters hand-rollés). L'écriture
+    appartient donc au CRM et passe par SON ``services.py`` (frontière M3,
+    import paresseux) ; cette app n'importe jamais ``apps.crm.models``.
+
+    Best-effort côté CRM : un chatter indisponible ne fait jamais échouer la
+    transition métier qui vient d'aboutir.
+    """
+    from apps.crm import services as crm_services
+
+    return crm_services.journaliser_visite(visite, user, moment, detail=detail)
+
+
 def valider_visite(visite, user):
-    """Feu vert calepinage : la visite passe VALIDÉE et devient lecture seule."""
+    """Feu vert calepinage : la visite passe VALIDÉE et devient lecture seule.
+
+    VTA5 — le retour vers le lead se fait par ÉVÉNEMENT (``visite_validee``,
+    bus ``core.events``), plus par un appel direct : c'est ``apps.crm`` qui
+    décide, dans SON ``receivers.py``, ce qu'il inscrit sur la fiche. Le récap
+    est PRÉ-CALCULÉ ici (le selector de cette app en est la source de vérité)
+    et le ``lead_id`` voyage en ENTIER — l'app visites ne fait plus aucun écrit
+    sur ``crm.Lead``.
+    """
+    from core.events import visite_validee
+
+    from . import selectors
     from .models import VisiteTerrain
 
     visite.statut = VisiteTerrain.Statut.VALIDEE
     visite.save(update_fields=['statut'])
-    # Frontière M3 : les DEUX écritures qui touchent le LEAD passent par le
-    # ``services.py`` du CRM (imports paresseux). VTA5 les remplacera par
-    # l'événement ``visite_validee`` du bus ``core.events``.
-    from apps.crm import services as crm_services
-
-    crm_services.ecrire_retour_lead_visite(visite)
-    crm_services.journaliser_visite(visite, user, 'validee')
+    visite_validee.send(
+        sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
+        user=user, recap=selectors.recap_visite_terrain(visite))
     _notifier_commercial_visite(
         visite, 'visite_terrain_validee',
         'Visite technique validée',
@@ -102,10 +130,7 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
     visite.statut = VisiteTerrain.Statut.A_REFAIRE
     champs = ['statut', 'mesures'] if touchee else ['statut']
     visite.save(update_fields=champs)
-    from apps.crm import services as crm_services
-
-    crm_services.journaliser_visite(
-        visite, user, 'a_refaire', detail=f'Motif : {motif}')
+    journaliser_visite(visite, user, 'a_refaire', detail=f'Motif : {motif}')
     _notifier_commercial_visite(
         visite, 'visite_terrain_a_refaire',
         'Visite technique à refaire',
