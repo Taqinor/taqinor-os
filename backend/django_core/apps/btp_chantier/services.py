@@ -397,8 +397,14 @@ def _resoudre_budget_projet_id(chantier):
 
     try:
         ProjetChantier = django_apps.get_model('gestion_projet', 'ProjetChantier')
+        # CHT1 — défense en profondeur : ``chantier_id`` est une référence
+        # LÂCHE (aucun FK, aucune contrainte de base). Même si une ligne a été
+        # écrite hors sérialiseur (migration de données, écriture directe,
+        # ligne plantée par une AUTRE société sur un id devinable), le budget
+        # impacté par l'avenant ne doit JAMAIS être celui d'une autre société.
         pc = ProjetChantier.objects.filter(
-            chantier_id=chantier.pk).select_related('projet').first()
+            chantier_id=chantier.pk,
+            company=chantier.company).select_related('projet').first()
         if pc is None:
             return None
         from apps.gestion_projet.selectors import budget_effectif
