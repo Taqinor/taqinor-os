@@ -20,6 +20,7 @@ from django.conf import settings
 from django.db import models
 
 from core.crypto_fields import EncryptedCharField
+from core.models import TenantModel
 
 
 class Departement(models.Model):
@@ -6330,7 +6331,7 @@ class PlanAppreciation(models.Model):
 
 # ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
 
-class CycleRevisionSalariale(models.Model):
+class CycleRevisionSalariale(TenantModel):
     """NTHCM5 — CAMPAGNE de révision salariale d'une période.
 
     ``GrilleSalariale`` (XRH16) définit les BANDES, mais rien ne pilotait la
@@ -6340,7 +6341,9 @@ class CycleRevisionSalariale(models.Model):
     suit le déroulé brouillon → ouvert → calibration → clos.
 
     Donnée paie SENSIBLE : toutes ses vues sont gatées ``salaires_voir``.
-    Multi-société : ``company`` posée CÔTÉ SERVEUR.
+    Multi-société : ``company`` posée CÔTÉ SERVEUR — héritée du socle
+    ``core.models.TenantModel`` (SCA4), aucun accesseur historique à
+    préserver (modèle neuf).
     """
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
@@ -6348,12 +6351,6 @@ class CycleRevisionSalariale(models.Model):
         CALIBRATION = 'calibration', 'Calibration'
         CLOS = 'clos', 'Clos'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un cycle de révision n'a aucun sens hors de sa société (même politique que toutes les tables RH company-scopées)
-        related_name='rh_cycles_revision',
-        verbose_name='Société',
-    )
     libelle = models.CharField(max_length=200, verbose_name='Libellé')
     periode = models.CharField(
         max_length=20, blank=True, default='', verbose_name='Période')
@@ -6373,13 +6370,11 @@ class CycleRevisionSalariale(models.Model):
     # (aucune date inventée dans le futur).
     date_effet = models.DateField(
         null=True, blank=True, verbose_name="Date d'effet des révisions")
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Cycle de révision salariale'
         verbose_name_plural = 'Cycles de révision salariale'
-        ordering = ['-date_creation']
+        ordering = ['-created_at']
         indexes = [
             models.Index(
                 fields=['company', 'statut'],
@@ -6391,7 +6386,7 @@ class CycleRevisionSalariale(models.Model):
             else self.libelle
 
 
-class EnveloppeManager(models.Model):
+class EnveloppeManager(TenantModel):
     """NTHCM5 — enveloppe d'augmentation allouée à UN manager sur un cycle.
 
     ``enveloppe_pct`` est le total de points de pourcentage que le manager
@@ -6399,13 +6394,10 @@ class EnveloppeManager(models.Model):
     NTHCM1) sur ce cycle : la somme des ``augmentation_pct_proposee`` de ses
     ``PropositionRevision`` ne peut pas le dépasser (garde bloquante dans
     ``services.proposer_revision``).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une enveloppe n'a aucun sens hors de sa société
-        related_name='rh_enveloppes_manager',
-        verbose_name='Société',
-    )
     cycle = models.ForeignKey(
         CycleRevisionSalariale,
         on_delete=models.CASCADE,  # on_delete: composition — une enveloppe n'existe QUE dans son cycle, supprimer le cycle supprime ses enveloppes
@@ -6421,8 +6413,6 @@ class EnveloppeManager(models.Model):
     enveloppe_pct = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('0'),
         verbose_name='Enveloppe allouée (%)')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Enveloppe manager'
@@ -6438,7 +6428,7 @@ class EnveloppeManager(models.Model):
         return f'{self.manager} — {self.enveloppe_pct} %'
 
 
-class PropositionRevision(models.Model):
+class PropositionRevision(TenantModel):
     """NTHCM5 — proposition d'augmentation d'UN employé sur un cycle.
 
     ``salaire_actuel`` est un SNAPSHOT posé à la création (dernière
@@ -6447,18 +6437,14 @@ class PropositionRevision(models.Model):
     (``salaire_actuel × pct / 100``), jamais lu du corps de requête, et
     ``propose_par`` est toujours l'utilisateur de la requête.
 
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
     class Statut(models.TextChoices):
         PROPOSEE = 'proposee', 'Proposée'
         APPROUVEE = 'approuvee', 'Approuvée'
         REJETEE = 'rejetee', 'Rejetée'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une proposition n'a aucun sens hors de sa société
-        related_name='rh_propositions_revision',
-        verbose_name='Société',
-    )
     cycle = models.ForeignKey(
         CycleRevisionSalariale,
         on_delete=models.CASCADE,  # on_delete: composition — une proposition n'existe QUE dans son cycle ; la trace durable d'une révision APPLIQUÉE vit dans `Remuneration` (NTHCM7), jamais ici
@@ -6498,8 +6484,6 @@ class PropositionRevision(models.Model):
         default=False, verbose_name='Appliquée')
     date_application = models.DateTimeField(
         null=True, blank=True, verbose_name="Date d'application")
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Proposition de révision'
@@ -6541,20 +6525,17 @@ def progression_key_result(valeur_actuelle, valeur_cible):
     return pct.quantize(Decimal('0.01'))
 
 
-class ObjectifEntreprise(models.Model):
+class ObjectifEntreprise(TenantModel):
     """NTHCM8 — objectif d'ENTREPRISE d'une période (cycle OKR trimestriel).
 
     Distinct de ``ObjectifIndividuel`` (FG190), qui est un objectif posé à
     l'ENTRETIEN annuel : ici on modélise le cycle OKR continu (Workday/
     Lattice), avec ses ``KeyResult`` mesurables et des ``OkrIndividuel``
     éventuellement rattachés (cascade TOUJOURS optionnelle).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un objectif d'entreprise n'a aucun sens hors de sa société
-        related_name='rh_objectifs_entreprise',
-        verbose_name='Société',
-    )
     titre = models.CharField(max_length=200, verbose_name='Titre')
     periode = models.CharField(
         max_length=20, blank=True, default='', verbose_name='Période')
@@ -6567,8 +6548,6 @@ class ObjectifEntreprise(models.Model):
         related_name='objectifs_entreprise',
         verbose_name='Propriétaire',
     )
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = "Objectif d'entreprise"
@@ -6584,14 +6563,12 @@ class ObjectifEntreprise(models.Model):
         return f'{self.titre} ({self.periode})' if self.periode else self.titre
 
 
-class KeyResult(models.Model):
-    """NTHCM8 — résultat clé mesurable d'un ``ObjectifEntreprise``."""
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un key result n'a aucun sens hors de sa société
-        related_name='rh_key_results',
-        verbose_name='Société',
-    )
+class KeyResult(TenantModel):
+    """NTHCM8 — résultat clé mesurable d'un ``ObjectifEntreprise``.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
     objectif = models.ForeignKey(
         ObjectifEntreprise,
         on_delete=models.CASCADE,  # on_delete: composition — un key result n'existe QUE dans son objectif
@@ -6607,8 +6584,6 @@ class KeyResult(models.Model):
         verbose_name='Valeur actuelle')
     unite = models.CharField(
         max_length=40, blank=True, default='', verbose_name='Unité')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Résultat clé'
@@ -6624,20 +6599,17 @@ class KeyResult(models.Model):
         return self.libelle
 
 
-class OkrIndividuel(models.Model):
+class OkrIndividuel(TenantModel):
     """NTHCM8 — OKR d'un employé sur une période.
 
     ``objectif_parent`` est NULLABLE : la cascade vers un objectif
     d'entreprise est TOUJOURS optionnelle (un OKR purement individuel reste
     parfaitement valide). Rattaché, l'OKR alimentera le rollup de son parent
     (NTHCM9).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un OKR individuel n'a aucun sens hors de sa société
-        related_name='rh_okr_individuels',
-        verbose_name='Société',
-    )
     employe = models.ForeignKey(
         DossierEmploye,
         on_delete=models.CASCADE,  # on_delete: l'OKR n'a plus d'objet sans son employé ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
@@ -6654,8 +6626,6 @@ class OkrIndividuel(models.Model):
         related_name='okr_rattaches',
         verbose_name="Objectif d'entreprise (optionnel)",
     )
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'OKR individuel'
@@ -6682,19 +6652,16 @@ class OkrIndividuel(models.Model):
         return f'{self.titre} — {self.employe}'
 
 
-class KeyResultIndividuel(models.Model):
+class KeyResultIndividuel(TenantModel):
     """NTHCM8 — résultat clé mesurable d'un ``OkrIndividuel``.
 
     ``progression_pct`` est CALCULÉE côté serveur à chaque sauvegarde
     (``valeur_actuelle / valeur_cible``, bornée 0-100) et stockée pour rester
     filtrable/agrégeable — jamais lue du corps de requête.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un key result individuel n'a aucun sens hors de sa société
-        related_name='rh_key_results_individuels',
-        verbose_name='Société',
-    )
     okr = models.ForeignKey(
         OkrIndividuel,
         on_delete=models.CASCADE,  # on_delete: composition — un key result n'existe QUE dans son OKR
@@ -6713,8 +6680,6 @@ class KeyResultIndividuel(models.Model):
     progression_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('0'),
         verbose_name='Progression (%)')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Résultat clé individuel'
@@ -6755,13 +6720,16 @@ def case_neuf_box(axe_performance, axe_potentiel):
     return (pot - 1) * 3 + perf
 
 
-class EvaluationNeufBox(models.Model):
+class EvaluationNeufBox(TenantModel):
     """NTHCM10 — positionnement d'un employé sur la grille 9-box.
 
     Croise la PERFORMANCE (dérivable de ``EvaluationEmploye.note_globale``
     mais saisissable à la main) et le POTENTIEL (jugement du manager/RH, non
     dérivable). ``case_calculee`` est posée CÔTÉ SERVEUR depuis les deux axes
     (:func:`case_neuf_box`) et ``evalue_par`` vient toujours de la requête.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
     class Performance(models.IntegerChoices):
         FAIBLE = 1, 'Faible'
@@ -6773,12 +6741,6 @@ class EvaluationNeufBox(models.Model):
         MODERE = 2, 'Modéré'
         ELEVE = 3, 'Élevé'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un positionnement 9-box n'a aucun sens hors de sa société
-        related_name='rh_evaluations_neuf_box',
-        verbose_name='Société',
-    )
     employe = models.ForeignKey(
         DossierEmploye,
         on_delete=models.CASCADE,  # on_delete: le positionnement n'a plus d'objet sans son employé ; le dossier porteur de pièces légales est lui-même non supprimable (AUD721)
@@ -6809,8 +6771,6 @@ class EvaluationNeufBox(models.Model):
         related_name='evaluations_neuf_box',
         verbose_name='Évalué par',
     )
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Évaluation 9-box'
@@ -6852,13 +6812,16 @@ class EvaluationNeufBox(models.Model):
 
 # ── NTHCM12 — plans de succession par poste-clé ─────────────────────────────
 
-class PosteCle(models.Model):
+class PosteCle(TenantModel):
     """NTHCM12 — poste marqué CRITIQUE par le RH (jamais automatiquement).
 
     La criticité d'un poste est un JUGEMENT (perte de savoir-faire, unicité
     de l'habilitation, exposition client) : elle est saisie explicitement,
     jamais déduite d'un effectif ou d'un salaire. Un poste non marqué n'est
     tout simplement pas un poste-clé.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
     class Criticite(models.TextChoices):
         FAIBLE = 'faible', 'Faible'
@@ -6866,12 +6829,6 @@ class PosteCle(models.Model):
         HAUTE = 'haute', 'Haute'
         CRITIQUE = 'critique', 'Critique'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un poste-clé n'a aucun sens hors de sa société
-        related_name='rh_postes_cles',
-        verbose_name='Société',
-    )
     poste = models.ForeignKey(
         Poste,
         on_delete=models.CASCADE,  # on_delete: le marquage n'a plus d'objet sans le poste de référence qu'il qualifie
@@ -6883,8 +6840,6 @@ class PosteCle(models.Model):
         default=Criticite.MOYENNE, verbose_name='Criticité')
     justification = models.TextField(
         blank=True, default='', verbose_name='Justification')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Poste-clé'
@@ -6900,13 +6855,16 @@ class PosteCle(models.Model):
         return f'{self.poste} — {self.get_criticite_display()}'
 
 
-class PlanSuccession(models.Model):
+class PlanSuccession(TenantModel):
     """NTHCM12 — successeur identifié pour un poste-clé, avec sa readiness.
 
     ``readiness`` dit QUAND le successeur serait opérationnel
     (``pret_immediat`` / ``pret_1an`` / ``pret_3ans``) — c'est la donnée que
     NTHCM13 croise avec le risque d'attrition du titulaire. Un poste-clé sans
     aucune ligne est un « poste orphelin » signalé par la couverture.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
     class Rang(models.TextChoices):
         PREMIER = 'premier', '1er choix'
@@ -6918,12 +6876,6 @@ class PlanSuccession(models.Model):
         PRET_1AN = 'pret_1an', 'Prêt sous 1 an'
         PRET_3ANS = 'pret_3ans', 'Prêt sous 3 ans'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un plan de succession n'a aucun sens hors de sa société
-        related_name='rh_plans_succession',
-        verbose_name='Société',
-    )
     poste_cle = models.ForeignKey(
         PosteCle,
         on_delete=models.CASCADE,  # on_delete: composition — un plan de succession n'existe QUE pour son poste-clé
@@ -6944,8 +6896,6 @@ class PlanSuccession(models.Model):
         default=Readiness.PRET_1AN, verbose_name='Readiness')
     plan_developpement = models.TextField(
         blank=True, default='', verbose_name='Plan de développement')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Plan de succession'
@@ -6980,7 +6930,7 @@ def hash_participation_enquete(user_id, enquete_id):
     ).hexdigest()
 
 
-class EnqueteEngagement(models.Model):
+class EnqueteEngagement(TenantModel):
     """NTHCM14 — enquête d'engagement MULTI-questions, par catégorie.
 
     ``CampagnePulse`` (XRH32) ne porte qu'UNE question eNPS. Ici, ``questions``
@@ -6992,16 +6942,13 @@ class EnqueteEngagement(models.Model):
     ``anonyme`` (défaut ``True``) décide du MODE : anonyme ⇒ la réponse ne peut
     structurellement pas être reliée au votant (voir ``ReponseEnquete``) ;
     nominatif ⇒ la FK ``employe`` est autorisée (sondage RH ciblé assumé).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
     #: Types de question acceptés (le vocabulaire est fermé côté serveur).
     TYPES_QUESTION = ('note1_5', 'choix', 'texte_libre')
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une enquête n'a aucun sens hors de sa société
-        related_name='rh_enquetes_engagement',
-        verbose_name='Société',
-    )
     titre = models.CharField(max_length=200, verbose_name='Titre')
     questions = models.JSONField(
         blank=True, default=list, verbose_name='Questions')
@@ -7011,13 +6958,11 @@ class EnqueteEngagement(models.Model):
         null=True, blank=True, verbose_name='Date de fin')
     anonyme = models.BooleanField(
         default=True, verbose_name='Anonyme')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = "Enquête d'engagement"
         verbose_name_plural = "Enquêtes d'engagement"
-        ordering = ['-date_creation']
+        ordering = ['-created_at']
 
     def clean(self):
         """Vocabulaire FERMÉ : chaque question porte un ``type`` connu.
@@ -7048,7 +6993,7 @@ class EnqueteEngagement(models.Model):
         return self.titre
 
 
-class ReponseEnquete(models.Model):
+class ReponseEnquete(TenantModel):
     """NTHCM14 — réponse à une enquête d'engagement.
 
     GARDE-FOU D'ANONYMAT, deux étages :
@@ -7063,13 +7008,10 @@ class ReponseEnquete(models.Model):
 
     Une enquête NOMINATIVE (``anonyme=False``) garde, elle, la FK ``employe``
     classique — c'est le mode sondage RH ciblé, assumé.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une réponse d'enquête n'a aucun sens hors de sa société
-        related_name='rh_reponses_enquete',
-        verbose_name='Société',
-    )
     enquete = models.ForeignKey(
         EnqueteEngagement,
         on_delete=models.CASCADE,  # on_delete: composition — une réponse n'existe QUE dans son enquête
@@ -7088,13 +7030,11 @@ class ReponseEnquete(models.Model):
     )
     reponses = models.JSONField(
         blank=True, default=dict, verbose_name='Réponses')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = "Réponse d'enquête"
         verbose_name_plural = "Réponses d'enquête"
-        ordering = ['-date_creation']
+        ordering = ['-created_at']
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(anonyme=False) | models.Q(
@@ -7111,19 +7051,16 @@ class ReponseEnquete(models.Model):
         return f"Réponse — enquête {self.enquete_id}"
 
 
-class ParticipationEnquete(models.Model):
+class ParticipationEnquete(TenantModel):
     """NTHCM14 — jeton de participation à une enquête (anti double-réponse).
 
     Une ligne par (``enquete``, ``user``) — l'unicité EST le mécanisme, dans
     les DEUX modes (anonyme ET nominatif). Ce modèle n'a AUCUN lien vers
     ``ReponseEnquete`` : on sait QUI a répondu, jamais CE QU'IL A RÉPONDU.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un jeton de participation n'a aucun sens hors de sa société
-        related_name='rh_participations_enquete',
-        verbose_name='Société',
-    )
     enquete = models.ForeignKey(
         EnqueteEngagement,
         on_delete=models.CASCADE,  # on_delete: composition — le jeton n'existe QUE pour son enquête
@@ -7138,8 +7075,6 @@ class ParticipationEnquete(models.Model):
     )
     token_hash = models.CharField(
         max_length=64, verbose_name='Jeton (empreinte)')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Participation enquête'
@@ -7156,24 +7091,21 @@ class ParticipationEnquete(models.Model):
 
 # ── NTHCM15 — plans d'action issus d'une enquête d'engagement ───────────────
 
-class PlanActionEngagement(models.Model):
+class PlanActionEngagement(TenantModel):
     """NTHCM15 — action de suivi ASSIGNÉE, née d'un score faible.
 
     Transforme un résultat d'enquête (``categorie_ciblee``) en engagement
     concret : une action, un responsable, une échéance et un statut. C'est
     ce qui empêche l'enquête de rester un tableau de bord sans suite.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
     """
     class Statut(models.TextChoices):
         PROPOSE = 'propose', 'Proposé'
         EN_COURS = 'en_cours', 'En cours'
         TERMINE = 'termine', 'Terminé'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un plan d'action n'a aucun sens hors de sa société
-        related_name='rh_plans_action_engagement',
-        verbose_name='Société',
-    )
     enquete = models.ForeignKey(
         EnqueteEngagement,
         on_delete=models.CASCADE,  # on_delete: composition — le plan d'action est le prolongement direct de son enquête
@@ -7196,13 +7128,11 @@ class PlanActionEngagement(models.Model):
     statut = models.CharField(
         max_length=10, choices=Statut.choices,
         default=Statut.PROPOSE, verbose_name='Statut')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = "Plan d'action engagement"
         verbose_name_plural = "Plans d'action engagement"
-        ordering = ['echeance', 'date_creation']
+        ordering = ['echeance', 'created_at']
         indexes = [
             models.Index(
                 fields=['company', 'enquete'],

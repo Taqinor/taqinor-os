@@ -27,11 +27,12 @@ class Migration(migrations.Migration):
                     verbose_name='Criticité')),
                 ('justification', models.TextField(
                     blank=True, default='', verbose_name='Justification')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_postes_cles',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('poste', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -63,11 +64,12 @@ class Migration(migrations.Migration):
                 ('plan_developpement', models.TextField(
                     blank=True, default='',
                     verbose_name='Plan de développement')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_plans_succession',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('poste_cle', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

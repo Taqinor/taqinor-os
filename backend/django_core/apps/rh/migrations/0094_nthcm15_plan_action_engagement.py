@@ -31,11 +31,12 @@ class Migration(migrations.Migration):
                              ('termine', 'Terminé')],
                     default='propose', max_length=10,
                     verbose_name='Statut')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_plans_action_engagement',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('enquete', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -50,7 +51,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': "Plan d'action engagement",
                 'verbose_name_plural': "Plans d'action engagement",
-                'ordering': ['echeance', 'date_creation'],
+                'ordering': ['echeance', 'created_at'],
             },
         ),
         migrations.AddIndex(

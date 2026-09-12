@@ -31,8 +31,9 @@ class Migration(migrations.Migration):
                     default=5, verbose_name='Case (1-9)')),
                 ('notes', models.TextField(
                     blank=True, default='', verbose_name='Notes')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('campagne', models.ForeignKey(
                     blank=True, null=True,
                     on_delete=django.db.models.deletion.SET_NULL,
@@ -41,7 +42,7 @@ class Migration(migrations.Migration):
                     verbose_name="Campagne d'évaluation")),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_evaluations_neuf_box',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('employe', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
