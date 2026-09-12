@@ -3589,9 +3589,138 @@ def _evenements_cerentonie(demande):
         (e for e in evenements if e[1] is not None), key=lambda e: e[1])
 
 
+def empreinte_certificat(demande):
+    """NTDOC10 — Empreinte SHA-256 DÉTERMINISTE du certificat de complétion.
+
+    Un PDF ne peut pas contenir le hash de ses propres octets : l'empreinte est
+    donc calculée sur les DONNÉES du certificat (demande, document, hash du
+    contenu signé, statut, horodatage de signature, liste ordonnée des
+    signataires). Elle est stable et recalculable côté serveur — c'est ce qui
+    permet de vérifier l'intégrité sans stocker ni ré-exposer le document.
+
+    Ne lève jamais : une lecture qui échoue dégrade en chaîne vide sur la part
+    concernée, l'empreinte reste calculable."""
+    document = demande.document
+    date_signature = getattr(demande, 'date_signature', None)
+    parties = [
+        f'demande:{demande.pk}',
+        f'document:{getattr(document, "pk", "")}',
+        f'hash_document:{demande.hash_contenu or ""}',
+        f'statut:{demande.statut}',
+        f'signature:{date_signature.isoformat() if date_signature else ""}',
+    ]
+    try:
+        for s in demande.signataires.all().order_by('ordre', 'pk'):
+            parties.append(
+                f'signataire:{s.pk}:{s.nom}:{s.email or ""}:{s.statut}')
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+    return hashlib.sha256('|'.join(parties).encode('utf-8')).hexdigest()
+
+
+def memoriser_empreinte_certificat(demande):
+    """NTDOC10 — Calcule l'empreinte et la mémorise sur la demande.
+
+    Écriture ciblée (`queryset.update`) : ne touche aucun autre champ et ne
+    déclenche aucun effet de bord de `save()`. Idempotente. Renvoie
+    l'empreinte."""
+    empreinte = empreinte_certificat(demande)
+    if getattr(demande, 'empreinte_certificat', '') != empreinte:
+        from .models import DemandeSignatureDocument
+        DemandeSignatureDocument.objects.filter(pk=demande.pk).update(
+            empreinte_certificat=empreinte)
+        demande.empreinte_certificat = empreinte
+    return empreinte
+
+
+def url_verification_certificat(empreinte):
+    """NTDOC10 — URL publique de vérification d'une empreinte de certificat.
+
+    Absolue si `PUBLIC_SITE_URL` est posée (LE réglage de base publique du
+    projet, réutilisé tel quel — on n'en invente pas un second), relative
+    sinon."""
+    from django.conf import settings
+    base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    chemin = f'/api/django/ged/verifier-certificat/{empreinte}/'
+    return f'{base}{chemin}' if base else chemin
+
+
+def qr_verification_certificat(empreinte):
+    """NTDOC10 — QR code (PNG bytes) de l'URL de vérification, ou None.
+
+    Réutilise `qrcode`, déjà pinné et déjà employé ailleurs (QHSE XQHS16,
+    moteur de devis) — aucune dépendance nouvelle. Import paresseux : si la lib
+    venait à manquer, le certificat se rend simplement SANS QR (le hash reste
+    imprimé, la vérification reste possible à la main)."""
+    try:
+        import qrcode
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return None
+    import io
+    try:
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=4, border=2)
+        qr.add_data(url_verification_certificat(empreinte))
+        qr.make(fit=True)
+        tampon = io.BytesIO()
+        qr.make_image().save(tampon, 'PNG')
+        return tampon.getvalue()
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return None
+
+
+def _qr_verification_data_uri(empreinte):
+    """NTDOC10 — QR encodé en data-URI pour l'embarquer dans le HTML du
+    certificat (aucune ressource externe : WeasyPrint n'a rien à aller
+    chercher). Chaîne vide si le QR n'a pas pu être produit."""
+    png = qr_verification_certificat(empreinte)
+    if not png:
+        return ''
+    import base64
+    return 'data:image/png;base64,' + base64.b64encode(png).decode('ascii')
+
+
+def verifier_empreinte_certificat(empreinte):
+    """NTDOC10 — Résout une empreinte de certificat (vérification PUBLIQUE).
+
+    Renvoie un dict de métadonnées de VÉRIFICATION (jamais le contenu ni le nom
+    du document, jamais l'identité d'un signataire) si l'empreinte correspond à
+    une demande dont le certificat est toujours intègre, sinon None.
+
+    L'intégrité est re-CALCULÉE au moment de la vérification : si la demande a
+    changé depuis l'émission du certificat, l'empreinte recalculée diffère et
+    la vérification échoue — c'est exactement ce qu'on veut vérifier."""
+    from .models import DemandeSignatureDocument
+
+    empreinte = (empreinte or '').strip().lower()
+    if not empreinte or len(empreinte) != 64:
+        return None
+    demande = (DemandeSignatureDocument.objects
+               .select_related('document')
+               .filter(empreinte_certificat=empreinte)
+               .first())
+    if demande is None:
+        return None
+    if empreinte_certificat(demande) != empreinte:
+        return None
+    return {
+        'integre': True,
+        'type': 'certificat_completion',
+        'statut': demande.statut,
+        'date_signature': demande.date_signature,
+        'nombre_signataires': demande.signataires.count() or 1,
+        'hash_document': demande.hash_contenu or '',
+    }
+
+
 def _certificat_html(demande):
     """XGED4 — HTML du certificat de complétion (squelette imprimable minimal,
-    même esprit que `_modele_html_document` GED27 — jamais `/proposal`)."""
+    même esprit que `_modele_html_document` GED27 — jamais `/proposal`).
+
+    NTDOC10 — le pied de page imprime LISIBLEMENT le hash SHA-256 du document
+    signé ET l'empreinte du certificat lui-même, plus un QR code renvoyant vers
+    l'endpoint public de vérification."""
     document = demande.document
     signataires = list(demande.signataires.all())
     lignes_signataires = ''.join(
@@ -3608,6 +3737,31 @@ def _certificat_html(demande):
         for libelle, quand in _evenements_cerentonie(demande)
     )
     geoloc = getattr(demande, 'geolocalisation', '') or 'Non transmise'
+    # NTDOC10 — pied de page d'intégrité : les deux empreintes en clair + QR.
+    empreinte = memoriser_empreinte_certificat(demande)
+    qr_uri = _qr_verification_data_uri(empreinte)
+    qr_html = (
+        f"<img class='qr' src='{qr_uri}' alt='QR de vérification'/>"
+        if qr_uri else
+        "<span class='mono'>QR indisponible — vérification à la main</span>"
+    )
+    pied_integrite = (
+        "<div class='integrite'>"
+        "<h2>Empreintes d'intégrité</h2>"
+        "<table>"
+        "<tr><th>Document signé (SHA-256)</th>"
+        f"<td class='mono'>{demande.hash_contenu or 'Non calculé'}</td></tr>"
+        "<tr><th>Certificat (SHA-256)</th>"
+        f"<td class='mono'>{empreinte}</td></tr>"
+        "<tr><th>Vérification en ligne</th>"
+        f"<td class='mono'>{url_verification_certificat(empreinte)}</td></tr>"
+        "</table>"
+        f"<p>{qr_html}</p>"
+        "<p class='note'>Scannez ce QR (ou ouvrez l'adresse ci-dessus) pour "
+        "confirmer que ce certificat est authentique. La vérification ne "
+        "révèle jamais le contenu du document.</p>"
+        "</div>"
+    )
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         "<style>"
@@ -3616,6 +3770,11 @@ def _certificat_html(demande):
         "h1{font-size:15pt;border-bottom:2px solid #2b5cab;padding-bottom:6px;}"
         "table{width:100%;border-collapse:collapse;margin:10px 0;}"
         "td,th{border:1px solid #ccc;padding:4px 8px;text-align:left;}"
+        ".integrite{margin-top:18px;border-top:1px solid #2b5cab;"
+        "padding-top:8px;}"
+        ".mono{font-family:monospace;font-size:8pt;word-break:break-all;}"
+        ".qr{width:96px;height:96px;}"
+        ".note{font-size:8pt;color:#555;}"
         "</style></head><body>"
         "<h1>Certificat de complétion de signature électronique</h1>"
         f"<p><strong>Document :</strong> {document.nom}</p>"
@@ -3625,13 +3784,12 @@ def _certificat_html(demande):
         f"<p><strong>Géolocalisation :</strong> {geoloc}</p>"
         f"<p><strong>Méthode :</strong> "
         f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>"
-        f"<p><strong>Hash du document signé (SHA-256) :</strong> "
-        f"{demande.hash_contenu or 'Non calculé'}</p>"
         "<h2>Signataires</h2>"
         f"<table><tr><th>Nom</th><th>Email</th><th>Rôle</th>"
         f"<th>Statut</th></tr>{lignes_signataires}</table>"
         "<h2>Séquence des événements</h2>"
         f"<ul>{evenements_html}</ul>"
+        f"{pied_integrite}"
         "</body></html>"
     )
 

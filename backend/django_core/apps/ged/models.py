@@ -1723,6 +1723,14 @@ class DemandeSignatureDocument(models.Model):
     hash_contenu = models.CharField(
         max_length=64, blank=True, default='',
         verbose_name='hash du contenu signé (SHA-256)')
+    # NTDOC10 — empreinte SHA-256 DÉTERMINISTE du certificat de complétion
+    # (calculée sur les données du certificat, pas sur ses octets PDF : un PDF
+    # ne peut pas contenir son propre hash). Mémorisée à la génération pour que
+    # l'endpoint public de vérification retrouve la demande par son empreinte
+    # sans balayer la base. Vide tant qu'aucun certificat n'a été rendu.
+    empreinte_certificat = models.CharField(
+        max_length=64, blank=True, default='', db_index=True,
+        verbose_name='empreinte du certificat (SHA-256)')
     # Signature tapée (nom) ET/OU tracée (pattern FG69 `signature_client` —
     # data-URL/vecteur base64 d'un tracé). Au moins l'un des deux est requis
     # pour signer (garde côté service). Jamais lues du corps après signature.

@@ -18,7 +18,7 @@ from .views import (
     TamponSocieteViewSet, TypeChampSignatureViewSet,
     ValidationOcrDocumentViewSet, VueGedEnregistreeViewSet,
     analytique_ged, mes_favoris, mes_recents, public_depot, public_partage,
-    public_signataire, public_signature,
+    public_signataire, public_signature, verifier_certificat,
 )
 
 router = DefaultRouter()
@@ -76,6 +76,11 @@ urlpatterns = [
     # (jeton propre au signataire, distinct du jeton de la demande globale).
     path('signataire/<str:token>/', public_signataire,
          name='ged-public-signataire'),
+    # NTDOC10 — vérification PUBLIQUE en lecture seule d'une empreinte de
+    # certificat de complétion (QR du certificat). Déclarée avant le routeur,
+    # même précaution que les autres routes publiques.
+    path('verifier-certificat/<str:empreinte>/', verifier_certificat,
+         name='ged-verifier-certificat'),
     # XGED26 — analytique workflow & signature (authentifié, gestion/admin).
     # Déclaré avant le routeur pour ne pas être capté par une route de detail
     # DRF (ex. un futur `<pk>/`) — même précaution que les routes publiques.

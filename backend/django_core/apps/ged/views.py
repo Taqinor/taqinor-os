@@ -4180,6 +4180,49 @@ def public_signature(request, token):
         status=status.HTTP_400_BAD_REQUEST)), document=demande.document)
 
 
+class PublicVerificationCertificatThrottle(SimpleRateThrottle):
+    """NTDOC10 — Débit de l'endpoint PUBLIC de vérification de certificat.
+
+    Lecture seule et sans secret réutilisable (l'empreinte est publiée sur le
+    certificat lui-même), mais on borne quand même le balayage d'empreintes."""
+    scope = 'public_ged_verif_certificat'
+    rate = '60/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request)}
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicVerificationCertificatThrottle])
+def verifier_certificat(request, empreinte):
+    """NTDOC10 — Vérifie PUBLIQUEMENT l'intégrité d'un certificat de complétion.
+
+    `GET /api/django/ged/verifier-certificat/<empreinte>/` (AllowAny, lecture
+    seule) : l'empreinte SHA-256 imprimée sur le certificat (et encodée dans
+    son QR) est l'UNIQUE clé. L'intégrité est RECALCULÉE à chaque appel — une
+    demande modifiée depuis l'émission ne se vérifie plus.
+
+    Ne renvoie JAMAIS le contenu du document ni son nom : uniquement le fait
+    que le certificat est authentique, son statut, sa date de signature, le
+    nombre de signataires et le hash du document (celui-là même que le porteur
+    du certificat peut comparer à son propre fichier).
+
+    Codes : 200 « intègre » ; 404 « non trouvé » (empreinte inconnue, mal
+    formée, ou certificat qui ne correspond plus à l'état de la demande)."""
+    resultat = services.verifier_empreinte_certificat(empreinte)
+    if resultat is None:
+        return _ged_noindex(Response(
+            {'integre': False,
+             'detail': "Aucun certificat ne correspond à cette empreinte."},
+            status=status.HTTP_404_NOT_FOUND))
+    return _ged_noindex(Response(resultat, status=status.HTTP_200_OK))
+
+
 class PublicSignataireRateThrottle(PublicSignatureRateThrottle):
     """XGED2 — Même limite de débit que la cérémonie mono-partie, sur le
     jeton PROPRE à un destinataire du circuit multi-signataires."""
