@@ -137,7 +137,7 @@ def _record(webhook, event, payload, *, status, response_status, error):
     try:
         event_id = (payload.get(EVENT_ID_KEY, '')
                     if isinstance(payload, dict) else '')
-        return WebhookDelivery.objects.create(
+        enregistrement = WebhookDelivery.objects.create(
             company_id=webhook.company_id,
             webhook=webhook,
             event=event,
@@ -153,6 +153,13 @@ def _record(webhook, event, payload, *, status, response_status, error):
     except Exception:  # noqa: BLE001 — ne jamais propager
         logger.exception('Could not log webhook delivery')
         return None
+    # NTAPI11 — la tentative est journalisée : c'est le SEUL endroit où toutes
+    # les voies de livraison (envoi initial, reprises Celery YAPIC8, reprises
+    # programmées NTAPI8, replay manuel FG102) se rejoignent — donc le seul
+    # point d'accroche qui ne peut pas être contourné. Best-effort.
+    from .webhook_health import apres_livraison
+    apres_livraison(webhook, status)
+    return enregistrement
 
 
 def _send(webhook, event, payload, extra_headers=None):

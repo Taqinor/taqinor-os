@@ -194,6 +194,13 @@ class Webhook(models.Model):
     # Évènements auxquels ce webhook est abonné (sous-ensemble de ALL_EVENTS).
     events = models.JSONField(default=list, blank=True)
     enabled = models.BooleanField(default=True)
+    # NTAPI11 — traçabilité d'une désactivation AUTOMATIQUE (cible morte).
+    # `disabled_at` vide = jamais auto-désactivé ; un admin qui réactive
+    # manuellement les remet à vide (cf. `services.reactiver_webhook`). Une
+    # désactivation manuelle par l'admin laisse ces deux champs vides : on
+    # distingue ainsi « l'admin l'a coupé » de « la cible est morte ».
+    disabled_reason = models.TextField(blank=True, default='')
+    disabled_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
