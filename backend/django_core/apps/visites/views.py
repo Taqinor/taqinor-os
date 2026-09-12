@@ -503,3 +503,46 @@ class MaJourneeView(APIView):
             visites = visites.filter(commercial=request.user)
         return Response(selectors.ma_journee(
             visites, aujourdhui=timezone.localdate()))
+
+
+# -- VTA16 : CHOISIR LE CLIENT D'UNE VISITE A PLANIFIER ----------------------
+#
+# L'ecran "Planifier une visite" doit retrouver un lead par son nom ou son
+# telephone. Il ne tape PAS la liste CRM : il tape cet endpoint, qui sert
+# EXACTEMENT {id, nom, ville, telephone} et rien d'autre (ni email, ni etape de
+# pipeline, ni montant) via `apps.crm.selectors.rechercher_leads_minimal` --
+# frontiere M3, jamais les models du CRM.
+#
+# La PORTE est portee par L'ENDPOINT (`visites_valider`), pas par l'ecran : un
+# commercial terrain qui ne planifie pas ne doit pas pouvoir enumerer le
+# fichier leads au moteur de recherche. Un ecran qui cache le champ ne protege
+# rien -- la garde est ici, cote serveur (AUD421 : la permission est NOMMEE sur
+# la vue, jamais devinee).
+
+class LeadsRechercheView(APIView):
+    """Recherche lead MINIMALE, bornee societe — contrat `leads_recherche`."""
+
+    permission_classes = [HasPermissionOrLegacy('visites_valider')]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                'q', str, OpenApiParameter.QUERY,
+                description=('Terme recherche dans le nom OU le telephone. '
+                             'Vide : aucun resultat (on n’enumere pas '
+                             'l’annuaire).')),
+            OpenApiParameter(
+                'limit', int, OpenApiParameter.QUERY,
+                description='Nombre maximum de resultats (defaut 10, max 50).'),
+        ],
+        responses=inline_serializer(
+            name='VisitesLeadsRecherche',
+            fields={'results': serializers.ListField(
+                child=serializers.DictField())}))
+    def get(self, request):
+        from apps.crm import selectors as crm_selectors
+
+        return Response({'results': crm_selectors.rechercher_leads_minimal(
+            request.user.company,
+            request.query_params.get('q'),
+            limit=request.query_params.get('limit') or 10)})

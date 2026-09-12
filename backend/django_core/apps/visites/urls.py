@@ -21,7 +21,7 @@ est le MODULE (et sa clé de manifeste), le 2ᵉ la RESSOURCE — le contrat
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import MaJourneeView, VisiteTerrainViewSet
+from .views import LeadsRechercheView, MaJourneeView, VisiteTerrainViewSet
 
 router = DefaultRouter()
 router.register(r'visites', VisiteTerrainViewSet, basename='visites-visite')
@@ -33,5 +33,10 @@ urlpatterns = [
     # routeur. À ne pas confondre avec `/ma-journee` (route d'accueil des
     # TECHNICIENS, possédée par `apps.installations`).
     path('ma-journee/', MaJourneeView.as_view(), name='visites-ma-journee'),
+    # VTA16 — recherche lead MINIMALE pour « Planifier une visite » (contrat
+    # `contract_samples/leads_recherche.json`). Segment de MODULE lui aussi :
+    # `path()` explicite, monté AVANT le routeur.
+    path('leads-recherche/', LeadsRechercheView.as_view(),
+         name='visites-leads-recherche'),
     path('', include(router.urls)),
 ]
