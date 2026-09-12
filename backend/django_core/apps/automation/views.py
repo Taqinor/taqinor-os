@@ -541,3 +541,56 @@ def automation_templates(request):
     automatique. Lecture seule, tout rôle authentifié."""
     from .templates import AUTOMATION_TEMPLATES
     return Response(AUTOMATION_TEMPLATES)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTEXT33 — Catalogue de MODÈLES d'automatisation INSTALLABLES (distinct du
+# préset ci-dessus qui ne fait que préremplir un formulaire) : installer un
+# modèle MATÉRIALISE une VRAIE ``AutomationRule`` prête à activer.
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def modeles_catalogue(request):
+    """NTEXT33 — liste les recettes installables + leur état d'installation
+    pour la société du demandeur (``deja_installe`` évite un second appel)."""
+    from .templates import CATALOGUE_MODELES
+
+    company = request.user.company
+    installes = set()
+    if company is not None:
+        installes = set(
+            AutomationRule.objects.filter(
+                company=company,
+                nom__in=[m['nom'] for m in CATALOGUE_MODELES]
+            ).values_list('nom', flat=True))
+    return Response({
+        'modeles': [
+            {**{k: v for k, v in modele.items() if k != 'steps'},
+             'deja_installe': modele['nom'] in installes}
+            for modele in CATALOGUE_MODELES
+        ],
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminRole])
+def installer_modele_catalogue(request, code=None):
+    """NTEXT33 — installe la recette ``code`` pour la société du demandeur
+    (admin). Corps optionnel : les ``parametres_requis`` de la recette
+    (ex. ``{"user_id": 12}`` pour une assignation)."""
+    from .templates import ParametreManquant, installer_modele
+
+    try:
+        rule, cree = installer_modele(
+            request.user.company, code,
+            params=request.data if isinstance(request.data, dict) else {})
+    except ParametreManquant as exc:
+        return Response({'detail': str(exc)}, status=400)
+    if rule is None:
+        return Response(
+            {'detail': f'Modèle « {code} » inconnu du catalogue.'},
+            status=404)
+    return Response({
+        'rule': AutomationRuleSerializer(rule).data,
+        'cree': cree,
+    }, status=201 if cree else 200)
