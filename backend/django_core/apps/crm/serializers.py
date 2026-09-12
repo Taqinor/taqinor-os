@@ -334,6 +334,18 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
                     'client', company, attrs.get('custom_data'))
         return attrs
 
+    def validate_ice(self, value):
+        # NTI18N19 — validateur MA formalisé (framework extensible par
+        # pack_pays, NTI18N16 — pas encore construit, GATED-founder : en
+        # attendant, 'MA' est passé en dur, comportement historique puisque
+        # toute société actuelle EST marocaine). Jamais bloquant pour un
+        # champ vide (optionnel côté modèle).
+        from apps.parametres.tax_id_validators import validate_tax_id
+        resultat = validate_tax_id('MA', 'ice', value)
+        if not resultat['valide']:
+            raise serializers.ValidationError(resultat['message'])
+        return value
+
     def validate_parent(self, value):
         # XSAL9 — anti-cycle + même société, appliqué ici car DRF n'invoque
         # PAS Model.clean() automatiquement à l'écriture API (seul
