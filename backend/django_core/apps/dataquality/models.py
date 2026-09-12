@@ -194,3 +194,98 @@ class ResultatQualite(TenantModel):
     def __str__(self):
         return '%s : %s/%s en violation' % (
             self.regle_id, self.nb_violations, self.nb_lignes)
+
+
+# ── NTDATA22 — GOLDEN RECORD : la fiche consolidée, jamais destructive ──────
+#
+# LE PROBLÈME QU'IL RÈGLE. Le dédoublonnage (NTDATA17/19) dit « ces trois
+# fiches sont la même entreprise » ; la fusion (NTDATA18/19) tranche en
+# NEUTRALISANT deux d'entre elles. Entre les deux, il manquait la VUE : « voici
+# ce que l'on sait de cette entreprise en assemblant ses fiches » — sans encore
+# rien fusionner, donc sans décision irréversible.
+#
+# CE QUE LE GOLDEN RECORD EST. Une COUCHE DE LECTURE consolidée : une clé
+# métier stable (ICE, téléphone normalisé, référence catalogue), la liste des
+# fiches sources qui y contribuent, et les attributs gagnants champ par champ.
+# Il ne MUTE JAMAIS les sources : les supprimer ne perdrait rien d'original, et
+# les recalculer ne casserait aucune donnée.
+#
+# GÉNÉRIQUE PAR CHAÎNE. ``entite`` est un libellé (``client``/``fournisseur``/
+# ``produit``) et ``source_ids`` une liste d'entiers — AUCUN FK dur vers une app
+# métier : `dataquality` ne possède ni les clients ni les produits, et une app
+# désactivée ne doit pas rendre la table inconsultable.
+
+class GoldenRecord(TenantModel):
+    """La fiche CONSOLIDÉE d'une entité dédoublonnée (vue, pas source).
+
+    ``cle_metier`` — clé stable qui IDENTIFIE l'entité au-delà de ses fiches :
+    ICE pour une société, téléphone normalisé pour un particulier, référence
+    catalogue pour un produit. C'est elle qui reste quand les fiches changent,
+    d'où l'unicité ``(company, entite, cle_metier)``.
+
+    ``source_ids`` — les identifiants des fiches CONTRIBUTRICES, dans leur
+    ordre de lecture. Une fiche disparue reste dans la liste : le golden record
+    est un JOURNAL de ce qui a été consolidé, pas un index vivant.
+
+    ``attributs`` — le résultat champ par champ, calculé par les règles de
+    survivorship (NTDATA23). ``derniere_consolidation_le`` est VIDE tant
+    qu'aucune consolidation n'a tourné : « jamais calculé » n'est pas
+    « calculé et vide ».
+    """
+
+    class Entite(models.TextChoices):
+        CLIENT = 'client', 'Client'
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+        PRODUIT = 'produit', 'Produit'
+
+    entite = models.CharField(
+        max_length=20, choices=Entite.choices, verbose_name='Entité')
+    cle_metier = models.CharField(
+        max_length=120, verbose_name='Clé métier',
+        help_text='Clé stable qui identifie l\'entité (ICE, téléphone '
+                  'normalisé, référence catalogue).')
+    source_ids = models.JSONField(
+        default=list, blank=True, verbose_name='Fiches sources',
+        help_text='Identifiants des fiches contributrices (ordre de lecture).')
+    attributs = models.JSONField(
+        default=dict, blank=True, verbose_name='Attributs consolidés')
+    derniere_consolidation_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière consolidation',
+        help_text='Vide tant qu\'aucune consolidation n\'a tourné — « jamais '
+                  'calculé » n\'est pas « calculé et vide ».')
+
+    class Meta:
+        verbose_name = 'Golden record'
+        verbose_name_plural = 'Golden records'
+        ordering = ['entite', 'cle_metier', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'entite', 'cle_metier'],
+                name='uniq_goldenrecord_co_entite_cle'),
+        ]
+
+    def __str__(self):
+        return '%s · %s' % (self.get_entite_display(), self.cle_metier)
+
+    def clean(self):
+        """Refuse une clé métier vide, EN NOMMANT le champ fautif.
+
+        Un golden record sans clé stable n'identifie rien : il se ré-créerait à
+        chaque scan et multiplierait les doublons qu'il existe pour réduire.
+        """
+        erreurs = {}
+        if not (self.cle_metier or '').strip():
+            erreurs['cle_metier'] = 'La clé métier est obligatoire.'
+        if not isinstance(self.source_ids, list):
+            erreurs['source_ids'] = (
+                'Les fiches sources doivent être une liste d\'identifiants.')
+        if not isinstance(self.attributs, dict):
+            erreurs['attributs'] = (
+                'Les attributs consolidés doivent être un objet JSON.')
+        if erreurs:
+            raise ValidationError(erreurs)
+
+    @property
+    def nb_sources(self):
+        """Nombre de fiches ayant contribué à cette consolidation."""
+        return len(self.source_ids or [])
