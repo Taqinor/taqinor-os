@@ -2909,6 +2909,93 @@ def scan_sla_breaches():
     return updated
 
 
+# ── NTSRV12 — Paliers d'escalade SLA configurables (étend XSAV6) ────────────
+
+def _paliers_escalade_par_company(company_ids):
+    """NTSRV12 — ``{company_id: [EscaladeSlaNiveau ordonnés]}`` en UNE requête.
+
+    Dict VIDE pour toute société sans palier configuré : l'appelant garde
+    alors le comportement XSAV6 binaire, strictement inchangé."""
+    from .models import EscaladeSlaNiveau
+
+    ids = {cid for cid in company_ids if cid is not None}
+    if not ids:
+        return {}
+    par_company = {}
+    for palier in (EscaladeSlaNiveau.objects
+                   .filter(company_id__in=ids, actif=True)
+                   .select_related('notifier_utilisateur')
+                   .order_by('ordre', 'seuil_jours_apres_echeance', 'id')):
+        par_company.setdefault(palier.company_id, []).append(palier)
+    return par_company
+
+
+def _destinataires_palier(palier, company):
+    """NTSRV12 — destinataires d'un palier : l'utilisateur désigné, sinon les
+    comptes actifs du rôle visé, sinon les destinataires par défaut de
+    l'événement (``resolve_recipients``, mute-aware via ``notify()``)."""
+    from apps.notifications.models import EventType
+    from apps.notifications.services import resolve_recipients
+
+    if palier.notifier_utilisateur_id:
+        return [palier.notifier_utilisateur]
+    role = (palier.notifier_role or '').strip().lower()
+    if role:
+        from authentication.models import CustomUser
+        vises = [
+            u for u in CustomUser.objects.filter(
+                company=company, is_active=True)
+            if (getattr(u, 'role_tier', None) or '').lower() == role
+            or (role == 'admin' and getattr(u, 'is_admin_role', False))
+        ]
+        if vises:
+            return vises
+    return list(resolve_recipients(company, EventType.SAV_TICKET_BREACHING))
+
+
+def _notifier_paliers(ticket, paliers, due_effectif, today):
+    """NTSRV12 — notifie les paliers ÉCHUS et pas encore notifiés pour ce
+    ticket. Renvoie le nombre de paliers déclenchés (0 le plus souvent).
+
+    Un palier ``seuil_jours_apres_echeance=N`` se déclenche à partir de
+    ``échéance + N jours`` — JAMAIS avant. IDEMPOTENT : l'id du palier est
+    mémorisé sur le ticket (``sla_escalade_paliers_notifies``), donc le
+    balayage du lendemain ne le rejoue pas."""
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    if due_effectif is None:
+        return 0
+    deja = ticket.sla_escalade_paliers_notifies or []
+    if not isinstance(deja, list):
+        deja = []
+    declenches = 0
+    for palier in paliers:
+        if palier.pk in deja:
+            continue
+        seuil = due_effectif + timedelta(days=palier.seuil_jours_apres_echeance)
+        if today < seuil:
+            continue  # « jamais avant » — garantie du critère d'acceptation.
+        libelle = palier.libelle or f'J+{palier.seuil_jours_apres_echeance}'
+        for user in _destinataires_palier(palier, ticket.company):
+            notify(
+                user=user,
+                event_type=EventType.SAV_TICKET_BREACHING,
+                title=f'Escalade SLA ({libelle}) — {ticket.reference}',
+                body=(f'Le ticket {ticket.reference} a atteint le palier '
+                      f'{libelle} après son échéance SLA '
+                      f'({due_effectif.strftime("%d/%m/%Y")}).'),
+                link=f'/sav/tickets/{ticket.pk}',
+                company=ticket.company,
+            )
+        deja.append(palier.pk)
+        declenches += 1
+    if declenches:
+        ticket.sla_escalade_paliers_notifies = deja
+        ticket.save(update_fields=['sla_escalade_paliers_notifies'])
+    return declenches
+
+
 # ── XSAV6 — Pré-alerte SLA (J-x) + escalade à la violation ────────────────────
 
 def scan_sla_pre_alerts_and_escalations():
@@ -2925,6 +3012,12 @@ def scan_sla_pre_alerts_and_escalations():
     escalade) ne l'est plus les jours suivants — flag posé sur le ticket.
     OFF par défaut (``sla_warning_days=0`` et ``escalade_activee=False``) :
     aucun effet, aucune notification supplémentaire.
+
+    NTSRV12 — quand une société configure des ``EscaladeSlaNiveau``, ces
+    PALIERS remplacent pour elle l'escalade binaire ci-dessus (plusieurs
+    notifications ordonnées, ex. J+0 → responsable, J+1 → direction), chacune
+    idempotente via ``Ticket.sla_escalade_paliers_notifies``. AUCUN palier
+    configuré = comportement XSAV6 strictement inchangé.
     """
     from apps.notifications.services import notify, resolve_recipients
     from apps.notifications.models import EventType
@@ -2937,6 +3030,14 @@ def scan_sla_pre_alerts_and_escalations():
     ).select_related('company', 'technicien_responsable'))
     # AUD521 — réglages chargés UNE fois par société.
     reglage_pour = _reglages_sla_par_ticket(qs)
+
+    # NTSRV12 — paliers d'escalade chargés UNE fois par société (jamais une
+    # requête par ticket).
+    paliers_par_company = _paliers_escalade_par_company(
+        {t.company_id for t in qs})
+
+    def paliers_pour(company_id):
+        return paliers_par_company.get(company_id, [])
 
     pre_alerts = 0
     escalations = 0
@@ -2964,6 +3065,15 @@ def scan_sla_pre_alerts_and_escalations():
                 ticket.sla_pre_alert_notifiee = True
                 ticket.save(update_fields=['sla_pre_alert_notifiee'])
                 pre_alerts += 1
+
+        # ── NTSRV12 — Paliers d'escalade configurables (remplacent le
+        # binaire XSAV6 POUR LA SOCIÉTÉ QUI EN CONFIGURE). Aucun palier =
+        # aucun changement : on retombe sur le bloc XSAV6 ci-dessous.
+        paliers = paliers_pour(ticket.company_id)
+        if paliers:
+            escalations += _notifier_paliers(ticket, paliers, due_effectif,
+                                             today)
+            continue
 
         # ── Escalade au tier responsable/direction à la violation ──
         if (sla.escalade_activee

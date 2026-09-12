@@ -792,6 +792,15 @@ class Ticket(models.Model):
     # quand sla_due_at est recalculée (nouvelle échéance = nouveau cycle).
     sla_pre_alert_notifiee = models.BooleanField(default=False)
     sla_escalade_notifiee = models.BooleanField(default=False)
+    # NTSRV12 — idempotence des PALIERS d'escalade multi-niveaux : liste des
+    # ids de `EscaladeSlaNiveau` déjà notifiés pour ce ticket. NULL/vide = le
+    # ticket n'a encore franchi aucun palier (et, sans palier configuré, ce
+    # champ reste NULL à vie — comportement XSAV6 binaire inchangé). Le
+    # booléen `sla_escalade_notifiee` ci-dessus est CONSERVÉ tel quel : il
+    # gouverne toujours le chemin XSAV6, jamais réinterprété.
+    sla_escalade_paliers_notifies = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Paliers d\'escalade déjà notifiés')
 
     # ── XSAV11 — suivi des réouvertures ──────────────────────────────────────
     # Incrémenté CÔTÉ SERVEUR à chaque transition résolu/clôturé → statut
@@ -2355,6 +2364,62 @@ class TicketWorksheet(models.Model):
         self.complete_par = user
         self.complete_le = timezone.now()
         self.save(update_fields=['complete', 'complete_par', 'complete_le'])
+
+
+# ── NTSRV12 — Paliers d'escalade SLA configurables ──────────────────────────
+
+class EscaladeSlaNiveau(models.Model):
+    """NTSRV12 — UN palier d'escalade SLA d'une société (ex. J+0 →
+    responsable technicien, J+1 → directeur).
+
+    XSAV6 ne savait faire qu'un BINAIRE : une pré-alerte, puis UNE escalade.
+    Ce référentiel permet plusieurs paliers ordonnés, chacun avec son délai
+    après l'échéance et son destinataire. **Aucun palier configuré = aucun
+    changement** : le balayage garde exactement le comportement XSAV6.
+
+    Destinataire : ``notifier_utilisateur`` (une personne précise) sinon
+    ``notifier_role`` (tous les comptes actifs de ce palier de rôle) sinon les
+    destinataires par défaut de l'événement (``resolve_recipients``).
+    """
+    company = models.ForeignKey(
+        # on_delete: cascade de tenant standard.
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='escalades_sla_sav', verbose_name='Société')
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(
+        default=0, verbose_name='Ordre',
+        help_text='Ordre de parcours des paliers (croissant).')
+    seuil_jours_apres_echeance = models.PositiveIntegerField(
+        default=0, verbose_name='Seuil (jours après échéance)',
+        help_text='0 = le jour de l’échéance (J+0), 1 = le lendemain (J+1)…')
+    notifier_role = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Notifier le rôle',
+        help_text="Palier de rôle à notifier (ex. « responsable », "
+                  '« admin »). Ignoré si un utilisateur est désigné.')
+    notifier_utilisateur = models.ForeignKey(
+        # on_delete: SET_NULL — la suppression d'un compte ne casse pas la
+        # configuration d'escalade (le palier retombe sur le rôle/défaut).
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='escalades_sla_sav',
+        verbose_name='Notifier l’utilisateur')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Palier d’escalade SLA'
+        verbose_name_plural = 'Paliers d’escalade SLA'
+        ordering = ['ordre', 'seuil_jours_apres_echeance', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'ordre'],
+                name='sav_escaladeslaniveau_ordre_uniq'),
+        ]
+
+    def __str__(self):
+        return (self.libelle
+                or f'Palier J+{self.seuil_jours_apres_echeance}')
 
 
 # ── NTSRV1 — Fil e-mail d'un ticket (threading RFC 5322) ─────────────────────
