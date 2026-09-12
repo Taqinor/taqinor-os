@@ -1807,6 +1807,52 @@ def facture_est_payable_portail(facture):
         Facture.Statut.ANNULEE, Facture.Statut.PAYEE)
 
 
+# ── NTPRT9 — Tableau de bord CLIENT (devis en attente / factures impayées) ──
+
+def resume_portail_client(company, client_id):
+    """NTPRT9 — Cartes « Devis en attente » / « Factures impayées » du
+    tableau de bord portail CLIENT (``apps.portail.views_client``).
+
+    Même périmètre EXACTEMENT que ``devis_du_client_portail``/
+    ``factures_du_client_portail`` ci-dessus (brouillons exclus, aucun champ
+    de coût) : les compteurs matchent donc, par construction, ce que l'écran
+    interne montrerait pour ce même client — jamais un recalcul divergent.
+    ``devis_en_attente`` = devis ``ENVOYE`` (ni accepté/refusé/expiré, en
+    attente d'une décision du client). ``factures_impayees`` = factures
+    ``EMISE``/``EN_RETARD`` (ni payées, ni annulées, ni brouillon) ;
+    ``prochaine_echeance`` = la date d'échéance la plus proche parmi elles
+    (``None`` si aucune échéance renseignée). Lecture seule."""
+    from .models import Devis, Facture
+
+    vide = {
+        'devis_en_attente': 0,
+        'factures_impayees': 0,
+        'prochaine_echeance': None,
+    }
+    if company is None or not client_id:
+        return vide
+
+    devis_en_attente = Devis.objects.filter(
+        company=company, client_id=client_id,
+        statut=Devis.Statut.ENVOYE).count()
+
+    factures_impayees_qs = Facture.objects.filter(
+        company=company, client_id=client_id,
+        statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD))
+    prochaine_echeance = (
+        factures_impayees_qs
+        .exclude(date_echeance__isnull=True)
+        .order_by('date_echeance')
+        .values_list('date_echeance', flat=True)
+        .first())
+
+    return {
+        'devis_en_attente': devis_en_attente,
+        'factures_impayees': factures_impayees_qs.count(),
+        'prochaine_echeance': prochaine_echeance,
+    }
+
+
 # ── AOF164 — comparaison A/B du calepinage d'un devis (LECTURE SEULE) ───────
 #
 # C'est le SEUL endroit qui confronte le compte d'un devis EXISTANT au compte
