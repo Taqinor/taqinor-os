@@ -84,12 +84,24 @@
     buckets:inconnu, date:texte, granularity:inconnu, period:inconnu, total:inconnu
 - frontend/src/api/automationApi.js :: proposeDraft -> /api/django/agent/actions/automation-draft
     action_type:inconnu, detail:texte, enabled:inconnu, id:inconnu, nom:inconnu, trigger_type:inconnu
+- frontend/src/api/btpChantierApi.js :: checklist -> /api/django/btp-chantier/lots/<>/checklist
+    complete:booleen, detail:texte, etapes:inconnu, faits:nombre, obligatoires_restants:inconnu, total:nombre
+- frontend/src/api/btpChantierApi.js :: cloturer -> /api/django/btp-chantier/chantiers/<>/cloture-btp
+    blocages:inconnu, detail:texte, dgd:inconnu, export_dossier_url:texte, prerequis:inconnu
 - frontend/src/api/btpChantierApi.js :: debourseVsFacture -> /api/django/btp-chantier/chantiers/<>/debourse-vs-facture
     avenants_approuves:inconnu, debourse_sec_total:inconnu, facture_total:inconnu, main_oeuvre:inconnu, marge:nombre, materiel:inconnu, situations_facturees:inconnu, sous_traitance:inconnu
+- frontend/src/api/btpChantierApi.js :: definirChecklist -> /api/django/btp-chantier/lots/<>/checklist
+    complete:booleen, detail:texte, etapes:inconnu, faits:nombre, obligatoires_restants:inconnu, total:nombre
 - frontend/src/api/btpChantierApi.js :: faireApprouver -> /api/django/btp-chantier/avenants-chantier/<>/faire-approuver
     avenant:inconnu, detail:texte, lien_public:texte
+- frontend/src/api/btpChantierApi.js :: intervenants -> /api/django/btp-chantier/chantiers/<>/intervenants
+    alertes:inconnu, chantier_id:inconnu, date:inconnu, effectifs_du_jour:inconnu, personnel_interne:inconnu, sous_traitants:inconnu
 - frontend/src/api/btpChantierApi.js :: lever -> /api/django/btp-chantier/reserves-chantier/<>/lever
     detail:texte, reserve:inconnu, signature:inconnu
+- frontend/src/api/btpChantierApi.js :: penalitesParLot -> /api/django/btp-chantier/chantiers/<>/penalites-par-lot
+    chantier_id:inconnu, date_reference:inconnu, lots:inconnu, total_exposition:inconnu
+- frontend/src/api/btpChantierApi.js :: prerequis -> /api/django/btp-chantier/chantiers/<>/cloture-btp
+    blocages:inconnu, pret:booleen
 - frontend/src/api/comptaApi.js :: accepterSuggestions -> /api/django/compta/rapprochements/<>/accepter-suggestions
     ignorees:inconnu, pointees:inconnu
 - frontend/src/api/comptaApi.js :: analyseVariation -> /api/django/compta/etats/analyse-variation
@@ -98,6 +110,8 @@
     cycle:inconnu, dettes_consolidees:inconnu, engagements_hors_bilan:nombre, immobilisations_consolidees:inconnu, perimetre:inconnu
 - frontend/src/api/comptaApi.js :: anomaliesEcritures -> /api/django/compta/etats/anomalies-ecritures
     anomalies:inconnu, detail:inconnu, nb_bloquantes:nombre
+- frontend/src/api/comptaApi.js :: apercu -> /api/django/compta/payment-runs/apercu
+    alerte_seuil:inconnu, compte:inconnu, date_limite:texte, dettes:liste, montant_max:texte, nb_dettes:nombre, total:inconnu
 - frontend/src/api/comptaApi.js :: appliquer -> /api/django/compta/modeles-rapprochement/<>/appliquer
     detail:inconnu, ecriture_id:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: avancement -> /api/django/compta/contrats-avancement/<>/avancement
@@ -138,6 +152,8 @@
     detail:inconnu, ecriture_id:inconnu, tache:inconnu
 - frontend/src/api/comptaApi.js :: genererTableau -> /api/django/compta/emprunts/<>/generer-tableau
     detail:inconnu, echeances:inconnu, emprunt:inconnu, nb_echeances:nombre
+- frontend/src/api/comptaApi.js :: importReleve -> /api/django/compta/rapprochements/<>/import-releve
+    detail:inconnu, lignes_creees:inconnu, nombre:nombre, releve:texte
 - frontend/src/api/comptaApi.js :: importer -> /api/django/compta/balance-ouverture/importer
     deja_importee:inconnu, detail:texte, ecriture_id:inconnu, erreurs:inconnu, ok:booleen, reference:inconnu, total:texte
 - frontend/src/api/comptaApi.js :: mettreEnService -> /api/django/compta/immobilisations-en-cours/<>/mettre-en-service
@@ -147,7 +163,7 @@
 - frontend/src/api/comptaApi.js :: ocrImport -> /api/django/compta/rapprochements/<>/ocr-import
     concordant:booleen, detail:inconnu, ecart:inconnu, lignes:inconnu, lignes_creees:inconnu, releve:texte, solde_calcule:inconnu, solde_final_declare:inconnu, solde_initial:inconnu
 - frontend/src/api/comptaApi.js :: positionTresorerie -> /api/django/compta/etats/position-tresorerie
-    comptes:inconnu, projection:inconnu, total:inconnu
+    cash_du_jour:inconnu, comptes:inconnu, projection:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: positionsContratRevenu -> /api/django/compta/etats/positions-contrat-revenu
     lignes:inconnu, total_actif_sur_contrat:inconnu, total_produit_differe:inconnu
 - frontend/src/api/comptaApi.js :: posterDotation -> /api/django/compta/charges-avance/<>/poster-dotation
@@ -158,12 +174,12 @@
     detail:inconnu, ecriture_id:inconnu, mouvement:inconnu
 - frontend/src/api/comptaApi.js :: pretACloturer -> /api/django/compta/etats/pret-a-cloturer
     detail:texte, instance_id:inconnu, pret:booleen, taches_manquantes:inconnu
-- frontend/src/api/comptaApi.js :: previsionnelTresorerie -> /api/django/compta/etats/previsionnel-tresorerie
-    date_debut:inconnu, date_rupture_estimee:inconnu, nb_semaines:inconnu, semaines:inconnu, solde_initial:inconnu
 - frontend/src/api/comptaApi.js :: prochainNumero -> /api/django/compta/ecritures/prochain-numero
     detail:texte, journal:inconnu, journal_code:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: projectionDotations -> /api/django/compta/etats/projection-dotations
     annees:inconnu, par_actif:inconnu, referentiel:inconnu, totaux_par_annee:inconnu
+- frontend/src/api/comptaApi.js :: qualiteRapprochements -> /api/django/compta/etats/qualite-rapprochements
+    detail:texte, mois:inconnu, total_lignes_non_pointees:nombre
 - frontend/src/api/comptaApi.js :: rapprochementsEnRetard -> /api/django/compta/etats/rapprochements-en-retard
     detail:texte, lignes:inconnu, nb_en_retard:nombre, periode_id:inconnu, total_ecart_non_justifie:inconnu
 - frontend/src/api/comptaApi.js :: refacturer -> /api/django/compta/notes-frais/refacturer
@@ -210,8 +226,6 @@
     arpc:inconnu, client_id:inconnu, clv:inconnu, detail:texte, duree_vie_mois:inconnu, plafonnee:inconnu, used_fallback:inconnu
 - frontend/src/api/contratsApi.js :: getCohortesRetention -> /api/django/contrats/contrats/cohortes-retention
     cohortes:inconnu, mois_max:inconnu
-- frontend/src/api/contratsApi.js :: getMetriquesSaas -> /api/django/contrats/contrats/metriques-saas
-    arr_bridge:inconnu, detail:texte, quick_ratio:inconnu, rule_of_40:objet
 - frontend/src/api/contratsApi.js :: getMrrMouvements -> /api/django/contrats/contrats/mrr-mouvements
     churn:inconnu, churn_par_motif:inconnu, contraction:inconnu, debut:texte, detail:texte, expansion:inconnu, fin:texte, net:inconnu, net_par_responsable:inconnu, new:inconnu
 - frontend/src/api/contratsApi.js :: getReporting -> /api/django/contrats/contrats/reporting
@@ -224,6 +238,8 @@
     apercu:booleen, conflits:liste, detail:texte, ecrasements:nombre, ecraser:booleen, erreurs:liste, inserees:nombre, job_id:inconnu, mises_a_jour:nombre, refuses:liste
 - frontend/src/api/contratsApi.js :: penaliteSla -> /api/django/contrats/sla/<>/penalite
     penalite:texte, respecte:inconnu, taux_cible:texte, taux_realise:inconnu
+- frontend/src/api/contratsApi.js :: rattacherPlan -> /api/django/contrats/contrats/<>/rattacher-plan
+    ancien_montant:inconnu, avenant:inconnu, contrat:inconnu, delta:inconnu, detail:texte, nouveau_montant:inconnu, plan:inconnu, plan_code:inconnu, prix_applique:inconnu, prorata:inconnu
 - frontend/src/api/contratsApi.js :: rejouerCycle -> /api/django/contrats/cycles-facturation/<>/rejouer
     detail:texte, facture_id:inconnu, facture_reference:inconnu, log:inconnu
 - frontend/src/api/contratsApi.js :: rendre -> /api/django/contrats/contrats/<>/rendre
@@ -728,8 +744,6 @@
     detail:texte, operation:inconnu, resultat:inconnu
 - frontend/src/api/paieApi.js :: affebdsRapprochement -> /api/django/paie/periodes/affebds-rapprochement
     en_trop:inconnu, manquants:inconnu, rapproches:inconnu
-- frontend/src/api/paieApi.js :: apercuBulletin -> /api/django/paie/periodes/<>/bulletin
-    allocations_familiales:inconnu, amo_patronale:inconnu, amo_salariale:inconnu, avertissements:inconnu, brut:inconnu, brut_imposable:inconnu, charges_patronales:inconnu, cimr_salariale:inconnu, cnss_patronale:inconnu, cnss_salariale:inconnu, detail:texte, formation_professionnelle:inconnu, frais_professionnels:inconnu, ir:inconnu, lignes:inconnu, montant_exonere_regime:inconnu, mutuelle_patronale:inconnu, mutuelle_salariale:inconnu, net_a_payer:inconnu, net_avant_saisie:inconnu, net_imposable:inconnu, prime_anciennete:inconnu, provision_conges:inconnu, retenues:inconnu
 - frontend/src/api/paieApi.js :: appliquerStructure -> /api/django/paie/structures/<>/appliquer
     detail:texte, rattachees:inconnu
 - frontend/src/api/paieApi.js :: declarationCimr -> /api/django/paie/periodes/<>/declaration-cimr
@@ -1068,6 +1082,8 @@
     accords_prix:inconnu, accords_prix_actifs:nombre, bcf_en_retard:inconnu, bcf_ouverts:inconnu, conformite_documents_manquants:nombre, conformite_ok:booleen, factures_ouvertes:inconnu, fournisseur_id:inconnu, nb_retours_avoirs:inconnu, receptions_attendues:inconnu, score_performance:inconnu, solde_total_du:texte
 - frontend/src/api/stockApi.js :: getKitDisponibilite -> /api/django/stock/kits/<>/disponibilite
     composants:inconnu, detail:texte, goulots:inconnu, kit_id:inconnu, kit_nom:inconnu, kits_assemblables:inconnu
+- frontend/src/api/stockApi.js :: getMonStockCamionnette -> /api/django/stock/emplacements/van-stock/mon-stock
+    emplacement:inconnu, produits:inconnu
 - frontend/src/api/stockApi.js :: getOnboardingFournisseur -> /api/django/stock/fournisseurs/<>/onboarding
     dossier:inconnu, obligatoire:inconnu, progression:inconnu
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire
@@ -1275,10 +1291,9 @@
 - frontend/src/api/automationApi.js :: getRuns -> /api/django/automation/runs  [AutomationRunSerializer]
     champs: id, message, rule, rule_nom, status, status_display, target_id, target_model, timestamp
     status ∈ {failed, noop, pending_approval, simulation, skipped, success}
-- frontend/src/api/btpChantierApi.js :: get -> /api/django/btp-chantier/reserves-chantier/<>  [ReserveChantierSerializer]
-    champs: chantier, created_at, created_by, date_levee, date_limite, description, gravite, historique, id, leve_par, localisation_plan, lot, motif_contestation, responsable_leve, statut, updated_at
-    gravite ∈ {bloquante, majeure, mineure}
-    statut ∈ {contestee, en_cours, levee, ouverte}
+- frontend/src/api/btpChantierApi.js :: remove -> /api/django/btp-chantier/lots/<>  [LotSerializer]
+    champs: chantier, couleur, created_at, date_debut_prevue, date_fin_prevue, date_fin_reelle, id, interne, jalon_contractuel, montant_ht, nom, ordre, plafond_penalite_pct, sous_traitant, sous_traitant_nom, statut, taches, taux_penalite_retard_pmil, updated_at
+    statut ∈ {en_cours, planifie, termine}
 - frontend/src/api/contratsApi.js :: createAlerte -> /api/django/contrats/alertes  [AlerteContratSerializer]
     champs: contrat, cree_par, date_creation, date_declenchement, date_envoi, id, message, statut, statut_display, type_alerte, type_alerte_display
     statut ∈ {annulee, envoyee, planifiee}
@@ -1288,14 +1303,14 @@
     statut ∈ {active, annulee, appelee, expiree, mainlevee}
     type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
 - frontend/src/api/contratsApi.js :: createClause -> /api/django/contrats/clauses  [ClauseSerializer]
-    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    champs: actif, categorie, corps, corps_localise, date_creation, id, obligatoire_pour_types, ordre, titre, titre_localise, type_clause, type_clause_display
     type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
 - frontend/src/api/contratsApi.js :: createClauseContrat -> /api/django/contrats/clauses-contrat  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: createContrat -> /api/django/contrats/contrats  [ContratSerializer]
     champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
-    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    statut ∈ {actif, brouillon, en_approbation, en_negociation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
 - frontend/src/api/contratsApi.js :: createContratLien -> /api/django/contrats/contrat-liens  [ContratLienSerializer]
     champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
@@ -1352,14 +1367,14 @@
     statut ∈ {active, annulee, appelee, expiree, mainlevee}
     type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
 - frontend/src/api/contratsApi.js :: deleteClause -> /api/django/contrats/clauses/<>  [ClauseSerializer]
-    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    champs: actif, categorie, corps, corps_localise, date_creation, id, obligatoire_pour_types, ordre, titre, titre_localise, type_clause, type_clause_display
     type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
 - frontend/src/api/contratsApi.js :: deleteClauseContrat -> /api/django/contrats/clauses-contrat/<>  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: deleteContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
     champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
-    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    statut ∈ {actif, brouillon, en_approbation, en_negociation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
 - frontend/src/api/contratsApi.js :: deleteContratLien -> /api/django/contrats/contrat-liens/<>  [ContratLienSerializer]
     champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
@@ -1418,17 +1433,17 @@
     statut ∈ {active, annulee, appelee, expiree, mainlevee}
     type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
 - frontend/src/api/contratsApi.js :: getClause -> /api/django/contrats/clauses/<>  [ClauseSerializer]
-    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    champs: actif, categorie, corps, corps_localise, date_creation, id, obligatoire_pour_types, ordre, titre, titre_localise, type_clause, type_clause_display
     type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
 - frontend/src/api/contratsApi.js :: getClauses -> /api/django/contrats/clauses  [ClauseSerializer]
-    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    champs: actif, categorie, corps, corps_localise, date_creation, id, obligatoire_pour_types, ordre, titre, titre_localise, type_clause, type_clause_display
     type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
 - frontend/src/api/contratsApi.js :: getClausesContrat -> /api/django/contrats/clauses-contrat  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: getContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
     champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
-    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    statut ∈ {actif, brouillon, en_approbation, en_negociation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
 - frontend/src/api/contratsApi.js :: getContratLiens -> /api/django/contrats/contrat-liens  [ContratLienSerializer]
     champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
@@ -1436,7 +1451,7 @@
 - frontend/src/api/contratsApi.js :: getContrats -> /api/django/contrats/contrats  [ContratSerializer]
     champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
-    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    statut ∈ {actif, brouillon, en_approbation, en_negociation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
 - frontend/src/api/contratsApi.js :: getCyclesFacturation -> /api/django/contrats/cycles-facturation  [CycleFacturationLogSerializer]
     champs: date_creation, facture_id, id, motif, nb_tentatives, periode, source_id, source_type, source_type_display, statut, statut_display
@@ -1510,14 +1525,14 @@
     statut ∈ {active, annulee, appelee, expiree, mainlevee}
     type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
 - frontend/src/api/contratsApi.js :: updateClause -> /api/django/contrats/clauses/<>  [ClauseSerializer]
-    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    champs: actif, categorie, corps, corps_localise, date_creation, id, obligatoire_pour_types, ordre, titre, titre_localise, type_clause, type_clause_display
     type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
 - frontend/src/api/contratsApi.js :: updateClauseContrat -> /api/django/contrats/clauses-contrat/<>  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: updateContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
     champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
-    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    statut ∈ {actif, brouillon, en_approbation, en_negociation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
 - frontend/src/api/contratsApi.js :: updateEcheancier -> /api/django/contrats/echeanciers/<>  [EcheancierContratSerializer]
     champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display, taux_tva
@@ -2793,7 +2808,7 @@
     champs: article, date_creation, echeance, id, role_cible, utilisateur, utilisateur_nom
 - frontend/src/api/kbApi.js :: createLien -> /api/django/kb/article-liens  [KbArticleLienSerializer]
     champs: article, cible_id, date_creation, id, libelle, type_cible, type_cible_display
-    type_cible ∈ {article, equipement, produit, type_intervention}
+    type_cible ∈ {article, equipement, produit, ticket, type_intervention}
 - frontend/src/api/kbApi.js :: createParcours -> /api/django/kb/parcours  [KbParcoursSerializer]
     champs: actif, created_by, date_creation, description, id, metier, nom, role_cible, role_cible_display
 - frontend/src/api/kbApi.js :: createParcoursArticle -> /api/django/kb/parcours-articles  [KbParcoursArticleSerializer]
@@ -2814,7 +2829,7 @@
     champs: article, date_creation, echeance, id, role_cible, utilisateur, utilisateur_nom
 - frontend/src/api/kbApi.js :: listLiens -> /api/django/kb/article-liens  [KbArticleLienSerializer]
     champs: article, cible_id, date_creation, id, libelle, type_cible, type_cible_display
-    type_cible ∈ {article, equipement, produit, type_intervention}
+    type_cible ∈ {article, equipement, produit, ticket, type_intervention}
 - frontend/src/api/kbApi.js :: listParcours -> /api/django/kb/parcours  [KbParcoursSerializer]
     champs: actif, created_by, date_creation, description, id, metier, nom, role_cible, role_cible_display
 - frontend/src/api/kbApi.js :: listParcoursArticles -> /api/django/kb/parcours-articles  [KbParcoursArticleSerializer]
@@ -2833,7 +2848,7 @@
     champs: article, date_creation, echeance, id, role_cible, utilisateur, utilisateur_nom
 - frontend/src/api/kbApi.js :: removeLien -> /api/django/kb/article-liens/<>  [KbArticleLienSerializer]
     champs: article, cible_id, date_creation, id, libelle, type_cible, type_cible_display
-    type_cible ∈ {article, equipement, produit, type_intervention}
+    type_cible ∈ {article, equipement, produit, ticket, type_intervention}
 - frontend/src/api/kbApi.js :: removeParcoursArticle -> /api/django/kb/parcours-articles/<>  [KbParcoursArticleSerializer]
     champs: article, article_titre, id, ordre, parcours
 - frontend/src/api/litigesApi.js :: create -> /api/django/litiges/reclamations  [ReclamationSerializer]
@@ -3055,15 +3070,15 @@
 - frontend/src/api/paieApi.js :: deleteAvance -> /api/django/paie/avances/<>  [AvanceSalarieSerializer]
     champs: actif, date_creation, date_debut, id, libelle, montant_echeance, montant_rembourse, montant_total, nombre_echeances, profil, solde_restant, soldee, type
 - frontend/src/api/paieApi.js :: deleteBareme -> /api/django/paie/baremes/<>  [BaremeIRSerializer]
-    champs: actif, date_creation, date_effet, id, libelle, tranches, valide_par_fondateur
+    champs: actif, date_creation, date_effet, id, libelle, pays, tranches, valide_par_fondateur
 - frontend/src/api/paieApi.js :: deleteElementVariable -> /api/django/paie/elements-variables/<>  [ElementVariableSerializer]
     champs: categorie_absence, categorie_hs, date_creation, deduit_solde, id, libelle, montant, periode, profil, quantite, reconduire, reconduit_depuis, remunere, rubrique, source, type, type_entree
 - frontend/src/api/paieApi.js :: deleteParametre -> /api/django/paie/parametres/<>  [ParametrePaieSerializer]
-    champs: actif, date_creation, date_effet, deduction_par_personne_a_charge, id, plafond_cnss, plafond_frais_pro_bas, plafond_frais_pro_haut, plafond_personnes_a_charge, seuil_frais_pro, smag, smig, taux_allocations_familiales, taux_amo_patronal, taux_amo_salarial, taux_cnss_patronal, taux_cnss_salarial, taux_formation_pro, taux_frais_pro_bas, taux_frais_pro_haut, taux_hs_ferie, taux_hs_jour, taux_hs_nuit, valide_par_fondateur
+    champs: actif, date_creation, date_effet, deduction_par_personne_a_charge, id, pays, plafond_cnss, plafond_frais_pro_bas, plafond_frais_pro_haut, plafond_personnes_a_charge, seuil_frais_pro, smag, smig, taux_allocations_familiales, taux_amo_patronal, taux_amo_salarial, taux_cnss_patronal, taux_cnss_salarial, taux_formation_pro, taux_frais_pro_bas, taux_frais_pro_haut, taux_hs_ferie, taux_hs_jour, taux_hs_nuit, valide_par_fondateur
 - frontend/src/api/paieApi.js :: deletePeriode -> /api/django/paie/periodes/<>  [PeriodePaieSerializer]
     champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
 - frontend/src/api/paieApi.js :: deleteProfil -> /api/django/paie/profils/<>  [ProfilPaieSerializer]
-    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
+    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, pays, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
 - frontend/src/api/paieApi.js :: deleteRegimeMutuelle -> /api/django/paie/regimes-mutuelle/<>  [RegimeMutuelleSerializer]
     champs: actif, date_creation, deductible_net_imposable, id, libelle, mode, palier, part_patronale, part_salariale
 - frontend/src/api/paieApi.js :: deleteRubrique -> /api/django/paie/rubriques/<>  [RubriqueSerializer]
@@ -3079,11 +3094,11 @@
 - frontend/src/api/paieApi.js :: getAvances -> /api/django/paie/avances  [AvanceSalarieSerializer]
     champs: actif, date_creation, date_debut, id, libelle, montant_echeance, montant_rembourse, montant_total, nombre_echeances, profil, solde_restant, soldee, type
 - frontend/src/api/paieApi.js :: getBaremes -> /api/django/paie/baremes  [BaremeIRSerializer]
-    champs: actif, date_creation, date_effet, id, libelle, tranches, valide_par_fondateur
+    champs: actif, date_creation, date_effet, id, libelle, pays, tranches, valide_par_fondateur
 - frontend/src/api/paieApi.js :: getBulletin -> /api/django/paie/bulletins/<>  [BulletinPaieSerializer]
-    champs: allocations_familiales, amo_patronale, amo_salariale, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_patronale, cnss_salariale, date_creation, date_paiement, date_validation, formation_professionnelle, frais_professionnels, id, ir, lignes, lu_le, montant_exonere_regime, motif, net_a_payer, net_imposable, paye, periode, personnes_a_charge, prime_anciennete, profil, provision_conges, provision_conges, rectifie, retenues, statut, type_bulletin
+    champs: allocations_familiales, amo_patronale, amo_salariale, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_patronale, cnss_salariale, date_creation, date_paiement, date_validation, formation_professionnelle, frais_professionnels, id, ir, lignes, lu_le, montant_exonere_regime, motif, net_a_payer, net_imposable, paye, pays_code, pays_devise, periode, personnes_a_charge, prime_anciennete, profil, provision_conges, provision_conges, rectifie, retenues, statut, type_bulletin
 - frontend/src/api/paieApi.js :: getBulletins -> /api/django/paie/bulletins  [BulletinPaieSerializer]
-    champs: allocations_familiales, amo_patronale, amo_salariale, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_patronale, cnss_salariale, date_creation, date_paiement, date_validation, formation_professionnelle, frais_professionnels, id, ir, lignes, lu_le, montant_exonere_regime, motif, net_a_payer, net_imposable, paye, periode, personnes_a_charge, prime_anciennete, profil, provision_conges, provision_conges, rectifie, retenues, statut, type_bulletin
+    champs: allocations_familiales, amo_patronale, amo_salariale, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_patronale, cnss_salariale, date_creation, date_paiement, date_validation, formation_professionnelle, frais_professionnels, id, ir, lignes, lu_le, montant_exonere_regime, motif, net_a_payer, net_imposable, paye, pays_code, pays_devise, periode, personnes_a_charge, prime_anciennete, profil, provision_conges, provision_conges, rectifie, retenues, statut, type_bulletin
 - frontend/src/api/paieApi.js :: getCumulsAnnuels -> /api/django/paie/cumuls-annuels  [CumulAnnuelSerializer]
     champs: amo_salariale, annee, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_salariale, conges_acquis, conges_pris, date_calcul, date_creation, frais_professionnels, id, ir, net_a_payer, net_imposable, nombre_bulletins, profil, provision_conges
 - frontend/src/api/paieApi.js :: getEcheancesDeclaratives -> /api/django/paie/echeances-declaratives  [EcheanceDeclarativeSerializer]
@@ -3097,15 +3112,17 @@
 - frontend/src/api/paieApi.js :: getOrdresVirement -> /api/django/paie/ordres-virement  [OrdreVirementSerializer]
     champs: compte_emetteur, compte_emetteur_banque, compte_emetteur_libelle, date_creation, date_emission, date_execution, devise, id, libelle, lignes, nombre_lignes, periode, reference, rib_emetteur, statut, total
 - frontend/src/api/paieApi.js :: getParametres -> /api/django/paie/parametres  [ParametrePaieSerializer]
-    champs: actif, date_creation, date_effet, deduction_par_personne_a_charge, id, plafond_cnss, plafond_frais_pro_bas, plafond_frais_pro_haut, plafond_personnes_a_charge, seuil_frais_pro, smag, smig, taux_allocations_familiales, taux_amo_patronal, taux_amo_salarial, taux_cnss_patronal, taux_cnss_salarial, taux_formation_pro, taux_frais_pro_bas, taux_frais_pro_haut, taux_hs_ferie, taux_hs_jour, taux_hs_nuit, valide_par_fondateur
+    champs: actif, date_creation, date_effet, deduction_par_personne_a_charge, id, pays, plafond_cnss, plafond_frais_pro_bas, plafond_frais_pro_haut, plafond_personnes_a_charge, seuil_frais_pro, smag, smig, taux_allocations_familiales, taux_amo_patronal, taux_amo_salarial, taux_cnss_patronal, taux_cnss_salarial, taux_formation_pro, taux_frais_pro_bas, taux_frais_pro_haut, taux_hs_ferie, taux_hs_jour, taux_hs_nuit, valide_par_fondateur
+- frontend/src/api/paieApi.js :: getPaysPaie -> /api/django/paie/pays-paie  [PaysPaieSerializer]
+    champs: actif, code_iso, date_creation, devise, id, libelle, moteur, moteur_disponible
 - frontend/src/api/paieApi.js :: getPeriode -> /api/django/paie/periodes/<>  [PeriodePaieSerializer]
     champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
 - frontend/src/api/paieApi.js :: getPeriodes -> /api/django/paie/periodes  [PeriodePaieSerializer]
     champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
 - frontend/src/api/paieApi.js :: getProfil -> /api/django/paie/profils/<>  [ProfilPaieSerializer]
-    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
+    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, pays, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
 - frontend/src/api/paieApi.js :: getProfils -> /api/django/paie/profils  [ProfilPaieSerializer]
-    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
+    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, pays, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
 - frontend/src/api/paieApi.js :: getRegimesMutuelle -> /api/django/paie/regimes-mutuelle  [RegimeMutuelleSerializer]
     champs: actif, date_creation, deductible_net_imposable, id, libelle, mode, palier, part_patronale, part_salariale
 - frontend/src/api/paieApi.js :: getRubriques -> /api/django/paie/rubriques  [RubriqueSerializer]
@@ -3483,7 +3500,7 @@
     champs: categorie, categorie_display, date_creation, date_delivrance, date_expiration, date_modification, employe, employe_nom, habilitation_conduite, id, note, numero, valide
     categorie ∈ {A, B, C, D, EB, EC}
 - frontend/src/api/rhApi.js :: getPostes -> /api/django/rh/postes  [PosteSerializer]
-    champs: actif, code, date_creation, departement, departement_nom, id, intitule
+    champs: actif, code, date_creation, departement, departement_nom, effectif_budgete, id, intitule
 - frontend/src/api/rhApi.js :: getPresencesChantier -> /api/django/rh/presences-chantier  [PresenceChantierSerializer]
     champs: date, date_creation, date_modification, emarge, emarge_le, emarge_par, employe, employe_nom, gps_lat, gps_lng, heure_arrivee, heure_depart, hors_zone, id, installation_id, note, statut, statut_display
     statut ∈ {absent, parti_tot, present, retard}
@@ -3586,7 +3603,7 @@
 - frontend/src/api/savApi.js :: deleteCategorieEquipement -> /api/django/sav/categories-equipement/<>  [CategorieEquipementSerializer]
     champs: alias_email, commentaire, equipe_responsable, equipe_responsable_nom, id, nb_equipements, nom, responsable, responsable_nom
 - frontend/src/api/savApi.js :: deleteCategorieTicket -> /api/django/sav/categories-ticket/<>  [CategorieTicketSerializer]
-    champs: actif, id, libelle, ordre
+    champs: actif, competences_requises, id, libelle, niveau_competence_min, ordre
 - frontend/src/api/savApi.js :: deleteCauseDefaillance -> /api/django/sav/causes-defaillance/<>  [CauseDefaillanceSerializer]
     champs: archived, id, nom, ordre
 - frontend/src/api/savApi.js :: deleteCompatibilitePiece -> /api/django/sav/compatibilites-piece/<>  [CompatibilitePieceSerializer]
@@ -3595,7 +3612,7 @@
     champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
 - frontend/src/api/savApi.js :: deleteEquipeMaintenance -> /api/django/sav/equipes-maintenance/<>  [EquipeMaintenanceSerializer]
-    champs: actif, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
+    champs: actif, capacite_max_tickets_ouverts, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
 - frontend/src/api/savApi.js :: deleteRemedeDefaillance -> /api/django/sav/remedes-defaillance/<>  [RemedeDefaillanceSerializer]
     champs: archived, id, nom, ordre
 - frontend/src/api/savApi.js :: deleteReponseType -> /api/django/sav/reponses-type/<>  [ReponseTypeSerializer]
@@ -3606,7 +3623,7 @@
 - frontend/src/api/savApi.js :: getCategoriesEquipement -> /api/django/sav/categories-equipement  [CategorieEquipementSerializer]
     champs: alias_email, commentaire, equipe_responsable, equipe_responsable_nom, id, nb_equipements, nom, responsable, responsable_nom
 - frontend/src/api/savApi.js :: getCategoriesTicket -> /api/django/sav/categories-ticket  [CategorieTicketSerializer]
-    champs: actif, id, libelle, ordre
+    champs: actif, competences_requises, id, libelle, niveau_competence_min, ordre
 - frontend/src/api/savApi.js :: getCausesDefaillance -> /api/django/sav/causes-defaillance  [CauseDefaillanceSerializer]
     champs: archived, id, nom, ordre
 - frontend/src/api/savApi.js :: getChecklistTemplates -> /api/django/sav/checklist-templates  [MaintenanceChecklistTemplateSerializer]
@@ -3617,7 +3634,7 @@
     champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
 - frontend/src/api/savApi.js :: getEquipesMaintenance -> /api/django/sav/equipes-maintenance  [EquipeMaintenanceSerializer]
-    champs: actif, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
+    champs: actif, capacite_max_tickets_ouverts, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
 - frontend/src/api/savApi.js :: getRemedesDefaillance -> /api/django/sav/remedes-defaillance  [RemedeDefaillanceSerializer]
     champs: archived, id, nom, ordre
 - frontend/src/api/savApi.js :: getReponsesType -> /api/django/sav/reponses-type  [ReponseTypeSerializer]
