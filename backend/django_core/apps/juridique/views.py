@@ -305,7 +305,11 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='proposer-provision',
             permission_classes=[
-                ScopedPermission, HasPermissionOrLegacy('compta_saisir')])
+                ScopedPermission,
+                HasPermissionOrLegacy('compta_saisir'),
+                # NTJUR39 — proposer une provision, c'est engager un montant :
+                # même palier que les mandats et les notes d'honoraires.
+                HasPermissionOrLegacy('juridique_gerer_mandats')])
     def proposer_provision(self, request, pk=None):
         """Propose (et, sur confirmation, comptabilise) la provision du dossier.
 
@@ -497,7 +501,10 @@ class MandatAvocatViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['id', 'date_mandat', 'statut']
     read_permission = 'juridique_voir'
-    write_permission = 'juridique_gerer'
+    # NTJUR39 — ENGAGER une dépense n'est pas « écrire dans le module » : la
+    # création/modification d'un mandat (et son activation) exige la
+    # permission fine, pas le simple ``juridique_gerer``.
+    write_permission = 'juridique_gerer_mandats'
 
     def get_queryset(self):
         """Scope société + ``?dossier=`` ; jamais les mandats d'un dossier
@@ -630,6 +637,9 @@ class NoteHonorairesViewSet(_DossierScopedViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_facture', 'id']
     chemin_dossier = 'mandat__dossier'
+    # NTJUR39 — même palier que les mandats : une note d'honoraires ACTE une
+    # dépense engagée.
+    write_permission = 'juridique_gerer_mandats'
 
     def get_queryset(self):
         qs = super().get_queryset()

@@ -217,6 +217,14 @@ ALL_PERMISSIONS = [
     # ``get_queryset`` du ViewSet (NTJUR1).
     'juridique_voir',
     'juridique_gerer',
+    # NTJUR39 — ENGAGER UNE DÉPENSE n'est pas « écrire dans le module ».
+    # ``juridique_gerer_mandats`` est REQUISE, EN PLUS de ``juridique_gerer``,
+    # pour créer/modifier un ``MandatAvocat`` ou une ``NoteHonoraires``, et
+    # pour proposer une provision (NTJUR14). Un responsable de dossier sans ce
+    # code consulte son dossier mais n'engage aucune dépense. DISTINCTE de la
+    # permission de confidentialité : voir un dossier secret ne donne pas le
+    # droit de signer un cabinet à 300 000 MAD.
+    'juridique_gerer_mandats',
     # NTJUR40 — DÉFENSE EN PROFONDEUR sur le workflow d'approbation des
     # engagements juridiques (NTJUR19) : ``juridique_approuver_engagement``
     # est REQUISE, EN PLUS de ``juridique_gerer``, pour décider une étape.
