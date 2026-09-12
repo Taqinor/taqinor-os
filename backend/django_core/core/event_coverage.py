@@ -346,6 +346,22 @@ NO_STATIC_EMITTER = {
     # la même chose.
     "ao_depose",
     "ao_gagne",
+    # NTCON31 — les quatre événements BTP/EPC : émetteur RÉEL et unique
+    # (``apps/btp_chantier/services.py``), mais émis À TRAVERS UNE AIDE —
+    # ``_emettre(nom, **kwargs)`` fait ``getattr(events, nom).send(...)``.
+    # Comme pour ``ao_depose``/``ao_gagne`` ci-dessus, le scanner de parité ne
+    # résout que ``<signal_importé>.send(...)`` / ``events.<nom>.send(...)`` :
+    # un signal porté par une VARIABLE lui est invisible et il signalerait une
+    # fausse divergence « zéro clé ». Réservation explicite plutôt que de
+    # déformer le service (dérouler l'aide en quatre ``send`` littéraux juste
+    # pour plaire à un scanner statique). Les clés cataloguées restent le
+    # contrat et reprennent mot pour mot les kwargs des appels ``_emettre``
+    # (``reserve``/``rfi`` + ``reponse``/``visa``/``dgd``, ``company``,
+    # ``user``), comme le disent aussi les docstrings des signaux.
+    "btp_reserve_levee",
+    "btp_rfi_repondu",
+    "btp_visa_approuve",
+    "btp_dgd_finalise",
 }
 
 
