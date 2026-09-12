@@ -6,7 +6,8 @@ imposée côté serveur par ``CompanyScopedModelViewSet``.
 from rest_framework import serializers
 
 from .models import (
-    AttestationPolitique, ControleInterne, DeficienceControle,
+    AnalyseImpactDPIA, AttestationPolitique, ControleInterne,
+    DeficienceControle,
     IncidentActivity, IncidentSecurite, JournalDestruction, LegalHold,
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
@@ -758,6 +759,70 @@ class IncidentSecuriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Les systèmes touchés doivent être une LISTE de libellés.')
         return valeur
+
+
+class AnalyseImpactDPIASerializer(serializers.ModelSerializer):
+    """NTGRC27 — analyse d'impact (AIPD) d'un traitement du registre CNDP.
+
+    ``statut`` et ``date_validation`` sont en LECTURE SEULE : ils bougent
+    ENSEMBLE par l'action ``valider/``. Une AIPD qu'on peut déclarer « validée »
+    d'un coup de PATCH ne vaut pas mieux qu'une case à cocher.
+    """
+
+    risque_residuel_libelle = serializers.CharField(
+        source='get_risque_residuel_display', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AnalyseImpactDPIA
+        fields = [
+            'id', 'traitement_ref', 'necessite_dpia', 'critere_declencheur',
+            'risques_identifies', 'mesures_attenuation', 'risque_residuel',
+            'risque_residuel_libelle', 'avis_dpo', 'statut', 'statut_libelle',
+            'date_validation', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'date_validation', 'created_at', 'updated_at']
+
+    def validate_traitement_ref(self, valeur):
+        """Le traitement doit appartenir à la société de l'appelant.
+
+        Vérifié via le registre de ``core`` (couche FONDATION) : une référence
+        texte non validée serait une porte inter-tenant.
+        """
+        valeur = str(valeur or '').strip()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if not valeur:
+            raise serializers.ValidationError(
+                'Indiquez le traitement analysé.')
+        if company is None:
+            return valeur
+        from core.models import RegistreTraitement
+
+        try:
+            traitement_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence du traitement doit être un identifiant '
+                'numérique.')
+        if not RegistreTraitement.objects.filter(
+                company=company, pk=traitement_id).exists():
+            raise serializers.ValidationError(
+                "Ce traitement n'existe pas pour votre société.")
+        return valeur
+
+    def validate(self, attrs):
+        """Une AIPD déclarée NON nécessaire doit dire POURQUOI."""
+        necessite = attrs.get(
+            'necessite_dpia', getattr(self.instance, 'necessite_dpia', True))
+        avis = attrs.get('avis_dpo', getattr(self.instance, 'avis_dpo', ''))
+        if necessite is False and not (avis or '').strip():
+            raise serializers.ValidationError({
+                'avis_dpo': 'Justifiez pourquoi aucune analyse d\'impact '
+                            'n\'est nécessaire.'})
+        return attrs
 
 
 class IncidentActivitySerializer(serializers.ModelSerializer):

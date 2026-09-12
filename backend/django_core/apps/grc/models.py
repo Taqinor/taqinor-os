@@ -1442,3 +1442,80 @@ class IncidentActivity(TenantModel):
 
     def __str__(self):
         return f'{self.get_type_display()} — incident {self.incident_id}'
+
+
+class AnalyseImpactDPIA(TenantModel):
+    """NTGRC27 — analyse d'impact relative à la protection des données (AIPD).
+
+    Art. 35 RGPD (et pratique CNDP côté loi 09-08) : un traitement susceptible
+    d'engendrer un risque élevé exige une analyse d'impact AVANT sa mise en
+    œuvre. Le registre des traitements (``core.RegistreTraitement``) dit CE
+    QU'ON FAIT ; l'AIPD dit CE QU'ON RISQUE et CE QU'ON A FAIT POUR LE RÉDUIRE.
+
+    Le traitement est désigné par un identifiant TEXTE (``traitement_ref``) —
+    jamais une FK vers ``core.models`` : ``core`` est la couche FONDATION,
+    ``grc`` la lit par son ``selectors.py``, et l'analyse survit à la
+    disparition de la ligne du registre (c'est une pièce d'archive).
+
+    ``necessite_dpia`` à ``False`` est une décision ASSUMÉE et tracée (« pas
+    de DPIA requise, et voici pourquoi ») : une case vide, elle, ne prouve
+    rien du tout.
+    """
+
+    RISQUE_ACCEPTABLE = 'acceptable'
+    RISQUE_ELEVE = 'eleve'
+    RISQUE_CHOICES = [
+        (RISQUE_ACCEPTABLE, 'Acceptable'),
+        (RISQUE_ELEVE, 'Élevé'),
+    ]
+
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_VALIDEE = 'validee'
+    STATUT_A_REVISER = 'a_reviser'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_VALIDEE, 'Validée'),
+        (STATUT_A_REVISER, 'À réviser'),
+    ]
+
+    traitement_ref = models.CharField(
+        'Traitement', max_length=64,
+        help_text='Identifiant texte du core.RegistreTraitement (string-FK).')
+    necessite_dpia = models.BooleanField(
+        'AIPD nécessaire', default=True,
+        help_text='Décision ASSUMÉE : « non » doit être justifié dans '
+                  'l\'avis du DPO.')
+    critere_declencheur = models.JSONField(
+        'Critères déclencheurs', default=list, blank=True,
+        help_text='Ex. ["donnees_sensibles", "profilage", "surveillance", '
+                  '"grande_echelle"].')
+    risques_identifies = models.JSONField(
+        'Risques identifiés', default=list, blank=True,
+        help_text='Liste de {risque, gravite, vraisemblance} ou de libellés.')
+    mesures_attenuation = models.TextField(
+        'Mesures d\'atténuation', blank=True, default='')
+    risque_residuel = models.CharField(
+        'Risque résiduel', max_length=12, choices=RISQUE_CHOICES,
+        default=RISQUE_ACCEPTABLE)
+    avis_dpo = models.TextField('Avis du DPO', blank=True, default='')
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_BROUILLON)
+    date_validation = models.DateTimeField(
+        'Date de validation', null=True, blank=True,
+        help_text='Posée CÔTÉ SERVEUR à la validation.')
+
+    class Meta:
+        verbose_name = 'Analyse d\'impact (AIPD)'
+        verbose_name_plural = 'Analyses d\'impact (AIPD)'
+        ordering = ['traitement_ref', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_dpia_co_statut_idx'),
+            models.Index(fields=['company', 'traitement_ref'],
+                         name='grc_dpia_co_trait_idx'),
+        ]
+
+    def __str__(self):
+        return (f'AIPD traitement {self.traitement_ref} '
+                f'({self.get_statut_display()})')

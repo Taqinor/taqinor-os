@@ -434,3 +434,48 @@ def attestations_manquantes(company):
             'manquants': manquants,
         })
     return resultats
+
+
+# ── NTGRC27 — analyses d'impact (AIPD) ──────────────────────────────────────
+
+def traitements_dpia_manquante(company):
+    """NTGRC27 — traitements à HAUT RISQUE sans AIPD VALIDÉE.
+
+    Lecture du registre des traitements par le sélecteur FIN de ``core``
+    (``core.selectors.traitements_haut_risque``) — jamais par une règle
+    « qu'est-ce qu'un traitement sensible » redupliquée ici.
+
+    Un traitement compte comme couvert UNIQUEMENT si son AIPD est au statut
+    « validée ». Un brouillon ou une analyse « à réviser » ne protège
+    personne : c'est exactement le cas que ce sélecteur existe pour faire
+    remonter.
+
+    Renvoie une liste de dicts ``{traitement, analyse}`` (``analyse`` = la
+    dernière AIPD connue, ou ``None`` si aucune n'existe), triée par code.
+    """
+    from core.selectors import traitements_haut_risque
+
+    from .models import AnalyseImpactDPIA
+
+    if company is None:
+        return []
+    traitements = list(traitements_haut_risque(company))
+    if not traitements:
+        return []
+
+    refs = {str(t.pk) for t in traitements}
+    analyses = {}
+    for analyse in (AnalyseImpactDPIA.objects
+                    .filter(company=company, traitement_ref__in=refs)
+                    .order_by('id')):
+        # La plus RÉCENTE fait foi (order_by croissant + écrasement).
+        analyses[analyse.traitement_ref] = analyse
+
+    manquants = []
+    for traitement in traitements:
+        analyse = analyses.get(str(traitement.pk))
+        if (analyse is not None
+                and analyse.statut == AnalyseImpactDPIA.STATUT_VALIDEE):
+            continue
+        manquants.append({'traitement': traitement, 'analyse': analyse})
+    return manquants

@@ -12,7 +12,8 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AttestationPolitique, ControleInterne, DeficienceControle,
+    AnalyseImpactDPIA, AttestationPolitique, ControleInterne,
+    DeficienceControle,
     IncidentSecurite, JournalDestruction, LegalHold,
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
@@ -20,6 +21,7 @@ from .models import (
     RisqueEntreprise, TestControle, ViolationDonnees,
 )
 from .serializers import (
+    AnalyseImpactDPIASerializer,
     AttestationPolitiqueSerializer, ControleInterneSerializer,
     DeficienceControleSerializer, IncidentActivitySerializer,
     IncidentSecuriteSerializer,
@@ -786,3 +788,60 @@ class IncidentSecuriteViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Écrivez la note avant de l\'enregistrer.'},
                 status=400)
         return Response(IncidentActivitySerializer(activite).data, status=201)
+
+
+class AnalyseImpactDPIAViewSet(CompanyScopedModelViewSet):
+    """NTGRC27 — analyses d'impact (AIPD) des traitements à haut risque."""
+
+    queryset = AnalyseImpactDPIA.objects.all()
+    serializer_class = AnalyseImpactDPIASerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = (params.get('statut') or '').strip()
+        if statut:
+            qs = qs.filter(statut=statut)
+        traitement = (params.get('traitement_ref') or '').strip()
+        if traitement:
+            qs = qs.filter(traitement_ref=traitement)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide l'analyse (statut + date de validation, ensemble)."""
+        from .services import ValidationDPIAImpossible, valider_dpia
+
+        analyse = self.get_object()
+        try:
+            valider_dpia(analyse)
+        except ValidationDPIAImpossible as exc:
+            return Response({exc.champ: str(exc)}, status=400)
+        return Response(self.get_serializer(analyse).data)
+
+    @action(detail=True, methods=['post'], url_path='demander-revision')
+    def demander_revision(self, request, pk=None):
+        """Repasse l'analyse en « à réviser » (le traitement a changé)."""
+        from .services import demander_revision_dpia
+
+        analyse = self.get_object()
+        demander_revision_dpia(analyse)
+        return Response(self.get_serializer(analyse).data)
+
+    @action(detail=False, methods=['get'], url_path='traitements-sans-dpia')
+    def traitements_sans_dpia(self, request):
+        """Traitements à HAUT RISQUE sans AIPD validée (le trou à combler)."""
+        from .selectors import traitements_dpia_manquante
+
+        manquants = traitements_dpia_manquante(request.user.company)
+        return Response({'results': [
+            {
+                'traitement_ref': str(entree['traitement'].pk),
+                'code': entree['traitement'].code,
+                'finalite': entree['traitement'].finalite,
+                'analyse': (self.get_serializer(entree['analyse']).data
+                            if entree['analyse'] is not None else None),
+            }
+            for entree in manquants
+        ]})

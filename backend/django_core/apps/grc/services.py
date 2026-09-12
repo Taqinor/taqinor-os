@@ -1132,3 +1132,49 @@ def escalader_incident_en_violation(incident, **champs):
     incident.violation_donnees_ref = str(violation.pk)
     incident.save(update_fields=['violation_donnees_ref', 'updated_at'])
     return violation
+
+
+# ── NTGRC27 — analyses d'impact (AIPD) ──────────────────────────────────────
+
+class ValidationDPIAImpossible(ValueError):
+    """Validation d'AIPD refusée. Traduite en 400 par la vue, jamais 500."""
+
+    def __init__(self, message, champ='detail'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def valider_dpia(analyse, quand=None):
+    """Valide une AIPD : statut et date de validation bougent ENSEMBLE.
+
+    Refusé si le risque résiduel est ÉLEVÉ sans avis du DPO : une analyse qui
+    conclut « risque élevé » et que personne n'a arbitrée est précisément le
+    cas où l'autorité doit être consultée — la valider en silence serait
+    l'inverse de ce que sert une AIPD.
+    """
+    from .models import AnalyseImpactDPIA
+
+    if (analyse.necessite_dpia
+            and not (analyse.mesures_attenuation or '').strip()):
+        raise ValidationDPIAImpossible(
+            'Décrivez les mesures d\'atténuation avant de valider '
+            'l\'analyse.', champ='mesures_attenuation')
+    if (analyse.risque_residuel == AnalyseImpactDPIA.RISQUE_ELEVE
+            and not (analyse.avis_dpo or '').strip()):
+        raise ValidationDPIAImpossible(
+            'Un risque résiduel élevé exige l\'avis du DPO (et, le cas '
+            'échéant, la consultation de la CNDP).', champ='avis_dpo')
+
+    analyse.statut = AnalyseImpactDPIA.STATUT_VALIDEE
+    analyse.date_validation = quand or timezone.now()
+    analyse.save(update_fields=['statut', 'date_validation', 'updated_at'])
+    return analyse
+
+
+def demander_revision_dpia(analyse):
+    """Repasse une AIPD en « à réviser » (le traitement a changé)."""
+    from .models import AnalyseImpactDPIA
+
+    analyse.statut = AnalyseImpactDPIA.STATUT_A_REVISER
+    analyse.save(update_fields=['statut', 'updated_at'])
+    return analyse

@@ -12,6 +12,7 @@ from .public_views import (
     deposer_demande_droit, questionnaire_public, suivre_demande_droit,
 )
 from .views import (
+    AnalyseImpactDPIAViewSet,
     AttestationPolitiqueViewSet, ControleInterneViewSet,
     DeficienceControleViewSet, JournalDestructionViewSet, LegalHoldViewSet,
     IncidentSecuriteViewSet, ModeleQuestionnaireViewSet,
@@ -70,6 +71,9 @@ router.register(r'modeles-questionnaire', ModeleQuestionnaireViewSet,
 # NTGRC25 — registre des incidents de sécurité (≠ violations de données).
 router.register(r'incidents-securite', IncidentSecuriteViewSet,
                 basename='grc-incident-securite')
+# NTGRC27 — analyses d'impact (AIPD) des traitements à haut risque.
+router.register(r'analyses-dpia', AnalyseImpactDPIAViewSet,
+                basename='grc-analyse-dpia')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

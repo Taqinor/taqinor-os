@@ -1809,6 +1809,16 @@ class RegistreTraitement(TimestampedModel):
     date_recepisse = models.DateField(
         'Date de récépissé CNDP', null=True, blank=True)
     actif = models.BooleanField('Actif', default=True)
+    # NTGRC27 — drapeau de HAUT RISQUE (art. 35 RGPD / loi 09-08) : le
+    # traitement porte-t-il des données SENSIBLES (santé, biométrie, opinions,
+    # infractions…) ? C'est ce drapeau qui rend une analyse d'impact (AIPD)
+    # exigible. Défaut ``False`` : aucun traitement existant ne devient
+    # rétroactivement « à haut risque » — c'est une décision humaine, pas une
+    # migration.
+    donnees_sensibles = models.BooleanField(
+        'Données sensibles / haut risque', default=False,
+        help_text='Coché, le traitement exige une analyse d\'impact (AIPD) '
+                  'validée.')
 
     class Meta:
         verbose_name = 'Traitement CNDP'
