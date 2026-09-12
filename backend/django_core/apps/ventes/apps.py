@@ -78,3 +78,7 @@ class VentesConfig(AppConfig):
         # app qui s'enregistre. Idempotent (le registre est un dict par nom).
         from . import dsr_provider
         dsr_provider.register()
+        # NTGRC4 — rétention des factures pilotée par les politiques GRC, en
+        # SIGNALEMENT seul (obligations comptables et fiscales).
+        from . import retention
+        retention.register()

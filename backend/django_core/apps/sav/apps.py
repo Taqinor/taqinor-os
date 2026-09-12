@@ -30,3 +30,7 @@ class SavConfig(AppConfig):
         # d'équipement vers un ticket correctif pré-catégorisé.
         from .services import register_email_alias_handler
         register_email_alias_handler()
+        # NTGRC4 — rétention des tickets pilotée par les politiques GRC, en
+        # SIGNALEMENT seul (la donnée personnelle vit sur le client CRM).
+        from . import retention
+        retention.register()

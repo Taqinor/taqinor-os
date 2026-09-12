@@ -141,92 +141,119 @@ def _anonymiser_traces_visiteur(company, lead):
         ip='', user_agent='', appareil_id='', token_suffixe='')
 
 
+def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
+    """Anonymise UN lead (jamais de suppression) + journalise la destruction.
+
+    NTGRC4 — extrait de ``erase_crm`` SANS changer une ligne de son
+    comportement, pour que la RÉTENTION (balayage par âge) et le DSR (demande
+    d'une personne) partagent exactement le même scrub : deux chemins qui
+    divergeraient, c'est un des deux qui oublierait un champ.
+    """
+    from apps.grc.services import empreinte_avant, journaliser_destruction
+
+    empreinte = empreinte_avant({
+        'nom': le.nom, 'prenom': le.prenom, 'email': le.email,
+        'telephone': le.telephone, 'whatsapp': le.whatsapp})
+    le.nom = 'Anonymisé'
+    le.prenom = None
+    le.email = None
+    le.telephone = None
+    le.whatsapp = None
+    le.adresse = None
+    # Finding #13 — l'identifiant d'appareil est une PII de traçage : sans
+    # lui, une visite ultérieure du même navigateur re-rattacherait la
+    # personne à sa fiche « effacée » (``visites.rattacher_visites_au_lead``
+    # et l'alerte ``alerter_appareil_partage`` s'appuient dessus).
+    le.appareil_id = None
+    # CRX32 — LES CHAMPS PERSONNALISÉS PARTENT AUSSI. ``custom_data``
+    # (T11) est un JSON libre où une société range ce qu'elle veut : CIN,
+    # numéro de compteur, notes nominatives. L'action ``anonymize`` du
+    # ClientViewSet le purgeait déjà ; le chemin DSR — le seul qui réponde
+    # à une demande LÉGALE d'effacement — l'oubliait des deux côtés.
+    le.custom_data = None
+    # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
+    # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
+    # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
+    # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
+    le.save(update_fields=[
+        'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
+        'appareil_id', 'custom_data',
+        'email_normalise', 'phone_normalise'])
+    # Les traces de traçage du lead perdent leurs identifiants (IP,
+    # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
+    # n'est plus reconnaissable.
+    _anonymiser_traces_visiteur(company, le)
+    journaliser_destruction(
+        company, type_objet='crm_lead', objet_ref=le.pk,
+        action='anonymise', demande_droit_ref=demande_droit_ref,
+        motif=motif, empreinte=empreinte)
+    return 1
+
+
+def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None):
+    """Anonymise UN client (jamais de suppression) + journalise (NTGRC4).
+
+    Même scrub que l'action ``ClientViewSet.anonymize`` (FG26/CRX32) :
+    identité, contacts, identifiants fiscaux/administratifs et champs
+    personnalisés. Les documents comptables restent intacts.
+    """
+    from apps.grc.services import empreinte_avant, journaliser_destruction
+
+    now = now or timezone.now()
+    empreinte = empreinte_avant({
+        'nom': cl.nom, 'prenom': cl.prenom, 'email': cl.email,
+        'telephone': cl.telephone})
+    cl.nom = 'Anonymisé'
+    cl.prenom = None
+    cl.email = None
+    cl.telephone = None
+    cl.adresse = None
+    # CRX32 — PARITÉ AVEC L'ACTION ``anonymize`` DU ClientViewSet.
+    # Elle purge depuis FG26 les identifiants fiscaux et administratifs
+    # (CIN, ICE, IF, RC) et les champs personnalisés ; le chemin DSR, LUI,
+    # les laissait intacts — un client « effacé » sur demande légale
+    # gardait donc son numéro de carte d'identité nationale. Les deux
+    # chemins scrubent désormais exactement le même ensemble.
+    cl.cin = None
+    cl.ice = None
+    cl.if_fiscal = None
+    cl.rc = None
+    cl.custom_data = None
+    cl.is_anonymized = True
+    cl.anonymized_at = now
+    cl.save(update_fields=[
+        'nom', 'prenom', 'email', 'telephone', 'adresse',
+        'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
+        'is_anonymized', 'anonymized_at'])
+    journaliser_destruction(
+        company, type_objet='crm_client', objet_ref=cl.pk,
+        action='anonymise', demande_droit_ref=demande_droit_ref,
+        motif=motif, empreinte=empreinte)
+    return 1
+
+
 def erase_crm(company, subject_identifier):
     """Anonymise leads + clients de la personne (activités conservées).
 
     Renvoie le nombre d'enregistrements anonymisés. N'efface JAMAIS les lignes
     (intégrité devis/factures/activités) : vide les PII et pose le drapeau.
+    NTGRC1 — chaque anonymisation réelle laisse une ligne au journal de
+    destruction (``grc.JournalDestruction``), best-effort : une journalisation
+    impossible ne fait JAMAIS échouer l'effacement légal.
     """
-    # NTGRC1 — chaque anonymisation réelle laisse une ligne au journal de
-    # destruction (`grc.JournalDestruction`). Import FONCTION-LOCAL du SERVICE
-    # de l'app cible (jamais de ses modèles) ; best-effort côté grc : une
-    # journalisation impossible ne fait JAMAIS échouer l'effacement légal.
-    from apps.grc.services import empreinte_avant, journaliser_destruction
-
     leads, clients = _matcher(company, subject_identifier)
     now = timezone.now()
     count = 0
 
     for le in leads:
-        empreinte = empreinte_avant({
-            'nom': le.nom, 'prenom': le.prenom, 'email': le.email,
-            'telephone': le.telephone, 'whatsapp': le.whatsapp})
-        le.nom = 'Anonymisé'
-        le.prenom = None
-        le.email = None
-        le.telephone = None
-        le.whatsapp = None
-        le.adresse = None
-        # Finding #13 — l'identifiant d'appareil est une PII de traçage : sans
-        # lui, une visite ultérieure du même navigateur re-rattacherait la
-        # personne à sa fiche « effacée » (``visites.rattacher_visites_au_lead``
-        # et l'alerte ``alerter_appareil_partage`` s'appuient dessus).
-        le.appareil_id = None
-        # CRX32 — LES CHAMPS PERSONNALISÉS PARTENT AUSSI. ``custom_data``
-        # (T11) est un JSON libre où une société range ce qu'elle veut : CIN,
-        # numéro de compteur, notes nominatives. L'action ``anonymize`` du
-        # ClientViewSet le purgeait déjà ; le chemin DSR — le seul qui réponde
-        # à une demande LÉGALE d'effacement — l'oubliait des deux côtés.
-        le.custom_data = None
-        # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
-        # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
-        # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
-        # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
-        le.save(update_fields=[
-            'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
-            'appareil_id', 'custom_data',
-            'email_normalise', 'phone_normalise'])
-        # Les traces de traçage du lead perdent leurs identifiants (IP,
-        # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
-        # n'est plus reconnaissable.
-        _anonymiser_traces_visiteur(company, le)
-        journaliser_destruction(
-            company, type_objet='crm_lead', objet_ref=le.pk,
-            action='anonymise', demande_droit_ref=subject_identifier,
-            motif='Effacement DSR (loi 09-08) — lead', empreinte=empreinte)
-        count += 1
+        count += anonymiser_lead(
+            company, le, motif='Effacement DSR (loi 09-08) — lead',
+            demande_droit_ref=subject_identifier)
 
     for cl in clients:
-        empreinte = empreinte_avant({
-            'nom': cl.nom, 'prenom': cl.prenom, 'email': cl.email,
-            'telephone': cl.telephone})
-        cl.nom = 'Anonymisé'
-        cl.prenom = None
-        cl.email = None
-        cl.telephone = None
-        cl.adresse = None
-        # CRX32 — PARITÉ AVEC L'ACTION ``anonymize`` DU ClientViewSet.
-        # Elle purge depuis FG26 les identifiants fiscaux et administratifs
-        # (CIN, ICE, IF, RC) et les champs personnalisés ; le chemin DSR, LUI,
-        # les laissait intacts — un client « effacé » sur demande légale
-        # gardait donc son numéro de carte d'identité nationale. Les deux
-        # chemins scrubent désormais exactement le même ensemble.
-        cl.cin = None
-        cl.ice = None
-        cl.if_fiscal = None
-        cl.rc = None
-        cl.custom_data = None
-        cl.is_anonymized = True
-        cl.anonymized_at = now
-        cl.save(update_fields=[
-            'nom', 'prenom', 'email', 'telephone', 'adresse',
-            'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
-            'is_anonymized', 'anonymized_at'])
-        journaliser_destruction(
-            company, type_objet='crm_client', objet_ref=cl.pk,
-            action='anonymise', demande_droit_ref=subject_identifier,
-            motif='Effacement DSR (loi 09-08) — client', empreinte=empreinte)
-        count += 1
+        count += anonymiser_client(
+            company, cl, motif='Effacement DSR (loi 09-08) — client',
+            demande_droit_ref=subject_identifier, now=now)
 
     return count
 

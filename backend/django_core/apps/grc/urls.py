@@ -9,8 +9,13 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .public_views import deposer_demande_droit, suivre_demande_droit
+from .views import PolitiqueRetentionObjetViewSet
 
 router = DefaultRouter()
+# NTGRC4 — durées de conservation par type d'objet (pilote les balayages
+# `core.retention` enregistrés par crm/ventes/sav/audit).
+router.register(r'politiques-retention-objet', PolitiqueRetentionObjetViewSet,
+                basename='grc-politique-retention-objet')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit
