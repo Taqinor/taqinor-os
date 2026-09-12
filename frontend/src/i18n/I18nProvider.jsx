@@ -5,6 +5,7 @@ import {
   readInitialLocale, applyDocumentAttrs, resolveValue,
 } from './context'
 import { fetchTranslationOverrides } from './overridesApi'
+import { ensureArabicFontLoaded } from './arabicFont'
 
 // N93 — cadre d'internationalisation léger (0 dépendance npm). Ce fichier
 // n'exporte QUE le composant provider (règle react-refresh) ; les hooks,
@@ -25,6 +26,14 @@ export function I18nProvider({ children }) {
   // Applique lang/dir au montage initial (et si la locale change).
   useEffect(() => {
     applyDocumentAttrs(locale)
+  }, [locale])
+
+  // NTI18N7 — police arabe auto-hébergée, chargée PARESSEUSEMENT : seulement
+  // quand la locale devient 'ar', jamais au chargement FR/EN (aucun poids
+  // ajouté au bundle par défaut). Idempotent (arabicFont.js), silencieux pour
+  // les deux autres locales.
+  useEffect(() => {
+    if (locale === 'ar') ensureArabicFontLoaded()
   }, [locale])
 
   // N94 — charge les surcharges de la société une fois (au montage, quand
