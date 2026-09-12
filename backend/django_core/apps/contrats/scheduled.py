@@ -321,3 +321,37 @@ def cloturer_contrats_impayes_daily():
         'contrats.cloturer_contrats_impayes_daily: %s contrat(s) suspendu(s)',
         suspendus)
     return {'contrats_suspendus': suspendus}
+
+
+@shared_task(name='contrats.purger_contreparties_archivees')
+def purger_contreparties_archivees():
+    """NTDOC32 — Purge quotidienne des dépôts contrepartie ARCHIVÉS échus.
+
+    Fine enveloppe planifiable de ``services.purger_contreparties_archivees``
+    (toute la logique — résolution de la politique de rétention GED, jamais
+    une durée codée en dur — y vit, testable sans Celery).
+
+    Sociétés ACTIVES uniquement (AUD415/SCA19), chacune ISOLÉE : une exception
+    sur une société n'empêche JAMAIS les suivantes. Renvoie
+    ``{'purges', 'societes_en_echec'}`` agrégé.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {'purges': 0, 'societes_en_echec': 0}
+    for company in active_companies():
+        try:
+            res = services.purger_contreparties_archivees(company)
+            total['purges'] += res['purges']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            total['societes_en_echec'] += 1
+            logger.warning(
+                'contrats.purger_contreparties_archivees: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.purger_contreparties_archivees: %s dépôt(s) purgé(s) '
+        '(%s société(s) en échec)',
+        total['purges'], total['societes_en_echec'])
+    return total

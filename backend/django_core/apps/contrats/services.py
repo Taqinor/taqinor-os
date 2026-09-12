@@ -5824,3 +5824,57 @@ def rouvrir_commentaire_redline(commentaire, *, user=None):
         old_value='commentaire résolu', new_value='commentaire rouvert',
         auteur=user)
     return commentaire
+
+
+# ---------------------------------------------------------------------------
+# NTDOC32 — Purge des dépôts contrepartie ARCHIVÉS, selon la rétention GED
+# ---------------------------------------------------------------------------
+#
+# La durée n'est JAMAIS codée en dur : elle vient de la politique de rétention
+# configurée par la société (``ged.selectors.duree_retention_applicable`` —
+# frontière cross-app respectée, on appelle le SÉLECTEUR de l'app cible, jamais
+# ses modèles). Sans politique applicable, RIEN n'est purgé.
+
+#: Catégorie de rétention interrogée pour les pièces contractuelles.
+CATEGORIE_RETENTION_CONTRAT = 'contrat'
+
+
+def duree_retention_contreparties(company):
+    """Durée (jours) de conservation des dépôts archivés, ou ``None``.
+
+    ``None`` = aucune politique de rétention applicable → l'appelant ne purge
+    RIEN (jamais de durée par défaut, jamais de constante en dur).
+    """
+    try:
+        from apps.ged.selectors import duree_retention_applicable
+    except Exception:  # pragma: no cover - app ged absente
+        return None
+    try:
+        return duree_retention_applicable(
+            company, type_document=CATEGORIE_RETENTION_CONTRAT)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def purger_contreparties_archivees(company, *, now=None):
+    """NTDOC32 — Supprime définitivement les dépôts ARCHIVÉS échus (une société).
+
+    Un dépôt n'est purgé que s'il est ``archive=True`` ET que son archivage
+    date de PLUS que la durée de rétention applicable. Un dépôt archivé
+    récemment est CONSERVÉ ; un dépôt non archivé n'est jamais touché.
+
+    Renvoie ``{'purges': n, 'duree_jours': d|None}``.
+    """
+    from .models import DocumentContrepartie
+
+    duree = duree_retention_contreparties(company)
+    if not duree:
+        return {'purges': 0, 'duree_jours': duree}
+
+    limite = (now or timezone.now()) - timedelta(days=int(duree))
+    echus = DocumentContrepartie.objects.filter(
+        company=company, archive=True, date_archivage__lt=limite)
+    purges = echus.count()
+    if purges:
+        echus.delete()
+    return {'purges': purges, 'duree_jours': int(duree)}
