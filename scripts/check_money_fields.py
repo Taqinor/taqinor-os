@@ -63,9 +63,19 @@ RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
 # c'est-à-dire ni « la moitié », ni « + 30 % ». Le nom du champ ne matche pas
 # RATE_NAME_RE (`taux_`/`_pct`), d'où cette entrée plutôt qu'un élargissement
 # de l'heuristique partagée.
+# NTCON15/25 (12/09/2026) — btp_chantier porte la MEME convention pour-mille
+# (‰/jour, penalites de retard marches marocains) que le precedent
+# gestion_projet ci-dessus : decimal_places=3 est l'unite, pas une derive.
+# NTSUB26 (12/09/2026) — CompteurUsageArchive.quantite_totale est une
+# QUANTITE d'usage agregee (kWh/appels/unites facturables), pas un montant :
+# 4 decimales necessaires pour les fractions d'unite ; le montant factura-
+# ble, lui, est arrondi au centime au moment de la facturation.
 DECIMAL_PLACES_ALLOWLIST = {
     "backend/django_core/apps/gestion_projet/models.py:103",
     "backend/django_core/apps/stock/models.py:724",
+    "backend/django_core/apps/btp_chantier/models.py:812",
+    "backend/django_core/apps/btp_chantier/models.py:1136",
+    "backend/django_core/apps/contrats/models.py:4085",
 }
 
 FLOAT_LIKE = {"FloatField"}
