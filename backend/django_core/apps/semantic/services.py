@@ -312,6 +312,34 @@ def snapshot_metrique(definition, *, auteur=None, force=False):
             **instantane)
 
 
+def resolve_widget_metrique(company, user, cle, *, filters=None,
+                            group_by=None):
+    """NTDATA34 — résout une métrique POUR UN WIDGET de tableau de bord.
+
+    C'est le CONTRAT injecté dans ``core.dashboard_data`` (une fonction, un
+    dict) : la fondation ne voit ainsi aucun type de cette app — ni modèle, ni
+    exception. Tout ce qui peut mal tourner devient un message FRANÇAIS dans
+    ``erreur``, parce qu'un widget cassé doit se lire comme cassé sur l'écran,
+    jamais comme un tableau vide qui laisserait croire qu'il n'y avait rien à
+    voir.
+    """
+    try:
+        resultat = resolve_metric(company, user, cle, filters=filters,
+                                  group_by=group_by)
+    except MetriqueInconnue as exc:
+        return {'erreur': str(exc)}
+    except MetriqueNonResolvable as exc:
+        return {'erreur': str(exc)}
+    return {
+        'valeur': resultat['valeur'],
+        'lignes': resultat['lignes'],
+        'libelle': resultat['libelle'],
+        'unite': resultat['unite'],
+        'format': resultat['format'],
+        'erreur': '',
+    }
+
+
 def versions_metrique(definition):
     """Les versions d'une définition, de la plus RÉCENTE à la plus ancienne."""
     from .models import MetricDefinitionVersion

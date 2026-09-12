@@ -52,8 +52,117 @@ from . import data_explorer
 CLE_PERIODE = 'periode'
 
 
+#: NTDATA34 — type de widget qui référence une MÉTRIQUE NOMMÉE par sa clé.
+TYPE_METRIQUE = 'metrique'
+
+
 class FiltreGlobalInvalide(Exception):
     """Filtres globaux mal formés (corps/paramètre illisible)."""
+
+
+# ---------------------------------------------------------------------------
+# NTDATA34 — widget branché sur une MÉTRIQUE NOMMÉE plutôt qu'une spec inline.
+#
+# LE PROBLÈME. Un widget portait sa propre ``spec`` : dix tableaux de bord qui
+# affichent « marge brute » portaient dix copies de la formule. Corriger la
+# définition supposait de retrouver ces dix copies — et la onzième, oubliée,
+# affichait durablement un autre chiffre. C'est exactement ce que la couche
+# sémantique (NTDATA7/8) existe pour empêcher.
+#
+# LE RÉSOLVEUR EST INJECTÉ, PAS IMPORTÉ. ``core`` est une couche de FONDATION :
+# elle ne peut pas importer ``apps.semantic`` (contrat import-linter
+# ``core-foundation-is-a-base-layer``). C'est donc ``semantic`` qui vient
+# s'enregistrer depuis son ``ready()`` — le même patron que le registre de
+# datasets. Module sémantique absent ⇒ le widget rend une ERREUR NOMMÉE, jamais
+# un tableau vide qui laisserait croire qu'il n'y avait rien à voir.
+#
+# CONTRAT DU RÉSOLVEUR (une fonction, un dict — ``core`` ne voit aucun type
+# métier) ::
+#
+#     resolveur(company, user, cle, *, filters=None, group_by=None) -> {
+#         'valeur': <nombre | None>,   'lignes': [...],
+#         'libelle': str, 'unite': str, 'format': int,
+#         'erreur': str,               # '' quand tout va bien
+#     }
+
+_RESOLVEUR_METRIQUE = {'fn': None}
+
+
+def register_metric_resolver(fonction):
+    """Branche le résolveur de métriques nommées (appelé par ``semantic``)."""
+    if not callable(fonction):
+        raise ValueError('Résolveur de métrique : fonction appelable requise.')
+    _RESOLVEUR_METRIQUE['fn'] = fonction
+
+
+def get_metric_resolver():
+    """Le résolveur enregistré, ou ``None`` si la couche sémantique est absente."""
+    return _RESOLVEUR_METRIQUE['fn']
+
+
+def _reset_metric_resolver_for_tests() -> None:
+    """Débranche le résolveur (tests uniquement)."""
+    _RESOLVEUR_METRIQUE['fn'] = None
+
+
+def filtres_du_widget(widget, globaux):
+    """Les filtres GLOBAUX traduits dans le vocabulaire de CE widget.
+
+    Même règle que :func:`spec_filtree` : un filtre global ne s'applique que si
+    le widget déclare, dans ``filtres_globaux``, le champ qui porte cette
+    dimension — filtrer à l'aveugle sur un champ deviné produirait un chiffre
+    faux.
+    """
+    mapping = widget.get('filtres_globaux') or {}
+    filtres = {}
+    if not globaux or not mapping:
+        return filtres
+    for cle, valeur in globaux.items():
+        champ = mapping.get(cle)
+        if not champ:
+            continue
+        if cle == CLE_PERIODE:
+            if valeur.get('debut'):
+                filtres['%s__gte' % champ] = valeur['debut']
+            if valeur.get('fin'):
+                filtres['%s__lte' % champ] = valeur['fin']
+        else:
+            filtres[champ] = valeur
+    return filtres
+
+
+def executer_widget_metrique(widget, company, user, globaux):
+    """NTDATA34 — rend UN widget branché sur une métrique nommée.
+
+    Renvoie l'entrée de résultat (même forme que les widgets de dataset, plus
+    ``valeur``/``unite``/``format``) — ou une entrée portant ``erreur``.
+    """
+    cle = widget.get('metrique') or widget.get('cle')
+    entree = {'type': TYPE_METRIQUE, 'metrique': cle}
+    if not cle:
+        entree['erreur'] = 'Widget de métrique sans clé de métrique.'
+        return entree
+    resolveur = get_metric_resolver()
+    if resolveur is None:
+        entree['erreur'] = (
+            'La couche sémantique n\'est pas disponible : la métrique '
+            '« %s » ne peut pas être résolue.' % cle)
+        return entree
+    resultat = resolveur(
+        company, user, cle,
+        filters=filtres_du_widget(widget, globaux) or None,
+        group_by=widget.get('group_by'))
+    if resultat.get('erreur'):
+        entree['erreur'] = resultat['erreur']
+        return entree
+    entree.update({
+        'valeur': resultat.get('valeur'),
+        'rows': resultat.get('lignes') or [],
+        'unite': resultat.get('unite', ''),
+        'format': resultat.get('format'),
+        'libelle_metrique': resultat.get('libelle', ''),
+    })
+    return entree
 
 
 def normaliser_filtres(globaux):
@@ -125,6 +234,16 @@ def executer_dashboard(dashboard, company, user, globaux=None):
         if not isinstance(widget, dict):
             continue
         ident = widget.get('id') or f'widget-{index}'
+        # NTDATA34 — un widget peut référencer une MÉTRIQUE NOMMÉE par sa clé
+        # au lieu de porter sa propre spec : éditer la définition met alors à
+        # jour TOUS les tableaux de bord qui la référencent, ensemble.
+        if widget.get('type') == TYPE_METRIQUE or widget.get('metrique'):
+            entree = executer_widget_metrique(widget, company, user,
+                                              effectifs)
+            entree['id'] = ident
+            entree['titre'] = widget.get('titre', '')
+            resultats.append(entree)
+            continue
         dataset = widget.get('dataset')
         entree = {'id': ident, 'titre': widget.get('titre', ''),
                   'dataset': dataset}
