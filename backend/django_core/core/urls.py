@@ -26,7 +26,9 @@ from .dashboard_partage import (
     dashboard_tv,
 )
 from .drill_api import DrillDownView
-from .formule_api import FormuleTestView
+from .formule_api import (
+    FormuleFonctionsView, FormuleTestView, FormuleValiderView,
+)
 from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
@@ -171,6 +173,13 @@ urlpatterns = router.urls + [
     # NTEXT37 — banc d'essai d'une expression sur des données réelles
     # (lecture seule, borné, scopé société).
     path('formule/tester/', FormuleTestView.as_view(), name='formule-tester'),
+    # NTEXT22 — catalogue documenté des fonctions/opérateurs sûrs (éditeur
+    # de formule assisté).
+    path('formule/fonctions/', FormuleFonctionsView.as_view(),
+         name='formule-fonctions'),
+    # NTEXT23 — validateur d'expression (dry-run, aucun effet de bord).
+    path('formule/valider/', FormuleValiderView.as_view(),
+         name='formule-valider'),
     # NTDATA33 — drill-down d'une cellule de pivot jusqu'aux enregistrements
     # (liste blanche + scoping société de data_explorer, liens profonds).
     path('data-explorer/drill/', DrillDownView.as_view(),
