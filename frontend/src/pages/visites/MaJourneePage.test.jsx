@@ -19,6 +19,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+
 const getMaJournee = vi.fn()
 const demarrerRouteVisite = vi.fn()
 const arriverVisite = vi.fn()
@@ -33,34 +35,19 @@ vi.mock('../../api/visitesApi', () => ({
 
 import MaJourneePage from './MaJourneePage'
 
-// ── copie du contrat `ma_journee.json` ────────────────────────────────────
-const JOURNEE = {
-  date: '2026-09-14',
-  en_retard_count: 1,
-  visites: [
-    {
-      id: 7,
-      lead_nom: 'Client Démo',
-      ville: 'Bouskoura',
-      adresse: 'Quartier Démo',
-      gps_lat: 33.4589,
-      gps_lng: -7.6528,
-      date_prevue: '2026-09-14',
-      statut: 'en_cours',
-      en_route_le: null,
-      arrivee_le: null,
-      complet: false,
-      manquants_count: 3,
-    },
-  ],
-}
+// ── LE contrat `ma_journee.json`, LU et non recopié (PACT10) ───────────────
+// Une charge recopiée est une DEUXIÈME source de vérité : c'est exactement ce
+// qui a laissé passer l'écran AO mort du 03/08/2026 (test vert, écran vide).
+// Ici la fixture vient du fichier que le backend affirme ; si le serveur change
+// de forme, ce test casse tout seul.
+const JOURNEE = exempleContrat('visites', 'ma_journee')
 
 const rendre = () => render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
 
 describe('MaJourneePage — VTA9/VTA12', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getMaJournee.mockResolvedValue({ data: JOURNEE })
+    getMaJournee.mockResolvedValue(reponseContrat('visites', 'ma_journee'))
   })
 
   it('rend la journée : client, ville/adresse, complétude serveur, retard', async () => {
@@ -120,7 +107,8 @@ describe('MaJourneePage — VTA9/VTA12', () => {
   })
 
   it('état vide HONNÊTE quand rien n’est planifié', async () => {
-    getMaJournee.mockResolvedValue({ data: { date: '2026-09-14', en_retard_count: 0, visites: [] } })
+    // Autre ÉTAT du serveur, jamais une autre FORME : on part du contrat.
+    getMaJournee.mockResolvedValue({ data: { ...JOURNEE, en_retard_count: 0, visites: [] } })
     rendre()
     expect(await screen.findByText(/Aucune visite aujourd/)).toBeInTheDocument()
     expect(screen.queryByText(/en retard/)).not.toBeInTheDocument()

@@ -40,6 +40,10 @@ class OfflineOperation(TenantModel):
         STOCK = 'stock', 'Stock'
         INSTALLATIONS = 'installations', 'Chantiers'
         SAV = 'sav', 'SAV'
+        # VTA10 — l'app Visites terrain : la saisie de mesures faite sans
+        # réseau part dans la file de module `visites` du terminal et se
+        # rejoue ici (handler `visite.mesures`).
+        VISITES = 'visites', 'Visites terrain'
 
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'

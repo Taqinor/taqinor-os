@@ -438,6 +438,41 @@ def get_company_lead(company, lead_id):
     return Lead.objects.filter(pk=lead_id, company=company).first()
 
 
+def rechercher_leads_minimal(company, q, limit=10):
+    """VTA16 — recherche de leads MINIMALE pour un consommateur cross-app.
+
+    Renvoie une liste de dicts ``{id, nom, ville, telephone}`` — RIEN d'autre :
+    ni email, ni étape de pipeline, ni montant. C'est l'unique surface qu'une
+    app tierce (ici ``apps.visites``, pour choisir le client d'une visite à
+    planifier) obtient du fichier leads ; elle ne remplace jamais la liste CRM
+    et n'en est pas un raccourci.
+
+    Bornée SOCIÉTÉ, corbeille exclue (``Lead.objects``), ``limit`` plafonnée.
+    Une recherche vide ne renvoie RIEN — on n'énumère pas l'annuaire quand
+    l'utilisateur n'a rien tapé.
+    """
+    from django.db.models import Q
+
+    from .models import Lead
+
+    terme = (q or '').strip()
+    if not terme:
+        return []
+    try:
+        plafond = max(1, min(int(limit), 50))
+    except (TypeError, ValueError):
+        plafond = 10
+    lignes = (Lead.objects
+              .filter(company=company)
+              .filter(Q(nom__icontains=terme) | Q(telephone__icontains=terme))
+              .order_by('nom', 'id')
+              .values('id', 'nom', 'ville', 'telephone')[:plafond])
+    return [{'id': ligne['id'], 'nom': ligne['nom'] or '',
+             'ville': ligne['ville'] or '',
+             'telephone': ligne['telephone'] or ''}
+            for ligne in lignes]
+
+
 def get_company_client(company, client_id):
     """B1 — Client borné à la société, ou None (cf. get_company_lead)."""
     if not client_id:

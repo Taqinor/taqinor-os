@@ -280,8 +280,6 @@
     detail:texte, ics_url:inconnu, message:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: convertirLeadEnClient -> /api/django/crm/leads/<>/convertir-client
     client:inconnu, detail:texte, mode:inconnu
-- frontend/src/api/crmApi.js :: createVisite -> /api/django/crm/visites
-    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
 - frontend/src/api/crmApi.js :: deleteLead -> /api/django/crm/leads/<>
     corbeille_id:inconnu, detail:texte, id:inconnu
 - frontend/src/api/crmApi.js :: getClientConsolidation -> /api/django/crm/clients/<>/consolidation
@@ -312,8 +310,6 @@
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getSlaBreach -> /api/django/crm/leads/sla-breach
     count:nombre, results:inconnu, sla_hours:inconnu
-- frontend/src/api/crmApi.js :: getVisite -> /api/django/crm/visites/<>
-    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
 - frontend/src/api/crmApi.js :: mintQuestionnaireLien -> /api/django/crm/leads/<>/questionnaire-lien
     detail:texte, expires_at:texte, manquantes:inconnu, questions:inconnu, token:inconnu, url:inconnu, url_interne:inconnu
 - frontend/src/api/crmApi.js :: parrainageStats -> /api/django/crm/parrainages/stats
@@ -1166,6 +1162,14 @@
     detail:texte, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
     detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
+- frontend/src/api/visitesApi.js :: createVisite -> /api/django/visites/visites
+    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
+- frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee
+    date:texte, en_retard_count:nombre, visites:liste
+- frontend/src/api/visitesApi.js :: getVisite -> /api/django/visites/visites/<>
+    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
+- frontend/src/api/visitesApi.js :: rechercherLeads -> /api/django/visites/leads-recherche
+    results:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: appliquerPackage -> /api/django/adminops/config-packages/appliquer
     custom_fields:inconnu, detail:texte, message_templates:inconnu, playbooks:inconnu, roles_custom:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: previsualiserPackage -> /api/django/adminops/config-packages/previsualiser
@@ -3018,17 +3022,17 @@
     reason ∈ {assigne_a_vous, manager, regle_de_routage, vous_suivez}
 - frontend/src/api/offlinesyncApi.js :: getOperation -> /api/django/offlinesync/operations/<>  [OfflineOperationSerializer]
     champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
-    module ∈ {crm, installations, sav, stock, ventes}
+    module ∈ {crm, installations, sav, stock, ventes, visites}
     resolution ∈ {fusion, mienne, serveur}
     statut ∈ {appliquee, conflit, en_attente, rejetee}
 - frontend/src/api/offlinesyncApi.js :: listConflits -> /api/django/offlinesync/operations  [OfflineOperationSerializer]
     champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
-    module ∈ {crm, installations, sav, stock, ventes}
+    module ∈ {crm, installations, sav, stock, ventes, visites}
     resolution ∈ {fusion, mienne, serveur}
     statut ∈ {appliquee, conflit, en_attente, rejetee}
 - frontend/src/api/offlinesyncApi.js :: listOperations -> /api/django/offlinesync/operations  [OfflineOperationSerializer]
     champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
-    module ∈ {crm, installations, sav, stock, ventes}
+    module ∈ {crm, installations, sav, stock, ventes, visites}
     resolution ∈ {fusion, mienne, serveur}
     statut ∈ {appliquee, conflit, en_attente, rejetee}
 - frontend/src/api/outillageApi.js :: createOutil -> /api/django/outillage/outils  [OutillageSerializer]
