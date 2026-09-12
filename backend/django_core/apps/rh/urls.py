@@ -20,6 +20,9 @@ from .views import (
     CauserieSecuriteViewSet,
     CockpitRhViewSet,
     CertificationViewSet,
+    CycleRevisionSalarialeViewSet,
+    EnveloppeManagerViewSet,
+    PropositionRevisionViewSet,
     CompetenceEmployeViewSet,
     CompetenceRequiseViewSet,
     CompetenceViewSet,
@@ -170,6 +173,10 @@ router.register(
 router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
 router.register(r'badges-reconnaissance', BadgeReconnaissanceViewSet)
 router.register(r'attributions-badge', AttributionBadgeViewSet)
+# NTHCM5 — cycles de révision salariale (gatés ``salaires_voir``).
+router.register(r'cycles-revision', CycleRevisionSalarialeViewSet)
+router.register(r'enveloppes-manager', EnveloppeManagerViewSet)
+router.register(r'propositions-revision', PropositionRevisionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

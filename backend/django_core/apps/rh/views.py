@@ -55,6 +55,9 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    CycleRevisionSalariale,
+    EnveloppeManager,
+    PropositionRevision,
     DemandeAllocation,
     DemandeConge,
     DemandeRH,
@@ -135,6 +138,9 @@ from .serializers import (
     CompetenceRequiseSerializer,
     CompetenceSerializer,
     CorrectionPointageSerializer,
+    CycleRevisionSalarialeSerializer,
+    EnveloppeManagerSerializer,
+    PropositionRevisionSerializer,
     DemandeAllocationSerializer,
     DemandeCongeSerializer,
     DemandeRHSerializer,
@@ -6095,3 +6101,88 @@ class CockpitRhViewSet(viewsets.ViewSet):
         return Response(
             selectors.top_risque_attrition(
                 request.user.company, limite=limite))
+
+
+# ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
+
+class CycleRevisionSalarialeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTHCM5 — campagnes de révision salariale (paie SENSIBLE).
+
+    Lecture ET écriture réservées aux porteurs de ``salaires_voir`` (comme
+    ``GrilleSalarialeViewSet``/``RemunerationViewSet``) : sans cette
+    permission tout accès est refusé (403). Société scopée + posée côté
+    serveur.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = CycleRevisionSalariale.objects.all()
+    serializer_class = CycleRevisionSalarialeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'periode']
+    ordering_fields = ['date_creation', 'periode']
+
+
+class EnveloppeManagerViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTHCM5 — enveloppes allouées aux managers d'un cycle (``?cycle=<id>``).
+
+    Gaté ``salaires_voir``. ``company`` posée côté serveur.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = EnveloppeManager.objects.select_related(
+        'cycle', 'manager').all()
+    serializer_class = EnveloppeManagerSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+
+class PropositionRevisionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTHCM5 — propositions d'augmentation d'un cycle (``?cycle=<id>``).
+
+    Gaté ``salaires_voir``. La CRÉATION passe obligatoirement par
+    ``services.proposer_revision`` : un manager ne peut proposer que pour SES
+    subordonnés directs (403) et jamais au-delà de son enveloppe (400 avec un
+    message FR explicite). ``salaire_actuel``, le montant et ``propose_par``
+    sont posés côté serveur.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = PropositionRevision.objects.select_related(
+        'cycle', 'employe').all()
+    serializer_class = PropositionRevisionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cycle = serializer.validated_data['cycle']
+        employe = serializer.validated_data['employe']
+        auteur_dossier = selectors.dossier_employe_for_user(
+            request.user.company, request.user.id)
+        try:
+            proposition = services.proposer_revision(
+                cycle, employe,
+                auteur_dossier=auteur_dossier,
+                user=request.user,
+                augmentation_pct=serializer.validated_data.get(
+                    'augmentation_pct_proposee') or 0,
+                justification=serializer.validated_data.get(
+                    'justification', ''))
+        except services.HorsPerimetreManagerError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        except services.EnveloppeDepasseeError as exc:
+            return Response(
+                {'augmentation_pct_proposee': [str(exc)]},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(proposition).data,
+            status=status.HTTP_201_CREATED)

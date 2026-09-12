@@ -6313,3 +6313,183 @@ class PlanAppreciation(models.Model):
 
     def __str__(self):
         return self.libelle
+
+
+# ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
+
+class CycleRevisionSalariale(models.Model):
+    """NTHCM5 — CAMPAGNE de révision salariale d'une période.
+
+    ``GrilleSalariale`` (XRH16) définit les BANDES, mais rien ne pilotait la
+    campagne elle-même : qui propose quoi, dans quelle enveloppe, et quand
+    c'est figé. Un cycle porte la période (« 2027 »), une enveloppe globale
+    indicative (``enveloppe_totale_pct``, optionnelle) et un ``statut`` qui
+    suit le déroulé brouillon → ouvert → calibration → clos.
+
+    Donnée paie SENSIBLE : toutes ses vues sont gatées ``salaires_voir``.
+    Multi-société : ``company`` posée CÔTÉ SERVEUR.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        OUVERT = 'ouvert', 'Ouvert'
+        CALIBRATION = 'calibration', 'Calibration'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un cycle de révision n'a aucun sens hors de sa société (même politique que toutes les tables RH company-scopées)
+        related_name='rh_cycles_revision',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    periode = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Période')
+    enveloppe_totale_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Enveloppe totale (%)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Cycle de révision salariale'
+        verbose_name_plural = 'Cycles de révision salariale'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_cyclerev_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.periode})' if self.periode \
+            else self.libelle
+
+
+class EnveloppeManager(models.Model):
+    """NTHCM5 — enveloppe d'augmentation allouée à UN manager sur un cycle.
+
+    ``enveloppe_pct`` est le total de points de pourcentage que le manager
+    peut distribuer entre ses subordonnés DIRECTS (``DossierEmploye.manager``,
+    NTHCM1) sur ce cycle : la somme des ``augmentation_pct_proposee`` de ses
+    ``PropositionRevision`` ne peut pas le dépasser (garde bloquante dans
+    ``services.proposer_revision``).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une enveloppe n'a aucun sens hors de sa société
+        related_name='rh_enveloppes_manager',
+        verbose_name='Société',
+    )
+    cycle = models.ForeignKey(
+        CycleRevisionSalariale,
+        on_delete=models.CASCADE,  # on_delete: composition — une enveloppe n'existe QUE dans son cycle, supprimer le cycle supprime ses enveloppes
+        related_name='enveloppes',
+        verbose_name='Cycle',
+    )
+    manager = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: l'allocation n'a plus d'objet sans son manager ; aucune pièce à valeur légale ici (le dossier employé lui-même est protégé par AUD721)
+        related_name='enveloppes_revision',
+        verbose_name='Manager',
+    )
+    enveloppe_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Enveloppe allouée (%)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Enveloppe manager'
+        verbose_name_plural = 'Enveloppes manager'
+        ordering = ['manager__nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'manager'],
+                name='rh_envmgr_cycle_manager_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.manager} — {self.enveloppe_pct} %'
+
+
+class PropositionRevision(models.Model):
+    """NTHCM5 — proposition d'augmentation d'UN employé sur un cycle.
+
+    ``salaire_actuel`` est un SNAPSHOT posé à la création (dernière
+    ``Remuneration`` connue) : la proposition reste lisible même si le salaire
+    bouge ensuite. ``augmentation_montant_proposee`` est CALCULÉ côté serveur
+    (``salaire_actuel × pct / 100``), jamais lu du corps de requête, et
+    ``propose_par`` est toujours l'utilisateur de la requête.
+
+    """
+    class Statut(models.TextChoices):
+        PROPOSEE = 'proposee', 'Proposée'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REJETEE = 'rejetee', 'Rejetée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une proposition n'a aucun sens hors de sa société
+        related_name='rh_propositions_revision',
+        verbose_name='Société',
+    )
+    cycle = models.ForeignKey(
+        CycleRevisionSalariale,
+        on_delete=models.CASCADE,  # on_delete: composition — une proposition n'existe QUE dans son cycle ; la trace durable d'une révision APPLIQUÉE vit dans `Remuneration` (NTHCM7), jamais ici
+        related_name='propositions',
+        verbose_name='Cycle',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: la proposition n'a plus d'objet sans son employé ; le dossier employé porteur de pièces légales est lui-même non supprimable (AUD721)
+        related_name='propositions_revision',
+        verbose_name='Employé',
+    )
+    salaire_actuel = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Salaire actuel (snapshot)')
+    augmentation_pct_proposee = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Augmentation proposée (%)')
+    augmentation_montant_proposee = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Augmentation proposée (montant)')
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PROPOSEE, verbose_name='Statut')
+    propose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='propositions_revision_proposees',
+        verbose_name='Proposé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Proposition de révision'
+        verbose_name_plural = 'Propositions de révision'
+        ordering = ['employe__nom', 'employe__prenom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'employe'],
+                name='rh_proprev_cycle_employe_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'cycle'],
+                name='rh_proprev_comp_cycle_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} — +{self.augmentation_pct_proposee} %'

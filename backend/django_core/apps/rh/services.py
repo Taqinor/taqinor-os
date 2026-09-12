@@ -2893,3 +2893,119 @@ def creer_dossier_employe_import(company, ligne):
         return 'erreur', str(exc)
 
     return 'cree', None
+
+
+# ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
+
+class HorsPerimetreManagerError(Exception):
+    """NTHCM5 — l'auteur n'est pas le manager DIRECT de l'employé visé (403)."""
+
+
+class EnveloppeDepasseeError(Exception):
+    """NTHCM5 — la proposition ferait dépasser l'enveloppe du manager (400)."""
+
+
+def salaire_actuel_employe(employe):
+    """NTHCM5 — dernier montant de ``Remuneration`` connu (``0`` si aucun).
+
+    Snapshot posé à la création d'une proposition : la proposition reste
+    lisible même si le salaire change ensuite.
+    """
+    from .models import Remuneration
+
+    remuneration = (
+        Remuneration.objects
+        .filter(company=employe.company, employe=employe)
+        .order_by('-date_effet', '-date_creation')
+        .first())
+    return remuneration.montant if remuneration else Decimal('0')
+
+
+def enveloppe_consommee(cycle, manager):
+    """NTHCM5 — total des points de % DÉJÀ proposés par ce manager sur ce
+    cycle (toutes ses propositions non rejetées).
+
+    Les propositions REJETÉES ne consomment rien : leur enveloppe est rendue.
+    """
+    from .models import DossierEmploye, PropositionRevision
+
+    subordonnes = DossierEmploye.objects.filter(
+        company=cycle.company, manager=manager)
+    total = Decimal('0')
+    propositions = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle, employe__in=subordonnes).exclude(
+            statut=PropositionRevision.Statut.REJETEE)
+    for proposition in propositions:
+        total += proposition.augmentation_pct_proposee or Decimal('0')
+    return total
+
+
+@transaction.atomic
+def proposer_revision(cycle, employe, *, auteur_dossier, user,
+                      augmentation_pct, justification=''):
+    """NTHCM5 — crée (ou met à jour) la proposition d'un manager pour UN de
+    ses subordonnés DIRECTS, dans la limite de son enveloppe.
+
+    * ``auteur_dossier`` DOIT être le ``manager`` direct de ``employe``,
+      sinon :class:`HorsPerimetreManagerError` (403 côté vue) ;
+    * la somme des points de % proposés par ce manager sur ce cycle ne peut
+      pas dépasser son ``EnveloppeManager.enveloppe_pct`` (absente ⇒ 0), sinon
+      :class:`EnveloppeDepasseeError` (400, message FR explicite) ;
+    * ``salaire_actuel`` (snapshot), ``augmentation_montant_proposee`` et
+      ``propose_par`` sont posés CÔTÉ SERVEUR.
+    """
+    from .models import EnveloppeManager, PropositionRevision
+
+    if auteur_dossier is None or employe.manager_id != auteur_dossier.id:
+        raise HorsPerimetreManagerError(
+            "Vous ne pouvez proposer une révision que pour vos subordonnés "
+            "directs.")
+
+    pct = Decimal(str(augmentation_pct or '0'))
+    if pct < 0:
+        raise EnveloppeDepasseeError(
+            "L'augmentation proposée ne peut pas être négative.")
+
+    enveloppe = EnveloppeManager.objects.filter(
+        company=cycle.company, cycle=cycle, manager=auteur_dossier).first()
+    plafond = enveloppe.enveloppe_pct if enveloppe else Decimal('0')
+
+    existante = PropositionRevision.objects.filter(
+        company=cycle.company, cycle=cycle, employe=employe).first()
+    deja = enveloppe_consommee(cycle, auteur_dossier)
+    if existante is not None \
+            and existante.statut != PropositionRevision.Statut.REJETEE:
+        deja -= existante.augmentation_pct_proposee or Decimal('0')
+
+    if deja + pct > plafond:
+        raise EnveloppeDepasseeError(
+            f"Enveloppe dépassée : {deja + pct} % proposés au total pour un "
+            f"plafond de {plafond} % alloué sur ce cycle.")
+
+    salaire = salaire_actuel_employe(employe)
+    montant = (salaire * pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    if existante is None:
+        return PropositionRevision.objects.create(
+            company=cycle.company,
+            cycle=cycle,
+            employe=employe,
+            salaire_actuel=salaire,
+            augmentation_pct_proposee=pct,
+            augmentation_montant_proposee=montant,
+            justification=justification or '',
+            propose_par=user,
+        )
+
+    existante.salaire_actuel = salaire
+    existante.augmentation_pct_proposee = pct
+    existante.augmentation_montant_proposee = montant
+    if justification:
+        existante.justification = justification
+    existante.statut = PropositionRevision.Statut.PROPOSEE
+    existante.propose_par = user
+    existante.save(update_fields=[
+        'salaire_actuel', 'augmentation_pct_proposee',
+        'augmentation_montant_proposee', 'justification', 'statut',
+        'propose_par'])
+    return existante

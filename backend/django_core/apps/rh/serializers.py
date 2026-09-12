@@ -31,6 +31,9 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    CycleRevisionSalariale,
+    EnveloppeManager,
+    PropositionRevision,
     DemandeAllocation,
     DemandeConge,
     DemandeRH,
@@ -3054,3 +3057,76 @@ class MonFeedback360Serializer(serializers.ModelSerializer):
         read_only_fields = [
             'evaluation', 'relation', 'date_invitation', 'date_soumission',
         ]
+
+
+# ── NTHCM5 — cycles de révision salariale ───────────────────────────────────
+
+class CycleRevisionSalarialeSerializer(serializers.ModelSerializer):
+    """NTHCM5 — campagne de révision salariale (donnée paie SENSIBLE)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CycleRevisionSalariale
+        fields = [
+            'id', 'libelle', 'periode', 'enveloppe_totale_pct',
+            'statut', 'statut_display', 'date_debut', 'date_fin',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class EnveloppeManagerSerializer(serializers.ModelSerializer):
+    """NTHCM5 — enveloppe (points de %) allouée à un manager sur un cycle."""
+    manager_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EnveloppeManager
+        fields = [
+            'id', 'cycle', 'manager', 'manager_nom', 'enveloppe_pct',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_manager_nom(self, obj):
+        return f'{obj.manager.nom} {obj.manager.prenom}'
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+    def validate_manager(self, value):
+        return _meme_societe(self, value, 'Manager')
+
+
+class PropositionRevisionSerializer(serializers.ModelSerializer):
+    """NTHCM5 — proposition d'augmentation, LECTURE + écriture encadrée.
+
+    ``salaire_actuel``, ``augmentation_montant_proposee`` et ``propose_par``
+    sont posés CÔTÉ SERVEUR (``services.proposer_revision``) : ils restent en
+    lecture seule ici.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PropositionRevision
+        fields = [
+            'id', 'cycle', 'employe', 'employe_nom', 'salaire_actuel',
+            'augmentation_pct_proposee', 'augmentation_montant_proposee',
+            'justification', 'statut', 'statut_display', 'propose_par',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'salaire_actuel', 'augmentation_montant_proposee', 'propose_par',
+            'date_creation',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
