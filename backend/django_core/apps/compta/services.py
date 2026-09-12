@@ -4613,7 +4613,38 @@ def _factures_reservees_par_un_run_ouvert(company):
         .values_list('facture_fournisseur_id', flat=True))
 
 
-def proposer_lignes_payment_run(run, *, date_limite=None):
+def dettes_eligibles_campagne(company, *, date_limite=None,
+                              fournisseur_id=None, montant_max=None):
+    """NTTRE25 — Échéances fournisseur ÉLIGIBLES à une campagne de règlement.
+
+    UNE SEULE définition de « éligible », partagée par l'aperçu de l'assistant
+    (lecture seule) et par ``proposer_lignes_payment_run`` (écriture) : les
+    factures fournisseur ouvertes (``stock.selectors`` — jamais un import de
+    ses modèles) qui ne sont pas déjà réservées par une campagne ENCORE
+    OUVERTE, filtrées par ``date_limite`` (échéance max), ``fournisseur_id`` et
+    ``montant_max`` (plafond par échéance). Lecture seule : n'écrit rien.
+    """
+    from apps.stock import selectors as stock_selectors
+
+    deja_references = _factures_reservees_par_un_run_ouvert(company)
+    candidates = stock_selectors.factures_fournisseur_ouvertes(
+        company, date_limite=date_limite)
+    plafond = Decimal(str(montant_max)) if montant_max not in (None, '') else None
+    eligibles = []
+    for candidate in candidates:
+        if candidate['facture_id'] in deja_references:
+            continue
+        if (fournisseur_id is not None
+                and str(candidate['fournisseur_id']) != str(fournisseur_id)):
+            continue
+        if plafond is not None and Decimal(candidate['montant'] or 0) > plafond:
+            continue
+        eligibles.append(candidate)
+    return eligibles
+
+
+def proposer_lignes_payment_run(run, *, date_limite=None, fournisseur_id=None,
+                                montant_max=None):
     """YLEDG8 — Remplit une campagne BROUILLON depuis les échéances
     fournisseur dues (``stock.selectors.factures_fournisseur_ouvertes`` —
     jamais un import de ses modèles), triées par date d'échéance. N'ajoute
@@ -4621,19 +4652,20 @@ def proposer_lignes_payment_run(run, *, date_limite=None):
     ENCORE OUVERTE — la sienne (idempotence) comme celle d'un collègue
     (AUD172 : la déduplication ne regardait que la campagne courante, si bien
     que deux campagnes brouillon proposaient la MÊME facture et la réglaient
-    deux fois). Renvoie la liste des lignes ajoutées."""
-    from apps.stock import selectors as stock_selectors
+    deux fois). Renvoie la liste des lignes ajoutées.
 
+    NTTRE25 — ``fournisseur_id`` et ``montant_max`` sont des filtres OPTIONNELS
+    (assistant guidé) ; sans eux le comportement est strictement inchangé. La
+    sélection elle-même vit dans ``dettes_eligibles_campagne``, partagée avec
+    l'aperçu — jamais deux copies de la même règle."""
     if run.statut != PaymentRun.Statut.BROUILLON:
         raise ValidationError(
             "Une campagne figée ou postée ne peut plus être modifiée.")
-    deja_references = _factures_reservees_par_un_run_ouvert(run.company)
-    candidates = stock_selectors.factures_fournisseur_ouvertes(
-        run.company, date_limite=date_limite)
+    candidates = dettes_eligibles_campagne(
+        run.company, date_limite=date_limite, fournisseur_id=fournisseur_id,
+        montant_max=montant_max)
     ajoutees = []
     for candidate in candidates:
-        if candidate['facture_id'] in deja_references:
-            continue
         ligne = PaymentRunLine.objects.create(
             company=run.company, payment_run=run,
             tiers_type='fournisseur', tiers_id=candidate['fournisseur_id'],

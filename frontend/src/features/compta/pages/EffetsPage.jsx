@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import {
   Plus, CheckCircle2, XCircle, Send, TrendingDown, Landmark, Download,
-  ArrowRightLeft, Unlock,
+  ArrowRightLeft, Unlock, Wand2,
 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, toast } from '../../../ui'
@@ -10,6 +10,8 @@ import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// NTTRE25 — assistant guidé « Créer une campagne de paiement ».
+import CampagnePaiementWizard from '../components/CampagnePaiementWizard.jsx'
 
 /* ============================================================================
    FG127/128/129/133/134 — Effets à recevoir/payer, bordereaux de remise,
@@ -84,6 +86,8 @@ const money = (v) => formatMAD(v)
 export default function EffetsPage() {
   const [tab, setTab] = useTabParam('effets')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
+  // NTTRE25 — assistant guidé « Créer une campagne de paiement ».
+  const [campagneWizard, setCampagneWizard] = useState(false)
 
   const fetcher = useMemo(() => ({
     effets: comptaApi.effets.list,
@@ -257,6 +261,13 @@ export default function EffetsPage() {
           <Button variant="outline" onClick={exporterSituation}>
             <Download /> Situation du portefeuille (PDF)
           </Button>
+          {/* NTTRE25 — sélection guidée des dettes + impact sur le solde du
+              compte payeur avant de créer la campagne en brouillon. */}
+          {tab === 'paymentRuns' && (
+            <Button onClick={() => setCampagneWizard(true)}>
+              <Wand2 /> Assistant : nouvelle campagne
+            </Button>
+          )}
           {canCreate && (
             <Button onClick={() => setDialog({ row: null })}>
               <Plus /> Nouvel effet
@@ -292,6 +303,15 @@ export default function EffetsPage() {
           initial={dialog.row}
           onSubmit={submit}
           onSaved={list.reload}
+        />
+      )}
+
+      {/* NTTRE25 — filtre → aperçu chiffré → alerte de seuil bloquante →
+          création de la campagne en brouillon. */}
+      {campagneWizard && (
+        <CampagnePaiementWizard
+          onClose={() => { setCampagneWizard(false); list.reload() }}
+          onCreated={list.reload}
         />
       )}
     </div>

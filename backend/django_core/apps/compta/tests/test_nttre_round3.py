@@ -452,7 +452,7 @@ class CertificatPouvoirBancaireTests(TestCase):
         if resp.status_code == 200:
             self.assertEqual(resp['Content-Type'], 'application/pdf')
 
-    def test_pouvoir_d_une_autre_societe_introuvable(self):
+    def test_certificat_autre_societe_introuvable(self):
         autre = make_company('nttre23-b', 'NTTRE23 B')
         services.seed_plan_comptable(autre)
         banque_b = CompteTresorerie.objects.create(
@@ -463,3 +463,113 @@ class CertificatPouvoirBancaireTests(TestCase):
         resp = self.api.get(
             f'/api/django/compta/pouvoirs-bancaires/{pouvoir_b.pk}/certificat/')
         self.assertEqual(resp.status_code, 404)
+
+
+class ApercuCampagnePaiementTests(TestCase):
+    """NTTRE25 — sélection guidée + alerte de franchissement du seuil bas."""
+
+    def setUp(self):
+        from apps.stock.models import FactureFournisseur, Fournisseur
+
+        self.co = make_company('nttre25', 'NTTRE25 Co')
+        services.seed_plan_comptable(self.co)
+        services.seed_journaux(self.co)
+        self.banque = CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE', solde_initial=Decimal('10000'),
+            seuil_alerte_bas=Decimal('5000'),
+            compte_comptable=services.get_compte(self.co, '5141'))
+        self.f1 = Fournisseur.objects.create(
+            company=self.co, nom='Fournisseur A',
+            rib='011780000012345678901234')
+        self.f2 = Fournisseur.objects.create(
+            company=self.co, nom='Fournisseur B',
+            rib='011780000012345678905678')
+        self.echeance = date(2026, 7, 15)
+        FactureFournisseur.objects.create(
+            company=self.co, reference='FF-A1', fournisseur=self.f1,
+            date_echeance=self.echeance, montant_ht=Decimal('3000'),
+            montant_tva=Decimal('0'), montant_ttc=Decimal('3000'))
+        FactureFournisseur.objects.create(
+            company=self.co, reference='FF-B1', fournisseur=self.f2,
+            date_echeance=self.echeance + timedelta(days=30),
+            montant_ht=Decimal('4000'), montant_tva=Decimal('0'),
+            montant_ttc=Decimal('4000'))
+        self.user = User.objects.create_user(
+            username='nttre25-user', password='x', company=self.co,
+            role_legacy='responsable')
+        self.api = auth(self.user)
+
+    def test_filtres_fournisseur_echeance_et_montant(self):
+        tout = selectors.apercu_campagne_paiement(self.co)
+        self.assertEqual(tout['nb_dettes'], 2)
+        self.assertEqual(tout['total'], Decimal('7000'))
+
+        par_fournisseur = selectors.apercu_campagne_paiement(
+            self.co, fournisseur_id=self.f1.id)
+        self.assertEqual(par_fournisseur['nb_dettes'], 1)
+        self.assertEqual(par_fournisseur['total'], Decimal('3000'))
+
+        par_echeance = selectors.apercu_campagne_paiement(
+            self.co, date_limite=self.echeance)
+        self.assertEqual(par_echeance['nb_dettes'], 1)
+
+        par_montant = selectors.apercu_campagne_paiement(
+            self.co, montant_max=Decimal('3500'))
+        self.assertEqual(par_montant['nb_dettes'], 1)
+        self.assertEqual(par_montant['total'], Decimal('3000'))
+
+    def test_alerte_quand_le_compte_passerait_sous_son_seuil(self):
+        # Solde 10 000, seuil 5 000, campagne 7 000 → projeté 3 000 < seuil.
+        data = selectors.apercu_campagne_paiement(
+            self.co, compte_tresorerie_id=self.banque.id)
+        self.assertEqual(data['compte']['solde_actuel'], Decimal('10000'))
+        self.assertEqual(data['compte']['solde_projete'], Decimal('3000'))
+        self.assertIsNotNone(data['alerte_seuil'])
+        self.assertEqual(data['alerte_seuil']['motif'], 'seuil_alerte_bas')
+
+    def test_pas_d_alerte_quand_le_solde_reste_au_dessus(self):
+        data = selectors.apercu_campagne_paiement(
+            self.co, compte_tresorerie_id=self.banque.id,
+            montant_max=Decimal('3500'))  # 3 000 seulement → projeté 7 000
+        self.assertEqual(data['compte']['solde_projete'], Decimal('7000'))
+        self.assertIsNone(data['alerte_seuil'])
+
+    def test_compte_sans_seuil_ne_declenche_aucune_alerte(self):
+        self.banque.seuil_alerte_bas = None
+        self.banque.save(update_fields=['seuil_alerte_bas'])
+        data = selectors.apercu_campagne_paiement(
+            self.co, compte_tresorerie_id=self.banque.id)
+        self.assertIsNone(data['alerte_seuil'])
+
+    def test_proposer_applique_les_memes_filtres_que_l_apercu(self):
+        run = services.creer_payment_run(
+            self.co, date_paiement=self.echeance, mode_paiement='virement',
+            compte_tresorerie=self.banque, reference='RUN-NTTRE25')
+        ajoutees = services.proposer_lignes_payment_run(
+            run, fournisseur_id=self.f1.id)
+        self.assertEqual(len(ajoutees), 1)
+        self.assertEqual(ajoutees[0].beneficiaire, 'Fournisseur A')
+        run.refresh_from_db()
+        self.assertEqual(run.total, Decimal('3000'))
+        self.assertEqual(run.statut, run.Statut.BROUILLON)
+
+    def test_endpoint_apercu_scope_societe_et_refuse_un_montant_non_numerique(self):
+        resp = self.api.get(
+            '/api/django/compta/payment-runs/apercu/'
+            f'?compte={self.banque.id}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['nb_dettes'], 2)
+
+        mauvais = self.api.get(
+            '/api/django/compta/payment-runs/apercu/?montant_max=beaucoup')
+        self.assertEqual(mauvais.status_code, 400)
+        self.assertIn('montant_max', mauvais.data)
+
+        autre = make_company('nttre25-b', 'NTTRE25 B')
+        user_b = User.objects.create_user(
+            username='nttre25-user-b', password='x', company=autre,
+            role_legacy='responsable')
+        resp_b = auth(user_b).get('/api/django/compta/payment-runs/apercu/')
+        self.assertEqual(resp_b.status_code, 200)
+        self.assertEqual(resp_b.data['nb_dettes'], 0)

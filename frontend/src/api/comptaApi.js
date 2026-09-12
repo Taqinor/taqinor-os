@@ -453,6 +453,9 @@ const comptaApi = {
   // ── FG133/134 — Campagnes de règlement fournisseurs ──
   paymentRuns: {
     ...resource('payment-runs'),
+    // NTTRE25 — aperçu AVANT création : dettes éligibles + impact sur le solde
+    // du compte payeur + alerte de franchissement du seuil bas. Lecture seule.
+    apercu: (params) => api.get('/compta/payment-runs/apercu/', { params }),
     proposer: (id, data) => api.post(`/compta/payment-runs/${id}/proposer/`, data),
     figer: (id) => api.post(`/compta/payment-runs/${id}/figer/`),
     poster: (id) => api.post(`/compta/payment-runs/${id}/poster/`),

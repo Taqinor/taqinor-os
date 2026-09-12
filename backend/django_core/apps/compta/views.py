@@ -3808,15 +3808,56 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return super().destroy(request, *args, **kwargs)
 
+    @action(detail=False, methods=['get'])
+    def apercu(self, request):
+        """NTTRE25 — Aperçu AVANT création d'une campagne de règlement.
+
+        Query ``?date_limite=`` (échéance max), ``?fournisseur=``,
+        ``?montant_max=`` (plafond par échéance), ``?compte=`` (compte payeur).
+        Renvoie les dettes éligibles (même sélection que ``proposer``), leur
+        total, et l'impact prévisionnel sur le solde du compte payeur — avec
+        ``alerte_seuil`` non nul si ce compte passerait sous son
+        ``seuil_alerte_bas`` (NTTRE8). LECTURE SEULE : ne crée rien.
+        """
+        from decimal import Decimal
+
+        params = request.query_params
+        montant_max = params.get('montant_max') or None
+        if montant_max is not None:
+            try:
+                Decimal(str(montant_max))
+            except (ArithmeticError, TypeError, ValueError):
+                return Response(
+                    {'montant_max': 'Montant maximum : saisissez un nombre.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data = selectors.apercu_campagne_paiement(
+                request.user.company,
+                date_limite=params.get('date_limite') or None,
+                fournisseur_id=params.get('fournisseur') or None,
+                montant_max=montant_max,
+                compte_tresorerie_id=params.get('compte') or None)
+        except (ValueError, TypeError):
+            return Response(
+                {'date_limite': "Échéance maximum : date invalide "
+                                '(format attendu : AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(data)
+
     @action(detail=True, methods=['post'])
     def proposer(self, request, pk=None):
         """YLEDG8 — Remplit la campagne BROUILLON depuis les échéances
         fournisseur dues (``?date_limite=YYYY-MM-DD`` optionnel). Idempotent :
-        n'ajoute jamais deux fois la même facture fournisseur."""
+        n'ajoute jamais deux fois la même facture fournisseur.
+
+        NTTRE25 — accepte aussi ``fournisseur`` et ``montant_max`` (filtres de
+        l'assistant guidé) ; sans eux, comportement strictement inchangé."""
         run = self.get_object()  # scopé société par TenantMixin.
         try:
             services.proposer_lignes_payment_run(
-                run, date_limite=request.data.get('date_limite') or None)
+                run, date_limite=request.data.get('date_limite') or None,
+                fournisseur_id=request.data.get('fournisseur') or None,
+                montant_max=request.data.get('montant_max') or None)
         except DjangoValidationError as exc:
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},

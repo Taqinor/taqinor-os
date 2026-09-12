@@ -6032,3 +6032,82 @@ def situation_effets(company, *, date_reference=None, sens=None):
         'nb_effets': len(effets),
         'total_general': total_general,
     }
+
+
+# ── NTTRE25 — Aperçu d'une campagne de règlement avant création ────────────
+
+def apercu_campagne_paiement(company, *, date_limite=None, fournisseur_id=None,
+                             montant_max=None, compte_tresorerie_id=None):
+    """NTTRE25 — Dettes éligibles + impact prévisionnel sur le compte payeur.
+
+    LECTURE SEULE, préalable à la création d'une campagne : reprend la MÊME
+    sélection que ``services.proposer_lignes_payment_run``
+    (``services.dettes_eligibles_campagne``) et la croise avec le solde courant
+    du compte payeur choisi et son ``seuil_alerte_bas`` (NTTRE8).
+
+    Renvoie ``{'dettes': [...], 'nb_dettes', 'total', 'compte': {...} | None,
+    'alerte_seuil': {...} | None}``. ``alerte_seuil`` est non nul dès que le
+    solde projeté (solde courant − total de la campagne) passerait SOUS le
+    seuil d'alerte bas du compte : c'est l'avertissement que l'assistant rend
+    bloquant avant confirmation. Aucune écriture, rien n'est créé ici.
+    """
+    from . import services as _svc
+
+    dettes = _svc.dettes_eligibles_campagne(
+        company, date_limite=date_limite, fournisseur_id=fournisseur_id,
+        montant_max=montant_max)
+    total = sum(
+        (Decimal(d['montant'] or 0) for d in dettes), Decimal('0'))
+
+    compte = None
+    alerte = None
+    if compte_tresorerie_id:
+        treso = CompteTresorerie.objects.filter(
+            company=company, id=compte_tresorerie_id).first()
+        if treso is not None:
+            solde = (treso.solde_initial or Decimal('0')) + solde_compte(
+                company, treso.compte_comptable)
+            projete = solde - total
+            compte = {
+                'id': treso.id,
+                'libelle': treso.libelle,
+                'solde_actuel': solde,
+                'solde_projete': projete,
+                'seuil_alerte_bas': treso.seuil_alerte_bas,
+                'seuil_alerte_decouvert': treso.seuil_alerte_decouvert,
+            }
+            seuil = treso.seuil_alerte_bas
+            if seuil is not None and projete < seuil and solde >= seuil:
+                alerte = {
+                    'motif': 'seuil_alerte_bas',
+                    'message': (
+                        f'Après cette campagne, le compte « {treso.libelle} » '
+                        f'passerait à {projete} MAD, sous son seuil d\'alerte '
+                        f'bas de {seuil} MAD.'),
+                    'solde_projete': projete,
+                    'seuil': seuil,
+                }
+            elif seuil is not None and projete < seuil:
+                alerte = {
+                    'motif': 'seuil_alerte_bas',
+                    'message': (
+                        f'Le compte « {treso.libelle} » est DÉJÀ sous son '
+                        f'seuil d\'alerte bas ({seuil} MAD) et passerait à '
+                        f'{projete} MAD après cette campagne.'),
+                    'solde_projete': projete,
+                    'seuil': seuil,
+                }
+    return {
+        'dettes': [{
+            'facture_id': d['facture_id'],
+            'fournisseur_id': d['fournisseur_id'],
+            'fournisseur_nom': d['fournisseur_nom'],
+            'reference': d['reference'],
+            'montant': d['montant'],
+            'date_echeance': d['date_echeance'],
+        } for d in dettes],
+        'nb_dettes': len(dettes),
+        'total': total,
+        'compte': compte,
+        'alerte_seuil': alerte,
+    }
