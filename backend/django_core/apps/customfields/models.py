@@ -125,10 +125,12 @@ class FieldRolePermission(models.Model):
         EDITION = 'edition', 'Édition'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: une permission de champ n'a aucun sens hors de sa société — la société supprimée, la ligne l'est aussi
         related_name='field_role_permissions')
     field_def = models.ForeignKey(
-        CustomFieldDef, on_delete=models.CASCADE,
+        CustomFieldDef,
+        on_delete=models.CASCADE,  # on_delete: une permission n'existe QUE pour son champ (composition, même patron que CustomRecord.objet) ; supprimer le champ supprime ses permissions
         related_name='role_permissions')
     role_tier = models.CharField(
         'Palier de rôle', max_length=40,
