@@ -9,8 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import secrets
+
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+#: NTGRC2/NTGRC3 — délai légal de réponse à une demande de droit (loi 09-08).
+DELAI_LEGAL_JOURS = 30
 
 
 def empreinte_avant(valeurs):
@@ -70,3 +76,85 @@ def journaliser_destruction(company, *, type_objet, objet_ref, action,
             'grc: journalisation de destruction impossible (%s/%s)',
             type_objet, objet_ref)
         return None
+
+
+# ── NTGRC2 — portail public de dépôt / suivi d'une demande de droit ─────────
+
+def _nouveau_token_suivi():
+    """Jeton de suivi OPAQUE (32 octets d'entropie, URL-safe).
+
+    Distinct de l'identifiant réel : le déposant suit sa demande sans qu'aucun
+    identifiant interne ne fuite et sans énumération possible.
+    """
+    return secrets.token_urlsafe(32)[:64]
+
+
+def creer_demande_publique(slug_societe, identifiant, type_demande, *,
+                           ip='', user_agent=''):
+    """Crée une ``core.DataSubjectRequest`` déposée PUBLIQUEMENT.
+
+    Renvoie ``(demande, None)`` en cas de succès, ``(None, {champ: message})``
+    sinon — le message NOMME toujours le champ fautif, en français.
+
+    La preuve (horodatage SERVEUR, IP, user-agent) est posée côté serveur et
+    JAMAIS lue du corps de la requête. La société est résolue par son slug :
+    la demande naît donc déjà bornée à un tenant.
+    """
+    from authentication.models import Company
+    from core.models import DataSubjectRequest
+
+    company = Company.objects.filter(slug=slug_societe).first()
+    if company is None:
+        return None, {'societe': 'Société inconnue.'}
+
+    valides = {c for c, _ in DataSubjectRequest.KIND_CHOICES}
+    if type_demande not in valides:
+        return None, {
+            'type': 'Type de demande invalide : choisissez « accès », '
+                    '« rectification » ou « effacement ».'}
+
+    maintenant = timezone.now()
+    demande = DataSubjectRequest(
+        company=company,
+        subject_identifier=identifiant[:255],
+        kind=type_demande,
+        statut=DataSubjectRequest.STATUT_RECUE,
+        token_suivi=_nouveau_token_suivi(),
+        preuve={
+            'depose_le': maintenant.isoformat(),
+            'ip': ip or '',
+            'user_agent': user_agent or '',
+            'canal': 'portail_public',
+        },
+    )
+    demande.save()
+    return demande, None
+
+
+def suivi_demande_publique(token):
+    """État public d'une demande, résolu par son jeton OPAQUE.
+
+    Renvoie un dict SANS aucune donnée personnelle d'autrui ni identifiant
+    interne, ou ``None`` si le jeton ne correspond à rien.
+    """
+    from core.models import DataSubjectRequest
+
+    if not token:
+        return None
+    demande = DataSubjectRequest.objects.filter(token_suivi=token).first()
+    if demande is None:
+        return None
+
+    echeance = getattr(demande, 'date_echeance', None)
+    if echeance is None:
+        echeance = demande.created_at + timezone.timedelta(
+            days=DELAI_LEGAL_JOURS)
+    return {
+        'statut': demande.statut,
+        'type': demande.kind,
+        'depose_le': demande.created_at.isoformat(),
+        'echeance_legale': echeance.isoformat(),
+        'delai_legal_jours': DELAI_LEGAL_JOURS,
+        'traitee_le': (demande.traitee_le.isoformat()
+                       if demande.traitee_le else None),
+    }

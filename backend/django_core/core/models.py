@@ -1442,6 +1442,20 @@ class DataSubjectRequest(TimestampedModel):
         'Résultat', default=dict, blank=True,
         help_text="Payload d'export (accès) ou compte-rendu d'effacement.")
     traitee_le = models.DateTimeField('Traitée le', null=True, blank=True)
+    # ── NTGRC2 — dépôt PUBLIC de la demande (portail loi 09-08) ──────────────
+    # Preuve du dépôt, posée CÔTÉ SERVEUR uniquement : horodatage serveur, IP
+    # et user-agent du déposant. Vide pour toute demande saisie en interne
+    # (comportement historique strictement inchangé).
+    preuve = models.JSONField(
+        'Preuve de dépôt', default=dict, blank=True,
+        help_text='Horodatage serveur, IP et user-agent du dépôt public.')
+    # Jeton de SUIVI opaque, distinct de l'id : le déposant suit sa demande
+    # sans qu'aucun identifiant interne ne fuite, et sans énumération possible.
+    # NULL pour les demandes internes (plusieurs NULL restent autorisés par
+    # l'unicité Postgres).
+    token_suivi = models.CharField(
+        'Jeton de suivi', max_length=64, null=True, blank=True, unique=True,
+        help_text='Jeton opaque de suivi public (jamais l\'identifiant réel).')
 
     class Meta:
         verbose_name = 'Demande de personne concernée'
