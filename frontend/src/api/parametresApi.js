@@ -87,6 +87,10 @@ const parametresApi = {
   updateRealisation: (id, data) =>
     api.patch(`/parametres/realisations/${id}/`, data),
   deleteRealisation: (id) => api.delete(`/parametres/realisations/${id}/`),
+  // NTOBS5 — écran self-service « Sauvegardes » (Paramètres → Fiabilité) :
+  // lecture seule des BackupRun déjà produits par le moteur interne (YOPSB1/2),
+  // scopé côté serveur sur la société de l'appelant.
+  getMesSauvegardes: () => api.get('/core/mes-sauvegardes/'),
 }
 
 export default parametresApi

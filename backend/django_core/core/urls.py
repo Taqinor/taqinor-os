@@ -29,6 +29,7 @@ from .drill_api import DrillDownView
 from .formule_api import (
     FormuleFonctionsView, FormuleTestView, FormuleValiderView,
 )
+from .backup import mes_sauvegardes_view
 from .rules_api import RegleOperateursView, RegleValiderView
 from .sla import (
     SlaCreditsDusListView, SlaSnapshotListView, sla_credit_statut,
@@ -215,4 +216,7 @@ urlpatterns = router.urls + [
          name='sla-credits-dus'),
     path('sla/credits/<int:pk>/statut/', sla_credit_statut,
          name='sla-credit-statut'),
+    # NTOBS5 — écran self-service « Sauvegardes » (lecture seule des
+    # BackupRun déjà produits par YOPSB1/2), scopé société.
+    path('mes-sauvegardes/', mes_sauvegardes_view, name='mes-sauvegardes'),
 ]
