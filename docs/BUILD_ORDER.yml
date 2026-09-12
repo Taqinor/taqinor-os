@@ -419,6 +419,12 @@ unmapped_ok:
   # auto-ordonne par ses @after (CKP0 contrat d'abord) ; aucun prerequis de
   # vague plateforme.
   - CKP
+  # VTA/VTAG — App VISITES autonome (Groupe VTA de PLAN2, fondateur
+  # 2026-09-12) : sortie du module visite hors du CRM vers apps/visites,
+  # auto-ordonnee par ses @after (VTA0 contrat d'abord) ; aucun prerequis
+  # de vague plateforme.
+  - VTA
+  - VTAG
   # VT/VTG — Visite technique terrain (Groupe VT de PLAN2, fondateur
   # 2026-09-09) : nouveau module apps/crm auto-ordonne par ses @after
   # (VT0 contrat d'abord -> lanes backend/frontend) ; aucun prerequis de

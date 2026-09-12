@@ -1,0 +1,211 @@
+{
+  "endpoint": "GET /api/django/visites/visites/<int:pk>/",
+  "pourquoi": "Groupe VTA (fondateur 2026-09-12) : l'agregat UNIQUE de l'app autonome VISITES (sortie du CRM). Meme forme que le contrat VT d'origine, servie desormais par apps/visites (source de verite : apps/visites/selectors.py::contexte_visite_terrain). PACT10 ETENDU (lecon #96) : les ACTIONS MUTANTES renvoient TOUTES cet agregat complet — POST <pk>/photos/, DELETE <pk>/photos/<media_id>/, PATCH <pk>/mesures/ (400 {\"erreurs\": {champ: message}}), POST <pk>/terminer/ (400 {\"manquants\": [...], \"message\"} tant qu'incomplet), POST <pk>/valider/, POST <pk>/renvoyer/ {photos, mesures, motif}, POST <pk>/assembler-photos/, PATCH <pk>/calage/, et les actions de progression POST <pk>/demarrer-route/ et POST <pk>/arriver/ (horodatage SERVEUR, idempotentes, reservees a l'assigne). Portee DURE : sans visites_valider, toutes les routes ne servent que commercial=self. en_route_le/arrivee_le : null tant que non horodates. Le panneau client+devis reste sans prix_achat (garde testee).",
+  "exemple": {
+    "id": 7,
+    "lead": 118,
+    "commercial": {
+      "id": 5,
+      "nom_affiche": "Commercial Démo"
+    },
+    "statut": "en_cours",
+    "date_prevue": "2026-09-15",
+    "date_realisee": null,
+    "notes": "Accès toiture par escalier extérieur.",
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "photo_toit": {
+      "assemblage_etat": "aucun",
+      "assemblage_erreur": "",
+      "url": null,
+      "texture_calage": null
+    },
+    "checklist": [
+      {
+        "categorie": "toiture",
+        "libelle": "Toiture",
+        "slots": [
+          {
+            "code": "toiture_vue_generale",
+            "libelle": "Vue générale du toit",
+            "guide": "Cadrer tout le pan de toit utile, si possible depuis un point haut.",
+            "requis": true,
+            "min_photos": 2,
+            "etat": "ok",
+            "photos": [
+              {
+                "id": 31,
+                "url": "/api/django/records/attachments/31/telecharger/",
+                "filename": "toit-1.jpg",
+                "gps_lat": 33.5731,
+                "gps_lng": -7.5898,
+                "commentaire": "",
+                "a_refaire": false,
+                "motif_refaire": ""
+              }
+            ]
+          },
+          {
+            "code": "toiture_obstacles",
+            "libelle": "Obstacles et ombrages",
+            "guide": "Cheminées, antennes, arbres, bâtiments voisins qui portent ombre.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "a_refaire",
+            "photos": [
+              {
+                "id": 32,
+                "url": "/api/django/records/attachments/32/telecharger/",
+                "filename": "obstacle-1.jpg",
+                "gps_lat": null,
+                "gps_lng": null,
+                "commentaire": "",
+                "a_refaire": true,
+                "motif_refaire": "Photo floue — reprendre l'antenne côté est."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "categorie": "tableau",
+        "libelle": "Tableau électrique",
+        "slots": [
+          {
+            "code": "tableau_ouvert",
+            "libelle": "Tableau ouvert (disjoncteurs visibles)",
+            "guide": "Capot ouvert, calibres lisibles.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "local_onduleur",
+        "libelle": "Emplacement onduleur",
+        "slots": [
+          {
+            "code": "onduleur_mur",
+            "libelle": "Mur d'installation prévu",
+            "guide": "Le mur entier, avec l'espace libre autour.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "cheminement",
+        "libelle": "Cheminement des câbles",
+        "slots": [
+          {
+            "code": "cheminement_parcours",
+            "libelle": "Parcours toit → onduleur",
+            "guide": "Photos du trajet prévu des câbles (optionnel).",
+            "requis": false,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "general",
+        "libelle": "Général",
+        "slots": [
+          {
+            "code": "general_facade",
+            "libelle": "Façade du bâtiment",
+            "guide": "Vue d'ensemble depuis la rue.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      }
+    ],
+    "mesures": {
+      "toiture": {
+        "longueur_m": 12.5,
+        "largeur_m": 8.0,
+        "pente_deg": 15.0,
+        "toit_plat": false,
+        "orientation": "sud",
+        "type_couverture": "tuile",
+        "etat_couverture": "bon",
+        "obstacles_notes": "Cheminée au nord-est."
+      },
+      "tableau": {
+        "calibre_disjoncteur_a": 63,
+        "type_alimentation": "mono",
+        "emplacements_libres": 4
+      },
+      "local_onduleur": {
+        "largeur_mur_cm": null,
+        "hauteur_mur_cm": null,
+        "profondeur_degagement_cm": null,
+        "distance_tableau_m": null,
+        "local_abrite": null,
+        "local_ventile": null
+      },
+      "cheminement": {
+        "longueur_estimee_m": null
+      }
+    },
+    "completude": {
+      "complet": false,
+      "manquants": [
+        {
+          "type": "photo",
+          "categorie": "tableau",
+          "code": "tableau_ouvert",
+          "libelle": "Tableau ouvert (disjoncteurs visibles)"
+        },
+        {
+          "type": "photo_a_refaire",
+          "categorie": "toiture",
+          "code": "toiture_obstacles",
+          "libelle": "Obstacles et ombrages"
+        },
+        {
+          "type": "mesure",
+          "categorie": "local_onduleur",
+          "code": "largeur_mur_cm",
+          "libelle": "Largeur du mur libre (cm)"
+        }
+      ]
+    },
+    "client_panel": {
+      "lead_nom": "Client Démo",
+      "telephone": "+212600000000",
+      "whatsapp": "+212600000000",
+      "adresse": "Quartier Démo, Bouskoura",
+      "ville": "Bouskoura",
+      "gps_lat": 33.4589,
+      "gps_lng": -7.6528
+    },
+    "devis": [
+      {
+        "id": 214,
+        "numero": "DEV-202609-0012",
+        "statut": "envoye",
+        "date": "2026-09-02",
+        "total_ttc": "84500.00",
+        "lignes": [
+          {
+            "designation": "Panneau 550 Wc",
+            "quantite": "12.000",
+            "prix_unitaire_ttc": "1850.00",
+            "total_ttc": "22200.00"
+          }
+        ]
+      }
+    ],
+    "en_route_le": null,
+    "arrivee_le": null
+  }
+}
