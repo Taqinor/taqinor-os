@@ -151,3 +151,56 @@ class DoublonsView(APIView):
         groupes = detecteur(request.user.company, request.user)
         return Response({'entite': entite, 'nb_groupes': len(groupes),
                          'groupes': groupes})
+
+    #: Entité d'URL → fonction de fusion supervisée (NTDATA18/19). Une entité
+    #: SANS fusion câblée refuse explicitement plutôt que de faire semblant.
+    FUSIONS = {
+        'clients': 'fusionner_clients',
+        'fournisseurs': 'fusionner_fournisseurs',
+        'produits': 'fusionner_produits',
+    }
+
+    @extend_schema(
+        request=inline_serializer('FusionRequete', {
+            'survivant': serializers.IntegerField(),
+            'doublons': serializers.ListField(
+                child=serializers.IntegerField()),
+        }),
+        responses=inline_serializer('FusionReponse', {
+            'survivant': serializers.IntegerField(),
+            'absorbes': serializers.JSONField(),
+            'repointes': serializers.JSONField(),
+            'non_repointes': serializers.JSONField(),
+        }))
+    def post(self, request, entite=None):
+        """NTDATA18/19 — FUSION supervisée d'un groupe (décision humaine).
+
+        Corps : ``{"survivant": <id>, "doublons": [<id>, …]}``. Les doublons
+        sont NEUTRALISÉS, jamais supprimés, et tout ce qui les référençait
+        pointe désormais le survivant. La réponse NOMME ce qui n'a pas pu
+        être repointé (contrainte d'unicité déjà occupée) au lieu de le taire.
+        """
+        nom_fusion = self.FUSIONS.get(entite)
+        fusion = getattr(services, nom_fusion or '', None)
+        if fusion is None:
+            return Response(
+                {'detail': "Aucune fusion supervisée pour l'entité "
+                           '« %s ».' % entite},
+                status=status.HTTP_404_NOT_FOUND)
+        corps = request.data or {}
+        survivant = corps.get('survivant')
+        if not survivant:
+            return Response({'survivant': 'Indiquez la fiche à conserver.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rapport = fusion(request.user.company, request.user,
+                             int(survivant), corps.get('doublons') or [])
+        except (TypeError, ValueError) as exc:
+            return Response({'doublons': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'survivant': rapport['survivant'].pk,
+            'absorbes': rapport['absorbes'],
+            'repointes': rapport['repointes'],
+            'non_repointes': rapport['non_repointes'],
+        })

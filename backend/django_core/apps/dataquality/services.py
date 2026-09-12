@@ -279,6 +279,38 @@ def doublons_clients(company, user=None):
     )
 
 
+def fusionner_clients(company, user, survivant_id, doublons_ids):
+    """NTDATA18 — déclenche la fusion supervisée via ``crm.services``.
+
+    LA DÉCISION EST HUMAINE : cette fonction n'est appelée que sur action
+    explicite. Elle ne contient AUCUNE logique de fusion — tout se passe dans
+    ``crm.services.merge_clients``, l'app propriétaire des clients. Ici on ne
+    fait que charger les fiches DANS LA SOCIÉTÉ de l'appelant (via le point
+    d'entrée ``crm.selectors``/``crm.services``, jamais ``crm.models``) et
+    refuser proprement ce qui n'a pas de sens.
+
+    Lève ``ValueError`` avec un message FRANÇAIS quand le survivant est
+    introuvable dans la société ou qu'aucun doublon valide n'est fourni.
+    """
+    from apps.crm.services import clients_par_ids, merge_clients
+
+    doublons_ids = [i for i in (doublons_ids or []) if i != survivant_id]
+    if not doublons_ids:
+        raise ValueError('Indiquez au moins un doublon à fusionner.')
+    fiches = {c.pk: c for c in clients_par_ids(
+        company, [survivant_id] + list(doublons_ids))}
+    survivant = fiches.get(survivant_id)
+    if survivant is None:
+        raise ValueError(
+            'Client survivant introuvable dans cette société (#%s).'
+            % survivant_id)
+    absorbes = [fiches[i] for i in doublons_ids if i in fiches]
+    if not absorbes:
+        raise ValueError(
+            'Aucun des doublons indiqués n\'existe dans cette société.')
+    return merge_clients(survivant, absorbes, user)
+
+
 def rapport_qualite(company, entite=None):
     """Le DERNIER résultat de chaque règle active — la photo du moment.
 
