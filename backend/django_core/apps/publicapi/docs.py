@@ -187,6 +187,73 @@ def public_api_reference():
                 'tri': ['id', 'revise_le'],
                 'updated_since': 'revise_le',
             },
+            {
+                # NTCON31 — vertical BTP/EPC : quatre ressources déjà montées
+                # (`public_urls.py`) mais jamais documentées jusqu'ici (garde
+                # NTAPI42/NTAPI20 muette faute d'un test qui les recensait
+                # explicitement) — comblé en même temps que NTUX33 puisque
+                # les deux ajouts partagent le même routeur et les mêmes
+                # tests de cohérence.
+                'chemin': '/api/public/v1/btp/reserves/',
+                'scope': 'read:btp',
+                'description': "Réserves de chantier (punch-list), NTCON1/2.",
+                'filtres': ['chantier', 'statut', 'gravite', 'lot', 'archivee'],
+                'tri': ['created_at', 'updated_at', 'id'],
+                'updated_since': 'updated_at',
+            },
+            {
+                'chemin': '/api/public/v1/btp/rfi/',
+                'scope': 'read:btp',
+                'description': "RFI (Request For Information) de chantier, NTCON3.",
+                'filtres': ['chantier', 'statut', 'numero'],
+                'tri': ['created_at', 'numero', 'id'],
+                'updated_since': 'created_at',
+            },
+            {
+                'chemin': '/api/public/v1/btp/visas/',
+                'scope': 'read:btp',
+                'description': "Visas de documents techniques de chantier, NTCON5.",
+                'filtres': ['chantier', 'statut', 'type_visa', 'reference'],
+                'tri': ['created_at', 'date_soumission', 'id'],
+                'updated_since': 'created_at',
+            },
+            {
+                'chemin': '/api/public/v1/btp/decomptes-generaux/',
+                'scope': 'read:btp',
+                'description': (
+                    "Décomptes généraux de chantier (montants CONTRACTUELS "
+                    "uniquement — marché, avenants, situations, solde ; "
+                    "jamais un coût interne), NTCON9/10."
+                ),
+                'filtres': ['chantier', 'statut', 'reference'],
+                'tri': ['created_at', 'updated_at', 'id'],
+                'updated_since': 'updated_at',
+            },
+            {
+                'chemin': '/api/public/v1/saved-views/',
+                'scope': 'read:vues',
+                'description': (
+                    "NTUX33 — vues sauvegardées (NTUX1). Sans ?owner=, "
+                    "uniquement les vues déjà partagées à l'équipe ; avec "
+                    "?owner=<id>, les vues de CET utilisateur (personnelles "
+                    "incluses — le paramètre est le proxy de son consentement)."
+                ),
+                'filtres': ['ecran', 'owner'],
+                'tri': ['id', 'ecran', 'nom'],
+                'updated_since': 'updated_at',
+            },
+            {
+                'chemin': '/api/public/v1/favoris/',
+                'scope': 'read:favoris',
+                'description': (
+                    "NTUX33 — favoris épinglés (NTUX12), STRICTEMENT "
+                    "personnels : ?owner=<id> est OBLIGATOIRE (400 sans lui), "
+                    "c'est le consentement explicite de l'utilisateur."
+                ),
+                'filtres': ['owner'],
+                'tri': ['id', 'ordre'],
+                'updated_since': 'updated_at',
+            },
         ],
         'endpoints_ecriture': {
             'description': (

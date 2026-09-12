@@ -35,14 +35,20 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # pourrait diverger silencieusement. NTAPI16 ajoute `public-job` (suivi
         # des jobs bulk, ReadOnlyModelViewSet) aux 5 ressources métier ;
         # NTSCM38 ajoute 2 ressources de planification supply chain
-        # (`read:scm`), pour 8 au total : on fige l'ENSEMBLE exact (plus fort
-        # qu'un simple compte), donc un 9ᵉ enregistrement resterait un choix
-        # délibéré, pas un accident.
+        # (`read:scm`) ; NTCON31 ajoute 4 ressources BTP/EPC (`read:btp` —
+        # montées de longue date mais jamais recensées ici ni documentées dans
+        # `docs.py`, comblé au passage NTUX33 puisque les deux ajouts
+        # partagent le même routeur) ; NTUX33 ajoute 2 ressources UX
+        # (`read:vues`/`read:favoris`), pour 14 au total : on fige l'ENSEMBLE
+        # exact (plus fort qu'un simple compte), donc un 15ᵉ enregistrement
+        # resterait un choix délibéré, pas un accident.
         registered_basenames = {r[2] for r in public_router.registry}
         self.assertEqual(registered_basenames, {
             'public-lead', 'public-devis', 'public-facture',
             'public-chantier', 'public-produit', 'public-job',
             'public-scm-prevision-demande', 'public-scm-politique-stock',
+            'public-btp-reserve', 'public-btp-rfi', 'public-btp-visa',
+            'public-btp-dgd', 'public-favori', 'public-saved-view',
         })
         for prefix, _viewset, _basename in public_router.registry:
             list_path = f'/api/public/v1/{prefix}/'
@@ -64,16 +70,18 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             self.assertIn(method, schema['paths'][path])
 
     def test_no_undocumented_paths_beyond_mounted_surface(self):
-        # 5 ressources × 2 (list+detail) + 3 écritures + 6 bulk (NTAPI14/15/
-        # 16/43/30 : exports, imports, jobs list/detail, jobs/<id>/relancer,
-        # exports/<entite>.csv) + 1 lecture simple (NTADM42 : statut de
-        # licence) = 20 opérations ; NTSCM38 ajoute 2 ressources supply chain
-        # × 2 (list+detail) + 1 lecture simple (tableau-bord-reappro) = 5,
-        # pour 25 au total, sur autant de chemins distincts — jamais un
-        # chemin fantôme ajouté par erreur.
+        # 14 ressources en lecture seule × 2 (list+detail) = 28 (5 métier +
+        # `public-job` + 2 supply chain NTSCM38 + 4 BTP/EPC NTCON31 + 2 UX
+        # NTUX33) + 5 écritures (leads-write POST/PATCH, activités POST,
+        # devis-write POST, tickets-write POST) + 6 bulk (NTAPI14/15/16/43/30 :
+        # exports, imports, jobs list/detail, jobs/<id>/relancer,
+        # exports/<entite>.csv) + 2 lectures simples (NTADM42 statut de
+        # licence, NTSCM38 tableau de bord réappro) = 41 opérations, sur
+        # autant de chemins distincts (aucun chemin ne cumule 2 méthodes ici)
+        # — jamais un chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 25)
+        self.assertEqual(nb_operations, 41)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()
