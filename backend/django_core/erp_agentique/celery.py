@@ -1210,6 +1210,7 @@ app.conf.beat_schedule = {
     'paie-recalculer-cumuls-annuels': {
         'task': 'paie.recalculer_cumuls_annuels',
         'schedule': crontab(day_of_month=2, hour=2, minute=20),
+    },
     # NTCON27 — archivage MENSUEL (1er du mois) des réserves levées depuis
     # plus de N mois (réglage par société, défaut 24). Drapeau, jamais une
     # suppression : la signature de levée reste une preuve opposable.
