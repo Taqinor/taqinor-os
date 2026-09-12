@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10055, operations: 17925, components: 5226}
+counts: {paths: 10055, operations: 17925, components: 5238}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -996,7 +996,7 @@ operations:
 - get /api/django/btp-chantier/chantiers/{chantier_id}/export-dossier-btp/ -> django_btp_chantier_chantiers_export_dossier_btp_retrieve
 - get /api/django/btp-chantier/chantiers/{chantier_id}/intervenants/ -> django_btp_chantier_chantiers_intervenants_retrieve
 - get /api/django/btp-chantier/chantiers/{chantier_id}/penalites-par-lot/ -> django_btp_chantier_chantiers_penalites_par_lot_retrieve
-- get /api/django/btp-chantier/chantiers/{chantier_id}/planning-lots/ -> django_btp_chantier_chantiers_planning_lots_retrieve
+- get /api/django/btp-chantier/chantiers/{chantier_id}/planning-lots/ -> django_btp_chantier_chantiers_planning_lots_list
 - get /api/django/btp-chantier/chantiers/{chantier_id}/rapport-avancement/ -> django_btp_chantier_chantiers_rapport_avancement_retrieve
 - get /api/django/btp-chantier/decomptes-generaux/ -> django_btp_chantier_decomptes_generaux_list
 - post /api/django/btp-chantier/decomptes-generaux/ -> django_btp_chantier_decomptes_generaux_create
@@ -9997,7 +9997,7 @@ operations:
 - get /api/v1/btp-chantier/chantiers/{chantier_id}/export-dossier-btp/ -> v1_btp_chantier_chantiers_export_dossier_btp_retrieve
 - get /api/v1/btp-chantier/chantiers/{chantier_id}/intervenants/ -> v1_btp_chantier_chantiers_intervenants_retrieve
 - get /api/v1/btp-chantier/chantiers/{chantier_id}/penalites-par-lot/ -> v1_btp_chantier_chantiers_penalites_par_lot_retrieve
-- get /api/v1/btp-chantier/chantiers/{chantier_id}/planning-lots/ -> v1_btp_chantier_chantiers_planning_lots_retrieve
+- get /api/v1/btp-chantier/chantiers/{chantier_id}/planning-lots/ -> v1_btp_chantier_chantiers_planning_lots_list
 - get /api/v1/btp-chantier/chantiers/{chantier_id}/rapport-avancement/ -> v1_btp_chantier_chantiers_rapport_avancement_retrieve
 - get /api/v1/btp-chantier/decomptes-generaux/ -> v1_btp_chantier_decomptes_generaux_list
 - post /api/v1/btp-chantier/decomptes-generaux/ -> v1_btp_chantier_decomptes_generaux_create
@@ -18425,6 +18425,11 @@ components:
 - ChangelogEntryCategorieEnum
 - ChangelogEntryRequest
 - ChangerStatutCautionRequest
+- ChantierClotureBtpReponse
+- ChantierIntervenantsReponse
+- ChantierPenalitesParLotReponse
+- ChantierPlanningLotReponse
+- ChantierPrerequisClotureReponse
 - ChargeConstateeAvance
 - ChargeConstateeAvanceRequest
 - CharteVehicule
@@ -18827,6 +18832,8 @@ components:
 - DeploiementPartenaireStatutEnum
 - DepotConsignation
 - DepotConsignationRequest
+- DepotContrepartieContexteReponse
+- DepotContrepartieReponse
 - DepotPublic
 - DepotPublicRequest
 - DepreciationImmobilisation
@@ -20980,6 +20987,7 @@ components:
 - ParametrePaieRequest
 - ParametresAbonnement
 - ParametresAbonnementRequest
+- ParametresBtpChantier
 - ParametresCPQ
 - ParametresCPQRequest
 - ParametresDouane
@@ -22106,6 +22114,7 @@ components:
 - PolitiqueRetentionRequest
 - PolitiqueStock
 - PolitiqueStockRequest
+- PortailCreerTicketReponse
 - PortailProjetToken
 - PortailProjetTokenRequest
 - PortailTiersToken
@@ -22589,6 +22598,8 @@ components:
 - SandboxEnvironmentStatutEnum
 - SanteEnum
 - SanteVeille
+- SavFileAttenteEquipe
+- SavFileAttenteReponse
 - SavSlaSettings
 - SavSlaSettingsRequest
 - SavedQuery
@@ -23143,6 +23154,7 @@ components:
 - WhatsAppTemplate
 - WhatsAppTemplateCategorieEnum
 - WhatsAppTemplateRequest
+- WhatsappInboundReponse
 - WorkflowDefinition
 - WorkflowDefinitionRequest
 - WorkflowStepDefinition
