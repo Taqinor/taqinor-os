@@ -24,8 +24,9 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.audit.models import AuditLog
-from apps.audit.signals import TRACKED_MODELS
+from django.apps import apps as django_apps
+from importlib import import_module
+
 from apps.crm.models import Client
 from apps.ventes.models import Devis, RegulatoryDossier
 from authentication.models import Company
@@ -67,9 +68,13 @@ class RegulatoryDossierEstTraceParLeJournalTests(TestCase):
                     f'{self.dossier.id}/')
 
     def test_le_modele_est_declare_suivi(self):
-        self.assertIn(('ventes', 'RegulatoryDossier'), TRACKED_MODELS)
+        # Contrat M4 (import-linter) : ventes n'importe JAMAIS apps.audit —
+        # résolution à l'exécution, hors du graphe d'imports statiques.
+        tracked = import_module('apps.audit.signals').TRACKED_MODELS
+        self.assertIn(('ventes', 'RegulatoryDossier'), tracked)
 
     def test_transition_de_statut_ecrit_une_ligne_auditlog(self):
+        AuditLog = django_apps.get_model('audit', 'AuditLog')
         resp = self.api.patch(
             self.url, {'statut': 'depose'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
