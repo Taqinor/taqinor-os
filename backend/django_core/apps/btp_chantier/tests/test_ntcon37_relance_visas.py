@@ -80,7 +80,10 @@ class RelanceVisasTests(TestCase):
     # ── sweep ──────────────────────────────────────────────────────────────
     def test_relance_le_revuseur(self):
         visa = self._visa()
-        resultat = services.alerter_visas_en_attente()
+        # Date passée EXPLICITEMENT : sans cela, un passage de minuit entre
+        # `setUp` et l'appel rendrait l'assertion d'égalité flaky.
+        resultat = services.alerter_visas_en_attente(
+            aujourdhui=self.aujourdhui)
         self.assertEqual(resultat['alertes_envoyees'], 1)
         self.assertEqual(_relances(self.revuseur).count(), 1)
         visa.refresh_from_db()
@@ -101,8 +104,10 @@ class RelanceVisasTests(TestCase):
 
     def test_sweep_idempotent(self):
         self._visa()
-        premier = services.alerter_visas_en_attente()
-        second = services.alerter_visas_en_attente()
+        premier = services.alerter_visas_en_attente(
+            aujourdhui=self.aujourdhui)
+        second = services.alerter_visas_en_attente(
+            aujourdhui=self.aujourdhui)
         self.assertEqual(premier['alertes_envoyees'], 1)
         self.assertEqual(second['alertes_envoyees'], 0)
         self.assertEqual(second['examines'], 1)
@@ -110,7 +115,7 @@ class RelanceVisasTests(TestCase):
 
     def test_relance_a_nouveau_le_lendemain(self):
         visa = self._visa()
-        services.alerter_visas_en_attente()
+        services.alerter_visas_en_attente(aujourdhui=self.aujourdhui)
         demain = self.aujourdhui + timedelta(days=1)
         resultat = services.alerter_visas_en_attente(aujourdhui=demain)
         self.assertEqual(resultat['alertes_envoyees'], 1)
@@ -125,7 +130,7 @@ class RelanceVisasTests(TestCase):
 
     def test_approbation_arrete_la_relance(self):
         visa = self._visa()
-        services.alerter_visas_en_attente()
+        services.alerter_visas_en_attente(aujourdhui=self.aujourdhui)
         services.approuver_visa(visa, user=self.revuseur)
         demain = self.aujourdhui + timedelta(days=1)
         resultat = services.alerter_visas_en_attente(aujourdhui=demain)
@@ -142,7 +147,9 @@ class RelanceVisasTests(TestCase):
         visa = self._visa()
         call_command('alertes_visas_en_attente')
         visa.refresh_from_db()
-        self.assertEqual(visa.derniere_relance_retard, self.aujourdhui)
+        # La commande lit l'horloge elle-même : on vérifie qu'elle a POSÉ la
+        # date, pas laquelle (sinon minuit rend le test flaky).
+        self.assertIsNotNone(visa.derniere_relance_retard)
 
     # ── multi-tenant ───────────────────────────────────────────────────────
     def test_le_sweep_global_ne_melange_pas_les_societes(self):

@@ -105,6 +105,8 @@ class CachePenalitesLotsTests(TestCase):
         lot.save(update_fields=['date_fin_reelle'])
         services.recalculer_penalites_lots(tous=True)
         lot.refresh_from_db()
+        # Retard FIGÉ à la fin réelle : indépendant de l'heure du test (un
+        # lot terminé ne court plus, donc pas de flakiness de minuit).
         self.assertEqual(lot.penalite_calculee_cache['jours_depassement'], 2)
 
     def test_commande_de_gestion(self):
