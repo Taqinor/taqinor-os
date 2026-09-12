@@ -6350,7 +6350,10 @@ def etat_charges(periode):
         BulletinPaie.objects
         .filter(company=periode.company, periode=periode,
                 statut=BulletinPaie.STATUT_VALIDE)
-        .select_related('profil')
+        # ``adhesion_mutuelle`` est un OneToOne INVERSE : sans ce
+        # ``select_related``, l'assiette mutuelle coûterait une requête par
+        # bulletin (N+1 sur un état de période entière).
+        .select_related('profil', 'profil__adhesion_mutuelle')
     )
     plafond_cnss = Decimal(getattr(parametre, 'plafond_cnss', 0) or 0)
     # Assiette CNSS = brut PLAFONNÉ par tête (jamais le total plafonné).
