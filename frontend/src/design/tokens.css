@@ -20,8 +20,14 @@
 @theme {
   /* ── Polices de marque (noms personnalisés → utilitaires font-display /
         font-brand ; on ne touche pas au --font-sans par défaut de Tailwind) ── */
-  --font-display: 'Archivo', 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-brand: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  /* NTI18N7 — 'Noto Sans Arabic' EN TÊTE : sans effet en FR/EN (son
+     `@font-face` n'est déclaré qu'après chargement paresseux — voir
+     i18n/arabicFont.js — donc le nom ne résout à rien et le navigateur
+     retombe directement sur 'Archivo'/'Hanken Grotesk' ; une fois chargée,
+     son `unicode-range` la réserve aux seuls glyphes arabes, jamais au
+     texte latin). */
+  --font-display: 'Noto Sans Arabic', 'Archivo', 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-brand: 'Noto Sans Arabic', 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
 
   /* ── Primitives — palette de marque Taqinor (apps/web) ─────────────────────
      F120 — rampes ré-exprimées en OKLCH (perceptuellement uniformes, façon

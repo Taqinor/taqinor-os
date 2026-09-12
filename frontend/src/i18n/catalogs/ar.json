@@ -161,5 +161,17 @@
   "client.langue_document.label": "لغة الوثائق",
   "client.langue_document.help": "لغة الفواتير وعروض الأسعار الصادرة لهذا العميل.",
   "client.langue_document.fr": "الفرنسية",
-  "client.langue_document.ar": "العربية"
+  "client.langue_document.ar": "العربية",
+
+  "crm.cockpit.subtitle": "العملاء المحتملون والعملاء والأنشطة وخريطة المبيعات",
+  "ventes.cockpit.subtitle": "عروض الأسعار وأوامر الشراء والفوترة والمتابعات",
+  "sav.cockpit.subtitle": "تذاكر الدعم والمعدات وعقود الصيانة",
+  "stock.cockpit.title": "لوحة تحكم المستودع",
+  "stock.cockpit.subtitle": "نسبة التعبئة، الدفعات المتأخرة، الجرد المستحق، الشحنات وتواريخ الانتهاء.",
+  "chantiers.debourse.reserve": "مخصص للمسؤولين (بيانات داخلية).",
+  "chantiers.approvisionnement.title": "التوريد المتقدم",
+  "chantiers.approvisionnement.subtitle": "العتبات والموافقات، الاتفاقيات الإطارية، أوامر الاستدعاء، اتفاقيات أسعار الموردين والإيصالات غير المفوترة.",
+  "rh.demandes.title": "مكتب الطلبات",
+  "compta.exports.title": "أين أجد صادراتي",
+  "parametres.abonnements.section": "الفوترة المتكررة"
 }

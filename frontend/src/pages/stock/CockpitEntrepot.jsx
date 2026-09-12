@@ -4,6 +4,8 @@ import stockApi from '../../api/stockApi'
 import { Badge, Button, Input, Spinner } from '../../ui'
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// NTI18N1 — rollout i18n : premier écran Stock migré (titre/sous-titre du cockpit).
+import { useT } from '../../i18n'
 
 /* NTWMS29 — Tableau de bord entrepôt (cockpit WMS).
 
@@ -106,6 +108,7 @@ function SimulateurCapacite({ zones }) {
 }
 
 export default function CockpitEntrepot() {
+  const t = useT()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(null)
@@ -136,8 +139,8 @@ export default function CockpitEntrepot() {
         className="app-accent-rail mb-0"
         headingAs="h1"
         icon={Boxes}
-        title="Tableau de bord entrepôt"
-        subtitle="Remplissage, vagues en retard, comptages dus, expéditions et péremptions."
+        title={t('stock.cockpit.title', null, 'Tableau de bord entrepôt')}
+        subtitle={t('stock.cockpit.subtitle', null, 'Remplissage, vagues en retard, comptages dus, expéditions et péremptions.')}
         actions={<Button variant="outline" onClick={charger}>Rafraîchir</Button>}
       />
 

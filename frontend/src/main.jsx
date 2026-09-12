@@ -19,6 +19,14 @@ import { SessionProvider } from './providers/SessionProvider'
 // N93 — cadre i18n (langue d'interface + RTL). Monté HAUT dans l'arbre pour
 // que toutes les routes disposent de `t()` / de la locale. FR par défaut.
 import { I18nProvider } from './i18n'
+// NTI18N2 — propage `dir` aux primitives Radix (Tabs/DropdownMenu/…), voir
+// le commentaire du fichier. Fichier PARTAGÉ (main.jsx) : ajout additif
+// minimal (un import + un wrap), signalé au fold.
+import RtlDirectionProvider from './i18n/RtlDirectionProvider'
+// NTI18N3 — langue d'interface persistée serveur (retrouvée d'un autre
+// poste). Composant sans rendu, séparé pour ne pas coupler I18nProvider à
+// Redux (voir son commentaire). Fichier PARTAGÉ : ajout additif minimal.
+import ServerLocaleSync from './i18n/ServerLocaleSync'
 import './index.css'
 // VX61 — capture Web Vitals RÉELS terrain (INP/LCP/CLS/TTFB), hand-roll
 // PerformanceObserver, no-op total si l'API est absente.
@@ -46,16 +54,19 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
       <I18nProvider>
-        <ThemeProvider>
-          <ConfirmProvider>
-            <SessionProvider>
-              <RouterProvider router={router} />
-            </SessionProvider>
-          </ConfirmProvider>
-          <Toaster />
-          <PwaPrompts />
-          <WelcomeMoment />
-        </ThemeProvider>
+        <RtlDirectionProvider>
+          <ServerLocaleSync />
+          <ThemeProvider>
+            <ConfirmProvider>
+              <SessionProvider>
+                <RouterProvider router={router} />
+              </SessionProvider>
+            </ConfirmProvider>
+            <Toaster />
+            <PwaPrompts />
+            <WelcomeMoment />
+          </ThemeProvider>
+        </RtlDirectionProvider>
       </I18nProvider>
     </Provider>
   </StrictMode>,

@@ -678,6 +678,59 @@ class MobileHomeRouteView(APIView):
         return Response({'mobile_home_route': request.user.mobile_home_route})
 
 
+class LangueInterfaceView(APIView):
+    """PATCH /api/django/auth/me/langue/ — NTI18N3.
+
+    Persiste la langue d'INTERFACE de l'utilisateur COURANT uniquement (jamais
+    un autre compte, jamais lu du corps que via ce champ — même patron que
+    ``MobileHomeRouteView`` ci-dessus). Corps : ``{"langue_interface":
+    "fr"|"en"|"ar"}``. Valeur hors whitelist → 400 clair (jamais une langue
+    arbitraire écrite en base). Verrouillage société (NTI18N35, hors périmètre
+    de cette tâche) : si un jour posé, cet endpoint devra le vérifier ici."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        from authentication.models import CustomUser
+        langue = request.data.get('langue_interface')
+        valides = dict(CustomUser.LangueInterface.choices)
+        if langue not in valides:
+            return Response(
+                {'detail': f"Langue invalide. Attendu : {', '.join(valides)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        request.user.langue_interface = langue
+        request.user.save(update_fields=['langue_interface'])
+        return Response({'langue_interface': request.user.langue_interface})
+
+
+class CalendrierHegirienView(APIView):
+    """PATCH /api/django/auth/me/calendrier-hegirien/ — NTI18N12.
+
+    Self-service : persiste la préférence d'affichage « calendrier hégirien »
+    de l'utilisateur COURANT uniquement — même patron que
+    ``LangueInterfaceView``/``MobileHomeRouteView`` ci-dessus, ouvert à
+    ``IsAuthenticated`` (pas ``IsAdminOrResponsableTier``) car un rôle limité
+    sans accès à Équipe & rôles doit pouvoir régler SA PROPRE préférence
+    depuis « profil utilisateur ». Le même champ reste aussi éditable via le
+    PATCH générique du profil (``UserViewSet``, Équipe & rôles — un
+    admin/responsable prépare le réglage d'un membre). Corps :
+    ``{"calendrier_hegirien": true|false}``. AFFICHAGE SEUL : ce réglage ne
+    calcule ni ne stocke aucune date hégirienne — la conversion vit
+    entièrement côté client (frontend/src/lib/hijriDate.js)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        valeur = request.data.get('calendrier_hegirien')
+        if not isinstance(valeur, bool):
+            return Response(
+                {'detail': 'calendrier_hegirien doit être un booléen.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        request.user.calendrier_hegirien = valeur
+        request.user.save(update_fields=['calendrier_hegirien'])
+        return Response({'calendrier_hegirien': request.user.calendrier_hegirien})
+
+
 # ── Logout securise ────────────────────────────────────────────
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]

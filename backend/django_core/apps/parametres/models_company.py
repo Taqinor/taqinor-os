@@ -222,6 +222,25 @@ class CompanyProfile(models.Model):
                   '(ex. MAD, EUR, USD). Défaut MAD.',
     )
 
+    # ── NTI18N10 — fuseau horaire d'AFFICHAGE de la société ──
+    # Additif, défaut 'Africa/Casablanca' = comportement historique inchangé
+    # pour toute société existante. NE CHANGE RIEN au stockage (le backend
+    # continue de stocker en UTC, `USE_TZ=True` inchangé, et ce champ n'a
+    # AUCUN rapport avec `settings.TIME_ZONE`/`core.dates.aujourd_hui_local`
+    # qui pilotent la LOGIQUE MÉTIER — datation des paiements, échéances en
+    # retard — de la société TAQINOR elle-même, AUD836) : seule
+    # l'INTERPRÉTATION D'AFFICHAGE côté frontend (activités, chatter,
+    # plannings, pointages RH) est concernée, via un fuseau IANA choisi par
+    # chaque société (multi-tenant : une société basée à Dakar affiche ses
+    # horodatages en Africa/Dakar sans toucher aux autres sociétés).
+    fuseau_horaire = models.CharField(
+        max_length=64, default='Africa/Casablanca',
+        verbose_name='Fuseau horaire',
+        help_text="Fuseau IANA (ex. Africa/Casablanca, Africa/Dakar) utilisé "
+                  "pour AFFICHER les dates/heures côté frontend — le stockage "
+                  "reste UTC, sans changement.",
+    )
+
     # ── N105 — Capacité DGI LOCALE (interrupteur maître, défaut OFF) ──
     # Unique commutateur, par société, qui ARME la capacité DGI locale (export
     # UBL 2.1 conforme + validateur de conformité), atteignable UNIQUEMENT à la

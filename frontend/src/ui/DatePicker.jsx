@@ -69,8 +69,17 @@ function CalendarGrid({
   }, [focusDate])
 
   return (
-    <div className="w-[15.5rem]">
+    // NTI18N6 — `dir="ltr"` fige la lecture de la grille (numéros de jour,
+    // mois/année) de gauche à droite quelle que soit la direction ambiante
+    // (`<html dir="rtl">` en arabe) — mêmes chiffres, même convention que
+    // NumberInput/CurrencyInput (frontend/src/ui/NumberInputs.jsx).
+    <div className="w-[15.5rem]" dir="ltr">
       <div className="mb-2 flex items-center justify-between">
+        {/* NTI18N6 — pas de miroir `rtl:` ici (contrairement aux chevrons de
+            pagination/disclosure de DataTable, NTI18N2) : ce bloc est
+            volontairement une « île LTR » (calendrier grégorien, chiffres) —
+            « précédent » reste à gauche, cohérent avec le sens de lecture
+            figé ci-dessus par `dir="ltr"`. */}
         <button
           type="button"
           aria-label="Mois précédent"
@@ -183,7 +192,9 @@ export const DatePicker = forwardRef(function DatePicker(
             {...props}
           >
             <Calendar className="size-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1 text-left">{valDate ? formatDate(valDate) : placeholder}</span>
+            {/* NTI18N6 — dir="ltr" : une date affichée (jj/mm/aaaa) reste
+                lisible de gauche à droite même en contexte RTL. */}
+            <span className="flex-1 text-left" dir="ltr">{valDate ? formatDate(valDate) : placeholder}</span>
           </button>
         </PopoverPrimitive.Trigger>
         {clearable && valDate && !disabled && (
@@ -266,7 +277,8 @@ export const DateRangePicker = forwardRef(function DateRangePicker(
           {...props}
         >
           <Calendar className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1 text-left tabular-nums">{label}</span>
+          {/* NTI18N6 — dir="ltr", même raison que DatePicker ci-dessus. */}
+          <span className="flex-1 text-left tabular-nums" dir="ltr">{label}</span>
         </button>
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>

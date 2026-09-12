@@ -28,6 +28,8 @@ import { moduleConfigs } from '../../router/moduleRoutes'
 import AppLockSetting from '../../features/pwa/AppLockSetting'
 import api from '../../api/axios'
 import { fetchMe } from '../../features/auth/store/authSlice'
+// NTI18N12 — le toggle « calendrier hégirien » n'a de sens qu'en interface arabe.
+import { useI18n } from '../../i18n'
 import {
   getLandingModule, setLandingModule, LANDING_LAST_MODULE,
   getReducedMotionPref, setReducedMotionPref,
@@ -82,6 +84,52 @@ function MobileHomeToggle() {
         disabled={busy}
         onCheckedChange={onToggle}
         aria-label="Accueil mobile automatique par rôle" />
+    </div>
+  )
+}
+
+// NTI18N12 — calendrier hégirien EN PLUS du grégorien (jamais en
+// remplacement, jamais stocké — conversion 100% côté client,
+// lib/hijriDate.js). Comme MobileHomeToggle ci-dessus, `calendrier_hegirien`
+// vit CÔTÉ SERVEUR (endpoint self-service dédié) pour suivre l'utilisateur
+// d'un poste à l'autre. N'a d'effet visuel qu'en interface arabe : le réglage
+// n'est donc affiché QUE quand `locale === 'ar'` (pas de toggle sans objet
+// pour un utilisateur FR/EN).
+function CalendrierHegirienToggle() {
+  const dispatch = useDispatch()
+  const { locale } = useI18n()
+  const actif = useSelector((s) => s.auth.user?.calendrier_hegirien)
+  const [busy, setBusy] = useState(false)
+
+  if (locale !== 'ar') return null
+
+  const onToggle = async (checked) => {
+    setBusy(true)
+    try {
+      await api.patch('/auth/me/calendrier-hegirien/', { calendrier_hegirien: checked })
+      await dispatch(fetchMe())
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <label htmlFor="pref-calendrier-hegirien" className="text-sm font-semibold text-foreground">
+          Calendrier hégirien
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Affiche la date hégirienne en plus de la date grégorienne
+          (ex. « 26 Ramadan 1447 (2026-03-15) »), sans jamais la remplacer.
+        </p>
+      </div>
+      <Switch
+        id="pref-calendrier-hegirien"
+        checked={!!actif}
+        disabled={busy}
+        onCheckedChange={onToggle}
+        aria-label="Afficher le calendrier hégirien" />
     </div>
   )
 }
@@ -327,6 +375,9 @@ export default function PreferencesPanel({ open, onOpenChange }) {
           <AppLockSetting />
 
           <MobileHomeToggle />
+
+          {/* NTI18N12 — calendrier hégirien (visible seulement en arabe). */}
+          <CalendrierHegirienToggle />
         </div>
       </DialogContent>
     </Dialog>

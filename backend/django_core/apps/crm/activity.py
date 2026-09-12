@@ -6,7 +6,7 @@ instance is compared to the validated new values and one LeadActivity row is
 written per changed field, with human-readable labels and display values.
 The acting user and the company are taken from the request, never the body.
 """
-from .models import Lead, LeadActivity
+from .models import Client, Lead, LeadActivity
 
 # Champ suivi → libellé français affiché dans l'Historique.
 TRACKED_FIELDS = {
@@ -55,6 +55,11 @@ TRACKED_FIELDS = {
     'visite_prevue_le': 'Visite prévue le',
     'visite_effectuee': 'Visite effectuée',
     'visite_notes': 'Notes de visite',
+    # NTI18N49 — langue préférée du contact (FR/Darija), déjà stockée sur
+    # Lead mais jusque-là absente du chatter : une bascule silencieuse ne
+    # laissait aucune trace de POURQUOI un message est parti dans une langue
+    # donnée.
+    'langue_preferee': 'Langue préférée',
     # LW27 — champs de pilotage réel absents jusque-là de l'allowlist (~36
     # champs) : forecast pondéré (montant_estime/date_cloture_prevue),
     # qualification site QK1 (distributeur/roof_age/ownership/
@@ -109,6 +114,8 @@ _CHOICE_FIELDS = {
     'equip_chauffe_eau_creneau', 'equip_ve_creneau',
     # L-BACK2 — créneaux clim/piscine.
     'equip_clim_creneau', 'equip_piscine_creneau',
+    # NTI18N49 — langue préférée (FR/Darija).
+    'langue_preferee',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}
@@ -213,3 +220,33 @@ def log_restore(lead: Lead, user) -> LeadActivity:
         kind=LeadActivity.Kind.NOTE,
         body=f"Lead restauré par {getattr(user, 'username', '?')}",
     )
+
+
+def log_client_langue_document_change(
+        client: Client, user, *, old_value, new_value) -> list:
+    """NTI18N49 — trace un changement de ``Client.langue_document`` dans le
+    chatter, pour que l'équipe commerciale comprenne pourquoi un document est
+    parti dans une langue donnée.
+
+    ``LeadActivity`` exige un ``lead`` (FK non nullable) : on journalise donc
+    UNE entrée par lead RATTACHÉ à ce client (``Lead.client``, related_name
+    ``leads`` — un client peut avoir plusieurs leads historiques). Un client
+    sans lead rattaché n'a simplement pas de chatter — appel non bloquant,
+    silencieux (pas d'exception, pas de LeadActivity orpheline créée).
+    """
+    if old_value == new_value:
+        return []
+    labels = dict(Client.LangueDocument.choices)
+    old_display = str(labels.get(old_value, old_value or '—'))
+    new_display = str(labels.get(new_value, new_value or '—'))
+    entries = []
+    for lead in client.leads.all():
+        entries.append(LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.MODIFICATION,
+            field='client_langue_document',
+            field_label='Langue des documents (client)',
+            old_value=old_display,
+            new_value=new_display,
+        ))
+    return entries

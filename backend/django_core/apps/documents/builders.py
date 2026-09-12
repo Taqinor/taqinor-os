@@ -311,7 +311,9 @@ def generate_bon_livraison(chantier):
     if chantier.signature_client:
         ctx['signature_client'] = chantier.signature_client
         ctx['signataire_nom'] = chantier.signataire_nom or None
-    langue = document_langue(chantier.client)
+    # NTI18N4 — `company=` ajoute le repli société (NTI18N34) à la chaîne de
+    # résolution ; sans effet tant que ce champ n'existe pas.
+    langue = document_langue(chantier.client, company=chantier.company)
     if langue == 'ar':
         ctx['L'] = lambda cle: _bl_libelle(cle, langue)
         ctx['arabic_font_face_css'] = arabic_font_face_css()

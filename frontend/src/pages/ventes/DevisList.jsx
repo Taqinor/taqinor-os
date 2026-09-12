@@ -33,6 +33,11 @@ import {
   Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
+// NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
+// remplacement, jamais stocké), uniquement quand locale=ar ET la préférence
+// utilisateur est active.
+import { formatWithHijri, shouldShowHijri } from '../../lib/hijriDate'
+import { useI18n } from '../../i18n'
 // VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
 import { voice } from '../../lib/voice'
 // VX155 — jalon « devis envoyé » : un cran au-dessus du toast succès plat.
@@ -414,6 +419,12 @@ function DevisRow({ d, ctx }) {
     handleProformaPdf, handleBonCommandePdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
+  // NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
+  // remplacement, jamais stocké) : uniquement quand locale=ar ET la
+  // préférence utilisateur `calendrier_hegirien` est active.
+  const { locale } = useI18n()
+  const calendrierHegirien = useSelector((s) => s.auth.user?.calendrier_hegirien)
+  const afficherHegirien = shouldShowHijri({ locale, calendrierHegirien })
   // Expiration calculée à la volée (T7) : un devis en attente dont la
   // date de validité est dépassée s'affiche « Expiré » sans changer
   // son statut stocké ni l'étape du lead.
@@ -680,7 +691,11 @@ function DevisRow({ d, ctx }) {
       </td>
       {/* VX7 — calm color : les dates sont des métadonnées secondaires → mutées
           (le contraste plein est réservé au client, au total TTC et au statut). */}
-      <td data-label="Créé le" className="text-muted-foreground">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
+      <td data-label="Créé le" className="text-muted-foreground">
+        {afficherHegirien
+          ? (formatWithHijri(d.date_creation) || new Date(d.date_creation).toLocaleDateString('fr-FR'))
+          : new Date(d.date_creation).toLocaleDateString('fr-FR')}
+      </td>
       <td className="m-hide text-muted-foreground">
         {d.date_validite
           ? new Date(d.date_validite).toLocaleDateString('fr-FR')

@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { Users, UserPlus, Map as MapIcon } from 'lucide-react'
 import { ModuleHero } from '../../ui/module'
 import { Button } from '../../ui'
+// NTI18N1 — rollout i18n : premier écran CRM migré (sous-titre du cockpit).
+import { useT } from '../../i18n'
 import { fetchClients, fetchLeads } from '../../features/crm/store/crmSlice'
 import { formatNumber } from '../../lib/format'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -32,6 +34,7 @@ import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
    registre d'apps local (ODY1 reste l'unique source « mes apps »).
    ========================================================================== */
 export default function CrmCockpit() {
+  const t = useT()
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { clients, leads } = useSelector((s) => s.crm)
@@ -64,7 +67,7 @@ export default function CrmCockpit() {
     <div className="page">
       <ModuleHero
         title="CRM"
-        subtitle="Pistes, clients, activités et carte commerciale"
+        subtitle={t('crm.cockpit.subtitle', null, 'Pistes, clients, activités et carte commerciale')}
         accent="var(--module-accent-azur)"
         actions={(
           <>

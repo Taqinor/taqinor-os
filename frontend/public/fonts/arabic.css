@@ -1,0 +1,29 @@
+/* NTI18N7 — Noto Sans Arabic, auto-hébergée (aucune dépendance Google Fonts,
+   aucun appel réseau externe). MÊME police que le rendu PDF WeasyPrint
+   (backend/django_core/apps/ventes/quote_engine/assets/fonts/
+   NotoSansArabic-{400,700}.woff2 — apps/ventes/utils/libelles_ar.py
+   arabic_font_face_css) : identité visuelle unifiée écran/PDF (NTI18N5).
+
+   Chargée PARESSEUSEMENT : cette feuille n'est injectée dans <head> que
+   lorsque la locale devient 'ar' (voir frontend/src/i18n/arabicFont.js,
+   appelé par I18nProvider) — jamais au chargement FR/EN par défaut, même
+   principe que Sora retirée d'index.html pour /landing (VX57) : un poids
+   utilisé par une seule langue ne doit jamais peser sur toutes les autres.
+   `unicode-range` reste une seconde garde (le navigateur ne télécharge le
+   fichier .woff2 lui-même que si un glyphe arabe est effectivement rendu). */
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/NotoSansArabic-400.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/NotoSansArabic-700.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}

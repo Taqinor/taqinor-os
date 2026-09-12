@@ -308,6 +308,14 @@ class UserSerializer(serializers.ModelSerializer):
             # MobileHomeRouteView (whitelist stricte), jamais par ce PATCH
             # générique (admin gérant un AUTRE compte via UserViewSet).
             'mobile_home_route',
+            # NTI18N3 — lecture seule ici (voir read_only_fields ci-dessous) :
+            # l'écriture passe UNIQUEMENT par LangueInterfaceView.
+            'langue_interface',
+            # NTI18N12 — préférence d'affichage éditable ici (Équipe & rôles,
+            # un admin/responsable prépare le réglage d'un membre) ET via
+            # l'endpoint self-service dédié (profil utilisateur) — pas de
+            # read_only_fields pour ce champ, contrairement à langue_interface.
+            'calendrier_hegirien',
             'societes_operables', 'active_company_id',
             'is_active', 'is_superuser', 'is_protected',
             # Rotation forcée des identifiants (N96). ``must_change_password`` est
@@ -357,6 +365,10 @@ class UserSerializer(serializers.ModelSerializer):
             # NTMOB6 — se pilote UNIQUEMENT par MobileHomeRouteView (whitelist
             # stricte de routes), jamais par ce PATCH générique.
             'mobile_home_route',
+            # NTI18N3 — se pilote UNIQUEMENT par LangueInterfaceView (whitelist
+            # stricte fr/en/ar), jamais par ce PATCH générique (même patron
+            # que mobile_home_route/NTMOB6 ci-dessus).
+            'langue_interface',
             # is_protected ne se pilote PAS via l'API (pas de privilège qui
             # se donne tout seul) : seulement par le seed et la commande de
             # récupération serveur.

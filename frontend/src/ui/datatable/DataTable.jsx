@@ -903,7 +903,7 @@ export const DataTable = forwardRef(function DataTable(
               <TabsTrigger key={v.id} value={v.id}>
                 {v.label}
                 {typeof v.count === 'number' && (
-                  <span className="ml-1.5 rounded bg-muted px-1.5 text-xs text-muted-foreground">{v.count}</span>
+                  <span className="ms-1.5 rounded bg-muted px-1.5 text-xs text-muted-foreground">{v.count}</span>
                 )}
               </TabsTrigger>
             ))}
@@ -925,7 +925,7 @@ export const DataTable = forwardRef(function DataTable(
               />
             </div>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ms-auto flex items-center gap-2">
             {/* PACT174 — assistant de vue (NTUX25) : construit la
                 configuration d'une vue enregistrée sans formulaire technique. */}
             {hasViewBuilder && (
@@ -1055,7 +1055,11 @@ export const DataTable = forwardRef(function DataTable(
                     {selectable && (
                       <th
                         scope="col"
-                        className="sticky left-0 z-[var(--z-sticky)] w-11 bg-muted/95 px-3 text-left"
+                        // NTI18N2 — `start-0`/`text-start` (inline-start) : cette colonne
+                        // case-à-cocher est TOUJOURS la première (jamais data-driven
+                        // comme le pinning `c.pinned`), donc son bord d'ancrage suit
+                        // le sens de lecture plutôt que rester figé à gauche.
+                        className="sticky start-0 z-[var(--z-sticky)] w-11 bg-muted/95 px-3 text-start"
                       >
                         <Checkbox
                           checked={pageSelectionState === 'all' ? true : pageSelectionState === 'some' ? 'indeterminate' : false}
@@ -1085,7 +1089,7 @@ export const DataTable = forwardRef(function DataTable(
                             right: pinnedRight ? pinEdges.right[c.id] : undefined,
                           }}
                           className={cn(
-                            'whitespace-nowrap px-3 text-left align-middle font-semibold text-muted-foreground',
+                            'whitespace-nowrap px-3 text-start align-middle font-semibold text-muted-foreground',
                             compact ? 'py-2 text-xs' : 'py-2.5 text-xs',
                             c.align === 'right' && 'text-right',
                             c.align === 'center' && 'text-center',
@@ -1132,7 +1136,9 @@ export const DataTable = forwardRef(function DataTable(
                         scope="col"
                         data-pinned="actions-right"
                         aria-label="Actions"
-                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]"
+                        // NTI18N2 — colonne actions TOUJOURS dernière (idem colonne
+                        // case-à-cocher ci-dessus) : `end-0` plutôt que `right-0`.
+                        className="sticky end-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]"
                       />
                     )}
                   </tr>
@@ -1190,10 +1196,13 @@ export const DataTable = forwardRef(function DataTable(
                                   type="button"
                                   onClick={() => toggleGroupCollapsed(g.key)}
                                   aria-expanded={!collapsed}
-                                  className="flex w-full items-center gap-2 text-left text-sm font-semibold text-foreground focus-ring"
+                                  className="flex w-full items-center gap-2 text-start text-sm font-semibold text-foreground focus-ring"
                                 >
+                                  {/* NTI18N2 — repos pointe vers le contenu (droite en LTR,
+                                      gauche en RTL) ; `rotate-90` (déplié) reste correct
+                                      dans les deux sens car il compose avec le miroir. */}
                                   <ChevronRight
-                                    className={cn('size-4 shrink-0 transition-transform', !collapsed && 'rotate-90')}
+                                    className={cn('size-4 shrink-0 transition-transform rtl:-scale-x-100', !collapsed && 'rotate-90')}
                                     aria-hidden="true"
                                   />
                                   <span>{label}</span>
@@ -1201,7 +1210,7 @@ export const DataTable = forwardRef(function DataTable(
                                     {g.rows.length}
                                   </span>
                                   {groupTotals && (
-                                    <span className="ml-auto flex flex-wrap gap-3 text-xs font-normal tabular-nums text-muted-foreground">
+                                    <span className="ms-auto flex flex-wrap gap-3 text-xs font-normal tabular-nums text-muted-foreground">
                                       {Object.entries(groupTotals).map(([id, val]) => {
                                         const col = resolvedColumns.find((c) => c.id === id)
                                         return (
@@ -1342,13 +1351,13 @@ export const DataTable = forwardRef(function DataTable(
                                     aria-expanded={isExpanded}
                                     onClick={() => toggleExpand(rowKey)}
                                   >
-                                    <ChevronRight className={cn('transition-transform', isExpanded && 'rotate-90')} />
+                                    <ChevronRight className={cn('transition-transform rtl:-scale-x-100', isExpanded && 'rotate-90')} />
                                   </IconButton>
                                 </td>
                               )}
                               {selectable && (
                                 <td
-                                  className="sticky left-0 z-[1] w-11 bg-inherit px-3"
+                                  className="sticky start-0 z-[1] w-11 bg-inherit px-3"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span className={cn('inline-flex', !isSelected && 'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:opacity-0', isSelected && 'opacity-100')}>
@@ -1410,7 +1419,7 @@ export const DataTable = forwardRef(function DataTable(
                               {rowActions && (
                                 <td
                                   className={cn(
-                                    'sticky right-0 z-[1] bg-inherit px-2',
+                                    'sticky end-0 z-[1] bg-inherit px-2',
                                     'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                   )}
                                   onClick={(e) => e.stopPropagation()}
@@ -1596,7 +1605,7 @@ export const DataTable = forwardRef(function DataTable(
                           {rowActions && <RowActions actions={actions} />}
                         </div>
                         {onRowClick && (
-                          <ChevronRight data-card-chevron aria-hidden="true" className="size-5 text-muted-foreground" />
+                          <ChevronRight data-card-chevron aria-hidden="true" className="size-5 text-muted-foreground rtl:-scale-x-100" />
                         )}
                       </div>
                     </div>
@@ -1634,7 +1643,9 @@ export const DataTable = forwardRef(function DataTable(
                   disabled={pageIndex <= 0}
                   onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
                 >
-                  <ChevronLeft />
+                  {/* NTI18N2 — « précédent »/« suivant » sont des icônes DIRECTIONNELLES
+                      (reculer/avancer dans le sens de lecture) : miroir en RTL. */}
+                  <ChevronLeft className="rtl:-scale-x-100" />
                 </IconButton>
                 <span className="px-2 text-xs text-muted-foreground">
                   Page {pageIndex + 1} / {Math.max(1, Math.ceil(totalCount / (pageSize || totalCount || 1)))}
@@ -1646,7 +1657,7 @@ export const DataTable = forwardRef(function DataTable(
                   disabled={(pageIndex + 1) * pageSize >= totalCount}
                   onClick={() => setPageIndex((p) => p + 1)}
                 >
-                  <ChevronRight />
+                  <ChevronRight className="rtl:-scale-x-100" />
                 </IconButton>
               </div>
             </div>
