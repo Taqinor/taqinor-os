@@ -30,6 +30,7 @@ from .formule_api import (
     FormuleFonctionsView, FormuleTestView, FormuleValiderView,
 )
 from .rules_api import RegleOperateursView, RegleValiderView
+from .sla import SlaSnapshotListView, sla_export_pdf
 from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
@@ -202,4 +203,8 @@ urlpatterns = router.urls + [
     # scoping société + plafond de lignes ; jamais de SQL brut).
     path('data-explorer/run/', DataExplorerRunView.as_view(),
          name='data-explorer-run'),
+    # NTOBS3 — rapport SLA mensuel par tenant (uptime + P95), scopé société.
+    path('sla/', SlaSnapshotListView.as_view(), name='sla-list'),
+    path('sla/<str:periode>/export-pdf/', sla_export_pdf,
+         name='sla-export-pdf'),
 ]

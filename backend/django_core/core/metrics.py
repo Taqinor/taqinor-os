@@ -133,6 +133,37 @@ def http_tenant_metrics():
         }
 
 
+def p95_latency_ms(company_id=None):
+    """NTOBS3 — estimation P95 (ms) par interpolation linéaire des buckets.
+
+    LIMITE ASSUMÉE (checked-facts-only) : ``_http_by_tenant`` est un compteur
+    PROCESS-LOCAL remis à zéro à chaque redémarrage de worker (aucun store
+    Prometheus persistant n'existe dans ce dépôt) — ce n'est PAS un historique
+    fiable pour un mois PASSÉ. Renvoie ``None`` (jamais un chiffre inventé)
+    quand aucun échantillon n'est disponible pour ce tenant ; l'appelant
+    (``core.sla``) omet alors le champ plutôt que d'afficher un P95 fictif.
+    """
+    label = _tenant_label(company_id) if company_id is not None else 'system'
+    with _lock:
+        slot = _http_by_tenant.get(label)
+        if not slot or not slot['count']:
+            return None
+        buckets = list(slot['buckets'])
+        total = slot['count']
+
+    # ``buckets[i]`` est DÉJÀ cumulatif (convention Prometheus « le » —
+    # ``record_http_request`` incrémente TOUS les buckets dont l'edge est
+    # >= la latence observée) : le premier bucket qui atteint le seuil des
+    # 95% est la réponse, jamais une re-sommation.
+    seuil = total * 0.95
+    for edge, compte_cumule in zip(_LATENCY_BUCKETS, buckets):
+        if compte_cumule >= seuil:
+            return round(edge * 1000)
+    # Au-delà du dernier bucket (>10s) — borne haute plutôt qu'une
+    # extrapolation non mesurée.
+    return round(_LATENCY_BUCKETS[-1] * 1000)
+
+
 def mark_beat_heartbeat():
     """Appelé par la tâche périodique ``core.beat_heartbeat`` à chaque tick."""
     cache.set(BEAT_HEARTBEAT_CACHE_KEY, time.time(), None)

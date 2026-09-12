@@ -199,3 +199,14 @@ def escalate_workflow_sla_task():
     call_command('escalate_workflow_sla')
     logger.info('core.escalate_workflow_sla: balayage terminé.')
     return {'ok': True}
+
+
+@shared_task(name='core.generer_sla_mensuel')
+def generer_sla_mensuel_task():
+    """NTOBS3 — génère le snapshot SLA mensuel de toutes les sociétés actives
+    (planifié le 1er du mois). Enveloppe fine de la commande homonyme."""
+    from django.core.management import call_command
+
+    call_command('generer_sla_mensuel')
+    logger.info('core.generer_sla_mensuel: génération terminée.')
+    return {'ok': True}

@@ -1240,6 +1240,12 @@ app.conf.beat_schedule = {
         'task': 'statuspage.rafraichir_composants',
         'schedule': crontab(minute='*/5'),
     },
+    # NTOBS3 — snapshot SLA mensuel (uptime + P95) de toutes les sociétés,
+    # le 1er du mois (le mois qui vient de se terminer).
+    'core-generer-sla-mensuel': {
+        'task': 'core.generer_sla_mensuel',
+        'schedule': crontab(day_of_month=1, hour=3, minute=15),
+    },
 }
 
 

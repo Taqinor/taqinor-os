@@ -1356,6 +1356,8 @@ CELERY_TASK_ROUTES = {
     'paie.recalculer_cumuls_annuels': {'queue': 'scheduled'},
     # NTOBS1 — rafraîchissement 5 min des composants publics de statut.
     'statuspage.rafraichir_composants': {'queue': 'scheduled'},
+    # NTOBS3 — snapshot SLA mensuel de toutes les sociétés.
+    'core.generer_sla_mensuel': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
