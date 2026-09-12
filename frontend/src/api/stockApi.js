@@ -152,6 +152,10 @@ const stockApi = {
     api.post(`/stock/bons-commande-fournisseur/${id}/confirmer/`, data),
   getBcfEnRetard: () =>
     api.get('/stock/bons-commande-fournisseur/en-retard/'),
+  // NTP2P21 — suggestions de fusion des BCF brouillon du même fournisseur
+  // créés la même semaine (lecture seule, jamais de fusion automatique).
+  getSuggestionsConsolidationBcf: () =>
+    api.get('/stock/bons-commande-fournisseur/suggestions-consolidation/'),
   getBcfSimilaires: (fournisseurId, produitIds) =>
     api.get('/stock/bons-commande-fournisseur/bcf-similaires/', {
       params: {

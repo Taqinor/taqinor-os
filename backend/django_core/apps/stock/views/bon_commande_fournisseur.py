@@ -78,7 +78,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         elif self.action == 'en_retard':
             return [IsAnyRole()]
         elif self.action in (
-                'bcf_similaires', 'historique_prix', 'achats_hors_contrat'):
+                'bcf_similaires', 'historique_prix', 'achats_hors_contrat',
+                'suggestions_consolidation'):
             return [IsAnyRole()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -519,6 +520,15 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             request.user.company, fournisseur_id=fournisseur_id,
             date_debut=date_debut, date_fin=date_fin)
         return Response(rapport)
+
+    @action(detail=False, methods=['get'], url_path='suggestions-consolidation')
+    def suggestions_consolidation(self, request):
+        """NTP2P21 — suggestions de fusion des BCF brouillon vers un même
+        fournisseur créés la même semaine (LECTURE SEULE, ne fusionne rien —
+        l'acheteur confirme via l'action existante `fusionner`, ZPUR6)."""
+        from ..selectors import suggestions_consolidation_bcf
+        return Response(
+            suggestions_consolidation_bcf(request.user.company))
 
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):

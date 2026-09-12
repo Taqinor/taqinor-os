@@ -425,6 +425,74 @@ def montant_commande_bcf(bon_commande):
     return total
 
 
+def suggestions_consolidation_bcf(company):
+    """NTP2P21 — détecte les bons de commande BROUILLON du MÊME fournisseur
+    créés dans la MÊME semaine calendaire (ISO), et propose une fusion
+    (réutilise ``services.fusionner_bcf``, ZPUR6 — cette fonction ne fusionne
+    JAMAIS rien elle-même, LECTURE SEULE). Estime une économie sur les frais
+    de livraison quand ``Fournisseur.frais_livraison_estimes`` (NTP2P21) est
+    configuré — sans ce réglage, la suggestion reste visible mais SANS
+    chiffrage (jamais un montant inventé).
+
+    Renvoie une liste de dicts triée fournisseur puis semaine :
+    ``{fournisseur_id, fournisseur_nom, annee_iso, semaine_iso,
+    bons_commande: [{id, reference, date_creation, montant}], nb_bons,
+    economie_estimee}``. Vide si aucun fournisseur n'a ≥ 2 BCF brouillon la
+    même semaine."""
+    from collections import defaultdict
+    from decimal import Decimal
+    from .models import BonCommandeFournisseur
+
+    if company is None:
+        return []
+
+    brouillons = (
+        BonCommandeFournisseur.objects
+        .filter(company=company,
+                statut=BonCommandeFournisseur.Statut.BROUILLON,
+                fournisseur__isnull=False)
+        .select_related('fournisseur')
+        .prefetch_related('lignes')
+        .order_by('fournisseur_id', 'date_creation'))
+
+    groupes = defaultdict(list)
+    for bc in brouillons:
+        semaine = bc.date_creation.isocalendar()[:2]  # (année ISO, semaine ISO)
+        groupes[(bc.fournisseur_id, semaine)].append(bc)
+
+    suggestions = []
+    for (fournisseur_id, semaine), bons in groupes.items():
+        if len(bons) < 2:
+            continue
+        fournisseur = bons[0].fournisseur
+        frais_unitaire = fournisseur.frais_livraison_estimes
+        economie = None
+        if frais_unitaire is not None:
+            # Une livraison consolidée au lieu de N séparées : l'économie
+            # est (N - 1) fois le frais unitaire estimé.
+            economie = Decimal(len(bons) - 1) * frais_unitaire
+        suggestions.append({
+            'fournisseur_id': fournisseur_id,
+            'fournisseur_nom': fournisseur.nom,
+            'annee_iso': semaine[0],
+            'semaine_iso': semaine[1],
+            'bons_commande': [
+                {
+                    'id': bc.id, 'reference': bc.reference,
+                    'date_creation': bc.date_creation,
+                    'montant': montant_commande_bcf(bc),
+                }
+                for bc in bons
+            ],
+            'nb_bons': len(bons),
+            'economie_estimee': economie,
+        })
+    suggestions.sort(
+        key=lambda s: (s['fournisseur_nom'] or '', s['annee_iso'],
+                       s['semaine_iso']))
+    return suggestions
+
+
 def montant_recu_bcf(bon_commande):
     """Montant HT REÇU pour un BCF : Σ sur ses LIGNES de commande de
     (``quantite_recue`` × prix d'achat unitaire). Reflète la marchandise
