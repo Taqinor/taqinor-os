@@ -3350,3 +3350,107 @@ def resultats_enquete(company, enquete_id):
             'distribution': agregat['distribution'],
         })
     return {**base, 'categories': categories}
+
+
+# ── NTFSM26 — équipe terrain & compétences par zone géographique ────────────
+
+def equipe_terrain(company, zone=None, competence_code=None):
+    """NTFSM26 — techniciens ACTIFS avec compétences, habilitations et zone.
+
+    Alimente l'écran dispatch ``/dispatch/equipe`` : pour affecter vite une
+    intervention dans une région, il faut voir d'un coup QUI est dans la zone,
+    ce qu'il sait faire (FG172) et ce qu'il a le droit de faire (FG173).
+
+    * ``zone`` — filtre EXACT insensible à la casse sur
+      ``DossierEmploye.zone_intervention``. Une zone vide/absente ne filtre
+      rien (toute l'équipe). Un employé SANS zone déclarée n'apparaît jamais
+      dans un filtre par zone : il n'est rattaché à aucune région, et le
+      supposer disponible partout serait une donnée inventée.
+    * ``competence_code`` — filtre complémentaire optionnel sur le code d'une
+      compétence acquise (niveau > 0).
+    * ``habilitations`` — seuls les titres VALIDES (actifs et non expirés,
+      propriété ``Habilitation.valide``) sont listés : un titre périmé ne
+      donne aucun droit sur un chantier.
+
+    Lecture seule, scopée société.
+    """
+    from .models import CompetenceEmploye, Habilitation
+
+    employes = (
+        DossierEmploye.objects
+        .filter(company=company, statut=DossierEmploye.Statut.ACTIF)
+        .select_related('poste_ref', 'departement')
+        .order_by('nom', 'prenom'))
+    zone_nettoyee = (zone or '').strip()
+    if zone_nettoyee:
+        employes = employes.filter(zone_intervention__iexact=zone_nettoyee)
+    employes = list(employes)
+    if not employes:
+        return []
+
+    ids = [employe.id for employe in employes]
+    competences_par_employe = {employe_id: [] for employe_id in ids}
+    lignes_competence = (
+        CompetenceEmploye.objects
+        .filter(company=company, employe_id__in=ids, niveau__gt=0)
+        .select_related('competence')
+        .order_by('competence__libelle'))
+    for ligne in lignes_competence:
+        competences_par_employe[ligne.employe_id].append({
+            'competence_id': ligne.competence_id,
+            'code': ligne.competence.code,
+            'libelle': ligne.competence.libelle,
+            'domaine': ligne.competence.domaine,
+            'niveau': ligne.niveau,
+            'niveau_display': ligne.get_niveau_display(),
+        })
+
+    habilitations_par_employe = {employe_id: [] for employe_id in ids}
+    for habilitation in Habilitation.objects.filter(
+            company=company, employe_id__in=ids).order_by(
+                'type_habilitation'):
+        if not habilitation.valide:
+            continue
+        habilitations_par_employe[habilitation.employe_id].append({
+            'habilitation_id': habilitation.id,
+            'type_habilitation': habilitation.type_habilitation,
+            'libelle': habilitation.get_type_habilitation_display(),
+            'date_validite': habilitation.date_validite,
+        })
+
+    lignes = []
+    for employe in employes:
+        competences = competences_par_employe[employe.id]
+        if competence_code and not any(
+                c['code'] == competence_code for c in competences):
+            continue
+        lignes.append({
+            'employe_id': employe.id,
+            'matricule': employe.matricule,
+            'nom': employe.nom,
+            'prenom': employe.prenom,
+            'telephone': employe.telephone,
+            'zone_intervention': employe.zone_intervention,
+            'poste': (employe.poste_ref.intitule if employe.poste_ref_id
+                      else employe.poste),
+            'departement': (employe.departement.nom
+                            if employe.departement_id else ''),
+            'competences': competences,
+            'habilitations': habilitations_par_employe[employe.id],
+        })
+    return lignes
+
+
+def zones_intervention(company):
+    """NTFSM26 — zones DÉCLARÉES de la société, triées (pour le filtre).
+
+    Aucune zone n'est inventée : la liste est exactement ce que les dossiers
+    portent, sans les vides.
+    """
+    valeurs = (
+        DossierEmploye.objects
+        .filter(company=company)
+        .exclude(zone_intervention='')
+        .values_list('zone_intervention', flat=True)
+        .distinct())
+    return sorted(set(valeurs))

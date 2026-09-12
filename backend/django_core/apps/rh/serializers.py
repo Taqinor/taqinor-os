@@ -186,6 +186,8 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'email', 'poste', 'poste_ref', 'departement',
             # NTHCM1 — ligne hiérarchique (manager direct).
             'manager',
+            # NTFSM26 — zone géographique d'intervention (champ libre).
+            'zone_intervention',
             'date_embauche',
             'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',

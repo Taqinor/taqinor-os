@@ -483,6 +483,25 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             DossierEmployeSerializer(
                 directs, many=True, context={'request': request}).data)
 
+    @action(detail=False, methods=['get'], url_path='equipe-terrain')
+    def equipe_terrain(self, request):
+        """NTFSM26 — équipe terrain : compétences, habilitations et zone.
+
+        ``?zone=Casablanca`` ne renvoie QUE les techniciens dont la
+        ``zone_intervention`` correspond (comparaison exacte, casse ignorée) ;
+        ``?competence=<code>`` affine sur une compétence acquise.
+        """
+        return Response(selectors.equipe_terrain(
+            request.user.company,
+            zone=request.query_params.get('zone'),
+            competence_code=request.query_params.get('competence')))
+
+    @action(detail=False, methods=['get'], url_path='zones-intervention')
+    def zones_intervention(self, request):
+        """NTFSM26 — zones réellement déclarées (alimente le filtre)."""
+        return Response(
+            selectors.zones_intervention(request.user.company))
+
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
         """Note manuelle sur le chatter du dossier — auteur pris de la

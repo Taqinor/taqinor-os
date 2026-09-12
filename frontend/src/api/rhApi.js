@@ -581,6 +581,12 @@ const rhApi = {
   getEffectifPoste: (posteId) =>
     api.get(`/rh/postes/${posteId}/effectif/`),
   getEffectifsPostes: () => api.get('/rh/postes/effectifs/'),
+
+  // ── NTFSM26 — équipe terrain par zone géographique (dispatch) ──
+  getEquipeTerrain: (params) =>
+    api.get('/rh/employes/equipe-terrain/', { params }),
+  getZonesIntervention: () =>
+    api.get('/rh/employes/zones-intervention/'),
 }
 
 export default rhApi

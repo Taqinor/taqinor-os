@@ -278,6 +278,14 @@ class DossierEmploye(models.Model):
         related_name='employes',
         verbose_name='Département',
     )
+    # NTFSM26 — zone géographique d'intervention (ville/région desservie),
+    # CHAMP LIBRE volontairement : il n'existe aucun référentiel de villes
+    # dans ce dépôt, et en inventer un pour ce seul besoin figerait un
+    # vocabulaire que le terrain n'a pas. Vide = aucune zone déclarée (valeur
+    # de tous les dossiers existants). Sert le filtre de l'écran dispatch.
+    zone_intervention = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Zone d'intervention")
     # NTHCM1 — LIGNE HIÉRARCHIQUE réelle (« qui évalue/approuve »). Nullable :
     # aucun défaut n'est inventé au backfill (la direction n'a pas de manager,
     # et l'existant reste `manager=None` tant que le RH ne l'a pas renseigné).
