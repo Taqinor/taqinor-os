@@ -20,9 +20,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, Clock, FileWarning, HelpCircle, PhoneCall, MessageCircle, Flame,
+  AlertTriangle, Clock, FileWarning, HelpCircle, PhoneCall, MessageCircle, Flame, Receipt,
 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import installationsApi from '../../api/installationsApi'
 import { TooltipProvider, Card, Badge, EmptyState, Skeleton, Button } from '../../ui'
 import { formatMAD } from '../../lib/format'
 
@@ -62,6 +63,15 @@ export default function DevisActionBoardPage() {
   const [board, setBoard] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  // CHT14 — carte SÉPARÉE « Chantiers à facturer » : second fetch, ZÉRO
+  // backend nouveau. `GET installations/a-facturer/` (YSERV7) existait déjà,
+  // sans aucun consommateur. Schéma différent des BUCKETS (tranche/jalon/
+  // chantier, pas devis/client) — jamais forcé dans `board.buckets`. Best
+  // effort, indépendant du board principal : un rôle sans accès
+  // (IsResponsableOrAdmin, comme la page elle-même — nav `roles:
+  // ['responsable','admin']`) n'affiche simplement aucune ligne, sans casser
+  // le reste de l'écran.
+  const [chantiersAFacturer, setChantiersAFacturer] = useState([])
 
   // PACT17 — UN SEUL appel : le serveur renvoie `devis[id]` (référence,
   // client, téléphone, WhatsApp, total) pour chaque id cité dans un panier.
@@ -80,6 +90,14 @@ export default function DevisActionBoardPage() {
   const charger = () => { setLoading(true); setLoadError(false); return load() }
 
   useEffect(() => { load() }, [])
+
+  // CHT14 — fetch indépendant du board principal (endpoint distinct, aucun
+  // impact sur `loading`/`loadError` du board si celui-ci échoue).
+  useEffect(() => {
+    installationsApi.getChantiersAFacturer()
+      .then((r) => setChantiersAFacturer(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setChantiersAFacturer([]))
+  }, [])
 
   const totalCount = useMemo(() => {
     if (!board) return 0
@@ -172,6 +190,46 @@ export default function DevisActionBoardPage() {
             )
           })}
         </div>
+
+        {/* CHT14 — carte SÉPARÉE, schéma différent des BUCKETS (tranche/jalon/
+            chantier, pas devis/client) : jamais mélangée à `board.buckets`. */}
+        <Card className="flex flex-col gap-2 p-3">
+          <div className="flex items-center gap-2">
+            <Receipt className="size-4 text-muted-foreground" aria-hidden="true" />
+            <span className="flex-1 font-display text-sm font-semibold">Chantiers à facturer</span>
+            <Badge tone="warning">{chantiersAFacturer.length}</Badge>
+          </div>
+          {chantiersAFacturer.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Aucune tranche due.</p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {chantiersAFacturer.slice(0, 20).map((c) => (
+                <li key={`${c.installation_id}-${c.jalon_id}`} className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="flex-1 truncate text-left text-xs text-primary hover:underline"
+                    onClick={() => navigate(`/chantiers?id=${c.installation_id}`)}
+                    title={c.jalon_libelle}
+                  >
+                    {c.reference} — {c.tranche}{c.jalon_libelle ? ` (${c.jalon_libelle})` : ''}
+                  </button>
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => navigate(`/chantiers?id=${c.installation_id}`)}
+                    title="Générer la facture depuis la fiche chantier (devis lié)"
+                  >
+                    Facturer
+                  </Button>
+                </li>
+              ))}
+              {chantiersAFacturer.length > 20 && (
+                <li className="text-xs text-muted-foreground">
+                  + {chantiersAFacturer.length - 20} autre(s)
+                </li>
+              )}
+            </ul>
+          )}
+        </Card>
       </div>
     </TooltipProvider>
   )
