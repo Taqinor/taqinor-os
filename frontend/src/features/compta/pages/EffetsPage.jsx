@@ -12,6 +12,8 @@ import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
 // NTTRE25 — assistant guidé « Créer une campagne de paiement ».
 import CampagnePaiementWizard from '../components/CampagnePaiementWizard.jsx'
+// NTTRE26 — assistant guidé « Endossement / protêt » d'un effet.
+import EffetActionWizard from '../components/EffetActionWizard.jsx'
 
 /* ============================================================================
    FG127/128/129/133/134 — Effets à recevoir/payer, bordereaux de remise,
@@ -88,6 +90,8 @@ export default function EffetsPage() {
   const [dialog, setDialog] = useState(null)
   // NTTRE25 — assistant guidé « Créer une campagne de paiement ».
   const [campagneWizard, setCampagneWizard] = useState(false)
+  // NTTRE26 — assistant guidé « Endossement / protêt » d'un effet.
+  const [effetAction, setEffetAction] = useState(null)
 
   const fetcher = useMemo(() => ({
     effets: comptaApi.effets.list,
@@ -126,12 +130,10 @@ export default function EffetsPage() {
       'Effet remis à l’escompte.')
   }
 
-  // XACC34 — endossement à un tiers bénéficiaire.
-  const endosserPrompt = (row) => {
-    const beneficiaire = window.prompt('Bénéficiaire de l’endossement :')
-    if (!beneficiaire) return
-    act(() => comptaApi.effets.endosser(row.id, { beneficiaire }), 'Effet endossé.')
-  }
+  // NTTRE26 — l'endossement (XACC34) et le protêt (NTTRE7) passent désormais
+  // par l'assistant guidé : champs contextualisés selon l'action, et action
+  // invalide GRISÉE avec l'explication du blocage (au lieu d'un `prompt` nu
+  // qui laissait tenter un enchaînement refusé ensuite par le serveur).
 
   const columns = useMemo(() => {
     switch (tab) {
@@ -184,9 +186,14 @@ export default function EffetsPage() {
           onClick: () => act(() => comptaApi.effets.encaisser(row.id, {}), 'Effet encaissé.') })
         acts.push({ id: 'escompter', label: 'Escompter', icon: TrendingDown,
           onClick: () => escompterPrompt(row) })
-        acts.push({ id: 'endosser', label: 'Endosser', icon: ArrowRightLeft,
-          onClick: () => endosserPrompt(row) })
       }
+      // NTTRE26 — toujours proposé sur un effet : l'assistant montre les deux
+      // actions et grise celle qui est impossible, avec sa raison.
+      acts.push({
+        id: 'endossement-protet', label: 'Endossement / protêt',
+        icon: ArrowRightLeft,
+        onClick: () => setEffetAction(row),
+      })
       if (row.statut === 'portefeuille' && row.sens === 'payer') {
         acts.push({ id: 'payer', label: 'Payer', icon: Send,
           onClick: () => act(() => comptaApi.effets.payer(row.id, {}), 'Effet payé.') })
@@ -312,6 +319,16 @@ export default function EffetsPage() {
         <CampagnePaiementWizard
           onClose={() => { setCampagneWizard(false); list.reload() }}
           onCreated={list.reload}
+        />
+      )}
+
+      {/* NTTRE26 — endosser OU constater un protêt, l'action impossible
+          grisée avec l'explication du blocage. */}
+      {effetAction && (
+        <EffetActionWizard
+          effet={effetAction}
+          onClose={() => setEffetAction(null)}
+          onDone={list.reload}
         />
       )}
     </div>

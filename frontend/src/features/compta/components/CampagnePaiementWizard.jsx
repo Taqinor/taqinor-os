@@ -230,13 +230,16 @@ export default function CampagnePaiementWizard({ onClose, onCreated }) {
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                   <span>{alerte.message}</span>
                 </p>
-                <label className="mt-2 flex items-center gap-2 text-xs">
+                <div className="mt-2 flex items-center gap-2 text-xs">
                   <Checkbox
+                    id="cp-outrepasser"
                     checked={outrepasser}
                     onCheckedChange={(v) => setOutrepasser(Boolean(v))}
                   />
-                  Je confirme vouloir créer cette campagne malgré l’alerte.
-                </label>
+                  <Label htmlFor="cp-outrepasser" className="text-xs font-normal">
+                    Je confirme vouloir créer cette campagne malgré l’alerte.
+                  </Label>
+                </div>
               </div>
             )}
 

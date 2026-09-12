@@ -439,6 +439,10 @@ const comptaApi = {
     apurerEscompte: (id, data) =>
       api.post(`/compta/effets/${id}/apurer-escompte/`, data),
     endosser: (id, data) => api.post(`/compta/effets/${id}/endosser/`, data),
+    // NTTRE7 / NTTRE26 — protêt (acte d'huissier) sur un effet IMPAYÉ : ne
+    // change pas le statut, enregistre la date et les frais pour l'audit.
+    constaterProtet: (id, data) =>
+      api.post(`/compta/effets/${id}/constater-protet/`, data),
     // AUDV02 — échéancier + TOTAUX ouverts par sens. Les totaux portent
     // toujours sur le portefeuille ENTIER (`portefeuille` + `remis`) : un
     // filtre d'affichage (`sens`/`statut`) ne change QUE la liste, jamais le
