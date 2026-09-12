@@ -3,6 +3,9 @@ lecture/écriture fine-grainée (``WriteScopedPermissionMixin``)."""
 from django.contrib.contenttypes.models import ContentType
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
@@ -963,13 +966,16 @@ class ParametresBtpView(APIView):
             company=request.user.company)
         return reglages
 
+    @extend_schema(responses=ParametresBtpChantierSerializer)
     def get(self, request):
         return Response(
             ParametresBtpChantierSerializer(self._reglages(request)).data)
 
+    @extend_schema(responses=ParametresBtpChantierSerializer)
     def put(self, request):
         return self._ecrire(request, partial=False)
 
+    @extend_schema(responses=ParametresBtpChantierSerializer)
     def patch(self, request):
         return self._ecrire(request, partial=True)
 
@@ -1003,10 +1009,19 @@ class ChantierClotureBtpView(APIView):
         return get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
 
+    @extend_schema(responses=inline_serializer('ChantierPrerequisClotureReponse', {
+        'pret': drf_serializers.BooleanField(),
+        'blocages': drf_serializers.ListField(child=drf_serializers.CharField()),
+    }))
     def get(self, request, chantier_id):
         chantier = self._chantier(request, chantier_id)
         return Response(services.prerequis_cloture_btp(chantier))
 
+    @extend_schema(responses=inline_serializer('ChantierClotureBtpReponse', {
+        'dgd': DecompteGeneralSerializer(),
+        'prerequis': drf_serializers.JSONField(),
+        'export_dossier_url': drf_serializers.CharField(),
+    }))
     def post(self, request, chantier_id):
         chantier = self._chantier(request, chantier_id)
         try:
@@ -1042,6 +1057,7 @@ class ChantierRapportAvancementView(APIView):
     read_permission = 'btp_voir'
     write_permission = 'btp_gerer'
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request, chantier_id):
         from datetime import date, timedelta
 
@@ -1093,6 +1109,7 @@ class ChantierExportDossierBtpView(APIView):
     read_permission = 'btp_voir'
     write_permission = 'btp_gerer'
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request, chantier_id):
         from django.http import HttpResponse
 
@@ -1113,6 +1130,14 @@ class ChantierIntervenantsView(APIView):
     read_permission = 'btp_voir'
     write_permission = 'btp_gerer'
 
+    @extend_schema(responses=inline_serializer('ChantierIntervenantsReponse', {
+        'chantier_id': drf_serializers.IntegerField(),
+        'date': drf_serializers.DateField(),
+        'sous_traitants': drf_serializers.JSONField(),
+        'effectifs_du_jour': drf_serializers.JSONField(),
+        'personnel_interne': drf_serializers.JSONField(),
+        'alertes': drf_serializers.ListField(child=drf_serializers.CharField()),
+    }))
     def get(self, request, chantier_id):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
@@ -1130,6 +1155,13 @@ class ChantierPenalitesParLotView(APIView):
     read_permission = 'btp_gerer'
     write_permission = 'btp_gerer'
 
+    @extend_schema(responses=inline_serializer('ChantierPenalitesParLotReponse', {
+        'chantier_id': drf_serializers.IntegerField(),
+        'date_reference': drf_serializers.DateField(),
+        'lots': drf_serializers.JSONField(),
+        'total_exposition': drf_serializers.DecimalField(
+            max_digits=14, decimal_places=2),
+    }))
     def get(self, request, chantier_id):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
@@ -1143,6 +1175,16 @@ class ChantierPlanningLotsView(APIView):
     read_permission = 'btp_voir'
     write_permission = 'btp_gerer'
 
+    @extend_schema(responses=inline_serializer('ChantierPlanningLotReponse', {
+        'id': drf_serializers.IntegerField(),
+        'nom': drf_serializers.CharField(),
+        'ordre': drf_serializers.IntegerField(),
+        'couleur': drf_serializers.CharField(),
+        'statut': drf_serializers.CharField(),
+        'avancement_pct': drf_serializers.IntegerField(),
+        'en_retard': drf_serializers.BooleanField(),
+        'taches': drf_serializers.JSONField(),
+    }, many=True))
     def get(self, request, chantier_id):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)

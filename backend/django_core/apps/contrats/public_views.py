@@ -18,6 +18,8 @@ Protections : X-Robots-Tag noindex sur chaque réponse publique ; throttle
 cache-based par IP (30 req/min), même patron que ``sav.public_views`` /
 ``ventes.public_views``.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes, throttle_classes,
@@ -159,6 +161,16 @@ def _lien_introuvable():
     ))
 
 
+@extend_schema(methods=['GET'], responses=inline_serializer(
+    'DepotContrepartieContexteReponse', {
+        'contrat_reference': drf_serializers.CharField(),
+        'contrat_objet': drf_serializers.CharField(),
+        'destinataire_nom': drf_serializers.CharField(),
+        'formats_acceptes': drf_serializers.ListField(
+            child=drf_serializers.CharField()),
+    }))
+@extend_schema(methods=['POST'], responses=inline_serializer(
+    'DepotContrepartieReponse', {'ok': drf_serializers.BooleanField()}))
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([ContratsPortailThrottle])
