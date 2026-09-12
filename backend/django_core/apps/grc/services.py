@@ -1233,3 +1233,192 @@ def placer_resultats_sous_hold(company, resultats, *, nom, motif=None,
         base_juridique=base_juridique or '',
     )
     return hold, ignores
+
+
+# ── NTGRC32 — dossier de conformité pour un auditeur externe ────────────────
+
+#: Les SIX exports du dossier, dans l'ordre où un auditeur les demande.
+#: L'ordre est stable : un dossier dont la composition change d'un export à
+#: l'autre est impossible à comparer d'une année sur l'autre.
+EXPORTS_DOSSIER = (
+    'registre-traitements.csv',
+    'registre-risques.csv',
+    'tests-controle.csv',
+    'politiques-publiees.csv',
+    'journal-destruction.csv',
+    'violations-donnees.csv',
+)
+
+
+def _csv(entetes, lignes):
+    """Rend un CSV UTF-8 (avec BOM) — Excel marocain l'ouvre sans mojibake."""
+    import csv
+    import io
+
+    tampon = io.StringIO()
+    writer = csv.writer(tampon, delimiter=';', lineterminator='\n')
+    writer.writerow(entetes)
+    for ligne in lignes:
+        writer.writerow(['' if v is None else v for v in ligne])
+    return ('﻿' + tampon.getvalue()).encode('utf-8')
+
+
+def _iso(valeur):
+    return valeur.isoformat() if valeur else ''
+
+
+def exports_dossier_conformite(company):
+    """Les six exports du dossier, en mémoire : ``{nom_fichier: bytes}``.
+
+    RÈGLE ABSOLUE de contenu : aucun PRIX D'ACHAT (il n'apparaît dans aucun
+    de ces registres et ne doit jamais y entrer), et aucune DONNÉE
+    PERSONNELLE BRUTE non nécessaire — le journal de destruction n'expose que
+    des identifiants techniques et des EMPREINTES, le registre des violations
+    des catégories et des comptes. Un dossier d'audit qui recopie les données
+    qu'on vient d'effacer serait lui-même le manquement.
+    """
+    from core.models import RegistreTraitement
+
+    from .models import (
+        ControleInterne, JournalDestruction, PolitiqueInterne,
+        RisqueEntreprise, TestControle, ViolationDonnees,
+    )
+
+    fichiers = {}
+
+    fichiers['registre-traitements.csv'] = _csv(
+        ['code', 'finalite', 'base_legale', 'categories_donnees',
+         'categories_personnes', 'destinataires', 'duree_conservation',
+         'donnees_sensibles', 'numero_recepisse', 'actif'],
+        [
+            [t.code, t.finalite, t.base_legale, t.categories_donnees,
+             t.categories_personnes, t.destinataires, t.duree_conservation,
+             'oui' if t.donnees_sensibles else 'non', t.numero_recepisse,
+             'oui' if t.actif else 'non']
+            for t in RegistreTraitement.objects.filter(
+                company=company).order_by('code', 'id')
+        ])
+
+    fichiers['registre-risques.csv'] = _csv(
+        ['reference', 'titre', 'categorie', 'proprietaire', 'probabilite',
+         'impact', 'criticite_inherente', 'reponse', 'criticite_residuelle',
+         'statut', 'date_revue_prevue'],
+        [
+            [r.reference, r.titre, r.get_categorie_display(), r.proprietaire,
+             r.probabilite, r.impact, r.criticite_inherente,
+             r.get_reponse_display(), r.criticite_residuelle,
+             r.get_statut_display(), _iso(r.date_revue_prevue)]
+            for r in RisqueEntreprise.objects.filter(
+                company=company).order_by('reference', 'id')
+        ])
+
+    controles = {
+        c.pk: c for c in ControleInterne.objects.filter(company=company)}
+    fichiers['tests-controle.csv'] = _csv(
+        ['controle_code', 'controle_intitule', 'date_prevue', 'date_realisee',
+         'testeur', 'resultat', 'echantillon_taille', 'conclusion'],
+        [
+            [(controles.get(t.controle_id).code
+              if controles.get(t.controle_id) else ''),
+             (controles.get(t.controle_id).intitule
+              if controles.get(t.controle_id) else ''),
+             _iso(t.date_prevue), _iso(t.date_realisee), t.testeur,
+             t.get_resultat_display(), t.echantillon_taille, t.conclusion]
+            for t in TestControle.objects.filter(
+                company=company).order_by('date_prevue', 'id')
+        ])
+
+    fichiers['politiques-publiees.csv'] = _csv(
+        ['titre', 'categorie', 'version', 'date_publication', 'proprietaire',
+         'cible'],
+        [
+            [p.titre, p.get_categorie_display(), p.version,
+             _iso(p.date_publication), p.proprietaire,
+             p.get_cible_display()]
+            for p in PolitiqueInterne.objects.filter(
+                company=company, statut=PolitiqueInterne.STATUT_PUBLIEE
+            ).order_by('titre', 'id')
+        ])
+
+    fichiers['journal-destruction.csv'] = _csv(
+        ['horodatage', 'type_objet', 'objet_ref', 'action', 'motif',
+         'executee_par', 'empreinte_avant'],
+        [
+            [_iso(j.created_at), j.type_objet, j.objet_ref,
+             j.get_action_display(), j.motif, j.executee_par,
+             j.empreinte_avant]
+            for j in JournalDestruction.objects.filter(
+                company=company).order_by('created_at', 'id')
+        ])
+
+    fichiers['violations-donnees.csv'] = _csv(
+        ['reference', 'date_detection', 'date_incident', 'nature',
+         'gravite', 'nombre_personnes_estime', 'echeance_72h',
+         'date_notification_cndp', 'statut'],
+        [
+            [v.reference, _iso(v.date_detection), _iso(v.date_incident),
+             v.get_nature_display(), v.get_gravite_display(),
+             v.nombre_personnes_estime, _iso(v.date_echeance_72h),
+             _iso(v.date_notification_cndp), v.get_statut_display()]
+            for v in ViolationDonnees.objects.filter(
+                company=company).order_by('date_detection', 'id')
+        ])
+
+    return fichiers
+
+
+def empreinte_globale(entrees):
+    """SHA-256 VÉRIFIABLE de l'ensemble du dossier.
+
+    Calculée sur une chaîne canonique ``nom:sha256`` triée par nom : un
+    auditeur qui recalcule l'empreinte de chaque fichier peut REFAIRE ce
+    calcul et comparer. Une empreinte qu'on ne peut pas reproduire ne prouve
+    rien — c'est tout l'intérêt de publier la recette.
+    """
+    canon = '\n'.join(
+        f"{entree['nom']}:{entree['sha256']}"
+        for entree in sorted(entrees, key=lambda e: e['nom']))
+    return hashlib.sha256(canon.encode('utf-8')).hexdigest()
+
+
+def construire_dossier_conformite(company, now=None):
+    """NTGRC32 — ZIP horodaté + manifeste SHA-256, prêt pour un auditeur.
+
+    Renvoie ``(octets_zip, manifeste)``. Le manifeste liste les SIX exports
+    avec leur taille et leur empreinte, plus une ``empreinte_globale``
+    reproductible (voir :func:`empreinte_globale`).
+    """
+    import io
+    import json
+    import zipfile
+
+    maintenant = now or timezone.now()
+    fichiers = exports_dossier_conformite(company)
+
+    entrees = [
+        {
+            'nom': nom,
+            'taille_octets': len(fichiers[nom]),
+            'sha256': hashlib.sha256(fichiers[nom]).hexdigest(),
+        }
+        for nom in EXPORTS_DOSSIER
+    ]
+    manifeste = {
+        'societe': getattr(company, 'nom', '') or '',
+        'genere_le': maintenant.isoformat(),
+        'algorithme': 'sha256',
+        'fichiers': entrees,
+        'empreinte_globale': empreinte_globale(entrees),
+        'note': ('Empreinte globale = SHA-256 de la chaîne « nom:sha256 » de '
+                 'chaque fichier, triée par nom et jointe par retours à la '
+                 'ligne. Recalculable par l\'auditeur.'),
+    }
+
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for nom in EXPORTS_DOSSIER:
+            archive.writestr(nom, fichiers[nom])
+        archive.writestr(
+            'manifeste.json',
+            json.dumps(manifeste, ensure_ascii=False, indent=2))
+    return tampon.getvalue(), manifeste

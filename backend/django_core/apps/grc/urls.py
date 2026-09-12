@@ -21,7 +21,8 @@ from .views import (
     PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
     QuestionnaireFournisseurViewSet, ReponseQuestionnaireViewSet,
     RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
-    ViolationDonneesViewSet, e_discovery, score_conformite, tableau_bord_dpo,
+    ViolationDonneesViewSet, dossier_conformite, e_discovery,
+    score_conformite, tableau_bord_dpo,
 )
 
 router = DefaultRouter()
@@ -97,5 +98,8 @@ urlpatterns = [
     path('score-conformite/', score_conformite, name='grc-score-conformite'),
     # NTGRC31 — recherche e-discovery transverse (+ séquestre des résultats).
     path('e-discovery/', e_discovery, name='grc-e-discovery'),
+    # NTGRC32 — dossier de conformité (ZIP + manifeste SHA-256 vérifiable).
+    path('dossier-conformite/', dossier_conformite,
+         name='grc-dossier-conformite'),
     path('', include(router.urls)),
 ]

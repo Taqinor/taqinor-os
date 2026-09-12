@@ -972,6 +972,29 @@ def e_discovery(request):
 
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
+def dossier_conformite(request):
+    """NTGRC32 — ZIP du dossier de conformité (6 exports + manifeste SHA-256).
+
+    Scopé à ``request.user.company``. Le ZIP ne contient AUCUN prix d'achat et
+    aucune donnée personnelle brute non nécessaire : le journal de destruction
+    n'y expose que des identifiants techniques et des empreintes.
+    """
+    from django.http import HttpResponse
+
+    from .services import construire_dossier_conformite
+
+    company = request.user.company
+    octets, manifeste = construire_dossier_conformite(company)
+    reponse = HttpResponse(octets, content_type='application/zip')
+    horodatage = manifeste['genere_le'][:10]
+    reponse['Content-Disposition'] = (
+        f'attachment; filename="dossier-conformite-{horodatage}.zip"')
+    reponse['X-Empreinte-Globale'] = manifeste['empreinte_globale']
+    return reponse
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
 def score_conformite(request):
     """NTGRC29 — score de maturité conformité (0-100) + détail par critère.
 
