@@ -267,6 +267,33 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             config.installation, period=period, recipient=recipient)
         return Response({'sent': sent})
 
+    @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
+            permission_classes=[IsAnyRole])
+    def rapport_garantie_pdf(self, request, pk=None):
+        """NTNRG11 — rapport CONTRACTUEL mensuel de garantie de performance
+        (PDF), distinct du rapport O&M générique ci-dessus : mention légale
+        de la clause de garantie + tableau mensuel écart/pénalité cumulée sur
+        l'année contractuelle. ?annee=YYYY (défaut année courante). 404
+        propre si aucune garantie de production n'est configurée."""
+        from .report_warranty import (
+            build_warranty_report_data, render_warranty_report_pdf,
+        )
+        config = self.get_object()
+        annee = request.query_params.get('annee')
+        annee = int(annee) if annee else None
+        data = build_warranty_report_data(config.installation, year=annee)
+        if not data.get('has_warranty'):
+            return Response(
+                {'detail': 'Aucune garantie de production configurée pour '
+                           'ce système.'},
+                status=status.HTTP_404_NOT_FOUND)
+        pdf = render_warranty_report_pdf(config.installation, year=annee)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        ref = config.installation.reference or config.installation_id
+        resp['Content-Disposition'] = (
+            f'attachment; filename="rapport-garantie-{ref}.pdf"')
+        return resp
+
 
 class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG283 — nettoyages de panneaux (bornes pour l'estimation de salissure).
