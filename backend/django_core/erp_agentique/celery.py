@@ -1232,6 +1232,14 @@ app.conf.beat_schedule = {
         'task': 'btp_chantier.alertes_visas_en_attente',
         'schedule': crontab(hour=7, minute=31),
     },
+    # NTOBS1 — rafraîchit les composants publics de la page de statut depuis
+    # `core.health.check_services()` (best-effort, jamais bloquant). Toutes
+    # les 5 minutes — la Done criteria de NTOBS1 exige qu'un composant marqué
+    # `degraded` apparaisse publiquement en ≤5 min.
+    'statuspage-rafraichir-composants': {
+        'task': 'statuspage.rafraichir_composants',
+        'schedule': crontab(minute='*/5'),
+    },
 }
 
 

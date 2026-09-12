@@ -219,6 +219,11 @@ _APP_URLS = [
     # Groupe NTDATA — qualité de données : règles de validation, rapport de
     # conformité, complétude par module et dédoublonnage cross-module.
     path('dataquality/', include('apps.dataquality.urls')),
+    # Groupe NTOBS — page de statut publique (composants + incidents publics).
+    # Contient ses PROPRES routes publiques AllowAny sous `public/` (même
+    # patron que `apps.sav`/`apps.ventes` : un `permission_classes` par vue,
+    # pas un préfixe `api/django/public/` séparé — cf. NTOBS1).
+    path('statuspage/', include('apps.statuspage.urls')),
 ]
 
 urlpatterns = [
