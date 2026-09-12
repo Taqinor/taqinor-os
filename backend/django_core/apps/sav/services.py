@@ -190,7 +190,41 @@ def _technicien_indisponible(company, user, jour):
         return False
 
 
-def assign_technicien_auto(*, company, jour=None):
+def competences_exigees_ticket(ticket):
+    """NTSRV7 — ``(ids de compétences, niveau_min)`` exigés par la CATÉGORIE
+    du ticket, ou ``([], 0)`` quand aucune exigence n'est configurée.
+
+    ``([], 0)`` est le cas normal (aucune catégorie, ou catégorie sans
+    compétence) : l'appelant doit alors garder EXACTEMENT le comportement
+    XSAV9 (aucun filtre)."""
+    categorie = getattr(ticket, 'categorie', None) if ticket is not None else None
+    if categorie is None:
+        return ([], 0)
+    ids = categorie.competences_requises_ids()
+    if not ids:
+        return ([], 0)
+    return (ids, categorie.niveau_competence_min or 0)
+
+
+def techniciens_qualifies(company, ticket):
+    """NTSRV7 — ids des utilisateurs qualifiés pour ``ticket``, ou ``None``
+    quand aucune exigence n'existe (``None`` = « ne filtre rien », à ne JAMAIS
+    confondre avec ``set()`` = « personne n'est qualifié »).
+
+    Lecture cross-app par le sélecteur de l'app cible
+    (``apps.rh.selectors.employes_avec_competence``) — jamais un import de
+    ``apps.rh.models``."""
+    ids, niveau_min = competences_exigees_ticket(ticket)
+    if not ids:
+        return None
+    try:
+        from apps.rh.selectors import employes_avec_competence
+    except Exception:  # noqa: BLE001 — RH absent/désactivé : aucun filtre.
+        return None
+    return employes_avec_competence(company, ids, niveau_min)
+
+
+def assign_technicien_auto(*, company, jour=None, ticket=None):
     """XSAV9 — Choisit le technicien actif le MOINS chargé (nb de tickets
     ouverts assignés) pour une affectation automatique, en excluant les
     indisponibilités RH (lues via les selectors rh — jamais un import direct
@@ -201,10 +235,18 @@ def assign_technicien_auto(*, company, jour=None):
     Un technicien = tout utilisateur ACTIF de la société ayant déjà été
     assigné à au moins un ticket (participe au pool de charge) — ce périmètre
     évite d'affecter un compte administratif jamais destiné au terrain.
+
+    NTSRV7 — quand ``SavSlaSettings.affectation_par_competence`` est ON ET
+    que la catégorie de ``ticket`` exige des compétences (NTSRV6), le pool
+    est d'abord RESTREINT aux techniciens qualifiés
+    (``rh.selectors.employes_avec_competence``) ; le moins chargé de ce
+    sous-groupe est choisi. Si le sous-groupe filtré est VIDE, on retombe sur
+    le comportement XSAV9 d'origine (jamais de ticket laissé sans
+    affectation à cause du filtre). Flag OFF (défaut) = XSAV9 byte-identique.
     """
     from django.contrib.auth import get_user_model
     from django.db.models import Count, Q
-    from .models import Ticket
+    from .models import SavSlaSettings, Ticket
 
     User = get_user_model()
     jour = jour or timezone.localdate()
@@ -223,6 +265,21 @@ def assign_technicien_auto(*, company, jour=None):
             ),
         )
         .order_by('nb_ouverts', 'id'))
+
+    # NTSRV7 — sous-groupe QUALIFIÉ d'abord ; repli XSAV9 SEULEMENT si ce
+    # sous-groupe est VIDE (aucun technicien de la société ne possède les
+    # compétences exigées). Tant qu'au moins un qualifié existe, un
+    # technicien NON qualifié n'est jamais choisi — même si le qualifié est
+    # indisponible ce jour-là (le ticket reste alors à affecter à la main).
+    if ticket is not None and SavSlaSettings.get(company).affectation_par_competence:
+        qualifies = techniciens_qualifies(company, ticket)
+        if qualifies is not None:
+            filtres = [u for u in candidats if u.pk in qualifies]
+            if filtres:
+                for user in filtres:
+                    if not _technicien_indisponible(company, user, jour):
+                        return user
+                return None
 
     for user in candidats:
         if not _technicien_indisponible(company, user, jour):

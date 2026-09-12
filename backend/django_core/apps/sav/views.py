@@ -751,8 +751,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
             sla = SavSlaSettings.get(company)
             if sla.affectation_auto_sav:
                 from .services import assign_technicien_auto
+                # NTSRV7 — le ticket est passé pour que le filtrage par
+                # COMPÉTENCE (flag `affectation_par_competence`, OFF par
+                # défaut) puisse lire sa catégorie. Sans le flag, le ticket
+                # est ignoré : comportement XSAV9 inchangé.
                 technicien = assign_technicien_auto(
-                    company=company, jour=date_ouverture)
+                    company=company, jour=date_ouverture, ticket=inst)
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])

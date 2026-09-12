@@ -80,6 +80,15 @@ class SavSlaSettings(models.Model):
     # équilibrage de charge). Défaut OFF : comportement actuel inchangé (tout
     # ticket reste affecté à la main tant que la société ne l'active pas).
     affectation_auto_sav = models.BooleanField(default=False)
+    # NTSRV7 — restreint l'affectation auto (XSAV9) aux techniciens QUALIFIÉS
+    # quand la catégorie du ticket exige des compétences (NTSRV6). Défaut OFF
+    # = comportement XSAV9 strictement inchangé (round-robin par charge).
+    affectation_par_competence = models.BooleanField(
+        default=False,
+        verbose_name='Affectation auto par compétence',
+        help_text="Ne propose que des techniciens possédant les compétences "
+                  'exigées par la catégorie du ticket (repli sur la charge '
+                  'seule si aucun technicien qualifié).')
     # XSAV24 — auto-clôture des tickets RÉSOLU dormants (sans activité depuis
     # N jours). 0 (défaut) = OFF, comportement actuel inchangé : un ticket
     # résolu reste RÉSOLU indéfiniment tant que la société n'active pas ce

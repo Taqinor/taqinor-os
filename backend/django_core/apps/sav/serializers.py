@@ -462,6 +462,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'sla_par_priorite', 'sla_breach_enabled',
             'notifications_client_sav', 'sla_jours_ouvres',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
+            # NTSRV7 — affectation auto restreinte aux techniciens qualifiés.
+            'affectation_par_competence',
             'auto_cloture_jours', 'recidive_fenetre_jours',
             # YSERV5 — génération automatique planifiée des visites.
             'generation_auto_visites', 'visites_avance_jours',
