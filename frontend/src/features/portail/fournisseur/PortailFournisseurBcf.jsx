@@ -164,7 +164,8 @@ export default function PortailFournisseurBcf() {
               {ouvert === bcf.id ? (
                 <Form onSubmit={(e) => confirmer(e, bcf)}
                       className="flex flex-col gap-3">
-                  <FormField label="Date de livraison que vous confirmez">
+                  <FormField label="Date de livraison que vous confirmez"
+                             required error={champErreur}>
                     <Input type="date" value={date}
                            onChange={(e) => setDate(e.target.value)} />
                   </FormField>
@@ -172,11 +173,6 @@ export default function PortailFournisseurBcf() {
                     <Input value={numero}
                            onChange={(e) => setNumero(e.target.value)} />
                   </FormField>
-                  {champErreur ? (
-                    <p className="text-sm text-destructive" role="alert">
-                      {champErreur}
-                    </p>
-                  ) : null}
                   <div className="flex gap-2">
                     <Button type="submit" size="sm" disabled={busy}>
                       Confirmer cette date
