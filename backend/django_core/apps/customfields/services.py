@@ -87,6 +87,79 @@ def masked_field_ids_for_tier(company, role_tier) -> set:
     ).values_list('field_def_id', flat=True))
 
 
+# NTEXT28 — borne dure ANTI-DoS : un champ ROLLUP n'agrège jamais plus de ce
+# nombre de CustomRecord liés (dégradation propre — silencieusement tronqué,
+# jamais un timeout ni un 500).
+LIMITE_ROLLUP = 5000
+
+
+def evaluer_champ_rollup(field_def, company, target_object_id):
+    """NTEXT28 — champ ROLLUP : agrège les ``CustomRecord`` de l'objet
+    ``rollup_config['objet_lie']`` dont ``rollup_config['cle_liaison']``
+    pointe ``target_object_id``, réduits par
+    ``core.pivot._aggregate(valeurs, agg)`` sur ``rollup_config['champ']``.
+
+    Calculé à CHAQUE LECTURE, jamais persisté. Borné à ``LIMITE_ROLLUP``
+    enregistrements (anti-DoS) et MÉMORISÉ PAR REQUÊTE
+    (``core.request_cache`` — no-op hors requête HTTP, comportement
+    identique) : un même champ rollup lu plusieurs fois dans une même
+    requête (ex. une liste de fiches) ne relance qu'UNE seule lecture base.
+    Config incomplète/objet introuvable ⇒ ``None``, jamais une exception."""
+    from core import request_cache
+    from core.pivot import _aggregate
+    from .models import CustomObjectDef, CustomRecord
+
+    cfg = field_def.rollup_config or {}
+    objet_lie_code = cfg.get('objet_lie')
+    cle_liaison = cfg.get('cle_liaison')
+    agg = cfg.get('agg') or 'sum'
+    champ = cfg.get('champ')
+    if not objet_lie_code or not cle_liaison or target_object_id is None:
+        return None
+
+    cache_key = ('ntext28_rollup', getattr(company, 'pk', None),
+                 field_def.pk, target_object_id)
+
+    def _calculer():
+        objet_lie = CustomObjectDef.objects.filter(
+            company=company, code=objet_lie_code, actif=True).first()
+        if objet_lie is None:
+            return None
+        valeurs = []
+        qs = CustomRecord.objects.filter(
+            company=company, objet=objet_lie)[:LIMITE_ROLLUP]
+        for record in qs:
+            data = record.data or {}
+            lien = data.get(cle_liaison)
+            try:
+                correspond = (lien is not None
+                              and int(lien) == int(target_object_id))
+            except (TypeError, ValueError):
+                correspond = False
+            if not correspond:
+                continue
+            valeurs.append(data.get(champ) if champ else None)
+        return _aggregate(valeurs, agg)
+
+    return request_cache.memoize(cache_key, _calculer)
+
+
+def calculer_champs_rollup(module: str, company, target_object_id) -> dict:
+    """NTEXT28 — calcule TOUS les champs ROLLUP actifs d'un module pour UN
+    enregistrement (``target_object_id`` = son propre id : c'est lui que les
+    enregistrements liés référencent via ``cle_liaison``). Renvoie
+    ``{code: valeur}`` — jamais persisté."""
+    from .models import CustomFieldDef
+
+    defs = CustomFieldDef.objects.filter(
+        company=company, module=module, actif=True,
+        type=CustomFieldDef.FieldType.ROLLUP)
+    return {
+        d.code: evaluer_champ_rollup(d, company, target_object_id)
+        for d in defs
+    }
+
+
 def valider_formule_definition(formule: str, sibling_codes) -> tuple[bool, str]:
     """NTEXT1 — valide une formule de champ CALCULÉ à la DÉFINITION.
 

@@ -20,7 +20,7 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
                   'obligatoire', 'visible_liste', 'ordre', 'actif',
                   'relation_module', 'conditions', 'ia_prompt', 'verrouille',
-                  'formule']
+                  'formule', 'rollup_config']
         # NTEXT38 — le verrou ne se pose/retire QUE par les actions dédiées
         # ``verrouiller``/``deverrouiller`` (auditées) : un PATCH ordinaire ne
         # doit jamais pouvoir le retirer en passant.
@@ -213,11 +213,12 @@ def validate_custom_data(module, company, data):
         company=company, module=module, actif=True)}
     clean = {}
     for code, d in defs.items():
-        # NTEXT1 — un champ CALCULÉ (FORMULA) n'est JAMAIS saisi : toute
-        # valeur soumise sous son code est ignorée (jamais persistée), la
-        # vraie valeur se calcule à la LECTURE (cf. `services.
-        # calculer_champs_formule`).
-        if d.type == CustomFieldDef.FieldType.FORMULA:
+        # NTEXT1/NTEXT28 — un champ CALCULÉ (FORMULA/ROLLUP) n'est JAMAIS
+        # saisi : toute valeur soumise sous son code est ignorée (jamais
+        # persistée), la vraie valeur se calcule à la LECTURE (cf.
+        # `services.calculer_champs_formule`/`calculer_champs_rollup`).
+        if d.type in (CustomFieldDef.FieldType.FORMULA,
+                      CustomFieldDef.FieldType.ROLLUP):
             continue
         val = data.get(code)
         if val in (None, ''):
@@ -383,10 +384,14 @@ class CustomRecordSerializer(serializers.ModelSerializer):
         # fusionnent dans `data` pour l'API, SANS jamais être persistés
         # (`instance.data` en base ne les porte pas — cf. `validate_data`,
         # qui ne nettoie que les définitions non-FORMULA soumises).
+        # NTEXT28 — même principe pour les champs ROLLUP, agrégés sur CET
+        # enregistrement (son propre id = la cible de `cle_liaison`).
         rep = super().to_representation(instance)
-        from .services import calculer_champs_formule
+        from .services import calculer_champs_formule, calculer_champs_rollup
         calcules = calculer_champs_formule(
             instance.objet.field_module, instance.company, instance.data)
+        calcules.update(calculer_champs_rollup(
+            instance.objet.field_module, instance.company, instance.pk))
         if calcules:
             rep['data'] = {**rep.get('data', {}), **calcules}
         return rep

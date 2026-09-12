@@ -43,6 +43,10 @@ class CustomFieldDef(models.Model):
         # saisie, jamais persistée dans custom_data). Cf. `services.
         # calculer_champs_formule` / `core.formula.evaluer_formule`.
         FORMULA = 'formula', 'Champ calculé (formule)'
+        # NTEXT28 — agrégat d'objets personnalisés LIÉS (rollup), calculé à
+        # la lecture depuis `rollup_config`. Cf. `services.
+        # evaluer_champ_rollup` / `core.pivot._aggregate`.
+        ROLLUP = 'rollup', 'Agrégat (rollup)'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -93,6 +97,13 @@ class CustomFieldDef(models.Model):
     # sur les autres champs custom de l'enregistrement — jamais persistée
     # dans `custom_data`/`data`, jamais saisie par l'utilisateur.
     formule = models.TextField('Formule', blank=True, default='')
+    # NTEXT28 — configuration du champ ROLLUP (type=rollup). Ignoré pour tout
+    # autre type. Forme :
+    # ``{'objet_lie': 'x', 'cle_liaison': 'devis_id', 'agg': 'sum',
+    #    'champ': 'montant'}`` — jamais saisie par l'utilisateur, calculée à
+    # CHAQUE LECTURE (`services.evaluer_champ_rollup`).
+    rollup_config = models.JSONField(
+        'Configuration rollup', null=True, blank=True)
 
     class Meta:
         ordering = ['module', 'ordre', 'libelle']
