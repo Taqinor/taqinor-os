@@ -6,7 +6,9 @@ from django.db import transaction, IntegrityError
 from django.db.models import F, Q
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import filters, status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -27,10 +29,10 @@ from .models import (
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
     TicketActiviteAFaire, TicketFollower,
-    WorksheetMaintenanceModele, TicketWorksheet,
+    WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
 )
 from .services import add_months
-from .pdf import rapport_intervention_pdf
+from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
     PieceConsommeeSerializer, PieceRetireeSerializer, PretEquipementSerializer,
@@ -48,7 +50,7 @@ from .serializers import (
     CategorieTicketSerializer,
     EquipeMaintenanceSerializer,
     CategorieEquipementSerializer,
-    TicketActiviteAFaireSerializer,
+    TicketActiviteAFaireSerializer, ProblemeSerializer,
     WorksheetMaintenanceModeleSerializer, TicketWorksheetSerializer,
 )
 
@@ -1457,6 +1459,24 @@ class TicketViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="rapport-intervention-{ticket.reference}.pdf"')
         return resp
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=True, methods=['get'], url_path='fiche-pdf',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def fiche_pdf(self, request, pk=None):
+        """NTSRV28 — Fiche de synthèse INTERNE du ticket (PDF WeasyPrint).
+
+        Historique complet (chatter), feuille de maintenance, cause/remède,
+        pièces utilisées et signature client si présente. Destinée au
+        classeur d'intervention et à la transmission assurance/garantie —
+        JAMAIS un document commercial : aucun prix d'achat, aucune marge,
+        aucun coût interne n'y figure (verrouillé par un test)."""
+        ticket = self.get_object()
+        pdf_bytes = fiche_synthese_ticket_pdf(ticket)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="fiche-ticket-{ticket.reference}.pdf"')
+        return resp
+
     @action(detail=True, methods=['get', 'post'], url_path='pieces',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def pieces(self, request, pk=None):
@@ -2692,6 +2712,402 @@ class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         super().perform_update(serializer)
+
+
+# ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────
+
+class ProblemeViewSet(CompanyScopedModelViewSet):
+    """NTSRV16 — CRUD des problèmes + rattachement/détachement des incidents.
+
+    Un « problème » regroupe N tickets qui partagent UNE cause racine. Les
+    deux machines d'états restent INDÉPENDANTES : passer un problème à
+    « résolu » ne touche jamais le statut des tickets liés (garanti par un
+    test). Le tri ``?ordering=impact`` classe par nb de tickets × ancienneté.
+    """
+    queryset = Probleme.objects.all()
+    serializer_class = ProblemeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'description', 'cause_racine']
+    ordering_fields = ['reference', 'titre', 'statut', 'created_at']
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        # Une garde déclarée par l'@action elle-même PRIME (sinon le kwarg du
+        # décorateur devient du code mort — même motif que TicketViewSet).
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
+        if self.action in READ_ACTIONS:
+            return [HasPermissionOrLegacy('sav_voir')()]
+        return [HasPermissionOrLegacy('sav_gerer')()]
+
+    def get_queryset(self):
+        from django.db.models import Case, Count, IntegerField, Value, When
+
+        qs = super().get_queryset().annotate(
+            nb_tickets_annote=Count('incidents', distinct=True))
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        # Tri par IMPACT (nb tickets × ancienneté) : le produit se calcule en
+        # Python sur une table de taille référentielle (quelques dizaines de
+        # lignes par société), puis l'ordre est REPROJETÉ en SQL via
+        # Case/When — la pagination DRF reste donc exacte, et aucune
+        # arithmétique de durée (non portable) n'est envoyée à la base.
+        ordering = (self.request.query_params.get('ordering') or '').strip()
+        if ordering in ('impact', '-impact'):
+            maintenant = timezone.now()
+            lignes = []
+            for probleme in qs:
+                jours = 1
+                if probleme.created_at:
+                    jours = max(1, (maintenant - probleme.created_at).days)
+                lignes.append(
+                    (probleme.pk, (probleme.nb_tickets_annote or 0) * jours))
+            lignes.sort(key=lambda ligne: (ligne[1], ligne[0]),
+                        reverse=ordering == '-impact')
+            if not lignes:
+                return qs
+            rang = Case(
+                *[When(pk=pk, then=Value(index))
+                  for index, (pk, _) in enumerate(lignes)],
+                default=Value(len(lignes)), output_field=IntegerField())
+            return qs.annotate(rang_impact=rang).order_by('rang_impact')
+        return qs
+
+    def perform_create(self, serializer):
+        """Référence ``PRB-YYYYMM-NNNN`` posée côté serveur, race-safe."""
+        company = self.request.user.company
+        create_with_reference(
+            Probleme, 'PRB', company,
+            lambda ref: serializer.save(reference=ref, company=company),
+        )
+
+    def _ticket_de_la_societe(self, request):
+        """Résout le ticket du corps, scopé société. Erreur FRANÇAISE qui
+        NOMME le champ fautif (jamais un « non enregistré » générique)."""
+        brut = request.data.get('ticket')
+        if brut in (None, ''):
+            raise ValidationError({'ticket': 'Indiquez le ticket à rattacher.'})
+        try:
+            ticket_id = int(brut)
+        except (TypeError, ValueError):
+            raise ValidationError({'ticket': 'Ticket inconnu.'})
+        ticket = Ticket.objects.filter(
+            pk=ticket_id, company=request.user.company).first()
+        if ticket is None:
+            raise ValidationError({'ticket': 'Ticket inconnu.'})
+        return ticket
+
+    @extend_schema(
+        request=inline_serializer('SavProblemeLierTicketRequest', {
+            'ticket': drf_serializers.IntegerField(),
+        }),
+        responses=inline_serializer('SavProblemeLierTicketResponse', {
+            'lien_id': drf_serializers.IntegerField(allow_null=True),
+            'cree': drf_serializers.BooleanField(),
+            'probleme': drf_serializers.CharField(),
+            'ticket': drf_serializers.CharField(),
+            'nb_tickets': drf_serializers.IntegerField(),
+        }))
+    @action(detail=True, methods=['post'], url_path='lier-ticket',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def lier_ticket(self, request, pk=None):
+        """Rattache UN ticket au problème. Idempotent : un second appel
+        renvoie le lien existant sans doublon (contrainte unique en base).
+
+        Le STATUT du ticket n'est jamais touché — seule une note de chatter
+        trace le rattachement."""
+        probleme = self.get_object()
+        ticket = self._ticket_de_la_societe(request)
+        lien = ProblemeIncident.objects.filter(
+            probleme=probleme, ticket=ticket).first()
+        cree = False
+        if lien is None:
+            try:
+                with transaction.atomic():
+                    lien = ProblemeIncident.objects.create(
+                        company=probleme.company, probleme=probleme,
+                        ticket=ticket)
+                cree = True
+            except IntegrityError:
+                # Course : un autre appel a créé le même lien entre-temps.
+                lien = ProblemeIncident.objects.filter(
+                    probleme=probleme, ticket=ticket).first()
+        if cree:
+            activity.log_note(
+                ticket, request.user,
+                f'Rattaché au problème {probleme.reference} — '
+                f'{probleme.titre}')
+        return Response({
+            'lien_id': lien.pk if lien else None,
+            'cree': cree,
+            'probleme': probleme.reference,
+            'ticket': ticket.reference,
+            'nb_tickets': probleme.incidents.count(),
+        })
+
+    @extend_schema(
+        request=inline_serializer('SavProblemeDelierTicketRequest', {
+            'ticket': drf_serializers.IntegerField(),
+        }),
+        responses=inline_serializer('SavProblemeDelierTicketResponse', {
+            'delie': drf_serializers.BooleanField(),
+            'probleme': drf_serializers.CharField(),
+            'ticket': drf_serializers.CharField(),
+            'nb_tickets': drf_serializers.IntegerField(),
+        }))
+    @action(detail=True, methods=['post'], url_path='delier-ticket',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def delier_ticket(self, request, pk=None):
+        """Détache un ticket du problème : supprime la LIGNE DE LIAISON,
+        jamais le ticket. Idempotent (détacher deux fois ne casse rien)."""
+        probleme = self.get_object()
+        ticket = self._ticket_de_la_societe(request)
+        supprimes, _ = ProblemeIncident.objects.filter(
+            probleme=probleme, ticket=ticket).delete()
+        return Response({
+            'delie': bool(supprimes),
+            'probleme': probleme.reference,
+            'ticket': ticket.reference,
+            'nb_tickets': probleme.incidents.count(),
+        })
+
+    @extend_schema(
+        responses=inline_serializer('SavProblemeTicketsResponse', {
+            'results': inline_serializer('SavProblemeTicketLigne', {
+                'id': drf_serializers.IntegerField(),
+                'reference': drf_serializers.CharField(),
+                'statut': drf_serializers.CharField(),
+                'priorite': drf_serializers.CharField(),
+                'client': drf_serializers.CharField(),
+                'date_ouverture': drf_serializers.DateField(allow_null=True),
+                'lie_le': drf_serializers.DateTimeField(),
+            }, many=True),
+        }))
+    @action(detail=True, methods=['get'], url_path='tickets',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def tickets(self, request, pk=None):
+        """Tous les tickets rattachés à ce problème, en UN appel (« voir en
+        un clic tous les tickets concernés »)."""
+        probleme = self.get_object()
+        lignes = (ProblemeIncident.objects
+                  .filter(probleme=probleme)
+                  .select_related('ticket', 'ticket__client')
+                  .order_by('-created_at', '-id'))
+        return Response({'results': [{
+            'id': ligne.ticket_id,
+            'reference': ligne.ticket.reference,
+            'statut': ligne.ticket.statut,
+            'priorite': ligne.ticket.priorite,
+            'client': getattr(ligne.ticket.client, 'nom', '') or '',
+            'date_ouverture': ligne.ticket.date_ouverture,
+            'lie_le': ligne.created_at,
+        } for ligne in lignes]})
+
+    @extend_schema(
+        responses=inline_serializer('SavProblemeRegroupementsResponse', {
+            'fenetre_jours': drf_serializers.IntegerField(),
+            'seuil': drf_serializers.IntegerField(),
+            'results': inline_serializer('SavProblemeRegroupement', {
+                'produit_id': drf_serializers.IntegerField(),
+                'produit_nom': drf_serializers.CharField(),
+                'cause_id': drf_serializers.IntegerField(allow_null=True),
+                'cause_libelle': drf_serializers.CharField(),
+                'titre_suggere': drf_serializers.CharField(),
+                'nb_tickets': drf_serializers.IntegerField(),
+                'tickets': inline_serializer('SavProblemeRegroupementTicket', {
+                    'id': drf_serializers.IntegerField(),
+                    'reference': drf_serializers.CharField(),
+                    'statut': drf_serializers.CharField(),
+                    'priorite': drf_serializers.CharField(),
+                    'date_ouverture': drf_serializers.DateField(
+                        allow_null=True),
+                    'client': drf_serializers.CharField(),
+                }, many=True),
+            }, many=True),
+        }))
+    @action(detail=False, methods=['get'], url_path='regroupements-suggeres',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def regroupements_suggeres(self, request):
+        """NTSRV17 — « Regroupements suggérés » : tickets ouverts qui
+        partagent produit + cause dans la fenêtre, ≥ seuil occurrences.
+
+        LECTURE PURE : aucun ``Probleme`` n'est créé ici — l'agent valide
+        ensuite dans l'assistant (NTSRV31)."""
+        from .selectors import tickets_candidats_probleme
+
+        params = request.query_params
+        try:
+            fenetre = int(params.get('fenetre_jours') or 30)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {'fenetre_jours': 'Indiquez un nombre de jours (ex. 30).'})
+        try:
+            seuil = int(params.get('seuil') or 3)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {'seuil': 'Indiquez un nombre d’occurrences (ex. 3).'})
+        groupes = tickets_candidats_probleme(
+            request.user.company, fenetre, seuil=seuil)
+        return Response({
+            'fenetre_jours': fenetre,
+            'seuil': seuil,
+            'results': groupes,
+        })
+
+    @extend_schema(
+        request=inline_serializer('SavProblemeDepuisRegroupementRequest', {
+            'titre': drf_serializers.CharField(),
+            'description': drf_serializers.CharField(required=False),
+            'cause_racine': drf_serializers.CharField(required=False),
+            'ticket_ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField()),
+        }),
+        responses=inline_serializer('SavProblemeDepuisRegroupementResponse', {
+            'id': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(),
+            'titre': drf_serializers.CharField(),
+            'nb_tickets': drf_serializers.IntegerField(),
+        }))
+    @action(detail=False, methods=['post'],
+            url_path='creer-depuis-regroupement',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def creer_depuis_regroupement(self, request):
+        """NTSRV31 — crée le problème ET rattache les tickets COCHÉS en UN
+        SEUL appel transactionnel.
+
+        Décocher un ticket dans l'assistant l'exclut réellement : seuls les
+        ids reçus sont rattachés (aucun « tout le groupe » implicite côté
+        serveur). Tout ou rien : si un id est inconnu, RIEN n'est créé."""
+        company = request.user.company
+        titre = str(request.data.get('titre') or '').strip()
+        if not titre:
+            raise ValidationError(
+                {'titre': 'Le titre du problème est obligatoire.'})
+        bruts = request.data.get('ticket_ids')
+        if not isinstance(bruts, (list, tuple)) or not bruts:
+            raise ValidationError(
+                {'ticket_ids': 'Cochez au moins un ticket à rattacher.'})
+        try:
+            demandes = [int(valeur) for valeur in bruts]
+        except (TypeError, ValueError):
+            raise ValidationError({'ticket_ids': 'Ticket inconnu.'})
+
+        tickets = list(Ticket.objects.filter(
+            pk__in=demandes, company=company))
+        if len(tickets) != len(set(demandes)):
+            raise ValidationError(
+                {'ticket_ids': 'Ticket inconnu (il appartient à une autre '
+                               'société ou a été supprimé).'})
+
+        with transaction.atomic():
+            probleme = create_with_reference(
+                Probleme, 'PRB', company,
+                lambda ref: Probleme.objects.create(
+                    company=company, reference=ref, titre=titre,
+                    description=str(request.data.get('description') or ''),
+                    cause_racine=str(request.data.get('cause_racine') or '')),
+            )
+            ProblemeIncident.objects.bulk_create([
+                ProblemeIncident(company=company, probleme=probleme,
+                                 ticket=ticket)
+                for ticket in tickets])
+        for ticket in tickets:
+            activity.log_note(
+                ticket, request.user,
+                f'Rattaché au problème {probleme.reference} — '
+                f'{probleme.titre}')
+        return Response({
+            'id': probleme.pk,
+            'reference': probleme.reference,
+            'titre': probleme.titre,
+            'nb_tickets': len(tickets),
+        }, status=status.HTTP_201_CREATED)
+
+
+def _bornes_periode(request):
+    """Bornes ``?date_debut=`` / ``?date_fin=`` (AAAA-MM-JJ), optionnelles.
+
+    Une date mal formée est REFUSÉE en NOMMANT le champ fautif — jamais
+    ignorée en silence (un rapport calculé sur une autre période que celle
+    demandée est pire qu'une erreur)."""
+    bornes = {}
+    for champ in ('date_debut', 'date_fin'):
+        brut = (request.query_params.get(champ) or '').strip()
+        if not brut:
+            bornes[champ] = None
+            continue
+        try:
+            bornes[champ] = _date.fromisoformat(brut)
+        except ValueError:
+            raise ValidationError(
+                {champ: 'Date invalide (format attendu : AAAA-MM-JJ).'})
+    return bornes
+
+
+def sav_fcr_insight(request):
+    """NTSRV24 — Taux de résolution au premier contact (FCR).
+
+    ``?date_debut=&date_fin=`` (bornes inclusives, optionnelles) et
+    ``?export=xlsx`` pour la liste ticket par ticket. Réservé au tier
+    responsable/admin (vérifié côté urls.py)."""
+    from .selectors import taux_resolution_premier_contact
+
+    bornes = _bornes_periode(request)
+    data = taux_resolution_premier_contact(
+        request.user.company,
+        date_debut=bornes['date_debut'], date_fin=bornes['date_fin'])
+
+    if (request.query_params.get('export') or '').lower() == 'xlsx':
+        from apps.records.xlsx import build_xlsx_response
+
+        entetes = ['Référence', 'Premier contact', 'Motif',
+                   'Réouvertures', 'Échanges client']
+        lignes = [[
+            ligne['reference'],
+            'Oui' if ligne['fcr'] else 'Non',
+            ligne['motif'],
+            ligne['reopen_count'],
+            ligne['nb_echanges_client'],
+        ] for ligne in data['tickets']]
+        return build_xlsx_response(
+            'sav-fcr.xlsx', entetes, lignes, sheet_title='FCR')
+
+    return Response(data)
+
+
+def sav_performance_agent_insight(request):
+    """NTSRV27 — Charge et performance par agent.
+
+    ``?date_debut=&date_fin=`` (bornes inclusives, optionnelles) et
+    ``?export=xlsx``. JAMAIS un classement public/gamifié : la liste arrive
+    triée alphabétiquement du sélecteur, et l'accès est réservé au tier
+    responsable/admin (vérifié côté urls.py)."""
+    from .selectors import performance_agent
+
+    bornes = _bornes_periode(request)
+    data = performance_agent(
+        request.user.company,
+        date_debut=bornes['date_debut'], date_fin=bornes['date_fin'])
+
+    if (request.query_params.get('export') or '').lower() == 'xlsx':
+        from apps.records.xlsx import build_xlsx_response
+
+        entetes = ['Agent', 'Tickets traités', 'Résolution moyenne (jours)',
+                   'CSAT moyen', 'Respect SLA (%)']
+        lignes = [[
+            ligne['agent_nom'],
+            ligne['nb_tickets_traites'],
+            ligne['delai_resolution_moyen_jours'],
+            ligne['csat_moyen'],
+            ligne['taux_respect_sla'],
+        ] for ligne in data['agents']]
+        return build_xlsx_response(
+            'sav-performance-agent.xlsx', entetes, lignes,
+            sheet_title='Performance agent')
+
+    return Response(data)
 
 
 def sav_pareto_pannes(request):

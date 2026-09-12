@@ -78,6 +78,9 @@ const SavAlarmesPage = lazy(() => import('../../pages/sav/SavAlarmesPage'))
 const SavActionBoardPage = lazy(() => import('../../pages/sav/SavActionBoardPage'))
 // FG87 — base de connaissances SAV (articles KB).
 const KbArticlesPage = lazy(() => import('../../pages/sav/KbArticlesPage'))
+// NTSRV16/NTSRV17/NTSRV31 — Gestion Problème (problème ↔ incidents) +
+// assistant de création depuis les regroupements suggérés.
+const ProblemesPage = lazy(() => import('../../pages/sav/ProblemesPage'))
 
 const RESPONSABLE_ADMIN = ['responsable', 'admin']
 
@@ -104,6 +107,8 @@ const config = {
       { to: '/sav/contrats',         label: 'Contrats maintenance', k: 'nav.contrats_maintenance', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/sav/warranty-claims',  label: 'Garanties fournisseur (RMA)', k: 'nav.warranty_claims', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/sav/kb',               label: 'Base de connaissances SAV', k: 'nav.sav_kb', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
+      // NTSRV16 — Problèmes (pannes systémiques derrière N tickets).
+      { to: '/sav/problemes',        label: 'Problèmes',         icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/sav/alarmes',          label: 'Alarmes onduleur',  k: 'nav.sav_alarmes', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/sav/action-requise',   label: 'Action requise',    k: 'nav.sav_action_requise', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/sav/sla-rapport',      label: 'Rapport SLA SAV',   k: 'nav.sav_sla_rapport', icon: navIcon(Wrench), roles: ['responsable','admin'] },
@@ -121,6 +126,7 @@ const config = {
     { path: '/sav/alarmes', component: SavAlarmesPage },
     { path: '/sav/action-requise', component: SavActionBoardPage, roles: RESPONSABLE_ADMIN },
     { path: '/sav/kb', component: KbArticlesPage },
+    { path: '/sav/problemes', component: ProblemesPage },
   ],
 }
 

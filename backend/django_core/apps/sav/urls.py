@@ -13,9 +13,10 @@ from .views import (
     CauseDefaillanceViewSet, RemedeDefaillanceViewSet, ReponseTypeViewSet,
     CompatibilitePieceViewSet, CategorieTicketViewSet,
     EquipeMaintenanceViewSet, CategorieEquipementViewSet,
-    WorksheetMaintenanceModeleViewSet,
+    WorksheetMaintenanceModeleViewSet, ProblemeViewSet,
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
     sav_resume_par_equipe, sav_file_action, sav_file_attente,
+    sav_fcr_insight, sav_performance_agent_insight,
 )
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
@@ -37,6 +38,8 @@ router.register(r'categories-ticket', CategorieTicketViewSet)
 router.register(r'equipes-maintenance', EquipeMaintenanceViewSet)
 router.register(r'categories-equipement', CategorieEquipementViewSet)
 router.register(r'worksheet-modeles', WorksheetMaintenanceModeleViewSet)
+# NTSRV16 — Gestion Problème (problème ↔ incidents).
+router.register(r'problemes', ProblemeViewSet)
 
 
 @api_view(['GET'])
@@ -72,6 +75,67 @@ def resume_par_equipe_view(request):
 def file_action_view(request):
     """ZSAV6 — File d'action suivante par ticket. Responsable/admin."""
     return sav_file_action(request)
+
+
+@extend_schema(responses=inline_serializer('SavFcrInsight', {
+    'date_debut': drf_serializers.DateField(allow_null=True),
+    'date_fin': drf_serializers.DateField(allow_null=True),
+    'nb_tickets_periode': drf_serializers.IntegerField(),
+    'nb_clotures': drf_serializers.IntegerField(),
+    'nb_non_clotures_exclus': drf_serializers.IntegerField(),
+    'nb_fcr': drf_serializers.IntegerField(),
+    'taux_fcr': drf_serializers.FloatField(allow_null=True),
+    'echanges_max': drf_serializers.IntegerField(),
+    'exclusions': inline_serializer('SavFcrExclusions', {
+        'reouverture': drf_serializers.IntegerField(),
+        'echanges_multiples': drf_serializers.IntegerField(),
+    }),
+    'tickets': inline_serializer('SavFcrTicket', {
+        'ticket_id': drf_serializers.IntegerField(),
+        'reference': drf_serializers.CharField(),
+        'fcr': drf_serializers.BooleanField(),
+        'motif': drf_serializers.CharField(),
+        'reopen_count': drf_serializers.IntegerField(),
+        'nb_echanges_client': drf_serializers.IntegerField(),
+    }, many=True),
+}))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def fcr_insight_view(request):
+    """NTSRV24 — Taux de résolution au premier contact. Responsable/admin.
+
+    Servi sous `sav/insights/` (comme `sav-pannes`, `sav-fiabilite`,
+    `sav-resume-equipe`, `sav-parts-forecast` déjà en place) et non sous
+    `reporting/insights/` : `apps/reporting` appartient à une autre lane, et
+    la famille `sav/insights/*` existe déjà ici — un seul registre, jamais
+    deux endroits où chercher un insight SAV."""
+    return sav_fcr_insight(request)
+
+
+@extend_schema(responses=inline_serializer('SavPerformanceAgentInsight', {
+    'date_debut': drf_serializers.DateField(allow_null=True),
+    'date_fin': drf_serializers.DateField(allow_null=True),
+    'nb_tickets_traites': drf_serializers.IntegerField(),
+    'agents': inline_serializer('SavPerformanceAgentLigne', {
+        'agent_id': drf_serializers.IntegerField(allow_null=True),
+        'agent_nom': drf_serializers.CharField(),
+        'nb_tickets_traites': drf_serializers.IntegerField(),
+        'delai_resolution_moyen_jours': drf_serializers.FloatField(
+            allow_null=True),
+        'csat_moyen': drf_serializers.FloatField(allow_null=True),
+        'nb_csat': drf_serializers.IntegerField(),
+        'nb_tickets_avec_sla': drf_serializers.IntegerField(),
+        'taux_respect_sla': drf_serializers.FloatField(allow_null=True),
+    }, many=True),
+}))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def performance_agent_view(request):
+    """NTSRV27 — Charge et performance par agent. Responsable/admin
+    UNIQUEMENT : ces chiffres ne sont jamais un classement public/gamifié
+    (même palier d'accès que le journal d'activité). Servi sous
+    `sav/insights/` pour la même raison que `sav-fcr` ci-dessus."""
+    return sav_performance_agent_insight(request)
 
 
 @extend_schema(responses=inline_serializer('SavFileAttenteReponse', {
@@ -116,4 +180,9 @@ urlpatterns = [
          name='sav-fiabilite'),
     path('insights/sav-resume-equipe/', resume_par_equipe_view,
          name='sav-resume-equipe'),
+    # NTSRV24 — résolution au premier contact (JSON + ?export=xlsx).
+    path('insights/sav-fcr/', fcr_insight_view, name='sav-fcr'),
+    # NTSRV27 — charge et performance par agent (JSON + ?export=xlsx).
+    path('insights/sav-performance-agent/', performance_agent_view,
+         name='sav-performance-agent'),
 ]
