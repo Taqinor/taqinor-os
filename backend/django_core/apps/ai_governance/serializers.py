@@ -1,7 +1,54 @@
 """Serializers du module « ai_governance » (Groupe NTAI)."""
 from rest_framework import serializers
 
-from .models import DocumentAiJob, ExtractionCorrection, LlmBudget
+from .models import (DocumentAiJob, ExtractionCorrection, LlmBudget,
+                     PromptTemplate, PromptTemplateVersion)
+
+
+class PromptTemplateVersionSerializer(serializers.ModelSerializer):
+    """Version FIGÉE d'un gabarit — lecture seule (aucune route d'écriture)."""
+
+    class Meta:
+        model = PromptTemplateVersion
+        fields = ['id', 'numero', 'corps', 'cree_par', 'cree_le']
+        read_only_fields = fields
+
+
+class PromptTemplateSerializer(serializers.ModelSerializer):
+    """NTAI5 — Surcharge société du prompt d'une feature.
+
+    ``company`` n'est pas un champ : elle est forcée dans ``perform_create``.
+    ``placeholders`` expose les ``{{champ}}`` déclarés, pour que l'écran de
+    paramétrage montre ce que le texte attend."""
+
+    versions = PromptTemplateVersionSerializer(many=True, read_only=True)
+    placeholders = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PromptTemplate
+        fields = ['id', 'cle', 'label', 'corps', 'capability', 'actif',
+                  'placeholders', 'versions', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'placeholders', 'versions', 'created_at',
+                            'updated_at']
+
+    def get_placeholders(self, obj):
+        from core.ai.prompts import placeholders
+
+        return placeholders(obj.corps)
+
+    def validate_cle(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError('La clé est obligatoire.')
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        doublon = PromptTemplate.objects.filter(company=company, cle=valeur)
+        if self.instance is not None:
+            doublon = doublon.exclude(pk=self.instance.pk)
+        if company is not None and doublon.exists():
+            raise serializers.ValidationError(
+                'Cette clé est déjà surchargée pour votre société.')
+        return valeur
 
 
 class LlmBudgetSerializer(serializers.ModelSerializer):

@@ -317,3 +317,83 @@ class LlmBudget(TenantModel):
 
     def __str__(self):
         return f'Budget IA {self.montant_mensuel_mad} MAD/mois'
+
+
+class PromptTemplate(TenantModel):
+    """NTAI5 — Surcharge société du prompt d'une feature IA.
+
+    Le défaut vit dans le CODE (``core.ai.prompts.register_default_prompt``) ;
+    cette table ne porte que ce qu'une société a choisi de changer. Aucune
+    ligne = comportement byte-identique à l'avant-NTAI5.
+
+    ``cle`` identifie la feature (``'ai.rediger.email'``) et est unique PAR
+    SOCIÉTÉ : deux sociétés peuvent surcharger la même feature différemment,
+    et aucune ne voit celle de l'autre.
+
+    Chaque changement de ``corps`` fige une :class:`PromptTemplateVersion` :
+    on peut toujours dire quel texte a produit un brouillon donné.
+    """
+
+    cle = models.CharField(
+        max_length=120,
+        help_text="Clé de la feature IA surchargée (ex. « ai.rediger.email »).")
+    label = models.CharField(
+        max_length=160, blank=True, default='',
+        help_text='Libellé lisible affiché dans l\'écran de paramétrage.')
+    corps = models.TextField(
+        help_text='Corps du prompt, avec des placeholders {{champ}}.')
+    capability = models.CharField(
+        max_length=20, blank=True, default='llm',
+        help_text='Capacité concernée (llm/ocr/stt/vision_qa).')
+    actif = models.BooleanField(
+        default=True,
+        help_text='Une surcharge inactive laisse le défaut code s\'appliquer.')
+
+    class Meta:
+        verbose_name = 'Gabarit de prompt'
+        verbose_name_plural = 'Gabarits de prompt'
+        ordering = ['cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'], name='uniq_prompttemplate_co_cle'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ai_gov_prompt_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.label or self.cle
+
+
+class PromptTemplateVersion(TenantModel):
+    """NTAI5 — Photo IMMUABLE d'un corps de prompt à un instant donné.
+
+    Écrite par le serveur à chaque changement de corps ; jamais modifiée
+    ensuite (aucune route d'écriture ne l'expose). Le numéro est attribué côté
+    serveur, par gabarit.
+    """
+
+    template = models.ForeignKey(
+        # on_delete: une version n'a de sens que rattachée à son gabarit ;
+        # ce n'est ni une donnée métier ni une pièce comptable.
+        PromptTemplate, on_delete=models.CASCADE, related_name='versions')
+    numero = models.PositiveIntegerField(default=1)
+    corps = models.TextField(blank=True, default='')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ai_prompt_versions')
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Version de gabarit de prompt'
+        verbose_name_plural = 'Versions de gabarit de prompt'
+        ordering = ['-numero', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['template', 'numero'],
+                name='uniq_prompttemplateversion_num'),
+        ]
+
+    def __str__(self):
+        return f'{self.template_id} v{self.numero}'

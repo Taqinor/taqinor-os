@@ -19,8 +19,9 @@ from rest_framework.response import Response
 from authentication.permissions import IsAdminRole, IsAnyRole
 from core.mixins import TenantMixin
 
-from .models import DocumentAiJob, LlmBudget
-from .serializers import DocumentAiJobSerializer, LlmBudgetSerializer
+from .models import DocumentAiJob, LlmBudget, PromptTemplate
+from .serializers import (DocumentAiJobSerializer, LlmBudgetSerializer,
+                          PromptTemplateSerializer)
 from .services import AiCopiloteUnavailable
 
 
@@ -61,6 +62,51 @@ class LlmBudgetViewSet(TenantMixin, viewsets.ModelViewSet):
         from core.ai.usage import budget_status
 
         return Response(budget_status(request.user.company).as_dict())
+
+
+class PromptTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTAI5 — CRUD des surcharges de prompt. ADMIN uniquement.
+
+    Chaque écriture FIGE une version immuable du corps : on peut toujours dire
+    quel texte a produit un brouillon donné. La société est posée côté serveur.
+    """
+
+    queryset = PromptTemplate.objects.all()
+    serializer_class = PromptTemplateSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get_queryset(self):
+        return super().get_queryset().prefetch_related('versions')
+
+    def perform_create(self, serializer):
+        from .prompts import figer_version
+
+        gabarit = serializer.save(company=self.request.user.company)
+        figer_version(gabarit, user=self.request.user)
+
+    def perform_update(self, serializer):
+        from .prompts import figer_version
+
+        gabarit = serializer.save()
+        figer_version(gabarit, user=self.request.user)
+
+    @extend_schema(responses=inline_serializer('AiPromptsEffectifs', {
+        'cle': drf_serializers.CharField(),
+        'corps': drf_serializers.CharField(),
+        'origine': drf_serializers.CharField(),
+        'placeholders': drf_serializers.JSONField(),
+    }, many=True))
+    @action(detail=False, methods=['get'], url_path='effective')
+    def effective(self, request):
+        """``GET prompt-templates/effective/`` — ce qui s'applique VRAIMENT.
+
+        Pour chaque clé connue du code : le corps effectif et son origine
+        (``code`` ou ``societe``). C'est la liste exhaustive de ce qu'une
+        société peut surcharger.
+        """
+        from .prompts import prompts_effectifs
+
+        return Response(prompts_effectifs(request.user.company))
 
 
 class DocumentAiJobViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

@@ -9,13 +9,16 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views import UsageView
-from .viewsets import LlmBudgetViewSet
+from .viewsets import LlmBudgetViewSet, PromptTemplateViewSet
 
 # SimpleRouter (et non DefaultRouter) : ce préfixe ne doit pas gagner une vue
 # « api-root » qu'il n'avait pas.
 router = SimpleRouter()
 # NTAI2 — budget IA mensuel + seuil d'alerte (admin uniquement).
 router.register(r'budgets', LlmBudgetViewSet, basename='ai-budget')
+# NTAI5 — bibliothèque de prompts éditables (admin uniquement).
+router.register(r'prompt-templates', PromptTemplateViewSet,
+                basename='ai-prompt-template')
 
 urlpatterns = [
     # NTAI1 — agrégats d'usage & coût IA (par jour / feature / fournisseur).
