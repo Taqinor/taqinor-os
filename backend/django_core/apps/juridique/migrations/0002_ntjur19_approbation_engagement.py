@@ -54,7 +54,7 @@ class Migration(migrations.Migration):
                     default=True, verbose_name='Actif')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='juridique_cabinetavocat_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
@@ -101,7 +101,7 @@ class Migration(migrations.Migration):
                     default=True, verbose_name='Actif')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='juridique_regleapprobationjuridique_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
@@ -148,7 +148,7 @@ class Migration(migrations.Migration):
                     verbose_name="Cabinet d'avocats")),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='juridique_mandatavocat_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('dossier', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -194,7 +194,7 @@ class Migration(migrations.Migration):
                     verbose_name='Approbateur')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='juridique_etapeapprobationjuridique_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('mandat', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ToleranceRapprochementCategorie',
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('tolerance_prix_pct', models.DecimalField(blank=True, decimal_places=2, help_text="Écart %% toléré pour cette catégorie. Vide = retombe sur le défaut société (AchatsParametres.tolerance_prix_pct).", max_digits=5, null=True)),
                 ('tolerance_prix_absolu_mad', models.DecimalField(blank=True, decimal_places=2, help_text='Écart MAD absolu toléré pour cette catégorie. Vide = retombe sur le défaut société.', max_digits=12, null=True)),
                 ('date_creation', models.DateTimeField(auto_now_add=True)),

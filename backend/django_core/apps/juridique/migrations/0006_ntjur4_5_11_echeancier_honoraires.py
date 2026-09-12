@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
                     verbose_name='Prochaine échéance')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='juridique_audience_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('dossier', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -104,7 +104,7 @@ class Migration(migrations.Migration):
                     verbose_name='Alerte envoyée le')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='juridique_delaiprescription_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('dossier', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -151,7 +151,7 @@ class Migration(migrations.Migration):
                     verbose_name='Clé de la pièce jointe')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='juridique_notehonoraires_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('mandat', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
