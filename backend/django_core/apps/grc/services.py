@@ -155,3 +155,91 @@ def suivi_demande_publique(token):
         'traitee_le': (demande.traitee_le.isoformat()
                        if demande.traitee_le else None),
     }
+
+
+# ── NTGRC6 — violations de données : numérotation + cycle de vie ────────────
+
+class TransitionViolationInterdite(ValueError):
+    """Transition de statut illégale sur une ``ViolationDonnees``.
+
+    Traduite en 400 par la vue (jamais 500) ; le message NOMME les deux
+    statuts, en français.
+    """
+
+
+def _transitions_violation(statut):
+    from .models import ViolationDonnees
+
+    table = {
+        ViolationDonnees.STATUT_OUVERTE: {
+            ViolationDonnees.STATUT_EN_ANALYSE,
+            ViolationDonnees.STATUT_NOTIFIEE,
+            ViolationDonnees.STATUT_CLOTUREE,
+        },
+        ViolationDonnees.STATUT_EN_ANALYSE: {
+            ViolationDonnees.STATUT_NOTIFIEE,
+            ViolationDonnees.STATUT_CLOTUREE,
+        },
+        ViolationDonnees.STATUT_NOTIFIEE: {
+            ViolationDonnees.STATUT_CLOTUREE,
+        },
+        # Terminal : une violation clôturée ne se rouvre pas (on en ouvre une
+        # nouvelle, qui repart avec sa propre échéance de 72 h).
+        ViolationDonnees.STATUT_CLOTUREE: set(),
+    }
+    return table.get(statut, set())
+
+
+def changer_statut_violation(violation, cible):
+    """Fait avancer une violation dans son cycle de vie (garde de transition)."""
+    from .models import ViolationDonnees
+
+    libelles = dict(ViolationDonnees.STATUT_CHOICES)
+    if cible not in libelles:
+        raise TransitionViolationInterdite(
+            f'Statut « {cible} » inconnu pour une violation de données.')
+    if cible not in _transitions_violation(violation.statut):
+        raise TransitionViolationInterdite(
+            f'Transition impossible : une violation « '
+            f'{libelles.get(violation.statut, violation.statut)} » ne peut '
+            f'pas passer à « {libelles[cible]} ».')
+    violation.statut = cible
+    violation.save(update_fields=['statut', 'updated_at'])
+    return violation
+
+
+def notifier_cndp(violation, quand=None):
+    """Enregistre la notification à la CNDP (date + statut, ensemble).
+
+    Poser la date sans le statut (ou l'inverse) laisserait le registre mentir
+    sur l'état réel du dossier : les deux bougent dans la même opération.
+    """
+    from .models import ViolationDonnees
+
+    if violation.date_notification_cndp is not None:
+        raise TransitionViolationInterdite(
+            'Cette violation a déjà été notifiée à la CNDP le '
+            f'{violation.date_notification_cndp:%d/%m/%Y}.')
+    changer_statut_violation(violation, ViolationDonnees.STATUT_NOTIFIEE)
+    violation.date_notification_cndp = quand or timezone.now()
+    violation.save(update_fields=['date_notification_cndp', 'updated_at'])
+    return violation
+
+
+def creer_violation(company, **champs):
+    """Crée une ``ViolationDonnees`` avec sa référence VD race-safe.
+
+    Numérotation par ``core.numbering`` (plus-haut-utilisé + 1 par société et
+    par mois, savepoint + retry) — JAMAIS ``count() + 1``, qui entre en
+    collision dès qu'une ligne est supprimée.
+    """
+    from core.numbering import create_with_reference
+
+    from .models import ViolationDonnees
+
+    def _save(reference):
+        return ViolationDonnees.objects.create(
+            company=company, reference=reference, **champs)
+
+    return create_with_reference(
+        ViolationDonnees, ViolationDonnees.REFERENCE_PREFIX, company, _save)

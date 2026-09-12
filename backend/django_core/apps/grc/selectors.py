@@ -51,3 +51,26 @@ def politiques_retention_de_societe(company):
     return (PolitiqueRetentionObjet.objects
             .filter(company=company)
             .order_by('type_objet', 'id'))
+
+
+def violations_echeance_72h_depassee(company, now=None):
+    """NTGRC6 — violations dont le délai légal de notification est DÉPASSÉ.
+
+    « Dépassée » = échéance (détection + 72 h) passée ET notification CNDP
+    requise ET pas encore notifiée. Une violation déjà notifiée, ou pour
+    laquelle la notification n'est pas requise, n'est PAS en retard — on ne
+    crie pas au dépassement là où il n'y a pas d'obligation.
+    """
+    from django.utils import timezone
+
+    from .models import ViolationDonnees
+
+    now = now or timezone.now()
+    return (ViolationDonnees.objects
+            .filter(company=company,
+                    notification_cndp_requise=True,
+                    date_notification_cndp__isnull=True,
+                    date_echeance_72h__lt=now)
+            .exclude(statut__in=[ViolationDonnees.STATUT_NOTIFIEE,
+                                 ViolationDonnees.STATUT_CLOTUREE])
+            .order_by('date_echeance_72h', 'id'))

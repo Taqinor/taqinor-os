@@ -4,12 +4,18 @@ Tout viewset hérite de ``core.viewsets.CompanyScopedModelViewSet`` (ARC2) :
 queryset filtré sur ``request.user.company`` et ``company`` imposée côté
 serveur dans ``perform_create``/``perform_update``, jamais lue du corps.
 """
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
 from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import JournalDestruction, PolitiqueRetentionObjet
+from .models import (
+    JournalDestruction, PolitiqueRetentionObjet, ViolationDonnees,
+)
 from .serializers import (
     JournalDestructionSerializer, PolitiqueRetentionObjetSerializer,
+    ViolationDonneesSerializer,
 )
 
 
@@ -61,3 +67,61 @@ class JournalDestructionViewSet(CompanyScopedModelViewSet):
         serializer.save(
             company=self.request.user.company,
             executee_par=getattr(self.request.user, 'username', '') or '')
+
+
+class ViolationDonneesViewSet(CompanyScopedModelViewSet):
+    """NTGRC6 — registre des violations de données + délai légal de 72 h.
+
+    Le statut et la date de notification CNDP ne s'écrivent pas au champ :
+    ils bougent ENSEMBLE par les actions dédiées, sous garde de transition.
+    """
+
+    queryset = ViolationDonnees.objects.all()
+    serializer_class = ViolationDonneesSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def perform_create(self, serializer):
+        """Référence VD race-safe + société imposée côté serveur."""
+        from .services import creer_violation
+
+        champs = dict(serializer.validated_data)
+        champs.pop('company', None)
+        champs.pop('reference', None)
+        serializer.instance = creer_violation(
+            self.request.user.company, **champs)
+
+    @action(detail=False, methods=['get'], url_path='echeance-depassee')
+    def echeance_depassee(self, request):
+        """Violations dont le délai de 72 h est dépassé sans notification."""
+        from .selectors import violations_echeance_72h_depassee
+
+        qs = violations_echeance_72h_depassee(request.user.company)
+        return Response({'results': self.get_serializer(qs, many=True).data})
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """Fait avancer la violation (``{"statut": "en_analyse"}``)."""
+        from .services import (
+            TransitionViolationInterdite, changer_statut_violation,
+        )
+
+        violation = self.get_object()
+        cible = (request.data.get('statut') or '').strip()
+        try:
+            changer_statut_violation(violation, cible)
+        except TransitionViolationInterdite as exc:
+            return Response({'statut': str(exc)}, status=400)
+        return Response(self.get_serializer(violation).data)
+
+    @action(detail=True, methods=['post'], url_path='notifier-cndp')
+    def notifier_cndp(self, request, pk=None):
+        """Enregistre la notification CNDP (date + statut, ensemble)."""
+        from .services import TransitionViolationInterdite
+        from .services import notifier_cndp as _notifier
+
+        violation = self.get_object()
+        try:
+            _notifier(violation)
+        except TransitionViolationInterdite as exc:
+            return Response({'statut': str(exc)}, status=400)
+        return Response(self.get_serializer(violation).data)

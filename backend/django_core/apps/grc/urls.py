@@ -9,7 +9,10 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .public_views import deposer_demande_droit, suivre_demande_droit
-from .views import JournalDestructionViewSet, PolitiqueRetentionObjetViewSet
+from .views import (
+    JournalDestructionViewSet, PolitiqueRetentionObjetViewSet,
+    ViolationDonneesViewSet,
+)
 
 router = DefaultRouter()
 # NTGRC4 — durées de conservation par type d'objet (pilote les balayages
@@ -19,6 +22,9 @@ router.register(r'politiques-retention-objet', PolitiqueRetentionObjetViewSet,
 # NTGRC5 — journal APPEND-ONLY des destructions/anonymisations réelles.
 router.register(r'journal-destruction', JournalDestructionViewSet,
                 basename='grc-journal-destruction')
+# NTGRC6 — registre des violations de données + délai légal de 72 h.
+router.register(r'violations-donnees', ViolationDonneesViewSet,
+                basename='grc-violation-donnees')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

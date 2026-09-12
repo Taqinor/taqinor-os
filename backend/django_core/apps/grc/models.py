@@ -7,6 +7,7 @@ portées par un identifiant texte (``*_ref``) — jamais un import de ses
 ``models``.
 """
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -175,3 +176,122 @@ class JournalDestruction(TenantModel):
         quand = f' ({self.created_at:%Y-%m-%d})' if self.created_at else ''
         return (f'{self.type_objet}#{self.objet_ref} — '
                 f'{self.get_action_display()}{quand}')
+
+
+class ViolationDonnees(TenantModel):
+    """NTGRC6 — registre des violations de données personnelles (« breach »).
+
+    Loi 09-08 / RGPD : une violation se notifie à l'autorité SANS DÉLAI, et au
+    plus tard 72 heures après en avoir pris connaissance. L'échéance est donc
+    calculée à la DÉTECTION (le moment où l'on a su), pas à l'incident (le
+    moment où c'est arrivé) — les deux dates sont distinctes et toutes deux
+    conservées, parce que l'écart entre elles est précisément ce qu'un
+    contrôleur regarde.
+
+    Distinct de ``qhse`` (risques santé/sécurité au travail) et de
+    ``IncidentSecurite`` (incident technique, qui peut n'impliquer AUCUNE
+    donnée personnelle). Ici c'est le registre RÉGLEMENTAIRE.
+    """
+
+    #: Préfixe des références (VD-YYYYMM-0001), race-safe via `core.numbering`.
+    REFERENCE_PREFIX = 'VD'
+    #: Délai légal de notification, en heures.
+    DELAI_NOTIFICATION_HEURES = 72
+
+    NATURE_CONFIDENTIALITE = 'confidentialite'
+    NATURE_INTEGRITE = 'integrite'
+    NATURE_DISPONIBILITE = 'disponibilite'
+    NATURE_CHOICES = [
+        (NATURE_CONFIDENTIALITE, 'Atteinte à la confidentialité'),
+        (NATURE_INTEGRITE, "Atteinte à l'intégrité"),
+        (NATURE_DISPONIBILITE, 'Atteinte à la disponibilité'),
+    ]
+
+    GRAVITE_FAIBLE = 'faible'
+    GRAVITE_MOYENNE = 'moyenne'
+    GRAVITE_ELEVEE = 'elevee'
+    GRAVITE_CRITIQUE = 'critique'
+    GRAVITE_CHOICES = [
+        (GRAVITE_FAIBLE, 'Faible'),
+        (GRAVITE_MOYENNE, 'Moyenne'),
+        (GRAVITE_ELEVEE, 'Élevée'),
+        (GRAVITE_CRITIQUE, 'Critique'),
+    ]
+
+    STATUT_OUVERTE = 'ouverte'
+    STATUT_EN_ANALYSE = 'en_analyse'
+    STATUT_NOTIFIEE = 'notifiee'
+    STATUT_CLOTUREE = 'cloturee'
+    STATUT_CHOICES = [
+        (STATUT_OUVERTE, 'Ouverte'),
+        (STATUT_EN_ANALYSE, 'En analyse'),
+        (STATUT_NOTIFIEE, 'Notifiée'),
+        (STATUT_CLOTUREE, 'Clôturée'),
+    ]
+
+    reference = models.CharField('Référence', max_length=40, blank=True,
+                                 default='')
+    date_detection = models.DateTimeField(
+        'Date de détection',
+        help_text='Moment où la violation a été CONNUE — c\'est elle qui '
+                  'déclenche le délai de 72 h.')
+    date_incident = models.DateTimeField(
+        'Date de l\'incident', null=True, blank=True,
+        help_text='Moment où la violation s\'est produite, si connu.')
+    nature = models.CharField(
+        'Nature', max_length=20, choices=NATURE_CHOICES,
+        default=NATURE_CONFIDENTIALITE)
+    categories_donnees = models.JSONField(
+        'Catégories de données touchées', default=list, blank=True,
+        help_text='Ex. ["identite", "contact", "donnees_bancaires"].')
+    nombre_personnes_estime = models.PositiveIntegerField(
+        'Nombre de personnes concernées (estimé)', default=0)
+    gravite = models.CharField(
+        'Gravité', max_length=10, choices=GRAVITE_CHOICES,
+        default=GRAVITE_MOYENNE)
+    risque_personnes = models.TextField(
+        'Risque pour les personnes', blank=True, default='')
+    mesures_prises = models.TextField(
+        'Mesures prises', blank=True, default='')
+    notification_cndp_requise = models.BooleanField(
+        'Notification CNDP requise', default=True)
+    date_notification_cndp = models.DateTimeField(
+        'Date de notification CNDP', null=True, blank=True)
+    date_echeance_72h = models.DateTimeField(
+        'Échéance de notification (72 h)', null=True, blank=True,
+        help_text='Détection + 72 h. Posée à la création, jamais reculée.')
+    personnes_notifiees = models.BooleanField(
+        'Personnes concernées informées', default=False)
+    statut = models.CharField(
+        'Statut', max_length=12, choices=STATUT_CHOICES,
+        default=STATUT_OUVERTE)
+
+    class Meta:
+        verbose_name = 'Violation de données'
+        verbose_name_plural = 'Registre des violations de données'
+        ordering = ['-date_detection', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='grc_violationdonnees_co_ref'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_violation_co_statut_idx'),
+            models.Index(fields=['company', 'date_echeance_72h'],
+                         name='grc_violation_co_ech_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Pose l'échéance 72 h UNE FOIS, depuis la date de DÉTECTION.
+
+        Jamais recalculée ensuite : sinon corriger une date de détection après
+        coup ferait reculer un délai légal déjà dépassé.
+        """
+        if self.date_echeance_72h is None and self.date_detection:
+            self.date_echeance_72h = self.date_detection + timezone.timedelta(
+                hours=self.DELAI_NOTIFICATION_HEURES)
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.reference or "VD"} — {self.get_gravite_display()}'
