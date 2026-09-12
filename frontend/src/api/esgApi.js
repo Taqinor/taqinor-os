@@ -89,6 +89,15 @@ const esgApi = {
         params: { categorie, unite },
       }),
   },
+
+  // ── Réglages ESG de la société (NTESG20) — singleton par tenant ──
+  // La ligne est créée à la demande côté serveur : `get()` renvoie toujours
+  // les réglages EFFECTIFS (défauts du module inclus), jamais un 404.
+  parametres: {
+    get: () => api.get('/esg/parametres-esg/'),
+    // PATCH partiel — écriture réservée aux administrateurs (403 sinon).
+    update: (data) => api.patch('/esg/parametres-esg/', data),
+  },
 }
 
 export default esgApi

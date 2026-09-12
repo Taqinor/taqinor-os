@@ -22,13 +22,11 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-# NTESG10 — seuil par défaut (% d'écart défavorable) déclenchant l'alerte de
-# dérive trajectoire. « Configurable par société » (spec NTESG10) attend le
-# réglage dédié ``ParametresESG.seuil_alerte_derive_pct`` (NTESG20, hors
-# périmètre de ce lane — Files listées ne portent pas models.py) : ce
-# module expose donc un défaut fixe, substituable par un futur appelant via
-# le paramètre ``seuil_pct`` de ``alerter_derive_trajectoire`` sans changer
-# sa signature.
+# NTESG10/NTESG20 — seuil par défaut (% d'écart défavorable) déclenchant
+# l'alerte de dérive trajectoire, appliqué tant qu'une société n'a pas posé
+# son propre ``ParametresESG.seuil_alerte_derive_pct`` (NTESG20). L'ordre de
+# priorité est : paramètre explicite de l'appelant > réglage de la société >
+# ce défaut.
 SEUIL_ALERTE_DERIVE_PCT_DEFAUT = 10
 
 
@@ -129,11 +127,12 @@ def alerter_derive_trajectoire(periode, *, seuil_pct=None):
     Pour chaque ``ObjectifESGTrajectoire`` actif de la société de ``periode``,
     compare le dernier point réel disponible (à la date de fin de ``periode``
     incluse) à sa trajectoire théorique (NTESG7, ``trajectoire_vs_realise``).
-    Un écart défavorable dépassant ``seuil_pct`` (défaut
-    ``SEUIL_ALERTE_DERIVE_PCT_DEFAUT``, 10 %) déclenche une notification
-    (réutilise ``notifications.notify_many``) vers les administrateurs actifs
-    de la société — en attendant qu'un ``pilote_esg`` dédié (NTESG20) affine
-    le destinataire. Best-effort : une source indisponible (qhse absent,
+    Un écart défavorable dépassant ``seuil_pct`` déclenche une notification
+    (réutilise ``notifications.notify_many``). NTESG20 — le seuil vient du
+    réglage de la société (``ParametresESG.seuil_alerte_derive_pct``, défaut
+    10 %) et le destinataire est son ``pilote_esg`` désigné ; sans pilote, le
+    repli historique s'applique (tous les administrateurs actifs).
+    Best-effort : une source indisponible (qhse absent,
     erreur de calcul) dégrade silencieusement cet objectif, jamais toute
     l'alerte. Renvoie la liste des ``Notification`` effectivement créées
     (peut être vide).
@@ -141,7 +140,10 @@ def alerter_derive_trajectoire(periode, *, seuil_pct=None):
     from .models import ObjectifESGTrajectoire
     from .selectors import trajectoire_vs_realise
 
-    seuil = seuil_pct if seuil_pct is not None else SEUIL_ALERTE_DERIVE_PCT_DEFAUT
+    # NTESG20 — le seuil « configurable par société » annoncé par NTESG10
+    # existe enfin : un appelant explicite prime toujours, sinon le réglage de
+    # la société, sinon le défaut du module.
+    seuil = seuil_pct
     # ``company_id`` d'abord : ``periode.company`` lève
     # ``RelatedObjectDoesNotExist`` (jamais ``None``) dès que la FK n'est pas
     # nullable et que ``company_id`` est vide — accéder à ``company_id``
@@ -150,6 +152,8 @@ def alerter_derive_trajectoire(periode, *, seuil_pct=None):
     if periode.company_id is None:
         return []
     company = periode.company
+    if seuil is None:
+        seuil = config_esg(company)['seuil_alerte_derive_pct']
     annee_limite = periode.date_fin.year if periode.date_fin else None
 
     objectifs_en_derive = []
@@ -172,7 +176,11 @@ def alerter_derive_trajectoire(periode, *, seuil_pct=None):
     from apps.notifications.models import EventType
     from apps.notifications.services import notify_many
 
-    destinataires = list(CustomUser.admins_actifs_qs(company))
+    # NTESG20 — le PILOTE ESG désigné est le destinataire par défaut ; sans
+    # pilote, on garde le repli historique (tous les administrateurs actifs).
+    pilote = config_esg(company)['pilote_esg']
+    destinataires = ([pilote] if pilote is not None
+                     else list(CustomUser.admins_actifs_qs(company)))
     notifications = []
     for objectif, point in objectifs_en_derive:
         title = f'Dérive trajectoire ESG — {objectif.indicateur_code}'
@@ -222,3 +230,45 @@ def creer_version_facteur(
             company=company, categorie=categorie, unite=unite, valeur=valeur,
             source=source or '', date_maj=date_maj, version=nouvelle_version,
             actif=True)
+
+
+# ── NTESG20 — réglages ESG par société ──────────────────────────────────────
+
+def config_esg(company):
+    """Réglages ESG EFFECTIFS de ``company`` (dict), repli sur les défauts.
+
+    Point d'accès UNIQUE des réglages du module : changer une valeur change le
+    comportement immédiatement, sans redéploiement et SANS CACHE (la lecture
+    est faite à chaque appel — c'est ce qui rend le badge de maturité
+    recalculé « immédiatement » après modification de la pondération, critère
+    d'acceptation NTESG20).
+
+    Tant qu'aucune ligne ``ParametresESG`` n'existe pour la société, les
+    défauts du module s'appliquent : seuil de dérive 10 % (NTESG10),
+    pondération 34/33/33 (le 1/3 historique de NTESG15), aucun pilote
+    (destinataires = administrateurs actifs), fréquence annuelle.
+    """
+    from .models import ParametresESG
+
+    valeurs = {
+        'seuil_alerte_derive_pct': SEUIL_ALERTE_DERIVE_PCT_DEFAUT,
+        'pilote_esg': None,
+        'frequence_reporting': ParametresESG.Frequence.ANNUELLE,
+        'ponderation_badge_maturite': dict(ParametresESG.PONDERATION_DEFAUT),
+    }
+    if company is None:
+        return valeurs
+    reglages = ParametresESG.objects.filter(company=company).first()
+    if reglages is None:
+        return valeurs
+    valeurs['seuil_alerte_derive_pct'] = (
+        reglages.seuil_alerte_derive_pct or SEUIL_ALERTE_DERIVE_PCT_DEFAUT)
+    valeurs['pilote_esg'] = reglages.pilote_esg
+    if reglages.frequence_reporting:
+        valeurs['frequence_reporting'] = reglages.frequence_reporting
+    # Une pondération VIDE signifie « défauts du module » (cf. ``clean()``) :
+    # seule une pondération réellement posée écrase les poids historiques.
+    if reglages.ponderation_badge_maturite:
+        valeurs['ponderation_badge_maturite'] = dict(
+            reglages.ponderation_badge_maturite)
+    return valeurs

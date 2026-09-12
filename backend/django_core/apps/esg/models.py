@@ -359,3 +359,124 @@ class FacteurEmissionVersionCounter(TenantModel):
 
     def __str__(self):
         return f'{self.categorie} ({self.unite}) — dernier v{self.dernier_version}'
+
+
+class ParametresESG(TenantModel):
+    """Réglages ESG d'UNE société (NTESG20) — singleton par tenant.
+
+    Même patron que les paramètres existants du dépôt
+    (``notifications.WorkingHoursConfig``,
+    ``btp_chantier.ParametresBtpChantier``) : ``OneToOneField`` sur
+    ``company``, au plus une ligne par société, créée à la demande. Tant
+    qu'aucune ligne n'existe, les DÉFAUTS du module s'appliquent — le
+    comportement au déploiement est donc inchangé.
+
+    Chaque réglage a UN consommateur nommé, jamais un champ décoratif :
+
+    * ``seuil_alerte_derive_pct`` → ``services.alerter_derive_trajectoire``
+      (NTESG10), qui exposait jusqu'ici un défaut fixe de 10 % faute de ce
+      modèle ;
+    * ``pilote_esg`` → destinataire par défaut des notifications ESG, en
+      remplacement du repli « tous les administrateurs actifs » ;
+    * ``frequence_reporting`` → informatif, affiché par l'assistant de
+      clôture (NTESG18) ;
+    * ``ponderation_badge_maturite`` → ``selectors.badge_maturite_esg``
+      (NTESG15), dont les trois composantes étaient pondérées à 1/3 en dur.
+
+    La pondération DOIT sommer à 100 — validé côté SERVEUR (``clean()``), pas
+    seulement à l'écran : un badge pondéré à 90 ou 110 produirait un score
+    faux sans que personne ne le voie.
+    """
+
+    class Frequence(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+
+    #: Clés de ``ponderation_badge_maturite`` — les trois composantes EXACTES
+    #: de ``selectors.badge_maturite_esg``. Toute autre clé est refusée : une
+    #: pondération qui nomme une composante inexistante est un réglage qui ne
+    #: fera jamais rien.
+    CLES_PONDERATION = ('couverture', 'cibles', 'trajectoire')
+
+    #: Poids par défaut = le comportement historique (1/3 chacun, arrondi à
+    #: 34/33/33 pour sommer exactement à 100).
+    PONDERATION_DEFAUT = {'couverture': 34, 'cibles': 33, 'trajectoire': 33}
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='esg_parametres', verbose_name='Société')
+    seuil_alerte_derive_pct = models.PositiveIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        verbose_name="Seuil d'alerte de dérive de trajectoire (%)")
+    pilote_esg = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        # on_delete: SET_NULL — le départ du pilote ne supprime pas les
+        # réglages de la société (repli sur les administrateurs actifs).
+        null=True, blank=True, related_name='esg_pilotages',
+        verbose_name='Pilote ESG (destinataire par défaut)')
+    frequence_reporting = models.CharField(
+        max_length=15, choices=Frequence.choices,
+        default=Frequence.ANNUELLE,
+        verbose_name='Fréquence de reporting')
+    ponderation_badge_maturite = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Pondération du badge de maturité (somme = 100)')
+
+    class Meta:
+        verbose_name = 'Réglages ESG'
+        verbose_name_plural = 'Réglages ESG'
+
+    def clean(self):
+        super().clean()
+        poids = self.ponderation_badge_maturite or {}
+        if not poids:
+            return  # vide = défauts du module, toujours valide
+        if not isinstance(poids, dict):
+            raise ValidationError({
+                'ponderation_badge_maturite':
+                    'La pondération doit être un objet {composante: poids}.'})
+        inconnues = sorted(set(poids) - set(self.CLES_PONDERATION))
+        if inconnues:
+            raise ValidationError({
+                'ponderation_badge_maturite':
+                    f'Composante(s) inconnue(s) : {", ".join(inconnues)}. '
+                    f'Attendues : {", ".join(self.CLES_PONDERATION)}.'})
+        manquantes = sorted(set(self.CLES_PONDERATION) - set(poids))
+        if manquantes:
+            raise ValidationError({
+                'ponderation_badge_maturite':
+                    f'Composante(s) manquante(s) : {", ".join(manquantes)}.'})
+        total = 0
+        for cle in self.CLES_PONDERATION:
+            valeur = poids[cle]
+            if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+                raise ValidationError({
+                    'ponderation_badge_maturite':
+                        f'Poids invalide pour « {cle} » : {valeur!r}.'})
+            if valeur < 0:
+                raise ValidationError({
+                    'ponderation_badge_maturite':
+                        f'Poids négatif pour « {cle} » : {valeur}.'})
+            total += valeur
+        if round(total, 6) != 100:
+            raise ValidationError({
+                'ponderation_badge_maturite':
+                    'La pondération doit sommer à 100 (actuellement '
+                    f'{total:g}).'})
+
+    def save(self, *args, **kwargs):
+        # Le réglage est ENGAGEANT (il change un score affiché) : la
+        # pondération est validée AU SAVE, pas seulement au serializer — une
+        # écriture en shell ou en commande ne doit pas pouvoir poser une
+        # pondération fausse. Les autres champs sont exclus pour ne pas
+        # imposer une validation complète là où le modèle n'en avait pas.
+        self.full_clean(exclude=[
+            f.name for f in self._meta.fields
+            if f.name != 'ponderation_badge_maturite'])
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Réglages ESG — société {self.company_id}'

@@ -413,6 +413,8 @@ def badge_maturite_esg(company):
     """
     from .models import CatalogueIndicateurESG, ObjectifESGTrajectoire
 
+    from .models import ParametresESG as _ParametresESG
+
     vide = {
         'score': 0.0,
         'composantes': {
@@ -420,6 +422,10 @@ def badge_maturite_esg(company):
             'atteinte_cibles': {'disponible': False, 'valeur_pct': 0.0},
             'trajectoires_actives': {'disponible': False, 'valeur_pct': 0.0},
         },
+        # NTESG20 — la forme est la MÊME dans les deux branches : un écran qui
+        # lit `ponderation` ne doit pas tomber sur `undefined` selon l'état du
+        # serveur (c'est exactement la classe de bug du tableau de bord AO).
+        'ponderation': dict(_ParametresESG.PONDERATION_DEFAUT),
         'disclaimer': DISCLAIMER_BADGE_MATURITE,
     }
     if company is None:
@@ -461,7 +467,16 @@ def badge_maturite_esg(company):
             len(codes_avec_trajectoire) * 100.0 / len(codes_catalogue), 1)
         trajectoire_disponible = True
 
-    score = round((couverture_pct + atteinte_pct + trajectoire_pct) / 3.0, 1)
+    # NTESG20 — pondération PAR SOCIÉTÉ (défaut 34/33/33 = le 1/3 historique).
+    # Lue à chaque appel, sans cache : modifier la pondération recalcule
+    # immédiatement le badge affiché, sans redémarrage.
+    from .services import config_esg
+    poids = config_esg(company)['ponderation_badge_maturite']
+    total_poids = sum(poids.values()) or 100
+    score = round(
+        (couverture_pct * poids.get('couverture', 0)
+         + atteinte_pct * poids.get('cibles', 0)
+         + trajectoire_pct * poids.get('trajectoire', 0)) / total_poids, 1)
 
     return {
         'score': score,
@@ -475,6 +490,7 @@ def badge_maturite_esg(company):
                 'disponible': trajectoire_disponible,
                 'valeur_pct': trajectoire_pct},
         },
+        'ponderation': dict(poids),
         'disclaimer': DISCLAIMER_BADGE_MATURITE,
     }
 

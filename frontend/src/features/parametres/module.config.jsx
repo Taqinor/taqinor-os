@@ -7,6 +7,7 @@ import {
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
   Ship, Route, Layers, Repeat, Trash2,
+  Leaf,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -109,6 +110,9 @@ const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
 // `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
 const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
+// NTESG20 — réglages ESG de la société (seuil de dérive, pilote,
+// fréquence, pondération du badge de maturité). Nav ET route ensemble.
+const ParametresEsgPage = lazy(() => import('../../pages/parametres/ParametresEsgPage'))
 // PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
 // (`ventes.ParametresGammes`, singleton par société) : bascule une/deux
 // gammes, libellés renommables, marque préférée par gamme ET par rôle de
@@ -213,6 +217,8 @@ const config = {
       // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
       // entrée de menu, écran réel de 182 lignes invisible pour toujours.
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTESG20 — nav ET route ensemble (voir commentaire du lazy import).
+      { to: '/parametres/esg', label: 'ESG / RSE', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // PVMRQ — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
       { to: '/parametres/gammes', label: 'Gammes & marques', icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTLOG36 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
@@ -245,6 +251,7 @@ const config = {
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/esg', component: ParametresEsgPage, roles: ['admin'] },
     { path: '/parametres/gammes', component: GammesMarquesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },

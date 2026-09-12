@@ -8,18 +8,20 @@ from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from core.mixins import TenantMixin
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import CatalogueIndicateurESG, DocumentPolitiqueESG, \
-    FacteurEmissionReference, ObjectifESGTrajectoire, PartiePrenanteESG, \
-    PeriodeReportingESG
+    FacteurEmissionReference, ObjectifESGTrajectoire, ParametresESG, \
+    PartiePrenanteESG, PeriodeReportingESG
 from .serializers import (
     CatalogueIndicateurESGSerializer, DocumentPolitiqueESGSerializer,
     FacteurEmissionReferenceSerializer, ObjectifESGTrajectoireSerializer,
-    PartiePrenanteESGSerializer, PeriodeReportingESGSerializer,
+    ParametresESGSerializer, PartiePrenanteESGSerializer,
+    PeriodeReportingESGSerializer,
 )
 
 
@@ -243,3 +245,49 @@ class FacteurEmissionReferenceViewSet(CompanyScopedModelViewSet):
         qs = self.get_queryset().filter(
             categorie=categorie, unite=unite).order_by('-version')
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class ParametresESGView(APIView):
+    """NTESG20 — ``parametres-esg/`` : réglages ESG de la société (singleton).
+
+    ``GET`` renvoie les réglages EFFECTIFS — la ligne est créée à la demande
+    avec les défauts du module, de sorte qu'un tenant neuf voie exactement ce
+    qui s'applique (et pas un écran vide qui laisserait croire que rien n'est
+    réglé). ``PUT``/``PATCH`` est réservé aux ADMINISTRATEURS (403 sinon) :
+    ces réglages changent un score AFFICHÉ (badge de maturité NTESG15) et le
+    destinataire d'alertes (NTESG10).
+
+    FORME DÉCLARÉE (``contract_samples/parametres_esg.json``) :
+    ``{id, seuil_alerte_derive_pct, pilote_esg, pilote_esg_nom,
+    frequence_reporting, frequence_reporting_display,
+    ponderation_badge_maturite, updated_at}``.
+
+    Multi-tenant : la société vient TOUJOURS de l'utilisateur, jamais du corps.
+    """
+    permission_classes = [ScopedPermission]
+
+    def _reglages(self, request):
+        reglages, _ = ParametresESG.objects.get_or_create(
+            company=request.user.company)
+        return reglages
+
+    def get(self, request):
+        return Response(ParametresESGSerializer(self._reglages(request)).data)
+
+    def put(self, request):
+        return self._ecrire(request, partial=False)
+
+    def patch(self, request):
+        return self._ecrire(request, partial=True)
+
+    def _ecrire(self, request, *, partial):
+        if not getattr(request.user, 'is_admin_role', False):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'},
+                status=status.HTTP_403_FORBIDDEN)
+        serializer = ParametresESGSerializer(
+            self._reglages(request), data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        # La société n'est JAMAIS lue du corps : l'instance la porte déjà.
+        serializer.save()
+        return Response(serializer.data)
