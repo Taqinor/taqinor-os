@@ -57,7 +57,7 @@ class Migration(migrations.Migration):
                     max_length=64, verbose_name='CAPA QHSE lié')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='grc_deficiencecontrole_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('test_controle', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

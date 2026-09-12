@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
                     blank=True, default='', verbose_name='Base juridique')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='grc_legalhold_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={

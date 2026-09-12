@@ -62,7 +62,7 @@ class Migration(migrations.Migration):
                     max_length=120, verbose_name='Valeur de la cible')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='grc_politiqueinterne_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
@@ -92,7 +92,7 @@ class Migration(migrations.Migration):
                     blank=True, null=True, verbose_name='Publiée le')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='grc_politiqueversion_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('politique', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

@@ -78,7 +78,7 @@ class Migration(migrations.Migration):
                     verbose_name='Prochaine revue prévue')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='grc_risqueentreprise_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
