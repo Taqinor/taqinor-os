@@ -3,20 +3,23 @@
 Couvre :
   * le critère d'acceptation : deux clients au MÊME téléphone normalisé
     (« +212 6 12-34-56-78 » et « 0612345678 ») remontent dans un groupe ;
-  * email / ICE / nom approché ;
+  * ICE / nom approché (l'e-mail, lui, ne peut plus être en double EN BASE —
+    contrainte CRX24 — son critère est couvert au niveau du moteur) ;
   * la transitivité (deux liens différents = UN seul groupe) ;
   * la détection ne MODIFIE rien ;
   * le scoping société ;
   * l'endpoint `/dataquality/doublons/clients/` et son 404 explicite.
 """
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.crm.models import Client
+from apps.crm.selectors import normalize_email_key
 from apps.dataquality import services
-from apps.dataquality.dedoublonnage import POIDS_CRITERES
+from apps.dataquality.dedoublonnage import POIDS_CRITERES, grouper_doublons
 from apps.dataquality.views import DoublonsView
 from authentication.models import Company
 
@@ -47,11 +50,27 @@ class DoublonsClientsTests(TestCase):
         self.assertIn('telephone', groupes[0]['motifs'])
         self.assertEqual(groupes[0]['score'], POIDS_CRITERES['telephone'])
 
-    def test_meme_email_insensible_a_la_casse(self):
-        a = self._client('Alpha', email='Contact@Exemple.MA')
-        b = self._client('Beta', email='contact@exemple.ma')
-        groupes = services.doublons_clients(self.company, self.user)
-        self.assertEqual(groupes[0]['ids'], sorted([a.id, b.id]))
+    def test_email_en_double_impossible_en_base_mais_critere_couvert(self):
+        """Deux clients d'une même société ne PEUVENT plus partager un e-mail :
+        CRX24 (`crx24_client_email_unique_ci`) l'interdit, casse ignorée.
+
+        Le doublon d'e-mail se joue donc à la CRÉATION, pas à la détection : le
+        scénario « deux fiches, même e-mail » n'est plus instanciable en base.
+        Le critère `email` du détecteur reste utile (fournisseurs, données
+        importées) et est donc vérifié ici au niveau du MOTEUR, sur des lignes
+        brutes — la seule façon honnête de le couvrir côté clients."""
+        self._client('Alpha', email='Contact@Exemple.MA')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._client('Beta', email='contact@exemple.ma')
+
+        groupes = grouper_doublons(
+            [{'id': 1, 'nom': 'Alpha', 'email': 'Contact@Exemple.MA'},
+             {'id': 2, 'nom': 'Beta', 'email': 'contact@exemple.ma'}],
+            criteres=('email',),
+            normaliseurs={'email': normalize_email_key},
+        )
+        self.assertEqual(groupes[0]['ids'], [1, 2])
         self.assertIn('email', groupes[0]['motifs'])
 
     def test_meme_ice(self):
@@ -69,14 +88,16 @@ class DoublonsClientsTests(TestCase):
         self.assertEqual(groupes[0]['motifs'], ['nom'])
 
     def test_transitivite_un_seul_groupe(self):
+        # a—b par TÉLÉPHONE, b—c par NOM : deux critères différents, un seul
+        # groupe. (L'e-mail ne peut pas servir de second lien entre deux
+        # clients d'une même société — CRX24 l'interdit en base.)
         a = self._client('Alpha', telephone='0612345678')
-        b = self._client('Beta', telephone='0612345678',
-                         email='b@exemple.ma')
-        c = self._client('Gamma', email='b@exemple.ma')
+        b = self._client('Belkacem Karim', telephone='0612345678')
+        c = self._client('Bélkacem  Karim')
         groupes = services.doublons_clients(self.company, self.user)
         self.assertEqual(len(groupes), 1)
         self.assertEqual(groupes[0]['ids'], sorted([a.id, b.id, c.id]))
-        self.assertEqual(set(groupes[0]['motifs']), {'telephone', 'email'})
+        self.assertEqual(set(groupes[0]['motifs']), {'telephone', 'nom'})
         # Score = poids du critère le PLUS FORT concordant.
         self.assertEqual(groupes[0]['score'], POIDS_CRITERES['telephone'])
 

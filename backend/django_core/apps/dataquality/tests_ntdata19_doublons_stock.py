@@ -164,8 +164,12 @@ class DoublonsProduitsTests(TestCase):
         self.assertEqual(survivant.marque, 'Longi')
 
     def test_produit_archive_exclu_de_la_detection(self):
+        # `sku` est UNIQUE par société en base (unique_together company+sku) :
+        # le doublon de référence se joue donc, comme dans les tests ci-dessus,
+        # sur une VARIANTE de casse/espaces — que le détecteur normalise vers
+        # la même clé. Archivé, il ne doit pas remonter.
         self._produit('Panneau', sku='PAN-550')
-        self._produit('Panneau bis', sku='PAN-550', is_archived=True)
+        self._produit('Panneau bis', sku='pan-550 ', is_archived=True)
         self.assertEqual(services.doublons_produits(self.company, self.user),
                          [])
 
