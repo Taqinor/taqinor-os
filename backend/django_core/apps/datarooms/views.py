@@ -13,6 +13,7 @@ from rest_framework import filters, status
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -25,6 +26,25 @@ from .serializers import (
     AccesSalleDonneesSerializer, SalleDeDonneesDocumentSerializer,
     SalleDeDonneesSerializer,
 )
+
+
+class _ExportFormatContentNegotiation(DefaultContentNegotiation):
+    """NTDOC14 — sur ``journal/`` le paramètre ``?format=`` désigne le format
+    D'EXPORT (csv), PAS le renderer DRF.
+
+    Sans cette surcharge, DRF traite ``?format=csv`` comme un override de
+    renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne porte ce
+    format, donc ``DefaultContentNegotiation.filter_renderers`` lève un
+    ``Http404`` AVANT même d'exécuter la vue — motif
+    ``apps.douane.views._ExportFormatContentNegotiation`` (NTLOG47). L'action
+    renvoie une ``HttpResponse`` manuelle, jamais via ce renderer.
+    """
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
 
 
 class SalleDeDonneesViewSet(CompanyScopedModelViewSet):
@@ -162,7 +182,8 @@ class SalleDeDonneesViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="audit-salle-{salle.pk}.pdf"')
         return reponse
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            content_negotiation_class=_ExportFormatContentNegotiation)
     def journal(self, request, pk=None):
         """NTDOC14 — Qui a vu quoi, quand, et combien de temps (gestion).
 

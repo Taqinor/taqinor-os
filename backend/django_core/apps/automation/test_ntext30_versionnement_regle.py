@@ -126,7 +126,13 @@ class VersionnementTests(TestCase):
                        format='json')
         res = self.api.get(f'{VERSIONS}?rule={self.rule.pk}')
         self.assertEqual(res.status_code, 200, res.data)
-        ids = [v['rule'] for v in res.data]
+        # Le viewset suit la pagination par défaut du dépôt
+        # (``core.pagination.StandardPagination``) : l'enveloppe est
+        # ``count/next/previous/results`` — itérer ``res.data`` parcourrait
+        # les CLÉS de l'enveloppe, pas les versions.
+        versions = res.data['results']
+        self.assertTrue(versions)
+        ids = [v['rule'] for v in versions]
         self.assertTrue(all(r == self.rule.pk for r in ids))
 
     def test_isolation_societe_sur_les_versions(self):
