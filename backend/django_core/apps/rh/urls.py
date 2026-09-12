@@ -55,9 +55,12 @@ from .views import (
     GabaritEmailRecrutementViewSet,
     GrilleSalarialeViewSet,
     LigneParcoursViewSet,
+    EtapeParcoursViewSet,
     EvaluationEmployeViewSet,
     FeedbackContinuViewSet,
     FeuilleTempsViewSet,
+    ParcoursFormationViewSet,
+    ProgressionParcoursViewSet,
     HabilitationViewSet,
     HeuresSuppViewSet,
     HoraireTravailViewSet,
@@ -203,6 +206,10 @@ router.register(r'enquetes-engagement', EnqueteEngagementViewSet)
 router.register(r'plans-action-engagement', PlanActionEngagementViewSet)
 # NTHCM16 — feedback continu entre collègues (hors cycle formel).
 router.register(r'feedbacks-continus', FeedbackContinuViewSet)
+# NTHCM17 — parcours de formation structurés (modules ordonnés).
+router.register(r'parcours-formation', ParcoursFormationViewSet)
+router.register(r'etapes-parcours', EtapeParcoursViewSet)
+router.register(r'progressions-parcours', ProgressionParcoursViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

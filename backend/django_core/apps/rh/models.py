@@ -7225,3 +7225,236 @@ class FeedbackContinu(TenantModel):
 
     def __str__(self):
         return f'{self.get_type_display()} → {self.pour_id}'
+
+
+class ParcoursFormation(TenantModel):
+    """NTHCM17 — PARCOURS de formation : une suite ORDONNÉE d'étapes.
+
+    Ce qui manquait : ``SessionFormation``/``InscriptionFormation`` (FG187/188)
+    gèrent une session ISOLÉE et ``QuizFormation`` (XRH34) un quiz ISOLÉ —
+    rien ne chaînait « 2 quiz + 1 session + 1 doc » en un cursus suivi de bout
+    en bout avec un pourcentage d'avancement (360Learning/BambooHR).
+
+    ``obligatoire`` + ``poste_cible``/``departement_cible`` décrivent le
+    CIBLAGE (qui doit le suivre). L'assignation automatique à l'embauche est
+    NTHCM19 — ici on ne pose que le référentiel.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4), aucun
+    accesseur historique à préserver (modèle neuf).
+    """
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    obligatoire = models.BooleanField(
+        default=False, verbose_name='Obligatoire')
+    poste_cible = models.ForeignKey(
+        'Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parcours_formation',
+        verbose_name='Poste ciblé',
+    )
+    departement_cible = models.ForeignKey(
+        Departement,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='parcours_formation',
+        verbose_name='Département ciblé',
+    )
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Parcours de formation'
+        verbose_name_plural = 'Parcours de formation'
+        ordering = ['-obligatoire', 'titre']
+        indexes = [
+            models.Index(
+                fields=['company', 'obligatoire'],
+                name='rh_parcform_comp_oblig_idx'),
+        ]
+
+    def clean(self):
+        """Le ciblage doit rester dans la société du parcours."""
+        from django.core.exceptions import ValidationError
+
+        if self.company_id is None:
+            return
+        for champ, libelle in (('poste_cible', 'Poste ciblé'),
+                               ('departement_cible', 'Département ciblé')):
+            cible = getattr(self, champ, None)
+            if cible is not None and cible.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : cette référence appartient à une autre '
+                    'société.')
+
+    def __str__(self):
+        return self.titre
+
+
+class EtapeParcours(TenantModel):
+    """NTHCM17 — une étape ORDONNÉE d'un ``ParcoursFormation``.
+
+    ``type_contenu`` décide QUEL pointeur est renseigné — un seul, jamais
+    deux (``clean()``) :
+
+    * ``session`` → ``session_ref`` (``SessionFormation``, FG187) ;
+    * ``quiz`` → ``quiz_ref`` (``QuizFormation``, XRH34) ;
+    * ``document_kb`` → ``document_kb_id`` — un ENTIER volontairement, pas une
+      FK : la base de connaissances vit dans l'app ``kb`` et la frontière
+      inter-apps se lit par son ``selectors``, jamais par un import de ses
+      modèles ;
+    * ``lien_externe`` → ``url_externe``.
+
+    ``obligatoire_pour_completer`` distingue le contenu EXIGÉ (il conditionne
+    le passage à ``termine``) de l'annexe recommandée.
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4).
+    """
+    class TypeContenu(models.TextChoices):
+        SESSION = 'session', 'Session de formation'
+        QUIZ = 'quiz', 'Quiz'
+        DOCUMENT_KB = 'document_kb', 'Document (base de connaissances)'
+        LIEN_EXTERNE = 'lien_externe', 'Lien externe'
+
+    parcours = models.ForeignKey(
+        ParcoursFormation,
+        on_delete=models.CASCADE,  # on_delete: composition — une étape n'existe que dans son parcours ; sans lui elle n'a plus ni ordre ni sens.
+        related_name='etapes',
+        verbose_name='Parcours',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    type_contenu = models.CharField(
+        max_length=14, choices=TypeContenu.choices,
+        default=TypeContenu.SESSION, verbose_name='Type de contenu')
+    session_ref = models.ForeignKey(
+        SessionFormation,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='etapes_parcours',
+        verbose_name='Session liée',
+    )
+    quiz_ref = models.ForeignKey(
+        QuizFormation,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='etapes_parcours',
+        verbose_name='Quiz lié',
+    )
+    document_kb_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Document KB (identifiant)')
+    url_externe = models.URLField(
+        blank=True, default='', verbose_name='Lien externe')
+    obligatoire_pour_completer = models.BooleanField(
+        default=True, verbose_name='Obligatoire pour compléter')
+
+    class Meta:
+        verbose_name = 'Étape de parcours'
+        verbose_name_plural = 'Étapes de parcours'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'parcours'],
+                name='rh_etapeparc_comp_parc_idx'),
+        ]
+
+    def clean(self):
+        """Le pointeur RENSEIGNÉ doit correspondre au ``type_contenu``."""
+        from django.core.exceptions import ValidationError
+
+        if self.type_contenu == self.TypeContenu.SESSION:
+            if self.session_ref_id is None:
+                raise ValidationError(
+                    'Une étape de type « session » doit désigner une session '
+                    'de formation.')
+        elif self.type_contenu == self.TypeContenu.QUIZ:
+            if self.quiz_ref_id is None:
+                raise ValidationError(
+                    'Une étape de type « quiz » doit désigner un quiz.')
+        elif self.type_contenu == self.TypeContenu.DOCUMENT_KB:
+            if self.document_kb_id is None:
+                raise ValidationError(
+                    'Une étape de type « document » doit désigner un document '
+                    'de la base de connaissances.')
+        elif self.type_contenu == self.TypeContenu.LIEN_EXTERNE:
+            if not (self.url_externe or '').strip():
+                raise ValidationError(
+                    'Une étape de type « lien externe » doit porter une URL.')
+
+        if self.company_id is None:
+            return
+        for champ, libelle in (('parcours', 'Parcours'),
+                               ('session_ref', 'Session liée'),
+                               ('quiz_ref', 'Quiz lié')):
+            cible = getattr(self, champ, None)
+            if cible is not None and cible.company_id != self.company_id:
+                raise ValidationError(
+                    f'{libelle} : cette référence appartient à une autre '
+                    'société.')
+
+    def __str__(self):
+        return f'{self.ordre}. {self.titre}'
+
+
+class ProgressionParcours(TenantModel):
+    """NTHCM17 — avancement d'UN employé sur UN parcours.
+
+    ``etapes_completees`` est la source de vérité ; ``pourcentage``,
+    ``statut`` et ``date_completion`` en sont DÉRIVÉS par
+    ``services.recalculer_progression_parcours`` (jamais posés à la main
+    depuis le corps d'une requête).
+
+    Une seule progression par (parcours, employé) — cocher deux fois la même
+    étape ne crée jamais de doublon, et ré-assigner un parcours déjà assigné
+    est un no-op (NTHCM19).
+
+    ``company`` héritée du socle ``core.models.TenantModel`` (SCA4).
+    """
+    class Statut(models.TextChoices):
+        NON_COMMENCE = 'non_commence', 'Non commencé'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    parcours = models.ForeignKey(
+        ParcoursFormation,
+        on_delete=models.CASCADE,  # on_delete: composition — la progression ne décrit que ce parcours ; sans lui elle ne mesure plus rien.
+        related_name='progressions',
+        verbose_name='Parcours',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — l'employé est un champ d'IDENTITÉ (un SET_NULL dé-scoperait la ligne, refusé par `check_on_delete`). Un dossier n'est supprimable que vierge de toute pièce légale (AUD721).
+        related_name='progressions_parcours',
+        verbose_name='Employé',
+    )
+    etapes_completees = models.ManyToManyField(
+        EtapeParcours,
+        blank=True,
+        related_name='progressions',
+        verbose_name='Étapes complétées',
+    )
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.NON_COMMENCE, verbose_name='Statut')
+    pourcentage = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Avancement (%)')
+    date_completion = models.DateField(
+        null=True, blank=True, verbose_name='Date de complétion')
+
+    class Meta:
+        verbose_name = 'Progression de parcours'
+        verbose_name_plural = 'Progressions de parcours'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'parcours', 'employe'],
+                name='rh_progparc_comp_parc_emp_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_progparc_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe_id} — {self.parcours_id} ({self.pourcentage}%)'

@@ -92,6 +92,7 @@ from .models import (
     ElementSortie,
     ElementsVariablesPaie,
     EpiCatalogue,
+    EtapeParcours,
     EvaluationEmploye,
     FeedbackContinu,
     FeuilleTemps,
@@ -105,12 +106,14 @@ from .models import (
     NoteDeFrais,
     OrdreMission,
     OuverturePoste,
+    ParcoursFormation,
     PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    ProgressionParcours,
     QuizFormation,
     Remuneration,
     RetourFeedback360,
@@ -189,6 +192,7 @@ from .serializers import (
     EmargerEpiSerializer,
     EvaluationEmployeSerializer,
     EpiCatalogueSerializer,
+    EtapeParcoursSerializer,
     FeedbackContinuSerializer,
     FeuilleTempsSerializer,
     HabilitationSerializer,
@@ -202,8 +206,10 @@ from .serializers import (
     NoteDeFraisSerializer,
     OrdreMissionSerializer,
     OuverturePosteSerializer,
+    ParcoursFormationSerializer,
     PermisConduireSerializer,
     PointageSerializer,
+    ProgressionParcoursSerializer,
     PosteSerializer,
     PresenceChantierSerializer,
     PresquAccidentSerializer,
@@ -6604,3 +6610,112 @@ class FeedbackContinuViewSet(_RhBaseViewSet):
             raise serializers.ValidationError(
                 {'pour': "On ne peut pas s'adresser un feedback à soi-même."})
         serializer.save(company=self.request.user.company, de=moi)
+
+
+class ParcoursFormationViewSet(_RhBaseViewSet):
+    """NTHCM17 — référentiel des parcours de formation (``?obligatoire=1``)."""
+    queryset = ParcoursFormation.objects.select_related(
+        'poste_cible', 'departement_cible').prefetch_related('etapes').all()
+    serializer_class = ParcoursFormationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'description']
+    ordering_fields = ['titre', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        obligatoire = params.get('obligatoire')
+        if obligatoire in ('0', '1'):
+            qs = qs.filter(obligatoire=(obligatoire == '1'))
+        actif = params.get('actif')
+        if actif in ('0', '1'):
+            qs = qs.filter(actif=(actif == '1'))
+        return qs
+
+
+class EtapeParcoursViewSet(_RhBaseViewSet):
+    """NTHCM17 — étapes d'un parcours (``?parcours=``)."""
+    queryset = EtapeParcours.objects.select_related(
+        'parcours', 'session_ref', 'quiz_ref').all()
+    serializer_class = EtapeParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parcours = self.request.query_params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        return qs
+
+
+class ProgressionParcoursViewSet(_RhBaseViewSet):
+    """NTHCM17 — avancement par employé (``?parcours=``, ``?employe=``).
+
+    Actions :
+
+    * ``POST {id}/completer-etape/`` (corps ``{"etape": <id>}``) — coche une
+      étape ; idempotent, et refuse une étape d'un autre parcours/société ;
+    * ``POST {id}/devalider-etape/`` — correction de saisie (décoche).
+
+    Les deux passent par ``services`` : l'avancement est TOUJOURS dérivé, il
+    n'est jamais écrit depuis le corps de la requête.
+    """
+    queryset = ProgressionParcours.objects.select_related(
+        'parcours', 'employe').prefetch_related(
+            'etapes_completees', 'parcours__etapes').all()
+    serializer_class = ProgressionParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'pourcentage']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        parcours = params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _etape_du_corps(self, request, progression):
+        etape_id = request.data.get('etape')
+        if not etape_id:
+            return None, Response(
+                {'etape': "L'étape est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        etape = EtapeParcours.objects.filter(
+            company=request.user.company, pk=etape_id).first()
+        if etape is None:
+            return None, Response(
+                {'etape': 'Étape inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if etape.parcours_id != progression.parcours_id:
+            return None, Response(
+                {'etape': "Cette étape n'appartient pas au parcours suivi."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return etape, None
+
+    @action(detail=True, methods=['post'], url_path='completer-etape')
+    def completer_etape(self, request, pk=None):
+        progression = self.get_object()
+        etape, erreur = self._etape_du_corps(request, progression)
+        if erreur is not None:
+            return erreur
+        services.marquer_etape_parcours(progression, etape)
+        progression.refresh_from_db()
+        return Response(self.get_serializer(progression).data)
+
+    @action(detail=True, methods=['post'], url_path='devalider-etape')
+    def devalider_etape(self, request, pk=None):
+        progression = self.get_object()
+        etape, erreur = self._etape_du_corps(request, progression)
+        if erreur is not None:
+            return erreur
+        services.devalider_etape_parcours(progression, etape)
+        progression.refresh_from_db()
+        return Response(self.get_serializer(progression).data)

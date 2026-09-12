@@ -70,6 +70,7 @@ from .models import (
     EmargementEpi,
     EvaluationEmploye,
     EpiCatalogue,
+    EtapeParcours,
     FeedbackContinu,
     FeuilleTemps,
     Habilitation,
@@ -85,12 +86,14 @@ from .models import (
     ObjectifIndividuel,
     OrdreMission,
     OuverturePoste,
+    ParcoursFormation,
     PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    ProgressionParcours,
     QuizFormation,
     Remuneration,
     ReponsePulse,
@@ -3540,3 +3543,127 @@ class FeedbackContinuSerializer(serializers.ModelSerializer):
 
     def validate_pour(self, value):
         return _meme_societe(self, value, 'Destinataire')
+
+
+class EtapeParcoursSerializer(serializers.ModelSerializer):
+    """NTHCM17 — étape ordonnée d'un parcours de formation."""
+    type_contenu_display = serializers.CharField(
+        source='get_type_contenu_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = EtapeParcours
+        fields = [
+            'id', 'parcours', 'ordre', 'titre',
+            'type_contenu', 'type_contenu_display',
+            'session_ref', 'quiz_ref', 'document_kb_id', 'url_externe',
+            'obligatoire_pour_completer', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_parcours(self, value):
+        return _meme_societe(self, value, 'Parcours')
+
+    def validate_session_ref(self, value):
+        return _meme_societe(self, value, 'Session')
+
+    def validate_quiz_ref(self, value):
+        return _meme_societe(self, value, 'Quiz')
+
+    def validate(self, attrs):
+        """Le pointeur renseigné doit correspondre au type — règle du MODÈLE.
+
+        On instancie l'``EtapeParcours`` non sauvegardée et on appelle son
+        ``clean()`` : la règle vit à UN seul endroit (le modèle), l'API ne la
+        recopie pas.
+        """
+        attrs = super().validate(attrs)
+        donnees = {}
+        if self.instance is not None:
+            for champ in ('parcours', 'type_contenu', 'session_ref',
+                          'quiz_ref', 'document_kb_id', 'url_externe'):
+                donnees[champ] = getattr(self.instance, champ)
+        donnees.update(attrs)
+        etape = EtapeParcours(**{
+            cle: valeur for cle, valeur in donnees.items()
+            if cle in {'parcours', 'type_contenu', 'session_ref', 'quiz_ref',
+                       'document_kb_id', 'url_externe'}
+        })
+        try:
+            etape.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+
+class ParcoursFormationSerializer(serializers.ModelSerializer):
+    """NTHCM17 — référentiel d'un parcours (ses étapes en lecture)."""
+    etapes = EtapeParcoursSerializer(many=True, read_only=True)
+    nombre_etapes = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = ParcoursFormation
+        fields = [
+            'id', 'titre', 'description', 'obligatoire',
+            'poste_cible', 'departement_cible', 'actif',
+            'etapes', 'nombre_etapes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nombre_etapes(self, obj) -> int:
+        return obj.etapes.count()
+
+    def validate_poste_cible(self, value):
+        return _poste_meme_societe(self, value)
+
+    def validate_departement_cible(self, value):
+        return _meme_societe(self, value, 'Département')
+
+
+class ProgressionParcoursSerializer(serializers.ModelSerializer):
+    """NTHCM17 — avancement d'un employé sur un parcours.
+
+    ``statut`` / ``pourcentage`` / ``date_completion`` / ``etapes_completees``
+    sont DÉRIVÉS (``services.recalculer_progression_parcours``) : aucun d'eux
+    n'est écrivable depuis le corps — sinon un employé poserait « 100 % » sans
+    avoir rien lu.
+    """
+    parcours_titre = serializers.CharField(
+        source='parcours.titre', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    etapes_completees = serializers.PrimaryKeyRelatedField(
+        many=True, read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = ProgressionParcours
+        fields = [
+            'id', 'parcours', 'parcours_titre', 'employe', 'employe_nom',
+            'etapes_completees', 'statut', 'statut_display',
+            'pourcentage', 'date_completion', 'date_creation',
+        ]
+        read_only_fields = [
+            'etapes_completees', 'statut', 'pourcentage', 'date_completion',
+            'date_creation',
+        ]
+
+    def get_employe_nom(self, obj) -> str:
+        if obj.employe_id is None:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_parcours(self, value):
+        return _meme_societe(self, value, 'Parcours')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')

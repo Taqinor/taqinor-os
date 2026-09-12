@@ -3175,3 +3175,85 @@ def repondre_enquete(enquete, user, *, reponses):
         employe=employe,
         reponses=reponses or {},
     )
+
+
+# ---------------------------------------------------------------------------
+# NTHCM17 — parcours de formation : avancement dérivé, jamais saisi.
+# ---------------------------------------------------------------------------
+
+def recalculer_progression_parcours(progression, *, aujourdhui=None):
+    """Recalcule ``pourcentage`` / ``statut`` / ``date_completion``.
+
+    RÈGLE D'AVANCEMENT. ``pourcentage`` = part des étapes du parcours cochées
+    (arrondi à l'entier). Un parcours SANS étape vaut 0 % — jamais une division
+    par zéro, et jamais un « 100 % » inventé sur un cursus vide.
+
+    RÈGLE DE COMPLÉTION. Le parcours est ``termine`` quand toutes les étapes
+    marquées ``obligatoire_pour_completer`` sont cochées (si AUCUNE ne l'est,
+    il faut alors les avoir toutes faites) : une annexe recommandée non lue ne
+    doit pas retenir un cursus, mais un module exigé le doit.
+
+    ``date_completion`` est posée la PREMIÈRE fois que le parcours devient
+    ``termine`` et n'est plus jamais réécrite tant qu'il le reste (une
+    re-lecture d'étape ne redate pas la réussite). Repasser sous le seuil
+    (étape retirée) la remet à ``None``.
+
+    Idempotent : appeler deux fois de suite ne change rien au second appel.
+    """
+    etapes = list(progression.parcours.etapes.all())
+    total = len(etapes)
+    completees = set(
+        progression.etapes_completees.values_list('id', flat=True))
+
+    if total:
+        progression.pourcentage = round(
+            100 * len([e for e in etapes if e.id in completees]) / total)
+    else:
+        progression.pourcentage = 0
+
+    requises = [e for e in etapes if e.obligatoire_pour_completer] or etapes
+    termine = bool(requises) and all(e.id in completees for e in requises)
+
+    if termine:
+        progression.statut = progression.Statut.TERMINE
+        if progression.date_completion is None:
+            progression.date_completion = (
+                aujourdhui or timezone.localdate())
+    else:
+        progression.statut = (
+            progression.Statut.EN_COURS if completees
+            else progression.Statut.NON_COMMENCE)
+        progression.date_completion = None
+
+    progression.save(update_fields=[
+        'pourcentage', 'statut', 'date_completion', 'updated_at'])
+    return progression
+
+
+@transaction.atomic
+def marquer_etape_parcours(progression, etape, *, aujourdhui=None):
+    """Coche une étape d'un parcours et recalcule l'avancement.
+
+    IDEMPOTENT (``ManyToMany.add`` ne duplique pas) et refuse une étape d'un
+    AUTRE parcours ou d'une AUTRE société — sinon un appelant pourrait faire
+    monter son pourcentage avec une étape qui ne le concerne pas.
+    """
+    from django.core.exceptions import ValidationError
+
+    if etape.parcours_id != progression.parcours_id:
+        raise ValidationError(
+            "Cette étape n'appartient pas au parcours suivi.")
+    if etape.company_id != progression.company_id:
+        raise ValidationError(
+            'Cette étape appartient à une autre société.')
+    progression.etapes_completees.add(etape)
+    return recalculer_progression_parcours(
+        progression, aujourdhui=aujourdhui)
+
+
+@transaction.atomic
+def devalider_etape_parcours(progression, etape, *, aujourdhui=None):
+    """Décoche une étape (correction de saisie) et recalcule l'avancement."""
+    progression.etapes_completees.remove(etape)
+    return recalculer_progression_parcours(
+        progression, aujourdhui=aujourdhui)
