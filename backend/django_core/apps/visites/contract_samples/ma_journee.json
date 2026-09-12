@@ -1,0 +1,24 @@
+{
+  "endpoint": "GET /api/django/visites/ma-journee/",
+  "pourquoi": "Groupe VTA : l'ACCUEIL de l'app Visites (recherche field-service : l'ecran d'un terrain est sa journee, jamais un dashboard). Les visites du JOUR + en RETARD de l'utilisateur courant, triees par date_prevue ; les valideurs (visites_valider) voient la journee de l'equipe via ?tous=1. Le front n'invente rien : complet/manquants_count viennent du serveur. Source de verite : apps/visites/selectors.py::ma_journee.",
+  "exemple": {
+    "date": "2026-09-14",
+    "en_retard_count": 1,
+    "visites": [
+      {
+        "id": 7,
+        "lead_nom": "Client Démo",
+        "ville": "Bouskoura",
+        "adresse": "Quartier Démo",
+        "gps_lat": 33.4589,
+        "gps_lng": -7.6528,
+        "date_prevue": "2026-09-14",
+        "statut": "en_cours",
+        "en_route_le": null,
+        "arrivee_le": null,
+        "complet": false,
+        "manquants_count": 3
+      }
+    ]
+  }
+}
