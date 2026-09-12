@@ -509,6 +509,110 @@ def penalites_retard_par_lot(chantier, date_reference=None):
     }
 
 
+# ── NTCON22 — Rapport d'avancement de chantier sur une période ─────────────
+
+def rapport_avancement(chantier, du, au):
+    """NTCON22 — agrégats d'avancement d'un chantier sur ``[du, au]``.
+
+    Document strictement INTERNE/MOE : AUCUN prix d'achat, aucun coût, jamais
+    exposé via ``/proposal`` (règle #4 — le moteur premium ne rend QUE les
+    devis client). Lecture seule.
+
+    * **lots** (NTCON14) — avancement + retard vs planning ;
+    * **réserves** (NTCON1/2) — créées / levées SUR LA PÉRIODE + reste ouvert ;
+    * **RFI en cours** (NTCON3) — encore ouverts à la fin de période ;
+    * **effectif moyen** — moyenne des effectifs des ``JournalChantier``
+      (NTCON6) renseignés sur la période ;
+    * **QHSE** — points d'arrêt BLOQUANTS du chantier, lus par le SÉLECTEUR de
+      ``qhse`` (jamais ses ``models``/``views``).
+    """
+    from apps.qhse import selectors as qhse_selectors
+
+    from .models import JournalChantier, ReserveChantier
+
+    aujourdhui = timezone.localdate()
+    company = chantier.company
+
+    # ── Lots ────────────────────────────────────────────────────────────
+    lots = []
+    for bloc in planning_par_lot(chantier):
+        fin_prevue = bloc['date_fin_prevue']
+        fin_reelle = bloc['date_fin_reelle']
+        reference = fin_reelle or min(au, aujourdhui)
+        jours_retard = 0
+        if fin_prevue and reference and reference > fin_prevue:
+            jours_retard = (reference - fin_prevue).days
+        lots.append({
+            'nom': bloc['nom'],
+            'statut': bloc['statut'],
+            'avancement_pct': bloc['avancement_pct'],
+            'date_fin_prevue': fin_prevue,
+            'date_fin_reelle': fin_reelle,
+            'en_retard': bloc['en_retard'],
+            'jours_retard': jours_retard,
+        })
+
+    # ── Réserves de la période ──────────────────────────────────────────
+    reserves = ReserveChantier.objects.filter(
+        chantier=chantier, company=company)
+    creees = reserves.filter(
+        created_at__date__gte=du, created_at__date__lte=au).count()
+    levees = reserves.filter(
+        statut=ReserveChantier.Statut.LEVEE,
+        date_levee__date__gte=du, date_levee__date__lte=au).count()
+    ouvertes = reserves.filter(statut__in=[
+        ReserveChantier.Statut.OUVERTE,
+        ReserveChantier.Statut.EN_COURS,
+        ReserveChantier.Statut.CONTESTEE,
+    ]).count()
+    bloquantes = reserves_actives_bloquantes(company, chantier=chantier).count()
+
+    # ── RFI encore ouverts ──────────────────────────────────────────────
+    rfis = [{
+        'numero': rfi.numero,
+        'question': rfi.question,
+        'date_limite_reponse': rfi.date_limite_reponse,
+        'en_retard': bool(
+            rfi.date_limite_reponse and rfi.date_limite_reponse < aujourdhui),
+    } for rfi in RFI.objects.filter(
+        chantier=chantier, company=company,
+        statut=RFI.Statut.OUVERT).order_by('numero')]
+
+    # ── Effectif moyen sur la période (journal NTCON6) ──────────────────
+    entrees = JournalChantier.objects.filter(
+        chantier=chantier, company=company, date__gte=du, date__lte=au)
+    total_interne = total_st = jours = 0
+    for entree in entrees:
+        jours += 1
+        if isinstance(entree.effectif_interne, dict):
+            total_interne += sum(entree.effectif_interne.values())
+        if isinstance(entree.effectif_sous_traitant, dict):
+            total_st += sum(entree.effectif_sous_traitant.values())
+    effectif = {
+        'jours_renseignes': jours,
+        'moyenne_interne': round(total_interne / jours, 1) if jours else 0,
+        'moyenne_sous_traitant': round(total_st / jours, 1) if jours else 0,
+    }
+
+    return {
+        'chantier_id': chantier.pk,
+        'du': du,
+        'au': au,
+        'lots': lots,
+        'reserves': {
+            'creees_periode': creees,
+            'levees_periode': levees,
+            'ouvertes': ouvertes,
+            'bloquantes_ouvertes': bloquantes,
+        },
+        'rfi_en_cours': rfis,
+        'effectif_moyen': effectif,
+        'qhse_points_arret_bloquants': (
+            qhse_selectors.hold_points_bloquants_pour_chantier(
+                company, chantier.pk)),
+    }
+
+
 # ── NTCON17 — Registre des intervenants (coordination SPS/CISSCT) ──────────
 
 def registre_intervenants(chantier, jour=None):

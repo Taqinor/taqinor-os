@@ -943,6 +943,61 @@ class AbonnementRapportPhotoViewSet(
         return qs
 
 
+class ChantierRapportAvancementView(APIView):
+    """NTCON22 — ``chantiers/<id>/rapport-avancement/?du=&au=`` : PDF INTERNE
+    d'avancement (lots vs planning, réserves, RFI, effectifs, QHSE).
+
+    Document interne/MOE : JAMAIS un devis client, jamais servi par
+    ``/proposal`` (règle #4), aucun prix d'achat. Période par défaut :
+    les 7 derniers jours.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        from datetime import date, timedelta
+
+        from django.http import HttpResponse
+
+        from .pdf import render_rapport_avancement_pdf
+
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+
+        def _date(param, defaut):
+            brut = request.query_params.get(param)
+            if not brut:
+                return defaut
+            try:
+                return date.fromisoformat(brut)
+            except ValueError:
+                return None
+
+        au = _date('au', timezone.localdate())
+        if au is None:
+            return Response(
+                {'au': 'Date invalide — format attendu AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        du = _date('du', au - timedelta(days=6))
+        if du is None:
+            return Response(
+                {'du': 'Date invalide — format attendu AAAA-MM-JJ.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if du > au:
+            return Response(
+                {'du': f'Le début de période ne peut pas suivre la fin ({au}).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        donnees = selectors.rapport_avancement(chantier, du, au)
+        pdf_bytes = render_rapport_avancement_pdf(chantier, donnees)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="avancement-chantier-{chantier_id}-'
+            f'{du}-{au}.pdf"')
+        return response
+
+
 class ChantierExportDossierBtpView(APIView):
     """NTCON20 — ``chantiers/<id>/export-dossier-btp/`` : ZIP consolidant le
     dossier du chantier (journal, réserves levées + preuves, visas approuvés,

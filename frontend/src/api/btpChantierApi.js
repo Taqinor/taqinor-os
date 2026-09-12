@@ -173,6 +173,13 @@ const btpChantierApi = {
       api.patch(`/btp-chantier/abonnements-rapport-photo/${id}/`, data),
   },
 
+  // NTCON22 — PDF INTERNE d'avancement sur une période (`{ du, au }`) :
+  // jamais un devis client, jamais servi par `/proposal`, aucun coût d'achat.
+  rapportAvancement: (chantierId, params) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/rapport-avancement/`, {
+      params, responseType: 'blob',
+    }),
+
   // NTCON20 — ZIP « dossier chantier » consolidé (archivage légal/litige) :
   // journal, réserves levées + preuves, visas approuvés, DGD, PPSPS signés.
   exportDossierBtp: (chantierId) =>
