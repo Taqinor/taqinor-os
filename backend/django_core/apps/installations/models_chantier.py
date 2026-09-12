@@ -136,6 +136,17 @@ class StageModele(models.Model):
     exige_materiel = models.BooleanField(default=False)
     exige_dossier = models.BooleanField(default=False)
     exige_pack = models.BooleanField(default=False)
+    # CHT23 — exigences de comptage CONFIGURABLES, ADDITIVES STRICTES : les
+    # gates `exige_checklist`/`exige_photos` ci-dessus restent inconditionnels
+    # au comportement historique (« tous faits ») à leurs valeurs par défaut.
+    # `photos_min` > 0 AJOUTE une contrainte de comptage RÉEL de photos
+    # déposées sur le chantier (records.Attachment, cf. `services._gate_check_
+    # photos`) ; `checklist_pct_min` < 100 assouplit le gate checklist en
+    # « ≥ pct % faits » au lieu de « tous faits ».
+    photos_min = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Nombre de photos minimum')
+    checklist_pct_min = models.PositiveSmallIntegerField(
+        default=100, verbose_name='% de checklist minimum')
     # Statut HÉRITÉ (enum 7 étapes, jamais supprimé) que porte un chantier
     # arrivé sur cette étape — c'est le pont qui fait tirer les effets de bord
     # existants (stock/garantie) sur les gates mappés.

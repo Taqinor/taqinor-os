@@ -8,10 +8,32 @@ Comportement strictement identique aux requêtes inline d'origine.
 from django.db.models import Sum
 
 
-def installation_for_devis(devis):
-    """Le chantier lié à un devis (ou None). Lecture seule."""
+def installation_for_devis(devis, company=None):
+    """Le chantier lié à un devis (ou None). Lecture seule.
+
+    CHT12 — ``company`` est OPTIONNEL (défaut ``None`` = comportement
+    inchangé) : un appelant qui la fournit obtient une lecture scopée société
+    (jamais de fuite cross-tenant même si le devis passé appartient, par bug
+    amont, à une autre société)."""
     from .models import Installation
-    return Installation.objects.filter(devis=devis).first()
+    qs = Installation.objects.filter(devis=devis)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs.first()
+
+
+def devis_id_du_chantier(company, chantier_id):
+    """CHT12 — id du devis lié à un chantier, scopé société (ou None).
+
+    Point d'entrée cross-app en LECTURE SEULE (ex. ``gestion_projet`` pour
+    résoudre les montants d'un projet via ``ventes.selectors.montants_devis``)
+    — jamais un import direct de ``installations.models``."""
+    from .models import Installation
+    if not company or not chantier_id:
+        return None
+    return Installation.objects.filter(
+        pk=chantier_id, company=company).values_list(
+        'devis_id', flat=True).first()
 
 
 def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
@@ -1428,7 +1450,9 @@ def chantier_card(chantier_id, company):
     return {
         'label': f'Chantier {chantier.reference}',
         'subtitle': ' · '.join(p for p in parts if p),
-        'url': f'/installations/{chantier.pk}',
+        # CHT7 — `/installations/<id>` est un 404 réel : la fiche chantier vit
+        # sur `/chantiers` (InstallationsPage.jsx:343 lit `?id=`).
+        'url': f'/chantiers?id={chantier.pk}',
     }
 
 
