@@ -6952,3 +6952,195 @@ class PlanSuccession(models.Model):
     def __str__(self):
         return (f'{self.poste_cle} ← {self.successeur} '
                 f'({self.get_rang_display()})')
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+def hash_participation_enquete(user_id, enquete_id):
+    """NTHCM14 — empreinte « qui a déjà répondu » à une enquête.
+
+    Même construction que :func:`hash_participation_token` (XRH32), avec un
+    ESPACE DE NOMS distinct (``enquete:``) pour qu'une empreinte de pulse et
+    une empreinte d'enquête ne puissent jamais coïncider. Stockée à part
+    (``ParticipationEnquete``), JAMAIS jointe à ``ReponseEnquete``.
+    """
+    raw = f'enquete:{user_id}:{enquete_id}'
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+class EnqueteEngagement(models.Model):
+    """NTHCM14 — enquête d'engagement MULTI-questions, par catégorie.
+
+    ``CampagnePulse`` (XRH32) ne porte qu'UNE question eNPS. Ici, ``questions``
+    est une liste typée ``[{libelle, type, categorie}]`` où ``type`` ∈
+    ``note1_5`` / ``choix`` / ``texte_libre`` et ``categorie`` regroupe les
+    questions (reconnaissance, charge_travail, management, perspectives…) pour
+    l'agrégat par catégorie (NTHCM15).
+
+    ``anonyme`` (défaut ``True``) décide du MODE : anonyme ⇒ la réponse ne peut
+    structurellement pas être reliée au votant (voir ``ReponseEnquete``) ;
+    nominatif ⇒ la FK ``employe`` est autorisée (sondage RH ciblé assumé).
+    """
+    #: Types de question acceptés (le vocabulaire est fermé côté serveur).
+    TYPES_QUESTION = ('note1_5', 'choix', 'texte_libre')
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une enquête n'a aucun sens hors de sa société
+        related_name='rh_enquetes_engagement',
+        verbose_name='Société',
+    )
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    questions = models.JSONField(
+        blank=True, default=list, verbose_name='Questions')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    anonyme = models.BooleanField(
+        default=True, verbose_name='Anonyme')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Enquête d'engagement"
+        verbose_name_plural = "Enquêtes d'engagement"
+        ordering = ['-date_creation']
+
+    def clean(self):
+        """Vocabulaire FERMÉ : chaque question porte un ``type`` connu.
+
+        Sans ce contrôle, une question de type inventé passerait en base et
+        casserait silencieusement l'agrégat par catégorie (NTHCM15).
+        """
+        from django.core.exceptions import ValidationError
+
+        if not isinstance(self.questions, list):
+            raise ValidationError(
+                'Les questions doivent être une liste.')
+        for index, question in enumerate(self.questions, start=1):
+            if not isinstance(question, dict):
+                raise ValidationError(
+                    f'Question {index} : chaque question doit être un objet '
+                    '{libelle, type, categorie}.')
+            if not str(question.get('libelle', '') or '').strip():
+                raise ValidationError(
+                    f'Question {index} : le libellé est obligatoire.')
+            type_question = question.get('type')
+            if type_question not in self.TYPES_QUESTION:
+                raise ValidationError(
+                    f'Question {index} : type inconnu « {type_question} ». '
+                    f'Types acceptés : {", ".join(self.TYPES_QUESTION)}.')
+
+    def __str__(self):
+        return self.titre
+
+
+class ReponseEnquete(models.Model):
+    """NTHCM14 — réponse à une enquête d'engagement.
+
+    GARDE-FOU D'ANONYMAT, deux étages :
+
+    1. **AUCUNE FK ``user``**, jamais — comme ``ReponsePulse`` (XRH32), la
+       réponse ne peut pas être reliée au COMPTE qui a répondu (testable par
+       inspection du schéma) ;
+    2. le drapeau ``anonyme`` est RECOPIÉ ici à l'écriture et une
+       ``CheckConstraint`` en BASE interdit qu'une réponse anonyme porte un
+       ``employe``. La garantie ne dépend donc pas d'un service discipliné :
+       elle est structurelle, même pour une écriture directe en base.
+
+    Une enquête NOMINATIVE (``anonyme=False``) garde, elle, la FK ``employe``
+    classique — c'est le mode sondage RH ciblé, assumé.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — une réponse d'enquête n'a aucun sens hors de sa société
+        related_name='rh_reponses_enquete',
+        verbose_name='Société',
+    )
+    enquete = models.ForeignKey(
+        EnqueteEngagement,
+        on_delete=models.CASCADE,  # on_delete: composition — une réponse n'existe QUE dans son enquête
+        related_name='reponses',
+        verbose_name='Enquête',
+    )
+    # Recopié depuis l'enquête à l'écriture : c'est CE champ que la contrainte
+    # de base lit (une contrainte ne peut pas interroger la table parente).
+    anonyme = models.BooleanField(default=True, verbose_name='Anonyme')
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: la réponse nominative n'a plus d'objet sans son employé ; une réponse anonyme n'en porte jamais
+        null=True, blank=True,
+        related_name='reponses_enquete',
+        verbose_name='Employé (enquête nominative)',
+    )
+    reponses = models.JSONField(
+        blank=True, default=dict, verbose_name='Réponses')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Réponse d'enquête"
+        verbose_name_plural = "Réponses d'enquête"
+        ordering = ['-date_creation']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(anonyme=False) | models.Q(
+                    employe__isnull=True),
+                name='rh_repenq_anonyme_sans_employe'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'enquete'],
+                name='rh_repenq_comp_enq_idx'),
+        ]
+
+    def __str__(self):
+        return f"Réponse — enquête {self.enquete_id}"
+
+
+class ParticipationEnquete(models.Model):
+    """NTHCM14 — jeton de participation à une enquête (anti double-réponse).
+
+    Une ligne par (``enquete``, ``user``) — l'unicité EST le mécanisme, dans
+    les DEUX modes (anonyme ET nominatif). Ce modèle n'a AUCUN lien vers
+    ``ReponseEnquete`` : on sait QUI a répondu, jamais CE QU'IL A RÉPONDU.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un jeton de participation n'a aucun sens hors de sa société
+        related_name='rh_participations_enquete',
+        verbose_name='Société',
+    )
+    enquete = models.ForeignKey(
+        EnqueteEngagement,
+        on_delete=models.CASCADE,  # on_delete: composition — le jeton n'existe QUE pour son enquête
+        related_name='participations',
+        verbose_name='Enquête',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: le jeton ne sert qu'à empêcher ce compte de répondre deux fois ; il n'a plus d'objet sans lui
+        related_name='participations_enquete',
+        verbose_name='Utilisateur',
+    )
+    token_hash = models.CharField(
+        max_length=64, verbose_name='Jeton (empreinte)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Participation enquête'
+        verbose_name_plural = 'Participations enquête'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['enquete', 'user'],
+                name='rh_partenq_enquete_user_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Participation — enquête {self.enquete_id}'

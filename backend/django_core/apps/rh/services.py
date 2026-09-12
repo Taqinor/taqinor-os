@@ -3124,3 +3124,54 @@ def appliquer_cycle_revision(cycle, user=None, *, today=None):
         company=cycle.company, cycle=cycle).exclude(
             statut=PropositionRevision.Statut.APPROUVEE).count()
     return {'appliquees': appliquees, 'ignorees': ignorees}
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+class DejaRepondueError(Exception):
+    """NTHCM14 — l'utilisateur a déjà répondu à cette enquête (409)."""
+
+
+@transaction.atomic
+def repondre_enquete(enquete, user, *, reponses):
+    """NTHCM14 — enregistre UNE réponse à une enquête d'engagement.
+
+    Deux écritures dans LA MÊME transaction, JAMAIS reliées entre elles —
+    exactement le patron ``repondre_pulse`` (XRH32) :
+
+      1. ``ParticipationEnquete(enquete, user)`` — l'unicité EST le garde-fou
+         anti double-réponse, dans les DEUX modes (anonyme ET nominatif) ; si
+         elle existe déjà, :class:`DejaRepondueError` est levée AVANT toute
+         écriture de réponse ;
+      2. ``ReponseEnquete`` — ``anonyme`` recopié de l'enquête. En mode
+         ANONYME, ``employe`` reste ``None`` (et la ``CheckConstraint`` de
+         base l'impose, même hors de ce service) ; en mode NOMINATIF, le
+         dossier de l'auteur est résolu CÔTÉ SERVEUR, jamais lu du corps.
+
+    Renvoie la ``ReponseEnquete`` créée.
+    """
+    from . import selectors
+    from .models import (
+        ParticipationEnquete, ReponseEnquete, hash_participation_enquete,
+    )
+
+    if ParticipationEnquete.objects.filter(
+            enquete=enquete, user=user).exists():
+        raise DejaRepondueError('Vous avez déjà répondu à cette enquête.')
+
+    ParticipationEnquete.objects.create(
+        company=enquete.company, enquete=enquete, user=user,
+        token_hash=hash_participation_enquete(user.id, enquete.id))
+
+    employe = None
+    if not enquete.anonyme:
+        employe = selectors.dossier_employe_for_user(
+            enquete.company, user.id)
+
+    return ReponseEnquete.objects.create(
+        company=enquete.company,
+        enquete=enquete,
+        anonyme=enquete.anonyme,
+        employe=employe,
+        reponses=reponses or {},
+    )

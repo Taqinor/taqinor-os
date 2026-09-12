@@ -32,9 +32,11 @@ from .models import (
     CompetenceRequise,
     CorrectionPointage,
     CycleRevisionSalariale,
+    EnqueteEngagement,
     EnveloppeManager,
     EvaluationNeufBox,
     KeyResult,
+    ReponseEnquete,
     KeyResultIndividuel,
     ObjectifEntreprise,
     OkrIndividuel,
@@ -3353,3 +3355,62 @@ class PlanSuccessionSerializer(serializers.ModelSerializer):
 
     def validate_successeur(self, value):
         return _meme_societe(self, value, 'Successeur')
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+class EnqueteEngagementSerializer(serializers.ModelSerializer):
+    """NTHCM14 — enquête d'engagement (questions typées par catégorie).
+
+    ``anonyme`` n'est modifiable QU'AVANT la première réponse : le basculer
+    ensuite rendrait le corpus incohérent (des réponses anonymes et
+    nominatives mélangées dans le même agrégat).
+    """
+    nombre_reponses = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EnqueteEngagement
+        fields = [
+            'id', 'titre', 'questions', 'date_debut', 'date_fin',
+            'anonyme', 'nombre_reponses', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nombre_reponses(self, obj):
+        return obj.reponses.count()
+
+    def validate(self, attrs):
+        """Vocabulaire des questions FERMÉ (``EnqueteEngagement.clean``) et
+        ``anonyme`` figé dès la première réponse."""
+        questions = attrs.get(
+            'questions',
+            self.instance.questions if self.instance else [])
+        sonde = EnqueteEngagement(questions=questions)
+        try:
+            sonde.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'questions': exc.messages})
+
+        if (self.instance is not None and 'anonyme' in attrs
+                and attrs['anonyme'] != self.instance.anonyme
+                and self.instance.reponses.exists()):
+            raise serializers.ValidationError({'anonyme': [
+                "Le mode d'anonymat ne peut plus changer : cette enquête a "
+                'déjà reçu des réponses.']})
+        return attrs
+
+
+class ReponseEnqueteSerializer(serializers.ModelSerializer):
+    """NTHCM14 — réponse à une enquête (lecture).
+
+    ``employe`` est présent pour le mode NOMINATIF uniquement ; en mode
+    anonyme il vaut toujours ``None`` (contrainte de base
+    ``rh_repenq_anonyme_sans_employe``).
+    """
+    class Meta:
+        model = ReponseEnquete
+        fields = [
+            'id', 'enquete', 'anonyme', 'employe', 'reponses',
+            'date_creation',
+        ]
+        read_only_fields = fields

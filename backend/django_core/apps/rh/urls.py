@@ -21,6 +21,7 @@ from .views import (
     CockpitRhViewSet,
     CertificationViewSet,
     CycleRevisionSalarialeViewSet,
+    EnqueteEngagementViewSet,
     EnveloppeManagerViewSet,
     EvaluationNeufBoxViewSet,
     KeyResultIndividuelViewSet,
@@ -194,6 +195,8 @@ router.register(r'evaluations-neuf-box', EvaluationNeufBoxViewSet)
 # NTHCM12 — postes-clés & plans de succession.
 router.register(r'postes-cles', PosteCleViewSet)
 router.register(r'plans-succession', PlanSuccessionViewSet)
+# NTHCM14 — enquêtes d'engagement multi-questions.
+router.register(r'enquetes-engagement', EnqueteEngagementViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

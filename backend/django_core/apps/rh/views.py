@@ -56,6 +56,7 @@ from .models import (
     CompetenceRequise,
     CorrectionPointage,
     CycleRevisionSalariale,
+    EnqueteEngagement,
     EnveloppeManager,
     EvaluationNeufBox,
     KeyResult,
@@ -146,6 +147,7 @@ from .serializers import (
     CompetenceSerializer,
     CorrectionPointageSerializer,
     CycleRevisionSalarialeSerializer,
+    EnqueteEngagementSerializer,
     EnveloppeManagerSerializer,
     EvaluationNeufBoxSerializer,
     KeyResultIndividuelSerializer,
@@ -6421,3 +6423,50 @@ class PlanSuccessionViewSet(_RhBaseViewSet):
         if poste_cle:
             qs = qs.filter(poste_cle_id=poste_cle)
         return qs
+
+
+# ── NTHCM14 — enquêtes d'engagement multi-questions ─────────────────────────
+
+class EnqueteEngagementViewSet(_RhBaseViewSet):
+    """NTHCM14 — enquêtes d'engagement multi-questions.
+
+    Administration réservée aux porteurs de ``rh_voir``/``rh_gerer`` (gate de
+    classe) ; RÉPONDRE est ouvert à tout employé authentifié de la société,
+    exactement comme le vote pulse XRH32.
+
+    Action :
+    * ``POST .../{id}/repondre/`` — une réponse par utilisateur (409 au
+      second envoi), anonyme ou nominative selon l'enquête.
+    """
+    queryset = EnqueteEngagement.objects.prefetch_related('reponses').all()
+    serializer_class = EnqueteEngagementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre']
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_permissions(self):
+        # NTHCM14 — répondre est ouvert à TOUT employé authentifié de la
+        # société (patron XRH32 ``repondre``) ; gérer les enquêtes reste
+        # soumis au gate de classe.
+        if self.action == 'repondre':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='repondre')
+    def repondre(self, request, pk=None):
+        enquete = self.get_object()
+        reponses = request.data.get('reponses')
+        if not isinstance(reponses, dict):
+            return Response(
+                {'reponses': ['Les réponses doivent être un objet '
+                              '{question: valeur}.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.repondre_enquete(
+                enquete, request.user, reponses=reponses)
+        except services.DejaRepondueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {'detail': 'Réponse enregistrée. Merci !'},
+            status=status.HTTP_201_CREATED)
