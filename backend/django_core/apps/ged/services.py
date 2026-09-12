@@ -2401,13 +2401,73 @@ def fusionner_modele(corps_html, contexte):
     return template.render(Context(safe_contexte))
 
 
+def sections_modele(modele):
+    """NTDOC21 — Sections conditionnelles déclarées sur un modèle (liste).
+
+    Tolérant : une valeur absente, nulle ou malformée renvoie une liste vide —
+    le modèle se comporte alors EXACTEMENT comme avant NTDOC21."""
+    brut = getattr(modele, 'sections', None)
+    if not isinstance(brut, list):
+        return []
+    return [s for s in brut if isinstance(s, dict)]
+
+
+def section_incluse(section, contexte):
+    """NTDOC21 — La section doit-elle figurer dans le document assemblé ?
+
+    Une section SANS ``conditions`` (absentes, nulles ou vides) est TOUJOURS
+    incluse — c'est ce qui garantit qu'un modèle sans condition se comporte
+    comme avant. Sinon, l'arbre est évalué par ``core.rules`` (FG367) sur les
+    métadonnées de fusion : structure malformée ou champ absent ⇒ False, jamais
+    d'exception."""
+    from core.rules import evaluate_condition_group
+
+    conditions = section.get('conditions')
+    if not conditions:
+        return True
+    return bool(evaluate_condition_group(conditions, dict(contexte or {})))
+
+
+def fusionner_document_modele(modele, contexte):
+    """NTDOC21 — Assemble le CORPS d'un document : base + sections retenues.
+
+    Le ``corps_html`` historique (GED27) est TOUJOURS rendu en premier ; les
+    ``sections`` (NTDOC21) sont ensuite ajoutées DANS L'ORDRE déclaré, en
+    sautant celles dont la condition est fausse. Chaque section est fusionnée
+    par la MÊME substitution sûre que le corps (``fusionner_modele``, contexte
+    borné — jamais d'exécution de code arbitraire).
+
+    Sans aucune section, le résultat est byte-identique à
+    ``fusionner_modele(modele.corps_html, contexte)``.
+    """
+    morceaux = [fusionner_modele(modele.corps_html, contexte)]
+    for section in sections_modele(modele):
+        if not section_incluse(section, contexte):
+            continue
+        titre = str(section.get('titre') or '').strip()
+        corps = fusionner_modele(section.get('corps_html') or '', contexte)
+        if not titre and not corps:
+            continue
+        bloc = "<section class='section-modele'>"
+        if titre:
+            titre_sur = fusionner_modele(titre, contexte)
+            bloc += f"<h2>{titre_sur}</h2>"
+        bloc += corps + "</section>"
+        morceaux.append(bloc)
+    return ''.join(m for m in morceaux if m)
+
+
 def _modele_html_document(modele, contexte):
     """GED27 — Construit le HTML complet (en-tête + corps fusionné) d'un modèle.
 
     Enrobe le corps fusionné dans un squelette HTML imprimable minimal (police,
     marges) — même esprit que le PDF interne de `contrats` (hors `/proposal`).
+
+    NTDOC21 — le corps passe désormais par ``fusionner_document_modele``, qui
+    ajoute les SECTIONS conditionnelles après le corps historique. Un modèle
+    sans section produit un HTML byte-identique à avant.
     """
-    corps = fusionner_modele(modele.corps_html, contexte)
+    corps = fusionner_document_modele(modele, contexte)
     titre = (modele.nom or 'Document').replace('<', '&lt;').replace('>', '&gt;')
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"

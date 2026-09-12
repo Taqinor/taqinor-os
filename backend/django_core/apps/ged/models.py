@@ -2296,6 +2296,18 @@ class ModeleDocument(models.Model):
     # Fusionné côté serveur via le moteur de gabarit Django (contexte borné).
     corps_html = models.TextField(
         blank=True, default='', verbose_name='corps HTML (avec {{ champs }})')
+    # NTDOC21 — SECTIONS conditionnelles, EN PLUS du `corps_html` ci-dessus
+    # (jamais à sa place) : une liste d'objets
+    # ``{'titre': str, 'corps_html': str, 'conditions': <groupe FG367>}``.
+    # `conditions` est un arbre `core.rules` (groupes ET/OU/NON) évalué sur les
+    # métadonnées de fusion — ex. « inclure la clause RGPD SI pays == France ».
+    # Une section SANS conditions est toujours incluse. Liste VIDE (défaut) =
+    # comportement GED27 strictement inchangé.
+    # Usage : lettres de mission, PV internes, attestations, courriers RH —
+    # JAMAIS un PDF de devis client (rule #4, `/proposal` reste l'unique voie).
+    sections = models.JSONField(
+        default=list, blank=True,
+        verbose_name='sections conditionnelles')
     # GED28 — Classement automatique : où DÉPOSER le document généré.
     # `cabinet_cible` = nom du cabinet de destination (auto-créé si absent) ;
     # `dossier_cible` = nom du dossier racine de destination, qui peut porter des
