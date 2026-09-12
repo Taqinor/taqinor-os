@@ -5157,6 +5157,232 @@ _COMPTE_CIMR = '4443'
 _COMPTE_NET = '4432'
 
 
+# ── NTPAY2 — Schéma comptable paramétrable (rubrique × section analytique) ──
+
+# Le plan STANDARD : chaque poste système et le compte CGNC qu'il portait en
+# dur dans ``journal_de_paie``, plus le SENS (« debit »/« credit ») de ce
+# poste dans l'écriture. C'est l'unique source du seed idempotent — un schéma
+# semé reproduit donc l'écriture historique à l'identique.
+SCHEMA_COMPTABLE_STANDARD = [
+    ('brut', 'debit', _COMPTE_REMUNERATION),
+    ('charges_patronales', 'debit', _COMPTE_CHARGES_SOCIALES),
+    ('cnss_organismes', 'credit', _COMPTE_CNSS),
+    ('ir', 'credit', _COMPTE_IR),
+    ('cimr', 'credit', _COMPTE_CIMR),
+    ('net', 'credit', _COMPTE_NET),
+]
+
+# Comptes par défaut par poste système (repli quand aucun schéma n'est défini
+# ou quand la ligne de schéma laisse le compte vide).
+COMPTES_SYSTEME_DEFAUT = {
+    code: compte for code, _sens, compte in SCHEMA_COMPTABLE_STANDARD
+}
+
+
+def ensure_schema_comptable_standard(company):
+    """Sème (idempotent) le plan comptable paie standard (NTPAY2).
+
+    Crée la ligne manquante de chaque poste système avec le compte CGNC que
+    ``journal_de_paie`` utilisait en dur — donc sans changer un centime de
+    l'écriture produite. Ne touche JAMAIS une ligne déjà présente (un compte
+    édité par le cabinet survit à un re-seed). Renvoie
+    ``{'lignes': N}`` (nombre de lignes CRÉÉES).
+    """
+    from .models import SchemaComptablePaie
+
+    created = 0
+    for ordre, (code, sens, compte) in enumerate(
+            SCHEMA_COMPTABLE_STANDARD, start=1):
+        defaults = {
+            'ordre': ordre,
+            'actif': True,
+            'compte_debit': compte if sens == 'debit' else '',
+            'compte_credit': compte if sens == 'credit' else '',
+        }
+        _, cree = SchemaComptablePaie.objects.get_or_create(
+            company=company, code_systeme=code, rubrique=None,
+            defaults=defaults)
+        if cree:
+            created += 1
+    return {'lignes': created}
+
+
+def reinitialiser_schema_comptable(company):
+    """Réinitialise le plan comptable paie au standard (NTPAY2).
+
+    Supprime les lignes de POSTE SYSTÈME de la société puis rejoue le seed :
+    l'écran « Plan comptable paie » offre ainsi un vrai bouton « Réinitialiser
+    au plan standard ». Les lignes par RUBRIQUE sont CONSERVÉES (elles n'ont
+    pas d'équivalent standard — les effacer détruirait un paramétrage que le
+    standard ne sait pas reconstruire). Renvoie ``{'supprimees', 'lignes'}``.
+    """
+    from .models import SchemaComptablePaie
+
+    with transaction.atomic():
+        supprimees, _ = (
+            SchemaComptablePaie.objects
+            .filter(company=company, rubrique__isnull=True)
+            .delete()
+        )
+        resultat = ensure_schema_comptable_standard(company)
+    return {'supprimees': supprimees, 'lignes': resultat['lignes']}
+
+
+def resoudre_schema_comptable(company):
+    """Résout le schéma comptable ACTIF d'une société (NTPAY2), lecture seule.
+
+    Renvoie ``{'defini': bool, 'systeme': {code: ligne}, 'rubriques':
+    {code_rubrique: ligne}}`` où ``ligne`` est un dict
+    ``{'compte_debit', 'compte_credit', 'section_analytique_id'}``.
+
+    ``defini`` est faux quand la société n'a AUCUNE ligne active : les
+    appelants retombent alors intégralement sur les comptes codés en dur
+    (rétro-compatibilité stricte — l'écriture est identique au centime).
+    """
+    from .models import SchemaComptablePaie
+
+    lignes = list(
+        SchemaComptablePaie.objects
+        .filter(company=company, actif=True)
+        .select_related('rubrique')
+        .order_by('ordre', 'id')
+    )
+    systeme = {}
+    rubriques = {}
+    for ligne in lignes:
+        valeur = {
+            'compte_debit': (ligne.compte_debit or '').strip(),
+            'compte_credit': (ligne.compte_credit or '').strip(),
+            'section_analytique_id': ligne.section_analytique_id,
+        }
+        if ligne.rubrique_id:
+            rubriques[ligne.rubrique.code] = valeur
+        elif ligne.code_systeme:
+            systeme[ligne.code_systeme] = valeur
+    return {
+        'defini': bool(lignes),
+        'systeme': systeme,
+        'rubriques': rubriques,
+    }
+
+
+def _compte_schema(schema, code_systeme, sens):
+    """Numéro de compte du poste ``code_systeme`` (schéma sinon défaut)."""
+    ligne = schema['systeme'].get(code_systeme) or {}
+    numero = ligne.get(f'compte_{sens}') or ''
+    return numero or COMPTES_SYSTEME_DEFAUT[code_systeme]
+
+
+def _section_schema(schema, code_systeme):
+    """Section analytique du poste ``code_systeme`` (ou ``None``)."""
+    return (schema['systeme'].get(code_systeme) or {}).get(
+        'section_analytique_id')
+
+
+def _resolveur_compte(company, compta_services):
+    """Fabrique le résolveur « numéro de compte → instance » (NTPAY2).
+
+    Un numéro ABSENT du plan comptable lève une ``ValidationError`` qui NOMME
+    le compte fautif : un schéma qui route une rubrique vers un compte
+    inexistant doit dire lequel, jamais planter en 500 sur un ``None`` passé à
+    l'écriture.
+    """
+    from django.core.exceptions import ValidationError
+
+    def compte(numero):
+        instance = compta_services.get_compte(company, numero)
+        if instance is None:
+            raise ValidationError(
+                f'Plan comptable paie — compte « {numero} » introuvable au '
+                'plan comptable de la société : créez-le en comptabilité ou '
+                'corrigez la ligne de schéma qui le référence.')
+        return instance
+
+    return compte
+
+
+def _resolveur_section(company, compta_services):
+    """Convertit ``centre_cout_id`` en instance ``CentreCout`` (NTPAY2).
+
+    ``LigneEcriture.centre_cout`` est une FK : l'id brut ne suffit pas. Une
+    section inconnue est simplement ignorée (aucune ventilation) — jamais un
+    blocage de l'écriture de paie.
+    """
+    def section(ligne):
+        centre_id = ligne.pop('centre_cout_id', None)
+        if centre_id:
+            centre = compta_services.get_centre_cout(company, centre_id)
+            if centre is not None:
+                ligne['centre_cout'] = centre
+        return ligne
+
+    return section
+
+
+def totaux_lignes_rubriques_periode(periode, codes):
+    """Total des lignes de GAIN par code de rubrique (NTPAY2), lecture seule.
+
+    Somme, sur les bulletins VALIDÉS de la ``periode``, les ``LigneBulletin``
+    de type GAIN dont le ``code`` figure dans ``codes``. Sert à ÉCLATER le
+    débit du brut par rubrique quand un schéma comptable route une rubrique
+    vers son propre compte. Renvoie ``{code: Decimal}`` (codes absents omis).
+    """
+    from django.db.models import Sum
+
+    from .models import BulletinPaie, LigneBulletin
+
+    if not codes:
+        return {}
+    agrege = (
+        LigneBulletin.objects
+        .filter(company=periode.company, bulletin__periode=periode,
+                bulletin__statut=BulletinPaie.STATUT_VALIDE,
+                type=Rubrique.TYPE_GAIN, code__in=list(codes))
+        .values('code')
+        .annotate(total=Sum('montant'))
+    )
+    return {row['code']: _q(row['total'] or 0) for row in agrege}
+
+
+def _lignes_debit_brut(periode, schema, brut, compte_resolveur):
+    """Lignes de DÉBIT du brut, éclatées par rubrique si le schéma le demande.
+
+    Le total débité reste STRICTEMENT égal à ``brut`` : la part routée vers
+    les comptes de rubrique est PLAFONNÉE au brut (une rubrique dont les
+    lignes de bulletin ne rejoignent pas le brut — remboursement de frais,
+    entrée hors bases — ne peut donc jamais déséquilibrer l'écriture), et le
+    reliquat reste sur le compte du poste ``brut``.
+    """
+    compte_brut = _compte_schema(schema, 'brut', 'debit')
+    section_brut = _section_schema(schema, 'brut')
+    lignes = []
+    reste = brut
+    if schema['rubriques'] and brut > 0:
+        totaux = totaux_lignes_rubriques_periode(
+            periode, schema['rubriques'].keys())
+        for code, montant in sorted(totaux.items()):
+            conf = schema['rubriques'][code]
+            numero = conf['compte_debit'] or compte_brut
+            montant = _q(min(Decimal(montant), reste))
+            if montant <= 0:
+                continue
+            reste = _q(reste - montant)
+            lignes.append({
+                'compte': compte_resolveur(numero),
+                'libelle': f'Rémunérations — {code}',
+                'debit': montant, 'credit': 0,
+                'centre_cout_id': conf['section_analytique_id'],
+            })
+    if reste > 0 or not lignes:
+        lignes.insert(0, {
+            'compte': compte_resolveur(compte_brut),
+            'libelle': 'Rémunérations du personnel',
+            'debit': _q(reste), 'credit': 0,
+            'centre_cout_id': section_brut,
+        })
+    return lignes
+
+
 def livre_de_paie(periode):
     """Livre de paie d'une période (PAIE33) — registre récapitulatif.
 
@@ -5308,16 +5534,20 @@ def journal_de_paie(periode, *, created_by=None):
     _refuser_journal_deja_poste(periode)
 
     company = periode.company
+    # NTPAY2 — schéma comptable paramétrable : s'il existe des lignes ACTIVES,
+    # elles PRIMENT sur les comptes codés en dur ; sinon on retombe exactement
+    # sur le comportement historique.
+    schema = resoudre_schema_comptable(company)
     # Sème le plan comptable si un compte requis manque (idempotent).
     requis = [
-        _COMPTE_REMUNERATION, _COMPTE_CHARGES_SOCIALES, _COMPTE_CNSS,
-        _COMPTE_IR, _COMPTE_CIMR, _COMPTE_NET,
+        _compte_schema(schema, code, sens)
+        for code, sens, _defaut in SCHEMA_COMPTABLE_STANDARD
     ]
     if any(compta_services.get_compte(company, num) is None for num in requis):
         compta_services.seed_plan_comptable(company)
 
-    def compte(numero):
-        return compta_services.get_compte(company, numero)
+    compte = _resolveur_compte(company, compta_services)
+    section = _resolveur_section(company, compta_services)
 
     brut = totaux['brut']
     charges_pat = totaux['charges_patronales']
@@ -5325,27 +5555,30 @@ def journal_de_paie(periode, *, created_by=None):
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
-    lignes = [
-        {'compte': compte(_COMPTE_REMUNERATION),
-         'libelle': 'Rémunérations du personnel', 'debit': brut, 'credit': 0},
-    ]
+    lignes = _lignes_debit_brut(periode, schema, brut, compte)
     if charges_pat > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CHARGES_SOCIALES),
+            'compte': compte(
+                _compte_schema(schema, 'charges_patronales', 'debit')),
             'libelle': 'Charges sociales patronales',
-            'debit': charges_pat, 'credit': 0})
+            'debit': charges_pat, 'credit': 0,
+            'centre_cout_id': _section_schema(schema, 'charges_patronales')})
     if cnss_amo > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CNSS),
-            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
+            'compte': compte(
+                _compte_schema(schema, 'cnss_organismes', 'credit')),
+            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo,
+            'centre_cout_id': _section_schema(schema, 'cnss_organismes')})
     if ir > 0:
         lignes.append({
-            'compte': compte(_COMPTE_IR),
-            'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir})
+            'compte': compte(_compte_schema(schema, 'ir', 'credit')),
+            'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir,
+            'centre_cout_id': _section_schema(schema, 'ir')})
     if cimr > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CIMR),
-            'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr})
+            'compte': compte(_compte_schema(schema, 'cimr', 'credit')),
+            'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr,
+            'centre_cout_id': _section_schema(schema, 'cimr')})
     # Net à payer = solde équilibrant (brut + charges pat − cotisations − IR
     # − CIMR). On le calcule pour garantir l'équilibre exact même en cas
     # d'arrondis.
@@ -5357,9 +5590,11 @@ def journal_de_paie(periode, *, created_by=None):
     )
     net_equilibrant = _q(total_debit - total_credit_hors_net)
     lignes.append({
-        'compte': compte(_COMPTE_NET),
+        'compte': compte(_compte_schema(schema, 'net', 'credit')),
         'libelle': 'Rémunérations dues au personnel (net)',
-        'debit': 0, 'credit': net_equilibrant})
+        'debit': 0, 'credit': net_equilibrant,
+        'centre_cout_id': _section_schema(schema, 'net')})
+    lignes = [section(ligne) for ligne in lignes]
 
     # Date de l'écriture = dernier jour du mois de paie (proxy : 28, toujours
     # valide). Le détail jour exact n'a pas d'incidence comptable mensuelle.
@@ -6761,15 +6996,19 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     _refuser_journal_deja_poste(periode)
 
     company = periode.company
+    # NTPAY2 — même schéma comptable paramétrable que ``journal_de_paie`` pour
+    # les POSTES SYSTÈME (sans quoi les deux représentations du même run
+    # utiliseraient des comptes différents). La ventilation par centre de coût
+    # de cette variante reste, elle, pilotée par XPAI17.
+    schema = resoudre_schema_comptable(company)
     requis = [
-        _COMPTE_REMUNERATION, _COMPTE_CHARGES_SOCIALES, _COMPTE_CNSS,
-        _COMPTE_IR, _COMPTE_CIMR, _COMPTE_NET,
+        _compte_schema(schema, code, sens)
+        for code, sens, _defaut in SCHEMA_COMPTABLE_STANDARD
     ]
     if any(compta_services.get_compte(company, num) is None for num in requis):
         compta_services.seed_plan_comptable(company)
 
-    def compte(numero):
-        return compta_services.get_compte(company, numero)
+    compte = _resolveur_compte(company, compta_services)
 
     # Ventile le coût employeur (rémunération + charges patronales) par
     # centre de coût, agrégé sur TOUS les bulletins de la période.
@@ -6796,21 +7035,22 @@ def journal_de_paie_ventile(periode, *, created_by=None):
         # ``CentreCout`` (jamais l'id brut) — résolue en lecture seule via
         # ``compta_services.get_centre_cout``.
         lignes.append({
-            'compte': compte(_COMPTE_REMUNERATION),
+            'compte': compte(_compte_schema(schema, 'brut', 'debit')),
             'libelle': libelle, 'debit': montant, 'credit': 0,
             'centre_cout': compta_services.get_centre_cout(company, centre_id),
         })
     if cnss_amo > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CNSS),
+            'compte': compte(
+                _compte_schema(schema, 'cnss_organismes', 'credit')),
             'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
     if ir > 0:
         lignes.append({
-            'compte': compte(_COMPTE_IR),
+            'compte': compte(_compte_schema(schema, 'ir', 'credit')),
             'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir})
     if cimr > 0:
         lignes.append({
-            'compte': compte(_COMPTE_CIMR),
+            'compte': compte(_compte_schema(schema, 'cimr', 'credit')),
             'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr})
 
     total_debit = sum((Decimal(lig['debit']) for lig in lignes), Decimal('0'))
@@ -6818,7 +7058,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
         (Decimal(lig['credit']) for lig in lignes), Decimal('0'))
     net_equilibrant = _q(total_debit - total_credit_hors_net)
     lignes.append({
-        'compte': compte(_COMPTE_NET),
+        'compte': compte(_compte_schema(schema, 'net', 'credit')),
         'libelle': 'Rémunérations dues au personnel (net)',
         'debit': 0, 'credit': net_equilibrant})
 

@@ -2234,3 +2234,105 @@ class TypeEntreePonctuelle(models.Model):
 
     def __str__(self):
         return f'{self.code} — {self.libelle}'
+
+
+# ── NTPAY2 — Interface comptable paramétrable (rubrique × analytique) ───────
+
+class SchemaComptablePaie(models.Model):
+    """Ligne de mapping comptable de la paie (NTPAY2), scopée société.
+
+    ``services.journal_de_paie`` codait EN DUR les comptes CGNC de l'écriture
+    de paie (6171 brut, 6174 charges patronales, 4441 organismes sociaux, 4452
+    IR, 4443 CIMR, 4432 net) : aucun cabinet ne pouvait router une rubrique sur
+    son propre compte. Chaque ligne de ce modèle redirige UNE cible :
+
+    * soit un **code système** (``CODE_BRUT``/``CODE_CHARGES_PATRONALES``/… —
+      les six postes de l'écriture historique) ;
+    * soit une **rubrique** du catalogue (``Rubrique``) — la part du brut
+      portée par cette rubrique est alors débitée sur SON compte, le reste
+      restant sur le compte du poste ``brut``.
+
+    ``section_analytique_id`` référence ``compta.CentreCout`` en STRING-FK
+    (jamais un import de ``compta.models``), comme
+    ``VentilationAnalytiquePaie``.
+
+    RÉTRO-COMPATIBILITÉ STRICTE : sans AUCUNE ligne active, ``journal_de_paie``
+    produit exactement l'écriture d'avant (mêmes comptes, au centime).
+    """
+    CODE_BRUT = 'brut'
+    CODE_CHARGES_PATRONALES = 'charges_patronales'
+    CODE_CNSS_ORGANISMES = 'cnss_organismes'
+    CODE_IR = 'ir'
+    CODE_CIMR = 'cimr'
+    CODE_NET = 'net'
+    CODE_SYSTEME_CHOICES = [
+        (CODE_BRUT, 'Brut (rémunérations)'),
+        (CODE_CHARGES_PATRONALES, 'Charges sociales patronales'),
+        (CODE_CNSS_ORGANISMES, 'Organismes sociaux (CNSS/AMO/AF/TFP)'),
+        (CODE_IR, 'IR retenu à la source'),
+        (CODE_CIMR, 'CIMR'),
+        (CODE_NET, 'Net à payer (dû au personnel)'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_schemas_comptables',
+        verbose_name='Société',
+    )
+    code_systeme = models.CharField(
+        max_length=24, choices=CODE_SYSTEME_CHOICES, blank=True, default='',
+        verbose_name='Poste système')
+    rubrique = models.ForeignKey(
+        Rubrique,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='schemas_comptables',
+        verbose_name='Rubrique',
+    )
+    compte_debit = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Compte de débit')
+    compte_credit = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Compte de crédit')
+    # STRING-FK cross-app vers compta.CentreCout — jamais compta.models direct.
+    section_analytique_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Section analytique (ID, compta.CentreCout)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de plan comptable paie'
+        verbose_name_plural = 'Plan comptable paie'
+        ordering = ['ordre', 'code_systeme', 'id']
+        constraints = [
+            # Une ligne cible SOIT un poste système, SOIT une rubrique —
+            # jamais les deux, jamais aucun des deux (sans quoi la résolution
+            # n'a pas de clé).
+            models.CheckConstraint(
+                check=(
+                    models.Q(rubrique__isnull=True) & ~models.Q(code_systeme='')
+                ) | (
+                    models.Q(rubrique__isnull=False) & models.Q(code_systeme='')
+                ),
+                name='schema_paie_systeme_xor_rubrique',
+            ),
+            models.UniqueConstraint(
+                fields=['company', 'code_systeme'],
+                condition=models.Q(rubrique__isnull=True),
+                name='uniq_schema_paie_code_systeme',
+            ),
+            models.UniqueConstraint(
+                fields=['company', 'rubrique'],
+                condition=models.Q(rubrique__isnull=False),
+                name='uniq_schema_paie_rubrique',
+            ),
+        ]
+
+    def __str__(self):
+        cible = self.code_systeme or (
+            self.rubrique.code if self.rubrique_id else '?')
+        return (f'{cible} → D{self.compte_debit or "—"} / '
+                f'C{self.compte_credit or "—"}')
