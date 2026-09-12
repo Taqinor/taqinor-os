@@ -27,6 +27,7 @@ from .models import (
     CauserieParticipant,
     CauserieSecurite,
     Certification,
+    CheckInOkr,
     Competence,
     CompetenceEmploye,
     CompetenceRequise,
@@ -3609,6 +3610,36 @@ class FeedbackContinuSerializer(serializers.ModelSerializer):
 
     def validate_pour(self, value):
         return _meme_societe(self, value, 'Destinataire')
+
+
+class CheckInOkrSerializer(serializers.ModelSerializer):
+    """NTHCM9 — check-in d'avancement sur un OKR individuel.
+
+    ``auteur``, ``valeurs_snapshot`` et ``date`` sont posés CÔTÉ SERVEUR par
+    ``services.enregistrer_checkin_okr`` : un check-in ne s'antidate pas et ne
+    se signe pas au nom d'un autre.
+    """
+    auteur_nom = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = CheckInOkr
+        fields = [
+            'id', 'okr', 'commentaire', 'valeurs_snapshot',
+            'auteur', 'auteur_nom', 'date', 'date_creation',
+        ]
+        read_only_fields = [
+            'valeurs_snapshot', 'auteur', 'date', 'date_creation']
+
+    def get_auteur_nom(self, obj) -> str:
+        if obj.auteur_id is None:
+            return ''
+        return obj.auteur.get_full_name() or obj.auteur.username or ''
+
+    def validate_okr(self, value):
+        return _meme_societe(self, value, 'OKR')
 
 
 class RattachementFonctionnelSerializer(serializers.ModelSerializer):

@@ -9,6 +9,7 @@ import {
   Car, FileText, CalendarPlus, ClipboardCheck, ListChecks,
   Calculator, LogOut, Wallet, Clock3, CalendarOff, Milestone,
   DoorClosed, Gift, SlidersHorizontal, HardHat, MapPin, Network, Scale,
+  Target,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -64,6 +65,10 @@ const Organigramme = lazy(() => import('./Organigramme.jsx'))
 // `salaires_voir` COTE SERVEUR : la nav reste sur le gate RH, le 403
 // eventuel vient du serveur, jamais d'un gate invente ici).
 const CalibrationRevisions = lazy(() => import('./CalibrationRevisions.jsx'))
+// NTHCM9 — tableau de bord OKR (mes OKR / mon equipe / entreprise). Ouvert
+// a tous les roles : le serveur resout MON dossier, le perimetre est donc
+// deja borne a l'appelant (aucun ?employe= dans l'URL).
+const OkrDashboard = lazy(() => import('./OkrDashboard.jsx'))
 
 // Rôles autorisés pour le back-office RH — 'normal' inclus : un rôle fin de
 // palier normal portant `rh_voir` est servi 200 par le serveur, la nav doit
@@ -119,6 +124,8 @@ export default {
       { to: '/rh/organigramme', label: 'Organigramme', icon: <Network size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // NTHCM6 — calibration des révisions salariales.
       { to: '/rh/calibration-revisions', label: 'Calibration des révisions', icon: <Scale size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      // NTHCM9 — tableau de bord OKR, self-service (tous rôles).
+      { to: '/rh/okr', label: 'Mes OKR', icon: <Target size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },
       // NTFSM26 — équipe terrain par zone (dispatch d'intervention).
       { to: '/dispatch/equipe', label: 'Équipe terrain (zones)', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // UX28 — portail self-service : tous rôles. La Sidebar filtre via
@@ -150,6 +157,7 @@ export default {
     ['/rh/presents-chantier', 'Présents chantier'],
     ['/rh/organigramme', 'Organigramme'],
     ['/rh/calibration-revisions', 'Calibration des révisions salariales'],
+    ['/rh/okr', 'Mes OKR'],
     ['/dispatch/equipe', 'Équipe terrain par zone'],
     ['/rh/portail', 'Mon portail RH'],
     ['/rh', 'Cockpit RH'],
@@ -185,6 +193,9 @@ export default {
     { path: '/rh/organigramme', component: Organigramme, ...GATE_RH },
     // NTHCM6 — calibration des révisions salariales.
     { path: '/rh/calibration-revisions', component: CalibrationRevisions, ...GATE_RH },
+    // NTHCM9 — tableau de bord OKR : tous rôles (authLoader simple, comme
+    // le portail self-service UX28).
+    { path: '/rh/okr', component: OkrDashboard },
     // NTFSM26 — écran de dispatch alimenté par les données RH.
     { path: '/dispatch/equipe', component: EquipeDispatch, ...GATE_RH },
     // UX28 — portail self-service : tous rôles (authLoader simple).

@@ -581,6 +581,15 @@ const rhApi = {
   getOrganigramme: (params) =>
     api.get('/rh/employes/organigramme/', { params }),
 
+  // ── NTHCM8/9 — OKR (objectifs, rollup entreprise, check-ins) ──
+  getTableauBordOkr: (params) =>
+    api.get('/rh/okr-individuels/tableau-de-bord/', { params }),
+  getRollupObjectif: (id) =>
+    api.get(`/rh/objectifs-entreprise/${id}/rollup/`),
+  checkInOkr: (id, data) =>
+    api.post(`/rh/okr-individuels/${id}/check-in/`, data ?? {}),
+  getCheckInsOkr: (params) => api.get('/rh/checkins-okr/', { params }),
+
   // ── NTHCM5/6 — cycles de révision salariale (SENSIBLE : le serveur gate
   //    tout sur `salaires_voir`) ──
   getCyclesRevision: (params) => api.get('/rh/cycles-revision/', { params }),

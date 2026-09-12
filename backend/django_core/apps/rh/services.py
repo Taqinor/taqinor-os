@@ -3204,6 +3204,59 @@ def proposer_revision(cycle, employe, *, auteur_dossier, user,
 
 # ── NTHCM7 — application d'un cycle clos → nouvelles ``Remuneration`` ───────
 
+class CheckInOkrError(Exception):
+    """NTHCM9 — check-in refusé (key result hors OKR, valeur illisible)."""
+
+
+@transaction.atomic
+def enregistrer_checkin_okr(okr, *, auteur, valeurs=None, commentaire='',
+                            aujourdhui=None):
+    """NTHCM9 — enregistre un check-in ET met à jour les valeurs actuelles.
+
+    ``valeurs`` est une map ``{key_result_id: valeur}``. Chaque key result
+    nommé DOIT appartenir à ``okr`` (sinon ``CheckInOkrError``) : sans ce
+    contrôle, un appelant ferait monter la progression d'un OKR qui n'est pas
+    le sien. ``progression_pct`` est recalculée par ``save()`` du modèle
+    (NTHCM8), jamais posée ici.
+
+    L'HISTORIQUE EST LE POINT. ``valeurs_snapshot`` fige les valeurs du
+    moment : ``KeyResultIndividuel.valeur_actuelle`` est écrasée à chaque
+    check-in et ne dirait plus rien du chemin parcouru.
+
+    ``auteur`` vient du serveur (l'appelant authentifié), jamais du corps.
+    """
+    from decimal import InvalidOperation
+
+    from .models import CheckInOkr, KeyResultIndividuel
+
+    valeurs = valeurs or {}
+    lignes = {
+        str(ligne.id): ligne
+        for ligne in KeyResultIndividuel.objects.filter(okr=okr)}
+
+    snapshot = {}
+    for cle, valeur_brute in valeurs.items():
+        ligne = lignes.get(str(cle))
+        if ligne is None:
+            raise CheckInOkrError(
+                f'Le key result {cle} n’appartient pas à cet OKR.')
+        try:
+            valeur = Decimal(str(valeur_brute))
+        except (TypeError, ValueError, ArithmeticError, InvalidOperation):
+            raise CheckInOkrError(
+                f'Valeur illisible pour le key result {cle}.')
+        ligne.valeur_actuelle = valeur
+        ligne.save(update_fields=['valeur_actuelle', 'progression_pct',
+                                  'updated_at'])
+        snapshot[str(ligne.id)] = str(valeur)
+
+    return CheckInOkr.objects.create(
+        company=okr.company, okr=okr, auteur=auteur,
+        commentaire=commentaire or '',
+        valeurs_snapshot=snapshot,
+        date=aujourdhui or timezone.localdate())
+
+
 class CalibrationDejaValideeError(Exception):
     """NTHCM6 — la calibration de ce cycle a déjà été figée (400)."""
 

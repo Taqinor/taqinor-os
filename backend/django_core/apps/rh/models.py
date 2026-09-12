@@ -7339,6 +7339,56 @@ class FeedbackContinu(TenantModel):
         return f'{self.get_type_display()} → {self.pour_id}'
 
 
+class CheckInOkr(TenantModel):
+    """NTHCM9 — point d'avancement LÉGER sur un OKR individuel.
+
+    Entre deux revues formelles, un OKR se pilote par des check-ins hebdo ou
+    bi-mensuels : un commentaire court + les valeurs du moment. Le check-in
+    est le SEUL endroit où l'on écrit « où j'en suis » — les
+    ``KeyResultIndividuel`` sont mis à jour PAR lui
+    (``services.enregistrer_checkin_okr``), et l'historique des check-ins
+    conserve la trajectoire (un ``valeur_actuelle`` écrasé ne dirait rien du
+    chemin parcouru).
+
+    ``valeurs_snapshot`` est une map ``{key_result_id: valeur}`` — figée au
+    moment du check-in, jamais recalculée après coup.
+
+    ``auteur`` est posé CÔTÉ SERVEUR. ``company`` héritée du socle
+    ``core.models.TenantModel`` (SCA4).
+    """
+    okr = models.ForeignKey(
+        'OkrIndividuel',
+        on_delete=models.CASCADE,  # on_delete: composition — un check-in ne décrit que SON okr ; sans lui il ne mesure plus rien.
+        related_name='checkins',
+        verbose_name='OKR',
+    )
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    valeurs_snapshot = models.JSONField(
+        blank=True, default=dict, verbose_name='Valeurs au moment du check-in')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_checkins_okr',
+        verbose_name='Auteur',
+    )
+    date = models.DateField(verbose_name='Date du check-in')
+
+    class Meta:
+        verbose_name = 'Check-in OKR'
+        verbose_name_plural = 'Check-ins OKR'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'okr'],
+                name='rh_checkinokr_comp_okr_idx'),
+        ]
+
+    def __str__(self):
+        return f'Check-in {self.date} — OKR {self.okr_id}'
+
+
 class RattachementFonctionnel(TenantModel):
     """NTHCM3 — ligne FONCTIONNELLE (dotted-line), distincte de la hiérarchie.
 

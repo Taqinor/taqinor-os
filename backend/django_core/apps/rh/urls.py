@@ -21,6 +21,7 @@ from .views import (
     AnalyticsRhViewSet,
     CockpitRhViewSet,
     CertificationViewSet,
+    CheckInOkrViewSet,
     CycleRevisionSalarialeViewSet,
     EnqueteEngagementViewSet,
     EnveloppeManagerViewSet,
@@ -199,6 +200,8 @@ router.register(r'propositions-revision', PropositionRevisionViewSet)
 router.register(r'objectifs-entreprise', ObjectifEntrepriseViewSet)
 router.register(r'key-results', KeyResultViewSet)
 router.register(r'okr-individuels', OkrIndividuelViewSet)
+# NTHCM9 — historique des check-ins OKR (lecture).
+router.register(r'checkins-okr', CheckInOkrViewSet)
 router.register(r'key-results-individuels', KeyResultIndividuelViewSet)
 # NTHCM10 — grille 9-box (performance × potentiel).
 router.register(r'evaluations-neuf-box', EvaluationNeufBoxViewSet)

@@ -53,6 +53,7 @@ from .models import (
     CauserieParticipant,
     CauserieSecurite,
     Certification,
+    CheckInOkr,
     Competence,
     CompetenceEmploye,
     CompetenceRequise,
@@ -144,6 +145,7 @@ from .serializers import (
     BulletinPaieSerializer,
     CampagneEvaluationSerializer,
     CampagnePulseSerializer,
+    CheckInOkrSerializer,
     CandidatureActivitySerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
@@ -6485,6 +6487,19 @@ class ObjectifEntrepriseViewSet(_RhBaseViewSet):
             qs = qs.filter(periode=periode)
         return qs
 
+    @action(detail=True, methods=['get'], url_path='rollup')
+    def rollup(self, request, pk=None):
+        """NTHCM9 — avancement remonté des OKR rattachés à cet objectif.
+
+        ``progression_okr_pct`` vaut ``None`` quand AUCUN OKR n'est rattaché :
+        « personne n'y contribue encore » n'est pas « tout le monde est à
+        0 % », et l'écran doit pouvoir les distinguer.
+        """
+        objectif = self.get_object()
+        lignes = selectors.rollup_okr_entreprise(
+            request.user.company, objectif_id=objectif.pk)
+        return Response(lignes[0] if lignes else None)
+
 
 class KeyResultViewSet(_RhBaseViewSet):
     """NTHCM8 — résultats clés d'un objectif d'entreprise (``?objectif=``)."""
@@ -6511,6 +6526,16 @@ class OkrIndividuelViewSet(_RhBaseViewSet):
     search_fields = ['titre', 'periode']
     ordering_fields = ['periode', 'titre']
 
+    def get_permissions(self):
+        # NTHCM9 — les DEUX surfaces self-service sont ouvertes à tous les
+        # rôles : leur périmètre est borné CÔTÉ SERVEUR (le tableau de bord
+        # ne renvoie que MES OKR + ceux de MON équipe ; le check-in refuse un
+        # OKR qui n'est pas le mien sans permission RH d'écriture). Le reste
+        # du viewset garde le gate RH de la classe.
+        if self.action in ('tableau_de_bord', 'check_in'):
+            return [IsAnyRole()]
+        return super().get_permissions()
+
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
@@ -6523,6 +6548,78 @@ class OkrIndividuelViewSet(_RhBaseViewSet):
         parent = params.get('parent')
         if parent:
             qs = qs.filter(objectif_parent_id=parent)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='check-in')
+    def check_in(self, request, pk=None):
+        """NTHCM9 — point d'avancement léger (corps : ``valeurs``, ``commentaire``).
+
+        ``valeurs`` est une map ``{key_result_id: valeur}`` ; chaque key result
+        nommé doit appartenir à CET OKR (400 sinon). L'auteur et la date sont
+        posés côté serveur : un check-in ne s'antidate pas et ne se signe pas
+        au nom d'un autre.
+        """
+        okr = self.get_object()
+        # Un collaborateur check-in SON OKR ; écrire sur celui d'un autre
+        # exige la permission RH d'écriture (même sémantique OrLegacy que le
+        # gate de classe).
+        moi = selectors.dossier_employe_for_user(
+            request.user.company, request.user.id)
+        if not _user_has_or_legacy(request.user, 'rh_gerer') \
+                and (moi is None or okr.employe_id != moi.pk):
+            return Response(
+                {'detail': 'Vous ne pouvez faire un point d’avancement que '
+                           'sur vos propres OKR.'},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            checkin = services.enregistrer_checkin_okr(
+                okr, auteur=request.user,
+                valeurs=request.data.get('valeurs') or {},
+                commentaire=request.data.get('commentaire') or '')
+        except services.CheckInOkrError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            CheckInOkrSerializer(
+                checkin, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='tableau-de-bord')
+    def tableau_de_bord(self, request):
+        """NTHCM9 — MES OKR, ceux de MON ÉQUIPE, et le rollup entreprise.
+
+        Le dossier est résolu SERVEUR depuis le compte appelant — jamais un
+        ``employe`` lu de l'URL, sinon n'importe qui lirait les OKR d'un
+        autre. Un compte sans dossier RH reçoit des listes vides (pas une
+        erreur) et garde le rollup entreprise.
+        """
+        moi = selectors.dossier_employe_for_user(
+            request.user.company, request.user.id)
+        return Response(
+            selectors.tableau_okr_employe(
+                request.user.company, moi,
+                periode=request.query_params.get('periode')))
+
+
+class CheckInOkrViewSet(_RhBaseViewSet):
+    """NTHCM9 — historique des check-ins d'un OKR (``?okr=``), lecture.
+
+    L'ÉCRITURE passe par ``okr-individuels/{id}/check-in/`` : c'est elle qui
+    met aussi à jour les valeurs actuelles des key results. Créer un check-in
+    ici ne poserait qu'une ligne d'historique sans effet — l'action dédiée est
+    le seul point d'entrée.
+    """
+    http_method_names = ['get', 'head', 'options']
+    queryset = CheckInOkr.objects.select_related('okr', 'auteur').all()
+    serializer_class = CheckInOkrSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        okr = self.request.query_params.get('okr')
+        if okr:
+            qs = qs.filter(okr_id=okr)
         return qs
 
 

@@ -3489,6 +3489,109 @@ def zones_intervention(company):
     return sorted(set(valeurs))
 
 
+def rollup_okr_entreprise(company, periode=None, objectif_id=None):
+    """NTHCM9 — avancement d'un objectif d'ENTREPRISE, remonté de ses OKR.
+
+    Pour chaque ``ObjectifEntreprise`` (de la ``periode`` demandée, ou tous) :
+
+    * ``progression_okr_pct`` — MOYENNE des ``OkrIndividuel.progression_pct``
+      rattachés (``objectif_parent``). Un objectif SANS OKR rattaché renvoie
+      ``None``, jamais ``0`` : « personne n'y contribue encore » et « tout le
+      monde est à 0 % » sont deux situations opposées, on ne les confond pas ;
+    * ``progression_key_results_pct`` — la mesure PROPRE de l'objectif
+      (moyenne de ses ``KeyResult``), qui reste la source si la cascade n'est
+      pas utilisée ;
+    * ``nombre_contributeurs`` — le nombre d'employés DISTINCTS porteurs d'un
+      OKR rattaché (pas le nombre d'OKR : deux OKR du même employé ne font
+      pas deux contributeurs).
+
+    Lecture pure, scopée société.
+    """
+    from .models import ObjectifEntreprise, OkrIndividuel
+
+    objectifs = ObjectifEntreprise.objects.filter(company=company)
+    if objectif_id:
+        objectifs = objectifs.filter(pk=objectif_id)
+    if periode:
+        objectifs = objectifs.filter(periode=periode)
+    objectifs = objectifs.prefetch_related('key_results').order_by(
+        '-periode', 'titre')
+
+    lignes = []
+    for objectif in objectifs:
+        okrs = list(
+            OkrIndividuel.objects
+            .filter(company=company, objectif_parent=objectif)
+            .prefetch_related('key_results'))
+        progressions = [okr.progression_pct for okr in okrs]
+        contributeurs = {okr.employe_id for okr in okrs}
+
+        propres = [kr.progression_pct for kr in objectif.key_results.all()]
+        lignes.append({
+            'objectif_id': objectif.id,
+            'titre': objectif.titre,
+            'periode': objectif.periode,
+            'progression_okr_pct': (
+                None if not progressions
+                else (sum(progressions) / len(progressions)).quantize(
+                    Decimal('0.01'))),
+            'progression_key_results_pct': (
+                None if not propres
+                else (sum(propres) / len(propres)).quantize(Decimal('0.01'))),
+            'nombre_contributeurs': len(contributeurs),
+            'nombre_okr_rattaches': len(okrs),
+        })
+    return lignes
+
+
+def tableau_okr_employe(company, employe, periode=None):
+    """NTHCM9 — MES OKR, ceux de MON ÉQUIPE, et le rollup entreprise.
+
+    Trois portées DISTINCTES, jamais mélangées :
+
+    * ``mes_okr`` — les OKR de ``employe`` ;
+    * ``equipe`` — ceux de ses subordonnés DIRECTS (``manager``, NTHCM1). Un
+      non-manager reçoit une liste VIDE, pas une erreur ;
+    * ``entreprise`` — le rollup ``rollup_okr_entreprise``.
+
+    ``employe`` est ``None`` quand le compte appelant n'a pas de dossier RH :
+    ``mes_okr`` et ``equipe`` sont alors vides, le rollup reste servi.
+    """
+    from .models import OkrIndividuel
+
+    def _serialiser(okr):
+        return {
+            'id': okr.id,
+            'titre': okr.titre,
+            'periode': okr.periode,
+            'employe_id': okr.employe_id,
+            'employe': f'{okr.employe.nom} {okr.employe.prenom}',
+            'objectif_parent_id': okr.objectif_parent_id,
+            'progression_pct': okr.progression_pct,
+        }
+
+    base = OkrIndividuel.objects.filter(company=company).select_related(
+        'employe').prefetch_related('key_results')
+    if periode:
+        base = base.filter(periode=periode)
+
+    if employe is None:
+        mes_okr, equipe = [], []
+    else:
+        mes_okr = [_serialiser(okr)
+                   for okr in base.filter(employe=employe)]
+        equipe = [_serialiser(okr)
+                  for okr in base.filter(employe__manager=employe)]
+
+    return {
+        'mes_okr': mes_okr,
+        'equipe': equipe,
+        'entreprise': rollup_okr_entreprise(company, periode=periode),
+        'periode': periode or '',
+        'est_manager': bool(equipe),
+    }
+
+
 #: NTHCM6 — tranches de l'histogramme de calibration, en POINTS DE % (bornes
 #: basses incluses, la dernière est ouverte). Vocabulaire FERMÉ : l'écran ne
 #: choisit pas ses tranches, sinon deux écrans liraient deux distributions.
