@@ -611,6 +611,11 @@ REFUS = {
         ("garantie_etat", "SANS_SOURCE")],
     "frontend/src/features/stock/labels.js": [
         ("Préfixes connus", "SANS_SOURCE")],
+    # NTUX1 — la clé localStorage historique suit une CONVENTION documentée
+    # par un autre fichier FRONTEND (`hooks/useSavedViews.js`), jamais un
+    # champ `choices=` serveur : rien a declarer.
+    "frontend/src/features/uxviews/migrateLocalSavedViews.js": [
+        ("miroir de la convention", "MIROIR_JS")],
     "frontend/src/features/ventes/agronomy.js": [
         ("Aligné sur solar.js", "MIROIR_JS"),
         # QJR166 (30/08) — les deux promesses du moteur unifié : KC_MID_DEFAUT
