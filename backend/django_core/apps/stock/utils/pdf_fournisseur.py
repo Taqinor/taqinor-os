@@ -5,7 +5,19 @@ document est destiné au fournisseur : il affiche légitimement les PRIX
 D'ACHAT, car c'est le prix qu'on paie au fournisseur. Il ne doit JAMAIS être
 exposé comme document client.
 """
+from decimal import Decimal
+
 from apps.ventes.utils.pdf import _company_context, _render_html, _html_to_pdf
+
+# NTP2P25 — taux TVA STATUTAIRE marocain par défaut (biens courants, hors
+# liste des taux réduits 7/10/14 %). `LigneBonCommandeFournisseur` ne porte
+# PAS ENCORE de `taux_tva` par ligne (contrairement à XPUR17 côté
+# `LigneFactureFournisseur`) : ce document interne affiche donc le total TVA
+# calculé à ce taux STANDARD, toujours clairement labellisé « (taux
+# standard) » — jamais présenté comme un montant fiscal définitif, et sans
+# effet sur aucun autre total de l'OS (rapprochement 3 voies FG131 reste sur
+# le HT).
+TAUX_TVA_STANDARD_BCF = Decimal('20')
 
 
 def build_bcf_context(bon_commande):
@@ -45,6 +57,21 @@ def build_bcf_context(bon_commande):
     context['incoterm'] = bon_commande.incoterm or ''
     context['conditions_paiement'] = bon_commande.conditions_paiement or ''
     context['note_bas_page'] = bon_commande.note_bas_page or ''
+    # NTP2P25 — chaîne Total HT → TVA (taux standard) → Total TTC, réservée à
+    # l'affichage (jamais utilisée par le rapprochement 3 voies FG131, qui
+    # reste sur le HT). Omise si le total HT est nul (rien à ventiler).
+    total_ht = context['total_achat'] or Decimal('0')
+    if total_ht:
+        context['taux_tva_standard'] = TAUX_TVA_STANDARD_BCF
+        context['total_tva_standard'] = (
+            total_ht * TAUX_TVA_STANDARD_BCF / Decimal('100')
+        ).quantize(Decimal('0.01'))
+        context['total_ttc_standard'] = (
+            total_ht + context['total_tva_standard'])
+    else:
+        context['taux_tva_standard'] = None
+        context['total_tva_standard'] = None
+        context['total_ttc_standard'] = None
     return context
 
 

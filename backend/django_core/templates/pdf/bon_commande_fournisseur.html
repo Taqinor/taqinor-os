@@ -163,9 +163,34 @@
 
   <!-- Total -->
   <div class="totaux">
+    {% if total_tva_standard is not none %}
+    <div class="totaux-row">
+      <span>Sous-total HT</span>
+      <span>{{ "%.2f"|format(total_achat) }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>TVA ({{ "%.0f"|format(taux_tva_standard) }} % — taux standard)</span>
+      <span>{{ "%.2f"|format(total_tva_standard) }} MAD</span>
+    </div>
+    <div class="totaux-row total">
+      <span>Total TTC</span>
+      <span>{{ "%.2f"|format(total_ttc_standard) }} MAD</span>
+    </div>
+    {% else %}
     <div class="totaux-row total">
       <span>Total HT</span>
       <span>{{ "%.2f"|format(total_achat) }} MAD</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Signatures -->
+  <div style="display:flex; justify-content:space-between; gap:24px; margin-bottom:24px;">
+    <div style="width:48%; border-top:1px solid #cbd5e1; padding-top:8px; font-size:11px; color:#555;">
+      Signature de l'acheteur
+    </div>
+    <div style="width:48%; border-top:1px solid #cbd5e1; padding-top:8px; font-size:11px; color:#555;">
+      Signature du fournisseur (bon pour accord)
     </div>
   </div>
 
