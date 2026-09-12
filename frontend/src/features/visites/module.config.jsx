@@ -28,6 +28,7 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    que le serveur vérifie réellement.
    ========================================================================== */
 
+const MaJourneePage = lazy(() => import('../../pages/visites/MaJourneePage'))
 const VisitesListPage = lazy(() => import('../../pages/visites/VisitesListPage'))
 const VisiteWizardPage = lazy(() => import('../../pages/visites/VisiteWizardPage'))
 const VisiteBureauEtudesPage = lazy(() => import('../../pages/visites/VisiteBureauEtudesPage'))
@@ -81,9 +82,8 @@ const config = {
   ],
   sectionLabels: { visites: 'Visites' },
   routes: [
-    // VTA8 : l'accueil sert la liste « mes visites » existante ; VTA9 y monte
-    // l'écran « Ma journée » (jour + retards, contrat `ma_journee.json`).
-    { path: '/visites', component: VisitesListPage, roles: ROLES, perm: 'visites_voir', permRepliPalier: true },
+    // VTA9 — accueil de l'app : la journée de l'utilisateur (jour + retards).
+    { path: '/visites', component: MaJourneePage, roles: ROLES, perm: 'visites_voir', permRepliPalier: true },
     { path: '/visites/toutes', component: VisitesListPage, roles: ROLES_VALIDER, perm: 'visites_valider' },
     { path: '/visites/revue', component: VisiteBureauEtudesPage, roles: ROLES_VALIDER, perm: 'visites_valider' },
     // Wizard d'une visite : atteint depuis « Ma journée »/la liste/la fiche
