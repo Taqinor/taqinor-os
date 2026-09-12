@@ -238,6 +238,13 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  // CHT22 — un seul niveau de qualité pour changer le statut : le chemin
+  // Select legacy affiche désormais les MÊMES raisons formatées (ch6-blocked-
+  // reasons) que le stepper CH6, au lieu d'un message d'erreur brut. Même
+  // source de raisons (`changer_statut_chantier` → `TransitionRefusee`, gates
+  // CH2) : on intercepte le 400 `{statut: [...]}` plutôt que de dupliquer un
+  // second appel à `etapes-chantier/{id}/etapes/`.
+  const [statutBlockedReasons, setStatutBlockedReasons] = useState(null)
   // Retour FR explicite pour les actions secondaires (équipement / intervention
   // / ticket / besoin) dont les échecs étaient avalés (catch vides).
   const [actionError, setActionError] = useState(null)
@@ -532,6 +539,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     e?.preventDefault?.()
     setSaving(true)
     setSaveError(null)
+    setStatutBlockedReasons(null)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
       const data = Object.fromEntries(
@@ -539,10 +547,20 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       await dispatch(updateInstallation({ id, data })).unwrap()
       onSaved?.()
     } catch (err) {
-      // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé.
-      // Le thunk rejette avec `err.response.data ?? err.message` ; on reconstruit
-      // la forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
-      setSaveError(errorMessageFrom({ response: { data: err } }, 'Enregistrement impossible.'))
+      // CHT22 — une transition de statut refusée par les gates CH2 renvoie
+      // `{statut: [raisons...]}` (`views/installation.py:perform_update` →
+      // `ValidationError({'statut': exc.raisons})`) : mêmes raisons FR que
+      // celles listées par le stepper CH6, rendues dans le MÊME format
+      // (ch6-blocked-reasons) plutôt qu'un message brut sérialisé.
+      const raisons = Array.isArray(err?.statut) ? err.statut : null
+      if (raisons && raisons.length > 0) {
+        setStatutBlockedReasons(raisons)
+      } else {
+        // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé.
+        // Le thunk rejette avec `err.response.data ?? err.message` ; on reconstruit
+        // la forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
+        setSaveError(errorMessageFrom({ response: { data: err } }, 'Enregistrement impossible.'))
+      }
     } finally {
       setSaving(false)
     }
@@ -1177,7 +1195,21 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Textarea id="ch-notes" rows={2} value={fields.notes ?? ''}
                           onChange={(e) => set('notes', e.target.value)} />
               </FormField>
-              {saveError && (
+              {/* CHT22 — même format que le stepper CH6 (ChantierGateTimeline)
+                  quand la transition de statut est bloquée par un gate : une
+                  liste à puces des raisons, jamais un message brut. */}
+              {statutBlockedReasons ? (
+                <div
+                  role="alert"
+                  className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
+                  data-testid="ch6-blocked-reasons"
+                >
+                  <strong>Étape bloquée par un gate&nbsp;:</strong>
+                  <ul className="flex flex-col gap-0.5">
+                    {statutBlockedReasons.map((r) => <li key={r}>• {r}</li>)}
+                  </ul>
+                </div>
+              ) : saveError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
                   {saveError}
                 </div>
