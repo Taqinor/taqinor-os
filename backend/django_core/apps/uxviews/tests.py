@@ -687,6 +687,91 @@ class FavoriUtilisateurApiTests(TestCase):
         self.assertEqual(FavoriUtilisateur.objects.count(), 0)
 
 
+class NTUX35ExportImportFavorisTests(TestCase):
+    """NTUX35 — export/import CSV des favoris à la reprise de poste :
+    identifiant MÉTIER (ex. email d'un lead), jamais `object_id` brut (qui
+    diffère entre environnements)."""
+    BASE = '/api/django/uxviews/favoris/'
+
+    def setUp(self):
+        self.co_a = make_company('uxv35-a', 'A')
+        self.com1 = make_user(self.co_a, 'uxv35-com1')
+        self.com2 = make_user(self.co_a, 'uxv35-com2')
+        from apps.crm.models import Lead
+        self.lead = Lead.objects.create(
+            company=self.co_a, nom='Alaoui', email='alaoui@example.com')
+
+    def _csv(self, lignes):
+        contenu = '\n'.join(['type,champ_identifiant,identifiant,libelle'] + lignes)
+        return SimpleUploadedFile(
+            'favoris.csv', contenu.encode('utf-8'), content_type='text/csv')
+
+    def test_export_csv_expose_lidentifiant_metier_jamais_lobject_id(self):
+        import csv
+        import io
+
+        ct = ContentType.objects.get_for_model(self.lead)
+        FavoriUtilisateur.objects.create(
+            company=self.co_a, owner=self.com1, content_type=ct, object_id=self.lead.pk)
+        resp = auth(self.com1).get(f'{self.BASE}export-csv/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'text/csv')
+        lignes = list(csv.reader(io.StringIO(resp.content.decode('utf-8'))))
+        self.assertEqual(lignes[0], ['type', 'champ_identifiant', 'identifiant', 'libelle'])
+        self.assertEqual(lignes[1][:3], ['crm.lead', 'email', 'alaoui@example.com'])
+
+    def test_export_csv_est_strictement_personnel(self):
+        ct = ContentType.objects.get_for_model(self.lead)
+        FavoriUtilisateur.objects.create(
+            company=self.co_a, owner=self.com2, content_type=ct, object_id=self.lead.pk)
+        resp = auth(self.com1).get(f'{self.BASE}export-csv/')
+        self.assertEqual(resp.content.decode('utf-8').count('\n'), 1)  # en-tête seul
+
+    def test_import_resout_par_identifiant_metier_et_epingle(self):
+        fichier = self._csv([f'crm.lead,email,{self.lead.email},Alaoui'])
+        resp = auth(self.com2).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['importes'], 1)
+        self.assertEqual(resp.data['non_resolues'], 0)
+        favori = FavoriUtilisateur.objects.get(owner=self.com2)
+        self.assertEqual(favori.object_id, self.lead.pk)
+        self.assertEqual(favori.cle_modele, 'crm.lead')
+        self.assertEqual(favori.company, self.co_a)
+
+    def test_import_ignore_silencieusement_les_lignes_non_resolues_et_les_compte(self):
+        fichier = self._csv([
+            f'crm.lead,email,{self.lead.email},Alaoui',
+            'crm.lead,email,fantome@example.com,Fantôme',
+        ])
+        resp = auth(self.com1).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['importes'], 1)
+        self.assertEqual(resp.data['non_resolues'], 1)
+
+    def test_import_ne_traverse_jamais_la_frontiere_societe(self):
+        from apps.crm.models import Lead
+
+        co_b = make_company('uxv35-b', 'B')
+        lead_b = Lead.objects.create(
+            company=co_b, nom='Externe', email='externe@example.com')
+        fichier = self._csv([f'crm.lead,email,{lead_b.email},Externe'])
+        resp = auth(self.com1).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.data['importes'], 0)
+        self.assertEqual(resp.data['non_resolues'], 1)
+        self.assertFalse(FavoriUtilisateur.objects.filter(owner=self.com1).exists())
+
+    def test_reimporter_une_cible_deja_epinglee_est_un_no_op(self):
+        ct = ContentType.objects.get_for_model(self.lead)
+        FavoriUtilisateur.objects.create(
+            company=self.co_a, owner=self.com1, content_type=ct, object_id=self.lead.pk)
+        fichier = self._csv([f'crm.lead,email,{self.lead.email},Alaoui'])
+        auth(self.com1).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(
+            FavoriUtilisateur.objects.filter(
+                owner=self.com1, content_type=ct, object_id=self.lead.pk).count(),
+            1)
+
+
 class UxParametresApiTests(TestCase):
     """NTUX27 — réglages UX par société (singleton) et ce qu'ils GOUVERNENT."""
 

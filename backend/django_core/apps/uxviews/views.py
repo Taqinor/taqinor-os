@@ -43,6 +43,29 @@ def _is_valid_configuration(configuration):
     return True
 
 
+# NTUX35 — champs CONVENTIONNELS servant d'identifiant métier STABLE entre
+# environnements (jamais l'`object_id` brut, qui diffère). Testés dans cet
+# ordre ; le premier PRÉSENT ET NON VIDE sur l'instance cible est retenu.
+# Générique : aucune app métier n'est importée ici, seule une introspection
+# `getattr` par nom de champ conventionnel (`reference` — Devis/Facture/
+# BonCommande/Ticket… ; `numero` ; `sku` — Produit ; `email` — Lead/Client).
+_CHAMPS_IDENTIFIANT_CANDIDATS = ('reference', 'numero', 'sku', 'email', 'code')
+
+
+def _identifiant_metier(instance):
+    """(champ, valeur) du premier champ candidat non vide sur `instance`, ou
+    (None, None) si aucun ne correspond (ex. un `Chantier` sans référence
+    propre) — la ligne export reste alors identifiée par son seul libellé,
+    et l'import la marquera « non résolue » plutôt que d'inventer une clé."""
+    if instance is None:
+        return None, None
+    for champ in _CHAMPS_IDENTIFIANT_CANDIDATS:
+        valeur = getattr(instance, champ, None)
+        if valeur:
+            return champ, str(valeur)
+    return None, None
+
+
 class SavedViewViewSet(CompanyScopedModelViewSet):
     """NTUX1/2 — CRUD des vues sauvegardées, filtré par `?ecran=`. Une vue est
     visible si l'appelant en est le propriétaire, OU si elle est partagée à
@@ -482,6 +505,91 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                 element.save(update_fields=['ordre', 'updated_at'])
         return Response(
             FavoriUtilisateurSerializer(self.get_queryset(), many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='export-csv')
+    def export_csv(self, request):
+        """NTUX35 — export CSV de MES favoris (jamais ceux d'un collègue, cf.
+        `get_queryset` ci-dessus) — pour transférer manuellement les favoris
+        d'un utilisateur qui change de compte (démission, reprise de
+        portefeuille). Colonnes : `type`, `champ_identifiant`, `identifiant`,
+        `libelle` — JAMAIS l'`object_id` brut, qui diffère d'un environnement
+        à l'autre (cf. `importer` ci-dessous, qui résout par ces colonnes)."""
+        import csv
+
+        from django.http import HttpResponse
+
+        favoris = self.get_queryset().select_related('content_type').order_by('ordre')
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="favoris.csv"'
+        writer = csv.writer(response)
+        writer.writerow(['type', 'champ_identifiant', 'identifiant', 'libelle'])
+        for favori in favoris:
+            cible = favori.cible
+            champ, valeur = _identifiant_metier(cible)
+            writer.writerow([
+                favori.cle_modele, champ or '', valeur or '',
+                str(cible) if cible is not None else '',
+            ])
+        return response
+
+    @action(detail=False, methods=['post'], url_path='importer', parser_classes=[MultiPartParser])
+    def importer(self, request):
+        """NTUX35 — import CSV/XLSX des favoris d'un utilisateur qui change de
+        compte (démission/reprise de portefeuille) — un acte manuel explicite,
+        jamais un transfert automatique. Résout chaque ligne par son
+        IDENTIFIANT MÉTIER (`champ_identifiant` + `identifiant`, ex. la
+        référence d'un devis), jamais par `object_id` brut (qui diffère d'un
+        environnement à l'autre — c'est tout le problème que ce format
+        résout). Une ligne dont le champ/la valeur ne résout à AUCUN
+        enregistrement de LA SOCIÉTÉ de l'appelant est ignorée SILENCIEUSEMENT
+        (jamais une erreur bloquante) ; leur nombre est rapporté. Épingler une
+        cible déjà favorite est un no-op (même dédoublonnage que la création
+        directe, cf. `perform_create`/`get_or_create` ci-dessous)."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.dataimport.parsing import iter_rows, normalize_header
+
+        fichier = request.FILES.get('fichier')
+        if not fichier:
+            raise ValidationError({'fichier': 'Un fichier CSV ou XLSX est requis.'})
+
+        _headers, raw_rows = iter_rows(fichier.read(), fichier.name)
+        rows = [
+            {normalize_header(k): v for k, v in row.items()}
+            for row in raw_rows
+        ]
+
+        importes = 0
+        non_resolues = 0
+        for row in rows:
+            type_cible = str(row.get('type') or '').strip()
+            champ = str(row.get('champ_identifiant') or '').strip()
+            valeur = str(row.get('identifiant') or '').strip()
+            content_type = None
+            if type_cible and '.' in type_cible:
+                app_label, _, modele_nom = type_cible.partition('.')
+                content_type = ContentType.objects.filter(
+                    app_label=app_label, model=modele_nom).first()
+            modele = content_type.model_class() if content_type else None
+            cible = None
+            if modele is not None and champ and valeur:
+                manager = getattr(modele, 'all_objects', modele._default_manager)
+                try:
+                    cible = manager.filter(
+                        company=request.user.company, **{champ: valeur}).first()
+                except Exception:  # noqa: BLE001 — champ inconnu sur ce modèle
+                    cible = None
+            if cible is None:
+                non_resolues += 1
+                continue
+            FavoriUtilisateur.objects.get_or_create(
+                company=request.user.company, owner=request.user,
+                content_type=content_type, object_id=cible.pk,
+                defaults={'ordre': self._prochain_ordre()},
+            )
+            importes += 1
+
+        return Response({'importes': importes, 'non_resolues': non_resolues})
 
 
 class UxParametresView(generics.RetrieveUpdateAPIView):
