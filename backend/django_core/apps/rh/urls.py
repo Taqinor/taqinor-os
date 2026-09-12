@@ -18,6 +18,7 @@ from .views import (
     CampagnePulseViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
+    AnalyticsRhViewSet,
     CockpitRhViewSet,
     CertificationViewSet,
     CycleRevisionSalarialeViewSet,
@@ -184,6 +185,9 @@ router.register(r'demandes-rh', DemandeRHViewSet)
 router.register(
     r'portail', PortailSelfServiceViewSet, basename='rh-portail')
 router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
+# NTHCM27/28 — analytics RH agrégées (diversité, absentéisme).
+router.register(
+    r'analytics', AnalyticsRhViewSet, basename='rh-analytics')
 router.register(r'badges-reconnaissance', BadgeReconnaissanceViewSet)
 router.register(r'attributions-badge', AttributionBadgeViewSet)
 # NTHCM5 — cycles de révision salariale (gatés ``salaires_voir``).

@@ -227,6 +227,17 @@ class DossierEmploye(models.Model):
         DIVORCE = 'divorce', 'Divorcé(e)'
         VEUF = 'veuf', 'Veuf(ve)'
 
+    class Genre(models.TextChoices):
+        """NTHCM27 — genre déclaré, pour le SEUL reporting diversité agrégé.
+
+        Vide (défaut, valeur de tous les dossiers existants) = non renseigné :
+        il apparaît comme tel dans la répartition, jamais réparti d'office
+        dans une catégorie inventée.
+        """
+        FEMME = 'femme', 'Femme'
+        HOMME = 'homme', 'Homme'
+        AUTRE = 'autre', 'Autre'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -256,6 +267,12 @@ class DossierEmploye(models.Model):
     situation_familiale = models.CharField(
         max_length=12, choices=SituationFamiliale.choices,
         blank=True, default='', verbose_name='Situation familiale')
+    # NTHCM27 — alimente UNIQUEMENT l'analytics diversité AGRÉGÉE (jamais une
+    # liste nominative, jamais une décision individuelle). Vide par défaut :
+    # aucun genre n'est déduit ni inventé pour les dossiers existants.
+    genre = models.CharField(
+        max_length=6, choices=Genre.choices,
+        blank=True, default='', verbose_name='Genre')
     nombre_enfants = models.PositiveIntegerField(
         default=0, verbose_name="Nombre d'enfants")
     telephone = models.CharField(

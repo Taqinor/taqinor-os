@@ -3488,6 +3488,86 @@ def zones_intervention(company):
     return sorted(set(valeurs))
 
 
+#: NTHCM27 — seuil d'anonymat : un segment de moins de 5 personnes n'est
+#: JAMAIS chiffré (même règle que le pulse XRH32/eNPS et les enquêtes
+#: NTHCM15). En dessous, l'effectif d'une petite équipe permettrait de
+#: ré-identifier quelqu'un par recoupement.
+SEUIL_ANONYMAT_DIVERSITE = 5
+
+
+def analytics_diversite(company, departement_id=None, *, aujourdhui=None):
+    """NTHCM27 — répartition démographique AGRÉGÉE, jamais nominative.
+
+    Renvoie, pour l'effectif NON SORTI de la société (optionnellement d'un
+    département) :
+
+    * ``repartition_genre`` — un segment par valeur déclarée + « non
+      renseigné », chaque segment CHIFFRÉ seulement s'il atteint
+      ``SEUIL_ANONYMAT_DIVERSITE`` (sinon ``effectif=None`` + ``masque=True``) ;
+    * ``anciennete_moyenne_annees`` — moyenne sur les dossiers QUI ONT une
+      date d'embauche (les autres sont exclus, jamais comptés à zéro), elle
+      aussi masquée sous le seuil ;
+    * ``tranches_age`` — VIDE et ``age_disponible=False`` : le dossier employé
+      ne porte AUCUNE date de naissance dans ce dépôt. On l'exclut proprement
+      plutôt que d'inventer un âge.
+
+    AUCUN champ nominatif (nom, prénom, matricule, e-mail, identifiant de
+    dossier) ne figure dans la réponse — c'est la raison d'être de cet
+    endpoint et un test d'exhaustivité le vérifie (patron XRH28).
+    """
+    today = aujourdhui or timezone.localdate()
+    qs = DossierEmploye.objects.filter(company=company).exclude(
+        statut=DossierEmploye.Statut.SORTI)
+    if departement_id:
+        qs = qs.filter(departement_id=departement_id)
+
+    effectif = qs.count()
+
+    libelles = dict(DossierEmploye.Genre.choices)
+    comptes = {cle: 0 for cle in libelles}
+    comptes[''] = 0
+    for valeur in qs.values_list('genre', flat=True):
+        cle = valeur if valeur in comptes else ''
+        comptes[cle] += 1
+
+    repartition = []
+    for cle, nombre in comptes.items():
+        masque = nombre < SEUIL_ANONYMAT_DIVERSITE
+        repartition.append({
+            'genre': cle,
+            'libelle': libelles.get(cle, 'Non renseigné'),
+            'effectif': None if masque else nombre,
+            'part_pct': (
+                None if masque or not effectif
+                else round(100 * nombre / effectif, 1)),
+            'masque': masque,
+        })
+
+    dates = [d for d in qs.values_list('date_embauche', flat=True) if d]
+    if len(dates) < SEUIL_ANONYMAT_DIVERSITE:
+        anciennete = None
+        anciennete_masquee = True
+    else:
+        anciennete = round(
+            sum((today - d).days for d in dates) / len(dates) / 365.25, 1)
+        anciennete_masquee = False
+
+    return {
+        'effectif': effectif,
+        'departement_id': int(departement_id) if departement_id else None,
+        'seuil_anonymat': SEUIL_ANONYMAT_DIVERSITE,
+        'repartition_genre': repartition,
+        'anciennete_moyenne_annees': anciennete,
+        'anciennete_masquee': anciennete_masquee,
+        'nb_dates_embauche_connues': len(dates),
+        'tranches_age': [],
+        'age_disponible': False,
+        'age_indisponible_raison': (
+            "Le dossier employé ne porte pas de date de naissance : la "
+            "tranche d'âge est exclue plutôt qu'estimée."),
+    }
+
+
 def offboarding_en_retard(company, *, aujourdhui=None):
     """NTHCM24 — tâches de SORTIE dont l'échéance est dépassée, par criticité.
 

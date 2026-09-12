@@ -6241,6 +6241,29 @@ class CockpitRhViewSet(viewsets.ViewSet):
                          if ligne['risque_vacance']])
 
 
+class AnalyticsRhViewSet(viewsets.ViewSet):
+    """NTHCM27/28 — analytics RH AGRÉGÉES (lecture seule, jamais nominatives).
+
+    Société scopée + Administrateur/Responsable (``IsResponsableOrAdmin``),
+    comme le cockpit FG200 dont ces sections sont le prolongement.
+
+    Endpoints :
+    * ``GET analytics/diversite/?departement=`` — NTHCM27, répartition
+      démographique agrégée avec seuil d'anonymat (un segment < 5 personnes
+      n'est jamais chiffré) ;
+    * ``GET analytics/absenteisme/?debut=&fin=&departement=`` — NTHCM28, taux
+      d'absentéisme unifié (congés + maladie + AT + non justifié).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get'], url_path='diversite')
+    def diversite(self, request):
+        return Response(
+            selectors.analytics_diversite(
+                request.user.company,
+                departement_id=request.query_params.get('departement')))
+
+
 # ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
 
 class CycleRevisionSalarialeViewSet(CompanyScopedModelViewSet):

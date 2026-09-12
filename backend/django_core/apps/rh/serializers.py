@@ -192,6 +192,11 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'manager',
             # NTFSM26 — zone géographique d'intervention (champ libre).
             'zone_intervention',
+            # NTHCM27 — genre déclaré : sert UNIQUEMENT l'analytics diversité
+            # agrégée (`analytics/diversite/`), jamais une décision
+            # individuelle. Sans ce champ en écriture ici, il resterait
+            # inatteignable et l'analytics serait vide à jamais.
+            'genre',
             'date_embauche',
             'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
