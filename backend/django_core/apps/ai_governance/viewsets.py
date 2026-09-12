@@ -9,17 +9,58 @@ Le scoping société vient de ``core.mixins.TenantMixin`` (``get_queryset``
 filtré sur ``request.user.company``), donc le sweep générique d'isolation
 multi-tenant couvre ce viewset automatiquement.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAdminRole, IsAnyRole
 from core.mixins import TenantMixin
 
-from .models import DocumentAiJob
-from .serializers import DocumentAiJobSerializer
+from .models import DocumentAiJob, LlmBudget
+from .serializers import DocumentAiJobSerializer, LlmBudgetSerializer
 from .services import AiCopiloteUnavailable
+
+
+class LlmBudgetViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTAI2 — CRUD du budget IA mensuel. ADMIN uniquement.
+
+    Le scoping société vient de ``TenantMixin`` en lecture ; en écriture la
+    société est FORCÉE depuis l'utilisateur (``perform_create``), jamais lue du
+    corps de requête. Un seul budget par société (contrainte d'unicité) : une
+    seconde création renvoie une erreur FR explicite plutôt qu'un 500.
+    """
+
+    queryset = LlmBudget.objects.all()
+    serializer_class = LlmBudgetSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def perform_create(self, serializer):
+        # La société vient TOUJOURS du serveur ; le doublon est refusé en 400
+        # par le sérialiseur (``validate``), jamais par une 500 d'intégrité.
+        serializer.save(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiBudgetStatut', {
+        'configure': drf_serializers.BooleanField(),
+        'plafond_mad': drf_serializers.CharField(),
+        'depense_mad': drf_serializers.CharField(),
+        'pourcentage': drf_serializers.FloatField(),
+        'depasse': drf_serializers.BooleanField(),
+        'alerte': drf_serializers.BooleanField(),
+        'periode': drf_serializers.CharField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='statut')
+    def statut(self, request):
+        """``GET budgets/statut/`` — situation du mois COURANT.
+
+        Renvoie ``configure: false`` quand aucun budget actif n'est défini :
+        aucun pourcentage n'est affiché contre un plafond imaginaire.
+        """
+        from core.ai.usage import budget_status
+
+        return Response(budget_status(request.user.company).as_dict())
 
 
 class DocumentAiJobViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

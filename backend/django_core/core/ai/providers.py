@@ -214,3 +214,24 @@ class NoOpLLMProvider(LLMProvider):
 
     def complete(self, *, prompt, system=None, max_tokens=512):  # noqa: D401
         return AIResult.noop(self.key)
+
+
+class BudgetExhaustedLLMProvider(NoOpLLMProvider):
+    """NTAI2 — NO-OP rendu quand le budget IA mensuel est épuisé.
+
+    Garde la clé ``'noop'`` À DESSEIN : tout le code existant teste
+    ``key == 'noop'`` pour dégrader proprement (503 douce, « rédaction
+    manuelle requise »). Un budget épuisé emprunte donc exactement le même
+    chemin qu'une absence de clé — aucune exception, aucun appel réseau,
+    aucune facture — avec un motif explicite dans ``error``.
+    """
+
+    label = 'Budget IA épuisé'
+    #: Motif lisible par l'appelant qui veut distinguer les deux no-op.
+    raison = 'budget_epuise'
+
+    def complete(self, *, prompt, system=None, max_tokens=512):  # noqa: D401
+        return AIResult(
+            ok=False, configured=False, data={}, provider=self.key,
+            error='Budget IA du mois épuisé — génération suspendue jusqu\'au '
+                  'mois prochain ou jusqu\'au relèvement du plafond.')

@@ -13,6 +13,7 @@ from __future__ import annotations
 from django.conf import settings
 
 from core.ai.providers import (
+    BudgetExhaustedLLMProvider,
     LLMProvider,
     NoOpLLMProvider,
     NoOpOCRProvider,
@@ -71,13 +72,31 @@ def _selected_key(capability: str) -> str:
     return configured.get(capability, 'noop')
 
 
+def _budget_epuise() -> bool:
+    """NTAI2 — True si la société du contexte a dépassé son plafond IA.
+
+    Sans contexte de société (appel hors requête, tâche sans société) ou sans
+    budget défini, renvoie False : on ne bride JAMAIS sur une société devinée.
+    Ne lève jamais — ``budget_status`` encapsule déjà ses propres erreurs."""
+    from core.ai.usage import budget_status, current_context
+
+    company_id = current_context().company_id
+    if company_id is None:
+        return False
+    return bool(budget_status(company_id).depasse)
+
+
 def get_provider(capability: str):
     """Retourne une INSTANCE du fournisseur sélectionné pour ``capability``.
 
     Sélectionne selon ``settings.AI_PROVIDERS`` ; retombe sur le NO-OP si la
     capacité ou la clé est inconnue. De plus, si le fournisseur sélectionné
     n'est PAS configuré (clé absente), on retombe AUSSI sur le NO-OP — garantie
-    « aucun appel sans config »."""
+    « aucun appel sans config ».
+
+    NTAI2 — COUPE-CIRCUIT : au-delà de 100 % du budget IA mensuel de la société
+    courante, la capacité ``llm`` rend un NO-OP « budget épuisé » (même chemin
+    de dégradation qu'une clé absente, jamais une exception)."""
     if capability not in _CAPABILITY_BASE:
         raise ValueError(f"Capacité IA inconnue : {capability!r}")
     providers = _REGISTRY.get(capability, {})
@@ -87,6 +106,8 @@ def get_provider(capability: str):
     # Garde-fou : un fournisseur sélectionné mais non configuré → NO-OP.
     if key != 'noop' and not instance.is_configured():
         return _NOOP[capability]()
+    if capability == 'llm' and key != 'noop' and _budget_epuise():
+        return BudgetExhaustedLLMProvider()
     return instance
 
 

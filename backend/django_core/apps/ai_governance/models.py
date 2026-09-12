@@ -272,3 +272,48 @@ class ExtractionCorrection(TenantModel):
 
     def __str__(self):
         return f'{self.champ} (job #{self.job_id})'
+
+
+class LlmBudget(TenantModel):
+    """NTAI2 — Plafond mensuel de dépense IA d'une société + seuil d'alerte.
+
+    Le budget est le COUPE-CIRCUIT de la facture IA : au-delà de 100 % du
+    plafond, ``core.ai.registry.get_provider('llm')`` rend le fournisseur NO-OP
+    « budget épuisé » et chaque feature générative dégrade proprement (503
+    douce, message FR) au lieu de continuer à facturer. Au franchissement du
+    seuil d'alerte, les responsables sont prévenus UNE fois par mois
+    (``alerte_periode`` rend l'alerte idempotente).
+
+    Un seul budget par société (contrainte d'unicité) : sans elle, deux lignes
+    concurrentes rendraient le coupe-circuit non déterministe.
+
+    Le plafond est comparé à la dépense RÉELLE journalisée (NTAI1). Sans tarif
+    configuré pour le fournisseur, la dépense connue reste nulle : le
+    coupe-circuit ne se déclenche donc JAMAIS sur un chiffre inventé.
+    """
+
+    montant_mensuel_mad = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text='Plafond de dépense IA du mois, en MAD.')
+    seuil_alerte_pct = models.PositiveSmallIntegerField(
+        default=80,
+        help_text='Pourcentage du plafond déclenchant une alerte (défaut 80).')
+    actif = models.BooleanField(
+        default=True,
+        help_text="Un budget inactif ne bride rien et n'alerte pas.")
+    alerte_periode = models.CharField(
+        max_length=7, blank=True, default='',
+        help_text='Période « AAAA-MM » de la dernière alerte émise — rend '
+                  "l'alerte idempotente sur le mois.")
+
+    class Meta:
+        verbose_name = 'Budget IA'
+        verbose_name_plural = 'Budgets IA'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'], name='uniq_llmbudget_company'),
+        ]
+
+    def __str__(self):
+        return f'Budget IA {self.montant_mensuel_mad} MAD/mois'

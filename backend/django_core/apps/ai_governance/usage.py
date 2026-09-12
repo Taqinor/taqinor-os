@@ -173,3 +173,95 @@ def agreger_usage(company, *, since=None, feature='') -> dict:
 def fenetre_par_defaut():
     """Date de début par défaut de l'agrégat (30 jours en arrière)."""
     return timezone.localdate() - timedelta(days=USAGE_FENETRE_JOURS)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI2 — Budget mensuel + coupe-circuit
+# ─────────────────────────────────────────────────────────────────────────────
+
+def depense_du_mois(company, *, premier_du_mois=None) -> Decimal:
+    """Dépense IA CONNUE de la société depuis le 1er du mois, en MAD.
+
+    « Connue » : seuls les appels dont le fournisseur avait un tarif configuré
+    portent un coût. Les autres valent 0 — on ne complète jamais un trou par
+    une estimation, donc le coupe-circuit ne peut pas se déclencher sur un
+    chiffre inventé."""
+    if premier_du_mois is None:
+        premier_du_mois = timezone.localdate().replace(day=1)
+    total = _lignes(company, since=premier_du_mois).aggregate(
+        micro=Sum('cost_estimated_micro_mad'))['micro'] or 0
+    return en_mad(total)
+
+
+def statut_budget(company):
+    """Calculateur enregistré auprès de ``core.ai.usage.budget_status``.
+
+    Accepte une ``Company`` ou un id (le contexte d'appel ne porte qu'un id).
+    Renvoie un ``BudgetStatus`` ; alerte au franchissement du seuil, une seule
+    fois par mois. Ne lève jamais côté appelant : ``core`` encapsule déjà, mais
+    l'alerte elle-même est best-effort ici."""
+    from core.ai.usage import BudgetStatus
+
+    from .models import LlmBudget
+
+    filtre = ({'company_id': company} if isinstance(company, int)
+              else {'company': company})
+    budget = LlmBudget.objects.filter(actif=True, **filtre).first()
+    if budget is None:
+        return BudgetStatus()
+
+    periode = timezone.localdate().strftime('%Y-%m')
+    plafond = Decimal(budget.montant_mensuel_mad or 0)
+    depense = depense_du_mois(budget.company)
+    pourcentage = (float(depense / plafond * 100) if plafond > 0 else 0.0)
+    depasse = plafond > 0 and depense >= plafond
+    alerte = plafond > 0 and pourcentage >= float(budget.seuil_alerte_pct or 0)
+
+    if alerte and budget.alerte_periode != periode:
+        _alerter_budget(budget=budget, depense=depense, pourcentage=pourcentage,
+                        periode=periode)
+
+    return BudgetStatus(
+        configured=True, plafond=plafond, depense=depense,
+        pourcentage=pourcentage, depasse=depasse, alerte=alerte,
+        periode=periode)
+
+
+def _alerter_budget(*, budget, depense, pourcentage, periode):
+    """Prévient les responsables du franchissement du seuil — best-effort.
+
+    Réutilise ``EventType.MONITORING_RAPPORT`` (même choix que l'alerte de
+    dérive NTAI29) : aucun nouveau type d'événement n'est ajouté ici, il
+    vivrait dans une app hors périmètre. L'échec d'une notification ne doit
+    jamais casser l'appel IA qui l'a déclenchée."""
+    try:
+        from django.contrib.auth import get_user_model
+
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify_many
+
+        User = get_user_model()
+        destinataires = list(User.objects.filter(
+            company=budget.company, is_active=True,
+            role_legacy__in=['responsable', 'admin']))
+        if destinataires:
+            notify_many(
+                destinataires, EventType.MONITORING_RAPPORT,
+                'Budget IA : seuil d\'alerte atteint',
+                body=(f'{depense} MAD consommés ce mois sur un plafond de '
+                      f'{budget.montant_mensuel_mad} MAD '
+                      f'({pourcentage:.0f} %). Au-delà de 100 %, les '
+                      'fonctions génératives se mettent en veille.'),
+                company=budget.company)
+        budget.alerte_periode = periode
+        budget.save(update_fields=['alerte_periode', 'updated_at'])
+    except Exception:  # noqa: BLE001 — l'alerte ne casse jamais l'appel IA
+        logger.warning('ai_governance: alerte de budget non émise (société %s)',
+                       getattr(budget, 'company_id', None), exc_info=True)
+
+
+def connect_budget_provider():
+    """Branche le calculateur de budget sur la fondation (``apps.py``)."""
+    from core.ai.usage import register_budget_provider
+
+    register_budget_provider(statut_budget)

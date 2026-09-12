@@ -41,3 +41,9 @@ class AiGovernanceConfig(AppConfig):
         # inscription, ``record_usage`` est un no-op complet (aucune ligne).
         from .usage import connect_usage_sink
         connect_usage_sink()
+
+        # NTAI2 — branche le calculateur de budget : c'est lui qui permet au
+        # registre de rendre un fournisseur NO-OP « budget épuisé » plutôt que
+        # de laisser filer la facture. Sans budget défini, aucun effet.
+        from .usage import connect_budget_provider
+        connect_budget_provider()
