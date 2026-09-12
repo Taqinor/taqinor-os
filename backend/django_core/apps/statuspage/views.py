@@ -9,6 +9,7 @@ Throttlé par IP (best-effort, sans dépendance externe, même patron que
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
@@ -17,7 +18,9 @@ from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from .models import ComponentStatus, IncidentPublic, UptimeDayBucket
+from .models import (
+    ComponentStatus, IncidentPublic, StatusSubscriber, UptimeDayBucket,
+)
 from .serializers import (
     ComponentStatusPublicSerializer, IncidentPublicSerializer,
     UptimeDayBucketSerializer,
@@ -182,3 +185,89 @@ def public_uptime_90j(request):
             'pct': row['pct_disponible_jour'],
         })
     return Response(par_composant)
+
+
+# ── NTOBS15 — abonnement aux notifications d'incidents ──────────────────
+
+class StatusSubscribeThrottle(SimpleRateThrottle):
+    """Anti-abus dédié (distinct de ``StatuspagePublicThrottle`` — action
+    d'ÉCRITURE, plus stricte que la simple lecture publique)."""
+
+    scope = 'statuspage_abonner'
+    rate = '5/hour'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        ident = self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+
+def _envoyer_email_confirmation(abonne):
+    from django.conf import settings
+    from django.core.mail import send_mail
+
+    lien = f'/api/django/statuspage/public/confirmer/{abonne.token_desabonnement}/'
+    try:
+        send_mail(
+            'Confirmez votre abonnement au statut Taqinor',
+            f'Cliquez pour confirmer votre abonnement : {lien}\n\n'
+            "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
+            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local'),
+            [abonne.email],
+            fail_silently=True,
+        )
+    except Exception:  # noqa: BLE001 — no-op silencieux, jamais bloquant
+        pass
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([StatusSubscribeThrottle])
+def public_abonner(request):
+    """POST /api/django/statuspage/public/abonner/ — double opt-in.
+
+    Sans backend e-mail réel configuré (``SENDGRID_API_KEY`` absent),
+    l'envoi retombe sur le backend console de Django — NO-OP réseau
+    silencieux, jamais une exception."""
+    email = (request.data.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return Response(
+            {'detail': 'Adresse e-mail invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+    region_filtre = (request.data.get('region_filtre') or '').strip()
+
+    abonne, _created = StatusSubscriber.objects.get_or_create(
+        email=email, defaults={'region_filtre': region_filtre})
+    if not abonne.confirme:
+        _envoyer_email_confirmation(abonne)
+    return Response(
+        {'detail': 'Un e-mail de confirmation a été envoyé.'},
+        status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_confirmer_abonnement(request, token):
+    """GET /api/django/statuspage/public/confirmer/<token>/ — le jeton EST
+    l'authentification (comme un lien de désabonnement classique)."""
+    abonne = StatusSubscriber.objects.filter(
+        token_desabonnement=token).first()
+    if abonne is None:
+        raise Http404
+    if not abonne.confirme:
+        abonne.confirme = True
+        abonne.save(update_fields=['confirme', 'updated_at'])
+    return Response({'detail': 'Abonnement confirmé.'})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_desabonner(request, token):
+    """GET /api/django/statuspage/public/desabonner/<token>/ — un clic, sans
+    authentification (le jeton EST l'accès)."""
+    deleted, _ = StatusSubscriber.objects.filter(
+        token_desabonnement=token).delete()
+    if not deleted:
+        raise Http404
+    return Response({'detail': 'Désabonnement effectué.'})

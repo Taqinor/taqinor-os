@@ -198,3 +198,35 @@ class UptimeDayBucket(TimestampedModel):
 
     def __str__(self):
         return f'{self.composant} — {self.date} ({self.statut_pire_du_jour})'
+
+
+def _default_subscriber_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+class StatusSubscriber(TimestampedModel):
+    """NTOBS15 — abonnement PUBLIC (pas de ``company`` — identifié par
+    e-mail) aux notifications d'incidents de la page de statut.
+
+    Double opt-in : ``confirme`` reste ``False`` tant que l'abonné n'a pas
+    cliqué le lien de confirmation envoyé par e-mail. ``token_desabonnement``
+    sert AUX DEUX usages (confirmer ET se désabonner) — un seul jeton opaque
+    par abonné, plus simple qu'une paire jeton confirmation/désabonnement
+    pour un flux à si faible fréquence."""
+
+    email = models.EmailField('E-mail', unique=True)
+    region_filtre = models.CharField(
+        'Région (filtre)', max_length=60, blank=True, default='',
+        help_text="Vide = toutes régions.")
+    token_desabonnement = models.CharField(
+        max_length=64, unique=True, default=_default_subscriber_token)
+    confirme = models.BooleanField('Confirmé (double opt-in)', default=False)
+
+    class Meta:
+        verbose_name = 'Abonné (statut public)'
+        verbose_name_plural = 'Abonnés (statut public)'
+        ordering = ['email']
+
+    def __str__(self):
+        return f'{self.email} ({"confirmé" if self.confirme else "non confirmé"})'

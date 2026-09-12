@@ -5,7 +5,9 @@ from django.contrib import admin
 
 from core.admin_scoping import CompanyScopedAdminMixin
 
-from .models import ComponentStatus, IncidentPublic, IncidentUpdate
+from .models import (
+    ComponentStatus, IncidentPublic, IncidentUpdate, StatusSubscriber,
+)
 
 
 class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
@@ -37,3 +39,13 @@ class IncidentPublicAdmin(CompanyScopedAdmin):
     filter_horizontal = ('composants',)
     inlines = [IncidentUpdateInline]
     readonly_fields = ('postmortem_publie_le',)
+
+
+@admin.register(StatusSubscriber)
+class StatusSubscriberAdmin(admin.ModelAdmin):
+    """NTOBS15 — pas de company (abonnement public) : liste non scopée."""
+
+    list_display = ('email', 'region_filtre', 'confirme', 'created_at')
+    list_filter = ('confirme',)
+    search_fields = ('email',)
+    readonly_fields = ('token_desabonnement',)

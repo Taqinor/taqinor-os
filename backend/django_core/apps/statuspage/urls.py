@@ -1,7 +1,8 @@
 from django.urls import path
 
 from .views import (
-    PublicIncidentDetailView, PublicIncidentsView, public_status,
+    PublicIncidentDetailView, PublicIncidentsView, public_abonner,
+    public_confirmer_abonnement, public_desabonner, public_status,
     public_uptime_90j, publier_postmortem,
 )
 
@@ -20,4 +21,10 @@ urlpatterns = [
     # NTOBS14 — frise d'uptime 90 jours (agrégats pré-calculés).
     path('public/uptime-90j/', public_uptime_90j,
          name='statuspage-public-uptime-90j'),
+    # NTOBS15 — abonnement aux notifications d'incidents (double opt-in).
+    path('public/abonner/', public_abonner, name='statuspage-public-abonner'),
+    path('public/confirmer/<str:token>/', public_confirmer_abonnement,
+         name='statuspage-public-confirmer'),
+    path('public/desabonner/<str:token>/', public_desabonner,
+         name='statuspage-public-desabonner'),
 ]

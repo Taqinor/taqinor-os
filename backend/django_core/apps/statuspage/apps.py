@@ -14,3 +14,8 @@ class StatuspageConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.statuspage'
     verbose_name = 'Page de statut publique'
+
+    def ready(self):
+        # NTOBS15 — abonne les receveurs qui notifient les abonnés publics
+        # confirmés à l'ouverture/résolution d'un incident système.
+        from . import receivers  # noqa: F401
