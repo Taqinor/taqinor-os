@@ -84,7 +84,15 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
+        # NTEXT20 — « declencher » est un GESTE DE FICHE, pas de la
+        # configuration : tout rôle interne qui VOIT le bouton doit pouvoir le
+        # déclencher (critère de la tâche : « un bouton “Relancer” posé sur la
+        # fiche lead apparaît pour les Commerciaux ET déclenche la règle »).
+        # Le rangeait dans la branche admin renvoyait 403 à ce même Commercial.
+        # L'applicabilité RÉELLE du bouton (actif + palier de rôle) est
+        # revérifiée dans l'action elle-même : le grain n'est pas relâché, il
+        # est déplacé là où l'objet est connu.
+        if self.action in ('list', 'retrieve', 'declencher'):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
@@ -98,6 +106,19 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
         patron que ``core.workflow.register_delegation_resolver``) : ``core``
         n'exécute directement AUCUNE automatisation/webhook/action serveur."""
         bouton = self.get_object()
+        # Même filtre d'applicabilité que la liste (``_applicable_queryset``),
+        # appliqué ici sur l'OBJET : un bouton désactivé ou réservé à un autre
+        # palier n'apparaît pas dans la liste et ne peut pas non plus être
+        # déclenché en visant son id directement.
+        if not bouton.actif:
+            return Response(
+                {'detail': '« bouton » : ce bouton est désactivé.'}, status=403)
+        tier = getattr(request.user, 'menu_tier', None)
+        if bouton.role_tier and bouton.role_tier != tier:
+            return Response(
+                {'detail': '« bouton » : ce bouton est réservé à un autre '
+                           'palier de rôle.'},
+                status=403)
         target_model = (request.data.get('target_model') or '').strip()
         target_id = request.data.get('target_id')
         if not target_model or not target_id:

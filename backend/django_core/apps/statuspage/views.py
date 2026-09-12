@@ -147,7 +147,11 @@ def publier_postmortem(request, pk):
     aucune génération automatique. Idempotent : republier ne fait
     qu'actualiser ``postmortem_publie_le``.
     """
-    incident = get_object_or_404(IncidentPublic, pk=pk)
+    # Portée EXPLICITE (YRBAC11) : la page de statut ne publie que les
+    # incidents SYSTÈME (``company=None``, cf. les vues publiques ci-dessus).
+    # Sans ce filtre, un Directeur d'un tenant pouvait publier le post-mortem
+    # d'un incident rattaché à une AUTRE société.
+    incident = get_object_or_404(IncidentPublic, pk=pk, company=None)
     if incident.statut != IncidentPublic.Statut.RESOLVED:
         return Response(
             {'detail': "L'incident doit être résolu avant de publier un post-mortem."},
@@ -248,6 +252,7 @@ def public_abonner(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([StatuspagePublicThrottle])
 def public_confirmer_abonnement(request, token):
     """GET /api/django/statuspage/public/confirmer/<token>/ — le jeton EST
     l'authentification (comme un lien de désabonnement classique)."""
@@ -263,6 +268,7 @@ def public_confirmer_abonnement(request, token):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([StatuspagePublicThrottle])
 def public_desabonner(request, token):
     """GET /api/django/statuspage/public/desabonner/<token>/ — un clic, sans
     authentification (le jeton EST l'accès)."""

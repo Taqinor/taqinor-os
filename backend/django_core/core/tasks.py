@@ -198,6 +198,10 @@ def escalate_workflow_sla_task():
 
     call_command('escalate_workflow_sla')
     logger.info('core.escalate_workflow_sla: balayage terminé.')
+    # Contrat WIR50 des enveloppes de sécurité : un accusé {'ok': True} (même
+    # forme que ``authentication.desactiver_comptes_dormants``), pour qu'un
+    # résultat Celery vide ne se confonde pas avec une tâche qui n'a rien fait.
+    return {'ok': True}
 
 
 @shared_task(name='core.executer_exports_planifies')
@@ -221,7 +225,6 @@ def executer_exports_planifies_task():
     logger.info('core.executer_exports_planifies: %s extrait(s) exécuté(s).',
                 len(recap))
     return recap
-    return {'ok': True}
 
 
 @shared_task(name='core.generer_sla_mensuel')

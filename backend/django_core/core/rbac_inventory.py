@@ -173,6 +173,27 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     # identifiant de message (``core.idempotency.dedupe_event`` — une
     # redélivrance Meta ne duplique rien), throttlé (SavPublicThrottle).
     "api/django/sav/webhooks/whatsapp-inbound/",
+    # NTOBS — sondes/pages d'état publiques montées sous core/ : ZÉRO donnée
+    # société (même politique que ``core/health`` déjà allowlisté juste
+    # au-dessus). ``degraded-mode-status`` ne rend que l'état des dépendances
+    # INFRA (lu par la page de statut publique NTOBS1 et le panneau admin) ;
+    # ``trust-center`` ne rend que des entrées documentaires — le modèle
+    # ``TrustCenterEntry`` ne porte AUCUN FK société.
+    "api/django/core/degraded-mode-status",
+    "api/django/core/trust-center",
+    # NTDATA — téléchargement d'un export de réversibilité par LIEN SIGNÉ : le
+    # jeton EST l'authentification (même modèle de confiance que
+    # ``ged/depot``/``ventes/proposal`` ci-dessus), il est résolu par
+    # ``core.signed_download.resoudre_lien`` et un jeton inconnu/expiré/révoqué
+    # rend un 404 générique, sans fuite sur la raison. Le client n'a par
+    # définition pas de session à ce moment-là (lien envoyé par e-mail).
+    "api/django/core/export-reversibilite/telecharger/",
+    # NTDOC10 — vérification PUBLIQUE d'un certificat de complétion : GET
+    # AllowAny DÉLIBÉRÉ, l'empreinte SHA-256 imprimée sur le certificat (et
+    # dans son QR) est l'UNIQUE clé, l'intégrité est RECALCULÉE à chaque appel
+    # et la réponse ne contient JAMAIS le contenu ni le nom du document.
+    # Throttlé 60/min par IP (``PublicVerificationCertificatThrottle``).
+    "api/django/ged/verifier-certificat/",
     "api/schema",                             # OpenAPI (si activé plus tard)
     "api/docs",
     "api/redoc",

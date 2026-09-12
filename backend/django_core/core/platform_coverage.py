@@ -103,6 +103,17 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     ('btp_chantier.reservechantier', 'chatter_sans_recherche'),
     ('btp_chantier.journalchantier', 'chatter_sans_recherche'),
     ('btp_chantier.rfireponse', 'chatter_sans_recherche'),
+    # NTCON (2026-09-12) — le lot CHT/NTCON ajoute quatre cibles chatter au
+    # MÊME module (RFI, visa de document, avenant, décompte général) : elles
+    # attachent des pièces via records.Attachment, sans câblage recherche
+    # globale — EXACTEMENT la même dérive assumée que les trois ci-dessus, et
+    # le même remède (câbler apps/reporting/search.py modèle par modèle, chaque
+    # câblage retirant sa ligne d'ici). Listées une par une, jamais par
+    # préfixe : une cinquième cible non câblée doit encore faire rougir.
+    ('btp_chantier.rfi', 'chatter_sans_recherche'),
+    ('btp_chantier.visadocument', 'chatter_sans_recherche'),
+    ('btp_chantier.avenantchantier', 'chatter_sans_recherche'),
+    ('btp_chantier.decomptegeneral', 'chatter_sans_recherche'),
     # ODX17 (2026-07-13) — la Facture a migré ventes -> facturation (split
     # state-only). Sa cible chatter porte désormais le label `facturation.facture`
     # (ContentType du modèle déplacé) tandis que la recherche globale garde la
