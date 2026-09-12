@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 
 /* WIR104 — cet écran est le CONSOMMATEUR du cluster réglementaire de ventes
    (FG245, FG268-287), qui était complet côté serveur et appelé nulle part.
@@ -165,5 +166,83 @@ describe('DossiersReglementairesPage (WIR224 — échéances à venir)', () => {
     render(<DossiersReglementairesPage />)
     expect(await screen.findByText('Aucune échéance')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Expiré/ }).textContent).toMatch(/0/)
+  })
+})
+
+/* CHT26 — la File de travail groupe les dossiers réglementaires (FG268) par
+   les 7 statuts canoniques (models_regulatory.py) et les trie par urgence :
+   le statut d'alerte déjà calculé par le calendrier (CHT25 y ajoute la
+   prochaine action explicite), jamais un recalcul de date côté écran. Chaque
+   carte porte un lien vers le chantier rattaché quand il existe. */
+const DOSSIERS_FILE = [
+  { id: 101, reference_dossier: 'REF-101', statut: 'depose', chantier: 55, devis: 10 },
+  { id: 102, reference_dossier: 'REF-102', statut: 'depose', chantier: null, devis: 11 },
+  { id: 103, reference_dossier: 'REF-103', statut: 'approuve', chantier: null, devis: 12 },
+]
+
+const ECHEANCES_FILE = [
+  {
+    type: 'depot', sous_type: 'x', dossier_id: 101,
+    libelle: 'Dépôt en instruction', date_echeance: '2026-09-25',
+    statut_alerte: 'a_venir', jours_restants: 13, relance_due: false,
+  },
+  {
+    type: 'prochaine_action', sous_type: 'x', dossier_id: 102,
+    libelle: 'Relancer opérateur', date_echeance: '2026-09-05',
+    statut_alerte: 'expire', jours_restants: -7, relance_due: false,
+  },
+]
+
+function renderFileDeTravail() {
+  ventesApi.getReglementaire.mockResolvedValueOnce({ data: DOSSIERS_FILE })
+  ventesApi.getCalendrierReglementaire.mockResolvedValueOnce({
+    data: {
+      ...CALENDRIER_VIDE, echeances: ECHEANCES_FILE,
+      resume: { expire: 1, imminent: 0, a_venir: 1, sans_echeance: 0 },
+    },
+  })
+  return render(
+    <MemoryRouter>
+      <DossiersReglementairesPage />
+    </MemoryRouter>,
+  )
+}
+
+describe('DossiersReglementairesPage (CHT26 — file de travail)', () => {
+  it('regroupe les dossiers réglementaires par statut (les 7 groupes canoniques)', async () => {
+    renderFileDeTravail()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('radio', { name: 'File de travail' }))
+    for (const label of [
+      'En constitution', 'Déposé', 'En instruction', 'Complément demandé',
+      'Approuvé', 'Refusé', 'Comptage posé',
+    ]) {
+      expect(await screen.findByText(label)).toBeInTheDocument()
+    }
+    expect(await screen.findByText('REF-101')).toBeInTheDocument()
+    expect(screen.getByText('REF-103')).toBeInTheDocument()
+  })
+
+  it('trie chaque groupe par urgence : le dossier expiré passe avant le dossier à venir', async () => {
+    const { container } = renderFileDeTravail()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('radio', { name: 'File de travail' }))
+    await screen.findByText('REF-101')
+    const groupe = container.querySelector('[data-statut-groupe="depose"]')
+    const ids = Array.from(groupe.querySelectorAll('[data-dossier-id]'))
+      .map((li) => li.getAttribute('data-dossier-id'))
+    // 102 (échéance « expiré ») passe avant 101 (échéance « à venir »).
+    expect(ids).toEqual(['102', '101'])
+  })
+
+  it('un lien vers le chantier apparaît quand il existe, jamais sinon', async () => {
+    renderFileDeTravail()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('radio', { name: 'File de travail' }))
+    const carte101 = (await screen.findByText('REF-101')).closest('li')
+    expect(within(carte101).getByRole('link', { name: /Voir le chantier/ }))
+      .toHaveAttribute('href', '/chantiers?id=55')
+    const carte103 = screen.getByText('REF-103').closest('li')
+    expect(within(carte103).queryByRole('link')).toBeNull()
   })
 })

@@ -1120,6 +1120,64 @@ def jours_impaye_facture(facture_id, company):
     return facture.jours_retard
 
 
+def montants_devis(devis_ids, company):
+    """CHT12 — Montants HT/TTC d'une liste de devis, EN BATCH.
+
+    Point d'entrée cross-app en LECTURE SEULE (ex. le P&L projet de
+    ``gestion_projet``, via ``installations.selectors``) — jamais un import
+    direct de ``ventes.models``, façon batch de ``ca_devis_factures_par_
+    clients``. Renvoie ``{devis_id: {'ht': Decimal, 'ttc': Decimal}}`` ; un id
+    inconnu ou d'une autre société n'apparaît PAS dans le résultat."""
+    from decimal import Decimal
+
+    from .models import Devis
+
+    devis_ids = list(devis_ids or [])
+    if not devis_ids:
+        return {}
+    out = {}
+    for devis in Devis.objects.filter(company=company, id__in=devis_ids):
+        try:
+            ht = Decimal(str(devis.total_ht or 0))
+            ttc = Decimal(str(devis.total_ttc or 0))
+        except Exception:  # noqa: BLE001 — jamais casser l'appelant
+            ht = ttc = Decimal('0')
+        out[devis.id] = {'ht': ht, 'ttc': ttc}
+    return out
+
+
+def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
+    """CHT12 — Montants HT/TTC des factures RATTACHÉES à chaque devis,
+    agrégés PAR devis, EN BATCH (Facture via le shim ``ventes.models`` —
+    ODX17 laisse ``facturation.selectors`` vide).
+
+    Point d'entrée cross-app en LECTURE SEULE — jamais un import direct de
+    ``ventes.models``. Renvoie ``{devis_id: {'ht': Decimal, 'ttc': Decimal}}``;
+    un devis sans facture rattachée n'apparaît PAS dans le résultat.
+    ``exclure_annulee`` (défaut ``True``) exclut les factures ``ANNULEE`` de
+    l'agrégat."""
+    from decimal import Decimal
+
+    from .models import Facture
+
+    devis_ids = list(devis_ids or [])
+    if not devis_ids:
+        return {}
+    qs = Facture.objects.filter(company=company, devis_id__in=devis_ids)
+    if exclure_annulee:
+        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
+    out = {}
+    for facture in qs:
+        entry = out.setdefault(
+            facture.devis_id, {'ht': Decimal('0'), 'ttc': Decimal('0')})
+        try:
+            entry['ht'] += Decimal(str(facture.total_ht or 0))
+            entry['ttc'] += Decimal(str(facture.total_ttc or 0))
+        except Exception:  # noqa: BLE001 — jamais casser l'agrégat
+            pass
+    return out
+
+
 def lignes_louables_devis(devis, produit_ids_louables):
     """ZCTR6 — Lignes d'un devis dont le produit est LOUABLE.
 
@@ -1747,6 +1805,56 @@ def facture_est_payable_portail(facture):
 
     return facture is not None and facture.statut not in (
         Facture.Statut.ANNULEE, Facture.Statut.PAYEE)
+
+
+# ── NTPRT9 — Tableau de bord CLIENT (devis en attente / factures impayées) ──
+
+def resume_portail_client(company, client_id):
+    """NTPRT9 — Cartes « Devis en attente » / « Factures impayées » du
+    tableau de bord portail CLIENT (``apps.portail.views_client``).
+
+    Même périmètre EXACTEMENT que ``devis_du_client_portail``/
+    ``factures_du_client_portail`` ci-dessus (brouillons exclus, aucun champ
+    de coût) : les compteurs matchent donc, par construction, ce que l'écran
+    interne montrerait pour ce même client — jamais un recalcul divergent.
+    ``devis_en_attente`` = devis ``ENVOYE`` (ni accepté/refusé/expiré, en
+    attente d'une décision du client). ``factures_impayees`` = factures
+    ``EMISE``/``EN_RETARD`` (ni payées, ni annulées, ni brouillon) ;
+    ``prochaine_echeance`` = la date d'échéance la plus proche parmi elles
+    (``None`` si aucune échéance renseignée). Lecture seule."""
+    from .models import Devis, Facture
+
+    vide = {
+        'devis_en_attente': 0,
+        'factures_impayees': 0,
+        'prochaine_echeance': None,
+    }
+    if company is None or not client_id:
+        return vide
+
+    devis_en_attente = Devis.objects.filter(
+        company=company, client_id=client_id,
+        statut=Devis.Statut.ENVOYE).count()
+
+    factures_impayees_qs = Facture.objects.filter(
+        company=company, client_id=client_id,
+        statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD))
+    prochaine_echeance = (
+        factures_impayees_qs
+        .exclude(date_echeance__isnull=True)
+        .order_by('date_echeance')
+        .values_list('date_echeance', flat=True)
+        .first())
+
+    return {
+        'devis_en_attente': devis_en_attente,
+        'factures_impayees': factures_impayees_qs.count(),
+        # Chaîne ISO, jamais un objet date : la valeur part telle quelle dans
+        # la réponse JSON du tableau de bord portail (contrat
+        # apps/portail/contract_samples/client_tableau_de_bord.json).
+        'prochaine_echeance': (
+            prochaine_echeance.isoformat() if prochaine_echeance else None),
+    }
 
 
 # ── AOF164 — comparaison A/B du calepinage d'un devis (LECTURE SEULE) ───────

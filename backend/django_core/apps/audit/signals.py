@@ -109,6 +109,12 @@ TRACKED_MODELS = [
     # et journalise sur le dossier ; cette entrée ajoute la ligne AuditLog
     # générique, hors de portée de la cascade.
     ('rh', 'Pointage'),
+    # CHT25 — RegulatoryDossier (dossier réglementaire 82-21/ONEE/ANRE, côté
+    # ventes) n'avait AUCUN historique daté de ses transitions — contrairement
+    # au chantier, tracé par son chatter. Dépôt, complément demandé,
+    # approbation, refus… doivent laisser une ligne au Journal comme le reste
+    # des pièces réglementaires déjà suivies ici.
+    ('ventes', 'RegulatoryDossier'),
 ]
 
 # ── UN SEUL ÉCRIVAIN PAR LIGNE D'AUDIT ─────────────────────────────────────

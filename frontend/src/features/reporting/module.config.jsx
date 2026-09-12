@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { BarChart3, Inbox, Tv, ScrollText } from 'lucide-react'
+import { BarChart3, HardHat, Inbox, Tv, ScrollText } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -70,6 +70,9 @@ const SavSlaPage = lazy(() => import('../../pages/reporting/SavSlaPage'))
 const FieldServiceReportPage = lazy(() => import('../../pages/reporting/FieldServiceReportPage'))
 // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
 const TechnicienScorecardPage = lazy(() => import('../../pages/reporting/TechnicienScorecardPage'))
+// CHT27 — cockpit KPI chantier (cycle time par étape, taux de reprise
+// post-MES, chantiers en retard, tranches à facturer en attente).
+const PilotageChantiersPage = lazy(() => import('../../pages/reporting/PilotageChantiersPage'))
 // WIR84 — consommateur des agrégateurs Quote-to-Cash de `apps/ventes`
 // (FG45 `/ventes/dashboard/`, FG47 `/ventes/insights/cash-flow/`,
 // ZFAC10 `/ventes/etats/analyse-facturation/`), jusqu'ici sans appelant.
@@ -109,6 +112,9 @@ const config = {
       { to: '/reporting/field-service', label: 'Analytics terrain', k: 'nav.field_service', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
       { to: '/reporting/scorecard-technicien', label: 'Scorecard technicien', k: 'nav.scorecard_technicien', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      // CHT27 — cockpit KPI chantier (cycle time, taux de reprise post-MES,
+      // chantiers en retard, tranches à facturer en attente).
+      { to: '/reporting/pilotage-chantiers', label: 'Pilotage chantiers', k: 'nav.pilotage_chantiers', icon: navIcon(HardHat), roles: ['responsable','admin'] },
       // WIR283 — `/reporting/dashboards` (DashboardConfigPage) existait comme
       // ROUTE sans aucune entrée de menu : c'est l'écran QUI CRÉE les dashboards
       // que le kiosque TV et le partage ci-dessous consomment, donc il vient
@@ -134,6 +140,7 @@ const config = {
   titles: [
     ['/reporting/rapport-periode', 'Rapport d’activité périodique'],
     ['/reporting/rapport-builder', 'Générateur de rapports croisés'],
+    ['/reporting/pilotage-chantiers', 'Pilotage chantiers'],
   ],
   routes: [
     { path: '/reporting', component: Reporting, roles: RESPONSABLE_ADMIN },
@@ -154,6 +161,7 @@ const config = {
     { path: '/reporting/sav-sla', component: SavSlaPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/field-service', component: FieldServiceReportPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/scorecard-technicien', component: TechnicienScorecardPage, roles: RESPONSABLE_ADMIN },
+    { path: '/reporting/pilotage-chantiers', component: PilotageChantiersPage, roles: RESPONSABLE_ADMIN },
   ],
 }
 

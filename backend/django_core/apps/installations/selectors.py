@@ -8,10 +8,53 @@ Comportement strictement identique aux requêtes inline d'origine.
 from django.db.models import Sum
 
 
-def installation_for_devis(devis):
-    """Le chantier lié à un devis (ou None). Lecture seule."""
+def installation_for_devis(devis, company=None):
+    """Le chantier lié à un devis (ou None). Lecture seule.
+
+    CHT12 — ``company`` est OPTIONNEL (défaut ``None`` = comportement
+    inchangé) : un appelant qui la fournit obtient une lecture scopée société
+    (jamais de fuite cross-tenant même si le devis passé appartient, par bug
+    amont, à une autre société)."""
     from .models import Installation
-    return Installation.objects.filter(devis=devis).first()
+    qs = Installation.objects.filter(devis=devis)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs.first()
+
+
+def devis_id_du_chantier(company, chantier_id):
+    """CHT12 — id du devis lié à un chantier, scopé société (ou None).
+
+    Point d'entrée cross-app en LECTURE SEULE (ex. ``gestion_projet`` pour
+    résoudre les montants d'un projet via ``ventes.selectors.montants_devis``)
+    — jamais un import direct de ``installations.models``."""
+    from .models import Installation
+    if not company or not chantier_id:
+        return None
+    return Installation.objects.filter(
+        pk=chantier_id, company=company).values_list(
+        'devis_id', flat=True).first()
+
+
+def devis_ids_des_chantiers(company, chantier_ids):
+    """CHT13-portefeuille — jumeau BATCH de ``devis_id_du_chantier`` : le
+    devis_id de PLUSIEURS chantiers en UNE requête, scopé société.
+
+    Renvoie ``{chantier_id: devis_id}`` — un chantier introuvable, hors
+    société, ou sans devis rattaché est simplement ABSENT du dict (jamais une
+    clé à ``None``). Point d'entrée cross-app en LECTURE SEULE (ex.
+    ``gestion_projet.selectors.tableau_portefeuille`` pour résoudre en masse
+    les ``ProjetChantier`` d'un portefeuille sans réintroduire le N+1 que la
+    vectorisation AUDV16 élimine) — jamais un import direct de
+    ``installations.models``."""
+    from .models import Installation
+    if not company or not chantier_ids:
+        return {}
+    return dict(
+        Installation.objects.filter(
+            pk__in=list(chantier_ids), company=company,
+            devis_id__isnull=False,
+        ).values_list('id', 'devis_id'))
 
 
 def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
@@ -1428,7 +1471,9 @@ def chantier_card(chantier_id, company):
     return {
         'label': f'Chantier {chantier.reference}',
         'subtitle': ' · '.join(p for p in parts if p),
-        'url': f'/installations/{chantier.pk}',
+        # CHT7 — `/installations/<id>` est un 404 réel : la fiche chantier vit
+        # sur `/chantiers` (InstallationsPage.jsx:343 lit `?id=`).
+        'url': f'/chantiers?id={chantier.pk}',
     }
 
 
@@ -2831,6 +2876,112 @@ def chantier_ville(company, chantier_id):
     if chantier is None:
         return None
     return (getattr(chantier, 'site_ville', '') or '').strip() or None
+
+
+# ── NTPRT9 — Prochain jalon de chantier (tableau de bord portail client) ────
+
+def prochain_jalon_client_portail(company, client_id):
+    """NTPRT9 — Prochain jalon de chantier NON ATTEINT d'un client, pour la
+    carte « Prochain jalon » du tableau de bord portail
+    (``apps.portail.views_client``). ``None`` si le client n'a aucun chantier
+    actif ou si tous ses jalons publiés sont déjà atteints — jamais un
+    jalon fabriqué pour remplir la carte.
+
+    Lit la timeline PORTAIL déjà synchronisée automatiquement (CHT11,
+    ``apps.portail.selectors.jalons_du_chantier`` — jamais un import de
+    ``apps.portail.models`` depuis installations, même patron que
+    ``apps.installations.services.synchroniser_jalon_portail``), chantier le
+    plus récent (non annulé) en premier."""
+    from apps.portail.selectors import jalons_du_chantier
+
+    from .models import Installation
+
+    if company is None or not client_id:
+        return None
+    chantiers = (Installation.objects
+                 .filter(company=company, client_id=client_id, annule=False)
+                 .order_by('-date_creation')
+                 .values_list('id', 'reference'))
+    for chantier_id, reference in chantiers:
+        jalon = jalons_du_chantier(company, chantier_id).filter(
+            atteint=False).first()
+        if jalon is not None:
+            return {
+                'chantier_id': chantier_id,
+                'chantier_reference': reference,
+                'libelle': jalon.libelle,
+                'date_jalon': jalon.date_jalon,
+            }
+    return None
+
+
+# ── NTPRT14 — « Mes chantiers » côté portail client (lecture seule) ────────
+
+def chantiers_du_client_portail(company, client_id):
+    """NTPRT14 — Chantiers (Installation) visibles par le client sur son
+    portail « Mes chantiers », au format PLAT attendu par l'écran. AUCUNE
+    donnée financière (BOM/prix exclus — le contrat de ce sélecteur, jamais
+    étendu). Scopée société ET client (jamais les chantiers d'un autre
+    client) ; les chantiers annulés n'ont rien à montrer au client."""
+    from .models import Installation
+
+    if company is None or not client_id:
+        return []
+    qs = (Installation.objects
+          .filter(company=company, client_id=client_id, annule=False)
+          .order_by('-date_creation'))
+    return [{
+        'id': c.id,
+        'reference': c.reference,
+        'statut': c.statut,
+        'statut_display': c.get_statut_display(),
+        'site_ville': c.site_ville,
+        'date_creation': c.date_creation,
+    } for c in qs]
+
+
+def chantier_du_client_portail_obj(company, client_id, chantier_id):
+    """NTPRT14 — UN chantier (objet ORM) du client, ou ``None``. Le triplet
+    (société, client, id) est exigé : un chantier d'un autre client — ou
+    d'une autre société — est INTROUVABLE, jamais « trouvé puis refusé »."""
+    from .models import Installation
+
+    if company is None or not client_id or not chantier_id:
+        return None
+    return Installation.objects.filter(
+        company=company, client_id=client_id, pk=chantier_id).first()
+
+
+def photos_chantier_client_portail(company, client_id, chantier_id, *, phase=None):
+    """NTPRT14 — Photos (``records.Attachment``) d'UN chantier du client, au
+    format PLAT attendu par la galerie portail avant/pendant/après. Réutilise
+    ``chantier_photos`` (PUB63/PUB73, déjà le contrat client-safe : jamais un
+    champ financier) APRÈS avoir vérifié que le chantier appartient bien au
+    client — une liste vide si ce n'est pas le cas, jamais les photos d'un
+    autre client."""
+    chantier = chantier_du_client_portail_obj(company, client_id, chantier_id)
+    if chantier is None:
+        return []
+    return [{
+        'id': p.id,
+        'phase': p.phase or None,
+        'filename': p.filename,
+        'created_at': p.created_at,
+        'url': (f'/api/django/portail/mes-chantiers/{chantier_id}/photo/'
+                f'{p.id}/'),
+    } for p in chantier_photos(company, chantier_id, phase=phase)]
+
+
+def photo_chantier_client_portail(company, client_id, chantier_id, attachment_id):
+    """NTPRT14 — UNE photo (``records.Attachment``) d'un chantier du client,
+    ou ``None``. Garde exigée AVANT de relayer les octets (voir
+    ``apps.portail.views_client.MesChantiersPortailViewSet.photo``) — même
+    patron que ``preuve_livraison_client_portail``/``chantier_photo``."""
+    chantier = chantier_du_client_portail_obj(company, client_id, chantier_id)
+    if chantier is None:
+        return None
+    return chantier_photos(company, chantier_id).filter(
+        pk=attachment_id).first()
 
 
 def produits_recemment_demandes(company, user_id, *, limite=5):

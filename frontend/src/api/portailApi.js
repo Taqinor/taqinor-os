@@ -19,6 +19,11 @@ const portailApi = {
   // société est résolue côté serveur par l'en-tête Host — on n'envoie AUCUN
   // identifiant de société (ce serait un énumérateur de tenants).
   themePublic: () => api.get('/public/portail/theme/'),
+  // NTPRT9 — cartes résumé du tableau de bord CLIENT (devis en attente,
+  // factures impayées + échéance la plus proche, tickets SAV ouverts,
+  // prochain jalon chantier). Aucun id envoyé : le scope vient du compte
+  // portail connecté, côté serveur.
+  tableauDeBord: () => api.get('/portail/client/tableau-de-bord/'),
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),
@@ -61,6 +66,17 @@ const portailApi = {
     consulterArticleKb: (articleId) =>
       api.post('/portail/mes-demandes-sav/consulter-article-kb/',
         { article_id: articleId }),
+  },
+  // NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11,
+  // lecture seule) + galerie photos avant/pendant/après, jamais de donnée
+  // financière (BOM/prix exclus, voir selectors installations).
+  chantiers: {
+    liste: () => api.get('/portail/mes-chantiers/'),
+    detail: (id) => api.get(`/portail/mes-chantiers/${id}/`),
+    // `results[].url` de la réponse porte déjà le chemin complet servant les
+    // octets (route scopée au client connecté) — jamais reconstruit ici.
+    photos: (id, phase) => api.get(`/portail/mes-chantiers/${id}/photos/`,
+      { params: phase ? { phase } : {} }),
   },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au

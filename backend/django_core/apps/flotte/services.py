@@ -1350,6 +1350,24 @@ def changer_statut_vehicule(vehicule, nouveau_statut, user=None):
         user=user,
     )
 
+    # CHT17 — un camion en MAINTENANCE devient indisponible au planning
+    # terrain (FG299-303) : synchronisé UNIQUEMENT sur les transitions
+    # ↔MAINTENANCE, best-effort (jamais bloquant pour le changement de
+    # statut lui-même).
+    if vehicule.emplacement_stock_id is not None:
+        entree_maintenance = nouveau_statut == Vehicule.Statut.MAINTENANCE
+        sortie_maintenance = ancien_statut == Vehicule.Statut.MAINTENANCE
+        if entree_maintenance or sortie_maintenance:
+            try:
+                from apps.installations.services import (
+                    sync_indisponibilite_maintenance,
+                )
+                sync_indisponibilite_maintenance(
+                    vehicule.company, vehicule.emplacement_stock_id,
+                    entree_maintenance, user=user)
+            except Exception:  # pragma: no cover - défensif, best-effort
+                pass
+
     return vehicule
 
 

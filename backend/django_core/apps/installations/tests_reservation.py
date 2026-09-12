@@ -30,7 +30,7 @@ from apps.stock.models import Produit, MouvementStock
 from apps.stock.services import (
     reserved_quantity, available_quantity, is_low_stock_available,
 )
-from apps.installations.models import StockReservation
+from apps.installations.models import InstallationActivity, StockReservation
 from apps.installations.services import (
     create_installation_from_devis, seed_reservations,
     consume_reservations, release_reservations,
@@ -251,6 +251,44 @@ class TestConsumptionIdempotent(TestCase):
         self.assertEqual(self._sortie_count(self.panneau), 1)
         self.inst.refresh_from_db()
         self.assertIsNotNone(self.inst.date_reception)
+
+
+class TestConsumptionManqueTrace(TestCase):
+    """CHT5 — une consommation partielle (stock en main insuffisant) trace
+    désormais le manque dans UNE note chatter agrégée, jamais une par SKU."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='resa_resp4', password='x', role_legacy='responsable',
+            company=self.company)
+        self.produit = make_produit(self.company, 'Onduleur rare', stock=1)
+        devis = make_accepted_devis_with_lines(
+            self.company, [(self.produit, 5)])
+        self.inst, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+
+    def _notes(self):
+        return InstallationActivity.objects.filter(
+            installation=self.inst, kind=InstallationActivity.Kind.NOTE)
+
+    def test_manque_trace_dans_une_note_agregee(self):
+        n = consume_reservations(self.inst, self.user)
+        self.assertEqual(n, 1)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 0)
+        resa = self.inst.reservations.get(produit=self.produit)
+        self.assertTrue(resa.consomme)
+        notes = self._notes()
+        self.assertEqual(notes.count(), 1)
+        self.assertIn(self.produit.sku, notes.first().body)
+        self.assertIn('manque 4', notes.first().body)
+
+    def test_consommation_complete_aucune_note_de_manque(self):
+        self.produit.quantite_stock = 5
+        self.produit.save(update_fields=['quantite_stock'])
+        consume_reservations(self.inst, self.user)
+        self.assertEqual(self._notes().count(), 0)
 
 
 class TestReleaseOnCancelClose(TestCase):

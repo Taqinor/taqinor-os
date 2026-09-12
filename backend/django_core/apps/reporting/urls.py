@@ -32,6 +32,7 @@ from .rapport_builder import RapportDefinitionViewSet
 from .integrity_views import integrite_insight
 from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen, sav_taux_attache
 from .reports_field import field_service_report
+from .reports_chantier import pilotage_chantiers_report
 from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
 
@@ -141,6 +142,10 @@ urlpatterns = [
     # XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité,
     # récidive, trajet vs sur site, interventions par type/statut).
     path('reports/field/', field_service_report, name='report-field-service'),
+    # CHT27 — cockpit KPI chantier (cycle time par étape, taux de reprise
+    # post-MES, chantiers en retard).
+    path('reports/chantier/', pilotage_chantiers_report,
+         name='report-pilotage-chantiers'),
     # XFSM17 — scorecard coaching par technicien vs moyenne équipe.
     path('insights/technicien-scorecard/', technicien_scorecard,
          name='insights-technicien-scorecard'),
