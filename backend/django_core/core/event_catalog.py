@@ -290,6 +290,20 @@ CATALOG = {
     'scm_cycle_sop_cloture': _e(
         'Un cycle de planification S&OP (CyclePlanificationSOP) est clôturé.',
         ['cycle', 'user']),
+    # NTWFL5 — émis par ``core.workflow.avancer`` quand une étape BPM devient
+    # la nouvelle étape ACTIVE (en attente de décision). Best-effort : une
+    # émission en échec ne bloque jamais le moteur.
+    'workflow_etape_activee': _e(
+        'Une étape de workflow BPM devient la nouvelle étape ACTIVE '
+        "(manuelle / par rôle, en attente d'une décision).",
+        ['step', 'company']),
+    # NTJUR26 — émis par ``apps.juridique.services.clore_dossier`` à la
+    # clôture d'un DossierJuridique (l'un des quatre statuts ``clos_*``).
+    # GARANTIE : cet événement ne poste JAMAIS d'écriture comptable — la
+    # reprise de provision reste gardée par une confirmation explicite.
+    'dossier_juridique_clos': _e(
+        'Un dossier juridique (DossierJuridique) est clôturé.',
+        ['dossier', 'company', 'resultat', 'montant_final', 'user']),
 }
 
 
