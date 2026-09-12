@@ -582,8 +582,33 @@ class RemedeDefaillanceSerializer(serializers.ModelSerializer):
 class CategorieTicketSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategorieTicket
-        fields = ['id', 'libelle', 'ordre', 'actif']
+        fields = [
+            'id', 'libelle', 'ordre', 'actif',
+            # NTSRV6 — exigences de compétence (vide = comportement actuel).
+            'competences_requises', 'niveau_competence_min',
+        ]
         read_only_fields = ['id']
+
+    def validate_competences_requises(self, value):
+        """NTSRV6 — une compétence d'une AUTRE société est refusée (garde
+        multi-tenant : la société vient toujours de l'utilisateur, jamais du
+        corps)."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return value
+        etrangeres = [c for c in value
+                      if getattr(c, 'company_id', None) != company.id]
+        if etrangeres:
+            raise serializers.ValidationError(
+                'Compétence inconnue (elle appartient à une autre société).')
+        return value
+
+    def validate_niveau_competence_min(self, value):
+        if value > 4:
+            raise serializers.ValidationError(
+                'Niveau invalide : 0 (non acquis) à 4 (expert).')
+        return value
 
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────

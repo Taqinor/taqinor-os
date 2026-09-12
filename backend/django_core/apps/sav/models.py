@@ -2127,6 +2127,24 @@ class CategorieTicket(models.Model):
     ordre = models.PositiveIntegerField(default=0)
     actif = models.BooleanField(default=True)
 
+    # ── NTSRV6 — Compétences RH exigées par cette catégorie ─────────────────
+    # ADDITIF et OPTIONNEL : une catégorie SANS compétence définie garde
+    # exactement le comportement actuel (aucun filtre d'affectation). Le lien
+    # est un string-FK vers `rh.Competence` — `apps.sav.models` n'importe
+    # JAMAIS `apps.rh.models` ; la lecture du niveau des employés passe par
+    # `apps.rh.selectors` (règle de modularité CLAUDE.md).
+    competences_requises = models.ManyToManyField(
+        'rh.Competence', blank=True, related_name='categories_ticket_sav',
+        verbose_name='Compétences requises',
+        help_text='Compétences exigées pour traiter un ticket de cette '
+                  'catégorie (vide = aucune exigence, comportement actuel).')
+    niveau_competence_min = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name='Niveau minimum requis',
+        help_text='Niveau minimum attendu sur chaque compétence requise '
+                  '(échelle rh.CompetenceEmploye : 0 non acquis → 4 expert). '
+                  "Sans compétence requise, ce niveau n'est jamais consulté.")
+
     class Meta:
         ordering = ['ordre', 'libelle']
         unique_together = [('company', 'libelle')]
@@ -2135,6 +2153,11 @@ class CategorieTicket(models.Model):
 
     def __str__(self):
         return self.libelle
+
+    def competences_requises_ids(self):
+        """NTSRV6 — ids des compétences exigées (liste vide = aucune
+        exigence → comportement d'affectation actuel strictement inchangé)."""
+        return list(self.competences_requises.values_list('id', flat=True))
 
 
 # ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
