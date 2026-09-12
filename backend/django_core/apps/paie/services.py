@@ -6206,6 +6206,175 @@ def etat_des_charges(periode):
     }
 
 
+# ── NTPAY18 — État des charges sociales & fiscales (5 organismes, détaillé) ─
+
+def _somme_lignes(periode, codes):
+    """Somme des ``LigneBulletin`` de ces ``codes`` sur les bulletins VALIDÉS.
+
+    Les lignes sont la matérialisation du snapshot : les sommer revient au
+    même que sommer les champs du bulletin, à ceci près que la MUTUELLE n'a
+    pas de champ dédié (XPAI3) — elle n'existe QUE sous forme de lignes.
+    """
+    from django.db.models import Sum
+
+    from .models import BulletinPaie, LigneBulletin
+
+    total = (
+        LigneBulletin.objects
+        .filter(company=periode.company,
+                bulletin__periode=periode,
+                bulletin__statut=BulletinPaie.STATUT_VALIDE,
+                code__in=codes)
+        .aggregate(total=Sum('montant'))['total']
+    )
+    return _q(total or 0)
+
+
+def etat_charges(periode):
+    """État DÉTAILLÉ des charges sociales et fiscales d'une période (NTPAY18).
+
+    Distinct de ``etat_des_charges`` (XPAI5), qui agrège en 3 postes pour le
+    rapprochement comptable et le règlement : celui-ci est le DOCUMENT de
+    synthèse périodique, avec ses CINQ organismes — CNSS, AMO, IR, CIMR,
+    mutuelle — et pour chacun la base, les taux, la part salariale, la part
+    patronale et le total à verser.
+
+    Les montants sont ceux des bulletins VALIDÉS de la période (un brouillon
+    n'est jamais compté) ; les TAUX sont ceux du ``ParametrePaie`` en vigueur
+    au 1ᵉʳ du mois. Un taux propre à chaque salarié (CIMR) ou à chaque régime
+    (mutuelle) n'est PAS affiché : il n'y en a pas UN — ``None`` plutôt qu'une
+    moyenne inventée.
+
+    Les allocations familiales et la taxe de formation professionnelle sont
+    100 % patronales et recouvrées par la CNSS : elles sortent en
+    ``charges_annexes`` (jamais fondues dans le taux CNSS, qui deviendrait
+    faux) mais ENTRENT dans ``total_patronal``/``total_general`` — le total du
+    document est bien ce qu'il y a à verser.
+    """
+    from .models import BulletinPaie
+
+    registre = livre_de_paie(periode)
+    totaux = registre['totaux']
+    parametre = parametre_en_vigueur(
+        periode.company, date(periode.annee, periode.mois, 1))
+
+    bulletins = list(
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil')
+    )
+    plafond_cnss = Decimal(getattr(parametre, 'plafond_cnss', 0) or 0)
+    # Assiette CNSS = brut PLAFONNÉ par tête (jamais le total plafonné).
+    base_cnss = _q(sum(
+        ((min(Decimal(b.brut or 0), plafond_cnss) if plafond_cnss
+          else Decimal(b.brut or 0))
+         for b in bulletins if b.profil.affilie_cnss),
+        Decimal('0')))
+    # Allocations familiales & taxe de formation pro : assiette NON plafonnée
+    # des affiliés CNSS (cf. ``allocations_familiales_patronale``).
+    base_brut_cnss = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins if b.profil.affilie_cnss),
+        Decimal('0')))
+    base_amo = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins if b.profil.affilie_amo),
+        Decimal('0')))
+    base_cimr = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins if b.profil.affilie_cimr),
+        Decimal('0')))
+    base_mutuelle = _q(sum(
+        (Decimal(b.brut or 0) for b in bulletins
+         if getattr(getattr(b.profil, 'adhesion_mutuelle', None), 'actif',
+                    False)),
+        Decimal('0')))
+
+    mutuelle_sal = _somme_lignes(periode, ['MUTUELLE_SAL'])
+    mutuelle_pat = _somme_lignes(periode, ['MUTUELLE_PAT'])
+
+    def _taux(nom):
+        valeur = getattr(parametre, nom, None) if parametre else None
+        return Decimal(valeur) if valeur is not None else None
+
+    organismes = [
+        {
+            'code': 'cnss', 'libelle': 'CNSS',
+            'base': base_cnss,
+            'taux_salarial': _taux('taux_cnss_salarial'),
+            'taux_patronal': _taux('taux_cnss_patronal'),
+            'salarial': totaux['cnss_salariale'],
+            'patronal': totaux['cnss_patronale'],
+        },
+        {
+            'code': 'amo', 'libelle': 'AMO',
+            'base': base_amo,
+            'taux_salarial': _taux('taux_amo_salarial'),
+            'taux_patronal': _taux('taux_amo_patronal'),
+            'salarial': totaux['amo_salariale'],
+            'patronal': totaux['amo_patronale'],
+        },
+        {
+            'code': 'ir', 'libelle': 'IR (retenue à la source)',
+            # Base de l'IR = net imposable ; le taux est PROGRESSIF par
+            # tranche — il n'y a pas UN taux à afficher.
+            'base': totaux['net_imposable'],
+            'taux_salarial': None, 'taux_patronal': None,
+            'salarial': totaux['ir'], 'patronal': Decimal('0.00'),
+        },
+        {
+            'code': 'cimr', 'libelle': 'CIMR',
+            'base': base_cimr,
+            # Le taux CIMR est PROPRE À CHAQUE ADHÉRENT (PAIE20).
+            'taux_salarial': None, 'taux_patronal': None,
+            'salarial': totaux['cimr_salariale'], 'patronal': Decimal('0.00'),
+        },
+        {
+            'code': 'mutuelle', 'libelle': 'Mutuelle / prévoyance',
+            'base': base_mutuelle,
+            # Le taux dépend du RÉGIME de chaque adhérent (XPAI3).
+            'taux_salarial': None, 'taux_patronal': None,
+            'salarial': mutuelle_sal, 'patronal': mutuelle_pat,
+        },
+    ]
+    for organisme in organismes:
+        organisme['total'] = _q(
+            organisme['salarial'] + organisme['patronal'])
+
+    charges_annexes = [
+        {
+            'code': 'allocations_familiales',
+            'libelle': 'Allocations familiales (CNSS)',
+            'base': base_brut_cnss,
+            'taux_patronal': _taux('taux_allocations_familiales'),
+            'patronal': totaux['allocations_familiales'],
+        },
+        {
+            'code': 'formation_professionnelle',
+            'libelle': 'Taxe de formation professionnelle (CNSS)',
+            'base': base_brut_cnss,
+            'taux_patronal': _taux('taux_formation_pro'),
+            'patronal': totaux['formation_professionnelle'],
+        },
+    ]
+
+    total_salarial = _q(sum(
+        (o['salarial'] for o in organismes), Decimal('0')))
+    total_patronal = _q(
+        sum((o['patronal'] for o in organismes), Decimal('0'))
+        + sum((a['patronal'] for a in charges_annexes), Decimal('0')))
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'statut_periode': periode.statut,
+        'devise': (periode.devise or DEVISE_DEFAUT),
+        'nombre_salaries': registre['nombre_salaries'],
+        'organismes': organismes,
+        'charges_annexes': charges_annexes,
+        'total_salarial': total_salarial,
+        'total_patronal': total_patronal,
+        'total_general': _q(total_salarial + total_patronal),
+    }
+
+
 # ── NTPAY4 — Télépaiement CNSS : bordereau + fichier de règlement ───────────
 
 # Jour LIMITE de règlement des cotisations CNSS (cadre marocain : avant le 10

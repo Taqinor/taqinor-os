@@ -113,6 +113,7 @@ from .services import (
     ensure_rubriques_standard,
     ensure_schema_comptable_standard,
     ensure_structures_standard,
+    etat_charges as etat_charges_detaille,
     etat_des_charges,
     expirer_regimes_echus,
     etat_ir_9421,
@@ -1342,13 +1343,36 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
 
     @action(detail=True, methods=['get'], url_path='etat-charges')
     def etat_charges(self, request, pk=None):
-        """État consolidé des charges sociales par organisme (XPAI5).
+        """État consolidé des charges sociales par organisme (XPAI5/NTPAY18).
 
-        ``?export=csv`` renvoie le fichier CSV au lieu du JSON.
+        ``?export=csv`` renvoie le fichier CSV (forme XPAI5, inchangée).
+
+        NTPAY18 — ``?detail=1`` renvoie l'état DÉTAILLÉ (5 organismes CNSS /
+        AMO / IR / CIMR / mutuelle avec base, taux, parts salariale et
+        patronale, plus les charges annexes recouvrées par la CNSS) et
+        ``?export=pdf`` en imprime le document de synthèse. Le JSON par défaut
+        reste celui d'XPAI5 — aucune régression pour ses appelants.
         """
         periode = self.get_object()
+        export = request.query_params.get('export')
+        detaille = request.query_params.get('detail') in ('1', 'true', 'vrai')
+
+        if export == 'pdf' or detaille:
+            etat = etat_charges_detaille(periode)
+            if export == 'pdf':
+                try:
+                    pdf = builders.render_etat_charges_pdf(periode, etat=etat)
+                except RuntimeError as exc:
+                    return Response(
+                        {'detail': str(exc)},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                return _pdf_response(
+                    pdf,
+                    f'etat_charges_{periode.annee}_{periode.mois:02d}.pdf')
+            return Response(etat, status=status.HTTP_200_OK)
+
         data = etat_des_charges(periode)
-        if request.query_params.get('export') == 'csv':
+        if export == 'csv':
             return self._export_etat_charges_csv(data)
         return Response(data, status=status.HTTP_200_OK)
 

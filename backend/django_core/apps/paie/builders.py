@@ -1004,6 +1004,90 @@ def render_bordereau_cnss_pdf(periode, *, bordereau=None, today=None):
         bordereau, employeur_context(periode.company), today=today))
 
 
+# ── NTPAY18 — État des charges sociales & fiscales (document de synthèse) ──
+
+def _taux_txt(valeur):
+    """« 4,48 % » — ou « — » quand il n'y a PAS un taux unique à afficher.
+
+    CIMR et mutuelle ont un taux propre à chaque adhérent/régime : imprimer
+    une moyenne serait un chiffre inventé.
+    """
+    if valeur in (None, ''):
+        return '—'
+    return f'{_fmt(valeur)} %'
+
+
+def render_etat_charges_html(etat, employeur, *, today=None):
+    """HTML de l'état des charges sociales et fiscales (NTPAY18).
+
+    ``etat`` = le dict de ``services.etat_charges`` (5 organismes + les
+    charges annexes recouvrées par la CNSS). Tous les montants viennent des
+    bulletins VALIDÉS de la période — un brouillon n'y figure jamais.
+    """
+    if today is None:
+        today = date.today()
+    devise = escape(str(etat.get('devise') or 'MAD'))
+    lignes = ''.join(
+        f"<tr><td>{escape(str(org['libelle']))}</td>"
+        f"<td>{_fmt(org['base'])}</td>"
+        f"<td>{escape(_taux_txt(org['taux_salarial']))}</td>"
+        f"<td>{escape(_taux_txt(org['taux_patronal']))}</td>"
+        f"<td>{_fmt(org['salarial'])}</td>"
+        f"<td>{_fmt(org['patronal'])}</td>"
+        f"<td>{_fmt(org['total'])}</td></tr>"
+        for org in etat['organismes'])
+    annexes = ''.join(
+        f"<tr class=\"annexe\"><td>{escape(str(annexe['libelle']))}</td>"
+        f"<td>{_fmt(annexe['base'])}</td><td>—</td>"
+        f"<td>{escape(_taux_txt(annexe['taux_patronal']))}</td>"
+        f"<td>{_fmt(0)}</td>"
+        f"<td>{_fmt(annexe['patronal'])}</td>"
+        f"<td>{_fmt(annexe['patronal'])}</td></tr>"
+        for annexe in etat.get('charges_annexes', []))
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th, td {{ border: 1px solid #999; padding: 4px 6px; text-align: right; }}
+  th:nth-child(1), td:nth-child(1) {{ text-align: left; }}
+  tfoot td {{ font-weight: 700; }}
+  .annexe td:nth-child(1) {{ font-style: italic; }}
+  .date {{ text-align: right; margin-top: 20px; }}
+</style></head><body>
+  {_entete_employeur_html(employeur)}
+  <h1>État des charges sociales et fiscales —
+    {etat['mois']:02d}/{etat['annee']}</h1>
+  <p>Effectif retenu : {etat['nombre_salaries']} salarié(s) —
+     bulletins VALIDÉS uniquement. Montants en {devise}.</p>
+  <table>
+    <thead><tr><th>Organisme</th><th>Base</th><th>Taux salarial</th>
+      <th>Taux patronal</th><th>Part salariale</th><th>Part patronale</th>
+      <th>Total à verser</th></tr></thead>
+    <tbody>{lignes}{annexes}</tbody>
+    <tfoot><tr><td>Total général</td><td></td><td></td><td></td>
+      <td>{_fmt(etat['total_salarial'])}</td>
+      <td>{_fmt(etat['total_patronal'])}</td>
+      <td>{_fmt(etat['total_general'])}</td></tr></tfoot>
+  </table>
+  <p class="date">Édité le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_etat_charges_pdf(periode, *, etat=None, today=None):
+    """État des charges sociales et fiscales → octets PDF (NTPAY18).
+
+    ``etat`` évite un recalcul quand l'appelant l'a déjà (l'endpoint sert le
+    JSON et le PDF depuis le même calcul).
+    """
+    from . import services  # import paresseux : services importe déjà builders
+
+    if etat is None:
+        etat = services.etat_charges(periode)
+    return _html_to_pdf(render_etat_charges_html(
+        etat, employeur_context(periode.company), today=today))
+
+
 def render_historique_carriere_html(historique, *, today=None):
     """Construit le HTML de la fiche historique carrière/salaire (XPAI26).
 
