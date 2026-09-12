@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { CalendarCheck2, ShieldCheck } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { Button, Card, CardContent, Input, Label, Spinner, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
@@ -111,6 +112,14 @@ export default function AchatsParametresPage() {
           Réglages achats/fournisseurs de la société — conformité, RAS-TVA et
           tolérances de rapprochement.
         </div>
+        {/* NTP2P30 — wizard de clôture de fin de mois (agrégateur lecture
+            seule : factures en exception, demandes anciennes, documents
+            expirés). */}
+        <Button asChild variant="outline">
+          <Link to="/parametres/achats/cloture">
+            <CalendarCheck2 /> Clôture de fin de mois
+          </Link>
+        </Button>
       </div>
 
       <form onSubmit={submit} noValidate className="flex flex-col gap-4">

@@ -493,6 +493,76 @@ def suggestions_consolidation_bcf(company):
     return suggestions
 
 
+def checklist_cloture_achats(company, periode=None, *, seuil_jours=15):
+    """NTP2P30 — agrège en LECTURE SEULE (aucune nouvelle donnée) les 3 files
+    que le contrôleur achats doit traiter au wizard de clôture de fin de
+    mois :
+
+      1. factures fournisseur en exception 3-voies non résolues DU MOIS de
+         ``periode`` (réutilise ``services.factures_en_exception`` — jamais
+         de logique dupliquée) ;
+      2. ``DemandeAchat`` SOUMISE en attente d'approbation depuis plus de
+         ``seuil_jours`` (défaut 15, configurable à l'appel — jamais une
+         valeur figée en base) ;
+      3. documents fournisseur EXPIRÉS (NTP2P20,
+         ``documents_fournisseur_expirant`` avec ``within_days=0``).
+
+    ``periode`` (date, défaut aujourd'hui) fixe le mois considéré pour la
+    file #1 uniquement. Renvoie ``{'periode', 'factures_en_exception': [...],
+    'demandes_en_attente_anciennes': [...], 'documents_expires': [...]}``
+    avec un compteur par file."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .services import factures_en_exception
+
+    if periode is None:
+        periode = timezone.localdate()
+
+    factures = [
+        f for f in factures_en_exception(company)
+        if f.date_facture and f.date_facture.year == periode.year
+        and f.date_facture.month == periode.month
+    ]
+
+    # Cross-app STRICT : lu via installations.selectors (jamais un import
+    # direct de installations.models depuis stock, cf. CLAUDE.md).
+    from apps.installations.selectors import demandes_achat_soumises_depuis
+    aujourdhui = timezone.localdate()
+    seuil_date = aujourdhui - timedelta(days=int(seuil_jours or 15))
+    demandes_anciennes = demandes_achat_soumises_depuis(company, seuil_date)
+
+    documents_expires = documents_fournisseur_expirant(
+        company, within_days=0, today=aujourdhui)
+
+    return {
+        'periode': periode,
+        'seuil_jours': int(seuil_jours or 15),
+        'factures_en_exception': [
+            {
+                'id': f.id, 'reference': f.reference,
+                'fournisseur_id': f.fournisseur_id,
+                'fournisseur_nom': (
+                    f.fournisseur.nom if f.fournisseur_id else ''),
+                'montant_ttc': f.montant_ttc,
+                'motif_ecart': f.motif_ecart,
+            }
+            for f in factures
+        ],
+        'nb_factures_en_exception': len(factures),
+        'demandes_en_attente_anciennes': [
+            {
+                'id': d.id, 'reference': d.reference, 'objet': d.objet,
+                'montant_estime': d.montant_estime,
+                'jours_en_attente': (aujourdhui - d.updated_at.date()).days,
+            }
+            for d in demandes_anciennes
+        ],
+        'nb_demandes_en_attente_anciennes': len(demandes_anciennes),
+        'documents_expires': documents_expires,
+        'nb_documents_expires': len(documents_expires),
+    }
+
+
 def montant_recu_bcf(bon_commande):
     """Montant HT REÇU pour un BCF : Σ sur ses LIGNES de commande de
     (``quantite_recue`` × prix d'achat unitaire). Reflète la marchandise

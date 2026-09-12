@@ -360,6 +360,10 @@ const stockApi = {
   getAchatsParametres: () => api.get('/stock/achats-parametres/'),
   updateAchatsParametres: (id, data) =>
     api.patch(`/stock/achats-parametres/${id}/`, data),
+  // NTP2P30 — wizard de clôture de fin de mois achats (agrégateur lecture
+  // seule : factures en exception, demandes anciennes, documents expirés).
+  getChecklistClotureAchats: (params) =>
+    api.get('/stock/achats-parametres/checklist-cloture/', { params }),
   // FG55 — PDF d'une facture fournisseur (blob, interne).
   factureFournisseurPdf: (id) =>
     api.get(`/stock/factures-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
