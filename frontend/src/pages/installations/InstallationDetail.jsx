@@ -991,7 +991,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   </Button>
                 )}
                 {current.client && (
-                  <Button size="sm" variant="outline" onClick={() => navigate('/crm')}>
+                  // CHT21(c) — ciblait la liste nue ; même patron que « Voir
+                  // le lead » voisin (?id= déjà lu par ClientList.jsx:73).
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate(`/crm?id=${current.client}`)}>
                     Voir le client
                   </Button>
                 )}

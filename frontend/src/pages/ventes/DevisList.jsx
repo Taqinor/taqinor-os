@@ -2276,14 +2276,17 @@ export default function DevisList() {
 
   const [chantierBusy, setChantierBusy] = useState(null)
   // « Créer le chantier » sur un devis accepté : crée (ou ouvre s'il existe
-  // déjà) le chantier pré-rempli, puis navigue vers la page Chantiers.
+  // déjà) le chantier pré-rempli, puis navigue DIRECTEMENT sur SA fiche
+  // (CHT21 — la liste nue `/chantiers` forçait à re-sélectionner le chantier
+  // qu'on venait pourtant de désigner ; patron `?id=` déjà lu par
+  // InstallationsPage.jsx:343).
   const handleChantier = async (d) => {
-    if (d.chantier) { navigate('/chantiers'); return }
+    if (d.chantier) { navigate(`/chantiers?id=${d.chantier.id}`); return }
     setChantierBusy(d.id)
     try {
-      await installationsApi.createFromDevis(d.id)
+      const res = await installationsApi.createFromDevis(d.id)
       dispatch(fetchDevis())
-      navigate('/chantiers')
+      navigate(`/chantiers?id=${res.data.id}`)
     } catch (err) {
       toast.error(frenchError(err, 'Création du chantier impossible.'))
     } finally {
