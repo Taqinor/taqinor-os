@@ -479,3 +479,108 @@ def traitements_dpia_manquante(company):
             continue
         manquants.append({'traitement': traitement, 'analyse': analyse})
     return manquants
+
+
+# ── NTGRC28 — cockpit de conformité du DPO ──────────────────────────────────
+
+#: Au-delà de cette criticité (grille 5×5), un risque est en ZONE ROUGE.
+#: 15 = 3×5 ou 5×3 : le premier palier où un risque est à la fois probable et
+#: grave. En-dessous, tout remonterait et le cockpit ne dirait plus rien.
+SEUIL_CRITICITE_CRITIQUE = 15
+
+
+def tableau_bord_dpo(company, now=None):
+    """NTGRC28 — les SEPT compteurs de conformité, en UN seul appel.
+
+    Un DPO ouvrait sept écrans pour savoir s'il était à jour ; ce sélecteur
+    répond d'un coup. LECTURE SEULE et sans aucune donnée personnelle : des
+    COMPTES et des ÉCHÉANCES, jamais un nom ni un email — un tableau de bord
+    de conformité qui étale l'identité des personnes concernées serait
+    lui-même un manquement.
+
+    Les compteurs, dans l'ordre :
+      1. ``dsr_ouverts`` — demandes de droits en cours + délais restants ;
+      2. ``violations_72h`` — violations sous obligation de notification ;
+      3. ``consentements_retires_mois`` — retraits du mois en cours ;
+      4. ``politiques_non_attestees`` — politiques publiées non lues par tous ;
+      5. ``controles_a_tester`` — contrôles internes dont le test est dû ;
+      6. ``risques_critiques`` — risques résiduels en zone rouge ;
+      7. ``traitements_sans_dpia`` — traitements sensibles sans AIPD validée.
+    """
+    from django.utils import timezone
+
+    from core.models import ConsentRecord, DataSubjectRequest
+
+    from .models import RisqueEntreprise, ViolationDonnees
+
+    maintenant = now or timezone.now()
+    if company is None:
+        return {}
+
+    # 1. Demandes de droits ouvertes + délai restant (jours, jamais négatif
+    #    masqué : une demande en retard affiche un nombre NÉGATIF, c'est
+    #    exactement l'information qui doit sauter aux yeux).
+    ouvertes = (DataSubjectRequest.objects
+                .filter(company=company)
+                .exclude(statut__in=[DataSubjectRequest.STATUT_TRAITEE,
+                                     DataSubjectRequest.STATUT_REFUSEE])
+                .order_by('date_echeance', 'id'))
+    dsr = []
+    en_retard = 0
+    for demande in ouvertes:
+        echeance = demande.date_echeance
+        jours = None
+        if echeance is not None:
+            jours = (echeance - maintenant).days
+            if jours < 0:
+                en_retard += 1
+        dsr.append({
+            'type': demande.kind,
+            'statut': demande.statut,
+            'echeance': echeance.isoformat() if echeance else None,
+            'jours_restants': jours,
+        })
+
+    # 2. Violations : celles qui sont encore sous obligation de notification.
+    violations = (ViolationDonnees.objects
+                  .filter(company=company,
+                          notification_cndp_requise=True,
+                          date_notification_cndp__isnull=True)
+                  .exclude(statut__in=[ViolationDonnees.STATUT_NOTIFIEE,
+                                       ViolationDonnees.STATUT_CLOTUREE]))
+    violations_depassees = violations.filter(
+        date_echeance_72h__lt=maintenant).count()
+
+    # 3. Consentements RETIRÉS depuis le début du mois courant.
+    #    ``occurred_at`` (l'instant où la PERSONNE a agi) est facultatif : on
+    #    retombe sur ``created_at`` (l'instant où NOUS l'avons enregistré)
+    #    plutôt que d'ignorer la ligne — un retrait sans date saisie reste un
+    #    retrait, et le compter à zéro serait le pire des deux mondes.
+    from django.db.models.functions import Coalesce
+
+    debut_mois = maintenant.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
+    retraits = (ConsentRecord.objects
+                .filter(company=company, granted=False)
+                .annotate(quand_effectif=Coalesce('occurred_at', 'created_at'))
+                .filter(quand_effectif__gte=debut_mois)
+                .count())
+
+    return {
+        'dsr_ouverts': len(dsr),
+        'dsr_en_retard': en_retard,
+        'dsr_details': dsr,
+        'violations_72h': violations.count(),
+        'violations_72h_depassees': violations_depassees,
+        'consentements_retires_mois': retraits,
+        'politiques_non_attestees': len(attestations_manquantes(company)),
+        'controles_a_tester': len(controles_a_tester(company)),
+        'risques_critiques': (
+            RisqueEntreprise.objects
+            .filter(company=company,
+                    criticite_residuelle__gte=SEUIL_CRITICITE_CRITIQUE)
+            .exclude(statut=RisqueEntreprise.STATUT_CLOS)
+            .count()),
+        'traitements_sans_dpia': len(traitements_dpia_manquante(company)),
+        'calcule_le': maintenant.isoformat(),
+    }

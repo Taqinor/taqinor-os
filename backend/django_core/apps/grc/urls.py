@@ -20,7 +20,7 @@ from .views import (
     PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
     QuestionnaireFournisseurViewSet, ReponseQuestionnaireViewSet,
     RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
-    ViolationDonneesViewSet,
+    ViolationDonneesViewSet, tableau_bord_dpo,
 )
 
 router = DefaultRouter()
@@ -87,5 +87,7 @@ urlpatterns = [
     # sans compte, par un jeton opaque à durée de vie bornée.
     path('public/questionnaire/<str:token>/', questionnaire_public,
          name='grc-questionnaire-public'),
+    # NTGRC28 — cockpit de conformité du DPO (7 compteurs en un appel).
+    path('tableau-bord-dpo/', tableau_bord_dpo, name='grc-tableau-bord-dpo'),
     path('', include(router.urls)),
 ]

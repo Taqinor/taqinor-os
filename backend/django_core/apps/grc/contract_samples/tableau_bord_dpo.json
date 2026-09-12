@@ -1,0 +1,30 @@
+{
+  "endpoint": "GET /api/django/grc/tableau-bord-dpo/",
+  "pourquoi": "NTGRC28 — cockpit de conformité du DPO : les SEPT compteurs en UN appel. Contrat déposé parce que c'est exactement la forme d'agrégat qui a tué l'écran « AO Tableau de bord » le 03/08/2026 (six clés sur six fausses entre l'écran et le serveur). Invariants : (1) les compteurs sont des ENTIERS, jamais des objets ni des listes — seul `dsr_details` est une liste ; (2) `jours_restants` est un entier SIGNÉ, NÉGATIF quand la demande est en retard (on n'écrête pas à zéro : le retard est l'information), et `null` quand la demande n'a pas d'échéance ; (3) AUCUNE donnée personnelle n'y figure — ni nom, ni email, ni identifiant de personne concernée : un tableau de bord de conformité qui étale l'identité des personnes serait lui-même un manquement ; (4) `calcule_le` est un ISO 8601 serveur.",
+  "exemple": {
+    "dsr_ouverts": 2,
+    "dsr_en_retard": 1,
+    "dsr_details": [
+      {
+        "type": "effacement",
+        "statut": "recue",
+        "echeance": "2026-09-05T09:00:00+00:00",
+        "jours_restants": -7
+      },
+      {
+        "type": "acces",
+        "statut": "en_verification",
+        "echeance": "2026-10-02T09:00:00+00:00",
+        "jours_restants": 19
+      }
+    ],
+    "violations_72h": 1,
+    "violations_72h_depassees": 0,
+    "consentements_retires_mois": 4,
+    "politiques_non_attestees": 2,
+    "controles_a_tester": 5,
+    "risques_critiques": 1,
+    "traitements_sans_dpia": 3,
+    "calcule_le": "2026-09-12T12:00:00+00:00"
+  }
+}

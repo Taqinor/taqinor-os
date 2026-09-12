@@ -4,7 +4,9 @@ Tout viewset hérite de ``core.viewsets.CompanyScopedModelViewSet`` (ARC2) :
 queryset filtré sur ``request.user.company`` et ``company`` imposée côté
 serveur dans ``perform_create``/``perform_update``, jamais lue du corps.
 """
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -845,3 +847,17 @@ class AnalyseImpactDPIAViewSet(CompanyScopedModelViewSet):
             }
             for entree in manquants
         ]})
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def tableau_bord_dpo(request):
+    """NTGRC28 — les SEPT compteurs de conformité du DPO, en UN appel.
+
+    Agrégat LECTURE SEULE, scopé à ``request.user.company`` (jamais une
+    société lue du corps ou de la requête). Aucune donnée personnelle n'y
+    figure : des comptes et des échéances, jamais un nom ni un email.
+    """
+    from .selectors import tableau_bord_dpo as _cockpit
+
+    return Response(_cockpit(request.user.company))
