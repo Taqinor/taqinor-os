@@ -19,6 +19,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from core import api_usage
 from core.models import ApiUsagePlan, ApiUsageRecord
+from testkit.time import frozen
 
 from .constants import SCOPE_READ_LEADS
 from .models import ApiKey
@@ -168,14 +169,18 @@ class Ntapi6QuotaEnforcementTests(TestCase):
 
     def test_reset_mensuel_pointe_le_mois_suivant(self):
         self._plan(quota_par_mois=100)
-        etat = api_usage.etat_quota(self.key)
+        # Temps GELÉ : sans cela, l'assertion « le reset est dans le futur »
+        # se compare à une horloge vivante et deviendrait une bascule de
+        # minuit (et un fin-de-mois) intermittente en CI.
+        with frozen('2026-12-15T10:00:00Z'):
+            etat = api_usage.etat_quota(self.key)
         # Les compteurs d'usage sont agrégés sur la date UTC (`enregistrer_usage`
         # utilise `timezone.now().date()`) : la borne de réinitialisation se lit
         # donc en UTC, jamais dans le fuseau d'affichage.
         reset = datetime.datetime.fromtimestamp(
             etat['reset'], tz=datetime.timezone.utc)
-        self.assertEqual(reset.day, 1)
-        self.assertGreater(etat['reset'], int(timezone.now().timestamp()))
+        self.assertEqual((reset.year, reset.month, reset.day), (2027, 1, 1))
+        self.assertEqual(reset.hour, 0)
 
     def test_record_call_est_bien_lalias_de_enregistrer_usage(self):
         self.assertIs(api_usage.record_call, api_usage.enregistrer_usage)
