@@ -28,6 +28,7 @@ from .views import (
     KeyResultViewSet,
     ObjectifEntrepriseViewSet,
     OkrIndividuelViewSet,
+    PlanActionEngagementViewSet,
     PlanSuccessionViewSet,
     PosteCleViewSet,
     PropositionRevisionViewSet,
@@ -197,6 +198,8 @@ router.register(r'postes-cles', PosteCleViewSet)
 router.register(r'plans-succession', PlanSuccessionViewSet)
 # NTHCM14 — enquêtes d'engagement multi-questions.
 router.register(r'enquetes-engagement', EnqueteEngagementViewSet)
+# NTHCM15 — plans d'action issus d'une enquête.
+router.register(r'plans-action-engagement', PlanActionEngagementViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

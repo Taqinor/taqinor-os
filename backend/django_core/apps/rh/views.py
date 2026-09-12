@@ -63,6 +63,7 @@ from .models import (
     KeyResultIndividuel,
     ObjectifEntreprise,
     OkrIndividuel,
+    PlanActionEngagement,
     PlanSuccession,
     PosteCle,
     PropositionRevision,
@@ -154,6 +155,7 @@ from .serializers import (
     KeyResultSerializer,
     ObjectifEntrepriseSerializer,
     OkrIndividuelSerializer,
+    PlanActionEngagementSerializer,
     PlanSuccessionSerializer,
     PosteCleSerializer,
     PropositionRevisionSerializer,
@@ -6470,3 +6472,35 @@ class EnqueteEngagementViewSet(_RhBaseViewSet):
         return Response(
             {'detail': 'Réponse enregistrée. Merci !'},
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='resultats')
+    def resultats(self, request, pk=None):
+        """NTHCM15 — moyenne et distribution PAR CATÉGORIE.
+
+        Masqué sous 5 réponses quand l'enquête est anonyme (même seuil que
+        le pulse XRH32). Réservé au gate de classe (Administrateur/
+        Responsable), comme les résultats du pulse.
+        """
+        enquete = self.get_object()
+        return Response(
+            selectors.resultats_enquete(enquete.company, enquete.id))
+
+
+class PlanActionEngagementViewSet(_RhBaseViewSet):
+    """NTHCM15 — plans d'action issus d'une enquête (``?enquete=``)."""
+    queryset = PlanActionEngagement.objects.select_related(
+        'enquete', 'responsable').all()
+    serializer_class = PlanActionEngagementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        enquete = params.get('enquete')
+        if enquete:
+            qs = qs.filter(enquete_id=enquete)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs

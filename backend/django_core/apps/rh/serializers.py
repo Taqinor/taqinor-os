@@ -40,6 +40,7 @@ from .models import (
     KeyResultIndividuel,
     ObjectifEntreprise,
     OkrIndividuel,
+    PlanActionEngagement,
     PlanSuccession,
     PosteCle,
     PropositionRevision,
@@ -3414,3 +3415,30 @@ class ReponseEnqueteSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = fields
+
+
+class PlanActionEngagementSerializer(serializers.ModelSerializer):
+    """NTHCM15 — action de suivi assignée, issue d'une enquête."""
+    responsable_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PlanActionEngagement
+        fields = [
+            'id', 'enquete', 'categorie_ciblee', 'action',
+            'responsable', 'responsable_nom', 'echeance',
+            'statut', 'statut_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_responsable_nom(self, obj):
+        if obj.responsable_id is None:
+            return ''
+        return f'{obj.responsable.nom} {obj.responsable.prenom}'
+
+    def validate_enquete(self, value):
+        return _meme_societe(self, value, 'Enquête')
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')

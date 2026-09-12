@@ -7144,3 +7144,62 @@ class ParticipationEnquete(models.Model):
 
     def __str__(self):
         return f'Participation — enquête {self.enquete_id}'
+
+
+# ── NTHCM15 — plans d'action issus d'une enquête d'engagement ───────────────
+
+class PlanActionEngagement(models.Model):
+    """NTHCM15 — action de suivi ASSIGNÉE, née d'un score faible.
+
+    Transforme un résultat d'enquête (``categorie_ciblee``) en engagement
+    concret : une action, un responsable, une échéance et un statut. C'est
+    ce qui empêche l'enquête de rester un tableau de bord sans suite.
+    """
+    class Statut(models.TextChoices):
+        PROPOSE = 'propose', 'Proposé'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée 100 % tenant — un plan d'action n'a aucun sens hors de sa société
+        related_name='rh_plans_action_engagement',
+        verbose_name='Société',
+    )
+    enquete = models.ForeignKey(
+        EnqueteEngagement,
+        on_delete=models.CASCADE,  # on_delete: composition — le plan d'action est le prolongement direct de son enquête
+        related_name='plans_action',
+        verbose_name='Enquête',
+    )
+    categorie_ciblee = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Catégorie ciblée')
+    action = models.TextField(verbose_name='Action')
+    responsable = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,  # on_delete: CASCADE et NON SET_NULL — un SET_NULL sur un champ d'identité (responsable) dé-scoperait silencieusement la ligne (garde `check_on_delete`). Un dossier n'est supprimable que s'il ne porte AUCUNE pièce légale (AUD721), c'est-à-dire une saisie erronée : son assignation part avec lui. Nullable = plan pas encore assigné.
+        null=True, blank=True,
+        related_name='plans_action_engagement',
+        verbose_name='Responsable',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PROPOSE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Plan d'action engagement"
+        verbose_name_plural = "Plans d'action engagement"
+        ordering = ['echeance', 'date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'enquete'],
+                name='rh_planacteng_comp_enq_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.categorie_ciblee or "Action"} — {self.get_statut_display()}'

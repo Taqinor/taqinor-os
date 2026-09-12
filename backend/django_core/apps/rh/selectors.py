@@ -3245,3 +3245,108 @@ def risque_succession(company, *, seuil=None, today=None):
         ligne['poste_intitule'],
     ))
     return lignes
+
+
+# ── NTHCM15 — résultats d'enquête par catégorie ─────────────────────────────
+
+#: Seuil minimal de réponses avant d'afficher un résultat d'enquête ANONYME
+#: — même protection que ``PULSE_SEUIL_ANONYMAT`` (XRH32) : sous ce nombre,
+#: une poignée de réponses redeviendrait identifiable.
+ENQUETE_SEUIL_ANONYMAT = 5
+
+
+def _valeur_note(brut):
+    """Note 1-5 exploitable, ou ``None`` (vide, texte, hors bornes)."""
+    try:
+        valeur = int(brut)
+    except (TypeError, ValueError):
+        return None
+    return valeur if 1 <= valeur <= 5 else None
+
+
+def resultats_enquete(company, enquete_id):
+    """NTHCM15 — moyenne et distribution PAR CATÉGORIE de question.
+
+    Renvoie ``{enquete_id, titre, anonyme, nb_reponses, masque, seuil,
+    categories: [{categorie, nb_questions, nb_notes, moyenne, distribution}]}``.
+
+    * seules les questions de type ``note1_5`` alimentent moyenne et
+      distribution (une réponse en texte libre n'a pas de moyenne) ;
+    * ``masque=True`` (et ``categories=[]``) quand l'enquête est ANONYME et
+      compte MOINS de :data:`ENQUETE_SEUIL_ANONYMAT` réponses — même
+      protection que le pulse XRH32. Une enquête NOMINATIVE n'est jamais
+      masquée : l'auteur y est assumé.
+
+    ``None`` si l'enquête n'existe pas dans cette société (isolation).
+    Lecture seule.
+    """
+    from .models import EnqueteEngagement
+
+    enquete = EnqueteEngagement.objects.filter(
+        company=company, id=enquete_id).first()
+    if enquete is None:
+        return None
+
+    reponses = list(enquete.reponses.all())
+    nb_reponses = len(reponses)
+    masque = enquete.anonyme and nb_reponses < ENQUETE_SEUIL_ANONYMAT
+    base = {
+        'enquete_id': enquete.id,
+        'titre': enquete.titre,
+        'anonyme': enquete.anonyme,
+        'nb_reponses': nb_reponses,
+        'seuil': ENQUETE_SEUIL_ANONYMAT,
+        'masque': masque,
+    }
+    if masque:
+        return {**base, 'categories': []}
+
+    questions = enquete.questions if isinstance(enquete.questions, list) \
+        else []
+    # index de question → catégorie, pour les seules questions notées.
+    categories_par_index = {}
+    nb_questions_par_categorie = {}
+    for index, question in enumerate(questions):
+        if not isinstance(question, dict):
+            continue
+        categorie = str(question.get('categorie') or 'sans_categorie')
+        nb_questions_par_categorie[categorie] = (
+            nb_questions_par_categorie.get(categorie, 0) + 1)
+        if question.get('type') == 'note1_5':
+            categories_par_index[index] = categorie
+
+    agregats = {categorie: {'somme': 0, 'nb': 0,
+                            'distribution': {n: 0 for n in range(1, 6)}}
+                for categorie in nb_questions_par_categorie}
+    for reponse in reponses:
+        valeurs = reponse.reponses if isinstance(reponse.reponses, dict) \
+            else {}
+        for cle, brut in valeurs.items():
+            try:
+                index = int(cle)
+            except (TypeError, ValueError):
+                continue
+            categorie = categories_par_index.get(index)
+            if categorie is None:
+                continue
+            note = _valeur_note(brut)
+            if note is None:
+                continue
+            agregat = agregats[categorie]
+            agregat['somme'] += note
+            agregat['nb'] += 1
+            agregat['distribution'][note] += 1
+
+    categories = []
+    for categorie in sorted(nb_questions_par_categorie):
+        agregat = agregats[categorie]
+        moyenne = (round(agregat['somme'] / agregat['nb'], 2)
+                   if agregat['nb'] else None)
+        categories.append({
+            'categorie': categorie,
+            'nb_questions': nb_questions_par_categorie[categorie],
+            'nb_notes': agregat['nb'],
+            'moyenne': moyenne,
+            'distribution': agregat['distribution'],
+        })
+    return {**base, 'categories': categories}
