@@ -5,6 +5,7 @@ jamais lue du corps de requête.
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -318,12 +319,17 @@ class ParametresESGView(APIView):
             company=request.user.company)
         return reglages
 
+    @extend_schema(responses=ParametresESGSerializer)
     def get(self, request):
         return Response(ParametresESGSerializer(self._reglages(request)).data)
 
+    @extend_schema(request=ParametresESGSerializer,
+                   responses=ParametresESGSerializer)
     def put(self, request):
         return self._ecrire(request, partial=False)
 
+    @extend_schema(request=ParametresESGSerializer,
+                   responses=ParametresESGSerializer)
     def patch(self, request):
         return self._ecrire(request, partial=True)
 
