@@ -150,3 +150,47 @@ class RegleQualite(TenantModel):
     def est_population(self):
         """True si la règle ne peut PAS se juger ligne par ligne (unicité)."""
         return self.type_regle == self.TypeRegle.UNICITE
+
+
+class ResultatQualite(TenantModel):
+    """NTDATA15 — le résultat DATÉ d'une évaluation de règle.
+
+    Un enregistrement PAR EXÉCUTION (jamais un écrasement) : l'historique est
+    ce qui permet de dire « la conformité ICE est passée de 62 % à 91 % » —
+    un simple champ « dernier taux » sur la règle effacerait cette trajectoire.
+
+    ``taux_conformite`` est NULLABLE : une population VIDE ne vaut pas 100 %
+    (« aucune donnée » n'est pas « tout est bon »). ``echantillon`` porte au
+    plus :data:`TAILLE_ECHANTILLON` identifiants en violation — de quoi aller
+    corriger, jamais un export déguisé de toute la base.
+    """
+
+    #: Nombre maximal d'identifiants conservés par résultat.
+    TAILLE_ECHANTILLON = 50
+
+    regle = models.ForeignKey(
+        RegleQualite, on_delete=models.CASCADE,  # on_delete: composition
+        related_name='resultats', verbose_name='Règle')
+    entite = models.CharField(max_length=80, verbose_name='Entité (dataset)')
+    nb_lignes = models.PositiveIntegerField(
+        default=0, verbose_name='Lignes évaluées')
+    nb_violations = models.PositiveIntegerField(
+        default=0, verbose_name='Violations')
+    taux_conformite = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        verbose_name='Taux de conformité (%)',
+        help_text='Vide quand la population est vide — « aucune donnée » '
+                  "n'est pas « tout est bon ».")
+    echantillon = models.JSONField(
+        default=list, blank=True, verbose_name='Échantillon en violation')
+    evalue_le = models.DateTimeField(auto_now_add=True,
+                                     verbose_name='Évalué le')
+
+    class Meta:
+        verbose_name = 'Résultat de qualité'
+        verbose_name_plural = 'Résultats de qualité'
+        ordering = ['-evalue_le', '-id']
+
+    def __str__(self):
+        return '%s : %s/%s en violation' % (
+            self.regle_id, self.nb_violations, self.nb_lignes)

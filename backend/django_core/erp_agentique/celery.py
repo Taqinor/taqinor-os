@@ -319,6 +319,14 @@ app.conf.beat_schedule = {
         'task': 'reporting.evaluate_kpi_alertes',
         'schedule': crontab(hour=6, minute=30),
     },
+    # NTDATA15 — évalue les règles de qualité de données de chaque société
+    # opérationnelle et journalise un ResultatQualite daté. Placé AVANT les
+    # alertes KPI : le rapport de qualité du matin est déjà à jour quand la
+    # direction l'ouvre. Lecture seule côté métier — ne corrige rien.
+    'dataquality-evaluer-qualite-donnees': {
+        'task': 'dataquality.evaluer_qualite_donnees',
+        'schedule': crontab(hour=5, minute=45),
+    },
     # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
     # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
     'reporting-controle-integrite-hebdo': {

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 
-from .models import RegleQualite
+from .models import RegleQualite, ResultatQualite
 
 
 def _est_vide(valeur):
@@ -143,3 +143,130 @@ def taux_conformite(nb_lignes, nb_violations):
         return None
     conformes = max(0, nb_lignes - nb_violations)
     return round(conformes / nb_lignes * 100, 1)
+
+
+# ── NTDATA15 — EXÉCUTION & RAPPORT ──────────────────────────────────────────
+#
+# `evaluer_regles` parcourt les datasets CIBLÉS par les règles actives d'une
+# société, applique chaque règle et PERSISTE un `ResultatQualite` daté. Elle ne
+# corrige rien et ne bloque rien : elle mesure.
+#
+# Le queryset de chaque dataset est déjà borné à la société par l'app
+# propriétaire (contrat `core.data_explorer`) — la qualité de données ne peut
+# donc pas sortir du périmètre du tenant. Le lecteur est transmis pour que les
+# champs sous permission (AUD801) restent masqués : une règle posée sur un
+# champ que le lecteur ne peut pas voir ne rend RIEN plutôt que de divulguer.
+
+#: Borne dure de lecture par dataset — une évaluation de qualité n'est pas un
+#: export. Au-delà, `run_query` tronque et le résultat le DIT (`tronque`).
+LIMITE_LECTURE = 5000
+
+
+def _lignes_du_dataset(company, user, entite, champs):
+    """Les lignes d'un dataset pour l'évaluation, ou ``None`` s'il est absent.
+
+    ``None`` (dataset non enregistré : module désactivé, nom obsolète) fait
+    IGNORER les règles qui le visent, jamais échouer tout le rapport.
+    """
+    from core import data_explorer
+
+    try:
+        data_explorer.run_query(entite, company, user, {'limit': 1})
+    except data_explorer.DatasetInconnu:
+        return None
+    projection = sorted({'id'} | set(champs or []))
+    try:
+        return data_explorer.run_query(
+            entite, company, user,
+            {'select': projection, 'limit': LIMITE_LECTURE})
+    except data_explorer.ChampNonAutorise:
+        # Un champ hors liste blanche (règle mal paramétrée) : on retombe sur
+        # la projection par défaut du dataset plutôt que de tout abandonner.
+        return data_explorer.run_query(
+            entite, company, user, {'limit': LIMITE_LECTURE})
+
+
+def evaluer_regles(company, entite=None, *, user=None):
+    """Évalue les règles ACTIVES de ``company`` et persiste les résultats.
+
+    ``entite`` restreint à un seul dataset. ``user`` est le LECTEUR (ses
+    permissions s'appliquent aux champs gated) ; ``None`` = aucun champ sous
+    permission n'est lisible, ce qui est le bon défaut pour un job planifié.
+
+    Renvoie la liste des ``ResultatQualite`` créés, dans l'ordre des règles.
+    """
+    regles = RegleQualite.objects.filter(company=company, actif=True)
+    if entite:
+        regles = regles.filter(entite=entite)
+    regles = list(regles.order_by('entite', 'champ', 'id'))
+    if not regles:
+        return []
+
+    # Une seule lecture PAR DATASET, partagée par toutes ses règles (jamais
+    # une requête par règle).
+    champs_par_entite = {}
+    for regle in regles:
+        champs_par_entite.setdefault(regle.entite, set()).add(regle.champ)
+    lignes_par_entite = {
+        nom: _lignes_du_dataset(company, user, nom, champs)
+        for nom, champs in champs_par_entite.items()
+    }
+
+    resultats = []
+    for regle in regles:
+        lignes = lignes_par_entite.get(regle.entite)
+        if lignes is None:
+            continue  # dataset absent : règle ignorée, jamais un faux 0 %.
+        nb_lignes, fautives = violations(regle, lignes)
+        resultats.append(ResultatQualite.objects.create(
+            company=company,
+            regle=regle,
+            entite=regle.entite,
+            nb_lignes=nb_lignes,
+            nb_violations=len(fautives),
+            taux_conformite=taux_conformite(nb_lignes, len(fautives)),
+            echantillon=[
+                identifiant for identifiant
+                in fautives[:ResultatQualite.TAILLE_ECHANTILLON]
+            ],
+        ))
+    return resultats
+
+
+def rapport_qualite(company, entite=None):
+    """Le DERNIER résultat de chaque règle active — la photo du moment.
+
+    Lecture seule : n'évalue rien (le rapport lit ce que le job a produit).
+    Une règle jamais évaluée apparaît avec ``resultat=None`` plutôt que
+    d'être masquée : « pas encore mesuré » est une information.
+    """
+    regles = RegleQualite.objects.filter(company=company, actif=True)
+    if entite:
+        regles = regles.filter(entite=entite)
+    regles = list(regles.order_by('entite', 'champ', 'id'))
+    dernier = {}
+    for resultat in (ResultatQualite.objects
+                     .filter(company=company,
+                             regle__in=[r.pk for r in regles])
+                     .order_by('regle_id', '-evalue_le', '-id')):
+        dernier.setdefault(resultat.regle_id, resultat)
+    lignes = []
+    for regle in regles:
+        resultat = dernier.get(regle.pk)
+        lignes.append({
+            'regle': regle.pk,
+            'libelle': str(regle),
+            'entite': regle.entite,
+            'champ': regle.champ,
+            'type_regle': regle.type_regle,
+            'severite': regle.severite,
+            'nb_lignes': resultat.nb_lignes if resultat else None,
+            'nb_violations': resultat.nb_violations if resultat else None,
+            'taux_conformite': (str(resultat.taux_conformite)
+                                if resultat and resultat.taux_conformite
+                                is not None else None),
+            'echantillon': list(resultat.echantillon) if resultat else [],
+            'evalue_le': (resultat.evalue_le.isoformat()
+                          if resultat else None),
+        })
+    return lignes

@@ -1076,6 +1076,8 @@ CELERY_TASK_ROUTES = {
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
+    # NTDATA15 — évaluation quotidienne des règles de qualité de données.
+    'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
     'core.dispatch_outbox': {'queue': 'scheduled'},
