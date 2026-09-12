@@ -3079,6 +3079,10 @@ class CycleRevisionSalarialeSerializer(serializers.ModelSerializer):
     """NTHCM5 — campagne de révision salariale (donnée paie SENSIBLE)."""
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # SCA4 — le socle TenantModel horodate en `created_at` ; l'API RH expose
+    # `date_creation` (convention de l'app), jamais deux noms.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = CycleRevisionSalariale
@@ -3096,6 +3100,9 @@ class CycleRevisionSalarialeSerializer(serializers.ModelSerializer):
 class EnveloppeManagerSerializer(serializers.ModelSerializer):
     """NTHCM5 — enveloppe (points de %) allouée à un manager sur un cycle."""
     manager_nom = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = EnveloppeManager
@@ -3125,6 +3132,9 @@ class PropositionRevisionSerializer(serializers.ModelSerializer):
     employe_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = PropositionRevision
@@ -3187,6 +3197,9 @@ class KeyResultSerializer(serializers.ModelSerializer):
     """
     progression_pct = serializers.DecimalField(
         max_digits=5, decimal_places=2, read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = KeyResult
@@ -3203,6 +3216,9 @@ class KeyResultSerializer(serializers.ModelSerializer):
 class ObjectifEntrepriseSerializer(serializers.ModelSerializer):
     """NTHCM8 — objectif d'entreprise + ses résultats clés (lecture)."""
     key_results = KeyResultSerializer(many=True, read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = ObjectifEntreprise
@@ -3222,6 +3238,10 @@ class KeyResultIndividuelSerializer(serializers.ModelSerializer):
     ``progression_pct`` est recalculée CÔTÉ SERVEUR à chaque sauvegarde
     (``KeyResultIndividuel.save``) : lecture seule ici.
     """
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
     class Meta:
         model = KeyResultIndividuel
         fields = [
@@ -3240,6 +3260,9 @@ class OkrIndividuelSerializer(serializers.ModelSerializer):
     employe_nom = serializers.SerializerMethodField()
     progression_pct = serializers.DecimalField(
         max_digits=5, decimal_places=2, read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = OkrIndividuel
@@ -3273,6 +3296,9 @@ class EvaluationNeufBoxSerializer(serializers.ModelSerializer):
         source='get_axe_performance_display', read_only=True)
     axe_potentiel_display = serializers.CharField(
         source='get_axe_potentiel_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = EvaluationNeufBox
@@ -3302,6 +3328,9 @@ class PosteCleSerializer(serializers.ModelSerializer):
         source='poste.intitule', read_only=True)
     criticite_display = serializers.CharField(
         source='get_criticite_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = PosteCle
@@ -3340,6 +3369,9 @@ class PlanSuccessionSerializer(serializers.ModelSerializer):
         source='get_rang_display', read_only=True)
     readiness_display = serializers.CharField(
         source='get_readiness_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = PlanSuccession
@@ -3370,6 +3402,9 @@ class EnqueteEngagementSerializer(serializers.ModelSerializer):
     nominatives mélangées dans le même agrégat).
     """
     nombre_reponses = serializers.SerializerMethodField()
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = EnqueteEngagement
@@ -3410,6 +3445,10 @@ class ReponseEnqueteSerializer(serializers.ModelSerializer):
     anonyme il vaut toujours ``None`` (contrainte de base
     ``rh_repenq_anonyme_sans_employe``).
     """
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
     class Meta:
         model = ReponseEnquete
         fields = [
@@ -3424,6 +3463,9 @@ class PlanActionEngagementSerializer(serializers.ModelSerializer):
     responsable_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # SCA4 — cf. CycleRevisionSalarialeSerializer.
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
 
     class Meta:
         model = PlanActionEngagement

@@ -31,11 +31,12 @@ class Migration(migrations.Migration):
                     verbose_name='Période')),
                 ('description', models.TextField(
                     blank=True, default='', verbose_name='Description')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_objectifs_entreprise',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('proprietaire', models.ForeignKey(
                     blank=True, null=True,
@@ -66,11 +67,12 @@ class Migration(migrations.Migration):
                 ('unite', models.CharField(
                     blank=True, default='', max_length=40,
                     verbose_name='Unité')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_key_results',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('objectif', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -94,11 +96,12 @@ class Migration(migrations.Migration):
                     verbose_name='Période')),
                 ('titre', models.CharField(
                     max_length=200, verbose_name='Titre')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_okr_individuels',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('employe', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -137,11 +140,12 @@ class Migration(migrations.Migration):
                 ('progression_pct', models.DecimalField(
                     decimal_places=2, default=Decimal('0'), max_digits=5,
                     verbose_name='Progression (%)')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_key_results_individuels',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('okr', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

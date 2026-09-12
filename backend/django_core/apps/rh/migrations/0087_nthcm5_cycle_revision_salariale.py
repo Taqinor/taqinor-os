@@ -42,17 +42,19 @@ class Migration(migrations.Migration):
                     blank=True, null=True, verbose_name='Date de début')),
                 ('date_fin', models.DateField(
                     blank=True, null=True, verbose_name='Date de fin')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel (created_at/updated_at
+                # au lieu de date_creation à la main).
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_cycles_revision',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
                 'verbose_name': 'Cycle de révision salariale',
                 'verbose_name_plural': 'Cycles de révision salariale',
-                'ordering': ['-date_creation'],
+                'ordering': ['-created_at'],
             },
         ),
         migrations.CreateModel(
@@ -64,11 +66,12 @@ class Migration(migrations.Migration):
                 ('enveloppe_pct', models.DecimalField(
                     decimal_places=2, default=Decimal('0'), max_digits=6,
                     verbose_name='Enveloppe allouée (%)')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_enveloppes_manager',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('cycle', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -108,11 +111,12 @@ class Migration(migrations.Migration):
                              ('rejetee', 'Rejetée')],
                     default='proposee', max_length=10,
                     verbose_name='Statut')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_propositions_revision',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('cycle', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

@@ -30,6 +30,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
 )
 from core.permissions import WriteScopedPermissionMixin
+from core.viewsets import CompanyScopedModelViewSet
 
 from . import activity, selectors, services
 from .models import (
@@ -6158,20 +6159,22 @@ class CockpitRhViewSet(viewsets.ViewSet):
 
 # ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
 
-class CycleRevisionSalarialeViewSet(TenantMixin, viewsets.ModelViewSet):
+class CycleRevisionSalarialeViewSet(CompanyScopedModelViewSet):
     """NTHCM5 — campagnes de révision salariale (paie SENSIBLE).
 
     Lecture ET écriture réservées aux porteurs de ``salaires_voir`` (comme
     ``GrilleSalarialeViewSet``/``RemunerationViewSet``) : sans cette
     permission tout accès est refusé (403). Société scopée + posée côté
-    serveur.
+    serveur — base SCA4 ``core.viewsets.CompanyScopedModelViewSet``,
+    comportement byte-identique (``permission_classes`` reste consulté tel
+    quel, cette base ne surcharge pas ``get_permissions``).
     """
     permission_classes = [HasPermission('salaires_voir')]
     queryset = CycleRevisionSalariale.objects.all()
     serializer_class = CycleRevisionSalarialeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['libelle', 'periode']
-    ordering_fields = ['date_creation', 'periode']
+    ordering_fields = ['created_at', 'periode']
 
     @action(detail=True, methods=['post'], url_path='appliquer')
     def appliquer(self, request, pk=None):
@@ -6190,10 +6193,11 @@ class CycleRevisionSalarialeViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(resultat)
 
 
-class EnveloppeManagerViewSet(TenantMixin, viewsets.ModelViewSet):
+class EnveloppeManagerViewSet(CompanyScopedModelViewSet):
     """NTHCM5 — enveloppes allouées aux managers d'un cycle (``?cycle=<id>``).
 
-    Gaté ``salaires_voir``. ``company`` posée côté serveur.
+    Gaté ``salaires_voir``. ``company`` posée côté serveur — base SCA4
+    ``core.viewsets.CompanyScopedModelViewSet``.
     """
     permission_classes = [HasPermission('salaires_voir')]
     queryset = EnveloppeManager.objects.select_related(
@@ -6208,14 +6212,14 @@ class EnveloppeManagerViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
-class PropositionRevisionViewSet(TenantMixin, viewsets.ModelViewSet):
+class PropositionRevisionViewSet(CompanyScopedModelViewSet):
     """NTHCM5 — propositions d'augmentation d'un cycle (``?cycle=<id>``).
 
     Gaté ``salaires_voir``. La CRÉATION passe obligatoirement par
     ``services.proposer_revision`` : un manager ne peut proposer que pour SES
     subordonnés directs (403) et jamais au-delà de son enveloppe (400 avec un
     message FR explicite). ``salaire_actuel``, le montant et ``propose_par``
-    sont posés côté serveur.
+    sont posés côté serveur — base SCA4 ``core.viewsets.CompanyScopedModelViewSet``.
     """
     permission_classes = [HasPermission('salaires_voir')]
     queryset = PropositionRevision.objects.select_related(
@@ -6463,7 +6467,9 @@ class EnqueteEngagementViewSet(_RhBaseViewSet):
     serializer_class = EnqueteEngagementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['titre']
-    ordering_fields = ['date_debut', 'date_creation']
+    # SCA4 — EnqueteEngagement hérite de core.models.TenantModel : le champ
+    # de tri est désormais created_at (plus de date_creation à la main).
+    ordering_fields = ['date_debut', 'created_at']
 
     def get_permissions(self):
         # NTHCM14 — répondre est ouvert à TOUT employé authentifié de la
@@ -6511,7 +6517,9 @@ class PlanActionEngagementViewSet(_RhBaseViewSet):
         'enquete', 'responsable').all()
     serializer_class = PlanActionEngagementSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['echeance', 'date_creation']
+    # SCA4 — PlanActionEngagement hérite de core.models.TenantModel : le
+    # champ de tri est désormais created_at (plus de date_creation à la main).
+    ordering_fields = ['echeance', 'created_at']
 
     def get_queryset(self):
         qs = super().get_queryset()
