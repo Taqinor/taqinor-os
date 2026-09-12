@@ -6393,3 +6393,114 @@ def signer_lot_parapheur(user, contrat_ids, *, signataire_nom,
         'nb_echecs': len(resultats) - nb_signes,
         'resultats': resultats,
     }
+
+
+# ---------------------------------------------------------------------------
+# NTDOC6 — Alerte de déviation de clause (bibliothèque ↔ texte du contrat)
+# ---------------------------------------------------------------------------
+#
+# Une DÉVIATION, c'est une clause que la bibliothèque déclare OBLIGATOIRE pour
+# ce type de contrat (NTDOC5, ``Clause.obligatoire_pour_types``) et dont le
+# texte a été ÉDITÉ sur le contrat (``ClauseContrat.surchargee``). Une clause
+# facultative surchargée n'est PAS une déviation : personnaliser une clause
+# libre est le geste normal du métier.
+#
+# Le diff est calculé avec ``difflib`` de la bibliothèque STANDARD — aucune
+# dépendance nouvelle, aucun coût.
+
+
+def _lignes_diff(texte):
+    """Découpe un texte en lignes comparables par ``difflib``.
+
+    ``splitlines()`` (sans ``keepends``) normalise CRLF/LF : deux textes qui ne
+    diffèrent QUE par leurs fins de ligne ne produisent aucune déviation.
+    """
+    return (texte or '').splitlines()
+
+
+def diff_clause(texte_source, texte_surcharge):
+    """Diff unifié entre le texte de la bibliothèque et le texte du contrat.
+
+    Renvoie un dict ``{'diff', 'lignes_ajoutees', 'lignes_supprimees',
+    'identique'}``. ``diff`` est un texte au format unifié (``difflib.
+    unified_diff``), prêt à afficher ; ``identique`` vaut ``True`` quand les
+    deux textes ne diffèrent que par leurs fins de ligne — le drapeau
+    ``surchargee`` peut alors être posé sans écart réel, et on ne crie pas au
+    loup.
+    """
+    import difflib
+
+    source = _lignes_diff(texte_source)
+    surcharge = _lignes_diff(texte_surcharge)
+    lignes = list(difflib.unified_diff(
+        source, surcharge,
+        fromfile='bibliothèque', tofile='contrat', lineterm=''))
+    ajoutees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('+') and not ligne.startswith('+++'))
+    supprimees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('-') and not ligne.startswith('---'))
+    return {
+        'diff': '\n'.join(lignes),
+        'lignes_ajoutees': ajoutees,
+        'lignes_supprimees': supprimees,
+        'identique': not lignes,
+    }
+
+
+def detecter_deviations(contrat):
+    """Déviations de clauses OBLIGATOIRES d'un contrat (NTDOC6) — lecture seule.
+
+    Pour chaque ``ClauseContrat`` du contrat qui est À LA FOIS ``surchargee``
+    ET adossée à une ``Clause``-source déclarée obligatoire pour le
+    ``type_contrat`` (NTDOC5), calcule le diff texte source ↔ texte surchargé
+    et renvoie une entrée décrivant l'écart.
+
+    N'est PAS une déviation (et n'apparaît donc jamais) :
+
+    - une clause surchargée dont la source n'est PAS obligatoire pour ce type ;
+    - une clause obligatoire NON surchargée (texte tel quel) ;
+    - une clause ad hoc (``clause=NULL`` — aucune source à comparer) ;
+    - une surcharge qui ne change RIEN au texte (fins de ligne seulement).
+
+    Aucune écriture : ni statut, ni drapeau, ni notification. Renvoie une liste
+    ordonnée par ``ordre`` de clause dans le contrat.
+    """
+    type_contrat = contrat.type_contrat or ''
+    resolues = (
+        contrat.clauses_resolues
+        .filter(surchargee=True)
+        .exclude(clause__isnull=True)
+        .select_related('clause')
+        .order_by('ordre', 'id')
+    )
+
+    deviations = []
+    for resolue in resolues:
+        source = resolue.clause
+        types_obligatoires = source.obligatoire_pour_types or []
+        if type_contrat not in types_obligatoires:
+            continue
+        ecart = diff_clause(source.corps, resolue.corps)
+        if ecart['identique']:
+            continue
+        deviations.append({
+            'clause_contrat': resolue.id,
+            'clause_source': source.id,
+            'titre': resolue.titre,
+            'titre_source': source.titre,
+            'ordre': resolue.ordre,
+            'type_clause': source.type_clause,
+            'texte_source': source.corps,
+            'texte_surcharge': resolue.corps,
+            'diff': ecart['diff'],
+            'lignes_ajoutees': ecart['lignes_ajoutees'],
+            'lignes_supprimees': ecart['lignes_supprimees'],
+        })
+    return deviations
+
+
+def contrat_en_deviation(contrat):
+    """``True`` si le contrat porte au moins une déviation (NTDOC6)."""
+    return bool(detecter_deviations(contrat))

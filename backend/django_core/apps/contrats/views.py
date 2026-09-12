@@ -462,6 +462,81 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             'mrr_par_responsable': {
                 str(k): _money(v)
                 for k, v in data['mrr_par_responsable'].items()},
+            # NTDOC6 — carte « Déviations » (clé ADDITIVE).
+            'deviations': data['deviations'],
+        })
+
+    # ── NTDOC6 — Déviations de clauses obligatoires ───────────────────────
+
+    @extend_schema(responses=inline_serializer('ContratsDeviations', {
+        'count': drf_serializers.IntegerField(),
+        'results': inline_serializer('ContratsDeviationsLigne', {
+            'contrat': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(),
+            'objet': drf_serializers.CharField(),
+            'type_contrat': drf_serializers.CharField(),
+            'statut': drf_serializers.CharField(),
+            'nb_deviations': drf_serializers.IntegerField(),
+        }, many=True),
+    }))
+    @action(detail=False, methods=['get'], url_path='deviations')
+    def deviations(self, request):
+        """Contrats en DÉVIATION de clause obligatoire (NTDOC6) — lecture seule.
+
+        Alimente la carte « Déviations » du tableau de bord contrats
+        (CONTRAT33). Une déviation = une clause que la bibliothèque déclare
+        obligatoire pour ce type de contrat (NTDOC5) dont le texte a été
+        ÉDITÉ sur le contrat. Une clause facultative surchargée n'apparaît
+        jamais. Le détail par clause est exposé par
+        ``contrats/<id>/deviations/``. Aucune écriture, aucun statut touché.
+        """
+        lignes = selectors.contrats_en_deviation(request.user.company)
+        # Le filtre de confidentialité de ``get_queryset`` (CONTRAT6) reste la
+        # référence : un contrat que l'utilisateur ne peut pas voir ne peut
+        # pas apparaître dans sa carte de déviations.
+        visibles = set(self.get_queryset().values_list('id', flat=True))
+        lignes = [ligne for ligne in lignes if ligne['contrat'] in visibles]
+        return Response({'count': len(lignes), 'results': lignes})
+
+    @extend_schema(responses=inline_serializer('ContratDeviationsDetail', {
+        'contrat': drf_serializers.IntegerField(),
+        'type_contrat': drf_serializers.CharField(),
+        'count': drf_serializers.IntegerField(),
+        'results': inline_serializer('ContratDeviationsDetailLigne', {
+            'clause_contrat': drf_serializers.IntegerField(),
+            'clause_source': drf_serializers.IntegerField(),
+            'titre': drf_serializers.CharField(),
+            'titre_source': drf_serializers.CharField(),
+            'ordre': drf_serializers.IntegerField(),
+            'type_clause': drf_serializers.CharField(),
+            'texte_source': drf_serializers.CharField(),
+            'texte_surcharge': drf_serializers.CharField(),
+            'diff': drf_serializers.CharField(),
+            'lignes_ajoutees': drf_serializers.IntegerField(),
+            'lignes_supprimees': drf_serializers.IntegerField(),
+        }, many=True),
+    }))
+    # ``url_name`` EXPLICITE : sans lui, l'action de liste et celle de détail
+    # partagent le même nom de route (``contrat-deviations``) et le reverse()
+    # de Django n'en résout plus qu'une.
+    @action(detail=True, methods=['get'], url_path='deviations',
+            url_name='deviations-contrat')
+    def deviations_contrat(self, request, pk=None):
+        """Détail des déviations de clauses d'UN contrat (NTDOC6).
+
+        Pour chaque clause obligatoire surchargée : le texte de la
+        bibliothèque, le texte du contrat et leur diff unifié (``difflib``,
+        bibliothèque standard). Un contrat sans déviation renvoie une liste
+        vide — jamais une erreur. Lecture seule ; la société est garantie par
+        ``get_object``.
+        """
+        contrat = self.get_object()
+        deviations = services.detecter_deviations(contrat)
+        return Response({
+            'contrat': contrat.id,
+            'type_contrat': contrat.type_contrat,
+            'count': len(deviations),
+            'results': deviations,
         })
 
     @action(detail=False, methods=['get'], url_path='mrr-mouvements')

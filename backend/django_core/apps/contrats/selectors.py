@@ -648,7 +648,10 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
     - ``mrr_combine`` : MRR contrats + ``sav.ContratMaintenance`` facturables,
       SANS double-comptage (``mrr_combine`` — XCTR13) ;
     - ``mrr_par_responsable`` : ventilation du MRR par responsable (XCTR10,
-      clé ``id`` du responsable, ``'sans_responsable'`` si non renseigné).
+      clé ``id`` du responsable, ``'sans_responsable'`` si non renseigné) ;
+    - ``deviations`` : nombre de contrats portant au moins une déviation de
+      clause obligatoire (NTDOC6 — carte ADDITIVE, aucune clé existante
+      renommée ni retirée).
     """
     from decimal import Decimal
 
@@ -682,6 +685,9 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
         'mrr_combine': mrr_combine(company),
         'exceptions_facturation': exceptions_facturation_count(company),
         'mrr_par_responsable': mrr_par_responsable(company),
+        # NTDOC6 — carte « Déviations » (ADDITIVE : aucune clé existante n'est
+        # renommée ni retirée, le tableau de bord n'est pas refondu).
+        'deviations': len(contrats_en_deviation(company)),
     }
 
 
@@ -1823,6 +1829,59 @@ def clauses_obligatoires_manquantes(contrat):
         if clause.id not in presentes_ids
         and _normaliser_titre_clause(clause.titre) not in presentes_titres
     ]
+
+
+# ---------------------------------------------------------------------------
+# NTDOC6 — Déviations de clauses obligatoires (carte du tableau de bord)
+# ---------------------------------------------------------------------------
+
+
+def contrats_candidats_deviation(company):
+    """Contrats susceptibles de porter une déviation (NTDOC6) — PRÉ-FILTRE.
+
+    Restreint le balayage aux contrats qui portent AU MOINS une clause
+    résolue ``surchargee`` adossée à une clause-source : sans ça, aucune
+    déviation n'est possible par construction. Le verdict final (la clause
+    est-elle obligatoire pour CE type, et le texte diffère-t-il vraiment ?)
+    reste à ``services.detecter_deviations`` — ce sélecteur ne fait que
+    borner le travail. Lecture seule, scopé société.
+    """
+    return (
+        Contrat.objects
+        .filter(company=company,
+                clauses_resolues__surchargee=True,
+                clauses_resolues__clause__isnull=False)
+        .distinct()
+        .order_by('id')
+    )
+
+
+def contrats_en_deviation(company):
+    """Contrats portant AU MOINS une déviation de clause obligatoire (NTDOC6).
+
+    Renvoie une LISTE de dicts ``{'contrat', 'reference', 'objet',
+    'type_contrat', 'statut', 'nb_deviations'}``, la plus déviante d'abord.
+    Lecture seule ; le détail par clause s'obtient avec
+    ``services.detecter_deviations(contrat)``.
+    """
+    from . import services
+
+    resultats = []
+    for contrat in contrats_candidats_deviation(company).prefetch_related(
+            'clauses_resolues__clause'):
+        deviations = services.detecter_deviations(contrat)
+        if not deviations:
+            continue
+        resultats.append({
+            'contrat': contrat.id,
+            'reference': contrat.reference or '',
+            'objet': contrat.objet or '',
+            'type_contrat': contrat.type_contrat,
+            'statut': contrat.statut,
+            'nb_deviations': len(deviations),
+        })
+    resultats.sort(key=lambda r: (-r['nb_deviations'], r['contrat']))
+    return resultats
 
 
 # ---------------------------------------------------------------------------
