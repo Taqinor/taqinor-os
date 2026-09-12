@@ -152,29 +152,26 @@ const TRESO_ID_HINT = 'ID du compte de trésorerie payeur'
 // réutilisé » n'entre pas dans son descripteur `fields` (`{name, label,
 // type?, options?, async?}`).
 function IndemniteChantierDialog({ open, onClose, row, onSubmit, onSaved }) {
-  const [values, setValues] = useState({})
+  // Monté conditionnellement par la page (jamais rendu fermé) : l'état
+  // initial vient de `row` au montage — aucun setState synchrone en effet.
+  const [values, setValues] = useState(() => ({
+    employe: row?.employe ?? '',
+    date_deplacement: row?.date_deplacement ?? '',
+    installation_id: row?.installation_id ?? '',
+    nombre_jours: row?.nombre_jours ?? '',
+  }))
   const [employeOptions, setEmployeOptions] = useState([])
-  const [employeLoading, setEmployeLoading] = useState(false)
+  const [employeLoading, setEmployeLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!open) return
-    setValues({
-      employe: row?.employe ?? '',
-      date_deplacement: row?.date_deplacement ?? '',
-      installation_id: row?.installation_id ?? '',
-      nombre_jours: row?.nombre_jours ?? '',
-    })
-  }, [open, row])
-
-  useEffect(() => {
-    if (!open) return
-    setEmployeLoading(true)
+    let actif = true
     employeAsync()
-      .then((opts) => setEmployeOptions(opts || []))
-      .catch(() => setEmployeOptions([]))
-      .finally(() => setEmployeLoading(false))
-  }, [open])
+      .then((opts) => { if (actif) setEmployeOptions(opts || []) })
+      .catch(() => { if (actif) setEmployeOptions([]) })
+      .finally(() => { if (actif) setEmployeLoading(false) })
+    return () => { actif = false }
+  }, [])
 
   const set = (name, v) => setValues((prev) => ({ ...prev, [name]: v }))
 
@@ -415,6 +412,7 @@ export default function NotesDeFraisPage() {
 
       {dialog && tab === 'indemnitesChantier' ? (
         <IndemniteChantierDialog
+          key={dialog.row?.id ?? 'nouvelle'}
           open
           onClose={() => setDialog(null)}
           row={dialog.row}
