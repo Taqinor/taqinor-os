@@ -45,7 +45,7 @@ class DemarrerWorkflowNotifieLesManagersTests(TestCase):
         workflow.demarrer_workflow(wf, self.company, self.company)
 
         notifs = Notification.objects.filter(
-            user=self.admin, event_type=EventType.APPROVAL_REQUESTED)
+            recipient=self.admin, event_type=EventType.APPROVAL_REQUESTED)
         self.assertTrue(notifs.exists())
 
 
@@ -72,7 +72,7 @@ class SweepWorkflowStepRemindersTests(TestCase):
         self.assertEqual(count1, 1)
         self.assertTrue(
             Notification.objects.filter(
-                user=self.admin,
+                recipient=self.admin,
                 event_type=EventType.APPROVAL_REMINDER).exists())
 
         # Un second passage (même moment ou plus tard) ne relance plus.

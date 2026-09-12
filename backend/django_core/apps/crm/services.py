@@ -7192,6 +7192,11 @@ _MERGE_CLIENT_FILL_FIELDS = (
     'rc', 'langue_document', 'delai_paiement_jours',
 )
 
+#: Clé où l'e-mail CÉDÉ au survivant est conservé sur le doublon neutralisé.
+#: Même patron (et même esprit « rien n'est perdu ») que la migration CRX24
+#: ``crm/0086_crx24_client_email_unique_ci``.
+CLE_EMAIL_AVANT_FUSION = 'email_avant_fusion'
+
 
 def merge_clients(survivor, others, user):
     """Fusionne ``others`` dans ``survivor`` sans perte ni suppression.
@@ -7227,22 +7232,35 @@ def merge_clients(survivor, others, user):
             rapport['non_repointes'].extend(non_repointes)
 
             # Compléter les champs VIDES du survivant (jamais écraser).
-            completer_champs_vides(survivor, absorbed,
-                                   _MERGE_CLIENT_FILL_FIELDS)
+            completes = completer_champs_vides(survivor, absorbed,
+                                               _MERGE_CLIENT_FILL_FIELDS)
 
             # Neutraliser le doublon — jamais le supprimer.
             marqueur = dict(absorbed.custom_data or {})
             marqueur['fusionne_dans'] = survivor.pk
             marqueur['fusionne_le'] = timezone.now().isoformat()
             marqueur['fusionne_par'] = getattr(user, 'username', '') or ''
+            champs_absorbe = ['custom_data', 'avertissement_bloquant',
+                              'avertissement_vente', 'date_modification']
+            if 'email' in completes:
+                # CRX24 — l'e-mail client est UNIQUE par société (index
+                # fonctionnel insensible à la casse
+                # ``crx24_client_email_unique_ci``). Le doublon n'étant JAMAIS
+                # supprimé, il faut qu'il LIBÈRE l'e-mail qu'il vient de céder
+                # au survivant : sinon les deux fiches le portent et
+                # PostgreSQL refuse le ``survivor.save()`` final — la fusion
+                # entière échouait alors sur une IntegrityError. Rien n'est
+                # perdu : la valeur est conservée sur le doublon dans
+                # ``custom_data`` (même patron que la migration CRX24).
+                marqueur[CLE_EMAIL_AVANT_FUSION] = absorbed.email
+                absorbed.email = None
+                champs_absorbe.append('email')
             absorbed.custom_data = marqueur
             absorbed.avertissement_bloquant = True
             absorbed.avertissement_vente = (
                 'Fiche fusionnée dans le client #%s — ne plus utiliser.'
                 % survivor.pk)
-            absorbed.save(update_fields=[
-                'custom_data', 'avertissement_bloquant',
-                'avertissement_vente', 'date_modification'])
+            absorbed.save(update_fields=champs_absorbe)
             rapport['absorbes'].append(absorbed.pk)
 
             _journaliser_fusion_client(survivor, absorbed, user)

@@ -126,6 +126,23 @@ def _annoter(qs):
     )
 
 
+def _totaux(qs) -> dict:
+    """Le total de la fenêtre — UNE ligne, sans regroupement.
+
+    ``aggregate()`` et non ``values('company_id').annotate(…).first()`` : le
+    queryset ainsi groupé n'est pas ordonné, et Django REFUSE ``first()`` sur
+    un queryset agrégé non ordonné (``TypeError: Cannot use QuerySet.first()
+    on an unordered queryset performing aggregation``) — l'endpoint répondait
+    500. La fenêtre est déjà bornée à UNE société : il n'y a rien à grouper,
+    donc le total se lit directement.
+    """
+    return qs.aggregate(
+        **_AGREGATS,
+        echecs=Count('id', filter=_FILTRE_ECHEC),
+        sans_tarif=Count('id', filter=_FILTRE_SANS_TARIF),
+    )
+
+
 def agreger_usage(company, *, since=None, feature='') -> dict:
     """Agrégats d'usage IA d'une société, par JOUR / FEATURE / FOURNISSEUR.
 
@@ -135,7 +152,7 @@ def agreger_usage(company, *, since=None, feature='') -> dict:
     """
     base = _lignes(company, since=since, feature=feature)
 
-    total = _annoter(base.values('company_id')).first() or {}
+    total = _totaux(base)
     par_jour = [
         {'jour': ligne['jour'].isoformat(), **_bloc(ligne)}
         for ligne in _annoter(
