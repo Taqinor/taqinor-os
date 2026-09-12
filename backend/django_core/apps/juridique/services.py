@@ -39,6 +39,67 @@ def creer_dossier(company, *, user=None, **champs):
         DossierJuridique, 'JUR', company, _save, period='yearly')
 
 
+@transaction.atomic
+def creer_dossier_depuis_reclamation(company, reclamation_id, *, user=None,
+                                     **overrides):
+    """NTJUR6 — escalade d'une réclamation ``litiges`` en dossier juridique.
+
+    IDEMPOTENT : si la réclamation porte déjà un ``dossier_juridique_id`` qui
+    existe encore, ce dossier est RENVOYÉ tel quel — cliquer deux fois sur
+    « ouvrir un dossier juridique » ne crée jamais deux dossiers.
+
+    Frontière inter-apps respectée dans les deux sens (imports fonction-locaux
+    de ``selectors``/``services``, jamais de ``models``) :
+      * LECTURE de la réclamation → ``apps.litiges.selectors.reclamation_scoped``
+        (scopé société : un id d'une autre société renvoie ``None``) ;
+      * ÉCRITURE du lien retour → ``apps.litiges.services.lier_dossier_juridique``.
+
+    Pré-remplissage HONNÊTE — rien n'est inventé : titre = objet de la
+    réclamation, montant en jeu = montant contesté, résumé des faits =
+    description. La partie adverse n'est renseignée que si l'appelant la
+    fournit, ou si la réclamation pointe explicitement un client
+    (``source_type='client'``, résolu via ``apps.crm.selectors.client_label``)
+    — sinon elle reste VIDE, à saisir.
+
+    Renvoie ``(dossier, cree)`` — ``cree=False`` quand le dossier existait
+    déjà. Renvoie ``(None, False)`` si la réclamation n'existe pas dans cette
+    société.
+    """
+    from apps.litiges import selectors as litiges_selectors
+    from apps.litiges import services as litiges_services
+
+    from .models import DossierJuridique
+
+    reclamation = litiges_selectors.reclamation_scoped(company, reclamation_id)
+    if reclamation is None:
+        return None, False
+
+    if reclamation.dossier_juridique_id:
+        existant = DossierJuridique.objects.filter(
+            company=company, pk=reclamation.dossier_juridique_id).first()
+        if existant is not None:
+            return existant, False
+
+    partie_adverse = overrides.pop('partie_adverse_nom', '') or ''
+    if not partie_adverse and reclamation.source_type == 'client':
+        from apps.crm import selectors as crm_selectors
+        partie_adverse = crm_selectors.client_label(
+            company, reclamation.source_id) or ''
+
+    champs = {
+        'titre': reclamation.objet,
+        'nature': DossierJuridique.Nature.CONTENTIEUX,
+        'partie_adverse_nom': partie_adverse,
+        'montant_en_jeu': reclamation.montant_conteste,
+        'resume_faits': reclamation.description or '',
+        'date_ouverture': timezone.localdate(),
+    }
+    champs.update({k: v for k, v in overrides.items() if v is not None})
+    dossier = creer_dossier(company, user=user, **champs)
+    litiges_services.lier_dossier_juridique(reclamation, dossier.id)
+    return dossier, True
+
+
 # ───────────────────────────────────────────────────────────────────────────
 # NTJUR19 — Workflow d'approbation des engagements de dépenses juridiques
 #

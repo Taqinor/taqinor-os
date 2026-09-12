@@ -108,6 +108,14 @@ class Reclamation(models.Model):
         max_length=255, blank=True, default='',
         verbose_name='Motif de la perte',
         help_text='Raison pour laquelle le deal a été perdu (texte libre).')
+    # NTJUR6 — dossier juridique ouvert par ESCALADE de cette réclamation.
+    # Référence LÂCHE (id seul, jamais une FK dure vers ``apps.juridique``) :
+    # la frontière inter-apps passe par les selectors/services des deux côtés.
+    # NULL = jamais escaladée. Sert aussi de verrou d'idempotence : une
+    # réclamation déjà liée ne recrée jamais un second dossier.
+    dossier_juridique_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du dossier juridique lié')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
