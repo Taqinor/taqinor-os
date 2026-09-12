@@ -53,6 +53,55 @@ def _not_found():
     ))
 
 
+def _csat_detaille_actif(company_id):
+    """NTSRV23 — la société collecte-t-elle les sous-notes détaillées ?
+
+    LECTURE SEULE (jamais un ``get_or_create`` : une page publique ne crée
+    pas de réglage). Société sans réglage enregistré → ``False``, donc
+    formulaire public strictement inchangé."""
+    from .models import SavSlaSettings
+
+    if company_id is None:
+        return False
+    return bool(SavSlaSettings.objects
+                .filter(company_id=company_id)
+                .values_list('csat_detaille_actif', flat=True)
+                .first())
+
+
+def _valider_sous_notes(brut):
+    """NTSRV23 — normalise ``sous_notes`` ou lève un message FRANÇAIS qui
+    NOMME la sous-note fautive.
+
+    Toutes les clés sont OPTIONNELLES ; la liste est FERMÉE (une clé inconnue
+    est refusée, jamais stockée en silence) ; chaque valeur est un entier
+    1-5. ``None``/absent/vide → ``None`` (aucune sous-note)."""
+    from .models import TicketSatisfaction
+
+    if brut in (None, '', {}):
+        return None, None
+    if not isinstance(brut, dict):
+        return None, ('Sous-notes invalides : un objet '
+                      '{rapidite, courtoisie, resolution} est attendu.')
+    propre = {}
+    for cle, valeur in brut.items():
+        if cle not in TicketSatisfaction.SOUS_NOTES_CLES:
+            return None, f'Sous-note inconnue : « {cle} ».'
+        if valeur in (None, ''):
+            continue
+        libelle = TicketSatisfaction.SOUS_NOTES_LIBELLES.get(cle, cle)
+        try:
+            note = int(valeur)
+        except (TypeError, ValueError):
+            return None, (f'{libelle} : note invalide (entier de 1 à 5 '
+                          'attendu).')
+        if note < 1 or note > 5:
+            return None, (f'{libelle} : note invalide (entier de 1 à 5 '
+                          'attendu).')
+        propre[cle] = note
+    return (propre or None), None
+
+
 # ── Vue publique ──────────────────────────────────────────────────────────────
 
 # Champs publics autorisés — liste exhaustive (défense en profondeur).
@@ -75,7 +124,9 @@ def ticket_public_status(request, token):
         return _not_found()
     try:
         ticket = Ticket.objects.only(
-            'share_token', *_PUBLIC_FIELDS,
+            # ``company`` : NTSRV23 lit le drapeau d'affichage de la société ;
+            # sans lui, l'accès déclencherait une requête différée par appel.
+            'share_token', 'company', *_PUBLIC_FIELDS,
         ).get(share_token=token)
     except Ticket.DoesNotExist:
         return _not_found()
@@ -83,6 +134,10 @@ def ticket_public_status(request, token):
     payload = {field: getattr(ticket, field) for field in _PUBLIC_FIELDS}
     # Statut human-readable (label FR) en complément du code machine.
     payload['statut_display'] = ticket.get_statut_display()
+    # NTSRV23 — INDICATION D'AFFICHAGE (pas une donnée du ticket) : dit à la
+    # page publique si elle doit proposer les trois sous-notes optionnelles.
+    # False tant que la société ne l'a pas activé → formulaire inchangé.
+    payload['csat_detaille_actif'] = _csat_detaille_actif(ticket.company_id)
     return _noindex(Response(payload))
 
 
@@ -134,17 +189,30 @@ def ticket_public_satisfaction(request, token):
             status=status.HTTP_400_BAD_REQUEST))
     commentaire = (request.data.get('commentaire') or '').strip()[:4000]
 
+    # NTSRV23 — sous-notes détaillées, UNIQUEMENT si la société les a
+    # activées. Flag OFF = elles sont simplement IGNORÉES (jamais un refus
+    # nouveau sur un formulaire qui, lui, ne les propose pas) : le
+    # comportement d'aujourd'hui reste strictement identique.
+    sous_notes = None
+    if _csat_detaille_actif(ticket.company_id):
+        sous_notes, erreur = _valider_sous_notes(request.data.get('sous_notes'))
+        if erreur:
+            return _noindex(Response(
+                {'detail': erreur}, status=status.HTTP_400_BAD_REQUEST))
+
     try:
         satisfaction = TicketSatisfaction.objects.create(
             company_id=ticket.company_id,
-            ticket=ticket, note=note, commentaire=commentaire)
+            ticket=ticket, note=note, commentaire=commentaire,
+            sous_notes=sous_notes)
     except Exception:  # noqa: BLE001 — filet de course (OneToOne race)
         return _noindex(Response(
             {'detail': 'Une réponse a déjà été enregistrée pour ce ticket.'},
             status=status.HTTP_409_CONFLICT))
 
     return _noindex(Response(
-        {'note': satisfaction.note, 'commentaire': satisfaction.commentaire},
+        {'note': satisfaction.note, 'commentaire': satisfaction.commentaire,
+         'sous_notes': satisfaction.sous_notes},
         status=status.HTTP_201_CREATED))
 
 

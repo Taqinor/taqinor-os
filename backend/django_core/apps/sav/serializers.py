@@ -478,6 +478,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'generation_auto_visites', 'visites_avance_jours',
             # ZMFG6 — feuilles de maintenance (worksheets).
             'worksheets_maintenance_actifs',
+            # NTSRV23 — enquête CSAT détaillée (OFF = formulaire inchangé).
+            'csat_detaille_actif',
             'date_modification',
         ]
         read_only_fields = ['date_modification']
@@ -542,8 +544,11 @@ class KbArticleSerializer(serializers.ModelSerializer):
 class TicketSatisfactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TicketSatisfaction
-        fields = ['id', 'ticket', 'note', 'commentaire', 'date_creation']
-        read_only_fields = ['id', 'ticket', 'date_creation']
+        # NTSRV23 — `sous_notes` est LECTURE SEULE ici : la saisie se fait sur
+        # la page publique (share_token), jamais depuis le back-office.
+        fields = ['id', 'ticket', 'note', 'commentaire', 'sous_notes',
+                  'date_creation']
+        read_only_fields = ['id', 'ticket', 'sous_notes', 'date_creation']
 
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────

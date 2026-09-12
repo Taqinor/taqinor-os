@@ -151,6 +151,17 @@ class SavSlaSettings(models.Model):
                   'technicien sur les tickets (parité Odoo « Custom '
                   'Maintenance Worksheets »).',
     )
+    # ── NTSRV23 — Enquête CSAT enrichie (sous-notes rapidité/courtoisie/
+    # résolution). OFF par défaut : le formulaire public reste STRICTEMENT
+    # celui d'aujourd'hui (une seule note globale + commentaire) tant qu'une
+    # société ne l'active pas.
+    csat_detaille_actif = models.BooleanField(
+        default=False,
+        verbose_name='Enquête CSAT détaillée',
+        help_text='Ajoute au formulaire public trois sous-notes optionnelles '
+                  '(rapidité, courtoisie, résolution). OFF = formulaire '
+                  'actuel inchangé.',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1813,7 +1824,26 @@ class TicketSatisfaction(models.Model):
     note = models.PositiveSmallIntegerField(
         help_text='Note de satisfaction 1 (très insatisfait) à 5 (très satisfait).')
     commentaire = models.TextField(blank=True, default='')
+    # ── NTSRV23 — Sous-notes détaillées (toutes OPTIONNELLES) ──────────────
+    # ``{'rapidite': 1-5, 'courtoisie': 1-5, 'resolution': 1-5}`` — chaque clé
+    # est facultative, et la note GLOBALE ci-dessus reste la seule obligatoire
+    # (rétro-compatible : toutes les réponses déjà enregistrées gardent
+    # ``None`` ici et aucun rapport existant ne change). Collectées seulement
+    # quand ``SavSlaSettings.csat_detaille_actif`` est ON.
+    sous_notes = models.JSONField(
+        null=True, blank=True, verbose_name='Sous-notes détaillées',
+        help_text="{'rapidite': 1-5, 'courtoisie': 1-5, 'resolution': 1-5} — "
+                  'toutes optionnelles (NTSRV23).')
     date_creation = models.DateTimeField(auto_now_add=True)
+
+    #: NTSRV23 — clés acceptées dans ``sous_notes`` (liste FERMÉE : une clé
+    #: inconnue est refusée, jamais stockée en silence).
+    SOUS_NOTES_CLES = ('rapidite', 'courtoisie', 'resolution')
+    SOUS_NOTES_LIBELLES = {
+        'rapidite': 'Rapidité',
+        'courtoisie': 'Courtoisie',
+        'resolution': 'Qualité de la résolution',
+    }
 
     class Meta:
         verbose_name = 'Satisfaction ticket SAV (CSAT)'
