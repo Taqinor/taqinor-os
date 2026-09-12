@@ -26,3 +26,8 @@ class BtpChantierConfig(AppConfig):
         # d'apps (``apps.get_model``) — aucun import statique de
         # ``ged.models`` (frontière cross-app, CLAUDE.md).
         from . import receivers  # noqa: F401
+        # NTCON36 — capture terrain hors-ligne : deux op_types enregistrés
+        # dans le moteur GÉNÉRIQUE `apps.offlinesync` (NTMOB1), son point
+        # d'extension documenté. Aucun second mécanisme hors-ligne.
+        from . import offline_ops
+        offline_ops.connect()
