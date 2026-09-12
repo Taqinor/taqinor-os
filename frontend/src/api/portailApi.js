@@ -79,6 +79,13 @@ const portailApi = {
   },
   partenaire: {
     tableauDeBord: () => api.get('/portail/partenaire/tableau-de-bord/'),
+    // NTPRT28 — deal registration : le partenaire vient du compte connecté,
+    // jamais du corps. Un 409 signifie « déjà soumis » (anti-doublon 30 j).
+    soumissions: {
+      liste: () => api.get('/portail/mes-soumissions/'),
+      detail: (id) => api.get(`/portail/mes-soumissions/${id}/`),
+      creer: (payload) => api.post('/portail/mes-soumissions/', payload),
+    },
   },
   // PACT96-101 — administration ERP du portail (ComptePortailClient et son
   // provisioning, preuve d'acceptation de devis, rapprochement des paiements,

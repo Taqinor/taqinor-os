@@ -33,6 +33,7 @@ from .views_client import (
 )
 from .views_externes import (
     MesBcfPortailFournisseurViewSet,
+    MesSoumissionsPortailPartenaireViewSet,
     candidature_fournisseur,
     tableau_de_bord_fournisseur,
     tableau_de_bord_partenaire,
@@ -75,6 +76,10 @@ router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
 # tokenisé XPUR22, simplement authentifié).
 router.register(r'mes-bons-commande', MesBcfPortailFournisseurViewSet,
                 basename='portail-mes-bons-commande')
+# NTPRT28 — deal registration : le PARTENAIRE connecté enregistre ses affaires
+# (anti-doublon 30 jours) et suit leur avancement.
+router.register(r'mes-soumissions', MesSoumissionsPortailPartenaireViewSet,
+                basename='portail-mes-soumissions')
 
 urlpatterns = [
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et

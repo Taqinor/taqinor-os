@@ -6146,6 +6146,96 @@ def ajouter_specialite_partenaire(partenaire_id, company, specialite):
     return partenaire
 
 
+# ── NTPRT28 — Deal registration : soumission d'un lead par un partenaire ────
+#
+# Point d'entrée d'ÉCRITURE pour ``apps.portail`` (le portail partenaire
+# authentifié) : la fiche partenaire et ses soumissions vivent ici, donc c'est
+# ici qu'on les écrit — jamais un ``SoumissionLeadPartenaire.objects.create()``
+# depuis une autre app.
+
+#: NTPRT28 — fenêtre pendant laquelle une re-soumission du MÊME prospect par le
+#: MÊME partenaire est traitée comme un doublon (critère d'acceptation).
+FENETRE_DOUBLON_SOUMISSION_JOURS = 30
+
+
+def soumission_partenaire_deja_faite(company, partenaire_id, email_prospect,
+                                     fenetre_jours=None):
+    """NTPRT28 — soumission RÉCENTE du même prospect par le même partenaire.
+
+    Renvoie la soumission existante, ou ``None``. La comparaison se fait sur
+    l'email du prospect, normalisé (casse/espaces) : c'est la seule clé
+    stable dont on dispose côté partenaire. Un email VIDE ne déclenche jamais
+    de doublon — sinon deux prospects anonymes distincts s'annuleraient
+    mutuellement.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import SoumissionLeadPartenaire
+
+    email = (email_prospect or '').strip().lower()
+    if company is None or not partenaire_id or not email:
+        return None
+    jours = (FENETRE_DOUBLON_SOUMISSION_JOURS if fenetre_jours is None
+             else fenetre_jours)
+    depuis = timezone.now() - timedelta(days=jours)
+    return (SoumissionLeadPartenaire.objects
+            .filter(company=company, partenaire_id=partenaire_id,
+                    email_prospect__iexact=email,
+                    date_soumission__gte=depuis)
+            .order_by('-date_soumission')
+            .first())
+
+
+def soumettre_lead_partenaire(company, partenaire_id, donnees):
+    """NTPRT28 — enregistre la soumission d'un prospect par un partenaire.
+
+    Renvoie ``(soumission, doublon)`` :
+
+    * ``(None, None)`` — le partenaire n'existe pas dans CETTE société (jamais
+      d'écriture cross-tenant) ;
+    * ``(None, existante)`` — une soumission du MÊME prospect par le MÊME
+      partenaire date de moins de 30 jours : RIEN n'est créé, l'appelant
+      signale « déjà soumis » (jamais de doublon silencieux) ;
+    * ``(creee, None)`` — nominal.
+
+    ``company`` et ``partenaire`` sont posés par le serveur ; seuls les champs
+    de coordonnées du prospect sont lus de ``donnees``. Le statut naît
+    ``SOUMIS`` : la qualification (et la création du lead réel, référencé par
+    ``lead_id`` — la piste de traçabilité pour la commission) reste un acte
+    INTERNE, jamais un effet de bord de la soumission.
+    """
+    from .models import Partenaire, SoumissionLeadPartenaire
+
+    if company is None or not partenaire_id:
+        return None, None
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return None, None
+
+    donnees = donnees or {}
+    email = str(donnees.get('email_prospect') or '').strip()
+    existante = soumission_partenaire_deja_faite(
+        company, partenaire.id, email)
+    if existante is not None:
+        return None, existante
+
+    soumission = SoumissionLeadPartenaire.objects.create(
+        company=company,
+        partenaire=partenaire,
+        nom_prospect=str(donnees.get('nom_prospect') or '').strip()[:200],
+        telephone_prospect=str(
+            donnees.get('telephone_prospect') or '').strip()[:30],
+        email_prospect=email[:254],
+        ville=str(donnees.get('ville') or '').strip()[:120],
+        note=str(donnees.get('note') or '').strip()[:4000],
+        statut=SoumissionLeadPartenaire.Statut.SOUMIS,
+    )
+    return soumission, None
+
+
 # ---------------------------------------------------------------------------
 # AUD518 — Effets de CRÉATION d'un lead importé (dataimport)
 # ---------------------------------------------------------------------------

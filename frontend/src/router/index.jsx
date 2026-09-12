@@ -116,6 +116,8 @@ const PortailFournisseurBcf = lazy(() => import('../features/portail/fournisseur
 // NTPRT27 — shell + tableau de bord du PORTAIL PARTENAIRE.
 const PortalPartenaireLayout = lazy(() => import('../features/portail/partenaire/PortalPartenaireLayout'))
 const PortailPartenaireAccueil = lazy(() => import('../features/portail/partenaire/PortailPartenaireAccueil'))
+// NTPRT28 — deal registration : enregistrer une affaire + suivi des soumissions.
+const PortailPartenaireLeads = lazy(() => import('../features/portail/partenaire/PortailPartenaireLeads'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -467,6 +469,13 @@ const router = createBrowserRouter([
     path: '/portail/partenaire',
     loader: portalLoader(PORTEE_PARTENAIRE),
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireAccueil /></WithPortal>,
+  },
+  // NTPRT28 — « Mes affaires » : deal registration (anti-doublon 30 jours) et
+  // suivi des soumissions, même garde de portée que le tableau de bord.
+  {
+    path: '/portail/partenaire/affaires',
+    loader: portalLoader(PORTEE_PARTENAIRE),
+    element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireLeads /></WithPortal>,
   },
 
   // ODY2 — Menu d'accueil : la grille de MES apps. `/dashboard` reste une route

@@ -185,6 +185,132 @@ class MesBcfPortailFournisseurViewSet(viewsets.ViewSet):
         })
 
 
+#: Même remarque que ``_ID_BCF`` : ``ViewSet`` nu ⇒ type explicite (YAPIC6).
+_ID_SOUMISSION = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description='Identifiant de la soumission du partenaire connecté.',
+)
+
+
+class MesSoumissionsPortailLigneSerializer(serializers.Serializer):
+    """Une soumission de lead telle que le portail la montre au partenaire.
+
+    Reflet EXACT de ``apps.crm.selectors.soumissions_partenaire_portail`` :
+    ce que le partenaire a saisi + l'avancement. Aucune donnée interne (ni
+    propriétaire du lead, ni notes commerciales, ni montant).
+    """
+    id = serializers.IntegerField()
+    nom_prospect = serializers.CharField()
+    telephone_prospect = serializers.CharField(allow_blank=True)
+    email_prospect = serializers.CharField(allow_blank=True)
+    ville = serializers.CharField(allow_blank=True)
+    note = serializers.CharField(allow_blank=True)
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    converti = serializers.BooleanField()
+    date_soumission = serializers.DateTimeField(allow_null=True)
+
+
+class MesSoumissionsPortailPartenaireViewSet(viewsets.ViewSet):
+    """NTPRT28 — « Enregistrer une affaire » (deal registration) du portail
+    PARTENAIRE authentifié.
+
+    Branche le formulaire partenaire sur le modèle FG234
+    (``crm.SoumissionLeadPartenaire``) déjà présent — aucune seconde
+    modélisation des soumissions. Le ViewSet INTERNE
+    (``SoumissionLeadPartenaireViewSet``, garde interne) reste inchangé : il
+    porte la QUALIFICATION, qui demeure un acte interne ; la soumission ne
+    crée jamais de lead toute seule.
+
+    Le partenaire est résolu depuis le compte connecté (``portal_scope_id``),
+    jamais du corps : ``company`` et ``partenaire`` sont posés côté serveur.
+    Lecture et écriture passent par ``apps.crm`` (selector / service) — jamais
+    un import de ses ``models``.
+
+    ANTI-DOUBLON (critère d'acceptation) : une re-soumission du MÊME prospect
+    (même email) par le MÊME partenaire à moins de 30 jours est REFUSÉE avec
+    un message « déjà soumis » qui désigne la soumission existante — jamais
+    une seconde ligne créée en silence.
+    """
+
+    permission_classes = [IsPortalPartenaireUser]
+    serializer_class = MesSoumissionsPortailLigneSerializer
+
+    def _scope(self, request):
+        return request.user.company, portal_scope_id(request.user)
+
+    @extend_schema(responses=inline_serializer(
+        name='MesSoumissionsPortail',
+        fields={
+            'results': serializers.ListField(
+                child=MesSoumissionsPortailLigneSerializer()),
+        }))
+    def list(self, request):
+        from apps.crm.selectors import soumissions_partenaire_portail
+        company, partenaire_id = self._scope(request)
+        return Response({'results': soumissions_partenaire_portail(
+            company, partenaire_id)})
+
+    @extend_schema(parameters=[_ID_SOUMISSION],
+                   responses=MesSoumissionsPortailLigneSerializer)
+    def retrieve(self, request, pk=None):
+        from apps.crm.selectors import soumissions_partenaire_portail
+        company, partenaire_id = self._scope(request)
+        for ligne in soumissions_partenaire_portail(company, partenaire_id):
+            if str(ligne['id']) == str(pk):
+                return Response(ligne)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    @extend_schema(responses=MesSoumissionsPortailLigneSerializer)
+    def create(self, request):
+        """Enregistre une affaire. Les erreurs NOMMENT le champ fautif."""
+        from apps.crm.selectors import soumissions_partenaire_portail
+        from apps.crm.services import soumettre_lead_partenaire
+
+        company, partenaire_id = self._scope(request)
+
+        nom = str(request.data.get('nom_prospect') or '').strip()
+        if not nom:
+            return Response(
+                {'nom_prospect': 'Le nom du prospect est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        email = str(request.data.get('email_prospect') or '').strip()
+        telephone = str(request.data.get('telephone_prospect') or '').strip()
+        if not email and not telephone:
+            return Response(
+                {'email_prospect': 'Indiquez au moins un email ou un '
+                                   'téléphone pour que nous puissions '
+                                   'joindre ce prospect.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        soumission, doublon = soumettre_lead_partenaire(
+            company, partenaire_id, {
+                'nom_prospect': nom,
+                'email_prospect': email,
+                'telephone_prospect': telephone,
+                'ville': request.data.get('ville'),
+                'note': request.data.get('note'),
+            })
+        if doublon is not None:
+            return Response(
+                {'email_prospect': 'Déjà soumis : vous avez enregistré ce '
+                                   'prospect le '
+                                   f'{doublon.date_soumission:%d/%m/%Y}. '
+                                   'Votre antériorité est conservée.',
+                 'soumission_existante': doublon.id},
+                status=status.HTTP_409_CONFLICT)
+        if soumission is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        for ligne in soumissions_partenaire_portail(company, partenaire_id):
+            if ligne['id'] == soumission.id:
+                return Response(ligne, status=status.HTTP_201_CREATED)
+        return Response({'id': soumission.id},
+                        status=status.HTTP_201_CREATED)
+
+
 class CandidatureFournisseurThrottle(SimpleRateThrottle):
     """NTPRT25 — même patron de limitation que XPUR22 (par IP, cache-based,
     aucune dépendance nouvelle). Un formulaire d'auto-inscription PUBLIC est

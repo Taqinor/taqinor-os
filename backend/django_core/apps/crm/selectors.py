@@ -3603,6 +3603,45 @@ def resume_portail_partenaire(company, partenaire_id):
     }
 
 
+def soumissions_partenaire_portail(company, partenaire_id):
+    """NTPRT28 — SES soumissions de leads, telles que le portail les montre.
+
+    Point d'entrée cross-app LECTURE SEULE de ``apps.portail`` (jamais un
+    import de ``apps.crm.models`` depuis portail). Borné au couple (société,
+    partenaire) : un ``partenaire_id`` absent — ou d'une autre société —
+    renvoie une liste VIDE, jamais les soumissions d'un autre partenaire.
+
+    Charge utile volontairement pauvre : ce que LE PARTENAIRE a saisi, plus
+    l'avancement de sa soumission. Aucune donnée interne (propriétaire du
+    lead, notes commerciales, montants) ne transite ici.
+    """
+    if company is None or not partenaire_id:
+        return []
+
+    from .models import Partenaire, SoumissionLeadPartenaire
+
+    if not Partenaire.objects.filter(
+            company=company, pk=partenaire_id).exists():
+        return []
+
+    return [{
+        'id': s.id,
+        'nom_prospect': s.nom_prospect,
+        'telephone_prospect': s.telephone_prospect,
+        'email_prospect': s.email_prospect,
+        'ville': s.ville,
+        'note': s.note,
+        'statut': s.statut,
+        'statut_display': s.get_statut_display(),
+        # Le partenaire voit que SON prospect est devenu un dossier réel
+        # (traçabilité de sa commission) — jamais le contenu de ce dossier.
+        'converti': bool(s.lead_id),
+        'date_soumission': (s.date_soumission.isoformat()
+                            if s.date_soumission else None),
+    } for s in SoumissionLeadPartenaire.objects.filter(
+        company=company, partenaire_id=partenaire_id)]
+
+
 def pipeline_pondere_par_entite(company, entite_ids):
     """NTADM25 — pipeline PONDÉRÉ-PROBABILITÉ agrégé PAR ENTITÉ (NTADM2).
 
