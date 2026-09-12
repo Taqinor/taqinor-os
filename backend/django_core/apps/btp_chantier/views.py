@@ -786,6 +786,23 @@ class LotViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
                     'ordre', 'id')))
 
 
+class ChantierPenalitesParLotView(APIView):
+    """NTCON15 — ``chantiers/<id>/penalites-par-lot/``.
+
+    Données INTERNES de pilotage (exposition financière) : ``btp_gerer``
+    exigé même en LECTURE — jamais une pénalité dans une sortie client
+    (même garde que ``ChantierDebourseVsFactureView``, NTCON11).
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_gerer'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.penalites_retard_par_lot(chantier))
+
+
 class ChantierPlanningLotsView(APIView):
     """NTCON14 — ``chantiers/<id>/planning-lots/`` : le Gantt du chantier
     GROUPÉ PAR LOT (avec code couleur), lecture seule."""

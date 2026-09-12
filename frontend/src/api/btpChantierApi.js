@@ -147,6 +147,10 @@ const btpChantierApi = {
   // NTCON14 — Gantt du chantier GROUPÉ PAR LOT (avec code couleur).
   planningLots: (chantierId) =>
     api.get(`/btp-chantier/chantiers/${chantierId}/planning-lots/`),
+  // NTCON15 — exposition aux pénalités de retard, LOT PAR LOT (donnée
+  // INTERNE : le serveur exige `btp_gerer` même en lecture, 403 sinon).
+  penalitesParLot: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/penalites-par-lot/`),
 
   // ── PACT68 — Diffusion contrôlée de plans — NTCON12/13 ───────────────────
   diffusions: {

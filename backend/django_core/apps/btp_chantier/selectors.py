@@ -403,6 +403,112 @@ def planning_par_lot(chantier):
     return resultat
 
 
+# ── NTCON15 — Pénalités de retard PAR LOT ───────────────────────────────────
+
+def penalites_retard_par_lot(chantier, date_reference=None):
+    """NTCON15 — exposition aux pénalités de retard, LOT PAR LOT.
+
+    Reprend EXACTEMENT la formule XPRJ27
+    (``gestion_projet.selectors.penalites_retard``) ::
+
+        jours_depassement × (taux / 1000) × montant
+
+    plafonnée à ``plafond_penalite_pct`` % du montant quand ce plafond est
+    renseigné — mais appliquée au ``Lot`` (NTCON14) et non au projet entier :
+    chaque lot est calculé INDÉPENDAMMENT, un lot en retard n'alourdit jamais
+    la pénalité d'un autre lot.
+
+    Un lot n'est « applicable » que s'il porte un ``jalon_contractuel``, un
+    ``taux_penalite_retard_pmil``, un ``montant_ht`` non nul et une
+    ``date_fin_prevue`` — sinon exposition NULLE avec ``applicable=False``
+    (jamais d'erreur : le sélecteur reste appelable sur n'importe quel
+    chantier). Le retard d'un lot TERMINÉ est FIGÉ à sa ``date_fin_reelle``
+    (il ne continue pas de courir) ; un lot en cours court jusqu'à
+    ``date_reference`` (défaut : aujourd'hui).
+
+    Donnée INTERNE de pilotage — jamais dans un document client. Lecture
+    seule : rien n'est écrit, rien n'est figé (le décompte DÉFINITIF reste à
+    établir à la réception du lot).
+    """
+    from decimal import Decimal
+
+    if date_reference is None:
+        date_reference = timezone.localdate()
+
+    lots = Lot.objects.filter(chantier=chantier).order_by('ordre', 'id')
+    resultats = []
+    total = Decimal('0')
+    for lot in lots:
+        montant = lot.montant_ht or Decimal('0')
+        applicable = bool(
+            lot.jalon_contractuel
+            and lot.taux_penalite_retard_pmil is not None
+            and montant
+            and lot.date_fin_prevue is not None
+        )
+        if not applicable:
+            resultats.append({
+                'lot_id': lot.id,
+                'lot': lot.nom,
+                'applicable': False,
+                'jours_depassement': 0,
+                'taux_penalite_retard_pmil': lot.taux_penalite_retard_pmil,
+                'montant_ht': montant,
+                'plafond_penalite_pct': lot.plafond_penalite_pct,
+                'exposition_brute': Decimal('0'),
+                'plafond_montant': None,
+                'exposition': Decimal('0'),
+                'plafonnee': False,
+                'decompte_definitif_a_etablir': False,
+            })
+            continue
+
+        # Le retard d'un lot TERMINÉ est figé à sa fin réelle.
+        fin_constatee = date_reference
+        if lot.statut == Lot.Statut.TERMINE and lot.date_fin_reelle:
+            fin_constatee = lot.date_fin_reelle
+        jours = max((fin_constatee - lot.date_fin_prevue).days, 0)
+
+        taux = lot.taux_penalite_retard_pmil
+        brute = (
+            Decimal(jours) * (taux / Decimal('1000')) * montant
+        ).quantize(Decimal('0.01'))
+
+        plafond_montant = None
+        exposition = brute
+        plafonnee = False
+        if lot.plafond_penalite_pct is not None:
+            plafond_montant = (
+                montant * lot.plafond_penalite_pct / Decimal('100')
+            ).quantize(Decimal('0.01'))
+            if brute > plafond_montant:
+                exposition = plafond_montant
+                plafonnee = True
+
+        total += exposition
+        resultats.append({
+            'lot_id': lot.id,
+            'lot': lot.nom,
+            'applicable': True,
+            'jours_depassement': jours,
+            'taux_penalite_retard_pmil': taux,
+            'montant_ht': montant,
+            'plafond_penalite_pct': lot.plafond_penalite_pct,
+            'exposition_brute': brute,
+            'plafond_montant': plafond_montant,
+            'exposition': exposition,
+            'plafonnee': plafonnee,
+            'decompte_definitif_a_etablir': jours > 0,
+        })
+
+    return {
+        'chantier_id': chantier.pk,
+        'date_reference': date_reference,
+        'lots': resultats,
+        'total_exposition': total,
+    }
+
+
 # ── NTCON13 — Alerte plan périmé consulté ───────────────────────────────────
 
 def plans_perimes_sur_chantier(chantier):
