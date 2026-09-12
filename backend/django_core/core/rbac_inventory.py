@@ -157,6 +157,22 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     # (``EcommerceWebhookThrottle``).
     "api/django/ecommerce-connect/shopify/webhook/commande/",
     "api/django/ecommerce-connect/woocommerce/webhook/commande/",
+    # NTSRV2 — formulaire portail client -> ticket SAV : POST AllowAny
+    # DÉLIBÉRÉ, le client est résolu CÔTÉ SERVEUR par le jeton d'accès de son
+    # compte portail (``apps.portail.selectors.client_par_token_acces`` —
+    # jamais un compte ERP, jamais une société lue du corps) ; jeton
+    # inconnu/révoqué ⇒ 404 générique sans fuite d'existence. Honeypot
+    # ``site_web`` (201 factice, rien créé) + throttle 30/min/IP
+    # (SavPublicThrottle).
+    "api/django/sav/portail/tickets/",
+    # NTSRV3 — webhook WhatsApp Business entrant (canal SAV) : POST AllowAny
+    # DÉLIBÉRÉ, l'appelant est la plateforme WhatsApp, pas un humain. GATED :
+    # sans ``WHATSAPP_BUSINESS_API_KEY`` configurée, répond 404 comme s'il
+    # n'existait pas, aucun appel sortant tenté. Tenant résolu CÔTÉ SERVEUR
+    # (``SAV_WHATSAPP_COMPANY_ID``, jamais du corps), idempotent par
+    # identifiant de message (``core.idempotency.dedupe_event`` — une
+    # redélivrance Meta ne duplique rien), throttlé (SavPublicThrottle).
+    "api/django/sav/webhooks/whatsapp-inbound/",
     "api/schema",                             # OpenAPI (si activé plus tard)
     "api/docs",
     "api/redoc",
