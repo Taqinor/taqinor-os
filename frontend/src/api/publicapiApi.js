@@ -40,10 +40,12 @@ const publicapiApi = {
   // NTAPI7/22 — plan d'API nommé + usage consommé (jour/mois).
   getPlan: () => api.get('/publicapi/plan/'),
 
-  // NTAPI24 — fil « changelog API » : endpoint public sous /api/public/
+  // NTAPI24 — fil « changelog API » : endpoint public sous /api/public/v1/
   // (aucune clé requise), donc chemin ABSOLU pour ne pas passer par le
   // préfixe /api/django/publicapi/ ajouté automatiquement par l'intercepteur.
-  getChangelog: (params) => api.get('/api/public/changelog/', { params }),
+  // NTAPI1 — chemin VERSIONNÉ : la racine sans version ne fait plus que
+  // rediriger (301), autant ne pas payer l'aller-retour à chaque appel.
+  getChangelog: (params) => api.get('/api/public/v1/changelog/', { params }),
 
   // NTAPI20/21 — document OpenAPI 3.1 public + essai de démonstration
   // (session admin, scopé au bac à sable NTAPI27 côté serveur).

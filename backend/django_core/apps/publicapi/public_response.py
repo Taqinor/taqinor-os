@@ -1,4 +1,4 @@
-"""Mixin de réponse COMMUN à toute vue de l'API publique (/api/public/).
+"""Mixin de réponse COMMUN à toute vue de l'API publique (/api/public/v1/).
 
 Appliqué aux deux bases de vue existantes (``PublicReadOnlyViewSet`` en
 lecture, ``PublicWriteAPIView`` en écriture) — jamais dupliqué par vue :
@@ -9,10 +9,15 @@ lecture, ``PublicWriteAPIView`` en écriture) — jamais dupliqué par vue :
   ``/api/django/``, ``/api/v1/``…).
 * NTAPI5 — pose TOUJOURS l'en-tête ``X-Taqinor-Api-Version`` (épinglé par
   clé, ``ApiKey.api_version``, défaut ``'v1'``) sur TOUTE réponse (succès ou
-  erreur), même via un chemin non-versionné (NTAPI1, pas encore construit) —
-  la version SERVIE dépend de la clé, jamais du path appelé.
+  erreur) — la version SERVIE dépend de la clé, jamais du path appelé.
+* NTAPI1 — mémorise en plus la version DEMANDÉE par l'appel
+  (``request.public_api_version``, lue du chemin puis de l'en-tête de requête).
+  Les deux notions restent distinctes : « ce que le client croit appeler »
+  (demandée) vs « ce que le serveur sert » (épinglée par clé). NTAPI2 cible ses
+  annonces de dépréciation sur la première.
 """
 from .errors import public_api_exception_handler
+from .versioning import version_demandee
 
 # NTAPI5 — en-tête de version épinglée par clé.
 API_VERSION_HEADER = 'X-Taqinor-Api-Version'
@@ -24,10 +29,17 @@ DEFAULT_API_VERSION = 'v1'
 
 class PublicApiResponseMixin:
     """À placer EN PREMIER dans le MRO (avant la base DRF) sur toute vue
-    montée sous ``/api/public/``."""
+    montée sous ``/api/public/v1/``."""
 
     def get_exception_handler(self):
         return public_api_exception_handler
+
+    def initial(self, request, *args, **kwargs):
+        # NTAPI1 — résolu AVANT l'authentification/permissions pour être
+        # disponible même sur un rejet (401/403) : la version demandée ne
+        # dépend jamais de la clé.
+        request.public_api_version = version_demandee(request)
+        return super().initial(request, *args, **kwargs)
 
     def finalize_response(self, request, response, *args, **kwargs):
         response = super().finalize_response(request, response, *args, **kwargs)

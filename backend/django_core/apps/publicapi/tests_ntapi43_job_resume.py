@@ -1,5 +1,5 @@
 """NTAPI43 — Rejouer un import/export échoué + reprise sur curseur
-`POST /api/public/jobs/<id>/relancer/`.
+`POST /api/public/v1/jobs/<id>/relancer/`.
 
 Couvre : un job EN ÉCHEC reprend au dernier `cursor` traité (idempotent — ne
 re-traite jamais une ligne déjà appliquée, aucun doublon, aucun saut) ; un job
@@ -96,7 +96,7 @@ class Ntapi43RelancerEndpointTests(TestCase):
         job = BulkJob.objects.create(
             company=self.co, api_key=self.api_key, type=BulkJob.TYPE_IMPORT,
             entite='leads', params={}, statut=BulkJob.STATUT_TERMINE)
-        resp = _client(self.raw).post(f'/api/public/jobs/{job.id}/relancer/')
+        resp = _client(self.raw).post(f'/api/public/v1/jobs/{job.id}/relancer/')
         self.assertEqual(resp.status_code, 400)
 
     def test_relancer_echec_job_is_200(self):
@@ -104,7 +104,7 @@ class Ntapi43RelancerEndpointTests(TestCase):
             company=self.co, api_key=self.api_key, type=BulkJob.TYPE_IMPORT,
             entite='leads', params={}, statut=BulkJob.STATUT_ECHEC)
         with mock.patch.object(bulk, '_dispatch_import'):
-            resp = _client(self.raw).post(f'/api/public/jobs/{job.id}/relancer/')
+            resp = _client(self.raw).post(f'/api/public/v1/jobs/{job.id}/relancer/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['statut'], BulkJob.STATUT_EN_FILE)
 
@@ -159,7 +159,7 @@ class Ntapi43ResumeInterruptedImportTests(_MinioMixin, TestCase):
         with mock.patch('apps.publicapi.tasks.process_bulk_import_job.delay',
                         side_effect=RuntimeError('broker down')):
             resp = _client(self.raw).post(
-                f'/api/public/jobs/{job.id}/relancer/')
+                f'/api/public/v1/jobs/{job.id}/relancer/')
 
         self.assertEqual(resp.status_code, 200)
         job.refresh_from_db()

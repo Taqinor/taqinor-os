@@ -526,9 +526,9 @@ __all__ += ['SandboxTenant', 'API_KEY_PREFIX_BY_ENV']
 class BulkJob(TenantModel):
     """NTAPI13 — job asynchrone bulk (export/import) de l'API publique.
 
-    Émis par ``POST /api/public/exports/`` ou ``/imports/`` (clé API),
+    Émis par ``POST /api/public/v1/exports/`` ou ``/imports/`` (clé API),
     traité HORS requête (Celery — ``tasks.process_bulk_export_job`` /
-    ``process_bulk_import_job``), suivi via ``GET /api/public/jobs/<id>/``
+    ``process_bulk_import_job``), suivi via ``GET /api/public/v1/jobs/<id>/``
     (NTAPI16). Toujours scopé société ; ``api_key`` trace la clé émettrice
     mais est nullable (une clé révoquée après coup ne doit pas effacer
     l'historique du job — ``on_delete=SET_NULL``).

@@ -21,7 +21,10 @@ import re
 
 from django.test import SimpleTestCase
 
-from .constants import ALL_SCOPES, EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
+from .constants import (
+    ALL_SCOPES, EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY,
+    PUBLIC_API_BASE,
+)
 from .openapi import build_openapi_schema
 from .public_urls import router as public_router
 from .public_urls import urlpatterns as public_urlpatterns
@@ -35,7 +38,7 @@ _UTILITY_PATHS = {'sandbox/reset/', 'changelog/'}
 
 
 def _router_mounted_paths():
-    """Chemins `/api/public/...` RÉELLEMENT montés par le routeur DRF
+    """Chemins `/api/public/v1/...` RÉELLEMENT montés par le routeur DRF
     (`public_urls.router`) : list/retrieve ET toute action custom (ex.
     `jobs/{id}/relancer/`). Les suffixes de format DRF (`.json`/`.csv`) et la
     vue racine du routeur sont exclus — pas des endpoints métier."""
@@ -48,12 +51,12 @@ def _router_mounted_paths():
         if not raw:
             continue
         raw = _PK_GROUP_RE.sub('{id}', raw)
-        paths.add('/api/public/' + raw)
+        paths.add(PUBLIC_API_BASE + raw)
     return paths
 
 
 def _explicit_mounted_paths():
-    """Chemins `/api/public/...` des `path()` explicites de `public_urls.py`
+    """Chemins `/api/public/v1/...` des `path()` explicites de `public_urls.py`
     (hors `include(router.urls)`, hors endpoints utilitaires). `<int:pk>`
     suit la convention `<id>`/`{id}` de docs.py/openapi.py ; tout autre
     convertisseur nommé (ex. `<str:entite>`, NTAPI30) garde son nom."""
@@ -64,7 +67,7 @@ def _explicit_mounted_paths():
             continue
         raw = raw.replace('<int:pk>', '<id>')
         raw = _TYPED_CONVERTER_RE.sub(r'{\1}', raw)
-        paths.add('/api/public/' + raw)
+        paths.add(PUBLIC_API_BASE + raw)
     return paths
 
 

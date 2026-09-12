@@ -45,8 +45,8 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             'public-scm-prevision-demande', 'public-scm-politique-stock',
         })
         for prefix, _viewset, _basename in public_router.registry:
-            list_path = f'/api/public/{prefix}/'
-            detail_path = f'/api/public/{prefix}/{{id}}/'
+            list_path = f'/api/public/v1/{prefix}/'
+            detail_path = f'/api/public/v1/{prefix}/{{id}}/'
             self.assertIn(list_path, schema['paths'])
             self.assertIn('get', schema['paths'][list_path])
             self.assertIn(detail_path, schema['paths'])
@@ -55,9 +55,9 @@ class Ntapi20OpenApiSchemaTests(TestCase):
     def test_covers_every_write_endpoint(self):
         schema = build_openapi_schema()
         expected = {
-            ('/api/public/leads-write/', 'post'),
-            ('/api/public/leads-write/{id}/', 'patch'),
-            ('/api/public/leads-write/{id}/activites/', 'post'),
+            ('/api/public/v1/leads-write/', 'post'),
+            ('/api/public/v1/leads-write/{id}/', 'patch'),
+            ('/api/public/v1/leads-write/{id}/activites/', 'post'),
         }
         for path, method in expected:
             self.assertIn(path, schema['paths'])
@@ -89,13 +89,13 @@ class Ntapi20OpenApiSchemaTests(TestCase):
 
     def test_error_responses_use_stripe_like_envelope_schema(self):
         schema = build_openapi_schema()
-        list_path = '/api/public/leads/'
+        list_path = '/api/public/v1/leads/'
         error_400 = schema['paths'][list_path]['get']['responses']['400']
         ref = error_400['content']['application/json']['schema']['$ref']
         self.assertEqual(ref, '#/components/schemas/ErrorEnvelope')
 
     def test_rate_limit_headers_documented_on_success_and_429(self):
         schema = build_openapi_schema()
-        list_op = schema['paths']['/api/public/leads/']['get']
+        list_op = schema['paths']['/api/public/v1/leads/']['get']
         self.assertIn('X-RateLimit-Limit', list_op['responses']['200']['headers'])
         self.assertIn('X-RateLimit-Remaining', list_op['responses']['429']['headers'])

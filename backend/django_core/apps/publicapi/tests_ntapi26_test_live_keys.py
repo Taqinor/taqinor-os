@@ -73,7 +73,7 @@ class Ntapi26TestLiveKeysTests(TestCase):
         }, format='json')
         raw_test_key = resp.data['key']
 
-        listing = _key_client(raw_test_key).get('/api/public/leads/')
+        listing = _key_client(raw_test_key).get('/api/public/v1/leads/')
         self.assertEqual(listing.status_code, 200)
         names = [row['nom'] for row in listing.data['results']]
         self.assertNotIn('Client réel', names)
@@ -88,7 +88,7 @@ class Ntapi26TestLiveKeysTests(TestCase):
         raw_test_key = resp.data['key']
 
         create_resp = _key_client(raw_test_key).post(
-            '/api/public/leads-write/', {'nom': 'Nouveau lead sandbox'},
+            '/api/public/v1/leads-write/', {'nom': 'Nouveau lead sandbox'},
             format='json')
         self.assertEqual(create_resp.status_code, 201)
         # Jamais créé sous la société réelle.
@@ -99,5 +99,5 @@ class Ntapi26TestLiveKeysTests(TestCase):
         live_key, live_raw = ApiKey.issue(
             company=self.co, label='live', scopes=[SCOPE_READ_LEADS],
             environnement=ENV_LIVE)
-        resp = _key_client(live_raw).post('/api/public/sandbox/reset/')
+        resp = _key_client(live_raw).post('/api/public/v1/sandbox/reset/')
         self.assertEqual(resp.status_code, 403)
