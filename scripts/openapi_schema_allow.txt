@@ -1027,3 +1027,16 @@ Warning|PaysPaieViewSet > PaysPaieSerializer|unable to resolve type hint for fun
 Warning|PlanActionEngagementViewSet > PlanActionEngagementSerializer|unable to resolve type hint for function "get_responsable_nom". Consider using a type hint or @extend_schema_field. Defa
 Warning|PlanSuccessionViewSet > PlanSuccessionSerializer|unable to resolve type hint for function "get_successeur_nom". Consider using a type hint or @extend_schema_field. Defau
 Warning|PropositionRevisionViewSet > PropositionRevisionSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|<global>|encountered multiple names for the same choice set (NatureDossierEnum). This may be unwanted even though the generated s
+Warning|<global>|encountered multiple names for the same choice set (PertinenceEnum). This may be unwanted even though the generated sche
+Warning|<global>|encountered multiple names for the same choice set (SeveriteDe#Enum). This may be unwanted even though the generated sch
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "nature". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "severite". The same name has been used fo
+Warning|DelaiPrescriptionViewSet > DelaiPrescriptionSerializer|unable to resolve type hint for function "get_jours_restants". Consider using a type hint or @extend_schema_field. Defau
+Warning|DossierJuridiqueViewSet > DossierJuridiqueSerializer|unable to resolve type hint for function "get_responsable_interne_nom". Consider using a type hint or @extend_schema_fie
+Warning|PlanTraitementRisqueViewSet > PlanTraitementRisqueSerializer|unable to resolve type hint for function "get_en_retard". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|PolitiqueInterneViewSet > PolitiqueInterneSerializer|unable to resolve type hint for function "get_nombre_versions". Consider using a type hint or @extend_schema_field. Defa
+Warning|PromptTemplateViewSet > PromptTemplateSerializer|unable to resolve type hint for function "get_placeholders". Consider using a type hint or @extend_schema_field. Default
+Warning|ViolationDonneesViewSet > ViolationDonneesSerializer|unable to resolve type hint for function "get_echeance_#h_depassee". Consider using a type hint or @extend_schema_field.
+Warning|<global>|operationId "django_core_data_explorer_datasets_retrieve" has collisions [('/api/django/core/data-explorer/datasets/', '
+Warning|<global>|operationId "v#_core_data_explorer_datasets_retrieve" has collisions [('/api/v#/core/data-explorer/datasets/', 'get'), (

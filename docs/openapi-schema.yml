@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10331, operations: 18411, components: 5446}
+counts: {paths: 10331, operations: 18411, components: 5455}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -19244,6 +19244,7 @@ components:
 - DashboardPartageInterneRequest
 - DashboardRequest
 - DataExplorerCatalogue
+- DataExplorerDatasetSchema
 - DataExplorerRunReponse
 - DataExplorerRunRequeteRequest
 - DataSubjectRequest
@@ -19318,6 +19319,8 @@ components:
 - DemandeDocument
 - DemandeDocumentRequest
 - DemandeDocumentStatutEnum
+- DemandeDroitReponse
+- DemandeDroitRequeteRequest
 - DemandeInscription
 - DemandeJobCalepinageRequest
 - DemandeRH
@@ -20037,8 +20040,11 @@ components:
 - LeadTagRequest
 - LeadgenAbonnement
 - LegalHold
-- LegalHoldMotifEnum
 - LegalHoldRequest
+- LegalHoldTransverse
+- LegalHoldTransverseMotifEnum
+- LegalHoldTransverseRequest
+- LegalHoldTransverseStatutEnum
 - LiasseRemontee
 - LiasseRemonteeStatutEnum
 - LicenceStatut
@@ -21060,6 +21066,7 @@ components:
 - PaginatedLeadList
 - PaginatedLeadTagList
 - PaginatedLegalHoldList
+- PaginatedLegalHoldTransverseList
 - PaginatedLiasseRemonteeList
 - PaginatedLienSignalementPublicList
 - PaginatedLigneBilanCarboneList
@@ -22110,7 +22117,7 @@ components:
 - PatchedLandedCostLigneRequest
 - PatchedLeadRequest
 - PatchedLeadTagRequest
-- PatchedLegalHoldRequest
+- PatchedLegalHoldTransverseRequest
 - PatchedLienSignalementPublicRequest
 - PatchedLigneBilanCarboneRequest
 - PatchedLigneBordereauRequest
@@ -23527,9 +23534,11 @@ components:
 - SubventionDossierRequest
 - SubventionDossierStatutEnum
 - SuggestionCalepinage
+- SuiviDemandeDroitReponse
 - SupportOffline
 - SupportOfflineRequest
 - SyntheseCalepinageAffaire
+- TableauBordAchats
 - Tache
 - TacheCloture
 - TacheClotureModele
