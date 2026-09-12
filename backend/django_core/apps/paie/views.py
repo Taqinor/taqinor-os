@@ -296,6 +296,64 @@ class BaremeIRViewSet(_RappelRetroactifMixin, _PaieBaseViewSet):
     search_fields = ['libelle']
     ordering_fields = ['date_effet', 'id']
 
+    @extend_schema(responses=inline_serializer('PaieComparaisonBaremes', {
+        'ancien': serializers.DictField(allow_null=True),
+        'nouveau': serializers.DictField(allow_null=True),
+        'nombre_profils': serializers.IntegerField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+        'totaux': serializers.DictField(),
+    }))
+    @action(detail=True, methods=['get'], url_path='comparer')
+    def comparer(self, request, pk=None):
+        """Aperçu d'IMPACT du barème avant publication (NTPAY17).
+
+        Le barème de l'URL est le NOUVEAU jeu ; ``?ancien=<id>`` désigne celui
+        auquel le comparer (défaut : le barème actif précédent, c'est-à-dire
+        la plus récente date d'effet strictement antérieure, même pays).
+        ``?profils=1,2,3`` restreint l'échantillon (défaut : les profils
+        actifs, plafonnés). Aucune persistance — rien n'est publié ici.
+        """
+        nouveau = self.get_object()
+        ancien_id = request.query_params.get('ancien')
+        if ancien_id:
+            ancien = BaremeIR.objects.filter(
+                company=request.user.company, pk=ancien_id).first()
+            if ancien is None:
+                return Response(
+                    {'detail': 'Barème « ancien » inconnu pour cette '
+                     'société.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        else:
+            ancien = (
+                BaremeIR.objects
+                .filter(company=request.user.company, pays=nouveau.pays,
+                        date_effet__lt=nouveau.date_effet)
+                .order_by('-date_effet')
+                .first()
+            )
+            if ancien is None:
+                return Response(
+                    {'detail': 'Aucun barème antérieur à comparer : '
+                     'précisez « ancien ».'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        profils = None
+        brut_profils = request.query_params.get('profils')
+        if brut_profils:
+            try:
+                profils = [int(x) for x in brut_profils.split(',') if x]
+            except ValueError:
+                return Response(
+                    {'detail': 'Paramètre "profils" invalide (ids séparés '
+                     'par des virgules).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            paie_selectors.comparer_baremes(
+                request.user.company, ancien, nouveau,
+                echantillon_profils=profils),
+            status=status.HTTP_200_OK)
+
 
 class RubriqueViewSet(_PaieBaseViewSet):
     """Catalogue des rubriques de paie paramétrables (PAIE6).

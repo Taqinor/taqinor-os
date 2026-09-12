@@ -365,6 +365,165 @@ def cockpit_conformite_paie(company, *, today=None):
     }
 
 
+# ── NTPAY17 — Comparateur de jeux versionnés (aperçu d'impact) ─────────────
+
+#: Taille MAXIMALE de l'échantillon quand l'appelant n'en fournit pas : un
+#: aperçu d'impact se lit, il ne se scrolle pas — et rejouer 400 bulletins en
+#: mémoire pour une page d'aperçu serait du gaspillage.
+ECHANTILLON_COMPARAISON_DEFAUT = 20
+
+
+def _jeu_versionne(company, objet):
+    """``(parametre, bareme)`` complet à partir d'UN objet versionné (NTPAY17).
+
+    L'appelant publie soit un ``BaremeIR``, soit un ``ParametrePaie`` : la
+    moitié manquante est celle RÉELLEMENT en vigueur à la date d'effet de
+    l'objet publié (et pour SON pays, NTPAY8) — jamais une valeur inventée.
+    """
+    from .models import BaremeIR
+    from .services import bareme_en_vigueur, parametre_en_vigueur
+
+    if objet is None:
+        return None, None
+    pays = getattr(objet, 'pays', None)
+    if isinstance(objet, BaremeIR):
+        return parametre_en_vigueur(
+            company, objet.date_effet, pays=pays), objet
+    return objet, bareme_en_vigueur(company, objet.date_effet, pays=pays)
+
+
+def _impact_profil(profil, parametre, bareme):
+    """Rejoue EN MÉMOIRE le net/IR/coût employeur d'un profil (NTPAY17).
+
+    Réutilise le cœur pur ``services._net_embauche`` (NTPAY14) — même
+    enchaînement que le moteur réel — puis y ajoute les charges patronales.
+    Aucune écriture, aucun ``BulletinPaie``.
+    """
+    from .services import (
+        _net_embauche, allocations_familiales_patronale, amo_patronale,
+        cnss_patronale, formation_professionnelle_patronale,
+    )
+
+    brut = Decimal(profil.salaire_base or 0)
+    regime_mutuelle = None
+    adhesion = getattr(profil, 'adhesion_mutuelle', None)
+    if adhesion is not None and adhesion.actif:
+        regime_mutuelle = adhesion.regime
+
+    resultat = _net_embauche(
+        brut, parametre=parametre, bareme=bareme,
+        affilie_cnss=profil.affilie_cnss, affilie_amo=profil.affilie_amo,
+        affilie_cimr=profil.affilie_cimr,
+        taux_cimr=profil.taux_cimr_salarial,
+        regime_mutuelle=regime_mutuelle,
+        montant_exonere_plafond=Decimal(profil.regime_plafond_mensuel or 0)
+        if profil.regime_exoneration != ProfilPaie.REGIME_AUCUN
+        else Decimal('0'))
+
+    charges = (
+        cnss_patronale(parametre, resultat['brut'], profil.affilie_cnss)
+        + amo_patronale(parametre, resultat['brut'], profil.affilie_amo)
+        + allocations_familiales_patronale(
+            parametre, resultat['brut'], profil.affilie_cnss)
+        + formation_professionnelle_patronale(
+            parametre, resultat['brut'], profil.affilie_cnss)
+        + resultat['mutuelle_patronale']
+    )
+    resultat['charges_patronales'] = charges
+    resultat['cout_employeur'] = resultat['brut'] + charges
+    return resultat
+
+
+def comparer_baremes(company, ancien, nouveau, echantillon_profils=None):
+    """Aperçu d'IMPACT d'un jeu versionné avant publication (NTPAY17).
+
+    Rejoue EN MÉMOIRE, pour un échantillon de profils ACTIFS, le net, l'IR et
+    le coût employeur avec l'ANCIEN puis le NOUVEAU jeu (``BaremeIR`` ou
+    ``ParametrePaie`` — la moitié manquante est celle en vigueur à la date
+    d'effet de l'objet donné, cf. ``_jeu_versionne``) et restitue l'écart par
+    salarié ET en masse.
+
+    ``echantillon_profils`` accepte des ``ProfilPaie`` ou des identifiants ;
+    omis, les profils actifs de la société sont pris, dans la limite de
+    ``ECHANTILLON_COMPARAISON_DEFAUT``. **Aucune persistance** : c'est un
+    aperçu pur, rien n'est écrit ni publié.
+    """
+    parametre_ancien, bareme_ancien = _jeu_versionne(company, ancien)
+    parametre_nouveau, bareme_nouveau = _jeu_versionne(company, nouveau)
+
+    if echantillon_profils is None:
+        profils = list(
+            ProfilPaie.objects
+            .filter(company=company, actif=True)
+            .select_related('employe', 'adhesion_mutuelle__regime')
+            .order_by('id')[:ECHANTILLON_COMPARAISON_DEFAUT]
+        )
+    else:
+        ids = [getattr(p, 'pk', p) for p in echantillon_profils]
+        profils = list(
+            ProfilPaie.objects
+            .filter(company=company, pk__in=ids)
+            .select_related('employe', 'adhesion_mutuelle__regime')
+            .order_by('id')
+        )
+
+    lignes = []
+    totaux = {
+        'net_ancien': Decimal('0.00'), 'net_nouveau': Decimal('0.00'),
+        'ir_ancien': Decimal('0.00'), 'ir_nouveau': Decimal('0.00'),
+        'cout_ancien': Decimal('0.00'), 'cout_nouveau': Decimal('0.00'),
+    }
+    for profil in profils:
+        avant = _impact_profil(profil, parametre_ancien, bareme_ancien)
+        apres = _impact_profil(profil, parametre_nouveau, bareme_nouveau)
+        employe = getattr(profil, 'employe', None)
+        lignes.append({
+            'profil_id': profil.id,
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': f'{employe.nom} {employe.prenom}'.strip()
+            if employe else '',
+            'brut': avant['brut'],
+            'net_ancien': avant['net_a_payer'],
+            'net_nouveau': apres['net_a_payer'],
+            'ecart_net': apres['net_a_payer'] - avant['net_a_payer'],
+            'ir_ancien': avant['ir'],
+            'ir_nouveau': apres['ir'],
+            'ecart_ir': apres['ir'] - avant['ir'],
+            'cout_ancien': avant['cout_employeur'],
+            'cout_nouveau': apres['cout_employeur'],
+            'ecart_cout': apres['cout_employeur'] - avant['cout_employeur'],
+        })
+        totaux['net_ancien'] += avant['net_a_payer']
+        totaux['net_nouveau'] += apres['net_a_payer']
+        totaux['ir_ancien'] += avant['ir']
+        totaux['ir_nouveau'] += apres['ir']
+        totaux['cout_ancien'] += avant['cout_employeur']
+        totaux['cout_nouveau'] += apres['cout_employeur']
+
+    totaux['ecart_net'] = totaux['net_nouveau'] - totaux['net_ancien']
+    totaux['ecart_ir'] = totaux['ir_nouveau'] - totaux['ir_ancien']
+    totaux['ecart_cout'] = totaux['cout_nouveau'] - totaux['cout_ancien']
+
+    def _decrire(objet, parametre, bareme):
+        if objet is None:
+            return None
+        return {
+            'id': objet.id,
+            'objet': 'bareme_ir' if bareme is objet else 'parametre_paie',
+            'date_effet': objet.date_effet,
+            'parametre_id': getattr(parametre, 'id', None),
+            'bareme_id': getattr(bareme, 'id', None),
+        }
+
+    return {
+        'ancien': _decrire(ancien, parametre_ancien, bareme_ancien),
+        'nouveau': _decrire(nouveau, parametre_nouveau, bareme_nouveau),
+        'nombre_profils': len(lignes),
+        'lignes': lignes,
+        'totaux': totaux,
+    }
+
+
 def _periodes_de_la_fenetre(company, annee_debut, mois_debut, annee_fin,
                             mois_fin):
     """Périodes de paie de la société dans la fenêtre inclusive donnée."""
