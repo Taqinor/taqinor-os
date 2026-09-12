@@ -517,7 +517,12 @@ def consume_reservations(installation, user):
     Pour chaque réservation ACTIVE non encore consommée, crée UN MouvementStock
     SORTIE (mécanisme de stock existant) et décrémente `Produit.quantite_stock`.
     IDEMPOTENT : le drapeau `consomme` verrouille — repasser par « Installé » ne
-    crée aucun mouvement supplémentaire. Renvoie le nombre de SKU consommés."""
+    crée aucun mouvement supplémentaire. Renvoie le nombre de SKU consommés.
+
+    CHT5 — une consommation PARTIELLE (stock en main insuffisant) soldait la
+    réservation `consomme=True` en silence. Le manque est désormais tracé :
+    UNE note chatter agrégée (toutes les références en manque, jamais une par
+    SKU) est posée après la transaction."""
     from django.db import transaction
     from django.utils import timezone
     from apps.stock.selectors import lock_produit
@@ -526,6 +531,7 @@ def consume_reservations(installation, user):
     )
 
     consumed = 0
+    manques = []
     with transaction.atomic():
         reservations = (
             StockReservation.objects
@@ -555,10 +561,20 @@ def consume_reservations(installation, user):
                 reference=installation.reference,
                 note=f'Consommation chantier {installation.reference}',
                 created_by=user)
+            manquant = resa.quantite - qte_sortie
+            if manquant > 0:
+                manques.append((produit.sku or produit.nom, manquant))
             resa.consomme = True
             resa.date_consommation = timezone.now()
             resa.save(update_fields=['consomme', 'date_consommation'])
             consumed += 1
+    if manques:
+        from . import activity
+        detail = ', '.join(
+            f'{ref} (manque {manquant})' for ref, manquant in manques)
+        activity.log_note(
+            installation, user,
+            f"Consommation stock incomplète — {detail}.")
     return consumed
 
 
