@@ -1217,6 +1217,23 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=['get'],
+            url_path='wizard-negociation/etapes')
+    def wizard_negociation_etapes(self, request, pk=None):
+        """Wizard guidé « Ouvrir une négociation » — 3 étapes fixes (NTDOC26).
+
+        Pure AGRÉGATION en lecture des objets NTDOC1-4 existants : aucun
+        nouveau modèle, aucun statut caché en base. Les 3 étapes sont toujours
+        renvoyées, leur statut est RECALCULÉ à chaque requête.
+        """
+        contrat = self.get_object()
+        etapes = selectors.etapes_wizard_negociation(contrat)
+        return Response({
+            'contrat': contrat.id,
+            'statut': contrat.statut,
+            'etapes': etapes,
+        })
+
     @action(detail=True, methods=['get'], url_path='clauses-manquantes')
     def clauses_manquantes(self, request, pk=None):
         """Clauses OBLIGATOIRES du type de contrat encore absentes (NTDOC5).

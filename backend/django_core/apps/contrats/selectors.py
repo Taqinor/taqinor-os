@@ -1807,3 +1807,107 @@ def clauses_obligatoires_manquantes(contrat):
         if clause.id not in presentes_ids
         and _normaliser_titre_clause(clause.titre) not in presentes_titres
     ]
+
+
+# ---------------------------------------------------------------------------
+# NTDOC26 — Wizard guidé « Ouvrir une négociation » (pure agrégation lecture)
+# ---------------------------------------------------------------------------
+#
+# AUCUN nouveau modèle, AUCUN statut caché en base : les 3 étapes sont
+# RECALCULÉES à chaque appel à partir des objets NTDOC1-4 existants
+# (``DocumentContrepartie``, ``CommentaireRedline``, ``Contrat.statut``).
+
+
+def etapes_wizard_negociation(contrat):
+    """NTDOC26 — État d'avancement du wizard de négociation, en 3 étapes fixes.
+
+    Renvoie TOUJOURS les 3 étapes, dans l'ordre, chacune avec :
+
+    - ``numero`` / ``cle`` / ``titre`` : identité stable de l'étape ;
+    - ``disponible`` : l'étape peut être jouée maintenant (une étape reste
+      INDISPONIBLE tant que celle qui la conditionne n'est pas complète) ;
+    - ``complete`` : l'étape est satisfaite ;
+    - ``action_suivante`` : l'endpoint à appeler ensuite (``''`` si rien à
+      faire) ;
+    - ``detail`` : une phrase FRANÇAISE qui dit pourquoi l'étape en est là.
+
+    Lecture seule et sans effet de bord : rien n'est écrit, aucun statut n'est
+    mémorisé — deux appels successifs sans changement métier renvoient le même
+    résultat.
+    """
+    depots = list(documents_contrepartie(contrat))
+    commentaires = list(commentaires_redline(contrat))
+    ouverts = [c for c in commentaires if not c.resolu]
+    depots_a_traiter = [d for d in depots if d.statut != 'traite']
+
+    etape1_complete = bool(depots)
+    etape2_complete = etape1_complete and bool(commentaires)
+    etape3_disponible = etape1_complete and not ouverts
+    etape3_complete = (
+        etape1_complete and not ouverts and not depots_a_traiter)
+
+    if not etape1_complete:
+        detail1 = ('Aucune version de la contrepartie n\'a encore été '
+                   'déposée.')
+    else:
+        detail1 = (f'{len(depots)} version(s) déposée(s) par la '
+                   f'contrepartie.')
+
+    if not etape1_complete:
+        detail2 = ('Indisponible : déposez d\'abord la version de la '
+                   'contrepartie (étape 1).')
+    elif not commentaires:
+        detail2 = ('Comparez le dépôt au dernier rendu figé, puis annotez les '
+                   'lignes à renégocier.')
+    elif ouverts:
+        detail2 = (f'{len(ouverts)} commentaire(s) encore ouvert(s) sur '
+                   f'{len(commentaires)}.')
+    else:
+        detail2 = f'Les {len(commentaires)} commentaire(s) sont résolus.'
+
+    if not etape1_complete:
+        detail3 = ('Indisponible : déposez d\'abord la version de la '
+                   'contrepartie (étape 1).')
+    elif ouverts:
+        detail3 = (f'Indisponible : {len(ouverts)} commentaire(s) de redline '
+                   f'ne sont pas résolus.')
+    elif depots_a_traiter:
+        detail3 = (f'{len(depots_a_traiter)} dépôt(s) restent à marquer '
+                   f'« traité » pour clôturer.')
+    else:
+        detail3 = 'Négociation clôturable : tout est résolu et traité.'
+
+    return [
+        {
+            'numero': 1,
+            'cle': 'deposer_contrepartie',
+            'titre': 'Déposer la version de la contrepartie',
+            'disponible': True,
+            'complete': etape1_complete,
+            'action_suivante': (
+                '' if etape1_complete else 'contreparties/'),
+            'detail': detail1,
+        },
+        {
+            'numero': 2,
+            'cle': 'comparer_annoter',
+            'titre': 'Comparer et annoter',
+            'disponible': etape1_complete,
+            'complete': etape2_complete,
+            'action_suivante': (
+                'commentaires-redline/' if etape1_complete and not
+                etape2_complete else ''),
+            'detail': detail2,
+        },
+        {
+            'numero': 3,
+            'cle': 'cloturer',
+            'titre': 'Clôturer la négociation',
+            'disponible': etape3_disponible,
+            'complete': etape3_complete,
+            'action_suivante': (
+                'cloturer-negociation/'
+                if etape3_disponible and not etape3_complete else ''),
+            'detail': detail3,
+        },
+    ]
