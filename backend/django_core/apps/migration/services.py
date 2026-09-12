@@ -9,7 +9,8 @@ NTMIG5 — la garde « pas de succès sans reconcile » : un lot ne devient
 ``reconcilie`` (et un projet ``termine``) que si son dernier rapport est
 ``conforme`` OU s'il porte une dérogation explicite, motivée et attribuée.
 """
-from decimal import Decimal
+import re
+from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 
@@ -37,6 +38,25 @@ class ReconcileBloque(ValueError):
     def __init__(self, message, ecarts=None):
         super().__init__(message)
         self.ecarts = ecarts or []
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG36 — piste d'audit : chaque action de migration journalisée via la
+# primitive plateforme UNIQUE (``apps.audit.recorder.record``), jamais un
+# second journal maison. Le ``content_type`` de l'instance journalisée
+# (``migration.ProjetMigration``/``LotMigration``/``RapportReconciliation``)
+# suffit à filtrer les entrées de migration dans ``/journal`` — inutile
+# d'ajouter un champ ``contexte`` dédié à ``AuditLog``. ``record`` est déjà
+# best-effort (aucune exception ne remonte, cf. sa docstring) : une trace
+# d'audit qui échoue ne casse jamais une migration.
+# ─────────────────────────────────────────────────────────────────────────
+def _tracer(action, *, instance, detail, company, user=None, changes=None):
+    from apps.audit.recorder import record
+
+    record(
+        action, instance=instance, company=company,
+        user=user if getattr(user, 'pk', None) else None,
+        detail=f'[migration] {detail}'[:2000], changes=changes)
 
 
 def _refuser_si_fige(lot):
@@ -159,6 +179,12 @@ def purger_fichiers_source(projet):
     if not projet.fichiers_purges:
         projet.fichiers_purges = True
         projet.save(update_fields=['fichiers_purges', 'updated_at'])
+    if purges:
+        from apps.audit.models import AuditLog
+        _tracer(
+            AuditLog.Action.UPDATE, instance=projet, company=projet.company,
+            user=None,
+            detail=f'Purge de {purges} fichier(s) source (données PII).')
     return purges
 
 
@@ -199,7 +225,177 @@ def purger_fichiers_expires(maintenant=None):
     return {'projets': total_projets, 'fichiers': total_fichiers}
 
 
-def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG7/8/12/13/14 — résolution de kit + application (mapping + transforms).
+# ─────────────────────────────────────────────────────────────────────────
+def _kit_par_cle(cle):
+    """Kit enregistré sous ``cle`` (forme ``apps.migration.kits.cle_kit``) —
+    import PARESSEUX, même contrat que le connecteur Odoo NTMIG9 : l'absence
+    n'est jamais une erreur, c'est l'état nominal d'une source encore non
+    kittée."""
+    import importlib
+
+    from .validation import KITS_MODULE
+
+    try:
+        module = importlib.import_module(KITS_MODULE)
+    except ImportError:
+        return None
+    registre = getattr(module, 'KIT_REGISTRY', None) or {}
+    return registre.get(cle)
+
+
+def kit_pour(source, entite):
+    """Kit (NTMIG8/12/13) résolu pour (source, entité) — public : réutilisé
+    par le téléchargement de gabarit (NTMIG20) et par :func:`_kit_pour_lot`.
+    ``None`` si aucun kit ne couvre ce couple."""
+    from .kits import cle_kit
+
+    return _kit_par_cle(cle_kit(source, entite))
+
+
+def _kit_pour_lot(lot, kit_cle=None):
+    """Kit résolu pour ce lot.
+
+    ``kit_cle`` explicite prime ; à défaut le kit est déduit AUTOMATIQUEMENT
+    de ``(projet.source, lot.entite)`` — aucune sélection manuelle n'est
+    nécessaire (NTMIG8 : « sans mapping manuel »).
+    """
+    if kit_cle:
+        return _kit_par_cle(kit_cle)
+    return kit_pour(lot.projet.source, lot.entite)
+
+
+class GabaritIndisponible(ValueError):
+    """NTMIG20 — aucun kit ne couvre ce couple (source, entité) : pas de
+    gabarit à proposer (état nominal, jamais une panne)."""
+
+
+def gabarit_kit_csv(source, entite):
+    """NTMIG20 — CSV d'en-têtes VIDES (+ une ligne d'exemple commentée)
+    correspondant exactement aux colonnes SOURCE attendues par le kit de
+    ``(source, entite)``.
+
+    Les colonnes sont les CLÉS de ``kit.mapping`` (les en-têtes que
+    l'intégrateur doit reproduire dans son export), DANS L'ORDRE de
+    déclaration, dédoublonnées. Lève :class:`GabaritIndisponible` si aucun
+    kit ne couvre ce couple, ou s'il ne déclare aucun mapping (le kit
+    générique NTMIG13, par construction, n'a pas de gabarit à proposer — il
+    n'a justement aucun format prédéfini).
+    """
+    import csv
+    import io
+
+    kit = kit_pour(source, entite)
+    if kit is None or not kit.mapping:
+        raise GabaritIndisponible(
+            f"Aucun gabarit prédéfini pour « {source} » / « {entite} » "
+            '(source générique, ou entité non couverte par ce kit).')
+
+    colonnes = list(dict.fromkeys(kit.mapping.keys()))
+    tampon = io.StringIO()
+    writer = csv.writer(tampon)
+    writer.writerow(colonnes)
+    writer.writerow([f'# exemple — {c}' for c in colonnes])
+    return tampon.getvalue().encode('utf-8')
+
+
+def _preparer_fichier_avec_kit(file_bytes, filename, kit):
+    """Ré-écrit le fichier source : colonnes du kit renommées vers le champ
+    CIBLE qu'elles désignent, valeurs transformées (NTMIG14). No-op (fichier
+    inchangé) si ``kit`` est ``None`` ou ne déclare ni mapping ni
+    transformations.
+
+    Renommer directement vers le nom du champ CIBLE (et non vers un nom de
+    colonne intermédiaire propre au kit) est ce qui évite de dupliquer le
+    vocabulaire de ``dataimport.FIELD_MAPS`` : chaque champ cible y porte déjà
+    un mapping IDENTITÉ (``'telephone': 'telephone'``…) que le moteur
+    reconnaît tel quel — un kit ne fait que TRADUIRE des en-têtes étrangers
+    (``phone``, ``raison sociale``…) vers ce vocabulaire déjà reconnu.
+    """
+    if kit is None or (not kit.mapping and not kit.transformations):
+        return file_bytes, filename
+
+    from apps.dataimport import services as dataimport_services
+
+    from . import transforms as transforms_mod
+
+    try:
+        headers, rows = dataimport_services.parse_rows(file_bytes, filename)
+    except Exception:
+        # Un fichier illisible ici le sera identiquement pour le moteur : on
+        # le laisse produire SON erreur habituelle plutôt que d'en fabriquer
+        # une autre ici.
+        return file_bytes, filename
+
+    if kit.transformations:
+        rows = [transforms_mod.appliquer_ligne(
+                    row, kit.mapping, kit.transformations)
+                for row in rows]
+
+    if not kit.mapping:
+        return _reconstruire_csv(headers, rows, filename)
+
+    mapping_norm = {str(k).strip().lower(): v for k, v in kit.mapping.items()}
+    renommage = {
+        h: mapping_norm.get(str(h).strip().lower(), h) for h in headers}
+    # dict.fromkeys préserve l'ORDRE d'apparition tout en dédoublonnant deux
+    # en-têtes source renommés vers le même champ cible.
+    headers_finaux = list(dict.fromkeys(renommage.values()))
+    lignes_renommees = []
+    for row in rows:
+        nouvelle = {}
+        for h in headers:
+            cible = renommage[h]
+            valeur = row.get(h)
+            if cible in nouvelle and nouvelle[cible] not in (None, ''):
+                # Collision : deux en-têtes source visent le même champ
+                # cible — la PREMIÈRE valeur non vide gagne, jamais un
+                # écrasement silencieux d'une colonne par une autre.
+                continue
+            nouvelle[cible] = valeur
+        lignes_renommees.append(nouvelle)
+    return _reconstruire_csv(headers_finaux, lignes_renommees, filename)
+
+
+def _sommer_montant_source(file_bytes, filename, kit):
+    """NTMIG7 — somme des colonnes montant déclarées par le kit, sur le
+    fichier SOURCE BRUT (avant tout renommage) — ``None`` tant qu'aucun kit
+    ne déclare de ``colonnes_montant`` pour ce couple (source, entité) : le
+    reconcile financier ne s'applique alors pas (limite déjà documentée dans
+    :func:`reconcilier_lot`), ses deux colonnes restent vides sur le PV.
+    """
+    if kit is None or not kit.colonnes_montant:
+        return None
+
+    from apps.dataimport import services as dataimport_services
+
+    try:
+        _, rows = dataimport_services.parse_rows(file_bytes, filename)
+    except Exception:
+        return None
+
+    colonnes_norm = {str(c).strip().lower() for c in kit.colonnes_montant}
+    total = Decimal('0')
+    trouve = False
+    for row in rows:
+        for colonne, valeur in row.items():
+            if str(colonne).strip().lower() not in colonnes_norm:
+                continue
+            if valeur in (None, ''):
+                continue
+            brut = re.sub(r'\s', '', str(valeur)).replace(',', '.')
+            brut = re.sub(r'(?i)\b(mad|dh)\b', '', brut)
+            try:
+                total += Decimal(brut)
+                trouve = True
+            except InvalidOperation:
+                continue
+    return total if trouve else None
+
+
+def analyser_lot(lot, file_bytes, filename, *, mapping_name=None,
+                 kit_cle=None, user=None):
     """Aperçu DRY-RUN STRICT : rien n'est écrit dans les tables cibles.
 
     Pose les comptages source sur le lot (base du reconcile) et REMET À ZÉRO
@@ -211,15 +407,24 @@ def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     Le dry-run rejoue le rapprochement réel et renvoie les ``conflits`` /
     ``ecrasements_*`` : l'intégrateur voit, AVANT d'importer, quelles valeurs
     déjà saisies le fichier toucherait.
+
+    NTMIG7/8 — un kit (explicite via ``kit_cle``, sinon déduit de
+    ``(projet.source, lot.entite)``) traduit les en-têtes source ET pose
+    ``source_montant`` (somme de ses ``colonnes_montant``) AVANT tout
+    chargement, base du reconcile financier (NTMIG4).
     """
     from apps.dataimport import services as dataimport_services
 
     _refuser_si_fige(lot)
+    kit = _kit_pour_lot(lot, kit_cle)
+    fichier_prepare, nom_prepare = _preparer_fichier_avec_kit(
+        file_bytes, filename, kit)
     apercu = dataimport_services.dry_run(
-        file_bytes, filename, lot.entite, company=lot.company,
+        fichier_prepare, nom_prepare, lot.entite, company=lot.company,
         mapping_name=mapping_name, mode=_mode_pour(lot.entite),
         external_system=external_system_pour(lot.projet))
     lot.source_lignes = apercu.get('total_lignes', 0)
+    lot.source_montant = _sommer_montant_source(file_bytes, filename, kit)
     lot.crees = 0
     lot.maj = 0
     lot.erreurs = 0
@@ -230,8 +435,14 @@ def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     # rejouent EXACTEMENT le fichier validé, pas un autre.
     memoriser_fichier_source(lot, file_bytes, filename)
     lot.save(update_fields=[
-        'source_lignes', 'crees', 'maj', 'erreurs', 'import_job', 'statut',
-        'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
+        'source_lignes', 'source_montant', 'crees', 'maj', 'erreurs',
+        'import_job', 'statut', 'fichier_source_cle', 'fichier_source_nom',
+        'updated_at'])
+    from apps.audit.models import AuditLog
+    _tracer(
+        AuditLog.Action.UPDATE, instance=lot, company=lot.company, user=user,
+        detail=(f'Analyse du lot « {lot.entite} » : {lot.source_lignes} '
+                f'ligne(s) source, rien écrit en cible.'))
     return apercu
 
 
@@ -314,7 +525,7 @@ def valider_source(lot, file_bytes, filename, *, kit_cle=None,
 
 
 def charger_lot(lot, file_bytes, filename, *, mode=None,
-                mapping_name=None, user=None):
+                mapping_name=None, user=None, kit_cle=None):
     """Charge un lot via le moteur ``dataimport`` — jamais un 2ᵉ importateur.
 
     Garanties non négociables :
@@ -338,10 +549,26 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
     Le lot est verrouillé (``select_for_update``) le temps de la transition :
     deux chargements simultanés ne peuvent pas se marcher dessus et laisser
     des compteurs qui ne décrivent aucun des deux.
+
+    NTMIG7/8 — un kit (explicite via ``kit_cle``, sinon déduit de
+    ``(projet.source, lot.entite)``) traduit les en-têtes source AVANT le
+    commit ; le fichier ORIGINAL (jamais le fichier traduit) reste celui
+    mémorisé (NTMIG35) pour une reprise (NTMIG38) ou une migration à blanc
+    (NTMIG33) fidèles.
     """
     from django.db import transaction
 
     from apps.dataimport import services as dataimport_services
+
+    kit = _kit_pour_lot(lot, kit_cle)
+    fichier_prepare, nom_prepare = _preparer_fichier_avec_kit(
+        file_bytes, filename, kit)
+
+    # NTMIG6 — ancre PRÉCISE posée AVANT le commit : tout enregistrement créé
+    # par CE chargement aura un horodatage de création >= cette ancre ; un
+    # enregistrement pré-existant simplement rapproché (upsert) restera
+    # antérieur, quelle que soit la proximité temporelle des deux événements.
+    debut_chargement = timezone.now()
 
     with transaction.atomic():
         verrou = (LotMigration.objects.select_for_update()
@@ -349,7 +576,7 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
         _refuser_si_fige(verrou)
 
         result = dataimport_services.commit(
-            file_bytes, filename, verrou.entite, verrou.company, user,
+            fichier_prepare, nom_prepare, verrou.entite, verrou.company, user,
             mode=_mode_pour(verrou.entite, mode),
             external_system=external_system_pour(verrou.projet),
             mapping_name=mapping_name, ecraser=False)
@@ -361,6 +588,7 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
         job_id = result.get('job_id')
         verrou.import_job_id = job_id or None
         verrou.statut = LotMigration.Statut.CHARGE
+        verrou.dernier_chargement_debut_at = debut_chargement
         # La dérogation portait sur le chargement PRÉCÉDENT : elle ne couvre
         # pas celui-ci.
         verrou.derogation_reconcile = False
@@ -375,12 +603,212 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
         memoriser_fichier_source(verrou, file_bytes, filename)
         verrou.save(update_fields=[
             'source_lignes', 'crees', 'maj', 'erreurs', 'import_job',
-            'statut', 'derogation_reconcile', 'derogation_motif',
-            'derogation_par', 'derogation_at', 'fichier_source_cle',
-            'fichier_source_nom', 'fichier_offset_lignes', 'updated_at'])
+            'statut', 'dernier_chargement_debut_at', 'derogation_reconcile',
+            'derogation_motif', 'derogation_par', 'derogation_at',
+            'fichier_source_cle', 'fichier_source_nom',
+            'fichier_offset_lignes', 'updated_at'])
 
     lot.refresh_from_db()
+    from apps.audit.models import AuditLog
+    _tracer(
+        AuditLog.Action.UPDATE, instance=lot, company=lot.company, user=user,
+        detail=(f'Chargement du lot « {lot.entite} » : {lot.crees} créé(s), '
+                f'{lot.maj} mis à jour, {lot.erreurs} erreur(s).'))
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG6 — journal & rollback d'un lot de migration.
+#
+# Réutilise ``dataimport.ExternalRef`` (posé avec le système externe stable du
+# PROJET, NTMIG15) pour retrouver EXACTEMENT ce que CE LOT a créé — jamais un
+# enregistrement pré-existant modifié en mode ``maj``/``upsert`` — puis
+# archive (SOFT-DELETE, jamais un hard-delete) via le mécanisme d'archivage
+# QUI EXISTE DÉJÀ côté app cible.
+#
+# LIMITE CONNUE, écrite ici pour que personne ne croie le rollback plus
+# universel qu'il n'est : ``dataimport`` ne pose une ``ExternalRef`` QUE pour
+# les cibles ``leads``/``clients`` (les seules à savoir rapprocher un
+# identifiant externe), et SEUL ``crm.Lead`` étend
+# ``core.models.SoftDeleteModel`` (le mécanisme d'archivage générique du
+# dépôt) parmi les cibles actuelles — ``crm.Client`` n'a AUCUN champ
+# d'archivage existant. Un rollback pour une entité hors de ce registre est
+# donc REFUSÉ explicitement (:class:`RollbackImpossible`) plutôt que
+# d'inventer un champ d'archivage ou de basculer sur un hard-delete de repli.
+# ─────────────────────────────────────────────────────────────────────────
+class RollbackImpossible(ValueError):
+    """Rien à annuler, ou l'entité de ce lot n'a pas de mécanisme
+    d'archivage EXISTANT côté app cible (jamais un hard-delete de repli)."""
+
+
+#: Nom du champ d'horodatage de CRÉATION de l'objet cible, PAR ENTITÉ — le
+#: défaut ``created_at`` (convention ``TenantModel``) ne convient pas à
+#: ``crm.Lead`` qui porte ``date_creation`` (``SoftDeleteModel`` seul, sans
+#: ``TenantModel``). Consommé par la garde temporelle ci-dessous.
+_CHAMP_CREATION_PAR_ENTITE = {
+    'leads': 'date_creation',
+}
+
+#: (module, nom de classe) de la cible PAR ENTITÉ prise en charge par le
+#: rollback — seules les entités qui cumulent (a) une trace ``ExternalRef``
+#: posée par ``dataimport`` ET (b) un mécanisme d'archivage EXISTANT
+#: (``core.models.SoftDeleteModel``) y figurent. Étendre ce dict est SANS
+#: RISQUE (aucune écriture tant que la cible n'y figure pas) dès qu'une autre
+#: app gagne l'une des deux capacités manquantes.
+_CIBLES_ANNULABLES = {
+    'leads': ('apps.crm.models', 'Lead'),
+}
+
+
+def _modele_annulable(entite):
+    """Classe modèle de ``entite`` si elle figure dans :data:`_CIBLES_ANNULABLES`,
+    sinon ``None`` — import PARESSEUX (jamais au niveau module)."""
+    import importlib
+
+    ref = _CIBLES_ANNULABLES.get(entite)
+    if ref is None:
+        return None
+    module = importlib.import_module(ref[0])
+    return getattr(module, ref[1])
+
+
+def annuler_lot(lot, user=None):
+    """NTMIG6 — archive EXACTEMENT ce que ``lot`` a créé, remet le lot en
+    ``en_attente``.
+
+    Garanties :
+
+    * seuls les enregistrements dont l'``ExternalRef`` porte le système
+      externe DE CE PROJET (NTMIG15) ET le ``ContentType`` de l'entité DE CE
+      LOT sont candidats — l'isolation multi-lot/multi-projet vient de là ;
+    * garde temporelle PRÉCISE : un enregistrement PRÉ-EXISTANT rapproché par
+      un chargement ``upsert`` (``leads``/``clients``) reçoit, LUI AUSSI, une
+      ``ExternalRef`` sous ce même système au premier passage qui le touche —
+      ``dataimport`` ne pose aujourd'hui aucun marqueur « créé vs rapproché »
+      réutilisable ici. On ne retient donc QUE les objets dont la date de
+      création est postérieure à ``lot.dernier_chargement_debut_at``
+      (l'ancre posée PAR ``charger_lot`` juste AVANT son commit, à une
+      poignée de secondes de tolérance d'horloge près) : un objet plus
+      ancien — même créé quelques secondes avant ce chargement — a
+      nécessairement préexisté, jamais annulé ici ;
+    * SOFT-DELETE uniquement (``obj.soft_delete(user=...)``) : jamais de
+      hard-delete de repli.
+
+    Refuse (:class:`RollbackImpossible`) si le lot n'a jamais rien chargé, ou
+    si son entité n'a pas de mécanisme d'archivage EXISTANT (voir la
+    docstring du module ci-dessus) — rien n'est alors touché.
+    """
+    from django.contrib.contenttypes.models import ContentType
+    from django.db import transaction
+
+    from apps.dataimport.models import ExternalRef
+
+    if not lot.crees and not lot.maj:
+        raise RollbackImpossible(
+            "Rien à annuler : ce lot n'a jamais chargé de données.")
+
+    modele = _modele_annulable(lot.entite)
+    if modele is None or not hasattr(modele, 'soft_delete'):
+        raise RollbackImpossible(
+            f"Annulation non prise en charge pour l'entité « {lot.entite} » "
+            '(aucun mécanisme d\'archivage existant côté app cible).')
+
+    champ_creation = _CHAMP_CREATION_PAR_ENTITE.get(lot.entite, 'created_at')
+    # SANS tolérance : ``dernier_chargement_debut_at`` et l'horodatage de
+    # création de l'objet (``auto_now_add``) viennent tous deux de
+    # ``django.utils.timezone.now()``, dans le MÊME processus, la même
+    # requête — aucun décalage d'horloge à absorber ici. Une tolérance large
+    # réintroduirait exactement l'ambiguïté que cette ancre PRÉCISE (posée
+    # par ``charger_lot`` juste avant son commit) est censée éliminer.
+    borne = lot.dernier_chargement_debut_at
+
+    ct = ContentType.objects.get_for_model(modele)
+    systeme = external_system_pour(lot.projet)
+
+    archives_ids, ignores_ids = [], []
+    with transaction.atomic():
+        refs = list(ExternalRef.objects.select_for_update().filter(
+            company_id=lot.company_id, external_system=systeme,
+            content_type=ct))
+        for ref in refs:
+            obj = modele.objects.filter(
+                company_id=lot.company_id, pk=ref.object_id).first()
+            if obj is None:
+                continue
+            cree_le = getattr(obj, champ_creation, None)
+            if borne is not None and cree_le is not None and cree_le < borne:
+                ignores_ids.append(obj.pk)
+                continue
+            obj.soft_delete(user=user)
+            archives_ids.append(obj.pk)
+            ref.delete()
+
+        lot.statut = LotMigration.Statut.EN_ATTENTE
+        lot.source_lignes = 0
+        lot.crees = 0
+        lot.maj = 0
+        lot.erreurs = 0
+        lot.source_montant = None
+        lot.import_job = None
+        lot.dernier_chargement_debut_at = None
+        lot.derogation_reconcile = False
+        lot.derogation_motif = ''
+        lot.derogation_par = None
+        lot.derogation_at = None
+        lot.save(update_fields=[
+            'statut', 'source_lignes', 'crees', 'maj', 'erreurs',
+            'source_montant', 'import_job', 'dernier_chargement_debut_at',
+            'derogation_reconcile', 'derogation_motif', 'derogation_par',
+            'derogation_at', 'updated_at'])
+
+    from apps.audit.models import AuditLog
+    _tracer(
+        AuditLog.Action.UPDATE, instance=lot, company=lot.company, user=user,
+        detail=(f'Annulation (rollback) du lot « {lot.entite} » : '
+                f'{len(archives_ids)} enregistrement(s) archivé(s), '
+                f'{len(ignores_ids)} ignoré(s) (pré-existants).'))
+    return {
+        'archives': len(archives_ids), 'ids': archives_ids,
+        'ignores_preexistants': len(ignores_ids)}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG11 — import des lignes de document (devis/factures) rattachées à
+# l'en-tête déjà importé (NTMIG10) par CE lot.
+# ─────────────────────────────────────────────────────────────────────────
+def charger_lignes_document(lot, file_bytes, filename, *, user=None):
+    """NTMIG11 — charge un SECOND fichier « lignes » rattaché aux en-têtes
+    (devis/factures) déjà importés par ``lot``.
+
+    Résout chaque document par son ``external_id`` (posé en ``ExternalRef``
+    à l'import de l'en-tête, NTMIG10) sous le MÊME système externe que ce
+    lot (NTMIG15) — jamais un second parseur ni une résolution ad hoc.
+    """
+    from apps.dataimport import services as dataimport_services
+
+    if lot.entite not in ('devis', 'factures'):
+        raise ValueError(
+            "L'import de lignes n'est proposé que pour les entités "
+            f"« devis »/« factures » (lot « {lot.entite} »).")
+
+    _, rows = dataimport_services.parse_rows(file_bytes, filename)
+    systeme = external_system_pour(lot.projet)
+
+    if lot.entite == 'devis':
+        from apps.ventes.services import ajouter_lignes_devis_import
+        crees, erreurs = ajouter_lignes_devis_import(
+            lot.company, systeme, rows, user=user)
+    else:
+        from apps.ventes.services import ajouter_lignes_facture_import
+        crees, erreurs = ajouter_lignes_facture_import(
+            lot.company, systeme, rows, user=user)
+
+    from apps.audit.models import AuditLog
+    _tracer(
+        AuditLog.Action.CREATE, instance=lot, company=lot.company, user=user,
+        detail=(f'Lignes rattachées au lot « {lot.entite} » : {crees} '
+                f'créée(s), {len(erreurs)} erreur(s).'))
+    return {'crees': crees, 'erreurs': erreurs, 'total': len(rows)}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -633,12 +1061,95 @@ def reconcilier_lot(lot, *, total_financier_cible=None):
             'detail': (f'Total financier cible ({cib}) différent de la '
                        f'source ({src}).')})
 
-    return RapportReconciliation.objects.create(
+    rapport = RapportReconciliation.objects.create(
         company=lot.company, lot=lot,
         nb_source=lot.source_lignes, nb_cible_crees=lot.crees,
         nb_cible_existants=lot.maj, nb_erreurs=lot.erreurs,
         total_financier_source=src, total_financier_cible=cib,
         ecarts=ecarts, conforme=not ecarts)
+    from apps.audit.models import AuditLog
+    etat = 'conforme' if rapport.conforme else f'{len(ecarts)} écart(s)'
+    _tracer(
+        AuditLog.Action.CREATE, instance=rapport, company=lot.company,
+        user=None,
+        detail=f'Réconciliation du lot « {lot.entite} » : {etat}.')
+    return rapport
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG37 — réconciliation croisée des soldes (contrôle comptable).
+#
+# Pour les entités financières migrées, un comptage ET un total de lignes qui
+# matchent (NTMIG4) ne garantissent PAS que l'ENCOURS d'un client migré
+# retombe juste : deux factures qui s'annuleraient par erreur (une créée en
+# trop, une manquante) laisseraient les COMPTAGES globaux corrects tout en
+# perdant l'encours réel d'UN client précis. Ce contrôle compare, CLIENT PAR
+# CLIENT, le solde SOURCE (balance âgée fournie par l'intégrateur) au solde
+# recalculé côté TAQINOR — via ``ventes.selectors`` (jamais un import direct
+# de ``ventes.models``/``compta.models``, frontière cross-app respectée).
+# ─────────────────────────────────────────────────────────────────────────
+#: Tolérance d'arrondi (MAD) sous laquelle un écart n'est pas une divergence.
+TOLERANCE_SOLDE_MAD = Decimal('0.01')
+
+
+def reconcilier_soldes(projet, balance_agee_source):
+    """NTMIG37 — solde client SOURCE vs solde recalculé TAQINOR, par client
+    migré par CE projet.
+
+    ``balance_agee_source`` : ``{external_id_client: montant_source}`` —
+    l'``external_id`` est celui posé par le kit de mapping à la migration
+    (``ExternalRef``), résolu vers le ``crm.Client`` créé. LECTURE SEULE :
+    aucune écriture, ni sur le projet ni sur un client.
+
+    Renvoie la liste des DIVERGENCES (clients dont l'encours migré diverge de
+    l'encours source à plus de :data:`TOLERANCE_SOLDE_MAD`) — ``[]`` si tout
+    concorde. Un client de la balance source introuvable parmi les clients
+    migrés par ce projet est lui aussi une divergence nommée (jamais ignoré
+    en silence : c'est potentiellement un encours entier perdu à la
+    migration).
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.crm.models import Client
+    from apps.dataimport.models import ExternalRef
+    from apps.ventes import selectors as ventes_selectors
+
+    systeme = external_system_pour(projet)
+    ct = ContentType.objects.get_for_model(Client)
+    client_id_par_external_id = {
+        ref.external_id: ref.object_id
+        for ref in ExternalRef.objects.filter(
+            company_id=projet.company_id, external_system=systeme,
+            content_type=ct)
+    }
+    encours_par_client = {
+        row['tiers_id']: row['encours']
+        for row in ventes_selectors.encours_ouvert_par_tiers(projet.company)
+    }
+
+    divergences = []
+    for external_id, montant_source in (balance_agee_source or {}).items():
+        external_id = str(external_id)
+        client_id = client_id_par_external_id.get(external_id)
+        solde_source = Decimal(str(montant_source or 0))
+        if client_id is None:
+            divergences.append({
+                'external_id': external_id, 'client_id': None,
+                'solde_source': str(solde_source),
+                'solde_migre': None,
+                'motif': ("Client introuvable parmi ceux migrés par ce "
+                          "projet (encours source potentiellement perdu)."),
+            })
+            continue
+        solde_migre = Decimal(str(encours_par_client.get(client_id, 0) or 0))
+        ecart = solde_migre - solde_source
+        if abs(ecart) > TOLERANCE_SOLDE_MAD:
+            divergences.append({
+                'external_id': external_id, 'client_id': client_id,
+                'solde_source': str(solde_source),
+                'solde_migre': str(solde_migre), 'ecart': str(ecart),
+            })
+    return divergences
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -659,20 +1170,9 @@ ENTITES_MAITRE_DETAIL = ('devis', 'factures', 'commandes', 'avoirs')
 
 
 def _kit_disponible(source, entite):
-    """Un kit couvre-t-il ce couple ? ``False`` tant que les kits n'existent
-    pas (import paresseux — aucun registre de substitution n'est fabriqué)."""
-    import importlib
-
-    from .validation import KITS_MODULE
-
-    try:
-        module = importlib.import_module(KITS_MODULE)
-    except ImportError:
-        return False
-    registre = getattr(module, 'KIT_REGISTRY', None)
-    if not registre:
-        return False
-    return (source, entite) in registre
+    """Un kit couvre-t-il ce couple ? ``False`` si aucun kit ne le déclare
+    (import paresseux — aucun registre de substitution n'est fabriqué)."""
+    return kit_pour(source, entite) is not None
 
 
 def estimer_effort(projet):
@@ -776,6 +1276,10 @@ def deroger_reconcile(lot, motif, user):
     lot.save(update_fields=[
         'derogation_reconcile', 'derogation_motif', 'derogation_par',
         'derogation_at', 'updated_at'])
+    from apps.audit.models import AuditLog
+    _tracer(
+        AuditLog.Action.UPDATE, instance=lot, company=lot.company, user=user,
+        detail=f'Dérogation du lot « {lot.entite} » : {lot.derogation_motif}')
     return lot
 
 
