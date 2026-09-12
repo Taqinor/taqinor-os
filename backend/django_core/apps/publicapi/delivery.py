@@ -244,8 +244,14 @@ def dispatch_event(company_id, event, payload):
         return
     payload = ensure_event_id(payload)
     from .tasks import deliver_webhook
+    from .webhook_filters import webhook_accepte
     for webhook in webhooks:
         if not webhook.subscribes_to(event):
+            continue
+        # NTAPI12 — condition FINE par évènement (`Webhook.filtres`), évaluée
+        # par `core.rules` sur le payload AVANT la mise en file. Sans filtre
+        # sur cet évènement : toujours livré (comportement historique).
+        if not webhook_accepte(webhook, event, payload):
             continue
         try:
             deliver_webhook.delay(webhook.id, event, payload)

@@ -193,6 +193,12 @@ class Webhook(models.Model):
     secret = EncryptedCharField(max_length=128)
     # Évènements auxquels ce webhook est abonné (sous-ensemble de ALL_EVENTS).
     events = models.JSONField(default=list, blank=True)
+    # NTAPI12 — abonnement FIN : condition par évènement, évaluée sur le
+    # payload AVANT livraison (moteur `core.rules`, FG367). Forme :
+    # ``{"facture.paid": {"montant_ttc__gte": 10000}}``. Un évènement absent
+    # de ce dict n'est jamais filtré (comportement historique) — le filtrage
+    # est OPT-IN, évènement par évènement.
+    filtres = models.JSONField(default=dict, blank=True)
     enabled = models.BooleanField(default=True)
     # NTAPI11 — traçabilité d'une désactivation AUTOMATIQUE (cible morte).
     # `disabled_at` vide = jamais auto-désactivé ; un admin qui réactive

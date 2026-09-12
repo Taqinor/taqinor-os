@@ -63,6 +63,9 @@ class WebhookSerializer(serializers.ModelSerializer):
         model = Webhook
         fields = [
             'id', 'label', 'target_url', 'events', 'enabled',
+            # NTAPI12 — condition fine par évènement (opt-in, `{}` = aucun
+            # filtre, comportement historique).
+            'filtres',
             # NTAPI11 — traçabilité d'une désactivation AUTOMATIQUE : l'écran
             # Paramètres distingue « l'admin l'a coupé » (les deux champs sont
             # vides) de « la cible est morte » (raison + horodatage). En
@@ -79,6 +82,17 @@ class WebhookSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f'Évènements inconnus : {", ".join(unknown)}.')
         return value
+
+    def validate_filtres(self, value):
+        """NTAPI12 — une faute de frappe dans une condition doit être signalée
+        À L'ENREGISTREMENT, pas six semaines plus tard sous la forme d'une
+        intégration muette."""
+        from .webhook_filters import erreurs_de_filtres
+
+        erreurs = erreurs_de_filtres(value)
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return value or {}
 
     def validate_target_url(self, value):
         # ERR46 — refuse https + bloque les hôtes internes (anti-SSRF).
