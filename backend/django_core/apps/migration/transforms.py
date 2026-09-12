@@ -38,7 +38,11 @@ def parser_montant_virgule(valeur):
     if valeur in (None, ''):
         return valeur
     brut = re.sub(r'\s', '', str(valeur)).replace(',', '.')
-    brut = re.sub(r'(?i)\b(mad|dh)\b', '', brut)
+    # Le suffixe se retire APRÈS la suppression des espaces, donc sans
+    # frontière de mot devant : dans « 1500MAD » il n'y a AUCUN ``\b`` entre
+    # « 0 » et « M » (deux caractères de mot), et l'ancien ``\b(mad|dh)\b``
+    # ne retirait donc jamais rien — « 1500 MAD » repartait tel quel.
+    brut = re.sub(r'(?i)(mad|dh)$', '', brut)
     try:
         return str(Decimal(brut))
     except (InvalidOperation, ValueError):
