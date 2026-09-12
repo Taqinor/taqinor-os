@@ -460,6 +460,8 @@ class PeriodePaieSerializer(serializers.ModelSerializer):
         model = PeriodePaie
         fields = [
             'id', 'annee', 'mois', 'type_run', 'libelle', 'statut',
+            # NTPAY13 — devise du run (MAD par défaut, jamais convertie).
+            'devise',
             'date_paiement', 'date_cloture', 'date_creation',
         ]
         read_only_fields = ['statut', 'date_cloture', 'date_creation']
@@ -609,6 +611,9 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
         model = BulletinPaie
         fields = [
             'id', 'periode', 'profil', 'pays_code', 'pays_devise', 'statut',
+            # NTPAY13 — devise FIGÉE du bulletin (≠ ``pays_devise``, qui reflète
+            # le pays ACTUEL du profil : le bulletin garde la sienne).
+            'devise',
             'type_bulletin', 'rectifie', 'motif', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',

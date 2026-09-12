@@ -208,6 +208,9 @@ def bulletin_context(bulletin):
         'cimr': _fmt(bulletin.cimr_salariale),
         'ir': _fmt(bulletin.ir),
         'net_a_payer': _fmt(bulletin.net_a_payer),
+        # NTPAY13 — devise FIGÉE du bulletin (pays du profil). Aucune
+        # conversion : un bulletin EUR s'imprime en EUR, un MA reste en MAD.
+        'devise': escape(getattr(bulletin, 'devise', '') or 'MAD'),
     }
 
 
@@ -253,8 +256,12 @@ def _entete_employeur_html(employeur):
 
 
 def _bloc_lignes_html(titre, lignes, *, sous_total=None,
-                      libelle_sous_total=None):
-    """Un bloc « titre + tableau typé/signé (+ sous-total) » du bulletin."""
+                      libelle_sous_total=None, devise='MAD'):
+    """Un bloc « titre + tableau typé/signé (+ sous-total) » du bulletin.
+
+    NTPAY13 — ``devise`` est le code ISO imprimé en tête de colonne (``MAD``
+    par défaut : tout appelant historique reste à l'identique).
+    """
     if not lignes:
         return ''
     corps = ''.join(_LIGNE_TPL_DETAIL.format(**ligne) for ligne in lignes)
@@ -266,7 +273,7 @@ def _bloc_lignes_html(titre, lignes, *, sous_total=None,
     return (
         f'<h2>{escape(titre)}</h2>'
         '<table><thead><tr><th>Code</th><th>Libellé</th><th>Type</th>'
-        '<th>Montant (MAD)</th></tr></thead>'
+        f'<th>Montant ({devise or "MAD"})</th></tr></thead>'
         f'<tbody>{corps}</tbody></table>')
 
 
@@ -278,11 +285,13 @@ def render_bulletin_html(bulletin):
     Brut → Total des retenues → Net imposable → IR → Net à payer.
     """
     ctx = bulletin_context(bulletin)
-    gains_html = _bloc_lignes_html('Gains', ctx['gains'])
+    gains_html = _bloc_lignes_html(
+        'Gains', ctx['gains'], devise=ctx['devise'])
     retenues_html = _bloc_lignes_html(
         'Retenues salariales', ctx['retenues'],
         sous_total=f"-{ctx['total_retenues']}",
-        libelle_sous_total='Total des retenues salariales')
+        libelle_sous_total='Total des retenues salariales',
+        devise=ctx['devise'])
     patronal_html = ''
     if ctx['patronal']:
         corps = ''.join(
@@ -294,9 +303,10 @@ def render_bulletin_html(bulletin):
             '<p>Charges patronales — information, NON déduites de votre net '
             'à payer.</p>'
             '<table><thead><tr><th>Code</th><th>Libellé</th>'
-            '<th>Montant (MAD)</th></tr></thead>'
+            f"<th>Montant ({ctx['devise']})</th></tr></thead>"
             f'<tbody>{corps}</tbody></table>'
-            f"<p>Total charges patronales : {ctx['total_patronal']} MAD</p>"
+            f"<p>Total charges patronales : {ctx['total_patronal']} "
+            f"{ctx['devise']}</p>"
             '</div>')
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <style>{_BULLETIN_STYLE}</style></head><body>
@@ -326,9 +336,9 @@ def render_bulletin_html(bulletin):
     <tr><td>Impôt sur le revenu (IR)</td>
         <td style="text-align:right">-{ctx['ir']}</td></tr>
     <tr class="net"><td>Net à payer</td>
-        <td style="text-align:right">{ctx['net_a_payer']} MAD</td></tr>
+        <td style="text-align:right">{ctx['net_a_payer']} {ctx['devise']}</td></tr>
   </table>
-  <p class="total">Net à payer : {ctx['net_a_payer']} MAD</p>
+  <p class="total">Net à payer : {ctx['net_a_payer']} {ctx['devise']}</p>
   {patronal_html}
 </body></html>"""
 

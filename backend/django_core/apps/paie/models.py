@@ -863,6 +863,12 @@ class PeriodePaie(models.Model):
         verbose_name='Statut')
     date_paiement = models.DateField(
         null=True, blank=True, verbose_name='Date de paiement')
+    # NTPAY13 — DEVISE du run. Défaut ``MAD`` : toutes les périodes existantes
+    # restent marocaines au centime près. Un run d'un pays non-MA porte la
+    # devise de ce pays (``PaysPaie.devise``) — AUCUNE conversion de change
+    # n'est jamais faite : chaque pays reste dans sa propre monnaie.
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
     date_cloture = models.DateTimeField(
         null=True, blank=True, verbose_name='Clôturée le')
     # ZPAI12 — Marqueur d'idempotence de l'alerte de clôture en retard (façon
@@ -1223,6 +1229,12 @@ class BulletinPaie(models.Model):
     statut = models.CharField(
         max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
         verbose_name='Statut')
+    # NTPAY13 — DEVISE du bulletin, FIGÉE au snapshot comme les montants.
+    # Défaut ``MAD`` (tous les bulletins existants) ; dérivée du pays du profil
+    # (``ProfilPaie.pays.devise``) à défaut de la période. Jamais de conversion
+    # de change : un bulletin EUR s'affiche et se vire en EUR.
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
     # PAIE36 — Nature du bulletin + lien vers le bulletin d'origine corrigé.
     type_bulletin = models.CharField(
         max_length=14, choices=TYPE_BULLETIN_CHOICES, default=TYPE_NORMAL,

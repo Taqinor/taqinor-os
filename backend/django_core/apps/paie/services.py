@@ -2696,6 +2696,29 @@ def moteur_du_profil(profil):
     return moteur
 
 
+# ── NTPAY13 — Devise du bulletin / du run (multi-pays, sans change) ────────
+
+#: Devise de repli quand aucun pays n'est rattaché — le Maroc reste le défaut
+#: historique (tous les profils d'avant NTPAY7 ont ``pays = NULL``).
+DEVISE_DEFAUT = 'MAD'
+
+
+def devise_du_profil(profil, *, periode=None):
+    """Devise de paie d'un profil (NTPAY13) — jamais une conversion.
+
+    Priorité : la devise du PAYS du profil (``ProfilPaie.pays.devise``), à
+    défaut celle de la ``periode`` fournie, à défaut ``MAD``. Un profil sans
+    pays — c'est-à-dire tous ceux d'avant NTPAY7 — reste donc payé en MAD,
+    exactement comme aujourd'hui.
+    """
+    pays = getattr(profil, 'pays', None)
+    devise_pays = (getattr(pays, 'devise', '') or '').strip().upper()
+    if devise_pays:
+        return devise_pays
+    devise_periode = (getattr(periode, 'devise', '') or '').strip().upper()
+    return devise_periode or DEVISE_DEFAUT
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé — DISPATCHER pays (NTPAY7).
 
@@ -2916,6 +2939,9 @@ def generer_bulletin(profil, periode, personnes_a_charge=0):
                 company=periode.company, periode=periode, profil=profil)
 
         bulletin.personnes_a_charge = max(0, int(personnes_a_charge or 0))
+        # NTPAY13 — la devise est FIGÉE au snapshot comme les montants : elle
+        # vient du pays du profil, à défaut de la période, à défaut MAD.
+        bulletin.devise = devise_du_profil(profil, periode=periode)
         for champ in BulletinPaie.SNAPSHOT_FIELDS:
             if champ == 'personnes_a_charge':
                 continue
@@ -3719,6 +3745,39 @@ def controler_coherence_cnss(periode):
     return divergences
 
 
+def devise_virement_periode(periode):
+    """Devise de l'ordre de virement d'une période (NTPAY13).
+
+    Dérivée des bulletins VALIDÉS payables par virement de la période : si
+    tous partagent la même devise, c'est celle-là ; aucune période ⇒ la devise
+    du run (``PeriodePaie.devise``, ``MAD`` par défaut). Un fichier de
+    virement bancaire ne porte QU'UNE devise : deux devises dans le même run
+    lèvent une ``ValidationError`` en français plutôt que de convertir en
+    douce (aucune conversion de change n'existe dans l'ERP).
+    """
+    from django.core.exceptions import ValidationError
+
+    from .models import BulletinPaie, ProfilPaie
+
+    devises = set(
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE,
+                profil__mode_paiement=ProfilPaie.MODE_PAIEMENT_VIREMENT)
+        .exclude(net_a_payer__lte=0)
+        .values_list('devise', flat=True)
+    )
+    devises = {(d or '').strip().upper() or DEVISE_DEFAUT for d in devises}
+    if not devises:
+        return (periode.devise or DEVISE_DEFAUT).strip().upper()
+    if len(devises) > 1:
+        raise ValidationError({'devise': [
+            'Les bulletins de cette période sont libellés dans plusieurs '
+            f'devises ({", ".join(sorted(devises))}) : un ordre de virement '
+            "n'en porte qu'une. Séparez les runs par pays."]})
+    return devises.pop()
+
+
 def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
                            compte_emetteur=None):
     """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
@@ -3781,6 +3840,10 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
                 ordre.devise = compte.devise
         elif rib_emetteur:
             ordre.rib_emetteur = rib_emetteur
+        if compte is None or not compte.devise:
+            # NTPAY13 — sans compte de trésorerie câblé, la devise de l'ordre
+            # est celle des bulletins qu'il paie (jamais une conversion).
+            ordre.devise = devise_virement_periode(periode)
         if not ordre.libelle:
             ordre.libelle = f'Virement salaires {periode.mois:02d}/{periode.annee}'
         ordre.save()
@@ -6812,6 +6875,9 @@ def generer_bulletin_stc(profil, periode, *, motif='', mois_preavis=1,
         bulletin.type_bulletin = BulletinPaie.TYPE_STC
         bulletin.motif = resultat.get('motif', '') or motif
         bulletin.personnes_a_charge = max(0, int(personnes_a_charge or 0))
+        # NTPAY13 — même devise que tout bulletin (pays du profil, sinon
+        # période, sinon MAD).
+        bulletin.devise = devise_du_profil(profil, periode=periode)
         for champ in BulletinPaie.SNAPSHOT_FIELDS:
             if champ == 'personnes_a_charge':
                 continue
