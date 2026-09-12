@@ -83,9 +83,9 @@ def make_user(company, username, permissions):
         role=make_role(company, f'role-{username}', permissions))
 
 
-TERRAIN = ['crm_voir', 'crm_visite_voir', 'crm_visite_creer',
-           'crm_visite_modifier']
-BUREAU = TERRAIN + ['crm_visite_valider']
+TERRAIN = ['crm_voir', 'visites_voir', 'visites_creer',
+           'visites_modifier']
+BUREAU = TERRAIN + ['visites_valider']
 
 
 class VisiteTerrainBase(TestCase):

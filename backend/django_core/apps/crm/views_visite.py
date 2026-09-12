@@ -41,7 +41,7 @@ def lead_photo_toit(request, lead_id):
     laisserait deviner l'existence du lead d'une autre société.
 
     Permission : ``crm_voir`` — la lecture CRM ordinaire, celle que portent
-    déjà le commercial ET l'atelier ; exiger ``crm_visite_voir`` fermerait la
+    déjà le commercial ET l'atelier ; exiger ``visites_voir`` fermerait la
     porte aux écrans qui ne font que peindre le toit.
     """
     from apps.visites import selectors  # noqa: PLC0415 - frontière M3

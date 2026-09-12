@@ -28,8 +28,8 @@ from authentication.models import Company
 User = get_user_model()
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
-PERMISSIONS = ['crm_voir', 'crm_visite_voir', 'crm_visite_creer',
-               'crm_visite_modifier']
+PERMISSIONS = ['crm_voir', 'visites_voir', 'visites_creer',
+               'visites_modifier']
 
 
 class AssemblageBase(TestCase):

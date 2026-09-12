@@ -85,12 +85,12 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     queryset = VisiteTerrain.objects.select_related('lead', 'commercial').all()
     serializer_class = VisiteTerrainSerializer
-    read_permission = 'crm_visite_voir'
+    read_permission = 'visites_voir'
 
-    #: Codes d'écriture par action (le reste retombe sur ``crm_visite_modifier``).
+    #: Codes d'écriture par action (le reste retombe sur ``visites_modifier``).
     PERMISSIONS_ECRITURE = {
-        'create': 'crm_visite_creer',
-        'valider': 'crm_visite_valider',
+        'create': 'visites_creer',
+        'valider': 'visites_valider',
     }
 
     @property
@@ -103,7 +103,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         silence (garde AUD421).
         """
         return self.PERMISSIONS_ECRITURE.get(
-            getattr(self, 'action', None), 'crm_visite_modifier')
+            getattr(self, 'action', None), 'visites_modifier')
 
     # ── Lecture ──────────────────────────────────────────────────────────────
 
@@ -303,7 +303,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
-        """Feu vert calepinage — réservé au code ``crm_visite_valider``."""
+        """Feu vert calepinage — réservé au code ``visites_valider``."""
         visite = self.get_object()
         if visite.statut == VisiteTerrain.Statut.VALIDEE:
             return _erreur('statut', 'Cette visite est déjà validée.')
