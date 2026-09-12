@@ -509,6 +509,134 @@ def penalites_retard_par_lot(chantier, date_reference=None):
     }
 
 
+# ── NTCON17 — Registre des intervenants (coordination SPS/CISSCT) ──────────
+
+def registre_intervenants(chantier, jour=None):
+    """NTCON17 — vue consolidée des intervenants d'un chantier, en UN écran.
+
+    LECTURE SEULE, aucune écriture nulle part. Agrège, chacun par le SÉLECTEUR
+    de son app (jamais ses ``models``/``views``) :
+
+    * **sous-traitants actifs** — ``installations.OrdreSousTraitance``
+      (FG305) au statut ``emis``/``en_cours`` sur ce chantier, via la relation
+      RÉELLE ``chantier.installations_ordres_sous_traitance`` (même app que le
+      FK ``chantier``, comme ``debourse_sec_vs_facture``) ;
+    * **attestations à jour** (FG307) — ``installations.selectors.
+      sous_traitant_attestations_manquantes`` : une pièce obligatoire EXPIRÉE
+      est signalée explicitement ;
+    * **PPSPS signé** (NTCON16) — ``services.sous_traitant_a_signe_ppsps`` ;
+    * **effectifs du jour** — DERNIÈRE entrée du ``JournalChantier`` (NTCON6) ;
+    * **personnel interne présent + titres à risque** — ``rh.selectors``
+      (``presences_installation`` FG170, ``habilitations_expirantes`` FG173,
+      ``certifications_expirantes`` FG174) : tout titre expiré ou expirant
+      sous 30 jours est remonté pour la coordination SPS.
+
+    ``alertes`` rassemble, en français, ce qui doit sauter aux yeux du
+    coordonnateur : attestation expirée, PPSPS non signé, titre RH échu.
+    """
+    from apps.installations import selectors as installations_selectors
+    from apps.rh import selectors as rh_selectors
+
+    from . import services
+    from .models import JournalChantier
+
+    if jour is None:
+        jour = timezone.localdate()
+
+    # ── Sous-traitants actifs sur le chantier (FG305) ───────────────────
+    sous_traitants = []
+    alertes = []
+    ordres = (
+        chantier.installations_ordres_sous_traitance
+        .filter(statut__in=['emis', 'en_cours'])
+        .select_related('sous_traitant'))
+    for ordre in ordres:
+        st = ordre.sous_traitant
+        manquantes = installations_selectors.sous_traitant_attestations_manquantes(
+            st, jour) if st is not None else []
+        ppsps_signe = bool(st is not None and services.sous_traitant_a_signe_ppsps(
+            chantier.pk, st.pk))
+        sous_traitants.append({
+            'ordre_id': ordre.pk,
+            'reference': ordre.reference,
+            'statut': ordre.statut,
+            'prestation': ordre.prestation,
+            'sous_traitant_id': getattr(st, 'pk', None),
+            'sous_traitant_nom': getattr(st, 'nom', ''),
+            'attestations_manquantes': manquantes,
+            'attestations_a_jour': not manquantes,
+            'ppsps_signe': ppsps_signe,
+        })
+        if manquantes:
+            pieces = ', '.join(m['type_piece'] for m in manquantes)
+            alertes.append(
+                f'{getattr(st, "nom", "Sous-traitant")} : pièce(s) '
+                f'obligatoire(s) expirée(s) — {pieces}.')
+        if not ppsps_signe and services.chantier_a_un_ppsps(chantier.pk):
+            alertes.append(
+                f'{getattr(st, "nom", "Sous-traitant")} : PPSPS du chantier '
+                'non signé.')
+
+    # ── Effectifs du jour (dernière entrée de journal, NTCON6) ──────────
+    journal = JournalChantier.objects.filter(
+        chantier=chantier).order_by('-date', '-id').first()
+    effectifs = {
+        'date': journal.date if journal else None,
+        'effectif_interne': (journal.effectif_interne or {}) if journal else {},
+        'effectif_sous_traitant': (
+            (journal.effectif_sous_traitant or {}) if journal else {}),
+        'total_interne': sum(
+            (journal.effectif_interne or {}).values()) if journal and isinstance(
+                journal.effectif_interne, dict) else 0,
+    }
+
+    # ── Personnel interne présent + titres RH à risque (FG170/173/174) ──
+    company = chantier.company
+    presences = rh_selectors.presences_installation(
+        company, chantier.pk, date_debut=jour, date_fin=jour,
+        presents_seulement=True)
+    personnel = []
+    for presence in presences:
+        employe = presence.employe
+        titres = []
+        for hab in rh_selectors.habilitations_expirantes(
+                company, within_days=30, employe_id=employe.pk):
+            titres.append({
+                'famille': 'habilitation',
+                'libelle': hab.get_type_habilitation_display(),
+                'date_validite': hab.date_validite,
+                'expiree': bool(hab.date_validite and hab.date_validite < jour),
+            })
+        for cert in rh_selectors.certifications_expirantes(
+                company, within_days=30, employe_id=employe.pk):
+            titres.append({
+                'famille': 'certification',
+                'libelle': cert.get_type_certification_display(),
+                'date_validite': cert.date_validite,
+                'expiree': bool(
+                    cert.date_validite and cert.date_validite < jour),
+            })
+        personnel.append({
+            'employe_id': employe.pk,
+            'employe': str(employe),
+            'titres_a_risque': titres,
+        })
+        for titre in titres:
+            if titre['expiree']:
+                alertes.append(
+                    f'{employe} : {titre["libelle"]} expiré(e) le '
+                    f'{titre["date_validite"]}.')
+
+    return {
+        'chantier_id': chantier.pk,
+        'date': jour,
+        'sous_traitants': sous_traitants,
+        'effectifs_du_jour': effectifs,
+        'personnel_interne': personnel,
+        'alertes': alertes,
+    }
+
+
 # ── NTCON13 — Alerte plan périmé consulté ───────────────────────────────────
 
 def plans_perimes_sur_chantier(chantier):

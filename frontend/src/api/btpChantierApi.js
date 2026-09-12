@@ -152,6 +152,11 @@ const btpChantierApi = {
   penalitesParLot: (chantierId) =>
     api.get(`/btp-chantier/chantiers/${chantierId}/penalites-par-lot/`),
 
+  // NTCON17 — registre des intervenants (coordination SPS/CISSCT) : lecture
+  // seule, agrège sous-traitants actifs + attestations + PPSPS + effectifs.
+  intervenants: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/intervenants/`),
+
   // ── NTCON16 — PPSPS de chantier (plan de prévention) ────────────────────
   ppsps: {
     // `params` : { chantier } — optionnel.

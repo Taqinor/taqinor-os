@@ -854,6 +854,20 @@ class PPSPSChantierViewSet(
                         status=status.HTTP_201_CREATED)
 
 
+class ChantierIntervenantsView(APIView):
+    """NTCON17 — ``chantiers/<id>/intervenants/`` : registre de coordination
+    SPS/CISSCT (sous-traitants actifs + attestations, PPSPS signé, effectifs
+    du jour, titres RH à risque). LECTURE SEULE — aucune écriture."""
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.registre_intervenants(chantier))
+
+
 class ChantierPenalitesParLotView(APIView):
     """NTCON15 — ``chantiers/<id>/penalites-par-lot/``.
 

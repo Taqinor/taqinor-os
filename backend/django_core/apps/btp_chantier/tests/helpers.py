@@ -139,6 +139,41 @@ def make_ordre_sous_traitance(company, chantier, sous_traitant, **kwargs):
         **kwargs)
 
 
+def make_attestation_sous_traitant(company, sous_traitant, **kwargs):
+    """Crée une ``installations.AttestationSousTraitant`` (FG307) — NTCON17."""
+    from apps.installations.models_attestation_soustraitant import (
+        AttestationSousTraitant,
+    )
+    return AttestationSousTraitant.objects.create(
+        company=company, sous_traitant=sous_traitant, **kwargs)
+
+
+def make_employe(company, **kwargs):
+    """Crée un ``rh.DossierEmploye`` (NTCON17 — registre des intervenants)."""
+    from apps.rh.models import DossierEmploye
+    n = next(_seq)
+    kwargs.setdefault('matricule', f'MAT-{n}')
+    kwargs.setdefault('nom', f'Nom{n}')
+    kwargs.setdefault('prenom', 'Ali')
+    return DossierEmploye.objects.create(company=company, **kwargs)
+
+
+def make_presence_chantier(company, employe, chantier, jour, **kwargs):
+    """Crée une ``rh.PresenceChantier`` (FG170) — NTCON17."""
+    from apps.rh.models import PresenceChantier
+    kwargs.setdefault('statut', PresenceChantier.Statut.PRESENT)
+    return PresenceChantier.objects.create(
+        company=company, employe=employe, installation_id=chantier.pk,
+        date=jour, **kwargs)
+
+
+def make_habilitation(company, employe, **kwargs):
+    """Crée une ``rh.Habilitation`` (FG173) — NTCON17."""
+    from apps.rh.models import Habilitation
+    return Habilitation.objects.create(
+        company=company, employe=employe, **kwargs)
+
+
 def make_produit(company, prix_achat=0, prix_vente=0, **kwargs):
     from apps.stock.models import Produit
     n = next(_seq)
