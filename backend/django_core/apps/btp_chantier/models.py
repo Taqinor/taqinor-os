@@ -736,3 +736,148 @@ class DiffusionPlan(TenantModel):
 
     def __str__(self):
         return f'Diffusion {self.document_ged_id} v{self.version_diffusee} — chantier {self.chantier_id}'
+
+
+# ── NTCON14 — Planning TCE multi-lots avec jalons contractuels ──────────────
+
+class Lot(TenantModel):
+    """Un LOT du planning tous-corps-d'état d'un chantier (gros-œuvre,
+    électricité, plomberie, CVC, finitions…) — NTCON14.
+
+    FRONTIÈRE CROSS-APP (CLAUDE.md, contrat de propriété PLAN_VERTICALS).
+    Le texte de NTCON14 situait ce modèle dans ``gestion_projet`` (app
+    EXISTANTE) et voulait un FK ``lot`` posé sur ``gestion_projet.Tache``.
+    Les deux écritures sont INTERDITES à ce module : une app verticale ne
+    touche NI les ``models``/``views`` NI la chaîne de migrations d'une autre
+    app. ``Lot`` vit donc ICI (même app que le reste du vertical BTP, même FK
+    RÉELLE par chaîne vers ``installations.Installation`` que ``ReserveChantier``
+    /``RFI``/``JournalChantier``), et le rattachement des tâches existantes
+    passe par la table de liaison ``LotTache`` déclarée dans CETTE app
+    (M2M ``through``) — strictement additif, zéro migration chez
+    ``gestion_projet``, et fonctionnellement équivalent au FK souhaité
+    (une tâche appartient à au plus un lot : contrainte d'unicité sur
+    ``tache``).
+
+    ``entreprise`` = ``sous_traitant`` (FK CHAÎNE vers ``stock.Fournisseur``,
+    le référentiel UNIFIÉ des sous-traitants depuis DC34 — FG304 n'a plus de
+    table parallèle) OU ``interne=True`` (exécution en régie). Le couple est
+    validé côté sérialiseur (message français nommant le champ fautif).
+
+    ``taux_penalite_retard_pmil`` (‰/jour) + ``plafond_penalite_pct`` reprennent
+    le pattern XPRJ27 (``gestion_projet.selectors.penalites_retard``) mais PAR
+    LOT : un lot en retard n'expose que SA propre pénalité (NTCON15).
+    Donnée INTERNE — jamais dans une sortie client.
+    """
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_lots', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_lots', verbose_name='Chantier')
+    nom = models.CharField(
+        max_length=120,
+        verbose_name='Nom du lot (gros-œuvre, électricité, plomberie…)')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    # Code couleur du Gantt groupé par lot (hex, #RRGGBB).
+    couleur = models.CharField(
+        max_length=7, blank=True, default='',
+        verbose_name='Couleur du lot (Gantt)')
+    interne = models.BooleanField(
+        default=True, verbose_name='Exécuté en interne (régie)')
+    # FK CHAÎNE — jamais un import de ``apps.stock.models`` (contrat M1).
+    sous_traitant = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.SET_NULL,
+        # on_delete: SET_NULL — retirer un sous-traitant ne détruit pas le lot.
+        null=True, blank=True, related_name='btp_lots',
+        verbose_name='Entreprise (sous-traitant)')
+    date_debut_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Début prévu')
+    date_fin_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Fin prévue')
+    date_fin_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Fin réelle')
+    jalon_contractuel = models.BooleanField(
+        default=False, verbose_name='Jalon contractuel')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant du lot HT')
+    taux_penalite_retard_pmil = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Taux de pénalité de retard (‰/jour)')
+    plafond_penalite_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond de pénalité (% du montant du lot)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PLANIFIE,
+        verbose_name='Statut')
+    # Rattachement des ``gestion_projet.Tache`` EXISTANTES — table de liaison
+    # locale (``LotTache``), aucune migration chez ``gestion_projet``.
+    taches = models.ManyToManyField(
+        'gestion_projet.Tache', through='LotTache', blank=True,
+        related_name='btp_lots', verbose_name='Tâches rattachées')
+
+    class Meta:
+        verbose_name = 'Lot de chantier'
+        verbose_name_plural = 'Lots de chantier'
+        ordering = ['ordre', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['chantier', 'nom'], name='btp_lot_chantier_nom_uniq'),
+        ]
+        indexes = [
+            # Noms EXPLICITES (≤ 30 car.) : cette migration est écrite à la
+            # main, un nom auto-haché divergerait du state (cf. mémoire
+            # « migration index-name divergence »).
+            models.Index(fields=['company', 'chantier', 'statut'],
+                         name='btp_lot_co_chan_statut'),
+            models.Index(fields=['company', 'jalon_contractuel'],
+                         name='btp_lot_co_jalon'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} — chantier {self.chantier_id}'
+
+
+class LotTache(TenantModel):
+    """NTCON14 — rattachement d'une ``gestion_projet.Tache`` EXISTANTE à un
+    ``Lot`` (table de liaison du M2M ``Lot.taches``).
+
+    Vit dans CETTE app (jamais un FK ajouté sur ``gestion_projet.Tache``, qui
+    exigerait une migration hors périmètre). ``tache`` est UNIQUE : une tâche
+    appartient à au plus UN lot — exactement la sémantique du FK optionnel
+    décrit par NTCON14.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_lot_taches', verbose_name='Société')
+    lot = models.ForeignKey(
+        Lot, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='rattachements', verbose_name='Lot')
+    tache = models.ForeignKey(
+        'gestion_projet.Tache', on_delete=models.CASCADE,
+        # on_delete: cascade — le rattachement n'a pas de sens sans sa tâche.
+        related_name='btp_lot_rattachements', verbose_name='Tâche')
+    date_rattachement = models.DateTimeField(
+        auto_now_add=True, verbose_name='Rattachée le')
+
+    class Meta:
+        verbose_name = 'Rattachement tâche ↔ lot'
+        verbose_name_plural = 'Rattachements tâche ↔ lot'
+        ordering = ['lot_id', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tache'], name='btp_lot_tache_unique_lot'),
+        ]
+
+    def __str__(self):
+        return f'Tâche {self.tache_id} → lot {self.lot_id}'

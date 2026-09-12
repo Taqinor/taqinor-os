@@ -128,6 +128,26 @@ const btpChantierApi = {
   debourseVsFacture: (chantierId) =>
     api.get(`/btp-chantier/chantiers/${chantierId}/debourse-vs-facture/`),
 
+  // ── NTCON14 — Lots du planning tous-corps-d'état (TCE) ──────────────────
+  lots: {
+    // `params` : { chantier, statut, jalon } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/lots/', { params }),
+    // `data` : { chantier, nom, ordre?, couleur?, interne?, sous_traitant?,
+    // date_debut_prevue?, date_fin_prevue?, jalon_contractuel?, montant_ht?,
+    // taux_penalite_retard_pmil?, plafond_penalite_pct? }.
+    create: (data) => api.post('/btp-chantier/lots/', data),
+    update: (id, data) => api.patch(`/btp-chantier/lots/${id}/`, data),
+    remove: (id) => api.delete(`/btp-chantier/lots/${id}/`),
+    // Tâches `gestion_projet.Tache` rattachées au lot (lecture).
+    taches: (id) => api.get(`/btp-chantier/lots/${id}/taches/`),
+    // Remplace l'ensemble des tâches rattachées (`tacheIds` = liste d'IDs).
+    definirTaches: (id, tacheIds) =>
+      api.post(`/btp-chantier/lots/${id}/taches/`, { taches: tacheIds }),
+  },
+  // NTCON14 — Gantt du chantier GROUPÉ PAR LOT (avec code couleur).
+  planningLots: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/planning-lots/`),
+
   // ── PACT68 — Diffusion contrôlée de plans — NTCON12/13 ───────────────────
   diffusions: {
     // `params` : { chantier, document } — tous optionnels.

@@ -3,9 +3,10 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AvenantChantierViewSet, ChantierDebourseVsFactureView,
-    DecompteGeneralViewSet, DiffusionPlanViewSet, JournalChantierViewSet,
-    ReserveChantierViewSet, RFIViewSet, VisaDocumentViewSet,
-    avenant_public_approuver, avenant_public_detail, diffusion_public_ouvrir,
+    ChantierPlanningLotsView, DecompteGeneralViewSet, DiffusionPlanViewSet,
+    JournalChantierViewSet, LotViewSet, ReserveChantierViewSet, RFIViewSet,
+    VisaDocumentViewSet, avenant_public_approuver, avenant_public_detail,
+    diffusion_public_ouvrir,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,7 @@ router.register(
     r'decomptes-generaux', DecompteGeneralViewSet, basename='btp-dgd')
 router.register(
     r'diffusions-plan', DiffusionPlanViewSet, basename='btp-diffusion')
+router.register(r'lots', LotViewSet, basename='btp-lot')
 
 urlpatterns = [
     path(
@@ -37,5 +39,9 @@ urlpatterns = [
         'chantiers/<int:chantier_id>/debourse-vs-facture/',
         ChantierDebourseVsFactureView.as_view(),
         name='btp-chantier-debourse-vs-facture'),
+    path(
+        'chantiers/<int:chantier_id>/planning-lots/',
+        ChantierPlanningLotsView.as_view(),
+        name='btp-chantier-planning-lots'),
     path('', include(router.urls)),
 ]

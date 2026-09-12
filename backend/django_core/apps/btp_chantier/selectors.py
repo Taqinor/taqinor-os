@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
-from .models import RFI, ReserveChantier
+from .models import RFI, Lot, ReserveChantier
 
 
 # ── NTCON1 — Réserves de chantier ───────────────────────────────────────────
@@ -317,6 +317,90 @@ def debourse_sec_vs_facture(chantier):
         'facture_total': facture_total,
         'marge': facture_total - debourse_total,
     }
+
+
+# ── NTCON14 — Planning TCE multi-lots ───────────────────────────────────────
+
+# Palette de repli du Gantt groupé par lot : utilisée SEULEMENT quand le lot
+# n'a pas de ``couleur`` choisie (jamais une couleur inventée écrite en base).
+PALETTE_LOTS = [
+    '#2563EB', '#16A34A', '#D97706', '#DC2626', '#7C3AED',
+    '#0891B2', '#DB2777', '#65A30D',
+]
+
+
+def couleur_lot(lot, rang=0):
+    """Couleur d'affichage d'un lot : celle choisie, sinon un repli stable de
+    ``PALETTE_LOTS`` indexé par le rang du lot dans son chantier."""
+    return lot.couleur or PALETTE_LOTS[rang % len(PALETTE_LOTS)]
+
+
+def lots_filtres(qs, *, chantier_id=None, statut=None, jalon=None):
+    """Filtres optionnels ``?chantier=&statut=&jalon=`` (queryset déjà scopé
+    société par ``TenantMixin``). Lecture seule."""
+    if chantier_id not in (None, ''):
+        qs = qs.filter(chantier_id=chantier_id)
+    if statut not in (None, ''):
+        qs = qs.filter(statut=statut)
+    if jalon not in (None, ''):
+        qs = qs.filter(jalon_contractuel=str(jalon).lower() in ('1', 'true', 'vrai'))
+    return qs
+
+
+def planning_par_lot(chantier):
+    """NTCON14 — planning Gantt d'un chantier GROUPÉ PAR LOT, avec code
+    couleur. Lecture seule, aucune écriture.
+
+    Les tâches proviennent de ``gestion_projet.Tache`` via la table de liaison
+    LOCALE ``LotTache`` (relation déclarée par CHAÎNE dans ``models.py`` — aucun
+    import de ``gestion_projet.models``). Un lot sans tâche rattachée renvoie
+    simplement une liste vide : le Gantt affiche alors la barre du lot seule
+    (ses dates prévues).
+
+    Chaque lot porte ``avancement_pct`` (moyenne simple des
+    ``Tache.avancement_pct`` rattachées, 0 sans tâche) et ``en_retard``
+    (fin prévue dépassée, lot non terminé).
+    """
+    aujourdhui = timezone.localdate()
+    lots = list(
+        Lot.objects.filter(chantier=chantier)
+        .select_related('sous_traitant')
+        .prefetch_related('taches')
+        .order_by('ordre', 'id'))
+    resultat = []
+    for rang, lot in enumerate(lots):
+        taches = [{
+            'id': t.id,
+            'libelle': t.libelle,
+            'statut': t.statut,
+            'avancement_pct': t.avancement_pct,
+            'date_debut_prevue': t.date_debut_prevue,
+            'date_fin_prevue': t.date_fin_prevue,
+        } for t in lot.taches.all().order_by('ordre', 'id')]
+        avancement = (
+            round(sum(t['avancement_pct'] for t in taches) / len(taches))
+            if taches else 0)
+        resultat.append({
+            'id': lot.id,
+            'nom': lot.nom,
+            'ordre': lot.ordre,
+            'couleur': couleur_lot(lot, rang),
+            'statut': lot.statut,
+            'jalon_contractuel': lot.jalon_contractuel,
+            'interne': lot.interne,
+            'sous_traitant_id': lot.sous_traitant_id,
+            'sous_traitant_nom': (
+                lot.sous_traitant.nom if lot.sous_traitant_id else ''),
+            'date_debut_prevue': lot.date_debut_prevue,
+            'date_fin_prevue': lot.date_fin_prevue,
+            'date_fin_reelle': lot.date_fin_reelle,
+            'avancement_pct': avancement,
+            'en_retard': bool(
+                lot.statut != Lot.Statut.TERMINE and lot.date_fin_prevue
+                and lot.date_fin_prevue < aujourdhui),
+            'taches': taches,
+        })
+    return resultat
 
 
 # ── NTCON13 — Alerte plan périmé consulté ───────────────────────────────────

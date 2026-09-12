@@ -70,6 +70,22 @@ def make_projet_lie(company, chantier, **kwargs):
     return projet
 
 
+def make_tache(company, projet, **kwargs):
+    """Crée une ``gestion_projet.Tache`` (NTCON14 — rattachement à un lot)."""
+    from apps.gestion_projet.models import Tache
+    n = next(_seq)
+    kwargs.setdefault('libelle', f'Tâche {n}')
+    return Tache.objects.create(company=company, projet=projet, **kwargs)
+
+
+def make_lot(company, chantier, **kwargs):
+    """Crée un ``btp_chantier.Lot`` (NTCON14)."""
+    from apps.btp_chantier.models import Lot
+    n = next(_seq)
+    kwargs.setdefault('nom', f'Lot {n}')
+    return Lot.objects.create(company=company, chantier=chantier, **kwargs)
+
+
 def make_ressource_profil(company, **kwargs):
     from apps.gestion_projet.models import RessourceProfil
     n = next(_seq)

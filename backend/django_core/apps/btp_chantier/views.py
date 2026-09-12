@@ -18,14 +18,14 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier, RFI,
+    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier, Lot, RFI,
     ReserveChantier, VisaDocument,
 )
 from .serializers import (
     AvenantChantierPublicSerializer, AvenantChantierSerializer,
     DecompteGeneralSerializer, DiffusionPlanSerializer,
-    JournalChantierSerializer, ReserveChantierSerializer, RFISerializer,
-    SignatureBtpSerializer, VisaDocumentSerializer,
+    JournalChantierSerializer, LotSerializer, ReserveChantierSerializer,
+    RFISerializer, SignatureBtpSerializer, VisaDocumentSerializer,
 )
 
 
@@ -736,6 +736,67 @@ class ChantierDebourseVsFactureView(APIView):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
         return Response(selectors.debourse_sec_vs_facture(chantier))
+
+
+# ── NTCON14 — Lots (planning TCE multi-lots) ────────────────────────────────
+
+class LotViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """Lots du planning tous-corps-d'état — NTCON14.
+
+    Filtres liste : ``?chantier=&statut=&jalon=``. Action ``taches/``
+    (GET = tâches rattachées, POST = (re)définit l'ensemble des tâches du lot).
+    """
+    queryset = Lot.objects.select_related('chantier', 'sous_traitant').all()
+    serializer_class = LotSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        p = self.request.query_params
+        return selectors.lots_filtres(
+            qs, chantier_id=p.get('chantier'), statut=p.get('statut'),
+            jalon=p.get('jalon'))
+
+    @action(detail=True, methods=['get', 'post'],
+            permission_classes=[ScopedPermission])
+    def taches(self, request, pk=None):
+        """NTCON14 — rattachement des ``gestion_projet.Tache`` EXISTANTES.
+
+        POST ``{"taches": [id, …]}`` remplace l'ensemble rattaché au lot
+        (table de liaison locale ``LotTache`` — aucune écriture chez
+        ``gestion_projet``).
+        """
+        lot = self.get_object()
+        if request.method.lower() == 'post':
+            try:
+                services.definir_taches_du_lot(lot, request.data.get('taches'))
+            except services.TransitionInvalide as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except (TypeError, ValueError):
+                return Response(
+                    {'taches': 'taches doit être une liste d\'identifiants.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            lot.refresh_from_db()
+        return Response(
+            list(lot.taches.values(
+                'id', 'libelle', 'statut', 'avancement_pct',
+                'date_debut_prevue', 'date_fin_prevue').order_by(
+                    'ordre', 'id')))
+
+
+class ChantierPlanningLotsView(APIView):
+    """NTCON14 — ``chantiers/<id>/planning-lots/`` : le Gantt du chantier
+    GROUPÉ PAR LOT (avec code couleur), lecture seule."""
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.planning_par_lot(chantier))
 
 
 # ── NTCON12/NTCON13 — Diffusion contrôlée de plans ──────────────────────────

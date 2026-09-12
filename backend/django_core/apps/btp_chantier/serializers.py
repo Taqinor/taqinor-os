@@ -1,11 +1,13 @@
 """Sérialiseurs du vertical BTP/EPC (Groupe NTCON)."""
+import re
+
 from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
     AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier,
-    SignatureBtp, VisaDocument,
+    Lot, SignatureBtp, VisaDocument,
 )
 
 
@@ -264,3 +266,77 @@ class DiffusionPlanSerializer(serializers.ModelSerializer):
 
     def validate_chantier(self, value):
         return _meme_societe(self, value, 'Chantier')
+
+
+# ── NTCON14 — Lots (planning TCE multi-lots) ────────────────────────────────
+
+_HEX_COULEUR = re.compile(r'^#[0-9A-Fa-f]{6}$')
+
+
+class LotSerializer(serializers.ModelSerializer):
+    """NTCON14 — un lot du planning tous-corps-d'état.
+
+    Les erreurs NOMMENT le champ fautif (règle fondateur « erreurs → le champ
+    fautif ») : incohérence de dates → ``date_fin_prevue``, entreprise
+    manquante → ``sous_traitant``, couleur invalide → ``couleur``.
+    """
+    taches = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.nom', read_only=True, default='')
+
+    class Meta:
+        model = Lot
+        fields = [
+            'id', 'chantier', 'nom', 'ordre', 'couleur', 'interne',
+            'sous_traitant', 'sous_traitant_nom', 'date_debut_prevue',
+            'date_fin_prevue', 'date_fin_reelle', 'jalon_contractuel',
+            'montant_ht', 'taux_penalite_retard_pmil', 'plafond_penalite_pct',
+            'statut', 'taches', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'sous_traitant_nom', 'taches', 'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+    def validate_sous_traitant(self, value):
+        return _meme_societe(self, value, 'Sous-traitant')
+
+    def validate_couleur(self, value):
+        if value and not _HEX_COULEUR.match(value):
+            raise serializers.ValidationError(
+                'Couleur invalide : attendu un code hexadécimal #RRGGBB '
+                '(exemple : #2563EB).')
+        return value
+
+    def _valeur(self, attrs, champ):
+        """Valeur effective d'un champ (PATCH partiel inclus)."""
+        if champ in attrs:
+            return attrs[champ]
+        return getattr(self.instance, champ, None)
+
+    def validate(self, attrs):
+        debut = self._valeur(attrs, 'date_debut_prevue')
+        fin = self._valeur(attrs, 'date_fin_prevue')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError({
+                'date_fin_prevue': (
+                    'La fin prévue ne peut pas précéder le début prévu '
+                    f'({debut}).'),
+            })
+        interne = self._valeur(attrs, 'interne')
+        sous_traitant = self._valeur(attrs, 'sous_traitant')
+        if interne is False and sous_traitant is None:
+            raise serializers.ValidationError({
+                'sous_traitant': (
+                    "Lot non exécuté en interne : l'entreprise "
+                    '(sous-traitant) est obligatoire.'),
+            })
+        if interne and sous_traitant is not None:
+            raise serializers.ValidationError({
+                'interne': (
+                    'Un lot confié à un sous-traitant ne peut pas être marqué '
+                    '« exécuté en interne » — décochez la case.'),
+            })
+        return attrs

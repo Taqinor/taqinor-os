@@ -650,6 +650,64 @@ def marquer_diffusion_lue(diffusion, *, cle_destinataire):
     return diffusion
 
 
+# ── NTCON14 — Rattachement des tâches existantes à un lot ──────────────────
+
+def taches_hors_societe(tache_ids, company):
+    """NTCON14 — parmi ``tache_ids`` (IDs ``gestion_projet.Tache``), renvoie
+    ceux qui n'appartiennent PAS à ``company`` (inconnu ou autre société).
+
+    LECTURE cross-app via ``django.apps.apps.get_model`` — jamais un import
+    statique de ``gestion_projet.models``, jamais une écriture (même patron que
+    ``selectors.situations_incluses_hors_societe``).
+    """
+    from django.apps import apps as django_apps
+
+    tache_ids = list(tache_ids or [])
+    if not tache_ids:
+        return []
+    try:
+        Tache = django_apps.get_model('gestion_projet', 'Tache')
+    except LookupError:  # pragma: no cover - gestion_projet non installé
+        return list(tache_ids)
+    connus = set(Tache.objects.filter(
+        id__in=tache_ids, company=company).values_list('id', flat=True))
+    return [tid for tid in tache_ids if tid not in connus]
+
+
+@transaction.atomic
+def definir_taches_du_lot(lot, tache_ids):
+    """NTCON14 — (RE)définit l'ensemble des tâches rattachées à ``lot``.
+
+    Refuse (``TransitionInvalide``, message français nommant le champ) toute
+    tâche inconnue/cross-société, ou déjà rattachée à un AUTRE lot (une tâche
+    appartient à au plus un lot — contrainte ``btp_lot_tache_unique_lot``).
+    """
+    from .models import LotTache
+
+    tache_ids = [int(t) for t in (tache_ids or [])]
+    inconnues = taches_hors_societe(tache_ids, lot.company)
+    if inconnues:
+        raise TransitionInvalide(
+            f'taches : tâche(s) inconnue(s) ou appartenant à une autre '
+            f'société : {inconnues}.')
+    deja_ailleurs = list(
+        LotTache.objects.filter(tache_id__in=tache_ids)
+        .exclude(lot=lot).values_list('tache_id', flat=True))
+    if deja_ailleurs:
+        raise TransitionInvalide(
+            f'taches : tâche(s) déjà rattachée(s) à un autre lot : '
+            f'{deja_ailleurs}. Détachez-les d\'abord.')
+    LotTache.objects.filter(lot=lot).exclude(
+        tache_id__in=tache_ids).delete()
+    existantes = set(
+        LotTache.objects.filter(lot=lot).values_list('tache_id', flat=True))
+    LotTache.objects.bulk_create([
+        LotTache(company=lot.company, lot=lot, tache_id=tid)
+        for tid in tache_ids if tid not in existantes
+    ])
+    return lot
+
+
 def alerter_rfi_en_retard():
     """NTCON4 (AUD231) — balaie les ``RFI`` OUVERTS dont
     ``date_limite_reponse`` est dépassée et notifie leur ``destinataire_user``

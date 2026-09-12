@@ -5,8 +5,8 @@
    module.config.jsx`. */
 import { lazy } from 'react'
 import {
-  Calculator, Construction, FileEdit, FileQuestion, MapPin, NotebookPen,
-  Share2, Stamp,
+  Calculator, Construction, FileEdit, FileQuestion, Layers, MapPin,
+  NotebookPen, Share2, Stamp,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -38,6 +38,8 @@ const JournalChantierPage = lazy(() => import('./JournalChantier'))
 const AvenantsChantierPage = lazy(() => import('./AvenantsChantier'))
 const DecompteGeneralPage = lazy(() => import('./DecompteGeneral'))
 const DiffusionPlansPage = lazy(() => import('./DiffusionPlans'))
+// NTCON14 — planning tous corps d'état groupé par lot.
+const PlanningLotsPage = lazy(() => import('./PlanningLots'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -93,6 +95,12 @@ const config = {
         icon: <Share2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/planning-lots',
+        label: 'Planning par lot',
+        icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   titles: [
@@ -103,6 +111,7 @@ const config = {
     ['/btp-chantier/avenants', 'Avenants de chantier'],
     ['/btp-chantier/dgd', 'Décompte général et définitif'],
     ['/btp-chantier/diffusion-plans', 'Diffusion contrôlée de plans'],
+    ['/btp-chantier/planning-lots', "Planning tous corps d'état (par lot)"],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -113,6 +122,7 @@ const config = {
     { path: '/btp-chantier/avenants', component: AvenantsChantierPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/dgd', component: DecompteGeneralPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/diffusion-plans', component: DiffusionPlansPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/planning-lots', component: PlanningLotsPage, roles: ['responsable', 'admin'] },
   ],
 }
 
