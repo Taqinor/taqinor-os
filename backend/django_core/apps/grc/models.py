@@ -886,3 +886,134 @@ class DeficienceControle(TenantModel):
     def __str__(self):
         return (f'Déficience {self.get_gravite_display()} — '
                 f'{self.get_statut_display()}')
+
+
+class PolitiqueInterne(TenantModel):
+    """NTGRC19 — politique interne versionnée (référentiel documentaire).
+
+    Le corps ``contenu`` est le brouillon VIVANT : on l'édite librement tant
+    que la politique n'est pas publiée. PUBLIER fige le texte dans une
+    ``PolitiqueVersion`` IMMUABLE et incrémente le numéro de version.
+
+    C'est ce qui rend une attestation de lecture (NTGRC20) crédible : dire
+    « j'ai lu la v2 » n'a de sens que si la v2 ne peut plus bouger.
+    """
+
+    CATEGORIE_CHOICES = [
+        ('securite', 'Sécurité'),
+        ('rh', 'Ressources humaines'),
+        ('achats', 'Achats'),
+        ('qualite', 'Qualité'),
+        ('conformite', 'Conformité'),
+        ('it', 'Informatique'),
+    ]
+
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_PUBLIEE = 'publiee'
+    STATUT_OBSOLETE = 'obsolete'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_PUBLIEE, 'Publiée'),
+        (STATUT_OBSOLETE, 'Obsolète'),
+    ]
+
+    CIBLE_TOUS = 'tous'
+    CIBLE_ROLE = 'role'
+    CIBLE_DEPARTEMENT = 'departement'
+    CIBLE_CHOICES = [
+        (CIBLE_TOUS, 'Tout le monde'),
+        (CIBLE_ROLE, 'Un rôle'),
+        (CIBLE_DEPARTEMENT, 'Un département'),
+    ]
+
+    titre = models.CharField('Titre', max_length=200)
+    categorie = models.CharField(
+        'Catégorie', max_length=12, choices=CATEGORIE_CHOICES,
+        default='conformite')
+    contenu = models.TextField('Contenu', blank=True, default='')
+    version = models.PositiveIntegerField(
+        'Version', default=0,
+        help_text='Incrémentée SERVEUR à chaque publication (0 = jamais '
+                  'publiée).')
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES,
+        default=STATUT_BROUILLON)
+    date_publication = models.DateTimeField(
+        'Date de publication', null=True, blank=True)
+    proprietaire = models.CharField(
+        'Propriétaire', max_length=160, blank=True, default='')
+    cible = models.CharField(
+        'Cible', max_length=12, choices=CIBLE_CHOICES, default=CIBLE_TOUS)
+    cible_valeur = models.CharField(
+        'Valeur de la cible', max_length=120, blank=True, default='',
+        help_text='Rôle ou département visé quand la cible n\'est pas '
+                  '« tout le monde ».')
+
+    class Meta:
+        verbose_name = 'Politique interne'
+        verbose_name_plural = 'Politiques internes'
+        ordering = ['titre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='grc_politique_co_statut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} (v{self.version})'
+
+
+class PolitiqueVersionError(Exception):
+    """NTGRC19 — levée à toute tentative de modifier/supprimer une version.
+
+    Même contrat que ``JournalDestructionError`` et ``ged.ArchivageLegalError``
+    (hérite d'``Exception``) ; traduite en 403 côté vue, jamais en 500.
+    """
+
+
+class PolitiqueVersion(TenantModel):
+    """NTGRC19 — snapshot IMMUABLE d'une politique publiée.
+
+    Le contenu est figé à la publication : ni ``save()`` sur une ligne
+    existante, ni ``delete()``. Une version qu'on peut réécrire ne prouve rien
+    — et une attestation de lecture pointerait alors un texte mouvant.
+    """
+
+    politique = models.ForeignKey(
+        PolitiqueInterne,
+        # on_delete: une version n'existe que pour SA politique.
+        on_delete=models.CASCADE,
+        related_name='versions', verbose_name='Politique')
+    numero = models.PositiveIntegerField('Numéro de version')
+    contenu = models.TextField('Contenu figé', blank=True, default='')
+    auteur = models.CharField(
+        'Auteur', max_length=150, blank=True, default='',
+        help_text="Instantané du nom d'utilisateur (survit à la suppression "
+                  'du compte).')
+    publiee_le = models.DateTimeField('Publiée le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Version de politique'
+        verbose_name_plural = 'Versions de politique'
+        ordering = ['-numero', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['politique', 'numero'],
+                name='grc_politiqueversion_pol_num'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Création SEULE : une version publiée ne se réécrit jamais."""
+        if self.pk is not None:
+            raise PolitiqueVersionError(
+                'Une version de politique est immuable (création seule) : '
+                'elle ne peut pas être modifiée.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Refuse la suppression : l'historique des versions fait foi."""
+        raise PolitiqueVersionError(
+            'Une version de politique est immuable : elle ne peut pas être '
+            'supprimée.')
+
+    def __str__(self):
+        return f'{self.politique_id} v{self.numero}'

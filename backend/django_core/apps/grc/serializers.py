@@ -7,8 +7,9 @@ from rest_framework import serializers
 
 from .models import (
     ControleInterne, DeficienceControle, JournalDestruction, LegalHold,
-    PlanTraitementRisque, PolitiqueRetentionObjet, RevueRisque,
-    RisqueEntreprise, TestControle, ViolationDonnees,
+    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
+    PolitiqueVersion, RevueRisque, RisqueEntreprise, TestControle,
+    ViolationDonnees,
 )
 
 
@@ -452,4 +453,57 @@ class DeficienceControleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'responsable': 'Une déficience majeure doit nommer un '
                                    'responsable de la remédiation.'})
+        return attrs
+
+
+class PolitiqueVersionSerializer(serializers.ModelSerializer):
+    """NTGRC19 — snapshot IMMUABLE d'une politique publiée (lecture seule)."""
+
+    class Meta:
+        model = PolitiqueVersion
+        fields = ['id', 'politique', 'numero', 'contenu', 'auteur',
+                  'publiee_le', 'created_at']
+        read_only_fields = fields
+
+
+class PolitiqueInterneSerializer(serializers.ModelSerializer):
+    """NTGRC19 — politique interne versionnée.
+
+    ``version``, ``statut`` et ``date_publication`` sont posés par l'action
+    ``publier/`` : les rendre écrivables permettrait d'annoncer une v3 sans
+    qu'aucune v3 ne soit figée nulle part.
+    """
+
+    categorie_libelle = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nombre_versions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PolitiqueInterne
+        fields = [
+            'id', 'titre', 'categorie', 'categorie_libelle', 'contenu',
+            'version', 'statut', 'statut_libelle', 'date_publication',
+            'proprietaire', 'cible', 'cible_valeur', 'nombre_versions',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'version', 'statut', 'date_publication',
+            'created_at', 'updated_at',
+        ]
+
+    def get_nombre_versions(self, obj):
+        return obj.versions.count()
+
+    def validate(self, attrs):
+        """Une cible « rôle » ou « département » doit dire LAQUELLE."""
+        cible = attrs.get('cible', getattr(self.instance, 'cible', None))
+        valeur = attrs.get(
+            'cible_valeur', getattr(self.instance, 'cible_valeur', ''))
+        if cible in (PolitiqueInterne.CIBLE_ROLE,
+                     PolitiqueInterne.CIBLE_DEPARTEMENT) and not (
+                valeur or '').strip():
+            raise serializers.ValidationError({
+                'cible_valeur': 'Précisez le rôle ou le département visé.'})
         return attrs

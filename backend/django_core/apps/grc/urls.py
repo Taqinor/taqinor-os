@@ -12,8 +12,9 @@ from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
     ControleInterneViewSet, DeficienceControleViewSet,
     JournalDestructionViewSet, LegalHoldViewSet, PlanTraitementRisqueViewSet,
-    PolitiqueRetentionObjetViewSet, RevueRisqueViewSet,
-    RisqueEntrepriseViewSet, TestControleViewSet, ViolationDonneesViewSet,
+    PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
+    RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
+    ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -47,6 +48,9 @@ router.register(r'tests-controle', TestControleViewSet,
 # NTGRC18 — constats de déficience + liens risque / CAPA QHSE.
 router.register(r'deficiences-controle', DeficienceControleViewSet,
                 basename='grc-deficience-controle')
+# NTGRC19 — référentiel des politiques internes versionnées.
+router.register(r'politiques-internes', PolitiqueInterneViewSet,
+                basename='grc-politique-interne')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

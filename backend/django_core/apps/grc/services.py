@@ -547,3 +547,53 @@ def enregistrer_test_controle(company, controle, **champs):
             company=company, controle=controle, **champs)
         ouvrir_risque_sur_deficience(test)
     return test
+
+
+# ── NTGRC19 — politiques internes versionnées ───────────────────────────────
+
+class PublicationImpossible(ValueError):
+    """Publication refusée (politique obsolète, contenu vide…).
+
+    Traduite en 400 par la vue — jamais 500, et le message dit POURQUOI.
+    """
+
+
+def publier_politique(politique, auteur=''):
+    """Fige le contenu dans une version IMMUABLE et incrémente le numéro.
+
+    Le numéro de version est calculé SERVEUR à partir du plus haut numéro déjà
+    figé (+1) — jamais ``count() + 1``, qui se décale dès qu'une ligne manque,
+    et jamais une valeur envoyée par le client.
+
+    Publier une politique vide n'a pas de sens (personne ne peut attester
+    avoir lu du vide) : c'est refusé, avec le motif.
+    """
+    from django.db import transaction
+    from django.db.models import Max
+
+    from .models import PolitiqueInterne, PolitiqueVersion
+
+    if politique.statut == PolitiqueInterne.STATUT_OBSOLETE:
+        raise PublicationImpossible(
+            'Cette politique est obsolète : créez-en une nouvelle plutôt que '
+            'de republier celle-ci.')
+    if not (politique.contenu or '').strip():
+        raise PublicationImpossible(
+            'Le contenu de la politique est vide : rien à publier.')
+
+    maintenant = timezone.now()
+    with transaction.atomic():
+        dernier = (PolitiqueVersion.objects
+                   .filter(politique=politique)
+                   .aggregate(maxi=Max('numero'))['maxi']) or 0
+        numero = dernier + 1
+        version = PolitiqueVersion.objects.create(
+            company=politique.company, politique=politique, numero=numero,
+            contenu=politique.contenu, auteur=(auteur or '')[:150],
+            publiee_le=maintenant)
+        politique.version = numero
+        politique.statut = PolitiqueInterne.STATUT_PUBLIEE
+        politique.date_publication = maintenant
+        politique.save(update_fields=[
+            'version', 'statut', 'date_publication', 'updated_at'])
+    return version

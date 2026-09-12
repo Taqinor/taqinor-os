@@ -12,13 +12,14 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     ControleInterne, DeficienceControle, JournalDestruction, LegalHold,
-    PlanTraitementRisque, PolitiqueRetentionObjet, RevueRisque,
-    RisqueEntreprise, TestControle, ViolationDonnees,
+    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
+    RevueRisque, RisqueEntreprise, TestControle, ViolationDonnees,
 )
 from .serializers import (
     ControleInterneSerializer, DeficienceControleSerializer,
     JournalDestructionSerializer, LegalHoldSerializer,
-    PlanTraitementRisqueSerializer, PolitiqueRetentionObjetSerializer,
+    PlanTraitementRisqueSerializer, PolitiqueInterneSerializer,
+    PolitiqueRetentionObjetSerializer, PolitiqueVersionSerializer,
     RevueRisqueSerializer, RisqueEntrepriseSerializer, TestControleSerializer,
     ViolationDonneesSerializer,
 )
@@ -367,3 +368,35 @@ class DeficienceControleViewSet(CompanyScopedModelViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+class PolitiqueInterneViewSet(CompanyScopedModelViewSet):
+    """NTGRC19 — référentiel des politiques internes versionnées."""
+
+    queryset = PolitiqueInterne.objects.prefetch_related('versions').all()
+    serializer_class = PolitiqueInterneSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    @action(detail=True, methods=['post'])
+    def publier(self, request, pk=None):
+        """Fige le contenu dans une version immuable et incrémente le n°."""
+        from .services import PublicationImpossible, publier_politique
+
+        politique = self.get_object()
+        try:
+            version = publier_politique(
+                politique,
+                auteur=getattr(request.user, 'username', '') or '')
+        except PublicationImpossible as exc:
+            return Response({'contenu': str(exc)}, status=400)
+        return Response({
+            'politique': self.get_serializer(politique).data,
+            'version': PolitiqueVersionSerializer(version).data,
+        })
+
+    @action(detail=True, methods=['get'])
+    def versions(self, request, pk=None):
+        """Historique IMMUABLE des versions publiées (plus récente d'abord)."""
+        politique = self.get_object()
+        return Response({'results': PolitiqueVersionSerializer(
+            politique.versions.all(), many=True).data})
