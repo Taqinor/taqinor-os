@@ -27,6 +27,8 @@ d'app métier (le dataset est désigné par son NOM).
 """
 from __future__ import annotations
 
+from . import adapters
+
 #: Alias sous lequel la valeur de la métrique est toujours rendue.
 ALIAS_VALEUR = 'valeur'
 
@@ -191,8 +193,38 @@ def resolve_metric(company, user, cle, *, filters=None, group_by=None,
     else:
         group_by = list(group_by)
 
+    entete_base = {
+        'cle': definition.cle,
+        'libelle': definition.libelle,
+        'unite': definition.unite,
+        'format': definition.format,
+        'dataset': dataset_nom,
+    }
+
+    # NTDATA11 — métrique d'ADAPTATEUR : le calcul vit dans l'app propriétaire
+    # (DSO/marge brute du grand livre, pipeline pondéré lead par lead). Aucune
+    # série possible — un scalaire n'a pas de dimensions.
+    if definition.est_adaptateur:
+        if group_by:
+            raise MetriqueNonResolvable(
+                'Métrique « %s » : elle est calculée par un adaptateur '
+                '(%s) et ne peut pas être regroupée par %s.'
+                % (cle, definition.mesure['adapter'], ', '.join(group_by)))
+        try:
+            adaptateur = adapters.get_adapter(definition.mesure['adapter'])
+        except adapters.AdaptateurInconnu as exc:
+            raise MetriqueNonResolvable('Métrique « %s » : %s' % (cle, exc))
+        filtres_adaptateur = dict(definition.filtres or {})
+        filtres_adaptateur.update(filters or {})
+        valeur = adaptateur(company, user, period=period,
+                            filters=filtres_adaptateur)
+        return dict(entete_base, group_by=[], valeur=valeur, lignes=[])
+
     agregats, expression, alias_agregats = _spec_de_mesure(definition)
-    filtres = dict(filters or {})
+    # La POPULATION de la métrique d'abord (définition), les filtres de
+    # l'appelant ensuite — ces derniers peuvent affiner, jamais être ignorés.
+    filtres = dict(definition.filtres or {})
+    filtres.update(filters or {})
     filtres.update(_filtres_de_periode(dataset_nom, period))
 
     spec = {
@@ -223,14 +255,7 @@ def resolve_metric(company, user, cle, *, filters=None, group_by=None,
                 ligne.pop(alias, None)
             ligne[ALIAS_VALEUR] = valeur
 
-    entete = {
-        'cle': definition.cle,
-        'libelle': definition.libelle,
-        'unite': definition.unite,
-        'format': definition.format,
-        'dataset': dataset_nom,
-        'group_by': group_by,
-    }
+    entete = dict(entete_base, group_by=group_by)
     if group_by:
         return dict(entete, valeur=None, lignes=lignes)
     valeur = lignes[0].get(ALIAS_VALEUR) if lignes else None

@@ -4487,3 +4487,64 @@ def ligne_visite_terrain(visite):
         'complet': not manquants,
         'manquants_count': len(manquants),
     }
+
+
+# ── NTDATA11 — ADAPTATEUR DE MÉTRIQUE (couche sémantique) ───────────────────
+#
+# Le pipeline PONDÉRÉ n'est pas un agrégat SQL : il passe lead par lead par
+# ``apps.reporting.pipeline._lead_forecast_value`` × ``_lead_win_weight``
+# (scorer ``core.win_probability``). Cette enveloppe MINCE réutilise
+# exactement ces scorers — aucune seconde définition, aucun coefficient
+# recopié — pour que la métrique nommée « valeur_pipeline_ponderee » rende le
+# MÊME chiffre que l'écran Pipeline.
+
+
+def metrique_pipeline_pondere(company, user=None, *, period=None,
+                              filters=None):
+    """NTDATA11 — valeur PONDÉRÉE du pipeline ouvert (MAD) d'une société.
+
+    Population : leads non archivés, non perdus, dont l'étape n'est ni SIGNED
+    ni COLD (les clés viennent de ``STAGES.py``, jamais écrites ici) — la
+    MÊME population qu'``pipeline_pondere_par_entite``. ``period``
+    (``{'debut','fin'}`` ou couple) borne la date de création ; ``filters``
+    est ignoré (la population est celle du pipeline, par définition).
+    """
+    from decimal import Decimal
+
+    from apps.reporting.pipeline import _lead_forecast_value, _lead_win_weight
+
+    from . import stages as stage_mod
+    from .models import Lead
+
+    ouvertes = [
+        k for k in stage_mod.STAGES
+        if k not in (stage_mod.SIGNED, stage_mod.COLD)
+    ]
+    qs = (Lead.objects
+          .filter(company=company, is_archived=False, perdu=False,
+                  stage__in=ouvertes)
+          .prefetch_related('devis'))
+    if period:
+        if isinstance(period, (tuple, list)):
+            valeurs = list(period) + [None, None]
+            debut, fin = valeurs[0], valeurs[1]
+        else:
+            debut, fin = period.get('debut'), period.get('fin')
+        if debut is not None:
+            qs = qs.filter(date_creation__gte=debut)
+        if fin is not None:
+            qs = qs.filter(date_creation__lte=fin)
+    total = Decimal('0')
+    for lead in qs:
+        total += _lead_forecast_value(lead) * _lead_win_weight(lead)
+    return total
+
+
+def register_metric_adapters():
+    """Enregistre les adaptateurs CRM dans ``apps.semantic`` (idempotent).
+
+    Appelé depuis ``CrmConfig.ready()`` : c'est l'app PROPRIÉTAIRE du calcul
+    qui vient s'enregistrer — ``semantic`` n'importe jamais ``crm``.
+    """
+    from apps.semantic.adapters import register_adapter
+    register_adapter('crm.pipeline_pondere', metrique_pipeline_pondere)

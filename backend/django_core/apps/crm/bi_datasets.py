@@ -28,6 +28,7 @@ LEADS_DATASET = 'crm_leads'
 LEADS_FIELDS = [
     'id', 'stage', 'canal', 'priorite', 'ville', 'mois_creation',
     'type_installation', 'perdu_bool', 'motif_perte', 'owner_username',
+    'signe_num', 'montant_estime',
 ]
 
 CLIENTS_DATASET = 'crm_clients'
@@ -48,6 +49,8 @@ LEADS_FIELD_META = {
     'perdu_bool': {'label': 'Perdu', 'type': 'dimension'},
     'motif_perte': {'label': 'Motif de perte', 'type': 'dimension'},
     'owner_username': {'label': 'Responsable', 'type': 'dimension'},
+    'signe_num': {'label': 'Signés (1/0)', 'type': 'mesure'},
+    'montant_estime': {'label': 'Montant estimé', 'type': 'mesure'},
 }
 CLIENTS_FIELD_META = {
     'id': {'label': 'Clients', 'type': 'mesure'},
@@ -71,9 +74,10 @@ def leads_queryset(company, user):
     population entre les deux surfaces, pas un filtrage silencieux
     supplémentaire.
     """
-    from django.db.models import F
+    from django.db.models import Case, F, IntegerField, Q, Value, When
     from django.db.models.functions import TruncMonth
 
+    from . import stages as stage_mod
     from .models import Lead
 
     return Lead.objects.filter(
@@ -82,6 +86,16 @@ def leads_queryset(company, user):
         mois_creation=TruncMonth('date_creation'),
         perdu_bool=F('perdu'),
         owner_username=F('owner__username'),
+        # NTDATA11 — indicateur 1/0 « signé », pour que le TAUX DE CONVERSION
+        # soit une somme SQL (somme(signe_num) / compte(id)) au lieu d'un
+        # comptage conditionnel que le moteur ne sait pas exprimer. La règle
+        # est celle du dépôt (`crm.selectors` : étape SIGNED ET non perdu) et
+        # la clé d'étape est LUE de STAGES.py — jamais écrite ici (règle #2).
+        signe_num=Case(
+            When(Q(stage=stage_mod.SIGNED) & Q(perdu=False), then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        ),
     )
 
 

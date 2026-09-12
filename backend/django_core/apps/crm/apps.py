@@ -53,6 +53,10 @@ class CrmConfig(AppConfig):
         # `core.data_explorer` : l'app propriétaire déclare, le noyau exécute.
         from . import bi_datasets
         bi_datasets.register_dataset()
+        # NTDATA11 — adaptateur de métrique « pipeline pondéré » : le calcul
+        # (scorers lead par lead) reste ici, `semantic` ne connaît qu'une clé.
+        from .selectors import register_metric_adapters
+        register_metric_adapters()
         # XPLT23 — fournisseur DSR CRM (export/anonymisation loi 09-08).
         from . import dsr_provider
         dsr_provider.register()

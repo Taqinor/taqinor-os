@@ -72,12 +72,19 @@ class CrmBiDatasetsTests(TestCase):
         self.assertEqual(lignes[0]['motif_perte'], 'prix')
 
     def test_stages_jamais_en_dur_dans_le_module(self):
-        """Règle #2 — aucune clé d'étape n'est recopiée dans bi_datasets.py."""
+        """Règle #2 — aucune clé d'étape LITTÉRALE dans bi_datasets.py.
+
+        Le module a le droit de RÉFÉRENCER une étape par son symbole
+        (`stage_mod.SIGNED`, qui lit STAGES.py) : ce qui est interdit, c'est
+        d'écrire la chaîne elle-même, parce que c'est ce qui diverge quand le
+        fichier racine change.
+        """
         source = Path(
             __file__).resolve().parent.joinpath('bi_datasets.py').read_text(
                 encoding='utf-8')
         for cle in stage_mod.STAGES:
-            self.assertNotIn(cle, source)
+            self.assertNotIn("'%s'" % cle, source)
+            self.assertNotIn('"%s"' % cle, source)
         # …mais les libellés restent accessibles, LUS depuis STAGES.py.
         self.assertEqual(set(stage_labels()), set(stage_mod.STAGE_LABELS))
 

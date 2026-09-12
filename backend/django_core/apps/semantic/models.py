@@ -84,6 +84,16 @@ class MetricDefinition(TenantModel):
     dimensions_par_defaut = models.JSONField(
         default=list, blank=True, verbose_name='Dimensions par défaut',
         help_text='Champs de regroupement proposés par défaut (ex. ["mois"]).')
+    # NTDATA11 — une métrique porte SA population. « CA HT » exclut les
+    # factures annulées, « MRR » ne compte que les contrats actifs : sans ce
+    # champ, chaque appelant devrait re-poser le filtre et deux écrans
+    # rendraient deux « CA HT » différents — précisément ce que la couche
+    # sémantique existe pour empêcher. Les filtres de l'APPELANT s'ajoutent
+    # par-dessus (et peuvent en écraser un, par clé).
+    filtres = models.JSONField(
+        default=dict, blank=True, verbose_name='Filtres de la définition',
+        help_text='Filtres TOUJOURS appliqués (ex. {"actif": true}) — la '
+                  'population que cette métrique mesure.')
     actif = models.BooleanField(default=True, verbose_name='Active')
 
     class Meta:
@@ -113,13 +123,18 @@ class MetricDefinition(TenantModel):
         erreurs = {}
         if not (self.cle or '').strip():
             erreurs['cle'] = 'La clé est obligatoire.'
-        if not (self.dataset or '').strip():
-            erreurs['dataset'] = 'Le dataset est obligatoire.'
         mesure = self.mesure if isinstance(self.mesure, dict) else None
+        # NTDATA11 — une métrique d'ADAPTATEUR n'a pas de dataset : son calcul
+        # vit dans l'app propriétaire (ex. le DSO du grand livre).
+        est_adaptateur = bool(mesure and mesure.get('adapter'))
+        if not est_adaptateur and not (self.dataset or '').strip():
+            erreurs['dataset'] = 'Le dataset est obligatoire.'
         if mesure is None:
             erreurs['mesure'] = (
-                'La mesure doit être un objet JSON : {"field": …, "agg": …} '
-                'ou {"formula": …, "aggregates": […]}.')
+                'La mesure doit être un objet JSON : {"field": …, "agg": …}, '
+                '{"formula": …, "aggregates": […]} ou {"adapter": …}.')
+        elif est_adaptateur:
+            pass  # la clé d'adaptateur est validée à la RÉSOLUTION.
         elif mesure.get('formula'):
             agregats = mesure.get('aggregates')
             if not isinstance(agregats, list) or not agregats:
@@ -157,3 +172,10 @@ class MetricDefinition(TenantModel):
         """True si la mesure est une FORMULE combinant plusieurs agrégats."""
         return bool(isinstance(self.mesure, dict)
                     and self.mesure.get('formula'))
+
+    @property
+    def est_adaptateur(self):
+        """True si le calcul vit dans une app (NTDATA11, ex. le DSO du grand
+        livre) plutôt que dans une requête sur un dataset."""
+        return bool(isinstance(self.mesure, dict)
+                    and self.mesure.get('adapter'))
