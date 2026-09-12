@@ -1322,14 +1322,14 @@ CELERY_TASK_ROUTES = {
     'rh.planifier_appreciations': {'queue': 'scheduled'},
     'qhse.relancer_derogations': {'queue': 'scheduled'},
     'qhse.relancer_audits_planifies_en_retard': {'queue': 'scheduled'},
-    # Vague 1 drain NT (2026-09-12) — 4 tâches ajoutées au beat_schedule sans
+    # Vague 1 drain NT (2026-09-12) — 3 tâches ajoutées au beat_schedule sans
     # route explicite (garde core/tests/test_celery_task_routes.py) :
-    # rapport photo hebdomadaire de chantier BTP ; NTSUB27 précalcul nocturne
-    # des métriques SaaS ; NTSUB26 purge mensuelle des compteurs d'usage
-    # facturés ; NTDOC32 purge des dépôts contrepartie archivés. Toutes des
-    # balayages/recalculs planifiés, aucun déclenché par un événement
-    # synchrone utilisateur.
-    'btp_chantier.rapport_photo_hebdo': {'queue': 'scheduled'},
+    # NTSUB27 précalcul nocturne des métriques SaaS ; NTSUB26 purge mensuelle
+    # des compteurs d'usage facturés ; NTDOC32 purge des dépôts contrepartie
+    # archivés. Toutes des balayages/recalculs planifiés, aucun déclenché par
+    # un événement synchrone utilisateur.
+    # (Le rapport photo hebdomadaire BTP était listé ici une SECONDE fois —
+    # doublon de clé retiré, il garde sa route NTCON18 déclarée plus haut.)
     'contrats.recalculer_metriques_saas_cache_daily': {'queue': 'scheduled'},
     'contrats.purger_compteurs_usage_factures_monthly': {'queue': 'scheduled'},
     'contrats.purger_contreparties_archivees': {'queue': 'scheduled'},
