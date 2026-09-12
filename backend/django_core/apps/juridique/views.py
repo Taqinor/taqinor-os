@@ -15,6 +15,7 @@ permission au rôle d'un approbateur désigné bloque son bouton « Approuver »
 côté API immédiatement, sans toucher aux étapes en cours.
 """
 from django.contrib.auth import get_user_model
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
@@ -140,6 +141,56 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
         """
         return Response(selectors.tableau_bord_juridique(
             request.user.company, user=request.user))
+
+    # ── NTJUR28 — export .xlsx assureur / due diligence ─────────────────────
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=False, methods=['get'], url_path='export')
+    def export(self, request):
+        """Registre .xlsx des dossiers (revue d'assurance RC, due diligence).
+
+        Filtres : ``?statut=`` et ``?periode=AAAA`` (année d'ouverture).
+        Colonnes : référence, titre, nature, procédure, partie adverse,
+        position, montant en jeu, provision comptabilisée, budget alloué,
+        statut, date d'ouverture, responsable.
+
+        Deux garanties tenues par construction : le queryage passe par
+        ``get_queryset`` (donc scope société ET exclusion des dossiers
+        confidentiels pour un exportateur non autorisé), et AUCUNE donnée
+        hors-périmètre — jamais de ``prix_achat``, jamais un coût d'achat.
+        """
+        from apps.records.xlsx import build_xlsx_response
+
+        qs = self.get_queryset()
+        periode = request.query_params.get('periode')
+        if periode:
+            try:
+                qs = qs.filter(date_ouverture__year=int(periode))
+            except (TypeError, ValueError):
+                return Response(
+                    {'periode': "Indiquez une année sur 4 chiffres "
+                                "(ex. 2026)."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        headers = [
+            'Référence', 'Titre', 'Nature', 'Procédure', 'Partie adverse',
+            'Notre position', 'Montant en jeu', 'Provision comptabilisée',
+            'Budget alloué', 'Statut', "Date d'ouverture", 'Responsable',
+        ]
+        rows = [
+            [
+                d.reference, d.titre, d.get_nature_display(),
+                d.get_type_procedure_display(), d.partie_adverse_nom,
+                d.get_notre_position_display(), d.montant_en_jeu,
+                d.provision_comptable_id or '', d.budget_alloue,
+                d.get_statut_display(), d.date_ouverture,
+                (d.responsable_interne.get_username()
+                 if d.responsable_interne_id else ''),
+            ]
+            for d in qs.order_by('reference', 'id')
+        ]
+        return build_xlsx_response(
+            'registre-dossiers-juridiques.xlsx', headers, rows,
+            sheet_title='Dossiers')
 
     # ── NTJUR20 — timeline unifiée ──────────────────────────────────────────
 
