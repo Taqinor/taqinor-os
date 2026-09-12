@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    PACT59 — Suivi projet du chantier : jalons, modèles, comptes-rendus.
    ----------------------------------------------------------------------------
    Trou (a) : `JalonProjetViewSet` (phases étude/appro/pose/mes/réception, dates
@@ -295,13 +295,11 @@ export default function SuiviProjetChantier() {
   // Non-régression : sans choix explicite (utilisateur ou `?chantier=`
   // consommé par `ChantierSelect`), on retombe sur le PREMIER chantier une
   // fois la liste chargée — comportement historique préservé (même hook que
-  // `ChantierSelect`, donc même liste).
+  // `ChantierSelect`, donc même liste). Valeur DÉRIVÉE au rendu, jamais un
+  // setState en effet (classe react-hooks v7 set-state-in-effect).
   const { chantiers, loading: loadingChantiers } = useChantiers()
-  useEffect(() => {
-    if (loadingChantiers || selected != null || chantiers.length === 0) return
-    setSelected(chantiers[0].id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingChantiers, chantiers])
+  const chantierActif = selected
+    ?? (!loadingChantiers && chantiers.length > 0 ? chantiers[0].id : null)
 
   return (
     <div className="page flex flex-col gap-6">
@@ -313,11 +311,11 @@ export default function SuiviProjetChantier() {
         <label className="form-label" htmlFor="spc-chantier">Chantier</label>
         <ChantierSelect
           id="spc-chantier"
-          value={selected}
+          value={chantierActif}
           onChange={(v) => setSelected(v ? Number(v) : null)}
         />
       </div>
-      {selected != null ? (
+      {chantierActif != null ? (
         <Tabs defaultValue="jalons" className="flex flex-col gap-4">
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="jalons">Jalons</TabsTrigger>
@@ -325,13 +323,13 @@ export default function SuiviProjetChantier() {
             <TabsTrigger value="reunions">Réunions de chantier</TabsTrigger>
           </TabsList>
           <TabsContent value="jalons">
-            <JalonsTab installationId={selected} />
+            <JalonsTab installationId={chantierActif} />
           </TabsContent>
           <TabsContent value="modeles">
-            <ModelesTab installationId={selected} />
+            <ModelesTab installationId={chantierActif} />
           </TabsContent>
           <TabsContent value="reunions">
-            <ReunionsTab installationId={selected} />
+            <ReunionsTab installationId={chantierActif} />
           </TabsContent>
         </Tabs>
       ) : (
