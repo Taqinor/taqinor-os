@@ -15,3 +15,10 @@ class SemanticConfig(AppConfig):
         'description': 'Métriques nommées et gouvernées (couche sémantique BI).',
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # NTDATA9 — le versionnage écoute les enregistrements de
+        # `MetricDefinition` (API, admin, seeder, script : les quatre chemins
+        # d'édition). Import LOCAL : `ready()` est le seul endroit où les
+        # modèles sont chargés.
+        from . import receivers  # noqa: F401

@@ -262,6 +262,66 @@ def resolve_metric(company, user, cle, *, filters=None, group_by=None,
     return dict(entete, valeur=valeur, lignes=lignes)
 
 
+# ── NTDATA9 — VERSIONNAGE : figer ce qui produisait le chiffre d'hier ──────
+#
+# Une métrique est une DÉFINITION PARTAGÉE : corriger la formule de « marge
+# brute » change TOUS les écrans qui la référencent — c'est le but. Mais alors
+# un chiffre imprimé le mois dernier cesse d'être reproductible, et personne ne
+# peut dire ce qui a changé ni quand.
+#
+# `snapshot_metrique` fige l'état versionnable (dataset / mesure / filtres /
+# unité) dans une ligne IMMUABLE. Deux règles :
+#
+#  1. NUMÉRO = DERNIER + 1, SOUS VERROU — jamais `count()+1` : une version
+#     supprimée ferait collisionner le compteur (précédent de production,
+#     `apps/ventes/utils/references.py`).
+#  2. IDEMPOTENT PAR CONTENU — enregistrer une métrique sans toucher à sa
+#     définition (renommage, activation, re-passage du seeder) ne crée PAS de
+#     version. Un historique qui compte les sauvegardes au lieu des changements
+#     ne répond plus à la seule question qu'on lui pose : « qu'est-ce qui a
+#     changé, et quand ? ».
+
+
+def snapshot_metrique(definition, *, auteur=None, force=False):
+    """Fige l'état versionnable de ``definition``. Renvoie la version courante.
+
+    ``force`` crée une ligne même si rien n'a changé (utile pour marquer un
+    jalon explicite). Sans lui, une définition inchangée rend sa DERNIÈRE
+    version, sans rien écrire.
+    """
+    from django.db import transaction
+
+    from .models import MetricDefinitionVersion
+
+    instantane = definition.instantane()
+    with transaction.atomic():
+        derniere = (MetricDefinitionVersion.objects
+                    .select_for_update()
+                    .filter(metric_definition=definition)
+                    .order_by('-version')
+                    .first())
+        if (derniere is not None and not force
+                and derniere.instantane() == instantane):
+            return derniere
+        return MetricDefinitionVersion.objects.create(
+            company=definition.company,
+            metric_definition=definition,
+            version=(derniere.version + 1) if derniere else 1,
+            libelle=definition.libelle,
+            auteur=auteur,
+            **instantane)
+
+
+def versions_metrique(definition):
+    """Les versions d'une définition, de la plus RÉCENTE à la plus ancienne."""
+    from .models import MetricDefinitionVersion
+
+    return (MetricDefinitionVersion.objects
+            .filter(company=definition.company, metric_definition=definition)
+            .select_related('auteur')
+            .order_by('-version', '-id'))
+
+
 def resolve_metric_valeur(company, user, cle, **kwargs):
     """Raccourci : la seule VALEUR globale d'une métrique (ou ``None``).
 

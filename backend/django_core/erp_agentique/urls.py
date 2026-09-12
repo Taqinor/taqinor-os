@@ -219,6 +219,11 @@ _APP_URLS = [
     # Groupe NTDATA — qualité de données : règles de validation, rapport de
     # conformité, complétude par module et dédoublonnage cross-module.
     path('dataquality/', include('apps.dataquality.urls')),
+    # Groupe NTDATA — couche sémantique : historique figé des définitions de
+    # métriques (NTDATA9) et lignage « d'où vient ce chiffre » (NTDATA43). Le
+    # segment est IDENTIQUE à la clé de manifeste (`semantic`) : le gatage 404
+    # des modules désactivés vise le bon module sans entrée PREFIX_TO_MODULE.
+    path('semantic/', include('apps.semantic.urls')),
 ]
 
 urlpatterns = [
