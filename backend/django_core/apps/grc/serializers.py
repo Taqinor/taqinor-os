@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     AnalyseImpactDPIA, AttestationPolitique, ControleInterne,
-    DeficienceControle,
+    DeficienceControle, FluxDonnees,
     IncidentActivity, IncidentSecurite, JournalDestruction, LegalHold,
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
@@ -822,6 +822,75 @@ class AnalyseImpactDPIASerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'avis_dpo': 'Justifiez pourquoi aucune analyse d\'impact '
                             'n\'est nécessaire.'})
+        return attrs
+
+
+class FluxDonneesSerializer(serializers.ModelSerializer):
+    """NTGRC30 — flux de données personnelles (cartographie)."""
+
+    destination_libelle = serializers.CharField(
+        source='get_destination_display', read_only=True)
+    garanties_libelle = serializers.CharField(
+        source='get_garanties_display', read_only=True)
+
+    class Meta:
+        model = FluxDonnees
+        fields = [
+            'id', 'traitement_ref', 'source', 'destination',
+            'destination_libelle', 'destinataire', 'categories_donnees',
+            'transfert_hors_maroc', 'pays_destination', 'garanties',
+            'garanties_libelle', 'volume_estime', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_source(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                'Indiquez le système source du flux.')
+        return valeur
+
+    def validate_categories_donnees(self, valeur):
+        if valeur in (None, ''):
+            return []
+        if not isinstance(valeur, list):
+            raise serializers.ValidationError(
+                'Les catégories de données doivent être une LISTE.')
+        return valeur
+
+    def validate_traitement_ref(self, valeur):
+        """Le traitement, s'il est indiqué, doit être celui de la société."""
+        valeur = str(valeur or '').strip()
+        requete = self.context.get('request')
+        company = getattr(getattr(requete, 'user', None), 'company', None)
+        if not valeur or company is None:
+            return valeur
+        from core.models import RegistreTraitement
+
+        try:
+            traitement_id = int(valeur)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'La référence du traitement doit être un identifiant '
+                'numérique.')
+        if not RegistreTraitement.objects.filter(
+                company=company, pk=traitement_id).exists():
+            raise serializers.ValidationError(
+                "Ce traitement n'existe pas pour votre société.")
+        return valeur
+
+    def validate(self, attrs):
+        """Un transfert hors Maroc doit dire OÙ il va."""
+        hors = attrs.get(
+            'transfert_hors_maroc',
+            getattr(self.instance, 'transfert_hors_maroc', False))
+        pays = attrs.get(
+            'pays_destination',
+            getattr(self.instance, 'pays_destination', ''))
+        if hors and not (pays or '').strip():
+            raise serializers.ValidationError({
+                'pays_destination': 'Indiquez le pays de destination du '
+                                    'transfert.'})
         return attrs
 
 

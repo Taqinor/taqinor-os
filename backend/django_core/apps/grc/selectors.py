@@ -765,3 +765,25 @@ def score_conformite(company, now=None):
         'details': details,
         'calcule_le': maintenant.isoformat(),
     }
+
+
+# ── NTGRC30 — cartographie des flux de données ──────────────────────────────
+
+def flux_hors_maroc(company):
+    """NTGRC30 — flux SORTANT du Maroc, à surveiller.
+
+    Un transfert international n'est pas interdit, il est CONDITIONNÉ : il
+    faut pouvoir nommer la garantie qui l'encadre. Ce sélecteur remonte donc
+    TOUS les flux déclarés hors Maroc — y compris (et surtout) ceux SANS
+    garantie déclarée, qui sont précisément ceux qu'il faut régulariser.
+
+    Trié garanties manquantes d'abord : c'est la file de travail, pas une
+    liste alphabétique.
+    """
+    from .models import FluxDonnees
+
+    if company is None:
+        return FluxDonnees.objects.none()
+    return (FluxDonnees.objects
+            .filter(company=company, transfert_hors_maroc=True)
+            .order_by('garanties', 'pays_destination', 'id'))

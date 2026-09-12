@@ -15,7 +15,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AnalyseImpactDPIA, AttestationPolitique, ControleInterne,
-    DeficienceControle,
+    DeficienceControle, FluxDonnees,
     IncidentSecurite, JournalDestruction, LegalHold,
     ModeleQuestionnaire, PlanTraitementRisque,
     PolitiqueInterne, PolitiqueRetentionObjet,
@@ -25,7 +25,8 @@ from .models import (
 from .serializers import (
     AnalyseImpactDPIASerializer,
     AttestationPolitiqueSerializer, ControleInterneSerializer,
-    DeficienceControleSerializer, IncidentActivitySerializer,
+    DeficienceControleSerializer, FluxDonneesSerializer,
+    IncidentActivitySerializer,
     IncidentSecuriteSerializer,
     JournalDestructionSerializer, LegalHoldSerializer,
     ModeleQuestionnaireSerializer, PlanTraitementRisqueSerializer,
@@ -847,6 +848,38 @@ class AnalyseImpactDPIAViewSet(CompanyScopedModelViewSet):
             }
             for entree in manquants
         ]})
+
+
+class FluxDonneesViewSet(CompanyScopedModelViewSet):
+    """NTGRC30 — cartographie des flux de données personnelles."""
+
+    queryset = FluxDonnees.objects.all()
+    serializer_class = FluxDonneesSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        destination = (params.get('destination') or '').strip()
+        if destination:
+            qs = qs.filter(destination=destination)
+        traitement = (params.get('traitement_ref') or '').strip()
+        if traitement:
+            qs = qs.filter(traitement_ref=traitement)
+        hors = (params.get('transfert_hors_maroc') or '').strip()
+        if hors in ('1', 'true', 'True', 'oui'):
+            qs = qs.filter(transfert_hors_maroc=True)
+        elif hors in ('0', 'false', 'False', 'non'):
+            qs = qs.filter(transfert_hors_maroc=False)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='hors-maroc')
+    def hors_maroc(self, request):
+        """Transferts internationaux à surveiller (sans garantie d'abord)."""
+        from .selectors import flux_hors_maroc
+
+        qs = flux_hors_maroc(request.user.company)
+        return Response({'results': self.get_serializer(qs, many=True).data})
 
 
 @api_view(['GET'])

@@ -1519,3 +1519,80 @@ class AnalyseImpactDPIA(TenantModel):
     def __str__(self):
         return (f'AIPD traitement {self.traitement_ref} '
                 f'({self.get_statut_display()})')
+
+
+class FluxDonnees(TenantModel):
+    """NTGRC30 — cartographie d'un FLUX de données personnelles.
+
+    Le registre des traitements dit POURQUOI on traite ; la cartographie dit
+    OÙ les données VONT. C'est la différence entre une déclaration et une
+    carte : le jour où l'on doit répondre « quelles données sortent du Maroc
+    et sous quelle garantie ? », seule la carte répond.
+
+    ``transfert_hors_maroc`` est un drapeau ASSUMÉ, pas une déduction du nom
+    de pays : « Casablanca » écrit dans une case libre ne prouve rien, et
+    déduire la localisation d'une chaîne de caractères produirait exactement
+    le genre de faux négatif qu'un contrôle sanctionne.
+    """
+
+    DESTINATION_INTERNE = 'interne'
+    DESTINATION_SOUS_TRAITANT = 'sous_traitant'
+    DESTINATION_TIERS = 'tiers'
+    DESTINATION_CHOICES = [
+        (DESTINATION_INTERNE, 'Service interne'),
+        (DESTINATION_SOUS_TRAITANT, 'Sous-traitant'),
+        (DESTINATION_TIERS, 'Tiers (destinataire autonome)'),
+    ]
+
+    GARANTIE_AUCUNE = ''
+    GARANTIE_CCT = 'cct'
+    GARANTIE_ADEQUATION = 'adequation'
+    GARANTIE_DEROGATION = 'derogation'
+    GARANTIE_CHOICES = [
+        (GARANTIE_AUCUNE, '— aucune garantie déclarée'),
+        (GARANTIE_CCT, 'Clauses contractuelles types'),
+        (GARANTIE_ADEQUATION, 'Décision d\'adéquation'),
+        (GARANTIE_DEROGATION, 'Dérogation (consentement, contrat…)'),
+    ]
+
+    traitement_ref = models.CharField(
+        'Traitement', max_length=64, blank=True, default='',
+        help_text='Identifiant texte du core.RegistreTraitement (string-FK).')
+    source = models.CharField(
+        'Source', max_length=160,
+        help_text='Application ou système d\'origine (ex. « ERP — CRM »).')
+    destination = models.CharField(
+        'Type de destination', max_length=15, choices=DESTINATION_CHOICES,
+        default=DESTINATION_INTERNE)
+    destinataire = models.CharField(
+        'Destinataire', max_length=200, blank=True, default='',
+        help_text='Nom du service, du sous-traitant ou du tiers.')
+    categories_donnees = models.JSONField(
+        'Catégories de données', default=list, blank=True,
+        help_text='Ex. ["identite", "contact", "donnees_bancaires"].')
+    transfert_hors_maroc = models.BooleanField(
+        'Transfert hors Maroc', default=False,
+        help_text='Déclaré explicitement — jamais déduit du nom du pays.')
+    pays_destination = models.CharField(
+        'Pays de destination', max_length=80, blank=True, default='')
+    garanties = models.CharField(
+        'Garanties du transfert', max_length=12, choices=GARANTIE_CHOICES,
+        blank=True, default=GARANTIE_AUCUNE)
+    volume_estime = models.CharField(
+        'Volume estimé', max_length=120, blank=True, default='',
+        help_text='Ordre de grandeur (ex. « ~5 000 enregistrements/mois »).')
+
+    class Meta:
+        verbose_name = 'Flux de données'
+        verbose_name_plural = 'Cartographie des flux de données'
+        ordering = ['source', 'id']
+        indexes = [
+            models.Index(fields=['company', 'transfert_hors_maroc'],
+                         name='grc_flux_co_horsmaroc_idx'),
+            models.Index(fields=['company', 'traitement_ref'],
+                         name='grc_flux_co_trait_idx'),
+        ]
+
+    def __str__(self):
+        cible = self.destinataire or self.get_destination_display()
+        return f'{self.source} → {cible}'

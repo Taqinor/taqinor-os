@@ -14,7 +14,8 @@ from .public_views import (
 from .views import (
     AnalyseImpactDPIAViewSet,
     AttestationPolitiqueViewSet, ControleInterneViewSet,
-    DeficienceControleViewSet, JournalDestructionViewSet, LegalHoldViewSet,
+    DeficienceControleViewSet, FluxDonneesViewSet,
+    JournalDestructionViewSet, LegalHoldViewSet,
     IncidentSecuriteViewSet, ModeleQuestionnaireViewSet,
     PlanTraitementRisqueViewSet,
     PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
@@ -74,6 +75,9 @@ router.register(r'incidents-securite', IncidentSecuriteViewSet,
 # NTGRC27 — analyses d'impact (AIPD) des traitements à haut risque.
 router.register(r'analyses-dpia', AnalyseImpactDPIAViewSet,
                 basename='grc-analyse-dpia')
+# NTGRC30 — cartographie des flux de données (+ transferts hors Maroc).
+router.register(r'flux-donnees', FluxDonneesViewSet,
+                basename='grc-flux-donnees')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit
