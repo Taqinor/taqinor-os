@@ -6,11 +6,7 @@ import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
-<<<<<<< HEAD
-  Ship, Route, Layers, Repeat,
-=======
-  Ship, Route, Layers, Trash2,
->>>>>>> worktree-agent-a86df970bd42a7a42
+  Ship, Route, Layers, Repeat, Trash2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -230,15 +226,12 @@ const config = {
       { to: '/parametres/pieces-jointes', label: 'Pièces jointes', icon: <Paperclip size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // WIR282 — plans de commission (XSAL6), gatés responsable/admin.
       { to: '/parametres/plans-commission', label: 'Plans de commission', icon: <BadgePercent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-<<<<<<< HEAD
       // NTSUB24 — nav ET route ensemble (un écran non atteignable est un écran mort).
       { to: '/parametres/abonnements', label: 'Facturation récurrente', icon: <Repeat size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-=======
       // NTUX7 — corbeille transverse (nav ET route ensemble, motif PACT150).
       { to: '/parametres/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX27 — réglages UX par tenant (nav ET route ensemble, motif PACT150).
       { to: '/parametres/ux', label: 'UX', icon: <Settings size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
->>>>>>> worktree-agent-a86df970bd42a7a42
     ],
   },
   routes: [
@@ -261,12 +254,9 @@ const config = {
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },
-<<<<<<< HEAD
     { path: '/parametres/abonnements', component: AbonnementsParametresPage, roles: ['responsable', 'admin'] },
-=======
     { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
->>>>>>> worktree-agent-a86df970bd42a7a42
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés
