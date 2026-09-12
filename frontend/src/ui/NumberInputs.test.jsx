@@ -54,3 +54,39 @@ describe('NumberInputs — saisie sans perte', () => {
     expect(results.violations).toEqual([])
   })
 })
+
+/* NTI18N6 — en contexte RTL (arabe), un montant reste lisible de GAUCHE à
+   DROITE (convention universelle des chiffres) : le champ natif porte
+   `dir="ltr"` EXPLICITE, indépendamment de la direction ambiante posée sur
+   un ancêtre (`<html dir="rtl">` en pratique, simulé ici par un conteneur
+   `dir="rtl"`). L'alignement VISUEL (`text-right`, le conteneur) reste lui
+   physique — les deux ne se contredisent pas : un champ peut se lire de
+   gauche à droite tout en étant aligné à droite dans son conteneur. */
+describe('NTI18N6 — chiffres LTR même en contexte RTL', () => {
+  it('CurrencyInput affiche un montant lisible de gauche à droite, aligné à droite', () => {
+    render(
+      <div dir="rtl">
+        <CurrencyInput aria-label="montant" defaultValue="1 234,50" onChange={() => {}} />
+      </div>,
+    )
+    const input = screen.getByLabelText('montant')
+    // Lecture gauche→droite du contenu du champ, quelle que soit la
+    // direction ambiante RTL du conteneur englobant.
+    expect(input).toHaveAttribute('dir', 'ltr')
+    expect(input).toHaveValue('1 234,50')
+    // Alignement visuel du conteneur : toujours à droite (convention
+    // numérique universelle, cf. NTI18N1 — jamais inversé en RTL).
+    expect(input.className).toContain('text-right')
+  })
+
+  it('NumberInput et PercentInput portent aussi dir="ltr"', () => {
+    render(
+      <div dir="rtl">
+        <NumberInput aria-label="nombre" value="" onChange={() => {}} />
+        <PercentInput aria-label="pourcentage" value="" onChange={() => {}} />
+      </div>,
+    )
+    expect(screen.getByLabelText('nombre')).toHaveAttribute('dir', 'ltr')
+    expect(screen.getByLabelText('pourcentage')).toHaveAttribute('dir', 'ltr')
+  })
+})
