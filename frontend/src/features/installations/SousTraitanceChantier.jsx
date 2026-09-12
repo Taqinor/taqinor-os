@@ -8,6 +8,7 @@
    le premier consommateur : annuaire à gauche, fiche à onglets à droite.
    ========================================================================== */
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PlusCircle } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
@@ -124,7 +125,13 @@ function CreateSousTraitantDialog({ onClose, onCreated }) {
 
 // ── Onglet Ordres ────────────────────────────────────────────────────────────
 function CreateOrdreDialog({ sousTraitantId, chantiers, onClose, onCreated }) {
-  const [chantier, setChantier] = useState('')
+  // CHT19 — sémantique différente de `ChantierSelect` (ce select vit dans un
+  // dialogue de création d'ordre, le chantier y reste optionnel) : la
+  // pré-sélection `?chantier=<id>` est lue UNE FOIS, à l'OUVERTURE du
+  // dialogue (initialiseur paresseux — ce composant est remonté à chaque
+  // ouverture), jamais réappliquée après coup.
+  const [searchParams] = useSearchParams()
+  const [chantier, setChantier] = useState(() => searchParams.get('chantier') || '')
   const [prestation, setPrestation] = useState('')
   const [montant, setMontant] = useState('')
   const [dateEcheance, setDateEcheance] = useState('')
