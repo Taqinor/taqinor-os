@@ -1392,3 +1392,53 @@ class IncidentSecurite(TenantModel):
 
     def __str__(self):
         return f'{self.reference or "INC"} — {self.titre}'
+
+
+class IncidentActivity(TenantModel):
+    """NTGRC26 — chronologie (« chatter ») d'un incident de sécurité.
+
+    Même esprit que ``crm.LeadActivity`` : deux familles d'entrées, les
+    AUTOMATIQUES (transitions de statut, écrites par le service, jamais par le
+    navigateur) et les MANUELLES (notes libres : « appel au prestataire »,
+    « poste réimagé »). Sans cette chronologie, un incident clos ne raconte
+    plus rien — or c'est précisément le récit que réclame un auditeur ou une
+    autorité : qui a su quoi, et quand.
+
+    L'acteur est un INSTANTANÉ texte (il survit à la suppression du compte) et
+    il est TOUJOURS posé côté serveur : une ligne de chronologie qu'on peut
+    signer du nom d'un autre ne vaut rien.
+    """
+
+    TYPE_LOG = 'log'
+    TYPE_NOTE = 'note'
+    TYPE_CHOICES = [
+        (TYPE_LOG, 'Événement automatique'),
+        (TYPE_NOTE, 'Note manuelle'),
+    ]
+
+    incident = models.ForeignKey(
+        IncidentSecurite,
+        # on_delete: une ligne de chronologie n'existe que pour SON incident.
+        on_delete=models.CASCADE,
+        related_name='activites', verbose_name='Incident')
+    type = models.CharField(
+        'Type', max_length=6, choices=TYPE_CHOICES, default=TYPE_NOTE)
+    detail = models.TextField('Détail', blank=True, default='')
+    auteur = models.CharField(
+        'Auteur', max_length=150, blank=True, default='',
+        help_text="Instantané du nom d'utilisateur, posé côté serveur.")
+    timestamp = models.DateTimeField(
+        'Horodatage', default=timezone.now,
+        help_text='Horodatage SERVEUR de l\'événement.')
+
+    class Meta:
+        verbose_name = "Ligne de chronologie d'incident"
+        verbose_name_plural = "Chronologie d'incident"
+        ordering = ['-timestamp', '-id']
+        indexes = [
+            models.Index(fields=['company', 'incident'],
+                         name='grc_incidentact_co_inc_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_display()} — incident {self.incident_id}'

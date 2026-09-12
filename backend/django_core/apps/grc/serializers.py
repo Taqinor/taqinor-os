@@ -7,8 +7,9 @@ from rest_framework import serializers
 
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
-    IncidentSecurite, JournalDestruction, LegalHold, ModeleQuestionnaire,
-    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
+    IncidentActivity, IncidentSecurite, JournalDestruction, LegalHold,
+    ModeleQuestionnaire, PlanTraitementRisque,
+    PolitiqueInterne, PolitiqueRetentionObjet,
     PolitiqueVersion, QuestionnaireFournisseur, ReponseQuestionnaire,
     RevueRisque, RisqueEntreprise, TestControle, ViolationDonnees,
 )
@@ -757,3 +758,21 @@ class IncidentSecuriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Les systèmes touchés doivent être une LISTE de libellés.')
         return valeur
+
+
+class IncidentActivitySerializer(serializers.ModelSerializer):
+    """NTGRC26 — ligne de chronologie d'un incident (lecture seule).
+
+    Tout est en lecture seule : une ligne de chronologie s'AJOUTE (par
+    ``noter/`` ou par le service de transition), elle ne se réécrit pas — un
+    journal éditable ne prouve rien.
+    """
+
+    type_libelle = serializers.CharField(
+        source='get_type_display', read_only=True)
+
+    class Meta:
+        model = IncidentActivity
+        fields = ['id', 'incident', 'type', 'type_libelle', 'detail',
+                  'auteur', 'timestamp', 'created_at']
+        read_only_fields = fields

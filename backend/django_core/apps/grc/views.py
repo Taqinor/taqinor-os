@@ -13,14 +13,16 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
-    IncidentSecurite, JournalDestruction, LegalHold, ModeleQuestionnaire,
-    PlanTraitementRisque, PolitiqueInterne, PolitiqueRetentionObjet,
+    IncidentSecurite, JournalDestruction, LegalHold,
+    ModeleQuestionnaire, PlanTraitementRisque,
+    PolitiqueInterne, PolitiqueRetentionObjet,
     QuestionnaireFournisseur, ReponseQuestionnaire, RevueRisque,
     RisqueEntreprise, TestControle, ViolationDonnees,
 )
 from .serializers import (
     AttestationPolitiqueSerializer, ControleInterneSerializer,
-    DeficienceControleSerializer, IncidentSecuriteSerializer,
+    DeficienceControleSerializer, IncidentActivitySerializer,
+    IncidentSecuriteSerializer,
     JournalDestructionSerializer, LegalHoldSerializer,
     ModeleQuestionnaireSerializer, PlanTraitementRisqueSerializer,
     PolitiqueInterneSerializer, PolitiqueRetentionObjetSerializer,
@@ -758,3 +760,29 @@ class IncidentSecuriteViewSet(CompanyScopedModelViewSet):
             'incident': self.get_serializer(incident).data,
             'violation': ViolationDonneesSerializer(violation).data,
         }, status=201)
+
+    @action(detail=True, methods=['get'])
+    def historique(self, request, pk=None):
+        """NTGRC26 — chronologie de l'incident (plus récent d'abord)."""
+        incident = self.get_object()
+        return Response({'results': IncidentActivitySerializer(
+            incident.activites.all(), many=True).data})
+
+    @action(detail=True, methods=['post'])
+    def noter(self, request, pk=None):
+        """NTGRC26 — ajoute une note manuelle (``{"detail": "..."}``).
+
+        L'acteur et la société sont posés CÔTÉ SERVEUR.
+        """
+        from .services import noter_incident
+
+        incident = self.get_object()
+        try:
+            activite = noter_incident(
+                incident, request.data.get('detail'),
+                acteur=getattr(request.user, 'username', '') or '')
+        except ValueError:
+            return Response(
+                {'detail': 'Écrivez la note avant de l\'enregistrer.'},
+                status=400)
+        return Response(IncidentActivitySerializer(activite).data, status=201)

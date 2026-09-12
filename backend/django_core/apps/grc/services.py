@@ -1055,13 +1055,51 @@ def changer_statut_incident(incident, cible, acteur=''):
 
 
 def journaliser_transition_incident(incident, ancien, nouveau, acteur=''):
-    """Point d'extension de la chronologie d'incident (NTGRC26).
+    """NTGRC26 — écrit la transition de statut dans la chronologie.
 
-    Défini ICI et appelé par le service de transition pour que le jour où la
-    chronologie existe, AUCUNE transition ne lui échappe — un journal qu'on
-    branche après coup rate toujours la moitié des événements.
+    Appelée par le service de transition, de sorte qu'AUCUN changement de
+    statut ne puisse échapper au journal — un chatter branché sur la vue rate
+    toujours les changements faits par un autre chemin de code.
+
+    Best-effort : une chronologie qui échoue ne doit pas faire échouer le
+    traitement de l'incident lui-même.
     """
-    return None
+    from .models import IncidentActivity, IncidentSecurite
+
+    libelles = dict(IncidentSecurite.STATUT_CHOICES)
+    try:
+        return IncidentActivity.objects.create(
+            company=incident.company,
+            incident=incident,
+            type=IncidentActivity.TYPE_LOG,
+            detail=(f'Statut : {libelles.get(ancien, ancien)} → '
+                    f'{libelles.get(nouveau, nouveau)}'),
+            auteur=(acteur or '')[:150],
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'incident
+        logger.exception(
+            'grc: chronologie d\'incident impossible (%s)',
+            getattr(incident, 'pk', None))
+        return None
+
+
+def noter_incident(incident, detail, acteur=''):
+    """NTGRC26 — ajoute une NOTE manuelle à la chronologie d'un incident.
+
+    L'acteur et la société sont posés CÔTÉ SERVEUR, jamais lus du corps.
+    """
+    from .models import IncidentActivity
+
+    detail = (detail or '').strip()
+    if not detail:
+        raise ValueError('La note est vide.')
+    return IncidentActivity.objects.create(
+        company=incident.company,
+        incident=incident,
+        type=IncidentActivity.TYPE_NOTE,
+        detail=detail,
+        auteur=(acteur or '')[:150],
+    )
 
 
 def escalader_incident_en_violation(incident, **champs):
