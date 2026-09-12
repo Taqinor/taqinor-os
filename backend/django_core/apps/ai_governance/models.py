@@ -397,3 +397,41 @@ class PromptTemplateVersion(TenantModel):
 
     def __str__(self):
         return f'{self.template_id} v{self.numero}'
+
+
+class AiFeatureToggle(TenantModel):
+    """NTAI7 — Consentement IA d'une société, feature par feature.
+
+    Une société peut refuser l'IA sur un périmètre précis (« pas d'IA sur les
+    données RH ») sans renoncer au reste. **Le défaut est ACTIF** : l'absence
+    de ligne veut dire « rien n'a été refusé », donc le comportement reste
+    byte-identique à l'avant-NTAI7. Couper une feature est une décision
+    explicite, jamais un effet de bord.
+
+    Le refus est strictement scopé société : couper « ai.rediger » chez l'un
+    ne change rien chez l'autre.
+    """
+
+    feature_key = models.CharField(
+        max_length=120,
+        help_text='Clé de la feature IA (ex. « ai.rediger »), telle qu\'elle '
+                  'apparaît aussi dans le journal d\'usage.')
+    actif = models.BooleanField(
+        default=True,
+        help_text='Décoché = la feature devient inopérante pour cette société.')
+    motif = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Pourquoi la société a coupé cette feature (traçabilité).')
+
+    class Meta:
+        verbose_name = 'Consentement IA'
+        verbose_name_plural = 'Consentements IA'
+        ordering = ['feature_key']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'feature_key'],
+                name='uniq_aifeaturetoggle_co_key'),
+        ]
+
+    def __str__(self):
+        return f'{self.feature_key} ({"actif" if self.actif else "coupé"})'

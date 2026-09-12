@@ -41,6 +41,20 @@ class AiCopiloteUnavailable(Exception):
         self.configured = configured
 
 
+def exiger_feature(company, feature_key) -> None:
+    """NTAI7 — Refuse proprement si la société a COUPÉ cette feature IA.
+
+    Lève :class:`AiCopiloteUnavailable` ``configured=False`` (503 douce, même
+    chemin qu'une clé absente : l'utilisateur lit un message FR, jamais une
+    500). Sans réglage, ne fait rien — le défaut est ACTIF."""
+    from core.ai.services import feature_enabled
+
+    if not feature_enabled(company, feature_key):
+        raise AiCopiloteUnavailable(
+            'Cette fonction IA a été désactivée pour votre société — '
+            'rapprochez-vous de votre administrateur.', configured=False)
+
+
 def prompt_effectif(company, cle, defaut='', context=None) -> str:
     """NTAI5 — Corps EFFECTIF d'un prompt : surcharge société, sinon défaut.
 
@@ -163,6 +177,8 @@ def generer_description_produit(*, company, produit_id, max_tokens=400) -> dict:
     société (``configured=True`` → 400) ou si aucune clé LLM n'est configurée
     (``configured=False`` → 503, aucun appel réseau).
     """
+    exiger_feature(company, 'ai.description_produit')
+
     from apps.stock.selectors import get_produit_scoped
 
     try:
@@ -294,6 +310,8 @@ def rediger_brouillon(*, company, content_type, object_id, canal='email',
 
     N'ENVOIE JAMAIS : renvoie un brouillon éditable (``envoye: False``).
     """
+    exiger_feature(company, 'ai.rediger')
+
     from apps.records.serializers import resolve_target
     from core.ai.services import draft_reply
 
@@ -430,6 +448,8 @@ def cr_intervention_depuis_audio(*, company, file_bytes, ticket_id=None,
     reconnu ou ticket hors société (400) ; aucune clé STT (503, aucun appel
     réseau).
     """
+    exiger_feature(company, 'ai.cr_intervention')
+
     from apps.sav.selectors import ticket_scoped
     from core.ai.services import transcribe_audio
 
@@ -662,6 +682,8 @@ def rapport_periode(*, company, module, periode, max_tokens=400) -> dict:
     Sans clé LLM : 503 douce — les métriques restent lisibles via l'écran de
     reporting existant.
     """
+    exiger_feature(company, 'ai.rapport_periode')
+
     module = str(module or '').strip().lower()
     if module not in RAPPORT_MODULES:
         raise AiCopiloteUnavailable(
@@ -1156,6 +1178,8 @@ def recherche_globale(*, company, question, limit=RECHERCHE_GLOBALE_LIMITE,
     ``'recherche'`` (repli : la liste des fiches trouvées, sans rédaction —
     c'est ce qui se passe sans clé LLM). N'ÉCRIT JAMAIS.
     """
+    exiger_feature(company, 'ai.recherche_globale')
+
     from core.ai.search import rechercher
 
     question = str(question or '').strip()

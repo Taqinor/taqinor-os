@@ -42,6 +42,33 @@ def connect_prompt_resolver():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# NTAI7 — Consentement IA par feature
+# ─────────────────────────────────────────────────────────────────────────────
+
+def resoudre_toggle(company, feature_key):
+    """``True``/``False`` si la société a un avis, ``None`` sinon.
+
+    ``None`` (aucune ligne) laisse la feature ACTIVE : le refus est toujours
+    explicite."""
+    from .models import AiFeatureToggle
+
+    if company is None:
+        return None
+    filtre = ({'company_id': company} if isinstance(company, int)
+              else {'company': company})
+    ligne = AiFeatureToggle.objects.filter(
+        feature_key=feature_key, **filtre).only('actif').first()
+    return None if ligne is None else ligne.actif
+
+
+def connect_feature_toggles():
+    """Branche le résolveur de consentement (appelé par ``apps.py``)."""
+    from core.ai.services import register_feature_toggle_resolver
+
+    register_feature_toggle_resolver(resoudre_toggle)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Versions immuables
 # ─────────────────────────────────────────────────────────────────────────────
 

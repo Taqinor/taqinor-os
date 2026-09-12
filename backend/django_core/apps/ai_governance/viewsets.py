@@ -19,9 +19,10 @@ from rest_framework.response import Response
 from authentication.permissions import IsAdminRole, IsAnyRole
 from core.mixins import TenantMixin
 
-from .models import DocumentAiJob, LlmBudget, PromptTemplate
-from .serializers import (DocumentAiJobSerializer, LlmBudgetSerializer,
-                          PromptTemplateSerializer)
+from .models import (AiFeatureToggle, DocumentAiJob, LlmBudget,
+                     PromptTemplate)
+from .serializers import (AiFeatureToggleSerializer, DocumentAiJobSerializer,
+                          LlmBudgetSerializer, PromptTemplateSerializer)
 from .services import AiCopiloteUnavailable
 
 
@@ -62,6 +63,21 @@ class LlmBudgetViewSet(TenantMixin, viewsets.ModelViewSet):
         from core.ai.usage import budget_status
 
         return Response(budget_status(request.user.company).as_dict())
+
+
+class AiFeatureToggleViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTAI7 — CRUD des consentements IA. ADMIN uniquement.
+
+    Couper une feature ici la rend inopérante POUR CETTE SOCIÉTÉ seulement ;
+    l'absence de ligne vaut « actif » (le défaut n'est jamais un refus).
+    """
+
+    queryset = AiFeatureToggle.objects.all()
+    serializer_class = AiFeatureToggleSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 class PromptTemplateViewSet(TenantMixin, viewsets.ModelViewSet):

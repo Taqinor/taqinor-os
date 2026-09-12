@@ -8,6 +8,7 @@ la couche ``services.py`` de l'app appelante (stock/crm/installations).
 """
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -17,6 +18,51 @@ from typing import Any
 from core.ai.providers import AIResult
 from core.ai.registry import get_provider
 from core.ai.schemas import get_schema
+
+logger = logging.getLogger(__name__)
+
+
+# --- NTAI7 — Consentement & désactivation IA par module ---------------------
+#
+# Une société peut refuser l'IA sur un périmètre précis (« pas d'IA sur les
+# données RH ») sans renoncer au reste. Le DÉFAUT est ON : sans ligne de
+# refus, le comportement est byte-identique à l'avant-NTAI7.
+#
+# ``core`` ne connaît aucun modèle : l'app de gouvernance enregistre un
+# résolveur. Sans résolveur (app absente), tout est actif.
+
+_FEATURE_RESOLVER = None
+
+
+def register_feature_toggle_resolver(fn):
+    """Enregistre ``fn(company, feature_key) -> bool | None``.
+
+    ``None`` = « pas d'avis » (aucune ligne) → la feature reste ACTIVE."""
+    global _FEATURE_RESOLVER
+    _FEATURE_RESOLVER = fn
+    return fn
+
+
+def feature_toggle_resolver():
+    """Résolveur enregistré (ou ``None``)."""
+    return _FEATURE_RESOLVER
+
+
+def feature_enabled(company, key: str) -> bool:
+    """La feature IA ``key`` est-elle active pour ``company`` ?
+
+    DÉFAUT : ``True``. Une société sans réglage, une société inconnue, un
+    résolveur absent ou en panne → actif. Couper une feature est une décision
+    EXPLICITE, jamais un effet de bord d'une erreur de lecture."""
+    if _FEATURE_RESOLVER is None or company is None or not key:
+        return True
+    try:
+        avis = _FEATURE_RESOLVER(company, key)
+    except Exception:  # noqa: BLE001 — un réglage illisible ne coupe rien
+        logger.warning('core.ai: réglage de feature illisible (%s)', key,
+                       exc_info=True)
+        return True
+    return True if avis is None else bool(avis)
 
 
 # --- NTAI4 — Garde des sorties génératives ----------------------------------

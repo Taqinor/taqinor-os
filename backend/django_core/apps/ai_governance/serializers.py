@@ -1,8 +1,39 @@
 """Serializers du module « ai_governance » (Groupe NTAI)."""
 from rest_framework import serializers
 
-from .models import (DocumentAiJob, ExtractionCorrection, LlmBudget,
-                     PromptTemplate, PromptTemplateVersion)
+from .models import (AiFeatureToggle, DocumentAiJob, ExtractionCorrection,
+                     LlmBudget, PromptTemplate, PromptTemplateVersion)
+
+
+class AiFeatureToggleSerializer(serializers.ModelSerializer):
+    """NTAI7 — Consentement IA d'une société pour une feature.
+
+    ``company`` n'est pas un champ : elle est forcée dans ``perform_create``.
+    L'absence de ligne vaut « actif » — créer une ligne à ``actif: true`` est
+    donc un no-op explicite, et c'est voulu (l'écran montre l'état choisi).
+    """
+
+    class Meta:
+        model = AiFeatureToggle
+        fields = ['id', 'feature_key', 'actif', 'motif', 'created_at',
+                  'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_feature_key(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                'La clé de la fonction est obligatoire.')
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        doublon = AiFeatureToggle.objects.filter(
+            company=company, feature_key=valeur)
+        if self.instance is not None:
+            doublon = doublon.exclude(pk=self.instance.pk)
+        if company is not None and doublon.exists():
+            raise serializers.ValidationError(
+                'Cette fonction a déjà un réglage — modifiez-le.')
+        return valeur
 
 
 class PromptTemplateVersionSerializer(serializers.ModelSerializer):

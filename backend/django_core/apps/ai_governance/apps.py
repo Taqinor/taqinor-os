@@ -59,3 +59,8 @@ class AiGovernanceConfig(AppConfig):
         from .prompts import connect_prompt_resolver, enregistrer_defauts
         enregistrer_defauts()
         connect_prompt_resolver()
+
+        # NTAI7 — consentement IA par feature. Sans ligne de refus, tout reste
+        # actif : brancher le résolveur ne change rien par lui-même.
+        from .prompts import connect_feature_toggles
+        connect_feature_toggles()

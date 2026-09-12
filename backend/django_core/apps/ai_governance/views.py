@@ -133,6 +133,15 @@ class CapabilitiesView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsAdminOrResponsableTier]
     serializer_class = CapacitesRequeteSerializer
 
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant — seule source des
+        mesures de cet écran. Le rendre explicite rend le périmètre
+        vérifiable par la garde d'isolation multi-société, au lieu de le
+        laisser enfoui dans le calculateur de métriques."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
     @extend_schema(responses=inline_serializer('AiCapacitesEtat', {
         'capacite': drf_serializers.CharField(),
         'fournisseur_choisi': drf_serializers.CharField(),
