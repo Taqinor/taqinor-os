@@ -3,8 +3,9 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views import (AssistantConfigView, CrInterventionView,
-                    DescriptionProduitView, RapportPeriodeView,
-                    RechercheGlobaleView, RedigerView)
+                    DescriptionProduitView, ProchainesActionsView,
+                    RapportPeriodeView, RechercheGlobaleView, RedigerView,
+                    ResumeFicheView)
 from .viewsets import DocumentAiJobViewSet
 
 # SimpleRouter (et non DefaultRouter) : le préfixe `/api/django/ai/` ne doit
@@ -18,6 +19,11 @@ urlpatterns = [
     # NTAI35 — assistant de paramétrage (guidage seul + liens profonds).
     path('assistant-config/', AssistantConfigView.as_view(),
          name='ai-assistant-config'),
+    # NTAI8 — résumé FR de la situation d'une fiche (lecture seule).
+    path('resume-fiche/', ResumeFicheView.as_view(), name='ai-resume-fiche'),
+    # NTAI9 — 1 à 3 prochaines actions priorisées (propose, n'exécute jamais).
+    path('prochaines-actions/', ProchainesActionsView.as_view(),
+         name='ai-prochaines-actions'),
     # NTAI11 — brouillon de réponse/relance par canal (jamais envoyé).
     path('rediger/', RedigerView.as_view(), name='ai-rediger'),
     # NTAI12 — mémo vocal → compte rendu d'intervention structuré (SAV).

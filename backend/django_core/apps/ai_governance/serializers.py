@@ -170,6 +170,17 @@ class UsageRequeteSerializer(serializers.Serializer):
     feature = serializers.CharField(required=False, allow_blank=True)
 
 
+class FicheCibleSerializer(serializers.Serializer):
+    """NTAI8/NTAI9 — corps de ``resume-fiche/`` et ``prochaines-actions/``.
+
+    La société n'est JAMAIS dans le corps : elle vient de l'utilisateur
+    authentifié et borne la résolution de la cible côté serveur.
+    """
+
+    content_type = serializers.CharField()
+    object_id = serializers.CharField()
+
+
 class CapacitesRequeteSerializer(serializers.Serializer):
     """NTAI6 — requête (vide) de ``GET ai-governance/capabilities/``.
 

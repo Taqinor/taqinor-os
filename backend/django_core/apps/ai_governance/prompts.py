@@ -127,8 +127,9 @@ def enregistrer_defauts():
     qu'avant."""
     from core.ai.prompts import register_default_prompt
 
-    from . import services
+    from . import copilote, services
 
+    register_default_prompt('ai.resume_fiche.system', copilote.RESUME_SYSTEM)
     register_default_prompt('ai.description_produit.system',
                             services.PRODUIT_DESCRIPTION_SYSTEM)
     register_default_prompt('ai.cr_intervention.system', services.CR_SYSTEM)

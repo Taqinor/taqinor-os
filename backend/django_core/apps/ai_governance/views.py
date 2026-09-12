@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
-from .serializers import (CapacitesRequeteSerializer,
+from .serializers import (CapacitesRequeteSerializer, FicheCibleSerializer,
                           RechercheGlobaleRequeteSerializer,
                           UsageRequeteSerializer)
 from .services import AiCopiloteUnavailable
@@ -162,6 +162,116 @@ class CapabilitiesView(GenericAPIView):
         with usage_context(company_id=getattr(company, 'id', None),
                            feature_key='ai.capabilities'):
             return Response(capabilities_status(company))
+
+
+class ResumeFicheView(UsageContexteMixin, GenericAPIView):
+    """NTAI8 — ``POST /api/django/ai/resume-fiche/``.
+
+    Body ``{"content_type": "crm.lead", "object_id": 12}``. Renvoie un résumé
+    FR de la SITUATION de la fiche, construit à partir d'une allowlist de
+    champs + du fil d'activité (tout deux scopés société).
+
+    LECTURE SEULE. Type hors whitelist → 400 ; sans clé LLM → 503 douce
+    (« lecture manuelle »), aucun appel réseau.
+    """
+
+    feature_key = 'ai.resume_fiche'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = FicheCibleSerializer
+
+    def get_queryset(self):
+        """Fil d'activité de la SOCIÉTÉ de l'appelant — la seule source lue.
+
+        La fiche elle-même est résolue par ``resolve_target`` (qui refuse une
+        cible d'une autre société) ; ce ``get_queryset`` rend ce périmètre
+        EXPLICITE et vérifiable par la garde d'isolation multi-société.
+        """
+        from apps.records.models import Activity
+
+        return Activity.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiResumeFiche', {
+        'content_type': drf_serializers.CharField(),
+        'object_id': drf_serializers.IntegerField(),
+        'libelle': drf_serializers.CharField(),
+        'resume': drf_serializers.CharField(),
+        'faits': drf_serializers.JSONField(),
+        'entrees_fil': drf_serializers.IntegerField(),
+        'source': drf_serializers.CharField(),
+    }))
+    def post(self, request):
+        from .copilote import resumer_fiche
+
+        content_type = request.data.get('content_type')
+        object_id = request.data.get('object_id')
+        if not content_type or object_id in (None, ''):
+            return Response(
+                {'detail': 'content_type et object_id sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = resumer_fiche(
+                company=request.user.company, content_type=content_type,
+                object_id=object_id)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class ProchainesActionsView(UsageContexteMixin, GenericAPIView):
+    """NTAI9 — ``POST /api/django/ai/prochaines-actions/``.
+
+    Body ``{"content_type": "crm.lead", "object_id": 12}``. Renvoie 1 à 3
+    actions priorisées avec leur raison, et — quand elle existe — la clé
+    d'action du catalogue agent qui permet de l'exécuter EN UN CLIC, via le
+    chemin propose → confirme existant.
+
+    Disponible même SANS clé LLM (l'heuristique est déterministe et gratuite).
+    N'EXÉCUTE RIEN : la réponse porte ``execute: false``.
+    """
+
+    feature_key = 'ai.prochaines_actions'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+    serializer_class = FicheCibleSerializer
+
+    def get_queryset(self):
+        """Fil d'activité de la SOCIÉTÉ de l'appelant — la seule source lue.
+
+        La fiche elle-même est résolue par ``resolve_target`` (qui refuse une
+        cible d'une autre société) ; ce ``get_queryset`` rend ce périmètre
+        EXPLICITE et vérifiable par la garde d'isolation multi-société.
+        """
+        from apps.records.models import Activity
+
+        return Activity.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiProchainesActions', {
+        'content_type': drf_serializers.CharField(),
+        'object_id': drf_serializers.IntegerField(),
+        'libelle': drf_serializers.CharField(),
+        'actions': drf_serializers.JSONField(),
+        'faits': drf_serializers.JSONField(),
+        'execute': drf_serializers.BooleanField(),
+    }))
+    def post(self, request):
+        from .copilote import prochaines_actions
+
+        content_type = request.data.get('content_type')
+        object_id = request.data.get('object_id')
+        if not content_type or object_id in (None, ''):
+            return Response(
+                {'detail': 'content_type et object_id sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = prochaines_actions(
+                company=request.user.company, content_type=content_type,
+                object_id=object_id, user=request.user)
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
 
 
 class DescriptionProduitView(UsageContexteMixin, APIView):
