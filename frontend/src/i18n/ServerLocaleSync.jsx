@@ -25,6 +25,13 @@ export default function ServerLocaleSync() {
   // (ne pas la renvoyer aussitôt) de « l'utilisateur vient de changer
   // localement » (à persister).
   const lastServerValue = useRef(null)
+  // Le `setLocale` de l'effet ci-dessous déclenche un re-render ASYNCHRONE :
+  // l'effet de persistance (2e useEffect) s'exécute d'abord dans le MÊME
+  // commit, avec la valeur `locale` encore PÉRIMÉE (celle d'avant adoption).
+  // Sans ce drapeau, il comparerait cette valeur périmée à `lastServerValue`
+  // (déjà mise à jour ci-dessus) et enverrait un PATCH parasite avec
+  // l'ancienne locale avant même que l'adoption ne soit visible.
+  const ignorerProchainePersistance = useRef(false)
 
   useEffect(() => {
     if (!serverLocale || !LOCALES.includes(serverLocale)) return
@@ -32,6 +39,7 @@ export default function ServerLocaleSync() {
     const premiereReception = lastServerValue.current === null
     lastServerValue.current = serverLocale
     if (premiereReception && serverLocale !== locale) {
+      ignorerProchainePersistance.current = true
       setLocale(serverLocale)
     }
     // `locale`/`setLocale` volontairement absents des deps : ce useEffect ne
@@ -43,6 +51,10 @@ export default function ServerLocaleSync() {
   useEffect(() => {
     if (!isAuthenticated) return
     if (lastServerValue.current === null) return // profil pas encore chargé
+    if (ignorerProchainePersistance.current) {
+      ignorerProchainePersistance.current = false
+      return
+    }
     if (locale === lastServerValue.current) return
     lastServerValue.current = locale
     patchLangueInterface(locale)

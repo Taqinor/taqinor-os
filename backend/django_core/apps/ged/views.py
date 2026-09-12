@@ -7,7 +7,8 @@ versions de document sont numérotées + déduppées via `services`.
 """
 from django.db import models
 from django.http import HttpResponse
-from rest_framework import filters, mixins, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, mixins, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
     action, api_view, parser_classes, permission_classes, throttle_classes,
 )
@@ -4196,6 +4197,16 @@ class PublicVerificationCertificatThrottle(SimpleRateThrottle):
             'scope': self.scope, 'ident': self.get_ident(request)}
 
 
+@extend_schema(responses=inline_serializer('VerifierCertificatReponse', {
+    'integre': drf_serializers.BooleanField(),
+    'type': drf_serializers.CharField(required=False),
+    'statut': drf_serializers.CharField(required=False),
+    'date_signature': drf_serializers.DateTimeField(
+        required=False, allow_null=True),
+    'nombre_signataires': drf_serializers.IntegerField(required=False),
+    'hash_document': drf_serializers.CharField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+}))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicVerificationCertificatThrottle])

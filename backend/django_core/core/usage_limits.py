@@ -22,9 +22,21 @@ from __future__ import annotations
 from django.apps import apps as django_apps
 from django.conf import settings
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+_UsageRessourceSerializer = inline_serializer('UsageRessource', {
+    'nom': drf_serializers.CharField(),
+    'utilise': drf_serializers.IntegerField(allow_null=True),
+    'limite': drf_serializers.IntegerField(allow_null=True),
+    'unite': drf_serializers.CharField(),
+    # NTOBS8 — présent uniquement sur la ressource « Requêtes API ».
+    'par_cle': drf_serializers.ListField(
+        child=drf_serializers.JSONField(), required=False),
+}).__class__
 
 # Copié depuis ``apps.dataimport.views.MAX_UPLOAD_BYTES`` (5 Mo) — jamais un
 # import statique de ``apps.dataimport`` (app non-fondation). Si cette
@@ -156,6 +168,10 @@ def usage_summary(company):
     return {'ressources': ressources, 'genere_le': timezone.now().isoformat()}
 
 
+@extend_schema(responses=inline_serializer('UsageSummary', {
+    'ressources': _UsageRessourceSerializer(many=True),
+    'genere_le': drf_serializers.DateTimeField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def usage_view(request):

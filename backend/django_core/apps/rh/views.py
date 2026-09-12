@@ -6296,6 +6296,20 @@ class AnalyticsRhViewSet(viewsets.ViewSet):
     """
     permission_classes = [IsResponsableOrAdmin]
 
+    @extend_schema(responses=inline_serializer('AnalyticsDiversiteReponse', {
+        'effectif': serializers.IntegerField(),
+        'departement_id': serializers.IntegerField(allow_null=True),
+        'seuil_anonymat': serializers.IntegerField(),
+        # Un segment par valeur déclarée (+ « non renseigné »), chacun
+        # {effectif|None, masque} — voir selectors.analytics_diversite.
+        'repartition_genre': serializers.JSONField(),
+        'anciennete_moyenne_annees': serializers.FloatField(allow_null=True),
+        'anciennete_masquee': serializers.BooleanField(),
+        'nb_dates_embauche_connues': serializers.IntegerField(),
+        'tranches_age': serializers.ListField(child=serializers.JSONField()),
+        'age_disponible': serializers.BooleanField(),
+        'age_indisponible_raison': serializers.CharField(allow_null=True),
+    }))
     @action(detail=False, methods=['get'], url_path='diversite')
     def diversite(self, request):
         return Response(
@@ -6303,6 +6317,19 @@ class AnalyticsRhViewSet(viewsets.ViewSet):
                 request.user.company,
                 departement_id=request.query_params.get('departement')))
 
+    @extend_schema(responses=inline_serializer('TauxAbsenteismeReponse', {
+        'debut': serializers.DateField(),
+        'fin': serializers.DateField(),
+        'departement_id': serializers.IntegerField(allow_null=True),
+        'effectif': serializers.IntegerField(),
+        'jours_ouvres_periode': serializers.IntegerField(),
+        'jours_absence_total': serializers.FloatField(),
+        'taux_pct': serializers.FloatField(allow_null=True),
+        # {conge, maladie, accident_travail, non_justifie: float} — voir
+        # selectors.taux_absenteisme.
+        'par_motif': serializers.JSONField(),
+        'par_mois': serializers.ListField(child=serializers.JSONField()),
+    }))
     @action(detail=False, methods=['get'], url_path='absenteisme')
     def absenteisme(self, request):
         """NTHCM28 — taux d'absentéisme unifié sur ``?debut=``/``?fin=``.

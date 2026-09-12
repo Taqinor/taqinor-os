@@ -141,7 +141,7 @@ export default function CorbeillePage() {
     if (next.has(id)) next.delete(id); else next.add(id)
     return next
   })
-  const basculerToutSelectionner = () => setSelection((prev) => {
+  const basculerToutSelectionner = () => setSelection(() => {
     if (toutSelectionne) return new Set()
     return new Set(restaurables.map((el) => el.id))
   })

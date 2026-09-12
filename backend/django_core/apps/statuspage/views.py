@@ -12,7 +12,8 @@ from django.core.cache import cache
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import generics, status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, serializers as drf_serializers, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -60,6 +61,11 @@ def _statut_global(composants):
     return pire
 
 
+@extend_schema(responses=inline_serializer('PublicStatusReponse', {
+    'overall_status': drf_serializers.CharField(),
+    'composants': ComponentStatusPublicSerializer(many=True),
+    'generated_at': drf_serializers.DateTimeField(),
+}))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
@@ -137,6 +143,7 @@ class IsDirecteurOrAdmin(BasePermission):
         return bool(role and role.nom in ('Directeur', 'Administrateur'))
 
 
+@extend_schema(request=None, responses=IncidentPublicSerializer)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
 def publier_postmortem(request, pk):
@@ -165,6 +172,14 @@ def publier_postmortem(request, pk):
     return Response(IncidentPublicSerializer(incident).data)
 
 
+@extend_schema(responses=drf_serializers.DictField(
+    # Clé = nom de composant (dynamique) -> frise de {date, statut, pct}.
+    child=drf_serializers.ListField(child=inline_serializer(
+        'PublicUptimeJour', {
+            'date': drf_serializers.DateField(),
+            'statut': drf_serializers.CharField(),
+            'pct': drf_serializers.FloatField(allow_null=True),
+        }))))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
@@ -226,6 +241,14 @@ def _envoyer_email_confirmation(abonne):
         pass
 
 
+@extend_schema(
+    request=inline_serializer('PublicAbonnerRequete', {
+        'email': drf_serializers.EmailField(),
+        'region_filtre': drf_serializers.CharField(required=False),
+    }),
+    responses={202: inline_serializer('PublicAbonnerReponse', {
+        'detail': drf_serializers.CharField(),
+    })})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([StatusSubscribeThrottle])
@@ -250,6 +273,9 @@ def public_abonner(request):
         status=status.HTTP_202_ACCEPTED)
 
 
+@extend_schema(responses=inline_serializer('PublicConfirmerAbonnementReponse', {
+    'detail': drf_serializers.CharField(),
+}))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
@@ -266,6 +292,9 @@ def public_confirmer_abonnement(request, token):
     return Response({'detail': 'Abonnement confirmé.'})
 
 
+@extend_schema(responses=inline_serializer('PublicDesabonnerReponse', {
+    'detail': drf_serializers.CharField(),
+}))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])

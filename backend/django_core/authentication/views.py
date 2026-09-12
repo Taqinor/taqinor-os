@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.http import HttpResponse
 from django.utils.text import slugify
-from rest_framework import generics, permissions, viewsets, status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, permissions, serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.renderers import (
@@ -689,6 +690,13 @@ class LangueInterfaceView(APIView):
     de cette tâche) : si un jour posé, cet endpoint devra le vérifier ici."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        request=inline_serializer('LangueInterfaceRequete', {
+            'langue_interface': drf_serializers.CharField(),
+        }),
+        responses=inline_serializer('LangueInterfaceReponse', {
+            'langue_interface': drf_serializers.CharField(),
+        }))
     def patch(self, request):
         from authentication.models import CustomUser
         langue = request.data.get('langue_interface')
@@ -719,6 +727,13 @@ class CalendrierHegirienView(APIView):
     entièrement côté client (frontend/src/lib/hijriDate.js)."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        request=inline_serializer('CalendrierHegirienRequete', {
+            'calendrier_hegirien': drf_serializers.BooleanField(),
+        }),
+        responses=inline_serializer('CalendrierHegirienReponse', {
+            'calendrier_hegirien': drf_serializers.BooleanField(),
+        }))
     def patch(self, request):
         valeur = request.data.get('calendrier_hegirien')
         if not isinstance(valeur, bool):

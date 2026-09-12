@@ -6,7 +6,8 @@ de la clé (jamais du body), avec support de l'en-tête `Idempotency-Key`
 renvoie la même réponse, un corps différent → 409). Les ÉCRITURES passent
 TOUJOURS par `apps.crm.services` (jamais par ses models/views directement),
 comme l'exige la frontière inter-app cross-domaine."""
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -179,6 +180,22 @@ class PublicDevisCreateView(PublicWriteAPIView):
     required_scope = SCOPE_WRITE_DEVIS
     endpoint_name = 'devis-write:create'
 
+    @extend_schema(
+        request=inline_serializer('PublicDevisCreateRequete', {
+            'lead': drf_serializers.IntegerField(),
+            'numero': drf_serializers.CharField(required=False),
+            'montant_ht': drf_serializers.CharField(required=False),
+            'montant_tva': drf_serializers.CharField(required=False),
+            'montant_ttc': drf_serializers.CharField(required=False),
+            'date': drf_serializers.CharField(required=False),
+        }),
+        responses={201: inline_serializer('PublicDevisCreateReponse', {
+            'id': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(),
+            'statut': drf_serializers.CharField(),
+            'lead': drf_serializers.IntegerField(),
+            'client': drf_serializers.IntegerField(),
+        })})
     def post(self, request):
         from apps.crm.selectors import get_company_lead
         from apps.ventes.services import create_draft_devis_from_ocr
@@ -234,6 +251,19 @@ class PublicTicketCreateView(PublicWriteAPIView):
     required_scope = SCOPE_WRITE_TICKETS
     endpoint_name = 'tickets-write:create'
 
+    @extend_schema(
+        request=inline_serializer('PublicTicketCreateRequete', {
+            'client': drf_serializers.IntegerField(),
+            'description': drf_serializers.CharField(),
+            'installation': drf_serializers.IntegerField(required=False),
+        }),
+        responses={201: inline_serializer('PublicTicketCreateReponse', {
+            'id': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(),
+            'statut': drf_serializers.CharField(),
+            'client': drf_serializers.IntegerField(),
+            'installation': drf_serializers.IntegerField(allow_null=True),
+        })})
     def post(self, request):
         from apps.crm.selectors import get_company_client
         from apps.installations.selectors import installation_scoped

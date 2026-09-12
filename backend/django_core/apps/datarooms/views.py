@@ -9,7 +9,9 @@ import csv
 import io
 
 from django.http import HttpResponse
-from rest_framework import filters, status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
@@ -338,6 +340,23 @@ def _reponse_acces_expire():
         status=status.HTTP_410_GONE))
 
 
+@extend_schema(responses=inline_serializer('PublicSalleSommaire', {
+    'salle': inline_serializer('PublicSalleInfo', {
+        'nom': drf_serializers.CharField(),
+        'description': drf_serializers.CharField(),
+        'deal_type': drf_serializers.CharField(),
+    }),
+    'viewer': inline_serializer('PublicSalleViewer', {
+        'nom': drf_serializers.CharField(),
+        'expires_at': drf_serializers.DateTimeField(allow_null=True),
+    }),
+    'documents': drf_serializers.ListField(child=inline_serializer(
+        'PublicSalleDocumentLigne', {
+            'id': drf_serializers.IntegerField(),
+            'nom': drf_serializers.CharField(),
+            'ordre': drf_serializers.IntegerField(),
+        })),
+}))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleRateThrottle])
@@ -380,6 +399,7 @@ _INLINE_MIMES = {
 }
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleRateThrottle])

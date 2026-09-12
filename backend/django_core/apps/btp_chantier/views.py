@@ -1402,6 +1402,15 @@ class ChantierPenalitesParLotView(APIView):
         return Response(
             selectors.penalites_par_lot_cache_ou_calcul(chantier))
 
+    @extend_schema(
+        request=None,
+        responses=inline_serializer('ChantierPenalitesParLotReponse', {
+            'chantier_id': drf_serializers.IntegerField(),
+            'date_reference': drf_serializers.DateField(),
+            'lots': drf_serializers.JSONField(),
+            'total_exposition': drf_serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+        }))
     def post(self, request, chantier_id):
         """NTCON28 — recalcul manuel forcé (bouton « Recalculer »)."""
         chantier = get_object_or_404(

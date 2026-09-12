@@ -70,7 +70,8 @@ describe('VX129 — DropdownMenu : menu radio exclusif + sous-menu + shortcut', 
       </DropdownMenu>,
     )
     const shortcut = screen.getByText('Ctrl+S')
-    expect(shortcut.className).toMatch(/ml-auto/)
+    // NTI18N2 — propriété logique (RTL-safe), jamais la physique ml-auto.
+    expect(shortcut.className).toMatch(/ms-auto/)
   })
 })
 

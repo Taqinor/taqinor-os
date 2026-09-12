@@ -10,7 +10,8 @@ côté serveur, jamais lus du corps de requête.
 """
 from django.utils import timezone
 
-from rest_framework import filters, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -548,6 +549,20 @@ def automation_templates(request):
 # préset ci-dessus qui ne fait que préremplir un formulaire) : installer un
 # modèle MATÉRIALISE une VRAIE ``AutomationRule`` prête à activer.
 
+@extend_schema(responses=inline_serializer('ModelesCatalogueReponse', {
+    'modeles': drf_serializers.ListField(child=inline_serializer(
+        'ModeleCatalogue', {
+            'code': drf_serializers.CharField(),
+            'nom': drf_serializers.CharField(),
+            'description': drf_serializers.CharField(),
+            'trigger_type': drf_serializers.CharField(),
+            'trigger_config': drf_serializers.JSONField(),
+            'requires_approval': drf_serializers.BooleanField(),
+            'parametres_requis': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
+            'deja_installe': drf_serializers.BooleanField(),
+        })),
+}))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def modeles_catalogue(request):
@@ -572,6 +587,14 @@ def modeles_catalogue(request):
     })
 
 
+@extend_schema(
+    # Corps LIBRE : les clés attendues dépendent de la recette (`code`) —
+    # ce sont ses propres `parametres_requis`, voir templates.CATALOGUE_MODELES.
+    request=None,
+    responses=inline_serializer('InstallerModeleReponse', {
+        'rule': AutomationRuleSerializer(),
+        'cree': drf_serializers.BooleanField(),
+    }))
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
 def installer_modele_catalogue(request, code=None):

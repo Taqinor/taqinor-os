@@ -3,7 +3,9 @@
 Règle commune : ``company`` n'est JAMAIS lue du corps de la requête — elle est
 imposée côté serveur par ``CompanyScopedModelViewSet``.
 """
-from drf_spectacular.utils import extend_schema_serializer
+from drf_spectacular.utils import (
+    extend_schema_field, extend_schema_serializer, inline_serializer,
+)
 from rest_framework import serializers
 
 from .models import (
@@ -692,7 +694,7 @@ class ModeleQuestionnaireSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def get_nombre_questions(self, obj):
+    def get_nombre_questions(self, obj) -> int:
         from .services import questions_du_modele
 
         return len(questions_du_modele(obj))
@@ -922,6 +924,14 @@ class CadreConformiteSerializer(serializers.ModelSerializer):
                   'couverture', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    @extend_schema_field(inline_serializer('CadreCouverture', {
+        'total': serializers.IntegerField(),
+        'couvert': serializers.IntegerField(),
+        'partiel': serializers.IntegerField(),
+        'non_couvert': serializers.IntegerField(),
+        'taux_pct': serializers.FloatField(),
+        'taux_avec_partiel_pct': serializers.FloatField(),
+    }))
     def get_couverture(self, obj):
         from .selectors import taux_couverture
 

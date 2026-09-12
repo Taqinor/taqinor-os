@@ -74,7 +74,9 @@ export default function ParametresEsgPage() {
       }
     }
     charger()
-    rafraichirBadge()
+    // Différé d'un microtask : un appel synchrone dans le corps d'un effet
+    // déclenche un rendu en cascade (react-hooks/set-state-in-effect).
+    Promise.resolve().then(rafraichirBadge)
     return () => { vivant = false }
   }, [rafraichirBadge])
 

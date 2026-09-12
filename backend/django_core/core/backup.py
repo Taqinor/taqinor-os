@@ -37,6 +37,8 @@ from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -800,6 +802,18 @@ def resume_sauvegardes(company):
     }
 
 
+_RUN_RESUME_SHAPE = inline_serializer('BackupRunResume', {
+    'date': drf_serializers.DateTimeField(),
+    'statut': drf_serializers.CharField(),
+}, allow_null=True)
+
+
+@extend_schema(responses=inline_serializer('MesSauvegardesReponse', {
+    'derniere_sauvegarde': _RUN_RESUME_SHAPE,
+    'dernier_drill': _RUN_RESUME_SHAPE,
+    'rpo_planifie': drf_serializers.CharField(allow_null=True),
+    'rto_annonce_heures': drf_serializers.IntegerField(allow_null=True),
+}))
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def mes_sauvegardes_view(request):

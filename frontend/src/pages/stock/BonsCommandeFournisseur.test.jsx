@@ -40,6 +40,8 @@ vi.mock('../../api/stockApi', () => ({
     getProduits: vi.fn(() => Promise.resolve({ data: [] })),
     getBcfEnRetard: vi.fn(() => Promise.resolve({ data: [] })),
     getAchatsHorsContrat: vi.fn(() => Promise.resolve({ data: [] })),
+    // NTP2P21 — suggestions de fusion des BCF brouillon (lecture seule).
+    getSuggestionsConsolidationBcf: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 
