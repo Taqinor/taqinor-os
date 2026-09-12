@@ -87,7 +87,7 @@
 - frontend/src/api/btpChantierApi.js :: checklist -> /api/django/btp-chantier/lots/<>/checklist
     complete:booleen, detail:texte, etapes:inconnu, faits:nombre, obligatoires_restants:inconnu, total:nombre
 - frontend/src/api/btpChantierApi.js :: cloturer -> /api/django/btp-chantier/chantiers/<>/cloture-btp
-    blocages:inconnu, detail:texte, dgd:inconnu, export_dossier_url:texte, prerequis:inconnu
+    blocages:inconnu, detail:texte, dgd:inconnu, export_dossier_url:texte, montant_marche_initial_ht:liste, prerequis:inconnu
 - frontend/src/api/btpChantierApi.js :: debourseVsFacture -> /api/django/btp-chantier/chantiers/<>/debourse-vs-facture
     avenants_approuves:inconnu, debourse_sec_total:inconnu, facture_total:inconnu, main_oeuvre:inconnu, marge:nombre, materiel:inconnu, situations_facturees:inconnu, sous_traitance:inconnu
 - frontend/src/api/btpChantierApi.js :: definirChecklist -> /api/django/btp-chantier/lots/<>/checklist

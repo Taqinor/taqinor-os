@@ -231,7 +231,12 @@ def ajouter_lignes_devis_import(company, external_system, rows, *, user=None):
     from django.contrib.contenttypes.models import ContentType
 
     from apps.dataimport.models import ExternalRef
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
+
+    # QJR84 — l'ÉCRIVAIN UNIQUE de lignes de devis de l'app (le jeu de champs
+    # complet y est nommé une fois, ``CHAMPS_LIGNE``). Une garde statique
+    # refuse tout second ``LigneDevis.objects.create`` dans ``apps/ventes``.
+    from .lignes import creer_ligne
 
     ct = ContentType.objects.get_for_model(Devis)
     crees, erreurs = 0, []
@@ -256,8 +261,8 @@ def ajouter_lignes_devis_import(company, external_system, rows, *, user=None):
         if not designation:
             erreurs.append({'ligne': i, 'raison': 'désignation manquante'})
             continue
-        LigneDevis.objects.create(
-            devis=devis, designation=designation[:255],
+        creer_ligne(
+            devis, designation=designation[:255],
             quantite=_decimal_ou_none(ligne.get('quantite')),
             prix_unitaire=_decimal_ou_none(ligne.get('prix_unitaire_ht')),
             taux_tva=_decimal_ou_none(ligne.get('taux_tva')))

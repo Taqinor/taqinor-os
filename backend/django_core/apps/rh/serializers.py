@@ -3283,6 +3283,21 @@ class EvaluationNeufBoxSerializer(serializers.ModelSerializer):
             'case_calculee', 'notes', 'evalue_par', 'date_creation',
         ]
         read_only_fields = ['case_calculee', 'evalue_par', 'date_creation']
+        # ``campagne`` est NULLABLE au modèle (le positionnement « hors
+        # campagne » est prévu — il a même sa propre contrainte partielle).
+        # Mais DRF dérive de la contrainte ``(employe, campagne)`` un
+        # ``UniqueTogetherValidator`` ET un ``extra_kwargs`` implicite
+        # ``required=True`` : sans ce triplet explicite, l'API refusait toute
+        # création hors campagne (« Ce champ est obligatoire »). Le
+        # ``default=None`` rend la valeur PRÉSENTE dans les données validées,
+        # ce que le validateur d'unicité exige ; ``required=False`` écrase le
+        # ``required=True`` injecté par DRF (les deux ensemble lèveraient
+        # « May not set both `required` and `default` »).
+        extra_kwargs = {
+            'campagne': {
+                'required': False, 'default': None, 'allow_null': True,
+            },
+        }
 
     def get_employe_nom(self, obj):
         return f'{obj.employe.nom} {obj.employe.prenom}'
