@@ -280,6 +280,16 @@ class AutomationStep(models.Model):
     tenant ; une étape ne s'atteint jamais autrement que par sa règle.
     """
 
+    class Branche(models.TextChoices):
+        """NTEXT5 — regroupe les étapes de MÊME ``ordre`` en branche mutuellement
+        exclusive : à ordre égal, un groupe complet ``si``+``sinon`` n'exécute
+        QUE la branche gagnante (condition du/des step(s) ``si`` vraie ⇒ « si »
+        gagne, sinon « sinon » gagne) ; ``toujours`` (défaut) s'exécute
+        toujours et ne participe à aucune exclusion mutuelle."""
+        SI = 'si', 'Si'
+        SINON = 'sinon', 'Sinon'
+        TOUJOURS = 'toujours', 'Toujours'
+
     rule = models.ForeignKey(
         AutomationRule,
         on_delete=models.CASCADE,  # on_delete: une étape n'existe QUE dans sa règle (composition, même patron que IncomingWebhookTrigger.rule) ; supprimer la règle supprime sa séquence
@@ -289,6 +299,14 @@ class AutomationStep(models.Model):
     action_type = models.CharField(
         max_length=40, choices=ActionType.choices)
     action_config = models.JSONField(default=dict, blank=True)
+    # NTEXT5 — arbre de conditions ET/OU/NON (format ``core.rules``, réutilisé
+    # de XPLT15) évalué sur le contexte de l'enregistrement avant d'exécuter
+    # l'étape. None/absent = toujours vraie (comportement actuel inchangé).
+    # Une étape dont la condition est fausse est IGNORÉE (run ``skipped``
+    # journalisé avec la raison), sans arrêter la séquence.
+    condition = models.JSONField(null=True, blank=True)
+    branche = models.CharField(
+        max_length=10, choices=Branche.choices, default=Branche.TOUJOURS)
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
