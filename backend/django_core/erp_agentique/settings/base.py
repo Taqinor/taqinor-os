@@ -347,6 +347,11 @@ INSTALLED_APPS = [
     # saisonnière, politiques de stock ABC/stock de sécurité, cycle S&OP
     # mensuel) au-dessus de l'exécution `apps.stock` existante.
     'apps.scm',
+    # Groupe NTDATA — couche SÉMANTIQUE : une métrique (mrr, dso, marge_brute)
+    # se définit UNE fois, company-scopée, et se résout en une requête sur les
+    # datasets que les apps métier déclarent (core.data_explorer). N'importe
+    # aucun modèle d'app métier : le dataset est désigné par son NOM.
+    'apps.semantic',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
