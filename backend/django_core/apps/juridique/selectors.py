@@ -44,3 +44,44 @@ def dossier_par_id(company, dossier_id, user=None):
     """Un dossier de ``company`` par id (ou ``None``), filtrage confidentialité
     appliqué — lecture cross-app sûre."""
     return dossiers_visibles(company, user=user).filter(pk=dossier_id).first()
+
+
+# ── NTJUR19 — résolution de la règle d'approbation d'un engagement ──────────
+
+
+def regles_approbation_actives(company):
+    """Règles d'approbation juridique ACTIVES de la société."""
+    from .models import RegleApprobationJuridique
+
+    return RegleApprobationJuridique.objects.filter(
+        company=company, actif=True)
+
+
+def resoudre_regle_approbation_mandat(company, montant, nature_dossier=None):
+    """Règle la plus SPÉCIFIQUE couvrant (montant, nature), ou ``None``.
+
+    Spécificité, dans l'ordre (patron ``contrats.selectors``) :
+    1. une règle ciblant une nature précise prime sur « toutes natures » ;
+    2. à ce niveau égal, l'intervalle de montant BORNÉ le plus étroit prime ;
+    3. puis ``priorite`` (plus grande d'abord), puis l'``id`` le plus récent.
+
+    Aucun seuil codé en dur : tout vient des règles en base. ``None`` signifie
+    « aucune approbation requise » — l'appelant peut activer directement.
+    """
+    candidates = [
+        r for r in regles_approbation_actives(company)
+        if r.couvre(montant, nature_dossier)
+    ]
+    if not candidates:
+        return None
+
+    def _cle(regle):
+        nature_specifique = 1 if regle.nature_dossier else 0
+        largeur = regle.largeur_intervalle()
+        intervalle_borne = 1 if largeur is not None else 0
+        largeur_tri = -largeur if largeur is not None else 0
+        return (nature_specifique, intervalle_borne, largeur_tri,
+                regle.priorite, regle.id)
+
+    candidates.sort(key=_cle, reverse=True)
+    return candidates[0]

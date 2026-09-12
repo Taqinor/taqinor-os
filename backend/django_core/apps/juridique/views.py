@@ -7,13 +7,22 @@ dossier ``confidentiel`` est simplement ABSENT du queryset d'un utilisateur
 sans le palier requis — un accès direct par id renvoie donc 404 (jamais 403,
 qui révélerait l'existence du dossier).
 """
-from rest_framework import filters
+from rest_framework import filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
 
-from . import selectors
-from .models import DossierJuridique
-from .serializers import DossierJuridiqueSerializer
+from . import selectors, services
+from .models import (
+    CabinetAvocat, DossierJuridique, EtapeApprobationJuridique, MandatAvocat,
+    RegleApprobationJuridique,
+)
+from .serializers import (
+    CabinetAvocatSerializer, DossierJuridiqueSerializer,
+    EtapeApprobationJuridiqueSerializer, MandatAvocatSerializer,
+    RegleApprobationJuridiqueSerializer,
+)
 
 
 class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
@@ -68,3 +77,160 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
                 company=company, reference=reference,
                 created_by=self.request.user),
             period='yearly')
+
+    # ── NTJUR19 — workflow d'approbation d'un engagement juridique ──────────
+
+    def _mandat_du_dossier(self, request, dossier):
+        """Mandat visé par le corps (``{"mandat": id}``), borné au dossier."""
+        mandat_id = request.data.get('mandat')
+        if not mandat_id:
+            return None, Response(
+                {'mandat': "Indiquez le mandat concerné."},
+                status=status.HTTP_400_BAD_REQUEST)
+        mandat = MandatAvocat.objects.filter(
+            company=request.user.company, dossier=dossier,
+            pk=mandat_id).first()
+        if mandat is None:
+            return None, Response(
+                {'mandat': "Ce mandat n'appartient pas à ce dossier."},
+                status=status.HTTP_404_NOT_FOUND)
+        return mandat, None
+
+    def _etape_du_dossier(self, request, dossier):
+        """Étape visée par le corps (``{"etape": id}``), bornée au dossier."""
+        etape_id = request.data.get('etape')
+        if not etape_id:
+            return None, Response(
+                {'etape': "Indiquez l'étape d'approbation concernée."},
+                status=status.HTTP_400_BAD_REQUEST)
+        etape = EtapeApprobationJuridique.objects.filter(
+            company=request.user.company, mandat__dossier=dossier,
+            pk=etape_id).select_related('mandat').first()
+        if etape is None:
+            return None, Response(
+                {'etape': "Cette étape n'appartient pas à ce dossier."},
+                status=status.HTTP_404_NOT_FOUND)
+        return etape, None
+
+    @action(detail=True, methods=['post'], url_path='lancer-approbation-mandat')
+    def lancer_approbation_mandat(self, request, pk=None):
+        """Instancie le workflow d'approbation d'un mandat (NTJUR19).
+
+        Corps : ``{"mandat": <id>}``. 400 (message FR nommant le champ) si
+        aucune règle ne couvre le montant engagé ou si le workflow existe déjà.
+        """
+        dossier = self.get_object()
+        mandat, erreur = self._mandat_du_dossier(request, dossier)
+        if erreur is not None:
+            return erreur
+        try:
+            etapes = services.lancer_approbation_mandat(mandat)
+        except services.ApprobationError as exc:
+            return Response({'mandat': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            EtapeApprobationJuridiqueSerializer(etapes, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='approuver-etape')
+    def approuver_etape(self, request, pk=None):
+        """Approuve l'étape en attente d'un mandat. Corps : ``{"etape": <id>}``."""
+        dossier = self.get_object()
+        etape, erreur = self._etape_du_dossier(request, dossier)
+        if erreur is not None:
+            return erreur
+        try:
+            etape = services.approuver_etape(
+                etape, approbateur=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except services.ApprobationError as exc:
+            return Response({'etape': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(EtapeApprobationJuridiqueSerializer(etape).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter-etape')
+    def rejeter_etape(self, request, pk=None):
+        """Rejette une étape : le mandat retombe en ``brouillon``."""
+        dossier = self.get_object()
+        etape, erreur = self._etape_du_dossier(request, dossier)
+        if erreur is not None:
+            return erreur
+        try:
+            etape = services.rejeter_etape(
+                etape, approbateur=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except services.ApprobationError as exc:
+            return Response({'etape': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(EtapeApprobationJuridiqueSerializer(etape).data)
+
+    @action(detail=True, methods=['get'], url_path='etapes-approbation')
+    def etapes_approbation(self, request, pk=None):
+        """Étapes d'approbation de TOUS les mandats du dossier (lecture)."""
+        dossier = self.get_object()
+        etapes = EtapeApprobationJuridique.objects.filter(
+            company=request.user.company, mandat__dossier=dossier
+        ).order_by('mandat_id', 'niveau', 'id')
+        return Response(
+            EtapeApprobationJuridiqueSerializer(etapes, many=True).data)
+
+
+class CabinetAvocatViewSet(CompanyScopedModelViewSet):
+    """Registre des cabinets/avocats externes de la société (NTJUR9)."""
+
+    queryset = CabinetAvocat.objects.all()
+    serializer_class = CabinetAvocatSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'barreau', 'specialites']
+    ordering_fields = ['nom', 'id', 'taux_horaire_moyen']
+    read_permission = 'juridique_voir'
+    write_permission = 'juridique_gerer'
+
+
+class MandatAvocatViewSet(CompanyScopedModelViewSet):
+    """Mandats confiés aux cabinets, par dossier (NTJUR10/NTJUR19)."""
+
+    queryset = MandatAvocat.objects.select_related(
+        'dossier', 'cabinet').all()
+    serializer_class = MandatAvocatSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_mandat', 'statut']
+    read_permission = 'juridique_voir'
+    write_permission = 'juridique_gerer'
+
+    def get_queryset(self):
+        """Scope société + ``?dossier=`` ; jamais les mandats d'un dossier
+        confidentiel invisible à l'appelant (la confidentialité du dossier
+        gouverne aussi ses pièces financières)."""
+        qs = super().get_queryset()
+        user = self.request.user
+        if not selectors.peut_voir_confidentiel(user):
+            qs = qs.exclude(
+                dossier__confidentialite=(
+                    DossierJuridique.NiveauConfidentialite.CONFIDENTIEL))
+        dossier_id = self.request.query_params.get('dossier')
+        if dossier_id:
+            qs = qs.filter(dossier_id=dossier_id)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='activer')
+    def activer(self, request, pk=None):
+        """Active le mandat — refusé tant que l'approbation requise manque."""
+        mandat = self.get_object()
+        try:
+            mandat = services.activer_mandat(mandat)
+        except services.ApprobationError as exc:
+            return Response({'statut': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(MandatAvocatSerializer(mandat).data)
+
+
+class RegleApprobationJuridiqueViewSet(CompanyScopedModelViewSet):
+    """Règles d'approbation des engagements de dépenses juridiques (NTJUR19)."""
+
+    queryset = RegleApprobationJuridique.objects.all()
+    serializer_class = RegleApprobationJuridiqueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'id']
+    read_permission = 'juridique_voir'
+    write_permission = 'juridique_gerer'
