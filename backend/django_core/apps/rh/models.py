@@ -109,6 +109,12 @@ class Poste(models.Model):
         related_name='postes',
         verbose_name='Département',
     )
+    # NTHCM4 — effectif BUDGÉTÉ (headcount planning). ``0`` = AUCUNE limite
+    # posée (valeur historique de tous les postes existants) : le poste reste
+    # alors neutre, jamais « en dépassement ». Le comparatif budgété/pourvu
+    # vit dans ``selectors.effectif_poste``.
+    effectif_budgete = models.PositiveIntegerField(
+        default=0, verbose_name='Effectif budgété')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')

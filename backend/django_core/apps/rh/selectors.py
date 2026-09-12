@@ -2966,3 +2966,58 @@ def kpi_effectifs_absences(company):
         {'id': 'rh_absences_en_cours', 'label': 'Absences en cours (validées)',
          'valeur': absences_en_cours, 'unite': 'employés'},
     ]
+
+
+# ── NTHCM4 — postes budgétés vs pourvus (headcount planning) ────────────────
+
+def effectif_poste(company, poste_id):
+    """NTHCM4 — comparatif budgété / pourvu / ouvert d'UN poste.
+
+    Renvoie ``{poste_id, poste_intitule, budgete, pourvus, ouverts,
+    depassement}`` où :
+
+    * ``budgete`` — ``Poste.effectif_budgete`` (``0`` = AUCUNE limite posée) ;
+    * ``pourvus`` — nombre de ``DossierEmploye`` ACTIFS pointant ce poste ;
+    * ``ouverts`` — nombre d'``OuverturePoste`` encore ACTIVES sur ce poste
+      (statuts ``ouvert``/``en_approbation`` ; brouillon/pourvu/clos/annulé ne
+      comptent pas) ;
+    * ``depassement`` — ``True`` UNIQUEMENT quand une limite est posée
+      (``budgete > 0``) ET que ``pourvus`` la dépasse. Un poste à ``0``
+      budgété reste NEUTRE (jamais signalé) — c'est la valeur historique de
+      tous les postes existants.
+
+    Renvoie ``None`` si le poste n'existe pas dans CETTE société (isolation).
+    Lecture seule, scopée société.
+    """
+    from .models import OuverturePoste
+
+    poste = Poste.objects.filter(company=company, id=poste_id).first()
+    if poste is None:
+        return None
+
+    pourvus = DossierEmploye.objects.filter(
+        company=company, poste_ref=poste,
+        statut=DossierEmploye.Statut.ACTIF).count()
+    ouverts = OuverturePoste.objects.filter(
+        company=company, poste_ref=poste,
+        statut__in=[OuverturePoste.Statut.OUVERT,
+                    OuverturePoste.Statut.EN_APPROBATION]).count()
+    budgete = poste.effectif_budgete or 0
+    return {
+        'poste_id': poste.id,
+        'poste_intitule': poste.intitule,
+        'budgete': budgete,
+        'pourvus': pourvus,
+        'ouverts': ouverts,
+        'depassement': bool(budgete) and pourvus > budgete,
+    }
+
+
+def effectifs_postes(company):
+    """NTHCM4 — comparatif budgété/pourvu de TOUS les postes de la société.
+
+    Même forme que :func:`effectif_poste`, triée par intitulé — sert la
+    colonne « Budgété / Pourvu » et l'alerte de dépassement côté écran.
+    """
+    postes = Poste.objects.filter(company=company).order_by('intitule')
+    return [effectif_poste(company, poste.id) for poste in postes]

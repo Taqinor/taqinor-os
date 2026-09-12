@@ -379,6 +379,8 @@ class PosteSerializer(serializers.ModelSerializer):
         model = Poste
         fields = [
             'id', 'intitule', 'code', 'departement', 'departement_nom',
+            # NTHCM4 — effectif budgété (0 = pas de limite posée).
+            'effectif_budgete',
             'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']

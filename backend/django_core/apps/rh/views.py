@@ -1064,6 +1064,18 @@ class PosteViewSet(_RhBaseViewSet):
         return Response(
             selectors.candidats_internes(request.user.company, poste.id))
 
+    @action(detail=True, methods=['get'], url_path='effectif')
+    def effectif(self, request, pk=None):
+        """NTHCM4 — budgété / pourvus / ouverts + drapeau de dépassement."""
+        poste = self.get_object()
+        return Response(selectors.effectif_poste(poste.company, poste.id))
+
+    @action(detail=False, methods=['get'], url_path='effectifs')
+    def effectifs(self, request):
+        """NTHCM4 — le même comparatif pour TOUS les postes de la société
+        (colonne « Budgété / Pourvu » de l'écran postes)."""
+        return Response(selectors.effectifs_postes(request.user.company))
+
 
 class HoraireTravailViewSet(_RhBaseViewSet):
     """Gabarits d'horaire de travail (XRH8) — 44 h standard, Ramadan,
