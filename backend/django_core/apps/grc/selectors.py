@@ -401,3 +401,36 @@ def taux_attestation(company, politique):
         'taux_pct': taux,
         'manquants': sorted(cibles - attestants),
     }
+
+
+def attestations_manquantes(company):
+    """NTGRC21 — qui doit encore attester quoi, par politique PUBLIÉE.
+
+    Renvoie une liste de dicts ``{politique, version, manquants}`` où
+    ``manquants`` est la liste triée des ids de dossiers employés visés qui
+    n'ont pas attesté la version COURANTE. Les politiques sans manquant sont
+    omises (une relance vide n'existe pas) ; les brouillons et les politiques
+    obsolètes ne sont jamais relancés — on ne réclame pas la lecture d'un
+    texte qui peut encore changer ou qui n'est plus en vigueur.
+    """
+    from .models import PolitiqueInterne
+
+    if company is None:
+        return []
+    resultats = []
+    publiees = (PolitiqueInterne.objects
+                .filter(company=company,
+                        statut=PolitiqueInterne.STATUT_PUBLIEE,
+                        version__gte=1)
+                .order_by('titre', 'id'))
+    for politique in publiees:
+        taux = taux_attestation(company, politique)
+        manquants = taux['manquants']
+        if not manquants:
+            continue
+        resultats.append({
+            'politique': politique,
+            'version': taux['version'],
+            'manquants': manquants,
+        })
+    return resultats
