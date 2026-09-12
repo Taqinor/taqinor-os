@@ -81,6 +81,69 @@ class ApiKeyAuthentication(authentication.BaseAuthentication):
         return self.keyword
 
 
+class OAuthBearerAuthentication(authentication.BaseAuthentication):
+    """NTAPI19 — lit ``Authorization: Bearer <jwt>`` (flot client_credentials).
+
+    Se résout à la ``ApiKey`` COMPAGNON du ``OAuthClient`` : ``request.auth``
+    reste donc une vraie ``ApiKey``, et TOUT l'aval (scopes, débit, quota,
+    en-têtes ``X-RateLimit-*``, version épinglée, dépréciation, scoping
+    société) fonctionne sans un seul assouplissement de contrôle.
+
+    Les scopes de l'instance renvoyée sont l'INTERSECTION de ceux du jeton et
+    de ceux de la clé au moment de l'appel — retirer un scope au client prend
+    donc effet immédiatement, sans attendre l'expiration des jetons déjà émis.
+    L'instance est modifiée EN MÉMOIRE seulement, jamais sauvegardée.
+
+    Un client désactivé est refusé à chaque appel, même avec un jeton encore
+    valide : c'est ce qui rend la révocation immédiate malgré un JWT sans état.
+    """
+
+    keyword = 'Bearer'
+
+    def authenticate(self, request):
+        header = authentication.get_authorization_header(request).decode('latin-1')
+        if not header:
+            return None
+        parts = header.split()
+        if parts[0].lower() != self.keyword.lower():
+            return None  # autre schéma (Api-Key…) — pas pour nous
+        if len(parts) != 2:
+            raise exceptions.AuthenticationFailed('En-tête Bearer invalide.')
+
+        from .models import OAuthClient
+        from .oauth import JetonInvalide, decoder_token, scopes_effectifs
+
+        try:
+            charge = decoder_token(parts[1])
+        except JetonInvalide as exc:
+            raise exceptions.AuthenticationFailed(str(exc))
+
+        oauth_client = (
+            OAuthClient.objects
+            .select_related('api_key', 'api_key__company')
+            .filter(client_id=charge['sub'], actif=True)
+            .first())
+        if oauth_client is None:
+            raise exceptions.AuthenticationFailed(
+                'Client OAuth inconnu ou désactivé.')
+        api_key = oauth_client.api_key
+        if api_key is None or not api_key.enabled or api_key.est_expiree:
+            raise exceptions.AuthenticationFailed('Client OAuth désactivé.')
+        # Défense en profondeur : un jeton dont la société ne correspond plus à
+        # celle du client (société déplacée/recréée) n'ouvre RIEN.
+        if charge.get('company_id') != oauth_client.company_id:
+            raise exceptions.AuthenticationFailed('Jeton invalide.')
+
+        api_key.scopes = scopes_effectifs(charge, api_key)
+        OAuthClient.objects.filter(pk=oauth_client.pk).update(
+            last_used_at=timezone.now())
+        ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
+        return (ApiKeyUser(api_key), api_key)
+
+    def authenticate_header(self, request):
+        return 'Bearer realm="api-public"'
+
+
 class QueryTokenAuthentication(authentication.BaseAuthentication):
     """NTAPI30 — lit ``?token=<clé>`` (paramètre de requête, PAS un en-tête).
 
@@ -123,6 +186,20 @@ class QueryTokenAuthentication(authentication.BaseAuthentication):
         annoncé pour que la réponse reste auto-descriptive.
         """
         return 'Query realm="api-public", param="token"'
+
+
+# NTAPI19 — jeu d'authenticators de TOUTE vue montée sous `/api/public/v1/`,
+# déclaré UNE fois ici plutôt que recopié dans sept fichiers de vues. Ordre
+# significatif : `ApiKeyAuthentication` reste PREMIER, donc le challenge
+# `WWW-Authenticate` d'un 401 est inchangé pour les intégrations existantes.
+# Les deux schémas se distinguent par le mot-clé de l'en-tête (`Api-Key` vs
+# `Bearer`) et chacun rend `None` sur l'autre — ils ne se marchent jamais
+# dessus. Exception assumée : le pull CSV NTAPI30 (`?token=`) garde son propre
+# authenticator, un jeton exposé dans une URL ne doit rien pouvoir d'autre.
+PUBLIC_AUTHENTICATION_CLASSES = [
+    ApiKeyAuthentication,
+    OAuthBearerAuthentication,
+]
 
 
 class HasApiScope(permissions.BasePermission):
@@ -287,6 +364,26 @@ class ApiKeyAuthenticationScheme(OpenApiAuthenticationExtension):
             'in': 'header',
             'name': 'Authorization',
             'description': f'En-tête `Authorization: {AUTH_KEYWORD} <clé>`.',
+        }
+
+
+class OAuthBearerAuthenticationScheme(OpenApiAuthenticationExtension):
+    """NTAPI19 — décrit `OAuthBearerAuthentication` dans le schéma OpenAPI
+    (même raison que `ApiKeyAuthenticationScheme` : sans extension,
+    drf-spectacular émet « could not resolve authenticator » sur chaque vue
+    publique et la base de référence des avertissements grandirait)."""
+
+    target_class = 'apps.publicapi.auth.OAuthBearerAuthentication'
+    name = 'publicApiOAuth2'
+
+    def get_security_definition(self, auto_schema):
+        return {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'JWT',
+            'description': (
+                'Jeton court obtenu par `POST /api/public/v1/oauth/token/` '
+                '(grant `client_credentials`).'),
         }
 
 

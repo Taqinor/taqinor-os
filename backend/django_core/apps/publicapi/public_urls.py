@@ -29,6 +29,7 @@ from .public_sandbox_views import SandboxResetView
 from .public_changelog_views import PublicChangelogView
 from .public_errors_views import PublicErrorCatalogView
 from .public_events_views import PublicEventFeedView
+from .public_oauth_views import PublicOAuthTokenView
 from .public_licence_views import PublicLicenceStatutView
 from .public_scm_views import (
     PublicPolitiqueStockViewSet, PublicPrevisionDemandeViewSet,
@@ -79,6 +80,10 @@ urlpatterns = [
     # pour `=IMPORTDATA()` Google Sheets/Excel Web.
     path('exports/<str:entite>.csv', PublicCsvPullExportView.as_view(),
          name='public-exports-csv-pull'),
+    # NTAPI19 — jeton OAuth2 client_credentials (endpoint non authentifié :
+    # c'est lui qui authentifie, d'où son throttle dédié par IP).
+    path('oauth/token/', PublicOAuthTokenView.as_view(),
+         name='public-oauth-token'),
     # NTAPI17 — flux d'évènements consommable par curseur (CDC léger).
     path('events/', PublicEventFeedView.as_view(), name='public-event-feed'),
     # NTAPI27 — reset du bac à sable (clé `test` seule).

@@ -13,7 +13,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .auth import ApiKeyAuthentication, ApiKeyRateThrottle, HasApiScope
+from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, HasApiScope
 from .constants import SCOPE_READ_EVENTS
 from .events_feed import LIMITE_MAX, LIMITE_PAR_DEFAUT, lire, serialiser
 from .public_response import PublicApiResponseMixin
@@ -53,7 +53,7 @@ class PublicEventFeedView(PublicApiResponseMixin, APIView):
     ne porterait que ``read:events`` lit un flux vide. Le flux n'est jamais un
     contournement des scopes de lecture."""
 
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [HasApiScope]
     throttle_classes = [ApiKeyRateThrottle]
     required_scope = SCOPE_READ_EVENTS

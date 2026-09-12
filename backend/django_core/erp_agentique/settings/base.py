@@ -702,6 +702,12 @@ REST_FRAMEWORK = {
         # ouverture de session chat public (par IP).
         'public_sharelink': '30/minute',
         'public_livechat': '30/minute',
+        # NTAPI19 — émission d'un jeton OAuth2 client_credentials. SEULE
+        # surface de l'API publique où un secret peut être deviné (l'endpoint
+        # s'authentifie lui-même) : throttle par IP volontairement serré, très
+        # au-dessus d'un usage légitime (un client échange son secret une fois
+        # par heure, pas 20 fois par minute).
+        'publicapi_oauth_token': '20/minute',
         # NTRET3 — PIN de verrouillage rapide caissier (POS). Cette entrée
         # existe uniquement pour que ``SimpleRateThrottle.get_rate()`` ne lève
         # pas ``ImproperlyConfigured`` (le scope doit être présent) — la

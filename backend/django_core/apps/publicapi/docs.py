@@ -82,6 +82,19 @@ def public_api_reference():
                 "La société est déduite de la clé : il n'existe aucun moyen de "
                 "lire les données d'une autre société."
             ),
+            # NTAPI19 — second schéma accepté, en PLUS de la clé d'API (jamais
+            # à sa place : aucune intégration existante n'est touchée).
+            'oauth2': (
+                "Alternative recommandée pour une intégration d'entreprise : "
+                "`POST /api/public/v1/oauth/token/` (grant "
+                "`client_credentials`) échange, une fois, `client_id` + "
+                "`client_secret` contre un jeton COURT, présenté ensuite en "
+                "`Authorization: Bearer <jeton>`. Un secret permanent ne "
+                "circule donc plus à chaque appel. Les scopes du jeton sont "
+                "ceux du client (ou le sous-ensemble demandé via `scope`) ; "
+                "retirer un scope au client prend effet IMMÉDIATEMENT, sans "
+                "attendre l'expiration des jetons déjà émis."
+            ),
         },
         'scopes': [
             {'code': code, 'libelle': libelle}
@@ -324,6 +337,24 @@ def public_api_reference():
                     ),
                     'success_status': '200',
                     'request_body': False,
+                },
+                {
+                    'chemin': '/api/public/v1/oauth/token/',
+                    'methode': 'POST',
+                    'description': (
+                        "NTAPI19 — échange `client_id`/`client_secret` contre "
+                        "un jeton COURT (grant `client_credentials`). Corps : "
+                        "`grant_type=client_credentials`, `client_id`, "
+                        "`client_secret`, `scope` optionnel (sous-ensemble). "
+                        "Le jeton s'utilise ensuite en "
+                        "`Authorization: Bearer <jeton>` sur TOUS les "
+                        "endpoints publics, en alternative à "
+                        "`Authorization: Api-Key <clé>`. Identifiants "
+                        "invalides → 401, message identique quel que soit le "
+                        "motif."
+                    ),
+                    'success_status': '200',
+                    'request_body': True,
                 },
             ],
         },

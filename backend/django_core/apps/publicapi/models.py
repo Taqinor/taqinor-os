@@ -721,3 +721,104 @@ class ApiEvent(TenantModel):
 
 
 __all__ += ['ApiEvent']
+
+
+class OAuthClient(TenantModel):
+    """NTAPI19 — client OAuth2 « client_credentials » d'une intégration.
+
+    Une clé d'API est un secret PERMANENT que le client doit stocker et
+    transmettre à chaque appel : s'il fuite (log, capture réseau, dépôt git),
+    il reste valable jusqu'à sa rotation manuelle. Le flot
+    ``client_credentials`` échange ce secret permanent, UNE fois, contre un
+    jeton COURT (défaut 1 h) — c'est ce que réclame toute DSI d'un grand
+    compte, et c'est la seule raison d'être de ce modèle.
+
+    LE CHOIX DE CONCEPTION QUI PORTE TOUT LE RESTE : chaque client OAuth porte
+    une ``ApiKey`` COMPAGNON, et le jeton émis se résout à CETTE clé. Tout
+    l'aval — vérification de scope (``HasApiScope``), débit et quota (NTAPI6 et
+    ses compteurs ``ApiUsageRecord``), en-têtes ``X-RateLimit-*``, version
+    épinglée (NTAPI5), annonces de dépréciation (NTAPI2), scoping société —
+    fonctionne donc SANS UNE LIGNE DE CHANGEMENT ni un seul assouplissement de
+    contrôle. L'alternative (un porteur d'identité parallèle) aurait exigé de
+    relâcher chaque ``isinstance(request.auth, ApiKey)`` du chemin public, et
+    aurait ouvert un trou de quota : un intégrateur passé en OAuth n'aurait
+    plus été compté nulle part.
+
+    Le secret en clair de la clé compagnon est GÉNÉRÉ PUIS JETÉ : elle n'est
+    donc utilisable QUE par ce flot OAuth, jamais comme un
+    ``Authorization: Api-Key`` direct.
+    """
+
+    label = models.CharField(max_length=120)
+    # Identifiant PUBLIC du client (transmis en clair, comme chez tout
+    # fournisseur OAuth2) — unique au niveau global pour une résolution O(1).
+    client_id = models.CharField(max_length=64, unique=True, db_index=True)
+    # Le secret, lui, n'est JAMAIS stocké en clair : même empreinte poivrée
+    # (HMAC-SHA256 avec la SECRET_KEY) que `ApiKey.key_hash`, jamais relisible.
+    client_secret_hash = models.CharField(max_length=64, db_index=True)
+    scopes = models.JSONField(default=list, blank=True)
+    actif = models.BooleanField(default=True)
+    api_key = models.ForeignKey(
+        ApiKey,
+        on_delete=models.CASCADE,  # on_delete: composition — la cle compagnon n'existe que pour ce client OAuth
+        related_name='oauth_clients',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='oauth_clients_crees',
+    )
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Client OAuth2 (API publique)'
+        verbose_name_plural = 'Clients OAuth2 (API publique)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='publicapi_oauth_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.label} ({self.client_id})'
+
+    def has_scope(self, scope):
+        return scope in (self.scopes or [])
+
+    @classmethod
+    def issue(cls, *, company, label, scopes, created_by=None):
+        """Crée un client et renvoie ``(instance, client_id, secret_en_clair)``.
+
+        Le secret n'est disponible QU'ICI. La clé compagnon est créée avec les
+        MÊMES scopes ; son propre secret en clair est délibérément jeté (elle
+        n'est utilisable que via ce flot OAuth).
+        """
+        from .constants import ALL_SCOPES
+
+        propres = [s for s in (scopes or []) if s in ALL_SCOPES]
+        compagnon, _raw_jete = ApiKey.issue(
+            company=company, label=f'OAuth · {label}', scopes=propres,
+            created_by=created_by)
+        client_id = f'tqc_{secrets.token_urlsafe(18)}'
+        secret = secrets.token_urlsafe(32)
+        instance = cls.objects.create(
+            company=company,
+            label=label,
+            client_id=client_id,
+            client_secret_hash=hash_key(secret),
+            scopes=propres,
+            api_key=compagnon,
+            created_by=created_by,
+        )
+        return instance, client_id, secret
+
+    def verifie_secret(self, secret_clair):
+        """Comparaison à temps constant du secret présenté."""
+        if not secret_clair:
+            return False
+        return hmac.compare_digest(
+            self.client_secret_hash, hash_key(str(secret_clair)))
+
+
+__all__ += ['OAuthClient']

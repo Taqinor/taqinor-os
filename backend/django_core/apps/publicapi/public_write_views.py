@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from apps.crm.models import Lead
 
-from .auth import ApiKeyAuthentication, ApiKeyRateThrottle
+from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle
 from .constants import (
     SCOPE_WRITE_ACTIVITIES, SCOPE_WRITE_DEVIS, SCOPE_WRITE_LEADS,
     SCOPE_WRITE_TICKETS,
@@ -36,7 +36,7 @@ class PublicWriteAPIView(PublicApiResponseMixin, APIView):
     avant même que le contrôle de scope ci-dessous ne s'exécute. Le contrôle
     d'accès réel est le scope check explicite plus bas (parallèle à
     ``HasApiScope`` sur ``PublicReadOnlyViewSet`` côté lecture)."""
-    authentication_classes = [ApiKeyAuthentication]
+    authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [AllowAny]
     throttle_classes = [ApiKeyRateThrottle]
     required_scope = None
