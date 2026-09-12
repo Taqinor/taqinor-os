@@ -210,3 +210,105 @@ def generer_sla_mensuel_task():
     call_command('generer_sla_mensuel')
     logger.info('core.generer_sla_mensuel: génération terminée.')
     return {'ok': True}
+
+
+REVERSIBILITE_BUCKET = 'erp-reversibilite'
+
+
+@shared_task(name='core.export_reversibilite_tenant')
+def export_reversibilite_tenant(company_id, demande_par_id=None, datasets=None):
+    """NTOBS6 — construit le ZIP de réversibilité complet d'une société
+    (CSV par dataset enregistré, ``core.export_registry`` — JAMAIS
+    ``prix_achat``/champ interne-only) et notifie le demandeur avec un lien
+    tokenisé expirant sous 7 jours (``core.signed_download``).
+
+    ``datasets`` (NTOBS20, hors périmètre de ce lot) : optionnel, sous-liste
+    de noms de datasets — absence = comportement par défaut (tout)."""
+    import io
+    import json
+    import zipfile
+
+    from django.utils import timezone as dj_timezone
+
+    from authentication.models import Company
+
+    from . import export_registry, signed_download
+
+    try:
+        company = Company.objects.get(pk=company_id)
+    except Company.DoesNotExist:
+        logger.warning(
+            'core.export_reversibilite_tenant: société %s introuvable.',
+            company_id)
+        return {'ok': False}
+
+    fichiers, comptes = export_registry.export_all_datasets(company)
+    if datasets:
+        fichiers = {
+            nom: contenu for nom, contenu in fichiers.items()
+            if nom[:-4] in datasets  # nom = '<dataset>.csv'
+        }
+        comptes = {k: v for k, v in comptes.items() if k in datasets}
+
+    manifest = {
+        'company_id': company.id,
+        'genere_le': dj_timezone.now().isoformat(),
+        'datasets': comptes,
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for nom, contenu in fichiers.items():
+            zf.writestr(nom, contenu)
+        zf.writestr(
+            'manifest.json',
+            json.dumps(manifest, indent=2, ensure_ascii=False))
+    taille = buf.tell()
+    buf.seek(0)
+
+    from .backup import _minio_client
+
+    object_key = (
+        f'{company.id}/export-{dj_timezone.now():%Y%m%d%H%M%S}.zip')
+    try:
+        client = _minio_client()
+        try:
+            client.head_bucket(Bucket=REVERSIBILITE_BUCKET)
+        except Exception:  # noqa: BLE001 — best-effort, bucket peut-être absent
+            try:
+                client.create_bucket(Bucket=REVERSIBILITE_BUCKET)
+            except Exception:  # noqa: BLE001
+                pass
+        client.put_object(
+            Bucket=REVERSIBILITE_BUCKET, Key=object_key, Body=buf.getvalue())
+    except Exception:  # noqa: BLE001 — jamais bloquant, journalisé
+        logger.exception(
+            'core.export_reversibilite_tenant: échec upload MinIO '
+            '(société %s).', company.id)
+        return {'ok': False}
+
+    lien = signed_download.creer_lien(
+        company, REVERSIBILITE_BUCKET, object_key, taille_octets=taille)
+
+    if demande_par_id:
+        try:
+            from authentication.models import CustomUser
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify
+
+            demandeur = CustomUser.objects.filter(pk=demande_par_id).first()
+            if demandeur:
+                notify(
+                    demandeur, EventType.EXPORT_REVERSIBILITE_PRET,
+                    'Votre export de données est prêt',
+                    body='Le lien expire dans 7 jours.',
+                    link=f'/api/django/core/export-reversibilite/'
+                         f'telecharger/{lien.token}/',
+                    company=company,
+                )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.exception(
+                'core.export_reversibilite_tenant: notification échouée '
+                '(société %s).', company.id)
+
+    return {'ok': True, 'token': lien.token, 'taille_octets': taille}

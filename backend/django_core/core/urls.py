@@ -30,6 +30,9 @@ from .formule_api import (
     FormuleFonctionsView, FormuleTestView, FormuleValiderView,
 )
 from .backup import mes_sauvegardes_view
+from .export_registry import (
+    declencher_export_reversibilite, telecharger_export_reversibilite,
+)
 from .rules_api import RegleOperateursView, RegleValiderView
 from .sla import (
     SlaCreditsDusListView, SlaSnapshotListView, sla_credit_statut,
@@ -219,4 +222,11 @@ urlpatterns = router.urls + [
     # NTOBS5 — écran self-service « Sauvegardes » (lecture seule des
     # BackupRun déjà produits par YOPSB1/2), scopé société.
     path('mes-sauvegardes/', mes_sauvegardes_view, name='mes-sauvegardes'),
+    # NTOBS6 — export de réversibilité complet (Directeur/Administrateur) +
+    # téléchargement tokenisé public (le jeton EST l'authentification).
+    path('export-reversibilite/', declencher_export_reversibilite,
+         name='export-reversibilite-declencher'),
+    path('export-reversibilite/telecharger/<str:token>/',
+         telecharger_export_reversibilite,
+         name='export-reversibilite-telecharger'),
 ]

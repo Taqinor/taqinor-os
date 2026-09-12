@@ -3038,3 +3038,8 @@ from core.ui_extensions import UiActionBouton, UiOngletCustom  # noqa: E402,F401
 # d'éclatement), réexportés ici en tout dernier pour la découverte Django
 # (app_label 'core', migrations).
 from core.sla import SlaCreditPolicy, SlaSnapshot  # noqa: E402,F401
+
+# NTOBS6 — liens de téléchargement tokenisés : ``SignedDownload`` défini dans
+# ``core/signed_download.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.signed_download import SignedDownload  # noqa: E402,F401
