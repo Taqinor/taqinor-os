@@ -151,6 +151,42 @@ def _emettre(signal_nom, **kwargs):
                        exc_info=True)
 
 
+def _notifier_equipe_btp(company, event_type_name, titre, corps, *, link=None,
+                         exclure=None):
+    """NTCON33 — notifie l'ÉQUIPE routée pour cet événement (best-effort).
+
+    Passe par ``notifications.resolve_recipients`` (le registre
+    ``NotificationRoutingRule`` de la société) puis ``notify_many`` : jamais
+    une liste de destinataires calculée ici. Sans règle configurée,
+    ``resolve_recipients`` retombe sur les managers actifs de la société —
+    exactement le comportement historique du reste de l'ERP.
+
+    ``notify()`` applique déjà les ``NotificationPreference`` de l'utilisateur
+    ET la fenêtre de silence dérivée de ``WorkingHoursConfig`` : rien à
+    réappliquer ici (le faire deux fois filtrerait deux fois).
+    """
+    if company is None:
+        return []
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify_many, resolve_recipients
+        event_type = getattr(EventType, event_type_name, None)
+        if event_type is None:
+            return []
+        destinataires = [
+            u for u in resolve_recipients(company, event_type)
+            if getattr(u, 'pk', None) != getattr(exclure, 'pk', None)]
+        if not destinataires:
+            return []
+        return notify_many(
+            destinataires, event_type, titre, body=corps, link=link,
+            company=company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('btp_chantier: notification équipe non envoyée (%s)',
+                       event_type_name, exc_info=True)
+        return []
+
+
 @transaction.atomic
 def _transitionner_reserve(reserve, nouveau_statut, *, auteur, motif=''):
     """Change le statut d'une réserve et journalise la transition (NTCON2)."""
@@ -176,14 +212,21 @@ def enregistrer_creation_reserve(reserve, *, created_by):
     ReserveChantierHistorique.objects.create(
         company=reserve.company, reserve=reserve, ancien_statut='',
         nouveau_statut=reserve.statut, auteur=created_by)
-    if (reserve.gravite == ReserveChantier.Gravite.BLOQUANTE
-            and reserve.responsable_leve_id):
-        _notifier_btp(
-            reserve.responsable_leve, 'APPROVAL_REQUESTED',
-            'Réserve bloquante à lever',
-            f'Réserve #{reserve.id} ({reserve.lot or "chantier"}) requiert '
-            'une action.', company=reserve.company,
-            link=f'/btp/reserves/{reserve.id}')
+    if reserve.gravite == ReserveChantier.Gravite.BLOQUANTE:
+        titre = 'Réserve bloquante à lever'
+        corps = (f'Réserve #{reserve.id} ({reserve.lot or "chantier"}) '
+                 'requiert une action.')
+        lien = f'/btp/reserves/{reserve.id}'
+        if reserve.responsable_leve_id:
+            _notifier_btp(
+                reserve.responsable_leve, 'APPROVAL_REQUESTED', titre, corps,
+                company=reserve.company, link=lien)
+        else:
+            # NTCON33 — aucune personne désignée : une réserve BLOQUANTE ne
+            # doit jamais rester sans destinataire. Routage d'équipe.
+            _notifier_equipe_btp(
+                reserve.company, 'APPROVAL_REQUESTED', titre, corps,
+                link=lien, exclure=created_by)
     return reserve
 
 
@@ -289,6 +332,14 @@ def creer_rfi(*, company, chantier, pose_par, delai_jours=5, **kwargs):
             rfi.destinataire_user, 'APPROVAL_REQUESTED',
             f'RFI #{rfi.numero} en attente de réponse', rfi.question[:200],
             company=company, link=f'/btp/rfi/{rfi.id}')
+    else:
+        # NTCON33 — destinataire EXTERNE (MOE, BE) : personne dans l'ERP ne
+        # serait prévenu et le RFI dormirait jusqu'au sweep de retard NTCON4.
+        # On route vers l'équipe (NotificationRoutingRule, repli managers).
+        _notifier_equipe_btp(
+            company, 'APPROVAL_REQUESTED',
+            f'RFI #{rfi.numero} posé à {rfi.destinataire_texte or "un tiers"}',
+            rfi.question[:200], link=f'/btp/rfi/{rfi.id}', exclure=pose_par)
     return rfi
 
 
@@ -355,7 +406,18 @@ def soumettre_visa(
             delai_revue_jours=delai_revue_jours,
             date_limite=_date_limite_visa(company, delai_revue_jours))
 
-    return create_with_reference(VisaDocument, 'VIS', company, _create)
+    visa = create_with_reference(VisaDocument, 'VIS', company, _create)
+    # NTCON33 — le revuseur n'est désigné qu'à la DÉCISION (NTCON5) : à la
+    # soumission, la revue est routée vers l'équipe (NotificationRoutingRule,
+    # repli managers) — sinon un visa soumis n'alerte personne jusqu'au sweep
+    # de relance NTCON37.
+    _notifier_equipe_btp(
+        company, 'APPROVAL_REQUESTED',
+        f'Visa {visa.reference} à revoir',
+        f'Visa {visa.reference} ({visa.get_type_visa_display()}) soumis — '
+        f'échéance de revue {visa.date_limite}.',
+        link=f'/btp/visas/{visa.id}', exclure=soumis_par)
+    return visa
 
 
 def soumettre_observations_visa(visa, *, user, observations):
@@ -589,6 +651,14 @@ def approuver_avenant(avenant, *, user=None):
     journaliser_transition(
         avenant, ancien=ancien, nouveau=AvenantChantier.Statut.APPROUVE,
         user=user)
+    # NTCON33 — l'équipe projet apprend l'approbation : un avenant approuvé
+    # engage le budget (ou génère une facture d'acompte), ce n'est jamais une
+    # décision qui doit rester entre deux personnes.
+    _notifier_equipe_btp(
+        avenant.company, 'APPROVAL_DECIDED',
+        f'Avenant {avenant.reference} approuvé',
+        f'{avenant.description[:160]} — {avenant.montant_ht} MAD HT.',
+        link=f'/btp/avenants/{avenant.id}', exclure=user)
     return avenant
 
 
@@ -607,6 +677,11 @@ def refuser_avenant(avenant, *, user, motif=''):
     journaliser_transition(
         avenant, ancien=ancien, nouveau=AvenantChantier.Statut.REFUSE,
         user=user, motif=motif)
+    _notifier_equipe_btp(
+        avenant.company, 'APPROVAL_DECIDED',
+        f'Avenant {avenant.reference} refusé',
+        motif[:200] or 'Sans motif précisé.',
+        link=f'/btp/avenants/{avenant.id}', exclure=user)
     return avenant
 
 
