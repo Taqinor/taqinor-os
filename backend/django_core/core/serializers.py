@@ -452,10 +452,26 @@ class FormulaireDefinitionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le champ « Schéma » doit être une liste de champs.')
         for i, champ in enumerate(value, start=1):
-            if not isinstance(champ, dict) or not champ.get('nom'):
+            # NTWFL13 — une entrée « ref » (champ réutilisable, bibliothèque
+            # partagée) n'a pas son propre « nom » : il est résolu EN DIRECT
+            # depuis FormulaireChampReutilisable (voir
+            # core.selectors.resoudre_champs_formulaire), jamais dupliqué ici.
+            if not isinstance(champ, dict) or not (champ.get('nom') or champ.get('ref')):
                 raise serializers.ValidationError(
-                    f"Champ {i} : doit être un objet avec au moins « nom ».")
+                    f"Champ {i} : doit être un objet avec au moins « nom » "
+                    "ou « ref ».")
         return value
+
+    def to_representation(self, instance):
+        """NTWFL13 — développe les entrées ``{"ref": id}`` du schéma stocké
+        en lisant EN DIRECT ``FormulaireChampReutilisable`` (jamais une copie
+        figée) : modifier un champ réutilisable met à jour son libellé
+        PARTOUT où il est référencé, sans réécrire aucun ``FormulaireDefinition``."""
+        data = super().to_representation(instance)
+        from core.selectors import resoudre_champs_formulaire
+        data['schema'] = resoudre_champs_formulaire(
+            instance.schema, instance.company)
+        return data
 
 
 class FormulaireChampReutilisableSerializer(serializers.ModelSerializer):

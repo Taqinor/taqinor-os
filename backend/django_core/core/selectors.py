@@ -140,6 +140,49 @@ def delegants_actifs_pour(suppleant, company, at=None):
     return _resoudre(suppleant, company, at=at)
 
 
+# ── NTWFL13 — bibliothèque de champs de formulaire réutilisables ────────────
+
+def resoudre_champs_formulaire(schema, company):
+    """NTWFL13 — développe les entrées ``{"ref": <id>}`` d'un ``schema`` de
+    ``FormulaireDefinition`` en fusionnant les attributs LUS EN DIRECT sur
+    ``FormulaireChampReutilisable`` (``nom``/``type``/``options``).
+
+    C'est ce qui garantit « un champ réutilisable modifié met à jour son
+    libellé PARTOUT où il est référencé, sans dupliquer sa définition » —
+    aucune copie n'est jamais stockée dans ``schema``, seule la référence
+    (``ref``) l'est ; la résolution se fait à CHAQUE lecture. Une entrée
+    sans ``ref`` (champ inline classique) est renvoyée telle quelle. Une
+    ``ref`` qui ne résout à rien (champ réutilisable supprimé, hors société)
+    est renvoyée telle quelle aussi — jamais d'exception, jamais un schéma
+    tronqué. Les attributs PROPRES à l'entrée (``requis``, ``repetable``)
+    priment toujours sur ceux du champ référencé."""
+    from core.models import FormulaireChampReutilisable
+
+    if not schema:
+        return []
+    resultat = []
+    for entree in schema:
+        if not isinstance(entree, dict) or not entree.get('ref'):
+            resultat.append(entree)
+            continue
+        champ = FormulaireChampReutilisable.objects.filter(
+            pk=entree['ref'], company=company).first()
+        if champ is None:
+            resultat.append(entree)
+            continue
+        # nom/type/options sont INTRINSÈQUES au champ source — ils suivent
+        # TOUJOURS sa dernière valeur (jamais figés dans le schéma). Seuls
+        # les attributs D'USAGE (requis, repetable...) restent propres à
+        # CETTE entrée (un même champ peut être requis dans un formulaire,
+        # optionnel dans un autre).
+        fusion = dict(entree)
+        fusion['nom'] = champ.nom
+        fusion['type'] = champ.type
+        fusion['options'] = champ.options
+        resultat.append(fusion)
+    return resultat
+
+
 def resolve_email_signature(company, nom_societe='', **context) -> str:
     """Signature à apposer au bas d'un email transactionnel d'une société.
 
