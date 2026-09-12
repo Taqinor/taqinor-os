@@ -7,6 +7,8 @@ est posé côté serveur en création, jamais lu du corps de requête.
 """
 import logging
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -116,7 +118,7 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='reconcilier-soldes', permission_classes=[IsDirecteurOuAdmin])
     def reconcilier_soldes(self, request, pk=None):
         """NTMIG37 — solde client SOURCE (balance âgée) vs solde recalculé
-        TAQINOR, client par client migré par CE projet.
+        côté ERP, client par client migré par CE projet.
 
         Corps attendu : ``{"balance": {"<external_id_client>": <montant>, …}}``.
         LECTURE SEULE — ne conditionne ni un chargement ni une clôture.
@@ -620,6 +622,7 @@ class GabaritKitView(GenericAPIView):
 
     permission_classes = [IsDirecteurOuAdmin]
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request, source, entite):
         from django.http import HttpResponse
 

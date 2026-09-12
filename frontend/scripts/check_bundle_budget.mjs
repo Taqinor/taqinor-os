@@ -183,7 +183,13 @@ const PER_CHUNK_BUDGET_KB = 350
 // 2026-09-10 — 3560 -> 3580. Groupe VT (module Visite technique terrain) :
 // 7 écrans/panneaux neufs code-splittés (liste, wizard, revue, calage…),
 // mesuré 3563.5 Ko au drain — cliquet monté au réel + marge courte.
-const TOTAL_BUDGET_KB = 3580
+// 2026-09-12 — 3580 -> 3610. Vague 1 drain NT : le cliquet était périmé par
+// le gros drain qui l'a précédé (classe #85 du catalogue de bugs CI — un
+// grand drain périme les gardes à nombre épinglé), mesuré 3595.4 Ko en CI.
+// Recalé au réel + petite marge (~15 Ko), pas au palier généreux habituel :
+// aucun chunk individuel ne dépasse son budget dédié (PER_CHUNK_BUDGET_KB
+// + budgets vendors restent les vrais garde-fous de poids).
+const TOTAL_BUDGET_KB = 3610
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -289,7 +295,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // 2026-09-06 : 760 -> 770. Batch 3 AUD/MRY — 6 écrans/panneaux code-splittés
 // de plus (mesuré 763).
 // 2026-09-10 : 770 -> 778. Groupe VT — écrans visite code-splittés (mesuré 773).
-export const MAX_CHUNK_COUNT = 778
+// 2026-09-12 : 778 -> 795. Vague 1 drain NT — cliquet périmé par le gros
+// drain précédent (classe #85 du catalogue de bugs CI), mesuré 787 chunks en
+// CI. Recalé au réel + petite marge (~8), même geste que TOTAL_BUDGET_KB
+// ci-dessus : croissance une-route-un-chunk, pas une prolifération de
+// structure.
+export const MAX_CHUNK_COUNT = 795
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
