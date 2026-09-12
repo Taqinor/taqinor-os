@@ -160,6 +160,7 @@ class PurgeRetentionSauteLesGelesTests(TestCase):
             perimetre=[{'type_objet': 'crm_lead',
                         'filtre': {'ids': [lead.pk]}}])
 
-        self.assertEqual(sweep_objets(timezone.now(), True), 0)
+        maintenant = timezone.now()
+        self.assertEqual(sweep_objets(maintenant, True), 0)
         lead.refresh_from_db()
         self.assertEqual(lead.email, 'vieux8@exemple.ma')
