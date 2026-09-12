@@ -375,6 +375,68 @@ class NTUX31PermissionsFinesTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
 
 
+class NTUX40KpiAdoptionUxTests(TestCase):
+    """NTUX40 — `apps.uxviews.selectors.kpi_adoption_ux`, provider KPI fédéré
+    (ARC40, déclaré dans `apps/uxviews/platform.py`)."""
+
+    def setUp(self):
+        self.co = make_company('uxv40-a', 'A')
+        self.role_commercial = make_role(self.co, 'Commercial')
+
+    def _kpi(self):
+        from .selectors import kpi_adoption_ux
+        return {t['id']: t for t in kpi_adoption_ux(self.co)}
+
+    def test_zero_state_never_divides_by_zero(self):
+        tuiles = self._kpi()
+        self.assertEqual(tuiles['ux_pct_ecrans_defaut_role']['valeur'], 0)
+        self.assertEqual(tuiles['ux_moyenne_vues_personnelles']['valeur'], 0)
+        self.assertEqual(tuiles['ux_taux_edition_masse']['valeur'], 0)
+
+    def test_pct_ecrans_avec_defaut_role(self):
+        u = make_user(self.co, 'uxv40-u1')
+        SavedView.objects.create(
+            company=self.co, owner=u, ecran='crm.leads', nom='V1',
+            role=self.role_commercial, est_defaut_role=True,
+            visibilite=SavedView.Visibilite.EQUIPE)
+        SavedView.objects.create(
+            company=self.co, owner=u, ecran='ventes.devis', nom='V2')
+        tuiles = self._kpi()
+        # 1 écran sur 2 (crm.leads, ventes.devis) porte un défaut de rôle.
+        self.assertEqual(tuiles['ux_pct_ecrans_defaut_role']['valeur'], 50.0)
+
+    def test_moyenne_vues_personnelles_par_utilisateur_actif(self):
+        u1 = make_user(self.co, 'uxv40-u2')
+        make_user(self.co, 'uxv40-u3')  # 2e utilisateur actif, sans vue
+        SavedView.objects.create(company=self.co, owner=u1, ecran='crm.leads', nom='P1')
+        SavedView.objects.create(company=self.co, owner=u1, ecran='crm.leads', nom='P2')
+        tuiles = self._kpi()
+        # 2 vues personnelles / 2 utilisateurs actifs = 1.0.
+        self.assertEqual(tuiles['ux_moyenne_vues_personnelles']['valeur'], 1.0)
+
+    def test_taux_edition_masse_derive_de_laudit_log(self):
+        from apps.audit.models import AuditLog
+
+        AuditLog.objects.create(
+            company=self.co, action=AuditLog.Action.UPDATE,
+            detail='Édition en masse « Utilisateurs » (utilisateurs) : 3 ligne(s).')
+        AuditLog.objects.create(
+            company=self.co, action=AuditLog.Action.UPDATE,
+            detail='Statut : « Brouillon » → « Envoyé »')
+        AuditLog.objects.create(
+            company=self.co, action=AuditLog.Action.UPDATE,
+            detail='Statut : « Envoyé » → « Accepté »')
+        tuiles = self._kpi()
+        # 1 édition en masse sur 3 UPDATE au total = 33.3 %.
+        self.assertAlmostEqual(
+            tuiles['ux_taux_edition_masse']['valeur'], 33.3, places=1)
+
+    def test_returns_normalized_tile_shape(self):
+        for tuile in self._kpi().values():
+            for cle in ('id', 'label', 'valeur', 'unite'):
+                self.assertIn(cle, tuile)
+
+
 class NTUX39EcranRecentEtNotificationTests(TestCase):
     """NTUX39 — `EcranRecent` (substitut serveur de NTUX11) + notification de
     suivi quand une vue d'équipe consultée récemment change de filtres."""
