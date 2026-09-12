@@ -422,6 +422,68 @@ def articles_pour_cible(company, type_cible, cible_id):
     return out
 
 
+def articles_pour_contexte(company, *, categorie_ticket=None,
+                           equipement_produit=None,
+                           mots_cles_description=None, limit=3):
+    """NTSRV18 — Articles KB PUBLIÉS les plus pertinents pour le CONTEXTE
+    d'un ticket SAV, affichés en panneau « Articles suggérés ».
+
+    Combine, dans l'ordre de priorité :
+      1. les liens EXPLICITES déjà posés (``KbArticleLien`` XKB4) sur le
+         produit de l'équipement concerné (``equipement_produit``) ;
+      2. les liens EXPLICITES sur la catégorie/type d'intervention du ticket
+         (``categorie_ticket``) ;
+      3. — si la place le permet — une recherche simple par MOTS-CLÉS sur la
+         description (même mécanique que le ``?search=`` KB3 existant :
+         ``icontains`` titre/corps, aucune dépendance à un provider
+         d'embedding, contrairement à ``retrieve_chunks``).
+
+    Renvoie au plus ``limit`` dicts ``{id, titre, statut}`` DÉDOUBLONNÉS,
+    tous PUBLIÉS. Lecture seule, scopée société, jamais de nouvelle table.
+    """
+    out = []
+    seen = set()
+
+    def _ajouter(candidats):
+        for art in candidats:
+            if len(out) >= limit or art['id'] in seen:
+                continue
+            seen.add(art['id'])
+            out.append(art)
+
+    if equipement_produit:
+        _ajouter([
+            a for a in articles_pour_cible(
+                company, KbArticleLien.TypeCible.PRODUIT, equipement_produit)
+            if a['statut'] == KbArticle.Statut.PUBLIE])
+
+    if len(out) < limit and categorie_ticket:
+        _ajouter([
+            a for a in articles_pour_cible(
+                company, KbArticleLien.TypeCible.TYPE_INTERVENTION,
+                categorie_ticket)
+            if a['statut'] == KbArticle.Statut.PUBLIE])
+
+    texte = (mots_cles_description or '').strip()
+    if len(out) < limit and texte:
+        mots = {m for m in re.findall(r"[a-zà-ÿ0-9]{3,}", texte.lower())}
+        if mots:
+            qs = KbArticle.objects.filter(
+                company=company, statut=KbArticle.Statut.PUBLIE)
+            scored = []
+            for art in qs:
+                hay = f'{art.titre} {art.corps}'.lower()
+                score = sum(1 for mot in mots if mot in hay)
+                if score > 0:
+                    scored.append((score, art))
+            scored.sort(key=lambda pair: (-pair[0], -pair[1].pk))
+            _ajouter([
+                {'id': art.id, 'titre': art.titre, 'statut': art.statut}
+                for _score, art in scored])
+
+    return out[:limit]
+
+
 def _label_produit(company, cible_id):
     """Libellé enrichi d'un produit via ``stock.selectors`` (ou None).
 

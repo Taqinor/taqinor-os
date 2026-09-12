@@ -7,7 +7,7 @@ requête). Les versions d'article sont des instantanés numérotés côté serve
 """
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
@@ -201,6 +201,54 @@ class KbArticleViewSet(_KbBaseViewSet):
         """XKB7 — Rapport de conformité de lecture obligatoire (lus/non-lus)."""
         article = self.get_object()
         return Response(selectors.rapport_conformite_article(article))
+
+    @action(detail=False, methods=['post'], url_path='creer-depuis-ticket')
+    def creer_depuis_ticket(self, request):
+        """NTSRV19 — pré-remplit un article KB (brouillon) depuis un ticket
+        SAV RÉSOLU. Le contenu du ticket est transmis dans le corps par
+        l'appelant (jamais un import de ``apps.sav`` ici — la frontière
+        cross-app reste respectée en laissant le frontend, qui a DÉJÀ chargé
+        le ticket, fournir les champs) :
+        ``{ticket_id, type_panne, equipement, description, cause, remede,
+        derniere_note}``. Titre = type de panne + équipement ; corps =
+        concaténation description+cause+remède+dernière note de résolution —
+        zéro resaisie manuelle des faits déjà saisis sur le ticket. Un lien
+        retour ``KbArticleLien`` (type_cible=ticket) trace la provenance.
+        L'agent édite et publie ensuite normalement (flux KB2/KB inchangé).
+        """
+        data = request.data
+        ticket_id = data.get('ticket_id')
+        if not ticket_id:
+            return Response(
+                {'detail': 'ticket_id requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        type_panne = str(data.get('type_panne') or '').strip()
+        equipement = str(data.get('equipement') or '').strip()
+        titre = (' — '.join(p for p in (type_panne, equipement) if p)
+                 or f'Ticket #{ticket_id}')
+
+        sections = []
+        for libelle, cle in (
+            ('Description', 'description'), ('Cause', 'cause'),
+            ('Remède', 'remede'),
+            ('Dernière note de résolution', 'derniere_note'),
+        ):
+            valeur = str(data.get(cle) or '').strip()
+            if valeur:
+                sections.append(f'{libelle} :\n{valeur}')
+        corps = '\n\n'.join(sections)
+
+        article = KbArticle.objects.create(
+            company=request.user.company, titre=titre, corps=corps,
+            statut=KbArticle.Statut.BROUILLON, auteur=request.user)
+        KbArticleLien.objects.create(
+            company=request.user.company, article=article,
+            type_cible=KbArticleLien.TypeCible.TICKET, cible_id=ticket_id,
+            libelle=f'Ticket #{ticket_id}')
+        return Response(
+            self.get_serializer(article).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='arbre')
     def arbre(self, request):
