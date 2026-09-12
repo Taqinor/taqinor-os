@@ -123,8 +123,29 @@ UNGUARDED_ACTION_BASELINE = {
     # pointer_borne`, `DemandeApprobationRibViewSet.diagnostic_rib`,
     # `CompteFideliteViewSet.recalculer_solde`. Dette coarse apparente,
     # vérifiée classe par classe, pas un trou réel.
-    "compta": 118,
-    "contrats": 56,
+    # Vague 1 drain NT (2026-09-12) — 118 -> 119 : `PaymentRunViewSet.apercu`
+    # (NTTRE25, aperçu AVANT création d'une campagne de règlement) rejoint les
+    # 4 autres @action de la même classe déjà comptées dans ce baseline
+    # (`proposer`/`figer`/`poster`/`fichier_virement`) — héritée de
+    # `_ComptaBaseViewSet` (`permission_classes = [IsResponsableOrAdmin]`),
+    # même patron coarse que tout le reste. Vérifié en lisant la classe : pas
+    # de `get_permissions` propre à `PaymentRunViewSet`, mais la classe entière
+    # est déjà Responsable/Admin only. Dette coarse apparente, pas un trou réel.
+    "compta": 119,
+    # Vague 1 drain NT (2026-09-12) — 56 -> 72 : trois viewsets NEUFS (location
+    # d'équipement) héritent TOUS de `_ContratsBaseViewSet`
+    # (`WriteScopedPermissionMixin`, `write_permission='contrat_gerer'` gate
+    # toute écriture y compris les actions custom, `read_permission=
+    # 'contrat_voir'` gate la lecture) — même patron coarse déjà figé pour
+    # `ContratViewSet`/`ModeleContratViewSet`/etc. dans ce même baseline :
+    # `OrdreLocationViewSet` (14 @action : changer_statut/disponibilite/
+    # caution_encaisser/caution_restituer/caution_retenir/en_retard/cloturer/
+    # inspecter/facturer_cycle/prolonger/ecourter/bon_enlevement/
+    # bon_restitution/depuis_devis), `ParametresLocationViewSet.courant`,
+    # `ParametresAbonnementViewSet.courant`. Vérifié classe par classe (les 16
+    # nouvelles + les 56 déjà en base = 72 exactement) : dette coarse
+    # apparente, pas un trou réel.
+    "contrats": 72,
     # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
     # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
     # (Administrateur only) + company-scopées (CompanyScopedModelViewSet) ; les
@@ -163,7 +184,13 @@ UNGUARDED_ACTION_BASELINE = {
     # fine-gardés ``permission_classes=[IsResponsableOrAdmin]``.
     "gestion_projet": 71,
     "installations": 4,
-    "kb": 34,
+    # NTSRV19 — 34 -> 35 : `KbArticleViewSet.creer_depuis_ticket` (POST,
+    # pré-remplit un article KB depuis un ticket SAV résolu) rejoint les 30
+    # autres @action de la même classe déjà comptées dans ce baseline —
+    # héritée de `_KbBaseViewSet` (WriteScopedPermissionMixin,
+    # `write_permission='kb_gerer'` gate toute écriture y compris les actions
+    # custom). Dette coarse apparente, pas un trou réel.
+    "kb": 35,
     "litiges": 7,
     # NTMKT44/45 — 0->2 : ``apps/marketing/views.py`` déclare deux sous-classes
     # qui étendent un ViewSet de ``apps.compta.views`` SANS le modifier
@@ -199,7 +226,18 @@ UNGUARDED_ACTION_BASELINE = {
     # DELETE, actions custom incluses) exige `paie_gerer`, jamais `IsAnyRole`
     # — un élément variable de paie EST de l'argent. Dette coarse apparente,
     # pas un trou réel.
-    "paie": 72,
+    # Vague 1 drain NT (2026-09-12) — 72 -> 80 : 8 @action neuves (NTPAY1/3/
+    # 4/5/6), TOUTES gardées par le même `get_permissions` du mixin
+    # `_PaieVoirOuGerer` HÉRITÉ (jamais dans le corps de leur propre classe) —
+    # même patron que ci-dessus : `_RappelRetroactifMixin.periodes_impactees`/
+    # `.rappel_retroactif` (partagé par `ParametrePaieViewSet`/`BaremeIRViewSet`,
+    # tous deux `_PaieBaseViewSet`), `PaysPaieViewSet.seed_standard`,
+    # `SchemaComptablePaieViewSet.seed_standard`/`.reinitialiser`,
+    # `ProfilPaieViewSet.certificat_travail`, `PeriodePaieViewSet.
+    # bordereau_cnss`, `EcheanceDeclarativeViewSet.depots` (hérite
+    # `_PaieVoirOuGerer` directement). Vérifié classe par classe : dette
+    # coarse apparente, pas un trou réel.
+    "paie": 80,
     "pos": 5,
     # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
     # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.
@@ -237,7 +275,22 @@ UNGUARDED_ACTION_BASELINE = {
     # read_permission='rh_voir' route déjà toute lecture, y compris cette
     # @action GET) — même patron que ses voisines `emarger`/`chantier` déjà
     # dans ce baseline ; dette apparente, pas un trou (103 → 104).
-    "rh": 104,
+    # Vague 1 drain NT (2026-09-12) — 104 -> 112 : 8 @action neuves (NTHCM4/5/
+    # 7/13). 6 sur le même patron `_RhBaseViewSet` (WriteScopedPermissionMixin,
+    # `write_permission='rh_gerer'`/`read_permission='rh_voir'` gate déjà toute
+    # méthode y compris les actions custom) : `PosteViewSet.effectif`/
+    # `.effectifs` (NTHCM4, comparatif budgété/pourvu), `EvaluationNeufBoxViewSet.
+    # grille`, `PosteCleViewSet.couverture`/`.couverture_globale`/
+    # `.risque_succession` (NTHCM13, cockpit postes-clés). Les 2 autres sont
+    # gardées au niveau CLASSE par un `permission_classes=` propre, vérifié en
+    # lisant chaque classe : `CockpitRhViewSet.postes_a_risque`
+    # (`permission_classes = [IsResponsableOrAdmin]`, comme le reste du
+    # cockpit) et `CycleRevisionSalarialeViewSet.appliquer` (NTHCM7,
+    # matérialisation d'un cycle de révision salariale —
+    # `permission_classes = [HasPermission('salaires_voir')]`, paie SENSIBLE,
+    # refus 403 sans cette permission). Dette coarse apparente, vérifiée
+    # classe par classe, pas un trou réel.
+    "rh": 112,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
     # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
     # ne fait que DÉCROÎTRE).

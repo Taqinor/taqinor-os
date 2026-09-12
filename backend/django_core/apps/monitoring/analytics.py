@@ -215,8 +215,14 @@ def _jours_panne_dans_fenetre(installation, since, today):
              .filter(installation=installation)
              .filter(Q(date_cloture__isnull=True) | Q(date_cloture__date__gte=since)))
     for flag in flags:
-        debut = max(flag.date_creation.date(), since)
-        fin = min(flag.date_cloture.date(), today) if flag.date_cloture else today
+        # ``.date()`` sur un datetime relu de la base donnerait le jour UTC :
+        # un flag ouvert à minuit heure marocaine (UTC+1) compterait un jour
+        # de panne de TROP (60 % devenaient 70 %). Le lookup ``__date`` du
+        # filtre ci-dessus convertit, lui, dans le fuseau du projet — on
+        # aligne le calcul Python dessus.
+        debut = max(timezone.localtime(flag.date_creation).date(), since)
+        fin = (min(timezone.localtime(flag.date_cloture).date(), today)
+               if flag.date_cloture else today)
         if fin >= debut:
             jours += (fin - debut).days + 1
     return jours

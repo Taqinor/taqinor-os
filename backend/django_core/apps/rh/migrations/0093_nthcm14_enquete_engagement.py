@@ -36,17 +36,18 @@ class Migration(migrations.Migration):
                     blank=True, null=True, verbose_name='Date de fin')),
                 ('anonyme', models.BooleanField(
                     default=True, verbose_name='Anonyme')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_enquetes_engagement',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
                 'verbose_name': "Enquête d'engagement",
                 'verbose_name_plural': "Enquêtes d'engagement",
-                'ordering': ['-date_creation'],
+                'ordering': ['-created_at'],
             },
         ),
         migrations.CreateModel(
@@ -59,11 +60,12 @@ class Migration(migrations.Migration):
                     default=True, verbose_name='Anonyme')),
                 ('reponses', models.JSONField(
                     blank=True, default=dict, verbose_name='Réponses')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_reponses_enquete',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('employe', models.ForeignKey(
                     blank=True, null=True,
@@ -79,7 +81,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': "Réponse d'enquête",
                 'verbose_name_plural': "Réponses d'enquête",
-                'ordering': ['-date_creation'],
+                'ordering': ['-created_at'],
             },
         ),
         migrations.CreateModel(
@@ -90,11 +92,12 @@ class Migration(migrations.Migration):
                     verbose_name='ID')),
                 ('token_hash', models.CharField(
                     max_length=64, verbose_name='Jeton (empreinte)')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                # SCA4 — socle core.models.TenantModel.
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='rh_participations_enquete',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('enquete', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

@@ -1,4 +1,6 @@
 from django.urls import path, include
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.routers import DefaultRouter
 from rest_framework.decorators import api_view, permission_classes
 
@@ -72,6 +74,16 @@ def file_action_view(request):
     return sav_file_action(request)
 
 
+@extend_schema(responses=inline_serializer('SavFileAttenteReponse', {
+    'results': inline_serializer('SavFileAttenteEquipe', {
+        'equipe_id': drf_serializers.IntegerField(),
+        'equipe_nom': drf_serializers.CharField(),
+        'capacite': drf_serializers.IntegerField(),
+        'charge': drf_serializers.IntegerField(),
+        'file_attente': drf_serializers.JSONField(),
+        'debordement': drf_serializers.JSONField(),
+    }, many=True),
+}))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def file_attente_view(request):

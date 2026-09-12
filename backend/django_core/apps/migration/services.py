@@ -1085,7 +1085,7 @@ def reconcilier_lot(lot, *, total_financier_cible=None):
 # trop, une manquante) laisseraient les COMPTAGES globaux corrects tout en
 # perdant l'encours réel d'UN client précis. Ce contrôle compare, CLIENT PAR
 # CLIENT, le solde SOURCE (balance âgée fournie par l'intégrateur) au solde
-# recalculé côté TAQINOR — via ``ventes.selectors`` (jamais un import direct
+# recalculé côté ERP — via ``ventes.selectors`` (jamais un import direct
 # de ``ventes.models``/``compta.models``, frontière cross-app respectée).
 # ─────────────────────────────────────────────────────────────────────────
 #: Tolérance d'arrondi (MAD) sous laquelle un écart n'est pas une divergence.
@@ -1093,7 +1093,7 @@ TOLERANCE_SOLDE_MAD = Decimal('0.01')
 
 
 def reconcilier_soldes(projet, balance_agee_source):
-    """NTMIG37 — solde client SOURCE vs solde recalculé TAQINOR, par client
+    """NTMIG37 — solde client SOURCE vs solde recalculé côté ERP, par client
     migré par CE projet.
 
     ``balance_agee_source`` : ``{external_id_client: montant_source}`` —

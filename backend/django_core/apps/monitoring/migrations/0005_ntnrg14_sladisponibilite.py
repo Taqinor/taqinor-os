@@ -20,15 +20,17 @@ class Migration(migrations.Migration):
                 ('disponibilite_garantie_pct', models.DecimalField(decimal_places=2, default=98, max_digits=5)),
                 ('compensation_mad_par_jour_indispo', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
                 ('note', models.TextField(blank=True, default='')),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
-                ('date_modification', models.DateTimeField(auto_now=True)),
+                # SCA4 — socle core.models.TenantModel (created_at/updated_at
+                # au lieu de date_creation/date_modification à la main).
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='sla_disponibilites', to='authentication.company')),
                 ('installation', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='sla_disponibilite', to='installations.installation')),
             ],
             options={
                 'verbose_name': 'SLA de disponibilité',
                 'verbose_name_plural': 'SLA de disponibilité',
-                'ordering': ['-date_modification'],
+                'ordering': ['-updated_at'],
                 'indexes': [models.Index(fields=['company', 'installation'], name='monitoring_sla_dispo_idx')],
             },
         ),

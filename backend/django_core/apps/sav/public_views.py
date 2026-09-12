@@ -10,6 +10,8 @@ Protections : X-Robots-Tag noindex sur chaque réponse publique ; throttle
 cache-based par IP (30 req/min) sans dépendance externe.
 """
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
@@ -248,6 +250,12 @@ def equipement_public_signaler(request, token):
 
 # ── NTSRV2 — Formulaire portail client → ticket SAV (public, tokenisé) ───────
 
+@extend_schema(responses=inline_serializer('PortailCreerTicketReponse', {
+    'reference': drf_serializers.CharField(),
+    'numero_suivi': drf_serializers.CharField(required=False),
+    'suivi_token': drf_serializers.CharField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+}))
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])
@@ -357,6 +365,11 @@ def portail_creer_ticket(request):
 
 # ── NTSRV3 — Webhook WhatsApp entrant (GATED, 404 sans clé) ─────────────────
 
+@extend_schema(responses=inline_serializer('WhatsappInboundReponse', {
+    'reference': drf_serializers.CharField(required=False),
+    'cree': drf_serializers.BooleanField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+}))
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])

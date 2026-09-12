@@ -58,6 +58,15 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             return [IsAnyRole()]
+        if self.action in ('van_stock_mon_stock', 'van_stock_signaler_manquant'):
+            # NTFSM20 — écran mobile du TECHNICIEN : il lit le stock de SA
+            # camionnette et y signale un manquant. Même piège que
+            # `etiquettes_kanban` ci-dessus : `get_permissions` prime sur le
+            # `permission_classes=[IsAnyRole]` posé sur l'@action, donc sans
+            # ce cas explicite un technicien (rôle « normal ») recevait 403.
+            # L'emplacement reste résolu CÔTÉ SERVEUR (jamais un id client),
+            # donc ouvrir la garde n'ouvre pas la camionnette d'un collègue.
+            return [IsAnyRole()]
         return [IsAdminRole()]
 
     def get_queryset(self):

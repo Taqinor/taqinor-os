@@ -2,7 +2,12 @@
    facture). Rendu par le WeasyPrint générique de l'app (même patron que les
    bons de location ZCTR5) — JAMAIS le moteur de devis premium `/proposal`,
    réservé aux devis client (rule #4). Aucun « à payer », aucun statut
-   modifié : ce document récapitule ce qui s'est passé sur la période. #}
+   modifié : ce document récapitule ce qui s'est passé sur la période.
+
+   SYNTAXE : `templates/pdf/` est servi par le moteur **Jinja2**
+   (`settings.TEMPLATES[1]`, DIRS = templates/pdf) — donc PAS de filtre Django
+   `|default:"…"` ici (erreur de syntaxe au chargement du gabarit) ; les
+   valeurs absentes se replient avec `or`, comme les 29 autres gabarits PDF. #}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -41,7 +46,7 @@
     <div>
       <div class="doc-title">RELEVÉ D'ABONNEMENT</div>
       <div class="doc-ref">
-        Contrat {{ releve.contrat.reference|default:releve.contrat.id }}
+        Contrat {{ releve.contrat.reference or releve.contrat.id }}
         {% if releve.contrat.objet %}— {{ releve.contrat.objet }}{% endif %}
       </div>
     </div>
@@ -56,11 +61,11 @@
   <div class="meta-row">
     <div class="meta-item">
       <strong>Période du</strong>
-      <span>{{ releve.date_debut|default:"origine" }}</span>
+      <span>{{ releve.date_debut or "origine" }}</span>
     </div>
     <div class="meta-item">
       <strong>au</strong>
-      <span>{{ releve.date_fin|default:"ce jour" }}</span>
+      <span>{{ releve.date_fin or "ce jour" }}</span>
     </div>
     <div class="meta-item">
       <strong>Client</strong>
@@ -80,7 +85,7 @@
       <tr>
         <td>{{ e.numero }}</td>
         <td>{{ e.date_echeance }}</td>
-        <td>{{ e.libelle|default:"—" }}</td>
+        <td>{{ e.libelle or "—" }}</td>
         <td>{{ e.statut_libelle }}</td>
         <td class="montant">{{ e.montant }}</td>
       </tr>
@@ -108,7 +113,7 @@
         <td>{{ a.code }}</td>
         <td>{{ a.addon }}</td>
         <td>{{ a.actif_depuis }}</td>
-        <td>{{ a.actif_jusqua|default:"—" }}</td>
+        <td>{{ a.actif_jusqua or "—" }}</td>
         <td class="montant">{{ a.quantite }}</td>
         <td class="montant">{{ a.montant }}</td>
       </tr>
@@ -157,7 +162,7 @@
       <tr>
         <td>{{ p.date_paiement }}</td>
         <td>{{ p.mode_libelle }}</td>
-        <td>{{ p.reference|default:"—" }}</td>
+        <td>{{ p.reference or "—" }}</td>
         <td class="montant">{{ p.montant }}</td>
       </tr>
       {% endfor %}

@@ -16,7 +16,7 @@ paquet.
 Numérotation via ``core.numbering.create_with_reference`` (jamais
 ``count()+1`` — une migration de 100 devis crée 100 références GAP-FREE), le
 statut d'origine étant PRÉSERVÉ via une table de correspondance statut
-source→statut TAQINOR plutôt que forcé à ``brouillon``.
+source→statut côté ERP plutôt que forcé à ``brouillon``.
 
 Retournent des TRIPLETS ``(statut, message, instance_ou_none)`` — et non les
 doublets ``(statut, message)`` des autres importateurs XFLT22 (véhicules,
@@ -231,7 +231,12 @@ def ajouter_lignes_devis_import(company, external_system, rows, *, user=None):
     from django.contrib.contenttypes.models import ContentType
 
     from apps.dataimport.models import ExternalRef
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
+
+    # QJR84 — l'ÉCRIVAIN UNIQUE de lignes de devis de l'app (le jeu de champs
+    # complet y est nommé une fois, ``CHAMPS_LIGNE``). Une garde statique
+    # refuse tout second ``LigneDevis.objects.create`` dans ``apps/ventes``.
+    from .lignes import creer_ligne
 
     ct = ContentType.objects.get_for_model(Devis)
     crees, erreurs = 0, []
@@ -256,8 +261,8 @@ def ajouter_lignes_devis_import(company, external_system, rows, *, user=None):
         if not designation:
             erreurs.append({'ligne': i, 'raison': 'désignation manquante'})
             continue
-        LigneDevis.objects.create(
-            devis=devis, designation=designation[:255],
+        creer_ligne(
+            devis, designation=designation[:255],
             quantite=_decimal_ou_none(ligne.get('quantite')),
             prix_unitaire=_decimal_ou_none(ligne.get('prix_unitaire_ht')),
             taux_tva=_decimal_ou_none(ligne.get('taux_tva')))

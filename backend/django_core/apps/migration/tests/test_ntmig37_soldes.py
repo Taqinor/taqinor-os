@@ -71,9 +71,13 @@ class ReconcilierSoldesTests(TestCase):
             self.projet, {'ODOO-C1': '12000'})
 
         self.assertEqual(len(divergences), 1)
+        # Le solde SOURCE est rendu tel que l'intégrateur l'a fourni
+        # ('12000') ; le solde MIGRÉ vient d'un agrégat de champs monétaires
+        # (``DecimalField(decimal_places=2)``) et porte donc sa décimale —
+        # tout comme l'écart, qui reprend la plus grande échelle des deux.
         self.assertEqual(divergences[0]['solde_source'], '12000')
-        self.assertEqual(divergences[0]['solde_migre'], '9000')
-        self.assertEqual(divergences[0]['ecart'], '-3000')
+        self.assertEqual(divergences[0]['solde_migre'], '9000.00')
+        self.assertEqual(divergences[0]['ecart'], '-3000.00')
 
     def test_client_absent_de_la_migration_signale(self):
         divergences = services.reconcilier_soldes(
