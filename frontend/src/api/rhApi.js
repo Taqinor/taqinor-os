@@ -577,6 +577,37 @@ const rhApi = {
   getSubordonnes: (employeId) =>
     api.get(`/rh/employes/${employeId}/subordonnes/`),
 
+  // ── NTHCM2 — organigramme imbriqué (lecture) ──
+  getOrganigramme: (params) =>
+    api.get('/rh/employes/organigramme/', { params }),
+
+  // ── NTHCM8/9 — OKR (objectifs, rollup entreprise, check-ins) ──
+  getTableauBordOkr: (params) =>
+    api.get('/rh/okr-individuels/tableau-de-bord/', { params }),
+  getRollupObjectif: (id) =>
+    api.get(`/rh/objectifs-entreprise/${id}/rollup/`),
+  checkInOkr: (id, data) =>
+    api.post(`/rh/okr-individuels/${id}/check-in/`, data ?? {}),
+  getCheckInsOkr: (params) => api.get('/rh/checkins-okr/', { params }),
+
+  // ── NTHCM5/6 — cycles de révision salariale (SENSIBLE : le serveur gate
+  //    tout sur `salaires_voir`) ──
+  getCyclesRevision: (params) => api.get('/rh/cycles-revision/', { params }),
+  getCalibrationCycle: (id) =>
+    api.get(`/rh/cycles-revision/${id}/calibration/`),
+  validerCalibrationCycle: (id) =>
+    api.post(`/rh/cycles-revision/${id}/valider-calibration/`, {}),
+
+  // ── NTHCM3 — rattachements fonctionnels (dotted-line) ──
+  getRattachementsFonctionnels: (params) =>
+    api.get('/rh/rattachements-fonctionnels/', { params }),
+  createRattachementFonctionnel: (data) =>
+    api.post('/rh/rattachements-fonctionnels/', data),
+  updateRattachementFonctionnel: (id, data) =>
+    api.patch(`/rh/rattachements-fonctionnels/${id}/`, data),
+  deleteRattachementFonctionnel: (id) =>
+    api.delete(`/rh/rattachements-fonctionnels/${id}/`),
+
   // ── NTHCM4 — postes budgétés vs pourvus (headcount) ──
   getEffectifPoste: (posteId) =>
     api.get(`/rh/postes/${posteId}/effectif/`),

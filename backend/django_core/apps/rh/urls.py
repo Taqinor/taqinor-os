@@ -18,8 +18,10 @@ from .views import (
     CampagnePulseViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
+    AnalyticsRhViewSet,
     CockpitRhViewSet,
     CertificationViewSet,
+    CheckInOkrViewSet,
     CycleRevisionSalarialeViewSet,
     EnqueteEngagementViewSet,
     EnveloppeManagerViewSet,
@@ -55,8 +57,13 @@ from .views import (
     GabaritEmailRecrutementViewSet,
     GrilleSalarialeViewSet,
     LigneParcoursViewSet,
+    EtapeParcoursViewSet,
     EvaluationEmployeViewSet,
+    FeedbackContinuViewSet,
     FeuilleTempsViewSet,
+    ParcoursFormationViewSet,
+    ProgressionParcoursViewSet,
+    RattachementFonctionnelViewSet,
     HabilitationViewSet,
     HeuresSuppViewSet,
     HoraireTravailViewSet,
@@ -180,6 +187,9 @@ router.register(r'demandes-rh', DemandeRHViewSet)
 router.register(
     r'portail', PortailSelfServiceViewSet, basename='rh-portail')
 router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
+# NTHCM27/28 — analytics RH agrégées (diversité, absentéisme).
+router.register(
+    r'analytics', AnalyticsRhViewSet, basename='rh-analytics')
 router.register(r'badges-reconnaissance', BadgeReconnaissanceViewSet)
 router.register(r'attributions-badge', AttributionBadgeViewSet)
 # NTHCM5 — cycles de révision salariale (gatés ``salaires_voir``).
@@ -190,6 +200,8 @@ router.register(r'propositions-revision', PropositionRevisionViewSet)
 router.register(r'objectifs-entreprise', ObjectifEntrepriseViewSet)
 router.register(r'key-results', KeyResultViewSet)
 router.register(r'okr-individuels', OkrIndividuelViewSet)
+# NTHCM9 — historique des check-ins OKR (lecture).
+router.register(r'checkins-okr', CheckInOkrViewSet)
 router.register(r'key-results-individuels', KeyResultIndividuelViewSet)
 # NTHCM10 — grille 9-box (performance × potentiel).
 router.register(r'evaluations-neuf-box', EvaluationNeufBoxViewSet)
@@ -200,6 +212,15 @@ router.register(r'plans-succession', PlanSuccessionViewSet)
 router.register(r'enquetes-engagement', EnqueteEngagementViewSet)
 # NTHCM15 — plans d'action issus d'une enquête.
 router.register(r'plans-action-engagement', PlanActionEngagementViewSet)
+# NTHCM16 — feedback continu entre collègues (hors cycle formel).
+router.register(r'feedbacks-continus', FeedbackContinuViewSet)
+# NTHCM17 — parcours de formation structurés (modules ordonnés).
+router.register(r'parcours-formation', ParcoursFormationViewSet)
+router.register(r'etapes-parcours', EtapeParcoursViewSet)
+router.register(r'progressions-parcours', ProgressionParcoursViewSet)
+# NTHCM3 — rattachements fonctionnels (dotted-line).
+router.register(
+    r'rattachements-fonctionnels', RattachementFonctionnelViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

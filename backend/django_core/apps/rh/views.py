@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
@@ -29,12 +30,13 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
 )
-from core.permissions import WriteScopedPermissionMixin
+from core.permissions import WriteScopedPermissionMixin, _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import activity, selectors, services
 from .models import (
     AccidentTravail,
+    ActeurTache,
     AffectationRoster,
     AffectationVehicule,
     AnalyseRisquesChantier,
@@ -52,6 +54,7 @@ from .models import (
     CauserieParticipant,
     CauserieSecurite,
     Certification,
+    CheckInOkr,
     Competence,
     CompetenceEmploye,
     CompetenceRequise,
@@ -92,7 +95,9 @@ from .models import (
     ElementSortie,
     ElementsVariablesPaie,
     EpiCatalogue,
+    EtapeParcours,
     EvaluationEmploye,
+    FeedbackContinu,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -104,13 +109,16 @@ from .models import (
     NoteDeFrais,
     OrdreMission,
     OuverturePoste,
+    ParcoursFormation,
     PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    ProgressionParcours,
     QuizFormation,
+    RattachementFonctionnel,
     Remuneration,
     RetourFeedback360,
     Sanction,
@@ -138,6 +146,7 @@ from .serializers import (
     BulletinPaieSerializer,
     CampagneEvaluationSerializer,
     CampagnePulseSerializer,
+    CheckInOkrSerializer,
     CandidatureActivitySerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
@@ -188,6 +197,8 @@ from .serializers import (
     EmargerEpiSerializer,
     EvaluationEmployeSerializer,
     EpiCatalogueSerializer,
+    EtapeParcoursSerializer,
+    FeedbackContinuSerializer,
     FeuilleTempsSerializer,
     HabilitationSerializer,
     HeuresSuppSerializer,
@@ -200,8 +211,10 @@ from .serializers import (
     NoteDeFraisSerializer,
     OrdreMissionSerializer,
     OuverturePosteSerializer,
+    ParcoursFormationSerializer,
     PermisConduireSerializer,
     PointageSerializer,
+    ProgressionParcoursSerializer,
     PosteSerializer,
     PresenceChantierSerializer,
     PresquAccidentSerializer,
@@ -209,6 +222,7 @@ from .serializers import (
     QuizFormationPortailSerializer,
     QuizFormationSerializer,
     MonFeedback360Serializer,
+    RattachementFonctionnelSerializer,
     RemunerationSerializer,
     RetourFeedback360Serializer,
     SanctionSerializer,
@@ -483,6 +497,24 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         return Response(
             DossierEmployeSerializer(
                 directs, many=True, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'], url_path='organigramme')
+    def organigramme(self, request):
+        """NTHCM2 — organigramme imbriqué (``?racine=``, ``?q=``).
+
+        Lecture pure, scopée société. ``?q=`` marque les nœuds trouvés
+        (``correspond``) et TOUS leurs ancêtres (``sur_chemin``) : c'est ce
+        drapeau qui permet à l'écran de déplier jusqu'au nœud, sans deviner.
+        Cycle-safe et borné en profondeur (un nœud coupé porte ``tronque``).
+        """
+        return Response(
+            selectors.arbre_hierarchique(
+                request.user.company,
+                racine_id=request.query_params.get('racine'),
+                q=request.query_params.get('q'),
+                # NTHCM3 — superpose la ligne FONCTIONNELLE (pointillés).
+                inclure_matriciel=(
+                    request.query_params.get('inclure_matriciel') == '1')))
 
     @action(detail=False, methods=['get'], url_path='equipe-terrain')
     def equipe_terrain(self, request):
@@ -884,7 +916,9 @@ class DossierEmployeViewSet(_RhBaseViewSet):
                 return Response(
                     {'modele': "Modèle d'intégration inconnu."},
                     status=status.HTTP_400_BAD_REQUEST)
-        lignes = services.instancier_integration(employe, modele=modele)
+        # NTHCM23 — le RH qui déclenche porte les tâches d'acteur « rh ».
+        lignes = services.instancier_integration(
+            employe, modele=modele, createur=request.user)
         return Response(
             ElementIntegrationEmployeSerializer(lignes, many=True).data,
             status=status.HTTP_201_CREATED)
@@ -1147,10 +1181,11 @@ class ElementSortieViewSet(_RhBaseViewSet):
     Société scopée + Administrateur/Responsable. La liste d'un employé s'obtient
     via ``?employe=<id>``. ``employe`` doit appartenir à la société.
     """
-    queryset = ElementSortie.objects.select_related('employe').all()
+    queryset = ElementSortie.objects.select_related(
+        'employe', 'assigne_a').all()
     serializer_class = ElementSortieSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['type_element', 'libelle', 'date_creation']
+    ordering_fields = ['type_element', 'libelle', 'echeance', 'date_creation']
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1162,7 +1197,46 @@ class ElementSortieViewSet(_RhBaseViewSet):
             qs = qs.filter(recupere=False)
         elif recupere in ('1', 'true', 'True'):
             qs = qs.filter(recupere=True)
+        acteur = self.request.query_params.get('acteur_type')
+        if acteur:
+            qs = qs.filter(acteur_type=acteur)
         return qs
+
+    def perform_create(self, serializer):
+        """NTHCM24 — ``assigne_a`` RÉSOLU serveur quand il n'est pas fourni.
+
+        Même règle que l'onboarding (``services.resoudre_acteur_tache``) :
+        manager → le manager hiérarchique, it → le contact IT de la société,
+        employe_lui_meme → l'employé, rh → l'utilisateur qui crée. Une cible
+        absente laisse la tâche NON-ASSIGNÉE (signal), jamais retombée sur
+        quelqu'un au hasard.
+        """
+        donnees = serializer.validated_data
+        assigne = donnees.get('assigne_a')
+        employe = donnees.get('employe')
+        if assigne is None and employe is not None:
+            assigne = services.resoudre_acteur_tache(
+                employe, donnees.get('acteur_type') or ActeurTache.RH,
+                createur=self.request.user)
+        tache = serializer.save(
+            company=self.request.user.company, assigne_a=assigne)
+        # NTHCM25 — l'acteur résolu est prévenu une fois, tout de suite
+        # (best-effort : jamais bloquant pour la création de la ligne).
+        services.notifier_tache_assignee(
+            tache, lien=services.lien_tache_offboarding(tache),
+            titre=f'Tâche de sortie : {tache.libelle}',
+            corps=f'Employé : {tache.employe.matricule}.')
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """NTHCM24 — tâches de sortie en retard, les tâches IT en tête.
+
+        Alimente la section « offboarding en retard » du cockpit RH (FG200) :
+        un accès non révoqué après la date de sortie est un risque de
+        sécurité, il doit se lire en premier.
+        """
+        return Response(
+            selectors.offboarding_en_retard(request.user.company))
 
 
 class EntretienSortieViewSet(_RhBaseViewSet):
@@ -1306,17 +1380,50 @@ class ElementIntegrationEmployeViewSet(_RhBaseViewSet):
     Cocher/décocher journalise ``fait_par``/``date`` côté serveur.
     """
     queryset = ElementIntegrationEmploye.objects.select_related(
-        'employe', 'fait_par').all()
+        'employe', 'fait_par', 'assigne_a').all()
     serializer_class = ElementIntegrationEmployeSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['ordre', 'libelle']
+    ordering_fields = ['ordre', 'libelle', 'echeance']
+
+    def get_permissions(self):
+        # NTHCM23 — « MES tâches » est un self-service : un manager ou un
+        # informaticien sans permission `rh_voir` doit voir les tâches qui lui
+        # sont ASSIGNÉES (et rien d'autre — le queryset de l'action ne rend
+        # QUE `assigne_a=moi`). Le reste du viewset garde le gate RH.
+        if self.action == 'mes_taches_onboarding':
+            return [IsAnyRole()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = super().get_queryset()
         employe = self.request.query_params.get('employe')
         if employe:
             qs = qs.filter(employe_id=employe)
+        acteur = self.request.query_params.get('acteur_type')
+        if acteur:
+            qs = qs.filter(acteur_type=acteur)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='mes-taches-onboarding')
+    def mes_taches_onboarding(self, request):
+        """NTHCM23 — les tâches d'intégration ASSIGNÉES À MOI.
+
+        Tous employés en cours d'intégration confondus : chaque acteur (RH,
+        manager, IT, l'employé lui-même) voit SA liste. Le destinataire est
+        l'utilisateur AUTHENTIFIÉ, résolu serveur — jamais un identifiant lu
+        de l'URL ou du corps, sinon n'importe qui lirait la liste d'un autre.
+
+        ``?non_faites=1`` ne garde que le reste à faire.
+        """
+        qs = ElementIntegrationEmploye.objects.filter(
+            company=request.user.company, assigne_a=request.user,
+        ).select_related('employe', 'assigne_a').order_by(
+            'echeance', 'ordre', 'id')
+        if request.query_params.get('non_faites') == '1':
+            qs = qs.filter(fait=False)
+        return Response(
+            ElementIntegrationEmployeSerializer(
+                qs, many=True, context={'request': request}).data)
 
     def perform_update(self, serializer):
         # ``fait_par``/``date`` sont posés côté serveur à la coche/décoche —
@@ -6157,6 +6264,74 @@ class CockpitRhViewSet(viewsets.ViewSet):
                          if ligne['risque_vacance']])
 
 
+def _date_du_parametre(request, nom):
+    """Date ``AAAA-MM-JJ`` lue d'un paramètre de requête, ou ``None``.
+
+    ``None`` couvre l'absence ET le format invalide : l'appelant décide quoi
+    en faire (ici, un 400 explicite plutôt qu'un défaut implicite).
+    """
+    from datetime import datetime
+
+    brut = request.query_params.get(nom)
+    if not brut:
+        return None
+    try:
+        return datetime.strptime(brut, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return None
+
+
+class AnalyticsRhViewSet(viewsets.ViewSet):
+    """NTHCM27/28 — analytics RH AGRÉGÉES (lecture seule, jamais nominatives).
+
+    Société scopée + Administrateur/Responsable (``IsResponsableOrAdmin``),
+    comme le cockpit FG200 dont ces sections sont le prolongement.
+
+    Endpoints :
+    * ``GET analytics/diversite/?departement=`` — NTHCM27, répartition
+      démographique agrégée avec seuil d'anonymat (un segment < 5 personnes
+      n'est jamais chiffré) ;
+    * ``GET analytics/absenteisme/?debut=&fin=&departement=`` — NTHCM28, taux
+      d'absentéisme unifié (congés + maladie + AT + non justifié).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get'], url_path='diversite')
+    def diversite(self, request):
+        return Response(
+            selectors.analytics_diversite(
+                request.user.company,
+                departement_id=request.query_params.get('departement')))
+
+    @action(detail=False, methods=['get'], url_path='absenteisme')
+    def absenteisme(self, request):
+        """NTHCM28 — taux d'absentéisme unifié sur ``?debut=``/``?fin=``.
+
+        Les deux bornes sont OBLIGATOIRES et explicites : un défaut implicite
+        (« ce mois-ci ») ferait lire au RH un taux dont il ne connaît pas la
+        période. ``?departement=`` ajoute la comparaison département/société.
+        """
+        debut = _date_du_parametre(request, 'debut')
+        fin = _date_du_parametre(request, 'fin')
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les bornes « debut » et « fin » sont '
+                           'obligatoires (format AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if debut > fin:
+            return Response(
+                {'detail': 'La date de début est postérieure à la date de '
+                           'fin.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        departement = request.query_params.get('departement')
+        if departement:
+            return Response(
+                selectors.comparaison_absenteisme(
+                    request.user.company, debut, fin, departement))
+        return Response(
+            selectors.taux_absenteisme(request.user.company, debut, fin))
+
+
 # ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
 
 class CycleRevisionSalarialeViewSet(CompanyScopedModelViewSet):
@@ -6190,6 +6365,32 @@ class CycleRevisionSalarialeViewSet(CompanyScopedModelViewSet):
         except services.CycleNonClosError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
+    @action(detail=True, methods=['get'], url_path='calibration')
+    def calibration(self, request, pk=None):
+        """NTHCM6 — TOUTES les propositions du cycle, tous managers confondus.
+
+        Un manager ne voit que son équipe (NTHCM5) ; la calibration est la vue
+        RH d'ensemble qui permet de comparer les managers AVANT de figer.
+        Gate de classe ``salaires_voir`` (donnée de paie).
+        """
+        cycle = self.get_object()
+        return Response(
+            selectors.calibration_cycle_revision(
+                request.user.company, cycle.pk))
+
+    @action(detail=True, methods=['post'], url_path='valider-calibration')
+    def valider_calibration(self, request, pk=None):
+        """NTHCM6 — fige les décisions du cycle (``clos``), UNE seule fois."""
+        cycle = self.get_object()
+        try:
+            resultat = services.valider_calibration_cycle(cycle)
+        except services.CalibrationDejaValideeError:
+            return Response(
+                {'detail': 'Cycle déjà clos : la calibration a déjà été '
+                           'validée, elle ne peut pas être rejouée.'},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(resultat)
 
 
@@ -6287,6 +6488,19 @@ class ObjectifEntrepriseViewSet(_RhBaseViewSet):
             qs = qs.filter(periode=periode)
         return qs
 
+    @action(detail=True, methods=['get'], url_path='rollup')
+    def rollup(self, request, pk=None):
+        """NTHCM9 — avancement remonté des OKR rattachés à cet objectif.
+
+        ``progression_okr_pct`` vaut ``None`` quand AUCUN OKR n'est rattaché :
+        « personne n'y contribue encore » n'est pas « tout le monde est à
+        0 % », et l'écran doit pouvoir les distinguer.
+        """
+        objectif = self.get_object()
+        lignes = selectors.rollup_okr_entreprise(
+            request.user.company, objectif_id=objectif.pk)
+        return Response(lignes[0] if lignes else None)
+
 
 class KeyResultViewSet(_RhBaseViewSet):
     """NTHCM8 — résultats clés d'un objectif d'entreprise (``?objectif=``)."""
@@ -6313,6 +6527,16 @@ class OkrIndividuelViewSet(_RhBaseViewSet):
     search_fields = ['titre', 'periode']
     ordering_fields = ['periode', 'titre']
 
+    def get_permissions(self):
+        # NTHCM9 — les DEUX surfaces self-service sont ouvertes à tous les
+        # rôles : leur périmètre est borné CÔTÉ SERVEUR (le tableau de bord
+        # ne renvoie que MES OKR + ceux de MON équipe ; le check-in refuse un
+        # OKR qui n'est pas le mien sans permission RH d'écriture). Le reste
+        # du viewset garde le gate RH de la classe.
+        if self.action in ('tableau_de_bord', 'check_in'):
+            return [IsAnyRole()]
+        return super().get_permissions()
+
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
@@ -6325,6 +6549,89 @@ class OkrIndividuelViewSet(_RhBaseViewSet):
         parent = params.get('parent')
         if parent:
             qs = qs.filter(objectif_parent_id=parent)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='check-in')
+    def check_in(self, request, pk=None):
+        """NTHCM9 — point d'avancement léger (corps : ``valeurs``, ``commentaire``).
+
+        ``valeurs`` est une map ``{key_result_id: valeur}`` ; chaque key result
+        nommé doit appartenir à CET OKR (400 sinon). L'auteur et la date sont
+        posés côté serveur : un check-in ne s'antidate pas et ne se signe pas
+        au nom d'un autre.
+        """
+        okr = self.get_object()
+        # Un collaborateur check-in SON OKR ; écrire sur celui d'un autre
+        # exige la permission RH d'écriture (même sémantique OrLegacy que le
+        # gate de classe).
+        moi = selectors.dossier_employe_for_user(
+            request.user.company, request.user.id)
+        if not _user_has_or_legacy(request.user, 'rh_gerer') \
+                and (moi is None or okr.employe_id != moi.pk):
+            return Response(
+                {'detail': 'Vous ne pouvez faire un point d’avancement que '
+                           'sur vos propres OKR.'},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            checkin = services.enregistrer_checkin_okr(
+                okr, auteur=request.user,
+                valeurs=request.data.get('valeurs') or {},
+                commentaire=request.data.get('commentaire') or '')
+        except services.CheckInOkrError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            CheckInOkrSerializer(
+                checkin, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    # PACT7 — SANS cette déclaration, le schéma OpenAPI publierait cet AGRÉGAT
+    # avec l'``OkrIndividuelSerializer`` (le ``serializer_class`` du ViewSet)
+    # alors qu'il renvoie {mes_okr, equipe, entreprise, periode, est_manager} :
+    # un schéma qui MENT est pire qu'un schéma vide.
+    @extend_schema(responses=inline_serializer('RhOkrTableauDeBord', {
+        'mes_okr': serializers.ListField(child=serializers.DictField()),
+        'equipe': serializers.ListField(child=serializers.DictField()),
+        'entreprise': serializers.ListField(child=serializers.DictField()),
+        'periode': serializers.CharField(),
+        'est_manager': serializers.BooleanField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='tableau-de-bord')
+    def tableau_de_bord(self, request):
+        """NTHCM9 — MES OKR, ceux de MON ÉQUIPE, et le rollup entreprise.
+
+        Le dossier est résolu SERVEUR depuis le compte appelant — jamais un
+        ``employe`` lu de l'URL, sinon n'importe qui lirait les OKR d'un
+        autre. Un compte sans dossier RH reçoit des listes vides (pas une
+        erreur) et garde le rollup entreprise.
+        """
+        moi = selectors.dossier_employe_for_user(
+            request.user.company, request.user.id)
+        return Response(
+            selectors.tableau_okr_employe(
+                request.user.company, moi,
+                periode=request.query_params.get('periode')))
+
+
+class CheckInOkrViewSet(_RhBaseViewSet):
+    """NTHCM9 — historique des check-ins d'un OKR (``?okr=``), lecture.
+
+    L'ÉCRITURE passe par ``okr-individuels/{id}/check-in/`` : c'est elle qui
+    met aussi à jour les valeurs actuelles des key results. Créer un check-in
+    ici ne poserait qu'une ligne d'historique sans effet — l'action dédiée est
+    le seul point d'entrée.
+    """
+    http_method_names = ['get', 'head', 'options']
+    queryset = CheckInOkr.objects.select_related('okr', 'auteur').all()
+    serializer_class = CheckInOkrSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        okr = self.request.query_params.get('okr')
+        if okr:
+            qs = qs.filter(okr_id=okr)
         return qs
 
 
@@ -6531,3 +6838,237 @@ class PlanActionEngagementViewSet(_RhBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+class FeedbackContinuViewSet(_RhBaseViewSet):
+    """NTHCM16 — feedback continu entre collègues (hors cycle formel).
+
+    OUVERT À TOUS LES RÔLES (``IsAnyRole``, patron XRH28/ZRH16 de l'annuaire) :
+    envoyer un mot de reconnaissance n'est pas un acte RH réservé. La
+    confidentialité n'est donc PAS portée par le gate mais par le
+    ``get_queryset`` :
+
+    * un porteur de ``rh_voir`` (RH/Direction) voit tout le périmètre société ;
+    * sinon, l'appelant voit ce qu'il a ÉCRIT, ce qu'il a REÇU quand
+      ``visible_par_pour``, et — s'il est le manager hiérarchique du
+      destinataire (``DossierEmploye.manager``, NTHCM1) — les feedbacks
+      explicitement marqués ``partage_avec_manager``.
+
+    ``de`` est posé serveur (``perform_create``) : impossible de signer au nom
+    d'un autre. Filtres : ``?pour=``, ``?type=``.
+    """
+    queryset = FeedbackContinu.objects.select_related(
+        'de', 'pour', 'pour__manager').all()
+    serializer_class = FeedbackContinuSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+
+    def get_permissions(self):
+        # Tous rôles : le périmètre visible est restreint par get_queryset,
+        # jamais par le gate — un employé sans `rh_voir` doit pouvoir écrire
+        # et lire SES feedbacks.
+        return [IsAnyRole()]
+
+    def _dossier_appelant(self):
+        return selectors.dossier_employe_for_user(
+            self.request.user.company, self.request.user.id)
+
+    def get_queryset(self):
+        from django.db.models import Q
+
+        qs = super().get_queryset()
+        params = self.request.query_params
+        pour = params.get('pour')
+        if pour:
+            qs = qs.filter(pour_id=pour)
+        type_feedback = params.get('type')
+        if type_feedback:
+            qs = qs.filter(type=type_feedback)
+
+        # Même sémantique OrLegacy que le gate de classe `_RhBaseViewSet`
+        # (`core.permissions._user_has_or_legacy`) : un compte RH/Direction
+        # garde sa vue complète, sans qu'on recopie la règle de repli ici.
+        if _user_has_or_legacy(self.request.user, 'rh_voir'):
+            return qs
+        moi = self._dossier_appelant()
+        if moi is None:
+            return qs.none()
+        return qs.filter(
+            Q(de=moi)
+            | Q(pour=moi, visible_par_pour=True)
+            | Q(pour__manager=moi, partage_avec_manager=True))
+
+    def perform_create(self, serializer):
+        moi = self._dossier_appelant()
+        if moi is None:
+            raise serializers.ValidationError(
+                {'detail': "Aucun dossier employé n'est relié à votre compte : "
+                           'impossible de signer un feedback.'})
+        destinataire = serializer.validated_data.get('pour')
+        if destinataire is not None and destinataire.pk == moi.pk:
+            raise serializers.ValidationError(
+                {'pour': "On ne peut pas s'adresser un feedback à soi-même."})
+        serializer.save(company=self.request.user.company, de=moi)
+
+
+class RattachementFonctionnelViewSet(_RhBaseViewSet):
+    """NTHCM3 — rattachements FONCTIONNELS (``?employe=``, ``?manager=``).
+
+    Distinct de ``DossierEmploye.manager`` (NTHCM1, hiérarchique et unique) :
+    plusieurs rattachements actifs sont possibles par employé, avec une
+    fenêtre de dates facultative pour un rattachement temporaire.
+    """
+    queryset = RattachementFonctionnel.objects.select_related(
+        'employe', 'manager_fonctionnel').all()
+    serializer_class = RattachementFonctionnelSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['role_fonctionnel', 'date_debut', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        manager = params.get('manager')
+        if manager:
+            qs = qs.filter(manager_fonctionnel_id=manager)
+        if params.get('actifs') == '1':
+            jour = timezone.localdate()
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(date_debut__isnull=True) | Q(date_debut__lte=jour),
+            ).filter(
+                Q(date_fin__isnull=True) | Q(date_fin__gte=jour))
+        return qs
+
+
+class ParcoursFormationViewSet(_RhBaseViewSet):
+    """NTHCM17 — référentiel des parcours de formation (``?obligatoire=1``)."""
+    queryset = ParcoursFormation.objects.select_related(
+        'poste_cible', 'departement_cible').prefetch_related('etapes').all()
+    serializer_class = ParcoursFormationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'description']
+    ordering_fields = ['titre', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        obligatoire = params.get('obligatoire')
+        if obligatoire in ('0', '1'):
+            qs = qs.filter(obligatoire=(obligatoire == '1'))
+        actif = params.get('actif')
+        if actif in ('0', '1'):
+            qs = qs.filter(actif=(actif == '1'))
+        return qs
+
+    @action(detail=True, methods=['get'],
+            url_path='correlation-performance')
+    def correlation_performance(self, request, pk=None):
+        """NTHCM29 — évolution des notes avant/après la complétion.
+
+        Lecture seule, jamais causale : le libellé prudent est servi par le
+        sélecteur pour qu'aucun écran ne réinvente une formulation qui
+        conclurait. ``?fenetre_mois=`` (défaut 6).
+        """
+        parcours = self.get_object()
+        try:
+            fenetre = int(request.query_params.get('fenetre_mois', 6))
+        except (TypeError, ValueError):
+            fenetre = 6
+        if fenetre < 1:
+            return Response(
+                {'detail': 'La fenêtre doit valoir au moins 1 mois.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            selectors.correlation_formation_performance(
+                request.user.company, parcours.pk, fenetre_mois=fenetre))
+
+
+class EtapeParcoursViewSet(_RhBaseViewSet):
+    """NTHCM17 — étapes d'un parcours (``?parcours=``)."""
+    queryset = EtapeParcours.objects.select_related(
+        'parcours', 'session_ref', 'quiz_ref').all()
+    serializer_class = EtapeParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parcours = self.request.query_params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        return qs
+
+
+class ProgressionParcoursViewSet(_RhBaseViewSet):
+    """NTHCM17 — avancement par employé (``?parcours=``, ``?employe=``).
+
+    Actions :
+
+    * ``POST {id}/completer-etape/`` (corps ``{"etape": <id>}``) — coche une
+      étape ; idempotent, et refuse une étape d'un autre parcours/société ;
+    * ``POST {id}/devalider-etape/`` — correction de saisie (décoche).
+
+    Les deux passent par ``services`` : l'avancement est TOUJOURS dérivé, il
+    n'est jamais écrit depuis le corps de la requête.
+    """
+    queryset = ProgressionParcours.objects.select_related(
+        'parcours', 'employe').prefetch_related(
+            'etapes_completees', 'parcours__etapes').all()
+    serializer_class = ProgressionParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'pourcentage']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        parcours = params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _etape_du_corps(self, request, progression):
+        etape_id = request.data.get('etape')
+        if not etape_id:
+            return None, Response(
+                {'etape': "L'étape est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        etape = EtapeParcours.objects.filter(
+            company=request.user.company, pk=etape_id).first()
+        if etape is None:
+            return None, Response(
+                {'etape': 'Étape inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if etape.parcours_id != progression.parcours_id:
+            return None, Response(
+                {'etape': "Cette étape n'appartient pas au parcours suivi."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return etape, None
+
+    @action(detail=True, methods=['post'], url_path='completer-etape')
+    def completer_etape(self, request, pk=None):
+        progression = self.get_object()
+        etape, erreur = self._etape_du_corps(request, progression)
+        if erreur is not None:
+            return erreur
+        services.marquer_etape_parcours(progression, etape)
+        progression.refresh_from_db()
+        return Response(self.get_serializer(progression).data)
+
+    @action(detail=True, methods=['post'], url_path='devalider-etape')
+    def devalider_etape(self, request, pk=None):
+        progression = self.get_object()
+        etape, erreur = self._etape_du_corps(request, progression)
+        if erreur is not None:
+            return erreur
+        services.devalider_etape_parcours(progression, etape)
+        progression.refresh_from_db()
+        return Response(self.get_serializer(progression).data)

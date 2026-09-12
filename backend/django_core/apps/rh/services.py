@@ -856,6 +856,12 @@ def embaucher(candidature, matricule=None, **dossier_kwargs):
     # l'absence de tout modèle ne bloque jamais l'embauche.
     instancier_integration(dossier)
 
+    # NTHCM19 — assigne les parcours de formation OBLIGATOIRES qui ciblent son
+    # poste/département (idempotent, aucun doublon). Best-effort exactement
+    # comme la checklist : aucun parcours ciblé ⇒ rien, et JAMAIS un échec
+    # d'assignation qui annulerait une embauche déjà actée.
+    assigner_parcours_obligatoires(dossier)
+
     return dossier
 
 
@@ -897,8 +903,147 @@ def _modele_integration_applicable(dossier):
 _LIBELLE_DECLARATION_ENTREE = "Déclaration d'entrée CNSS/AMO"
 
 
+def contact_it_societe(company):
+    """NTHCM23/24 — contact IT par défaut de la société, ou ``None``.
+
+    ``None`` est un RÉSULTAT LÉGITIME : aucune tâche IT ne doit retomber en
+    silence sur quelqu'un qui ne s'en occupe pas. Elle reste non-assignée et
+    le rapport la signale.
+    """
+    from .models import ReglageRH
+
+    reglage = ReglageRH.objects.filter(company=company).first()
+    return None if reglage is None else reglage.contact_it_defaut
+
+
+def resoudre_acteur_tache(dossier, acteur_type, *, createur=None):
+    """NTHCM23/24 — QUEL utilisateur porte une tâche d'on/offboarding.
+
+    * ``rh`` → le RH qui déclenche l'instanciation (``createur``) ;
+    * ``manager`` → le compte du manager HIÉRARCHIQUE du dossier (NTHCM1) ;
+    * ``it`` → le contact IT de la société (``ReglageRH.contact_it_defaut``) ;
+    * ``employe_lui_meme`` → le compte de l'employé, s'il en a un.
+
+    Renvoie ``None`` quand la cible n'existe pas (pas de manager, pas de
+    contact IT configuré, employé sans compte applicatif) : la tâche reste
+    NON-ASSIGNÉE — c'est un signal visible, jamais une assignation inventée.
+    Le destinataire résolu est toujours de la MÊME société que le dossier.
+    """
+    from .models import ActeurTache
+
+    cible = None
+    if acteur_type == ActeurTache.RH:
+        cible = createur
+    elif acteur_type == ActeurTache.MANAGER:
+        manager = dossier.manager
+        cible = None if manager is None else manager.user
+    elif acteur_type == ActeurTache.IT:
+        cible = contact_it_societe(dossier.company)
+    elif acteur_type == ActeurTache.EMPLOYE:
+        cible = dossier.user
+
+    if cible is None:
+        return None
+    if getattr(cible, 'company_id', None) != dossier.company_id:
+        return None
+    return cible
+
+
+# ── NTHCM25 — notification des tâches d'on/offboarding assignées ──────────
+#
+# TYPES D'ÉVÉNEMENT. On réutilise des clés EXISTANTES du référentiel
+# ``apps.notifications`` plutôt que d'en créer : cette app n'écrit jamais dans
+# les modèles du voisin, la frontière se traverse par son service public
+# ``notify``.
+#
+# POURQUOI CELLES-CI, ET PAS ``chantier_assigne``. La clé « assigné » la plus
+# évidente est GATÉE sur le module ``installations``
+# (``notifications.module_gating.EVENT_MODULE``) : une société qui coupe ce
+# module perdrait SILENCIEUSEMENT ses notifications d'onboarding — un défaut
+# invisible. Les clés ``annonce_*`` ne sont gatées par aucun module et portent
+# exactement la bonne sémantique interne (« une obligation vous concerne » /
+# « on vous la relance »).
+EVENT_TACHE_ASSIGNEE = 'annonce_published'
+EVENT_TACHE_RAPPEL = 'annonce_read_reminder'
+
+
+def lien_tache_onboarding(tache):
+    """Lien STABLE d'une tâche d'intégration — clé de déduplication."""
+    return f'/rh/employes/{tache.employe_id}?tache_integration={tache.id}'
+
+
+def lien_tache_offboarding(tache):
+    """Lien STABLE d'une tâche de sortie — clé de déduplication."""
+    return f'/rh/employes/{tache.employe_id}?tache_sortie={tache.id}'
+
+
+def notifier_tache_assignee(tache, *, lien, titre, corps='',
+                            event_type=EVENT_TACHE_ASSIGNEE,
+                            aujourdhui=None):
+    """NTHCM25 — notifie l'acteur d'une tâche, UNE fois par jour et par tâche.
+
+    BEST-EFFORT ABSOLU : une notification qui échoue ne remonte jamais — elle
+    ne doit pas annuler une embauche ni une sortie déjà actées. No-op si la
+    tâche n'est assignée à personne (une tâche IT sans contact configuré, par
+    exemple : elle reste un signal visible, pas un e-mail dans le vide).
+
+    Déduplication : ``notify`` ne déduplique pas lui-même, on vérifie donc
+    qu'aucune ``Notification`` du même ``event_type`` et du même ``link``
+    n'existe déjà AUJOURD'HUI pour ce destinataire — patron YHIRE8.
+    Renvoie ``True`` si une notification a bien été émise.
+    """
+    if tache.assigne_a_id is None:
+        return False
+    try:
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify
+
+        jour = aujourdhui or timezone.localdate()
+        deja = Notification.objects.filter(
+            event_type=event_type, link=lien,
+            recipient_id=tache.assigne_a_id,
+            created_at__date=jour).exists()
+        if deja:
+            return False
+        notify(
+            tache.assigne_a, event_type, titre[:255], body=corps,
+            link=lien, company=tache.company)
+        return True
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        return False
+
+
+def notifier_taches_integration_assignees(taches, *, aujourdhui=None):
+    """NTHCM25 — notifie en lot les tâches d'intégration fraîchement assignées."""
+    emises = 0
+    for tache in taches:
+        titre = f'Tâche d’intégration : {tache.libelle}'
+        corps = (
+            f'Employé : {tache.employe.matricule}. '
+            + (f'Échéance : {tache.echeance.isoformat()}.'
+               if tache.echeance else 'Sans échéance.'))
+        if notifier_tache_assignee(
+                tache, lien=lien_tache_onboarding(tache),
+                titre=titre, corps=corps, aujourdhui=aujourdhui):
+            emises += 1
+    return emises
+
+
+def echeance_tache_integration(dossier, delai_jours, *, aujourdhui=None):
+    """NTHCM23 — échéance ABSOLUE d'une tâche (embauche + ``delai_jours``).
+
+    Base : la ``date_embauche`` du dossier ; à défaut (embauche non saisie) la
+    date du jour — jamais une échéance sans base, jamais une date inventée
+    dans le passé.
+    """
+    from datetime import timedelta
+
+    base = dossier.date_embauche or aujourdhui or timezone.localdate()
+    return base + timedelta(days=delai_jours or 0)
+
+
 @transaction.atomic
-def instancier_integration(dossier, modele=None):
+def instancier_integration(dossier, modele=None, createur=None):
     """Crée les ``ElementIntegrationEmploye`` du modèle applicable (XRH4).
 
     Si ``modele`` n'est pas fourni, résout le modèle le plus spécifique via
@@ -908,8 +1053,14 @@ def instancier_integration(dossier, modele=None):
     configurée reste valide. N'instancie PAS deux fois pour le même dossier
     (idempotent : si des lignes existent déjà, les renvoie telles quelles
     sans dupliquer).
+
+    NTHCM23 — chaque ligne hérite de l'``acteur_type`` de son gabarit, se voit
+    RÉSOUDRE son destinataire (``resoudre_acteur_tache``) et calculer son
+    ``echeance`` (embauche + ``delai_jours``). ``createur`` est le RH qui
+    déclenche : il porte les lignes d'acteur ``rh``. Une tâche dont la cible
+    n'existe pas reste non-assignée.
     """
-    from .models import ElementIntegrationEmploye
+    from .models import ActeurTache, ElementIntegrationEmploye
 
     existantes = list(
         ElementIntegrationEmploye.objects.filter(employe=dossier))
@@ -925,7 +1076,12 @@ def instancier_integration(dossier, modele=None):
         for element in modele.elements.all():
             lignes.append(ElementIntegrationEmploye(
                 company=dossier.company, employe=dossier,
-                libelle=element.libelle, ordre=element.ordre))
+                libelle=element.libelle, ordre=element.ordre,
+                acteur_type=element.acteur_type,
+                assigne_a=resoudre_acteur_tache(
+                    dossier, element.acteur_type, createur=createur),
+                echeance=echeance_tache_integration(
+                    dossier, element.delai_jours)))
             ordre = max(ordre, element.ordre)
 
     # XRH5 — item bloquant toujours ajouté s'il n'y figure pas déjà.
@@ -935,11 +1091,19 @@ def instancier_integration(dossier, modele=None):
     if not deja_present:
         lignes.append(ElementIntegrationEmploye(
             company=dossier.company, employe=dossier,
-            libelle=_LIBELLE_DECLARATION_ENTREE, ordre=ordre + 1))
+            libelle=_LIBELLE_DECLARATION_ENTREE, ordre=ordre + 1,
+            acteur_type=ActeurTache.RH,
+            assigne_a=resoudre_acteur_tache(
+                dossier, ActeurTache.RH, createur=createur),
+            echeance=echeance_tache_integration(dossier, 0)))
 
     if not lignes:
         return []
-    return ElementIntegrationEmploye.objects.bulk_create(lignes)
+    creees = ElementIntegrationEmploye.objects.bulk_create(lignes)
+    # NTHCM25 — chaque acteur RÉSOLU est prévenu une fois, tout de suite.
+    # Best-effort : l'échec d'une notification n'annule jamais l'onboarding.
+    notifier_taches_integration_assignees(creees)
+    return creees
 
 
 def _modele_evaluation_applicable(campagne, employe):
@@ -2077,6 +2241,9 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle=f'EPI — {dotation.epi.designation}'[:160],
             type_element=ElementSortie.TypeElement.EPI,
+            # NTHCM24 — tout est dû À LA DATE DE SORTIE ; le rapport
+            # `offboarding_en_retard` s'appuie sur cette échéance.
+            echeance=date_sortie,
         )
 
     # Véhicules affectés ACTIFS → clôturés à la date de sortie + checklist.
@@ -2089,6 +2256,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle=f'Véhicule #{affectation.vehicule_id}'[:160],
             type_element=ElementSortie.TypeElement.VEHICULE,
+            echeance=date_sortie,  # NTHCM24
         )
         affectation.statut = AffectationVehicule.Statut.TERMINEE
         affectation.date_fin = date_sortie
@@ -2115,6 +2283,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle='Véhicules flotte encore ouverts'[:160],
             type_element=ElementSortie.TypeElement.VEHICULE,
+            echeance=date_sortie,  # NTHCM24
             note=(
                 f'{len(affectations_flotte)} affectation(s) flotte '
                 f'ouverte(s) : {vehicules_labels}'[:255]),
@@ -2138,6 +2307,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
             employe=dossier,
             libelle='Avances sur salaire non soldées'[:160],
             type_element=ElementSortie.TypeElement.AUTRE,
+            echeance=date_sortie,  # NTHCM24
             note=note[:255],
         )
 
@@ -2490,28 +2660,49 @@ def passer_tentative_quiz(quiz, employe, *, reponses, session=None):
         )
 
     if quiz.habilitation_type and quiz.validite_mois:
-        today = timezone.localdate()
-        habilitation = Habilitation.objects.filter(
-            employe=employe, type_habilitation=quiz.habilitation_type).first()
-        base = today
-        if habilitation is not None and habilitation.date_validite and \
-                habilitation.date_validite > today:
-            base = habilitation.date_validite
-        nouvelle_echeance = _ajouter_mois(base, quiz.validite_mois)
-        if habilitation is None:
-            Habilitation.objects.create(
-                company=quiz.company, employe=employe,
-                type_habilitation=quiz.habilitation_type,
-                date_obtention=today, date_validite=nouvelle_echeance,
-                actif=True,
-            )
-        else:
-            habilitation.date_validite = nouvelle_echeance
-            habilitation.actif = True
-            habilitation.save(update_fields=[
-                'date_validite', 'actif', 'date_modification'])
+        prolonger_titre_rh(
+            Habilitation, company=quiz.company, employe=employe,
+            champ_type='type_habilitation', valeur_type=quiz.habilitation_type,
+            validite_mois=quiz.validite_mois)
 
     return tentative
+
+
+def prolonger_titre_rh(modele, *, company, employe, champ_type, valeur_type,
+                       validite_mois, aujourdhui=None):
+    """Crée ou PROLONGE un titre RH à échéance (XRH34, réutilisé par NTHCM21).
+
+    ``modele`` est ``Habilitation`` (FG173) ou ``Certification`` (FG174) —
+    deux familles distinctes qui partagent la même forme : une ligne par
+    (employé, type), avec ``date_obtention`` / ``date_validite`` / ``actif``.
+
+    RÈGLE DE PROLONGATION (celle d'XRH34, extraite ici pour n'exister QU'UNE
+    fois) : nouvelle échéance = ``max(aujourd'hui, échéance en cours) +
+    validite_mois``. Un titre encore valide se PROLONGE depuis sa fin (on ne
+    perd pas les mois restants) ; un titre expiré repart d'aujourd'hui.
+
+    Jamais de doublon : la ligne existante est mise à jour (contrainte unique
+    (employé, type) côté modèle), donc une re-certification/retake ne crée
+    jamais un second titre.
+    """
+    today = aujourdhui or timezone.localdate()
+    titre = modele.objects.filter(
+        employe=employe, **{champ_type: valeur_type}).first()
+    base = today
+    if titre is not None and titre.date_validite and \
+            titre.date_validite > today:
+        base = titre.date_validite
+    nouvelle_echeance = _ajouter_mois(base, validite_mois)
+    if titre is None:
+        return modele.objects.create(
+            company=company, employe=employe,
+            date_obtention=today, date_validite=nouvelle_echeance,
+            actif=True, **{champ_type: valeur_type})
+    titre.date_validite = nouvelle_echeance
+    titre.actif = True
+    titre.save(update_fields=[
+        'date_validite', 'actif', 'date_modification'])
+    return titre
 
 
 def generer_besoin_recertification(habilitation):
@@ -3013,6 +3204,94 @@ def proposer_revision(cycle, employe, *, auteur_dossier, user,
 
 # ── NTHCM7 — application d'un cycle clos → nouvelles ``Remuneration`` ───────
 
+class CheckInOkrError(Exception):
+    """NTHCM9 — check-in refusé (key result hors OKR, valeur illisible)."""
+
+
+@transaction.atomic
+def enregistrer_checkin_okr(okr, *, auteur, valeurs=None, commentaire='',
+                            aujourdhui=None):
+    """NTHCM9 — enregistre un check-in ET met à jour les valeurs actuelles.
+
+    ``valeurs`` est une map ``{key_result_id: valeur}``. Chaque key result
+    nommé DOIT appartenir à ``okr`` (sinon ``CheckInOkrError``) : sans ce
+    contrôle, un appelant ferait monter la progression d'un OKR qui n'est pas
+    le sien. ``progression_pct`` est recalculée par ``save()`` du modèle
+    (NTHCM8), jamais posée ici.
+
+    L'HISTORIQUE EST LE POINT. ``valeurs_snapshot`` fige les valeurs du
+    moment : ``KeyResultIndividuel.valeur_actuelle`` est écrasée à chaque
+    check-in et ne dirait plus rien du chemin parcouru.
+
+    ``auteur`` vient du serveur (l'appelant authentifié), jamais du corps.
+    """
+    from decimal import InvalidOperation
+
+    from .models import CheckInOkr, KeyResultIndividuel
+
+    valeurs = valeurs or {}
+    lignes = {
+        str(ligne.id): ligne
+        for ligne in KeyResultIndividuel.objects.filter(okr=okr)}
+
+    snapshot = {}
+    for cle, valeur_brute in valeurs.items():
+        ligne = lignes.get(str(cle))
+        if ligne is None:
+            raise CheckInOkrError(
+                f'Le key result {cle} n’appartient pas à cet OKR.')
+        try:
+            valeur = Decimal(str(valeur_brute))
+        except (TypeError, ValueError, ArithmeticError, InvalidOperation):
+            raise CheckInOkrError(
+                f'Valeur illisible pour le key result {cle}.')
+        ligne.valeur_actuelle = valeur
+        ligne.save(update_fields=['valeur_actuelle', 'progression_pct',
+                                  'updated_at'])
+        snapshot[str(ligne.id)] = str(valeur)
+
+    return CheckInOkr.objects.create(
+        company=okr.company, okr=okr, auteur=auteur,
+        commentaire=commentaire or '',
+        valeurs_snapshot=snapshot,
+        date=aujourdhui or timezone.localdate())
+
+
+class CalibrationDejaValideeError(Exception):
+    """NTHCM6 — la calibration de ce cycle a déjà été figée (400)."""
+
+
+@transaction.atomic
+def valider_calibration_cycle(cycle):
+    """NTHCM6 — FIGE les décisions d'un cycle : il passe ``clos``.
+
+    UNE SEULE FOIS. Un cycle déjà ``clos`` lève
+    ``CalibrationDejaValideeError`` : c'est ce qui empêche une « re-calibration »
+    silencieuse après que les managers ont été informés de leurs décisions.
+
+    Le gel est le PASSAGE À ``clos`` lui-même : ``proposer_revision`` refuse
+    déjà d'écrire dans un cycle qui n'est pas ouvert, et ``appliquer`` (NTHCM7)
+    exige au contraire un cycle clos. On ne duplique donc aucune garde ici —
+    on pose l'état dont les deux autres dépendent.
+
+    Renvoie le compte de propositions figées (pour l'écran), sans les modifier :
+    la trace durable d'une révision APPLIQUÉE reste ``Remuneration`` (NTHCM7).
+    """
+    from .models import CycleRevisionSalariale, PropositionRevision
+
+    if cycle.statut == CycleRevisionSalariale.Statut.CLOS:
+        raise CalibrationDejaValideeError('Cycle déjà clos.')
+
+    cycle.statut = CycleRevisionSalariale.Statut.CLOS
+    cycle.save(update_fields=['statut', 'updated_at'])
+    return {
+        'cycle': cycle.id,
+        'statut': cycle.statut,
+        'propositions_figees': PropositionRevision.objects.filter(
+            company=cycle.company, cycle=cycle).count(),
+    }
+
+
 class CycleNonClosError(Exception):
     """NTHCM7 — un cycle non CLOS ne peut pas être appliqué (400)."""
 
@@ -3175,3 +3454,174 @@ def repondre_enquete(enquete, user, *, reponses):
         employe=employe,
         reponses=reponses or {},
     )
+
+
+# ---------------------------------------------------------------------------
+# NTHCM17 — parcours de formation : avancement dérivé, jamais saisi.
+# ---------------------------------------------------------------------------
+
+def recalculer_progression_parcours(progression, *, aujourdhui=None):
+    """Recalcule ``pourcentage`` / ``statut`` / ``date_completion``.
+
+    RÈGLE D'AVANCEMENT. ``pourcentage`` = part des étapes du parcours cochées
+    (arrondi à l'entier). Un parcours SANS étape vaut 0 % — jamais une division
+    par zéro, et jamais un « 100 % » inventé sur un cursus vide.
+
+    RÈGLE DE COMPLÉTION. Le parcours est ``termine`` quand toutes les étapes
+    marquées ``obligatoire_pour_completer`` sont cochées (si AUCUNE ne l'est,
+    il faut alors les avoir toutes faites) : une annexe recommandée non lue ne
+    doit pas retenir un cursus, mais un module exigé le doit.
+
+    ``date_completion`` est posée la PREMIÈRE fois que le parcours devient
+    ``termine`` et n'est plus jamais réécrite tant qu'il le reste (une
+    re-lecture d'étape ne redate pas la réussite). Repasser sous le seuil
+    (étape retirée) la remet à ``None``.
+
+    TITRE DÉLIVRÉ (NTHCM21). À la TRANSITION vers ``termine`` — et seulement
+    à la transition —, le titre visé par le parcours
+    (``habilitation_type`` / ``certification_type`` + ``validite_mois``) est
+    créé ou prolongé via ``prolonger_titre_rh``, le mécanisme XRH34 réutilisé
+    tel quel. Un parcours SANS titre lié n'a aucun effet de bord ; une
+    re-complétion (retake) ne duplique rien.
+
+    Idempotent : appeler deux fois de suite ne change rien au second appel.
+    """
+    etait_termine = progression.statut == progression.Statut.TERMINE
+    etapes = list(progression.parcours.etapes.all())
+    total = len(etapes)
+    completees = set(
+        progression.etapes_completees.values_list('id', flat=True))
+
+    if total:
+        progression.pourcentage = round(
+            100 * len([e for e in etapes if e.id in completees]) / total)
+    else:
+        progression.pourcentage = 0
+
+    requises = [e for e in etapes if e.obligatoire_pour_completer] or etapes
+    termine = bool(requises) and all(e.id in completees for e in requises)
+
+    if termine:
+        progression.statut = progression.Statut.TERMINE
+        if progression.date_completion is None:
+            progression.date_completion = (
+                aujourdhui or timezone.localdate())
+    else:
+        progression.statut = (
+            progression.Statut.EN_COURS if completees
+            else progression.Statut.NON_COMMENCE)
+        progression.date_completion = None
+
+    progression.save(update_fields=[
+        'pourcentage', 'statut', 'date_completion', 'updated_at'])
+
+    # NTHCM21 — le titre n'est délivré qu'à la TRANSITION vers « terminé ».
+    if termine and not etait_termine:
+        delivrer_titre_parcours(
+            progression, aujourdhui=aujourdhui or timezone.localdate())
+    return progression
+
+
+def delivrer_titre_parcours(progression, *, aujourdhui=None):
+    """NTHCM21 — crée/prolonge le titre visé par un parcours TERMINÉ.
+
+    No-op (renvoie ``None``) quand le parcours ne vise aucun titre ou n'a pas
+    de ``validite_mois`` : un parcours sans certification liée n'a AUCUN effet
+    secondaire. Sinon, délègue à ``prolonger_titre_rh`` — le mécanisme XRH34,
+    jamais recopié.
+    """
+    from .models import Certification, Habilitation
+
+    parcours = progression.parcours
+    if not parcours.validite_mois:
+        return None
+    if parcours.habilitation_type:
+        return prolonger_titre_rh(
+            Habilitation, company=progression.company,
+            employe=progression.employe, champ_type='type_habilitation',
+            valeur_type=parcours.habilitation_type,
+            validite_mois=parcours.validite_mois, aujourdhui=aujourdhui)
+    if parcours.certification_type:
+        return prolonger_titre_rh(
+            Certification, company=progression.company,
+            employe=progression.employe, champ_type='type_certification',
+            valeur_type=parcours.certification_type,
+            validite_mois=parcours.validite_mois, aujourdhui=aujourdhui)
+    return None
+
+
+@transaction.atomic
+def marquer_etape_parcours(progression, etape, *, aujourdhui=None):
+    """Coche une étape d'un parcours et recalcule l'avancement.
+
+    IDEMPOTENT (``ManyToMany.add`` ne duplique pas) et refuse une étape d'un
+    AUTRE parcours ou d'une AUTRE société — sinon un appelant pourrait faire
+    monter son pourcentage avec une étape qui ne le concerne pas.
+    """
+    from django.core.exceptions import ValidationError
+
+    if etape.parcours_id != progression.parcours_id:
+        raise ValidationError(
+            "Cette étape n'appartient pas au parcours suivi.")
+    if etape.company_id != progression.company_id:
+        raise ValidationError(
+            'Cette étape appartient à une autre société.')
+    progression.etapes_completees.add(etape)
+    return recalculer_progression_parcours(
+        progression, aujourdhui=aujourdhui)
+
+
+@transaction.atomic
+def devalider_etape_parcours(progression, etape, *, aujourdhui=None):
+    """Décoche une étape (correction de saisie) et recalcule l'avancement."""
+    progression.etapes_completees.remove(etape)
+    return recalculer_progression_parcours(
+        progression, aujourdhui=aujourdhui)
+
+
+def parcours_obligatoires_pour(employe):
+    """NTHCM19 — parcours OBLIGATOIRES actifs qui ciblent cet employé.
+
+    Ciblage : un parcours SANS cible (``poste_cible`` et
+    ``departement_cible`` vides) s'applique à tout le monde ; sinon il faut
+    qu'au moins une cible renseignée corresponde au dossier. Un parcours dont
+    TOUTES les cibles renseignées ratent l'employé est ignoré — on ne
+    « devine » jamais qu'un cursus le concerne.
+    """
+    from django.db.models import Q
+
+    from .models import ParcoursFormation
+
+    qs = ParcoursFormation.objects.filter(
+        company=employe.company, obligatoire=True, actif=True)
+    universel = Q(poste_cible__isnull=True, departement_cible__isnull=True)
+    cible = Q(pk__in=[])
+    if employe.poste_ref_id:
+        cible |= Q(poste_cible_id=employe.poste_ref_id)
+    if employe.departement_id:
+        cible |= Q(departement_cible_id=employe.departement_id)
+    return qs.filter(universel | cible).distinct()
+
+
+@transaction.atomic
+def assigner_parcours_obligatoires(employe):
+    """NTHCM19 — instancie une ``ProgressionParcours`` par parcours obligatoire.
+
+    IDEMPOTENT : ``get_or_create`` sur la clé unique (company, parcours,
+    employé) — ré-appeler la fonction (ré-embauche, rattrapage manuel, re-run
+    d'une commande) ne crée JAMAIS de doublon. Renvoie la liste des
+    progressions NOUVELLEMENT créées (vide au second appel).
+
+    Best-effort par construction : un employé dont le poste/département n'est
+    ciblé par aucun parcours n'a simplement rien — jamais une assignation
+    « par défaut » inventée.
+    """
+    from .models import ProgressionParcours
+
+    creees = []
+    for parcours in parcours_obligatoires_pour(employe):
+        progression, cree = ProgressionParcours.objects.get_or_create(
+            company=employe.company, parcours=parcours, employe=employe)
+        if cree:
+            creees.append(progression)
+    return creees
