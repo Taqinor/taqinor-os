@@ -267,7 +267,7 @@ def assembler_photos_toit_task(visite_id):
 
     from apps.records.storage import store_attachment
 
-    from .models import VisiteTerrain
+    from apps.visites.models import VisiteTerrain
 
     visite = VisiteTerrain.objects.filter(pk=visite_id).first()
     if visite is None:

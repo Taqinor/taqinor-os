@@ -17,7 +17,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm.models import Lead, VisiteTerrain
+from apps.crm.models import Lead
+from apps.visites.models import VisiteTerrain
 from apps.crm.tasks import ASSEMBLAGE_MESSAGES, assembler_photos_toit_task
 from apps.roles.models import Role
 from authentication.models import Company

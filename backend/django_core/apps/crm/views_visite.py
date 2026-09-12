@@ -35,7 +35,7 @@ from authentication.permissions import HasPermissionOrLegacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services, visite_checklist as checklist
-from .models import VisiteMedia, VisiteTerrain
+from apps.visites.models import VisiteMedia, VisiteTerrain
 from .serializers_visite import VisiteRenvoiSerializer, VisiteTerrainSerializer
 
 #: Types MIME acceptés pour une photo de visite. ``records.storage`` valide

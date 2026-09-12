@@ -26,7 +26,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm.models import Client, Lead, LeadActivity, VisiteTerrain
+from apps.crm.models import Client, Lead, LeadActivity
+from apps.visites.models import VisiteTerrain
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from apps.stock.models import Produit

@@ -7082,7 +7082,7 @@ def _ecrire_retour_lead_visite(visite):
 
 def valider_visite(visite, user):
     """Feu vert calepinage : la visite passe VALIDÉE et devient lecture seule."""
-    from .models import VisiteTerrain
+    from apps.visites.models import VisiteTerrain
 
     visite.statut = VisiteTerrain.Statut.VALIDEE
     visite.save(update_fields=['statut'])
@@ -7108,7 +7108,7 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
     cette visite (l'erreur NOMME ce qui cloche), sinon ``''``.
     """
     from . import visite_checklist as checklist
-    from .models import VisiteTerrain
+    from apps.visites.models import VisiteTerrain
 
     ids = [int(pk) for pk in (photos or [])]
     medias = list(visite.medias.filter(pk__in=ids)) if ids else []

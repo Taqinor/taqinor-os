@@ -4388,7 +4388,9 @@ def texture_toit_pour_lead(lead):
       ``None`` — l'appelant n'a jamais à distinguer deux formes de réponse, et
       rien n'est inventé pour combler le vide.
     """
-    from .models import VisiteTerrain
+    # VTA2 — la visite a déménagé dans `apps.visites` (import PARESSEUX :
+    # la frontière M3 interdit un import de modèle d'app à la racine).
+    from apps.visites.models import VisiteTerrain
 
     vide = {'visite_id': None, 'url': None, 'texture_calage': None}
     if lead is None:
