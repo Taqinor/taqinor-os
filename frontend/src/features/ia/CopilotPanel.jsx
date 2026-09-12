@@ -10,6 +10,10 @@ import {
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import StateBlock from '../../components/StateBlock'
+// NTAI10 — panneau CONTEXTUEL de la fiche ouverte (résumé + actions +
+// brouillon). Il ne s'affiche que lorsque l'URL courante désigne une fiche
+// prise en charge ; ailleurs il rend `null` (aucun appel réseau).
+import CopilotContext from './CopilotContext'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
   confirmAgentAction, dismissProposal, closeCopilot,
@@ -98,6 +102,9 @@ export default function CopilotPanel() {
 
         {/* ── Zone messages ── */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
+          {/* NTAI10 — ce que dit la fiche ouverte, avant toute question. */}
+          {open && <CopilotContext />}
+
           {messages.length === 0 && !agentLoading && (
             <EmptyState
               icon={MessageSquare}

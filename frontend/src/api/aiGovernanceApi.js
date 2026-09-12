@@ -23,6 +23,16 @@ const aiGovernanceApi = {
   // métriques (refus serveur, jamais rendu) ; 503 sans clé LLM.
   rapportPeriode: (data) => api.post('/ai/rapport-periode/', data),
 
+  // NTAI8 — `data` : { content_type, object_id }. Réponse : { resume, faits,
+  // entrees_fil, source }. 400 si le type n'est pas pris en charge ; 503 sans
+  // clé LLM (« lecture manuelle »).
+  resumeFiche: (data) => api.post('/ai/resume-fiche/', data),
+
+  // NTAI9 — `data` : { content_type, object_id }. Réponse : { actions: [{
+  // action, label, priorite, raison, action_key }], execute: false }.
+  // Disponible même sans clé LLM (heuristique déterministe).
+  prochainesActions: (data) => api.post('/ai/prochaines-actions/', data),
+
   /* --------------------------------------------------------------------
      Gouvernance IA (/ai-governance/*) — surfaces d'ADMINISTRATION, palier
      Administrateur/Directeur. Distinctes des copilotes ci-dessus.
