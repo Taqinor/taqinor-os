@@ -14,7 +14,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    MonitoringConfig, ProductionReading, UnderperformanceFlag,
+    MonitoringConfig, ProductionReading, SlaDisponibilite, UnderperformanceFlag,
 )
 from .services import _expected_recent_kwh
 
@@ -226,6 +226,69 @@ def client_environmental_dashboard(company, client_id, *,
         'co2_tonnes': (co2_kg / Decimal('1000')).quantize(Decimal('0.001')),
         'tarif_mad_par_kwh': tarif,
         'co2_kg_par_kwh': factor,
+    }
+
+
+def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
+    """NTNRG14 — disponibilité MESURÉE (``analytics.om_metrics``) vs
+    disponibilité contractuelle GARANTIE (``SlaDisponibilite``) d'un système.
+
+    No-op gracieux (``has_sla=False``) si aucun SLA de disponibilité n'est
+    configuré pour ce système. Quand la disponibilité mesurée n'a pas pu être
+    calculée (aucune donnée), l'écart et la pénalité restent ``None`` — jamais
+    un faux 0 qui laisserait croire à une disponibilité totale ou nulle.
+
+    La pénalité (MAD) est calculée comme pour ``production_warranty_status``
+    (NTNRG12) : l'écart en points de % est converti en JOURS d'indisponibilité
+    excédentaire sur la fenêtre observée, multipliés par le tarif
+    ``compensation_mad_par_jour_indispo`` (0 par défaut = pas de compensation
+    chiffrée, seul l'écart est exposé).
+    """
+    from .analytics import om_metrics
+
+    sla = getattr(installation, 'sla_disponibilite', None)
+    if sla is None:
+        sla = SlaDisponibilite.objects.filter(installation=installation).first()
+    if sla is None:
+        return {'has_sla': False}
+
+    metrics = om_metrics(installation, window_days=window_days, today=today)
+    mesuree_pct = metrics.get('availability_pct')
+    garantie_pct = Decimal(str(sla.disponibilite_garantie_pct))
+
+    if mesuree_pct is None:
+        return {
+            'has_sla': True,
+            'installation': installation.id,
+            'window_days': window_days,
+            'disponibilite_garantie_pct': garantie_pct,
+            'disponibilite_mesuree_pct': None,
+            'ecart_pct': None,
+            'sous_garantie': False,
+            'jours_indisponibilite_excedentaire': None,
+            'penalite_mad': None,
+        }
+
+    ecart_pct = garantie_pct - Decimal(str(mesuree_pct))
+    sous_garantie = ecart_pct > 0
+    if sous_garantie:
+        jours_excedentaires = (ecart_pct / Decimal('100')) * Decimal(window_days)
+        penalite = jours_excedentaires * Decimal(
+            str(sla.compensation_mad_par_jour_indispo))
+    else:
+        jours_excedentaires = Decimal('0')
+        penalite = Decimal('0')
+
+    return {
+        'has_sla': True,
+        'installation': installation.id,
+        'window_days': window_days,
+        'disponibilite_garantie_pct': garantie_pct,
+        'disponibilite_mesuree_pct': Decimal(str(mesuree_pct)),
+        'ecart_pct': _q(ecart_pct),
+        'sous_garantie': sous_garantie,
+        'jours_indisponibilite_excedentaire': _q(jours_excedentaires),
+        'penalite_mad': _q(penalite),
     }
 
 

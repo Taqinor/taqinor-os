@@ -243,6 +243,51 @@ class UnderperformanceFlag(models.Model):
         return f'Flag #{self.installation_id} ({"ouvert" if self.is_open else "fermé"})'
 
 
+# ── NTNRG14 — Disponibilité contractuelle vs mesurée (SLA de disponibilité) ─
+# `monitoring.analytics.om_metrics` calcule déjà une disponibilité PROXY
+# (jours avec relevé / jours fenêtre). Ce modèle ajoute le SEUIL contractuel
+# par système (même patron que `ProductionWarranty`) : un site sous sa
+# disponibilité garantie expose l'écart + une pénalité chiffrée en DH
+# (`selectors.disponibilite_vs_garantie`). STRICTEMENT ADDITIF : sans ligne
+# `SlaDisponibilite`, rien ne change (no-op gracieux `has_sla=False`).
+
+class SlaDisponibilite(models.Model):
+    """Engagement de DISPONIBILITÉ garanti d'UN système installé (NTNRG14).
+
+    `disponibilite_garantie_pct` = seuil contractuel (ex. 98 %).
+    `compensation_mad_par_jour_indispo` = tarif de compensation (MAD) par
+    jour d'indisponibilité EXCÉDENTAIRE (au-delà du seuil garanti) sur la
+    fenêtre observée. Défaut 0 = aucune compensation chiffrée (seul l'écart
+    est exposé)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='sla_disponibilites')
+    installation = models.OneToOneField(
+        'installations.Installation', on_delete=models.CASCADE,
+        related_name='sla_disponibilite')
+    disponibilite_garantie_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=98)
+    compensation_mad_par_jour_indispo = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+    note = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'SLA de disponibilité'
+        verbose_name_plural = 'SLA de disponibilité'
+        ordering = ['-date_modification']
+        # Nom EXPLICITE (≤ 30 car.) pour éviter toute divergence entre le nom
+        # haché déterministe de Django et celui de la migration (écrite à la
+        # main — voir CLAUDE.md, WOW « model↔migration drift »).
+        indexes = [models.Index(
+            fields=['company', 'installation'], name='monitoring_sla_dispo_idx')]
+
+    def __str__(self):
+        return f'SLA dispo #{self.installation_id} ({self.disponibilite_garantie_pct} %)'
+
+
 # ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
 # ODX16 — relogé depuis ``apps.compta`` (défaut fondateur : monitoring, car le
 # modèle référence les configs de supervision ; facturation future via services
