@@ -152,6 +152,80 @@ def tableau_bord_juridique(company, user=None):
     }
 
 
+# ── NTJUR20 — timeline unifiée du dossier ───────────────────────────────────
+
+
+def timeline_dossier(dossier):
+    """Frise chronologique UNIQUE du dossier (NTJUR20).
+
+    Fusionne, triées par date décroissante, les quatre sources d'événements du
+    dossier :
+
+    * le CHATTER — ``records.Activity`` (ARC8, chatter générique du dépôt ;
+      le plan parlait d'un ``DossierJuridiqueActivity`` maison, interdit par
+      la garde ``check_platform`` qui gèle les 13 modèles ``*Activity``
+      existants — on consomme donc le chatter générique au lieu d'en créer un
+      quatorzième) ;
+    * les AUDIENCES (NTJUR5) ;
+    * les DÉLAIS de prescription (NTJUR4) ;
+    * les NOTES D'HONORAIRES (NTJUR11).
+
+    L'écran n'a ainsi qu'UN appel à faire : aucune reconstruction de frise
+    côté frontend, donc aucune divergence de tri entre deux écrans.
+    """
+    from apps.records.services import chatter_qs
+
+    from .models import Audience, DelaiPrescription, NoteHonoraires
+
+    evenements = []
+    for activite in chatter_qs(dossier, company=dossier.company):
+        evenements.append({
+            'type': 'chatter',
+            'id': activite.id,
+            'date': activite.created_at.date().isoformat(),
+            'horodatage': activite.created_at.isoformat(),
+            'libelle': (activite.body or '').strip()
+            or f'{activite.old_value} → {activite.new_value}',
+            'detail': activite.field_label or activite.field or '',
+            'auteur': getattr(activite.created_by, 'username', '') or '',
+        })
+    for audience in Audience.objects.filter(dossier=dossier):
+        evenements.append({
+            'type': 'audience',
+            'id': audience.id,
+            'date': audience.date_audience.isoformat(),
+            'horodatage': f'{audience.date_audience.isoformat()}T00:00:00',
+            'libelle': audience.get_type_audience_display(),
+            'detail': audience.get_statut_display(),
+            'auteur': '',
+        })
+    for delai in DelaiPrescription.objects.filter(dossier=dossier):
+        evenements.append({
+            'type': 'delai',
+            'id': delai.id,
+            'date': delai.date_limite.isoformat(),
+            'horodatage': f'{delai.date_limite.isoformat()}T00:00:00',
+            'libelle': delai.get_type_delai_display(),
+            'detail': delai.get_statut_display(),
+            'auteur': '',
+        })
+    for note in NoteHonoraires.objects.filter(mandat__dossier=dossier):
+        evenements.append({
+            'type': 'note_honoraires',
+            'id': note.id,
+            'date': note.date_facture.isoformat(),
+            'horodatage': f'{note.date_facture.isoformat()}T00:00:00',
+            'libelle': note.reference or f'Note {note.id}',
+            'detail': note.get_statut_display(),
+            'auteur': '',
+        })
+    # Tri chronologique DÉCROISSANT (le plus récent d'abord), départage stable
+    # par type puis id pour que deux chargements donnent le même ordre.
+    evenements.sort(
+        key=lambda e: (e['horodatage'], e['type'], e['id']), reverse=True)
+    return evenements
+
+
 # ── NTJUR19 — résolution de la règle d'approbation d'un engagement ──────────
 
 

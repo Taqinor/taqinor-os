@@ -141,6 +141,28 @@ class DossierJuridiqueViewSet(CompanyScopedModelViewSet):
         return Response(selectors.tableau_bord_juridique(
             request.user.company, user=request.user))
 
+    # ── NTJUR20 — timeline unifiée ──────────────────────────────────────────
+
+    @extend_schema(responses=inline_serializer('JuridiqueTimeline', {
+        'type': serializers.CharField(),
+        'id': serializers.IntegerField(),
+        'date': serializers.CharField(),
+        'horodatage': serializers.CharField(),
+        'libelle': serializers.CharField(),
+        'detail': serializers.CharField(),
+        'auteur': serializers.CharField(),
+    }, many=True))
+    @action(detail=True, methods=['get'], url_path='timeline')
+    def timeline(self, request, pk=None):
+        """Frise chronologique UNIQUE du dossier (NTJUR20).
+
+        Chatter + audiences + délais + notes d'honoraires, déjà fusionnés et
+        triés côté serveur : l'écran n'a aucun appel supplémentaire à faire ni
+        aucun tri à refaire.
+        """
+        dossier = self.get_object()
+        return Response(selectors.timeline_dossier(dossier))
+
     # ── NTJUR2 — machine à états procédurale ────────────────────────────────
 
     @action(detail=True, methods=['get'], url_path='statuts-suivants')
