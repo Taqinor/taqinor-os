@@ -10,9 +10,12 @@ import { statusPill } from '../../ui/module'
    ========================================================================== */
 
 // Contrat — machine d'états gardée (CONTRAT12).
-// brouillon→approbation→signé→actif→suspendu→résilié→expiré.
+// brouillon→[négociation]→approbation→signé→actif→suspendu→résilié→expiré.
+// NTDOC4 — `en_negociation` est la dérivation « redlines avec la contrepartie »
+// insérée entre brouillon et approbation (le chemin direct reste possible).
 export const CONTRAT_STATUS = {
   brouillon: { label: 'Brouillon', tone: 'neutral' },
+  en_negociation: { label: 'En négociation', tone: 'warning' },
   en_approbation: { label: 'En approbation', tone: 'info' },
   signe: { label: 'Signé', tone: 'info' },
   actif: { label: 'Actif', tone: 'success' },
@@ -25,6 +28,7 @@ export const StatutContrat = statusPill(CONTRAT_STATUS)
 // Ordre canonique de la machine d'états (affichage du graphe lisible).
 export const CONTRAT_STATUS_ORDER = [
   'brouillon',
+  'en_negociation',
   'en_approbation',
   'signe',
   'actif',

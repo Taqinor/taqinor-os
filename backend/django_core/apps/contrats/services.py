@@ -5839,6 +5839,102 @@ def rouvrir_commentaire_redline(commentaire, *, user=None):
 CATEGORIE_RETENTION_CONTRAT = 'contrat'
 
 
+# ---------------------------------------------------------------------------
+# NTDOC4 — Cycle de négociation (ouverture / clôture), piloté par la machine
+# ---------------------------------------------------------------------------
+#
+# AUCUNE écriture directe de ``Contrat.statut`` ici : les deux portes passent
+# par ``changer_statut`` (enveloppe ARC34 de ``machine_etats.changer_statut``,
+# CONTRAT12). Elles n'apportent que les GARDES MÉTIER propres à la négociation
+# et le journal (CONTRAT15).
+
+
+class NegociationError(Exception):
+    """Levée quand une étape du cycle de négociation ne peut pas être jouée."""
+
+
+def demarrer_negociation(contrat, *, user=None):
+    """NTDOC4 — Ouvre le round de négociation d'un contrat.
+
+    GARDE : il faut au moins un dépôt de contrepartie (NTDOC1) non archivé et
+    pas encore ``traite`` — on n'ouvre pas une négociation sans redline à
+    discuter.
+
+    La transition ``→ en_negociation`` est appliquée par la MACHINE D'ÉTATS
+    (jamais une écriture directe du champ) ; toute transition interdite est
+    reformulée en ``NegociationError``. L'étape est journalisée au chatter.
+    """
+    from . import selectors as _selectors
+    from .models import Contrat, DocumentContrepartie
+
+    if contrat.statut == Contrat.Statut.EN_NEGOCIATION:
+        raise NegociationError(
+            'Ce contrat est déjà en négociation.')
+    a_traiter = [
+        depot for depot in _selectors.documents_contrepartie(contrat)
+        if depot.statut != DocumentContrepartie.Statut.TRAITE
+    ]
+    if not a_traiter:
+        raise NegociationError(
+            "Aucune version de la contrepartie n'est en attente de "
+            'traitement : déposez d\'abord un document de contrepartie '
+            '(action « contreparties »).')
+
+    ancien = contrat.statut
+    try:
+        changer_statut(contrat, Contrat.Statut.EN_NEGOCIATION, user=user)
+    except TransitionInterdite as exc:
+        raise NegociationError(str(exc))
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut, message='ouverture de la négociation',
+        auteur=user)
+    return contrat
+
+
+def cloturer_negociation(contrat, *, user=None):
+    """NTDOC4 — Clôture la négociation et pousse le contrat en approbation.
+
+    GARDE : TOUS les ``CommentaireRedline`` du contrat doivent être ``resolu``
+    — il est impossible de clôturer avec un point ouvert.
+
+    Effets : les dépôts de contrepartie encore ouverts passent ``traite``,
+    puis la transition ``en_negociation → en_approbation`` est appliquée par la
+    MACHINE D'ÉTATS (qui porte en plus la garde « au moins deux parties »).
+    L'étape est journalisée au chatter.
+    """
+    from . import selectors as _selectors
+    from .models import Contrat, DocumentContrepartie
+
+    if contrat.statut != Contrat.Statut.EN_NEGOCIATION:
+        raise NegociationError(
+            'Ce contrat n\'est pas en négociation : ouvrez d\'abord la '
+            'négociation (action « demarrer-negociation »).')
+
+    ouverts = _selectors.commentaires_redline_ouverts(contrat).count()
+    if ouverts:
+        raise NegociationError(
+            f'Impossible de clôturer la négociation : {ouverts} '
+            f'commentaire(s) de redline ne sont pas résolus.')
+
+    ancien = contrat.statut
+    try:
+        changer_statut(contrat, Contrat.Statut.EN_APPROBATION, user=user)
+    except TransitionInterdite as exc:
+        raise NegociationError(str(exc))
+
+    DocumentContrepartie.objects.filter(
+        company=contrat.company, contrat=contrat, archive=False,
+    ).exclude(statut=DocumentContrepartie.Statut.TRAITE).update(
+        statut=DocumentContrepartie.Statut.TRAITE)
+
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut, message='clôture de la négociation',
+        auteur=user)
+    return contrat
+
+
 def duree_retention_contreparties(company):
     """Durée (jours) de conservation des dépôts archivés, ou ``None``.
 

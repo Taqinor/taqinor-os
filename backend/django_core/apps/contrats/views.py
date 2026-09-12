@@ -834,6 +834,29 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
         # à ANNULEE). Sans ce refus, la porte générique la rendrait accessible
         # à un simple POST — et le contrat redeviendrait actif en laissant sa
         # résiliation vivante.
+        # NTDOC4 — les DEUX bornes du round de négociation ont leur porte
+        # dédiée : l'ouverture exige un dépôt de contrepartie non traité, la
+        # clôture exige que TOUS les commentaires de redline soient résolus.
+        # La porte générique les refuse, sinon un simple POST contournerait ces
+        # gardes métier (même patron qu'AUD501 ci-dessus).
+        if cible == _Statut.EN_NEGOCIATION and cible != ancien:
+            return Response(
+                {'detail': (
+                    'Le statut « en_negociation » ne se pose pas par cette '
+                    'action : une version de la contrepartie doit être '
+                    'déposée et en attente de traitement. Utilisez l\'action '
+                    '« demarrer-negociation ».'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+        if (ancien == _Statut.EN_NEGOCIATION
+                and cible == _Statut.EN_APPROBATION):
+            return Response(
+                {'detail': (
+                    'Une négociation ne se clôture pas par cette action : '
+                    'tous les commentaires de redline doivent être résolus. '
+                    'Utilisez l\'action « cloturer-negociation ».'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         if cible == _Statut.ACTIF and ancien == _Statut.RESILIE:
             return Response(
                 {'detail': (
@@ -1217,6 +1240,43 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 lien, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    # ── NTDOC4 — cycle de négociation (ouverture / clôture) ────────────────
+
+    @action(detail=True, methods=['post'], url_path='demarrer-negociation')
+    def demarrer_negociation(self, request, pk=None):
+        """Ouvre le round de négociation du contrat (NTDOC4).
+
+        Ouverte tant qu'il existe un dépôt de contrepartie (NTDOC1) non
+        archivé et pas encore ``traite``. La transition passe par la MACHINE
+        D'ÉTATS (CONTRAT12) — jamais une écriture directe du statut — et est
+        journalisée au chatter (CONTRAT15).
+        """
+        contrat = self.get_object()
+        try:
+            services.demarrer_negociation(contrat, user=request.user)
+        except services.NegociationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ContratSerializer(contrat, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer-negociation')
+    def cloturer_negociation(self, request, pk=None):
+        """Clôture la négociation et pousse le contrat en approbation (NTDOC4).
+
+        EXIGE que TOUS les ``CommentaireRedline`` du contrat soient résolus —
+        sinon 400 avec le nombre de points ouverts. La transition passe par la
+        MACHINE D'ÉTATS (qui porte aussi la garde « au moins deux parties »).
+        """
+        contrat = self.get_object()
+        try:
+            services.cloturer_negociation(contrat, user=request.user)
+        except services.NegociationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ContratSerializer(contrat, context={'request': request}).data)
 
     @action(detail=True, methods=['get'],
             url_path='wizard-negociation/etapes')

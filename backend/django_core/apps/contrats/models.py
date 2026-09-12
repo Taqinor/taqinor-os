@@ -63,6 +63,11 @@ class Contrat(SoftDeleteModel):
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
+        # NTDOC4 — cycle de négociation par redlines : le contrat part en
+        # discussion avec la contrepartie AVANT d'être soumis à approbation
+        # puis à signature. Statut DOCUMENTAIRE du contrat (CONTRAT12), jamais
+        # une étape du funnel commercial STAGES.py (rule #2).
+        EN_NEGOCIATION = 'en_negociation', 'En négociation'
         EN_APPROBATION = 'en_approbation', 'En approbation'
         SIGNE = 'signe', 'Signé'
         ACTIF = 'actif', 'Actif'
