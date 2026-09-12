@@ -629,14 +629,113 @@ def comparer_periodes(periode_reference, periode_n):
     }
 
 
+# ── NTESG18 — prérequis de clôture d'une période ESG ───────────────────────
+
+#: Couverture de catalogue en dessous de laquelle l'assistant AVERTIT (NTESG3).
+SEUIL_AVERTISSEMENT_COUVERTURE_PCT = 50
+
+
+def prerequis_cloture_esg(periode):
+    """NTESG18 — ce que l'assistant de clôture doit montrer AVANT de figer.
+
+    LA DISTINCTION QUI COMPTE — et que l'assistant ne doit jamais brouiller :
+
+    * ``bloquants`` — des incohérences RÉELLES qui rendent le figeage faux ou
+      impossible : période déjà figée/publiée, dates de période invalides
+      (fin avant début, dates absentes). Le figeage est refusé.
+    * ``avertissements`` — un simple MANQUE de donnée (couverture de catalogue
+      faible, aucune période précédente à comparer). Ce n'est PAS une erreur :
+      une société qui démarre son reporting a le droit de figer une période
+      peu couverte. On informe, on ne bloque pas.
+
+    Renvoie ``{'periode', 'couverture', 'comparaison', 'avertissements',
+    'bloquants', 'peut_figer', 'frequence_reporting'}``.
+    ``comparaison`` est ``None`` quand aucune période antérieure n'existe —
+    jamais un diff inventé contre un zéro imaginaire.
+    """
+    from .models import PeriodeReportingESG
+    from .services import config_esg
+
+    company = periode.company if periode.company_id else None
+
+    bloquants = []
+    if periode.statut != PeriodeReportingESG.Statut.BROUILLON:
+        bloquants.append(
+            f'Cette période est déjà « {periode.get_statut_display()} » : '
+            'le figeage est refusé (les chiffres figés ne sont jamais '
+            'recalculés).')
+    if not periode.date_debut or not periode.date_fin:
+        bloquants.append(
+            'Les dates de la période doivent être renseignées '
+            '(début et fin).')
+    elif periode.date_fin < periode.date_debut:
+        bloquants.append(
+            f'Dates de période invalides : la fin ({periode.date_fin}) '
+            f'précède le début ({periode.date_debut}).')
+
+    couverture = couverture_catalogue(company)
+    avertissements = []
+    for pilier, bloc in (couverture.get('piliers') or {}).items():
+        if bloc.get('total') and bloc.get('pct', 0) < \
+                SEUIL_AVERTISSEMENT_COUVERTURE_PCT:
+            avertissements.append(
+                f'Couverture du pilier « {pilier} » : {bloc["pct"]} % '
+                f'({bloc["couverts"]}/{bloc["total"]} indicateurs du '
+                'catalogue renseignés).')
+    if not (couverture.get('piliers') or {}):
+        avertissements.append(
+            'Aucun catalogue GRI-lite n’est seedé pour cette société : la '
+            'couverture ne peut pas être évaluée.')
+
+    # Période ANTÉRIEURE la plus récente (celle dont on montre le diff).
+    precedente = None
+    if company is not None and periode.date_debut:
+        precedente = (PeriodeReportingESG.objects
+                      .filter(company=company, date_fin__lt=periode.date_debut)
+                      .exclude(pk=periode.pk)
+                      .order_by('-date_fin', '-id')
+                      .first())
+    comparaison = None
+    if precedente is None:
+        avertissements.append(
+            'Aucune période antérieure : les écarts avant/après ne peuvent '
+            'pas être calculés pour cette première clôture.')
+    else:
+        try:
+            comparaison = comparer_periodes(precedente, periode)
+        except Exception:  # noqa: BLE001 — dégradation gracieuse
+            comparaison = None
+            avertissements.append(
+                'La comparaison avec la période précédente est '
+                'indisponible.')
+
+    return {
+        'periode': {
+            'id': periode.pk,
+            'libelle': periode.libelle,
+            'statut': periode.statut,
+            'date_debut': periode.date_debut,
+            'date_fin': periode.date_fin,
+        },
+        'couverture': couverture,
+        'comparaison': comparaison,
+        'avertissements': avertissements,
+        'bloquants': bloquants,
+        'peut_figer': not bloquants,
+        'frequence_reporting': config_esg(company)['frequence_reporting'],
+    }
+
+
 __all__ = [
     'intensite_carbone',
     'agreger_indicateurs_periode',
     'donnees_effectives_periode',
     'couverture_catalogue',
+    'codes_indicateurs_disponibles',
     'trajectoire_vs_realise',
     'badge_maturite_esg',
     'comparer_periodes',
+    'prerequis_cloture_esg',
 ]
 
 

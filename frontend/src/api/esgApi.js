@@ -32,6 +32,17 @@ const esgApi = {
     // Rapport PDF GRI-lite (NTESG4) — téléchargement binaire.
     rapportPdf: (id) =>
       api.get(`/esg/periodes-esg/${id}/rapport-pdf/`, { responseType: 'blob' }),
+    // NTESG18 — MÊME rendu, servi `inline` pour l'aperçu de l'étape 3 de
+    // l'assistant de clôture (jamais une seconde génération : l'aperçu ne
+    // peut donc pas diverger du document définitif).
+    apercuRapportPdf: (id) =>
+      api.get(`/esg/periodes-esg/${id}/rapport-pdf/`, {
+        params: { apercu: 1 }, responseType: 'blob',
+      }),
+    // NTESG18 — prérequis de clôture : couverture (NTESG3), diff vs période
+    // précédente (NTESG11), bloquants RÉELS vs simples avertissements.
+    prerequisCloture: (id) =>
+      api.get(`/esg/periodes-esg/${id}/prerequis-cloture/`),
     // Export xlsx multi-feuilles (NTESG5) — téléchargement binaire.
     exportXlsx: (id) =>
       api.get(`/esg/periodes-esg/${id}/export/`, {

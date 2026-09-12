@@ -100,15 +100,41 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
             permission_classes=[ScopedPermission])
     def rapport_pdf(self, request, pk=None):
         """Rapport ESG GRI-lite PDF (NTESG4) — jamais ``/proposal``, aucune
-        donnée commerciale/prix."""
+        donnée commerciale/prix.
+
+        NTESG18 — ``?apercu=1`` sert le MÊME rendu en ``inline`` (étape 3 de
+        l'assistant de clôture) : c'est un APERÇU du document, pas une
+        seconde génération — aucun deuxième chemin de rendu, donc aucun
+        risque que l'aperçu et le définitif divergent."""
         from .pdf import generer_rapport_esg_pdf
 
         periode = self.get_object()
         pdf_bytes = generer_rapport_esg_pdf(periode)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        apercu = request.query_params.get('apercu') in ('1', 'true', 'oui')
+        disposition = 'inline' if apercu else 'attachment'
         response['Content-Disposition'] = (
-            f'attachment; filename="rapport-esg-{periode.pk}.pdf"')
+            f'{disposition}; filename="rapport-esg-{periode.pk}.pdf"')
         return response
+
+    @action(detail=True, methods=['get'], url_path='prerequis-cloture',
+            permission_classes=[ScopedPermission])
+    def prerequis_cloture(self, request, pk=None):
+        """NTESG18 — ce que l'assistant de clôture montre AVANT de figer.
+
+        FORME DÉCLARÉE (``contract_samples/prerequis_cloture_esg.json``) :
+        ``{periode, couverture, comparaison, avertissements[], bloquants[],
+        peut_figer, frequence_reporting}``.
+
+        ``bloquants`` = incohérences RÉELLES (période déjà figée, dates
+        invalides) → le figeage est refusé. ``avertissements`` = simples
+        manques de donnée (couverture faible, aucune période antérieure) →
+        on informe, on ne bloque JAMAIS : une société qui démarre son
+        reporting a le droit de figer une période peu couverte.
+        """
+        from .selectors import prerequis_cloture_esg
+
+        return Response(prerequis_cloture_esg(self.get_object()))
 
     @action(detail=True, methods=['get'], url_path='dpef',
             permission_classes=[ScopedPermission])

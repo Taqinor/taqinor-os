@@ -23,6 +23,8 @@ const FacteursEmission = lazy(() => import('../../pages/esg/FacteursEmission'))
 // NTESG19 — assistant guidé de création d'un objectif de trajectoire.
 const WizardObjectifTrajectoire = lazy(
   () => import('../../pages/esg/WizardObjectifTrajectoire'))
+// NTESG18 — assistant guidé de clôture d'une période ESG (4 étapes).
+const WizardClotureEsg = lazy(() => import('../../pages/esg/WizardClotureEsg'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -49,6 +51,7 @@ const config = {
     ['/esg/materialite', 'Matrice de matérialité'],
     ['/esg/facteurs', "Facteurs d'émission"],
     ['/esg/objectifs/nouveau', 'Créer un objectif de trajectoire'],
+    ['/esg/periodes/:periodeId/cloture', 'Clôture de période ESG'],
   ],
   sectionLabels: { esg: 'ESG / RSE' },
   routes: [
@@ -56,6 +59,9 @@ const config = {
     { path: '/esg/materialite', component: MatriceMaterialite, roles: ROLES },
     { path: '/esg/facteurs', component: FacteursEmission, roles: ROLES },
     { path: '/esg/objectifs/nouveau', component: WizardObjectifTrajectoire, roles: ROLES },
+    // contextuelle: ouverte depuis le cockpit ESG sur UNE période précise
+    // (un lien de menu sans identifiant de période n'aurait aucun sens).
+    { path: '/esg/periodes/:periodeId/cloture', component: WizardClotureEsg, roles: ROLES },
   ],
 }
 
