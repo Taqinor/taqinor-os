@@ -288,6 +288,29 @@ class CustomUser(AbstractUser):
         max_length=32, null=True, blank=True, default=None,
     )
 
+    # NTI18N3 — langue d'INTERFACE de cet utilisateur, persistée serveur (pas
+    # seulement `localStorage`) pour qu'il retrouve la même langue en se
+    # connectant depuis un autre poste. Additif, défaut FR : tout compte
+    # existant garde le comportement N93 actuel (FR par défaut) tant qu'il n'a
+    # pas explicitement changé de langue. Distincte de `Client.langue_document`
+    # (apps.crm — langue des DOCUMENTS envoyés à un client) et de
+    # `Lead.langue_preferee` : ceci ne pilote QUE l'interface de CET
+    # utilisateur. S'écrit UNIQUEMENT via `LangueInterfaceView`
+    # (`PATCH /auth/me/langue/`), jamais par le PATCH générique du profil
+    # (voir `UserSerializer.Meta.read_only_fields`, même patron que
+    # `mobile_home_route`/NTMOB6 ci-dessus).
+    class LangueInterface(models.TextChoices):
+        FR = 'fr', 'Français'
+        EN = 'en', 'English'
+        AR = 'ar', 'العربية'
+
+    langue_interface = models.CharField(
+        max_length=2,
+        choices=LangueInterface.choices,
+        default=LangueInterface.FR,
+        verbose_name="Langue d'interface",
+    )
+
     # ── Double authentification (2FA TOTP) — strictement OPT-IN (N96) ──────
     # Le secret TOTP partagé (base32). Posé dès la phase de configuration mais
     # le 2FA n'est ACTIF qu'une fois ``totp_enabled`` passé à True (après

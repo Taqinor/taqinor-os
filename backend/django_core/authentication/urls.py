@@ -7,6 +7,7 @@ from .views import (
     CompanyViewSet,
     MeView,
     MobileHomeRouteView,
+    LangueInterfaceView,
     LogoutView,
     CookieTokenRefreshView,
     TwoFactorSetupView,
@@ -42,6 +43,9 @@ urlpatterns = [
     # mémorisé par l'utilisateur courant.
     path('auth/mobile-home-route/', MobileHomeRouteView.as_view(),
          name='auth_mobile_home_route'),
+    # NTI18N3 — langue d'interface persistée serveur (retrouvée d'un autre poste).
+    path('auth/me/langue/', LangueInterfaceView.as_view(),
+         name='auth_me_langue'),
     # XPLT19 — bascule de société active (utilisateur multi-sociétés).
     path('auth/switch-company/', SwitchCompanyView.as_view(),
          name='auth_switch_company'),

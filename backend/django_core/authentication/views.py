@@ -678,6 +678,31 @@ class MobileHomeRouteView(APIView):
         return Response({'mobile_home_route': request.user.mobile_home_route})
 
 
+class LangueInterfaceView(APIView):
+    """PATCH /api/django/auth/me/langue/ — NTI18N3.
+
+    Persiste la langue d'INTERFACE de l'utilisateur COURANT uniquement (jamais
+    un autre compte, jamais lu du corps que via ce champ — même patron que
+    ``MobileHomeRouteView`` ci-dessus). Corps : ``{"langue_interface":
+    "fr"|"en"|"ar"}``. Valeur hors whitelist → 400 clair (jamais une langue
+    arbitraire écrite en base). Verrouillage société (NTI18N35, hors périmètre
+    de cette tâche) : si un jour posé, cet endpoint devra le vérifier ici."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        from authentication.models import CustomUser
+        langue = request.data.get('langue_interface')
+        valides = dict(CustomUser.LangueInterface.choices)
+        if langue not in valides:
+            return Response(
+                {'detail': f"Langue invalide. Attendu : {', '.join(valides)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        request.user.langue_interface = langue
+        request.user.save(update_fields=['langue_interface'])
+        return Response({'langue_interface': request.user.langue_interface})
+
+
 # ── Logout securise ────────────────────────────────────────────
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
