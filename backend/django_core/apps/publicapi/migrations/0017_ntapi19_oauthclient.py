@@ -33,6 +33,7 @@ class Migration(migrations.Migration):
                 'verbose_name_plural': 'Clients OAuth2 (API publique)',
                 'ordering': ['-created_at'],
                 'indexes': [models.Index(fields=['company', 'actif'], name='publicapi_oauth_co_actif_idx')],
+                'constraints': [models.UniqueConstraint(fields=('company', 'client_id'), name='publicapi_oauthclient_co_cid')],
             },
         ),
     ]

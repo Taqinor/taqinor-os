@@ -775,6 +775,17 @@ class OAuthClient(TenantModel):
         verbose_name = 'Client OAuth2 (API publique)'
         verbose_name_plural = 'Clients OAuth2 (API publique)'
         ordering = ['-created_at']
+        constraints = [
+            # L'unicité OPÉRANTE de `client_id` est GLOBALE (`unique=True` sur
+            # le champ) : le flot `client_credentials` résout le client AVANT
+            # de connaître la société — c'est la définition même du grant, on
+            # ne peut pas la scoper. Cette contrainte-ci énonce en plus, au
+            # niveau du schéma, l'invariant multi-tenant correspondant : deux
+            # clients d'une MÊME société ne partagent jamais un `client_id`.
+            models.UniqueConstraint(
+                fields=['company', 'client_id'],
+                name='publicapi_oauthclient_co_cid'),
+        ]
         indexes = [
             models.Index(fields=['company', 'actif'],
                          name='publicapi_oauth_co_actif_idx'),
@@ -822,3 +833,94 @@ class OAuthClient(TenantModel):
 
 
 __all__ += ['OAuthClient']
+
+
+class PartenaireEdi(TenantModel):
+    """NTAPI36 — registre des partenaires EDI (identifiants + mappings SKU).
+
+    Un échange EDI n'est PAS un échange de SKU internes : chaque partenaire
+    (grande distribution, centrale d'achat, donneur d'ordre industriel)
+    identifie les articles par SON propre code, et s'identifie lui-même par un
+    ``GLN`` (EDIFACT/GS1) ou un ``DUNS`` (X12/Amérique du Nord). Ce registre
+    porte les deux : QUI est le partenaire, et COMMENT traduire les références
+    d'articles dans les deux sens.
+
+    ``mapping_sku`` est un simple dict ``{"<sku interne>": "<code partenaire>"}``.
+    UN SKU ABSENT DU MAPPING N'EST JAMAIS UNE ERREUR BLOQUANTE : la traduction
+    renvoie le SKU interne tel quel ET un avertissement (voir
+    ``edi_partners.traduire_lignes``). Refuser l'export entier pour un article
+    non mappé bloquerait une facture complète sur un seul article accessoire —
+    alors qu'un code non reconnu côté partenaire se règle par un échange
+    humain, en aval.
+
+    Registre INERTE tant que l'EDI n'est pas activé : ce modèle ne déclenche
+    aucune transmission, il ne fait que décrire des correspondances.
+    """
+
+    FORMAT_EDIFACT = 'edifact'
+    FORMAT_X12 = 'x12'
+    FORMAT_CHOICES = [
+        (FORMAT_EDIFACT, 'EDIFACT (UN/CEFACT)'),
+        (FORMAT_X12, 'ANSI X12'),
+    ]
+
+    TYPE_GLN = 'gln'
+    TYPE_DUNS = 'duns'
+    TYPE_IDENTIFIANT_CHOICES = [
+        (TYPE_GLN, 'GLN (GS1)'),
+        (TYPE_DUNS, 'DUNS'),
+    ]
+
+    nom = models.CharField(max_length=200)
+    type_identifiant = models.CharField(
+        max_length=8, choices=TYPE_IDENTIFIANT_CHOICES, default=TYPE_GLN)
+    identifiant = models.CharField(
+        max_length=64,
+        help_text="GLN (13 chiffres) ou DUNS (9 chiffres) du partenaire.")
+    format = models.CharField(
+        max_length=10, choices=FORMAT_CHOICES, default=FORMAT_EDIFACT)
+    # {"SKU-INTERNE": "CODE-PARTENAIRE"} — jamais une liste, jamais un CSV :
+    # la recherche d'un SKU doit rester O(1) au moment de l'export.
+    mapping_sku = models.JSONField(default=dict, blank=True)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Partenaire EDI'
+        verbose_name_plural = 'Partenaires EDI'
+        ordering = ['nom', 'id']
+        constraints = [
+            # Un même identifiant ne désigne qu'UN partenaire par société —
+            # deux lignes concurrentes donneraient deux mappings possibles pour
+            # le même GLN, donc un export non déterministe.
+            models.UniqueConstraint(
+                fields=['company', 'identifiant'],
+                name='publicapi_partenaireedi_co_ident'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='publicapi_pedi_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.type_identifiant.upper()} {self.identifiant})'
+
+    def code_pour_sku(self, sku):
+        """Code partenaire d'un SKU interne, ou ``None`` s'il n'est pas mappé."""
+        mapping = self.mapping_sku if isinstance(self.mapping_sku, dict) else {}
+        return mapping.get(sku) or None
+
+    def sku_pour_code(self, code_partenaire):
+        """Traduction INVERSE (import : un ORDERS porte les codes DU
+        partenaire). ``None`` si aucun SKU interne ne correspond.
+
+        Construite à la volée depuis ``mapping_sku`` plutôt que stockée en
+        double : un second dict à maintenir finirait fatalement désynchronisé
+        du premier."""
+        mapping = self.mapping_sku if isinstance(self.mapping_sku, dict) else {}
+        for sku, code in mapping.items():
+            if code == code_partenaire:
+                return sku
+        return None
+
+
+__all__ += ['PartenaireEdi']
