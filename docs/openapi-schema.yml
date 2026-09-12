@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9838, operations: 17541, components: 5159}
+counts: {paths: 9872, operations: 17583, components: 5161}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2803,8 +2803,10 @@ operations:
 - get /api/django/crm/visites/{id}/ -> django_crm_visites_retrieve
 - patch /api/django/crm/visites/{id}/ -> django_crm_visites_partial_update
 - put /api/django/crm/visites/{id}/ -> django_crm_visites_update
+- post /api/django/crm/visites/{id}/arriver/ -> django_crm_visites_arriver_create
 - post /api/django/crm/visites/{id}/assembler-photos/ -> django_crm_visites_assembler_photos_create
 - patch /api/django/crm/visites/{id}/calage/ -> django_crm_visites_calage_partial_update
+- post /api/django/crm/visites/{id}/demarrer-route/ -> django_crm_visites_demarrer_route_create
 - patch /api/django/crm/visites/{id}/mesures/ -> django_crm_visites_mesures_partial_update
 - get /api/django/crm/visites/{id}/photo-toit/ -> django_crm_visites_photo_toit_retrieve
 - post /api/django/crm/visites/{id}/photos/ -> django_crm_visites_photos_create
@@ -8786,6 +8788,25 @@ operations:
 - put /api/django/ventes/tests-pr-reception/{id}/ -> django_ventes_tests_pr_reception_update
 - get /api/django/ventes/toiture/charge/ -> django_ventes_toiture_charge_retrieve
 - post /api/django/ventes/toiture/charge/ -> django_ventes_toiture_charge_create
+- get /api/django/visites/leads-recherche/ -> django_visites_leads_recherche_retrieve
+- get /api/django/visites/ma-journee/ -> django_visites_ma_journee_retrieve
+- get /api/django/visites/visites/ -> django_visites_visites_list
+- post /api/django/visites/visites/ -> django_visites_visites_create
+- delete /api/django/visites/visites/{id}/ -> django_visites_visites_destroy
+- get /api/django/visites/visites/{id}/ -> django_visites_visites_retrieve
+- patch /api/django/visites/visites/{id}/ -> django_visites_visites_partial_update
+- put /api/django/visites/visites/{id}/ -> django_visites_visites_update
+- post /api/django/visites/visites/{id}/arriver/ -> django_visites_visites_arriver_create
+- post /api/django/visites/visites/{id}/assembler-photos/ -> django_visites_visites_assembler_photos_create
+- patch /api/django/visites/visites/{id}/calage/ -> django_visites_visites_calage_partial_update
+- post /api/django/visites/visites/{id}/demarrer-route/ -> django_visites_visites_demarrer_route_create
+- patch /api/django/visites/visites/{id}/mesures/ -> django_visites_visites_mesures_partial_update
+- get /api/django/visites/visites/{id}/photo-toit/ -> django_visites_visites_photo_toit_retrieve
+- post /api/django/visites/visites/{id}/photos/ -> django_visites_visites_photos_create
+- delete /api/django/visites/visites/{id}/photos/{media_id}/ -> django_visites_visites_photos_destroy
+- post /api/django/visites/visites/{id}/renvoyer/ -> django_visites_visites_renvoyer_create
+- post /api/django/visites/visites/{id}/terminer/ -> django_visites_visites_terminer_create
+- post /api/django/visites/visites/{id}/valider/ -> django_visites_visites_valider_create
 - get /api/django/voip/appels/ -> django_voip_appels_list
 - post /api/django/voip/appels/entrant/ -> django_voip_appels_entrant_create
 - post /api/django/voip/appels/sortant/ -> django_voip_appels_sortant_create
@@ -11611,8 +11632,10 @@ operations:
 - get /api/v1/crm/visites/{id}/ -> v1_crm_visites_retrieve
 - patch /api/v1/crm/visites/{id}/ -> v1_crm_visites_partial_update
 - put /api/v1/crm/visites/{id}/ -> v1_crm_visites_update
+- post /api/v1/crm/visites/{id}/arriver/ -> v1_crm_visites_arriver_create
 - post /api/v1/crm/visites/{id}/assembler-photos/ -> v1_crm_visites_assembler_photos_create
 - patch /api/v1/crm/visites/{id}/calage/ -> v1_crm_visites_calage_partial_update
+- post /api/v1/crm/visites/{id}/demarrer-route/ -> v1_crm_visites_demarrer_route_create
 - patch /api/v1/crm/visites/{id}/mesures/ -> v1_crm_visites_mesures_partial_update
 - get /api/v1/crm/visites/{id}/photo-toit/ -> v1_crm_visites_photo_toit_retrieve
 - post /api/v1/crm/visites/{id}/photos/ -> v1_crm_visites_photos_create
@@ -17547,6 +17570,25 @@ operations:
 - put /api/v1/ventes/tests-pr-reception/{id}/ -> v1_ventes_tests_pr_reception_update
 - get /api/v1/ventes/toiture/charge/ -> v1_ventes_toiture_charge_retrieve
 - post /api/v1/ventes/toiture/charge/ -> v1_ventes_toiture_charge_create
+- get /api/v1/visites/leads-recherche/ -> v1_visites_leads_recherche_retrieve
+- get /api/v1/visites/ma-journee/ -> v1_visites_ma_journee_retrieve
+- get /api/v1/visites/visites/ -> v1_visites_visites_list
+- post /api/v1/visites/visites/ -> v1_visites_visites_create
+- delete /api/v1/visites/visites/{id}/ -> v1_visites_visites_destroy
+- get /api/v1/visites/visites/{id}/ -> v1_visites_visites_retrieve
+- patch /api/v1/visites/visites/{id}/ -> v1_visites_visites_partial_update
+- put /api/v1/visites/visites/{id}/ -> v1_visites_visites_update
+- post /api/v1/visites/visites/{id}/arriver/ -> v1_visites_visites_arriver_create
+- post /api/v1/visites/visites/{id}/assembler-photos/ -> v1_visites_visites_assembler_photos_create
+- patch /api/v1/visites/visites/{id}/calage/ -> v1_visites_visites_calage_partial_update
+- post /api/v1/visites/visites/{id}/demarrer-route/ -> v1_visites_visites_demarrer_route_create
+- patch /api/v1/visites/visites/{id}/mesures/ -> v1_visites_visites_mesures_partial_update
+- get /api/v1/visites/visites/{id}/photo-toit/ -> v1_visites_visites_photo_toit_retrieve
+- post /api/v1/visites/visites/{id}/photos/ -> v1_visites_visites_photos_create
+- delete /api/v1/visites/visites/{id}/photos/{media_id}/ -> v1_visites_visites_photos_destroy
+- post /api/v1/visites/visites/{id}/renvoyer/ -> v1_visites_visites_renvoyer_create
+- post /api/v1/visites/visites/{id}/terminer/ -> v1_visites_visites_terminer_create
+- post /api/v1/visites/visites/{id}/valider/ -> v1_visites_visites_valider_create
 - get /api/v1/voip/appels/ -> v1_voip_appels_list
 - post /api/v1/voip/appels/entrant/ -> v1_voip_appels_entrant_create
 - post /api/v1/voip/appels/sortant/ -> v1_voip_appels_sortant_create
@@ -22674,6 +22716,8 @@ components:
 - VisiteTerrain
 - VisiteTerrainRequest
 - VisiteTerrainStatutEnum
+- VisitesLeadsRecherche
+- VisitesMaJournee
 - VoteIdee
 - VoteIdeeRequest
 - VueGedEnregistree

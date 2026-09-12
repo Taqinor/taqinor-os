@@ -82,13 +82,16 @@ const { getVisite, terminerVisite } = vi.hoisted(() => ({
   terminerVisite: vi.fn(),
 }))
 
-vi.mock('../../../api/crmApi', () => ({
+vi.mock('../../api/visitesApi', () => ({
   default: {
     getVisite: (...a) => getVisite(...a),
     terminerVisite: (...a) => terminerVisite(...a),
     uploadVisitePhoto: vi.fn(),
     deleteVisitePhoto: vi.fn(),
     patchVisiteMesures: vi.fn(),
+    // VTA11 — l'historique des visites du même lead (panneau en lecture seule
+    // monté par le wizard). Liste vide ici : ces cas testent le wizard.
+    getVisites: vi.fn(async () => ({ data: [] })),
   },
 }))
 
@@ -96,9 +99,9 @@ import VisiteWizardPage from './VisiteWizardPage'
 
 function withProviders() {
   return render(
-    <MemoryRouter initialEntries={['/crm/visites/7']}>
+    <MemoryRouter initialEntries={['/visites/7']}>
       <Routes>
-        <Route path="/crm/visites/:id" element={<VisiteWizardPage />} />
+        <Route path="/visites/:id" element={<VisiteWizardPage />} />
       </Routes>
     </MemoryRouter>,
   )

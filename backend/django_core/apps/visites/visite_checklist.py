@@ -1,7 +1,7 @@
 """VT1 — LA définition CODE de la checklist de visite technique terrain.
 
 Source de vérité UNIQUE des catégories, des slots photo et des mesures
-attendues. Le contrat partagé ``apps/crm/contract_samples/visite_terrain.json``
+attendues. Le contrat partagé ``apps/visites/contract_samples/visite_terrain.json``
 (PACT10) en est le miroir lisible : libellés, guides, ``requis``/``min_photos``
 et codes de mesure sont écrits ICI et servis tels quels par
 ``selectors.contexte_visite_terrain``.

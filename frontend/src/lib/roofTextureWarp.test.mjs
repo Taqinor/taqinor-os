@@ -3,7 +3,7 @@
 // maths seules — reformulation locale de `affineFromTriangles` (non exportée,
 // interne à roofTextureWarp.js) via `boundingBox` (exporté) pour la partie
 // géométrie, et une ré-implémentation fidèle pour vérifier l'algèbre.
-//   node --test src/pages/crm/visites/roofTextureWarp.test.mjs
+//   node --test src/lib/roofTextureWarp.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { boundingBox } from './roofTextureWarp.js'

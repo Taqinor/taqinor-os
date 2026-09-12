@@ -11,7 +11,7 @@ const { getVisites, getVisite } = vi.hoisted(() => ({
   getVisite: vi.fn(),
 }))
 
-vi.mock('../../../api/crmApi', () => ({
+vi.mock('../../api/visitesApi', () => ({
   default: {
     getVisites: (...a) => getVisites(...a),
     getVisite: (...a) => getVisite(...a),

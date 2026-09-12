@@ -234,16 +234,35 @@ class SeuilCinqJoursOuvresTests(TestCase):
 class KpiApiTests(TestCase):
     def setUp(self):
         self.company = _company('mry21-api')
+        # VTA4 — les lectures CRM exigent le code fin ``crm_voir`` : le
+        # « tout rôle » d'origine devient « tout rôle PORTEUR de crm_voir ».
+        role = Role.objects.create(
+            company=self.company, nom='mry21-lecteur',
+            permissions=['crm_voir'])
         self.normal = User.objects.create_user(
-            username='mry21-api-u', password='x', company=self.company)
+            username='mry21-api-u', password='x', company=self.company,
+            role=role)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.normal)}')
 
-    def test_lecture_ouverte_a_tout_role(self):
+    def test_lecture_ouverte_a_tout_porteur_de_crm_voir(self):
         resp = self.api.get(KPI_URL)
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIn('joints_sous_5j_pct', resp.data)
+
+    def test_sans_crm_voir_la_lecture_est_refusee(self):
+        # VTA4 — le verrou de la frontière : un rôle fin SANS crm_voir
+        # (ex. « Commercial terrain », app Visites seule) reçoit 403.
+        sans = User.objects.create_user(
+            username='mry21-api-sans', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='mry21-sans',
+                permissions=['visites_voir']))
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(sans)}')
+        self.assertEqual(api.get(KPI_URL).status_code, 403)
 
     def test_jours_invalide_retombe_sur_le_defaut(self):
         self.assertEqual(

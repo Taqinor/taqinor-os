@@ -53,7 +53,7 @@ class SalleVenteAnalyticsEndpointTests(TestCase):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM19b', slug='taqinor-ntcrm19b')
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_creer'])
+            company=self.company, nom='Commercial', permissions=['crm_voir', 'crm_creer'])
         self.user = User.objects.create_user(
             username='vendeur_ntcrm19', password='x',
             company=self.company, role=self.role)
