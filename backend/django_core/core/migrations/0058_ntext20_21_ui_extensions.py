@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('authentication', '0020_company_benchmarking_opt_in'),
-        ('core', '0056_ntgrc3_dsr_echeance'),
+        ('core', '0057_ntapi2_apideprecation'),
     ]
 
     operations = [
