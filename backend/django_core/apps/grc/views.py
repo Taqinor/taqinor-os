@@ -1068,7 +1068,9 @@ def e_discovery(request):
     réellement geler (le journal d'activité) sont listés dans
     ``types_ignores`` — jamais passés sous silence.
     """
-    from .selectors import rechercher_e_discovery
+    # NTGRC31 — l'e-discovery vit dans son PROPRE module (jamais réexporté
+    # depuis `selectors.py`) : voir la docstring de `ediscovery.py`.
+    from .ediscovery import rechercher_e_discovery
     from .services import placer_resultats_sous_hold
 
     donnees = request.data if request.method == 'POST' else request.query_params
