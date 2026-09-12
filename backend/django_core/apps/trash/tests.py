@@ -187,14 +187,22 @@ class CorbeilleApiTests(CorbeilleBase):
 
         archiver(self.lead, type_libelle='Lead')
         element = ElementSupprime.objects.get()
-        avant = AuditLog.objects.count()
+        dernier = AuditLog.objects.order_by('-id').values_list(
+            'id', flat=True).first() or 0
         resp = auth(self.directeur).post(f'{self.BASE}{element.pk}/restaurer/')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(AuditLog.objects.count(), avant + 1)
-        entry = AuditLog.objects.latest('id')
+        # Une restauration écrit DEUX traces distinctes et toutes deux
+        # voulues : la trace CRUD automatique du Lead ré-enregistré
+        # (``apps.audit.signals`` suit ``crm.Lead``) et, EN PLUS, la trace
+        # NTUX38 de l'action corbeille. On verrouille donc celle qui appartient
+        # à NTUX38 — jamais le total, qui interdirait toute autre trace légitime.
+        nouvelles = list(AuditLog.objects.filter(id__gt=dernier))
+        corbeille = [e for e in nouvelles
+                     if 'corbeille' in (e.detail or '').lower()]
+        self.assertEqual(len(corbeille), 1, [e.detail for e in nouvelles])
+        entry = corbeille[0]
         self.assertEqual(entry.user, self.directeur)
         self.assertEqual(entry.company, self.co_a)
-        self.assertIn('corbeille', entry.detail.lower())
 
 
 class NTUX24ExportXlsxTests(CorbeilleBase):
