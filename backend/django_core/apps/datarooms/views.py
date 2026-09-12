@@ -116,6 +116,52 @@ class SalleDeDonneesViewSet(CompanyScopedModelViewSet):
                  salle=salle).count()},
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'])
+    def fermer(self, request, pk=None):
+        """NTDOC16 — Ferme la salle et RÉVOQUE tous ses accès actifs d'un coup.
+
+        Chaque lien viewer devient immédiatement introuvable (404). La
+        fermeture n'est pas réversible en réactivant les liens : seule une
+        réouverture admin rend la salle exploitable, et les viewers doivent
+        être réinvités."""
+        salle = self.get_object()
+        revoques = services.fermer_salle(salle, fermee_par=request.user)
+        return Response(
+            {'statut': salle.statut, 'acces_revoques': revoques,
+             'fermee_le': salle.fermee_le},
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def rouvrir(self, request, pk=None):
+        """NTDOC16 — Réouverture MANUELLE d'une salle fermée (admin seulement).
+
+        Les accès révoqués à la fermeture RESTENT révoqués : rouvrir n'exhume
+        aucun lien, il faut réinviter."""
+        user = request.user
+        if not (getattr(user, 'is_admin_role', False)
+                or getattr(user, 'is_superuser', False)):
+            return Response(
+                {'detail': "Seul un administrateur peut rouvrir une salle "
+                           "fermée."},
+                status=status.HTTP_403_FORBIDDEN)
+        salle = self.get_object()
+        services.rouvrir_salle(salle)
+        return Response(self.get_serializer(salle).data,
+                        status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='export-audit')
+    def export_audit(self, request, pk=None):
+        """NTDOC16 — PDF récapitulatif à conserver après la clôture d'un deal.
+
+        Documents inclus, viewers invités, journal COMPLET de consultation.
+        Pièce de gouvernance INTERNE — jamais un document client."""
+        salle = self.get_object()
+        pdf = services.rapport_audit_pdf(salle)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            f'attachment; filename="audit-salle-{salle.pk}.pdf"')
+        return reponse
+
     @action(detail=True, methods=['get'])
     def journal(self, request, pk=None):
         """NTDOC14 — Qui a vu quoi, quand, et combien de temps (gestion).

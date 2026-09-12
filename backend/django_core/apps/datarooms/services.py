@@ -326,6 +326,141 @@ def journaliser_consultation(acces, document, *, type_acces=None,
         return None
 
 
+# ── NTDOC16 — Fermeture de la salle & export d'audit ────────────────────────
+
+@transaction.atomic
+def fermer_salle(salle, *, fermee_par=None, now=None):
+    """NTDOC16 — Ferme la salle ET révoque TOUS ses accès actifs d'un coup.
+
+    Le lien de chaque viewer devient immédiatement introuvable (404) : la
+    fermeture est le kill-switch d'un deal terminé. Elle n'est pas réversible
+    en réactivant les liens — une réouverture ADMIN rend la salle exploitable,
+    mais les viewers doivent être RÉINVITÉS (nouveaux jetons).
+
+    Idempotente : refermer une salle déjà fermée ne change rien. Renvoie le
+    nombre d'accès révoqués par CET appel."""
+    horodatage = now or timezone.now()
+    if salle.statut == SalleDeDonnees.Statut.FERMEE:
+        return 0
+    revoques = AccesSalleDonnees.objects.filter(
+        salle=salle, revoque=False).update(revoque=True)
+    SalleDeDonnees.objects.filter(pk=salle.pk).update(
+        statut=SalleDeDonnees.Statut.FERMEE, fermee_le=horodatage,
+        fermee_par=fermee_par)
+    salle.statut = SalleDeDonnees.Statut.FERMEE
+    salle.fermee_le = horodatage
+    salle.fermee_par = fermee_par
+    return revoques
+
+
+def rouvrir_salle(salle):
+    """NTDOC16 — Réouverture MANUELLE d'une salle fermée (geste d'admin).
+
+    Les accès révoqués à la fermeture restent révoqués : rouvrir la salle
+    n'exhume aucun lien: il faut réinviter. Renvoie la salle."""
+    if salle.statut != SalleDeDonnees.Statut.FERMEE:
+        return salle
+    SalleDeDonnees.objects.filter(pk=salle.pk).update(
+        statut=SalleDeDonnees.Statut.OUVERTE, fermee_le=None, fermee_par=None)
+    salle.statut = SalleDeDonnees.Statut.OUVERTE
+    salle.fermee_le = None
+    salle.fermee_par = None
+    return salle
+
+
+def _echappe(valeur):
+    """Échappe une valeur avant insertion dans le HTML du rapport d'audit."""
+    from django.utils.html import escape
+    return escape(str(valeur or ''))
+
+
+def rapport_audit_html(salle):
+    """NTDOC16 — HTML du rapport d'audit d'une salle (pièce d'archive).
+
+    Contenu : documents inclus, viewers invités (avec leur état), et le JOURNAL
+    COMPLET de consultation. Document de gouvernance INTERNE — jamais une
+    sortie client, donc hors de la règle #4 (moteur de devis)."""
+    from .selectors import acces_de_salle, documents_de_salle
+
+    lignes_journal, resume = journal_detaille_salle(salle)
+
+    documents = ''.join(
+        f"<tr><td>{_echappe(getattr(ligne.document, 'nom', ''))}</td>"
+        f"<td>{ligne.ordre}</td>"
+        f"<td>{'Visible' if ligne.visible else 'Masqué'}</td></tr>"
+        for ligne in documents_de_salle(salle)
+    ) or "<tr><td colspan='3'>Aucun document.</td></tr>"
+
+    viewers = ''.join(
+        f"<tr><td>{_echappe(acces.nom)}</td><td>{_echappe(acces.email)}</td>"
+        f"<td>{_echappe(acces.expires_at or 'Sans expiration propre')}</td>"
+        f"<td>{'Révoqué' if acces.revoque else 'Actif'}</td>"
+        f"<td>{_echappe(acces.derniere_consultation or 'Jamais')}</td></tr>"
+        for acces in acces_de_salle(salle)
+    ) or "<tr><td colspan='5'>Aucun viewer invité.</td></tr>"
+
+    journal = ''.join(
+        f"<tr><td>{ligne['date']:%Y-%m-%d %H:%M}</td>"
+        f"<td>{_echappe(ligne['viewer_nom'])}</td>"
+        f"<td>{_echappe(ligne['document_nom'])}</td>"
+        f"<td>{_echappe(ligne['type_acces'])}</td>"
+        f"<td>{ligne['duree_secondes']}</td></tr>"
+        for ligne in lignes_journal
+    ) or "<tr><td colspan='5'>Aucune consultation enregistrée.</td></tr>"
+
+    synthese = ''.join(
+        f"<tr><td>{_echappe(item['document_nom'])}</td>"
+        f"<td>{item['consultations']}</td>"
+        f"<td>{item['duree_secondes']}</td></tr>"
+        for item in resume
+    ) or "<tr><td colspan='3'>Aucune consultation enregistrée.</td></tr>"
+
+    statut = 'Fermée' if salle.statut == SalleDeDonnees.Statut.FERMEE \
+        else 'Ouverte'
+    return (
+        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        "<style>"
+        "body{font-family:sans-serif;font-size:9pt;color:#1a1a1a;"
+        "margin:1.6cm;line-height:1.45;}"
+        "h1{font-size:14pt;border-bottom:2px solid #2b5cab;padding-bottom:5px;}"
+        "h2{font-size:11pt;margin-top:16px;}"
+        "table{width:100%;border-collapse:collapse;margin:6px 0;}"
+        "td,th{border:1px solid #ccc;padding:3px 6px;text-align:left;}"
+        "</style></head><body>"
+        "<h1>Rapport d'audit — salle de données</h1>"
+        f"<p><strong>Salle :</strong> {_echappe(salle.nom)}</p>"
+        f"<p><strong>Type d'opération :</strong> "
+        f"{_echappe(salle.deal_type or 'Non précisé')}</p>"
+        f"<p><strong>Statut :</strong> {statut}"
+        + (f" (fermée le {salle.fermee_le:%Y-%m-%d %H:%M})"
+           if salle.fermee_le else '')
+        + "</p>"
+        "<h2>Documents inclus</h2>"
+        "<table><tr><th>Document</th><th>Ordre</th><th>Visibilité</th></tr>"
+        f"{documents}</table>"
+        "<h2>Viewers invités</h2>"
+        "<table><tr><th>Nom</th><th>Email</th><th>Expiration</th>"
+        f"<th>État</th><th>Dernière consultation</th></tr>{viewers}</table>"
+        "<h2>Journal de consultation</h2>"
+        "<table><tr><th>Date</th><th>Viewer</th><th>Document</th>"
+        f"<th>Type</th><th>Temps estimé (s)</th></tr>{journal}</table>"
+        "<h2>Synthèse par document</h2>"
+        "<table><tr><th>Document</th><th>Consultations</th>"
+        f"<th>Temps estimé (s)</th></tr>{synthese}</table>"
+        "</body></html>"
+    )
+
+
+def rapport_audit_pdf(salle):
+    """NTDOC16 — Rend le rapport d'audit en PDF.
+
+    ARC11 — la plomberie WeasyPrint est déléguée au service partagé
+    ``core.pdf.render_pdf`` (jamais un import direct de weasyprint). Rapport de
+    GOUVERNANCE INTERNE, jamais un document client (rule #4 intacte)."""
+    from core.pdf import render_pdf
+    return render_pdf(html=rapport_audit_html(salle))
+
+
 def _duree_secondes(depart, arrivee):
     """Durée entre deux horodatages, bornée et jamais négative."""
     if depart is None or arrivee is None:

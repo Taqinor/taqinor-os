@@ -84,6 +84,16 @@ class SalleDeDonnees(TenantModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='salles_donnees_creees',
         verbose_name='Créée par')
+    # NTDOC16 — traces de la fermeture (qui/quand). La fermeture révoque TOUS
+    # les accès actifs d'un coup : elle n'est pas réversible en réactivant les
+    # liens, seule une réouverture ADMIN rend la salle exploitable, et les
+    # viewers doivent alors être réinvités.
+    fermee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fermée le')
+    fermee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='salles_donnees_fermees',
+        verbose_name='Fermée par')
 
     class Meta:
         ordering = ['-created_at', '-id']

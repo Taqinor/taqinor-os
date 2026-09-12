@@ -75,11 +75,12 @@ class SalleDeDonneesSerializer(SameCompanyFKSerializerMixin,
             'id', 'nom', 'description', 'dossier_source', 'deal_type',
             'statut', 'statut_libelle', 'expires_at', 'nombre_documents',
             'source_type', 'source_id', 'source_label', 'source_url',
-            'created_at', 'updated_at',
+            'fermee_le', 'created_at', 'updated_at',
         ]
         # `statut` ne change que par l'action de fermeture (NTDOC16) : un PATCH
         # brut ne doit jamais court-circuiter la révocation des accès.
-        read_only_fields = ['statut', 'created_at', 'updated_at']
+        read_only_fields = [
+            'statut', 'fermee_le', 'created_at', 'updated_at']
 
     def get_nombre_documents(self, obj) -> int:
         return obj.documents.count()
