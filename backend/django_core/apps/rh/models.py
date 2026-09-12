@@ -4855,6 +4855,11 @@ class ReglageRH(models.Model):
     # « risque de vacance critique ». Défaut 60.
     seuil_risque_succession = models.PositiveSmallIntegerField(
         default=60, verbose_name='Seuil de risque succession (0-100)')
+    # NTHCM19 — délai (jours) après l'assignation d'un parcours OBLIGATOIRE
+    # au-delà duquel `manage.py rappels_parcours_formation` relance l'employé
+    # qui ne l'a pas terminé. Défaut 14 jours (deux semaines).
+    rappel_parcours_apres_jours = models.PositiveIntegerField(
+        default=14, verbose_name='Rappel parcours obligatoire après (jours)')
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 

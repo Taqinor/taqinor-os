@@ -856,6 +856,12 @@ def embaucher(candidature, matricule=None, **dossier_kwargs):
     # l'absence de tout modèle ne bloque jamais l'embauche.
     instancier_integration(dossier)
 
+    # NTHCM19 — assigne les parcours de formation OBLIGATOIRES qui ciblent son
+    # poste/département (idempotent, aucun doublon). Best-effort exactement
+    # comme la checklist : aucun parcours ciblé ⇒ rien, et JAMAIS un échec
+    # d'assignation qui annulerait une embauche déjà actée.
+    assigner_parcours_obligatoires(dossier)
+
     return dossier
 
 
@@ -3257,3 +3263,51 @@ def devalider_etape_parcours(progression, etape, *, aujourdhui=None):
     progression.etapes_completees.remove(etape)
     return recalculer_progression_parcours(
         progression, aujourdhui=aujourdhui)
+
+
+def parcours_obligatoires_pour(employe):
+    """NTHCM19 — parcours OBLIGATOIRES actifs qui ciblent cet employé.
+
+    Ciblage : un parcours SANS cible (``poste_cible`` et
+    ``departement_cible`` vides) s'applique à tout le monde ; sinon il faut
+    qu'au moins une cible renseignée corresponde au dossier. Un parcours dont
+    TOUTES les cibles renseignées ratent l'employé est ignoré — on ne
+    « devine » jamais qu'un cursus le concerne.
+    """
+    from django.db.models import Q
+
+    from .models import ParcoursFormation
+
+    qs = ParcoursFormation.objects.filter(
+        company=employe.company, obligatoire=True, actif=True)
+    universel = Q(poste_cible__isnull=True, departement_cible__isnull=True)
+    cible = Q(pk__in=[])
+    if employe.poste_ref_id:
+        cible |= Q(poste_cible_id=employe.poste_ref_id)
+    if employe.departement_id:
+        cible |= Q(departement_cible_id=employe.departement_id)
+    return qs.filter(universel | cible).distinct()
+
+
+@transaction.atomic
+def assigner_parcours_obligatoires(employe):
+    """NTHCM19 — instancie une ``ProgressionParcours`` par parcours obligatoire.
+
+    IDEMPOTENT : ``get_or_create`` sur la clé unique (company, parcours,
+    employé) — ré-appeler la fonction (ré-embauche, rattrapage manuel, re-run
+    d'une commande) ne crée JAMAIS de doublon. Renvoie la liste des
+    progressions NOUVELLEMENT créées (vide au second appel).
+
+    Best-effort par construction : un employé dont le poste/département n'est
+    ciblé par aucun parcours n'a simplement rien — jamais une assignation
+    « par défaut » inventée.
+    """
+    from .models import ProgressionParcours
+
+    creees = []
+    for parcours in parcours_obligatoires_pour(employe):
+        progression, cree = ProgressionParcours.objects.get_or_create(
+            company=employe.company, parcours=parcours, employe=employe)
+        if cree:
+            creees.append(progression)
+    return creees

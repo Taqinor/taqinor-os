@@ -457,6 +457,14 @@ app.conf.beat_schedule = {
         'task': 'rh.planifier_appreciations',
         'schedule': crontab(hour=4, minute=10, day_of_week=1),
     },
+    # NTHCM19 — relance des parcours de formation OBLIGATOIRES non terminés
+    # au-delà du délai société (ReglageRH.rappel_parcours_apres_jours, défaut
+    # 14 j), quotidien. Dédoublonné par jour et par parcours : deux passages
+    # le même jour ne relancent jamais deux fois la même personne.
+    'rh-rappels-parcours-formation': {
+        'task': 'rh.rappels_parcours_formation',
+        'schedule': crontab(hour=8, minute=10),
+    },
     # YSERV5 — génération automatique des visites préventives dues (opt-in
     # par société via SavSlaSettings.generation_auto_visites), quotidien.
     'sav-generer-visites-dues-quotidien': {
