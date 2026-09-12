@@ -20,6 +20,63 @@ from django.utils import timezone
 # Registre en mémoire : { name: {export: fn|None, erase: fn|None} }.
 _PROVIDERS: dict[str, dict] = {}
 
+# NTGRC8 — GARDES D'EFFACEMENT (registre en mémoire, même idiome que les
+# fournisseurs). Une app peut refuser un effacement AVANT qu'il ne commence —
+# typiquement une mise sous séquestre (legal hold) : anonymiser un dossier
+# gelé pour contentieux détruirait une preuve. La garde est consultée UNE
+# fois, avant tout appel de fournisseur : un effacement à moitié fait serait
+# pire que pas d'effacement du tout.
+# ``core`` reste fondation : il ne connaît que le NOM et le CALLABLE.
+_ERASURE_GUARDS: dict[str, object] = {}
+
+
+class EffacementBloque(Exception):
+    """Un effacement est refusé par une garde (ex. legal hold).
+
+    Traduite en 409 (conflit d'état) par la vue — jamais en 500, et jamais en
+    échec silencieux : le demandeur doit savoir POURQUOI sa demande n'a pas
+    été exécutée.
+    """
+
+
+def register_erasure_guard(name, fn):
+    """Enregistre une garde d'effacement (idempotent, appelée en ``ready()``).
+
+    ``fn(company, subject_identifier)`` renvoie un MOTIF (str) pour bloquer,
+    ou une valeur fausse pour laisser passer.
+    """
+    if not name or fn is None:
+        raise ValueError("Garde d'effacement : nom + callable requis.")
+    _ERASURE_GUARDS[name] = fn
+
+
+def unregister_erasure_guard(name):
+    """Retire une garde (surtout utile en test pour isoler le registre)."""
+    _ERASURE_GUARDS.pop(name, None)
+
+
+def list_erasure_guards():
+    """Noms des gardes d'effacement enregistrées (rendu stable)."""
+    return sorted(_ERASURE_GUARDS.keys())
+
+
+def verifier_gardes_effacement(company, subject_identifier):
+    """Lève ``EffacementBloque`` si UNE garde refuse l'effacement.
+
+    Une garde qui lève une exception technique n'est PAS interprétée comme un
+    refus (on ne bloque pas un droit légal sur un bug) : elle est ignorée,
+    comme le registre isole déjà chaque fournisseur.
+    """
+    for name in sorted(_ERASURE_GUARDS.keys()):
+        try:
+            motif = _ERASURE_GUARDS[name](company, subject_identifier)
+        except EffacementBloque:
+            raise
+        except Exception:  # noqa: BLE001 - une garde en échec ne bloque pas
+            continue
+        if motif:
+            raise EffacementBloque(str(motif))
+
 
 def register_dsr_provider(name, *, export=None, erase=None):
     """Enregistre un fournisseur DSR pour une app (idempotent).
@@ -71,6 +128,105 @@ def effacer(company, subject_identifier):
     return out
 
 
+# ===========================================================================
+# NTGRC3 — machine à états de la demande + échéance légale 30 jours.
+#
+# Le cycle de vie légal est : reçue → (vérification d'identité) → traitée ou
+# refusée. On ne livre jamais les données d'une personne sans s'être assuré
+# que le demandeur est bien elle ; et une demande CLOSE (traitée/refusée) ne
+# se rouvre pas — elle donnerait un second export sans nouvelle demande.
+# Couche de statut DOCUMENTAIRE permanente, sans aucun rapport avec le funnel
+# commercial de STAGES.py.
+# ===========================================================================
+
+
+class TransitionInterdite(ValueError):
+    """Transition de statut illégale sur une ``DataSubjectRequest``.
+
+    Traduite en 400 par la vue (jamais 500) : le message NOMME le statut
+    courant et le statut visé, en français.
+    """
+
+
+def transitions_autorisees(statut):
+    """Statuts atteignables depuis ``statut`` (jamais None)."""
+    from .models import DataSubjectRequest
+
+    table = {
+        DataSubjectRequest.STATUT_RECUE: {
+            DataSubjectRequest.STATUT_EN_VERIFICATION,
+            DataSubjectRequest.STATUT_TRAITEE,
+            DataSubjectRequest.STATUT_REFUSEE,
+        },
+        DataSubjectRequest.STATUT_EN_VERIFICATION: {
+            DataSubjectRequest.STATUT_TRAITEE,
+            DataSubjectRequest.STATUT_REFUSEE,
+        },
+        # Statuts TERMINAUX : une demande close ne se rouvre pas.
+        DataSubjectRequest.STATUT_TRAITEE: set(),
+        DataSubjectRequest.STATUT_REFUSEE: set(),
+    }
+    return table.get(statut, set())
+
+
+def verifier_transition(request, cible):
+    """Lève ``TransitionInterdite`` si ``request`` ne peut pas passer à
+    ``cible``. Ne modifie rien."""
+    from .models import DataSubjectRequest
+
+    libelles = dict(DataSubjectRequest.STATUT_CHOICES)
+    if cible not in libelles:
+        raise TransitionInterdite(
+            f'Statut « {cible} » inconnu pour une demande de droit.')
+    if cible not in transitions_autorisees(request.statut):
+        raise TransitionInterdite(
+            f'Transition impossible : une demande « '
+            f'{libelles.get(request.statut, request.statut)} » ne peut pas '
+            f'passer à « {libelles[cible]} ».')
+
+
+def prendre_en_charge(request):
+    """Passe la demande en VÉRIFICATION D'IDENTITÉ (reçue → en_verification).
+
+    Lève ``TransitionInterdite`` si la demande n'est plus au statut « reçue ».
+    """
+    from .models import DataSubjectRequest
+
+    verifier_transition(request, DataSubjectRequest.STATUT_EN_VERIFICATION)
+    request.statut = DataSubjectRequest.STATUT_EN_VERIFICATION
+    request.save(update_fields=['statut', 'updated_at'])
+    return request
+
+
+def refuser_demande(request, motif=''):
+    """Refuse la demande (motif obligatoire pour rester traçable)."""
+    from .models import DataSubjectRequest
+
+    verifier_transition(request, DataSubjectRequest.STATUT_REFUSEE)
+    request.statut = DataSubjectRequest.STATUT_REFUSEE
+    request.resultat = {'refus': True, 'motif': motif or ''}
+    request.traitee_le = timezone.now()
+    request.save(update_fields=['statut', 'resultat', 'traitee_le',
+                                'updated_at'])
+    return request
+
+
+def demandes_en_retard(company, now=None):
+    """Demandes de ``company`` dont l'échéance légale est DÉPASSÉE.
+
+    « En retard » = échéance passée ET demande encore ouverte (ni traitée ni
+    refusée). Bornée à la société — jamais de lecture cross-société.
+    """
+    from .models import DataSubjectRequest
+
+    now = now or timezone.now()
+    return (DataSubjectRequest.objects
+            .filter(company=company, date_echeance__lt=now)
+            .exclude(statut__in=[DataSubjectRequest.STATUT_TRAITEE,
+                                 DataSubjectRequest.STATUT_REFUSEE])
+            .order_by('date_echeance', 'id'))
+
+
 def traiter_demande(request):
     """Exécute une ``DataSubjectRequest`` (accès → export, effacement → erase).
 
@@ -79,11 +235,20 @@ def traiter_demande(request):
     """
     from .models import DataSubjectRequest
 
+    # NTGRC3 — garde de transition : une demande déjà CLOSE (traitée/refusée)
+    # ne se re-traite pas ; sinon un second export partirait sans qu'aucune
+    # nouvelle demande n'ait été déposée.
+    verifier_transition(request, DataSubjectRequest.STATUT_TRAITEE)
+
     company = request.company
     subject = request.subject_identifier
     if request.kind == DataSubjectRequest.KIND_ACCESS:
         request.resultat = exporter(company, subject)
     elif request.kind == DataSubjectRequest.KIND_ERASURE:
+        # NTGRC8 — les gardes passent AVANT le premier fournisseur : un
+        # effacement à moitié fait (CRM anonymisé, stock refusé) serait pire
+        # que pas d'effacement du tout. Rien n'est modifié si une garde refuse.
+        verifier_gardes_effacement(company, subject)
         request.resultat = effacer(company, subject)
     else:
         # XPLT23 — rectification : workflow MANUEL. On n'exécute aucune

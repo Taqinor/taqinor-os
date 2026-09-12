@@ -26,6 +26,10 @@ from .models import AuditLog
 _PDF_DETAIL = {
     'devis': 'PDF devis généré',
     'facture': 'PDF facture généré',
+    # NTGRC7 — dossier de notification CNDP d'une violation de données. Le
+    # module GRC émet le MÊME signal que ventes plutôt que d'importer l'app
+    # audit : une entrée de plus ici, aucune arête d'import de plus.
+    'violation_donnees': 'Dossier de notification CNDP généré',
 }
 
 

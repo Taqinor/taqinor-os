@@ -90,6 +90,11 @@ class CrmConfig(AppConfig):
                 apply_,
             ),
         )
+        # NTGRC4 — rétention par TYPE D'OBJET (lead/client), pilotée par les
+        # `grc.PolitiqueRetentionObjet` de chaque société. Dry-run par défaut ;
+        # l'anonymisation réelle n'a lieu qu'au sweep `apply_=True`.
+        from . import retention as grc_retention
+        grc_retention.register()
         # ARC18 — miroir one-way crm.Client → répertoire unifié tiers.Tiers
         # (l'import câble le récepteur post_save ; pont réversible).
         from . import tiers_bridge  # noqa: F401

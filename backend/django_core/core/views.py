@@ -966,8 +966,40 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     def traiter(self, request, pk=None):
         from . import dsr
         dsr_request = self.get_object()
-        dsr.traiter_demande(dsr_request)
+        try:
+            dsr.traiter_demande(dsr_request)
+        except dsr.TransitionInterdite as exc:
+            # NTGRC3 — transition illégale ⇒ 400 explicite (jamais 500), le
+            # message nomme le statut courant et le statut visé.
+            return Response({'statut': str(exc)}, status=400)
+        except dsr.EffacementBloque as exc:
+            # NTGRC8 — une garde (mise sous séquestre) refuse l'effacement :
+            # 409 (conflit d'état) avec le motif, jamais un échec silencieux.
+            return Response({'detail': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
+
+    @action(detail=True, methods=['post'], url_path='prendre-en-charge')
+    def prendre_en_charge(self, request, pk=None):
+        """NTGRC3 — passe la demande en VÉRIFICATION D'IDENTITÉ.
+
+        Étape obligatoire avant de livrer les données de quelqu'un : on
+        s'assure d'abord que le demandeur est bien la personne concernée. Une
+        transition illégale renvoie 400 (jamais 500).
+        """
+        from . import dsr
+        dsr_request = self.get_object()
+        try:
+            dsr.prendre_en_charge(dsr_request)
+        except dsr.TransitionInterdite as exc:
+            return Response({'statut': str(exc)}, status=400)
+        return Response(self.get_serializer(dsr_request).data)
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """NTGRC3 — demandes dont l'échéance légale (30 j) est dépassée."""
+        from . import dsr
+        qs = dsr.demandes_en_retard(request.user.company)
+        return Response({'results': self.get_serializer(qs, many=True).data})
 
 
 class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):

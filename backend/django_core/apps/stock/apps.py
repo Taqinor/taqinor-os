@@ -37,3 +37,8 @@ class StockConfig(AppConfig):
         # résolu par apps.get_model : aucun import de leurs modèles).
         from .receivers_casier import register_historique_casier
         register_historique_casier()
+        # NTGRC1 — fournisseur DSR (loi 09-08) du Stock : `core.dsr` agrège
+        # l'export/effacement sans importer aucune app métier ; c'est CHAQUE
+        # app qui s'enregistre. Idempotent (le registre est un dict par nom).
+        from . import dsr_provider
+        dsr_provider.register()

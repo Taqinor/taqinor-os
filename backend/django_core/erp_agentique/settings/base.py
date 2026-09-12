@@ -362,6 +362,12 @@ INSTALLED_APPS = [
     # datasets déclarés par les apps métier (aucun import de leurs modèles) ;
     # elle MESURE et RAPPORTE, elle ne bloque aucune écriture.
     'apps.dataquality',
+    # Groupe NTGRC — GRC & Privacy : registre des risques d'entreprise,
+    # contrôles internes, RGPD/loi 09-08 outillé (portail DSR public, journal
+    # de destruction, legal hold transverse, violations 72h). ÉTEND le socle
+    # `core` (RegistreTraitement/ConsentRecord/DataSubjectRequest + registres
+    # `core.dsr` et `core.retention`) — ne le duplique jamais.
+    'apps.grc',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables

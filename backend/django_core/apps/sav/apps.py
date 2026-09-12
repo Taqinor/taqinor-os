@@ -36,3 +36,7 @@ class SavConfig(AppConfig):
         # handler-ci rattache le message au ticket du fil (ou en ouvre un).
         from .services import register_email_ticket_handler
         register_email_ticket_handler()
+        # NTGRC4 — rétention des tickets pilotée par les politiques GRC, en
+        # SIGNALEMENT seul (la donnée personnelle vit sur le client CRM).
+        from . import retention
+        retention.register()

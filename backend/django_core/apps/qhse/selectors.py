@@ -213,6 +213,22 @@ STATUTS_CAPA_OUVERTS = (
 )
 
 
+def capa_ids_de_societe(company):
+    """NTGRC18 — ids des CAPA d'une société (lecture seule, bornée).
+
+    Fonction FINE exposée aux autres apps : la gouvernance (``apps.grc``)
+    référence un CAPA par identifiant TEXTE et doit pouvoir VÉRIFIER qu'il
+    appartient bien à la société de l'appelant — une référence texte non
+    validée serait une porte inter-tenant. Renvoie une liste d'ids, jamais
+    d'instances ni de donnée QHSE.
+    """
+    if company is None:
+        return []
+    return list(ActionCorrectivePreventive.objects
+                .filter(company=company)
+                .values_list('id', flat=True))
+
+
 def capa_en_retard(company, today=None):
     """Actions correctives/préventives (CAPA) en retard d'une société.
 

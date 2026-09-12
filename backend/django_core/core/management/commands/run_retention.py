@@ -22,9 +22,15 @@ class Command(BaseCommand):
         parser.add_argument(
             '--apply', action='store_true', default=False,
             help='Applique réellement les suppressions (sinon dry-run).')
+        # NTGRC4 — alias explicite de `--apply`. Les politiques de rétention
+        # GRC se documentent en « --commit » (le mot qui dit qu'on écrit) ;
+        # `--apply` reste le nom historique et garde exactement le même effet.
+        parser.add_argument(
+            '--commit', action='store_true', default=False,
+            help='Alias de --apply : applique réellement (sinon dry-run).')
 
     def handle(self, *args, **options):
-        apply_ = options['apply'] or bool(
+        apply_ = options['apply'] or options.get('commit') or bool(
             getattr(settings, 'RETENTION_AUTO_APPLY', False))
         results = retention.run_all_policies(apply_=apply_)
 
