@@ -436,6 +436,35 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             ContratSerializer(
                 qs, many=True, context={'request': request}).data)
 
+    @action(detail=False, methods=['get'], url_path='pipeline-renouvellement')
+    def pipeline_renouvellement(self, request):
+        """Pipeline TRIMESTRIEL des renouvellements, groupé par mois (NTDOC19).
+
+        `?trimestre=1..4` et `?annee=` (défaut : le trimestre calendaire
+        courant). RÉUTILISE ``contrats_a_renouveler`` (CONTRAT21) — aucune
+        donnée n'est recalculée ni dupliquée. Chaque contrat porte l'avancement
+        RÉEL de la démarche (aucune action / notifié / en négociation NTDOC4 /
+        renouvelé / résilié) et le drapeau ``preavis_depasse`` (CONTRAT20 :
+        date limite de préavis déjà passée) — l'urgence à traiter en premier.
+
+        Lecture seule : ne change aucun statut. Le pipeline est borné au
+        queryset de l'appelant (filtre de confidentialité hérité), pour qu'un
+        contrat confidentiel ne fuite jamais par un agrégat.
+        """
+        try:
+            resultat = selectors.pipeline_renouvellements(
+                request.user.company,
+                trimestre=request.query_params.get('trimestre'),
+                annee=request.query_params.get('annee'),
+                ids_autorises=list(
+                    self.get_queryset().values_list('id', flat=True)),
+            )
+        except (TypeError, ValueError) as exc:
+            return Response(
+                {'detail': str(exc) or "Trimestre ou année invalide."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
     @action(detail=False, methods=['get'], url_path='tableau-de-bord')
     def tableau_de_bord(self, request):
         """Tableau de bord des contrats (CONTRAT33).
@@ -1582,6 +1611,35 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(rapport)
+
+    @action(detail=True, methods=['get'], url_path='matrice-obligations')
+    def matrice_obligations(self, request, pk=None):
+        """Matrice des obligations : redevable × statut (NTDOC18).
+
+        Lecture seule. Chaque ligne porte ses obligations sérialisées, avec le
+        drapeau ``preuve_manquante`` (obligation RÉALISÉE sans document GED
+        lié). Une obligation « faite » sans preuve RESTE valide : la matrice la
+        signale visuellement, elle ne la refuse jamais.
+        """
+        contrat = self.get_object()
+        matrice = selectors.matrice_obligations(contrat)
+        return Response({
+            'total': matrice['total'],
+            'preuves_manquantes': matrice['preuves_manquantes'],
+            'lignes': [
+                {
+                    'redevable': ligne['redevable'],
+                    'redevable_display': ligne['redevable_display'],
+                    'statut': ligne['statut'],
+                    'statut_display': ligne['statut_display'],
+                    'preuves_manquantes': ligne['preuves_manquantes'],
+                    'obligations': ObligationSerializer(
+                        ligne['obligations'], many=True,
+                        context={'request': request}).data,
+                }
+                for ligne in matrice['lignes']
+            ],
+        })
 
     @action(detail=True, methods=['get'], url_path='clauses-manquantes')
     def clauses_manquantes(self, request, pk=None):

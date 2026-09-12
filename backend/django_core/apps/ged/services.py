@@ -2401,13 +2401,73 @@ def fusionner_modele(corps_html, contexte):
     return template.render(Context(safe_contexte))
 
 
+def sections_modele(modele):
+    """NTDOC21 — Sections conditionnelles déclarées sur un modèle (liste).
+
+    Tolérant : une valeur absente, nulle ou malformée renvoie une liste vide —
+    le modèle se comporte alors EXACTEMENT comme avant NTDOC21."""
+    brut = getattr(modele, 'sections', None)
+    if not isinstance(brut, list):
+        return []
+    return [s for s in brut if isinstance(s, dict)]
+
+
+def section_incluse(section, contexte):
+    """NTDOC21 — La section doit-elle figurer dans le document assemblé ?
+
+    Une section SANS ``conditions`` (absentes, nulles ou vides) est TOUJOURS
+    incluse — c'est ce qui garantit qu'un modèle sans condition se comporte
+    comme avant. Sinon, l'arbre est évalué par ``core.rules`` (FG367) sur les
+    métadonnées de fusion : structure malformée ou champ absent ⇒ False, jamais
+    d'exception."""
+    from core.rules import evaluate_condition_group
+
+    conditions = section.get('conditions')
+    if not conditions:
+        return True
+    return bool(evaluate_condition_group(conditions, dict(contexte or {})))
+
+
+def fusionner_document_modele(modele, contexte):
+    """NTDOC21 — Assemble le CORPS d'un document : base + sections retenues.
+
+    Le ``corps_html`` historique (GED27) est TOUJOURS rendu en premier ; les
+    ``sections`` (NTDOC21) sont ensuite ajoutées DANS L'ORDRE déclaré, en
+    sautant celles dont la condition est fausse. Chaque section est fusionnée
+    par la MÊME substitution sûre que le corps (``fusionner_modele``, contexte
+    borné — jamais d'exécution de code arbitraire).
+
+    Sans aucune section, le résultat est byte-identique à
+    ``fusionner_modele(modele.corps_html, contexte)``.
+    """
+    morceaux = [fusionner_modele(modele.corps_html, contexte)]
+    for section in sections_modele(modele):
+        if not section_incluse(section, contexte):
+            continue
+        titre = str(section.get('titre') or '').strip()
+        corps = fusionner_modele(section.get('corps_html') or '', contexte)
+        if not titre and not corps:
+            continue
+        bloc = "<section class='section-modele'>"
+        if titre:
+            titre_sur = fusionner_modele(titre, contexte)
+            bloc += f"<h2>{titre_sur}</h2>"
+        bloc += corps + "</section>"
+        morceaux.append(bloc)
+    return ''.join(m for m in morceaux if m)
+
+
 def _modele_html_document(modele, contexte):
     """GED27 — Construit le HTML complet (en-tête + corps fusionné) d'un modèle.
 
     Enrobe le corps fusionné dans un squelette HTML imprimable minimal (police,
     marges) — même esprit que le PDF interne de `contrats` (hors `/proposal`).
+
+    NTDOC21 — le corps passe désormais par ``fusionner_document_modele``, qui
+    ajoute les SECTIONS conditionnelles après le corps historique. Un modèle
+    sans section produit un HTML byte-identique à avant.
     """
-    corps = fusionner_modele(modele.corps_html, contexte)
+    corps = fusionner_document_modele(modele, contexte)
     titre = (modele.nom or 'Document').replace('<', '&lt;').replace('>', '&gt;')
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
@@ -3589,9 +3649,138 @@ def _evenements_cerentonie(demande):
         (e for e in evenements if e[1] is not None), key=lambda e: e[1])
 
 
+def empreinte_certificat(demande):
+    """NTDOC10 — Empreinte SHA-256 DÉTERMINISTE du certificat de complétion.
+
+    Un PDF ne peut pas contenir le hash de ses propres octets : l'empreinte est
+    donc calculée sur les DONNÉES du certificat (demande, document, hash du
+    contenu signé, statut, horodatage de signature, liste ordonnée des
+    signataires). Elle est stable et recalculable côté serveur — c'est ce qui
+    permet de vérifier l'intégrité sans stocker ni ré-exposer le document.
+
+    Ne lève jamais : une lecture qui échoue dégrade en chaîne vide sur la part
+    concernée, l'empreinte reste calculable."""
+    document = demande.document
+    date_signature = getattr(demande, 'date_signature', None)
+    parties = [
+        f'demande:{demande.pk}',
+        f'document:{getattr(document, "pk", "")}',
+        f'hash_document:{demande.hash_contenu or ""}',
+        f'statut:{demande.statut}',
+        f'signature:{date_signature.isoformat() if date_signature else ""}',
+    ]
+    try:
+        for s in demande.signataires.all().order_by('ordre', 'pk'):
+            parties.append(
+                f'signataire:{s.pk}:{s.nom}:{s.email or ""}:{s.statut}')
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+    return hashlib.sha256('|'.join(parties).encode('utf-8')).hexdigest()
+
+
+def memoriser_empreinte_certificat(demande):
+    """NTDOC10 — Calcule l'empreinte et la mémorise sur la demande.
+
+    Écriture ciblée (`queryset.update`) : ne touche aucun autre champ et ne
+    déclenche aucun effet de bord de `save()`. Idempotente. Renvoie
+    l'empreinte."""
+    empreinte = empreinte_certificat(demande)
+    if getattr(demande, 'empreinte_certificat', '') != empreinte:
+        from .models import DemandeSignatureDocument
+        DemandeSignatureDocument.objects.filter(pk=demande.pk).update(
+            empreinte_certificat=empreinte)
+        demande.empreinte_certificat = empreinte
+    return empreinte
+
+
+def url_verification_certificat(empreinte):
+    """NTDOC10 — URL publique de vérification d'une empreinte de certificat.
+
+    Absolue si `PUBLIC_SITE_URL` est posée (LE réglage de base publique du
+    projet, réutilisé tel quel — on n'en invente pas un second), relative
+    sinon."""
+    from django.conf import settings
+    base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    chemin = f'/api/django/ged/verifier-certificat/{empreinte}/'
+    return f'{base}{chemin}' if base else chemin
+
+
+def qr_verification_certificat(empreinte):
+    """NTDOC10 — QR code (PNG bytes) de l'URL de vérification, ou None.
+
+    Réutilise `qrcode`, déjà pinné et déjà employé ailleurs (QHSE XQHS16,
+    moteur de devis) — aucune dépendance nouvelle. Import paresseux : si la lib
+    venait à manquer, le certificat se rend simplement SANS QR (le hash reste
+    imprimé, la vérification reste possible à la main)."""
+    try:
+        import qrcode
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return None
+    import io
+    try:
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=4, border=2)
+        qr.add_data(url_verification_certificat(empreinte))
+        qr.make(fit=True)
+        tampon = io.BytesIO()
+        qr.make_image().save(tampon, 'PNG')
+        return tampon.getvalue()
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return None
+
+
+def _qr_verification_data_uri(empreinte):
+    """NTDOC10 — QR encodé en data-URI pour l'embarquer dans le HTML du
+    certificat (aucune ressource externe : WeasyPrint n'a rien à aller
+    chercher). Chaîne vide si le QR n'a pas pu être produit."""
+    png = qr_verification_certificat(empreinte)
+    if not png:
+        return ''
+    import base64
+    return 'data:image/png;base64,' + base64.b64encode(png).decode('ascii')
+
+
+def verifier_empreinte_certificat(empreinte):
+    """NTDOC10 — Résout une empreinte de certificat (vérification PUBLIQUE).
+
+    Renvoie un dict de métadonnées de VÉRIFICATION (jamais le contenu ni le nom
+    du document, jamais l'identité d'un signataire) si l'empreinte correspond à
+    une demande dont le certificat est toujours intègre, sinon None.
+
+    L'intégrité est re-CALCULÉE au moment de la vérification : si la demande a
+    changé depuis l'émission du certificat, l'empreinte recalculée diffère et
+    la vérification échoue — c'est exactement ce qu'on veut vérifier."""
+    from .models import DemandeSignatureDocument
+
+    empreinte = (empreinte or '').strip().lower()
+    if not empreinte or len(empreinte) != 64:
+        return None
+    demande = (DemandeSignatureDocument.objects
+               .select_related('document')
+               .filter(empreinte_certificat=empreinte)
+               .first())
+    if demande is None:
+        return None
+    if empreinte_certificat(demande) != empreinte:
+        return None
+    return {
+        'integre': True,
+        'type': 'certificat_completion',
+        'statut': demande.statut,
+        'date_signature': demande.date_signature,
+        'nombre_signataires': demande.signataires.count() or 1,
+        'hash_document': demande.hash_contenu or '',
+    }
+
+
 def _certificat_html(demande):
     """XGED4 — HTML du certificat de complétion (squelette imprimable minimal,
-    même esprit que `_modele_html_document` GED27 — jamais `/proposal`)."""
+    même esprit que `_modele_html_document` GED27 — jamais `/proposal`).
+
+    NTDOC10 — le pied de page imprime LISIBLEMENT le hash SHA-256 du document
+    signé ET l'empreinte du certificat lui-même, plus un QR code renvoyant vers
+    l'endpoint public de vérification."""
     document = demande.document
     signataires = list(demande.signataires.all())
     lignes_signataires = ''.join(
@@ -3608,6 +3797,31 @@ def _certificat_html(demande):
         for libelle, quand in _evenements_cerentonie(demande)
     )
     geoloc = getattr(demande, 'geolocalisation', '') or 'Non transmise'
+    # NTDOC10 — pied de page d'intégrité : les deux empreintes en clair + QR.
+    empreinte = memoriser_empreinte_certificat(demande)
+    qr_uri = _qr_verification_data_uri(empreinte)
+    qr_html = (
+        f"<img class='qr' src='{qr_uri}' alt='QR de vérification'/>"
+        if qr_uri else
+        "<span class='mono'>QR indisponible — vérification à la main</span>"
+    )
+    pied_integrite = (
+        "<div class='integrite'>"
+        "<h2>Empreintes d'intégrité</h2>"
+        "<table>"
+        "<tr><th>Document signé (SHA-256)</th>"
+        f"<td class='mono'>{demande.hash_contenu or 'Non calculé'}</td></tr>"
+        "<tr><th>Certificat (SHA-256)</th>"
+        f"<td class='mono'>{empreinte}</td></tr>"
+        "<tr><th>Vérification en ligne</th>"
+        f"<td class='mono'>{url_verification_certificat(empreinte)}</td></tr>"
+        "</table>"
+        f"<p>{qr_html}</p>"
+        "<p class='note'>Scannez ce QR (ou ouvrez l'adresse ci-dessus) pour "
+        "confirmer que ce certificat est authentique. La vérification ne "
+        "révèle jamais le contenu du document.</p>"
+        "</div>"
+    )
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         "<style>"
@@ -3616,6 +3830,11 @@ def _certificat_html(demande):
         "h1{font-size:15pt;border-bottom:2px solid #2b5cab;padding-bottom:6px;}"
         "table{width:100%;border-collapse:collapse;margin:10px 0;}"
         "td,th{border:1px solid #ccc;padding:4px 8px;text-align:left;}"
+        ".integrite{margin-top:18px;border-top:1px solid #2b5cab;"
+        "padding-top:8px;}"
+        ".mono{font-family:monospace;font-size:8pt;word-break:break-all;}"
+        ".qr{width:96px;height:96px;}"
+        ".note{font-size:8pt;color:#555;}"
         "</style></head><body>"
         "<h1>Certificat de complétion de signature électronique</h1>"
         f"<p><strong>Document :</strong> {document.nom}</p>"
@@ -3625,13 +3844,12 @@ def _certificat_html(demande):
         f"<p><strong>Géolocalisation :</strong> {geoloc}</p>"
         f"<p><strong>Méthode :</strong> "
         f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>"
-        f"<p><strong>Hash du document signé (SHA-256) :</strong> "
-        f"{demande.hash_contenu or 'Non calculé'}</p>"
         "<h2>Signataires</h2>"
         f"<table><tr><th>Nom</th><th>Email</th><th>Rôle</th>"
         f"<th>Statut</th></tr>{lignes_signataires}</table>"
         "<h2>Séquence des événements</h2>"
         f"<ul>{evenements_html}</ul>"
+        f"{pied_integrite}"
         "</body></html>"
     )
 
@@ -3756,14 +3974,48 @@ def _pades_signer_disponible():
         return False
 
 
-def tsa_url_configuree():
-    """XGED5 — URL de la TSA (RFC 3161) configurée, ou '' (no-op).
+def tsa_urls_configurees():
+    """NTDOC22 — Liste ORDONNÉE des TSA (RFC 3161) à essayer, ou [].
 
-    KEY-GATED (mirroir `esign_active`/`embedding_enabled`) : sans
-    `settings.GED_TSA_URL`, l'horodatage qualifié est un no-op — le sceau
-    PAdES reste posé (si pyHanko est disponible) mais SANS horodatage TSA."""
+    XGED5 ne câblait qu'UNE seule autorité d'horodatage (`GED_TSA_URL`) : si
+    elle ne répondait pas, le document repartait sans horodatage. On accepte
+    désormais une LISTE de secours dans `GED_TSA_URLS` (séparées par des
+    virgules), essayées DANS L'ORDRE — la première qui répond gagne.
+
+    L'ordre est volontairement : `GED_TSA_URL` d'abord (l'autorité historique
+    reste prioritaire, donc AUCUNE régression pour une installation qui n'a
+    configuré qu'elle), puis les URL de `GED_TSA_URLS` non déjà présentes.
+    Aucune des deux configurée ⇒ liste vide ⇒ comportement inchangé (le sceau
+    PAdES est posé sans horodatage)."""
     from django.conf import settings
-    return (getattr(settings, 'GED_TSA_URL', '') or '').strip()
+    urls = []
+    principale = (getattr(settings, 'GED_TSA_URL', '') or '').strip()
+    if principale:
+        urls.append(principale)
+    brut = getattr(settings, 'GED_TSA_URLS', '') or ''
+    if isinstance(brut, (list, tuple)):
+        candidates = [str(u) for u in brut]
+    else:
+        candidates = str(brut).split(',')
+    for url in candidates:
+        url = url.strip()
+        if url and url not in urls:
+            urls.append(url)
+    return urls
+
+
+def tsa_url_configuree():
+    """XGED5 — URL de la TSA (RFC 3161) PRIORITAIRE configurée, ou '' (no-op).
+
+    KEY-GATED (mirroir `esign_active`/`embedding_enabled`) : sans TSA
+    configurée, l'horodatage qualifié est un no-op — le sceau PAdES reste posé
+    (si pyHanko est disponible) mais SANS horodatage TSA.
+
+    NTDOC22 — renvoie la PREMIÈRE de `tsa_urls_configurees()` : identique à
+    `GED_TSA_URL` dès qu'elle est posée (comportement XGED5 préservé), et
+    utilisable aussi quand seule la liste `GED_TSA_URLS` est configurée."""
+    urls = tsa_urls_configurees()
+    return urls[0] if urls else ''
 
 
 def _certificat_societe_pour_scellement(company):
@@ -3797,6 +4049,36 @@ def _certificat_societe_pour_scellement(company):
         return None
 
 
+def _timestamper_http(url):
+    """NTDOC22 — Horodateur RFC 3161 pour UNE URL de TSA (import paresseux).
+
+    Isolé en une fonction pour que la bascule entre TSA reste testable sans
+    pyHanko ni réseau."""
+    from pyhanko.sign.timestamps import HTTPTimeStamper
+    return HTTPTimeStamper(url)
+
+
+def _sceller_avec_timestamper(pdf_bytes, signataire, timestamper):
+    """NTDOC22 — UNE tentative de scellement PAdES avec un horodateur donné.
+
+    Isolée pour que chaque TSA de secours reparte d'un writer NEUF (le flux
+    d'entrée est consommé à chaque tentative). Lève en cas d'échec : c'est
+    l'appelant `sceller_pdf` qui décide de basculer ou de dégrader."""
+    from io import BytesIO
+
+    from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+    from pyhanko.sign import PdfSignatureMetadata, sign_pdf
+
+    writer = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
+    out = sign_pdf(
+        writer,
+        PdfSignatureMetadata(field_name='TaqinorSeal'),
+        signer=signataire,
+        timestamper=timestamper,
+    )
+    return out.getvalue()
+
+
 def sceller_pdf(pdf_bytes, *, company=None):
     """XGED5 — Scelle CRYPTOGRAPHIQUEMENT un PDF signé (PAdES, via pyHanko).
 
@@ -3807,39 +4089,40 @@ def sceller_pdf(pdf_bytes, *, company=None):
     numérique PAdES vérifiable dans n'importe quel lecteur PDF conforme ; toute
     modification ultérieure du fichier invalide le sceau.
 
-    Si `tsa_url_configuree()` renvoie une URL, un horodatage RFC 3161 est
-    demandé à cette TSA et inclus dans la signature (prépare l'« horodatage »
-    loi 43-20) — sinon le sceau est posé SANS horodatage TSA (no-op sur ce
-    volet uniquement, jamais bloquant).
+    NTDOC22 — les TSA de `tsa_urls_configurees()` sont essayées DANS L'ORDRE :
+    la première qui répond gagne, et son horodatage RFC 3161 est inclus dans la
+    signature (prépare l'« horodatage » loi 43-20). Si TOUTES échouent — ou si
+    aucune n'est configurée — le sceau est quand même posé SANS horodatage TSA :
+    l'horodatage est un PLUS, jamais un préalable bloquant.
 
     Renvoie `(out_bytes, scelle)` où `scelle` est False si la lib est absente,
     si aucun certificat n'est exploitable, ou si le scellement a échoué pour
     toute autre raison (best-effort total — ne lève JAMAIS)."""
     if not _pades_signer_disponible():
         return pdf_bytes, False
+    signataire = None
     try:
         signataire = _certificat_societe_pour_scellement(company)
-        if signataire is None:
-            return pdf_bytes, False
-        from io import BytesIO
+    except Exception:  # pragma: no cover - défensif.
+        signataire = None
+    if signataire is None:
+        return pdf_bytes, False
 
-        from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
-        from pyhanko.sign import PdfSignatureMetadata, sign_pdf
+    for tsa_url in tsa_urls_configurees():
+        try:
+            return _sceller_avec_timestamper(
+                pdf_bytes, signataire, _timestamper_http(tsa_url)), True
+        except Exception:
+            # TSA injoignable / réponse invalide : on tente la suivante.
+            logger.warning(
+                'XGED5/NTDOC22 : horodatage TSA indisponible, bascule sur la '
+                'suivante.', exc_info=True)
+            continue
 
-        timestamper = None
-        tsa_url = tsa_url_configuree()
-        if tsa_url:
-            from pyhanko.sign.timestamps import HTTPTimeStamper
-            timestamper = HTTPTimeStamper(tsa_url)
-
-        writer = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
-        out = sign_pdf(
-            writer,
-            PdfSignatureMetadata(field_name='TaqinorSeal'),
-            signer=signataire,
-            timestamper=timestamper,
-        )
-        return out.getvalue(), True
+    # Aucune TSA configurée, ou toutes en échec : on scelle SANS horodatage
+    # plutôt que de rendre un document non scellé.
+    try:
+        return _sceller_avec_timestamper(pdf_bytes, signataire, None), True
     except Exception:  # pragma: no cover - robustesse : jamais bloquer XGED4.
         return pdf_bytes, False
 
@@ -3964,13 +4247,18 @@ def dossier_preuve_archivage(archivage):
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
 
 def journaliser_acces(document, *, utilisateur=None, type_acces=None,
-                      adresse_ip=None):
+                      adresse_ip=None, source_ref=''):
     """GED35 — Enregistre un accès EN LECTURE à un document (append-only).
 
     `company` est posée CÔTÉ SERVEUR (toujours celle du document) — jamais lue
     d'un corps de requête. `utilisateur` peut être None (accès public anonyme
     via lien tokenisé GED20). Ne lève jamais (l'audit ne doit pas casser une
     lecture) — toute erreur d'écriture du journal est silencieusement ignorée.
+
+    `source_ref` (NTDOC14) : référence OPAQUE de la source de l'accès, au
+    format ``"<app>.<objet>:<id>"`` — elle permet à un module supérieur (une
+    salle de données, par exemple) d'attribuer l'accès à SON invité sans que la
+    GED n'ait à connaître ce module.
 
     Renvoie l'entrée `JournalAcces` créée, ou None si la journalisation a échoué
     (best-effort)."""
@@ -3984,6 +4272,7 @@ def journaliser_acces(document, *, utilisateur=None, type_acces=None,
                 utilisateur, 'is_authenticated', False) else None,
             type_acces=type_acces or ACCES_CONSULTATION,
             adresse_ip=adresse_ip or None,
+            source_ref=(source_ref or '')[:64],
         )
     except Exception:  # robustesse : l'audit ne bloque jamais une lecture.
         return None
@@ -5627,3 +5916,165 @@ def router_document_module(source, *, company, file, filename='',
         assign_tag(document, tag, created_by=uploaded_by)
 
     return document
+
+
+# ── NTDOC9 — Durcissement anti-abus des liens de signature PUBLICS ──────────
+#
+# Trois protections indépendantes, toutes best-effort (jamais bloquantes pour
+# un signataire légitime) :
+#   1. verrou temporaire d'un JETON après N tentatives ÉCHOUÉES consécutives
+#      (consentement manquant, code OTP erroné, tour non venu…) ;
+#   2. trace de chaque tentative échouée dans `JournalAcces` (GED35 réutilisé,
+#      type `tentative_ko`) — l'abus laisse une piste auditable ;
+#   3. détection d'un même client (IP) qui touche des jetons appartenant à
+#      PLUSIEURS sociétés différentes en rafale → notification best-effort des
+#      administrateurs de la société visée.
+#
+# Le compteur/verrou vit dans le CACHE (jamais en base) : il est volontairement
+# éphémère, à la fois pour ne rien accumuler et pour qu'un redémarrage rende la
+# main plutôt que de laisser un signataire enfermé.
+
+SIGNATURE_ABUS_MAX_ECHECS = 5
+SIGNATURE_ABUS_VERROU_SECONDES = 15 * 60
+SIGNATURE_ABUS_FENETRE_SECONDES = 10 * 60
+# Au-delà de ce nombre de sociétés DIFFÉRENTES touchées par la même IP dans la
+# fenêtre, le motif est considéré comme suspect (un signataire légitime ne
+# signe jamais pour 3 sociétés distinctes en 10 minutes).
+SIGNATURE_ABUS_SOCIETES_SEUIL = 3
+
+
+def _cle_echecs_signature(token):
+    return f'ged:sig:echecs:{token}'
+
+
+def _cle_verrou_signature(token):
+    return f'ged:sig:verrou:{token}'
+
+
+def _cle_societes_ip_signature(adresse_ip):
+    return f'ged:sig:ip-societes:{adresse_ip}'
+
+
+def signature_publique_verrouillee(token):
+    """NTDOC9 — True si ce jeton est temporairement verrouillé pour abus.
+
+    Best-effort : un cache indisponible renvoie False (on ne bloque JAMAIS un
+    signataire légitime à cause d'une panne d'infrastructure)."""
+    if not token:
+        return False
+    try:
+        from django.core.cache import cache
+        return bool(cache.get(_cle_verrou_signature(str(token))))
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return False
+
+
+def reinitialiser_echecs_signature(token):
+    """NTDOC9 — Remet à zéro le compteur d'échecs CONSÉCUTIFS d'un jeton.
+
+    Appelé dès qu'une action publique aboutit (signature/refus valides) : seule
+    une série ININTERROMPUE d'échecs déclenche le verrou."""
+    if not token:
+        return
+    try:
+        from django.core.cache import cache
+        cache.delete(_cle_echecs_signature(str(token)))
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
+
+def enregistrer_echec_signature_publique(token, *, document=None,
+                                         adresse_ip=None):
+    """NTDOC9 — Compte une tentative ÉCHOUÉE sur un jeton de signature public.
+
+    - trace l'échec dans `JournalAcces` (GED35, type `tentative_ko`) quand le
+      document est connu — jamais de fuite de contenu, seulement l'événement ;
+    - incrémente le compteur d'échecs consécutifs (cache) ;
+    - pose un verrou temporaire de `SIGNATURE_ABUS_VERROU_SECONDES` dès que
+      `SIGNATURE_ABUS_MAX_ECHECS` est atteint.
+
+    Renvoie `(nombre_echecs, verrouille)`. Ne lève jamais."""
+    from .models import ACCES_TENTATIVE_KO
+
+    if document is not None:
+        journaliser_acces(document, utilisateur=None,
+                          type_acces=ACCES_TENTATIVE_KO,
+                          adresse_ip=adresse_ip)
+    if not token:
+        return 0, False
+    cle = _cle_echecs_signature(str(token))
+    try:
+        from django.core.cache import cache
+        # `add` puis `incr` : n'écrase jamais un compteur concurrent.
+        cache.add(cle, 0, SIGNATURE_ABUS_VERROU_SECONDES)
+        try:
+            echecs = cache.incr(cle)
+        except ValueError:  # la clé a expiré entre `add` et `incr`.
+            cache.set(cle, 1, SIGNATURE_ABUS_VERROU_SECONDES)
+            echecs = 1
+        verrouille = echecs >= SIGNATURE_ABUS_MAX_ECHECS
+        if verrouille:
+            cache.set(_cle_verrou_signature(str(token)), True,
+                      SIGNATURE_ABUS_VERROU_SECONDES)
+        return echecs, verrouille
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return 0, False
+
+
+def _administrateurs_societe(company):
+    """NTDOC9 — Administrateurs actifs d'une société (queryset, best-effort).
+
+    Lecture de `authentication` uniquement (app de fondation) : aucune
+    dépendance vers une app métier."""
+    from authentication.models import CustomUser
+    try:
+        return CustomUser.objects.filter(
+            company=company, is_active=True).filter(
+                models.Q(role_legacy='admin') | models.Q(is_superuser=True)
+        ).distinct()
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return CustomUser.objects.none()
+
+
+def surveiller_reutilisation_suspecte(adresse_ip, company):
+    """NTDOC9 — Détecte une même IP touchant des jetons de sociétés DIFFÉRENTES.
+
+    Mémorise (cache, fenêtre glissante) les identifiants de société vus depuis
+    cette IP ; au-delà de `SIGNATURE_ABUS_SOCIETES_SEUIL` sociétés distinctes,
+    notifie best-effort les administrateurs de la société courante. Une seule
+    notification par fenêtre et par IP (pas de bruit en rafale).
+
+    Renvoie True si le motif a été jugé suspect. Ne lève jamais."""
+    company_id = getattr(company, 'pk', None)
+    if not adresse_ip or not company_id:
+        return False
+    try:
+        from django.core.cache import cache
+        cle = _cle_societes_ip_signature(adresse_ip)
+        vues = cache.get(cle) or []
+        if company_id not in vues:
+            vues = list(vues) + [company_id]
+            cache.set(cle, vues, SIGNATURE_ABUS_FENETRE_SECONDES)
+        if len(vues) < SIGNATURE_ABUS_SOCIETES_SEUIL:
+            return False
+        cle_alerte = f'{cle}:alerte'
+        if cache.get(cle_alerte):
+            return True
+        cache.set(cle_alerte, True, SIGNATURE_ABUS_FENETRE_SECONDES)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return False
+
+    try:
+        from apps.notifications.models import EventType as ET
+        from apps.notifications.services import notify
+        for admin in _administrateurs_societe(company):
+            notify(
+                admin, ET.SECURITY_ALERT,
+                'Usage suspect des liens de signature publics',
+                body=("Une même adresse IP a ouvert des liens de signature de "
+                      "plusieurs sociétés différentes en quelques minutes. "
+                      "Vérifiez les demandes de signature en cours."),
+                company=company)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+    return True

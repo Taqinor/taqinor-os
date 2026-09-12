@@ -888,13 +888,25 @@ def signataires_for_demande(demande):
 
 # ── GED35 — Journal d'audit d'accès aux documents ───────────────────────────
 
+def type_acces_public():
+    """GED35 — Clé du type d'accès « lien public tokenisé » (lecture seule).
+
+    Accesseur cross-app : une app SUPÉRIEURE (une salle de données, par
+    exemple) qui journalise un accès public via ``services.journaliser_acces``
+    a besoin de cette clé SANS importer ``ged.models``."""
+    from .models import ACCES_PUBLIC
+    return ACCES_PUBLIC
+
+
 def journal_acces_for_company(company, *, document=None, utilisateur=None,
-                              type_acces=None):
+                              type_acces=None, source_refs=None):
     """GED35 — Entrées d'audit d'accès d'une société (QuerySet, scopé société).
 
     Lecture bornée à la société — jamais de fuite cross-société. Filtres
-    optionnels : `document`, `utilisateur`, `type_acces`. Ordonné du plus récent
-    au plus ancien (cf. Meta.ordering)."""
+    optionnels : `document`, `utilisateur`, `type_acces`, et `source_refs`
+    (NTDOC14 — itérable de références opaques ``"<app>.<objet>:<id>"``, pour
+    qu'un module supérieur relise SON propre journal sans importer la GED).
+    Ordonné du plus récent au plus ancien (cf. Meta.ordering)."""
     from .models import JournalAcces
     qs = JournalAcces.objects.filter(company=company).select_related(
         'document', 'utilisateur')
@@ -904,6 +916,8 @@ def journal_acces_for_company(company, *, document=None, utilisateur=None,
         qs = qs.filter(utilisateur=utilisateur)
     if type_acces:
         qs = qs.filter(type_acces=type_acces)
+    if source_refs is not None:
+        qs = qs.filter(source_ref__in=list(source_refs))
     return qs
 
 

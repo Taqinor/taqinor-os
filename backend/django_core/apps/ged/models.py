@@ -1723,6 +1723,14 @@ class DemandeSignatureDocument(models.Model):
     hash_contenu = models.CharField(
         max_length=64, blank=True, default='',
         verbose_name='hash du contenu signé (SHA-256)')
+    # NTDOC10 — empreinte SHA-256 DÉTERMINISTE du certificat de complétion
+    # (calculée sur les données du certificat, pas sur ses octets PDF : un PDF
+    # ne peut pas contenir son propre hash). Mémorisée à la génération pour que
+    # l'endpoint public de vérification retrouve la demande par son empreinte
+    # sans balayer la base. Vide tant qu'aucun certificat n'a été rendu.
+    empreinte_certificat = models.CharField(
+        max_length=64, blank=True, default='', db_index=True,
+        verbose_name='empreinte du certificat (SHA-256)')
     # Signature tapée (nom) ET/OU tracée (pattern FG69 `signature_client` —
     # data-URL/vecteur base64 d'un tracé). Au moins l'un des deux est requis
     # pour signer (garde côté service). Jamais lues du corps après signature.
@@ -2288,6 +2296,18 @@ class ModeleDocument(models.Model):
     # Fusionné côté serveur via le moteur de gabarit Django (contexte borné).
     corps_html = models.TextField(
         blank=True, default='', verbose_name='corps HTML (avec {{ champs }})')
+    # NTDOC21 — SECTIONS conditionnelles, EN PLUS du `corps_html` ci-dessus
+    # (jamais à sa place) : une liste d'objets
+    # ``{'titre': str, 'corps_html': str, 'conditions': <groupe FG367>}``.
+    # `conditions` est un arbre `core.rules` (groupes ET/OU/NON) évalué sur les
+    # métadonnées de fusion — ex. « inclure la clause RGPD SI pays == France ».
+    # Une section SANS conditions est toujours incluse. Liste VIDE (défaut) =
+    # comportement GED27 strictement inchangé.
+    # Usage : lettres de mission, PV internes, attestations, courriers RH —
+    # JAMAIS un PDF de devis client (rule #4, `/proposal` reste l'unique voie).
+    sections = models.JSONField(
+        default=list, blank=True,
+        verbose_name='sections conditionnelles')
     # GED28 — Classement automatique : où DÉPOSER le document généré.
     # `cabinet_cible` = nom du cabinet de destination (auto-créé si absent) ;
     # `dossier_cible` = nom du dossier racine de destination, qui peut porter des
@@ -2333,12 +2353,17 @@ ACCES_APERCU = 'apercu'          # aperçu inline authentifié (GED14)
 ACCES_TELECHARGEMENT = 'telechargement'  # téléchargement (proxy)
 ACCES_PUBLIC = 'public'          # accès via lien public tokenisé (GED20)
 ACCES_CONSULTATION = 'consultation'      # ouverture de la fiche document
+# NTDOC9 — tentative PUBLIQUE échouée (consentement manquant, code erroné,
+# tour non venu…) sur un lien de signature tokenisé. Tracée ici pour que
+# l'abus laisse une trace auditable au même endroit que les accès légitimes.
+ACCES_TENTATIVE_KO = 'tentative_ko'
 
 ACCES_TYPE_CHOICES = [
     (ACCES_APERCU, 'Aperçu'),
     (ACCES_TELECHARGEMENT, 'Téléchargement'),
     (ACCES_PUBLIC, 'Accès public (lien)'),
     (ACCES_CONSULTATION, 'Consultation'),
+    (ACCES_TENTATIVE_KO, 'Tentative publique échouée'),
 ]
 
 
@@ -2366,6 +2391,14 @@ class JournalAcces(models.Model):
     # Métadonnées best-effort (jamais sensibles) : IP tronquée / user-agent court.
     adresse_ip = models.GenericIPAddressField(
         null=True, blank=True, verbose_name='adresse IP')
+    # NTDOC14 — référence OPAQUE de la source d'accès, au format
+    # ``"<app>.<objet>:<id>"`` (ex. ``"datarooms.acces:42"``). String-ref
+    # assumée plutôt qu'une FK : la GED est une couche BASSE, elle ne doit
+    # jamais dépendre d'un module optionnel qui, lui, dépend d'elle. Vide pour
+    # tous les accès historiques (aucune source particulière).
+    source_ref = models.CharField(
+        max_length=64, blank=True, default='', db_index=True,
+        verbose_name="référence de la source d'accès")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

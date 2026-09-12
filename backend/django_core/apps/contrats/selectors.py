@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from .models import (
     AddOnAbonnement,
+    AlerteContrat,
     Avenant,
     Contrat,
     ContratActivity,
@@ -419,6 +420,222 @@ def liens_for_contrat(contrat):
     """
     return ContratLien.objects.filter(
         contrat=contrat, company=contrat.company).order_by('id')
+
+
+# ── NTDOC19 — Pipeline de renouvellement trimestriel ───────────────────────
+#
+# Vocabulaire FERMÉ de l'avancement de la DÉMARCHE de renouvellement. Il est
+# volontairement DISJOINT de ``Contrat.statut`` (machine d'états CONTRAT12) et
+# du funnel ``STAGES.py`` (rule #2) : il décrit où en est l'ACTION commerciale,
+# pas l'état documentaire du contrat.
+PIPELINE_AUCUNE_ACTION = 'aucune_action'
+PIPELINE_NOTIFIE = 'notifie'
+PIPELINE_EN_NEGOCIATION = 'en_negociation'
+PIPELINE_RENOUVELE = 'renouvele'
+PIPELINE_RESILIE = 'resilie'
+
+PIPELINE_LIBELLES = {
+    PIPELINE_AUCUNE_ACTION: 'Aucune action',
+    PIPELINE_NOTIFIE: 'Notifié',
+    PIPELINE_EN_NEGOCIATION: 'En négociation',
+    PIPELINE_RENOUVELE: 'Renouvelé',
+    PIPELINE_RESILIE: 'Résilié',
+}
+
+
+def _bornes_trimestre(trimestre, annee):
+    """NTDOC19 — (premier jour, dernier jour) d'un trimestre CALENDAIRE."""
+    premier_mois = 3 * (trimestre - 1) + 1
+    debut = date(annee, premier_mois, 1)
+    if premier_mois + 3 > 12:
+        fin = date(annee + 1, 1, 1) - timedelta(days=1)
+    else:
+        fin = date(annee, premier_mois + 3, 1) - timedelta(days=1)
+    return debut, fin
+
+
+def _avancement_renouvellement(contrat, debut_trimestre, alertes_envoyees,
+                               contrats_resilies):
+    """NTDOC19 — Avancement de la démarche pour UN contrat.
+
+    Dérivé UNIQUEMENT de données réelles (statut, résiliation enregistrée,
+    alerte réellement envoyée, date de dernier renouvellement) — jamais d'un
+    défaut inventé. Ordre de priorité : résilié > renouvelé > en négociation >
+    notifié > aucune action."""
+    if (contrat.statut == Contrat.Statut.RESILIE
+            or contrat.pk in contrats_resilies):
+        return PIPELINE_RESILIE
+    if (contrat.date_dernier_renouvellement is not None
+            and contrat.date_dernier_renouvellement >= debut_trimestre):
+        return PIPELINE_RENOUVELE
+    if contrat.statut == Contrat.Statut.EN_NEGOCIATION:
+        return PIPELINE_EN_NEGOCIATION
+    if contrat.pk in alertes_envoyees:
+        return PIPELINE_NOTIFIE
+    return PIPELINE_AUCUNE_ACTION
+
+
+def pipeline_renouvellements(company, trimestre=None, annee=None, today=None,
+                             ids_autorises=None):
+    """NTDOC19 — Pipeline trimestriel des renouvellements, groupé par MOIS.
+
+    RÉUTILISE ``contrats_a_renouveler`` (CONTRAT21) comme source unique — rien
+    n'est recalculé ni dupliqué : on lui demande simplement la fenêtre qui
+    couvre le trimestre demandé, puis on borne au premier jour du trimestre.
+    Conséquence assumée de cette réutilisation : un contrat déjà ``resilie`` ou
+    ``expire`` n'est plus « à renouveler » et sort du pipeline — l'état
+    ``resilie`` visible ici est celui d'un contrat DÉNONCÉ (résiliation
+    enregistrée) encore en cours.
+
+    Le PRÉAVIS contractuel (CONTRAT20) est signalé : un contrat dont la date
+    limite de préavis (``date_fin − preavis_jours``) est déjà passée ressort
+    ``preavis_depasse`` — c'est l'urgence à traiter en premier.
+
+    ``trimestre``/``annee`` par défaut : le trimestre calendaire courant.
+    ``today`` est injectable pour les tests. ``ids_autorises`` (optionnel)
+    restreint le pipeline aux contrats que l'APPELANT a le droit de voir — la
+    vue y passe son propre queryset filtré par confidentialité (YRBAC3), pour
+    qu'un contrat confidentiel ne fuite jamais par un agrégat.
+
+    Renvoie ``{'annee', 'trimestre', 'debut', 'fin', 'total',
+    'preavis_depasses', 'mois': [...], 'par_avancement': {...}}``."""
+    if today is None:
+        today = timezone.localdate()
+    annee = int(annee) if annee else today.year
+    trimestre = int(trimestre) if trimestre else ((today.month - 1) // 3) + 1
+    if trimestre < 1 or trimestre > 4:
+        raise ValueError("Le trimestre doit être compris entre 1 et 4.")
+
+    debut, fin = _bornes_trimestre(trimestre, annee)
+    # Fenêtre passée à CONTRAT21 : de today jusqu'à la fin du trimestre. Un
+    # trimestre entièrement passé donne une fenêtre vide — jamais une erreur.
+    within = (fin - today).days
+    candidats = contrats_a_renouveler(
+        company, within_days=max(within, 0), today=today
+    ).filter(date_fin__gte=debut, date_fin__lte=fin)
+    if ids_autorises is not None:
+        candidats = candidats.filter(id__in=list(ids_autorises))
+    contrats = list(candidats)
+
+    ids = [c.pk for c in contrats]
+    alertes_envoyees = set(
+        AlerteContrat.objects.filter(
+            company=company, contrat_id__in=ids,
+            statut=AlerteContrat.Statut.ENVOYEE,
+            type_alerte__in=[AlerteContrat.TypeAlerte.PREAVIS,
+                             AlerteContrat.TypeAlerte.ECHEANCE],
+        ).values_list('contrat_id', flat=True))
+    contrats_resilies = set(
+        Resiliation.objects.filter(
+            company=company, contrat_id__in=ids,
+        ).exclude(statut=Resiliation.Statut.ANNULEE)
+        .values_list('contrat_id', flat=True))
+
+    mois = {}
+    par_avancement = {cle: 0 for cle in PIPELINE_LIBELLES}
+    preavis_depasses = 0
+    for contrat in contrats:
+        avancement = _avancement_renouvellement(
+            contrat, debut, alertes_envoyees, contrats_resilies)
+        par_avancement[avancement] += 1
+        limite_preavis = None
+        if contrat.date_fin and contrat.preavis_jours:
+            limite_preavis = contrat.date_fin - timedelta(
+                days=contrat.preavis_jours)
+        depasse = bool(limite_preavis and limite_preavis < today
+                       and not contrat.preavis_traite)
+        if depasse:
+            preavis_depasses += 1
+        mois.setdefault(contrat.date_fin.month, []).append({
+            'contrat_id': contrat.pk,
+            'reference': contrat.reference,
+            'objet': contrat.objet,
+            'date_fin': contrat.date_fin,
+            'preavis_jours': contrat.preavis_jours,
+            'limite_preavis': limite_preavis,
+            'preavis_depasse': depasse,
+            'tacite_reconduction': contrat.tacite_reconduction,
+            'avancement': avancement,
+            'avancement_display': PIPELINE_LIBELLES[avancement],
+        })
+
+    return {
+        'annee': annee,
+        'trimestre': trimestre,
+        'debut': debut,
+        'fin': fin,
+        'total': len(contrats),
+        'preavis_depasses': preavis_depasses,
+        'par_avancement': par_avancement,
+        'mois': [
+            {'mois': numero, 'contrats': mois[numero]}
+            for numero in sorted(mois)
+        ],
+    }
+
+
+def matrice_obligations(contrat):
+    """NTDOC18 — Matrice des obligations d'un contrat : redevable × statut.
+
+    Lecture seule et purement DESCRIPTIVE : elle regroupe les ``Obligation``
+    existantes (CONTRAT26) par partie redevable puis par statut, et compte les
+    « preuves manquantes » (obligation RÉALISÉE sans ``preuve_document``). Une
+    obligation sans preuve reste parfaitement valide — la matrice la signale,
+    elle ne l'interdit jamais.
+
+    Renvoie ``{'lignes': [...], 'total': n, 'preuves_manquantes': n}`` où
+    chaque ligne est un couple (redevable, statut) avec ses obligations."""
+    obligations = list(obligations_contrat(contrat))
+    groupes = {}
+    for obligation in obligations:
+        cle = (obligation.redevable, obligation.statut)
+        groupe = groupes.setdefault(cle, {
+            'redevable': obligation.redevable,
+            'redevable_display': obligation.get_redevable_display(),
+            'statut': obligation.statut,
+            'statut_display': obligation.get_statut_display(),
+            'obligations': [],
+            'preuves_manquantes': 0,
+        })
+        groupe['obligations'].append(obligation)
+        if obligation.preuve_manquante:
+            groupe['preuves_manquantes'] += 1
+    lignes = sorted(groupes.values(),
+                    key=lambda g: (g['redevable'], g['statut']))
+    return {
+        'lignes': lignes,
+        'total': len(obligations),
+        'preuves_manquantes': sum(
+            1 for o in obligations if o.preuve_manquante),
+    }
+
+
+def contrat_card(contrat_id, company):
+    """NTDOC15 — fiche-carte LECTURE SEULE d'un contrat, scopée société.
+
+    Même contrat de sortie que ``crm.selectors.lead_card`` et
+    ``installations.selectors.chantier_card`` : ``{label, subtitle, url}``, ou
+    None si le contrat n'appartient pas à la société (jamais d'accès
+    cross-tenant). C'est le point d'entrée cross-app pour qu'une autre app
+    (ex. une salle de données créée depuis un contrat) affiche un libellé sans
+    jamais importer ``apps.contrats.models``."""
+    contrat = Contrat.objects.filter(pk=contrat_id, company=company).first()
+    if contrat is None:
+        return None
+    parties = []
+    try:
+        parties.append(contrat.get_type_contrat_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    try:
+        parties.append(contrat.get_statut_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    return {
+        'label': f'{contrat.reference} — {contrat.objet}'.strip(' —'),
+        'subtitle': ' · '.join(p for p in parties if p),
+        'url': f'/contrats/{contrat.pk}',
+    }
 
 
 def _label_devis(company, cible_id):
