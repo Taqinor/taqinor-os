@@ -312,6 +312,25 @@ class WorkflowDefinitionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'code', 'created_at', 'updated_at']
 
+    def validate(self, attrs):
+        """NTWFL9 — au moins une étape, pas de boucle infinie via
+        ``etape_alternative_si_echec``, chaque étape manuelle a un rôle
+        requis. Validé SEULEMENT quand ``steps`` est RÉELLEMENT fourni
+        (remplacement des étapes) — une mise à jour qui n'y touche pas (ex.
+        renommer la définition) ne revalide pas des étapes inchangées, cf.
+        ``_sync_steps``/``WorkflowsScreen.jsx`` (PACT124). Une CRÉATION sans
+        ``steps`` du tout est traitée comme « 0 étape » (toujours rejetée)."""
+        from core import workflow as core_workflow
+        if 'steps' in attrs:
+            erreurs = core_workflow.valider_definition_steps(attrs['steps'])
+            if erreurs:
+                raise serializers.ValidationError({'steps': erreurs})
+        elif self.instance is None:
+            raise serializers.ValidationError({'steps': [
+                'Une définition de workflow doit comporter au moins une '
+                'étape.']})
+        return attrs
+
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
         validated_data['code'] = self._derive_code(

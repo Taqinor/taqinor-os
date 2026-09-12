@@ -91,6 +91,7 @@ __all__ = [
     'register_business_day_advance',
     'etapes_a_mi_sla',
     'marquer_rappel_envoye',
+    'valider_definition_steps',
 ]
 
 
@@ -653,6 +654,84 @@ def delegants_actifs_pour(suppleant, company, at=None):
         return list(_delegation_resolver(suppleant, company, at=at) or [])
     except Exception:  # pragma: no cover - défensif
         return []
+
+
+# ── NTWFL9 — validation d'une définition AVANT sauvegarde ───────────────────
+
+def _champ(step, nom, defaut=None):
+    """Lit ``nom`` sur ``step``, qu'il s'agisse d'un ``dict`` (payload brut,
+    ex. venant d'un sérialiseur) ou d'une instance de modèle."""
+    if isinstance(step, dict):
+        return step.get(nom, defaut)
+    return getattr(step, nom, defaut)
+
+
+def valider_definition_steps(steps):
+    """NTWFL9 — valide une liste d'étapes AVANT sauvegarde d'une définition.
+
+    ``steps`` : liste de ``dict``/instances portant au moins ``ordre``,
+    ``type_approbation``, ``role_requis``, ``etape_alternative_si_echec``
+    (le format exact du payload du sérialiseur ou des instances
+    ``WorkflowStepDefinition`` — les deux sont acceptés). Renvoie une liste
+    d'erreurs en FRANÇAIS (vide = définition valide) ; NE LÈVE JAMAIS.
+
+    Règles vérifiées :
+      * au moins UNE étape ;
+      * chaque étape ``manuelle`` (``APPROBATION_MANUELLE``) porte un
+        ``role_requis`` non vide (aucun « assigné par défaut » distinct
+        n'existe sur ce modèle — ``role_requis`` est le seul champ
+        d'assignation) ;
+      * aucune boucle infinie via ``etape_alternative_si_echec`` (NTWFL7) :
+        suit la chaîne d'alternatives de chaque étape et détecte un cycle.
+    """
+    from core.models import WorkflowStepDefinition
+
+    erreurs = []
+    if not steps:
+        erreurs.append(
+            'Une définition de workflow doit comporter au moins une étape.')
+        return erreurs
+
+    par_ordre = {}
+    for s in steps:
+        ordre = _champ(s, 'ordre')
+        if ordre is not None:
+            par_ordre[ordre] = s
+
+    for s in steps:
+        ordre = _champ(s, 'ordre')
+        nom = _champ(s, 'nom') or f'#{ordre}'
+        if (_champ(s, 'type_approbation')
+                == WorkflowStepDefinition.APPROBATION_MANUELLE
+                and not _champ(s, 'role_requis')):
+            erreurs.append(
+                f'L\'étape « {nom} » (approbation manuelle) doit préciser '
+                'un rôle requis.')
+
+    boucles_signalees = set()
+    for s in steps:
+        depart = _champ(s, 'ordre')
+        alt = _champ(s, 'etape_alternative_si_echec')
+        if not alt:
+            continue
+        vus = {depart}
+        courant = alt
+        while courant:
+            if courant in vus:
+                if depart not in boucles_signalees:
+                    nom = _champ(s, 'nom') or f'#{depart}'
+                    erreurs.append(
+                        f'L\'étape « {nom} » forme une boucle infinie via '
+                        'ses étapes alternatives.')
+                    boucles_signalees.add(depart)
+                break
+            vus.add(courant)
+            suivante = par_ordre.get(courant)
+            courant = (
+                _champ(suivante, 'etape_alternative_si_echec')
+                if suivante is not None else None)
+
+    return erreurs
 
 
 # ── NTWFL2 — démarrage piloté par la matrice d'approbation (NTWFL1) ─────────
