@@ -17,9 +17,10 @@ from django.test import TestCase
 
 from apps.crm.models import Client
 from apps.installations.models import (
-    ChantierChecklistItem, Installation, StageModele,
+    ChantierChecklistItem, ChecklistEtapeModele, ChecklistTemplate,
+    Installation, StageModele,
 )
-from apps.installations.services import stage_gate_status
+from apps.installations.services import ensure_checklist_items, stage_gate_status
 from apps.records.models import Attachment
 from authentication.models import Company
 
@@ -39,15 +40,28 @@ def make_installation(company):
         company=company, nom='Client', prenom='CHT23',
         email=f'cht23-{company.id}-{n}@example.invalid')
     return Installation.objects.create(
-        company=company, reference=f'CHT-CHT23-{n}', client=client)
+        company=company, reference=f'CHT-CHT23-{n}', client=client,
+        type_installation='residentiel')
 
 
 def make_checklist_items(company, installation, n_faits, n_total):
-    items = []
+    """Dénominateur EXACT garanti : un template TYPÉ (résidentiel) de
+    `n_total` étapes — `ensure_checklist_items` (appelée par les gates) ne
+    matérialise que LUI, jamais les étapes du template « Défaut » système
+    (leçon CI ronde 2 : des items créés à la main s'additionnaient aux 8
+    étapes Défaut matérialisées paresseusement → 13 au dénominateur)."""
+    n = next(_seq)
+    template = ChecklistTemplate.objects.create(
+        company=company, nom=f'CHT23 typé {n}',
+        type_installation='residentiel', actif=True)
     for i in range(n_total):
-        items.append(ChantierChecklistItem.objects.create(
-            company=company, installation=installation, cle=f'item-{i}',
-            libelle=f'Étape {i}', ordre=i, fait=i < n_faits))
+        ChecklistEtapeModele.objects.create(
+            company=company, template=template, cle=f'item-{i}',
+            libelle=f'Étape {i}', ordre=i)
+    items = ensure_checklist_items(installation)
+    faits = [it for it in items][:n_faits]
+    ChantierChecklistItem.objects.filter(
+        id__in=[it.id for it in faits]).update(fait=True)
     return items
 
 

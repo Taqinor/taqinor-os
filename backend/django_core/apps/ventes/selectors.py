@@ -1849,7 +1849,11 @@ def resume_portail_client(company, client_id):
     return {
         'devis_en_attente': devis_en_attente,
         'factures_impayees': factures_impayees_qs.count(),
-        'prochaine_echeance': prochaine_echeance,
+        # Chaîne ISO, jamais un objet date : la valeur part telle quelle dans
+        # la réponse JSON du tableau de bord portail (contrat
+        # apps/portail/contract_samples/client_tableau_de_bord.json).
+        'prochaine_echeance': (
+            prochaine_echeance.isoformat() if prochaine_echeance else None),
     }
 
 
