@@ -44,6 +44,10 @@ const migrationApi = {
   derogerLot: (id, motif) =>
     api.post(`/migration/lots-migration/${id}/deroger/`, { motif }),
   terminerLot: (id) => api.post(`/migration/lots-migration/${id}/terminer/`),
+  // NTMIG18 — CSV des lignes en erreur d'un chargement (réutilise
+  // dataimport.job_erreurs_csv, déjà servi hors du préfixe /migration/) :
+  // ouvre l'URL, ne la « fetch » pas (même patron que rapportUrl).
+  erreursCsvUrl: (jobId) => `/api/django/imports/jobs/${jobId}/erreurs.csv`,
 
   // ── Instances de playbook (NTMIG22/25) ──
   listPlaybookInstances: (params) =>

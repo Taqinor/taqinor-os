@@ -38,10 +38,17 @@ from apps.dataimport.services import FIELD_MAPS, TARGETS, _LazyTargets
 #   ``dataimport.FIELD_MAPS``, écriture DÉLÉGUÉE à ``apps.scm.services.
 #   creer_evenement_demande_import`` (mode `creer` uniquement — pas dans
 #   ``UPSERT_TARGETS``).
+#   NTMIG10 — 'devis'/'factures' : import d'EN-TÊTES (lignes via NTMIG11, un
+#   second fichier) pour les migrations sortantes (kits Odoo/Sage NTMIG8/12),
+#   déclarées par ``apps/ventes/platform.py`` (``import_specs``), mapping
+#   d'en-têtes dans ``dataimport.FIELD_MAPS``, écriture DÉLÉGUÉE à
+#   ``apps.ventes.services.creer_devis_import``/``creer_facture_import``
+#   (mode `creer` uniquement — pas dans ``UPSERT_TARGETS``).
 HISTORICAL_TARGETS = {
     'leads', 'clients', 'products', 'fournisseurs', 'equipements',
     'vehicules', 'contrats', 'dossiers_rh',
     'eleves_education', 'scm_evenement_demande',
+    'devis', 'factures',
 }
 
 # Cibles déclarées au registre par une app qui porte son PROPRE lecteur de
@@ -84,6 +91,7 @@ TARGET_OWNER_MODULE = {
     'dossiers_rh': 'rh',
     'eleves_education': 'education',
     'scm_evenement_demande': 'scm',
+    'devis': 'ventes', 'factures': 'ventes',
     'obstacles': 'ao', 'chaines': 'ao', 'avis': 'ao',
     'avis_veille': 'veille_ao',
 }

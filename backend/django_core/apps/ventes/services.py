@@ -514,6 +514,16 @@ save_devis_as_preset = _creation.save_devis_as_preset
 apply_preset_to_devis = _creation.apply_preset_to_devis
 
 # ═════════════════════════════════════════════════════════════════════════
+# RÉ-EXPORTS — NTMIG10/11 : création Devis/Facture depuis une MIGRATION
+# (kits NTMIG8/12/13) → ``domain/imports.py``
+# ═════════════════════════════════════════════════════════════════════════
+from apps.ventes.domain import imports as _imports  # noqa: E402
+creer_devis_import = _imports.creer_devis_import
+ajouter_lignes_devis_import = _imports.ajouter_lignes_devis_import
+creer_facture_import = _imports.creer_facture_import
+ajouter_lignes_facture_import = _imports.ajouter_lignes_facture_import
+
+# ═════════════════════════════════════════════════════════════════════════
 # LA SURFACE PUBLIQUE, EN CLAIR
 # ═════════════════════════════════════════════════════════════════════════
 # `__all__` n'est pas décoratif ici : il dit, en un seul endroit, ce que
@@ -581,6 +591,8 @@ __all__ = [
     'aire_contour_m2',
     'ajouter_ligne_echeance_contrat',
     'ajouter_lignes_boq_electrique',
+    'ajouter_lignes_devis_import',
+    'ajouter_lignes_facture_import',
     'ajouter_lignes_frais_refactures',
     'anomalies_emission_facture',
     'apply_preset_to_devis',
@@ -618,9 +630,11 @@ __all__ = [
     'create_payment_link',
     'creer_devis_automatique_depuis_lead',
     'creer_devis_depuis_bordereau',
+    'creer_devis_import',
     'creer_facture_acompte_situation',
     'creer_facture_classique',
     'creer_facture_contrat',
+    'creer_facture_import',
     'creer_facture_regie',
     'creer_variante_gamme',
     'debiter_mandat_pour_facture',

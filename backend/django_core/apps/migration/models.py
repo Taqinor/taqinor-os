@@ -149,6 +149,17 @@ class LotMigration(TenantModel):
         null=True, blank=True, related_name='lots_migration_deroges')
     derogation_at = models.DateTimeField(null=True, blank=True)
 
+    # NTMIG6 — horodatage posé JUSTE AVANT le commit du dernier chargement.
+    # Sert d'ancre PRÉCISE au rollback (``services.annuler_lot``) pour
+    # distinguer un enregistrement CRÉÉ par ce chargement (``date_creation``/
+    # ``created_at`` >= cette ancre, à une poignée de secondes de tolérance
+    # d'horloge près) d'un enregistrement PRÉ-EXISTANT simplement RAPPROCHÉ
+    # par un chargement ``upsert`` (``leads``/``clients``) — un job d'import
+    # n'enregistre lui-même aucun marqueur « créé vs rapproché » réutilisable.
+    dernier_chargement_debut_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Début du dernier chargement')
+
     class Meta:
         ordering = ['projet', 'ordre', 'id']
         indexes = [
