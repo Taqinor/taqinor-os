@@ -16,6 +16,7 @@ lecture, ``PublicWriteAPIView`` en écriture) — jamais dupliqué par vue :
   (demandée) vs « ce que le serveur sert » (épinglée par clé). NTAPI2 cible ses
   annonces de dépréciation sur la première.
 """
+from .deprecation import ApiDeprecationHeadersMixin
 from .errors import public_api_exception_handler
 from .versioning import version_demandee
 
@@ -27,7 +28,7 @@ API_VERSION_HEADER = 'X-Taqinor-Api-Version'
 DEFAULT_API_VERSION = 'v1'
 
 
-class PublicApiResponseMixin:
+class PublicApiResponseMixin(ApiDeprecationHeadersMixin):
     """À placer EN PREMIER dans le MRO (avant la base DRF) sur toute vue
     montée sous ``/api/public/v1/``."""
 
@@ -52,4 +53,9 @@ class PublicApiResponseMixin:
         expire_le = getattr(api_key, 'expire_le', None)
         if expire_le:
             response['Deprecation'] = expire_le.isoformat()
+        # NTAPI2 — annonce de dépréciation de L'ENDPOINT (RFC 8594). Posée
+        # APRÈS NTAPI23 : quand les deux s'appliquent, l'annonce d'endpoint
+        # gagne (signal le plus fort, seul format conforme à la RFC). Sans
+        # annonce, rien n'est touché — comportement historique inchangé.
+        response = self.poser_entetes_deprecation(request, response)
         return response
