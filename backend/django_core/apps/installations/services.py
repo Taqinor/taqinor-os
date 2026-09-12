@@ -6,12 +6,16 @@ puissance (depuis l'étude du devis sinon la taille souhaitée du lead),
 raccordement GELÉ (depuis le lead), type d'installation (depuis le devis).
 Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
+import logging
+
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
     DemandeTransfert, DocumentProjet,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def default_installer_for(company):
@@ -3595,6 +3599,85 @@ def notifier_jalon_a_facturer(jalon, user=None):
     return True
 
 
+# ── CHT11 — Synchro automatique jalons internes → portail client ────────────
+# `JalonChantierPortail` (portail, FG232) et `JalonProjet` (interne, FG293)
+# vivaient en DOUBLE SAISIE : rien ne propageait l'atteinte d'un jalon interne
+# vers la timeline visible du client. SEUL point d'entrée cross-app :
+# `apps.portail.services.upsert_jalon_chantier` (jamais un import de
+# `apps.portail.models` depuis installations).
+
+def synchroniser_jalon_portail(jalon, user=None):
+    """CHT11 — publie UN jalon interne ATTEINT vers la timeline portail
+    client (upsert idempotent par phase — fin de la double saisie).
+
+    Câblée sur les DEUX chemins par lesquels un jalon devient atteint : le
+    PATCH manuel (``views/projet.JalonProjetViewSet.perform_update``) ET
+    l'auto-atteinte via ``changer_statut_chantier`` (aujourd'hui : la
+    RÉCEPTION, posée par ``notifier_reception_solde_a_facturer`` — PLANIFIE/
+    EN_COURS/INSTALLE n'ont aujourd'hui aucun hook qui marque un ``JalonProjet``
+    atteint automatiquement, rien à synchroniser tant que ce n'est pas le cas).
+
+    Best-effort STRICT (try/except + log) : ne bloque JAMAIS la transition
+    appelante. No-op si le jalon n'est pas atteint, n'a pas de ``phase`` TYPE
+    (jalon ad hoc — aucune clé stable pour l'upsert), le chantier est ANNULÉ
+    (rien à publier au client d'un chantier qui ne se fera plus), ou la
+    société est inconnue."""
+    if jalon is None or not jalon.atteint or not jalon.phase:
+        return
+    installation = jalon.installation
+    if installation is None or installation.annule:
+        return
+    company = installation.company
+    if company is None:
+        return
+    try:
+        from apps.portail import services as portail_services
+        portail_services.upsert_jalon_chantier(
+            company, installation.id, jalon.phase, jalon.libelle,
+            atteint=True, date_jalon=jalon.date_reelle)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        logger.warning(
+            'CHT11 — synchro portail du jalon %s (chantier %s) échouée',
+            jalon.pk, installation.id, exc_info=True)
+        return
+    _notifier_client_jalon_atteint(installation, jalon)
+
+
+def _notifier_client_jalon_atteint(installation, jalon):
+    """CHT11 — email best-effort au client d'un jalon atteint.
+
+    AUCUN envoi WhatsApp automatique (le BSP n'est pas provisionné — un
+    brouillon manuel reste la seule voie WhatsApp, jamais posé ici). L'email
+    n'est envisagé QUE si un compte d'envoi est réellement configuré ET que
+    le compte portail du client est ACTIF — jamais bloquant."""
+    client = getattr(installation, 'client', None)
+    email_addr = getattr(client, 'email', None)
+    if not email_addr:
+        return
+    try:
+        from apps.ventes.email_service import is_email_configured
+        if not is_email_configured():
+            return
+        from apps.portail.selectors import compte_portail_client_actif
+        actif = compte_portail_client_actif(installation.company_id, client.id)
+        if actif is not True:
+            return
+        from django.conf import settings
+        from django.core.mail import send_mail
+        send_mail(
+            f'Chantier {installation.reference} — {jalon.libelle} atteint',
+            'Bonjour,\n\n'
+            f"Votre chantier {installation.reference} vient de franchir "
+            f"l'étape « {jalon.libelle} ». Suivez son avancement depuis "
+            'votre espace client.',
+            getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+            [email_addr], fail_silently=True)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        logger.warning(
+            'CHT11 — email jalon portail (jalon %s) échoué', jalon.pk,
+            exc_info=True)
+
+
 def notifier_reception_solde_a_facturer(installation, user=None):
     """YSERV7 — à la réception du chantier (RECEPTIONNE), rappelle la tranche
     SOLDE si elle n'est pas encore facturée. Réutilise le même verrou
@@ -3621,6 +3704,10 @@ def notifier_reception_solde_a_facturer(installation, user=None):
         changed_fields.append('tranche_echeancier')
     if changed_fields:
         jalon.save(update_fields=changed_fields)
+        # CHT11 — l'auto-atteinte de la RÉCEPTION (le seul passage de statut,
+        # parmi PLANIFIE/EN_COURS/INSTALLE/RECEPTIONNE, qui marque aujourd'hui
+        # un JalonProjet atteint automatiquement) se propage au portail.
+        synchroniser_jalon_portail(jalon, user)
     return notifier_jalon_a_facturer(jalon, user)
 
 
