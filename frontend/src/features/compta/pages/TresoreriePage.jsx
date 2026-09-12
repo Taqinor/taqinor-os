@@ -8,6 +8,9 @@ import {
   Input, Label,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+// NTTRE20 — kit graphique marque (recharts + tokens) pour la courbe d'écart
+// résiduel des rapprochements clôturés.
+import { AreaSansAxe, ChartFrame } from '../../../ui/charts'
 // APX33 — le tableau PARTAGÉ de la compta (tri + export CSV) remplace les
 // tables écrites à la main.
 import ComptaTable from '../ComptaTable'
@@ -167,6 +170,62 @@ function FraisBancairesCard() {
   )
 }
 
+/* NTTRE20 — Historique visuel des rapprochements CLÔTURÉS : par mois, le
+   nombre de lignes de relevé restées « non pointées » à la clôture. Indicateur
+   de QUALITÉ du rapprochement dans le temps (une courbe qui remonte signale
+   des clôtures de plus en plus permissives). Lecture seule sur des données
+   déjà en base — aucun calcul côté écran. */
+function QualiteRapprochementsCard() {
+  const [data, setData] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    comptaApi.etats.qualiteRapprochements()
+      .then((res) => { if (vivant) setData(res.data) })
+      .catch(() => { if (vivant) setData(null) })
+    return () => { vivant = false }
+  }, [])
+
+  const mois = data?.mois || []
+  const points = mois.map((m) => ({
+    label: m.mois,
+    value: Number(m.lignes_non_pointees) || 0,
+    rapprochements: Number(m.rapprochements) || 0,
+  }))
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 font-display text-base font-semibold">
+        Qualité des rapprochements clôturés
+      </h3>
+      {!points.length ? (
+        <EmptyState
+          title="Aucun rapprochement clôturé"
+          description="La courbe apparaîtra dès le premier rapprochement clôturé."
+        />
+      ) : (
+        <ChartFrame
+          label="Lignes de relevé restées non pointées à la clôture, par mois"
+          columns={[
+            { key: 'label', header: 'Mois' },
+            { key: 'rapprochements', header: 'Rapprochements clôturés', align: 'right' },
+            { key: 'value', header: 'Lignes non pointées', align: 'right' },
+          ]}
+          rows={points}
+          getRowKey={(p) => p.label}
+        >
+          <AreaSansAxe
+            data={points}
+            tone="warning"
+            height={180}
+            name="Lignes non pointées"
+          />
+        </ChartFrame>
+      )}
+    </Card>
+  )
+}
+
 // Onglet lecture seule : position consolidée + prévisionnel roulant.
 function PositionPanel() {
   const [position, setPosition] = useState(null)
@@ -313,6 +372,8 @@ function PositionPanel() {
       </Card>
 
       <RibInvalidesCard />
+
+      <QualiteRapprochementsCard />
 
       <FraisBancairesCard />
     </div>

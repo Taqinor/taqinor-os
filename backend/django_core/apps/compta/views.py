@@ -940,6 +940,25 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             fin=params.get('fin') or None)
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='qualite-rapprochements')
+    def qualite_rapprochements(self, request):
+        """NTTRE20 — Écart résiduel des rapprochements clôturés, par mois.
+
+        Nombre de lignes de relevé restées ``non_pointee`` à la clôture de
+        chaque rapprochement ``rapproche``, regroupé par mois de fin de
+        période. ``?nb_mois=`` (défaut 12, borné 1-60). Lecture seule sur des
+        données déjà en base, scopée société, Admin/Responsable.
+        """
+        nb_mois = request.query_params.get('nb_mois')
+        try:
+            nb_mois = int(nb_mois) if nb_mois else 12
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Le paramètre 'nb_mois' doit être un entier."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.qualite_rapprochements(
+            request.user.company, nb_mois=nb_mois))
+
     @action(detail=False, methods=['get'], url_path='previsionnel-tresorerie')
     def previsionnel_tresorerie(self, request):
         """Prévisionnel de trésorerie roulant 13 semaines (FG126).

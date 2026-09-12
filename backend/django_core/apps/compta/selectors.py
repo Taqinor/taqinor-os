@@ -5878,3 +5878,64 @@ def cash_aujourdhui(company, *, aujourd_hui=None):
         'delta_veille': total_jour - total_veille,
         'prochaines_echeances': echeances[:3],
     }
+
+
+# ── NTTRE20 — Qualité des rapprochements clôturés dans le temps ─────────────
+
+def qualite_rapprochements(company, *, nb_mois=12, today=None):
+    """NTTRE20 — Écart résiduel des rapprochements CLÔTURÉS, mois par mois.
+
+    Pour chaque rapprochement passé au statut ``rapproche``, compte les lignes
+    de relevé restées ``non_pointee`` à la clôture — l'écart résiduel accepté.
+    Les rapprochements sont regroupés par mois de fin de période
+    (``date_fin``), sur les ``nb_mois`` derniers mois. Indicateur de QUALITÉ du
+    rapprochement dans le temps : une courbe qui remonte signale des clôtures
+    de plus en plus permissives.
+
+    Renvoie ``{'mois': [{'mois': 'AAAA-MM', 'rapprochements': n,
+    'lignes_non_pointees': n}], 'total_lignes_non_pointees': n}``, du plus
+    ancien au plus récent. Lecture seule, scopée société, aucune écriture.
+    """
+    from django.db.models import Count
+
+    from .models import LigneReleve
+
+    fin = _as_date(today) or timezone.localdate()
+    nb_mois = max(1, min(int(nb_mois or 12), 60))
+    # Premier jour du mois situé nb_mois − 1 mois avant le mois courant.
+    mois_index = fin.year * 12 + (fin.month - 1) - (nb_mois - 1)
+    debut = date(mois_index // 12, mois_index % 12 + 1, 1)
+
+    rapprochements = list(RapprochementBancaire.objects.filter(
+        company=company,
+        statut=RapprochementBancaire.Statut.RAPPROCHE,
+        date_fin__gte=debut, date_fin__lte=fin,
+    ).values_list('id', 'date_fin'))
+    non_pointees = {
+        agg['rapprochement_id']: agg['n']
+        for agg in LigneReleve.objects.filter(
+            company=company,
+            statut=LigneReleve.Statut.NON_POINTEE,
+            rapprochement_id__in=[r[0] for r in rapprochements],
+        ).values('rapprochement_id').annotate(n=Count('id'))
+    }
+
+    buckets = {}
+    for i in range(nb_mois):
+        idx = mois_index + i
+        cle = f'{idx // 12:04d}-{idx % 12 + 1:02d}'
+        buckets[cle] = {'mois': cle, 'rapprochements': 0,
+                        'lignes_non_pointees': 0}
+    for rap_id, date_fin in rapprochements:
+        cle = f'{date_fin.year:04d}-{date_fin.month:02d}'
+        bucket = buckets.get(cle)
+        if bucket is None:  # pragma: no cover - hors fenêtre demandée.
+            continue
+        bucket['rapprochements'] += 1
+        bucket['lignes_non_pointees'] += non_pointees.get(rap_id, 0)
+    mois = [buckets[cle] for cle in sorted(buckets)]
+    return {
+        'mois': mois,
+        'total_lignes_non_pointees': sum(
+            m['lignes_non_pointees'] for m in mois),
+    }

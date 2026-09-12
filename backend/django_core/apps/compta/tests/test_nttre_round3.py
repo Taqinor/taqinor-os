@@ -202,3 +202,70 @@ class PrevisionnelXlsxTests(TestCase):
             '?export=xlsx&nb_semaines=4')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(self._feuille(resp.content).max_column, 5)
+
+
+class QualiteRapprochementsTests(TestCase):
+    """NTTRE20 — lignes restées non pointées à la clôture, mois par mois."""
+
+    def setUp(self):
+        self.co = make_company('nttre20', 'NTTRE20 Co')
+        services.seed_plan_comptable(self.co)
+        services.seed_journaux(self.co)
+        self.banque = CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE', compte_comptable=services.get_compte(self.co, '5141'))
+
+    def _rapprochement(self, mois, *, non_pointees=0, cloture=True):
+        from apps.compta.models import RapprochementBancaire
+
+        rap = services.creer_rapprochement(
+            self.co, self.banque, date_debut=date(2026, mois, 1),
+            date_fin=date(2026, mois, 28), solde_releve=Decimal('0'))
+        for i in range(non_pointees):
+            services.ajouter_ligne_releve(
+                rap, date_operation=date(2026, mois, 5),
+                libelle=f'Op {mois}-{i}', montant=Decimal('10'))
+        if cloture:
+            # Clôture POSÉE directement : le service refuse de clôturer tant
+            # qu'un écart subsiste — on teste ici la LECTURE d'un historique
+            # déjà clôturé (reprise d'antériorité, clôture forcée en base).
+            rap.statut = RapprochementBancaire.Statut.RAPPROCHE
+            rap.save(update_fields=['statut'])
+        return rap
+
+    def test_compte_exact_des_lignes_non_pointees_par_mois(self):
+        self._rapprochement(2, non_pointees=3)
+        self._rapprochement(3, non_pointees=1)
+        data = selectors.qualite_rapprochements(
+            self.co, nb_mois=12, today=date(2026, 12, 31))
+        par_mois = {m['mois']: m for m in data['mois']}
+        self.assertEqual(par_mois['2026-02']['lignes_non_pointees'], 3)
+        self.assertEqual(par_mois['2026-02']['rapprochements'], 1)
+        self.assertEqual(par_mois['2026-03']['lignes_non_pointees'], 1)
+        self.assertEqual(data['total_lignes_non_pointees'], 4)
+
+    def test_rapprochement_non_cloture_exclu(self):
+        self._rapprochement(4, non_pointees=5, cloture=False)
+        data = selectors.qualite_rapprochements(
+            self.co, nb_mois=12, today=date(2026, 12, 31))
+        self.assertEqual(data['total_lignes_non_pointees'], 0)
+        par_mois = {m['mois']: m for m in data['mois']}
+        self.assertEqual(par_mois['2026-04']['rapprochements'], 0)
+
+    def test_fenetre_de_mois_continue_et_ordonnee(self):
+        data = selectors.qualite_rapprochements(
+            self.co, nb_mois=6, today=date(2026, 6, 15))
+        self.assertEqual(
+            [m['mois'] for m in data['mois']],
+            ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'])
+
+    def test_endpoint_scope_societe(self):
+        self._rapprochement(2, non_pointees=2)
+        autre = make_company('nttre20-b', 'NTTRE20 B')
+        user_b = User.objects.create_user(
+            username='nttre20-user-b', password='x', company=autre,
+            role_legacy='responsable')
+        resp = auth(user_b).get(
+            '/api/django/compta/etats/qualite-rapprochements/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['total_lignes_non_pointees'], 0)

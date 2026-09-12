@@ -78,6 +78,10 @@ const comptaApi = {
     previsionnelTresorerieXlsx: (params) =>
       api.get('/compta/etats/previsionnel-tresorerie/',
         { params: { export: 'xlsx', ...params }, responseType: 'blob' }),
+    // NTTRE20 — qualité des rapprochements clôturés (lignes restées non
+    // pointées à la clôture), mois par mois.
+    qualiteRapprochements: (params) =>
+      api.get('/compta/etats/qualite-rapprochements/', { params }),
     balanceAgeeFournisseurs: (params) =>
       api.get('/compta/etats/balance-agee-fournisseurs/', { params }),
     releveFournisseur: (tiersId, params) =>
