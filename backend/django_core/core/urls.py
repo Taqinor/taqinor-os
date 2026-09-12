@@ -29,6 +29,7 @@ from .drill_api import DrillDownView
 from .formule_api import (
     FormuleFonctionsView, FormuleTestView, FormuleValiderView,
 )
+from .rules_api import RegleOperateursView, RegleValiderView
 from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
@@ -180,6 +181,12 @@ urlpatterns = router.urls + [
     # NTEXT23 — validateur d'expression (dry-run, aucun effet de bord).
     path('formule/valider/', FormuleValiderView.as_view(),
          name='formule-valider'),
+    # NTEXT29 — socle serveur de l'éditeur no-code de conditions (arbre
+    # ET/OU/NON), partagé par XPLT15/NTEXT5/NTEXT21.
+    path('regles/operateurs/', RegleOperateursView.as_view(),
+         name='regle-operateurs'),
+    path('regles/valider/', RegleValiderView.as_view(),
+         name='regle-valider'),
     # NTDATA33 — drill-down d'une cellule de pivot jusqu'aux enregistrements
     # (liste blanche + scoping société de data_explorer, liens profonds).
     path('data-explorer/drill/', DrillDownView.as_view(),
