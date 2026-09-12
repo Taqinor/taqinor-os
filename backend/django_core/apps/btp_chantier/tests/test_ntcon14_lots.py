@@ -101,7 +101,11 @@ class LotCrudTests(TestCase):
         make_lot(autre, chantier_autre, nom='Lot étranger')
         resp = self.api.get(LOTS, {'chantier': self.chantier.id})
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        noms = [r['nom'] for r in resp.data]
+        # Le projet pagine par défaut (``core.pagination.StandardPagination``)
+        # : la liste vit dans ``results`` — même idiome défensif que les autres
+        # tests de listes de l'app (test_ntcon1/3/6).
+        rows = resp.data['results'] if 'results' in resp.data else resp.data
+        noms = [r['nom'] for r in rows]
         self.assertEqual(noms, ['Lot A'])
 
 

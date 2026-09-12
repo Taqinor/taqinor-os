@@ -1009,11 +1009,25 @@ class ChantierClotureBtpView(APIView):
 
     def post(self, request, chantier_id):
         chantier = self._chantier(request, chantier_id)
+        # Le montant arrive du CLIENT en JSON : une chaîne ('250000.00') reste
+        # une chaîne jusqu'au premier relire-depuis-la-base, et le recalcul du
+        # DGD (``selectors.calculer_dgd``) l'additionne à des ``Decimal`` sur
+        # l'instance EN MÉMOIRE — d'où un 500 (str + Decimal) avant ce cast.
+        # Un montant illisible est refusé en 400 qui NOMME le champ fautif.
+        from decimal import Decimal, InvalidOperation
+        try:
+            montant = Decimal(
+                str(request.data.get('montant_marche_initial_ht', 0) or 0))
+        except (InvalidOperation, ValueError):
+            return Response(
+                {'montant_marche_initial_ht': [
+                    'Montant illisible — attendu un nombre '
+                    '(ex. « 250000.00 »).']},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             resultat = services.cloturer_chantier_btp(
                 chantier, user=request.user,
-                montant_marche_initial_ht=request.data.get(
-                    'montant_marche_initial_ht', 0),
+                montant_marche_initial_ht=montant,
                 situations_incluses=request.data.get('situations_incluses'),
                 retenue_garantie_id=request.data.get('retenue_garantie_id'))
         except services.TransitionInvalide as exc:
