@@ -1160,6 +1160,11 @@ class QuestionnaireFournisseur(TenantModel):
                   'recalculée serveur — jamais saisie.')
     evaluateur = models.CharField(
         'Évaluateur', max_length=160, blank=True, default='')
+    # NTGRC23 — modèle d'origine (identifiant texte : un questionnaire envoyé
+    # ne doit pas changer de contenu parce qu'on a édité son modèle après coup,
+    # et il survit à la suppression de celui-ci).
+    modele_ref = models.CharField(
+        'Modèle d\'origine', max_length=64, blank=True, default='')
 
     class Meta:
         verbose_name = 'Questionnaire fournisseur'
@@ -1220,3 +1225,47 @@ class ReponseQuestionnaire(TenantModel):
 
     def __str__(self):
         return f'Q{self.ordre} — {self.question[:60]}'
+
+
+class ModeleQuestionnaire(TenantModel):
+    """NTGRC23 — trame réutilisable d'un questionnaire fournisseur.
+
+    Personne ne réécrit trente questions RGPD à chaque nouveau sous-traitant :
+    on instancie une trame. Les questions vivent dans un champ JSON — une
+    liste de ``{intitule, obligatoire, type_reponse}`` — parce qu'un modèle
+    est un DOCUMENT, pas un mini-schéma relationnel : on l'édite d'un bloc et
+    on ne requête jamais « toutes les questions de tous les modèles ».
+
+    L'instanciation COPIE les questions dans le questionnaire (NTGRC22) :
+    éditer le modèle après coup ne doit pas réécrire un questionnaire déjà
+    envoyé — le fournisseur aurait répondu à autre chose que ce qu'on lit.
+    """
+
+    TYPE_CHOICES = QuestionnaireFournisseur.TYPE_CHOICES
+
+    code = models.CharField(
+        'Code', max_length=80,
+        help_text='Clé stable du modèle (seed idempotent).')
+    nom = models.CharField('Nom', max_length=200)
+    type = models.CharField(
+        'Type', max_length=10, choices=TYPE_CHOICES,
+        default=QuestionnaireFournisseur.TYPE_RGPD)
+    questions = models.JSONField(
+        'Questions', default=list, blank=True,
+        help_text='Liste de {intitule, obligatoire, type_reponse} — ex. '
+                  '[{"intitule": "Où hébergez-vous les données ?", '
+                  '"obligatoire": true, "type_reponse": "texte"}].')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Modèle de questionnaire'
+        verbose_name_plural = 'Modèles de questionnaire'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='grc_modelequestionnaire_co_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_display()})'

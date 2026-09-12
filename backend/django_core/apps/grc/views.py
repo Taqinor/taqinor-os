@@ -13,18 +13,19 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
-    JournalDestruction, LegalHold, PlanTraitementRisque, PolitiqueInterne,
-    PolitiqueRetentionObjet, QuestionnaireFournisseur, ReponseQuestionnaire,
-    RevueRisque, RisqueEntreprise, TestControle, ViolationDonnees,
+    JournalDestruction, LegalHold, ModeleQuestionnaire, PlanTraitementRisque,
+    PolitiqueInterne, PolitiqueRetentionObjet, QuestionnaireFournisseur,
+    ReponseQuestionnaire, RevueRisque, RisqueEntreprise, TestControle,
+    ViolationDonnees,
 )
 from .serializers import (
     AttestationPolitiqueSerializer, ControleInterneSerializer,
     DeficienceControleSerializer, JournalDestructionSerializer,
-    LegalHoldSerializer, PlanTraitementRisqueSerializer,
-    PolitiqueInterneSerializer, PolitiqueRetentionObjetSerializer,
-    PolitiqueVersionSerializer, QuestionnaireFournisseurSerializer,
-    ReponseQuestionnaireSerializer, RevueRisqueSerializer,
-    RisqueEntrepriseSerializer, TestControleSerializer,
+    LegalHoldSerializer, ModeleQuestionnaireSerializer,
+    PlanTraitementRisqueSerializer, PolitiqueInterneSerializer,
+    PolitiqueRetentionObjetSerializer, PolitiqueVersionSerializer,
+    QuestionnaireFournisseurSerializer, ReponseQuestionnaireSerializer,
+    RevueRisqueSerializer, RisqueEntrepriseSerializer, TestControleSerializer,
     ViolationDonneesSerializer,
 )
 
@@ -595,3 +596,60 @@ class ReponseQuestionnaireViewSet(CompanyScopedModelViewSet):
         from .services import recalculer_questionnaire
 
         recalculer_questionnaire(questionnaire)
+
+
+class ModeleQuestionnaireViewSet(CompanyScopedModelViewSet):
+    """NTGRC23 — trames réutilisables de questionnaire fournisseur."""
+
+    queryset = ModeleQuestionnaire.objects.all()
+    serializer_class = ModeleQuestionnaireSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_m = (self.request.query_params.get('type') or '').strip()
+        if type_m:
+            qs = qs.filter(type=type_m)
+        actif = (self.request.query_params.get('actif') or '').strip()
+        if actif in ('1', 'true', 'True', 'oui'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False', 'non'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def instancier(self, request, pk=None):
+        """Crée un questionnaire prérempli depuis ce modèle.
+
+        Corps : ``fournisseur_ref`` (id du ``stock.Fournisseur``, facultatif),
+        ``date_echeance`` (ISO, facultative), ``evaluateur``.
+        """
+        from .services import instancier_questionnaire
+
+        modele = self.get_object()
+        donnees = request.data or {}
+        fournisseur_ref = str(donnees.get('fournisseur_ref') or '').strip()
+        if fournisseur_ref:
+            from apps.stock.selectors import get_fournisseur_by_id
+
+            try:
+                fournisseur_id = int(fournisseur_ref)
+            except (TypeError, ValueError):
+                return Response(
+                    {'fournisseur_ref': 'La référence fournisseur doit être '
+                                        'un identifiant numérique.'},
+                    status=400)
+            if get_fournisseur_by_id(
+                    request.user.company, fournisseur_id) is None:
+                return Response(
+                    {'fournisseur_ref': "Ce fournisseur n'existe pas pour "
+                                        'votre société.'}, status=400)
+
+        questionnaire = instancier_questionnaire(
+            modele, fournisseur_ref,
+            date_echeance=donnees.get('date_echeance') or None,
+            evaluateur=donnees.get('evaluateur') or '')
+        return Response(
+            QuestionnaireFournisseurSerializer(
+                questionnaire, context=self.get_serializer_context()).data,
+            status=201)

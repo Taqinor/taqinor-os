@@ -12,10 +12,11 @@ from .public_views import deposer_demande_droit, suivre_demande_droit
 from .views import (
     AttestationPolitiqueViewSet, ControleInterneViewSet,
     DeficienceControleViewSet, JournalDestructionViewSet, LegalHoldViewSet,
-    PlanTraitementRisqueViewSet, PolitiqueInterneViewSet,
-    PolitiqueRetentionObjetViewSet, QuestionnaireFournisseurViewSet,
-    ReponseQuestionnaireViewSet, RevueRisqueViewSet, RisqueEntrepriseViewSet,
-    TestControleViewSet, ViolationDonneesViewSet,
+    ModeleQuestionnaireViewSet, PlanTraitementRisqueViewSet,
+    PolitiqueInterneViewSet, PolitiqueRetentionObjetViewSet,
+    QuestionnaireFournisseurViewSet, ReponseQuestionnaireViewSet,
+    RevueRisqueViewSet, RisqueEntrepriseViewSet, TestControleViewSet,
+    ViolationDonneesViewSet,
 )
 
 router = DefaultRouter()
@@ -60,6 +61,9 @@ router.register(r'questionnaires-fournisseur', QuestionnaireFournisseurViewSet,
                 basename='grc-questionnaire-fournisseur')
 router.register(r'reponses-questionnaire', ReponseQuestionnaireViewSet,
                 basename='grc-reponse-questionnaire')
+# NTGRC23 — trames réutilisables + instanciation d'un questionnaire.
+router.register(r'modeles-questionnaire', ModeleQuestionnaireViewSet,
+                basename='grc-modele-questionnaire')
 
 urlpatterns = [
     # NTGRC2 — portail PUBLIC de dépôt/suivi d'une demande de droit

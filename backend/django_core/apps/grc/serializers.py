@@ -7,10 +7,10 @@ from rest_framework import serializers
 
 from .models import (
     AttestationPolitique, ControleInterne, DeficienceControle,
-    JournalDestruction, LegalHold, PlanTraitementRisque, PolitiqueInterne,
-    PolitiqueRetentionObjet, PolitiqueVersion, QuestionnaireFournisseur,
-    ReponseQuestionnaire, RevueRisque, RisqueEntreprise, TestControle,
-    ViolationDonnees,
+    JournalDestruction, LegalHold, ModeleQuestionnaire, PlanTraitementRisque,
+    PolitiqueInterne, PolitiqueRetentionObjet, PolitiqueVersion,
+    QuestionnaireFournisseur, ReponseQuestionnaire, RevueRisque,
+    RisqueEntreprise, TestControle, ViolationDonnees,
 )
 
 
@@ -619,11 +619,11 @@ class QuestionnaireFournisseurSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'fournisseur_ref', 'type', 'type_libelle', 'statut',
             'statut_libelle', 'date_envoi', 'date_echeance', 'score',
-            'evaluateur', 'nombre_questions', 'nombre_reponses',
+            'evaluateur', 'modele_ref', 'nombre_questions', 'nombre_reponses',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'statut', 'score', 'created_at', 'updated_at']
+            'id', 'statut', 'score', 'modele_ref', 'created_at', 'updated_at']
 
     def get_nombre_questions(self, obj):
         return obj.reponses.count()
@@ -665,3 +665,49 @@ class QuestionnaireFournisseurSerializer(serializers.ModelSerializer):
                 'date_echeance': "L'échéance ne peut pas précéder la date "
                                  "d'envoi."})
         return attrs
+
+
+class ModeleQuestionnaireSerializer(serializers.ModelSerializer):
+    """NTGRC23 — trame réutilisable d'un questionnaire fournisseur."""
+
+    type_libelle = serializers.CharField(
+        source='get_type_display', read_only=True)
+    nombre_questions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ModeleQuestionnaire
+        fields = [
+            'id', 'code', 'nom', 'type', 'type_libelle', 'questions',
+            'nombre_questions', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_nombre_questions(self, obj):
+        from .services import questions_du_modele
+
+        return len(questions_du_modele(obj))
+
+    def validate_code(self, valeur):
+        valeur = (valeur or '').strip()
+        if not valeur:
+            raise serializers.ValidationError(
+                'Le code du modèle est obligatoire (clé stable du seed).')
+        return valeur
+
+    def validate_questions(self, valeur):
+        """Une trame sans aucune question exploitable n'est pas une trame."""
+        if valeur in (None, ''):
+            return []
+        if not isinstance(valeur, list):
+            raise serializers.ValidationError(
+                'Les questions doivent être une LISTE de '
+                '{intitule, obligatoire, type_reponse}.')
+        for entree in valeur:
+            if isinstance(entree, str) and entree.strip():
+                continue
+            if isinstance(entree, dict) and str(
+                    entree.get('intitule') or '').strip():
+                continue
+            raise serializers.ValidationError(
+                'Chaque question doit porter un « intitule » non vide.')
+        return valeur

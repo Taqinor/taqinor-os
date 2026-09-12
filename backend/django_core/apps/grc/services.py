@@ -772,3 +772,68 @@ def recalculer_questionnaire(questionnaire):
     if champs:
         questionnaire.save(update_fields=champs + ['updated_at'])
     return questionnaire
+
+
+# ── NTGRC23 — modèles de questionnaire + instanciation ──────────────────────
+
+def questions_du_modele(modele):
+    """Normalise les questions d'un modèle en une liste EXPLOITABLE.
+
+    Accepte les deux écritures rencontrées en vrai : une liste de dicts
+    ``{intitule, obligatoire, type_reponse}`` ou une liste de chaînes (une
+    trame saisie vite fait). Une entrée sans intitulé est ignorée — instancier
+    une question vide ne produirait qu'une ligne que personne ne peut remplir.
+    """
+    brut = modele.questions if isinstance(modele.questions, list) else []
+    normalisees = []
+    for entree in brut:
+        if isinstance(entree, str):
+            intitule, obligatoire = entree.strip(), True
+        elif isinstance(entree, dict):
+            intitule = str(entree.get('intitule') or '').strip()
+            obligatoire = entree.get('obligatoire', True)
+            obligatoire = True if obligatoire is None else bool(obligatoire)
+        else:
+            continue
+        if not intitule:
+            continue
+        normalisees.append({'intitule': intitule,
+                            'obligatoire': obligatoire})
+    return normalisees
+
+
+def instancier_questionnaire(modele, fournisseur_ref='', *, date_envoi=None,
+                             date_echeance=None, evaluateur=''):
+    """Crée un ``QuestionnaireFournisseur`` prérempli depuis un modèle.
+
+    Les questions sont COPIÉES (pas référencées) : éditer le modèle plus tard
+    ne réécrit pas un questionnaire déjà envoyé. La société est celle du
+    modèle — jamais lue du corps d'une requête.
+    """
+    from django.db import transaction
+
+    from .models import QuestionnaireFournisseur, ReponseQuestionnaire
+
+    questions = questions_du_modele(modele)
+    with transaction.atomic():
+        questionnaire = QuestionnaireFournisseur.objects.create(
+            company=modele.company,
+            fournisseur_ref=str(fournisseur_ref or '').strip()[:64],
+            type=modele.type,
+            statut=QuestionnaireFournisseur.STATUT_ENVOYE,
+            date_envoi=date_envoi or timezone.now().date(),
+            date_echeance=date_echeance,
+            evaluateur=(evaluateur or '')[:160],
+            modele_ref=str(modele.pk),
+        )
+        ReponseQuestionnaire.objects.bulk_create([
+            ReponseQuestionnaire(
+                company=modele.company,
+                questionnaire=questionnaire,
+                ordre=rang,
+                question=question['intitule'],
+                obligatoire=question['obligatoire'],
+            )
+            for rang, question in enumerate(questions, start=1)
+        ])
+    return questionnaire
