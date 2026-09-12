@@ -133,6 +133,9 @@ _APP_URLS = [
     # hériter des DEUX préfixes comme toutes les autres apps (`api/django/` et
     # `api/v1/`) ; les chemins existants restent identiques.
     path('accessreview/', include('apps.accessreview.urls')),
+    # Groupe NTGRC — GRC & Conformité (risques, contrôles internes, RGPD/
+    # loi 09-08 outillé). Le préfixe correspond à module_manifest['key'].
+    path('grc/', include('apps.grc.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
     # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).

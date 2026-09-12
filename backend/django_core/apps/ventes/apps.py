@@ -73,3 +73,8 @@ class VentesConfig(AppConfig):
         produit_modifie.connect(
             on_produit_modifie,
             dispatch_uid='ventes_resync_devis_on_produit_modifie')
+        # NTGRC1 — fournisseur DSR (loi 09-08) des Ventes : `core.dsr` agrège
+        # l'export/effacement sans importer aucune app métier ; c'est CHAQUE
+        # app qui s'enregistre. Idempotent (le registre est un dict par nom).
+        from . import dsr_provider
+        dsr_provider.register()

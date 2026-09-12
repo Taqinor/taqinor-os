@@ -147,11 +147,20 @@ def erase_crm(company, subject_identifier):
     Renvoie le nombre d'enregistrements anonymisés. N'efface JAMAIS les lignes
     (intégrité devis/factures/activités) : vide les PII et pose le drapeau.
     """
+    # NTGRC1 — chaque anonymisation réelle laisse une ligne au journal de
+    # destruction (`grc.JournalDestruction`). Import FONCTION-LOCAL du SERVICE
+    # de l'app cible (jamais de ses modèles) ; best-effort côté grc : une
+    # journalisation impossible ne fait JAMAIS échouer l'effacement légal.
+    from apps.grc.services import empreinte_avant, journaliser_destruction
+
     leads, clients = _matcher(company, subject_identifier)
     now = timezone.now()
     count = 0
 
     for le in leads:
+        empreinte = empreinte_avant({
+            'nom': le.nom, 'prenom': le.prenom, 'email': le.email,
+            'telephone': le.telephone, 'whatsapp': le.whatsapp})
         le.nom = 'Anonymisé'
         le.prenom = None
         le.email = None
@@ -181,9 +190,16 @@ def erase_crm(company, subject_identifier):
         # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
         # n'est plus reconnaissable.
         _anonymiser_traces_visiteur(company, le)
+        journaliser_destruction(
+            company, type_objet='crm_lead', objet_ref=le.pk,
+            action='anonymise', demande_droit_ref=subject_identifier,
+            motif='Effacement DSR (loi 09-08) — lead', empreinte=empreinte)
         count += 1
 
     for cl in clients:
+        empreinte = empreinte_avant({
+            'nom': cl.nom, 'prenom': cl.prenom, 'email': cl.email,
+            'telephone': cl.telephone})
         cl.nom = 'Anonymisé'
         cl.prenom = None
         cl.email = None
@@ -206,6 +222,10 @@ def erase_crm(company, subject_identifier):
             'nom', 'prenom', 'email', 'telephone', 'adresse',
             'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
             'is_anonymized', 'anonymized_at'])
+        journaliser_destruction(
+            company, type_objet='crm_client', objet_ref=cl.pk,
+            action='anonymise', demande_droit_ref=subject_identifier,
+            motif='Effacement DSR (loi 09-08) — client', empreinte=empreinte)
         count += 1
 
     return count

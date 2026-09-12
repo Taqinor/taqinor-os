@@ -347,6 +347,12 @@ INSTALLED_APPS = [
     # saisonnière, politiques de stock ABC/stock de sécurité, cycle S&OP
     # mensuel) au-dessus de l'exécution `apps.stock` existante.
     'apps.scm',
+    # Groupe NTGRC — GRC & Privacy : registre des risques d'entreprise,
+    # contrôles internes, RGPD/loi 09-08 outillé (portail DSR public, journal
+    # de destruction, legal hold transverse, violations 72h). ÉTEND le socle
+    # `core` (RegistreTraitement/ConsentRecord/DataSubjectRequest + registres
+    # `core.dsr` et `core.retention`) — ne le duplique jamais.
+    'apps.grc',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
