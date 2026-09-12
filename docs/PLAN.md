@@ -1422,7 +1422,7 @@ Tracked here so they aren't lost:
 - 2026-09-12 CHT27 : cockpit « Pilotage chantiers » (cycle par étape depuis le chatter en clés canoniques, taux de reprise post-MES distinct du signal SAV, retards, tranches en attente) — écran monté au menu reporting, i18n fr/en/ar, eslint vert.
 - 2026-09-12 CHT25 : dossier 82-21 — transitions auditées datées + champ « prochaine action » intégré aux alertes du calendrier réglementaire (migration additive ventes/0116).
 - 2026-09-12 CHT26 : vue « File de travail » des dossiers réglementaires (7 statuts, tri par urgence, lien chantier) — eslint vert.
-- 2026-09-12 CHT13 : le P&L projet et le portefeuille affichent le VRAI CA facturé (batch, requêtes fixes prouvées par test) — contrat portefeuille recalé sur le fil réel ; reste : chemin chantier-seul au portefeuille (correcteur en cours).
+- 2026-09-12 CHT13 : le P&L projet et le portefeuille affichent le VRAI CA facturé (batch, requêtes fixes prouvées par test) — contrat portefeuille recalé sur le fil réel ; chemin chantier-seul unifié par correcteur (portefeuille = P&L par-projet, prouvé par test).
 - 2026-09-12 CHT14 : carte « Chantiers à facturer » sur le board Action requise (endpoint existant, zéro backend) — rôles alignés, 3 tests composant.
 - 2026-09-12 CHT2 : annuler un chantier clôturé exige motif + rôle Directeur (mêmes conditions que la réouverture AUD326) — hors clôture, comportement inchangé ; 4 tests.
 - 2026-09-12 CHT4 : verrou anti-course + atomicité tout-ou-rien sur l'approbation des demandes d'achat.
