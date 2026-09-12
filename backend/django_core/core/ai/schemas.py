@@ -107,10 +107,52 @@ CARTE_VISITE_SCHEMA = OCRSchema(
     ),
 )
 
+# NTAI15 — Bulletin de paie marocain. Sert à RAPPROCHER un bulletin scanné de
+# la paie calculée par l'ERP : rien n'est écrit depuis l'extraction, les écarts
+# sont montrés à un humain qui tranche.
+BULLETIN_PAIE_SCHEMA = OCRSchema(
+    name='bulletin_paie',
+    label='Bulletin de paie',
+    fields=(
+        OCRField('matricule', 'Matricule'),
+        OCRField('nom', 'Nom du salarié'),
+        OCRField('periode', 'Période (AAAA-MM)', required=True),
+        OCRField('salaire_brut', 'Salaire brut', required=True),
+        OCRField('salaire_net', 'Net à payer', required=True),
+        OCRField('cnss', 'Cotisation CNSS'),
+        OCRField('amo', 'Cotisation AMO'),
+        OCRField('ir', 'Impôt sur le revenu (IR)'),
+        OCRField('conges', 'Congés (solde ou pris)'),
+        OCRField('jours_travailles', 'Jours travaillés'),
+    ),
+)
+
+# NTAI16 — Facture fournisseur (achat). L'en-tête ET les lignes sont extraits :
+# ce sont les lignes qui permettent le rapprochement 3 volets (commande /
+# réception / facture). Aucune écriture comptable n'en découle directement.
+FACTURE_FOURNISSEUR_SCHEMA = OCRSchema(
+    name='facture_fournisseur',
+    label='Facture fournisseur',
+    fields=(
+        OCRField('fournisseur', 'Fournisseur', required=True),
+        OCRField('ice', 'ICE du fournisseur'),
+        OCRField('numero_facture', 'Numéro de facture', required=True),
+        OCRField('date_facture', 'Date de facture'),
+        OCRField('date_echeance', 'Date d\'échéance'),
+        OCRField('devise', 'Devise'),
+        # `lignes` : liste de {designation, reference, quantite, unite,
+        # prix_unitaire_ht, tva, total_ht}.
+        OCRField('lignes', 'Lignes', required=True),
+        OCRField('total_ht', 'Total HT'),
+        OCRField('total_tva', 'Total TVA'),
+        OCRField('total_ttc', 'Total TTC'),
+    ),
+)
+
 _SCHEMAS = {
     s.name: s for s in
     (CIN_SCHEMA, CONTRAT_SCHEMA, BON_LIVRAISON_SCHEMA, CV_SCHEMA,
-     CARTE_VISITE_SCHEMA)
+     CARTE_VISITE_SCHEMA, BULLETIN_PAIE_SCHEMA, FACTURE_FOURNISSEUR_SCHEMA)
 }
 
 

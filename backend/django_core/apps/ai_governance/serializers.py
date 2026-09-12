@@ -181,6 +181,18 @@ class FicheCibleSerializer(serializers.Serializer):
     object_id = serializers.CharField()
 
 
+class ExtraireRequeteSerializer(serializers.Serializer):
+    """NTAI15/NTAI16 — corps de ``POST /api/django/ai/extraire/`` (multipart).
+
+    Le fichier n'est jamais conservé : il est lu en mémoire, extrait, puis
+    oublié. Déclaré aussi pour que la vue soit une ``GenericAPIView`` à forme
+    résolvable (cliquet R2, `check_openapi_shapes`).
+    """
+
+    file = serializers.FileField()
+    schema = serializers.CharField(required=False, allow_blank=True)
+
+
 class CapacitesRequeteSerializer(serializers.Serializer):
     """NTAI6 — requête (vide) de ``GET ai-governance/capabilities/``.
 

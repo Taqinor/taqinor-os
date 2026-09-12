@@ -17,7 +17,8 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
-from .serializers import (CapacitesRequeteSerializer, FicheCibleSerializer,
+from .serializers import (CapacitesRequeteSerializer, ExtraireRequeteSerializer,
+                          FicheCibleSerializer,
                           RechercheGlobaleRequeteSerializer,
                           UsageRequeteSerializer)
 from .services import AiCopiloteUnavailable
@@ -374,6 +375,67 @@ class CrInterventionView(UsageContexteMixin, APIView):
             resultat = cr_intervention_depuis_audio(
                 company=request.user.company, file_bytes=content,
                 ticket_id=request.data.get('ticket_id'))
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class ExtraireView(UsageContexteMixin, GenericAPIView):
+    """NTAI15/NTAI16 — ``POST /api/django/ai/extraire/?schema=<nom>`` (multipart).
+
+    Champ ``file`` : la pièce à lire (PDF/JPEG/PNG/WebP, 12 Mo max). Renvoie
+    les champs du gabarit demandé (``bulletin_paie``, ``facture_fournisseur``,
+    ``cin``…) et, pour une facture fournisseur, un RAPPROCHEMENT prêt au
+    contrôle 3 volets.
+
+    N'ÉCRIT RIEN et NE CONSERVE PAS le fichier : la réponse porte
+    ``applique: false`` et ``fichier_conserve: false``. Sans clé OCR, 503
+    douce — aucun appel réseau.
+    """
+
+    feature_key = 'ai.extraire'
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_transcription'
+    serializer_class = ExtraireRequeteSerializer
+
+    def get_queryset(self):
+        """Journal d'usage de la SOCIÉTÉ de l'appelant : c'est la seule chose
+        que cette vue ÉCRIT (une ligne de mesure), et elle est scopée société —
+        le rendre explicite le rend vérifiable par la garde d'isolation."""
+        from .models import LlmUsageRecord
+
+        return LlmUsageRecord.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('AiExtraction', {
+        'schema': drf_serializers.CharField(),
+        'label': drf_serializers.CharField(),
+        'champs': drf_serializers.JSONField(),
+        'champs_manquants': drf_serializers.JSONField(),
+        'rapprochement': drf_serializers.JSONField(required=False),
+        'applique': drf_serializers.BooleanField(),
+        'fichier_conserve': drf_serializers.BooleanField(),
+        'source': drf_serializers.CharField(),
+    }))
+    def post(self, request):
+        from .extraction import extraire_document
+
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'detail': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            contenu = upload.read()
+        finally:
+            upload.close()
+
+        schema = (request.query_params.get('schema')
+                  or request.data.get('schema') or '')
+        try:
+            resultat = extraire_document(
+                company=request.user.company, file_bytes=contenu,
+                schema=schema)
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)

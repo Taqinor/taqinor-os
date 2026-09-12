@@ -3,9 +3,9 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views import (AssistantConfigView, CrInterventionView,
-                    DescriptionProduitView, ProchainesActionsView,
-                    RapportPeriodeView, RechercheGlobaleView, RedigerView,
-                    ResumeFicheView)
+                    DescriptionProduitView, ExtraireView,
+                    ProchainesActionsView, RapportPeriodeView,
+                    RechercheGlobaleView, RedigerView, ResumeFicheView)
 from .viewsets import DocumentAiJobViewSet
 
 # SimpleRouter (et non DefaultRouter) : le préfixe `/api/django/ai/` ne doit
@@ -29,6 +29,9 @@ urlpatterns = [
     # NTAI12 — mémo vocal → compte rendu d'intervention structuré (SAV).
     path('cr-intervention/', CrInterventionView.as_view(),
          name='ai-cr-intervention'),
+    # NTAI15/NTAI16 — extraction documentaire à la demande (bulletin de paie,
+    # facture fournisseur…). N'écrit rien, ne conserve pas le fichier.
+    path('extraire/', ExtraireView.as_view(), name='ai-extraire'),
     # NTAI13 — brouillon de description commerciale d'un produit catalogue.
     path('description-produit/', DescriptionProduitView.as_view(),
          name='ai-description-produit'),
