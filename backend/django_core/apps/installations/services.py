@@ -4428,78 +4428,101 @@ def verifier_separation_taches_achat(etape, approbateur):
 
 def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
                                      commentaire=''):
-    """Décide UNE étape en respectant l'ordre séquentiel."""
+    """Décide UNE étape en respectant l'ordre séquentiel.
+
+    CHT4 — verrou anti-course : l'étape est RELUE sous ``select_for_update()``
+    à l'intérieur de la transaction, AVANT la garde EN_ATTENTE, pour que deux
+    décisions concurrentes sur la même étape ne puissent jamais toutes les
+    deux la franchir (patron ``tests_aud320_comptage_verrou.py``).
+    """
+    from django.db import transaction
     from django.utils import timezone
     from .models import EtapeApprobationAchat
 
-    if etape.statut != EtapeApprobationAchat.Statut.EN_ATTENTE:
-        raise ApprobationAchatError('Cette étape a déjà été décidée.')
-    attendue = prochaine_etape_approbation_achat(etape.demande)
-    if attendue is not None and attendue.pk != etape.pk:
-        raise ApprobationAchatError(
-            "Les étapes se décident dans l'ordre : l'étape "
-            f'{attendue.niveau} est encore en attente.')
-    verifier_separation_taches_achat(etape, approbateur)
-    etape.statut = statut_cible
-    etape.approbateur = approbateur
-    etape.decision_le = timezone.now()
-    etape.commentaire = (commentaire or '').strip()
-    etape.save(update_fields=['statut', 'approbateur', 'decision_le',
-                              'commentaire', 'updated_at'])
+    with transaction.atomic():
+        etape = EtapeApprobationAchat.objects.select_for_update().get(
+            pk=etape.pk)
+        if etape.statut != EtapeApprobationAchat.Statut.EN_ATTENTE:
+            raise ApprobationAchatError('Cette étape a déjà été décidée.')
+        attendue = prochaine_etape_approbation_achat(etape.demande)
+        if attendue is not None and attendue.pk != etape.pk:
+            raise ApprobationAchatError(
+                "Les étapes se décident dans l'ordre : l'étape "
+                f'{attendue.niveau} est encore en attente.')
+        verifier_separation_taches_achat(etape, approbateur)
+        etape.statut = statut_cible
+        etape.approbateur = approbateur
+        etape.decision_le = timezone.now()
+        etape.commentaire = (commentaire or '').strip()
+        etape.save(update_fields=['statut', 'approbateur', 'decision_le',
+                                  'commentaire', 'updated_at'])
     return etape
 
 
 def approuver_etape_achat(etape, *, approbateur, commentaire=''):
-    """Approuve une étape ; bascule la demande ``approuvee`` à la dernière."""
+    """Approuve une étape ; bascule la demande ``approuvee`` à la dernière.
+
+    CHT4 — décision de l'étape + transition de la demande sont ATOMIQUES
+    (tout-ou-rien) : un échec de la transition annule aussi la décision.
+    """
+    from django.db import transaction
     from django.utils import timezone
 
     from core.documents import TransitionRefusee
 
     from .models import DemandeAchat, EtapeApprobationAchat
 
-    etape = _decider_etape_approbation_achat(
-        etape, statut_cible=EtapeApprobationAchat.Statut.APPROUVE,
-        approbateur=approbateur, commentaire=commentaire)
-    demande = etape.demande
-    if not workflow_approbation_achat_actif(demande):
-        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
-        try:
-            appliquer_statut_document(
-                demande, DemandeAchat.Statut.APPROUVEE, user=approbateur,
-                champs={'approuvee_par': approbateur,
-                        'date_decision': timezone.now(),
-                        'motif_refus': None})
-        except TransitionRefusee as exc:
-            raise ApprobationAchatError(str(exc))
+    with transaction.atomic():
+        etape = _decider_etape_approbation_achat(
+            etape, statut_cible=EtapeApprobationAchat.Statut.APPROUVE,
+            approbateur=approbateur, commentaire=commentaire)
+        demande = etape.demande
+        if not workflow_approbation_achat_actif(demande):
+            # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+            try:
+                appliquer_statut_document(
+                    demande, DemandeAchat.Statut.APPROUVEE, user=approbateur,
+                    champs={'approuvee_par': approbateur,
+                            'date_decision': timezone.now(),
+                            'motif_refus': None})
+            except TransitionRefusee as exc:
+                raise ApprobationAchatError(str(exc))
     return etape
 
 
 def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
     """Rejette une étape : la demande bascule ``refusee`` immédiatement et les
-    étapes restantes sont annulées (rejetées sans approbateur)."""
+    étapes restantes sont annulées (rejetées sans approbateur).
+
+    CHT4 — tout-ou-rien : si la libération du budget échoue, la décision de
+    l'étape et la transition de la demande sont annulées (l'étape reste
+    EN_ATTENTE).
+    """
+    from django.db import transaction
     from django.utils import timezone
 
     from core.documents import TransitionRefusee
 
     from .models import DemandeAchat, EtapeApprobationAchat
 
-    etape = _decider_etape_approbation_achat(
-        etape, statut_cible=EtapeApprobationAchat.Statut.REJETE,
-        approbateur=approbateur, commentaire=commentaire)
-    demande = etape.demande
-    demande.etapes_approbation.filter(
-        statut=EtapeApprobationAchat.Statut.EN_ATTENTE
-    ).update(statut=EtapeApprobationAchat.Statut.REJETE,
-             decision_le=timezone.now())
-    # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
-    try:
-        appliquer_statut_document(
-            demande, DemandeAchat.Statut.REFUSEE, user=approbateur,
-            champs={'approuvee_par': approbateur,
-                    'date_decision': timezone.now(),
-                    'motif_refus': (commentaire or '').strip() or None})
-    except TransitionRefusee as exc:
-        raise ApprobationAchatError(str(exc))
-    # NTP2P4 — une demande refusée rend son enveloppe budgétaire.
-    liberer_budget_demande_achat(demande)
+    with transaction.atomic():
+        etape = _decider_etape_approbation_achat(
+            etape, statut_cible=EtapeApprobationAchat.Statut.REJETE,
+            approbateur=approbateur, commentaire=commentaire)
+        demande = etape.demande
+        demande.etapes_approbation.filter(
+            statut=EtapeApprobationAchat.Statut.EN_ATTENTE
+        ).update(statut=EtapeApprobationAchat.Statut.REJETE,
+                 decision_le=timezone.now())
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+        try:
+            appliquer_statut_document(
+                demande, DemandeAchat.Statut.REFUSEE, user=approbateur,
+                champs={'approuvee_par': approbateur,
+                        'date_decision': timezone.now(),
+                        'motif_refus': (commentaire or '').strip() or None})
+        except TransitionRefusee as exc:
+            raise ApprobationAchatError(str(exc))
+        # NTP2P4 — une demande refusée rend son enveloppe budgétaire.
+        liberer_budget_demande_achat(demande)
     return etape
