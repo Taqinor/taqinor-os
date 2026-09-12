@@ -1172,6 +1172,23 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
             DocumentContrepartieSerializer(
                 document, context={'request': request}).data)
 
+    @action(detail=True, methods=['get'],
+            url_path=r'contreparties/(?P<cid>[^/.]+)/comparer')
+    def comparer_contrepartie(self, request, pk=None, cid=None):
+        """Diff dernier rendu interne ↔ version contrepartie (NTDOC2).
+
+        Lecture seule. Un format binaire non comparable renvoie 200 avec
+        ``comparable=false`` et un message FRANÇAIS explicite — jamais une
+        erreur serveur. 404 si le dépôt n'appartient pas à ce contrat.
+        """
+        contrat = self.get_object()
+        document = contrat.documents_contrepartie.filter(id=cid).first()
+        if document is None:
+            return Response(
+                {'detail': 'Dépôt contrepartie introuvable pour ce contrat.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(services.comparer_contrepartie(contrat, document))
+
     @action(detail=True, methods=['post'], url_path='creer-lien-depot')
     def creer_lien_depot(self, request, pk=None):
         """Crée un lien tokenisé de dépôt pour la contrepartie externe (NTDOC1).

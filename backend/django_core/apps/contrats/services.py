@@ -5516,3 +5516,220 @@ def creer_lien_depot_contrepartie(contrat, *, destinataire_nom='',
         expires_at=expires_at,
         created_by=created_by,
     )
+
+
+# ---------------------------------------------------------------------------
+# NTDOC2 — Diff entre la version contrepartie et la dernière VersionContrat
+# ---------------------------------------------------------------------------
+#
+# Même patron que XGED17 (``ged.selectors.comparer_versions``) : diff unifié
+# ligne à ligne avec la stdlib ``difflib``, et DÉGRADATION EXPLICITE (message
+# lisible, jamais une exception) quand un des deux côtés n'a pas de texte
+# exploitable. XGED17 compare deux VERSIONS INTERNES du même document ; ici on
+# compare un fichier EXTERNE déposé par la contrepartie au dernier rendu figé.
+
+#: Message unique de dégradation (jamais un plantage sur un format binaire).
+MESSAGE_COMPARAISON_INDISPONIBLE = 'Comparaison indisponible'
+
+
+def _texte_depuis_pdf(contenu):
+    """Texte d'un PDF natif via PyMuPDF (import PARESSEUX). '' si illisible."""
+    try:
+        import fitz  # PyMuPDF — déjà en production, jamais une seconde plomberie
+    except Exception:  # pragma: no cover - PyMuPDF absent
+        return ''
+    try:
+        with fitz.open(stream=contenu, filetype='pdf') as doc:
+            return '\n'.join(page.get_text() for page in doc).strip()
+    except Exception:  # pragma: no cover - PDF corrompu
+        return ''
+
+
+def _texte_depuis_docx(contenu):
+    """Texte d'un .docx — ``python-docx`` si présent, sinon stdlib (zip+XML).
+
+    ``python-docx`` n'est PAS une dépendance déclarée du dépôt : l'import est
+    paresseux et l'absence de la lib ne dégrade PAS la fonctionnalité (le
+    repli lit le même ``word/document.xml`` avec la seule bibliothèque
+    standard — aucune dépendance nouvelle n'est introduite ici).
+    """
+    import io
+
+    try:
+        import docx  # python-docx (optionnel)
+    except Exception:
+        docx = None
+
+    if docx is not None:  # pragma: no cover - dépend d'une lib optionnelle
+        try:
+            document = docx.Document(io.BytesIO(contenu))
+            return '\n'.join(p.text for p in document.paragraphs).strip()
+        except Exception:
+            return ''
+
+    # Repli stdlib : un .docx est un ZIP contenant word/document.xml.
+    import re as _re
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(contenu)) as zf:
+            xml = zf.read('word/document.xml').decode('utf-8', 'replace')
+    except Exception:
+        return ''
+    # Un saut de paragraphe/ligne devient un vrai saut de ligne, puis on
+    # retire toutes les balises restantes.
+    xml = _re.sub(r'</w:p>', '\n', xml)
+    xml = _re.sub(r'<w:br[^>]*/>', '\n', xml)
+    texte = _re.sub(r'<[^>]+>', '', xml)
+    return _html.unescape(texte).strip()
+
+
+def extraire_texte_contrepartie(document):
+    """NTDOC2 — Texte du fichier déposé par la contrepartie.
+
+    Renvoie ``(texte, raison)`` : ``raison`` vaut ``''`` quand le texte est
+    exploitable, sinon une phrase FRANÇAISE expliquant pourquoi la comparaison
+    est indisponible (format binaire non supporté, fichier introuvable, PDF
+    scanné sans OCR câblé…). Ne lève JAMAIS.
+
+    Chemin OCR : pour un PDF sans couche texte (scan), on repasse par le
+    service OCR de ``ged`` (frontière cross-app respectée : appel de
+    ``apps.ged.services``, jamais un import de ses modèles) — no-op sans clé,
+    on dégrade alors proprement.
+    """
+    from apps.records.storage import fetch_attachment
+
+    extension = _extension_contrepartie(document.nom_fichier)
+    contenu, erreur = fetch_attachment(document.fichier_key)
+    if contenu is None:
+        return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : '
+                    f'{erreur or "fichier introuvable dans le stockage"}.')
+
+    if extension == '.pdf':
+        texte = _texte_depuis_pdf(contenu)
+        if not texte:
+            texte = _texte_ocr_ged(contenu, mime='application/pdf')
+        if not texte:
+            return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : ce PDF ne '
+                        f'contient aucune couche texte (document scanné) et '
+                        f'l\'OCR n\'est pas disponible.')
+        return texte, ''
+    if extension == '.docx':
+        texte = _texte_depuis_docx(contenu)
+        if not texte:
+            return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : le fichier '
+                        f'.docx n\'a pas pu être lu.')
+        return texte, ''
+    if extension in ('.txt', '.rtf'):
+        try:
+            return contenu.decode('utf-8', 'replace').strip(), ''
+        except Exception:  # pragma: no cover - défensif
+            return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : fichier '
+                        f'illisible.')
+    return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : le format '
+                f'« {extension or "inconnu"} » n\'est pas comparable '
+                f'(formats comparables : .pdf, .docx, .txt).')
+
+
+def _texte_ocr_ged(contenu, *, mime=''):
+    """Texte OCR via le service de ``ged`` (no-op sans clé). '' si indisponible.
+
+    Frontière cross-app : on appelle le SERVICE de l'app cible, jamais ses
+    modèles. Import fonction-local (évite tout cycle) et best-effort.
+    """
+    try:
+        from apps.ged.services import ocr_enabled, ocr_extract_text
+    except Exception:  # pragma: no cover - app ged absente
+        return ''
+    try:
+        if not ocr_enabled():
+            return ''
+        return (ocr_extract_text(contenu, mime=mime) or '').strip()
+    except Exception:  # pragma: no cover - provider externe indisponible
+        return ''
+
+
+def _texte_version_interne(version):
+    """Texte du dernier rendu INTERNE figé. Renvoie ``(texte, raison)``."""
+    if version is None:
+        return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : aucune version '
+                    f'figée du contrat (créez-en une via « creer-version »).')
+    if version.contenu:
+        return version.contenu, ''
+    if version.fichier_key:
+        from apps.records.storage import fetch_attachment
+
+        contenu, _erreur = fetch_attachment(version.fichier_key)
+        if contenu:
+            texte = _texte_depuis_pdf(contenu)
+            if texte:
+                return texte, ''
+    return '', (f'{MESSAGE_COMPARAISON_INDISPONIBLE} : la version '
+                f'{version.version} du contrat ne porte aucun texte '
+                f'exploitable.')
+
+
+def comparer_contrepartie(contrat, document_contrepartie):
+    """NTDOC2 — Diff unifié dernier rendu interne ↔ version contrepartie.
+
+    Renvoie un dict :
+
+    - ``comparable`` : ``False`` (avec ``message`` explicite) quand un des
+      deux côtés n'a pas de texte exploitable — JAMAIS une exception ;
+    - ``diff_texte`` : les lignes du diff unifié (``difflib.unified_diff``,
+      même patron que XGED17) ;
+    - ``lignes_ajoutees`` / ``lignes_supprimees`` : compteurs de lignes ``+``
+      et ``-`` (hors en-têtes ``+++``/``---``).
+
+    Lecture seule : ne modifie NI le contrat, NI la ``VersionContrat``, NI le
+    dépôt contrepartie.
+    """
+    import difflib
+
+    from . import selectors as _selectors
+
+    version = _selectors.versions_contrat(contrat).first()
+    texte_interne, raison_interne = _texte_version_interne(version)
+    texte_externe, raison_externe = extraire_texte_contrepartie(
+        document_contrepartie)
+
+    entete = {
+        'contrepartie': {
+            'id': document_contrepartie.id,
+            'nom_fichier': document_contrepartie.nom_fichier,
+            'date_depot': document_contrepartie.date_depot,
+        },
+        'version_interne': (
+            {'id': version.id, 'version': version.version,
+             'motif': version.motif} if version is not None else None),
+    }
+
+    if raison_interne or raison_externe:
+        return {
+            **entete,
+            'comparable': False,
+            'message': raison_interne or raison_externe,
+            'diff_texte': [],
+            'lignes_ajoutees': 0,
+            'lignes_supprimees': 0,
+        }
+
+    lignes = list(difflib.unified_diff(
+        texte_interne.splitlines(), texte_externe.splitlines(),
+        fromfile=f'version {version.version} (interne)',
+        tofile=f'contrepartie — {document_contrepartie.nom_fichier}',
+        lineterm=''))
+    ajoutees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('+') and not ligne.startswith('+++'))
+    supprimees = sum(
+        1 for ligne in lignes
+        if ligne.startswith('-') and not ligne.startswith('---'))
+    return {
+        **entete,
+        'comparable': True,
+        'message': '',
+        'diff_texte': lignes,
+        'lignes_ajoutees': ajoutees,
+        'lignes_supprimees': supprimees,
+    }
