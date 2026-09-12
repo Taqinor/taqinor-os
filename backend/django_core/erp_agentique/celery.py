@@ -525,6 +525,12 @@ app.conf.beat_schedule = {
         'task': 'stock.notifier_documents_fournisseur_expirants',
         'schedule': crontab(hour=6, minute=37),
     },
+    # NTP2P34 — recalcule quotidiennement le score de risque (NTP2P8) de
+    # tous les fournisseurs actifs ; calcul pur, aucun cache à invalider.
+    'stock-recompute-scores-risque': {
+        'task': 'stock.recompute_scores_risque',
+        'schedule': crontab(hour=6, minute=45),
+    },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
         'task': 'core.dump_database',

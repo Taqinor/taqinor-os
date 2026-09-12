@@ -295,6 +295,47 @@ def notifier_bcf_en_retard_buyer_task():
     return result
 
 
+@shared_task(name='stock.recompute_scores_risque')
+def recompute_scores_risque_task():
+    """NTP2P34 — recalcule quotidiennement le score de risque (NTP2P8,
+    ``selectors.score_risque_fournisseur``, calcul PUR sans appel externe)
+    de tous les fournisseurs ACTIFS de chaque société active.
+
+    ``score_risque_fournisseur`` ne met RIEN en cache (calcul à la volée à
+    chaque appel de l'endpoint `fournisseurs/{id}/score-risque/`) — « invalide
+    le cache éventuel du badge » est donc un no-op ici par construction (rien
+    à invalider). Sans effet si le sélecteur NTP2P8 n'existe pas encore
+    (garde d'existence, no-op silencieux). Best-effort : un fournisseur ou
+    une société en échec n'arrête jamais les suivants. Renvoie
+    ``{company_id: nb_fournisseurs_recalcules}`` pour observabilité/tests."""
+    from authentication.selectors import active_companies
+    from . import selectors as stock_selectors
+    from .models import Fournisseur
+
+    if not hasattr(stock_selectors, 'score_risque_fournisseur'):
+        return {}
+
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        count = 0
+        fournisseur_ids = list(
+            Fournisseur.objects.filter(
+                company=company, is_archived=False
+            ).values_list('id', flat=True))
+        for fournisseur_id in fournisseur_ids:
+            try:
+                stock_selectors.score_risque_fournisseur(
+                    company, fournisseur_id)
+                count += 1
+            except Exception:  # noqa: BLE001 — fournisseur suivant
+                logger.warning(
+                    'stock.recompute_scores_risque: échec fournisseur %s '
+                    '(société %s)', fournisseur_id, company.id,
+                    exc_info=True)
+        result[company.id] = count
+    return result
+
+
 @shared_task(name='stock.alerter_surcapacite_zones')
 def alerter_surcapacite_zones_task(seuil_pct=None):
     """NTWMS42 — alerte PASSIVE de sur-stockage par zone.
