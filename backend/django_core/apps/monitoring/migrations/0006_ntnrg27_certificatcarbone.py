@@ -43,10 +43,12 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='certificatcarbone',
             constraint=models.CheckConstraint(
-                check=(
-                    models.Q(('installation_id__isnull', False), ('client_id__isnull', True))
-                    | models.Q(('installation_id__isnull', True), ('client_id__isnull', False))
-                ),
+                condition=models.Q(
+                    models.Q(('client_id__isnull', True),
+                             ('installation_id__isnull', False)),
+                    models.Q(('client_id__isnull', False),
+                             ('installation_id__isnull', True)),
+                    _connector='OR'),
                 name='monitoring_certifco2_xor_cible',
             ),
         ),

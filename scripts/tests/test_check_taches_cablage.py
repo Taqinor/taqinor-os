@@ -458,7 +458,10 @@ class DepotReelTests(unittest.TestCase):
         # 1200 -> 1000 : le drain WIR du 2026-08-26 a coché 121 tâches (corpus
         # 1182 aujourd'hui). Le plancher garde son rôle — une extraction cassée
         # rendrait ~0 — sans punir le fait d'avoir livré.
-        self.assertGreater(stats["taches"], 1000)
+        # 1000 -> 800 : la vague 1 du drain NT du 2026-09-12 a coché ~110
+        # tâches (corpus 966 aujourd'hui) — même logique : une extraction
+        # cassée rendrait ~0.
+        self.assertGreater(stats["taches"], 800)
         # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
         # corpus de candidates rétrécit légitimement (191 aujourd'hui).
         # 150 -> 100 : le lot du 13/08/2026 en a coché 52 de plus (142
