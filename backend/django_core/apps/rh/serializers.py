@@ -2752,6 +2752,8 @@ class ReglageRHSerializer(serializers.ModelSerializer):
         model = ReglageRH
         fields = [
             'id', 'geofence_metres', 'retention_candidatures_mois',
+            # NTHCM13 — seuil du croisement criticité × flight-risk.
+            'seuil_risque_succession',
             'date_modification']
         read_only_fields = ['date_modification']
 

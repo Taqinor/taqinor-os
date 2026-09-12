@@ -4841,6 +4841,11 @@ class ReglageRH(models.Model):
     pointage_auto_depart_apres_h = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Clôture auto pointage après (heures)')
+    # NTHCM13 — seuil de risque d'attrition (score XRH31, 0-100) au-delà
+    # duquel le titulaire d'un poste-clé SANS successeur prêt remonte en
+    # « risque de vacance critique ». Défaut 60.
+    seuil_risque_succession = models.PositiveSmallIntegerField(
+        default=60, verbose_name='Seuil de risque succession (0-100)')
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 

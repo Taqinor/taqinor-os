@@ -6117,6 +6117,21 @@ class CockpitRhViewSet(viewsets.ViewSet):
             selectors.top_risque_attrition(
                 request.user.company, limite=limite))
 
+    @action(detail=False, methods=['get'], url_path='postes-a-risque')
+    def postes_a_risque(self, request):
+        """NTHCM13 — section « Postes à risque » du cockpit RH (FG200).
+
+        Même calcul que ``postes-cles/risque-succession/``, exposé ici pour
+        que le cockpit n'ait qu'un seul interlocuteur ; restreint aux postes
+        réellement en ``risque_vacance`` (la liste complète reste consultable
+        sur l'endpoint dédié). Servi à part du ``list()`` du cockpit pour ne
+        pas y ajouter un scoring par employé à chaque chargement (même
+        raison que ``top-risque-attrition``).
+        """
+        lignes = selectors.risque_succession(request.user.company)
+        return Response([ligne for ligne in lignes
+                         if ligne['risque_vacance']])
+
 
 # ── NTHCM5 — cycles de révision salariale (enveloppe par manager) ───────────
 
@@ -6380,6 +6395,18 @@ class PosteCleViewSet(_RhBaseViewSet):
     def couverture_globale(self, request):
         return Response(
             selectors.couverture_postes_cles(request.user.company))
+
+    @action(detail=False, methods=['get'], url_path='risque-succession')
+    def risque_succession(self, request):
+        """NTHCM13 — criticité du poste × flight-risk du titulaire.
+
+        ``?seuil=`` permet de simuler un autre seuil sans toucher aux
+        Paramètres RH (le défaut vient de
+        ``ReglageRH.seuil_risque_succession``, 60).
+        """
+        return Response(selectors.risque_succession(
+            request.user.company,
+            seuil=request.query_params.get('seuil')))
 
 
 class PlanSuccessionViewSet(_RhBaseViewSet):

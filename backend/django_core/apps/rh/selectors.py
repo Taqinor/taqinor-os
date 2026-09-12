@@ -3154,3 +3154,94 @@ def couverture_postes_cles(company):
     lignes.sort(key=lambda ligne: (not ligne['orphelin'],
                                    ligne['poste_intitule']))
     return lignes
+
+
+# ── NTHCM13 — croisement criticité du poste × flight-risk du titulaire ──────
+
+#: Seuil de repli quand la société n'a pas encore de ``ReglageRH``.
+SEUIL_RISQUE_SUCCESSION_DEFAUT = 60
+
+#: Ordre de gravité des criticités — sert au TRI, jamais à un filtre.
+_ORDRE_CRITICITE = {'critique': 0, 'haute': 1, 'moyenne': 2, 'faible': 3}
+
+
+def seuil_risque_succession(company):
+    """NTHCM13 — seuil configuré (Paramètres RH) ou 60 par défaut."""
+    from .models import ReglageRH
+
+    reglage = ReglageRH.objects.filter(company=company).first()
+    if reglage is None or reglage.seuil_risque_succession is None:
+        return SEUIL_RISQUE_SUCCESSION_DEFAUT
+    return reglage.seuil_risque_succession
+
+
+def risque_succession(company, *, seuil=None, today=None):
+    """NTHCM13 — postes-clés à RISQUE DE VACANCE, les plus exposés en tête.
+
+    Croise deux lectures existantes SANS rien recalculer ni modifier : la
+    criticité du poste (``PosteCle``, NTHCM12) et le score d'attrition PUR du
+    titulaire (``risque_attrition_employe``, XRH31 — le scorer n'est pas
+    touché). Un poste remonte en ``risque_vacance=True`` quand, ET
+    SEULEMENT quand, les DEUX conditions sont réunies :
+
+    * au moins un titulaire actuel (``DossierEmploye`` ACTIF sur ce poste) a
+      un score d'attrition ``>= seuil`` (Paramètres RH,
+      :func:`seuil_risque_succession`, défaut 60) ;
+    * aucun successeur ``pret_immediat`` n'est identifié.
+
+    Un poste couvert par un successeur prêt n'apparaît donc JAMAIS en risque,
+    même si son titulaire est très exposé ; un poste sans titulaire non plus
+    (il n'y a personne à perdre — son absence de couverture reste signalée
+    par :func:`couverture_postes_cles`). Lecture seule, scopée société.
+    """
+    from .models import PlanSuccession, PosteCle
+
+    seuil_effectif = (int(seuil) if seuil not in (None, '')
+                      else seuil_risque_succession(company))
+
+    lignes = []
+    postes_cles = (
+        PosteCle.objects
+        .filter(company=company)
+        .select_related('poste')
+        .order_by('poste__intitule'))
+    for poste_cle in postes_cles:
+        titulaires = DossierEmploye.objects.filter(
+            company=company, poste_ref_id=poste_cle.poste_id,
+            statut=DossierEmploye.Statut.ACTIF)
+        titulaires_a_risque = []
+        score_max = 0.0
+        for titulaire in titulaires:
+            resultat = risque_attrition_employe(titulaire, today=today)
+            if resultat['score'] > score_max:
+                score_max = resultat['score']
+            if resultat['score'] >= seuil_effectif:
+                titulaires_a_risque.append({
+                    'employe_id': titulaire.id,
+                    'employe_nom': f'{titulaire.nom} {titulaire.prenom}',
+                    'score': resultat['score'],
+                    'band': resultat['band'],
+                })
+
+        prets = PlanSuccession.objects.filter(
+            company=company, poste_cle=poste_cle,
+            readiness=PlanSuccession.Readiness.PRET_IMMEDIAT).count()
+        lignes.append({
+            'poste_cle_id': poste_cle.id,
+            'poste_id': poste_cle.poste_id,
+            'poste_intitule': poste_cle.poste.intitule,
+            'criticite': poste_cle.criticite,
+            'seuil': seuil_effectif,
+            'score_max_titulaires': score_max,
+            'titulaires_a_risque': titulaires_a_risque,
+            'successeurs_prets_immediat': prets,
+            'risque_vacance': bool(titulaires_a_risque) and prets == 0,
+        })
+
+    lignes.sort(key=lambda ligne: (
+        not ligne['risque_vacance'],
+        _ORDRE_CRITICITE.get(ligne['criticite'], 9),
+        -ligne['score_max_titulaires'],
+        ligne['poste_intitule'],
+    ))
+    return lignes
