@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                     verbose_name='Dernière consultation')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='datarooms_accessalledonnees_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('created_by', models.ForeignKey(
                     blank=True, null=True,

@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
                     blank=True, null=True, verbose_name='Expire le')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='datarooms_sallededonnees_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('created_by', models.ForeignKey(
                     blank=True, null=True,
@@ -74,7 +74,7 @@ class Migration(migrations.Migration):
                     default=True, verbose_name='Visible')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='datarooms_sallededonneesdocument_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('document', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
