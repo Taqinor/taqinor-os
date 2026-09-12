@@ -38,6 +38,7 @@ from .views import (
     ConsentRecordViewSet,
     DashboardViewSet,
     DataSubjectRequestViewSet,
+    MatriceApprobationViewSet,
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
     OutboxEventViewSet,
@@ -71,6 +72,11 @@ router.register(r'workflow-definitions', WorkflowDefinitionViewSet,
                 basename='workflow-definition')
 router.register(r'workflow-step-definitions', WorkflowStepDefinitionViewSet,
                 basename='workflow-step-definition')
+# NTWFL1 — matrice d'approbation d'entreprise unifiée (objet × montant ×
+# département → chaîne de paliers), référentiel additif consulté par FG25 /
+# apps.contrats avant leur logique historique.
+router.register(r'matrices-approbation', MatriceApprobationViewSet,
+                basename='matrice-approbation')
 # FG381 — dashboards sans-code (CRUD multi-tenant, scoping perso/partagé).
 router.register(r'dashboards', DashboardViewSet, basename='dashboard')
 # FG370 — paiement carte en ligne d'une facture (CMI / Payzone, gated).

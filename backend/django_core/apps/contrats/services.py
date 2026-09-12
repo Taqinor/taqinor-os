@@ -420,15 +420,39 @@ def workflow_actif(contrat):
     ).exists()
 
 
+def _niveau_approbation_depuis_role(role_requis):
+    """NTWFL1 — associe le ``role_requis`` libre d'un palier de matrice à un
+    ``RegleApprobation.NiveauApprobation`` connu. Tolérant : une valeur non
+    reconnue retombe sur RESPONSABLE (le palier le moins permissif par
+    défaut), jamais d'exception."""
+    from .models import RegleApprobation
+    valeur = str(role_requis or '').strip().lower()
+    if 'direction' in valeur:
+        return RegleApprobation.NiveauApprobation.DIRECTION
+    if 'admin' in valeur:
+        return RegleApprobation.NiveauApprobation.ADMINISTRATEUR
+    return RegleApprobation.NiveauApprobation.RESPONSABLE
+
+
 @transaction.atomic
-def lancer_workflow_approbation(contrat, *, regle=None):
+def lancer_workflow_approbation(contrat, *, regle=None, departement=None):
     """Instancie les étapes d'approbation d'un contrat depuis la règle CONTRAT13.
+
+    NTWFL1 — VUE DE COMPATIBILITÉ : sauf ``regle`` explicite, résout D'ABORD
+    ``core.MatriceApprobation`` (``type_objet='contract'``, via
+    ``selectors.resoudre_matrice_contrat``) ; si une ligne couvre le contrat,
+    UNE ``EtapeApprobation`` est créée PAR PALIER de sa ``chaine_paliers``
+    (``regle=None`` — la matrice n'est pas une ``RegleApprobation``, seul
+    ``niveau_approbation`` est dérivé du ``role_requis`` du palier). SANS
+    ligne de matrice, retombe intégralement sur le chemin HISTORIQUE
+    ci-dessous (``RegleApprobation``/``resoudre_regle_approbation``) —
+    comportement inchangé pour toute société sans matrice configurée.
 
     - Résout la ``RegleApprobation`` la plus spécifique couvrant le contrat
       (montant + type) via ``selectors.resoudre_regle_approbation`` — sauf si une
       ``regle`` est passée explicitement. Aucun seuil n'est codé en dur.
-    - Si aucune règle ne couvre le contrat, renvoie une liste vide (rien à
-      approuver — l'appelant décide alors d'un comportement par défaut).
+    - Si ni matrice ni règle ne couvrent le contrat, renvoie une liste vide
+      (rien à approuver — l'appelant décide alors d'un comportement par défaut).
     - Crée une ``EtapeApprobation`` par approbation requise
       (``regle.nombre_approbateurs``, au moins 1), numérotées ``niveau`` 1..N,
       toutes ``en_attente``, dans la société du contrat.
@@ -438,7 +462,7 @@ def lancer_workflow_approbation(contrat, *, regle=None):
     Ne touche JAMAIS au ``Contrat.statut`` : seules les étapes locales sont
     créées (préservation des statuts).
 
-    Renvoie la liste ordonnée des étapes créées (vide si aucune règle).
+    Renvoie la liste ordonnée des étapes créées (vide si aucune règle/matrice).
     """
     # Import paresseux pour rester cohérent avec le reste du module (pas de
     # cycle au chargement) et n'importer que ce qui est utilisé ici.
@@ -450,6 +474,30 @@ def lancer_workflow_approbation(contrat, *, regle=None):
             "Un workflow d'approbation est déjà en cours pour ce contrat.")
 
     if regle is None:
+        matrice = selectors.resoudre_matrice_contrat(
+            contrat.company, contrat.montant, contrat.type_contrat or None,
+            departement=departement)
+        if matrice is not None:
+            paliers = matrice.chaine_paliers or []
+            if not paliers:
+                # Matrice active sans palier déclaré : rien à créer plutôt
+                # qu'une étape mal formée.
+                return []
+            etapes = [
+                EtapeApprobation(
+                    company=contrat.company,
+                    contrat=contrat,
+                    regle=None,
+                    niveau=rang,
+                    niveau_approbation=_niveau_approbation_depuis_role(
+                        (palier or {}).get('role_requis')),
+                    statut=EtapeApprobation.Statut.EN_ATTENTE,
+                )
+                for rang, palier in enumerate(paliers, start=1)
+            ]
+            EtapeApprobation.objects.bulk_create(etapes)
+            return list(contrat.etapes_approbation.order_by('niveau', 'id'))
+
         regle = selectors.resoudre_regle_approbation(
             contrat.company, contrat.montant, contrat.type_contrat or None)
 

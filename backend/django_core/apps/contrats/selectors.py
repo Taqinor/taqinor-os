@@ -359,6 +359,22 @@ def resoudre_regle_approbation(company, montant, type_contrat=None):
     return candidates[0]
 
 
+# ── NTWFL1 — vue de compatibilité vers la matrice unifiée core.MatriceApprobation
+
+def resoudre_matrice_contrat(company, montant, type_contrat=None, departement=None):
+    """Résout une ``core.MatriceApprobation`` (``type_objet='contract'``) pour
+    un contrat, si l'admin en a défini une — sinon ``None``.
+
+    NTWFL1 — délègue à ``core.selectors.resoudre_matrice`` : ``RegleApprobation``
+    reste la source de vérité HISTORIQUE (aucun changement à son comportement
+    propre), cette fonction n'ajoute qu'un chemin de résolution UNIFIÉ que
+    ``services.lancer_workflow_approbation`` consulte EN PREMIER, avant de
+    retomber sur ``resoudre_regle_approbation`` si aucune ligne ne matche."""
+    from core.selectors import resoudre_matrice
+    return resoudre_matrice(
+        company, 'contract', montant=montant, departement=departement)
+
+
 def liens_for_contrat(contrat):
     """Liens d'un contrat (QuerySet scopé société, ordonné par id).
 

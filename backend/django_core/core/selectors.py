@@ -77,6 +77,55 @@ def get_company_object(model_or_queryset, pk, user, extra_scope=None,
 EMAIL_SIGNATURE_CODE = 'signature'
 
 
+# ── NTWFL1 — Matrice d'approbation d'entreprise unifiée ─────────────────────
+
+def matrices_approbation(company, type_objet=None):
+    """Lignes ACTIVES de ``MatriceApprobation`` d'une société (QuerySet).
+
+    Lecture seule, scopée société. ``type_objet`` filtre optionnellement (les
+    appelants connaissent toujours le type qu'ils résolvent)."""
+    from core.models import MatriceApprobation
+    qs = MatriceApprobation.objects.filter(company=company, actif=True)
+    if type_objet is not None:
+        qs = qs.filter(type_objet=type_objet)
+    return qs.order_by('type_objet', 'departement', 'id')
+
+
+def resoudre_matrice(company, type_objet, montant=None, departement=None):
+    """Résout la ligne de ``MatriceApprobation`` la plus SPÉCIFIQUE (NTWFL1).
+
+    Parcourt les lignes actives de ``company`` pour ``type_objet`` qui
+    couvrent (``montant``, ``departement``) via ``MatriceApprobation.couvre``
+    et renvoie la plus spécifique : la règle la plus spécifique gagne dans
+    l'ordre — département+montant > département seul > montant seul > défaut.
+    Renvoie ``None`` si aucune ligne active ne s'applique (l'appelant retombe
+    alors sur son comportement legacy — AUCUNE donnée existante perdue).
+    """
+    if company is None or not type_objet:
+        return None
+    candidats = [
+        m for m in matrices_approbation(company, type_objet=type_objet)
+        if m.couvre(montant, departement)
+    ]
+    if not candidats:
+        return None
+
+    def _cle(matrice):
+        departement_specifique = 1 if matrice.departement else 0
+        largeur = matrice.largeur_intervalle()
+        intervalle_borne = 1 if largeur is not None else 0
+        largeur_tri = -largeur if largeur is not None else None
+        return (
+            departement_specifique,
+            intervalle_borne,
+            largeur_tri if largeur_tri is not None else 0,
+            matrice.id,
+        )
+
+    candidats.sort(key=_cle, reverse=True)
+    return candidats[0]
+
+
 def resolve_email_signature(company, nom_societe='', **context) -> str:
     """Signature à apposer au bas d'un email transactionnel d'une société.
 

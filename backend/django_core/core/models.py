@@ -609,6 +609,119 @@ class WorkflowStepInstance(TimestampedModel):
 
 
 # ---------------------------------------------------------------------------
+# NTWFL1 — Matrice d'approbation d'entreprise UNIFIÉE (objet × montant ×
+# département → chaîne de paliers).
+#
+# Avant ce modèle, l'approbation d'entreprise vivait ÉCLATÉE en trois
+# implémentations qui ne se parlaient pas : ``parametres.ApprovalPolicy``
+# (FG25, une politique PLATE par type d'action × société, un seul palier),
+# ``automation.ApprovalRequestType`` (demandes ad-hoc, un seul palier) et
+# ``contrats.RegleApprobation`` (règles propres aux contrats, un seul niveau).
+# ``MatriceApprobation`` les UNIFIE en un référentiel unique object×montant×
+# département avec une CHAÎNE de paliers ordonnée (``chaine_paliers``).
+#
+# COMPATIBILITÉ (aucune régression) : les trois modèles legacy restent
+# INCHANGÉS et continuent de fonctionner exactement comme avant — cette
+# matrice est un référentiel ADDITIF que les appelants consultent EN PREMIER
+# (voir ``core.selectors.resoudre_matrice`` et les entrées « unifiées » de
+# ``parametres.ApprovalPolicy``/``apps.contrats.selectors``) ; à défaut de
+# ligne correspondante, le comportement legacy s'applique intégralement en
+# repli (« écriture toujours possible en fallback si aucune ligne ne
+# matche »).
+#
+# ``type_objet`` reste un texte LIBRE (pas de ``TextChoices`` dupliqué ici) :
+# la docstring documente les valeurs attendues, alignées par CONVENTION sur
+# ``parametres.ApprovalPolicy.ActionType`` (discount/quote_amount/
+# purchase_order/expense/contract/refund) et sur les noms créés par un admin
+# dans ``automation.ApprovalRequestType`` — jamais un import Python de ces
+# catalogues (``core`` reste une couche de base, contrat import-linter
+# ``core-foundation-is-a-base-layer``).
+class MatriceApprobation(TenantModel):
+    """Ligne de matrice d'approbation : objet × montant × département → chaîne.
+
+    ``chaine_paliers`` est une liste JSON ORDONNÉE de paliers :
+    ``[{"palier": 1, "nombre_approbateurs_requis": 1, "role_requis": "..."},
+    ...]`` — remplace le simple ``approver_tier`` unique de FG25. Une chaîne
+    vide est rejetée à la validation (une matrice active doit décrire au
+    moins un palier).
+    """
+
+    type_objet = models.CharField(
+        "Type d'objet", max_length=40,
+        help_text=(
+            "Valeur libre alignée par convention sur "
+            "parametres.ApprovalPolicy.ActionType ou sur le nom d'un "
+            "automation.ApprovalRequestType — jamais dupliquée ici."))
+    departement = models.CharField(
+        'Département', max_length=80, blank=True, default='',
+        help_text="Libellé libre (aligné sur roles.Role/service RH). "
+                  "Vide = s'applique à tous les départements.")
+    montant_min = models.DecimalField(
+        'Montant minimum', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+        help_text='NULL = borne non fixée (ouverte de ce côté).')
+    montant_max = models.DecimalField(
+        'Montant maximum', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+        help_text='NULL = borne non fixée (ouverte de ce côté).')
+    chaine_paliers = models.JSONField(
+        'Chaîne de paliers', default=list, blank=True,
+        help_text='Liste ordonnée de '
+                  '{palier, nombre_approbateurs_requis, role_requis}.')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = "Matrice d'approbation"
+        verbose_name_plural = "Matrices d'approbation"
+        ordering = ['type_objet', 'departement', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_objet', 'actif'],
+                name='core_matappr_co_typ_act_idx'),
+        ]
+
+    def __str__(self):
+        cible = self.departement or 'tous départements'
+        return f'{self.type_objet} ({cible})'
+
+    def couvre(self, montant, departement=None):
+        """Indique si cette ligne couvre un couple (montant, département).
+
+        Le département est couvert si la ligne vise « tous départements »
+        (``departement`` vide) OU correspond exactement (comparaison
+        insensible à la casse). Le montant est couvert s'il tombe dans
+        ``[montant_min, montant_max]`` (bornes incluses ; NULL = ouverte).
+        """
+        if self.departement:
+            if not departement:
+                return False
+            if self.departement.strip().lower() != str(departement).strip().lower():
+                return False
+        if montant is None:
+            return self.montant_min is None and self.montant_max is None
+        from decimal import Decimal
+        try:
+            montant = Decimal(str(montant))
+        except Exception:
+            return False
+        if self.montant_min is not None and montant < self.montant_min:
+            return False
+        if self.montant_max is not None and montant > self.montant_max:
+            return False
+        return True
+
+    def largeur_intervalle(self):
+        """Largeur de l'intervalle de montant (départage de spécificité).
+
+        Une borne ouverte (NULL) compte comme « infinie » : une ligne bornée
+        des deux côtés est plus spécifique qu'une ligne à borne ouverte.
+        """
+        if self.montant_min is None or self.montant_max is None:
+            return None
+        return self.montant_max - self.montant_min
+
+
+# ---------------------------------------------------------------------------
 # FG371+ — Configuration générique des INTÉGRATIONS externes (fondation).
 #
 # Modèle de FONDATION volontairement GÉNÉRIQUE : il stocke, PAR SOCIÉTÉ, le

@@ -55,6 +55,7 @@ from .models import (
     Dashboard,
     DataSubjectRequest,
     DeletionRecord,
+    MatriceApprobation,
     ModuleToggle,
     PaymentTransaction,
     RegistreTraitement,
@@ -74,6 +75,7 @@ from .serializers import (
     DashboardSerializer,
     DataSubjectRequestSerializer,
     DeletionRecordSerializer,
+    MatriceApprobationSerializer,
     ModuleToggleSerializer,
     OutboxEventSerializer,
     PaymentTransactionSerializer,
@@ -218,6 +220,24 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
 
     serializer_class = WorkflowDefinitionSerializer
     queryset = WorkflowDefinition.objects.all().prefetch_related('steps')
+    pagination_class = None  # petite liste par société — renvoyée à plat.
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+
+class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTWFL1 — CRUD admin de la matrice d'approbation d'entreprise unifiée.
+
+    ``TenantMixin`` filtre par société et impose ``company`` à la création
+    comme à la mise à jour (jamais lue du corps). Écriture réservée au palier
+    admin/responsable ; lecture ouverte à tout utilisateur authentifié (les
+    écrans d'approbation ont besoin de savoir quelle chaîne s'applique)."""
+
+    serializer_class = MatriceApprobationSerializer
+    queryset = MatriceApprobation.objects.all()
     pagination_class = None  # petite liste par société — renvoyée à plat.
 
     def get_permissions(self):

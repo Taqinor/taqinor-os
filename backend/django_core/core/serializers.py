@@ -54,6 +54,7 @@ from .models import (
     Dashboard,
     DataSubjectRequest,
     DeletionRecord,
+    MatriceApprobation,
     ModuleToggle,
     OutboxEvent,
     PaymentTransaction,
@@ -349,6 +350,59 @@ class WorkflowDefinitionSerializer(serializers.ModelSerializer):
             code = ('%s_%d' % (base, n))[:64]
             n += 1
         return code
+
+
+class MatriceApprobationSerializer(serializers.ModelSerializer):
+    """NTWFL1 — matrice d'approbation d'entreprise unifiée.
+
+    ``company`` imposée côté serveur (``TenantMixin``). ``chaine_paliers`` est
+    validée en forme (liste de dicts avec ``palier``/``role_requis``) — le
+    contenu métier (rôle réellement habilité) reste déclaratif, sans contrôle
+    cross-app depuis ``core``."""
+
+    class Meta:
+        model = MatriceApprobation
+        fields = [
+            'id', 'type_objet', 'departement', 'montant_min', 'montant_max',
+            'chaine_paliers', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_type_objet(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le champ « Type d\'objet » est requis.')
+        return value
+
+    def validate_chaine_paliers(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Le champ « Chaîne de paliers » doit être une liste.')
+        for i, palier in enumerate(value, start=1):
+            if not isinstance(palier, dict):
+                raise serializers.ValidationError(
+                    f'Palier {i} : doit être un objet '
+                    '{palier, nombre_approbateurs_requis, role_requis}.')
+        return value
+
+    def validate(self, attrs):
+        montant_min = attrs.get(
+            'montant_min',
+            getattr(self.instance, 'montant_min', None))
+        montant_max = attrs.get(
+            'montant_max',
+            getattr(self.instance, 'montant_max', None))
+        if (montant_min is not None and montant_max is not None
+                and montant_min > montant_max):
+            raise serializers.ValidationError({
+                'montant_min': (
+                    'Le montant minimum ne peut pas dépasser le montant '
+                    'maximum.'),
+            })
+        return attrs
 
 
 class DashboardSerializer(serializers.ModelSerializer):
