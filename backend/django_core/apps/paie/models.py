@@ -388,6 +388,63 @@ class TrancheIR(models.Model):
         return f'{self.borne_min}–{self.borne_max} @ {self.taux}%'
 
 
+# ── NTPAY7 — Pays de paie (moteur multi-pays) ──────────────────────────────
+
+class PaysPaie(models.Model):
+    """Pays de paie d'une société (NTPAY7), scopé société.
+
+    Le moteur de paie était 100 % marocain EN DUR (CNSS/AMO/IR MA). Ce modèle
+    introduit le PAYS comme donnée : ``code_iso`` (MA/FR/SN/CI…), ``devise``,
+    et surtout ``moteur`` — la clé de règle qui sélectionne la fonction de
+    calcul dans ``services.MOTEURS_PAYS``.
+
+    RÉTRO-COMPATIBILITÉ STRICTE : ``ProfilPaie.pays`` est NULLABLE et vaut
+    ``None`` pour tous les profils existants ⇒ moteur marocain, au centime
+    près. Seul le pays ``MA`` est semé (``services.ensure_pays_paie_standard``)
+    — les packs FR/SN/CI restent gatés fondateur et ne s'activent jamais
+    d'office.
+    """
+    CODE_MA = 'MA'
+    CODE_FR = 'FR'
+    CODE_SN = 'SN'
+    CODE_CI = 'CI'
+    CODE_ISO_CHOICES = [
+        (CODE_MA, 'Maroc'),
+        (CODE_FR, 'France'),
+        (CODE_SN, 'Sénégal'),
+        (CODE_CI, "Côte d'Ivoire"),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='paie_pays',
+        verbose_name='Société',
+    )
+    code_iso = models.CharField(
+        max_length=2, choices=CODE_ISO_CHOICES, verbose_name='Code ISO')
+    libelle = models.CharField(max_length=80, verbose_name='Libellé')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    # Clé de règle du registre ``services.MOTEURS_PAYS``. Vide ⇒ le
+    # ``code_iso`` fait office de clé (cas courant).
+    moteur = models.CharField(
+        max_length=12, blank=True, default='',
+        verbose_name='Moteur de calcul')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Pays de paie'
+        verbose_name_plural = 'Pays de paie'
+        ordering = ['code_iso']
+        unique_together = [('company', 'code_iso')]
+
+    def __str__(self):
+        return f'{self.code_iso} — {self.libelle}'
+
+
 # ── PAIE8 — Profil de paie de l'employé ────────────────────────────────────
 
 class ProfilPaie(models.Model):
@@ -427,6 +484,17 @@ class ProfilPaie(models.Model):
         on_delete=models.CASCADE,
         related_name='profil_paie',
         verbose_name='Dossier employé',
+    )
+    # NTPAY7 — Pays de paie du profil. NULL (défaut, et valeur de TOUS les
+    # profils existants) ⇒ moteur marocain, strictement inchangé. PROTECT : un
+    # pays utilisé par des profils ne se supprime pas sous leurs pieds — on le
+    # DÉSACTIVE (``PaysPaie.actif``).
+    pays = models.ForeignKey(
+        PaysPaie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='profils',
+        verbose_name='Pays de paie',
     )
     type_remuneration = models.CharField(
         max_length=12, choices=TYPE_REMUNERATION_CHOICES, default=TYPE_MENSUEL,

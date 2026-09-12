@@ -2190,8 +2190,13 @@ def montant_rubrique_employe(rubrique_employe, salaire_base):
     return Decimal('0.00')
 
 
-def calculer_bulletin(profil, periode, personnes_a_charge=0):
-    """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
+def calculer_bulletin_ma(profil, periode, personnes_a_charge=0):
+    """Calcule le bulletin de paie MAROCAIN d'un employé (PAIE12).
+
+    NTPAY7 — ce moteur portait le nom générique ``calculer_bulletin`` ; il est
+    désormais le moteur DU PAYS ``MA``, sélectionné par le dispatcher
+    ``calculer_bulletin`` (registre ``MOTEURS_PAYS``). Son calcul n'a pas
+    changé d'un centime : seul son nom a bougé.
 
     Moteur de calcul conforme au cadre marocain (additif, sans effet de bord —
     ne crée aucun objet, renvoie un dict) :
@@ -2597,6 +2602,82 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
         'net_avant_saisie': net_avant_saisie,
     }
+
+
+# ── NTPAY7 — Registre des moteurs de paie PAR PAYS + dispatcher ────────────
+
+# Clé de moteur → fonction de calcul. Le registre est VOLONTAIREMENT explicite
+# (jamais un import dynamique) : un pack pays livré mais non enregistré ici ne
+# calcule aucune paie réelle. Les packs FR/SN/CI sont gatés fondateur et
+# n'apparaissent pas tant qu'ils ne sont pas livrés ET activés.
+MOTEURS_PAYS = {
+    'MA': calculer_bulletin_ma,
+}
+
+# Pays par défaut quand un profil n'en porte aucun (rétro-compatibilité : tous
+# les profils existants ont ``pays = NULL`` et doivent rester calculés par le
+# moteur marocain, au centime près).
+CODE_PAYS_DEFAUT = 'MA'
+
+
+def moteur_du_profil(profil):
+    """Moteur de calcul du pays d'un profil (NTPAY7).
+
+    ``profil.pays`` vide (cas de TOUS les profils d'avant NTPAY7) ⇒ moteur
+    ``MA`` — comportement historique strictement inchangé. Sinon, le moteur
+    est cherché par la clé ``PaysPaie.moteur`` (à défaut son ``code_iso``).
+    Un pays INACTIF ou sans moteur enregistré lève une ``ValidationError`` qui
+    NOMME le pays : mieux vaut refuser que calculer une paie étrangère avec
+    des règles marocaines.
+    """
+    from django.core.exceptions import ValidationError
+
+    pays = getattr(profil, 'pays', None)
+    if pays is None:
+        return MOTEURS_PAYS[CODE_PAYS_DEFAUT]
+    if not pays.actif:
+        raise ValidationError({'pays': [
+            f'Pays de paie « {pays.libelle or pays.code_iso} » désactivé : '
+            'réactivez-le ou changez le pays du profil avant de calculer.']})
+    cle = (pays.moteur or pays.code_iso or '').upper()
+    moteur = MOTEURS_PAYS.get(cle)
+    if moteur is None:
+        raise ValidationError({'pays': [
+            f'Aucun moteur de paie livré pour « {cle} » : le pack pays '
+            "correspondant n'est pas disponible."]})
+    return moteur
+
+
+def calculer_bulletin(profil, periode, personnes_a_charge=0):
+    """Calcule le bulletin de paie d'un employé — DISPATCHER pays (NTPAY7).
+
+    Point d'entrée unique et inchangé du calcul : il DÉLÈGUE au moteur du pays
+    du profil (``MOTEURS_PAYS``). Un profil sans pays — c'est-à-dire tous ceux
+    d'avant NTPAY7 — comme un profil ``pays = MA`` passe par
+    ``calculer_bulletin_ma``, à l'identique. Renvoie le même dict qu'avant.
+    """
+    return moteur_du_profil(profil)(profil, periode, personnes_a_charge)
+
+
+def ensure_pays_paie_standard(company):
+    """Provisionne (idempotent) le pays de paie MAROC d'une société (NTPAY7).
+
+    Seul le pays ``MA`` est semé : les packs FR/SN/CI sont gatés fondateur et
+    ne sont jamais activés d'office. Ne touche jamais une ligne existante
+    (libellé/devise édités survivent à un re-seed). Renvoie ``{'pays': 0|1}``.
+    """
+    from .models import PaysPaie
+
+    _pays, cree = PaysPaie.objects.get_or_create(
+        company=company, code_iso=PaysPaie.CODE_MA,
+        defaults={
+            'libelle': 'Maroc',
+            'devise': 'MAD',
+            'moteur': PaysPaie.CODE_MA,
+            'actif': True,
+        },
+    )
+    return {'pays': 1 if cree else 0}
 
 
 # ── XPAI16 — Simulateur de bulletin + calcul net→brut ──────────────────────
