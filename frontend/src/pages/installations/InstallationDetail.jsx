@@ -13,6 +13,8 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
+// CHT18 — CTA « Créer le projet de facturation » depuis la fiche chantier.
+import gestionProjetApi from '../../api/gestionProjetApi'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
@@ -242,6 +244,13 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const actionMsg = (err, fallback) =>
     err?.response?.data?.detail || (typeof fallback === 'string' ? fallback : 'Action impossible.')
 
+  // CHT18/CHT20 — Projet (gestion_projet) déjà rattaché à CE chantier, s'il
+  // existe : `null` = aucun (ou pas encore chargé). Gate la CTA « Créer le
+  // projet de facturation » (CHT18) et alimente le lien « Projet de
+  // facturation » de la section « Autour de ce chantier » (CHT20).
+  const [projetChantierLie, setProjetChantierLie] = useState(null)
+  const [creerProjetBusy, setCreerProjetBusy] = useState(false)
+
   // Historique (chatter)
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
@@ -374,6 +383,19 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     savApi.getContrats({ client: installation.client })
       .then(r => setContrats(r.data?.results ?? r.data ?? [])).catch(() => {})
   }
+  // CHT18/CHT20 — lecture légère best-effort : `projet-chantiers` ne filtre
+  // pas par `chantier_id` (AUCUN nouveau backend, CHT20) — on lit une page au
+  // maximum autorisé (`page_size=200`, déjà supporté par la pagination
+  // standard) et on filtre côté client. Échec silencieux : dégrade en
+  // « aucun projet rattaché », jamais bloquant pour la fiche.
+  const loadProjetChantierLie = () => {
+    gestionProjetApi.getChantiers({ page_size: 200 })
+      .then((r) => {
+        const rows = r.data?.results ?? r.data ?? []
+        setProjetChantierLie(rows.find((pc) => pc.chantier_id === id) ?? null)
+      })
+      .catch(() => {})
+  }
 
   useEffect(() => {
     loadHistorique()
@@ -388,6 +410,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     checkDevisDivergence()
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    loadProjetChantierLie()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -468,6 +491,23 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       const r = await installationsApi.getInstallation(id)
       setCurrent(r.data)
     } catch { /* erreur silencieuse */ }
+  }
+
+  // CHT18 — CTA « Créer le projet de facturation » : appelle l'action XPRJ21
+  // existante (elle rattache désormais AUSSI le `ProjetChantier` en un seul
+  // appel réseau), puis navigue vers la fiche du projet créé — la
+  // facturation à l'avancement reste dans gestion_projet (Path B rejeté).
+  const creerProjetFacturation = async () => {
+    setCreerProjetBusy(true)
+    try {
+      const r = await gestionProjetApi.creerProjetDepuisDevis(current.devis)
+      toast.success(`Projet ${r.data.code} créé.`)
+      navigate(`/projets/${r.data.id}`)
+    } catch (err) {
+      setActionError(actionMsg(err, 'Création du projet de facturation impossible.'))
+    } finally {
+      setCreerProjetBusy(false)
+    }
   }
 
   const handleSave = async (e) => {
@@ -941,6 +981,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   <Button size="sm" variant="outline"
                           onClick={() => navigate(`/crm/leads?lead=${current.lead}`)}>
                     Voir le lead
+                  </Button>
+                )}
+                {/* CHT18 — visible seulement quand un devis existe et
+                    qu'aucun Projet (gestion_projet) n'est déjà rattaché ;
+                    l'accès (responsable/admin) est déjà gardé côté serveur. */}
+                {current.devis && !projetChantierLie && (
+                  <Button size="sm" variant="outline" loading={creerProjetBusy}
+                          onClick={creerProjetFacturation}>
+                    Créer le projet de facturation
                   </Button>
                 )}
               </div>
