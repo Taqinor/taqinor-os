@@ -105,6 +105,170 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         from ..services import suggestions_reappro_emplacement
         return Response(suggestions_reappro_emplacement(request.user.company))
 
+    @action(detail=False, methods=['get'], url_path='van-stock/a-reapprovisionner',
+            permission_classes=[IsAnyRole])
+    def van_stock_a_reapprovisionner(self, request):
+        """NTFSM19 — écarts van-stock (camionnette) sous seuil, avec la
+        quantité suggérée à transférer depuis le dépôt principal."""
+        from ..selectors import van_stock_a_reapprovisionner
+        return Response(van_stock_a_reapprovisionner(request.user.company))
+
+    @action(detail=False, methods=['post'], url_path='van-stock/creer-transfert',
+            permission_classes=[IsResponsableOrAdmin])
+    def van_stock_creer_transfert(self, request):
+        """NTFSM19 — crée (ou renvoie, sans dupliquer) la demande de transfert
+        dépôt principal → camionnette qui comble l'écart sous seuil pour
+        {produit_id, emplacement_id}."""
+        from ..selectors import van_stock_a_reapprovisionner
+        from ..services_transfert_deux_temps import creer_demande_transfert
+
+        company = request.user.company
+        produit_id = request.data.get('produit_id')
+        emplacement_id = request.data.get('emplacement_id')
+        if not produit_id or not emplacement_id:
+            return Response(
+                {'detail': 'produit_id et emplacement_id requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        # Idempotence : une demande DÉJÀ en attente pour ce (produit,
+        # camionnette) n'est jamais dupliquée.
+        en_attente = [TransfertStock.Statut.DEMANDE, TransfertStock.Statut.EXPEDIE]
+        existante = (TransfertStock.objects
+                     .filter(company=company, produit_id=produit_id,
+                             destination_id=emplacement_id,
+                             statut__in=en_attente)
+                     .order_by('-date')
+                     .first())
+        if existante is not None:
+            return Response(TransfertStockSerializer(existante).data)
+
+        ecarts = {
+            (e['produit_id'], e['emplacement_id']): e
+            for e in van_stock_a_reapprovisionner(company)
+        }
+        try:
+            cle = (int(produit_id), int(emplacement_id))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'produit_id/emplacement_id invalides.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ecart = ecarts.get(cle)
+        if ecart is None or not ecart.get('source_id'):
+            return Response(
+                {'detail': 'Aucun écart sous seuil pour ce produit sur '
+                           'cette camionnette.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            transfert = creer_demande_transfert(
+                company=company, user=request.user, produit_id=produit_id,
+                source_id=ecart['source_id'], destination_id=emplacement_id,
+                quantite=ecart['qte_suggere_transfert'],
+                note='Réappro van-stock automatique (NTFSM19)')
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            TransfertStockSerializer(transfert).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='van-stock/mon-stock',
+            permission_classes=[IsAnyRole])
+    def van_stock_mon_stock(self, request):
+        """NTFSM20 — stock de la CAMIONNETTE affectée au technicien connecté
+        (jamais celui d'un collègue — l'emplacement est résolu côté serveur,
+        jamais accepté depuis le client). Aucune camionnette affectée :
+        réponse propre (emplacement null, produits vides)."""
+        from ..models import StockEmplacement
+        from ..selectors import emplacement_camionnette_technicien
+
+        company = request.user.company
+        emplacement = emplacement_camionnette_technicien(company, request.user)
+        if emplacement is None:
+            return Response({'emplacement': None, 'produits': []})
+
+        lignes = (StockEmplacement.objects
+                  .filter(company=company, emplacement=emplacement)
+                  .select_related('produit')
+                  .order_by('produit__nom'))
+        produits = [{
+            'produit_id': ligne.produit_id,
+            'nom': ligne.produit.nom,
+            'sku': ligne.produit.sku,
+            'quantite': ligne.quantite,
+            'seuil_min': ligne.seuil_min,
+            'seuil_max': ligne.seuil_max,
+        } for ligne in lignes]
+        return Response({
+            'emplacement': {'id': emplacement.id, 'nom': emplacement.nom},
+            'produits': produits,
+        })
+
+    @action(detail=False, methods=['post'], url_path='van-stock/signaler-manquant',
+            permission_classes=[IsAnyRole])
+    def van_stock_signaler_manquant(self, request):
+        """NTFSM20 — le technicien signale un produit manquant sur SA
+        camionnette : crée une demande de transfert (NTFSM19) sans attendre
+        le job de réappro automatique. Body {produit_id}. Jamais sur la
+        camionnette d'un collègue (emplacement résolu côté serveur)."""
+        from ..services_transfert_deux_temps import creer_demande_transfert
+        from ..selectors import emplacement_camionnette_technicien
+
+        company = request.user.company
+        emplacement = emplacement_camionnette_technicien(company, request.user)
+        if emplacement is None:
+            return Response(
+                {'detail': 'Aucune camionnette ne vous est affectée.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        produit_id = request.data.get('produit_id')
+        if not produit_id:
+            return Response(
+                {'detail': 'produit_id requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        principal = EmplacementStock.objects.filter(
+            company=company, is_principal=True).first()
+        if principal is None:
+            return Response(
+                {'detail': 'Aucun dépôt principal configuré.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        en_attente = [TransfertStock.Statut.DEMANDE, TransfertStock.Statut.EXPEDIE]
+        existante = (TransfertStock.objects
+                     .filter(company=company, produit_id=produit_id,
+                             destination=emplacement,
+                             statut__in=en_attente)
+                     .order_by('-date')
+                     .first())
+        if existante is not None:
+            return Response(TransfertStockSerializer(existante).data)
+
+        from ..models import StockEmplacement
+        ligne = StockEmplacement.objects.filter(
+            company=company, produit_id=produit_id,
+            emplacement=emplacement).first()
+        quantite = 1
+        if ligne is not None and ligne.seuil_max:
+            manque = ligne.seuil_max - ligne.quantite
+            if manque > 0:
+                quantite = manque
+        elif ligne is not None and ligne.seuil_min:
+            manque = ligne.seuil_min - ligne.quantite
+            if manque > 0:
+                quantite = manque
+
+        try:
+            transfert = creer_demande_transfert(
+                company=company, user=request.user, produit_id=produit_id,
+                source_id=principal.id, destination_id=emplacement.id,
+                quantite=quantite,
+                note='Signalé manquant par le technicien (NTFSM20)')
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            TransfertStockSerializer(transfert).data,
+            status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['get'], url_path='etiquettes-kanban')
     def etiquettes_kanban(self, request, *args, **kwargs):
         """XSTK20 — Cartes kanban deux-bacs pour CET emplacement : une carte

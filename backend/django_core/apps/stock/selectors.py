@@ -1068,6 +1068,72 @@ def seuil_max_emplacement(company, produit_id, emplacement_id):
     return se.seuil_max if se is not None else None
 
 
+# ── NTFSM19 — Réappro automatique van-stock (étend FG62) ────────────────────
+
+def van_stock_a_reapprovisionner(company):
+    """NTFSM19 — écarts van-stock (camionnette) sous le seuil `quantite_min`
+    (`StockEmplacement.seuil_min`, FG62), avec la quantité suggérée à
+    transférer depuis le dépôt principal.
+
+    Sélecteur cross-app UNIQUEMENT : délègue au calcul EXISTANT
+    (``services.suggestions_reappro_emplacement``) plutôt que de dupliquer la
+    logique — même donnée, deux points d'entrée (l'écran admin FG62
+    générique, ce sélecteur van-stock dédié). Lecture seule.
+    """
+    from .services import suggestions_reappro_emplacement
+    return suggestions_reappro_emplacement(company)
+
+
+def emplacement_camionnette_technicien(company, user):
+    """NTFSM20 — emplacement de stock (camionnette) AFFECTÉ au technicien
+    connecté, ou ``None`` si la chaîne d'affectation casse à n'importe quelle
+    étape (pas de fiche conducteur, pas d'affectation véhicule active,
+    véhicule sans emplacement de stock lié).
+
+    Chaîne : utilisateur → ``flotte.Conducteur`` → affectation VÉHICULE
+    active (``AffectationConducteur``) → ``Vehicule.emplacement_stock_id``
+    (FLOTTE3). Lecture cross-app UNIQUEMENT via ``apps.flotte.selectors``
+    (jamais son ``models``) — dégrade proprement (``None``) si l'app flotte
+    est absente ou la chaîne incomplète. Sécurité : c'est CETTE fonction qui
+    garantit qu'un technicien ne voit jamais le stock d'un collègue — jamais
+    un id d'emplacement accepté tel quel depuis le client.
+    """
+    import datetime
+
+    from django.db.models import Q
+
+    from .models import EmplacementStock
+
+    if company is None or user is None or not getattr(user, 'id', None):
+        return None
+    try:
+        from apps.flotte import selectors as flotte_selectors
+    except Exception:  # pragma: no cover - défensif (app absente)
+        return None
+
+    conducteur = (flotte_selectors.conducteurs_de_la_societe(
+        company, actif_only=True).filter(user=user).first())
+    if conducteur is None:
+        return None
+
+    today = datetime.date.today()
+    affectation = (
+        flotte_selectors.affectations_du_conducteur(company, conducteur.id)
+        .filter(actif=True, date_debut__lte=today)
+        .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=today))
+        .select_related('vehicule')
+        .order_by('-date_debut')
+        .first())
+    if affectation is None or affectation.vehicule_id is None:
+        return None
+
+    emplacement_id = getattr(affectation.vehicule, 'emplacement_stock_id', None)
+    if not emplacement_id:
+        return None
+    return EmplacementStock.objects.filter(
+        company=company, pk=emplacement_id, archived=False).first()
+
+
 # ── ZMFG9 — Disponibilité multi-niveaux d'un kit (stock partagé + goulots) ──
 
 def disponibilite_potentielle_recursive(kit, company):
