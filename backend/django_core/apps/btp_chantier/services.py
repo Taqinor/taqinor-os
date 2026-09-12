@@ -1465,3 +1465,79 @@ def archiver_reserves_levees(*, company=None, maintenant=None):
                 pk__in=ids, archivee=False).update(
                     archivee=True, archivee_le=horodatage)
     return {'examines': examines, 'archivees': archivees}
+
+
+# ── NTCON28 — recalcul planifié des pénalités de retard par lot ─────────────
+
+def _json_penalite(ligne):
+    """Rend une ligne de ``penalites_retard_par_lot`` STOCKABLE en JSON.
+
+    ``Decimal``/``date`` ne sont pas sérialisables par ``json.dumps`` : on les
+    convertit en CHAÎNES (jamais en ``float`` — un montant en ``float`` perd
+    des centimes, et cette valeur est une exposition financière)."""
+    from datetime import date
+    from decimal import Decimal
+
+    sortie = {}
+    for cle, valeur in ligne.items():
+        if isinstance(valeur, Decimal):
+            sortie[cle] = str(valeur)
+        elif isinstance(valeur, date):
+            sortie[cle] = valeur.isoformat()
+        else:
+            sortie[cle] = valeur
+    return sortie
+
+
+def recalculer_penalites_lots(*, company=None, chantier=None,
+                              maintenant=None, tous=False):
+    """NTCON28 — recalcule et MET EN CACHE l'exposition aux pénalités par lot.
+
+    Périmètre par défaut : les chantiers portant AU MOINS un lot en retard
+    ACTIF (``selectors.chantiers_avec_lot_en_retard``) — recalculer un
+    chantier dont aucun lot n'a glissé coûterait une requête pour rien.
+    ``tous=True`` force le balayage complet (recalcul manuel), ``chantier=``
+    cible un seul chantier (action admin/cockpit).
+
+    Le calcul lui-même reste celui de NTCON15 (``penalites_retard_par_lot``) —
+    AUCUNE seconde formule : on ne fait que figer son résultat sur
+    ``Lot.penalite_calculee_cache`` + ``penalite_calculee_le``.
+
+    Renvoie ``{'chantiers': n, 'lots': n}``.
+    """
+    from .models import Lot
+    from .selectors import (
+        chantiers_avec_lot_en_retard, penalites_retard_par_lot,
+    )
+
+    horodatage = maintenant or timezone.now()
+
+    if chantier is not None:
+        chantiers = [chantier]
+    else:
+        lots_qs = Lot.objects.all()
+        if company is not None:
+            lots_qs = lots_qs.filter(company=company)
+        if not tous:
+            lots_qs = chantiers_avec_lot_en_retard(company)
+        ids = list(
+            lots_qs.values_list('chantier_id', flat=True).distinct())
+        if not ids:
+            return {'chantiers': 0, 'lots': 0}
+        Chantier = Lot._meta.get_field('chantier').related_model
+        chantiers = list(Chantier.objects.filter(pk__in=ids))
+
+    nb_chantiers = 0
+    nb_lots = 0
+    for site in chantiers:
+        calcul = penalites_retard_par_lot(site)
+        date_reference = calcul['date_reference']
+        nb_chantiers += 1
+        with transaction.atomic():
+            for ligne in calcul['lots']:
+                charge = _json_penalite(ligne)
+                charge['date_reference'] = date_reference.isoformat()
+                nb_lots += Lot.objects.filter(pk=ligne['lot_id']).update(
+                    penalite_calculee_cache=charge,
+                    penalite_calculee_le=horodatage)
+    return {'chantiers': nb_chantiers, 'lots': nb_lots}

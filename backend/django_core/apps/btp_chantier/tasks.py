@@ -46,6 +46,21 @@ def archiver_reserves_levees_task():
         return 0
 
 
+@shared_task(name='btp_chantier.recalculer_penalites_lots')
+def recalculer_penalites_lots_task():
+    """NTCON28 — fige le cache d'exposition aux pénalités (NTCON15) pour les
+    chantiers ayant au moins un lot en retard actif, pour que le cockpit lise
+    au lieu de recalculer. Renvoie le nombre de lots mis en cache."""
+    from .services import recalculer_penalites_lots
+    try:
+        return recalculer_penalites_lots()['lots']
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'btp_chantier.recalculer_penalites_lots: échec du balayage',
+            exc_info=True)
+        return 0
+
+
 @shared_task(name='btp_chantier.rapport_photo_hebdo')
 def rapport_photo_hebdo_task():
     """NTCON18 — envoie le photo-rapport hebdomadaire aux chantiers ABONNÉS

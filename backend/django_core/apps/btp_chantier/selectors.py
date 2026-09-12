@@ -581,6 +581,88 @@ def penalites_retard_par_lot(chantier, date_reference=None):
     }
 
 
+def chantiers_avec_lot_en_retard(company=None, *, date_reference=None):
+    """NTCON28 — chantiers portant AU MOINS un lot en retard ACTIF.
+
+    « En retard actif » = jalon contractuel, échéance ``date_fin_prevue``
+    dépassée, lot NON terminé. C'est le seul périmètre que le balayage
+    quotidien a besoin de recalculer : un chantier dont aucun lot n'a glissé
+    a une exposition inchangée, la recalculer coûterait une requête pour rien.
+
+    Renvoie un queryset de ``Lot`` (pas de chantiers) : l'appelant regroupe
+    lui-même par ``chantier_id``.
+    """
+    date_reference = date_reference or timezone.localdate()
+    qs = Lot.objects.filter(
+        jalon_contractuel=True,
+        date_fin_prevue__lt=date_reference,
+    ).exclude(statut=Lot.Statut.TERMINE)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs
+
+
+def penalites_par_lot_cache_ou_calcul(chantier, *, max_age_heures=36,
+                                      maintenant=None):
+    """NTCON28 — exposition aux pénalités SERVIE DEPUIS LE CACHE quand il est
+    frais, recalculée sinon.
+
+    Le cockpit (NTCON21) relançait le calcul NTCON15 à chaque GET. Le balayage
+    quotidien fige le résultat sur ``Lot.penalite_calculee_cache`` ; cette
+    fonction le sert tel quel si TOUS les lots du chantier portent un cache de
+    moins de ``max_age_heures`` (36 h = une journée + une marge, pour qu'un
+    balayage manqué ne serve jamais un chiffre périmé en silence).
+
+    Sinon elle retombe sur ``penalites_retard_par_lot`` — best-effort : un
+    balayage qui n'a jamais tourné ne casse aucun écran, il coûte juste le
+    calcul. La réponse porte ``source`` (``'cache'`` / ``'calcul'``) et
+    ``calcule_le`` pour que l'écran puisse DIRE d'où vient le chiffre plutôt
+    que d'afficher une valeur d'âge inconnu.
+    """
+    from datetime import timedelta
+
+    maintenant = maintenant or timezone.now()
+    lots = list(Lot.objects.filter(chantier=chantier).order_by('ordre', 'id'))
+    limite = maintenant - timedelta(hours=max_age_heures)
+
+    frais = bool(lots) and all(
+        lot.penalite_calculee_cache is not None
+        and lot.penalite_calculee_le is not None
+        and lot.penalite_calculee_le >= limite
+        for lot in lots)
+
+    if not frais:
+        paye = penalites_retard_par_lot(chantier)
+        paye['source'] = 'calcul'
+        paye['calcule_le'] = maintenant
+        return paye
+
+    total = sum(
+        (_decimal(lot.penalite_calculee_cache.get('exposition'))
+         for lot in lots),
+        _decimal(0))
+    return {
+        'chantier_id': chantier.pk,
+        'date_reference': lots[0].penalite_calculee_cache.get(
+            'date_reference'),
+        'lots': [dict(lot.penalite_calculee_cache) for lot in lots],
+        'total_exposition': total,
+        'source': 'cache',
+        'calcule_le': max(lot.penalite_calculee_le for lot in lots),
+    }
+
+
+def _decimal(valeur):
+    """``Decimal`` tolérant (le cache JSON stocke des chaînes)."""
+    from decimal import Decimal, InvalidOperation
+    if valeur in (None, ''):
+        return Decimal('0')
+    try:
+        return Decimal(str(valeur))
+    except (InvalidOperation, ValueError):
+        return Decimal('0')
+
+
 # ── NTCON22 — Rapport d'avancement de chantier sur une période ─────────────
 
 def rapport_avancement(chantier, du, au):

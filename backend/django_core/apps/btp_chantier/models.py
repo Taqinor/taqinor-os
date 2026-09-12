@@ -839,6 +839,20 @@ class Lot(TenantModel):
         'gestion_projet.Tache', through='LotTache', blank=True,
         related_name='btp_lots', verbose_name='Tâches rattachées')
 
+    # ── NTCON28 — cache dénormalisé de l'exposition aux pénalités ───────────
+    # Le cockpit (NTCON21) affichait la pénalité de CHAQUE lot en relançant le
+    # calcul NTCON15 à chaque GET. Le balayage quotidien
+    # (``recalculer_penalites_lots``) fige ici le résultat + son horodatage,
+    # pour que l'écran LISE au lieu de RECALCULER. Le cache ne remplace jamais
+    # le calcul : il en est une photo datée, et le décompte DÉFINITIF reste à
+    # établir à la réception du lot.
+    penalite_calculee_cache = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Exposition aux pénalités (cache)')
+    penalite_calculee_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Exposition aux pénalités calculée le')
+
     class Meta:
         verbose_name = 'Lot de chantier'
         verbose_name_plural = 'Lots de chantier'

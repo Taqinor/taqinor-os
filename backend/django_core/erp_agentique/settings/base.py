@@ -1298,6 +1298,7 @@ CELERY_TASK_ROUTES = {
     # `-Q scheduled` ne consomme).
     'btp_chantier.rapport_photo_hebdo': {'queue': 'scheduled'},    # NTCON18
     'btp_chantier.archiver_reserves_levees': {'queue': 'scheduled'},  # NTCON27
+    'btp_chantier.recalculer_penalites_lots': {'queue': 'scheduled'},  # NTCON28
     # Batch AUDV/AOF/WIR (2026-09-06) — 10 tâches ajoutées au beat_schedule
     # sans route explicite (garde core/tests/test_celery_task_routes.py) :
     # chacune un balayage/relance planifié, aucune n'est déclenchée par un

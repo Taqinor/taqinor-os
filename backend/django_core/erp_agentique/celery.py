@@ -1202,6 +1202,13 @@ app.conf.beat_schedule = {
         'task': 'btp_chantier.archiver_reserves_levees',
         'schedule': crontab(day_of_month=1, hour=3, minute=40),
     },
+    # NTCON28 — recalcul QUOTIDIEN du cache d'exposition aux pénalités par lot
+    # (le cockpit NTCON21 lit ce cache au lieu de relancer le calcul NTCON15 à
+    # chaque GET). Tôt le matin, avant les alertes RFI.
+    'btp-chantier-recalculer-penalites-lots': {
+        'task': 'btp_chantier.recalculer_penalites_lots',
+        'schedule': crontab(hour=4, minute=10),
+    },
 }
 
 

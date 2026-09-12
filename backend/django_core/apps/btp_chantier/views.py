@@ -1139,11 +1139,21 @@ class ChantierIntervenantsView(APIView):
 
 
 class ChantierPenalitesParLotView(APIView):
-    """NTCON15 — ``chantiers/<id>/penalites-par-lot/``.
+    """NTCON15/NTCON28 — ``chantiers/<id>/penalites-par-lot/``.
 
     Données INTERNES de pilotage (exposition financière) : ``btp_gerer``
     exigé même en LECTURE — jamais une pénalité dans une sortie client
     (même garde que ``ChantierDebourseVsFactureView``, NTCON11).
+
+    FORME DÉCLARÉE de la réponse (``contract_samples/penalites_par_lot.json``) :
+    ``{chantier_id, date_reference, lots[], total_exposition, source,
+    calcule_le}`` — ``source`` vaut ``'cache'`` (photo figée par le balayage
+    quotidien NTCON28) ou ``'calcul'`` (recalcul synchrone parce que le cache
+    est absent ou vieux de plus de 36 h). L'écran AFFICHE d'où vient le
+    chiffre au lieu de montrer une valeur d'âge inconnu.
+
+    ``POST`` (NTCON28) force un recalcul immédiat de ce chantier et renvoie la
+    même forme, ``source='calcul'``.
     """
     permission_classes = [ScopedPermission]
     read_permission = 'btp_gerer'
@@ -1152,7 +1162,22 @@ class ChantierPenalitesParLotView(APIView):
     def get(self, request, chantier_id):
         chantier = get_object_or_404(
             _chantier_model(), pk=chantier_id, company=request.user.company)
-        return Response(selectors.penalites_retard_par_lot(chantier))
+        # NTCON28 — ``?frais=1`` ignore le cache (diagnostic/comparaison).
+        if request.query_params.get('frais') in ('1', 'true', 'oui'):
+            paye = selectors.penalites_retard_par_lot(chantier)
+            paye['source'] = 'calcul'
+            paye['calcule_le'] = timezone.now()
+            return Response(paye)
+        return Response(
+            selectors.penalites_par_lot_cache_ou_calcul(chantier))
+
+    def post(self, request, chantier_id):
+        """NTCON28 — recalcul manuel forcé (bouton « Recalculer »)."""
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        services.recalculer_penalites_lots(chantier=chantier)
+        return Response(
+            selectors.penalites_par_lot_cache_ou_calcul(chantier))
 
 
 class ChantierPlanningLotsView(APIView):
