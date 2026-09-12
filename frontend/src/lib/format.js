@@ -71,17 +71,30 @@ function asDate(value) {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-/** Date jj/mm/aaaa (défaut), ou format long « 18 juin 2026 » si long=true. */
-export function formatDate(value, { long = false } = {}) {
+/**
+ * Date jj/mm/aaaa (défaut), ou format long « 18 juin 2026 » si long=true.
+ *
+ * NTI18N10 — `timeZone` optionnel (fuseau IANA, ex. « Africa/Dakar ») :
+ * omis (comportement historique, tous les écrans existants), `Intl.
+ * DateTimeFormat` retombe sur le fuseau de l'ENVIRONNEMENT D'EXÉCUTION
+ * (navigateur) — inchangé caractère pour caractère. Fourni, la date
+ * affichée est celle du fuseau demandé plutôt que celle, potentiellement
+ * différente, du poste qui consulte l'écran (`useCompanyTimeZone`,
+ * `hooks/useCompanyTimeZone.js`, lit `CompanyProfile.fuseau_horaire`). Le
+ * BACKEND continue de stocker en UTC — seule l'interprétation d'affichage
+ * change ici.
+ */
+export function formatDate(value, { long = false, timeZone } = {}) {
   const d = asDate(value)
   if (!d) return '—'
+  const zoneOpt = timeZone ? { timeZone } : {}
   if (long) {
     return new Intl.DateTimeFormat(LOCALE, {
-      day: 'numeric', month: 'long', year: 'numeric',
+      day: 'numeric', month: 'long', year: 'numeric', ...zoneOpt,
     }).format(d)
   }
   return new Intl.DateTimeFormat(LOCALE, {
-    day: '2-digit', month: '2-digit', year: 'numeric',
+    day: '2-digit', month: '2-digit', year: 'numeric', ...zoneOpt,
   }).format(d)
 }
 
@@ -89,19 +102,25 @@ export function formatDate(value, { long = false } = {}) {
  * Date + heure : « 18/06/2026 14:05 » (défaut), ou « 18 juin 2026, 14:05 »
  * si `long=true` (VX75 — variante lisible utilisée pour les rendez-vous/
  * horodatages destinés à un titre/tooltip plutôt qu'une colonne de tableau).
+ *
+ * NTI18N10 — `timeZone` optionnel, même contrat que `formatDate` ci-dessus :
+ * omis, comportement historique inchangé ; fourni, l'heure affichée suit le
+ * fuseau de la SOCIÉTÉ plutôt que celui du poste qui consulte l'écran —
+ * critère d'acceptation (pointages RH, chatter) d'une société basée à Dakar.
  */
-export function formatDateTime(value, { long = false } = {}) {
+export function formatDateTime(value, { long = false, timeZone } = {}) {
   const d = asDate(value)
   if (!d) return '—'
+  const zoneOpt = timeZone ? { timeZone } : {}
   if (long) {
     return new Intl.DateTimeFormat(LOCALE, {
       day: 'numeric', month: 'long', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      hour: '2-digit', minute: '2-digit', ...zoneOpt,
     }).format(d)
   }
   return new Intl.DateTimeFormat(LOCALE, {
     day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', ...zoneOpt,
   }).format(d)
 }
 

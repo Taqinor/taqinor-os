@@ -69,6 +69,30 @@ test('formatDateTime: variante long= « 18 juin 2026, 14:05 »', () => {
   assert.equal(formatDateTime(null, { long: true }), '—')
 })
 
+// NTI18N10 — `timeZone` optionnel : omis, comportement historique inchangé
+// (fuseau de l'environnement d'exécution) ; fourni, l'heure affichée suit
+// EXPLICITEMENT le fuseau demandé (fuseau de la société), déterministe quel
+// que soit le fuseau de la machine qui exécute ce test.
+test('formatDateTime: timeZone optionnel fait bien basculer le rendu', () => {
+  const iso = '2026-06-18T14:05:00Z'
+  // Africa/Dakar est TOUJOURS UTC+0 (jamais de DST, cf. l'énoncé NTI18N10) :
+  // l'heure locale Dakar est donc identique à l'heure UTC de l'ISO ci-dessus.
+  assert.match(
+    formatDateTime(iso, { timeZone: 'Africa/Dakar' }), /18\/06\/2026 14:05/)
+  // Un fuseau clairement différent (Asia/Tokyo, UTC+9 fixe, jamais de DST)
+  // prouve que l'option change réellement le rendu plutôt que de l'ignorer.
+  assert.match(
+    formatDateTime(iso, { timeZone: 'Asia/Tokyo' }), /18\/06\/2026 23:05/)
+})
+
+test('formatDate: timeZone optionnel peut faire basculer le jour calendaire', () => {
+  // Juste avant minuit UTC : en Asia/Tokyo (UTC+9) c'est déjà le lendemain,
+  // alors qu'en Africa/Dakar (UTC+0) c'est encore le même jour.
+  const iso = '2026-06-18T23:30:00Z'
+  assert.equal(formatDate(iso, { timeZone: 'Asia/Tokyo' }), '19/06/2026')
+  assert.equal(formatDate(iso, { timeZone: 'Africa/Dakar' }), '18/06/2026')
+})
+
 // VX30 — timeAgo() extrait de TicketsPage.jsx en util partagé (bandeau de
 // fraîcheur du mur de flotte + chatter tickets).
 test('timeAgo: instant / minutes / heures / repli date', () => {

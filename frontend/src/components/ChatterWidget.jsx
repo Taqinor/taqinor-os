@@ -13,6 +13,9 @@ import { useSelector } from 'react-redux'
 import { MessageSquare, Send, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
 import { IconButton } from '../ui/IconButton'
+// NTI18N10 — horodatages du chatter affichés dans le fuseau de la SOCIÉTÉ
+// (critère d'acceptation littéral), pas celui du poste qui consulte l'écran.
+import useCompanyTimeZone from '../hooks/useCompanyTimeZone'
 
 // Surligne les @mentions dans le texte.
 function renderBody(body) {
@@ -25,12 +28,15 @@ function renderBody(body) {
   )
 }
 
-function formatDate(iso) {
+function formatDate(iso, timeZone) {
   if (!iso) return ''
   try {
     return new Intl.DateTimeFormat('fr-FR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
+      // NTI18N10 — `timeZone` optionnel : omis, comportement historique
+      // inchangé (fuseau de l'environnement d'exécution).
+      ...(timeZone ? { timeZone } : {}),
     }).format(new Date(iso))
   } catch {
     return iso
@@ -39,6 +45,7 @@ function formatDate(iso) {
 
 export default function ChatterWidget({ model, id, readOnly = false }) {
   const user = useSelector((s) => s.auth?.user)
+  const fuseauHoraire = useCompanyTimeZone()
   const [comments, setComments] = useState([])
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)
@@ -121,7 +128,7 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
           <div key={c.id} className="chatter-item">
             <div className="chatter-meta">
               <span className="chatter-author">{c.author_display || c.author_username || 'Système'}</span>
-              <span className="chatter-date">{formatDate(c.created_at)}</span>
+              <span className="chatter-date">{formatDate(c.created_at, fuseauHoraire)}</span>
               {/* Suppression : auteur lui-même ou admin */}
               {!readOnly && (user?.username === c.author_username || isAdmin) && (
                 // VX194(b) — WCAG 2.5.8 : ce bouton (Trash2 size=12, aucun CSS
