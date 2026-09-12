@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
   Sprout, Plus, FileSignature, Download, Pencil, Trash2, ListChecks,
+  ShieldCheck,
 } from 'lucide-react'
 import {
-  Button, Card, Input, Spinner, EmptyState, Badge, toast,
+  Button, Card, Input, Spinner, EmptyState, Badge, toast, Checkbox,
   Tabs, TabsList, TabsTrigger, TabsContent,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -269,6 +270,8 @@ function BaremeTab() {
   const [loading, setLoading] = useState(true)
   // WIR38 — édition d'un palier (tranche) sans re-seed complet du barème.
   const [editingTranche, setEditingTranche] = useState(null)
+  // NTPAY21 — barème dont on ouvre le wizard de publication.
+  const [publication, setPublication] = useState(null)
 
   const load = () =>
     paieApi.getBaremes({ ordering: '-date_effet' })
@@ -295,6 +298,15 @@ function BaremeTab() {
             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
               Effet {b.date_effet}
               {b.actif && <Badge tone="success">Actif</Badge>}
+              {b.valide_par_fondateur
+                ? <Badge tone="success">Validé</Badge>
+                : <Badge tone="warning">À valider</Badge>}
+              {/* NTPAY21 — publication guidée : aperçu d'impact obligatoire
+                  avant d'activer un barème. */}
+              <Button size="sm" variant="outline"
+                onClick={() => setPublication(b)}>
+                <ShieldCheck size={14} aria-hidden="true" /> Publier
+              </Button>
             </span>
           </div>
           <table className="w-full text-sm">
@@ -338,7 +350,149 @@ function BaremeTab() {
           onClose={() => setEditingTranche(null)}
           onSaved={load} />
       )}
+      {publication && (
+        <PublicationBaremeDialog bareme={publication}
+          onClose={() => setPublication(null)}
+          onPublished={() => { setPublication(null); load() }} />
+      )}
     </div>
+  )
+}
+
+/* ── NTPAY21 — wizard « Publication de barème » (aperçu → validation →
+   publication). L'aperçu d'impact est OBLIGATOIRE : le serveur refuse une
+   publication sans le jeton rendu par l'étape 1. ── */
+function PublicationBaremeDialog({ bareme, onClose, onPublished }) {
+  const [apercu, setApercu] = useState(null)
+  const [chargement, setChargement] = useState(true)
+  const [valide, setValide] = useState(false)
+  const [rappel, setRappel] = useState(false)
+  const [periodeCible, setPeriodeCible] = useState('')
+  const [periodes, setPeriodes] = useState([])
+  const [envoi, setEnvoi] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  const charger = () =>
+    Promise.all([
+      paieApi.apercuPublicationBareme(bareme.id),
+      paieApi.getPeriodes({ ordering: '-annee,-mois' }),
+    ])
+      .then(([r, rp]) => { setApercu(r.data); setPeriodes(listOf(rp.data)) })
+      .catch(() => setErreur('Aperçu d’impact indisponible.'))
+      .finally(() => setChargement(false))
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    charger()
+  }, [])
+
+  const publier = async (e) => {
+    e.preventDefault()
+    setErreur(null)
+    if (!valide) {
+      setErreur('Cochez la validation du fondateur avant de publier.')
+      return
+    }
+    setEnvoi(true)
+    try {
+      await paieApi.publierBareme(bareme.id, {
+        jeton_apercu: apercu?.jeton_apercu,
+        valide_par_fondateur: true,
+        declencher_rappel: rappel,
+        periode_cible: rappel ? periodeCible : undefined,
+      })
+      toast.success('Barème publié.')
+      onPublished()
+    } catch (e2) {
+      const payload = e2?.response?.data
+      setErreur(
+        payload?.valide_par_fondateur?.[0]
+        || payload?.jeton_apercu?.[0]
+        || payload?.periode_cible?.[0]
+        || payload?.detail
+        || 'Publication impossible.',
+      )
+    } finally { setEnvoi(false) }
+  }
+
+  const impactees = apercu?.periodes_impactees || []
+  const totaux = apercu?.impact?.totaux
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Publier le barème — {bareme.libelle}</DialogTitle>
+        </DialogHeader>
+        {chargement ? <Loading /> : (
+          <form onSubmit={publier} className="flex flex-col gap-4" noValidate>
+            <section>
+              <h4 className="text-sm font-medium">1. Aperçu d’impact</h4>
+              {totaux ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Sur {apercu.impact.nombre_profils} salarié(s) :
+                  IR {formatMAD(totaux.ecart_ir)},
+                  net {formatMAD(totaux.ecart_net)},
+                  coût employeur {formatMAD(totaux.ecart_cout)}.
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Aucun barème antérieur : pas d’écart à montrer.
+                </p>
+              )}
+            </section>
+            <section>
+              <h4 className="text-sm font-medium">2. Périodes déjà figées</h4>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {impactees.length === 0
+                  ? 'Aucune période validée n’est rendue périmée.'
+                  : `${impactees.length} période(s) validée(s)/clôturée(s) `
+                    + 'seraient périmées par cette date d’effet.'}
+              </p>
+            </section>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={valide}
+                onCheckedChange={(v) => setValide(Boolean(v))} />
+              Je valide ce barème (validation du fondateur, obligatoire)
+            </label>
+            {impactees.length > 0 && (
+              <>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox checked={rappel}
+                    onCheckedChange={(v) => setRappel(Boolean(v))} />
+                  Déclencher le rappel rétroactif sur les périodes impactées
+                </label>
+                {rappel && (
+                  <Select value={periodeCible} onValueChange={setPeriodeCible}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Période qui portera le rappel" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {periodes.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {String(p.mois).padStart(2, '0')}/{p.annee}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </>
+            )}
+            {erreur && (
+              <p className="text-sm text-destructive" role="alert">{erreur}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>
+                Annuler
+              </Button>
+              <Button type="submit" disabled={envoi}>
+                {envoi ? 'Publication…' : 'Publier'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -297,6 +297,149 @@ class BaremeIRViewSet(_RappelRetroactifMixin, _PaieBaseViewSet):
     search_fields = ['libelle']
     ordering_fields = ['date_effet', 'id']
 
+    # NTPAY21 — le jeton d'aperçu est SIGNÉ (pas de table, pas de migration) :
+    # il prouve que l'étape « aperçu d'impact » a bien été jouée pour CE
+    # barème, et il périme au bout d'une heure.
+    _SEL_APERCU_BAREME = 'paie.wizard-publication-bareme'
+    _DUREE_JETON_APERCU_S = 3600
+
+    @staticmethod
+    def _jeton_apercu(bareme):
+        from django.core.signing import TimestampSigner
+
+        signer = TimestampSigner(salt=BaremeIRViewSet._SEL_APERCU_BAREME)
+        return signer.sign(f'{bareme.company_id}:{bareme.id}')
+
+    @classmethod
+    def _jeton_apercu_valide(cls, bareme, jeton):
+        from django.core.signing import BadSignature, TimestampSigner
+
+        if not jeton:
+            return False
+        signer = TimestampSigner(salt=cls._SEL_APERCU_BAREME)
+        try:
+            valeur = signer.unsign(jeton, max_age=cls._DUREE_JETON_APERCU_S)
+        except BadSignature:
+            # ``SignatureExpired`` hérite de ``BadSignature`` : un jeton
+            # périmé comme un jeton forgé renvoient tous deux « invalide ».
+            return False
+        return valeur == f'{bareme.company_id}:{bareme.id}'
+
+    @extend_schema(responses=inline_serializer('PaieWizardPublicationBareme', {
+        'etape': serializers.CharField(),
+        'bareme': serializers.DictField(),
+        'impact': serializers.DictField(required=False),
+        'periodes_impactees': serializers.ListField(
+            child=serializers.DictField(), required=False),
+        'jeton_apercu': serializers.CharField(required=False),
+        'rappel': serializers.DictField(required=False, allow_null=True),
+    }))
+    @action(detail=True, methods=['post'], url_path='wizard-publication')
+    def wizard_publication(self, request, pk=None):
+        """Wizard guidé de publication d'un barème (NTPAY21).
+
+        Enchaîne les briques existantes en UN parcours, dans cet ordre :
+
+        1. ``etape='apercu'`` — comparateur d'impact (NTPAY17) + périodes déjà
+           figées que la publication rend périmées (NTPAY1). Renvoie un
+           ``jeton_apercu`` signé, valable une heure ;
+        2. ``etape='publication'`` — exige ce jeton (sinon 400 : on ne publie
+           pas un barème sans avoir vu son impact) ET
+           ``valide_par_fondateur=True`` (la case est obligatoire avant
+           activation). Option ``declencher_rappel`` + ``periode_cible`` :
+           enchaîne le rappel rétroactif NTPAY1.
+
+        Écriture → gate ``paie_gerer`` (mixin ``_PaieVoirOuGerer``).
+        """
+        bareme = self.get_object()
+        etape = (request.data.get('etape') or 'apercu').strip()
+        entete = {
+            'id': bareme.id, 'libelle': bareme.libelle,
+            'date_effet': bareme.date_effet,
+            'valide_par_fondateur': bareme.valide_par_fondateur,
+        }
+
+        periodes = self._periodes_impactees(request)
+        periodes_json = [
+            {'id': p.id, 'annee': p.annee, 'mois': p.mois,
+             'statut': p.statut, 'type_run': p.type_run}
+            for p in periodes
+        ]
+
+        if etape == 'apercu':
+            ancien = (
+                BaremeIR.objects
+                .filter(company=request.user.company, pays=bareme.pays,
+                        date_effet__lt=bareme.date_effet)
+                .order_by('-date_effet')
+                .first()
+            )
+            impact = None
+            if ancien is not None:
+                impact = paie_selectors.comparer_baremes(
+                    request.user.company, ancien, bareme)
+            return Response({
+                'etape': 'apercu',
+                'bareme': entete,
+                'impact': impact,
+                'periodes_impactees': periodes_json,
+                'jeton_apercu': self._jeton_apercu(bareme),
+            }, status=status.HTTP_200_OK)
+
+        if etape != 'publication':
+            raise DRFValidationError({'etape': [
+                "Étape inconnue : utilisez « apercu » puis « publication »."]})
+
+        if not self._jeton_apercu_valide(
+                bareme, request.data.get('jeton_apercu')):
+            raise DRFValidationError({'jeton_apercu': [
+                "Aperçu d'impact non joué (ou expiré) : rejouez l'étape "
+                '« apercu » avant de publier ce barème.']})
+
+        if not request.data.get('valide_par_fondateur'):
+            raise DRFValidationError({'valide_par_fondateur': [
+                'Validation du fondateur obligatoire : cochez la case avant '
+                "d'activer ce barème."]})
+
+        bareme.valide_par_fondateur = True
+        bareme.save(update_fields=['valide_par_fondateur'])
+
+        rappel = None
+        if request.data.get('declencher_rappel'):
+            periode_id = request.data.get('periode_cible')
+            if not periode_id:
+                raise DRFValidationError({'periode_cible': [
+                    'Champ requis pour déclencher le rappel rétroactif : '
+                    'indiquez la période OUVERTE qui le portera.']})
+            try:
+                periode_cible = PeriodePaie.objects.get(
+                    company=request.user.company, pk=periode_id)
+            except (PeriodePaie.DoesNotExist, ValueError, TypeError):
+                raise DRFValidationError({'periode_cible': [
+                    'Période introuvable dans votre société.']})
+            try:
+                resultat = appliquer_rappel_retroactif(
+                    periode_cible, periodes,
+                    motif=(request.data.get('motif') or ''))
+            except DjangoValidationError as exc:
+                raise DRFValidationError({'periode_cible': exc.messages})
+            rappel = {
+                'periode_cible': periode_cible.id,
+                'periodes_regularisees': [p.id for p in resultat['periodes']],
+                'bulletins': [b.id for b in resultat['bulletins']],
+                'nombre_salaries': resultat['nombre_salaries'],
+                'total_ecart_ir': str(resultat['total_ecart_ir']),
+                'total_ecart_net': str(resultat['total_ecart_net']),
+            }
+
+        entete['valide_par_fondateur'] = True
+        return Response({
+            'etape': 'publication',
+            'bareme': entete,
+            'periodes_impactees': periodes_json,
+            'rappel': rappel,
+        }, status=status.HTTP_200_OK)
+
     @extend_schema(responses=inline_serializer('PaieComparaisonBaremes', {
         'ancien': serializers.DictField(allow_null=True),
         'nouveau': serializers.DictField(allow_null=True),

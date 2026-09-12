@@ -120,6 +120,14 @@ const paieApi = {
     id ? api.patch(`/paie/baremes/${id}/`, data)
       : api.post('/paie/baremes/', data),
   deleteBareme: (id) => api.delete(`/paie/baremes/${id}/`),
+  // NTPAY21 — wizard de publication guidé : aperçu d'impact (NTPAY17) +
+  // périodes impactées (NTPAY1), puis publication avec la case fondateur.
+  apercuPublicationBareme: (id) =>
+    api.post(`/paie/baremes/${id}/wizard-publication/`, { etape: 'apercu' }),
+  publierBareme: (id, data) =>
+    api.post(`/paie/baremes/${id}/wizard-publication/`, {
+      etape: 'publication', ...data,
+    }),
 
   // ── Rubriques (catalogue paramétrable) ──
   getRubriques: (params) => api.get('/paie/rubriques/', { params }),
