@@ -1686,6 +1686,38 @@ def verifier_reouverture_cloture(installation, nouveau_statut, user, motif):
     return None
 
 
+def verifier_annulation_cloture(installation, user, motif):
+    """CHT2 — raison FR qui bloque l'ANNULATION d'un chantier clôturé, ou None
+    quand l'annulation est permise.
+
+    L'annulation pose un DRAPEAU orthogonal au statut (elle ne passe donc
+    jamais par `changer_statut_chantier`), mais ses EFFETS sont exactement ceux
+    que le verrou AUD326 protège : elle libère les réservations de stock
+    restantes et solde les interventions ouvertes d'un chantier que
+    facturation, garantie et parc en aval considèrent clos. Sur un chantier
+    CLÔTURÉ — statut canonique `CLOTURE` **ou** verrou `cloture_verrouillee`
+    posé — elle exige donc les DEUX mêmes conditions cumulées que la
+    réouverture : un motif explicite et le rôle Directeur.
+
+    Hors clôture — le cas courant — la fonction ne dit jamais rien : le
+    comportement historique de l'annulation reste intact."""
+    clos = (
+        Installation.canonical_statut(installation.statut)
+        == Installation.Statut.CLOTURE
+        or bool(getattr(installation, 'cloture_verrouillee', False))
+    )
+    if not clos:
+        return None
+    if not (motif or '').strip():
+        return ("Ce chantier est CLÔTURÉ : son annulation exige un motif "
+                "explicite (`motif`), journalisé à l'historique.")
+    if not est_directeur(user):
+        return ("Ce chantier est CLÔTURÉ : seul un Directeur peut l'annuler "
+                "(l'annulation libère les réservations et solde les "
+                "interventions d'un chantier soldé, garantie démarrée).")
+    return None
+
+
 def verifier_transition_statut(installation, nouveau_statut):
     """CH2 — raisons FRANÇAISES qui bloquent le passage du chantier (dans son
     état actuel) à `nouveau_statut`. Liste vide = transition autorisée.
