@@ -67,6 +67,17 @@ const portailApi = {
       api.post('/portail/mes-demandes-sav/consulter-article-kb/',
         { article_id: articleId }),
   },
+  // NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11,
+  // lecture seule) + galerie photos avant/pendant/après, jamais de donnée
+  // financière (BOM/prix exclus, voir selectors installations).
+  chantiers: {
+    liste: () => api.get('/portail/mes-chantiers/'),
+    detail: (id) => api.get(`/portail/mes-chantiers/${id}/`),
+    // `results[].url` de la réponse porte déjà le chemin complet servant les
+    // octets (route scopée au client connecté) — jamais reconstruit ici.
+    photos: (id, phase) => api.get(`/portail/mes-chantiers/${id}/photos/`,
+      { params: phase ? { phase } : {} }),
+  },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au
   // rattachement du compte connecté.

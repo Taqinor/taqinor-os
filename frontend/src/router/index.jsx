@@ -106,6 +106,8 @@ const PortailClientAccueil = lazy(() => import('../features/portail/client/Porta
 const PortailClientDevis = lazy(() => import('../features/portail/client/PortailClientDevis'))
 const PortailClientFactures = lazy(() => import('../features/portail/client/PortailClientFactures'))
 const PortailClientLivraisons = lazy(() => import('../features/portail/client/PortailClientLivraisons'))
+// NTPRT14 — « Mes chantiers » : timeline (jalons portail) + galerie photos.
+const PortailClientChantiers = lazy(() => import('../features/portail/client/PortailClientChantiers'))
 // AUD139 — changement OBLIGATOIRE du mot de passe temporaire (portail client).
 const PortailClientMotDePasse = lazy(() => import('../features/portail/client/PortailClientMotDePasse'))
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
@@ -436,6 +438,13 @@ const router = createBrowserRouter([
     path: '/portail/client/livraisons',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientLivraisons /></WithPortal>,
+  },
+  // NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11,
+  // lecture seule) + galerie photos avant/pendant/après, jamais de montant.
+  {
+    path: '/portail/client/chantiers',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientChantiers /></WithPortal>,
   },
   // AUD139 — rotation FORCÉE du mot de passe temporaire. Même `portalLoader`
   // (donc même garde de portée) : le loader ne redirige PAS vers cette route

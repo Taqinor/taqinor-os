@@ -1,0 +1,28 @@
+{
+  "endpoint": "GET /api/django/portail/mes-chantiers/{id}/",
+  "pourquoi": "NTPRT14 — détail d'UN chantier + SA timeline de jalons, servi par MesChantiersPortailViewSet.retrieve. Les jalons viennent de la MÊME timeline portail que l'écran interne JalonChantierPortailViewSet (FG232/CHT10), synchronisée automatiquement par CHT11 (aucune double saisie, aucun montant) — le client voit donc exactement ce que l'interne voit. Un chantier d'un autre client (ou d'une autre société) est INTROUVABLE (404), jamais « trouvé puis refusé ».",
+  "exemple": {
+    "id": 17,
+    "reference": "CH-2026-0017",
+    "statut": "en_cours",
+    "statut_display": "En cours",
+    "site_ville": "Casablanca",
+    "date_creation": "2026-06-01T10:00:00Z",
+    "jalons": [
+      {
+        "id": 101,
+        "libelle": "Étude technique",
+        "ordre": 0,
+        "atteint": true,
+        "date_jalon": "2026-06-05"
+      },
+      {
+        "id": 102,
+        "libelle": "Installation",
+        "ordre": 0,
+        "atteint": false,
+        "date_jalon": null
+      }
+    ]
+  }
+}
