@@ -27,6 +27,7 @@ from .bulk_views import (
 from .public_sandbox_views import SandboxResetView
 from .public_changelog_views import PublicChangelogView
 from .public_errors_views import PublicErrorCatalogView
+from .public_events_views import PublicEventFeedView
 from .public_licence_views import PublicLicenceStatutView
 from .public_scm_views import (
     PublicPolitiqueStockViewSet, PublicPrevisionDemandeViewSet,
@@ -71,6 +72,8 @@ urlpatterns = [
     # pour `=IMPORTDATA()` Google Sheets/Excel Web.
     path('exports/<str:entite>.csv', PublicCsvPullExportView.as_view(),
          name='public-exports-csv-pull'),
+    # NTAPI17 — flux d'évènements consommable par curseur (CDC léger).
+    path('events/', PublicEventFeedView.as_view(), name='public-event-feed'),
     # NTAPI27 — reset du bac à sable (clé `test` seule).
     path('sandbox/reset/', SandboxResetView.as_view(),
          name='public-sandbox-reset'),

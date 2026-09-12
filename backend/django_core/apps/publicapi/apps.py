@@ -43,3 +43,13 @@ class PublicApiConfig(AppConfig):
                 apply_,
             ),
         )
+        # NTAPI17 — rétention du flux d'évènements, bornée PAR SOCIÉTÉ par son
+        # plan (`ApiUsagePlan.retention_livraisons_jours`, NTAPI7) : le flux est
+        # le même matériau qu'une livraison webhook et suit donc la même borne,
+        # jamais une seconde notion de rétention à régler ailleurs. Société sans
+        # plan → `API_EVENT_RETENTION_DAYS` (défaut 0 = OFF, rien n'est purgé).
+        from .events_feed import purger_evenements
+        register_retention_policy(
+            'publicapi_api_event_retention',
+            lambda now, apply_: purger_evenements(now, apply_),
+        )

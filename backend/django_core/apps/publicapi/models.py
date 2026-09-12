@@ -665,3 +665,59 @@ class BulkJob(TenantModel):
 
 
 __all__ += ['BulkJob']
+
+
+class ApiEvent(TenantModel):
+    """NTAPI17 — journal APPEND-ONLY des évènements, consommable par curseur.
+
+    Le même flux d'évènements que les webhooks (``delivery.dispatch_event`` est
+    le point unique où tous les signaux métier se rejoignent), mais en mode
+    PULL : un intégrateur qui ne peut pas exposer d'URL publique (derrière un
+    pare-feu, un poste de travail, un connecteur no-code) relit
+    ``GET /api/public/v1/events/?after=<sequence>`` et ne voit que du NEUF.
+
+    POURQUOI UNE ``sequence`` PAR SOCIÉTÉ ET NON LA PK. Une PK globale
+    divulguerait le VOLUME des autres tenants (un client verrait ses ids sauter
+    de 4 000 entre deux de ses évènements) et rendrait la pagination par curseur
+    fragile. Chaque société a donc son propre compteur dense, contraint unique
+    par ``(company, sequence)`` — attribué par ``services_events.enregistrer``
+    (plus-haut-utilisé + 1, savepoint + retry sur course), JAMAIS par un
+    ``count() + 1`` (règle de numérotation du dépôt).
+
+    APPEND-ONLY : aucun champ n'est jamais modifié après création. La purge se
+    fait par RÉTENTION (politique ``publicapi_api_event_retention``, bornée par
+    le plan NTAPI7), jamais par mise à jour.
+    """
+
+    # Compteur DENSE et croissant, propre à la société (jamais la PK globale).
+    sequence = models.BigIntegerField()
+    # Code d'évènement (`constants.ALL_EVENTS`) — même vocabulaire que les
+    # webhooks, jamais un second jeu de noms.
+    type = models.CharField(max_length=50)
+    payload = models.JSONField(default=dict, blank=True)
+    # Identité STABLE de l'évènement source (uuid4), partagée avec la livraison
+    # webhook correspondante : un consommateur qui utilise LES DEUX canaux
+    # (webhook + rattrapage par le flux) déduplique dessus.
+    event_id = models.CharField(max_length=36, blank=True, default='',
+                                db_index=True)
+    # created_at / updated_at hérités de core.TenantModel.
+
+    class Meta:
+        verbose_name = "Évènement d'API publique"
+        verbose_name_plural = "Évènements d'API publique"
+        ordering = ['company', 'sequence']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'sequence'],
+                name='publicapi_apievent_co_seq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'sequence'],
+                         name='publicapi_apievent_cur_idx'),
+        ]
+
+    def __str__(self):
+        return f'#{self.sequence} {self.type} (société {self.company_id})'
+
+
+__all__ += ['ApiEvent']

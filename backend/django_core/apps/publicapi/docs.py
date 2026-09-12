@@ -282,6 +282,24 @@ def public_api_reference():
                     'query_token_auth': True,
                     'response_csv': True,
                 },
+                {
+                    'chemin': '/api/public/v1/events/',
+                    'methode': 'GET',
+                    'description': (
+                        "NTAPI17 — flux d'évènements consommable par CURSEUR "
+                        "(`?after=<sequence>&limit=<n>`), alimenté par les "
+                        "mêmes signaux que les webhooks. Pendant PULL du push : "
+                        "pour une intégration qui ne peut pas exposer d'URL "
+                        "publique, et comme filet de rattrapage. Scope "
+                        "`read:events` pour ouvrir le canal ; chaque évènement "
+                        "reste filtré par le scope de lecture de SA famille "
+                        "(`lead.*` → `read:leads`, `facture.*` → "
+                        "`read:factures`…) — le flux n'est jamais un "
+                        "contournement des scopes de lecture."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                },
             ],
         },
         'endpoints_lecture_simple': {
