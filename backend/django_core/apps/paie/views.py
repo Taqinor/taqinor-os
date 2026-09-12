@@ -69,6 +69,7 @@ from .serializers import (
 from .services import (
     TransitionPeriodeInterdite,
     annuler_saisie_arret,
+    appliquer_rappel_retroactif,
     appliquer_regularisation_ir,
     appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
@@ -89,6 +90,7 @@ from .services import (
     creer_saisies_arret_lot,
     declaration_cimr,
     declaration_cnss,
+    detecter_periodes_impactees,
     deposer_bds_complementaire,
     deposer_bds_principal,
     dry_run_reprise_cumuls,
@@ -178,7 +180,72 @@ class _PaieBaseViewSet(_PaieVoirOuGerer, TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
 
 
-class ParametrePaieViewSet(_PaieBaseViewSet):
+class _RappelRetroactifMixin:
+    """NTPAY1 — actions de rétroactivité d'un jeu versionné (paramètre/barème).
+
+    Partagé par ``ParametrePaieViewSet`` et ``BaremeIRViewSet`` : la seule
+    différence est le mot-clé passé aux services (``parametre=`` vs
+    ``bareme=``), porté par ``_KWARG_RETRO``.
+
+    * ``GET  <ressource>/<id>/periodes-impactees/`` — lecture seule, liste les
+      périodes VALIDÉES/CLÔTURÉES que la publication rend périmées ;
+    * ``POST <ressource>/<id>/rappel-retroactif/`` — corps
+      ``{"periode_cible": <id>, "motif": "…"}`` : matérialise les bulletins de
+      rappel sur la période cible. Les bulletins d'origine restent figés.
+    """
+    _KWARG_RETRO = 'parametre'
+
+    def _periodes_impactees(self, request):
+        objet = self.get_object()
+        return detecter_periodes_impactees(
+            request.user.company, **{self._KWARG_RETRO: objet})
+
+    @action(detail=True, methods=['get'], url_path='periodes-impactees')
+    def periodes_impactees(self, request, pk=None):
+        """Périodes déjà figées que ce jeu versionné rend périmées (NTPAY1)."""
+        periodes = self._periodes_impactees(request)
+        return Response({
+            'periodes': [
+                {'id': p.id, 'annee': p.annee, 'mois': p.mois,
+                 'statut': p.statut, 'type_run': p.type_run}
+                for p in periodes
+            ],
+            'nombre': len(periodes),
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='rappel-retroactif')
+    def rappel_retroactif(self, request, pk=None):
+        """Génère les bulletins de rappel rétroactif (NTPAY1)."""
+        periode_id = request.data.get('periode_cible')
+        if not periode_id:
+            raise DRFValidationError({
+                'periode_cible': [
+                    'Champ requis : indiquez la période OUVERTE qui portera '
+                    'le rappel rétroactif.']})
+        try:
+            periode_cible = PeriodePaie.objects.get(
+                company=request.user.company, pk=periode_id)
+        except (PeriodePaie.DoesNotExist, ValueError, TypeError):
+            raise DRFValidationError({
+                'periode_cible': ['Période introuvable dans votre société.']})
+        periodes = self._periodes_impactees(request)
+        try:
+            resultat = appliquer_rappel_retroactif(
+                periode_cible, periodes,
+                motif=(request.data.get('motif') or ''))
+        except DjangoValidationError as exc:
+            raise DRFValidationError({'periode_cible': exc.messages})
+        return Response({
+            'periode_cible': periode_cible.id,
+            'periodes_regularisees': [p.id for p in resultat['periodes']],
+            'bulletins': [b.id for b in resultat['bulletins']],
+            'nombre_salaries': resultat['nombre_salaries'],
+            'total_ecart_ir': str(resultat['total_ecart_ir']),
+            'total_ecart_net': str(resultat['total_ecart_net']),
+        }, status=status.HTTP_201_CREATED)
+
+
+class ParametrePaieViewSet(_RappelRetroactifMixin, _PaieBaseViewSet):
     """Paramètres sociaux versionnés (PAIE2).
 
     PAIE3 — l'action ``seed-defaults`` provisionne (idempotent) les valeurs
@@ -199,8 +266,14 @@ class ParametrePaieViewSet(_PaieBaseViewSet):
         return Response(created, status=status.HTTP_200_OK)
 
 
-class BaremeIRViewSet(_PaieBaseViewSet):
-    """Barèmes IR versionnés et leurs tranches (PAIE4)."""
+class BaremeIRViewSet(_RappelRetroactifMixin, _PaieBaseViewSet):
+    """Barèmes IR versionnés et leurs tranches (PAIE4).
+
+    NTPAY1 — ``periodes-impactees`` / ``rappel-retroactif`` (cf.
+    ``_RappelRetroactifMixin``) rejouent les périodes déjà figées qu'un barème
+    publié rétroactivement rend périmées.
+    """
+    _KWARG_RETRO = 'bareme'
     queryset = BaremeIR.objects.prefetch_related('tranches').all()
     serializer_class = BaremeIRSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

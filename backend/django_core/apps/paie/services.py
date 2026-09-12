@@ -7294,3 +7294,233 @@ def historique_carriere(profil):
         'date_embauche': identite['date_embauche'],
         'annees': annees,
     }
+
+
+# ── NTPAY1 — Re-calcul RÉTROACTIF d'un barème/paramètre versionné ──────────
+
+# Champs de snapshot portés en ÉCART sur le bulletin de rappel rétroactif.
+# Volontairement PLUS ÉTROIT que ``BulletinPaie.SNAPSHOT_FIELDS`` :
+#   * ``personnes_a_charge`` n'est pas un montant (recopié tel quel) ;
+#   * ``provision_conges`` est un engagement social calculé sur le SOLDE DE
+#     CONGÉS COURANT (``provision_conges_payes``), pas sur le barème : rejouer
+#     un mois ancien aujourd'hui produirait un faux écart de provision, qui
+#     polluerait les comptes de provision sans qu'aucun barème n'ait bougé.
+CHAMPS_ECART_RAPPEL_RETRO = [
+    'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
+    'amo_salariale', 'amo_patronale', 'allocations_familiales',
+    'formation_professionnelle', 'cimr_salariale', 'frais_professionnels',
+    'net_imposable', 'ir', 'montant_exonere_regime', 'retenues',
+    'prime_anciennete', 'charges_patronales', 'net_a_payer',
+]
+
+CODE_LIGNE_RAPPEL_RETRO = 'RAPPEL-RETRO'
+
+
+def detecter_periodes_impactees(company, *, parametre=None, bareme=None):
+    """Périodes VALIDÉES/CLÔTURÉES rendues périmées par une publication (NTPAY1).
+
+    ``ParametrePaie`` et ``BaremeIR`` sont versionnés par ``date_effet``, mais
+    publier un jeu à une date d'effet ANTÉRIEURE à des périodes déjà validées
+    ne rejouait rien : les bulletins de ces mois restaient calculés sur le jeu
+    périmé, sans le moindre signal. Cette fonction liste — en LECTURE SEULE —
+    les ``PeriodePaie`` de ``company`` dont le mois est couvert par le nouveau
+    jeu ET qui sont déjà figées (validée ou clôturée).
+
+    Exactement UN des deux arguments ``parametre``/``bareme`` est attendu ; le
+    critère est le même dans les deux cas : la période est impactée quand le
+    jeu DÉSORMAIS en vigueur à son 1ᵉʳ du mois est précisément celui qu'on
+    vient de publier (les périodes antérieures à la ``date_effet``, ou déjà
+    couvertes par un jeu PLUS RÉCENT, ne le sont pas).
+
+    Renvoie une liste de ``PeriodePaie`` triée du plus ancien mois au plus
+    récent. Aucune écriture.
+    """
+    if (parametre is None) == (bareme is None):
+        raise ValueError(
+            'Fournissez exactement un « parametre » OU un « bareme ».')
+    nouveau = parametre if parametre is not None else bareme
+    company_id = getattr(company, 'id', company)
+    if company is None or getattr(nouveau, 'company_id', None) != company_id:
+        raise ValueError("Le jeu publié appartient à une autre société.")
+
+    date_effet = nouveau.date_effet
+    resolveur = parametre_en_vigueur if parametre is not None \
+        else bareme_en_vigueur
+
+    impactees = []
+    periodes = (
+        PeriodePaie.objects
+        .filter(company=company,
+                statut__in=[PeriodePaie.STATUT_VALIDEE,
+                            PeriodePaie.STATUT_CLOTUREE])
+        .order_by('annee', 'mois', 'id')
+    )
+    for periode in periodes:
+        le_jour = date(periode.annee, periode.mois, 1)
+        if le_jour < date_effet:
+            continue
+        en_vigueur = resolveur(company, le_jour)
+        if en_vigueur is not None and en_vigueur.pk == nouveau.pk:
+            impactees.append(periode)
+    return impactees
+
+
+def _ecart_bulletin_retroactif(bulletin):
+    """Écart (nouveau − retenu) d'un bulletin figé, recalculé EN MÉMOIRE.
+
+    Rejoue ``calculer_bulletin`` sur la période D'ORIGINE du bulletin — le
+    moteur résout lui-même le jeu en vigueur à ce mois, donc le NOUVEAU depuis
+    la publication — et renvoie ``{champ: Decimal}`` pour
+    ``CHAMPS_ECART_RAPPEL_RETRO``. AUCUNE écriture : le bulletin d'origine
+    reste intact (il est de toute façon figé par ``BulletinPaie.save``).
+    """
+    resultat = calculer_bulletin(
+        bulletin.profil, bulletin.periode, bulletin.personnes_a_charge)
+    return {
+        champ: _q(Decimal(resultat[champ]) - Decimal(
+            getattr(bulletin, champ) or 0))
+        for champ in CHAMPS_ECART_RAPPEL_RETRO
+    }
+
+
+def appliquer_rappel_retroactif(periode_cible, periodes_impactees, *,
+                                motif=''):
+    """Porte les écarts rétroactifs en bulletins de RAPPEL (NTPAY1).
+
+    Pour chaque salarié ayant au moins un bulletin VALIDÉ dans
+    ``periodes_impactees``, recalcule ces bulletins EN MÉMOIRE au jeu
+    désormais en vigueur, somme les écarts (IR, cotisations, net…) et
+    matérialise UN bulletin de type ``rappel`` sur ``periode_cible``, portant
+    une ligne ``RAPPEL-RETRO`` par mois régularisé. Les bulletins d'origine ne
+    sont JAMAIS mutés — ils restent le snapshot de ce qui a été versé.
+
+    Un écart NÉGATIF (trop-perçu) est porté tel quel : le bulletin de rappel
+    a des montants négatifs, ce qui laisse le ``CumulAnnuel`` et l'état 9421
+    cohérents (ils somment les bulletins validés de l'année).
+
+    Garde de cohérence : ``periode_cible`` doit appartenir à la même société,
+    ne pas être clôturée et ne pas figurer parmi les périodes impactées. Comme
+    un couple ``(periode, profil)`` n'accepte qu'UN bulletin, la fonction
+    REFUSE (message nommant les salariés concernés) si un bulletin existe déjà
+    sur la période cible — on porte alors le rappel sur un run hors-cycle.
+
+    Renvoie ``{'periode_cible', 'periodes', 'bulletins', 'nombre_salaries',
+    'total_ecart_ir', 'total_ecart_net'}``. Atomique.
+    """
+    from django.core.exceptions import ValidationError
+
+    from .models import BulletinPaie, LigneBulletin
+
+    periodes_impactees = list(periodes_impactees or [])
+    if not periodes_impactees:
+        raise ValidationError('Aucune période impactée : rien à régulariser.')
+    for periode in periodes_impactees:
+        if periode.company_id != periode_cible.company_id:
+            raise ValidationError(
+                "Période impactée d'une autre société : régularisation "
+                'refusée.')
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValidationError(
+            'Période cible clôturée : choisissez une période ouverte pour '
+            'porter le rappel rétroactif.')
+    ids_impactees = {p.pk for p in periodes_impactees}
+    if periode_cible.pk in ids_impactees:
+        raise ValidationError(
+            'La période cible ne peut pas être elle-même régularisée.')
+
+    company = periode_cible.company
+    bulletins_origine = list(
+        BulletinPaie.objects
+        .filter(company=company, periode__in=periodes_impactees,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe', 'periode')
+        .order_by('profil_id', 'periode__annee', 'periode__mois')
+    )
+    if not bulletins_origine:
+        raise ValidationError(
+            'Aucun bulletin validé sur les périodes impactées : rien à '
+            'régulariser.')
+
+    # Refus AVANT toute écriture : le couple (période, profil) est unique.
+    profils_cibles = {b.profil_id: b.profil for b in bulletins_origine}
+    deja = list(
+        BulletinPaie.objects
+        .filter(company=company, periode=periode_cible,
+                profil_id__in=profils_cibles)
+        .select_related('profil', 'profil__employe')
+    )
+    if deja:
+        noms = ', '.join(sorted(
+            f'{b.profil.employe.nom} {b.profil.employe.prenom}'.strip()
+            if b.profil.employe_id else f'profil #{b.profil_id}'
+            for b in deja))
+        raise ValidationError(
+            'Période cible — ces salariés y ont déjà un bulletin : '
+            f'{noms}. Un seul bulletin par salarié et par période : portez le '
+            'rappel rétroactif sur un run hors-cycle.')
+
+    ecarts_par_profil = {}
+    lignes_par_profil = {}
+    for bulletin in bulletins_origine:
+        ecart = _ecart_bulletin_retroactif(bulletin)
+        cumul = ecarts_par_profil.setdefault(
+            bulletin.profil_id,
+            {champ: Decimal('0') for champ in CHAMPS_ECART_RAPPEL_RETRO})
+        for champ, valeur in ecart.items():
+            cumul[champ] += valeur
+        if ecart['net_a_payer'] == 0 and ecart['ir'] == 0:
+            continue
+        lignes_par_profil.setdefault(bulletin.profil_id, []).append({
+            'periode': bulletin.periode,
+            'ecart_net': ecart['net_a_payer'],
+            'ecart_ir': ecart['ir'],
+        })
+
+    bulletins = []
+    total_ir = Decimal('0')
+    total_net = Decimal('0')
+    with transaction.atomic():
+        for profil_id, cumul in sorted(ecarts_par_profil.items()):
+            lignes = lignes_par_profil.get(profil_id, [])
+            if not lignes:
+                # Aucun écart réel pour ce salarié — on ne fabrique pas un
+                # bulletin de rappel à zéro.
+                continue
+            profil = profils_cibles[profil_id]
+            bulletin = BulletinPaie(
+                company=company, periode=periode_cible, profil=profil,
+                statut=BulletinPaie.STATUT_BROUILLON,
+                type_bulletin=BulletinPaie.TYPE_RAPPEL,
+                personnes_a_charge=0,
+                motif=(motif or 'Rappel rétroactif de barème')[:200],
+            )
+            for champ, valeur in cumul.items():
+                setattr(bulletin, champ, _q(valeur))
+            bulletin.save()
+            for ordre, ligne in enumerate(lignes, start=1):
+                periode_src = ligne['periode']
+                montant = ligne['ecart_net']
+                LigneBulletin.objects.create(
+                    company=company, bulletin=bulletin,
+                    code=CODE_LIGNE_RAPPEL_RETRO,
+                    libelle=(
+                        f'Rappel rétroactif {periode_src.mois:02d}/'
+                        f'{periode_src.annee} (écart IR '
+                        f'{ligne["ecart_ir"]})'),
+                    type=(Rubrique.TYPE_GAIN if montant >= 0
+                          else Rubrique.TYPE_RETENUE),
+                    montant=abs(montant),
+                    ordre=ordre,
+                )
+            bulletins.append(bulletin)
+            total_ir += cumul['ir']
+            total_net += cumul['net_a_payer']
+
+    return {
+        'periode_cible': periode_cible,
+        'periodes': periodes_impactees,
+        'bulletins': bulletins,
+        'nombre_salaries': len(bulletins),
+        'total_ecart_ir': _q(total_ir),
+        'total_ecart_net': _q(total_net),
+    }
