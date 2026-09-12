@@ -5152,6 +5152,47 @@ def demarrer_essai_contrat(contrat, *, date_fin_essai, plan_apres_essai=None,
     return essai
 
 
+def recalculer_metriques_saas_cache(company, *, today=None):
+    """NTSUB27 — Précalcule les métriques SaaS du mois courant en cache.
+
+    Appelle le MÊME constructeur que l'endpoint
+    (``selectors.metriques_saas``) — jamais une seconde formule — et pose le
+    résultat dans ``MetriquesSaasCache`` pour ``(company, période)``, avec
+    ``calcule_le``. Une exécution répétée le même jour RAFRAÎCHIT la ligne (le
+    cache est une PHOTO, jamais un cumul).
+
+    ``prevision_mrr`` reste NULL tant que NTSUB13 n'est pas branché : le cache
+    ne fabrique aucun chiffre qui n'existe pas.
+
+    Renvoie le ``MetriquesSaasCache`` mis à jour.
+    """
+    from decimal import InvalidOperation
+
+    from . import selectors
+    from .models import MetriquesSaasCache
+
+    if today is None:
+        today = timezone.localdate()
+    debut = today.replace(day=1)
+    payload = selectors.metriques_saas(company, debut, today)
+    quick_ratio = None
+    if payload.get('quick_ratio') is not None:
+        try:
+            quick_ratio = Decimal(str(payload['quick_ratio']))
+        except (InvalidOperation, TypeError, ValueError):
+            quick_ratio = None
+    periode = f'{today.year:04d}-{today.month:02d}'
+    cache, _ = MetriquesSaasCache.objects.update_or_create(
+        company=company, periode=periode,
+        defaults={
+            'arr_bridge': payload['arr_bridge'],
+            'quick_ratio': quick_ratio,
+            'rule_of_40': payload['rule_of_40'],
+            'calcule_le': timezone.now(),
+        })
+    return cache
+
+
 #: NTSUB26 — âge minimum (en mois) d'une période avant purge du détail brut.
 RETENTION_COMPTEURS_USAGE_MOIS = 24
 

@@ -323,6 +323,36 @@ def cloturer_contrats_impayes_daily():
     return {'contrats_suspendus': suspendus}
 
 
+@shared_task(name='contrats.recalculer_metriques_saas_cache_daily')
+def recalculer_metriques_saas_cache_daily():
+    """NTSUB27 — Précalcul nocturne des métriques SaaS du cockpit.
+
+    Fine enveloppe planifiable de
+    ``services.recalculer_metriques_saas_cache`` (toute la logique y vit et se
+    teste sans Celery). Chaque société est isolée : une exception n'empêche
+    jamais les suivantes, et un échec ne casse RIEN côté cockpit — l'endpoint
+    retombe simplement sur le calcul à la volée. Renvoie ``{'societes'}``.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    calculees = 0
+    for company in active_companies():
+        try:
+            services.recalculer_metriques_saas_cache(company)
+            calculees += 1
+        except Exception:  # pragma: no cover - defensif, isolation societe
+            logger.warning(
+                'contrats.recalculer_metriques_saas_cache_daily: echec '
+                'societe %s', company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.recalculer_metriques_saas_cache_daily: %s societe(s) '
+        'mise(s) en cache', calculees)
+    return {'societes': calculees}
+
+
 @shared_task(name='contrats.purger_compteurs_usage_factures_monthly')
 def purger_compteurs_usage_factures_monthly():
     """NTSUB26 — Purge mensuelle des relevés d'usage anciens ET facturés.

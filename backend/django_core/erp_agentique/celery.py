@@ -358,6 +358,13 @@ app.conf.beat_schedule = {
         'task': 'contrats.cloturer_contrats_impayes_daily',
         'schedule': crontab(hour=8, minute=20),
     },
+    # NTSUB27 — précalcul NOCTURNE des métriques SaaS du cockpit (ARR bridge /
+    # Quick Ratio / Rule of 40). Le cockpit retombe seul sur le calcul à la
+    # volée si ce job n'a pas tourné : aucune dépendance dure.
+    'contrats-recalculer-metriques-saas-cache-daily': {
+        'task': 'contrats.recalculer_metriques_saas_cache_daily',
+        'schedule': crontab(hour=1, minute=50),
+    },
     # NTSUB26 — purge MENSUELLE des relevés d'usage bruts d'une période DÉJÀ
     # FACTURÉE et vieille de plus de 24 mois (agrégés d'abord en une ligne de
     # synthèse). Le 1er du mois, heure creuse.

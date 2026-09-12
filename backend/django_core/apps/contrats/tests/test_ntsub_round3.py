@@ -529,3 +529,106 @@ class PurgeCompteursUsageTests(TestCase):
             CompteurUsage.objects.filter(company=autre).count(), 1)
         self.assertFalse(
             CompteurUsageArchive.objects.filter(company=autre).exists())
+
+
+class MetriquesSaasCacheTests(TestCase):
+    """NTSUB27 — cache nocturne : lu s'il est frais, jamais bloquant."""
+
+    def setUp(self):
+        self.co = make_company('ntsub27', 'NTSUB27 Co')
+        self.user = User.objects.create_user(
+            username='ntsub27-user', password='x', company=self.co,
+            role_legacy='admin')
+        self.api = auth(self.user)
+
+    def test_le_job_ecrit_une_photo_datee_du_mois_courant(self):
+        from django.utils import timezone
+
+        from apps.contrats import services
+        from apps.contrats.models import MetriquesSaasCache
+
+        today = timezone.localdate()
+        cache = services.recalculer_metriques_saas_cache(self.co, today=today)
+        self.assertEqual(
+            cache.periode, f'{today.year:04d}-{today.month:02d}')
+        self.assertIsNotNone(cache.calcule_le)
+        self.assertIsInstance(cache.arr_bridge, dict)
+        # NTSUB13 non branché : aucune prévision inventée.
+        self.assertIsNone(cache.prevision_mrr)
+        self.assertEqual(
+            MetriquesSaasCache.objects.filter(company=self.co).count(), 1)
+
+    def test_rejouer_le_job_rafraichit_sans_dupliquer(self):
+        from django.utils import timezone
+
+        from apps.contrats import services
+        from apps.contrats.models import MetriquesSaasCache
+
+        today = timezone.localdate()
+        premier = services.recalculer_metriques_saas_cache(
+            self.co, today=today)
+        second = services.recalculer_metriques_saas_cache(self.co, today=today)
+        self.assertEqual(premier.pk, second.pk)
+        self.assertEqual(
+            MetriquesSaasCache.objects.filter(company=self.co).count(), 1)
+
+    def test_endpoint_sert_le_cache_frais(self):
+        from apps.contrats import services
+
+        services.recalculer_metriques_saas_cache(self.co)
+        resp = self.api.get('/api/django/contrats/contrats/metriques-saas/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data['depuis_cache'])
+        self.assertIn('arr_bridge', resp.data)
+
+    def test_cache_absent_ne_bloque_jamais_l_endpoint(self):
+        from apps.contrats.models import MetriquesSaasCache
+
+        self.assertFalse(MetriquesSaasCache.objects.exists())
+        resp = self.api.get('/api/django/contrats/contrats/metriques-saas/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['depuis_cache'])
+        self.assertIn('arr_bridge', resp.data)
+        self.assertIn('rule_of_40', resp.data)
+
+    def test_cache_perime_est_ignore_et_recalcule(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.contrats import services
+        from apps.contrats.models import MetriquesSaasCache
+
+        services.recalculer_metriques_saas_cache(self.co)
+        cache = MetriquesSaasCache.objects.get(company=self.co)
+        MetriquesSaasCache.objects.filter(pk=cache.pk).update(
+            calcule_le=timezone.now() - timedelta(hours=30))
+        resp = self.api.get('/api/django/contrats/contrats/metriques-saas/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['depuis_cache'])
+
+    def test_plage_hors_mois_calendaire_calculee_a_la_volee(self):
+        from apps.contrats import services
+
+        services.recalculer_metriques_saas_cache(self.co)
+        resp = self.api.get(
+            '/api/django/contrats/contrats/metriques-saas/'
+            '?debut=2026-01-05&fin=2026-01-20')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['depuis_cache'])
+
+    def test_isolation_societe_du_cache(self):
+        from apps.contrats import services
+        from apps.contrats.models import MetriquesSaasCache
+
+        autre = make_company('ntsub27-b', 'NTSUB27 B')
+        user_b = User.objects.create_user(
+            username='ntsub27-user-b', password='x', company=autre,
+            role_legacy='admin')
+        services.recalculer_metriques_saas_cache(self.co)
+        self.assertFalse(
+            MetriquesSaasCache.objects.filter(company=autre).exists())
+        resp_b = auth(user_b).get(
+            '/api/django/contrats/contrats/metriques-saas/')
+        self.assertEqual(resp_b.status_code, 200)
+        self.assertFalse(resp_b.data['depuis_cache'])

@@ -3811,3 +3811,46 @@ class CompteurUsageArchive(TenantModel):
     def __str__(self):
         return (f'{self.code_compteur} [{self.periode}] = '
                 f'{self.quantite_totale} ({self.nb_lignes} relevé(s))')
+
+
+class MetriquesSaasCache(TenantModel):
+    """Agrégats SaaS PRÉCALCULÉS pour le tableau de bord — NTSUB27.
+
+    NTSUB12 (ARR bridge, Quick Ratio, Rule of 40) recalcule TOUT à la volée à
+    chaque ouverture du cockpit : coûteux sur un historique de plusieurs
+    années. Un job nocturne remplit cette table une fois par société et par
+    ``periode`` (mois, ``AAAA-MM``) ; l'endpoint lit le cache s'il a moins de
+    24 h et RETOMBE SILENCIEUSEMENT sur le calcul à la volée sinon — un cache
+    absent, périmé ou incomplet ne bloque JAMAIS le tableau de bord.
+
+    ``prevision_mrr`` est prévu pour NTSUB13 (prévision de MRR) et reste NULL
+    tant que ce scorer n'est pas branché : le cache ne fabrique aucun chiffre.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    periode = models.CharField(
+        max_length=7, verbose_name='Période (AAAA-MM)')
+    arr_bridge = models.JSONField(
+        default=dict, blank=True, verbose_name='ARR bridge')
+    quick_ratio = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        verbose_name='Quick Ratio')
+    rule_of_40 = models.JSONField(
+        default=dict, blank=True, verbose_name='Rule of 40')
+    prevision_mrr = models.JSONField(
+        null=True, blank=True, verbose_name='Prévision de MRR (NTSUB13)')
+    calcule_le = models.DateTimeField(verbose_name='Calculé le')
+
+    class Meta:
+        verbose_name = 'Cache de métriques SaaS'
+        verbose_name_plural = 'Caches de métriques SaaS'
+        ordering = ['-periode', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode'],
+                name='contrats_metriquessaas_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Métriques SaaS {self.periode} — société {self.company_id}'

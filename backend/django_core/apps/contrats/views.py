@@ -503,7 +503,12 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
 
         Filtres ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : mois courant).
         Lecture seule, scopée société. Div-by-zéro gardée (Quick Ratio /
-        croissance ARR renvoient ``null`` si indéfinis)."""
+        croissance ARR renvoient ``null`` si indéfinis).
+
+        NTSUB27 — sur la plage « mois calendaire » (le défaut du tableau de
+        bord), la réponse est servie depuis le CACHE nocturne s'il a moins de
+        24 h (``depuis_cache: true``). Un cache absent ou périmé ne bloque
+        JAMAIS : on recalcule à la volée, exactement comme avant."""
         from datetime import date as _date
 
         from django.utils import timezone as _tz
@@ -525,24 +530,9 @@ class ContratViewSet(UsageGuardedDestroyMixin, ChatterViewSetMixin,
                 status=status.HTTP_400_BAD_REQUEST)
 
         company = request.user.company
-        bridge = selectors.arr_bridge(company, debut, fin)
-        qr = selectors.quick_ratio(company, debut, fin)
-        ro40 = selectors.rule_of_40(company, debut, fin)
-        return Response({
-            'arr_bridge': {k: _money(v) for k, v in bridge.items()},
-            'quick_ratio': str(qr) if qr is not None else None,
-            'rule_of_40': {
-                'croissance_arr_pct': (
-                    str(ro40['croissance_arr_pct'])
-                    if ro40['croissance_arr_pct'] is not None else None),
-                'marge_pct': (
-                    str(ro40['marge_pct'])
-                    if ro40['marge_pct'] is not None else None),
-                'rule_of_40': (
-                    str(ro40['rule_of_40'])
-                    if ro40['rule_of_40'] is not None else None),
-            },
-        })
+        payload, depuis_cache = selectors.metriques_saas_avec_cache(
+            company, debut, fin)
+        return Response({**payload, 'depuis_cache': depuis_cache})
 
     @action(detail=False, methods=['get'], url_path='cohortes-retention')
     def cohortes_retention(self, request):
