@@ -1088,6 +1088,115 @@ def render_etat_charges_pdf(periode, *, etat=None, today=None):
         etat, employeur_context(periode.company), today=today))
 
 
+# ── NTPAY20 — Registre annuel des rémunérations (obligation légale) ────────
+
+def registre_remunerations_context(company, annee):
+    """Cumuls annuels par salarié pour le registre légal (NTPAY20).
+
+    Lit les ``CumulAnnuel`` (déjà alimentés par
+    ``services.recalculer_cumul_annuel``) de l'année : un salarié n'y figure
+    que s'il a été PAYÉ dans l'année — aucune ligne n'est fabriquée pour un
+    profil sans cumul, et aucun montant n'est recalculé ici.
+
+    Renvoie ``{'annee', 'lignes': [...], 'totaux': {...},
+    'nombre_salaries'}``.
+    """
+    from .models import CumulAnnuel
+
+    cumuls = (
+        CumulAnnuel.objects
+        .filter(company=company, annee=annee)
+        .select_related('profil', 'profil__employe')
+        .order_by('profil__employe__nom', 'profil__employe__prenom',
+                  'profil_id')
+    )
+    champs = ('brut', 'net_a_payer', 'ir', 'cnss_salariale', 'amo_salariale')
+    lignes = []
+    totaux = {champ: Decimal('0.00') for champ in champs}
+    for cumul in cumuls:
+        employe = getattr(cumul.profil, 'employe', None)
+        ligne = {
+            'profil_id': cumul.profil_id,
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': f'{employe.nom} {employe.prenom}'.strip()
+            if employe else f'Profil #{cumul.profil_id}',
+            'nombre_bulletins': cumul.nombre_bulletins,
+        }
+        for champ in champs:
+            valeur = Decimal(getattr(cumul, champ) or 0)
+            ligne[champ] = valeur
+            totaux[champ] += valeur
+        lignes.append(ligne)
+    return {
+        'annee': annee,
+        'lignes': lignes,
+        'totaux': totaux,
+        'nombre_salaries': len(lignes),
+    }
+
+
+def render_registre_remunerations_html(registre, employeur, *, today=None):
+    """HTML du registre annuel des rémunérations (NTPAY20).
+
+    Document de CONTRÔLE (inspection du travail), distinct du bulletin
+    individuel : une ligne par salarié avec ses cumuls annuels brut / net /
+    IR / CNSS / AMO, tels quels — jamais reconstitués.
+    """
+    if today is None:
+        today = date.today()
+    lignes = ''.join(
+        f"<tr><td>{escape(str(ligne['matricule']))}</td>"
+        f"<td>{escape(str(ligne['nom']))}</td>"
+        f"<td>{ligne['nombre_bulletins']}</td>"
+        f"<td>{_fmt(ligne['brut'])}</td>"
+        f"<td>{_fmt(ligne['cnss_salariale'])}</td>"
+        f"<td>{_fmt(ligne['amo_salariale'])}</td>"
+        f"<td>{_fmt(ligne['ir'])}</td>"
+        f"<td>{_fmt(ligne['net_a_payer'])}</td></tr>"
+        for ligne in registre['lignes'])
+    corps = lignes or (
+        '<tr><td colspan="8">Aucune rémunération enregistrée pour cette '
+        'année.</td></tr>')
+    totaux = registre['totaux']
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 10px; color: #222; margin: 26px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th, td {{ border: 1px solid #999; padding: 3px 5px; text-align: right; }}
+  th:nth-child(1), td:nth-child(1),
+  th:nth-child(2), td:nth-child(2) {{ text-align: left; }}
+  tfoot td {{ font-weight: 700; }}
+  .date {{ text-align: right; margin-top: 18px; }}
+</style></head><body>
+  {_entete_employeur_html(employeur)}
+  <h1>Registre annuel des rémunérations — {registre['annee']}</h1>
+  <p>{registre['nombre_salaries']} salarié(s) rémunéré(s) sur l’année.</p>
+  <table>
+    <thead><tr><th>Matricule</th><th>Salarié</th><th>Bulletins</th>
+      <th>Brut</th><th>CNSS</th><th>AMO</th><th>IR</th>
+      <th>Net à payer</th></tr></thead>
+    <tbody>{corps}</tbody>
+    <tfoot><tr><td>Total</td><td></td><td></td>
+      <td>{_fmt(totaux['brut'])}</td>
+      <td>{_fmt(totaux['cnss_salariale'])}</td>
+      <td>{_fmt(totaux['amo_salariale'])}</td>
+      <td>{_fmt(totaux['ir'])}</td>
+      <td>{_fmt(totaux['net_a_payer'])}</td></tr></tfoot>
+  </table>
+  <p class="date">Édité le {escape(_date_fr(today))}.</p>
+</body></html>"""
+
+
+def render_registre_remunerations_pdf(company, annee, *, registre=None,
+                                      today=None):
+    """Registre annuel des rémunérations → octets PDF (NTPAY20)."""
+    if registre is None:
+        registre = registre_remunerations_context(company, annee)
+    return _html_to_pdf(render_registre_remunerations_html(
+        registre, employeur_context(company), today=today))
+
+
 # ── NTPAY19 — Rapport « Masse salariale » (PDF) ────────────────────────────
 
 LIBELLES_GROUPEMENT_MASSE = {

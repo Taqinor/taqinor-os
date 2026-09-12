@@ -2374,6 +2374,41 @@ class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['annee', 'profil', 'date_calcul', 'id']
 
+    @extend_schema(responses=inline_serializer('PaieRegistreRemunerations', {
+        'annee': serializers.IntegerField(),
+        'nombre_salaries': serializers.IntegerField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+        'totaux': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='registre-remunerations')
+    def registre_remunerations(self, request):
+        """Registre ANNUEL des rémunérations (NTPAY20, obligation légale).
+
+        Paramètre ``annee`` requis. Une ligne par salarié rémunéré dans
+        l'année, avec ses cumuls brut / CNSS / AMO / IR / net lus tels quels
+        dans ``CumulAnnuel`` — jamais recalculés ici. ``?export=pdf`` imprime
+        le document de contrôle (inspection du travail). Gate ``paie_voir``.
+        """
+        try:
+            annee = int(request.query_params.get('annee'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre "annee" requis (et valide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        registre = builders.registre_remunerations_context(
+            request.user.company, annee)
+        if request.query_params.get('export') == 'pdf':
+            try:
+                pdf = builders.render_registre_remunerations_pdf(
+                    request.user.company, annee, registre=registre)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(
+                pdf, f'registre_remunerations_{annee}.pdf')
+        return Response(registre, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='recalculer')
     def recalculer(self, request):
         """Recalcule le cumul annuel d'un profil pour une année (PAIE27).
