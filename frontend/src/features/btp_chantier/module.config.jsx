@@ -6,7 +6,7 @@
 import { lazy } from 'react'
 import {
   Calculator, Construction, FileEdit, FileQuestion, Layers, LayoutDashboard,
-  MapPin, NotebookPen, Share2, Stamp,
+  MapPin, NotebookPen, Share2, Stamp, Wand2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -42,6 +42,9 @@ const DiffusionPlansPage = lazy(() => import('./DiffusionPlans'))
 const PlanningLotsPage = lazy(() => import('./PlanningLots'))
 // NTCON21 — tableau de bord BTP par chantier (6 blocs, lecture seule).
 const ChantierBtpCockpitPage = lazy(() => import('./ChantierBtpCockpit'))
+// NTCON23 — assistant guidé de création d'un chantier BTP.
+const NouveauChantierBtpWizardPage = lazy(
+  () => import('./NouveauChantierBtpWizard'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -109,6 +112,12 @@ const config = {
         icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/btp-chantier/nouveau',
+        label: 'Nouvel assistant chantier',
+        icon: <Wand2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   titles: [
@@ -121,6 +130,7 @@ const config = {
     ['/btp-chantier/diffusion-plans', 'Diffusion contrôlée de plans'],
     ['/btp-chantier/planning-lots', "Planning tous corps d'état (par lot)"],
     ['/btp-chantier/cockpit', 'Tableau de bord BTP du chantier'],
+    ['/btp-chantier/nouveau', 'Créer un chantier BTP'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -134,6 +144,7 @@ const config = {
     { path: '/btp-chantier/planning-lots', component: PlanningLotsPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/cockpit', component: ChantierBtpCockpitPage, roles: ROLES },
     { path: '/btp-chantier/cockpit/:chantierId', component: ChantierBtpCockpitPage, roles: ROLES },
+    { path: '/btp-chantier/nouveau', component: NouveauChantierBtpWizardPage, roles: ['responsable', 'admin'] },
   ],
 }
 
