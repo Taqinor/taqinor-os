@@ -2886,6 +2886,57 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             'lie_le': ligne.created_at,
         } for ligne in lignes]})
 
+    @extend_schema(
+        responses=inline_serializer('SavProblemeRegroupementsResponse', {
+            'fenetre_jours': drf_serializers.IntegerField(),
+            'seuil': drf_serializers.IntegerField(),
+            'results': inline_serializer('SavProblemeRegroupement', {
+                'produit_id': drf_serializers.IntegerField(),
+                'produit_nom': drf_serializers.CharField(),
+                'cause_id': drf_serializers.IntegerField(allow_null=True),
+                'cause_libelle': drf_serializers.CharField(),
+                'titre_suggere': drf_serializers.CharField(),
+                'nb_tickets': drf_serializers.IntegerField(),
+                'tickets': inline_serializer('SavProblemeRegroupementTicket', {
+                    'id': drf_serializers.IntegerField(),
+                    'reference': drf_serializers.CharField(),
+                    'statut': drf_serializers.CharField(),
+                    'priorite': drf_serializers.CharField(),
+                    'date_ouverture': drf_serializers.DateField(
+                        allow_null=True),
+                    'client': drf_serializers.CharField(),
+                }, many=True),
+            }, many=True),
+        }))
+    @action(detail=False, methods=['get'], url_path='regroupements-suggeres',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def regroupements_suggeres(self, request):
+        """NTSRV17 — « Regroupements suggérés » : tickets ouverts qui
+        partagent produit + cause dans la fenêtre, ≥ seuil occurrences.
+
+        LECTURE PURE : aucun ``Probleme`` n'est créé ici — l'agent valide
+        ensuite dans l'assistant (NTSRV31)."""
+        from .selectors import tickets_candidats_probleme
+
+        params = request.query_params
+        try:
+            fenetre = int(params.get('fenetre_jours') or 30)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {'fenetre_jours': 'Indiquez un nombre de jours (ex. 30).'})
+        try:
+            seuil = int(params.get('seuil') or 3)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {'seuil': 'Indiquez un nombre d’occurrences (ex. 3).'})
+        groupes = tickets_candidats_probleme(
+            request.user.company, fenetre, seuil=seuil)
+        return Response({
+            'fenetre_jours': fenetre,
+            'seuil': seuil,
+            'results': groupes,
+        })
+
 
 def sav_pareto_pannes(request):
     """XSAV14 — Pareto des pannes par modèle de produit (ou fournisseur).

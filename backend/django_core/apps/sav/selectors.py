@@ -1536,3 +1536,87 @@ def journal_appels(company, *, date_debut=None, date_fin=None, issue=None,
         'created_at': a.created_at,
         'notes': a.body,
     } for a in qs]
+
+
+# ── NTSRV17 — Regroupements suggérés (candidats à un Problème NTSRV16) ──────
+
+def tickets_candidats_probleme(company, fenetre_jours=30, *, seuil=3):
+    """NTSRV17 — regroupe les tickets OUVERTS qui sentent la panne SYSTÉMIQUE.
+
+    Similarité VOLONTAIREMENT SIMPLE et explicable (jamais un modèle
+    statistique opaque qu'un agent ne saurait pas contester) : même produit
+    d'équipement + même ``cause`` XSAV14 + au moins ``seuil`` occurrences dans
+    la fenêtre. Un ticket sans équipement OU sans cause codifiée ne peut pas
+    être regroupé — on ne devine rien.
+
+    ⚠ AUCUNE CRÉATION : ce sélecteur ne crée JAMAIS de ``Probleme``. Il
+    PROPOSE ; l'agent valide (NTSRV31). Les tickets déjà rattachés à un
+    problème sont exclus — un regroupement déjà traité n'est pas reproposé.
+
+    La fenêtre porte sur ``date_creation`` (toujours renseignée), pas sur
+    ``date_ouverture`` (nullable sur les tickets anciens).
+
+    Returns:
+        liste de dicts, du regroupement le plus lourd au plus léger :
+        ``{produit_id, produit_nom, cause_id, cause_libelle, titre_suggere,
+        nb_tickets, tickets: [{id, reference, statut, priorite,
+        date_ouverture, client}]}``.
+    """
+    from datetime import timedelta
+
+    try:
+        fenetre = max(1, int(fenetre_jours))
+    except (TypeError, ValueError):
+        fenetre = 30
+    try:
+        minimum = max(2, int(seuil))
+    except (TypeError, ValueError):
+        minimum = 3
+    depuis = timezone.now() - timedelta(days=fenetre)
+
+    qs = (Ticket.objects
+          .filter(company=company, annule=False,
+                  statut__in=Ticket.OPEN_STATUTS,
+                  date_creation__gte=depuis,
+                  equipement__produit__isnull=False,
+                  cause__isnull=False)
+          .exclude(problemes_lies__isnull=False)
+          .select_related('client', 'cause', 'equipement__produit')
+          .order_by('date_creation', 'id'))
+
+    groupes = {}
+    for ticket in qs:
+        produit = ticket.equipement.produit
+        cle = (produit.pk, ticket.cause_id)
+        groupe = groupes.get(cle)
+        if groupe is None:
+            groupe = groupes[cle] = {
+                'produit_id': produit.pk,
+                'produit_nom': produit.nom,
+                'cause_id': ticket.cause_id,
+                'cause_libelle': getattr(ticket.cause, 'nom', '') or '',
+                'tickets': [],
+            }
+        groupe['tickets'].append({
+            'id': ticket.pk,
+            'reference': ticket.reference,
+            'statut': ticket.statut,
+            'priorite': ticket.priorite,
+            'date_ouverture': ticket.date_ouverture,
+            'client': getattr(ticket.client, 'nom', '') or '',
+        })
+
+    resultats = []
+    for groupe in groupes.values():
+        if len(groupe['tickets']) < minimum:
+            continue
+        groupe['nb_tickets'] = len(groupe['tickets'])
+        # Titre PRÉ-REMPLI de l'assistant NTSRV31 : équipement + cause, jamais
+        # une formule inventée — les deux morceaux viennent des données.
+        libelle = groupe['cause_libelle']
+        groupe['titre_suggere'] = (
+            f"{groupe['produit_nom']} — {libelle}" if libelle
+            else groupe['produit_nom'])
+        resultats.append(groupe)
+    resultats.sort(key=lambda g: (-g['nb_tickets'], g['produit_nom']))
+    return resultats
