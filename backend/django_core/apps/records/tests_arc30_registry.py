@@ -95,6 +95,15 @@ HISTORICAL_TARGETS = {
     # NTMFG38 (14/08/2026) — chatter/follower/tag generiques sur l'ordre de
     # fabrication, cible par apps/mrp/platform.py.
     ('mrp', 'ordrefabrication'),
+    # NTCON32 — chatter GÉNÉRIQUE (journal ancien→nouveau statut + notes
+    # manuelles) sur les quatre objets BTP qui portent un cycle de vie
+    # décisionnel, ciblé par ``apps/btp_chantier/platform.py``. Les trois
+    # autres cibles BTP (reservechantier/journalchantier/rfireponse, pièces
+    # jointes) étaient déjà déclarées.
+    ('btp_chantier', 'rfi'),
+    ('btp_chantier', 'visadocument'),
+    ('btp_chantier', 'avenantchantier'),
+    ('btp_chantier', 'decomptegeneral'),
 }
 
 
@@ -110,8 +119,10 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
 
     def test_len_matches(self):
         # 33 historiques +2 supply/retail (vague 1) +1 PV45 (regulatorydossier)
-        # +1 douane.dossierexport (NTLOG49, vague 2 supply).
-        self.assertEqual(len(ALLOWED_TARGETS), 39)
+        # +1 douane.dossierexport (NTLOG49, vague 2 supply)
+        # +4 chatter BTP NTCON32 (rfi/visadocument/avenantchantier/
+        # decomptegeneral).
+        self.assertEqual(len(ALLOWED_TARGETS), 43)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:
