@@ -32,7 +32,15 @@ LEADS_FIELDS = [
 ]
 
 CLIENTS_DATASET = 'crm_clients'
-CLIENTS_FIELDS = ['id', 'ville', 'mois_creation', 'type']
+# NTDATA14/16/17 — les champs d'IDENTITÉ (ICE, adresse, téléphone, email) sont
+# exposés parce que la qualité de données travaille dessus : une règle de
+# format ICE, un score de complétude et une détection de doublons ont besoin
+# de la VALEUR, pas d'un drapeau. Ce sont exactement les champs que la fiche
+# client rend déjà à tout utilisateur authentifié — aucune nouvelle exposition.
+CLIENTS_FIELDS = [
+    'id', 'ville', 'mois_creation', 'type', 'ice', 'adresse', 'telephone',
+    'email', 'nom',
+]
 
 # NTDATA5 — libellé FR + nature par champ. Le LIBELLÉ d'une étape n'est PAS
 # écrit ici (règle #2) : `stage` porte le libellé générique « Étape » et les
@@ -57,6 +65,11 @@ CLIENTS_FIELD_META = {
     'ville': {'label': 'Ville', 'type': 'dimension'},
     'mois_creation': {'label': 'Mois de création', 'type': 'temps'},
     'type': {'label': 'Type de client', 'type': 'dimension'},
+    'ice': {'label': 'ICE', 'type': 'dimension'},
+    'adresse': {'label': 'Adresse', 'type': 'dimension'},
+    'telephone': {'label': 'Téléphone', 'type': 'dimension'},
+    'email': {'label': 'Email', 'type': 'dimension'},
+    'nom': {'label': 'Nom', 'type': 'dimension'},
 }
 
 

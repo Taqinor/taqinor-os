@@ -352,6 +352,11 @@ INSTALLED_APPS = [
     # datasets que les apps métier déclarent (core.data_explorer). N'importe
     # aucun modèle d'app métier : le dataset est désigné par son NOM.
     'apps.semantic',
+    # Groupe NTDATA — QUALITÉ DE DONNÉES : règles de validation d'entreprise,
+    # complétude par module et dédoublonnage cross-module. Posée sur les
+    # datasets déclarés par les apps métier (aucun import de leurs modèles) ;
+    # elle MESURE et RAPPORTE, elle ne bloque aucune écriture.
+    'apps.dataquality',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
