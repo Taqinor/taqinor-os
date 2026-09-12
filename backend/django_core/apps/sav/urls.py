@@ -15,6 +15,7 @@ from .views import (
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
     sav_resume_par_equipe, sav_file_action,
 )
+from .public_views import portail_creer_ticket
 from .maintenance import ContratMaintenanceViewSet
 
 router = DefaultRouter()
@@ -76,6 +77,10 @@ urlpatterns = [
     # capturerait `file-action` comme un `pk` de détail sur `tickets/<pk>/`.
     path('tickets/file-action/', file_action_view,
          name='sav-file-action'),
+    # NTSRV2 — Formulaire portail client → ticket (PUBLIC, résolu par le jeton
+    # du compte portail ; AllowAny + throttle déclarés sur la vue elle-même).
+    path('portail/tickets/', portail_creer_ticket,
+         name='sav-portail-creer-ticket'),
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),

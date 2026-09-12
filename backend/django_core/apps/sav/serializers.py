@@ -743,3 +743,29 @@ class TicketWorksheetSerializer(serializers.ModelSerializer):
 
     def get_champs_requis_manquants(self, obj):
         return obj.champs_requis_manquants()
+
+
+# ── NTSRV2 — Formulaire portail client → ticket SAV (entrée PUBLIQUE) ────────
+
+class PortailTicketCreateSerializer(serializers.Serializer):
+    """NTSRV2 — validation du corps du formulaire portail public.
+
+    Le jeton, lui, est validé À PART (404 sans fuite d'info) : il ne doit
+    jamais produire un message de validation qui distingue « jeton inconnu »
+    de « jeton révoqué ». Les erreurs des autres champs NOMMENT le champ
+    fautif, en français."""
+    sujet = serializers.CharField(
+        max_length=200, allow_blank=False,
+        error_messages={
+            'blank': 'Merci d’indiquer l’objet de votre demande.',
+            'required': 'Merci d’indiquer l’objet de votre demande.',
+        })
+    description = serializers.CharField(
+        max_length=4000, allow_blank=True, required=False, default='')
+    priorite = serializers.ChoiceField(
+        choices=Ticket.Priorite.choices, required=False,
+        default=Ticket.Priorite.NORMALE,
+        error_messages={
+            'invalid_choice': 'Priorité inconnue (basse, normale, haute ou '
+                              'urgente).',
+        })
