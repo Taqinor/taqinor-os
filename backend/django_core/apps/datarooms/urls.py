@@ -9,7 +9,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AccesSalleDonneesViewSet, SalleDeDonneesDocumentViewSet,
-    SalleDeDonneesViewSet, public_salle,
+    SalleDeDonneesViewSet, public_salle, public_salle_document,
 )
 
 router = DefaultRouter()
@@ -24,6 +24,11 @@ urlpatterns = [
     # authentifiée (même précaution que `ged.urls` `public/<token>/`).
     # AllowAny est posé sur la vue elle-même.
     # headless: salle ouverte par un lien viewer tokenisé, hors ERP
+    # NTDOC13 — document servi au viewer, filigrané à SON nom. Déclaré AVANT
+    # la route sommaire (plus spécifique).
+    # headless: document d'une salle servi par lien viewer, hors ERP
+    path('public/<str:token>/documents/<int:document_id>/',
+         public_salle_document, name='dataroom-public-document'),
     path('public/<str:token>/', public_salle, name='dataroom-public-salle'),
     path('', include(router.urls)),
 ]

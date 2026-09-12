@@ -5,6 +5,7 @@ sur ``request.user.company`` + ``company`` forcée côté serveur dans
 ``perform_create``). Aucun import de ``ged.models`` : la GED est lue via
 ``apps.ged.selectors`` (encapsulé par ``selectors.py`` de cette app).
 """
+from django.http import HttpResponse
 from rest_framework import filters, status
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
@@ -229,3 +230,54 @@ def public_salle(request, token):
             for ligne in lignes
         ],
     }, status=status.HTTP_200_OK))
+
+
+# Types servis INLINE dans le navigateur (les autres partent en pièce jointe).
+_INLINE_MIMES = {
+    'application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/gif',
+    'image/webp', 'text/plain',
+}
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSalleRateThrottle])
+def public_salle_document(request, token, document_id):
+    """NTDOC13 — Sert UN document de la salle, filigrané AU NOM DU VIEWER.
+
+    `GET /api/django/datarooms/public/<token>/documents/<document_id>/`.
+
+    Le filigrane porte le nom, l'email et l'horodatage du viewer : deux liens
+    viewer différents produisent donc deux fichiers visuellement distincts, ce
+    qui permet de remonter d'une fuite jusqu'à la personne. Le binaire stocké
+    en GED n'est JAMAIS modifié (rendu à la volée, GED21).
+
+    Codes : 404 jeton inconnu/révoqué, ou document absent de CETTE salle (ou
+    masqué) — jamais un oracle sur son existence ailleurs ; 410 lien expiré ou
+    salle fermée ; 200 contenu servi.
+    """
+    statut, acces = services.resoudre_acces_public(token)
+    if statut == services.ACCES_INTROUVABLE:
+        return _reponse_acces_introuvable()
+    if statut == services.ACCES_EXPIRE:
+        return _reponse_acces_expire()
+
+    ligne = services.document_servable_pour(acces, document_id)
+    if ligne is None:
+        return _dataroom_noindex(Response(
+            {'detail': "Ce document n'est pas disponible dans cette salle."},
+            status=status.HTTP_404_NOT_FOUND))
+
+    data, mime, nom_fichier, erreur = services.servir_document_viewer(
+        acces, ligne)
+    if erreur:
+        return _dataroom_noindex(Response(
+            {'detail': erreur}, status=status.HTTP_404_NOT_FOUND))
+
+    services.marquer_consultation(acces)
+    disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
+    reponse = HttpResponse(data, content_type=mime)
+    reponse['Content-Disposition'] = (
+        f'{disposition}; filename="{nom_fichier}"')
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    return _dataroom_noindex(reponse)

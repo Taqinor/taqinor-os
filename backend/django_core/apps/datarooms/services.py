@@ -146,3 +146,73 @@ def marquer_consultation(acces, *, now=None):
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
         pass
     return acces
+
+
+# ── NTDOC13 — Filigrane dynamique PAR VIEWER ────────────────────────────────
+
+def watermark_label_viewer(acces, *, now=None):
+    """NTDOC13 — Étiquette de filigrane propre à UN viewer.
+
+    ``ged.services.watermark_label`` (GED21) produit une étiquette de SOCIÉTÉ,
+    identique pour tout le monde : elle ne permet pas de remonter d'une fuite
+    jusqu'à la personne. Ici l'étiquette porte le NOM et l'EMAIL du viewer plus
+    l'horodatage de la consultation — deux viewers d'un même document reçoivent
+    donc deux fichiers visuellement différents.
+
+    Tout segment absent est omis proprement (un viewer sans email reste
+    identifiable par son nom)."""
+    horodatage = now or timezone.now()
+    parties = ['CONFIDENTIEL']
+    nom = (getattr(acces, 'nom', '') or '').strip()
+    if nom:
+        parties.append(nom)
+    email = (getattr(acces, 'email', '') or '').strip()
+    if email:
+        parties.append(email)
+    parties.append(horodatage.strftime('%Y-%m-%d %H:%M'))
+    return ' — '.join(parties)
+
+
+def document_servable_pour(acces, document_id):
+    """NTDOC13 — Ligne d'appartenance VISIBLE de ce document dans la salle.
+
+    Renvoie None si le document n'est pas dans la salle du viewer ou s'il y est
+    masqué — jamais un oracle sur l'existence du document ailleurs dans la
+    GED."""
+    return SalleDeDonneesDocument.objects.select_related('document').filter(
+        salle=acces.salle, document_id=document_id, visible=True).first()
+
+
+def servir_document_viewer(acces, ligne, *, now=None):
+    """NTDOC13 — Octets d'un document filigranés AU NOM DU VIEWER.
+
+    Le filigrane est un RENDU À LA VOLÉE : le binaire stocké en GED n'est
+    JAMAIS modifié (même contrat que `ged.apply_watermark`, GED21). Sans la lib
+    de rendu, on dégrade proprement en servant l'original.
+
+    Renvoie ``(octets, mime, nom_fichier, erreur)`` — ``erreur`` est une chaîne
+    française quand rien n'est servable."""
+    from apps.ged.services import _WATERMARK_IMAGE_MIMES, apply_watermark
+    from apps.records.storage import fetch_attachment
+
+    from .selectors import version_courante
+
+    document = ligne.document
+    version = version_courante(document)
+    if version is None:
+        return None, '', '', "Aucun fichier disponible pour ce document."
+    data, err = fetch_attachment(version.file_key)
+    if err:
+        return None, '', '', "Document indisponible pour le moment."
+
+    mime = version.mime or 'application/octet-stream'
+    nom_fichier = (version.filename or document.nom or 'document').replace(
+        '"', '')
+    # Le filigrane PAR VIEWER est systématique dans une salle de données : la
+    # salle existe précisément pour pouvoir tracer une fuite jusqu'à une
+    # personne.
+    data, filigrane = apply_watermark(
+        data, mime, watermark_label_viewer(acces, now=now))
+    if filigrane and mime in _WATERMARK_IMAGE_MIMES:
+        mime = 'image/png'
+    return data, mime, nom_fichier, ''
