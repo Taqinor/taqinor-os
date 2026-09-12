@@ -309,10 +309,15 @@ class RegleSurvivorship(TenantModel):
     Les quatre stratégies, et ce qu'elles supposent :
 
     * ``plus_recent`` — la valeur de la fiche modifiée le plus récemment.
-      EXIGE un signal de fraîcheur dans les lignes lues. Quand l'entité n'en
-      porte aucun (``crm.Client`` n'a pas de date de modification), la
-      consolidation retombe sur le DÉFAUT et l'inscrit dans le golden record :
-      jamais une fraîcheur devinée ;
+      EXIGE un signal de fraîcheur dans les LIGNES LUES. Aucune des trois
+      entités n'en expose un aujourd'hui : ``crm.Client`` porte bien une
+      ``date_modification``, mais le dataset ``crm_clients`` — la lecture
+      cross-app sanctionnée — ne la publie pas, et les sélecteurs
+      ``stock.selectors`` de dédoublonnage ne rendent que l'identité. La
+      consolidation retombe donc sur le DÉFAUT et l'inscrit dans le golden
+      record : jamais une fraîcheur devinée. Le jour où l'app propriétaire
+      publie son horodatage, il suffira de le déclarer dans
+      ``services.CONSOLIDATION[…]['champ_fraicheur']`` ;
     * ``plus_complet`` — la valeur de la fiche la PLUS renseignée (celle qui
       porte le plus de champs non vides). Raisonnement : une saisie soignée
       l'est en général sur toute la fiche ;

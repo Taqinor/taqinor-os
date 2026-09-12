@@ -587,9 +587,14 @@ def fusionner_proposition(proposition, user, survivant_id, *, now=None):
 #     ne doit pas EFFACER ce qu'une des fiches portait.
 #  3. LA STRATÉGIE QUI A TRANCHÉ EST NOMMÉE, champ par champ, dans
 #     `attributs[champ]['strategie']`. En particulier, `plus_recent` sur une
-#     entité SANS signal de fraîcheur (``crm.Client`` n'a aucune date de
-#     modification) retombe sur le défaut et l'ÉCRIT — jamais une fraîcheur
-#     devinée qui ferait passer un arbitraire pour une mesure.
+#     entité SANS signal de fraîcheur retombe sur le défaut et l'ÉCRIT —
+#     jamais une fraîcheur devinée qui ferait passer un arbitraire pour une
+#     mesure. C'est le cas des trois entités aujourd'hui : `crm.Client` porte
+#     bien une `date_modification`, mais le dataset `crm_clients` (la lecture
+#     cross-app sanctionnée) ne la publie pas, et les sélecteurs
+#     `stock.selectors` de dédoublonnage ne rendent que l'identité — d'où
+#     `champ_fraicheur=None` ci-dessous, qui est un FAIT du contrat de lecture
+#     et pas un oubli.
 
 #: Stratégie appliquée quand aucune `RegleSurvivorship` ne couvre le champ :
 #: la première valeur NON VIDE dans l'ordre de lecture — la fiche d'origine
@@ -598,8 +603,9 @@ STRATEGIE_DEFAUT = RegleSurvivorship.Strategie.SOURCE_PRIORITAIRE
 
 #: Entité → (champs consolidés, critères de clé métier par ordre de sûreté,
 #: champ portant la fraîcheur s'il en existe un). ``champ_fraicheur=None``
-#: signifie « cette entité ne sait pas dire quand une fiche a été modifiée » —
-#: c'est un FAIT du schéma, pas un oubli, et `plus_recent` le dit.
+#: signifie « le contrat de lecture cross-app de cette entité ne publie aucune
+#: date de modification » — `plus_recent` le DIT au lieu de deviner. Le jour où
+#: l'app propriétaire publie son horodatage, il suffit de le nommer ici.
 #
 # LE NOM N'EST JAMAIS UNE CLÉ MÉTIER. Deux « Atlas Energie » peuvent être deux
 # entreprises : ranger leurs fiches sous un golden record commun créerait
