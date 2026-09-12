@@ -15,7 +15,10 @@ from rest_framework.views import APIView
 from apps.crm.models import Lead
 
 from .auth import ApiKeyAuthentication, ApiKeyRateThrottle
-from .constants import SCOPE_WRITE_LEADS, SCOPE_WRITE_ACTIVITIES
+from .constants import (
+    SCOPE_WRITE_ACTIVITIES, SCOPE_WRITE_DEVIS, SCOPE_WRITE_LEADS,
+    SCOPE_WRITE_TICKETS,
+)
 from .idempotency import get_idempotency_key, replay_or_none, remember
 from .public_response import PublicApiResponseMixin
 from .public_serializers import PublicLeadSerializer
@@ -155,3 +158,122 @@ class PublicActivityCreateView(PublicWriteAPIView):
         return self.idempotent_post(
             request, body_for_fingerprint={'pk': pk, **(request.data or {})},
             perform=_perform)
+
+
+class PublicDevisCreateView(PublicWriteAPIView):
+    """NTAPI18 — ``POST /api/public/v1/devis-write/`` : crée un devis
+    BROUILLON rattaché à un lead existant (scope ``devis:write``).
+
+    Corps : ``{"lead": <id>}`` (obligatoire — le client est résolu SERVEUR
+    depuis le lead par ``crm.services.resolve_client_for_lead``, jamais
+    dupliqué), plus les champs d'aide à la saisie optionnels
+    (``numero``/``montant_ht``/``montant_tva``/``montant_ttc``/``date``),
+    consignés en note.
+
+    CE QUE CET ENDPOINT NE FAIT JAMAIS : créer des lignes (une ``LigneDevis``
+    exige un produit du catalogue, qu'un appel d'intégration ne fournit pas),
+    ni changer un statut aval (règle #4 — le devis reste ``brouillon``, et
+    l'unique chemin du PDF client demeure ``/proposal``). L'écriture passe
+    EXCLUSIVEMENT par ``ventes.services`` et le lead est lu par
+    ``crm.selectors`` — jamais un import de models cross-app."""
+    required_scope = SCOPE_WRITE_DEVIS
+    endpoint_name = 'devis-write:create'
+
+    def post(self, request):
+        from apps.crm.selectors import get_company_lead
+        from apps.ventes.services import create_draft_devis_from_ocr
+
+        def _perform():
+            corps = request.data or {}
+            lead_id = corps.get('lead')
+            if not lead_id:
+                raise ValidationError(
+                    {'lead': "Le champ « lead » est obligatoire."})
+            # Société FORCÉE depuis la clé : un id d'une autre société renvoie
+            # None ici, donc 404 — jamais de fuite ni d'écriture cross-tenant.
+            lead = get_company_lead(self.get_company(), lead_id)
+            if lead is None:
+                return Response(
+                    {'detail': 'Lead introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            try:
+                devis = create_draft_devis_from_ocr(
+                    company=self.get_company(),
+                    # Aucun utilisateur humain derrière une clé d'API :
+                    # `created_by` reste NULL plutôt que d'attribuer le devis
+                    # à quelqu'un qui ne l'a pas créé.
+                    user=None,
+                    lead=lead,
+                    fields=corps,
+                    origine=(
+                        "Devis brouillon créé via l'API publique "
+                        "(intégration externe)."),
+                )
+            except ValueError as exc:
+                raise ValidationError({'detail': str(exc)})
+            return Response(
+                {'id': devis.id, 'reference': devis.reference,
+                 'statut': devis.statut, 'lead': devis.lead_id,
+                 'client': devis.client_id},
+                status=status.HTTP_201_CREATED)
+
+        return self.idempotent_post(
+            request, body_for_fingerprint=request.data, perform=_perform)
+
+
+class PublicTicketCreateView(PublicWriteAPIView):
+    """NTAPI18 — ``POST /api/public/v1/tickets-write/`` : ouvre un ticket SAV
+    correctif (scope ``tickets:write``).
+
+    Corps : ``{"client": <id>, "description": "...", "installation": <id>?}``.
+    ``installation`` est optionnelle (un ticket peut ne viser aucun chantier
+    précis) mais, quand elle est fournie, elle est elle aussi bornée à la
+    société de la clé. L'écriture passe par ``sav.services`` et les entités
+    liées sont lues par les ``selectors`` de leurs apps — jamais un import de
+    models cross-app."""
+    required_scope = SCOPE_WRITE_TICKETS
+    endpoint_name = 'tickets-write:create'
+
+    def post(self, request):
+        from apps.crm.selectors import get_company_client
+        from apps.installations.selectors import installation_scoped
+        from apps.sav.services import create_corrective_ticket
+
+        def _perform():
+            corps = request.data or {}
+            description = (corps.get('description') or '').strip()
+            if not description:
+                raise ValidationError(
+                    {'description': "Le champ « description » est obligatoire."})
+            client = get_company_client(self.get_company(), corps.get('client'))
+            if client is None:
+                return Response(
+                    {'detail': 'Client introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            installation = None
+            if corps.get('installation'):
+                installation = installation_scoped(
+                    self.get_company(), corps.get('installation'))
+                if installation is None:
+                    return Response(
+                        {'detail': 'Chantier introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+            try:
+                ticket = create_corrective_ticket(
+                    company=self.get_company(),
+                    client=client,
+                    installation=installation,
+                    description=description,
+                    # Aucun utilisateur humain derrière une clé d'API.
+                    created_by=None,
+                )
+            except ValueError as exc:
+                raise ValidationError({'detail': str(exc)})
+            return Response(
+                {'id': ticket.id, 'reference': ticket.reference,
+                 'statut': ticket.statut, 'client': ticket.client_id,
+                 'installation': ticket.installation_id},
+                status=status.HTTP_201_CREATED)
+
+        return self.idempotent_post(
+            request, body_for_fingerprint=request.data, perform=_perform)

@@ -42,6 +42,12 @@ SCOPE_READ_EVENTS = 'read:events'
 # viennent de STAGES.py (jamais hardcodés).
 SCOPE_WRITE_LEADS = 'leads:write'
 SCOPE_WRITE_ACTIVITIES = 'activities:write'
+# NTAPI18 — écriture ÉTENDUE. `devis:write` crée un devis BROUILLON rattaché à
+# un lead/client existant (jamais un devis envoyé/accepté : l'API ne change
+# aucun statut aval, règle #4) ; `tickets:write` ouvre un ticket SAV correctif.
+# Les deux passent EXCLUSIVEMENT par les `services.py` des apps cibles.
+SCOPE_WRITE_DEVIS = 'devis:write'
+SCOPE_WRITE_TICKETS = 'tickets:write'
 
 # Ordre = ordre d'affichage dans l'écran Paramètres.
 SCOPE_CHOICES = [
@@ -58,6 +64,8 @@ SCOPE_CHOICES = [
      "Lire le flux d'évènements (limité aux familles déjà autorisées)"),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
+    (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),
+    (SCOPE_WRITE_TICKETS, 'Créer un ticket SAV correctif'),
 ]
 ALL_SCOPES = [code for code, _ in SCOPE_CHOICES]
 

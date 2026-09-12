@@ -203,6 +203,31 @@ def public_api_reference():
                     'scope': 'activities:write',
                     'description': "Ajoute une note (chatter) sur un lead.",
                 },
+                {
+                    'chemin': '/api/public/v1/devis-write/',
+                    'methode': 'POST',
+                    'scope': 'devis:write',
+                    'description': (
+                        "NTAPI18 — crée un devis BROUILLON rattaché à un lead "
+                        "existant (corps : `lead`, plus `numero`/`montant_ht`/"
+                        "`montant_tva`/`montant_ttc`/`date` en aide à la "
+                        "saisie). Le client est résolu côté serveur depuis le "
+                        "lead, sans doublon. Aucune ligne n'est créée et aucun "
+                        "statut aval n'est touché : le devis reste `brouillon` "
+                        "et le PDF client reste servi par `/proposal`."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/tickets-write/',
+                    'methode': 'POST',
+                    'scope': 'tickets:write',
+                    'description': (
+                        "NTAPI18 — ouvre un ticket SAV correctif (corps : "
+                        "`client`, `description`, `installation` optionnelle). "
+                        "Toutes les entités liées sont bornées à la société de "
+                        "la clé."
+                    ),
+                },
             ],
         },
         'endpoints_bulk': {

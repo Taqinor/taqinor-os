@@ -19,6 +19,7 @@ from .public_views import (
 )
 from .public_write_views import (
     PublicLeadCreateView, PublicLeadUpdateView, PublicActivityCreateView,
+    PublicDevisCreateView, PublicTicketCreateView,
 )
 from .bulk_views import (
     PublicExportCreateView, PublicImportCreateView, PublicJobViewSet,
@@ -63,6 +64,12 @@ urlpatterns = [
          name='public-lead-write-update'),
     path('leads-write/<int:pk>/activites/', PublicActivityCreateView.as_view(),
          name='public-activity-write-create'),
+    # NTAPI18 — écriture étendue : devis BROUILLON (scope devis:write) et
+    # ticket SAV correctif (scope tickets:write). Aucun statut aval touché.
+    path('devis-write/', PublicDevisCreateView.as_view(),
+         name='public-devis-write-create'),
+    path('tickets-write/', PublicTicketCreateView.as_view(),
+         name='public-ticket-write-create'),
     # NTAPI14/15 — jobs bulk export/import asynchrones (202 + suivi via `jobs/`).
     path('exports/', PublicExportCreateView.as_view(),
          name='public-exports-create'),

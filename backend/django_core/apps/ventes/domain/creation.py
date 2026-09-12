@@ -84,7 +84,7 @@ def mode_installation_declare(*sources, defaut):
     return defaut
 
 
-def create_draft_devis_from_ocr(*, company, user, lead, fields):
+def create_draft_devis_from_ocr(*, company, user, lead, fields, origine=None):
     """FG106 — crée un DEVIS brouillon (sans lignes) à partir d'un document OCR.
 
     Point d'entrée cross-app sanctionné (services.py) pour la passerelle
@@ -97,6 +97,15 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
 
     Le devis reste ``brouillon`` : ce service CRÉE, il ne change aucun statut
     aval (règle #4).
+
+    NTAPI18 — ``origine`` remplace la PREMIÈRE ligne de la note (celle qui dit
+    d'où vient le brouillon). Défaut : le texte OCR historique, inchangé au
+    caractère près. L'API publique (`devis:write`) passe sa propre phrase :
+    écrire « créé depuis un document OCR » sur un devis créé par une
+    intégration serait tout simplement faux pour le commercial qui le relit.
+    Le RESTE du comportement (résolution du client, référence anti-collision,
+    statut brouillon, marché déclaré) est identique — c'est bien le MÊME
+    service cross-app, pas un second chemin de création.
     """
     from apps.ventes.models import Devis
     from apps.ventes.utils.references import create_with_reference
@@ -107,7 +116,7 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
     client = resolve_client_for_lead(lead)
 
     fields = fields or {}
-    notes = ["Devis brouillon créé depuis un document OCR."]
+    notes = [origine or "Devis brouillon créé depuis un document OCR."]
     for key, label in (('numero', 'N° document'), ('montant_ht', 'Montant HT'),
                        ('montant_tva', 'Montant TVA'),
                        ('montant_ttc', 'Montant TTC'), ('date', 'Date')):
