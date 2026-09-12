@@ -1001,7 +1001,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
-            return [IsAnyRole()]
+            # VTA4 (12/09/2026, bug CI #25 en sens inverse) — la lecture des
+            # leads exige le code fin ``crm_voir`` : ce get_permissions PRIME
+            # sur tout, donc l'attribut ``read_permission`` posé sur la classe
+            # était MORT et le rôle « Commercial terrain » (app Visites seule)
+            # listait l'annuaire leads en 200. ``OrLegacy`` préserve les
+            # comptes historiques sans Role fin ; tous les rôles métier seedés
+            # (Responsable :509, Commercial resp :641, Commercial :682,
+            # Viewer :807) portent déjà crm_voir.
+            return [HasPermissionOrLegacy('crm_voir')()]
         elif self.action in ('historique', 'jalons_devis'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
