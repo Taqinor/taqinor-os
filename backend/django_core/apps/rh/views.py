@@ -892,7 +892,9 @@ class DossierEmployeViewSet(_RhBaseViewSet):
                 return Response(
                     {'modele': "Modèle d'intégration inconnu."},
                     status=status.HTTP_400_BAD_REQUEST)
-        lignes = services.instancier_integration(employe, modele=modele)
+        # NTHCM23 — le RH qui déclenche porte les tâches d'acteur « rh ».
+        lignes = services.instancier_integration(
+            employe, modele=modele, createur=request.user)
         return Response(
             ElementIntegrationEmployeSerializer(lignes, many=True).data,
             status=status.HTTP_201_CREATED)
@@ -1314,17 +1316,50 @@ class ElementIntegrationEmployeViewSet(_RhBaseViewSet):
     Cocher/décocher journalise ``fait_par``/``date`` côté serveur.
     """
     queryset = ElementIntegrationEmploye.objects.select_related(
-        'employe', 'fait_par').all()
+        'employe', 'fait_par', 'assigne_a').all()
     serializer_class = ElementIntegrationEmployeSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['ordre', 'libelle']
+    ordering_fields = ['ordre', 'libelle', 'echeance']
+
+    def get_permissions(self):
+        # NTHCM23 — « MES tâches » est un self-service : un manager ou un
+        # informaticien sans permission `rh_voir` doit voir les tâches qui lui
+        # sont ASSIGNÉES (et rien d'autre — le queryset de l'action ne rend
+        # QUE `assigne_a=moi`). Le reste du viewset garde le gate RH.
+        if self.action == 'mes_taches_onboarding':
+            return [IsAnyRole()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = super().get_queryset()
         employe = self.request.query_params.get('employe')
         if employe:
             qs = qs.filter(employe_id=employe)
+        acteur = self.request.query_params.get('acteur_type')
+        if acteur:
+            qs = qs.filter(acteur_type=acteur)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='mes-taches-onboarding')
+    def mes_taches_onboarding(self, request):
+        """NTHCM23 — les tâches d'intégration ASSIGNÉES À MOI.
+
+        Tous employés en cours d'intégration confondus : chaque acteur (RH,
+        manager, IT, l'employé lui-même) voit SA liste. Le destinataire est
+        l'utilisateur AUTHENTIFIÉ, résolu serveur — jamais un identifiant lu
+        de l'URL ou du corps, sinon n'importe qui lirait la liste d'un autre.
+
+        ``?non_faites=1`` ne garde que le reste à faire.
+        """
+        qs = ElementIntegrationEmploye.objects.filter(
+            company=request.user.company, assigne_a=request.user,
+        ).select_related('employe', 'assigne_a').order_by(
+            'echeance', 'ordre', 'id')
+        if request.query_params.get('non_faites') == '1':
+            qs = qs.filter(fait=False)
+        return Response(
+            ElementIntegrationEmployeSerializer(
+                qs, many=True, context={'request': request}).data)
 
     def perform_update(self, serializer):
         # ``fait_par``/``date`` sont posés côté serveur à la coche/décoche —

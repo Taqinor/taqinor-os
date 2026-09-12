@@ -510,11 +510,21 @@ class ReponsePulseSerializer(serializers.ModelSerializer):
 
 
 class ElementIntegrationSerializer(serializers.ModelSerializer):
-    """Ligne gabarit d'un modèle d'intégration (XRH4)."""
+    """Ligne gabarit d'un modèle d'intégration (XRH4).
+
+    NTHCM23 — ``acteur_type`` + ``delai_jours`` décrivent QUI portera la
+    tâche et SOUS COMBIEN DE JOURS après l'embauche.
+    """
+    acteur_type_display = serializers.CharField(
+        source='get_acteur_type_display', read_only=True)
 
     class Meta:
         model = ElementIntegration
-        fields = ['id', 'modele', 'libelle', 'ordre', 'date_creation']
+        fields = [
+            'id', 'modele', 'libelle', 'ordre',
+            'acteur_type', 'acteur_type_display', 'delai_jours',
+            'date_creation',
+        ]
         read_only_fields = ['date_creation']
 
     def validate_modele(self, value):
@@ -542,18 +552,43 @@ class ModeleIntegrationSerializer(serializers.ModelSerializer):
 
 
 class ElementIntegrationEmployeSerializer(serializers.ModelSerializer):
-    """Ligne de checklist d'intégration d'un employé (XRH4)."""
+    """Ligne de checklist d'intégration d'un employé (XRH4).
+
+    NTHCM23 — ``acteur_type`` / ``assigne_a`` / ``echeance`` sont RÉSOLUS à
+    l'instanciation côté serveur ; ``en_retard`` est calculé (jamais stocké).
+    ``assigne_a`` reste modifiable par le RH (réassignation manuelle), mais
+    ``en_retard`` ne l'est évidemment pas.
+    """
+    acteur_type_display = serializers.CharField(
+        source='get_acteur_type_display', read_only=True)
+    assigne_a_nom = serializers.SerializerMethodField()
+    en_retard = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ElementIntegrationEmploye
         fields = [
             'id', 'employe', 'libelle', 'ordre', 'fait', 'fait_par', 'date',
-            'date_creation',
+            'acteur_type', 'acteur_type_display', 'assigne_a',
+            'assigne_a_nom', 'echeance', 'en_retard', 'date_creation',
         ]
-        read_only_fields = ['fait_par', 'date', 'date_creation']
+        read_only_fields = ['fait_par', 'date', 'en_retard', 'date_creation']
+
+    def get_assigne_a_nom(self, obj) -> str:
+        if obj.assigne_a_id is None:
+            return ''
+        return (obj.assigne_a.get_full_name()
+                or obj.assigne_a.username or '')
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+    def validate_assigne_a(self, value):
+        """Réassignation possible, mais JAMAIS vers une autre société."""
+        request = self.context.get('request')
+        if value is not None and request is not None:
+            if value.company_id != request.user.company_id:
+                raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
 
 
 class TypeAbsenceSerializer(serializers.ModelSerializer):

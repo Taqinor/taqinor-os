@@ -666,6 +666,23 @@ class DocumentEmploye(models.Model):
         return f'{self.employe.matricule} — {self.get_type_document_display()}'
 
 
+class ActeurTache(models.TextChoices):
+    """NTHCM23/24 — QUI porte une tâche d'intégration ou de sortie.
+
+    XRH4/FG161 ne connaissaient qu'un « fait / pas fait » SANS propriétaire :
+    personne n'était responsable d'une ligne, donc personne ne pouvait voir
+    « MES tâches ». Ce vocabulaire FERMÉ nomme les quatre acteurs réels d'un
+    on/offboarding, et conditionne la résolution automatique de ``assigne_a``.
+
+    Partagé par les deux checklists (entrée ET sortie) : un seul vocabulaire,
+    une seule règle de résolution.
+    """
+    RH = 'rh', 'RH'
+    MANAGER = 'manager', 'Manager'
+    IT = 'it', 'Informatique'
+    EMPLOYE = 'employe_lui_meme', "L'employé lui-même"
+
+
 class ElementSortie(models.Model):
     """Checklist d'offboarding (FG161) — un élément à récupérer au départ.
 
@@ -786,6 +803,15 @@ class ElementIntegration(models.Model):
     )
     libelle = models.CharField(max_length=160, verbose_name='Libellé')
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    # NTHCM23 — PROPRIÉTAIRE de la tâche + échéance RELATIVE à l'embauche.
+    # Défaut ``rh`` + ``0`` jour : c'est EXACTEMENT le comportement historique
+    # (tout retombait sur le RH, sans échéance), donc aucune ligne existante
+    # ne change de sens.
+    acteur_type = models.CharField(
+        max_length=16, choices=ActeurTache.choices,
+        default=ActeurTache.RH, verbose_name='Acteur')
+    delai_jours = models.PositiveIntegerField(
+        default=0, verbose_name="Échéance (jours après l'embauche)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -832,6 +858,22 @@ class ElementIntegrationEmploye(models.Model):
     )
     date = models.DateTimeField(
         null=True, blank=True, verbose_name='Date de réalisation')
+    # NTHCM23 — acteur + destinataire RÉSOLU + échéance CALCULÉE, posés à
+    # l'instanciation (``services.instancier_integration``). ``assigne_a``
+    # nullable : une tâche IT sans contact IT configuré reste NON-ASSIGNÉE —
+    # c'est un signal, jamais une assignation par défaut inventée.
+    acteur_type = models.CharField(
+        max_length=16, choices=ActeurTache.choices,
+        default=ActeurTache.RH, verbose_name='Acteur')
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_taches_integration',
+        verbose_name='Assignée à',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -840,6 +882,18 @@ class ElementIntegrationEmploye(models.Model):
         verbose_name_plural = "Éléments d'intégration (employé)"
         ordering = ['ordre', 'libelle']
         indexes = [models.Index(fields=['company', 'employe'])]
+
+    @property
+    def en_retard(self):
+        """NTHCM23 — échéance dépassée ET tâche pas faite.
+
+        Une tâche SANS échéance n'est jamais en retard (elle n'en a pas), et
+        une tâche faite ne l'est plus, quelle qu'ait été son échéance.
+        """
+        if self.fait or self.echeance is None:
+            return False
+        from django.utils import timezone
+        return self.echeance < timezone.localdate()
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.libelle}'
@@ -4860,6 +4914,18 @@ class ReglageRH(models.Model):
     # qui ne l'a pas terminé. Défaut 14 jours (deux semaines).
     rappel_parcours_apres_jours = models.PositiveIntegerField(
         default=14, verbose_name='Rappel parcours obligatoire après (jours)')
+    # NTHCM23/24 — destinataire par défaut des tâches d'on/offboarding
+    # portées par l'INFORMATIQUE (création puis révocation des accès,
+    # matériel). ``None`` = aucun contact IT configuré : les tâches IT restent
+    # alors NON-ASSIGNÉES et sont signalées comme telles, jamais retombées en
+    # silence sur quelqu'un d'autre.
+    contact_it_defaut = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_contact_it_par_defaut',
+        verbose_name='Contact informatique par défaut',
+    )
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 

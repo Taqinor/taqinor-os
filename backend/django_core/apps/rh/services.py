@@ -903,8 +903,67 @@ def _modele_integration_applicable(dossier):
 _LIBELLE_DECLARATION_ENTREE = "Déclaration d'entrée CNSS/AMO"
 
 
+def contact_it_societe(company):
+    """NTHCM23/24 — contact IT par défaut de la société, ou ``None``.
+
+    ``None`` est un RÉSULTAT LÉGITIME : aucune tâche IT ne doit retomber en
+    silence sur quelqu'un qui ne s'en occupe pas. Elle reste non-assignée et
+    le rapport la signale.
+    """
+    from .models import ReglageRH
+
+    reglage = ReglageRH.objects.filter(company=company).first()
+    return None if reglage is None else reglage.contact_it_defaut
+
+
+def resoudre_acteur_tache(dossier, acteur_type, *, createur=None):
+    """NTHCM23/24 — QUEL utilisateur porte une tâche d'on/offboarding.
+
+    * ``rh`` → le RH qui déclenche l'instanciation (``createur``) ;
+    * ``manager`` → le compte du manager HIÉRARCHIQUE du dossier (NTHCM1) ;
+    * ``it`` → le contact IT de la société (``ReglageRH.contact_it_defaut``) ;
+    * ``employe_lui_meme`` → le compte de l'employé, s'il en a un.
+
+    Renvoie ``None`` quand la cible n'existe pas (pas de manager, pas de
+    contact IT configuré, employé sans compte applicatif) : la tâche reste
+    NON-ASSIGNÉE — c'est un signal visible, jamais une assignation inventée.
+    Le destinataire résolu est toujours de la MÊME société que le dossier.
+    """
+    from .models import ActeurTache
+
+    cible = None
+    if acteur_type == ActeurTache.RH:
+        cible = createur
+    elif acteur_type == ActeurTache.MANAGER:
+        manager = dossier.manager
+        cible = None if manager is None else manager.user
+    elif acteur_type == ActeurTache.IT:
+        cible = contact_it_societe(dossier.company)
+    elif acteur_type == ActeurTache.EMPLOYE:
+        cible = dossier.user
+
+    if cible is None:
+        return None
+    if getattr(cible, 'company_id', None) != dossier.company_id:
+        return None
+    return cible
+
+
+def echeance_tache_integration(dossier, delai_jours, *, aujourdhui=None):
+    """NTHCM23 — échéance ABSOLUE d'une tâche (embauche + ``delai_jours``).
+
+    Base : la ``date_embauche`` du dossier ; à défaut (embauche non saisie) la
+    date du jour — jamais une échéance sans base, jamais une date inventée
+    dans le passé.
+    """
+    from datetime import timedelta
+
+    base = dossier.date_embauche or aujourdhui or timezone.localdate()
+    return base + timedelta(days=delai_jours or 0)
+
+
 @transaction.atomic
-def instancier_integration(dossier, modele=None):
+def instancier_integration(dossier, modele=None, createur=None):
     """Crée les ``ElementIntegrationEmploye`` du modèle applicable (XRH4).
 
     Si ``modele`` n'est pas fourni, résout le modèle le plus spécifique via
@@ -914,8 +973,14 @@ def instancier_integration(dossier, modele=None):
     configurée reste valide. N'instancie PAS deux fois pour le même dossier
     (idempotent : si des lignes existent déjà, les renvoie telles quelles
     sans dupliquer).
+
+    NTHCM23 — chaque ligne hérite de l'``acteur_type`` de son gabarit, se voit
+    RÉSOUDRE son destinataire (``resoudre_acteur_tache``) et calculer son
+    ``echeance`` (embauche + ``delai_jours``). ``createur`` est le RH qui
+    déclenche : il porte les lignes d'acteur ``rh``. Une tâche dont la cible
+    n'existe pas reste non-assignée.
     """
-    from .models import ElementIntegrationEmploye
+    from .models import ActeurTache, ElementIntegrationEmploye
 
     existantes = list(
         ElementIntegrationEmploye.objects.filter(employe=dossier))
@@ -931,7 +996,12 @@ def instancier_integration(dossier, modele=None):
         for element in modele.elements.all():
             lignes.append(ElementIntegrationEmploye(
                 company=dossier.company, employe=dossier,
-                libelle=element.libelle, ordre=element.ordre))
+                libelle=element.libelle, ordre=element.ordre,
+                acteur_type=element.acteur_type,
+                assigne_a=resoudre_acteur_tache(
+                    dossier, element.acteur_type, createur=createur),
+                echeance=echeance_tache_integration(
+                    dossier, element.delai_jours)))
             ordre = max(ordre, element.ordre)
 
     # XRH5 — item bloquant toujours ajouté s'il n'y figure pas déjà.
@@ -941,7 +1011,11 @@ def instancier_integration(dossier, modele=None):
     if not deja_present:
         lignes.append(ElementIntegrationEmploye(
             company=dossier.company, employe=dossier,
-            libelle=_LIBELLE_DECLARATION_ENTREE, ordre=ordre + 1))
+            libelle=_LIBELLE_DECLARATION_ENTREE, ordre=ordre + 1,
+            acteur_type=ActeurTache.RH,
+            assigne_a=resoudre_acteur_tache(
+                dossier, ActeurTache.RH, createur=createur),
+            echeance=echeance_tache_integration(dossier, 0)))
 
     if not lignes:
         return []
