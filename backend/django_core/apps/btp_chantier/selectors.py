@@ -104,6 +104,93 @@ def reserves_archivables(company=None, *, maintenant=None):
     return resultat
 
 
+# ── NTCON30 — export CSV/XLSX pour reporting externe MOE/client ────────────
+
+#: En-têtes de l'export des réserves. AUCUN coût interne : ni ``prix_achat``,
+#: ni déboursé, ni exposition aux pénalités — un MOE/client lit ce fichier.
+COLONNES_EXPORT_RESERVES = (
+    'Numéro', 'Chantier', 'Lot', 'Description', 'Gravité', 'Statut',
+    'Responsable', 'Date limite', 'Date de levée',
+)
+
+#: En-têtes de l'export des RFI (« priorité » = impact déclaré du RFI).
+COLONNES_EXPORT_RFI = (
+    'Numéro', 'Chantier', 'Question', 'Priorité', 'Statut', 'Destinataire',
+    'Date limite de réponse', 'Date de réponse',
+)
+
+
+def _nom_utilisateur(user):
+    """Nom affichable d'un utilisateur, ou chaîne vide."""
+    if user is None:
+        return ''
+    complet = (getattr(user, 'get_full_name', lambda: '')() or '').strip()
+    return complet or getattr(user, 'username', '') or ''
+
+
+def _priorite_rfi(rfi):
+    """« Priorité » lisible d'un RFI, DÉRIVÉE de ses impacts déclarés.
+
+    Le modèle NTCON3 ne porte pas de champ ``priorite`` : l'inventer côté
+    export serait un chiffre sorti de nulle part. On dérive donc un libellé
+    des DEUX impacts que le RFI déclare déjà (coût, délai) — et « Normale »
+    quand il n'en déclare aucun.
+    """
+    marques = []
+    if rfi.impact_cout:
+        marques.append('coût')
+    if rfi.impact_delai_jours:
+        marques.append(f'délai {rfi.impact_delai_jours} j')
+    return f"Impact {' + '.join(marques)}" if marques else 'Normale'
+
+
+def export_reserves(qs):
+    """NTCON30 — ``(en-têtes, lignes)`` de l'export des réserves.
+
+    ``qs`` est DÉJÀ scopé société + filtré par l'appelant. Lecture seule.
+    """
+    lignes = []
+    for reserve in qs.select_related(
+            'chantier', 'responsable_leve').order_by('id'):
+        lignes.append([
+            reserve.pk,
+            str(reserve.chantier) if reserve.chantier_id else '',
+            reserve.lot or '',
+            reserve.description or '',
+            reserve.get_gravite_display(),
+            reserve.get_statut_display(),
+            _nom_utilisateur(reserve.responsable_leve),
+            reserve.date_limite.isoformat() if reserve.date_limite else '',
+            (reserve.date_levee.date().isoformat()
+             if reserve.date_levee else ''),
+        ])
+    return list(COLONNES_EXPORT_RESERVES), lignes
+
+
+def export_rfi(qs):
+    """NTCON30 — ``(en-têtes, lignes)`` de l'export des RFI (lecture seule)."""
+    lignes = []
+    for rfi in qs.select_related(
+            'chantier', 'destinataire_user').prefetch_related(
+                'reponses').order_by('numero', 'id'):
+        premiere = min(
+            (r.date_creation for r in rfi.reponses.all()), default=None)
+        destinataire = (_nom_utilisateur(rfi.destinataire_user)
+                        or rfi.destinataire_texte or '')
+        lignes.append([
+            rfi.numero,
+            str(rfi.chantier) if rfi.chantier_id else '',
+            rfi.question or '',
+            _priorite_rfi(rfi),
+            rfi.get_statut_display(),
+            destinataire,
+            (rfi.date_limite_reponse.isoformat()
+             if rfi.date_limite_reponse else ''),
+            premiere.date().isoformat() if premiere else '',
+        ])
+    return list(COLONNES_EXPORT_RFI), lignes
+
+
 def reserves_actives_bloquantes(company, chantier=None):
     """``ReserveChantier`` ouvertes/en cours de gravité bloquante (lecture)."""
     qs = ReserveChantier.objects.filter(

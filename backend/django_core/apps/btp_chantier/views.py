@@ -81,6 +81,39 @@ def _client_ip(request):
     return ip[:45]
 
 
+def _reponse_export(request, nom_base, headers, rows):
+    """NTCON30 — rend ``(headers, rows)`` en CSV ou XLSX selon ``?format=``.
+
+    CSV par défaut (le format qu'un MOE ouvre partout) ; ``?format=xlsx``
+    passe par le builder PARTAGÉ ``records.xlsx.build_xlsx_response`` — qui
+    neutralise déjà les cellules commençant par ``= + - @`` (ERR11 : un export
+    téléchargé n'exécute jamais de formule à l'ouverture).
+    """
+    import csv
+    import io
+
+    from django.http import HttpResponse
+
+    demande = (request.query_params.get('format') or 'csv').lower()
+    if demande in ('xlsx', 'excel'):
+        from apps.records.xlsx import build_xlsx_response
+        return build_xlsx_response(
+            f'{nom_base}.xlsx', headers, rows, sheet_title=nom_base[:31])
+
+    tampon = io.StringIO()
+    graveur = csv.writer(tampon, delimiter=';')
+    graveur.writerow(headers)
+    for ligne in rows:
+        graveur.writerow(ligne)
+    reponse = HttpResponse(
+        # BOM utf-8 : sans lui Excel (Windows) affiche « RÃ©serve ».
+        '﻿' + tampon.getvalue(),
+        content_type='text/csv; charset=utf-8')
+    reponse['Content-Disposition'] = (
+        f'attachment; filename="{nom_base}.csv"')
+    return reponse
+
+
 def _photos_pour(instance, phase=None):
     """Pièces jointes ``records.Attachment`` ciblant ``instance`` (app de
     fondation — import direct autorisé, pas de frontière cross-app)."""
@@ -174,6 +207,22 @@ class ReserveChantierViewSet(
             request.user.company, chantier=chantier)
         return Response(
             ReserveChantierSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission])
+    def export(self, request):
+        """NTCON30 — export CSV/XLSX des réserves (reporting externe MOE).
+
+        ``?chantier=&statut=&gravite=&lot=&archivee=&format=csv|xlsx``. Les
+        mêmes filtres que la liste (``get_queryset``), donc l'export contient
+        EXACTEMENT ce que l'écran affiche. Colonnes : numéro, chantier, lot,
+        description, gravité, statut, responsable, date limite, date de levée.
+
+        AUCUN coût interne : pas de déboursé, pas d'exposition aux pénalités,
+        pas de ``prix_achat`` — ce fichier part chez le MOE ou le client.
+        """
+        headers, rows = selectors.export_reserves(self.get_queryset())
+        return _reponse_export(request, 'reserves-chantier', headers, rows)
 
     @action(detail=True, methods=['get'],
             permission_classes=[ScopedPermission])
@@ -269,6 +318,21 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
                 'impact_delai_jours'),
         )
         serializer.instance = rfi
+
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission])
+    def export(self, request):
+        """NTCON30 — export CSV/XLSX des RFI (reporting externe MOE/client).
+
+        ``?chantier=&statut=&format=csv|xlsx`` — mêmes filtres que la liste.
+        Colonnes : numéro, chantier, question, priorité (DÉRIVÉE des impacts
+        coût/délai déclarés — jamais un niveau inventé), statut, destinataire,
+        date limite de réponse, date de la première réponse.
+
+        AUCUN coût interne dans l'export (règle produit).
+        """
+        headers, rows = selectors.export_rfi(self.get_queryset())
+        return _reponse_export(request, 'rfi', headers, rows)
 
     @action(detail=True, methods=['post'],
             permission_classes=[ScopedPermission, PeutRepondreRfi])
