@@ -19,8 +19,15 @@ from .public_questionnaire_views import public_questionnaire
 from .public_visite_views import public_visite
 from .public_views import public_salle_vente, public_apporteur_mes_deals
 from .public_lead_ref_views import lead_ref_lookup
-# VT2 — API de la visite technique terrain (ViewSet dédié, hors views.py).
-from .views_visite import VisiteTerrainViewSet, lead_photo_toit
+# VT12 — la SEULE surface visite restée côté CRM : la texture de toit du lead.
+from .views_visite import lead_photo_toit
+# VTA3 — ALIAS PWA DÉPRÉCIÉ. Le ViewSet vit désormais dans `apps.visites` ;
+# on ré-enregistre LES MÊMES vues sous l'ancien préfixe `/api/django/crm/
+# visites/` le temps d'une fenêtre de déploiement — le service worker de la PWA
+# est en `registerType: 'prompt'`, donc un shell déjà installé continue
+# d'appeler les ANCIENNES routes jusqu'au geste de mise à jour de
+# l'utilisateur. À RETIRER au prochain groupe.
+from apps.visites.views import VisiteTerrainViewSet
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
 # préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
 # routeur compta, qui reverse ``partenaire-list`` etc.).
@@ -88,7 +95,9 @@ router.register(r'apporteurs', ApporteurViewSet, basename='crm-apporteur')
 router.register(r'deals-enregistres', DealEnregistreViewSet, basename='deal-enregistre')
 # NTCRM23 — Défis et leaderboards d'équipe.
 router.register(r'defis', DefiViewSet, basename='crm-defi')
-# VT2 — Visites techniques terrain (checklist photos/mesures + feu vert).
+# VTA3 — alias PWA déprécié (voir l'import plus haut) : MÊMES vues que
+# `/api/django/visites/visites/`, servies sous l'ancien préfixe le temps de la
+# fenêtre de déploiement. À retirer au prochain groupe.
 router.register(r'visites', VisiteTerrainViewSet, basename='crm-visite')
 
 urlpatterns = [

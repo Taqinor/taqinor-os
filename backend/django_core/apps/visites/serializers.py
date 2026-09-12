@@ -11,7 +11,7 @@ dédiées (``terminer``/``valider``/``renvoyer``), jamais par un PATCH de champ.
 """
 from rest_framework import serializers
 
-from apps.visites.models import VisiteTerrain
+from .models import VisiteTerrain
 
 
 class VisiteTerrainSerializer(serializers.ModelSerializer):
