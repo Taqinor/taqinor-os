@@ -2379,6 +2379,14 @@ class JournalAcces(models.Model):
     # Métadonnées best-effort (jamais sensibles) : IP tronquée / user-agent court.
     adresse_ip = models.GenericIPAddressField(
         null=True, blank=True, verbose_name='adresse IP')
+    # NTDOC14 — référence OPAQUE de la source d'accès, au format
+    # ``"<app>.<objet>:<id>"`` (ex. ``"datarooms.acces:42"``). String-ref
+    # assumée plutôt qu'une FK : la GED est une couche BASSE, elle ne doit
+    # jamais dépendre d'un module optionnel qui, lui, dépend d'elle. Vide pour
+    # tous les accès historiques (aucune source particulière).
+    source_ref = models.CharField(
+        max_length=64, blank=True, default='', db_index=True,
+        verbose_name="référence de la source d'accès")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

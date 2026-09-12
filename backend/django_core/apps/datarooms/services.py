@@ -216,3 +216,113 @@ def servir_document_viewer(acces, ligne, *, now=None):
     if filigrane and mime in _WATERMARK_IMAGE_MIMES:
         mime = 'image/png'
     return data, mime, nom_fichier, ''
+
+
+# ── NTDOC14 — Journal de consultation par salle et par viewer ───────────────
+
+def reference_acces(acces):
+    """NTDOC14 — Référence opaque d'un accès viewer, pour `JournalAcces`.
+
+    Format ``"datarooms.acces:<id>"`` — c'est ce qui rend une entrée d'audit
+    ATTRIBUABLE à une personne précise sans que la GED (couche basse) n'ait à
+    connaître ce module."""
+    return f'datarooms.acces:{acces.pk}'
+
+
+def journaliser_consultation(acces, document, *, type_acces=None,
+                             adresse_ip=None):
+    """NTDOC14 — Journalise un accès PUBLIC à un document de salle.
+
+    Réutilise `ged.services.journaliser_acces` (GED35) — aucun nouveau modèle
+    de journal n'est créé. L'entrée est taguée avec la référence du VIEWER
+    d'origine. Best-effort : l'audit ne bloque jamais une lecture."""
+    from apps.ged.services import journaliser_acces
+
+    try:
+        return journaliser_acces(
+            document, utilisateur=None, type_acces=type_acces,
+            adresse_ip=adresse_ip, source_ref=reference_acces(acces))
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return None
+
+
+def _duree_secondes(depart, arrivee):
+    """Durée entre deux horodatages, bornée et jamais négative."""
+    if depart is None or arrivee is None:
+        return 0
+    return max(int((arrivee - depart).total_seconds()), 0)
+
+
+#: Au-delà de ce délai entre deux accès, on considère que le viewer a quitté la
+#: salle : le temps passé sur le dernier document n'est plus comptabilisable
+#: (sans quoi un onglet laissé ouvert une nuit fausserait tout le rapport).
+SEUIL_SESSION_SECONDES = 30 * 60
+
+
+def journal_de_salle(salle):
+    """NTDOC14 — Journal de consultation d'une salle (QuerySet, chronologique).
+
+    Lit la GED via son sélecteur (`ged.selectors.journal_acces_for_company`) —
+    jamais d'import de `ged.models`. Ne remonte QUE les accès dont la source
+    est un viewer de CETTE salle."""
+    from apps.ged.selectors import journal_acces_for_company
+
+    from .selectors import acces_de_salle
+
+    refs = [f'datarooms.acces:{pk}' for pk in
+            acces_de_salle(salle).values_list('pk', flat=True)]
+    if not refs:
+        from apps.ged.models import JournalAcces
+        return JournalAcces.objects.none()
+    return journal_acces_for_company(
+        salle.company, source_refs=refs).order_by('created_at', 'id')
+
+
+def journal_detaille_salle(salle):
+    """NTDOC14 — Journal enrichi : qui a vu quoi, quand, et combien de temps.
+
+    Le « temps passé » n'est pas mesurable directement (aucun battement de cœur
+    côté navigateur) : il est DÉRIVÉ de l'écart entre deux accès successifs du
+    MÊME viewer, et volontairement mis à 0 au-delà de
+    `SEUIL_SESSION_SECONDES` (dernier document d'une session, ou onglet
+    abandonné). C'est une estimation assumée, jamais une mesure.
+
+    Renvoie ``(lignes, resume)`` où ``lignes`` est la liste chronologique des
+    entrées et ``resume`` le total de secondes par document."""
+    from .selectors import acces_de_salle
+
+    viewers = {f'datarooms.acces:{a.pk}': a for a in acces_de_salle(salle)}
+    entrees = list(journal_de_salle(salle))
+
+    # Accès successifs PAR VIEWER : l'écart alimente le temps passé.
+    suivant_par_viewer = {}
+    for entree in reversed(entrees):
+        ref = entree.source_ref
+        prochain = suivant_par_viewer.get(ref)
+        entree._duree = 0
+        if prochain is not None:
+            ecart = _duree_secondes(entree.created_at, prochain.created_at)
+            entree._duree = ecart if ecart <= SEUIL_SESSION_SECONDES else 0
+        suivant_par_viewer[ref] = entree
+
+    lignes = []
+    resume = {}
+    for entree in entrees:
+        viewer = viewers.get(entree.source_ref)
+        lignes.append({
+            'date': entree.created_at,
+            'viewer_nom': getattr(viewer, 'nom', '') or '',
+            'viewer_email': getattr(viewer, 'email', '') or '',
+            'document_id': entree.document_id,
+            'document_nom': getattr(entree.document, 'nom', '') or '',
+            'type_acces': entree.type_acces,
+            'duree_secondes': entree._duree,
+        })
+        cle = entree.document_id
+        agrege = resume.setdefault(
+            cle, {'document_id': cle,
+                  'document_nom': getattr(entree.document, 'nom', '') or '',
+                  'consultations': 0, 'duree_secondes': 0})
+        agrege['consultations'] += 1
+        agrege['duree_secondes'] += entree._duree
+    return lignes, list(resume.values())

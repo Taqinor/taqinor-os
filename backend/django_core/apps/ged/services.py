@@ -4122,13 +4122,18 @@ def dossier_preuve_archivage(archivage):
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
 
 def journaliser_acces(document, *, utilisateur=None, type_acces=None,
-                      adresse_ip=None):
+                      adresse_ip=None, source_ref=''):
     """GED35 — Enregistre un accès EN LECTURE à un document (append-only).
 
     `company` est posée CÔTÉ SERVEUR (toujours celle du document) — jamais lue
     d'un corps de requête. `utilisateur` peut être None (accès public anonyme
     via lien tokenisé GED20). Ne lève jamais (l'audit ne doit pas casser une
     lecture) — toute erreur d'écriture du journal est silencieusement ignorée.
+
+    `source_ref` (NTDOC14) : référence OPAQUE de la source de l'accès, au
+    format ``"<app>.<objet>:<id>"`` — elle permet à un module supérieur (une
+    salle de données, par exemple) d'attribuer l'accès à SON invité sans que la
+    GED n'ait à connaître ce module.
 
     Renvoie l'entrée `JournalAcces` créée, ou None si la journalisation a échoué
     (best-effort)."""
@@ -4142,6 +4147,7 @@ def journaliser_acces(document, *, utilisateur=None, type_acces=None,
                 utilisateur, 'is_authenticated', False) else None,
             type_acces=type_acces or ACCES_CONSULTATION,
             adresse_ip=adresse_ip or None,
+            source_ref=(source_ref or '')[:64],
         )
     except Exception:  # robustesse : l'audit ne bloque jamais une lecture.
         return None

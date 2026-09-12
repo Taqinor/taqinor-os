@@ -5,6 +5,9 @@ sur ``request.user.company`` + ``company`` forcée côté serveur dans
 ``perform_create``). Aucun import de ``ged.models`` : la GED est lue via
 ``apps.ged.selectors`` (encapsulé par ``selectors.py`` de cette app).
 """
+import csv
+import io
+
 from django.http import HttpResponse
 from rest_framework import filters, status
 from rest_framework.decorators import (
@@ -85,6 +88,40 @@ class SalleDeDonneesViewSet(CompanyScopedModelViewSet):
              'total': SalleDeDonneesDocument.objects.filter(
                  salle=salle).count()},
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def journal(self, request, pk=None):
+        """NTDOC14 — Qui a vu quoi, quand, et combien de temps (gestion).
+
+        `?format=csv` exporte les mêmes lignes, dans le MÊME ordre
+        chronologique, en CSV (séparateur `;` + BOM utf-8, comme les autres
+        exports du dépôt — sans le BOM Excel Windows casse les accents)."""
+        salle = self.get_object()
+        lignes, resume = services.journal_detaille_salle(salle)
+
+        if (request.query_params.get('format') or '').lower() == 'csv':
+            entetes = ['Date', 'Viewer', 'Email', 'Document', 'Type d\'accès',
+                       'Temps estimé (s)']
+            tampon = io.StringIO()
+            graveur = csv.writer(tampon, delimiter=';')
+            graveur.writerow(entetes)
+            for ligne in lignes:
+                graveur.writerow([
+                    ligne['date'].strftime('%Y-%m-%d %H:%M:%S'),
+                    ligne['viewer_nom'], ligne['viewer_email'],
+                    ligne['document_nom'], ligne['type_acces'],
+                    ligne['duree_secondes'],
+                ])
+            reponse = HttpResponse(
+                # BOM utf-8 : sans lui Excel (Windows) affiche « RÃ©serve ».
+                '﻿' + tampon.getvalue(),
+                content_type='text/csv; charset=utf-8')
+            reponse['Content-Disposition'] = (
+                f'attachment; filename="journal-salle-{salle.pk}.csv"')
+            return reponse
+
+        return Response({'lignes': lignes, 'resume_par_document': resume},
+                        status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='retirer-document')
     def retirer_document(self, request, pk=None):
@@ -185,6 +222,16 @@ def _dataroom_noindex(response):
     return response
 
 
+def _adresse_ip(request):
+    """Adresse IP best-effort d'une requête (ou None).
+
+    Lit `REMOTE_ADDR` — jamais un en-tête `X-Forwarded-For` non fiable (même
+    politique que `ged.services._adresse_ip_requete`)."""
+    if request is None:
+        return None
+    return (getattr(request, 'META', {}) or {}).get('REMOTE_ADDR') or None
+
+
 def _reponse_acces_introuvable():
     return _dataroom_noindex(Response(
         {'detail': "Ce lien d'accès est introuvable ou a été révoqué."},
@@ -275,6 +322,12 @@ def public_salle_document(request, token, document_id):
             {'detail': erreur}, status=status.HTTP_404_NOT_FOUND))
 
     services.marquer_consultation(acces)
+    # NTDOC14 — trace l'accès dans le journal GED (GED35 réutilisé), tagué avec
+    # le VIEWER d'origine : c'est ce qui rend le rapport attribuable.
+    from apps.ged.models import ACCES_PUBLIC
+    services.journaliser_consultation(
+        acces, ligne.document, type_acces=ACCES_PUBLIC,
+        adresse_ip=_adresse_ip(request))
     disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
     reponse = HttpResponse(data, content_type=mime)
     reponse['Content-Disposition'] = (
