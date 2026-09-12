@@ -191,7 +191,7 @@ class ParametresESGSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'updated_at']
 
-    def get_pilote_esg_nom(self, obj):
+    def get_pilote_esg_nom(self, obj) -> str:
         pilote = obj.pilote_esg
         if pilote is None:
             return ''
