@@ -23,14 +23,15 @@ from authentication.permissions import (
 from . import engine, services
 from .models import (
     ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
-    AutomationApproval, AutomationRule, AutomationRun,
-    IncomingWebhookTrigger,
+    AutomationApproval, AutomationRule, AutomationRuleVersion, AutomationRun,
+    IncomingWebhookTrigger, creer_version_automation_rule,
+    restaurer_version_automation_rule,
 )
 from .serializers import (
     ApprovalDelegationSerializer, ApprovalRequestSerializer,
     ApprovalRequestTypeSerializer, AutomationApprovalSerializer,
-    AutomationRuleSerializer, AutomationRunSerializer,
-    IncomingWebhookTriggerSerializer,
+    AutomationRuleSerializer, AutomationRuleVersionSerializer,
+    AutomationRunSerializer, IncomingWebhookTriggerSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -104,6 +105,11 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         old_enabled = serializer.instance.enabled
         old_nom = serializer.instance.nom
+        # NTEXT30 — snapshot l'état COURANT (avant modif) sous le prochain
+        # rang de version, pour que « restaurer » puisse y revenir plus
+        # tard. Best-effort : ne bloque jamais l'écriture de la règle.
+        creer_version_automation_rule(
+            serializer.instance, auteur=self.request.user)
         super().perform_update(serializer)
         instance = serializer.instance
         if instance.enabled != old_enabled or instance.nom != old_nom:
@@ -181,6 +187,47 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
             context=contexte if isinstance(contexte, dict) else None,
             user=request.user)
         return Response({'effets': effets, 'simulation': True})
+
+
+class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTEXT30 — historique des versions d'une règle. Lecture seule ; scopé
+    société via ``rule__company`` (le modèle lui-même ne porte pas de FK
+    ``company`` directe — une version n'existe que par sa règle, TenantMixin
+    ne s'applique donc pas tel quel). ``?rule=<id>`` filtre sur une règle."""
+    queryset = AutomationRuleVersion.objects.select_related(
+        'rule', 'auteur').all()
+    serializer_class = AutomationRuleVersionSerializer
+    permission_classes = [IsAdminRole]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if user.company_id:
+            qs = qs.filter(rule__company=user.company)
+        elif not user.is_superuser:
+            qs = qs.none()
+        rule = self.request.query_params.get('rule')
+        if rule:
+            qs = qs.filter(rule_id=rule)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def restaurer(self, request, pk=None):
+        """NTEXT30 — recrée EXACTEMENT la config de CETTE version sur sa
+        règle (nom/trigger/action/steps). Journalisée comme une modification
+        de règle ordinaire (Journal des paramètres + plateforme)."""
+        version_row = self.get_object()
+        rule = restaurer_version_automation_rule(version_row)
+        try:
+            from apps.customfields.audit_plateforme import journaliser_plateforme
+            journaliser_plateforme(
+                company=getattr(request.user, 'company', None),
+                user=request.user, cible='regle', identifiant=rule.pk,
+                libelle="Règle d'automatisation restaurée",
+                old=f'version {version_row.version}', new=rule.nom)
+        except Exception:
+            pass
+        return Response(AutomationRuleSerializer(rule).data)
 
 
 class AutomationRunViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

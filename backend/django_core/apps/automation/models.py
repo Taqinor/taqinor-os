@@ -842,3 +842,126 @@ class AutomationRunArchive(models.Model):
 
     def __str__(self):
         return f'archive:{self.original_id}'
+
+
+class AutomationRuleVersion(models.Model):
+    """NTEXT30 — snapshot horodaté d'UNE version antérieure d'une règle.
+
+    Créée à CHAQUE sauvegarde MODIFIÉE d'une règle existante (jamais à la
+    création — une règle qui vient de naître n'a rien à « restaurer ») :
+    ``version`` capture l'état de la règle JUSTE AVANT que la modification en
+    cours ne s'applique. Restaurer la version N recrée EXACTEMENT cet état :
+    modifier une règle 3 fois puis restaurer v1 rétablit la config initiale.
+
+    ``snapshot`` fige nom/trigger/action/steps — tout ce qui définit le
+    COMPORTEMENT de la règle (pas ``date_creation``/``date_modification``,
+    qui n'ont pas de sens à « restaurer »).
+    """
+
+    rule = models.ForeignKey(
+        AutomationRule,
+        on_delete=models.CASCADE,  # on_delete: un historique de versions n'existe QUE pour sa règle (composition, même patron qu'AutomationStep) ; supprimer la règle supprime son historique
+        related_name='versions', verbose_name='Règle')
+    version = models.PositiveIntegerField(
+        help_text='Rang incrémental (1, 2, 3…), par règle.')
+    snapshot = models.JSONField(
+        default=dict, blank=True,
+        help_text='nom/trigger_type/trigger_config/action_type/'
+                  'action_config/steps figés à cet instant.')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: un historique de versions n'a pas besoin de son auteur pour exister — l'utilisateur supprimé, la trace reste (qui/quoi/quand partiel), jamais de CASCADE qui effacerait l'historique
+        null=True, blank=True,
+        related_name='automation_rule_versions_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Version de règle d'automatisation"
+        verbose_name_plural = "Versions de règle d'automatisation"
+        ordering = ['-version', '-id']
+        unique_together = [('rule', 'version')]
+        indexes = [
+            models.Index(fields=['rule', '-version'],
+                         name='automation_ruleversion_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.rule_id}@v{self.version}'
+
+
+def _rule_snapshot(rule):
+    """NTEXT30 — état COURANT sérialisable d'une règle (comportement, pas
+    les métadonnées d'audit)."""
+    seuil = rule.approval_threshold
+    return {
+        'nom': rule.nom,
+        'enabled': rule.enabled,
+        'trigger_type': rule.trigger_type,
+        'trigger_config': rule.trigger_config,
+        'action_type': rule.action_type,
+        'action_config': rule.action_config,
+        'requires_approval': rule.requires_approval,
+        'approval_threshold': str(seuil) if seuil is not None else None,
+        'ordre': rule.ordre,
+        'steps': [
+            {'ordre': s.ordre, 'action_type': s.action_type,
+             'action_config': s.action_config, 'condition': s.condition,
+             'branche': s.branche}
+            for s in rule.steps.order_by('ordre', 'id')
+        ],
+    }
+
+
+def creer_version_automation_rule(rule, *, auteur=None):
+    """NTEXT30 — snapshot l'état COURANT de ``rule`` (AVANT modification)
+    sous le prochain rang de version pour cette règle. Best-effort : une
+    règle sans historique démarre à 1. Ne lève jamais (défensif, appelé
+    depuis ``perform_update`` — un accroc ici ne doit pas bloquer la
+    sauvegarde réelle de la règle)."""
+    try:
+        dernier = AutomationRuleVersion.objects.filter(
+            rule=rule).order_by('-version').first()
+        rang = (dernier.version if dernier else 0) + 1
+        return AutomationRuleVersion.objects.create(
+            rule=rule, version=rang, snapshot=_rule_snapshot(rule),
+            auteur=auteur)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def restaurer_version_automation_rule(version_row):
+    """NTEXT30 — recrée EXACTEMENT la config d'une version antérieure sur sa
+    règle : nom/trigger/action/steps. Remplace les steps COURANTS (jamais
+    fusionnés — une restauration est un retour en arrière complet, pas un
+    merge)."""
+    from decimal import Decimal, InvalidOperation
+
+    rule = version_row.rule
+    data = version_row.snapshot or {}
+    rule.nom = data.get('nom', rule.nom)
+    rule.enabled = data.get('enabled', rule.enabled)
+    rule.trigger_type = data.get('trigger_type', rule.trigger_type)
+    rule.trigger_config = data.get('trigger_config') or {}
+    rule.action_type = data.get('action_type', rule.action_type)
+    rule.action_config = data.get('action_config') or {}
+    rule.requires_approval = data.get(
+        'requires_approval', rule.requires_approval)
+    seuil = data.get('approval_threshold')
+    try:
+        rule.approval_threshold = (
+            Decimal(str(seuil)) if seuil not in (None, '') else None)
+    except InvalidOperation:
+        rule.approval_threshold = None
+    rule.ordre = data.get('ordre', rule.ordre)
+    rule.save()
+
+    rule.steps.all().delete()
+    for step in data.get('steps') or []:
+        AutomationStep.objects.create(
+            rule=rule, ordre=step.get('ordre', 0),
+            action_type=step.get('action_type', ActionType.CREATE_ACTIVITY),
+            action_config=step.get('action_config') or {},
+            condition=step.get('condition'),
+            branche=step.get('branche') or AutomationStep.Branche.TOUJOURS,
+        )
+    return rule
