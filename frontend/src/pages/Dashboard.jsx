@@ -32,6 +32,10 @@ const InnovationKpiCard = lazy(() => import('../features/innovation/InnovationKp
 // NTJUR24 — carte « Risques juridiques » (apps/juridique) : agrégat serveur
 // déjà filtré par confidentialité, aucune fuite par somme côté écran.
 const RisquesJuridiquesCard = lazy(() => import('../features/juridique/RisquesJuridiquesCard'))
+// NTOBS16 — badge « SLA respecté » auto-calculé (dernier core.SlaSnapshot,
+// NTOBS3), lien vers le rapport complet /parametres/sla. Dégrade en silence
+// tant qu'aucun snapshot n'existe encore.
+const SlaBadgeCard = lazy(() => import('../features/reporting/SlaBadgeCard'))
 // NTMFG22 — carte Production (Atelier MRP) : OF en retard, charge moyenne
 // 7j, TRS moyen 7j, alerte entretien de poste. Même patron d'intégration
 // (lazy + ErrorBoundary + gate `profile === 'directeur'`), appel direct
@@ -1154,6 +1158,14 @@ export function Component() {
               </Suspense>
             </ErrorBoundary>
           )}
+
+          {/* NTOBS16 — badge de disponibilité (SLA) du mois courant, lien
+              vers le rapport complet. Dégrade en silence sans snapshot. */}
+          <ErrorBoundary>
+            <Suspense fallback={null}>
+              <SlaBadgeCard />
+            </Suspense>
+          </ErrorBoundary>
 
           {/* NTMFG22 — carte Production (Atelier MRP), drill-down
               /mrp/ordres-fabrication. Dégrade en silence (403/flux vide).

@@ -99,6 +99,8 @@ const parametresApi = {
     api.get('/core/export-reversibilite/historique/'),
   // NTOBS8 — page « Limites & usage » unifiée (lecture seule, scopé société).
   getUsageLimites: () => api.get('/core/usage-limites/'),
+  // NTOBS3/NTOBS16 — rapport SLA mensuel (historique 12 mois, scopé société).
+  getSlaSnapshots: () => api.get('/core/sla/'),
 }
 
 export default parametresApi

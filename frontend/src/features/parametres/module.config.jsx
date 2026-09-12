@@ -118,6 +118,9 @@ const LimitesUsagePage = lazy(() => import('../../pages/parametres/LimitesUsageP
 // NTOBS11 — Paramètres → Fiabilité → État des dépendances. Nav ET route
 // ensemble (motif PACT150).
 const EtatDependancesPage = lazy(() => import('../../pages/parametres/EtatDependancesPage'))
+// NTOBS16 — Paramètres → Fiabilité → SLA (destination du badge Dashboard).
+// Nav ET route ensemble (motif PACT150).
+const SlaReportPage = lazy(() => import('../../pages/parametres/SlaReportPage'))
 // WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
 // société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
@@ -259,6 +262,8 @@ const config = {
       { to: '/parametres/limites-usage', label: 'Limites & usage', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTOBS11 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/etat-dependances', label: 'État des dépendances', icon: <Cable size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS16 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/sla', label: 'SLA', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -289,6 +294,7 @@ const config = {
     { path: '/parametres/export-reversibilite', component: ExportReversibilitePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/etat-dependances', component: EtatDependancesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/sla', component: SlaReportPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés
