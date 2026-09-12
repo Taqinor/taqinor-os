@@ -61,6 +61,63 @@ def render_prompt(template: str, context: dict) -> str:
     return (template or '').format_map(_SafeDict(context or {}))
 
 
+def valider_formule_definition(formule: str, sibling_codes) -> tuple[bool, str]:
+    """NTEXT1 — valide une formule de champ CALCULÉ à la DÉFINITION.
+
+    Réutilise ``core.formula.valider_formule`` (syntaxe sûre, AST — jamais
+    ``eval``) contre les ``code`` des champs FRÈRES (mêmes société+module),
+    et applique la MÊME garde que les prompts IA : une formule ne peut
+    JAMAIS référencer ``prix_achat``/``marge`` (``FORBIDDEN_PROMPT_
+    PLACEHOLDERS``), même si un champ frère porte ce nom. Renvoie
+    ``(ok, erreur)`` — n'exécute aucun effet de bord.
+    """
+    from core.formula import valider_formule
+
+    if not (formule or '').strip():
+        return False, 'La formule est vide.'
+    lowered = formule.lower()
+    for forbidden in FORBIDDEN_PROMPT_PLACEHOLDERS:
+        if forbidden in lowered:
+            return False, (
+                f'La formule ne peut pas référencer « {forbidden} » '
+                '(champ interne, jamais exposé).')
+    return valider_formule(formule, list(sibling_codes or []))
+
+
+def evaluer_champ_formule(field_def, context: dict):
+    """NTEXT1 — calcule la valeur d'UN champ FORMULA à la LECTURE.
+
+    ``context`` = les autres champs custom de l'enregistrement. Les clés
+    interdites (``FORBIDDEN_PROMPT_PLACEHOLDERS`` — prix_achat/marge…) sont
+    retirées du contexte AVANT évaluation, même garde que les prompts IA :
+    une formule ne peut jamais lire ces valeurs, même par accident. Ne lève
+    jamais : une formule invalide/non évaluable renvoie ``None`` (dégradation
+    propre, jamais un 500 sur une fiche existante)."""
+    from core.formula import evaluer_formule, FormulaError
+
+    safe_context = {
+        k: v for k, v in dict(context or {}).items()
+        if str(k).lower() not in FORBIDDEN_PROMPT_PLACEHOLDERS
+    }
+    try:
+        return evaluer_formule(field_def.formule, safe_context)
+    except FormulaError:
+        return None
+
+
+def calculer_champs_formule(module: str, company, data: dict) -> dict:
+    """NTEXT1 — calcule TOUS les champs FORMULA actifs d'un module pour un
+    ``data``/``custom_data`` donné. Renvoie ``{code: valeur}`` — JAMAIS
+    persisté par cette fonction, à fusionner par l'appelant dans sa réponse
+    de LECTURE uniquement (jamais dans les valeurs sauvegardées)."""
+    from .models import CustomFieldDef
+
+    defs = CustomFieldDef.objects.filter(
+        company=company, module=module, actif=True,
+        type=CustomFieldDef.FieldType.FORMULA)
+    return {d.code: evaluer_champ_formule(d, data) for d in defs}
+
+
 def generate_ia_value(*, field_def, context: dict) -> IAFieldResult:
     """Génère la valeur d'un champ IA à partir de son prompt + du contexte de
     l'enregistrement (dict plat fourni par l'appelant — jamais de modèle

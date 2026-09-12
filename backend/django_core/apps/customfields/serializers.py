@@ -17,7 +17,8 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         model = CustomFieldDef
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
                   'obligatoire', 'visible_liste', 'ordre', 'actif',
-                  'relation_module', 'conditions', 'ia_prompt', 'verrouille']
+                  'relation_module', 'conditions', 'ia_prompt', 'verrouille',
+                  'formule']
         # NTEXT38 — le verrou ne se pose/retire QUE par les actions dédiées
         # ``verrouiller``/``deverrouiller`` (auditées) : un PATCH ordinaire ne
         # doit jamais pouvoir le retirer en passant.
@@ -96,6 +97,27 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'code': 'Code non modifiable : des enregistrements '
                              'portent déjà ce champ.'})
+
+        # NTEXT1 — un champ CALCULÉ exige une formule sûre, jamais saisie :
+        # validée contre les codes des champs FRÈRES (même société+module),
+        # et rejetée si elle référence un placeholder interdit (prix_achat…).
+        if type_ == CustomFieldDef.FieldType.FORMULA:
+            formule = attrs.get('formule', getattr(instance, 'formule', ''))
+            module_value = attrs.get(
+                'module', getattr(instance, 'module', None))
+            request = self.context.get('request')
+            company = getattr(instance, 'company', None) or getattr(
+                getattr(request, 'user', None), 'company', None)
+            siblings_qs = CustomFieldDef.objects.filter(
+                company=company, module=module_value)
+            if instance is not None:
+                siblings_qs = siblings_qs.exclude(pk=instance.pk)
+            sibling_codes = list(
+                siblings_qs.values_list('code', flat=True))
+            from .services import valider_formule_definition
+            ok, erreur = valider_formule_definition(formule, sibling_codes)
+            if not ok:
+                raise serializers.ValidationError({'formule': erreur})
 
         # XPLT15 — valide la STRUCTURE des arbres de conditions à la
         # définition (jamais évaluée ici — juste refusée si mal formée).
@@ -177,6 +199,12 @@ def validate_custom_data(module, company, data):
         company=company, module=module, actif=True)}
     clean = {}
     for code, d in defs.items():
+        # NTEXT1 — un champ CALCULÉ (FORMULA) n'est JAMAIS saisi : toute
+        # valeur soumise sous son code est ignorée (jamais persistée), la
+        # vraie valeur se calcule à la LECTURE (cf. `services.
+        # calculer_champs_formule`).
+        if d.type == CustomFieldDef.FieldType.FORMULA:
+            continue
         val = data.get(code)
         if val in (None, ''):
             required = d.obligatoire
@@ -314,3 +342,16 @@ class CustomRecordSerializer(serializers.ModelSerializer):
         if objet is None or company is None:
             return value
         return validate_custom_data(objet.field_module, company, value)
+
+    def to_representation(self, instance):
+        # NTEXT1 — les champs FORMULA se calculent à la LECTURE et se
+        # fusionnent dans `data` pour l'API, SANS jamais être persistés
+        # (`instance.data` en base ne les porte pas — cf. `validate_data`,
+        # qui ne nettoie que les définitions non-FORMULA soumises).
+        rep = super().to_representation(instance)
+        from .services import calculer_champs_formule
+        calcules = calculer_champs_formule(
+            instance.objet.field_module, instance.company, instance.data)
+        if calcules:
+            rep['data'] = {**rep.get('data', {}), **calcules}
+        return rep

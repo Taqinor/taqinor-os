@@ -39,6 +39,10 @@ class CustomFieldDef(models.Model):
         # masse). Le prompt admin vit dans `ia_prompt` ; la génération elle-
         # même n'écrit dans custom_data QUE sur action explicite utilisateur.
         IA = 'ia', 'Champ IA'
+        # NTEXT1 — valeur CALCULÉE à la lecture depuis `formule` (jamais
+        # saisie, jamais persistée dans custom_data). Cf. `services.
+        # calculer_champs_formule` / `core.formula.evaluer_formule`.
+        FORMULA = 'formula', 'Champ calculé (formule)'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -84,6 +88,11 @@ class CustomFieldDef(models.Model):
     # auditée). Le verrou ne bloque QUE la structure : la saisie de valeurs
     # dans `custom_data` reste totalement libre.
     verrouille = models.BooleanField('Verrouillé', default=False)
+    # NTEXT1 — expression du champ calculé (type=formula). Ignoré pour tout
+    # autre type. Évaluée à CHAQUE LECTURE via `core.formula.evaluer_formule`
+    # sur les autres champs custom de l'enregistrement — jamais persistée
+    # dans `custom_data`/`data`, jamais saisie par l'utilisateur.
+    formule = models.TextField('Formule', blank=True, default='')
 
     class Meta:
         ordering = ['module', 'ordre', 'libelle']
