@@ -10,6 +10,7 @@ filtré sur ``request.user.company``), donc le sweep générique d'isolation
 multi-tenant couvre ce viewset automatiquement.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
+from core.viewsets import CompanyScopedModelViewSet
 from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -26,7 +27,7 @@ from .serializers import (AiFeatureToggleSerializer, DocumentAiJobSerializer,
 from .services import AiCopiloteUnavailable
 
 
-class LlmBudgetViewSet(TenantMixin, viewsets.ModelViewSet):
+class LlmBudgetViewSet(CompanyScopedModelViewSet):
     """NTAI2 — CRUD du budget IA mensuel. ADMIN uniquement.
 
     Le scoping société vient de ``TenantMixin`` en lecture ; en écriture la
@@ -65,7 +66,7 @@ class LlmBudgetViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(budget_status(request.user.company).as_dict())
 
 
-class AiFeatureToggleViewSet(TenantMixin, viewsets.ModelViewSet):
+class AiFeatureToggleViewSet(CompanyScopedModelViewSet):
     """NTAI7 — CRUD des consentements IA. ADMIN uniquement.
 
     Couper une feature ici la rend inopérante POUR CETTE SOCIÉTÉ seulement ;
@@ -80,7 +81,7 @@ class AiFeatureToggleViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class PromptTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class PromptTemplateViewSet(CompanyScopedModelViewSet):
     """NTAI5 — CRUD des surcharges de prompt. ADMIN uniquement.
 
     Chaque écriture FIGE une version immuable du corps : on peut toujours dire

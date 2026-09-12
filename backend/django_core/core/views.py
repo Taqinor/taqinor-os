@@ -551,6 +551,22 @@ class DataExplorerDatasetsView(APIView):
         return Response({'datasets': data_explorer.list_datasets(request.user)})
 
 
+class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
+    """Meme vue, route detail — operation_id distinct pour que le schema
+    OpenAPI ne fonde pas liste et detail dans un seul identifiant (collision
+    d'operationId relevee par la garde YAPIC6)."""
+
+    @extend_schema(
+        responses=inline_serializer('DataExplorerDatasetSchema', {
+            'name': drf_serializers.CharField(),
+            'mesures': drf_serializers.JSONField(),
+            'dimensions': drf_serializers.JSONField(),
+            'temps': drf_serializers.JSONField(),
+        }))
+    def get(self, request, name=None):
+        return super().get(request, name=name)
+
+
 #: NTDATA6 — borne dure du nombre de lignes rendues par une requête ad-hoc.
 #: Le moteur (``data_explorer.run_query``) plafonne déjà à 5000 ; on le REDIT
 #: ici pour que l'endpoint refuse EXPLICITEMENT une demande abusive au lieu de

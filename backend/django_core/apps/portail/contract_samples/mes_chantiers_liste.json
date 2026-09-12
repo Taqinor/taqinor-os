@@ -1,0 +1,27 @@
+{
+  "endpoint": "GET /api/django/portail/mes-chantiers/",
+  "pourquoi": "NTPRT14 — liste « Mes chantiers » du portail client authentifié (frontend/src/features/portail/client/PortailClientChantiers.jsx), servie par MesChantiersPortailViewSet.list via apps.installations.selectors.chantiers_du_client_portail. Le client est dérivé du compte CONNECTÉ, jamais d'un paramètre. Contrat client-safe : AUCUN champ financier (BOM/prix exclus) — seulement référence/statut/ville/date. Les chantiers annulés n'apparaissent jamais. Enveloppe NON paginée : un objet {results: [...]}.",
+  "exemple": {
+    "results": [
+      {
+        "id": 17,
+        "reference": "CH-2026-0017",
+        "statut": "en_cours",
+        "statut_display": "En cours",
+        "site_ville": "Casablanca",
+        "date_creation": "2026-06-01T10:00:00Z"
+      },
+      {
+        "id": 12,
+        "reference": "CH-2026-0012",
+        "statut": "cloture",
+        "statut_display": "Clôturé",
+        "site_ville": "Bouskoura",
+        "date_creation": "2026-02-14T08:30:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "results": []
+  }
+}

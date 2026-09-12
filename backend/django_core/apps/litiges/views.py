@@ -22,7 +22,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from core.permissions import WriteScopedPermissionMixin
+from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from .models import Reclamation, ReclamationActivity
@@ -127,7 +127,15 @@ class ReclamationViewSet(UsageGuardedDestroyMixin, _LitigesBaseViewSet):
         return Response(data)
 
     # ── Escalade vers un dossier juridique (NTJUR6) ──────────────────────────
-    @action(detail=True, methods=['post'], url_path='escalader-juridique')
+    # Garde DÉCLARÉE (ratchet YRBAC3) : exactement le défaut de la classe
+    # (`WriteScopedPermissionMixin.permission_classes`), donc `litige_gerer`
+    # pour ce POST — même garde que ses sœurs d'écriture
+    # (`prendre_en_charge` / `resoudre` / `rejeter`). Déclarer le défaut ne
+    # change RIEN au runtime (cf. `core.permissions.
+    # declared_action_permissions`), mais rend la garde EXPLICITE : une
+    # `@action` custom ne se lit pas dans la méthode HTTP.
+    @action(detail=True, methods=['post'], url_path='escalader-juridique',
+            permission_classes=[ScopedPermission])
     def escalader_juridique(self, request, pk=None):
         """Ouvre (ou retrouve) le dossier juridique de cette réclamation.
 

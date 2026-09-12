@@ -412,6 +412,11 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         # demandée par le service unique.
         statut_demande = serializer.validated_data.pop('statut', None)
         interv = serializer.save(company=company, created_by=self.request.user)
+        # CHT9 — le technicien affecté à la création est notifié (sa propre
+        # clé INTERVENTION_ASSIGNEE — jusqu'ici silencieux).
+        if technicien is not None:
+            from ..services import _notifier_intervention_assignee
+            _notifier_intervention_assignee(interv, self.request.user)
         # XFSM4 — priorité héritée du ticket SAV lié quand fournie explicitement
         # aucune priorité (défaut NORMALE côté modèle = « non fournie » ici).
         # sav.Ticket.Priorite a une valeur BASSE que Intervention n'a pas :
@@ -476,8 +481,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         # intervention déjà correctement affectée).
         new_technicien = serializer.validated_data.get(
             'technicien', old.technicien)
-        if (new_technicien is not None
-                and new_technicien.id != old.technicien_id):
+        technicien_change = (
+            new_technicien is not None
+            and new_technicien.id != old.technicien_id)
+        if technicien_change:
             self._verifier_habilitation_ou_lever(
                 self.request.user.company, new_technicien,
                 serializer.validated_data.get(
@@ -485,6 +492,12 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from django.db import transaction
         with transaction.atomic():
             interv = serializer.save()
+            # CHT9 — le technicien RÉAFFECTÉ est notifié (sa propre clé
+            # INTERVENTION_ASSIGNEE) — même garde que YHIRE9 ci-dessus (pas de
+            # bruit sur une simple modification sans changement de technicien).
+            if technicien_change:
+                from ..services import _notifier_intervention_assignee
+                _notifier_intervention_assignee(interv, self.request.user)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : effets « édition » inchangés.
                 self._stamp_date_realisee(interv)

@@ -66,7 +66,7 @@ describe('workflow.js -- logique pure du designer (NTWFL6/8/9/11)', () => {
       const erreurs = validerEtapesDefinition([
         { ordre: 1, nom: 'A', type_approbation: 'manuelle', role_requis: '' },
       ])
-      expect(erreurs.some((e) => e.includes('role requis'))).toBe(true)
+      expect(erreurs.some((e) => e.includes('rôle requis'))).toBe(true)
     })
 
     it('detecte une boucle infinie via etape_alternative_si_echec', () => {
@@ -350,7 +350,14 @@ describe('WorkflowDesigner -- swimlanes par role (NTWFL8)', () => {
     fireEvent.dragStart(noeudA)
     fireEvent.drop(bandeAdmin)
 
-    await user.click(noeudA)
+    // Le noeud change de bande (son role_requis change) : React demonte le
+    // noeud de l'ancienne bande "commercial" (qui disparait, vide) et en
+    // remonte un neuf sous la bande "admin" -- meme testid, mais un AUTRE
+    // element DOM. Il faut le requeter apres le drop (comme le ferait un
+    // vrai clic a l'ecran, sur ce qui est REELLEMENT affiche), jamais
+    // reutiliser la reference `noeudA` d'avant le deplacement.
+    const noeudADeplace = await screen.findByTestId('wfd-node-1')
+    await user.click(noeudADeplace)
     expect(await screen.findByTestId('wfd-panel-role')).toHaveValue('admin')
   })
 })

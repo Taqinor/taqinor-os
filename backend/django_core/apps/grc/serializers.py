@@ -3,6 +3,7 @@
 Règle commune : ``company`` n'est JAMAIS lue du corps de la requête — elle est
 imposée côté serveur par ``CompanyScopedModelViewSet``.
 """
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from .models import (
@@ -123,8 +124,14 @@ class ViolationDonneesSerializer(serializers.ModelSerializer):
         return attrs
 
 
+@extend_schema_serializer(component_name='LegalHoldTransverse')
 class LegalHoldSerializer(serializers.ModelSerializer):
-    """NTGRC8 — mise sous séquestre transverse (legal hold)."""
+    """NTGRC8 — mise sous séquestre transverse (legal hold).
+
+    ``component_name`` explicite : ``apps.ged`` publie déjà un composant
+    ``LegalHold`` (séquestre PAR DOCUMENT) — sans ce nom dédié le schéma
+    OpenAPI fondait les deux en un composant contradictoire (garde YAPIC6).
+    """
 
     motif_libelle = serializers.CharField(
         source='get_motif_display', read_only=True)

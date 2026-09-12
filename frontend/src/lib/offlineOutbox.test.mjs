@@ -50,7 +50,7 @@ async function reset() {
 
 test('les modules déclarés sont ceux du backend (OfflineOperation.Module)', () => {
   assert.deepEqual(OFFLINE_MODULES,
-    ['crm', 'ventes', 'stock', 'installations', 'sav'])
+    ['crm', 'ventes', 'stock', 'installations', 'sav', 'visites'])
   assert.throws(() => getModuleOutbox('marketing'), /Module hors-ligne inconnu/)
 })
 

@@ -32,7 +32,8 @@ vi.mock('../../api/aiGovernanceApi', () => ({
   default: { resumeFiche, prochainesActions, rediger },
 }))
 
-import CopilotContext, { ficheDepuisChemin } from './CopilotContext'
+import CopilotContext from './CopilotContext'
+import { ficheDepuisChemin } from './ficheDepuisChemin'
 
 function renderAt(chemin) {
   const store = configureStore({

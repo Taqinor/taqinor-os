@@ -42,7 +42,7 @@ class AlerteDpoTests(TestCase):
         self.assertIsNotNone(lead.pk)  # la création n'est JAMAIS bloquée
         notifs = self._notifs()
         self.assertEqual(notifs.count(), 1)
-        self.assertEqual(notifs.first().user, self.dpo)
+        self.assertEqual(notifs.first().recipient, self.dpo)
         self.assertIn('marketing', notifs.first().body)
 
     def test_sans_retrait_aucune_alerte(self):

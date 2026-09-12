@@ -8,6 +8,7 @@ import {
 import PageHeader from '../../components/layout/PageHeader'
 import coreApi from '../../api/coreApi'
 import DynamicForm from './DynamicForm'
+import { deplacerChamp } from './workflow'
 
 // Sentinelle « aucune condition » (même convention que WorkflowDesigner —
 // Radix <Select.Item> refuse une valeur vide).
@@ -38,18 +39,6 @@ function nouveauChamp(type) {
   if (type === 'choix') return { ...base, options: [] }
   if (type === 'section') return { ...base, repetable: true }
   return base
-}
-
-/** Deplace l'element `indexSource` vers `indexCible` (glisser-deposer),
- * sans mutation. Purement locale au form builder (pas de renumerotation
- * `ordre` -- un schema de formulaire n'en a pas). */
-export function deplacerChamp(schema, indexSource, indexCible) {
-  if (!Array.isArray(schema)) return []
-  if (indexSource === indexCible) return [...schema]
-  const next = [...schema]
-  const [moved] = next.splice(indexSource, 1)
-  next.splice(indexCible, 0, moved)
-  return next
 }
 
 function LignePalette({ type, label }) {
@@ -234,6 +223,7 @@ export default function FormBuilder() {
     try {
       const payload = {
         nom,
+        // eslint-disable-next-line no-unused-vars -- `_visibleSi` extrait pour l'exclure du payload (rest sibling, cf. NTWFL12 plus haut)
         schema: schema.map(({ _visibleSi, ...c }) => c),
         champs_conditionnels: champsConditionnelsApercu,
       }

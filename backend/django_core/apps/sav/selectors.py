@@ -981,6 +981,20 @@ def ticket_scoped(company, ticket_id):
     return Ticket.objects.filter(company=company, id=ticket_id).first()
 
 
+def tickets_ouverts_client(company, client_id):
+    """NTPRT9 — Nombre de tickets SAV OUVERTS (``Ticket.OPEN_STATUTS`` —
+    nouveau/planifié/en cours, jamais résolu/clôturé) d'UN client, pour la
+    carte « Tickets SAV » du tableau de bord portail
+    (``apps.portail.views_client``). Point d'entrée cross-app en LECTURE
+    SEULE (jamais un import de ``apps.sav.models`` depuis portail), scopé
+    société ET client."""
+    if company is None or not client_id:
+        return 0
+    return Ticket.objects.filter(
+        company=company, client_id=client_id,
+        statut__in=Ticket.OPEN_STATUTS).count()
+
+
 def equipement_scoped_by_serial(company, numero_serie):
     """XSTK7 — un ``sav.Equipement`` scopé société, par n° de série (lecture
     seule). Point d'entrée cross-app pour le rapport de traçabilité

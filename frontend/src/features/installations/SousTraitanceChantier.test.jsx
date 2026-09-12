@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 
 /* PACT55 — Sous-traitance chantier : ordres, factures/règlements,
    attestations, évaluations, retenues de garantie, depuis la fiche d'un
-   sous-traitant sans quitter l'écran. */
+   sous-traitant sans quitter l'écran.
+   CHT19 — `CreateOrdreDialog` lit désormais `?chantier=<id>` (useSearchParams)
+   à l'ouverture : `renderPage()` fournit le `MemoryRouter` requis. */
 
 function mockMatchMedia() {
   window.matchMedia = (query) => ({
@@ -51,11 +54,19 @@ vi.mock('../../api/installationsApi', () => ({ default: inst }))
 
 import SousTraitanceChantier from './SousTraitanceChantier'
 
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <SousTraitanceChantier />
+    </MemoryRouter>,
+  )
+}
+
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('SousTraitanceChantier (PACT55)', () => {
   it('charge l\'annuaire et affiche la fiche du sous-traitant sélectionné', async () => {
-    render(<SousTraitanceChantier />)
+    renderPage()
     expect((await screen.findAllByText('Terrassements Atlas')).length).toBeGreaterThan(0)
     expect(await screen.findByRole('heading', { name: 'Terrassements Atlas' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Ordres' })).toBeInTheDocument()
@@ -67,13 +78,13 @@ describe('SousTraitanceChantier (PACT55)', () => {
 
   it('affiche l\'état vide quand l\'annuaire est vide', async () => {
     inst.getSousTraitants.mockResolvedValueOnce({ data: { count: 0, results: [] } })
-    render(<SousTraitanceChantier />)
+    renderPage()
     expect((await screen.findAllByText('Aucun sous-traitant')).length).toBeGreaterThan(0)
   })
 
   it('crée un ordre de travaux depuis la fiche', async () => {
     const user = userEvent.setup()
-    render(<SousTraitanceChantier />)
+    renderPage()
     await screen.findAllByText('Terrassements Atlas')
     await waitFor(() => expect(inst.getOrdresSousTraitance).toHaveBeenCalledWith(
       expect.objectContaining({ sous_traitant: 5 })))
@@ -90,7 +101,7 @@ describe('SousTraitanceChantier (PACT55)', () => {
       { id: 41, reference: 'OST-202608-0001', statut: 'brouillon', statut_display: 'Brouillon', prestation: 'Terrassement', montant: '15000' },
     ] } })
     const user = userEvent.setup()
-    render(<SousTraitanceChantier />)
+    renderPage()
     expect(await screen.findByTestId('ordre-41')).toBeInTheDocument()
     await user.click(within(screen.getByTestId('ordre-41')).getByRole('button', { name: 'Émettre' }))
     await waitFor(() => expect(inst.emettreOrdreSousTraitance).toHaveBeenCalledWith(41))
@@ -101,7 +112,7 @@ describe('SousTraitanceChantier (PACT55)', () => {
       { id: 71, numero: 'FA-2026-01', reference: 'FRN-0071', statut: 'validee', statut_display: 'Validée', montant_ttc: '12000', reste_a_payer: '12000' },
     ] } })
     const user = userEvent.setup()
-    render(<SousTraitanceChantier />)
+    renderPage()
     await screen.findAllByText('Terrassements Atlas')
     await user.click(screen.getByRole('tab', { name: 'Factures & règlements' }))
     expect(await screen.findByTestId('facture-71')).toBeInTheDocument()
@@ -114,7 +125,7 @@ describe('SousTraitanceChantier (PACT55)', () => {
 
   it('affiche le statut d\'affectabilité sur l\'onglet attestations', async () => {
     const user = userEvent.setup()
-    render(<SousTraitanceChantier />)
+    renderPage()
     await screen.findAllByText('Terrassements Atlas')
     await user.click(screen.getByRole('tab', { name: 'Attestations' }))
     expect((await screen.findAllByText('Affectable')).length).toBeGreaterThan(0)
@@ -128,7 +139,7 @@ describe('SousTraitanceChantier (PACT55)', () => {
       { id: 3, ordre: 41, pourcentage: '10', levee: false, montant_retenu: '1500' },
     ] } })
     const user = userEvent.setup()
-    render(<SousTraitanceChantier />)
+    renderPage()
     await screen.findAllByText('Terrassements Atlas')
     await user.click(screen.getByRole('tab', { name: 'Retenues de garantie' }))
     await screen.findByRole('option', { name: 'OST-202608-0001' })

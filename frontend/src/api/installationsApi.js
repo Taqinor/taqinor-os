@@ -96,6 +96,12 @@ const installationsApi = {
   // FG74 — Gantt multi-chantier (lecture seule, jalons par chantier actif).
   getGanttChantiers: () => api.get('/installations/chantiers/gantt/'),
 
+  // YSERV7/CHT14 — chantiers ayant une tranche d'échéancier due (jalon
+  // atteint) non encore facturée. Consommé par la carte « Chantiers à
+  // facturer » du board Action requise (ventes) — un second fetch vers cet
+  // endpoint EXISTANT, aucun nouveau backend.
+  getChantiersAFacturer: () => api.get('/installations/chantiers/a-facturer/'),
+
   // N43 — régime loi 82-21 suggéré pour une puissance (kWc) donnée.
   getRegimeSuggestion: (kwc) =>
     api.get('/installations/chantiers/regime-suggestion/', { params: { kwc } }),

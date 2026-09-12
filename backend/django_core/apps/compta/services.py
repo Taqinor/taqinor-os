@@ -5689,7 +5689,8 @@ def creer_indemnite_chantier(company, *, employe, date_deplacement,
                              bareme=None, site_lat=None, site_lng=None,
                              depart_lat=None, depart_lng=None,
                              aller_retour=True, nombre_jours=1,
-                             libelle_chantier='', user=None):
+                             libelle_chantier='', installation_id=None,
+                             user=None):
     """Crée une indemnité chantier (FG136) en BROUILLON, montants auto-calculés.
 
     La distance ``départ → chantier`` est calculée par haversine depuis les GPS
@@ -5698,6 +5699,11 @@ def creer_indemnite_chantier(company, *, employe, date_deplacement,
     par défaut de la société est utilisé si aucun n'est fourni. La ``reference``
     (IND-YYYYMM-NNNN) et la ``company`` sont posées côté serveur (jamais lues du
     corps). Renvoie l'indemnité.
+
+    ``installation_id`` (CHT16) est une loose ref vers ``installations.
+    Installation``, déjà validée société côté serializer
+    (``installations.selectors.installation_scoped``) — ce service ne la
+    revalide pas, il se contente de la reporter sur le modèle.
     """
     bareme = bareme or bareme_indemnite_defaut(company)
     if bareme is None:
@@ -5716,6 +5722,7 @@ def creer_indemnite_chantier(company, *, employe, date_deplacement,
         bareme=bareme,
         date_deplacement=date_deplacement,
         libelle_chantier=libelle_chantier or '',
+        installation_id=installation_id,
         depart_lat=depart_lat, depart_lng=depart_lng,
         site_lat=site_lat, site_lng=site_lng,
         aller_retour=bool(aller_retour),

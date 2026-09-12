@@ -522,6 +522,21 @@ devis_sent = django.dispatch.Signal()
 # évite que ventes importe crm directement.
 layout_finalise = django.dispatch.Signal()
 
+# VTA5 — Émis quand une visite technique terrain reçoit le FEU VERT du bureau
+# d'études (``apps.visites.services.valider_visite``). Arguments : visite
+# (visites.VisiteTerrain), lead_id (ENTIER, jamais l'instance — référence
+# cross-app string), user (l'utilisateur AGISSANT, jamais déduit), recap
+# (phrase FR courte PRÉ-CALCULÉE par ``visites.selectors.recap_visite_terrain``
+# — le récepteur n'a rien à recalculer, et la règle « zéro chiffre inventé »
+# reste tenue d'un seul côté).
+# Ce n'est PAS un changement d'étape du funnel : ``STAGES.py`` n'est pas touché
+# (le statut de visite est un layer DOCUMENT interne). Abonné dans ce repo :
+# ``crm`` (``apps/crm/receivers.py``) — il pose ``Lead.visite_effectuee`` +
+# le récap dans ``Lead.visite_notes`` et une note au chatter. C'est ce qui
+# supprime le DERNIER écrit direct de ``visites`` vers ``crm.Lead`` : l'app
+# visites ne connaît plus le lead que par un entier.
+visite_validee = django.dispatch.Signal()
+
 # Émis au refus d'un devis (FG44).
 # Arguments : devis, user, motif_refus.
 # Abonné optionnellement par crm pour marquer le lead perdu (→ COLD + perdu).

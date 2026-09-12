@@ -214,6 +214,27 @@ class EventType(models.TextChoices):
     # VX213 — SLA : une demande d'achat reste SOUMISE au-delà du seuil sans
     # décision → relance des approbateurs (miroir de sav_ticket_breaching).
     DA_SOUMISE_STALE = 'da_soumise_stale', "Demande d'achat en attente (SLA)"
+    # CHT9 — désenchevêtrement : ``CHANTIER_DUE`` (« Chantier à installer »,
+    # l'alerte de date de pose/météo de ``tasks.py``) servait aussi, par
+    # facilité, à TROIS faits métier sans rapport (réassignation
+    # d'intervention, annulation d'intervention, tranche d'échéancier à
+    # facturer) : couper ``CHANTIER_DUE`` dans les préférences coupait ces
+    # trois-là par ricochet, invisible dans l'écran de préférences. Doctrine :
+    # UN ÉVÉNEMENT = UN FAIT MÉTIER — chacun sa clé, son libellé FR, sa
+    # préférence propre.
+    INTERVENTION_ASSIGNEE = (
+        'intervention_assignee', 'Intervention assignée')
+    INTERVENTION_REPLANIFIEE = (
+        'intervention_replanifiee', 'Intervention replanifiée')
+    INTERVENTION_ANNULEE = (
+        'intervention_annulee', 'Intervention annulée')
+    TRANCHE_A_FACTURER = (
+        'tranche_a_facturer', "Tranche d'échéancier à facturer")
+    # CHT15 — le bon de commande rattaché à un chantier est CONFIRMÉ (matériel
+    # commandé) : notifie le responsable du chantier
+    # (``apps.ventes.views.bon_commande.confirmer``).
+    CHANTIER_MATERIEL_CONFIRME = (
+        'chantier_materiel_confirme', 'Matériel du chantier confirmé')
     # VX210(a) — un item snoozé (``records.Activity`` VX85, ou une approbation
     # VX210(b) via ``SnoozedItem``) revient dans la file : notification
     # LÉGÈRE au propriétaire, jamais une nouvelle demande d'action.
@@ -376,6 +397,13 @@ class EventType(models.TextChoices):
     # 100% de son quota : notifie les admins du tenant concerné.
     USAGE_QUOTA_SEUIL_FRANCHI = (
         'usage_quota_seuil_franchi', 'Seuil de quota atteint')
+    # VTA7 — « une visite t'est assignée ». Clé DISTINCTE des deux bords du feu
+    # vert : c'est le seul message qui arrive AVANT la visite, au commercial
+    # terrain, et qui doit atterrir dans sa journée. La fondre avec
+    # `visite_terrain_validee` rendrait impossible de couper l'une sans l'autre
+    # dans les préférences de notification.
+    VISITE_TERRAIN_ASSIGNEE = (
+        'visite_terrain_assignee', 'Visite technique assignée')
 
 
 class Channel(models.TextChoices):

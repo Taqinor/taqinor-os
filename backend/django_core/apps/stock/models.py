@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django.db import models
+
+from core.models import TenantModel  # SCA4 — socle multi-tenant
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -539,7 +541,7 @@ class AchatsParametres(models.Model):
                   'exige une approbation. 0 = désactivé.')
 
 
-class ToleranceRapprochementCategorie(models.Model):
+class ToleranceRapprochementCategorie(TenantModel):
     """NTP2P9 — override PAR CATÉGORIE produit des tolérances par défaut du
     rapprochement 3 voies (``AchatsParametres.tolerance_prix_pct``/
     ``tolerance_prix_absolu_mad``, XPUR10).
@@ -551,6 +553,8 @@ class ToleranceRapprochementCategorie(models.Model):
     deux) peuvent être renseignés ; ``None`` = pas d'override sur cet axe pour
     cette catégorie (retombe alors sur le défaut société pour CET axe précis).
     """
+    # SCA4 — héritage TenantModel ; ``company`` redéclarée UNIQUEMENT pour
+    # préserver le related_name historique (PLAYBOOK du socle).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='tolerances_rapprochement_categorie')
@@ -565,8 +569,6 @@ class ToleranceRapprochementCategorie(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text='Écart MAD absolu toléré pour cette catégorie. Vide = '
                   'retombe sur le défaut société.')
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Tolérance de rapprochement par catégorie'
@@ -2428,9 +2430,6 @@ from django.core.exceptions import (  # noqa: E402
 )
 
 
-from core.models import TenantModel  # noqa: E402  (SCA4 — socle multi-tenant)
-
-
 # ── NTP2P4 — Budget d'engagement par département ───────────────────────────
 # Un budget est une ENVELOPPE (département × période) ; chaque demande d'achat
 # soumise consomme cette enveloppe sous forme d'ENGAGEMENT. Le blocage dur est
@@ -2438,6 +2437,7 @@ from core.models import TenantModel  # noqa: E402  (SCA4 — socle multi-tenant)
 # activation, la soumission d'une demande d'achat reste exactement ce qu'elle
 # était. Le département est référencé en STRING-FK vers ``rh.Departement``
 # (aucun import cross-app au chargement).
+
 
 class BudgetDepartement(TenantModel):
     """NTP2P4 — enveloppe budgétaire d'achats d'un département sur une période.

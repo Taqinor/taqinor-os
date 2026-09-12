@@ -3,13 +3,15 @@
 // sur la MÊME visite, jamais un doublon) + le bouton de création qui pré-
 // remplit `lead` (c'est le « bouton de création depuis la fiche lead » de
 // VT5). Aucune mesure/complétude n'est recalculée ici : `complet`/
-// `manquants_count` viennent tels quels de `GET /crm/visites/?lead=<id>`.
+// `manquants_count` viennent tels quels de `GET /visites/visites/?lead=<id>`.
+// VTA8 — l'onglet RESTE dans le CRM (c'est une lecture de la fiche lead) mais
+// consomme `api/visitesApi` et lie vers l'app Visites (`/visites/:id`).
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import crmApi from '../../../api/crmApi'
+import visitesApi from '../../../api/visitesApi'
 import { Button, Card, Spinner, Badge } from '../../../ui'
 import { toast } from '../../../ui/confirm'
-import { STATUT_VISITE_LABEL } from '../../../pages/crm/visites/visiteHelpers'
+import { STATUT_VISITE_LABEL } from '../../../pages/visites/visiteHelpers'
 
 export default function VisiteTab({ leadId }) {
   const navigate = useNavigate()
@@ -20,7 +22,7 @@ export default function VisiteTab({ leadId }) {
   const load = useCallback(() => {
     if (!leadId) return
     setLoading(true)
-    crmApi.getVisites({ lead: leadId })
+    visitesApi.getVisites({ lead: leadId })
       .then((res) => setVisites(res.data?.results ?? res.data ?? []))
       .catch(() => toast.error('Impossible de charger les visites techniques.'))
       .finally(() => setLoading(false))
@@ -32,8 +34,8 @@ export default function VisiteTab({ leadId }) {
   const creerVisite = async () => {
     setCreating(true)
     try {
-      const res = await crmApi.createVisite({ lead: leadId })
-      navigate(`/crm/visites/${res.data.id}`)
+      const res = await visitesApi.createVisite({ lead: leadId })
+      navigate(`/visites/${res.data.id}`)
     } catch {
       toast.error('Création de la visite impossible.')
     } finally {
@@ -59,7 +61,7 @@ export default function VisiteTab({ leadId }) {
             <li key={v.id}>
               <Card
                 className="cursor-pointer p-3 text-sm hover:border-primary/50"
-                onClick={() => navigate(`/crm/visites/${v.id}`)}
+                onClick={() => navigate(`/visites/${v.id}`)}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span>{STATUT_VISITE_LABEL[v.statut] ?? v.statut}</span>

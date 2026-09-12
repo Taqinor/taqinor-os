@@ -20,6 +20,8 @@ aucun accès inter-tenant n'est possible, dans un sens comme dans l'autre.
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -75,6 +77,15 @@ def _client_ip(request):
     return (request.META.get('REMOTE_ADDR') or '')[:45]
 
 
+@extend_schema(request=inline_serializer('DemandeDroitRequete', {
+    'societe': drf_serializers.CharField(),
+    'identifiant': drf_serializers.CharField(),
+    'type': drf_serializers.CharField(),
+    'commentaire': drf_serializers.CharField(required=False),
+}), responses=inline_serializer('DemandeDroitReponse', {
+    'token': drf_serializers.CharField(),
+    'echeance_legale': drf_serializers.DateField(required=False),
+}))
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([DemandeDroitThrottle])
@@ -126,6 +137,11 @@ def deposer_demande_droit(request):
     )
 
 
+@extend_schema(responses=inline_serializer('SuiviDemandeDroitReponse', {
+    'statut': drf_serializers.CharField(),
+    'date_depot': drf_serializers.DateTimeField(required=False),
+    'echeance_legale': drf_serializers.DateField(required=False),
+}))
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([SuiviDemandeThrottle])

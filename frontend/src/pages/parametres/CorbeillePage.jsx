@@ -109,7 +109,11 @@ export default function CorbeillePage() {
         setItems((prev) => prev.map((it) => (
           it.id === element.id ? { ...it, ...(restaure || { restaure_le: new Date().toISOString() }) } : it
         )))
-        if (!inclureRestaures) charger()
+        // NE PAS recharger ici : ça écraserait l'affichage « Restauré » qu'on
+        // vient de poser en place par le filtre serveur (qui exclurait déjà
+        // l'élément si « Inclure les éléments restaurés » est décoché). Le
+        // prochain rechargement naturel (filtre, pagination, toggle) le
+        // retirera de toute façon si besoin.
       })
       .catch((err) => {
         const detail = err?.response?.data?.detail

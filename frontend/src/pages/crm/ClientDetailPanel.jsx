@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import FavoriButton from '../../features/uxviews/FavoriButton'
 import { useNavigate } from 'react-router-dom'
 import { MessageCircle } from 'lucide-react'
 import api from '../../api/axios'
@@ -127,6 +128,8 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
     <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
       <div className="modal-header">
         <h3 className="modal-title">Fiche client — {nomComplet || '—'}</h3>
+        {/* NTUX12 — épingler la fiche dans les favoris */}
+        <FavoriButton modele="crm.client" objectId={client.id} />
         <button type="button" className="modal-close" onClick={onClose}>✕</button>
       </div>
         <div className="modal-body">

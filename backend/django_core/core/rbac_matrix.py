@@ -74,7 +74,11 @@ MATRIX: tuple[MatrixEntry, ...] = (
     MatrixEntry(
         app="crm", label="Liste des leads",
         method="GET", path="/api/django/crm/leads/",
-        verdicts=_all(ALLOW),  # IsAnyRole
+        # VTA4 (12/09/2026) — la lecture des leads exige le code fin
+        # ``crm_voir`` (frontière « pas d'accès CRM » du fondateur) : les
+        # rôles techniciens et « Commercial terrain » ne la portent pas.
+        verdicts=_only("Directeur", "Administrateur",
+                       "Commercial responsable", "Commercial", "Viewer"),
     ),
     MatrixEntry(
         app="crm", label="Liste des clients",

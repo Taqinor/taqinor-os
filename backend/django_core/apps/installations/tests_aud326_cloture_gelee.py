@@ -142,3 +142,97 @@ class ClotureGeleeTests(TestCase):
             f'{BASE}/{autre.id}/',
             {'statut': Installation.Statut.EN_COURS}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+
+class AnnulationChantierClotureTests(TestCase):
+    """CHT2 — le gel AUD326 s'étend à l'ANNULATION.
+
+    Défaut d'origine : le verrou ne gardait QUE le changement de `statut`.
+    L'action `annuler` pose un DRAPEAU orthogonal (elle ne passe donc jamais
+    par `changer_statut_chantier`) et échappait entièrement au gel : n'importe
+    quel Responsable annulait un chantier CLÔTURÉ sans motif ni autorité, ce
+    qui libérait ses réservations de stock restantes et soldait ses
+    interventions ouvertes — sur une affaire soldée, garantie démarrée.
+
+    Mêmes deux conditions cumulées que la réouverture (motif + Directeur) et
+    même répartition HTTP : 400 quand le motif manque, 403 quand l'autorité
+    manque. Hors clôture, l'annulation reste inchangée.
+    """
+
+    def setUp(self):
+        from apps.installations.models import StockReservation
+        from apps.stock.models import Produit
+        self.company = make_company()
+        self.responsable = make_responsable(self.company)
+        self.directeur = make_directeur(self.company)
+        self.inst = Installation.objects.create(
+            company=self.company, reference=f'CHT2-{next(_seq)}',
+            statut=Installation.Statut.CLOTURE, cloture_verrouillee=True)
+        self.produit = Produit.objects.create(
+            company=self.company, nom=f'Panneau CHT2 {next(_seq)}',
+            prix_vente=1500, prix_achat=0)
+        self.reservation = StockReservation.objects.create(
+            company=self.company, installation=self.inst,
+            produit=self.produit, quantite=12)
+
+    def _annuler(self, user, payload):
+        return auth(user).post(
+            f'{BASE}/{self.inst.id}/annuler/', payload, format='json')
+
+    def test_annulation_par_un_responsable_motive_refusee(self):
+        """ROUGE avant CHT2 : l'annulation passait et libérait le stock."""
+        r = self._annuler(self.responsable, {'motif': 'Client se rétracte'})
+        self.assertEqual(r.status_code, 403, r.data)
+        self.inst.refresh_from_db()
+        self.assertFalse(self.inst.annule)
+        self.assertIsNone(self.inst.motif_annulation)
+        # Les effets de l'annulation n'ont PAS eu lieu : la réservation est
+        # restée engagée — c'est elle que le refus protège.
+        self.reservation.refresh_from_db()
+        self.assertTrue(self.reservation.active)
+        self.assertFalse(self.reservation.consomme)
+
+    def test_annulation_sans_motif_refusee(self):
+        for user in (self.responsable, self.directeur):
+            with self.subTest(user=user.username):
+                r = self._annuler(user, {})
+                self.assertEqual(r.status_code, 400, r.data)
+                self.inst.refresh_from_db()
+                self.assertFalse(self.inst.annule)
+                self.reservation.refresh_from_db()
+                self.assertTrue(self.reservation.active)
+
+    def test_annulation_directeur_motivee_passe_et_est_journalisee(self):
+        r = self._annuler(
+            self.directeur, {'motif': 'Sinistre — reprise intégrale'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertTrue(self.inst.annule)
+        self.assertEqual(
+            self.inst.motif_annulation, 'Sinistre — reprise intégrale')
+        notes = [a.body or '' for a in self.inst.activites.all()]
+        self.assertTrue(
+            any('annulé' in n and 'Sinistre' in n for n in notes), notes)
+        # Une fois le gel franchi, les effets historiques tournent bien : la
+        # réservation non consommée est libérée.
+        self.reservation.refresh_from_db()
+        self.assertFalse(self.reservation.active)
+
+    def test_un_chantier_non_clos_sannule_comme_avant(self):
+        """Comportement historique intact hors clôture : ni motif ni autorité
+        exigés, et les réservations sont libérées comme toujours."""
+        from apps.installations.models import StockReservation
+        autre = Installation.objects.create(
+            company=self.company, reference=f'CHT2-libre-{next(_seq)}',
+            statut=Installation.Statut.INSTALLE)
+        resa = StockReservation.objects.create(
+            company=self.company, installation=autre,
+            produit=self.produit, quantite=4)
+        r = auth(self.responsable).post(
+            f'{BASE}/{autre.id}/annuler/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        autre.refresh_from_db()
+        self.assertTrue(autre.annule)
+        self.assertIsNone(autre.motif_annulation)
+        resa.refresh_from_db()
+        self.assertFalse(resa.active)

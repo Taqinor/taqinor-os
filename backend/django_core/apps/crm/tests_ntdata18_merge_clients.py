@@ -94,6 +94,16 @@ class MergeClientsTests(TestCase):
         self.assertEqual(self.survivant.nom, 'Kasri')
         self.assertEqual(self.survivant.telephone, '0612345678')
 
+    def test_email_cede_est_libere_par_le_doublon_et_conserve(self):
+        """CRX24 — l'e-mail est unique par société (casse ignorée) et le
+        doublon n'est jamais supprimé : il doit LIBÉRER l'e-mail qu'il cède,
+        sans que la valeur soit perdue."""
+        merge_clients(self.survivant, [self.doublon], self.user)
+        self.doublon.refresh_from_db()
+        self.assertIsNone(self.doublon.email)
+        self.assertEqual(self.doublon.custom_data['email_avant_fusion'],
+                         'r.kasri@exemple.ma')
+
     def test_jamais_cross_tenant(self):
         etranger = Client.objects.create(company=self.autre, nom='Ailleurs')
         rapport = merge_clients(self.survivant, [etranger], self.user)

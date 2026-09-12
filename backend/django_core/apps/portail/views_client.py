@@ -1,4 +1,5 @@
-"""NTPRT10/NTPRT11 — Surface self-service AUTHENTIFIÉE du portail CLIENT.
+"""NTPRT9/NTPRT10/NTPRT11/NTPRT14 — Surface self-service AUTHENTIFIÉE du
+portail CLIENT.
 
 Ces deux ViewSets sont la version « compte réel » (NTPRT1/2/5) de ce que le
 client obtenait jusqu'ici par lien tokenisé. Ils n'ajoutent AUCUNE logique
@@ -32,7 +33,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import serializers, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.roles.permissions import IsPortalClientUser, portal_scope_id
@@ -82,6 +83,50 @@ def _ip(request):
     tokenisé (``ventes/public_views.py``). Jamais une seconde primitive."""
     from core.throttling import ip_de_requete
     return ip_de_requete(request)
+
+
+@extend_schema(responses=inline_serializer(
+    name='PortailClientTableauDeBord',
+    fields={
+        'devis_en_attente': serializers.IntegerField(),
+        'factures_impayees': serializers.IntegerField(),
+        'prochaine_echeance': serializers.DateField(allow_null=True),
+        'tickets_ouverts': serializers.IntegerField(),
+        'prochain_jalon': inline_serializer(
+            name='PortailClientProchainJalon',
+            fields={
+                'chantier_id': serializers.IntegerField(),
+                'chantier_reference': serializers.CharField(),
+                'libelle': serializers.CharField(),
+                'date_jalon': serializers.DateField(allow_null=True),
+            },
+            allow_null=True),
+    }))
+@api_view(['GET'])
+@permission_classes([IsPortalClientUser])
+def tableau_de_bord_client(request):
+    """NTPRT9 — Cartes résumé du tableau de bord du CLIENT connecté (devis en
+    attente, factures impayées + échéance la plus proche, tickets SAV
+    ouverts, prochain jalon chantier).
+
+    Symétrique de ``tableau_de_bord_fournisseur``/``tableau_de_bord_partenaire``
+    (``apps.portail.views_externes``) : société ET client viennent
+    EXCLUSIVEMENT du compte portail connecté (``_scope``), jamais d'un
+    paramètre de requête. Chaque carte lit le sélecteur PROPRIÉTAIRE de son
+    domaine (``ventes``/``sav``/``installations``) — jamais un import direct
+    de leurs modèles depuis ``portail`` (frontière cross-app CLAUDE.md) — donc
+    les compteurs matchent, par construction, ce que l'écran interne montre
+    pour ce même client."""
+    from apps.installations.selectors import prochain_jalon_client_portail
+    from apps.sav.selectors import tickets_ouverts_client
+    from apps.ventes.selectors import resume_portail_client
+
+    company, client_id = _scope(request)
+    resume = resume_portail_client(company, client_id)
+    resume['tickets_ouverts'] = tickets_ouverts_client(company, client_id)
+    resume['prochain_jalon'] = prochain_jalon_client_portail(
+        company, client_id)
+    return Response(resume)
 
 
 class MesDevisPortailViewSet(viewsets.ViewSet):
@@ -683,3 +728,159 @@ class SatisfactionPortailViewSet(viewsets.ViewSet):
             'detail': 'Merci pour votre retour !',
             'lien_avis_google': lien,
         })
+
+
+# ── NTPRT14 — « Mes chantiers » (timeline + photos avant/pendant/après) ────
+#
+# ``viewsets.ViewSet`` nu (aucun queryset), même remarque YAPIC6 que
+# ``MesLivraisonsPortailViewSet``/``MesDemandesSavPortailViewSet`` ci-dessus :
+# sans ``serializer_class`` déclaré, drf-spectacular ne peut pas deviner le
+# type de ``{id}`` et journalise « unable to guess serializer ».
+_ID_CHANTIER = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant du chantier du client connecté.",
+)
+
+
+class MesChantiersPortailLigneSerializer(serializers.Serializer):
+    """Reflet EXACT du contrat client-safe de
+    ``apps.installations.selectors.chantiers_du_client_portail`` — JAMAIS de
+    champ financier (BOM/prix exclus)."""
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    site_ville = serializers.CharField(allow_null=True)
+    date_creation = serializers.DateTimeField(allow_null=True)
+
+
+class MesChantiersPortailJalonSerializer(serializers.Serializer):
+    """Un jalon de la timeline portail (FG232/CHT10, synchronisée
+    automatiquement par CHT11) — même contrat que l'écran interne
+    ``JalonChantierPortailViewSet``, en LECTURE SEULE ici."""
+    id = serializers.IntegerField()
+    libelle = serializers.CharField()
+    ordre = serializers.IntegerField()
+    atteint = serializers.BooleanField()
+    date_jalon = serializers.DateField(allow_null=True)
+
+
+class MesChantiersPortailDetailSerializer(MesChantiersPortailLigneSerializer):
+    """Le détail d'un chantier + SA timeline de jalons."""
+    jalons = serializers.ListField(child=MesChantiersPortailJalonSerializer())
+
+
+class MesChantiersPortailPhotoSerializer(serializers.Serializer):
+    """Une photo (``records.Attachment``) de la galerie avant/pendant/après —
+    reflet EXACT de ``photos_chantier_client_portail`` (jamais un champ
+    financier)."""
+    id = serializers.IntegerField()
+    phase = serializers.CharField(allow_null=True)
+    filename = serializers.CharField()
+    created_at = serializers.DateTimeField(allow_null=True)
+    url = serializers.CharField()
+
+
+class MesChantiersPortailViewSet(viewsets.ViewSet):
+    """NTPRT14 — « Mes chantiers » : timeline (jalons portail, lecture seule)
+    + galerie photos avant/pendant/après, JAMAIS de donnée financière
+    (BOM/prix exclus — le contrat de ``apps.installations.selectors``).
+
+    Ne réécrit AUCUNE logique métier : les jalons viennent de la MÊME
+    timeline portail que l'écran interne ``JalonChantierPortailViewSet``,
+    synchronisée automatiquement (CHT11, aucune double saisie) — le client
+    voit donc exactement ce que l'interne voit, sans les montants. Garde
+    ``IsPortalClientUser`` ; société ET client résolus du COMPTE connecté
+    (jamais du corps de requête ni de l'URL) ; un chantier d'un autre client
+    est INTROUVABLE (404), jamais « trouvé puis refusé »."""
+
+    permission_classes = [IsPortalClientUser]
+    serializer_class = MesChantiersPortailLigneSerializer
+
+    @extend_schema(responses=inline_serializer(
+        name='MesChantiersPortail',
+        fields={'results': serializers.ListField(
+            child=MesChantiersPortailLigneSerializer())}))
+    def list(self, request):
+        from apps.installations.selectors import chantiers_du_client_portail
+        company, client_id = _scope(request)
+        return Response(
+            {'results': chantiers_du_client_portail(company, client_id)})
+
+    @extend_schema(
+        parameters=[_ID_CHANTIER],
+        responses=MesChantiersPortailDetailSerializer)
+    def retrieve(self, request, pk=None):
+        from apps.installations.selectors import (
+            chantier_du_client_portail_obj, chantiers_du_client_portail,
+        )
+        company, client_id = _scope(request)
+        chantier = chantier_du_client_portail_obj(company, client_id, pk)
+        if chantier is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        ligne = next(
+            (c for c in chantiers_du_client_portail(company, client_id)
+             if c['id'] == chantier.id), None)
+        return Response({**ligne, 'jalons': self._jalons(company, pk)})
+
+    @staticmethod
+    def _jalons(company, chantier_id):
+        from .selectors import jalons_du_chantier
+        return [{
+            'id': j.id,
+            'libelle': j.libelle,
+            'ordre': j.ordre,
+            'atteint': j.atteint,
+            'date_jalon': j.date_jalon,
+        } for j in jalons_du_chantier(company, chantier_id)]
+
+    @extend_schema(parameters=[_ID_CHANTIER], responses=inline_serializer(
+        name='MesChantiersPortailPhotos',
+        fields={'results': serializers.ListField(
+            child=MesChantiersPortailPhotoSerializer())}))
+    @action(detail=True, methods=['get'], url_path='photos')
+    def photos(self, request, pk=None):
+        from apps.installations.selectors import (
+            chantier_du_client_portail_obj, photos_chantier_client_portail,
+        )
+        company, client_id = _scope(request)
+        if chantier_du_client_portail_obj(company, client_id, pk) is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        phase = request.query_params.get('phase') or None
+        return Response({'results': photos_chantier_client_portail(
+            company, client_id, pk, phase=phase)})
+
+    @extend_schema(parameters=[_ID_CHANTIER, OpenApiParameter(
+        name='attachment_id', type=OpenApiTypes.INT,
+        location=OpenApiParameter.PATH,
+        description='Identifiant de la photo (records.Attachment).')])
+    @action(detail=True, methods=['get'],
+            url_path=r'photo/(?P<attachment_id>[0-9]+)')
+    def photo(self, request, pk=None, attachment_id=None):
+        """Sert la PHOTO en ligne (même patron que
+        ``MesLivraisonsPortailViewSet.preuve_photo`` — AUD301) : ``records``
+        est une app de FONDATION (import direct autorisé) ; le scope client,
+        lui, vient du sélecteur ``installations``."""
+        from django.http import HttpResponse
+
+        from apps.installations.selectors import photo_chantier_client_portail
+        from apps.records.storage import fetch_attachment
+
+        company, client_id = _scope(request)
+        att = photo_chantier_client_portail(
+            company, client_id, pk, attachment_id)
+        if att is None:
+            return Response({'detail': 'Photo introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data, err = fetch_attachment(att.file_key)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_404_NOT_FOUND)
+        resp = HttpResponse(
+            data, content_type=att.mime or 'application/octet-stream')
+        nom = (att.filename or 'photo-chantier').replace('"', '')
+        resp['Content-Disposition'] = f'inline; filename="{nom}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp

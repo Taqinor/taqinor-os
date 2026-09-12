@@ -1138,11 +1138,13 @@ class ParametresBtpView(APIView):
         return Response(
             ParametresBtpChantierSerializer(self._reglages(request)).data)
 
-    @extend_schema(responses=ParametresBtpChantierSerializer)
+    @extend_schema(request=ParametresBtpChantierSerializer,
+                   responses=ParametresBtpChantierSerializer)
     def put(self, request):
         return self._ecrire(request, partial=False)
 
-    @extend_schema(responses=ParametresBtpChantierSerializer)
+    @extend_schema(request=ParametresBtpChantierSerializer,
+                   responses=ParametresBtpChantierSerializer)
     def patch(self, request):
         return self._ecrire(request, partial=True)
 
@@ -1184,7 +1186,10 @@ class ChantierClotureBtpView(APIView):
         chantier = self._chantier(request, chantier_id)
         return Response(services.prerequis_cloture_btp(chantier))
 
-    @extend_schema(responses=inline_serializer('ChantierClotureBtpReponse', {
+    @extend_schema(request=inline_serializer('ChantierClotureBtpRequete', {
+        'montant_marche_initial_ht': drf_serializers.CharField(required=False),
+        'retenue_garantie_montant': drf_serializers.CharField(required=False),
+    }), responses=inline_serializer('ChantierClotureBtpReponse', {
         'dgd': DecompteGeneralSerializer(),
         'prerequis': drf_serializers.JSONField(),
         'export_dossier_url': drf_serializers.CharField(),

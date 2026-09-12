@@ -1,7 +1,19 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { render, screen, cleanup, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+
+// CHT14 — vérifie que les liens de la carte « Chantiers à facturer »
+// naviguent bien vers `/chantiers?id=` (real MemoryRouter préservé via
+// `...actual`, comme PremiersPasWidget.test.jsx) : les tests QX29/QX30
+// existants ne cliquent jamais un bouton de navigation, donc ce mock ne les
+// affecte pas.
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, useNavigate: () => navigateMock }
+})
 
 /* QX29/QX30 — « Relances du jour » : tableau d'action des devis, miroir de
    SavActionBoardPage.test.jsx (ZSAV6). ventesApi mocké.
@@ -19,11 +31,27 @@ vi.mock('../../api/ventesApi', () => ({
   default: { getDevisActionBoard: vi.fn(), getDevis: vi.fn() },
 }))
 
+// CHT14 — carte SÉPARÉE « Chantiers à facturer » (second fetch indépendant,
+// endpoint `installations/a-facturer/` EXISTANT, YSERV7). Résolu vide par
+// défaut pour ne pas casser les tests QX29/QX30 ci-dessous, qui ne
+// s'intéressent qu'au board principal — voir le describe dédié plus bas pour
+// les données mockées de cette carte.
+vi.mock('../../api/installationsApi', () => ({
+  default: { getChantiersAFacturer: vi.fn(() => Promise.resolve({ data: [] })) },
+}))
+
 import ventesApi from '../../api/ventesApi'
+import installationsApi from '../../api/installationsApi'
 import DevisActionBoardPage from './DevisActionBoardPage'
 
 const BOARD = exempleContrat('ventes', 'devis_action_requise')
 const IDS = Object.values(BOARD.buckets).flatMap((b) => b.ids)
+
+beforeEach(() => {
+  // Repli sûr par défaut à chaque test — une surcharge locale (voir le
+  // describe CHT14 plus bas) ne doit jamais fuiter sur les tests suivants.
+  installationsApi.getChantiersAFacturer.mockResolvedValue({ data: [] })
+})
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -87,5 +115,68 @@ describe('DevisActionBoardPage — QX30 : file déclenchée par l\'engagement + 
     expect(waLink).toHaveAttribute(
       'href',
       `https://wa.me/${numero.replace(/\D/g, '')}?text=${encodeURIComponent(brouillon)}`)
+  })
+})
+
+describe('DevisActionBoardPage — CHT14 : carte "Chantiers à facturer"', () => {
+  // Schéma RÉEL de `installations.services.chantiers_a_facturer` (YSERV7) —
+  // une entrée PAR TRANCHE due, jamais un devis_id (endpoint EXISTANT
+  // inchangé, zéro backend pour CHT14).
+  const CHANTIERS_A_FACTURER = [
+    {
+      installation_id: 501, reference: 'CH-2026-0007',
+      tranche: 'Tranche 2 - Livraison', jalon_id: 12,
+      jalon_libelle: 'Livraison matériel',
+    },
+    {
+      installation_id: 502, reference: 'CH-2026-0009',
+      tranche: 'Solde', jalon_id: 15, jalon_libelle: 'Réception',
+    },
+  ]
+
+  beforeEach(() => {
+    ventesApi.getDevisActionBoard.mockResolvedValue(
+      reponseContrat('ventes', 'devis_action_requise'))
+  })
+
+  it('affiche "Aucune tranche due." quand l\'endpoint ne renvoie rien', async () => {
+    installationsApi.getChantiersAFacturer.mockResolvedValue({ data: [] })
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+    expect(await screen.findByText('Chantiers à facturer')).toBeInTheDocument()
+    expect(await screen.findByText('Aucune tranche due.')).toBeInTheDocument()
+  })
+
+  it('rend une carte séparée (jamais fondue dans BUCKETS) avec le compte et les lignes du serveur', async () => {
+    installationsApi.getChantiersAFacturer.mockResolvedValue(
+      { data: CHANTIERS_A_FACTURER })
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+
+    const titre = await screen.findByText('Chantiers à facturer')
+    expect(titre).toBeInTheDocument()
+    // Le compte de la carte est celui du serveur — jamais mêlé au total des
+    // BUCKETS (« N devis nécessitant une action » reste inchangé). Match
+    // EXACT ('2', pas une sous-chaîne de "CH-2026-...") dans l'en-tête.
+    const enTete = titre.closest('div')
+    expect(within(enTete).getByText('2')).toBeInTheDocument()
+
+    for (const c of CHANTIERS_A_FACTURER) {
+      expect(await screen.findByText(
+        new RegExp(`${c.reference}.*${c.tranche}.*${c.jalon_libelle}`))).toBeInTheDocument()
+    }
+  })
+
+  it('le lien de la ligne et le CTA "Facturer" naviguent vers /chantiers?id=<installation_id>', async () => {
+    const user = userEvent.setup()
+    installationsApi.getChantiersAFacturer.mockResolvedValue(
+      { data: CHANTIERS_A_FACTURER })
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+
+    const ligne = await screen.findByText(/CH-2026-0007/)
+    await user.click(ligne)
+    expect(navigateMock).toHaveBeenLastCalledWith('/chantiers?id=501')
+
+    const facturer = await screen.findAllByRole('button', { name: 'Facturer' })
+    await user.click(facturer[0])
+    expect(navigateMock).toHaveBeenLastCalledWith('/chantiers?id=501')
   })
 })

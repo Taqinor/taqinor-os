@@ -17,13 +17,15 @@ from django.dispatch import receiver
 from core.events import (
     ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
     devis_accepted, devis_refused, devis_sent, layout_finalise,
-    lead_created, lead_stage_changed, ticket_resolu,
+    lead_created, lead_stage_changed, ticket_resolu, visite_validee,
 )
 
 from . import stages
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    ecrire_retour_lead_visite,
+    journaliser_visite,
     arreter_cadence,
     arreter_cadence_du_lead_id,
     FILET_REFUS_LIBELLE,
@@ -764,3 +766,42 @@ def _emit_lead_created(sender, instance, created, **kwargs):
         logger.warning(
             'NTGRC9 : émission lead_created échouée pour le lead #%s',
             getattr(instance, 'pk', '?'), exc_info=True)
+
+
+# ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────
+#
+# ``apps.visites`` a émis ``visite_validee`` ; c'est ICI que le CRM décide ce
+# qu'il en fait. Avant VTA5, l'app visites écrivait elle-même sur ``crm.Lead``
+# — le dernier écrit direct de la visite vers le CRM. Il n'en reste aucun : le
+# lead voyage en ``lead_id`` (entier), le récap arrive tout fait
+# (``visites.selectors.recap_visite_terrain`` reste la seule source de la
+# phrase, donc la règle « zéro chiffre inventé » est tenue d'un seul côté).
+#
+# Aucune étape de funnel ne bouge : ``STAGES.py`` n'est pas touché — le statut
+# de visite est un layer DOCUMENT interne.
+
+@receiver(visite_validee, dispatch_uid="crm_retour_lead_on_visite_validee")
+def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
+                                   **kwargs):
+    """Pose ``visite_effectuee`` + le récap sur la fiche, et la note chatter.
+
+    Idempotence reconduite à l'identique : le récap n'est APPENDU que s'il
+    n'est pas déjà présent (``recap not in existantes``), donc une
+    re-validation ne le duplique pas et une note écrite à la main n'est jamais
+    écrasée. L'auteur de la note est l'utilisateur AGISSANT, transporté par
+    l'événement — jamais déduit.
+
+    Best-effort : la visite est DÉJÀ validée quand on arrive ici ; un retour
+    lead en échec ne doit pas défaire une décision humaine actée.
+    """
+    from .models import Lead
+
+    try:
+        lead = Lead.objects.filter(pk=lead_id).first()
+        if lead is not None:
+            ecrire_retour_lead_visite(lead, recap)
+        journaliser_visite(visite, user, 'validee')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'VTA5 : retour lead du feu vert de visite échoué pour le lead '
+            '#%s', lead_id, exc_info=True)

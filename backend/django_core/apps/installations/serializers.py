@@ -509,6 +509,25 @@ class InstallationSerializer(serializers.ModelSerializer):
             'cloture_verrouillee',
         ]
 
+    def validate(self, attrs):
+        # CHT3 — durcissement SCOPÉ (pas un bug, pas la garde AUD326 sur le
+        # statut) : la BoM est déjà « gelée » contre l'édition du DEVIS ;
+        # ici on la gèle aussi contre l'édition du CHANTIER une fois
+        # `cloture_verrouillee` (situation soldée, garantie démarrée). Même
+        # verrou pour la puissance contractuelle et le devis/client d'origine.
+        # `dossier_statut`/`regime_8221`/`parc_actif`/`mes_*`/notes RESTENT
+        # éditables : le dossier 82-21 continue de vivre après la clôture
+        # travaux (patron crm/serializers.py:794-803).
+        if self.instance is not None and self.instance.cloture_verrouillee:
+            geles = ('bom', 'puissance_installee_kwc', 'devis', 'client')
+            errors = {
+                champ: "Chantier clôturé — champ gelé, non modifiable."
+                for champ in geles if champ in attrs
+            }
+            if errors:
+                raise serializers.ValidationError(errors)
+        return attrs
+
     def get_statut_ordre(self, obj):
         order = list(Installation.STATUT_ORDER)
         try:

@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import { deplacerChamp } from './FormBuilder'
+import { deplacerChamp } from './workflow'
 
 /* NTWFL14 -- editeur de formulaire visuel : logique pure (reordonnancement)
    puis smoke render (glisser un type depuis la palette, marquer requis,

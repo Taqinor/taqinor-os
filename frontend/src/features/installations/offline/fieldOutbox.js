@@ -50,20 +50,38 @@ export async function failed() {
 // endpoint.
 export const BINARY_OPS = {
   PHOTO_INTERVENTION: 'intervention.photo',
+  // VTA10 — photo de checklist de VISITE TERRAIN. Elle rejoint CETTE file, pas
+  // une deuxième (décision VX105 ×3 : un seul outbox, un seul badge). Le rejeu
+  // repasse par l'endpoint multipart EXISTANT de l'app Visites — aucun nouvel
+  // endpoint. Les types connus sont déclarés ICI, statiquement : un type dont
+  // l'uploader ne serait enregistré qu'au montage d'un écran serait refusé par
+  // un flush survenu AVANT ce montage, et la photo marquée « refusée » à tort.
+  PHOTO_VISITE: 'visite.photo',
 }
 
 const _binaryStore = createBinaryOutboxStore()
 
 async function binaryUploader(entry) {
-  if (entry.op_type !== BINARY_OPS.PHOTO_INTERVENTION) {
-    const err = new Error('Type de charge binaire inconnu.')
-    err.response = { data: { detail: 'Type de charge binaire inconnu.' } }
-    throw err
-  }
   const file = new File([entry.bytes], entry.name || 'photo.jpg',
     { type: entry.type || 'image/jpeg' })
-  return installationsApi.ajouterPhoto(
-    entry.meta.intervention, file, entry.meta.slot)
+  if (entry.op_type === BINARY_OPS.PHOTO_INTERVENTION) {
+    return installationsApi.ajouterPhoto(
+      entry.meta.intervention, file, entry.meta.slot)
+  }
+  if (entry.op_type === BINARY_OPS.PHOTO_VISITE) {
+    // Import DYNAMIQUE : la file peut être vidée sans que l'app Visites ait
+    // jamais été ouverte dans cette session.
+    const { default: visitesApi } = await import('../../../api/visitesApi')
+    return visitesApi.uploadVisitePhoto(entry.meta.visite, {
+      slotCode: entry.meta.slot_code,
+      fichier: file,
+      gpsLat: entry.meta.gps_lat,
+      gpsLng: entry.meta.gps_lng,
+    })
+  }
+  const err = new Error('Type de charge binaire inconnu.')
+  err.response = { data: { detail: 'Type de charge binaire inconnu.' } }
+  throw err
 }
 
 export const binaryOutbox = new BinaryOutbox({

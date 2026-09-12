@@ -1387,6 +1387,8 @@ backend/django_core/apps/stock/models.py::SousTraitantProfile.company
 backend/django_core/apps/stock/models.py::SousTraitantProfile.fournisseur
 backend/django_core/apps/stock/models.py::StockEmplacement.company
 backend/django_core/apps/stock/models.py::StockEmplacement.emplacement
+backend/django_core/apps/stock/models.py::ToleranceRapprochementCategorie.categorie
+backend/django_core/apps/stock/models.py::ToleranceRapprochementCategorie.company
 backend/django_core/apps/stock/models.py::TransfertStock.company
 # --- backend/django_core/apps/tiers/models.py
 backend/django_core/apps/tiers/models.py::Tiers.company

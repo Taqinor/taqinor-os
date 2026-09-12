@@ -643,6 +643,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # requêtait ses lignes (N+1, ~2 requêtes/devis). String-FK cross-app.
         'devis', 'devis__lignes').all()
     serializer_class = LeadSerializer
+    # VTA4 (12/09/2026) — la frontière « pas d'accès CRM » est SERVEUR : la
+    # liste/lecture des leads exige désormais le code fin `crm_voir`. Sans
+    # cette ligne, ScopedPermission sans code = « authentifié suffit », et le
+    # rôle « Commercial terrain » (app Visites seule) lisait tout l'annuaire
+    # leads en appelant l'API directement — exactement ce que le fondateur a
+    # exclu. Les rôles legacy (sans Role fin) gardent leur accès historique
+    # (comportement OrLegacy de la garde).
+    read_permission = 'crm_voir'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     # WREF (fondateur 21/08) — client_ref = la référence remise au client :
     # stockée mais introuvable (3 recherches, 0 index). Depuis WREF2 c'est la
@@ -1007,7 +1015,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
-            return [IsAnyRole()]
+            # VTA4 (12/09/2026, bug CI #25 en sens inverse) — la lecture des
+            # leads exige le code fin ``crm_voir`` : ce get_permissions PRIME
+            # sur tout, donc l'attribut ``read_permission`` posé sur la classe
+            # était MORT et le rôle « Commercial terrain » (app Visites seule)
+            # listait l'annuaire leads en 200. ``OrLegacy`` préserve les
+            # comptes historiques sans Role fin ; tous les rôles métier seedés
+            # (Responsable :509, Commercial resp :641, Commercial :682,
+            # Viewer :807) portent déjà crm_voir.
+            return [HasPermissionOrLegacy('crm_voir')()]
         elif self.action in ('historique', 'jalons_devis'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
