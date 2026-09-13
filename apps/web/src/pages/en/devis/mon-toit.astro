@@ -4013,13 +4013,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
    *  fake preview from a plain pin). */
   function updatePanels3dVisibility() {
     if (!panels3dBlock) return;
-    // WJ125 — the 3D scene draws EXACTLY the panel count (count × 720 Wc = kWc):
-    // a dimensioning value the anti-competitor rule forbids exposing before the
-    // link is sent. While the public journey is gated the block stays hidden —
-    // the dimensioned preview lives on /proposition/<token>. Flag OFF (future) →
-    // byte-identical to the old behaviour (eligibility alone drives it).
     // WJ125 → PUBLIC_3D_PREVIEW (13/09/2026): the 3D block exposes no FIGURE
     // (visual only) — allowed even in gated mode when PUBLIC_3D_PREVIEW is on.
+    // Both flags false ⇒ byte-identical to the old behaviour.
     if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }
     const eligible = captureOutline.length >= 3 && lastKwc != null;
     panels3dBlock.hidden = !eligible;
