@@ -1,0 +1,74 @@
+---
+/**
+ * WB33 — Pixel Meta NAVIGATEUR (fbq), le pendant client du relais CAPI serveur.
+ *
+ * LE CONSTAT (audit Meta lecture seule du 2026-07-24, docs/engine/audit-2026-07.md §8) :
+ * le dataset « leads » (845710231783646) existe depuis janvier et n'a JAMAIS émis
+ * un seul événement — il n'était installé nulle part. Conséquence : Meta ne peut
+ * ni optimiser une campagne « site » sur l'événement Lead, ni construire
+ * d'audiences de visiteurs. Ce composant l'installe sitewide.
+ *
+ * CONSENTEMENT — mêmes règles que le beacon CAPI (QJW14, src/lib/lead.ts) :
+ *  - « Refuser » EXPLICITE (`tq_consent` = 'denied') ⇒ le pixel ne se charge pas
+ *    (au chargement) ou est révoqué (`fbq('consent','revoke')`) si le refus
+ *    arrive après. AUCUN événement ne part.
+ *  - PAS ENCORE RÉPONDU (flag absent) ou 'granted' ⇒ le pixel tourne. Pour
+ *    basculer le cas « absent » du côté bloquant, une seule condition change
+ *    ci-dessous (`=== 'denied'` → `!== 'granted'`) — même levier d'inversion
+ *    d'un mot que fireCapi.
+ *
+ * DÉDUPLICATION — l'événement `Lead` navigateur est émis par les pages du tunnel
+ * via `window.tqPixelTrack('Lead', {}, eventId)` avec le MÊME `eventId` (WJ92)
+ * que le corps du lead envoyé au CRM et au relais CAPI : Meta fusionne les deux
+ * signaux (browser + server) au lieu de compter double.
+ *
+ * L'ID du pixel n'est pas un secret (il est visible dans toute page qui
+ * l'embarque) : constante avec surcharge d'env (PUBLIC_META_PIXEL_ID).
+ */
+const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ?? '845710231783646').trim();
+---
+
+{pixelId && (
+  <script is:inline define:vars={{ tqPixelId: pixelId }}>
+    (function () {
+      var denied = false;
+      try {
+        denied = localStorage.getItem('tq_consent') === 'denied';
+      } catch (e) {}
+      if (denied) return;
+      /* Amorce fbq officielle Meta (inchangée, formatée). */
+      !(function (f, b, e, v, n, t, s) {
+        if (f.fbq) return;
+        n = f.fbq = function () {
+          n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+        };
+        if (!f._fbq) f._fbq = n;
+        n.push = n;
+        n.loaded = !0;
+        n.version = '2.0';
+        n.queue = [];
+        t = b.createElement(e);
+        t.async = !0;
+        t.src = v;
+        s = b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t, s);
+      })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+      window.fbq('init', tqPixelId);
+      window.fbq('track', 'PageView');
+      /* Refus APRÈS chargement (bandeau WB31 sur la même page) : révocation. */
+      window.addEventListener('tq:consent-change', function (e) {
+        if (e && e.detail && e.detail.value === 'denied') {
+          try { window.fbq('consent', 'revoke'); } catch (err) {}
+        }
+      });
+      /* Pont pour les pages (tunnel /devis/mon-toit) : no-op si refusé. */
+      window.tqPixelTrack = function (event, params, eventId) {
+        try {
+          if (typeof window.fbq !== 'function') return;
+          if (localStorage.getItem('tq_consent') === 'denied') return;
+          window.fbq('track', event, params || {}, eventId ? { eventID: eventId } : undefined);
+        } catch (err) {}
+      };
+    })();
+  </script>
+)}

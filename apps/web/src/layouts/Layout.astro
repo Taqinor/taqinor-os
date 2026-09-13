@@ -3,6 +3,7 @@ import '../styles/global.css';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
+import MetaPixel from '../components/MetaPixel.astro';
 import { NAP, SAME_AS } from '../lib/nap';
 import { DEFAULT_LOCALE, isLocale, LOCALE_BCP47, LOCALE_DIR, type Locale } from '../i18n/config';
 import { localizePath, stripLocale } from '../i18n/utils';
@@ -260,6 +261,11 @@ const jsonLd = {
         } catch (e) {}
       })();
     </script>
+    <!-- WB33 — Pixel Meta navigateur (fbq) : PageView sitewide + pont
+         window.tqPixelTrack pour l'événement Lead dédupliqué (eventId WJ92)
+         du tunnel. Gated comme le CAPI (QJW14) : « Refuser » explicite le
+         bloque/révoque. Jamais sur les pages privées (noindex). -->
+    {!noindex && <MetaPixel />}
   </head>
   <body class="bg-nuit font-sans text-lune antialiased">
     <!-- W216 — Lien d'évitement accessible : premier élément focusable du corps.

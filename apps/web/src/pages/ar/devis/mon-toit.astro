@@ -3074,6 +3074,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // formulaire. Le document complet + « Imprimer » vivent UNIQUEMENT sur
   // /proposition/<token> (envoyé par le commercial). ———
   const PUBLIC_ESTIMATE_GATED: boolean = true;
+  // ——— Décision fondateur 13/09/2026 (modèle « Palmetto ») : l'aperçu 3D des
+  // panneaux redevient visible AVANT la porte de contact — VISUEL SEUL, aucun
+  // chiffre dans le DOM (ni kWc, ni nombre, ni prix). WJ125 reste intact pour
+  // tous les chiffres (/proposition/<token>). Repasser à false pour ré-masquer.
+  const PUBLIC_3D_PREVIEW: boolean = true;
   const GATED_ANNOUNCE = 'تقديركم جاهز. أدخلوا معلوماتكم لاستلام دراستكم الكاملة والمخصّصة.';
   /** WJ125 — bascule le parcours public en mode gaté : masque le document
    *  chiffré ET les zones hors-#mt-doc qui fuiraient des chiffres, puis révèle
@@ -3845,7 +3850,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // lien par la règle anti-concurrent. Parcours public gaté → bloc masqué ;
     // l'aperçu dimensionné vit sur /proposition/<token>. Drapeau OFF (futur) →
     // comportement byte-identique.
-    if (PUBLIC_ESTIMATE_GATED) { panels3dBlock.hidden = true; return; }
+    // WJ125 → PUBLIC_3D_PREVIEW (13/09/2026) : le bloc 3D n'expose aucun
+    // CHIFFRE (visuel seul) — autorisé même en parcours gaté quand le drapeau est vrai.
+    if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }
     const eligible = captureOutline.length >= 3 && lastKwc != null;
     panels3dBlock.hidden = !eligible;
   }
@@ -4317,6 +4324,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         }
         const waUrl = buildWaUrl();
         if (data.qualified) {
+          // WB33 — événement navigateur « Lead » avec le MÊME event_id (WJ92)
+          // que le relais CAPI serveur : Meta déduplique les deux signaux.
+          (window as unknown as { tqPixelTrack?: (e: string, p?: object, id?: string) => void })
+            .tqPixelTrack?.('Lead', {}, getOrCreateDedupTokens().eventId);
           if (okEl) okEl.hidden = false;
           const refEl = $('mt-client-ref');
           if (refEl) refEl.textContent = getOrCreateClientRef();
