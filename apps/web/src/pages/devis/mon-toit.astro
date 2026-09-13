@@ -3413,6 +3413,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // formulaire. Le document complet + « Imprimer » vivent UNIQUEMENT sur
   // /proposition/<token> (envoyé par le commercial). ———
   const PUBLIC_ESTIMATE_GATED: boolean = true;
+  // ——— Décision fondateur 13/09/2026 (modèle « Palmetto ») : l'aperçu 3D des
+  // panneaux redevient visible AVANT la porte de contact — VISUEL SEUL, aucun
+  // chiffre dans le DOM (ni kWc, ni nombre de panneaux, ni prix : vérifié dans
+  // le bloc #mt-panels3d et viewerOnly). Le wow pré-contact aide la conversion
+  // (les meilleurs tunnels mondiaux montrent l'implantation et verrouillent le
+  // PRIX) ; WJ125 reste intact pour tous les chiffres, qui vivent sur
+  // /proposition/<token>. Repasser à false pour ré-masquer le 3D public.
+  const PUBLIC_3D_PREVIEW: boolean = true;
   const GATED_ANNOUNCE = 'Votre estimation est prête. Renseignez vos coordonnées pour recevoir votre étude complète et personnalisée.';
   /** WJ125 — bascule le parcours public en mode gaté : masque le document
    *  chiffré ET les zones hors-#mt-doc qui fuiraient des chiffres (installation
@@ -4270,13 +4278,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
    *  aperçu sur un simple repère). */
   function updatePanels3dVisibility() {
     if (!panels3dBlock) return;
-    // WJ125 — la scène 3D dessine EXACTEMENT le nombre de panneaux
-    // (nb × 720 Wc = kWc) : une valeur dimensionnante que la règle
-    // anti-concurrent interdit d'exposer avant l'envoi du lien. Tant que le
-    // parcours public est gaté, le bloc reste masqué — l'aperçu dimensionné
-    // vit sur /proposition/<token>. Drapeau OFF (futur) → comportement
-    // byte-identique à l'ancien (l'éligibilité pilote seule).
-    if (PUBLIC_ESTIMATE_GATED) { panels3dBlock.hidden = true; return; }
+    // WJ125 → PUBLIC_3D_PREVIEW (13/09/2026) : le bloc 3D n'expose aucun
+    // CHIFFRE (visuel seul) — il est donc autorisé même en parcours gaté
+    // quand PUBLIC_3D_PREVIEW est vrai. Les deux drapeaux à false ⇒
+    // comportement byte-identique à l'ancien (l'éligibilité pilote seule).
+    if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }
     const eligible = captureOutline.length >= 3 && lastKwc != null;
     panels3dBlock.hidden = !eligible;
   }
@@ -4799,6 +4805,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         const waUrl = buildWaUrl();
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
+          // WB33 — événement navigateur « Lead » avec le MÊME event_id (WJ92)
+          // que le relais CAPI serveur : Meta déduplique les deux signaux.
+          // No-op si le pixel est absent ou refusé (tqPixelTrack se gate seul).
+          (window as unknown as { tqPixelTrack?: (e: string, p?: object, id?: string) => void })
+            .tqPixelTrack?.('Lead', {}, getOrCreateDedupTokens().eventId);
           if (okEl) okEl.hidden = false;
           // WJ52 — affiche la référence générée à la lecture de l'état (déjà
           // incluse dans le body envoyé — on la relit ici via

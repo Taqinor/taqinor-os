@@ -3158,6 +3158,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // form. The full document + "Print" live ONLY on /proposition/<token> (sent
   // by the sales rep). ———
   const PUBLIC_ESTIMATE_GATED: boolean = true;
+  // ——— Founder decision 13/09/2026 ("Palmetto" model): the 3D panel preview
+  // is visible again BEFORE the contact gate — VISUAL ONLY, no figure in the
+  // DOM (no kWc, no panel count, no price). WJ125 stays intact for all
+  // figures, which live on /proposition/<token>. Set false to re-hide.
+  const PUBLIC_3D_PREVIEW: boolean = true;
   const GATED_ANNOUNCE = 'Your estimate is ready. Enter your details to receive your complete, personalised study.';
   /** WJ125 — switches the public journey to gated mode: hides the figured
    *  document AND the out-of-#mt-doc zones that would leak figures (nearest
@@ -4008,12 +4013,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
    *  fake preview from a plain pin). */
   function updatePanels3dVisibility() {
     if (!panels3dBlock) return;
-    // WJ125 — the 3D scene draws EXACTLY the panel count (count × 720 Wc = kWc):
-    // a dimensioning value the anti-competitor rule forbids exposing before the
-    // link is sent. While the public journey is gated the block stays hidden —
-    // the dimensioned preview lives on /proposition/<token>. Flag OFF (future) →
-    // byte-identical to the old behaviour (eligibility alone drives it).
-    if (PUBLIC_ESTIMATE_GATED) { panels3dBlock.hidden = true; return; }
+    // WJ125 → PUBLIC_3D_PREVIEW (13/09/2026): the 3D block exposes no FIGURE
+    // (visual only) — allowed even in gated mode when PUBLIC_3D_PREVIEW is on.
+    // Both flags false ⇒ byte-identical to the old behaviour.
+    if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }
     const eligible = captureOutline.length >= 3 && lastKwc != null;
     panels3dBlock.hidden = !eligible;
   }
@@ -4526,6 +4529,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         const waUrl = buildWaUrl();
         // WJ5 — HONEST response per the qualifying threshold (`qualified` returned by the server).
         if (data.qualified) {
+          // WB33 — browser "Lead" event with the SAME event_id (WJ92) as the
+          // server CAPI relay: Meta deduplicates the two signals.
+          (window as unknown as { tqPixelTrack?: (e: string, p?: object, id?: string) => void })
+            .tqPixelTrack?.('Lead', {}, getOrCreateDedupTokens().eventId);
           if (okEl) okEl.hidden = false;
           // WJ52 — display the reference generated when the state was read
           // (already included in the sent body — re-read here via
