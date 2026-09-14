@@ -333,10 +333,10 @@ class TestApiVisitesExternesEtAppareilEquipe(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         ligne = next(
             r for r in resp.data if r['appareil_id'] == AUTRE_APPAREIL)
-        self.assertEqual(ligne['nb_visites'], 2)
+        self.assertEqual(ligne['visites'], 2)
         self.assertEqual(ligne['duree_totale_s'], 120)
-        self.assertEqual(ligne['nb_propositions'], 1)
-        self.assertEqual(ligne['leads_touches'], [{'id': lead.pk, 'nom': lead.nom}])
+        self.assertEqual(ligne['propositions'], 1)
+        self.assertEqual(ligne['leads'], [{'id': lead.pk, 'nom': lead.nom}])
         self.assertFalse(ligne['equipe'])
         self.assertIn('premiere', ligne)
         self.assertIn('derniere', ligne)

@@ -72,8 +72,10 @@ export default function VisiteursPage() {
   const [loadingDetail, setLoadingDetail] = useState(false)
 
   const chargerAppareils = () => {
-    setLoading(true)
-    setErreur(false)
+    // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+    // évite react-hooks/set-state-in-effect, même patron que
+    // `RelancesSuiviPage.jsx`.
+    queueMicrotask(() => { setLoading(true); setErreur(false) })
     const params = appareilFiltre ? { appareil_id: appareilFiltre } : {}
     return crmApi.getAppareilsVisites(params)
       .then((r) => setAppareils(r.data?.results ?? r.data ?? []))
@@ -82,7 +84,8 @@ export default function VisiteursPage() {
   }
 
   const chargerEquipe = () => {
-    setLoadingEquipe(true)
+    // Même différé que `chargerAppareils` (react-hooks/set-state-in-effect).
+    queueMicrotask(() => setLoadingEquipe(true))
     return crmApi.getAppareilsEquipe()
       .then((r) => setEquipe(r.data?.results ?? r.data ?? []))
       .catch(() => setEquipe([]))

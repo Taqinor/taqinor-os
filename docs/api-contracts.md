@@ -1845,6 +1845,9 @@
 - frontend/src/api/crmApi.js :: getSoumissionsLeadPartenaire -> /api/django/crm/soumissions-lead-partenaire  [SoumissionLeadPartenaireSerializer]
     champs: date_soumission, email_prospect, id, lead_id, nom_prospect, note, partenaire, statut, telephone_prospect, ville
     statut ∈ {converti, qualifie, rejete, soumis}
+- frontend/src/api/crmApi.js :: getVisitesExternes -> /api/django/crm/visites-externes  [VisiteExterneSerializer]
+    champs: appareil_id, contexte, created_at, duree_s, id, ip, langue, lead, lead_nom, point, point_display, terminee, token_suffixe, user_agent
+    point ∈ {booking, proposition, questionnaire, tunnel_lead, visite_site}
 - frontend/src/api/crmApi.js :: getWebsiteLeadPayloads -> /api/django/crm/website-lead-payloads  [WebsiteLeadPayloadSerializer]
     champs: company, error, id, lead, lead_nom, payload, processed, received_at, remote_addr, source, source_display
     source ∈ {meta_lead_ads, website}

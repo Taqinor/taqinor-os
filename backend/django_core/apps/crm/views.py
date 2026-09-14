@@ -4037,11 +4037,11 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
         agreges = (
             base.values('appareil_id')
             .annotate(
-                nb_visites=Count('id'),
+                visites=Count('id'),
                 duree_totale_s=Sum('duree_s'),
                 premiere=Min('created_at'),
                 derniere=Max('created_at'),
-                nb_propositions=Count(
+                propositions=Count(
                     'id', filter=Q(point=VisiteExterne.Point.PROPOSITION)),
             )
             .order_by('-derniere')[:200]
@@ -4066,12 +4066,12 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
                     leads_touches.append({'id': lead_id, 'nom': lead_nom or ''})
             resultats.append({
                 'appareil_id': aid,
-                'nb_visites': ligne['nb_visites'],
+                'visites': ligne['visites'],
                 'duree_totale_s': ligne['duree_totale_s'] or 0,
                 'premiere': ligne['premiere'],
                 'derniere': ligne['derniere'],
-                'leads_touches': leads_touches,
-                'nb_propositions': ligne['nb_propositions'],
+                'leads': leads_touches,
+                'propositions': ligne['propositions'],
                 'equipe': aid in equipe_ids,
             })
         return Response(resultats)
