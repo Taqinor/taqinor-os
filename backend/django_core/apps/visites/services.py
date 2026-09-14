@@ -70,6 +70,171 @@ def notifier_assignation(visite, acteur=None):
         f'La visite{quand} chez « {visite.lead} » vous est assignee.')
 
 
+def notifier_valideurs_visite(visite, acteur=None):
+    """VISITE-CADENCE — prévient ceux qui peuvent VALIDER qu'une visite attend.
+
+    Jusqu'ici, ``terminer`` ne prévenait personne : le bureau d'études
+    découvrait une visite finie en ouvrant sa liste, et une visite pouvait
+    dormir des jours entre le retour du technicien et le feu vert — alors que
+    le client, lui, attend une réponse.
+
+    Destinataires : les porteurs du code ``visites_valider`` de la SOCIÉTÉ de
+    la visite. Ils sont énumérés comme ailleurs dans le dépôt
+    (``crm.services.pick_round_robin_owner``) : rôle fin portant le code, OU
+    compte SANS rôle fin au palier responsable/admin (le repli historique de
+    ``_user_has_or_legacy``). Le fan-out est donc borné au palier responsable —
+    jamais « tous les utilisateurs actifs ».
+
+    Ni l'ACTEUR (il vient de terminer la visite, il sait), ni un doublon :
+    best-effort intégral — la visite est DÉJÀ terminée quand on arrive ici.
+    """
+    try:
+        from django.contrib.auth import get_user_model
+        from django.db.models import Q
+
+        from apps.notifications.services import notify_many
+
+        User = get_user_model()
+        destinataires = (
+            User.objects
+            .filter(company=visite.company, is_active=True)
+            .filter(Q(role__permissions__contains=['visites_valider'])
+                    | Q(role__isnull=True,
+                        role_legacy__in=['admin', 'responsable']))
+            .distinct())
+        if acteur is not None and getattr(acteur, 'id', None):
+            destinataires = destinataires.exclude(pk=acteur.id)
+        return notify_many(
+            list(destinataires), 'visite_terrain_a_valider',
+            'Visite technique à valider',
+            body=(f'La visite chez « {visite.lead} » est terminée : elle '
+                  "attend le feu vert du bureau d'études."),
+            link=f'/visites/{visite.pk}', company=visite.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return []
+
+
+def _commercial_nom(visite):
+    """Le nom AFFICHABLE de l'assigné, composé ICI (jamais chez l'abonné).
+
+    Le CRM reçoit une CHAÎNE : il n'a aucun utilisateur à aller relire, et la
+    règle « aucun prénom codé en dur » reste tenue d'un seul côté. Visite non
+    assignée → chaîne vide, et la phrase qui en dépend s'adapte."""
+    commercial = visite.commercial
+    if commercial is None:
+        return ''
+    return (commercial.get_full_name() or commercial.username or '')
+
+
+def emettre_visite_planifiee(visite, user):
+    """Publie ``visite_planifiee`` — la date prévue vient d'être posée/changée.
+
+    Best-effort : la visite est DÉJÀ enregistrée quand on arrive ici ; un
+    abonné CRM en échec ne doit pas défaire la planification. Sans date prévue,
+    rien n'est émis — « planifiée » sans date ne veut rien dire.
+    """
+    from core.events import visite_planifiee
+
+    from .models import VisiteTerrain
+
+    if visite.date_prevue is None:
+        return None
+    try:
+        visite_planifiee.send(
+            sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
+            user=user, date_prevue=visite.date_prevue,
+            commercial_nom=_commercial_nom(visite))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return None
+    return visite
+
+
+def emettre_visite_terminee(visite, user):
+    """Publie ``visite_terminee`` avec le RETOUR TERRAIN pré-composé.
+
+    Le récap de ``visite_validee`` ne porte que des MESURES : les remarques
+    libres du technicien (« le tableau est saturé », « accès par le garage »)
+    n'atteignaient donc jamais l'historique du lead. Elles voyagent ici, dans
+    ``retour``, composées par le selector de cette app — source unique.
+
+    Best-effort : la visite est DÉJÀ terminée ; un abonné en échec ne doit
+    jamais faire échouer le geste du terrain.
+    """
+    from core.events import visite_terminee
+
+    from . import selectors
+    from .models import VisiteTerrain
+
+    try:
+        visite_terminee.send(
+            sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
+            user=user, retour=selectors.retour_visite(visite))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return None
+    return visite
+
+
+def planifier_visite(lead, user, date_prevue, commercial=None, notes=''):
+    """VISITE-CADENCE — POSE un rendez-vous de visite technique sur un lead.
+
+    C'est la porte que le CRM appelle depuis la fiche lead (frontière M3 : il
+    n'importe jamais ``apps.visites.models``). Doctrine fondateur : la visite
+    se place APRÈS l'envoi du devis, comme outil de closing — la planifier est
+    donc un GESTE COMMERCIAL, pas une opération d'administration du planning
+    terrain.
+
+    Renvoie ``(visite, erreurs)`` — même forme que ``enregistrer_mesures`` :
+    ``erreurs`` est le dict ``{champ: [messages FR]}`` servi tel quel en 400,
+    et chaque message NOMME son champ (règle fondateur 08/09/2026).
+
+    Deux gardes, et elles refusent AVANT d'écrire quoi que ce soit :
+
+    * ``date_prevue`` est obligatoire et ne peut pas être dans le PASSÉ —
+      « planifier » hier n'est pas un rendez-vous, c'est une saisie fautive
+      (la date du jour reste acceptée : on planifie souvent pour l'après-midi) ;
+    * ``commercial``, s'il est fourni, doit être un compte ACTIF de la MÊME
+      société — sinon assigner une visite serait un moyen détourné de désigner
+      l'utilisateur d'un autre locataire.
+
+    La société vient du LEAD, jamais d'un corps de requête ; ``statut`` naît
+    BROUILLON (le terrain le fera passer « en cours » à sa première
+    contribution). L'assigné est prévenu par la primitive existante (VTA7) et
+    l'événement ``visite_planifiee`` laisse le CRM recaler son suivi.
+    """
+    from django.utils import timezone
+
+    from .models import VisiteTerrain
+
+    erreurs = {}
+    if date_prevue is None:
+        erreurs['date_prevue'] = ['Date de visite obligatoire (AAAA-MM-JJ).']
+    elif date_prevue < timezone.localdate():
+        erreurs['date_prevue'] = [
+            'La visite ne peut pas être planifiée dans le passé : choisir '
+            "aujourd'hui ou une date à venir."]
+    if commercial is not None:
+        if (getattr(commercial, 'company_id', None) != lead.company_id
+                or not getattr(commercial, 'is_active', False)):
+            erreurs['commercial'] = [
+                'Ce commercial n’appartient pas à votre société (ou son '
+                'compte est désactivé).']
+    if erreurs:
+        return None, erreurs
+
+    visite = VisiteTerrain.objects.create(
+        company=lead.company, lead=lead, commercial=commercial,
+        statut=VisiteTerrain.Statut.BROUILLON, date_prevue=date_prevue,
+        notes=(notes or '').strip())
+    # PAS de ``journaliser_visite(..., 'creation')`` ici : l'abonné CRM de
+    # ``visite_planifiee`` pose une note qui dit TOUT (la date ET l'assigné).
+    # Les deux ensemble empileraient « Visite technique créée. » juste
+    # au-dessus de « Visite technique planifiée le … » — deux lignes pour un
+    # seul geste dans un historique qu'un humain doit pouvoir lire.
+    notifier_assignation(visite, acteur=user)
+    emettre_visite_planifiee(visite, user)
+    return visite, {}
+
+
 def journaliser_visite(visite, user, moment, detail=''):
     """Pose la note de chatter du ``moment`` sur le LEAD de la visite.
 

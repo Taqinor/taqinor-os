@@ -135,6 +135,12 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         services.journaliser_visite(visite, request.user, 'creation')
         # VTA7 — l'assigne apprend tout de suite que sa journee a change.
         services.notifier_assignation(visite, acteur=request.user)
+        # VISITE-CADENCE — une visite CRÉÉE AVEC une date prévue EST un
+        # rendez-vous : le suivi commercial doit s'y recaler exactement comme
+        # si elle avait été posée depuis la fiche lead. Sans date, rien n'est
+        # émis (le service s'en charge) — un brouillon sans date n'est pas un
+        # rendez-vous.
+        services.emettre_visite_planifiee(visite, request.user)
         return Response(selectors.contexte_visite_terrain(visite),
                         status=status.HTTP_201_CREATED)
 
@@ -157,10 +163,18 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         # touche pas `commercial` ne notifie personne -- sinon chaque
         # correction de notes sonnerait la cloche.
         avant = visite.commercial_id
+        # VISITE-CADENCE — on releve aussi la DATE PREVUE avant l'ecriture :
+        # une RE-PLANIFICATION (« finalement jeudi ») doit recaler la
+        # confirmation de la veille et le debrief du lendemain. Un PATCH qui
+        # ne touche pas la date n'emet rien -- sinon chaque correction de
+        # notes reprogrammerait le suivi du lead.
+        date_avant = visite.date_prevue
         reponse = super().update(request, *args, **kwargs)
         visite.refresh_from_db()
         if visite.commercial_id != avant:
             services.notifier_assignation(visite, acteur=request.user)
+        if visite.date_prevue != date_avant:
+            services.emettre_visite_planifiee(visite, request.user)
         return reponse
 
     # ── Photos par slot ──────────────────────────────────────────────────────
@@ -325,7 +339,15 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.statut = VisiteTerrain.Statut.TERMINEE
         visite.date_realisee = timezone.now()
         visite.save(update_fields=['statut', 'date_realisee'])
+        # VISITE-CADENCE — la note fixe historique reste (elle horodate le
+        # geste) ; l'ÉVÉNEMENT, lui, emporte le RETOUR TERRAIN (texte libre +
+        # commentaires de photos), que le CRM inscrit dans l'historique du
+        # lead et qui déclenche le rappel « sous 24-48 h » au responsable.
         services.journaliser_visite(visite, request.user, 'terminee')
+        services.emettre_visite_terminee(visite, request.user)
+        # …et le bureau d'études apprend qu'une visite attend son feu vert :
+        # avant, personne n'était prévenu et le dossier pouvait dormir.
+        services.notifier_valideurs_visite(visite, acteur=request.user)
         return self._agregat(visite)
 
     # ── VT3 — Feu vert du bureau d'études ────────────────────────────────────

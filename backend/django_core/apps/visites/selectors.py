@@ -331,6 +331,109 @@ def recap_visite_terrain(visite):
     return entete + ' : ' + ', '.join(morceaux) + '.'
 
 
+# ── VISITE-CADENCE — CE QUE LE CRM A LE DROIT DE LIRE DE LA VISITE ───────────
+#
+# Doctrine fondateur (15/09/2026) : la visite technique est une ÉTAPE DU SUIVI
+# COMMERCIAL, placée APRÈS l'envoi du devis. La fiche lead doit donc montrer
+# les visites du dossier, et le retour du terrain doit redescendre dans son
+# historique.
+#
+# Ces deux lectures sont la PORTE de cette app vers le CRM (frontière M3) :
+# ``apps.crm`` les appelle, il n'importe JAMAIS ``apps.visites.models``. Et
+# elles ne portent aucune garde de visibilité : la portée dure « mes visites »
+# (VTA6) est celle de l'APP TERRAIN, sur SES routes ; la fiche lead, elle, est
+# déjà gardée par la portée CRM de l'appelant — la recopier ici masquerait à un
+# responsable CRM les visites de son propre dossier.
+
+def _retour_commentaires_photos(visite):
+    """Les commentaires de photos NON VIDES, avec le LIBELLÉ de leur slot.
+
+    Le libellé (« Vue d'ensemble du toit ») plutôt que le code (``toit_vue``) :
+    la phrase part dans le chatter du lead, lu par des commerciaux qui ne
+    connaissent pas la nomenclature de la checklist. Un slot inconnu (photo
+    d'une version antérieure de la checklist) garde son code plutôt que de
+    disparaître — on ne perd jamais un commentaire du terrain.
+    """
+    from . import visite_checklist as checklist
+
+    lignes = []
+    for media in visite.medias.all().order_by('id'):
+        commentaire = (media.commentaire or '').strip()
+        if not commentaire:
+            continue
+        declaration = checklist.slot(media.slot_code)
+        libelle = (declaration or {}).get('libelle') or media.slot_code
+        lignes.append({'slot': libelle, 'commentaire': commentaire})
+    return lignes
+
+
+def retour_visite(visite):
+    """Le RETOUR TERRAIN d'une visite — payload de ``visite_terminee``.
+
+    ``{'notes': str, 'commentaires_photos': [{'slot', 'commentaire'}],
+    'nb_photos': int}``. C'est le TEXTE LIBRE du technicien : exactement ce que
+    ``recap_visite_terrain`` (mesures seules) ne transporte pas, et qui restait
+    donc enfermé dans l'app terrain. Rien n'est inventé ni complété : un retour
+    muet sort avec des valeurs vides, et l'abonné le dit tel quel.
+    """
+    return {
+        'notes': (visite.notes or '').strip(),
+        'commentaires_photos': _retour_commentaires_photos(visite),
+        'nb_photos': visite.medias.count(),
+    }
+
+
+def ligne_visite_pour_lead(visite):
+    """UNE ligne de l'onglet « Visites » de la fiche lead (côté CRM).
+
+    ``retour_disponible`` dit s'il y a du TEXTE LIBRE à lire (notes du
+    technicien ou commentaire sur au moins une photo) — jamais « il existe une
+    visite » : l'écran s'en sert pour proposer d'ouvrir le retour, et une
+    pastille qui ouvrirait sur du vide serait un mensonge d'interface.
+    """
+    commercial = visite.commercial
+    nom = ''
+    if commercial is not None:
+        nom = (commercial.get_full_name() or commercial.username or '')
+    return {
+        'id': visite.id,
+        'statut': visite.statut,
+        'statut_libelle': visite.get_statut_display(),
+        'date_prevue': (visite.date_prevue.isoformat()
+                        if visite.date_prevue else None),
+        'date_realisee': (visite.date_realisee.isoformat()
+                          if visite.date_realisee else None),
+        'commercial_nom': nom,
+        'notes': visite.notes or '',
+        'retour_disponible': bool(
+            (visite.notes or '').strip()
+            or _retour_commentaires_photos(visite)),
+    }
+
+
+def visites_pour_lead(lead):
+    """Les visites techniques d'un lead, de la PLUS RÉCENTE à la plus ancienne.
+
+    Bornée par la SOCIÉTÉ DU LEAD (jamais une société lue d'une requête) : une
+    visite d'un autre locataire ne peut structurellement pas sortir d'ici. Un
+    lead absent rend une liste vide plutôt qu'une exception — l'onglet d'une
+    fiche ne casse jamais la fiche.
+
+    Tri : ``-date_prevue`` puis ``-id``, donc STABLE et déterministe même quand
+    plusieurs visites partagent la même date (ou n'en ont aucune).
+    """
+    from .models import VisiteTerrain
+
+    if lead is None:
+        return []
+    visites = (VisiteTerrain.objects
+               .filter(lead=lead, company_id=lead.company_id)
+               .select_related('commercial')
+               .prefetch_related('medias')
+               .order_by('-date_prevue', '-id'))
+    return [ligne_visite_pour_lead(visite) for visite in visites]
+
+
 def ligne_visite_terrain(visite):
     """UNE ligne de la liste ``GET /visites/visites/`` (badge de complétude)."""
     manquants = visite_terrain_manquants(visite)

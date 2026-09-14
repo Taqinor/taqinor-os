@@ -412,6 +412,22 @@ class EventType(models.TextChoices):
     # dans les préférences de notification.
     VISITE_TERRAIN_ASSIGNEE = (
         'visite_terrain_assignee', 'Visite technique assignée')
+    # VISITE-CADENCE (fondateur 15/09/2026) — les deux messages qui manquaient
+    # APRÈS la visite. Doctrine : la visite technique est un outil de closing
+    # posé après l'envoi du devis ; le silence qui suivait le départ du
+    # technicien était donc le pire moment possible pour ne prévenir personne.
+    #
+    # (a) au RESPONSABLE DU LEAD (jamais au commercial terrain, qui vient de
+    #     la faire) : « le technicien est reparti, rappelez sous 24-48 h ».
+    #     C'est le geste commercial que la visite existe pour provoquer.
+    VISITE_RETOUR_TERRAIN = (
+        'visite_retour_terrain', 'Retour de visite technique')
+    # (b) à ceux qui peuvent VALIDER (bureau d'études) : « une visite terminée
+    #     attend ton feu vert ». Clé DISTINCTE de (a) : les deux publics et les
+    #     deux suites n'ont rien à voir, et les fondre rendrait impossible de
+    #     couper l'une sans l'autre dans les préférences.
+    VISITE_TERRAIN_A_VALIDER = (
+        'visite_terrain_a_valider', 'Visite technique à valider')
 
 
 class Channel(models.TextChoices):
