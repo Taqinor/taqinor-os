@@ -46,3 +46,24 @@ class CeleryTaskRoutesTests(SimpleTestCase):
 
     def test_default_queue_unchanged(self):
         self.assertEqual(settings.CELERY_TASK_DEFAULT_QUEUE, 'default')
+
+    def test_all_beat_schedule_tasks_are_registered(self):
+        """Incident prod du 14/09/2026 : 42 tâches planifiées au beat n'étaient
+        enregistrées par AUCUN worker (déclarées hors `tasks.py`, jamais
+        importées au boot) — beat les envoyait dans le vide, le worker les
+        rejetait en boucle (« unregistered task ») et les fonctionnalités
+        correspondantes (relances, rappels RDV, digests, reprises
+        d'automatisation) ne tournaient silencieusement jamais. Chaque tâche
+        du beat_schedule DOIT exister dans le registre Celery après la même
+        autodécouverte qu'au démarrage d'un worker."""
+        from erp_agentique.celery import app
+
+        app.finalize()  # déclenche l'autodécouverte comme au boot d'un worker
+        beat_task_names = {
+            entry['task'] for entry in app.conf.beat_schedule.values()
+        }
+        missing = sorted(beat_task_names - set(app.tasks))
+        self.assertEqual(
+            missing, [],
+            'Tâches planifiées au beat mais absentes du registre Celery '
+            f'(module jamais importé par le worker ?) : {missing}')

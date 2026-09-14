@@ -12,6 +12,21 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # vocaux). Aucun enregistrement manuel n'est requis ici.
 app.autodiscover_tasks()
 
+# INCIDENT PROD 14/09/2026 — 42 tâches du beat_schedule n'étaient JAMAIS
+# enregistrées côté worker : `autodiscover_tasks()` n'importe que le module
+# `tasks` de chaque app, or plusieurs apps déclarent leurs tâches beat dans
+# des modules dédiés (scheduled.py, beat_tasks.py, sweeps.py, digests.py,
+# scheduled_reports.py) que rien n'importait au boot du worker. Beat les
+# envoyait quand même → « unregistered task » en boucle, file `scheduled`
+# engorgée, et les fonctionnalités (relances devis/factures, rappels de
+# rendez-vous, digests, reprises d'automatisation NTEXT7) silencieusement
+# mortes. On étend l'autodécouverte à ces modules conventionnels ; le test
+# gardien core/tests/test_celery_task_routes.py (tâche planifiée ⇒ tâche
+# enregistrée) refuse toute nouvelle divergence.
+for _related_name in ('scheduled', 'beat_tasks', 'sweeps', 'digests',
+                      'scheduled_reports'):
+    app.autodiscover_tasks(related_name=_related_name)
+
 # G9 — Celery Beat. Toute la logique de temps des jobs raisonne en
 # Africa/Casablanca ; on planifie donc aussi le scheduler dans ce fuseau pour
 # que « 07:00 » et « minuit » soient bien des heures locales marocaines.
