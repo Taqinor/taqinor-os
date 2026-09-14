@@ -537,6 +537,42 @@ layout_finalise = django.dispatch.Signal()
 # visites ne connaît plus le lead que par un entier.
 visite_validee = django.dispatch.Signal()
 
+# VISITE-CADENCE (fondateur 15/09/2026) — LA VISITE TECHNIQUE EST UNE ÉTAPE DU
+# SUIVI COMMERCIAL, PAS UN ÉVÉNEMENT ISOLÉ.
+#
+# Doctrine : la visite se place APRÈS l'envoi du devis, comme outil de closing
+# pendant que le client est chaud. Le SUIVI doit donc RÉAGIR à la visite —
+# suspendre les touches génériques quand un rendez-vous est pris, pousser le
+# responsable à rappeler dans les 24-48 h une fois le technicien reparti.
+# ``apps.visites`` ne sait RIEN de tout cela : elle ÉMET, ``apps.crm`` décide
+# (même montage que ``visite_validee`` ci-dessus, frontière M3/M6 intacte).
+#
+# AUCUN de ces deux événements ne touche ``STAGES.py`` : le statut d'une visite
+# reste un layer DOCUMENT interne, jamais une étape de funnel.
+
+# Émis quand la DATE PRÉVUE d'une visite technique est posée ou CHANGÉE
+# (création avec date, mise à jour, ou ``visites.services.planifier_visite``).
+# Arguments : visite (visites.VisiteTerrain), lead_id (ENTIER — référence
+# cross-app string), user (l'utilisateur AGISSANT), date_prevue (``date``),
+# commercial_nom (texte déjà composé côté émetteur — le CRM n'a aucun
+# utilisateur à aller relire).
+# Abonné dans ce repo : ``crm`` — il synchronise ``Lead.visite_prevue_le``,
+# pose la note de chatter, suspend la cadence après-devis en cours et programme
+# les deux gestes du rendez-vous (confirmation la veille, débrief le lendemain).
+visite_planifiee = django.dispatch.Signal()
+
+# Émis à la fin de l'action ``terminer`` d'une visite technique (le technicien
+# a fini sur place). Arguments : visite, lead_id (ENTIER), user, retour —
+# ``{'notes': str, 'commentaires_photos': [{'slot': str, 'commentaire': str}],
+# 'nb_photos': int}``, PRÉ-COMPOSÉ par ``visites.selectors.retour_visite`` :
+# c'est le TEXTE LIBRE du terrain, celui que ``visite_validee`` ne transporte
+# justement pas (son récap ne porte que des mesures). Sans lui, les remarques
+# du technicien mouraient dans l'app terrain.
+# Abonné dans ce repo : ``crm`` — note de chatter portant les commentaires,
+# ``Lead.visite_effectuee``, recalage du débrief et notification au RESPONSABLE
+# du lead (« rappeler sous 24-48 h »).
+visite_terminee = django.dispatch.Signal()
+
 # Émis au refus d'un devis (FG44).
 # Arguments : devis, user, motif_refus.
 # Abonné optionnellement par crm pour marquer le lead perdu (→ COLD + perdu).
