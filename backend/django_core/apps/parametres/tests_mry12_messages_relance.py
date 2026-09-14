@@ -37,6 +37,12 @@ _CROCHETS = [
     (r'\[Prénom\]', '{prenom}'),
     (r'\[prénom\]', '{prenom}'),
     (r'\[الاسم\]', '{prenom}'),
+    # VISITE-CADENCE (15/09/2026) — la date du RENDEZ-VOUS de visite, posée
+    # sur la fiche (`Lead.visite_prevue_le`). AVANT `[date]` : la conversion
+    # est une SUITE de `re.sub`, et confondre les deux enverrait la date de
+    # VALIDITÉ du devis à la place du jour où le technicien passe.
+    (r'\[date de la visite\]', '{date_visite}'),
+    (r'\[تاريخ الزيارة\]', '{date_visite}'),
     (r'\[date\]', '{date_validite}'),
     (r'\[référence\]', '{reference}'),
     (r'\[المرجع\]', '{reference}'),
