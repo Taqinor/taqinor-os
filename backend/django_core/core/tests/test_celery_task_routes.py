@@ -58,7 +58,12 @@ class CeleryTaskRoutesTests(SimpleTestCase):
         autodécouverte qu'au démarrage d'un worker."""
         from erp_agentique.celery import app
 
-        app.finalize()  # déclenche l'autodécouverte comme au boot d'un worker
+        # Déclenche l'autodécouverte EXACTEMENT comme au boot d'un worker :
+        # `autodiscover_tasks()` (lazy) s'abonne au signal `import_modules`,
+        # que le worker émet via `loader.import_default_modules()` —
+        # `app.finalize()` seul ne suffit PAS (vérifié : il n'importe pas
+        # les modules `tasks.py`).
+        app.loader.import_default_modules()
         beat_task_names = {
             entry['task'] for entry in app.conf.beat_schedule.values()
         }
