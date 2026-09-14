@@ -11,13 +11,14 @@ from core.serializers import (
     scope_related_field,
 )
 from .models import (
-    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre, Defi,
+    AppareilEquipe, Apporteur, Appointment, Client, ConcurrentPerte,
+    DealEnregistre, Defi,
     EquipeCommerciale,
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
     PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
-    SalleVenteItem, SavedView, SiteProfile, WebsiteLeadPayload,
+    SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label, score_reasons
@@ -1807,5 +1808,46 @@ class DefiSerializer(serializers.ModelSerializer):
             'id', 'company', 'nom', 'periode_debut', 'periode_fin',
             'metrique', 'metrique_display', 'cible_equipe', 'recompense',
             'actif', 'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+
+# ── QJ-EQUIPE-2 (14/09/2026) — visiteurs externes + registre appareils équipe ──
+
+class VisiteExterneSerializer(serializers.ModelSerializer):
+    """T-TRACE — UNE trace de visite externe, lecture seule (voir
+    ``apps/crm/visites.py`` pour tout ce que la finalité anti-fraude couvre).
+    ``lead_nom`` est en lecture seule pour l'écran de revue."""
+    point_display = serializers.CharField(
+        source='get_point_display', read_only=True)
+    lead_nom = serializers.CharField(
+        source='lead.nom', read_only=True, default=None)
+
+    class Meta:
+        model = VisiteExterne
+        fields = [
+            'id', 'point', 'point_display', 'contexte', 'token_suffixe',
+            'ip', 'user_agent', 'langue', 'appareil_id', 'duree_s',
+            'terminee', 'lead', 'lead_nom', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class AppareilEquipeSerializer(serializers.ModelSerializer):
+    """QJ-EQUIPE-2 — un appareil ÉQUIPE, exclu du traçage anti-fraude.
+
+    La société et ``cree_par`` sont posés côté serveur (jamais lus du corps de
+    requête, multi-tenant) ; voir ``AppareilEquipeViewSet.perform_create``.
+    """
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    cree_par = serializers.PrimaryKeyRelatedField(read_only=True)
+    cree_par_nom = serializers.CharField(
+        source='cree_par.get_full_name', read_only=True, default=None)
+
+    class Meta:
+        model = AppareilEquipe
+        fields = [
+            'id', 'company', 'appareil_id', 'libelle',
+            'cree_par', 'cree_par_nom', 'created_at',
         ]
         read_only_fields = ['created_at']
