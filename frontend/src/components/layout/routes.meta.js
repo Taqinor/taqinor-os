@@ -41,6 +41,10 @@ const BASE_PAGE_TITLES = [
   ['/crm/leads', 'Leads'],
   ['/crm/parrainage', 'Parrainage'],
   ['/crm/profils-site', 'Profils site'],
+  // VIS1 — sans cette entrée, `/crm/visiteurs` hériterait du préfixe
+  // générique `/crm` et s'intitulerait « Clients » en en-tête (même piège que
+  // `/crm/cockpit`/`/crm/forecast`, cf. la note ODY5 ci-dessus).
+  ['/crm/visiteurs', 'Visiteurs & alertes'],
   ['/crm', 'Clients'],
   ['/activites', 'Mes activités'],
   ['/calendrier', 'Calendrier'],

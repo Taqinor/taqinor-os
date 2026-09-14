@@ -370,6 +370,23 @@ const crmApi = {
   mintQuestionnaireLien: (leadId, payload) =>
     api.post(`/crm/leads/${leadId}/questionnaire-lien/`, payload ?? {}),
 
+  // VIS1 (fondateur 14/09/2026) — écran « Visiteurs & alertes » : les
+  // notifications anti-fraude (« un même appareil consulte plusieurs
+  // prospects », « devis ouvert par le client »…) n'avaient aucun écran
+  // derrière elles. `getVisitesExternes` liste les événements bruts (filtrable
+  // par appareil/lead/point) ; `getAppareilsVisites` agrège par appareil
+  // (visites, durée, leads touchés, `equipe: bool`) — c'est CETTE liste qui
+  // porte le signal « Multi-prospects » (leads.length >= 2 et pas équipe).
+  getVisitesExternes: (params) => api.get('/crm/visites-externes/', { params }),
+  getAppareilsVisites: (params) => api.get('/crm/visites-externes/appareils/', { params }),
+  // VIS2 — registre des appareils équipe (exclusion PERMANENTE et
+  // RÉTROACTIVE du comptage/des alertes, décidée côté serveur). Écriture
+  // réservée responsable/admin (403 pour un rôle normal) — le bouton est
+  // caché côté écran, la garde réelle reste serveur.
+  getAppareilsEquipe: () => api.get('/crm/appareils-equipe/'),
+  createAppareilEquipe: (data) => api.post('/crm/appareils-equipe/', data),
+  deleteAppareilEquipe: (id) => api.delete(`/crm/appareils-equipe/${id}/`),
+
   // VTA13 — les 13 fonctions de la VISITE TECHNIQUE ont quitté ce client : la
   // visite est une app à part (`apps/visites`), servie par `api/visitesApi.js`
   // sur `/visites/…`. Elles ne sont pas dupliquées ici — un deuxième client
