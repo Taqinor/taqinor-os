@@ -185,7 +185,9 @@ describe('VTA15 — parcours du Commercial terrain', () => {
 
   it('refus d’interface côté CRM : plus aucune entrée ni route « visite » n’y subsiste', async () => {
     const { default: crmConfig } = await import('../crm/module.config.jsx')
-    expect(crmConfig.nav.items.filter((i) => String(i.to).includes('visite'))).toEqual([])
-    expect(crmConfig.routes.filter((r) => String(r.path).includes('visite'))).toEqual([])
+    // VIS1 — même précision que module.config.test.jsx : les écrans déplacés
+    // sont `/crm/visites*` ; `/crm/visiteurs` (revue anti-fraude) est légitime.
+    expect(crmConfig.nav.items.filter((i) => /\/visites(\/|$)/.test(String(i.to)))).toEqual([])
+    expect(crmConfig.routes.filter((r) => /\/visites(\/|$)/.test(String(r.path)))).toEqual([])
   })
 })

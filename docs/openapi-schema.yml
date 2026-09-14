@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10748, operations: 19044, components: 5724}
+counts: {paths: 10758, operations: 19056, components: 5730}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2734,6 +2734,9 @@ operations:
 - get /api/django/credit/segments-client/{id}/ -> django_credit_segments_client_retrieve
 - patch /api/django/credit/segments-client/{id}/ -> django_credit_segments_client_partial_update
 - put /api/django/credit/segments-client/{id}/ -> django_credit_segments_client_update
+- get /api/django/crm/appareils-equipe/ -> django_crm_appareils_equipe_list
+- post /api/django/crm/appareils-equipe/ -> django_crm_appareils_equipe_create
+- delete /api/django/crm/appareils-equipe/{id}/ -> django_crm_appareils_equipe_destroy
 - get /api/django/crm/appointments/ -> django_crm_appointments_list
 - post /api/django/crm/appointments/ -> django_crm_appointments_create
 - delete /api/django/crm/appointments/{id}/ -> django_crm_appointments_destroy
@@ -2994,6 +2997,9 @@ operations:
 - get /api/django/crm/tags/{id}/ -> django_crm_tags_retrieve
 - patch /api/django/crm/tags/{id}/ -> django_crm_tags_partial_update
 - put /api/django/crm/tags/{id}/ -> django_crm_tags_update
+- get /api/django/crm/visites-externes/ -> django_crm_visites_externes_list
+- get /api/django/crm/visites-externes/appareils/ -> django_crm_visites_externes_appareils_retrieve
+- get /api/django/crm/visites-externes/{id}/ -> django_crm_visites_externes_retrieve
 - get /api/django/crm/visites/ -> django_crm_visites_list
 - post /api/django/crm/visites/ -> django_crm_visites_create
 - delete /api/django/crm/visites/{id}/ -> django_crm_visites_destroy
@@ -12303,6 +12309,9 @@ operations:
 - get /api/v1/credit/segments-client/{id}/ -> v1_credit_segments_client_retrieve
 - patch /api/v1/credit/segments-client/{id}/ -> v1_credit_segments_client_partial_update
 - put /api/v1/credit/segments-client/{id}/ -> v1_credit_segments_client_update
+- get /api/v1/crm/appareils-equipe/ -> v1_crm_appareils_equipe_list
+- post /api/v1/crm/appareils-equipe/ -> v1_crm_appareils_equipe_create
+- delete /api/v1/crm/appareils-equipe/{id}/ -> v1_crm_appareils_equipe_destroy
 - get /api/v1/crm/appointments/ -> v1_crm_appointments_list
 - post /api/v1/crm/appointments/ -> v1_crm_appointments_create
 - delete /api/v1/crm/appointments/{id}/ -> v1_crm_appointments_destroy
@@ -12563,6 +12572,9 @@ operations:
 - get /api/v1/crm/tags/{id}/ -> v1_crm_tags_retrieve
 - patch /api/v1/crm/tags/{id}/ -> v1_crm_tags_partial_update
 - put /api/v1/crm/tags/{id}/ -> v1_crm_tags_update
+- get /api/v1/crm/visites-externes/ -> v1_crm_visites_externes_list
+- get /api/v1/crm/visites-externes/appareils/ -> v1_crm_visites_externes_appareils_retrieve
+- get /api/v1/crm/visites-externes/{id}/ -> v1_crm_visites_externes_retrieve
 - get /api/v1/crm/visites/ -> v1_crm_visites_list
 - post /api/v1/crm/visites/ -> v1_crm_visites_create
 - delete /api/v1/crm/visites/{id}/ -> v1_crm_visites_destroy
@@ -19222,6 +19234,8 @@ components:
 - ApiUsagePlan
 - ApiUsagePlanCodeEnum
 - ApiUsagePlanRequest
+- AppareilEquipe
+- AppareilEquipeRequest
 - Appel
 - AppelCommande
 - AppelCommandeRequest
@@ -21299,6 +21313,7 @@ components:
 - PaginatedAnnotationList
 - PaginatedAnomalyEventList
 - PaginatedApiKeyList
+- PaginatedAppareilEquipeList
 - PaginatedAppelCommandeList
 - PaginatedAppelCommercialList
 - PaginatedAppelList
@@ -22312,6 +22327,7 @@ components:
 - PaginatedViolationDonneesList
 - PaginatedVirementInterneList
 - PaginatedVisaDocumentList
+- PaginatedVisiteExterneList
 - PaginatedVisiteMedicaleList
 - PaginatedVisiteTechniqueList
 - PaginatedVisiteTerrainList
@@ -23547,6 +23563,7 @@ components:
 - PointControleModeleRequest
 - PointControleReception
 - PointControleReceptionRequest
+- PointEnum
 - PointIrrigation
 - PointIrrigationRequest
 - PointIrrigationTypeSourceEnum
@@ -24731,6 +24748,7 @@ components:
 - VisaDocumentRequest
 - VisitWindowPartEnum
 - VisitWindowWeekEnum
+- VisiteExterne
 - VisiteMedicale
 - VisiteMedicaleRequest
 - VisiteTechnique

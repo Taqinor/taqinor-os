@@ -69,9 +69,11 @@ describe('visites — gating du rôle « Commercial terrain »', () => {
     // Le CRM garde ses entrées au palier `normal` : ce qui ferme la porte à
     // un terrain est le refus SERVEUR (403 sur /crm/leads/, VTA4) — on vérifie
     // surtout qu'aucune entrée visite n'est RESTÉE côté CRM après le move.
-    const restees = crmConfig.nav.items.filter((i) => String(i.to).includes('visite'))
+    // VIS1 — le motif vise les écrans de VISITE TERRAIN déplacés (`/crm/
+    // visites*`), pas `/crm/visiteurs` (revue anti-fraude, sans rapport).
+    const restees = crmConfig.nav.items.filter((i) => /\/visites(\/|$)/.test(String(i.to)))
     expect(restees).toEqual([])
-    const routesRestees = crmConfig.routes.filter((r) => String(r.path).includes('visite'))
+    const routesRestees = crmConfig.routes.filter((r) => /\/visites(\/|$)/.test(String(r.path)))
     expect(routesRestees).toEqual([])
   })
 

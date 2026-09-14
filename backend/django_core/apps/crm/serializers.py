@@ -1851,3 +1851,7 @@ class AppareilEquipeSerializer(serializers.ModelSerializer):
             'cree_par', 'cree_par_nom', 'created_at',
         ]
         read_only_fields = ['created_at']
+        # Pas de UniqueTogetherValidator auto (company, appareil_id) : la vue
+        # rend le POST idempotent (re-marquer met à jour le libellé, jamais un
+        # 400) — la contrainte DB reste le filet contre une vraie course.
+        validators = []

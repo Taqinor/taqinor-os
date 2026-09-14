@@ -115,8 +115,8 @@ const config = {
       { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'] },
       // VIS1 — Visiteurs & alertes : visible de toute l'équipe (lecture), les
       // actions d'exclusion « appareil équipe » se réservent elles-mêmes aux
-      // rôles responsable/admin à l'intérieur de l'écran (miroir de la garde
-      // serveur sur l'écriture d'`appareils-equipe/`).
+      // rôles responsable/admin à l'intérieur de l'écran (la garde réelle
+      // reste serveur, sur l'écriture d'`appareils-equipe/`).
       { to: '/crm/visiteurs',        label: 'Visiteurs & alertes', k: 'nav.visiteurs', icon: navIcon(Radar), roles: ['normal','responsable','admin'] },
       // VTA8 — « Visites terrain » et « Revue technique » sont passées à l'app
       // Visites (nav `features/visites/module.config.jsx`).

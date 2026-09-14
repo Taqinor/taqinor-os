@@ -3995,6 +3995,9 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
 
     Toujours scopé société (``TenantMixin``, via le queryset filtré ici) : un
     commercial ne voit que le traçage de SA société."""
+    # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
+    # runtime passe TOUJOURS par get_queryset, qui rescope par société).
+    queryset = VisiteExterne.objects.all()
     serializer_class = VisiteExterneSerializer
     permission_classes = [IsAnyRole]
     filter_backends = [filters.OrderingFilter]
@@ -4016,7 +4019,9 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(point=point)
         return qs
 
-    @action(detail=False, methods=['get'])
+    # Permission EXPLICITE sur l'@action (pattern d'or crm du cliquet
+    # core.action_permission_scan : chaque @action porte sa garde).
+    @action(detail=False, methods=['get'], permission_classes=[IsAnyRole])
     def appareils(self, request):
         """Agrégat PAR APPAREIL : nb visites, durée totale, première/dernière
         visite, leads touchés, propositions ouvertes, statut équipe.
@@ -4086,6 +4091,9 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
     Lecture ouverte à tout rôle authentifié de la société ; écriture réservée
     responsable/admin (marquer/démarquer un appareil équipe est une décision
     de gouvernance anti-fraude)."""
+    # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
+    # runtime passe TOUJOURS par get_queryset, qui rescope par société).
+    queryset = AppareilEquipe.objects.all()
     serializer_class = AppareilEquipeSerializer
 
     def get_queryset(self):

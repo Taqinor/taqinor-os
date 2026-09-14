@@ -43,7 +43,6 @@ vi.mock('../../api/crmApi', () => ({
   },
 }))
 
-import crmApi from '../../api/crmApi'
 import VisiteursPage from './VisiteursPage'
 
 const APPAREIL_SUSPECT = {
@@ -151,7 +150,7 @@ describe('VisiteursPage (VIS1)', () => {
 
   it('pré-filtre sur l’appareil du lien profond (?appareil=)', async () => {
     mount(['/crm/visiteurs?appareil=ab12cd34ef56'])
-    await waitFor(() => expect(crmApi.getAppareilsVisites).toHaveBeenCalledWith({ appareil_id: 'ab12cd34ef56' }))
+    await waitFor(() => expect(getAppareilsVisites).toHaveBeenCalledWith({ appareil_id: 'ab12cd34ef56' }))
     expect(screen.getByText(/Filtré sur l’appareil/)).toBeInTheDocument()
   })
 })
