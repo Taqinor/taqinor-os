@@ -3573,6 +3573,52 @@ class VisiteExterne(TenantModel):
         return f'{self.get_point_display()} — {self.appareil_id[:8] or "?"}'
 
 
+class AppareilEquipe(TenantModel):
+    """QJ-EQUIPE-2 (14/09/2026) — registre SERVEUR des appareils de l'ÉQUIPE.
+
+    ORDRE FONDATEUR (14/09/2026) : les appareils du fondateur (et de l'équipe)
+    déclenchaient les alertes T-TRACE anti-fraude — le seul mécanisme
+    d'exclusion existant était le cookie CLIENT ``tq_equipe`` vérifié par
+    ``apps/ventes/public_views.py::_appareil_equipe`` : fragile, posé par
+    NAVIGATEUR, absent du navigateur intégré WhatsApp et de la navigation
+    privée. Ce registre est le complément SERVEUR : un ``appareil_id`` marqué
+    ici est exclu du comptage/des alertes anti-fraude PARTOUT, pour TOUJOURS,
+    quel que soit le navigateur ou le cookie posé.
+
+    RÉTROACTIF, ordre fondateur « keep them stored ». Les traces
+    ``VisiteExterne`` déjà écrites pour cet appareil ne sont JAMAIS
+    supprimées — elles restent dans la base pour l'historique — mais elles
+    cessent d'être LUES par les alertes/corrélations dès l'instant du
+    marquage, y compris celles créées AVANT ce marquage.
+
+    Couche PERMANENTE et SÉPARÉE du cookie ``tq_equipe`` (QJ-EQUIPE
+    09/09/2026) : celui-ci ne couvre qu'un navigateur à la fois et reste
+    utile en repli ; celui-ci couvre l'appareil, partout, définitivement.
+    """
+    appareil_id = models.CharField(
+        max_length=64, db_index=True, verbose_name='Identifiant d’appareil')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Libellé (ex. « Téléphone Reda »)')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Enregistré par')
+
+    class Meta:
+        verbose_name = 'Appareil équipe (exclu du traçage)'
+        verbose_name_plural = 'Appareils équipe (exclus du traçage)'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'appareil_id'],
+                name='crm_appareil_equipe_company_uniq'),
+        ]
+
+    def __str__(self):
+        return self.libelle or self.appareil_id[:8]
+
+
 # ── VT1 — VISITE TECHNIQUE TERRAIN ───────────────────────────────────────────
 #
 # VTA2 — `VisiteTerrain` et `VisiteMedia` ont DÉMÉNAGÉ dans `apps.visites`
