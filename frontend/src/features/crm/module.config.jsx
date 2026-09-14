@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
-  Handshake, Swords, Trophy, CalendarClock, ClipboardCheck,
+  Handshake, Swords, Trophy, CalendarClock, ClipboardCheck, Radar,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -60,6 +60,10 @@ const DefisPage = lazy(() => import('../../pages/crm/defis/DefisPage'))
 // MRY31 — écran « Suivi des relances » : les touches de cadence par jour et
 // leur statut (au-delà de la file « aujourd'hui + retard » du Cockpit).
 const RelancesSuiviPage = lazy(() => import('../../pages/crm/RelancesSuiviPage'))
+// VIS1 (fondateur 14/09/2026) — écran « Visiteurs & alertes » : la place pour
+// revoir qui a ouvert quels devis/liens externes, et marquer un appareil
+// équipe pour l'exclure du comptage/des alertes anti-fraude.
+const VisiteursPage = lazy(() => import('../../pages/crm/VisiteursPage'))
 // VTA8 — les 4 écrans de visite technique terrain ont QUITTÉ le CRM : ils
 // vivent dans l'app autonome « Visites » (`features/visites/module.config.jsx`,
 // routes `/visites/...`), parce que le commercial terrain qui les utilise n'a
@@ -109,6 +113,11 @@ const config = {
       // visible de toute l'équipe, le filtre Responsable se réserve lui-même
       // aux rôles responsable/admin à l'intérieur de l'écran.
       { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'] },
+      // VIS1 — Visiteurs & alertes : visible de toute l'équipe (lecture), les
+      // actions d'exclusion « appareil équipe » se réservent elles-mêmes aux
+      // rôles responsable/admin à l'intérieur de l'écran (miroir de la garde
+      // serveur sur l'écriture d'`appareils-equipe/`).
+      { to: '/crm/visiteurs',        label: 'Visiteurs & alertes', k: 'nav.visiteurs', icon: navIcon(Radar), roles: ['normal','responsable','admin'] },
       // VTA8 — « Visites terrain » et « Revue technique » sont passées à l'app
       // Visites (nav `features/visites/module.config.jsx`).
     ],
@@ -138,6 +147,8 @@ const config = {
     { path: '/crm/defis', component: DefisPage },
     // MRY31 — suivi des relances par jour.
     { path: '/crm/relances', component: RelancesSuiviPage },
+    // VIS1 — Visiteurs & alertes (anti-fraude anonyme/appareil équipe).
+    { path: '/crm/visiteurs', component: VisiteursPage },
     // VTA8 — les 4 routes `/crm/visites*` sont parties dans l'app Visites
     // (`/visites`, `/visites/toutes`, `/visites/revue`, `/visites/:id[/calage]`).
   ],
